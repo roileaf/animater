@@ -41,7 +41,7 @@ const FILTERS = {
 };
 const filterStage = (stageId, type, extra) => {
   const f = FILTERS[normalizeDamageType(type)];
-  return f ? [{ stageId, kind: "tokenfx", assets: [], catalogFx: true, fxProfile: "damage", fxPreset: f.preset, fxLibrary: "tmfx-main", fxTint: f.tint ?? "", ...extra }] : [];
+  return f ? [{ stageId, kind: "tokenfx", assets: [], catalogFx: true, fxProfile: "damage", fxPreset: f.preset, fxLibrary: "tokenshade", fxTint: f.tint ?? "", ...extra }] : [];
 };
 
 // How the blow was struck. PF2e/SF2e strikes carry item:melee / item:ranged roll options

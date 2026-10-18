@@ -1,9 +1,12 @@
-// Tokenshade's built-in presets. Names and libraries match Token Magic FX's, so
-// recipes, catalogs and saved choices made with Token Magic keep working; every value
+// Tokenshade's built-in presets. Preset names match Token Magic FX's, so recipes and
+// catalogs made with Token Magic keep working; every value
 // here is tuned for animater's own shaders.
 import { specFor } from './filters/index.mjs';
 
-export const LIBRARY = { TOKEN: 'tmfx-main', REGION: 'tmfx-region' };
+export const LIBRARY = { TOKEN: 'tokenshade', REGION: 'tokenshade-region', CUSTOM: 'tokenshade-custom' };
+// Library ids saved before Tokenshade had its own (recipes, favorites, imports).
+const LEGACY = { 'tmfx-main': LIBRARY.TOKEN, 'tmfx-region': LIBRARY.REGION, 'tmfx-template': LIBRARY.REGION, 'animater-custom': LIBRARY.CUSTOM };
+export const libraryId = id => (typeof id === 'string' && Object.hasOwn(LEGACY, id) ? LEGACY[id] : id);
 
 // Animation helpers. `flow(type, rate)`: the shader's natural motion `rate` times per second.
 const flow = (type, rate = 1) => ({ animType: 'move', speed: rate / (specFor(type).timeScale * 1000) });

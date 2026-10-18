@@ -100,10 +100,10 @@ test('a world’s own Token Magic presets are offered only under names animater 
   const custom={name:'My ward',params:[{filterType:'glow'}]},clash={name:'fire',params:[{filterType:'glow'}]};
   const bw=[{name:'[BW] Overlay Cold Ice',params:[{filterType:'sprite'}]},{name:'BW Turn to Stone',params:[{filterType:'adjustment'}]}];
   const api=tokenFxApi({engine:new TokenFxEngine({PIXI}),tokenMagic:()=>({getPresets:()=>[custom,clash,...bw]}),modules:()=>new Map([['tokenmagic',{active:true}]])});
-  const names=api.getPresets('tmfx-main').map(p=>p.name);
+  const names=api.getPresets('tokenshade').map(p=>p.name);
   assert.ok(names.includes('My ward'));assert.ok(!names.some(n=>/BW/.test(n)),'Baileywiki presets are not offered');assert.equal(names.filter(n=>n==='fire').length,1);
-  assert.equal(api.getPresets('tmfx-main').find(p=>p.name==='fire'),PRESETS.find(p=>p.name==='fire'),'ours wins');
+  assert.equal(api.getPresets('tokenshade').find(p=>p.name==='fire'),PRESETS.find(p=>p.name==='fire'),'ours wins');
   const off=tokenFxApi({engine:new TokenFxEngine({PIXI}),tokenMagic:()=>({getPresets:()=>[custom]}),modules:()=>new Map()});
-  assert.ok(!off.getPresets('tmfx-main').some(p=>p.name==='My ward'),'only while Token Magic is active');
+  assert.ok(!off.getPresets('tokenshade').some(p=>p.name==='My ward'),'only while Token Magic is active');
   assert.equal(api.ready(),true);
 });

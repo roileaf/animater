@@ -5,16 +5,16 @@ import {validateRecipe,planRecipe} from '../../../scripts/core/model.mjs';
 import {AnimaterRuntime} from '../../../scripts/engines/playback/runtime.mjs';
 import {Workspace} from '../../../scripts/ui/workspace.mjs';
 const recipe=stages=>validateRecipe({id:'optional-fx',name:'FX test',trigger:'manual',stages});
-const tokenStage={kind:'tokenfx',fxPreset:'Burn',fxLibrary:'tmfx-main',subject:'targets',duration:100};
+const tokenStage={kind:'tokenfx',fxPreset:'Burn',fxLibrary:'tokenshade',subject:'targets',duration:100};
 const sceneStage={kind:'scenefx',fxCategory:'particle',fxType:'embers',duration:100};
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture() {
   const calls=[], foreign={filterId:'world-burn',filterType:'fire'};
   const filters=[foreign];
   const token={document:{object:{id:'placeable'}}};
-  const preset={name:'Burn',library:'tmfx-main',params:[{filterType:'fire',color:123},{filterType:'glow'}]};
+  const preset={name:'Burn',library:'tokenshade',params:[{filterType:'fire',color:123},{filterType:'glow'}]};
   // The token FX engine's surface: presets by library, and apply → remove.
-  const tm={ready:()=>true,getPresets:library=>library==='tmfx-main'?[preset]:[],apply(target,own){
+  const tm={ready:()=>true,getPresets:library=>library==='tokenshade'?[preset]:[],apply(target,own){
     assert.equal(target,token.document.object);
     calls.push(['token','add',structuredClone(own)]);
     const mine=own.params.map(p=>({...p}));filters.push(...mine);
@@ -43,7 +43,7 @@ test('optional stages validate, export and route to selected token subjects with
 });
 test('native preset discovery exposes safe filter types and tint metadata without shader parameters',()=>{
   const f=fixture(),catalog=f.host.catalog();
-  assert.deepEqual(catalog.presets,[{name:'Burn',library:'tmfx-main',filterTypes:['fire','glow'],tintable:true}]);
+  assert.deepEqual(catalog.presets,[{name:'Burn',library:'tokenshade',filterTypes:['fire','glow'],tintable:true}]);
   assert.equal(Object.hasOwn(catalog.presets[0],'params'),false);
   f.tm.ready=()=>false;assert.deepEqual(f.host.catalog().presets,[],'no renderer, no presets');
 });

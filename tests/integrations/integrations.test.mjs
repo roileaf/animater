@@ -205,7 +205,7 @@ test('derived in-memory conditions without a stored item do not tie to a missing
 test('cold area spells frost caught creatures, falling back to the ice aura preset', async () => {
   const { PF2E_SPELLS, spellRecipe } = await import('../../scripts/catalogs/pf2e/spells/spell-catalog.mjs');
   const spell = PF2E_SPELLS.find(s => s.name === 'Cone of Cold');
-  const fxOf = presets => spellRecipe(spell, undefined, { fxCatalog: { tokenReady: true, sceneReady: false, presets: presets.map(name => ({ name, library: 'tmfx-main' })) } }).stages.find(s => s.kind === 'tokenfx');
+  const fxOf = presets => spellRecipe(spell, undefined, { fxCatalog: { tokenReady: true, sceneReady: false, presets: presets.map(name => ({ name, library: 'tokenshade' })) } }).stages.find(s => s.kind === 'tokenfx');
   const rich = fxOf(['Frostbitten', 'pure-ice-aura']);
   assert.equal(rich.fxPreset, 'Frostbitten');
   assert.equal(rich.subject, 'targets');

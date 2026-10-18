@@ -13,7 +13,7 @@ function fixture(items=[native(fear)]){
  return {manager,calls,token,actor,states,items,waits,setScene:v=>scene=v,setTokens:v=>tokens=v,setSaved:v=>saved=v,setReady:v=>ready=v,setVisibility:v=>visibility=v,setPending:v=>pending=v};
 }
 const flush=()=>new Promise(r=>setTimeout(r,0));
-const stateFxCatalog={tokenReady:true,sceneReady:false,presets:[{name:'blur',library:'tmfx-main'}],effects:[]};
+const stateFxCatalog={tokenReady:true,sceneReady:false,presets:[{name:'blur',library:'tokenshade'}],effects:[]};
 test('native expiry, visibility, mesh recreation and catalog FX changes clean document-linked filters',async()=>{
  const entry=PF2E_CONDITIONS.find(e=>e.slug==='concealed'),item=native(entry),f=fixture([item]),retained=new Set();let enabled=true;
  f.token.mesh={uid:1};f.manager.host.resolveStateRecipe=()=>stateRecipe(entry,{fx:enabled,fxCatalog:stateFxCatalog});

@@ -10,7 +10,7 @@ import {SF2E_ENTRIES,sfRecipe} from '../../../scripts/catalogs/sf2e/sf2e-catalog
 import {planRecipe,validateRecipe,MAX_STAGES} from '../../../scripts/core/model.mjs';
 import {Workspace} from '../../../scripts/ui/workspace.mjs';
 const fxCatalog={tokenReady:true,sceneReady:true,isGM:true,
- presets:['fire','pure-ice-aura','electric','fumes','smoke','glow','hexa-field','earth-field','water-field','blur','distortion','spectral-body','warp-field','fire-aura','zoomblur'].map(name=>({name,library:'tmfx-main'})),
+ presets:['fire','pure-ice-aura','electric','fumes','smoke','glow','hexa-field','earth-field','water-field','blur','distortion','spectral-body','warp-field','fire-aura','zoomblur'].map(name=>({name,library:'tokenshade'})),
  effects:[{type:'screenShake',category:'filter'},{type:'clouds',category:'particle'},{type:'rain',category:'particle'}]};
 const fx=r=>r.stages.filter(s=>s.catalogFx);
 const spell=(name,options={})=>spellRecipe(PF2E_SPELLS.find(e=>e.name===name),undefined,{fxCatalog,...options});

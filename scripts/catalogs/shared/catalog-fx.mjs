@@ -120,8 +120,8 @@ export function catalogFxDesign(recipe, entry, options={}) {
     if (!spec)continue;
     const subject=persistent?'source':onTarget(anchor)?'targets':anchor.subject??'source';
     const duration=persistent?6000:Math.max(1400,Math.min(2400,anchor.duration??1600));
-    additions.push({kind:'tokenfx',stageId:`${recipe.id}-tmfx`,label:`Tokenshade · ${spec.preset}`,assets:[],
-      catalogFx:true,fxProfile:profile,fxPreset:spec.preset,...(spec.fallback?{fxFallbackPreset:spec.fallback}:{}),fxLibrary:'tmfx-main',fxTint:spec.tint??'',subject,persist:persistent,
+    additions.push({kind:'tokenfx',stageId:`${recipe.id}-tokenshade`,label:`Tokenshade · ${spec.preset}`,assets:[],
+      catalogFx:true,fxProfile:profile,fxPreset:spec.preset,...(spec.fallback?{fxFallbackPreset:spec.fallback}:{}),fxLibrary:'tokenshade',fxTint:spec.tint??'',subject,persist:persistent,
       delay:persistent?0:anchor.delay??0,duration,optionalTargets:subject==='targets',
       ...(persistent?{}:{afterStage:anchor.stageId,timingAnchor:'start',startOffset:0,
         targetSelection:anchor.targetSelection??'all',targetLimit:anchor.targetLimit??0,

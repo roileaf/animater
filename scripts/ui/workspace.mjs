@@ -1307,13 +1307,13 @@ export class Workspace {
     return `<div hidden class="an-provider-cue" data-layer-stage="${index}"><b>${esc(KINDS[stage.kind])}</b><small>${esc(stage.fxPreset || stage.fxType || 'Choose effect')}</small><small>${stage.kind==='scenefx'?'Play at table · shared scene':'Local canvas preview · token filter'}</small></div>`;
   }
   // The library preset a token FX stage starts from (null for a stage built from scratch).
-  tokenFxPreset(stage) { return this.host.tokenFxPreset?.(stage.fxLibrary ?? 'tmfx-main', stage.fxPreset) ?? null; }
+  tokenFxPreset(stage) { return this.host.tokenFxPreset?.(stage.fxLibrary ?? 'tokenshade', stage.fxPreset) ?? null; }
   optionalFxControlsHTML(stage,index) {
     const catalog=this.host.fxCatalog?.() ?? {presets:[],effects:[]};
     const attrs=field=>`data-field="${field}" data-index="${index}"`;
     if(stage.kind==='tokenfx') {
-      const presets=catalog.presets.filter(p=>p.library===(stage.fxLibrary ?? 'tmfx-main'));
-      return `<label>Preset library<select ${attrs('fxLibrary')}>${options({'tmfx-main':'Token presets','tmfx-region':'Region presets','animater-custom':'My presets'},stage.fxLibrary ?? 'tmfx-main')}</select></label><label>Tokenshade preset<select ${attrs('fxPreset')} ${catalog.tokenReady?'':'disabled'}>${options({'':'Choose preset',...Object.fromEntries(presets.map(p=>[p.name,p.name]))},stage.fxPreset ?? '')}</select></label><button data-action="browse-tokenfx">Browse token filters</button><label class="an-check"><input type="checkbox" ${attrs('fxTint')} ${stage.fxTint?'checked':''}>Override preset color</label><label>Filter color<input type="color" ${attrs('fxTint')} value="${esc(stage.fxTint||'#ffffff')}" ${stage.fxTint?'':'disabled'}></label><label>Strength<input type="number" ${attrs('fxStrength')} min="0.1" max="1" step="0.05" value="${esc(stage.fxStrength??1)}"></label><p class="an-hint">Fades glows, auras, bevels, fog and image overlays. Some filters have nothing to fade and stay at full strength: outlines, smoke and fumes overlays, and distortions (blur, ripples, twist).</p><p class="an-hint">${catalog.tokenReady?stage.persist?'Filter stays while the condition or effect is on the token.':'Temporary token filter. Removed when this stage ends.':'Token filters are turned off in Animater settings.'}</p>${catalog.tokenReady?tokenFxEditorHTML(stage,index,this.tokenFxPreset(stage),{canSave:this.host.isGM?.()===true}):''}`;
+      const presets=catalog.presets.filter(p=>p.library===(stage.fxLibrary ?? 'tokenshade'));
+      return `<label>Preset library<select ${attrs('fxLibrary')}>${options({'tokenshade':'Token presets','tokenshade-region':'Region presets','tokenshade-custom':'My presets'},stage.fxLibrary ?? 'tokenshade')}</select></label><label>Tokenshade preset<select ${attrs('fxPreset')} ${catalog.tokenReady?'':'disabled'}>${options({'':'Choose preset',...Object.fromEntries(presets.map(p=>[p.name,p.name]))},stage.fxPreset ?? '')}</select></label><button data-action="browse-tokenfx">Browse token filters</button><label class="an-check"><input type="checkbox" ${attrs('fxTint')} ${stage.fxTint?'checked':''}>Override preset color</label><label>Filter color<input type="color" ${attrs('fxTint')} value="${esc(stage.fxTint||'#ffffff')}" ${stage.fxTint?'':'disabled'}></label><label>Strength<input type="number" ${attrs('fxStrength')} min="0.1" max="1" step="0.05" value="${esc(stage.fxStrength??1)}"></label><p class="an-hint">Fades glows, auras, bevels, fog and image overlays. Some filters have nothing to fade and stay at full strength: outlines, smoke and fumes overlays, and distortions (blur, ripples, twist).</p><p class="an-hint">${catalog.tokenReady?stage.persist?'Filter stays while the condition or effect is on the token.':'Temporary token filter. Removed when this stage ends.':'Token filters are turned off in Animater settings.'}</p>${catalog.tokenReady?tokenFxEditorHTML(stage,index,this.tokenFxPreset(stage),{canSave:this.host.isGM?.()===true}):''}`;
     }
     const category=stage.fxCategory ?? 'particle';
     const effects=catalog.effects.filter(e=>e.category===category);
@@ -1954,7 +1954,7 @@ export class Workspace {
     if(key==='fxLibrary'||key==='fxPreset')delete s.fxLayers;
     if(key==='kind' && OPTIONAL_FX_KINDS.has(s.kind)) {
       s.assets=[];
-      if(s.kind==='tokenfx'){s.subject='source';s.fxLibrary??='tmfx-main';s.fxPreset??='';}
+      if(s.kind==='tokenfx'){s.subject='source';s.fxLibrary??='tokenshade';s.fxPreset??='';}
       else {s.fxCategory??='particle';s.fxType??='';s.fxOptions??={};}
     }
     if (key === "kind" && s.kind === "motion") {
@@ -2379,14 +2379,14 @@ export class Workspace {
         if (action === "fx-preset-save") {
           const name = this.root.querySelector(`[data-fx-preset-name="${b.dataset.index}"]`)?.value ?? "";
           await this.host.saveTokenFxPreset(name, layersOf(s, this.tokenFxPreset(s)));
-          s.fxLibrary = "animater-custom"; s.fxPreset = name.trim().slice(0, 80); delete s.fxLayers;
+          s.fxLibrary = "tokenshade-custom"; s.fxPreset = name.trim().slice(0, 80); delete s.fxLayers;
           this.message = `Saved “${s.fxPreset}” to My presets.`;
         } else if (action === "fx-preset-delete") {
           if (!(await this.host.confirm?.(`Delete the preset “${s.fxPreset}” for every recipe in this world? This stage keeps its effect.`))) return;
           // The stage keeps the effect as its own copy, so nothing that used it goes blank.
           const layers = layersOf(s, this.tokenFxPreset(s)), name = s.fxPreset;
           await this.host.deleteTokenFxPreset(name);
-          Object.assign(s, { fxLibrary: "tmfx-main", fxPreset: "", fxLayers: layers });
+          Object.assign(s, { fxLibrary: "tokenshade", fxPreset: "", fxLayers: layers });
           this.message = `Deleted “${name}” from My presets.`;
         } else tokenFxAction(action, s, this.tokenFxPreset(s), b.dataset);
         this.render();

@@ -1,9 +1,10 @@
 import { uuid } from "../../core/uuid.mjs";
 import { normalizeLayers } from "../tokenshade/layers.mjs";
+import { LIBRARY, libraryId } from "../tokenshade/presets.mjs";
 
 // Preset libraries a token FX stage can name: animater's token and region presets, and
 // the world's own saved presets.
-export const TOKEN_FX_LIBRARIES = ['tmfx-main', 'tmfx-region', 'animater-custom'];
+export const TOKEN_FX_LIBRARIES = [LIBRARY.TOKEN, LIBRARY.REGION, LIBRARY.CUSTOM];
 // Token filters are animater's own (scripts/fx); scene weather comes from FXMaster when
 // installed. Never replace another module's token filters or the scene's weather.
 export const OPTIONAL_FX_KINDS = new Set(['tokenfx', 'scenefx']);
@@ -24,7 +25,7 @@ export function normalizeFxStage(stage) {
   const metadata=stage.catalogFx===true?{catalogFx:true,fxProfile:typeof stage.fxProfile==='string'?stage.fxProfile.slice(0,50):''}:{};
   return {...metadata,...(stage.kind === 'tokenfx'
     ? {fxPreset:typeof stage.fxPreset === 'string' ? stage.fxPreset.slice(0,100).trim() : '',
-       fxLibrary:TOKEN_FX_LIBRARIES.includes(stage.fxLibrary) ? stage.fxLibrary : 'tmfx-main',
+       fxLibrary:TOKEN_FX_LIBRARIES.includes(libraryId(stage.fxLibrary)) ? libraryId(stage.fxLibrary) : LIBRARY.TOKEN,
        // The stage's own edited copy of the effect (every layer, setting and animation).
        ...(normalizeLayers(stage.fxLayers) ? {fxLayers:normalizeLayers(stage.fxLayers)} : {}),
        fxSpeed:Number.isFinite(Number(stage.fxSpeed))?Math.min(5,Math.max(.1,Number(stage.fxSpeed))):1,
@@ -113,7 +114,7 @@ export function startTokenFxPreview(player, stage, {tokens, userId, session = uu
 export function fxAvailability(stage, catalog, {preview = false} = {}) {
   if (stage.kind === 'tokenfx') {
     if (!catalog?.tokenReady) return 'Tokenshade unavailable';
-    if (!stage.fxLayers?.length && !catalog.presets.some(p=>p.name===stage.fxPreset && p.library===(stage.fxLibrary ?? 'tmfx-main'))) return 'Choose a Tokenshade preset';
+    if (!stage.fxLayers?.length && !catalog.presets.some(p=>p.name===stage.fxPreset && p.library===libraryId(stage.fxLibrary ?? LIBRARY.TOKEN))) return 'Choose a Tokenshade preset';
   } else if (stage.kind === 'scenefx') {
     if (!catalog?.sceneReady) return 'FXMaster unavailable';
     if (!catalog.effects.some(e=>e.type===stage.fxType && e.category===(stage.fxCategory ?? 'particle'))) return 'Choose an FXMaster effect';
@@ -140,7 +141,7 @@ export class OptionalFxPlayer {
   constructor(host) { this.host=host; this.active=new Set(); }
   async addTokenFilter(stage) {
     const api=this.host.tokenFx();
-    const preset=api.getPresets(stage.fxLibrary??'tmfx-main').find(p=>p.name===stage.fxPreset);
+    const preset=api.getPresets(libraryId(stage.fxLibrary??LIBRARY.TOKEN)).find(p=>p.name===stage.fxPreset);
     const placeable=(stage.destination?.document??stage.destination)?.object;
     if(!(preset?.params?.length||stage.fxLayers?.length)||!placeable)return ()=>{};
     return api.apply(placeable,tintedPreset(preset??{name:stage.fxPreset},stage),{speed:stage.fxSpeed??1});

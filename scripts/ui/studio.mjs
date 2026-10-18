@@ -463,7 +463,7 @@ function addStage(w, trackId) {
   let stage;
   if (track.kind === "motion") stage = { ...base, kind: "motion", motion: "lunge", subject: "source", assets: [], duration: 800, distance: 0.35, intensity: 1, scale: 1, opacity: 1, below: false, persist: false };
   else if (track.kind === "sound") stage = { ...base, kind: "sound", assets: [], soundFile: "", volume: 0.8, duration: Math.max(500, last.duration ?? 1000) };
-  else if (track.kind === "tokenfx") stage = { ...base, kind: "tokenfx", assets: [], subject: "source", fxLibrary: "tmfx-main", fxPreset: "", persist: linked };
+  else if (track.kind === "tokenfx") stage = { ...base, kind: "tokenfx", assets: [], subject: "source", fxLibrary: "tokenshade", fxPreset: "", persist: linked };
   else if (linked) stage = { ...base, kind: "aura", subject: "source", persist: true, assets: [...last.assets] };
   else stage = { ...base, kind: track.kind, subject: track.id === "target" ? "targets" : "source", assets: track.kind === "cast" ? ["jb2a.cast_generic"] : track.kind === "impact" ? ["jb2a.impact"] : [], duration: track.kind === "projectile" ? 800 : 1000 };
   r.stages.push(stage);

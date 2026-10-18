@@ -6,6 +6,7 @@ import {patchDOM, reconcileChildren} from './dom-patch.mjs';
 import {RecipePreview} from '../engines/preview/recipe-preview.mjs';
 import {TELEPORT_STYLES} from '../engines/motion/teleport.mjs';
 import { sampleRecipe } from "../engines/playback/composition.mjs";
+import { libraryId } from "../engines/tokenshade/presets.mjs";
 // A library card's window preview runs in passes this long, looped without a visible restart.
 const fxZoomValue=v=>Math.min(4,Math.max(1,Math.round((Number(v)||1)*4)/4));
 const WINDOW_LOOP_MS=10*60*1000;
@@ -31,7 +32,9 @@ const mergeSnapshots=(existing,incoming)=>{
 };
 export function libraryPreferences(value = {}) {
   if(!value||typeof value!=='object')value={};
-  const ids = (list,max) => [...new Set(Array.isArray(list) ? list.filter(v=>typeof v==='string'&&v.length<1500) : [])].slice(0,max);
+  // Favorites saved before Tokenshade had its own library ids point at the same presets.
+  const renamed = v => v.replace(/^tokenfx:(tmfx-main|tmfx-region|tmfx-template|animater-custom):/,(_,lib)=>`tokenfx:${libraryId(lib)}:`);
+  const ids = (list,max) => [...new Set(Array.isArray(list) ? list.filter(v=>typeof v==='string'&&v.length<1500).map(renamed) : [])].slice(0,max);
   return {favorites:ids(value.favorites,500),recent:ids(value.recent,60),custom:(Array.isArray(value.custom)?value.custom:[]).map(libraryItem).filter(item=>item&&item.type!=='tokenfx').slice(0,500),sources:mediaFolderSources(value.sources)};
 }
 export class MediaLibrary {
@@ -593,7 +596,7 @@ export class MediaLibrary {
       <div class="an-media-preview-settings"><label>Artwork<select data-media-fx="artwork" aria-label="Preview token artwork"><option value="sample" ${this.fxArtwork==='sample'?'selected':''}>Sample token</option><option value="source" ${this.fxArtwork==='source'?'selected':''} ${tokens.source?.img?'':'disabled'}>Source image</option><option value="targets" ${this.fxArtwork==='targets'?'selected':''} ${tokens.targets?.img?'':'disabled'}>Target image</option></select></label><label class="an-tokenfx-zoom">Zoom <span data-media-fx-zoom-value>${this.fxZoom}×</span><input type="range" data-media-fx="zoom" min="1" max="4" step="0.25" value="${this.fxZoom}" aria-label="Preview zoom"></label><label>Background<select data-media-preview="background" aria-label="Preview background">${['grid','dark','light'].map(v=>`<option value="${v}" ${this.preview.background===v?'selected':''}>${title(v)}</option>`).join('')}</select></label></div>
       <p class="an-tokenfx-status" data-media-fx-status role="status">${esc(this.fxStatus)}</p>
       <div class="an-media-tags">${item.filterTypes.map(type=>`<span>${esc(title(type))}</span>`).join('')}<span>${esc(item.category)}</span></div>
-      ${variants.length>1?`<label class="an-media-variant-label">Preset library<select data-media-variant aria-label="Preset library">${variants.map(v=>`<option value="${esc(v.id)}" ${v.id===item.id?'selected':''}>${v.fxLibrary==='tmfx-main'?'Token presets':v.fxLibrary==='animater-custom'?'My presets':'Region presets'}</option>`).join('')}</select></label>`:`<p class="an-hint">${item.fxLibrary==='tmfx-main'?'Token presets':item.fxLibrary==='animater-custom'?'My presets':'Region presets'}</p>`}
+      ${variants.length>1?`<label class="an-media-variant-label">Preset library<select data-media-variant aria-label="Preset library">${variants.map(v=>`<option value="${esc(v.id)}" ${v.id===item.id?'selected':''}>${v.fxLibrary==='tokenshade'?'Token presets':v.fxLibrary==='tokenshade-custom'?'My presets':'Region presets'}</option>`).join('')}</select></label>`:`<p class="an-hint">${item.fxLibrary==='tokenshade'?'Token presets':item.fxLibrary==='tokenshade-custom'?'My presets':'Region presets'}</p>`}
       <div class="an-tokenfx-settings"><strong>Preview & new stage</strong><label>Apply to<select data-media-fx="subject" aria-label="Token filter subject" ${linked?'disabled':''}><option value="source" ${linked||this.tokenFx.subject==='source'?'selected':''}>${linked?'Affected token':'Selected source'}</option><option value="targets" ${!linked&&this.tokenFx.subject==='targets'?'selected':''}>Targeted tokens</option></select></label><label>Preview duration (ms)<input type="number" data-media-fx="duration" min="500" max="30000" step="100" value="${this.tokenFx.duration}" aria-label="Token filter duration"></label><label class="an-tokenfx-check"><input type="checkbox" data-media-fx="tintEnabled" ${this.tokenFx.tint?'checked':''} ${item.tintable?'':'disabled'}>Override preset color</label><input type="color" data-media-fx="tint" aria-label="Token filter color" value="${esc(this.tokenFx.tint||'#ffffff')}" ${this.tokenFx.tint&&item.tintable?'':'disabled'}>
       <p class="an-hint">${windowAvailable?'Window preview uses a copy of the artwork.':'Window preview needs Tokenshade turned on.'}</p><button data-action="media-fx-canvas" ${available?'':'disabled'}>Preview on canvas</button></div>
       <details class="an-media-reference"><summary>Preset reference</summary><code>${esc(item.fxPreset)}</code><small>${esc(item.fxLibrary)}</small></details></div>

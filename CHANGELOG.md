@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Tokenshade: Animater's own token effects.** Token filters are drawn by a new built-in shader engine instead of Token Magic FX, which is no longer needed. Every Token Magic preset name still works (so existing recipes play unchanged), each redrawn to look better: flames rise off the token's outline, auras lick and glow, force fields are glassy domes, and effects never bury the creature's face. Effects are local to each screen, write nothing to the world, follow token redraws and pause on hidden tokens.
+- **Customize any token effect.** A token filter stage's *Customize effect* section edits every layer's settings and animations, adds, removes, reorders or turns off layers, and sets the speed. GMs can save the result as a world preset in **My presets**.
+- **New looks.** Petrified, Frozen Solid, Gilded, Ironskin, Crystallized and Barkskin; Frostbitten and Snowed Over; Entangled, Netted, Chained and Bound; Levitate, elemental channels, motes, Mud-Caked, Scorched, Blood-Soaked, Submerged; ground markers and a rune circle.
+- **Every damage type has its own look.** Damage flashes and knockouts burn, frost, crackle, corrode, poison veins, wither, sear with light, jolt, warp the mind, shake with sound or rend the spirit, instead of tinted glows.
+- **Baileywiki presets are no longer offered.** Tokenshade's own takes replace the "[BW]" presets that Nuts and Bolts imports into Token Magic.
+- **Media library:** the Tokenshade card preview plays continuously and can be zoomed (slider or mouse wheel).
+
 ## 1.2.13 (2026-10-17)
 
 - **Burning shows on the token.** A lasting Burning condition (D&D 5e) and other lasting fire effects drew their flames under round tokens (dynamic token rings), so only an ember showed past the token's edge, although the studio preview showed the creature on fire. Lasting flames now burn over the token at half strength, so the creature looks on fire and its face still shows. Your own saved recipes keep their Below tokens choice.

@@ -52,15 +52,15 @@ test('layer edits are copy-on-write: the preset is never changed',()=>{
   assert.equal(JSON.stringify(preset),before);
 });
 test('stage customization round-trips through recipes and drives playback',()=>{
-  const r=validateRecipe({id:'c',name:'c',trigger:'manual',stages:[{kind:'tokenfx',fxPreset:'fire',fxLibrary:'tmfx-main',subject:'source',duration:1000,fxSpeed:9,
+  const r=validateRecipe({id:'c',name:'c',trigger:'manual',stages:[{kind:'tokenfx',fxPreset:'fire',fxLibrary:'tokenshade',subject:'source',duration:1000,fxSpeed:9,
     fxLayers:[{filterType:'fire',color:0x3388ff,junk:1},{filterType:'unknown'}]}]});
   const s=r.stages[0];
   assert.deepEqual(s.fxLayers,[{filterType:'fire',color:0x3388ff}]);assert.equal(s.fxSpeed,5,'speed is bounded');
   assert.deepEqual(parseImport(JSON.stringify({schema:1,recipes:[r]}))[0].stages[0].fxLayers,s.fxLayers);
   const played=tintedPreset(builtinPreset('fire'),{...s,fxTint:'#00ff00'});
   assert.equal(played.params.length,1);assert.equal(played.params[0].color,0x00ff00,'tint still applies to an edited effect');
-  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'animater-custom'}).fxLibrary,'animater-custom');
-  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'elsewhere'}).fxLibrary,'tmfx-main');
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'tokenshade-custom'}).fxLibrary,'tokenshade-custom');
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'elsewhere'}).fxLibrary,'tokenshade');
 });
 test('the editor renders every layer and applies inputs once',()=>{
   const preset=builtinPreset('pure-fire-aura'),stage={kind:'tokenfx',fxPreset:'pure-fire-aura'};
@@ -82,4 +82,16 @@ test('the editor renders every layer and applies inputs once',()=>{
   assert.equal(stage.fxLayers[3].animated,undefined);
   assert.match(tokenFxEditorHTML(stage,2,preset),/edited for this stage/);
   tokenFxAction('fx-layers-reset',stage,preset,{});assert.equal(stage.fxLayers,undefined);
+});
+
+test('library ids saved before Tokenshade had its own are translated wherever data comes in',async()=>{
+  const {libraryItem}=await import('../../../scripts/engines/media/media-library-model.mjs');
+  const {libraryPreferences}=await import('../../../scripts/ui/media-library.mjs');
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'tmfx-main',fxPreset:'fire'}).fxLibrary,'tokenshade');
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'tmfx-region'}).fxLibrary,'tokenshade-region');
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxLibrary:'animater-custom'}).fxLibrary,'tokenshade-custom');
+  assert.equal(libraryItem({type:'tokenfx',fxPreset:'fire',fxLibrary:'tmfx-main'}).id,'tokenfx:tokenshade:fire');
+  assert.deepEqual(libraryPreferences({favorites:['tokenfx:tmfx-region:Flames','tokenfx:tokenshade-region:Flames']}).favorites,['tokenfx:tokenshade-region:Flames']);
+  const r=validateRecipe({id:'old',name:'old',trigger:'manual',stages:[{kind:'tokenfx',fxPreset:'glow',fxLibrary:'tmfx-main',subject:'source',duration:500}]});
+  assert.equal(r.stages[0].fxLibrary,'tokenshade');
 });

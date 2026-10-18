@@ -170,9 +170,9 @@ test('successful library refresh clears prior indexing warning and exposes audio
   assert.ok(f.library.items.some(e=>e.file.startsWith(root)&&e.file.endsWith('/deep-hit.ogg')));
 });
 const fxCatalog=()=>({tokenReady:true,presets:[
-  {name:'fire',library:'tmfx-main',filterTypes:['fire'],tintable:true},
-  {name:'fire',library:'tmfx-region',filterTypes:['fire','fog'],tintable:true},
-  {name:'My custom ward',library:'tmfx-main',filterTypes:['glow']},
+  {name:'fire',library:'tokenshade',filterTypes:['fire'],tintable:true},
+  {name:'fire',library:'tokenshade-region',filterTypes:['fire','fog'],tintable:true},
+  {name:'My custom ward',library:'tokenshade',filterTypes:['glow']},
 ]});
 function tokenLibraryFixture() {
   const f=libraryFixture();f.w.host.fxCatalog=fxCatalog;
@@ -196,7 +196,7 @@ test('token filter insertion uses native preset, subject, tint and duration whil
   const f=tokenLibraryFixture();f.library.tokenFx={subject:'targets',duration:4100,tint:'#00eeaa'};
   await f.library.action('media-add',{dataset:{}});
   const s=validateRecipe(f.draft).stages[1];
-  assert.equal(s.kind,'tokenfx');assert.equal(s.fxPreset,'fire');assert.equal(s.fxLibrary,'tmfx-main');
+  assert.equal(s.kind,'tokenfx');assert.equal(s.fxPreset,'fire');assert.equal(s.fxLibrary,'tokenshade');
   assert.equal(s.subject,'targets');assert.equal(s.duration,4100);assert.equal(s.fxTint,'#00eeaa');assert.deepEqual(s.assets,[]);
   assert.equal(s.persist,false);assert.equal(f.original.stages.length,1);assert.equal(f.saves,0);
 });
@@ -212,9 +212,9 @@ test('preset replacement preserves timing, placement and tint and refuses to rep
   await assert.rejects(f.library.action('media-apply',{dataset:{}}),/Tokenshade stage/);
   await f.library.action('media-add',{dataset:{}});
   const s=f.draft.stages[1];Object.assign(s,{subject:'targets',delay:1200,duration:4200,fxTint:'#1188ff',catalogFx:true,fxProfile:'fire'});
-  const id=f.library.items.find(v=>v.type==='tokenfx'&&v.fxLibrary==='tmfx-region').id;f.library.choose(id);
+  const id=f.library.items.find(v=>v.type==='tokenfx'&&v.fxLibrary==='tokenshade-region').id;f.library.choose(id);
   await f.library.action('media-apply',{dataset:{}});
-  assert.equal(s.fxLibrary,'tmfx-region');assert.equal(s.subject,'targets');assert.equal(s.delay,1200);assert.equal(s.duration,4200);assert.equal(s.fxTint,'#1188ff');
+  assert.equal(s.fxLibrary,'tokenshade-region');assert.equal(s.subject,'targets');assert.equal(s.delay,1200);assert.equal(s.duration,4200);assert.equal(s.fxTint,'#1188ff');
   assert.ok(!s.catalogFx&&!s.fxProfile);
   f.library.choose(f.library.items.find(v=>v.type==='animation').id);
   await assert.rejects(f.library.action('media-apply',{dataset:{}}),/effect stage/);assert.deepEqual(s.assets,[]);
@@ -274,7 +274,7 @@ function windowTokenFixture(t) {
   return {...f,scene,native,frames,get stops(){return stops;},get canvasCalls(){return canvasCalls;}};
 }
 
-test('Token Magic card click starts window preview; selecting it again replays without rendering workspace',async t=>{
+test('Tokenshade card click starts window preview; selecting it again replays without rendering workspace',async t=>{
   const f=windowTokenFixture(t),settle=()=>new Promise(resolve=>setImmediate(resolve));
   const preset=f.library.selectedId;
   await f.library.action('media-inspect',{dataset:{id:preset}});await settle();

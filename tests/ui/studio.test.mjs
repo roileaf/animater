@@ -87,7 +87,7 @@ test("muting the filters track silences Token Magic in chain previews", async ()
   const { chainPreview } = await import("../../scripts/engines/preview/chain-preview.mjs");
   const { TokenFxPreview } = await import("../../scripts/engines/preview/token-fx-preview.mjs");
   const recipe = featRecipe(PF2E_FEATS.find((f) => f.name === "Sudden Charge"));
-  recipe.stages.push({ stageId: "zoom", kind: "tokenfx", subject: "source", fxLibrary: "tmfx-main", fxPreset: "zoomblur", assets: [], delay: 100, duration: 1500, scale: 1, opacity: 1 });
+  recipe.stages.push({ stageId: "zoom", kind: "tokenfx", subject: "source", fxLibrary: "tokenshade", fxPreset: "zoomblur", assets: [], delay: 100, duration: 1500, scale: 1, opacity: 1 });
   const chain = chainPreview(recipe, {});
   const plan = chain.recipe.playbackPlan, at = plan.findIndex((p) => p.kind === "tokenfx");
   assert.ok(at >= 0, "Sudden Charge has a Token Magic stage");

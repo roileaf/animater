@@ -20,7 +20,7 @@ export class TokenFxPreview {
   }
   async ready() {
     const {PIXI,scene}=this;
-    for(const entry of this.entries)entry.preset=this.tokenFx.getPresets(entry.stage.fxLibrary??'tmfx-main').find(p=>p.name===entry.stage.fxPreset);
+    for(const entry of this.entries)entry.preset=this.tokenFx.getPresets(entry.stage.fxLibrary??'tokenshade').find(p=>p.name===entry.stage.fxPreset);
     for(const token of scene.querySelectorAll('[data-preview-token]')) {
       if(this.stopped)return;
       const image=token.querySelector('img');

@@ -1,3 +1,4 @@
+import { libraryId } from '../tokenshade/presets.mjs';
 // Shared by library discovery, recipe validation and runtime preflight.
 const MEDIA_EXTENSIONS = new Map([
   ...['ogg', 'mp3', 'wav', 'flac', 'm4a', 'aac'].map(ext => [ext, 'audio']),
@@ -159,8 +160,9 @@ function familyFor(item) {
 export function libraryItem(item) {
   if(!item||typeof item!=='object')return null;
   if(item.type==='tokenfx') {
+    item={...item,fxLibrary:libraryId(item.fxLibrary)};
     const name=typeof item.fxPreset==='string'?item.fxPreset.trim():'';
-    if(!name||name.length>100||/[\x00-\x1f]/.test(name)||!['tmfx-main','tmfx-region','animater-custom'].includes(item.fxLibrary))return null;
+    if(!name||name.length>100||/[\x00-\x1f]/.test(name)||!['tokenshade','tokenshade-region','tokenshade-custom'].includes(item.fxLibrary))return null;
     const filterTypes=[...new Set((Array.isArray(item.filterTypes)?item.filterTypes:[]).filter(v=>typeof v==='string'&&/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/.test(v)))];
     const text=words(name+' '+filterTypes.join(' ')).toLowerCase();
     const category=/aura|field|mantle/.test(text)?'Auras & fields':/fire|ice|glacial|electric|water|earth|air|flood/.test(text)?'Elemental':/shadow|outline|bevel|glow|bloom/.test(text)?'Outlines & light':/distortion|warp|twist|bulge|waves|shockwave|blur/.test(text)?'Distortion':'Appearance';

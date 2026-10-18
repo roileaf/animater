@@ -2,7 +2,7 @@
 
 Automatic animations for **Pathfinder 2e**, **Starfinder 2e**, **D&D 5e** and **Daggerheart** in **Foundry VTT 14**, powered by **Sequencer and JB2A**. Enable ready-made catalogs or choose individual animations, then cast spells, make attacks and use abilities through your system's normal workflow.
 
-Animater combines visual effects, cosmetic token movement and optional sound. Browse and preview catalog entries, or customize them in **Recipe Studio**, a timeline editor with separate tracks for visuals, motion, sound and filters.
+Animater combines visual effects, cosmetic token movement, optional sound and **Tokenshade**, its own shader effects on the token's artwork (flames off the outline, frost creeping in, auras, force fields, material changes, bindings and more). Browse and preview catalog entries, or customize them in **Recipe Studio**, a timeline editor with separate tracks for visuals, motion, sound and filters.
 
 > PF2e has received the most live table testing. SF2e, D&D 5e and multiplayer playback have had less testing. Report bugs and requests on the [issue tracker](https://github.com/roi007leaf/animater/issues).
 
@@ -13,7 +13,6 @@ Animater combines visual effects, cosmetic token movement and optional sound. Br
 | Required | [Sequencer](https://github.com/fantasycalendar/FoundryVTT-Sequencer) 4.2+ | Plays every effect |
 | Required (one) | JB2A Free (`JB2A_DnD5e`) or JB2A Patreon (`jb2a_patreon`) | Patreon unlocks the full art set; every animation has a Free fallback |
 | Optional | GGG, PSFX, SoundFx Library, PF2e Creature Sounds | Sound cues; uses whichever packs are active |
-| Optional | Token Magic FX | Token filters (frost, blur, image copies, glows) |
 | Optional | FXMaster | Brief scene weather for storm and weather spells |
 
 ## Install
@@ -72,13 +71,22 @@ FXMaster particles can play inside the preview monitor. FXMaster scene filters n
 
 Useful shortcuts: **Space** to play/pause, **Home/End** to jump, **L** to loop, **Ctrl+D** to duplicate, **Delete** to remove a clip, **Ctrl+S** to save, and **Ctrl+wheel** to zoom the timeline.
 
+## Tokenshade
+
+Tokenshade is Animater's built-in shader engine for effects on the token's own artwork. It needs no other module.
+
+- **Presets:** 164 built in. Every Token Magic FX preset name works, so older recipes keep playing, plus Tokenshade's own looks (materials such as stone, ice or gold; frost and snow; vines, nets and chains; ground markers; a distinct look for every damage type).
+- **Customizable per stage:** in Recipe Studio, open *Customize effect* on a token filter stage to change every layer's settings and animations, add or remove layers, and set the speed. GMs can save the result to **My presets**.
+- **Local and light:** effects are drawn on each player's screen only; nothing is written to tokens or scenes. Hidden tokens pause their effects.
+- **Token Magic FX is optional:** if it is active, your world's own Token Magic presets are listed too and drawn by Tokenshade.
+
 ## Settings
 
 | Setting | Scope | What it does |
 |---|---|---|
 | Animation quality (this device) | Each player | Full / Balanced / Low / Off. Lower it on slower computers; other players are unaffected |
 | Weapon effect size | World | Multiplies weapon hit and residue size (default 1.5×) |
-| Add Token Magic FX filters to catalog animations | World | Optional filters when Token Magic FX is active |
+| Add token filters to catalog animations | World | Catalog animations add matching Tokenshade effects on the token itself (flames, frost, glows, shimmer) |
 | Add FXMaster scene effects to catalog animations | World | Optional scene effects when FXMaster is active |
 | Take over from Automated Animations | World | When both modules would animate the same item, Animater plays and Automated Animations stands down |
 
@@ -88,8 +96,8 @@ The per-user preview setting can minimize the Animater window during local previ
 
 | Level | What that player sees |
 |---|---|
-| Full | Every layer, token motion and Token Magic filters |
-| Balanced | Main and secondary layers; no decorative layers or Token Magic filters; up to 3 persistent effects per token |
+| Full | Every layer, token motion and Tokenshade filters |
+| Balanced | Main and secondary layers; no decorative layers or Tokenshade filters; up to 3 persistent effects per token |
 | Low | Only the main effect of each animation, plus token motion; one persistent effect per token |
 | Off | No Animater visuals (sounds still play) |
 
