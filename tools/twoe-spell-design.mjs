@@ -1,10 +1,10 @@
 import {createHash} from 'node:crypto';
-import {SPELL_THEMES,SIGNATURES} from '../scripts/spell-choreography.mjs';
-import {SPELL_MOTIFS} from '../scripts/spell-design.mjs';
+import {SPELL_THEMES,SIGNATURES} from '../scripts/catalogs/pf2e/spells/spell-choreography.mjs';
+import {SPELL_MOTIFS} from '../scripts/catalogs/pf2e/spells/spell-design.mjs';
 import {analyzeSpellDescription} from './spell-semantics.mjs';
 import {resolveSpellMedia,coneMaterialMatches,SPELL_SELECTION_REVISION} from './spell-asset-selection.mjs';
-import {UTILITY_SPELL_DESIGNS} from '../scripts/spell-utility-designs.mjs';
-import {GAP_SPELL_MOTIFS} from '../scripts/spell-gap-designs.mjs';
+import {UTILITY_SPELL_DESIGNS} from '../scripts/catalogs/pf2e/spells/spell-utility-designs.mjs';
+import {GAP_SPELL_MOTIFS} from '../scripts/catalogs/pf2e/spells/spell-gap-designs.mjs';
 const damageTheme = {
   fire: "fire",
   cold: "cold",

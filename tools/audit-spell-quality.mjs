@@ -3,11 +3,11 @@ import {
   PF2E_SOURCE,
   PF2E_SPELLS,
   spellRecipe,
-} from "../scripts/spell-catalog.mjs";
+} from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
 import {
   GENERATED_MOTION_DURATION,
   shakeCycles,
-} from "../scripts/motion-pacing.mjs";
+} from "../scripts/engines/motion/motion-pacing.mjs";
 import { assetDatabases } from "./asset-databases.mjs";
 
 const databases = await assetDatabases();

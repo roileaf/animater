@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
     "build": "node tools/build.mjs",
     "preview": "node tools/preview.mjs",
     "audit:publication": "node tools/check-publication.mjs --write",

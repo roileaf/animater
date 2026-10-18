@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {spellSources} from './pf2e-source.mjs';
 import {assetDatabases,variantFiles} from './asset-databases.mjs';
 import {descriptionText} from './spell-semantics.mjs';
-import {PF2E_SPELLS,spellRecipe} from '../scripts/spell-catalog.mjs';
+import {PF2E_SPELLS,spellRecipe} from '../scripts/catalogs/pf2e/spells/spell-catalog.mjs';
 
 export function fireBodyIdentity(recipe,rows) {
   const keys=new Map(rows.map(row=>[row.key,row]));

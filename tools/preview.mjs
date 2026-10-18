@@ -5,8 +5,8 @@ import { resolve, dirname, extname, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { databaseEntries } from "./asset-databases.mjs";
 import { soundInventory } from './sound-databases.mjs';
-import {tokenPresetMetadata} from '../scripts/optional-fx.mjs';
-import {PRESETS} from '../scripts/fx/presets.mjs';
+import {tokenPresetMetadata} from '../scripts/engines/playback/optional-fx.mjs';
+import {PRESETS} from '../scripts/engines/tokenshade/presets.mjs';
 let soundLibrary;
 const modulesRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const foundryPublic =

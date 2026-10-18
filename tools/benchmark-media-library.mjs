@@ -1,8 +1,8 @@
 import {readFile} from 'node:fs/promises';
 import {databaseEntries} from './asset-databases.mjs';
 import {soundInventory} from './sound-databases.mjs';
-import {MediaLibrary} from '../scripts/media-library.mjs';
-import {mediaGroups} from '../scripts/media-library-model.mjs';
+import {MediaLibrary} from '../scripts/ui/media-library.mjs';
+import {mediaGroups} from '../scripts/engines/media/media-library-model.mjs';
 
 // Local installed-data benchmark. No world documents, network or media decoders.
 const visuals=(await databaseEntries(await readFile(new URL('../../jb2a_patreon/scripts/jb2a_sequencer.js',import.meta.url),'utf8'),'jb2aPatreonDatabase','patreonDatabase')).map(row=>({...row,source:'JB2A Patreon'}));

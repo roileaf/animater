@@ -1,6 +1,6 @@
-import { featRecipe } from "../scripts/feat-choreography.mjs";
-import { visibleFeatComposition,semanticEntrance,FEAT_FRAMES,FEAT_ENTRANCES } from "../scripts/feat-direction.mjs";
-import { TOSS_NOTES } from '../scripts/feat-toss.mjs';
+import { featRecipe } from "../scripts/catalogs/pf2e/feats/feat-choreography.mjs";
+import { visibleFeatComposition,semanticEntrance,FEAT_FRAMES,FEAT_ENTRANCES } from "../scripts/catalogs/pf2e/feats/feat-direction.mjs";
+import { TOSS_NOTES } from '../scripts/catalogs/pf2e/feats/feat-toss.mjs';
 
 const preferredFrame=direction=>/low|ground|floor|foot/.test(direction.shape??"")?1:/high|wing|upward|rising/.test(direction.shape??"")?2:0;
 const allowedEntrances=feat=>feat.motif==="absorb"?["contracting","closing"]:

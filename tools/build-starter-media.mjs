@@ -1,6 +1,6 @@
 import {writeFile} from 'node:fs/promises';
-import {starterRecipes} from '../scripts/presets.mjs';
-import {resolveAsset} from '../scripts/model.mjs';
+import {starterRecipes} from '../scripts/core/presets.mjs';
+import {resolveAsset} from '../scripts/core/model.mjs';
 import {assetDatabases} from './asset-databases.mjs';
 import {mediaTiming} from './media-timing.mjs';
 const db=await assetDatabases(),timings={};

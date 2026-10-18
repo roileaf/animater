@@ -1,8 +1,8 @@
 // Development gallery for animater's token FX: every built-in preset on sample tokens,
 // rendered with Foundry's own PIXI build. Also compiles every filter type and reports errors.
 import * as PIXI from '/preview-pixi.mjs';
-import { PRESETS, FILTER_TYPES, presetFilters, specFor } from '../../scripts/fx/index.mjs';
-import { shaderSource } from '../../scripts/fx/filter-factory.mjs';
+import { PRESETS, FILTER_TYPES, presetFilters, specFor } from '../../scripts/engines/tokenshade/index.mjs';
+import { shaderSource } from '../../scripts/engines/tokenshade/filter-factory.mjs';
 
 globalThis.PIXI ??= PIXI;
 const params = new URLSearchParams(location.search);

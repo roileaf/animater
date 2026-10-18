@@ -1,5 +1,5 @@
 import {catalogAuditEntries,auditScope} from './catalog-audit-entries.mjs';
-import {PF2E_STATE_SOURCE} from '../scripts/state-catalog.mjs';
+import {PF2E_STATE_SOURCE} from '../scripts/catalogs/pf2e/state-catalog.mjs';
 // Cross-catalog ledger. Fine configuration counts are never presented as
 // bespoke animation counts; quantized media/topology signatures are separate.
 import { createHash } from "node:crypto";
@@ -10,14 +10,14 @@ import { fileURLToPath } from "node:url";
 import { assetDatabases, variantFiles } from "./asset-databases.mjs";
 import { assetGeometry } from "./spell-asset-selection.mjs";
 import { soundInventory } from "./sound-databases.mjs";
-import { PF2E_SPELLS, PF2E_SOURCE, spellRecipe } from "../scripts/spell-catalog.mjs";
-import { PF2E_FEATS, PF2E_FEAT_SOURCE, featRecipe } from "../scripts/feat-catalog.mjs";
-import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, weaponRecipe } from "../scripts/weapon-catalog.mjs";
-import { installedSoundCatalog, SPELL_SOUND_DESIGNS } from "../scripts/spell-sounds.mjs";
-import { FEAT_SOUND_DESIGNS, WEAPON_SOUND_DESIGNS } from "../scripts/ability-sounds.mjs";
-import { planRecipe, resolveAsset } from "../scripts/model.mjs";
-import { recipeDuration } from "../scripts/choreography.mjs";
-import { GENERATED_MOTION_DURATION } from "../scripts/motion-pacing.mjs";
+import { PF2E_SPELLS, PF2E_SOURCE, spellRecipe } from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { PF2E_FEATS, PF2E_FEAT_SOURCE, featRecipe } from "../scripts/catalogs/pf2e/feats/feat-catalog.mjs";
+import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, weaponRecipe } from "../scripts/catalogs/pf2e/weapons/weapon-catalog.mjs";
+import { installedSoundCatalog, SPELL_SOUND_DESIGNS } from "../scripts/engines/sound/spell-sounds.mjs";
+import { FEAT_SOUND_DESIGNS, WEAPON_SOUND_DESIGNS } from "../scripts/engines/sound/ability-sounds.mjs";
+import { planRecipe, resolveAsset } from "../scripts/core/model.mjs";
+import { recipeDuration } from "../scripts/engines/playback/choreography.mjs";
+import { GENERATED_MOTION_DURATION } from "../scripts/engines/motion/motion-pacing.mjs";
 import { visualFingerprint } from "./design-audit.mjs";
 const hash = value => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const q = (n, step) => Math.round((Number(n) || 0) / step) * step;

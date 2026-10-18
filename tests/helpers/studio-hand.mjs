@@ -3,9 +3,9 @@
 // performs the step through the workspace's real handlers (onClick, onChange), as the click or the
 // change event would. `hand.used` records every selector, so a test can compare it with the step's
 // declared `targets`.
-import { studioHTML } from "../../scripts/studio.mjs";
-import { normalizeKeyframes, moveKeyframePoint } from "../../scripts/keyframe-path.mjs";
-import { SEL, kfDot } from "../../scripts/finisher-tour.mjs";
+import { studioHTML } from "../../scripts/ui/studio.mjs";
+import { normalizeKeyframes, moveKeyframePoint } from "../../scripts/engines/motion/keyframe-path.mjs";
+import { SEL, kfDot } from "../../scripts/ui/finisher-tour.mjs";
 
 // Every element in `html` matching a compound selector: tag, .class, [attr] and [attr="value"].
 // Combinators are not supported (tour selectors are compound on purpose).

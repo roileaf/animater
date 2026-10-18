@@ -3,7 +3,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {resolve,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {PF2E_CONDITIONS,stateRecipe} from '../scripts/state-catalog.mjs';
+import {PF2E_CONDITIONS,stateRecipe} from '../scripts/catalogs/pf2e/state-catalog.mjs';
 import {assetDatabases} from './asset-databases.mjs';
 
 const exec=promisify(execFile),dataRoot=fileURLToPath(new URL('../../..',import.meta.url));

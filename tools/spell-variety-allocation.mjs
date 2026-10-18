@@ -1,7 +1,7 @@
-import {SPELL_SEAL_LAYOUTS,SPELL_SEAL_FINISHES} from '../scripts/spell-visual-identity.mjs';
+import {SPELL_SEAL_LAYOUTS,SPELL_SEAL_FINISHES} from '../scripts/catalogs/pf2e/spells/spell-visual-identity.mjs';
 import {effectIdentity} from './spell-identity-audit.mjs';
 import {descriptionOpening,nativeSpellDescription} from './spell-semantics.mjs';
-import {GAP_SPELL_MOTIFS} from '../scripts/spell-gap-designs.mjs';
+import {GAP_SPELL_MOTIFS} from '../scripts/catalogs/pf2e/spells/spell-gap-designs.mjs';
 
 // Full prose chooses a preferred casting grammar. Collision allocation chooses
 // another visible grammar in that family, not a hash, millisecond or scale nudge.

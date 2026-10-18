@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {PF2E_SPELLS,PF2E_SOURCE,spellRecipe,SPELL_THEMES} from '../scripts/spell-catalog.mjs';
+import {PF2E_SPELLS,PF2E_SOURCE,spellRecipe,SPELL_THEMES} from '../scripts/catalogs/pf2e/spells/spell-catalog.mjs';
 import {effectIdentity} from './spell-identity-audit.mjs';
 import {fireBodyIdentity} from './audit-fire-spells.mjs';
 import {spellSources} from './pf2e-source.mjs';

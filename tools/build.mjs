@@ -6,7 +6,7 @@
 // optional sound packs). A step reruns only when that input hash, its recorded
 // outputs, or its arguments changed. Step order comes from the graph: when one
 // step's outputs are another's inputs, the consumer waits. Shared-registry
-// cycles (catalogs <-> sound designs through scripts/bespoke.mjs) are broken by
+// cycles (catalogs <-> sound designs through scripts/catalogs/shared/bespoke.mjs) are broken by
 // declaration order and settled by a follow-up pass that reruns only steps whose
 // inputs actually changed bytes.
 import { spawn, execFileSync } from "node:child_process";
@@ -126,13 +126,13 @@ function saveManifest(manifest) {
 }
 
 // ------------------------------------------------------ bespoke registry ----
-// Builders read scripts/bespoke/index.mjs, which merges every design file into
+// Builders read scripts/catalogs/bespoke/index.mjs, which merges every design file into
 // one BESPOKE map. tools/build-trace.mjs records which keys a builder actually
 // reads; an edit to a design file then only invalidates builders that read one
 // of its keys. That holds for a design file whose only importer in the step's
 // graph is the index, whose top level is declarative (no side effects besides
 // its export), and while the ordered key set is unchanged.
-const BESPOKE_INDEX = "scripts/bespoke/index.mjs";
+const BESPOKE_INDEX = "scripts/catalogs/bespoke/index.mjs";
 let registryPromise = null;
 function bespokeRegistry() {
   registryPromise ??= (async () => {

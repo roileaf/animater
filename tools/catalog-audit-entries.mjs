@@ -1,12 +1,12 @@
-import {PF2E_SPELLS,spellRecipe} from '../scripts/spell-catalog.mjs';
-import {PF2E_FEATS,featRecipe} from '../scripts/feat-catalog.mjs';
-import {PF2E_WEAPONS,weaponRecipe} from '../scripts/weapon-catalog.mjs';
-import {PF2E_CONDITIONS,PF2E_EFFECTS,stateRecipe} from '../scripts/state-catalog.mjs';
-import {starterRecipes} from '../scripts/presets.mjs';
-import {ORB_ELEMENTS,orbRecipe} from '../scripts/orb-builder.mjs';
-import {SPELL_SOUND_DESIGNS} from '../scripts/spell-sounds.mjs';
-import {FEAT_SOUND_DESIGNS,WEAPON_SOUND_DESIGNS} from '../scripts/ability-sounds.mjs';
-import {dndEntries,dndRecipe} from '../scripts/dnd5e-catalog.mjs';
+import {PF2E_SPELLS,spellRecipe} from '../scripts/catalogs/pf2e/spells/spell-catalog.mjs';
+import {PF2E_FEATS,featRecipe} from '../scripts/catalogs/pf2e/feats/feat-catalog.mjs';
+import {PF2E_WEAPONS,weaponRecipe} from '../scripts/catalogs/pf2e/weapons/weapon-catalog.mjs';
+import {PF2E_CONDITIONS,PF2E_EFFECTS,stateRecipe} from '../scripts/catalogs/pf2e/state-catalog.mjs';
+import {starterRecipes} from '../scripts/core/presets.mjs';
+import {ORB_ELEMENTS,orbRecipe} from '../scripts/catalogs/shared/orb-builder.mjs';
+import {SPELL_SOUND_DESIGNS} from '../scripts/engines/sound/spell-sounds.mjs';
+import {FEAT_SOUND_DESIGNS,WEAPON_SOUND_DESIGNS} from '../scripts/engines/sound/ability-sounds.mjs';
+import {dndEntries,dndRecipe} from '../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
 
 // Single exhaustive list keeps alpha, timing, scale and topology audits aligned.
 export function catalogAuditEntries(){return [

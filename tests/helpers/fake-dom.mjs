@@ -1,4 +1,4 @@
-// A minimal DOM for driving scripts/tour-engine.mjs under node:test: document.body, the cursor and
+// A minimal DOM for driving scripts/ui/tour-engine.mjs under node:test: document.body, the cursor and
 // caption elements, window listeners and PointerEvent. The caption's buttons are parsed from its
 // innerHTML (only [data-tour="…"] buttons), so a test can read `disabled` and call `click()`.
 export function installFakeDOM() {

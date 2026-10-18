@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { assetDatabases } from "./asset-databases.mjs";
-import { PF2E_SPELLS, spellRecipe } from "../scripts/spell-catalog.mjs";
-import { resolveAsset } from "../scripts/model.mjs";
+import { PF2E_SPELLS, spellRecipe } from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { resolveAsset } from "../scripts/core/model.mjs";
 import { assetGeometry } from "./spell-asset-selection.mjs";
 // Individually checked against the first substantive PF2e description opening.
 const directRays = new Set([

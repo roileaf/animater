@@ -1,6 +1,6 @@
 import { resolveSpellMedia, assetGeometry } from "./spell-asset-selection.mjs";
 import { colorAffinity } from './color-affinity.mjs';
-import { TOSS_MEDIA } from '../scripts/feat-toss.mjs';
+import { TOSS_MEDIA } from '../scripts/catalogs/pf2e/feats/feat-toss.mjs';
 
 const martial = new Set(["strike","heavyStrike","doubleStrike","multiStrike","mixedStrike","restorativeStrike","smite","spellstrike","fearStrike","charge","tumbleStrike","feintStrike","bindStrike","tripStrike","drawStrike","whirlwindStrike"]);
 export const FEAT_SELECTION_REVISION = 9;

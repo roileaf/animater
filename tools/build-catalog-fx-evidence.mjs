@@ -3,7 +3,7 @@ import path from 'node:path';
 import {PF2E_SPELLS,PF2E_SOURCE} from '../data/pf2e-spells.mjs';
 import {PF2E_CONDITIONS,PF2E_EFFECTS,PF2E_STATE_SOURCE} from '../data/pf2e-state-catalog.mjs';
 import {SF2E_ENTRIES} from '../data/sf2e-catalog.mjs';
-import {fxSemantics} from '../scripts/catalog-fx-semantics.mjs';
+import {fxSemantics} from '../scripts/catalogs/shared/catalog-fx-semantics.mjs';
 const root=path.resolve(`.cache/persistent-research/pf2e-${PF2E_STATE_SOURCE.sha}`),evidence={},missing=[];
 const nativeSources=new Map(),packs=path.join(root,'packs/pf2e');
 for(const file of fs.readdirSync(packs,{recursive:true})){

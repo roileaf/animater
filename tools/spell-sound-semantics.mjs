@@ -1,5 +1,5 @@
 import { descriptionText, descriptionOpening, nativeSpellDescription } from "./spell-semantics.mjs";
-import { BROAD_VARIETY_MOTIFS } from '../scripts/spell-broad-variety-designs.mjs';
+import { BROAD_VARIETY_MOTIFS } from '../scripts/catalogs/pf2e/spells/spell-broad-variety-designs.mjs';
 // Reviewed complete utility descriptions. A visual illustration is not evidence
 // of a sonic event, a resolved save, a selected material, or somebody's voice.
 const utilityQuietReasons = Object.fromEntries([

@@ -7,9 +7,9 @@ import {
   SPELL_THEMES,
   DELIVERY_LABELS,
   spellRecipe,
-} from "../scripts/spell-choreography.mjs";
-import { recipeDuration } from "../scripts/choreography.mjs";
-import { SPELL_MOTIFS } from "../scripts/spell-design.mjs";
+} from "../scripts/catalogs/pf2e/spells/spell-choreography.mjs";
+import { recipeDuration } from "../scripts/engines/playback/choreography.mjs";
+import { SPELL_MOTIFS } from "../scripts/catalogs/pf2e/spells/spell-design.mjs";
 import { auditDesigns } from "./design-audit.mjs";
 import { resolveSpellMedia } from "./spell-asset-selection.mjs";
 import { designMediaTiming } from "./media-timing.mjs";

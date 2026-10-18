@@ -1,9 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
-import { starterRecipes } from "../scripts/presets.mjs";
-import { orbRecipe, ORB_ELEMENTS } from "../scripts/orb-builder.mjs";
-import { resolveAsset } from "../scripts/model.mjs";
+import { starterRecipes } from "../scripts/core/presets.mjs";
+import { orbRecipe, ORB_ELEMENTS } from "../scripts/catalogs/shared/orb-builder.mjs";
+import { resolveAsset } from "../scripts/core/model.mjs";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 async function entries(source, initializer, exportName) {
   const mod = await import(

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { FEAT_MOTIFS } from "../scripts/feat-choreography.mjs";
-import { reviewedFeatActivation } from "../scripts/feat-direction.mjs";
+import { FEAT_MOTIFS } from "../scripts/catalogs/pf2e/feats/feat-choreography.mjs";
+import { reviewedFeatActivation } from "../scripts/catalogs/pf2e/feats/feat-direction.mjs";
 import { ensureFeatReviews } from "./ensure-feat-reviews.mjs";
 
 export async function loadFeatReviews() {

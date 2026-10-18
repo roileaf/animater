@@ -1,4 +1,4 @@
-import {PF2E_SPELLS} from '../../scripts/spell-catalog.mjs';
+import {PF2E_SPELLS} from '../../scripts/catalogs/pf2e/spells/spell-catalog.mjs';
 
 // Exercise the public catalog paths with an unfinished imported record even
 // after the shipped native catalog has complete coverage.

@@ -1,13 +1,13 @@
 import fs from 'node:fs';
-import {PF2E_SPELLS,spellRecipe} from '../scripts/spell-catalog.mjs';
-import {PF2E_FEATS,featRecipe} from '../scripts/feat-catalog.mjs';
-import {PF2E_WEAPONS,weaponRecipe} from '../scripts/weapon-catalog.mjs';
-import {PF2E_CONDITIONS,PF2E_EFFECTS,stateRecipe} from '../scripts/state-catalog.mjs';
-import {DND5E_ENTRIES,dndRecipe} from '../scripts/dnd5e-catalog.mjs';
-import {SF2E_ENTRIES,sfRecipe} from '../scripts/sf2e-catalog.mjs';
-import {catalogFxDesign} from '../scripts/catalog-fx.mjs';
-import {MAX_STAGES} from '../scripts/model.mjs';
-import {PRESETS as presets} from '../scripts/fx/presets.mjs';
+import {PF2E_SPELLS,spellRecipe} from '../scripts/catalogs/pf2e/spells/spell-catalog.mjs';
+import {PF2E_FEATS,featRecipe} from '../scripts/catalogs/pf2e/feats/feat-catalog.mjs';
+import {PF2E_WEAPONS,weaponRecipe} from '../scripts/catalogs/pf2e/weapons/weapon-catalog.mjs';
+import {PF2E_CONDITIONS,PF2E_EFFECTS,stateRecipe} from '../scripts/catalogs/pf2e/state-catalog.mjs';
+import {DND5E_ENTRIES,dndRecipe} from '../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
+import {SF2E_ENTRIES,sfRecipe} from '../scripts/catalogs/sf2e/sf2e-catalog.mjs';
+import {catalogFxDesign} from '../scripts/catalogs/shared/catalog-fx.mjs';
+import {MAX_STAGES} from '../scripts/core/model.mjs';
+import {PRESETS as presets} from '../scripts/engines/tokenshade/presets.mjs';
 const fxCatalog={tokenReady:true,sceneReady:true,isGM:true,presets:presets.map(p=>({name:p.name,library:p.library})),effects:[{type:'screenShake',category:'filter'},{type:'clouds',category:'particle'},{type:'rain',category:'particle'}]};
 const groups=[
  ['pf2e-spell',PF2E_SPELLS,e=>[[spellRecipe,e,undefined,{fxCatalog}]]],

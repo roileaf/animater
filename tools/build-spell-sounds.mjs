@@ -5,8 +5,8 @@ import { soundInventory, probeSoundFile } from "./sound-databases.mjs";
 import { spellSources } from "./pf2e-source.mjs";
 import { soundDirection } from "./spell-sound-semantics.mjs";
 import {nativeSpellDescription} from './spell-semantics.mjs';
-import { PF2E_SPELLS } from "../scripts/spell-catalog.mjs";
-import { validateSoundFile } from "../scripts/stage-options.mjs";
+import { PF2E_SPELLS } from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { validateSoundFile } from "../scripts/core/stage-options.mjs";
 // Cross-pack fallbacks: every cue lists each optional pack that has a fitting
 // recording, so a user with any one pack still hears it. Runtime order decides.
 const cue = (label, role, ggg = "", psfx = "", files = "", creature = "") => ({

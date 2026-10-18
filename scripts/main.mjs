@@ -1,80 +1,80 @@
-import { uuid } from "./uuid.mjs";
-import { ID, validateRecipe, clone, matchRecipe, resolveAsset } from "./model.mjs";
-import { registerFlashSettings, flashScreens } from "./flash-combat.mjs";
-import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./damage-moments.mjs";
-import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./displacement.mjs";
-import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./hp-state.mjs";
-import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent } from "./finisher-model.mjs";
-import { playFinisher, previewFinisher } from "./finisher-play.mjs";
-import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./strike-finishers.mjs";
-import { createFragmentRenderer } from "./fragment-render.mjs";
-import { starterRecipes } from "./presets.mjs";
-import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent } from "./adapters.mjs";
-import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./daggerheart.mjs";
-import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./daggerheart-states.mjs";
-import { applyEventElement } from "./element-choice.mjs";
+import { uuid } from "./core/uuid.mjs";
+import { ID, validateRecipe, clone, matchRecipe, resolveAsset } from "./core/model.mjs";
+import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
+import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
+import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
+import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
+import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent } from "./engines/finishers/finisher-model.mjs";
+import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
+import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
+import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
+import { starterRecipes } from "./core/presets.mjs";
+import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent } from "./systems/adapters.mjs";
+import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
+import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
+import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
-import { AnimaterRuntime, sameEffectName } from "./runtime.mjs";
-import { nowPlayingRows } from "./activity-actions.mjs";
-import { installedSoundCatalog, catalogSoundOptions } from "./spell-sounds.mjs";
-import { Workspace, JB2A_MISSING } from "./workspace.mjs";
-import { mediaIndexStore } from "./media-index-store.mjs";
-import { MediaLibraryLoader } from './media-library-sources.mjs';
-import { libraryPreferences } from './media-library.mjs';
-import {TokenFxPreview} from './token-fx-preview.mjs';
-import {tokenFx} from './token-fx.mjs';
-import {normalizeLayers} from './fx/layers.mjs';
-import { SceneFxPreview } from "./scene-fx-preview.mjs";
+import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
+import { nowPlayingRows } from "./ui/activity-actions.mjs";
+import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
+import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
+import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
+import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
+import { libraryPreferences } from './ui/media-library.mjs';
+import {TokenFxPreview} from './engines/preview/token-fx-preview.mjs';
+import {tokenFx} from './engines/tokenshade/api.mjs';
+import {normalizeLayers} from './engines/tokenshade/layers.mjs';
+import { SceneFxPreview } from "./engines/preview/scene-fx-preview.mjs";
 import {
   createCanvasPreviewArea,
   templateArea,
-} from "./canvas-preview-area.mjs";
-import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./motion.mjs";
-import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions } from './optional-fx.mjs';
-import {catalogFxSettings} from './catalog-fx.mjs';
-import {RUNE_SETTING} from './weapon-runes.mjs';
+} from "./engines/preview/canvas-preview-area.mjs";
+import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./engines/motion/motion.mjs";
+import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions } from './engines/playback/optional-fx.mjs';
+import {catalogFxSettings} from './catalogs/shared/catalog-fx.mjs';
+import {RUNE_SETTING} from './catalogs/pf2e/weapons/weapon-runes.mjs';
 import {
   normalizeCatalogState,
   catalogSpell,
   spellRecipe,
   PF2E_SOURCE,
   PF2E_SPELLS,
-} from "./spell-catalog.mjs";
+} from "./catalogs/pf2e/spells/spell-catalog.mjs";
 import {
   PF2E_FEATS,
   PF2E_FEAT_SOURCE,
   catalogFeat,
   featRecipe,
   normalizeFeatCatalogState,
-} from "./feat-catalog.mjs";
-import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./ability-catalog.mjs";
+} from "./catalogs/pf2e/feats/feat-catalog.mjs";
+import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./catalogs/pf2e/ability-catalog.mjs";
 // PF2e ability catalogs beside feats: setting key → catalog.
-import { findCatalogSpell as findSpellEntry } from "./spell-catalog.mjs";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot } from "./teleport.mjs";
-import { findCatalogFeat as findFeatEntry } from "./feat-catalog.mjs";
-import { findCatalogWeapon as findWeaponEntry } from "./weapon-catalog.mjs";
-import { findStateEntry as findConditionEntry } from "./state-catalog.mjs";
-import { findDndEntry as findDndCatalogEntry } from "./dnd5e-catalog.mjs";
-import { findSfEntry as findSfCatalogEntry } from "./sf2e-catalog.mjs";
+import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot } from "./engines/motion/teleport.mjs";
+import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
+import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
+import { findStateEntry as findConditionEntry } from "./catalogs/pf2e/state-catalog.mjs";
+import { findDndEntry as findDndCatalogEntry } from "./catalogs/dnd5e/dnd5e-catalog.mjs";
+import { findSfEntry as findSfCatalogEntry } from "./catalogs/sf2e/sf2e-catalog.mjs";
 const ABILITY_CATALOGS = { actionCatalog: PF2E_ACTION_CATALOG, featureCatalog: PF2E_FEATURE_CATALOG };
 const abilitySettingKey = item => item?.type === "action" ? "actionCatalog" : isFeatureItem(item) ? "featureCatalog" : null;
-import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState } from "./weapon-catalog.mjs";
-import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalogState, catalogStateEntry, stateRecipe } from "./state-catalog.mjs";
-import { PersistentStates, perceivedStates, LASTING_MODES } from "./persistent-states.mjs";
-import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId } from "./defeated-look.mjs";
-import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './dnd5e-catalog.mjs';
-import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './outcome.mjs';
-import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './player-recipes.mjs';
-import { dndSettingKey,sfSettingKey,dhSettingKey } from './catalog-system.mjs';
-import { dndStateHost } from './dnd5e-states.mjs';
-import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState} from './sf2e-catalog.mjs';
-import {sfStateHost} from './sf2e-states.mjs';
-import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingText, twoeCatalogRecipe, twoeSettingKey, seedBorrowedState, TWOE_KINDS } from "./twoe-crossover.mjs";
-import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./daggerheart-catalog.mjs";
-import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,stateBudget,usersForTier,usersForSound} from './quality.mjs';
-import {ConditionBody,bodyTreatment} from './condition-body.mjs';
+import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
+import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalogState, catalogStateEntry, stateRecipe } from "./catalogs/pf2e/state-catalog.mjs";
+import { PersistentStates, perceivedStates, LASTING_MODES } from "./engines/playback/persistent-states.mjs";
+import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId } from "./engines/playback/defeated-look.mjs";
+import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
+import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
+import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
+import { dndSettingKey,sfSettingKey,dhSettingKey } from './catalogs/shared/catalog-system.mjs';
+import { dndStateHost } from './catalogs/dnd5e/dnd5e-states.mjs';
+import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState} from './catalogs/sf2e/sf2e-catalog.mjs';
+import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
+import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingText, twoeCatalogRecipe, twoeSettingKey, seedBorrowedState, TWOE_KINDS } from "./systems/twoe-crossover.mjs";
+import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./catalogs/daggerheart/daggerheart-catalog.mjs";
+import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
+import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 let conditionBody;
 const localQuality=()=>{try{return game.settings.get('animater','quality');}catch{return 'full';}};
 // Mirror this client's choice so the client that starts an animation can route optional layers.
@@ -90,7 +90,7 @@ let optionalFx;
 let persistentStates;
 let flash;
 const clientId = uuid();
-// animater's own token shaders: local to this client, paused while token FX are off.
+// Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
 tokenFx.custom = () => { try { return game.settings.get(ID, 'tokenFxPresets') ?? []; } catch { return []; } };
 const fxCatalog = () => installedFxCatalog({
@@ -107,10 +107,10 @@ async function receiveOptionalFx(data) {
   const source=canvas.tokens.get(data.sourceId);
   if(!source || !(user.isGM || source.document.testUserPermission(user,'OWNER')))return;
   try {
-    const stage=validateRecipe({id:'socket-tokenfx',name:'Token FX',trigger:'manual',stages:[{...data.stage,kind:'tokenfx',assets:[],afterStage:''}]}).stages[0];
+    const stage=validateRecipe({id:'socket-tokenfx',name:'Tokenshade',trigger:'manual',stages:[{...data.stage,kind:'tokenfx',assets:[],afterStage:''}]}).stages[0];
     const token=stage.subject==='targets'?canvas.tokens.get(data.tokenId):source;
     if(token)await optionalFx.play({...stage,destination:token},{session:data.session,userId:user.id});
-  } catch(error){console.warn('Animater token FX:',error.message);}
+  } catch(error){console.warn('Animater Tokenshade:',error.message);}
 }
 async function receiveMotion(data, { strict = false } = {}) {
   if (!data || !canvas.ready) return;
@@ -887,9 +887,9 @@ function workspaceHost() {
       if(!game.user.isGM||!['catalogTokenFx','catalogSceneFx'].includes(key))return;
       await game.settings.set(ID,key,value===true);
     },
-    // The world's own token FX presets: saved from an edited stage, shared by every recipe.
+    // The world's own Tokenshade presets: saved from an edited stage, shared by every recipe.
     saveTokenFxPreset:async(name,layers)=>{
-      if(!game.user.isGM)throw Error('Only a GM can save token FX presets.');
+      if(!game.user.isGM)throw Error('Only a GM can save Tokenshade presets.');
       const clean=normalizeLayers(layers),title=String(name??'').trim().slice(0,80);
       if(!title)throw Error('Name the preset first.');
       if(!clean)throw Error('This effect has no layers to save.');
@@ -897,7 +897,7 @@ function workspaceHost() {
       await game.settings.set(ID,'tokenFxPresets',[...list,{name:title,params:clean}].slice(-200));
     },
     deleteTokenFxPreset:async name=>{
-      if(!game.user.isGM)throw Error('Only a GM can delete token FX presets.');
+      if(!game.user.isGM)throw Error('Only a GM can delete Tokenshade presets.');
       await game.settings.set(ID,'tokenFxPresets',(game.settings.get(ID,'tokenFxPresets')??[]).filter(p=>p.name!==name));
     },
     logs: () => runtime.log,
@@ -1541,7 +1541,7 @@ Hooks.once("ready", () => {
   if (game.system.id === "dnd5e") Hooks.on("dnd5e.calculateDamage", (actor, damages) => remember(damageFromParts(damages, actor?.id)));
   Hooks.on("createChatMessage", (message) => remember(damageFromMessage(message, game.system.id)));
   // Stages whose artwork is not installed (Free vs Patreon) are left out rather than blocking the rest.
-  // Token filter layers play only while token FX are on.
+  // Token filter layers play only while Tokenshade is on.
   const installedStages = (recipe) => ({ ...recipe, stages: recipe.stages.filter((s) => ["motion", "sound"].includes(s.kind) || (s.kind === "tokenfx" ? fxCatalog().tokenReady : resolveAsset(s, runtime.getCatalog()))) });
   // A creature going down collapses once (dropping to 0 HP in D&D 5e, PF2e and SF2e; marking
   // its last hit point in Daggerheart, or a companion its last stress), finished in the damage's

@@ -1,12 +1,12 @@
 import {writeFile,readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {dndEntries,dndRecipe,DND5E_SOURCE} from '../scripts/dnd5e-catalog.mjs';
-import {planRecipe,resolveAsset} from '../scripts/model.mjs';
+import {dndEntries,dndRecipe,DND5E_SOURCE} from '../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
+import {planRecipe,resolveAsset} from '../scripts/core/model.mjs';
 import {assetDatabases} from './asset-databases.mjs';
 import {assetGeometry} from './spell-asset-selection.mjs';
-import {isPathMotion} from '../scripts/motion-path.mjs';
-import {dndMotionReview} from '../scripts/catalog-motion.mjs';
-import {GENERATED_MOTION_DURATION} from '../scripts/motion-pacing.mjs';
+import {isPathMotion} from '../scripts/engines/motion/motion-path.mjs';
+import {dndMotionReview} from '../scripts/catalogs/shared/catalog-motion.mjs';
+import {GENERATED_MOTION_DURATION} from '../scripts/engines/motion/motion-pacing.mjs';
 const db=await assetDatabases(),entries=dndEntries(),issues=[],ledger=[];
 const context={gridSize:100,source:{id:'caster',center:{x:0,y:0},w:100,h:100},targets:Array.from({length:5},(_,i)=>({id:'target-'+i,center:{x:200+i*200,y:200},w:100,h:100})),template:{id:'area'}};
 const editions=Object.fromEntries(Object.keys(db).map(k=>[k,{keys:new Set(),families:new Set(),plannedStages:0}])),configurations=new Set(),profiles=new Set(),soundFiles=new Set();

@@ -5,9 +5,9 @@ import {dnd5eSources,dnd5eBookSources,hasNativeActivation} from './dnd5e-source.
 import {nativeDirection,weaponModes,weaponSound,weaponVisualFamily,damageThemes,deliveryGesture,LASTING_AREAS,LASTING_EVENT,LASTING_EMANATIONS} from './dnd5e-directions.mjs';
 import {assetDatabases} from './asset-databases.mjs';
 import {resolveSpellMedia,assetGeometry} from './spell-asset-selection.mjs';
-import {SPELL_THEMES} from '../scripts/spell-choreography.mjs';
-import {validateRecipe} from '../scripts/model.mjs';
-import {statePresentation} from '../scripts/state-presentation.mjs';
+import {SPELL_THEMES} from '../scripts/catalogs/pf2e/spells/spell-choreography.mjs';
+import {validateRecipe} from '../scripts/core/model.mjs';
+import {statePresentation} from '../scripts/catalogs/shared/state-presentation.mjs';
 import {selectWeaponMedia} from './weapon-asset-selection.mjs';
 import {ABILITY_SOUND_PROFILES} from '../data/ability-sounds.mjs';
 import {SOUND_PROFILES} from '../data/spell-sounds.mjs';
@@ -243,8 +243,8 @@ function entryFor(row,kind){
 }
 if(BOOKS){
  const {DND5E_ENTRIES}=await import('../data/dnd5e-catalog.mjs');
- const {srdSpellName}=await import('../scripts/dnd5e-catalog.mjs');
- const {normalize}=await import('../scripts/model.mjs');
+ const {srdSpellName}=await import('../scripts/catalogs/dnd5e/dnd5e-catalog.mjs');
+ const {normalize}=await import('../scripts/core/model.mjs');
  const kindOf=s=>s.type==='spell'?'spell':s.type==='feat'?'feat':s.type==='weapon'?'weapon':'item';
  const srd=new Set(DND5E_ENTRIES.flatMap(e=>[`${e.kind}:${normalize(e.name)}`,`${e.kind}:id:${e.identifier}`]));
  // A book copy of SRD content already resolves to the SRD entry at play time.

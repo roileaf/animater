@@ -7,8 +7,8 @@ import {
   PF2E_SPELLS,
   PF2E_SOURCE,
   spellRecipe,
-} from "../scripts/spell-catalog.mjs";
-import { planRecipe } from "../scripts/model.mjs";
+} from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { planRecipe } from "../scripts/core/model.mjs";
 const databases = await assetDatabases();
 const source = { id: "source", center: { x: 0, y: 0 }, w: 100, h: 100 };
 const target = { id: "target", center: { x: 300, y: 0 }, w: 100, h: 100 };

@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
-import {FEAR_SPELL_MOTIFS} from '../scripts/spell-fear-designs.mjs';
-import {BROAD_VARIETY_MOTIFS} from '../scripts/spell-broad-variety-designs.mjs';
-import { REVIEWED_DELIVERY } from "../scripts/spell-delivery-designs.mjs";
-import { DEEP_SPELL_MOTIFS } from "../scripts/spell-deep-designs.mjs";
-import {SPECIFIC_FALLBACK_MOTIFS,describedMaterialArea} from '../scripts/spell-specific-fallbacks.mjs';
-import {GAP_SPELL_MOTIFS} from '../scripts/spell-gap-designs.mjs';
-import {refineSpellMotif} from '../scripts/spell-fix-designs.mjs';
+import {FEAR_SPELL_MOTIFS} from '../scripts/catalogs/pf2e/spells/spell-fear-designs.mjs';
+import {BROAD_VARIETY_MOTIFS} from '../scripts/catalogs/pf2e/spells/spell-broad-variety-designs.mjs';
+import { REVIEWED_DELIVERY } from "../scripts/catalogs/pf2e/spells/spell-delivery-designs.mjs";
+import { DEEP_SPELL_MOTIFS } from "../scripts/catalogs/pf2e/spells/spell-deep-designs.mjs";
+import {SPECIFIC_FALLBACK_MOTIFS,describedMaterialArea} from '../scripts/catalogs/pf2e/spells/spell-specific-fallbacks.mjs';
+import {GAP_SPELL_MOTIFS} from '../scripts/catalogs/pf2e/spells/spell-gap-designs.mjs';
+import {refineSpellMotif} from '../scripts/catalogs/pf2e/spells/spell-fix-designs.mjs';
 import {
   AUTHORED_SPELL_DESIGNS,
   SPELL_MOTIFS,
-} from "../scripts/spell-design.mjs";
+} from "../scripts/catalogs/pf2e/spells/spell-design.mjs";
 
 export function descriptionText(html = "") {
   return html

@@ -8,11 +8,11 @@ import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { assetDatabases, variantFiles } from "./asset-databases.mjs";
-import { PF2E_SPELLS, spellRecipe } from "../scripts/spell-catalog.mjs";
-import { PF2E_FEATS, featRecipe } from "../scripts/feat-catalog.mjs";
-import { PF2E_WEAPONS, weaponRecipe } from "../scripts/weapon-catalog.mjs";
-import { resolveAsset } from "../scripts/model.mjs";
-import { previewPose } from "../scripts/stage-options.mjs";
+import { PF2E_SPELLS, spellRecipe } from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { PF2E_FEATS, featRecipe } from "../scripts/catalogs/pf2e/feats/feat-catalog.mjs";
+import { PF2E_WEAPONS, weaponRecipe } from "../scripts/catalogs/pf2e/weapons/weapon-catalog.mjs";
+import { resolveAsset } from "../scripts/core/model.mjs";
+import { previewPose } from "../scripts/core/stage-options.mjs";
 
 const exec = promisify(execFile), libraries = await assetDatabases();
 const dataRoot = fileURLToPath(new URL("../../../", import.meta.url));

@@ -1,0 +1,10 @@
+import {abilitySoundInfo} from '../engines/sound/ability-sounds.mjs';
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+export function abilitySoundSettingsHTML(w,state,kind){
+ const packs=w.host.soundCatalog?.()?.packs??[];
+ return `<div class="an-catalog-automation an-sound-settings"><div><b>${({feat:'Feat',action:'Action',feature:'Feature'})[kind]??'Weapon'} sounds</b><small>${packs.length?esc(packs.map(p=>p.title).join(' · ')):'Activate GGG, PSFX or SoundFx Library for matching cues.'}</small></div><button role="switch" aria-checked="${state.sound}" aria-label="${kind} catalog sounds" data-action="${kind}-sound" class="${state.sound?'an-primary':'an-quiet'}" ${w.busy?'disabled':''}>${state.sound?'On':'Off'}</button><label>Volume <span>${Math.round(state.soundVolume*100)}%</span><input type="range" min="0" max="100" step="5" value="${Math.round(state.soundVolume*100)}" data-ability-volume="${kind}" aria-label="${kind} sound volume" ${w.busy||!state.sound?'disabled':''}></label></div>`;
+}
+export function abilitySoundDetailHTML(w,item,recipe,state,mode){
+ const design=abilitySoundInfo(item,mode),stages=recipe.stages.filter(s=>s.kind==='sound');
+ return `<details class="an-advanced an-spell-sounds" data-options-group="ability-sounds" open><summary>Sound design · ${!state.sound?'Off':stages.length?`${stages.length} synchronized cues`:!design?.profile?'Quiet by design':'No matching active pack'}</summary><p class="an-hint">${esc(design?.reason??'No reliable sound inferred.')}</p>${stages.map(s=>`<div class="an-sound-cue"><b>${esc(s.label)}</b><button class="an-quiet" data-action="audition-sound" aria-label="Listen ${esc(s.label)}">▶ Listen</button><audio controls preload="none" src="${esc(w.host.mediaURL?.(s.soundFile)??s.soundFile)}" data-cue-volume="${s.volume}" aria-label="${esc(s.label)} audio preview"></audio></div>`).join('')}<p class="an-hint">${stages.length?'Full preview includes audio at catalog volume. Customize to replace a cue or adjust its timing.':'Customize to choose your own audio. Visuals remain available without a sound pack.'}</p></details>`;
+}

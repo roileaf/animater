@@ -1,0 +1,173 @@
+// Tokenshade's built-in presets. Names and libraries match Token Magic FX's, so
+// recipes, catalogs and saved choices made with Token Magic keep working; every value
+// here is tuned for animater's own shaders.
+import { specFor } from './filters/index.mjs';
+
+export const LIBRARY = { TOKEN: 'tmfx-main', REGION: 'tmfx-region' };
+
+// Animation helpers. `flow(type, rate)`: the shader's natural motion `rate` times per second.
+const flow = (type, rate = 1) => ({ animType: 'move', speed: rate / (specFor(type).timeScale * 1000) });
+const cos = (a, b, ms, sync = true) => ({ animType: sync ? 'syncCosOscillation' : 'cosOscillation', loopDuration: ms, val1: a, val2: b });
+const sin = (a, b, ms, sync = true) => ({ animType: sync ? 'syncSinOscillation' : 'sinOscillation', loopDuration: ms, val1: a, val2: b });
+const chaos = (a, b, ms) => ({ animType: 'syncChaoticOscillation', loopDuration: ms, val1: a, val2: b, chaosFactor: 0.35 });
+const hue = (a, b, ms, sync = false) => ({ animType: sync ? 'syncColorOscillation' : 'colorOscillation', loopDuration: ms, val1: a, val2: b });
+
+const F = (filterType, params = {}, animated = undefined) => ({ filterType, ...params, ...(animated ? { animated } : {}) });
+const timed = (type, rate, params = {}, more = {}) => F(type, params, { time: flow(type, rate), ...more });
+
+const token = (name, ...params) => ({ name, library: LIBRARY.TOKEN, params });
+const region = (name, ...params) => ({ name, library: LIBRARY.REGION, params });
+
+const FIELD = (shieldType, color, extra = {}, rate = 1, more = {}) =>
+  timed('field', rate, { shieldType, color, gridPadding: 1.5, intensity: 1, lightAlpha: 0.6, lightSize: 0.5, scale: 1, radius: 1, blend: 2, ...extra }, more);
+
+const naturalFire = (extra = {}, more = {}) => timed('fire', 1, { intensity: 1, color: 0xffffff, amplitude: 1, blend: 9, fireBlend: 1, ...extra }, more);
+const fireAura = (color, thick, more = {}) => timed('xglow', 1, { auraType: 2, color, thickness: thick, scale: 4, auraIntensity: 1.8, subAuraIntensity: 1, threshold: 0.35, discard: false }, more);
+const iceAura = (more = {}) => timed('xglow', 0.6, { auraType: 1, color: 0x7fd4ff, thickness: 3.5, scale: 3, auraIntensity: 1.6, subAuraIntensity: 0.55, threshold: 0.3, discard: false },
+  { thickness: cos(3, 4.2, 3000, false), auraIntensity: cos(1.3, 2, 3000, false), ...more });
+
+export const PRESETS = [
+  // ── Token library ──────────────────────────────────────────────────────────
+  token('bevel', F('bevel', { rotation: 0, thickness: 4, lightColor: 0xffe2a8, lightAlpha: 0.75, shadowColor: 0x241018, shadowAlpha: 0.65 }, { rotation: { animType: 'syncRotation', loopDuration: 4000, clockWise: true } })),
+  token('adjustment', F('adjustment', { saturation: 1.4, brightness: 1.15, contrast: 1.25, gamma: 1, red: 1.15, green: 0.9, blue: 0.9, alpha: 1 }, { alpha: cos(0.35, 1, 5000) })),
+  token('dropshadow', F('shadow', { rotation: 50, distance: 14, blur: 4, alpha: 0.65, color: 0x000000 })),
+  token('outline', F('outline', { thickness: 2, color: 0xee5f35, alpha: 1 }, { thickness: cos(1.5, 4.5, 1600) })),
+  token('glow', F('glow', { outerStrength: 4.5, innerStrength: 1, color: 0x2ee8a0, distance: 14 }, { color: hue(0x1bb07a, 0x7dffcf, 3000) })),
+  token('bloom', F('xbloom', { threshold: 0.45, bloomScale: 1, brightness: 1.05, blur: 2 }, { bloomScale: cos(0.2, 1.8, 2400), threshold: cos(0.25, 0.75, 1800) })),
+  token('distortion', F('distortion', { maskSpriteScaleX: 5, maskSpriteScaleY: 5, amount: 5 }, { maskSpriteX: { animType: 'move', speed: 0.05 }, maskSpriteY: { animType: 'move', speed: 0.07 } })),
+  token('oldfilm',
+    F('oldfilm', { sepia: 0.6, noise: 0.25, noiseSize: 1, scratch: 0.7, scratchDensity: 0.4, scratchWidth: 1.2, vignetting: 0.3, vignettingAlpha: 0.7, vignettingBlur: 0.3 }, { seed: { animType: 'randomNumberPerLoop', loopDuration: 90, val1: 0, val2: 1 }, vignetting: cos(0.25, 0.4, 2000) }),
+    F('outline', { thickness: 1, color: 0x1c140c, alpha: 0.8 })),
+  token('twist', F('twist', { radiusPercent: 110, angle: 0 }, { angle: sin(-1.6, 1.6, 9000, false) })),
+  token('bulge', F('bulgepinch', { radiusPercent: 160, strength: 0 }, { strength: cos(0, 0.4, 2000, false) })),
+  token('blur', F('blur', { blur: 0 }, { blurX: cos(0, 5, 900), blurY: cos(0, 5, 1300) })),
+  token('zoomblur', F('zoomblur', { strength: 0.18, innerRadiusPercent: 45, radiusPercent: 110 }, { innerRadiusPercent: sin(40, 55, 600, false) })),
+  token('shockwave', F('shockwave', { amplitude: 7, wavelength: 50, brightness: 1.4, speed: 30, radius: -1 }, { time: cos(0, 9, 1800, false) })),
+  token('zapshadow', F('zapshadow', { alphaTolerance: 0.5 })),
+  token('rays', timed('ray', 1, { color: 0xd1b06b, alpha: 0.55, divisor: 28, anchorX: 0.5, anchorY: 0.1, alphaDiscard: true })),
+  token('fog', timed('fog', 1, { color: 0x1a1d22, density: 0.6, dimX: 1, dimY: 1 })),
+  token('fumes', timed('fumes', 1, { color: 0x9c9c9c, blend: 2 })),
+  token('electric', timed('electric', 1, { color: 0x9fd8ff, blend: 1, intensity: 4 })),
+  token('fire', naturalFire({}, { intensity: cos(0.85, 1.6, 9000), amplitude: cos(0.95, 1.25, 4400) })),
+  token('waves', timed('wave', 1, { strength: 0.012, frequency: 110, color: 0xbfe8ff, maxIntensity: 1.35, minIntensity: 0.9 }, { anchorX: chaos(0.2, 0.8, 20000), anchorY: sin(0.2, 0.8, 20000) })),
+  token('flood', timed('flood', 1, { color: 0x1a5fd6, billowy: 0.45, tintIntensity: 0.55, glint: 0.35, scale: 70 })),
+  token('smoke', timed('smoke', 1, { color: 0x50a0dd, blend: 2, dimX: 0.6, dimY: 1 })),
+  token('images', timed('images', 1, { nbImage: 4, alphaImg: 0.55, alphaChr: 0.4, ampX: 0.12, ampY: 0.1 })),
+  token('chaos-images', timed('images', 1, { nbImage: 5, alphaImg: 0.6, alphaChr: 0.8, ampX: 0.15, ampY: 0.15 },
+    { ampX: chaos(0.02, 0.28, 2000), ampY: chaos(0.02, 0.28, 1650), nbImage: { animType: 'syncSinOscillation', loopDuration: 1400, val1: 2, val2: 8, wantInteger: true } })),
+  token('spectral-images', timed('images', 1, { nbImage: 3, alphaImg: 0.5, alphaChr: 0.6, ampX: 0.1, ampY: 0.1 }, { ampX: cos(0.02, 0.2, 2500), ampY: cos(0.02, 0.22, 2500), alphaImg: sin(0.25, 0.75, 2500) })),
+  token('hexa-field', FIELD(2, 0xcc33cc, { gridPadding: 1.5, lightAlpha: 0.5 })),
+  token('fire-field', FIELD(1, 0xff6a1f, { gridPadding: 2, intensity: 1.1, lightAlpha: 0.9, lightSize: 0.7 })),
+  token('smoke-field', FIELD(3, 0x7a8a9a, { gridPadding: 1.5, intensity: 0.9, lightAlpha: 0.5, lightSize: 0.7 })),
+  token('earth-field', FIELD(4, 0xb98a5c, { gridPadding: 2, intensity: 1.15, lightAlpha: 0.5, lightSize: 0.7 })),
+  token('earth-field-top', FIELD(5, 0xa9a29a, { gridPadding: 2.5, intensity: 1.2, lightAlpha: 0.6, lightSize: 0.7, chromatic: true })),
+  token('air-field', FIELD(6, 0x9fd6e8, { gridPadding: 1.2, lightAlpha: 0.7, lightSize: 0.7 })),
+  token('magic-field', FIELD(7, 0xb48cff, { gridPadding: 1, intensity: 0.9, lightAlpha: 0.7, lightSize: 0.45 })),
+  token('chromatic-field', FIELD(8, 0xaaaaaa, { gridPadding: 1.8, lightAlpha: 0.8, lightSize: 0.4, chromatic: true }, 3)),
+  token('water-field', FIELD(9, 0x2a8eee, { gridPadding: 1.2, lightAlpha: 0.7, lightSize: 0.5, scale: 0.8 })),
+  token('evil-field', FIELD(10, 0xff2a20, { gridPadding: 1.8, lightAlpha: 0.9, lightSize: 0.6, scale: 0.6 }, 0.8, { lightSize: cos(0.3, 0.9, 5000) })),
+  token('grid-field', FIELD(11, 0x00cccc, { gridPadding: 1.8, lightAlpha: 0.6, lightSize: 0.3, scale: 0.6 }, 0.6)),
+  token('warp-field', FIELD(12, 0xe8e0ff, { gridPadding: 1.8, lightAlpha: 0.6, lightSize: 0.5, scale: 0.9 }, 0.6)),
+  token('color-field', FIELD(13, 0x00cc55, { gridPadding: 1.8, lightAlpha: 0.4, lightSize: 0.3 }, 0.6)),
+  token('sunburst', timed('xray', 1, { color: 0xffbb33, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 18, intensity: 2.2 }, { anchorX: cos(0.4, 0.6, 6000) })),
+  token('clover', timed('xray', 1, { color: 0x33ff66, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 4, intensity: 1.6 }, { anchorX: cos(0.4, 0.6, 6000), anchorY: sin(0.4, 0.6, 6000) })),
+  token('scan', timed('xray', 0.4, { color: 0xffffff, blend: 5, dimX: 6, dimY: 6, anchorX: 0.5, anchorY: 0, divisor: 8, intensity: 1.2 })),
+  token('blue-rays', timed('xray', 0.25, { color: 0x1f8fff, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 24, intensity: 1.4 }, { anchorX: cos(0.1, 0.9, 18000), anchorY: sin(0.1, 0.9, 18000) })),
+  token('spectral-body', timed('liquid', 1, { color: 0x20aaee, blend: 8, intensity: 4, spectral: true, scale: 0.9 }, { color: hue(0xcfefff, 0x2fa8ff, 6000) })),
+  token('mantle-of-madness', timed('liquid', 1.4, { color: 0x0090ff, blend: 5, intensity: 3, spectral: false, scale: 2 }, { intensity: cos(0.5, 6, 30000), scale: cos(4, 1, 30000) })),
+  token('drift-in-plans',
+    timed('wave', 1, { strength: 0.012, frequency: 90, color: 0xffffff, maxIntensity: 1.3, minIntensity: 0.9 }, { anchorX: cos(0.35, 0.65, 10000), anchorY: sin(0.35, 0.65, 10000) }),
+    timed('liquid', 1.6, { color: 0xff3030, blend: 6, intensity: 5, spectral: false, scale: 2.5 }, { color: hue(0xff2020, 0xffffff, 9000) })),
+  token('fire-aura', F('zapshadow', { alphaTolerance: 0.5 }), fireAura(0xff6a12, 4, { thickness: cos(3, 5, 3000, false) })),
+  token('glacial-aura', F('zapshadow', { alphaTolerance: 0.5 }), iceAura()),
+  token('anti-aura', F('zapshadow', { alphaTolerance: 0.5 }),
+    timed('xglow', 0.5, { auraType: 2, color: 0x200030, thickness: 4, scale: 4, auraIntensity: 2, subAuraIntensity: 1, threshold: 0.3, discard: false },
+      { auraIntensity: cos(2.5, 0.4, 3000), subAuraIntensity: cos(1.5, 0.2, 3000), color: hue(0x050505, 0x3a0050, 6000, true) })),
+  token('pure-fire-aura', naturalFire({}, { intensity: cos(0.85, 1.7, 9000), amplitude: cos(1, 1.3, 4400) }), F('zapshadow', { alphaTolerance: 0.5 }), fireAura(0xff6a12, 3.5, { thickness: cos(2.5, 4.5, 3000, false) })),
+  token('pure-fire-aura-2', F('zapshadow', { alphaTolerance: 0.5 }), fireAura(0xff8a22, 3, { thickness: cos(2, 3.6, 3000, false) }), naturalFire({ amplitude: 1.3 }, { intensity: cos(1, 2.4, 9000), amplitude: cos(1.1, 1.5, 4400) })),
+  token('pure-ice-aura', F('zapshadow', { alphaTolerance: 0.5 }), iceAura(), timed('smoke', -0.7, { color: 0x8ad8ff, blend: 2, dimX: 0.35, dimY: 1 }, { dimX: cos(0.4, 0.25, 3000, false) })),
+  token('pixelate', F('pixel', { sizeX: 4, sizeY: 4 })),
+  token('Fire v2', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, chromatic: false, scaleX: 1.4, scaleY: 1, inlay: false })),
+  token('Fire v2 (chromatic)', timed('xfire', 1, { color: 0, blend: 2, amplitude: 1.1, dispersion: 0, chromatic: true, scaleX: 1, scaleY: 1, inlay: false })),
+  token('Fire v2 (sparks)', timed('xfire', 1, { color: 0, blend: 2, amplitude: 0.8, dispersion: 3, chromatic: false, scaleX: 1.6, scaleY: 1.6, inlay: false })),
+  token('Fire v2 (coldfire)', timed('xfire', 1, { color: 0x3a8cff, blend: 1, amplitude: 1, dispersion: 0, chromatic: false, scaleX: 1, scaleY: 1, inlay: false })),
+  token('Fire v2 (blackfire)', timed('xfire', 0.9, { color: 0x6a3a9a, blend: 11, amplitude: 1, dispersion: 1.5, chromatic: false, scaleX: 2, scaleY: 1.8, inlay: false })),
+  token('Super-Frost', timed('xfire', 0.5, { color: 0xacd8ff, blend: 5, amplitude: 1, dispersion: 0, chromatic: false, scaleX: 1, scaleY: 1, inlay: true })),
+  token('Super-Heat', timed('xfire', 3, { color: 0xff7a1a, blend: 5, amplitude: 0.4, dispersion: 0, chromatic: false, scaleX: 1, scaleY: 1, inlay: true })),
+  token('Evade Stance', F('transform', { pivotX: 0.5, pivotY: 0.55 }, { translationX: sin(-0.12, 0.12, 1400, false), translationY: cos(-0.03, 0.03, 1400, false) })),
+  token('Saving Roll', F('transform', { pivotX: 0.5, pivotY: 0.5 }, {
+    translationX: sin(-0.2, 0.2, 1250, false), rotation: sin(-360, 360, 1250, false), scaleX: cos(1, 1.3, 625, false), scaleY: cos(1, 1.25, 625, false) })),
+  token('Dodge Jump', F('transform', { pivotX: 0.5, pivotY: 0.9 }, { translationY: cos(0, -0.22, 900, false), scaleX: cos(1, 0.8, 450, false), scaleY: cos(1, 1.12, 450, false) })),
+  token('Fairy Outline', timed('globes', 1.4, { color: 0x30a0ee, distortion: 0.9, scale: 120, alphaDiscard: true }), F('glow', { outerStrength: 3, distance: 10, color: 0xff3080 }, { color: hue(0xff3060, 0x30ff60, 3000) })),
+  token('DungeonDraft Tint', F('ddTint', { tint: [0.35, 0.85, 0.55] })),
+  token('Replace Color', F('replaceColor', { originalColor: [0.85, 0.15, 0.15], newColor: [0.2, 0.5, 1], epsilon: 0.45 })),
+  token('Dot Shade', F('dot', { scale: 1.1, angle: 0.4, grayscale: true })),
+  token('CRT Monitor', F('crt', { curvature: 2, lineWidth: 1.2, lineContrast: 0.3, noise: 0.25, noiseSize: 1, vignetting: 0.3, vignettingAlpha: 0.8, vignettingBlur: 0.35 }, { seed: { animType: 'randomNumber', val1: 0, val2: 1 }, time: { animType: 'move', speed: 0.001 } }),
+    F('outline', { thickness: 1.2, color: 0x0a0a0a, alpha: 0.9 })),
+  token('RGB Split', F('rgbSplit', { redX: -5, redY: 0, greenX: 0, greenY: 4, blueX: 3, blueY: -2 })),
+  token('Criss-Cross', F('sprite', { imagePath: 'modules/animater/assets/fx/crosshatch.svg', repeat: true, alphaDiscard: true, colorize: true, color: 0xfea42a, scaleX: 0.18, scaleY: 0.18, rotation: 45, alpha: 0.85, top: true })),
+  token('Star Mask', F('spriteMask', { imagePath: 'modules/animater/assets/fx/star.svg', repeat: false, scaleX: 1, scaleY: 1, alpha: 1 })),
+  token('Tropical Gradient', F('colorGradient', { stops: [{ offset: 0, color: 0xffa01e, alpha: 0.65 }, { offset: 0.5, color: 0xff3d7f, alpha: 0.6 }, { offset: 1, color: 0x00e5ff, alpha: 0.7 }], type: 0, angle: 90, alpha: 1, replace: false })),
+
+  // ── Region library (played on tokens by animater) ─────────────────────────
+  region('Watery Surface', timed('flood', 1, { color: 0x0a46b0, billowy: 0.5, tintIntensity: 0.65, glint: 0.4, scale: 80 })),
+  region('Protoplasm', timed('liquid', 1, { color: 0x20aaee, blend: 8, intensity: 4, spectral: true, scale: 1.4 })),
+  region('Watery Surface 2', timed('liquid', 1, { color: 0x20aaee, blend: 8, intensity: 4, spectral: false, scale: 1.4 })),
+  region('Smoky Area', timed('smoke', 0.6, { color: 0xaaaaaa, blend: 2, dimX: 1, dimY: 1 })),
+  region('Shock', timed('electric', 1, { color: 0xffffff, blend: 1, intensity: 5 })),
+  region('Annihilating Rays', timed('xray', 1, { color: 0xffbb00, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 6, intensity: 2.5 })),
+  region('Classic Rays', timed('ray', 1, { color: 0xcf8000, alpha: 0.55, divisor: 32, anchorX: 0.5, anchorY: 0.1, alphaDiscard: true })),
+  region('Smoke Filaments', timed('fumes', 1, { color: 0x9a9a9a, blend: 2 })),
+  region('Flames', naturalFire({ intensity: 1.5, amplitude: 1.3 })),
+  region('Thick Fog', timed('xfog', 1, { color: 0x8a8f99, density: 0.85 })),
+  region('Glowing Outline', F('glow', { outerStrength: 4, distance: 12, color: 0xffd36b }, { outerStrength: cos(5, 2, 3000) })),
+  region('Waves', timed('wave', 1, { strength: 0.015, frequency: 120, color: 0xffffff, maxIntensity: 1.4, minIntensity: 0.9 })),
+  region('Waves 2', timed('wave', 4, { strength: 0.01, frequency: 200, color: 0xffffff, maxIntensity: 1.3, minIntensity: 0.9 })),
+  region('Waves 3', timed('wave', 1, { strength: 0.025, frequency: 60, color: 0xbfe0ff, maxIntensity: 1.5, minIntensity: 0.85, anchorX: 0.5, anchorY: 1 })),
+  region('Zone : Fire', timed('xglow', 1, { auraType: 1, color: 0xff7a1a, thickness: 3, scale: 4, auraIntensity: 1.6, subAuraIntensity: 1, threshold: 0.35 }, { thickness: cos(2, 4, 3000, false) }), naturalFire({ intensity: 1.5 })),
+  region('Zone : Electricity', timed('xglow', 1, { auraType: 2, color: 0x7fc8ff, thickness: 1.5, scale: 4, auraIntensity: 1.6, subAuraIntensity: 1, threshold: 0.35, discard: true }, { thickness: cos(1, 2, 3000, false) }), timed('electric', 1, { color: 0xdff2ff, blend: 1, intensity: 5 })),
+  region('Zone : Blizzard', iceAura(), timed('smoke', -0.6, { color: 0xbfe8ff, blend: 2, dimX: 0.35, dimY: 1 }, { dimX: cos(0.4, 0.2, 3000, false) })),
+  region('Bulging Out', F('bulgepinch', { radiusPercent: 160, strength: 0 }, { strength: cos(0, 0.4, 2000, false) })),
+  region('Blurred Texture', F('blur', { blur: 0 }, { blurX: cos(0, 5, 900), blurY: cos(0, 5, 1300) })),
+  region('Bloomed Texture', F('xbloom', { threshold: 0.45, bloomScale: 1, brightness: 1, blur: 2 }, { bloomScale: cos(0.2, 1.8, 2400), threshold: cos(0.25, 0.75, 1800) })),
+  region('Wild Magic', timed('liquid', 1.8, { color: 0xff2020, blend: 6, intensity: 5, spectral: false, scale: 2.5 }, { color: hue(0xff2050, 0x5020ff, 4000) }), timed('wave', 1, { strength: 0.012, frequency: 100, color: 0xffffff, maxIntensity: 1.3, minIntensity: 0.9 })),
+  region('Spider Web 1', timed('web', 0.3, { color: 0xdddddd, thickness: 1.4, div1: 15, div2: 6, anchorX: 0.5, anchorY: 0.5 }), F('blur', { blur: 0.3 })),
+  region('Spider Web 2', timed('web', 0.2, { color: 0xcfcfcf, thickness: 1.8, div1: 12, div2: 5, anchorX: 0.5, anchorY: 0.45 }), timed('xfog', 0.4, { color: 0x6a6a6a, density: 0.4 }),
+    F('bulgepinch', { radiusPercent: 140, strength: 0 }, { strength: cos(0.35, 0, 3000, false) })),
+  region('Spider Web 4', F('web', { color: 0xf0f0f0, thickness: 1.6, div1: 16, div2: 7, anchorX: 0.5, anchorY: 0.5, alphaDiscard: true }, { time: cos(0, 3, 5000, false) }), F('glow', { outerStrength: 5, distance: 10, color: 0xffffff }, { outerStrength: cos(6, 3.5, 3000) })),
+  region('Spider Web 5', F('web', { color: 0xbfffd0, thickness: 1.2, div1: 20, div2: 9, anchorX: 0.5, anchorY: 0.5, alphaDiscard: true }, { time: cos(0, 2, 5000, false) }), F('glow', { outerStrength: 4.5, distance: 10, color: 0x7fffaa }, { outerStrength: cos(5, 3, 3000) })),
+  region('Ripples : Solar', timed('ripples', 1, { color: 0xff9a2a, alphaDiscard: false })),
+  region('Ripples : Shadow Sun', timed('ripples', 1, { color: 0x3a0050, alphaDiscard: true })),
+  region('Ripples : Scars', timed('ripples', 1, { color: 0xc8102e, alphaDiscard: true }), F('glow', { outerStrength: 5, distance: 10, color: 0xc8102e }, { outerStrength: cos(6.5, 4.5, 3000) })),
+  region('Fairy Fireflies : Calm', timed('globes', 0.7, { color: 0x26ff1d, distortion: 0.25, scale: 80, alphaDiscard: false })),
+  region('Fairy Fireflies : Excited', timed('globes', 1.2, { color: 0x00ccff, distortion: 0.5, scale: 80, alphaDiscard: false }), F('glow', { outerStrength: 3, distance: 10, color: 0x00ccff }, { outerStrength: cos(4, 2.5, 3000) })),
+  region('Fairy Fireflies : Frenetic', timed('globes', 1.8, { color: 0xe1e000, distortion: 1.45, scale: 80, alphaDiscard: false }), F('glow', { outerStrength: 3, distance: 10, color: 0xe1e000 }, { outerStrength: cos(4, 2.5, 3000) })),
+  region('Living Fluid', timed('xfog', 1, { color: 0x30a0ff, density: 0.8, alphaDiscard: true })),
+  region('Living Fluid 2', timed('xfog', 1, { color: 0x30ff9a, density: 0.8, alphaDiscard: true }), F('glow', { outerStrength: 4, distance: 10, color: 0x30ff9a })),
+  region('Living Fluid 3', timed('liquid', 1, { color: 0x69dc92, blend: 8, intensity: 4, spectral: true, scale: 1.4, alphaDiscard: true })),
+  region('Living Fluid 4', timed('liquid', 1, { color: 0xe6842b, blend: 8, intensity: 4, spectral: false, scale: 1.4, alphaDiscard: true }), F('glow', { outerStrength: 4, distance: 10, color: 0xe6842b })),
+  region('Flames 2', naturalFire({ intensity: 1.5, amplitude: 1.3, alphaDiscard: true })),
+  region('Flames 3', naturalFire({ intensity: 1.5, amplitude: 1.3, alphaDiscard: true }), timed('xglow', 1, { auraType: 1, color: 0xff7a1a, thickness: 3, scale: 4, auraIntensity: 1.6, subAuraIntensity: 1, threshold: 0.35, discard: true }, { thickness: cos(2, 4, 3000, false) })),
+  region('Classic Rays 2', timed('ray', 1.8, { color: 0xcf8000, alpha: 0.9, divisor: 16, anchorX: 0.5, anchorY: 0.1, alphaDiscard: true })),
+  region('Fire Rays', timed('ray', 1.8, { color: 0xcf8000, alpha: 0.9, divisor: 24, anchorX: 0.5, anchorY: 0.1, alphaDiscard: true }), F('glow', { outerStrength: 3, distance: 10, color: 0xff8a20 }), naturalFire({ intensity: 1.5, amplitude: 1.3 })),
+  region('Splash 1', F('splash', { color: 0x900505, seed: 0.1, splashFactor: 5, spread: 10, dimX: 1, dimY: 1, cut: true }), F('glow', { outerStrength: 2, distance: 6, color: 0x400000 })),
+  region('Splash 2', timed('splash', 1, { color: 0x900505, seed: 0.37, splashFactor: 3, spread: 10, dimX: 1, dimY: 1, cut: true }), F('glow', { outerStrength: 2, distance: 6, color: 0x400000 })),
+  region('Splash 3', timed('fumes', 1, { color: 0x38517e, blend: 2 }), timed('splash', 1, { color: 0x38517e, seed: 0.61, splashFactor: 3, spread: 10, dimX: 1, dimY: 1, cut: true }),
+    F('glow', { outerStrength: 2, distance: 6, color: 0x101a30 }), timed('liquid', 1.5, { color: 0x38517e, blend: 8, intensity: 3, spectral: false, scale: 2 })),
+  region('Flames 4 (colorizable)', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, inlay: false })),
+  region('Flames 5 (colorizable)', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, inlay: false, alphaDiscard: true, discardThreshold: 0.35 })),
+  region('Flames 6 (colorizable)', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, inlay: false, alphaDiscard: true, discardThreshold: 0.35 }), F('blur', { blur: 0.6 })),
+];
+
+// The library is shared: nothing may change it. Callers clone before tinting or scaling.
+const freeze = o => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(freeze); } return o; };
+PRESETS.forEach(freeze);
+
+// Copies so callers can tint and scale freely.
+export function builtinPresets(library) {
+  return PRESETS.filter(p => !library || p.library === library).map(p => structuredClone(p));
+}
+export function builtinPreset(name, library = LIBRARY.TOKEN) {
+  const p = PRESETS.find(x => x.name === name && x.library === library);
+  return p ? structuredClone(p) : null;
+}

@@ -2,7 +2,7 @@
 // Records which bespoke registry entries a builder reads, so editing one design
 // file only rebuilds the catalogs that actually consult its entries.
 //
-// The BESPOKE export of scripts/bespoke/index.mjs is replaced by a frozen
+// The BESPOKE export of scripts/catalogs/bespoke/index.mjs is replaced by a frozen
 // object with the same keys in the same order whose properties are getters for
 // the original values. Reads (BESPOKE[key], Object.entries, spreads, JSON) go
 // through a getter and are recorded; key enumeration (Object.keys, `in`) is not
@@ -11,7 +11,7 @@ import { registerHooks } from "node:module";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const INDEX = new URL("../scripts/bespoke/index.mjs", import.meta.url).href;
+const INDEX = new URL("../scripts/catalogs/bespoke/index.mjs", import.meta.url).href;
 const SELF = import.meta.url;
 const accessed = new Set();
 let traced = false;

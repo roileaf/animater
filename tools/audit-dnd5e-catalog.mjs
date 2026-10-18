@@ -7,7 +7,7 @@ import { writeFile } from "node:fs/promises";
 import { dnd5eSources } from "./dnd5e-source.mjs";
 import { assetDatabases } from "./asset-databases.mjs";
 import { assetGeometry } from "./spell-asset-selection.mjs";
-import { dndEntries, dndRecipe } from "../scripts/dnd5e-catalog.mjs";
+import { dndEntries, dndRecipe } from "../scripts/catalogs/dnd5e/dnd5e-catalog.mjs";
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split("=")[1];
 const data = await dnd5eSources(), db = await assetDatabases();

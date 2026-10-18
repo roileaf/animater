@@ -6,9 +6,9 @@ import {
   PF2E_SPELLS,
   PF2E_SOURCE,
   spellRecipe,
-} from "../scripts/spell-catalog.mjs";
-import { DELIVERY_DESIGNS } from "../scripts/spell-delivery-designs.mjs";
-import { timedStages } from "../scripts/composition.mjs";
+} from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { DELIVERY_DESIGNS } from "../scripts/catalogs/pf2e/spells/spell-delivery-designs.mjs";
+import { timedStages } from "../scripts/engines/playback/composition.mjs";
 const source = await spellSources(),
   byPath = new Map(source.spells.map((s) => [s.path, s.source]));
 const issues = [],

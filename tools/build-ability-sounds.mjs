@@ -4,7 +4,7 @@ import {PF2E_FEATS} from '../data/pf2e-feats.mjs';
 import {PF2E_WEAPONS} from '../data/pf2e-weapons.mjs';
 import {SOUND_PROFILES} from '../data/spell-sounds.mjs';
 import {featSoundDirection,weaponSoundDirection} from './ability-sound-semantics.mjs';
-import {validateSoundFile} from '../scripts/stage-options.mjs';
+import {validateSoundFile} from '../scripts/core/stage-options.mjs';
 const {entries,packs}=await soundInventory();
 // Cross-pack fallbacks: each cue lists every optional pack with a fitting
 // recording so any single installed pack stays audible; GGG still plays first.

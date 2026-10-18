@@ -1,11 +1,11 @@
 import {writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
-import {PF2E_FEATS,PF2E_FEAT_SOURCE,featRecipe} from '../scripts/feat-catalog.mjs';
-import {TOSS_NOTES} from '../scripts/feat-toss.mjs';
-import {visibleFeatComposition} from '../scripts/feat-direction.mjs';
-import {abilitySoundInfo} from '../scripts/ability-sounds.mjs';
+import {PF2E_FEATS,PF2E_FEAT_SOURCE,featRecipe} from '../scripts/catalogs/pf2e/feats/feat-catalog.mjs';
+import {TOSS_NOTES} from '../scripts/catalogs/pf2e/feats/feat-toss.mjs';
+import {visibleFeatComposition} from '../scripts/catalogs/pf2e/feats/feat-direction.mjs';
+import {abilitySoundInfo} from '../scripts/engines/sound/ability-sounds.mjs';
 import {assetDatabases} from './asset-databases.mjs';
-import {previewPlan} from '../scripts/model.mjs';
+import {previewPlan} from '../scripts/core/model.mjs';
 const db=await assetDatabases();
 const token=(id,x)=>({id,center:{x,y:100},document:{width:1,height:1}});
 const context={source:token('performer',100),targets:[token('first',250),token('second',450),token('third',650)],gridSize:100};

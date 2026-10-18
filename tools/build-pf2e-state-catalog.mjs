@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {assetDatabases,variantFiles} from './asset-databases.mjs';
 import {ensureStateSources,STATE_SOURCE_SHA,STATE_SOURCE_PACKS,AURA_SOURCE_PACKS} from './pf2e-state-source.mjs';
-import {statePresentation} from '../scripts/state-presentation.mjs';
+import {statePresentation} from '../scripts/catalogs/shared/state-presentation.mjs';
 import {buildAuraDesign} from './pf2e-aura-designs.mjs';
 import {buildConditionDesign,buildEffectDesign,CONDITION_PLANS} from './pf2e-condition-designs.mjs';
 
