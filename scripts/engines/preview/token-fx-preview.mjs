@@ -88,7 +88,8 @@ export class TokenFxPreview {
         }
         record.art.filters=filters;
         for(const f of filters)f.measure?.(record.art);
-        const pad=Math.min(192,Math.ceil(Math.max(24,record.width*.6,record.height*.6,...filters.map(f=>Number(f.padding)||0))));
+        // Room for what the effect actually reaches past the art, so small effects fill the box.
+        const pad=Math.min(192,Math.ceil(Math.max(12,...filters.map(f=>Number(f.padding)||0))));
         const size=Math.ceil(Math.max(record.width,record.height,Math.abs(record.art.width),Math.abs(record.art.height))*1.42+pad*2);
         if(this.renderer.width!==size||this.renderer.height!==size)this.renderer.resize(size,size);
         record.art.position.set(size/2,size/2);

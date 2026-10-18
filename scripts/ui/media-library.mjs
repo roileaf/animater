@@ -7,6 +7,7 @@ import {RecipePreview} from '../engines/preview/recipe-preview.mjs';
 import {TELEPORT_STYLES} from '../engines/motion/teleport.mjs';
 import { sampleRecipe } from "../engines/playback/composition.mjs";
 // A library card's window preview runs in passes this long, looped without a visible restart.
+const fxZoomValue=v=>Math.min(4,Math.max(1,Math.round((Number(v)||1)*4)/4));
 const WINDOW_LOOP_MS=10*60*1000;
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const svg = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${{
@@ -51,6 +52,9 @@ export class MediaLibrary {
     this.file = null;
     this.error = cached?.warning??'';
     this.tokenFx = {subject:'source',duration:3000,tint:''};
+    // Preview zoom: 1 fits the whole effect in the box; above 1 the token is drawn larger
+    // (at full resolution) and the box crops what reaches past it.
+    this.fxZoom = 1;
     this.fxPreviewEpoch=0;
     this.fxStatus='';
     this.fxArtwork='sample';
@@ -238,7 +242,7 @@ export class MediaLibrary {
   input(target) {
     if(target.hasAttribute?.('data-media-source-name')){this.sourceName=target.value;return true;}
     if(target.dataset.mediaFx) {
-      const before=JSON.stringify([this.tokenFx,this.fxArtwork]);
+      const before=JSON.stringify([this.tokenFx,this.fxArtwork,this.fxZoom]);
       const key=target.dataset.mediaFx;
       if(key==='duration')this.tokenFx.duration=Math.min(30000,Math.max(500,Number(target.value)||3000));
       if(key==='subject')this.tokenFx.subject=target.value==='targets'?'targets':'source';
@@ -247,12 +251,10 @@ export class MediaLibrary {
       if(key==='artwork') {
         this.fxArtwork=['source','targets'].includes(target.value)?target.value:'sample';
       }
-      if(before===JSON.stringify([this.tokenFx,this.fxArtwork]))return true;
+      if(key==='zoom')this.fxZoom=fxZoomValue(target.value);
+      if(before===JSON.stringify([this.tokenFx,this.fxArtwork,this.fxZoom]))return true;
       void this.stopTokenPreview();
-      if(key==='artwork') {
-        const scene=this.w.root.querySelector('[data-media-fx-scene]');
-        if(scene)patchDOM(scene,this.tokenFxArtworkHTML());
-      }
+      if(key==='artwork'||key==='zoom')this.redrawTokenScene();
       this.syncTokenPreview();void this.auditionTokenFx('window');return true;
     }
     if (target.dataset.search==='assets') {
@@ -498,11 +500,29 @@ export class MediaLibrary {
     if(canvas)canvas.disabled=playing||!this.w.host.previewTokenFx||this.w.host.environment?.().demo===true;
     const tint=root.querySelector('[data-media-fx="tint"]');if(tint)tint.disabled=!this.tokenFx.tint||!this.selected?.tintable;
   }
+  // Re-draw the preview token at the current artwork and zoom.
+  redrawTokenScene() {
+    const scene=this.w.root.querySelector('[data-media-fx-scene]');
+    if(!scene)return;
+    if(this.fxZoom>1)delete scene.dataset.fitTokenFx;else scene.dataset.fitTokenFx='';
+    patchDOM(scene,this.tokenFxArtworkHTML());
+    const out=this.w.root.querySelector('[data-media-fx-zoom-value]');if(out)out.textContent=`${this.fxZoom}×`;
+    const range=this.w.root.querySelector('[data-media-fx="zoom"]');if(range&&+range.value!==this.fxZoom)range.value=String(this.fxZoom);
+  }
+  // Mouse wheel over the preview zooms it.
+  wheel(event) {
+    if(!event.target.closest?.('[data-media-fx-scene]')||this.selected?.type!=='tokenfx')return false;
+    event.preventDefault();
+    const next=fxZoomValue(this.fxZoom+(event.deltaY<0?0.25:-0.25));
+    if(next===this.fxZoom)return true;
+    return this.input({dataset:{mediaFx:'zoom'},value:String(next)});
+  }
   tokenFxArtworkHTML() {
     const info=this.fxArtwork==='sample'?null:this.w.host.previewTokens?.()?.[this.fxArtwork];
     const file=info?.img??'icons/svg/mystery-man.svg';
     const img=this.w.host.mediaURL?.(file)??file;
-    return `<div class="an-tokenfx-sample" data-preview-token="source" style="width:112px;height:112px"><div class="an-preview-token-art"><img src="${esc(img)}" alt="${esc(info?.name??'Sample token')}" style="width:112px;height:112px"></div></div>`;
+    const px=Math.round(112*this.fxZoom);
+    return `<div class="an-tokenfx-sample" data-preview-token="source" style="width:${px}px;height:${px}px"><div class="an-preview-token-art"><img src="${esc(img)}" alt="${esc(info?.name??'Sample token')}" style="width:${px}px;height:${px}px"></div></div>`;
   }
   syncPreview() {
     this.syncTokenPreview();
@@ -569,8 +589,8 @@ export class MediaLibrary {
     const available=!!this.w.host.previewTokenFx&&this.w.host.environment?.().demo!==true;
     const windowAvailable=!!this.w.host.createTokenFxPreview,tokens=this.w.host.previewTokens?.()??{};
     return `<div class="an-media-detail-body"><div class="an-media-detail-heading"><div><small>Tokenshade</small><h2>${esc(item.label)}</h2></div><button class="an-media-star ${this.prefs.favorites.includes(item.id)?'is-favorite':''}" data-action="media-favorite" data-id="${esc(item.id)}" aria-label="Favorite selected media" aria-pressed="${this.prefs.favorites.includes(item.id)}">${svg('star')}</button></div>
-      <div class="an-media-preview an-tokenfx-scene" data-media-fx-scene data-fit-token-fx data-background="${esc(this.preview.background)}" aria-label="Token filter preview">${this.tokenFxArtworkHTML()}</div>
-      <div class="an-media-preview-settings"><label>Artwork<select data-media-fx="artwork" aria-label="Preview token artwork"><option value="sample" ${this.fxArtwork==='sample'?'selected':''}>Sample token</option><option value="source" ${this.fxArtwork==='source'?'selected':''} ${tokens.source?.img?'':'disabled'}>Source image</option><option value="targets" ${this.fxArtwork==='targets'?'selected':''} ${tokens.targets?.img?'':'disabled'}>Target image</option></select></label><label>Background<select data-media-preview="background" aria-label="Preview background">${['grid','dark','light'].map(v=>`<option value="${v}" ${this.preview.background===v?'selected':''}>${title(v)}</option>`).join('')}</select></label></div>
+      <div class="an-media-preview an-tokenfx-scene" data-media-fx-scene ${this.fxZoom>1?'':'data-fit-token-fx'} title="Scroll to zoom" data-background="${esc(this.preview.background)}" aria-label="Token filter preview">${this.tokenFxArtworkHTML()}</div>
+      <div class="an-media-preview-settings"><label>Artwork<select data-media-fx="artwork" aria-label="Preview token artwork"><option value="sample" ${this.fxArtwork==='sample'?'selected':''}>Sample token</option><option value="source" ${this.fxArtwork==='source'?'selected':''} ${tokens.source?.img?'':'disabled'}>Source image</option><option value="targets" ${this.fxArtwork==='targets'?'selected':''} ${tokens.targets?.img?'':'disabled'}>Target image</option></select></label><label class="an-tokenfx-zoom">Zoom <span data-media-fx-zoom-value>${this.fxZoom}×</span><input type="range" data-media-fx="zoom" min="1" max="4" step="0.25" value="${this.fxZoom}" aria-label="Preview zoom"></label><label>Background<select data-media-preview="background" aria-label="Preview background">${['grid','dark','light'].map(v=>`<option value="${v}" ${this.preview.background===v?'selected':''}>${title(v)}</option>`).join('')}</select></label></div>
       <p class="an-tokenfx-status" data-media-fx-status role="status">${esc(this.fxStatus)}</p>
       <div class="an-media-tags">${item.filterTypes.map(type=>`<span>${esc(title(type))}</span>`).join('')}<span>${esc(item.category)}</span></div>
       ${variants.length>1?`<label class="an-media-variant-label">Preset library<select data-media-variant aria-label="Preset library">${variants.map(v=>`<option value="${esc(v.id)}" ${v.id===item.id?'selected':''}>${v.fxLibrary==='tmfx-main'?'Token presets':v.fxLibrary==='animater-custom'?'My presets':'Region presets'}</option>`).join('')}</select></label>`:`<p class="an-hint">${item.fxLibrary==='tmfx-main'?'Token presets':item.fxLibrary==='animater-custom'?'My presets':'Region presets'}</p>`}

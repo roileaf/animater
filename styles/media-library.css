@@ -157,3 +157,6 @@
   .animater .an-media-detail-heading h2 { font-size:17px; }
   .animater .an-media-insert small { display:none; }
 }
+.animater .an-tokenfx-scene { cursor:zoom-in; }
+.animater .an-tokenfx-zoom { grid-column:1/-1; }
+.animater .an-tokenfx-zoom input[type="range"] { width:100%; margin:4px 0 0; }

@@ -321,7 +321,7 @@ export class Workspace {
       signal: this.abort.signal,
     });
     root.addEventListener("pointerdown", (e) => { if (this.page === "flash" && this.flashEditor?.pointer(e)) return; if (studioPointer(this, e)) return; this.onSplitterPointer(e); this.onTimelinePointer(e); }, { signal: this.abort.signal });
-    root.addEventListener("wheel", (e) => studioWheel(this, e), { passive: false, signal: this.abort.signal });
+    root.addEventListener("wheel", (e) => { if (this.mediaLibrary?.wheel?.(e)) return; studioWheel(this, e); }, { passive: false, signal: this.abort.signal });
     root.addEventListener("contextmenu", (e) => studioContextMenu(this, e), { signal: this.abort.signal });
     root.addEventListener("dblclick", (e) => {
       const pathBar = e.target.closest?.("[data-tl-bar]");
