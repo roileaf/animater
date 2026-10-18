@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.14 (2026-10-18)
+
+- **BLFX assets are found.** Assets from Boss Loot FX (BLFX) and other libraries that register with Sequencer late showed as missing in recipes until the asset library was refreshed by hand. Animater now notices new Sequencer libraries on its own.
+
 ## 1.2.13 (2026-10-17)
 
 - **Burning shows on the token.** A lasting Burning condition (D&D 5e) and other lasting fire effects drew their flames under round tokens (dynamic token rings), so only an ember showed past the token's edge, although the studio preview showed the creature on fire. Lasting flames now burn over the token at half strength, so the creature looks on fire and its face still shows. Your own saved recipes keep their Below tokens choice.
