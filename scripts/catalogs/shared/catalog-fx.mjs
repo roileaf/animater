@@ -21,13 +21,12 @@ export function liveCatalogFx() {
 const slug = entry => String(entry.slug??entry.identifier??entry.name??'').toLowerCase()
   .replace(/^(?:spell[ -])?effect[ -:]*/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const bodyProfiles = {
-  fire:{preset:'fire',tint:'#ff9b45'},
+  // Damage accents: Tokenshade's own look for each damage type (already coloured, so no tint).
+  fire:{preset:'Burning',fallback:'fire',tint:''},
   // Cold: frost creeping over the body (Tokenshade's own); the ice aura if a world lacks it.
   cold:{preset:'Frostbitten',fallback:'pure-ice-aura',tint:'#9cdeff'},
-  // Acid and poison glow on the body's outline. The fumes and smoke presets lay a fog over the whole token
-  // art in overlay blending and have no transparency setting, so even Strength 0.1 left the face buried.
-  electricity:{preset:'electric',tint:'#88cfff'},acid:{preset:'glow',tint:'#a2dc48'},
-  poison:{preset:'glow',tint:'#78bc57'},force:{preset:'glow',tint:'#ba9cff'},
+  electricity:{preset:'Electrocuted',fallback:'electric',tint:''},acid:{preset:'Corroding',fallback:'glow',tint:''},
+  poison:{preset:'Envenomed',fallback:'glow',tint:''},force:{preset:'Force Jolt',fallback:'glow',tint:''},
   // Force-field presets (hexa/earth/water-field) draw a large dome with a dark
   // rim and radiating lines over the token; wards glow on the body instead.
   healing:{preset:'glow',tint:'#80dda4'},ward:{preset:'glow',tint:'#a7bcff'},

@@ -58,7 +58,7 @@ test('elemental contacts, source rushes and teleport departure use different bod
  assert.equal(rush.stages.find(s=>s.stageId===fx(rush)[0].afterStage).motion,'rush');
  assert.equal(fx(spell('Translocate'))[0].fxPreset,'warp-field');
  const acid=PF2E_WEAPONS.find(e=>e.name==='Acid Flask (Lesser)');
- assert.ok(acid);assert.equal(fx(weaponRecipe(acid,acid.modes[0].mode,{fxCatalog}))[0].fxTint,'#a2dc48');
+ assert.ok(acid);{const s=fx(weaponRecipe(acid,acid.modes[0].mode,{fxCatalog}))[0];assert.ok(['Corroding','glow'].includes(s.fxPreset),s.fxPreset);assert.equal(s.fxTint,'','the acid look is already coloured');}
  const sword=PF2E_WEAPONS.find(e=>e.name==='Longsword');assert.ok(sword);
  assert.equal(fx(weaponRecipe(sword,'melee',{fxCatalog})).length,0);
 });

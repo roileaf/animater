@@ -31,18 +31,17 @@ const LOOKS = {
   spirit: { color: "#dfe6f2", hit: ["jb2a.impact.005.white", "jb2a.impact.003.yellow"], death: ["jb2a.smoke.puff.ring.01.white", "jb2a.impact.005.white"], after: [], label: "loses its spirit" },
 };
 export const damageLook = (type) => LOOKS[normalizeDamageType(type)] ?? null;
-// Token filters on the token's own artwork, using the presets the catalogs already use.
+// Tokenshade's look for each damage type, on the token's own artwork. Each preset is
+// already coloured for its damage, so no tint is laid over it.
 const FILTERS = {
-  fire: { preset: "fire", tint: "#ff9b45" }, cold: { preset: "pure-ice-aura", tint: "#9cdeff" },
-  electricity: { preset: "electric", tint: "#88cfff" }, acid: { preset: "fumes", tint: "#a2dc48" },
-  poison: { preset: "smoke", tint: "#78bc57" }, void: { preset: "smoke", tint: "#5b3f7a" },
-  vitality: { preset: "glow", tint: "#ffe9a3" }, force: { preset: "glow", tint: "#ba9cff" },
-  mental: { preset: "glow", tint: "#b07cff" }, sonic: { preset: "distortion", tint: "" },
-  spirit: { preset: "spectral-body", tint: "#dfe6f2" },
+  fire: { preset: "Burning" }, cold: { preset: "Frostbitten" }, electricity: { preset: "Electrocuted" },
+  acid: { preset: "Corroding" }, poison: { preset: "Envenomed" }, void: { preset: "Withering" },
+  vitality: { preset: "Radiant Burn" }, force: { preset: "Force Jolt" }, mental: { preset: "Psychic Warp" },
+  sonic: { preset: "Resonance" }, spirit: { preset: "Spirit Rend" },
 };
 const filterStage = (stageId, type, extra) => {
   const f = FILTERS[normalizeDamageType(type)];
-  return f ? [{ stageId, kind: "tokenfx", assets: [], catalogFx: true, fxProfile: "damage", fxPreset: f.preset, fxLibrary: "tmfx-main", fxTint: f.tint, ...extra }] : [];
+  return f ? [{ stageId, kind: "tokenfx", assets: [], catalogFx: true, fxProfile: "damage", fxPreset: f.preset, fxLibrary: "tmfx-main", fxTint: f.tint ?? "", ...extra }] : [];
 };
 
 // How the blow was struck. PF2e/SF2e strikes carry item:melee / item:ranged roll options

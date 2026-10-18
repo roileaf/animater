@@ -20,9 +20,11 @@ const TYPE_SELECTS = {
 // Settings driven by animations or internal bookkeeping, not shown as plain inputs.
 const HIDDEN = new Set(['time', 'seed', 'padding']);
 
+// Where a setting means something different for one filter. [min, max, step]
+const TYPE_RANGES = { veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] } };
 // [pattern, min, max, step] — first match wins.
 const RANGES = [
-  [/^(?:amount|snow|cracks|tightness|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon)$/, 0, 1, 0.01],
+  [/^(?:amount|snow|cracks|tightness|bubbles|glow|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon)$/, 0, 1, 0.01],
   [/^(?:anchor|pivot|center|offset)[XY]$/, -0.5, 1.5, 0.01],
   [/^translation[XY]$/, -1, 1, 0.01],
   [/^(?:scale[XY]|maskSpriteScale[XY])$/, 0.05, 10, 0.05],
@@ -32,7 +34,7 @@ const RANGES = [
   [/^(?:distance|thickness|amount|spread)$/, 0, 60, 0.5],
   [/^(?:blur|blurX|blurY)$/, 0, 30, 0.25],
   [/^(?:outerStrength|innerStrength|intensity|auraIntensity|subAuraIntensity|bloomScale)$/, 0, 10, 0.05],
-  [/^(?:amplitude|strength|brightness|contrast|saturation|gamma|red|green|blue|maxIntensity|minIntensity|magnify)$/, 0, 4, 0.01],
+  [/^(?:pulse|amplitude|strength|brightness|contrast|saturation|gamma|red|green|blue|maxIntensity|minIntensity|magnify)$/, 0, 4, 0.01],
   [/^(?:frequency|wavelength)$/, 1, 600, 1],
   [/^(?:speed)$/, 0, 200, 1],
   [/^(?:radius)$/, -1, 3, 0.05],
@@ -61,7 +63,8 @@ export function controlsFor(type) {
     if (isColorArray(value)) return [{ key, label, kind: 'color', array: true }];
     if (typeof value === 'number' && /colou?r$|^tint$/i.test(key)) return [{ key, label, kind: 'color' }];
     if (typeof value !== 'number') return [];
-    const range = RANGES.find(([re]) => re.test(key));
+    const own = TYPE_RANGES[type]?.[key];
+    const range = own ? [null, ...own] : RANGES.find(([re]) => re.test(key));
     const [, min, max, step] = range ?? [null, Math.min(0, value * 4), Math.max(1, Math.abs(value) * 4), 0.01];
     return [{ key, label, kind: 'range', min, max, step }];
   });
@@ -87,7 +90,7 @@ export const FILTER_LABELS = {
   smoke: 'Smoke', flood: 'Water', images: 'Mirror images', field: 'Force field', xray: 'Sun rays', liquid: 'Liquid', xglow: 'Living aura',
   pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash',
   polymorph: 'Polymorph', xfire: 'Magic fire', sprite: 'Image overlay', spriteMask: 'Image mask', replaceColor: 'Replace colour',
-  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', base: 'Ground marker',
+  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins',
 };
 export const filterLabel = type => FILTER_LABELS[type] ?? words(type);
 export const FILTER_CHOICES = Object.fromEntries(Object.keys(SPECS).map(t => [t, filterLabel(t)]).sort((a, b) => a[1].localeCompare(b[1])));

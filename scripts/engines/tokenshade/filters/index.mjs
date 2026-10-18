@@ -16,8 +16,9 @@ import { ELEMENT_SPECS } from './elemental.mjs';
 import { FIELD_SPECS } from './field.mjs';
 import { IMAGE_SPECS } from './image.mjs';
 import { STATUS_SPECS } from './status.mjs';
+import { DAMAGE_SPECS } from './damage.mjs';
 
-export const SPECS = Object.fromEntries([...COLOR_SPECS, ...LIGHT_SPECS, ...WARP_SPECS, ...ELEMENT_SPECS, ...FIELD_SPECS, ...IMAGE_SPECS, ...STATUS_SPECS].map(s => [s.type, s]));
+export const SPECS = Object.fromEntries([...COLOR_SPECS, ...LIGHT_SPECS, ...WARP_SPECS, ...ELEMENT_SPECS, ...FIELD_SPECS, ...IMAGE_SPECS, ...STATUS_SPECS, ...DAMAGE_SPECS].map(s => [s.type, s]));
 export const FILTER_TYPES = Object.keys(SPECS);
 export const specFor = type => (Object.hasOwn(SPECS, type) ? SPECS[type] : null);
 
