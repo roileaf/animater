@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-10-18)
 
 - **Tokenshade: Animater's own token effects.** Token filters are drawn by a new built-in shader engine instead of Token Magic FX, which is no longer needed. Every Token Magic preset name still works (so existing recipes play unchanged), each redrawn to look better: flames rise off the token's outline, auras lick and glow, force fields are glassy domes, and effects never bury the creature's face. Effects are local to each screen, write nothing to the world, follow token redraws and pause on hidden tokens.
 - **Customize any token effect.** A token filter stage's *Customize effect* section edits every layer's settings and animations, adds, removes, reorders or turns off layers, and sets the speed. GMs can save the result as a world preset in **My presets**.
@@ -8,6 +8,13 @@
 - **Every damage type has its own look.** Damage flashes and knockouts burn, frost, crackle, corrode, poison veins, wither, sear with light, jolt, warp the mind, shake with sound or rend the spirit, instead of tinted glows.
 - **Baileywiki presets are no longer offered.** Tokenshade's own takes replace the "[BW]" presets that Nuts and Bolts imports into Token Magic.
 - **Media library:** the Tokenshade card preview plays continuously and can be zoomed (slider or mouse wheel).
+- **Distinct looks for look-alike presets.** Rays shine past the art (sunburst, petals, scanning bar, falling shafts, spokes), fields and markers have their own shapes (Ally, Caution and Foe differ by shape, not only colour), the fire family drips and licks differently, and region presets no longer copy their token twins.
+- **Faster effects.** Heavy shaders (fire, auras, glows, smoke) read the token's outline once per frame instead of at every pixel, so they cost about a quarter of what they did. Shaders compile in the background after the scene loads, so the first fireball no longer freezes the canvas for a couple of seconds.
+- **Smoother first preview.** A spell's first local canvas preview no longer stalls for about a second.
+
+## 1.2.14 (2026-10-18)
+
+- **BLFX assets are found.** Assets from Boss Loot FX (BLFX) and other libraries that register with Sequencer late showed as missing in recipes until the asset library was refreshed by hand. Animater now notices new Sequencer libraries on its own.
 
 ## 1.2.13 (2026-10-17)
 
