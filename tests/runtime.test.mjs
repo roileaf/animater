@@ -502,6 +502,21 @@ test("catalog opens when Sequencer returns a distance map without a 15ft variant
   assert.ok(refreshed.every((e) => e.width === 600 && e.height === 400));
   assert.deepEqual(refreshed[0].template, [200, 200, 200]);
 });
+test("catalog picks up a library Sequencer registers after the first build", () => {
+  const { runtime, host } = fixture();
+  const entries = { jb2a: [{ dbPath: "jb2a.fire", getAllFiles: () => ["fire.webm"] }] };
+  const paths = { jb2a: ["jb2a.fire"], blfx: ["blfx.torch"] };
+  Object.assign(host.database, {
+    entries,
+    searchFor: () => Object.keys(entries),
+    getPathsUnder: (ns) => paths[ns],
+    getEntry: () => false,
+  });
+  assert.deepEqual(runtime.refreshCatalog().map((e) => e.key), ["jb2a.fire"]);
+  // BLFX registers late, after sequencer.ready already built the catalog.
+  entries.blfx = [{ dbPath: "blfx.torch", getAllFiles: () => ["torch.webm"] }];
+  assert.deepEqual(runtime.getCatalog().map((e) => e.key), ["blfx.torch", "jb2a.fire"]);
+});
 test("catalog skips malformed preview values and uses valid flattened file fallback", () => {
   const { runtime, host } = fixture();
   host.database.getEntry = () => ({ getFile: () => ({ notAMediaFile: true }) });
