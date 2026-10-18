@@ -25,6 +25,7 @@ import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
 import { libraryPreferences } from './ui/media-library.mjs';
 import {TokenFxPreview} from './engines/preview/token-fx-preview.mjs';
 import {tokenFx} from './engines/tokenshade/api.mjs';
+import {warmShaders} from './engines/tokenshade/warmup.mjs';
 import {normalizeLayers} from './engines/tokenshade/layers.mjs';
 import { SceneFxPreview } from "./engines/preview/scene-fx-preview.mjs";
 import {
@@ -1284,6 +1285,16 @@ Hooks.once("ready", () => {
   Hooks.on('canvasReady',pruneFx);
   setInterval(pruneFx,30000).unref?.();
   pruneFx();
+  // Compile Tokenshade's shaders in the background once the scene has settled, so the
+  // first token look of the session does not freeze the canvas while it compiles.
+  let warming=null;
+  const warmTokenFx=()=>void setTimeout(()=>{
+    const renderer=canvas?.ready?canvas.app?.renderer:null;
+    if(warming||!renderer||!globalThis.PIXI?.Program||!allowsTokenFx(localQuality()))return;
+    warming=warmShaders(globalThis.PIXI,renderer).catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{warming=null;});
+  },3000).unref?.();
+  Hooks.on('canvasReady',warmTokenFx);
+  if(canvas?.ready)warmTokenFx();
   runtime = new AnimaterRuntime({
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),

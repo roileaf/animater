@@ -129,3 +129,30 @@ test('a filter reaches from what the filters ahead of it drew, plus its own padd
   fire.measure(target,glow.padding);
   assert.equal(fire.uniforms.uReach[0],150-glow.padding-fire.padding-1);
 });
+test('shader warm-up compiles every Tokenshade pass in the background, the way PIXI links it, then lets PIXI build it',async()=>{
+  const {warmShaders,tokenshadePrograms,warmOrder}=await import('../../../scripts/engines/tokenshade/warmup.mjs');
+  const cache=new Map();
+  class Program{constructor(v,f){this.vertexSrc=v;this.fragmentSrc=f;this.glPrograms={};}static from(v,f){const k=v+f;if(!cache.has(k))cache.set(k,new Program(v,f));return cache.get(k);}}
+  const P={Filter:{defaultVertexSrc:'vertex'},Program};
+  assert.deepEqual(warmOrder(['glow','bevel','fire']),['fire','glow','bevel'],'catalog looks first');
+  const programs=tokenshadePrograms(P);
+  assert.equal(programs.length,Object.values(SPECS).length+Object.values(SPECS).filter(s=>s.field).length);
+  assert.equal(tokenshadePrograms(P)[0],programs[0],'the very programs the filters will use');
+  const links=[],bound=[];
+  const gl={VERTEX_SHADER:1,FRAGMENT_SHADER:2,LINK_STATUS:3,ACTIVE_ATTRIBUTES:4,
+    getExtension:n=>n==='KHR_parallel_shader_compile'?{}:null,isContextLost:()=>false,
+    createShader:()=>({}),shaderSource(){},compileShader(){},createProgram:()=>({}),attachShader(){},
+    linkProgram:p=>links.push(p),
+    getProgramParameter:(p,k)=>k===4?1:true,
+    getActiveAttrib:()=>({name:'aVertexPosition'}),bindAttribLocation:(p,i,n)=>bound.push([i,n]),
+    deleteShader(){},deleteProgram(){}};
+  const built=[];
+  const renderer={gl,CONTEXT_UID:7,shader:{generateProgram:({program})=>{built.push(program);program.glPrograms[7]={};}}};
+  programs[0].glPrograms[7]={};
+  const n=await warmShaders(P,renderer,{tick:0,types:['fire','glow','bevel']});
+  assert.equal(n,4,'fire and its field, glow and its field, bevel; fire was already built');
+  assert.ok(!built.includes(programs[0]));
+  assert.equal(links.length,8,'linked twice each, as PIXI does');
+  assert.ok(bound.every(([i,name])=>i===0&&name==='aVertexPosition'));
+  assert.equal(await warmShaders(P,{...renderer,gl:{...gl,getExtension:()=>null}}),0,'nothing without background compiling');
+});
