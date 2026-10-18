@@ -1,3 +1,4 @@
+import { conditionLookStrength } from "../../catalogs/shared/condition-looks.mjs";
 import {resolveStateRecipe,findStateEntry,auraStateEntry,normalizeStateCatalogState,PF2E_EFFECTS} from '../../catalogs/pf2e/state-catalog.mjs';
 import {planRecipe} from '../../core/model.mjs';
 import {artworkSize, offsetInGridSquares,tokenFootprint,effectFootprint} from '../media/media-preview.mjs';
@@ -227,11 +228,15 @@ export class PersistentStates{
    if(under&&!lifted)e.belowTokens();else if(s.above)e.elevation(1);if(s.maskToken)e.mask(r.token);
   }
   if(r.cancelled||this.closed)return;
-  const filters=r.bodyOnly||r.fade?[]:plan.filter(s=>s.kind==='tokenfx'&&s.persist);
-  if(filters.length)await Promise.all(filters.map(async stage=>{
-   try { await h.retainFx?.({...stage,destination:r.token},{session:r.name}); }
+  // Token filters last with the state. A condition's own look (fxEssential) also plays when the state is
+  // set to play once, briefly, and grows with the condition's value.
+  const filters=r.bodyOnly?[]:plan.filter(s=>s.kind==='tokenfx'&&s.persist&&(!r.fade||s.fxEssential));
+  const lookStrength=conditionLookStrength(conditionLevel(r.item));
+  const releases=filters.length?await Promise.all(filters.map(async stage=>{
+   try { return await h.retainFx?.({...stage,...(stage.fxEssential?{fxStrength:(stage.fxStrength??1)*lookStrength}:{}),destination:r.token},{session:r.name}); }
    catch(error){h.trace?.('Skipped',`Tokenshade: ${error.message}`);}
-  }));
+  })):[];
+  if(r.fade&&releases.length)setTimeout(()=>releases.forEach(release=>{try{void release?.();}catch{/* already ended */}}),FADE_MS+offset)?.unref?.();
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   if(!r.replaying)h.trace?.('Persistent',`${r.recipe.name} follows ${r.token.name??'token'} while its condition or effect lasts.`,r.recipe,{key:r.key,automatic:true,origin:this.originOf(r)});
   if(h.tokenAlive&&!h.tokenAlive(r.token)){await this.end(r);return;}

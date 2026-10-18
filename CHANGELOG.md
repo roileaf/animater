@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Conditions show on the creature, quietly.** Lasting conditions whose meaning is a change in the body now use a Tokenshade look instead of a looping JB2A animation: Petrified turns to stone; Drained, Enfeebled, Fatigued and Exhaustion drain colour; Dying and Unconscious fade; Doomed and Cursebound grow dark veins; Sickened and Poisoned turn sickly; Frightened and Fleeing go pale; Confused and Stupefied blur in the mind; Controlled and Charmed glow violet; Dazzled glares; Paralyzed greys out; Restrained is bound in rope; Concealed and Hidden haze over; Invisible shimmers faintly; Quickened leaves a trail; Glitching jitters; persistent damage shows its damage type. Valued conditions grow stronger with their value. Conditions best told by a symbol (Stunned, Deafened, Off-guard, Grabbed, Immobilized, attitudes) keep their JB2A marker. Applies to PF2e, SF2e, D&D 5e and Daggerheart; without Tokenshade the JB2A layers play as before.
+- **Condition looks stay at Balanced and Low quality**, since they are how the condition shows at all, and play briefly when a condition is set to play once.
+- Removed the DungeonDraft Tint preset (a map colour tint, not a token look).
+
 ## 1.3.0 (2026-10-18)
 
 - **Tokenshade: Animater's own token effects.** Token filters are drawn by a new built-in shader engine instead of Token Magic FX, which is no longer needed. Every Token Magic preset name still works (so existing recipes play unchanged), each redrawn to look better: flames rise off the token's outline, auras lick and glow, force fields are glassy domes, and effects never bury the creature's face. Effects are local to each screen, write nothing to the world, follow token redraws and pause on hidden tokens.

@@ -278,6 +278,21 @@ export const PRESETS = [
     timed('ripples', 3, { color: 0xdfe8ff, alphaDiscard: false, intensity: 1.2 }), F('rgbSplit', { redX: -2, blueX: 2 })),
   token('Spirit Rend', timed('images', 1.5, { nbImage: 3, alphaImg: 0.5, alphaChr: 0.8, ampX: 0.08, ampY: 0.05 }),
     timed('liquid', 1.2, { color: 0xdfe6f2, blend: 8, intensity: 4, spectral: true, scale: 1.2 })),
+  // Lasting conditions: quiet, steady looks on the creature (no one-off growth or bursts)
+  token('Fading', F('adjustment', { saturation: 0.2, brightness: 0.62, contrast: 0.92, blue: 1.05 }, { brightness: cos(0.58, 0.68, 4000) })),
+  token('Doom', timed('veins', 0.4, { color: 0x2a1238, amount: 0.38, thickness: 1.1, pulse: 0.4, glow: 0.2 }), F('adjustment', { saturation: 0.7, brightness: 0.9 })),
+  token('Sickly', timed('veins', 0.5, { color: 0x5f9a2a, amount: 0.35, thickness: 0.9, pulse: 0.6, glow: 0.25 }), F('adjustment', { saturation: 0.8, red: 0.94, green: 1.05, blue: 0.9 })),
+  token('Muddled', F('twist', { radiusPercent: 80 }, { angle: sin(-0.18, 0.18, 3400, false) }), F('rgbSplit', {}, { redX: sin(-2, 2, 2600, false), blueX: sin(2, -2, 3100, false) })),
+  token('Dominated', timed('veins', 0.5, { color: 0x8a4ad0, amount: 0.3, thickness: 0.8, pulse: 0.8, glow: 0.6 }), F('glow', { outerStrength: 1.6, distance: 10, color: 0x9a5ae0 }, { outerStrength: cos(1, 2.2, 3000) })),
+  token('Dazzled', F('xbloom', { threshold: 0.35, brightness: 1.08, blur: 2 }, { bloomScale: cos(0.6, 1.2, 2600) }), F('adjustment', { contrast: 0.85, brightness: 1.1 })),
+  token('Paralyzed', F('adjustment', { saturation: 0.3, brightness: 0.85, contrast: 1.1, red: 0.92, green: 0.97, blue: 1.08 }), timed('frost', 0.2, { amount: 0.15, snow: 0, color: 0xc8d4e0 })),
+  token('Haze', F('blur', { blur: 0.9 }), F('adjustment', { alpha: 0.82, contrast: 0.9 })),
+  token('Unseen', F('distortion', { amount: 3, maskSpriteScaleX: 3, maskSpriteScaleY: 3 }, { maskSpriteX: { animType: 'move', speed: 0.02 }, maskSpriteY: { animType: 'move', speed: 0.025 } }),
+    F('adjustment', { saturation: 0.6 }, { alpha: cos(0.3, 0.42, 3200) })),
+  token('Quickened', timed('images', 2.5, { nbImage: 2, alphaImg: 0.3, alphaChr: 0.4, ampX: 0.05, ampY: 0.02 }), F('glow', { outerStrength: 1.2, distance: 8, color: 0x9fd0ff })),
+  token('Glitching', F('rgbSplit', {}, { redX: { animType: 'randomNumberPerLoop', loopDuration: 180, val1: -5, val2: 5 }, blueY: { animType: 'randomNumberPerLoop', loopDuration: 230, val1: -3, val2: 3 } }),
+    F('crt', { curvature: 0, lineWidth: 1, lineContrast: 0.22, noise: 0.15, vignetting: 0 }, { time: { animType: 'move', speed: 0.001 }, seed: { animType: 'randomNumberPerLoop', loopDuration: 120, val1: 0, val2: 1 } }),
+    F('transform', {}, { translationX: { animType: 'randomNumberPerLoop', loopDuration: 260, val1: -0.015, val2: 0.015 } })),
   token('Rune Circle', timed('base', 1, { baseType: 4, color: 0xb48cff, radius: 0.62, alpha: 0.85 })),
 ];
 

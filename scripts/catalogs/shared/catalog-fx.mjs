@@ -1,5 +1,6 @@
 import {installedFxCatalog, OPTIONAL_FX_KINDS} from '../../engines/playback/optional-fx.mjs';
 import {tokenFx} from '../../engines/tokenshade/api.mjs';
+import {conditionLook} from './condition-looks.mjs';
 import {validateRecipe, MAX_STAGES} from '../../core/model.mjs';
 import {applyBespoke} from './bespoke.mjs';
 import {BESPOKE} from '../bespoke/index.mjs';
@@ -137,6 +138,17 @@ export function catalogFxDesign(recipe, entry, options={}) {
   }
   return additions;
 }
+// A lasting condition with a Tokenshade look shows it on the creature instead of its JB2A
+// layers (sound and token motion stay). Without Tokenshade, the JB2A layers play as before.
+export function withConditionLook(recipe, entry, options={}) {
+  if(recipe.lifecycle!=='document'||options.fx===false)return recipe;
+  const catalog=options.fxCatalog??liveCatalogFx();
+  const look=catalog.tokenReady&&conditionLook(entry,{damageType:options.damageType??recipe.stateDamageType});
+  if(!look||!catalog.presets?.some(p=>p.name===look.preset&&p.library==='tokenshade'))return recipe;
+  return validateRecipe({...recipe,stages:[...recipe.stages.filter(s=>['sound','motion'].includes(s.kind)),
+    {kind:'tokenfx',stageId:`${recipe.id}-tokenshade`,label:`Tokenshade · ${look.preset}`,assets:[],catalogFx:true,fxProfile:'condition',
+      fxPreset:look.preset,fxLibrary:'tokenshade',fxTint:'',fxStrength:look.strength,fxEssential:true,subject:'source',persist:true,delay:0,duration:6000}]});
+}
 export function withCatalogFx(recipe, entry, options={}) {
   // Reviewed bespoke compositions and play-time element choice come first, so they
   // apply whether or not optional FX providers are installed.
@@ -149,6 +161,8 @@ export function withCatalogFx(recipe, entry, options={}) {
   const catalog=options.fxCatalog??liveCatalogFx();
   if (!catalog.tokenReady&&!catalog.sceneReady)return recipe;
   const has=(name,library)=>catalog.presets?.some(p=>p.name===name&&p.library===library);
+  const looked=withConditionLook(recipe,entry,{...options,fxCatalog:catalog});
+  if(looked!==recipe)return looked;
   // Prefer the richer preset (e.g. an ice overlay) and fall back to a core one when an install lacks it.
   const candidates=catalogFxDesign(recipe,entry,options).map(({fxFallbackPreset,...stage})=>stage.kind==='tokenfx'&&fxFallbackPreset&&!has(stage.fxPreset,stage.fxLibrary)&&has(fxFallbackPreset,stage.fxLibrary)
     ?{...stage,fxPreset:fxFallbackPreset,label:`Tokenshade · ${fxFallbackPreset}`}:stage).filter(stage=>stage.kind==='tokenfx'

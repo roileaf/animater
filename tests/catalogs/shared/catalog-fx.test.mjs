@@ -112,3 +112,20 @@ test('condition filters remain document-linked; temporary previews retain finite
  const html=w.catalogFxControlsHTML({});assert.match(html,/Catalog: Tokenshade/);assert.match(html,/Catalog: FXMaster/);assert.match(html,/catalogTokenFx[\s\S]*?aria-checked="false"/);
  assert.match(w.optionalFxControlsHTML(s,1),/Filter stays while the condition or effect is on the token/);
 });
+
+test('lasting conditions show a quiet Tokenshade look instead of JB2A when one fits, and keep symbols otherwise',async()=>{
+ const {PRESETS}=await import('../../../scripts/engines/tokenshade/presets.mjs');
+ const {CONDITION_LOOK_PRESETS,conditionLookStrength}=await import('../../../scripts/catalogs/shared/condition-looks.mjs');
+ for(const name of CONDITION_LOOK_PRESETS)assert.ok(PRESETS.some(p=>p.name===name),`${name} exists`);
+ const shade={tokenReady:true,sceneReady:false,isGM:true,effects:[],presets:PRESETS.map(p=>({name:p.name,library:p.library}))};
+ const cond=slug=>PF2E_CONDITIONS.find(e=>e.slug===slug);
+ const petrified=stateRecipe(cond('petrified'),{fxCatalog:shade});
+ assert.deepEqual(petrified.stages.filter(s=>!['sound','motion'].includes(s.kind)).map(s=>[s.kind,s.fxPreset,s.persist,s.fxEssential]),[['tokenfx','Petrified',true,true]]);
+ assert.equal(stateRecipe(cond('frightened'),{fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx').fxPreset,'Wintry Pallor');
+ const fire=stateRecipe(cond('persistent-damage'),{damageType:'fire',fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx');
+ assert.equal(fire.fxPreset,'Burning');assert.equal(fire.fxStrength,.6);
+ assert.ok(stateRecipe(cond('stunned'),{fxCatalog:shade}).stages.some(s=>s.kind==='aura'),'stunned keeps its JB2A stars');
+ assert.ok(stateRecipe(cond('petrified'),{fxCatalog:{...shade,tokenReady:false}}).stages.some(s=>s.kind==='aura'),'without Tokenshade the JB2A layers play');
+ assert.ok(stateRecipe(cond('petrified'),{fxCatalog:shade,fx:false}).stages.some(s=>s.kind==='aura'),'catalog filters off keeps JB2A');
+ assert.deepEqual([0,1,2,3,4].map(conditionLookStrength),[1,.55,.7,.85,1]);
+});

@@ -1446,7 +1446,8 @@ Hooks.once("ready", () => {
       gridDistance: () => canvas.scene?.grid?.distance ?? 5,
       sequence: () => new Sequence({ moduleName: ID }),
       end: (name) => Sequencer.EffectManager.endEffects({ name }, false),
-      retainFx:(stage,{session})=>allowsTokenFx(localQuality())?optionalFx.retain(stage,{session,userId:`state:${clientId}`}):undefined,
+      // Condition looks are how the state shows at all, so they play down to Low quality; other filters need Full.
+      retainFx:(stage,{session})=>(stage.fxEssential?allowsMotion(localQuality()):allowsTokenFx(localQuality()))?optionalFx.retain(stage,{session,userId:`state:${clientId}`}):undefined,
       budget:()=>stateBudget(localQuality()),
       stopFx:session=>optionalFx.stop({session}),
       // The selected Dazzled token sees everyone else as Concealed.

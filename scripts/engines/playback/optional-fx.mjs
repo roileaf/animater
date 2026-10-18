@@ -30,7 +30,9 @@ export function normalizeFxStage(stage) {
        ...(normalizeLayers(stage.fxLayers) ? {fxLayers:normalizeLayers(stage.fxLayers)} : {}),
        fxSpeed:Number.isFinite(Number(stage.fxSpeed))?Math.min(5,Math.max(.1,Number(stage.fxSpeed))):1,
        fxTint:/^#[\da-f]{6}$/i.test(stage.fxTint??'')?stage.fxTint:'',
-       fxStrength:Number.isFinite(Number(stage.fxStrength))?Math.min(1,Math.max(.1,Number(stage.fxStrength))):1}
+       fxStrength:Number.isFinite(Number(stage.fxStrength))?Math.min(1,Math.max(.1,Number(stage.fxStrength))):1,
+       // A condition's look: the main way the state shows, so it stays at Balanced and Low quality.
+       ...(stage.fxEssential===true?{fxEssential:true}:{})}
     : {fxCategory:stage.fxCategory === 'filter' ? 'filter' : 'particle',
        fxType:safeKey(stage.fxType ?? '') ? stage.fxType : '', fxOptions:normalizeFxOptions(stage.fxOptions)})};
 }
@@ -144,7 +146,7 @@ export class OptionalFxPlayer {
     const preset=api.getPresets(libraryId(stage.fxLibrary??LIBRARY.TOKEN)).find(p=>p.name===stage.fxPreset);
     const placeable=(stage.destination?.document??stage.destination)?.object;
     if(!(preset?.params?.length||stage.fxLayers?.length)||!placeable)return ()=>{};
-    return api.apply(placeable,tintedPreset(preset??{name:stage.fxPreset},stage),{speed:stage.fxSpeed??1});
+    return api.apply(placeable,tintedPreset(preset??{name:stage.fxPreset},stage),{speed:stage.fxSpeed??1,always:stage.fxEssential===true});
   }
   async retain(stage,{session,userId}={}) {
     if(stage.kind!=='tokenfx')throw Error('Only token filters can last while a condition or effect is on the token.');

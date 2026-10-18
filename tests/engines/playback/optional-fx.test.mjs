@@ -209,3 +209,11 @@ test('Strength fades a token filter by scaling every transparency setting it has
  assert.equal(normalizeFxStage({kind:'tokenfx',fxPreset:'bevel',fxStrength:0}).fxStrength,.1);
  assert.equal(normalizeFxStage({kind:'tokenfx',fxPreset:'bevel',fxStrength:'.4'}).fxStrength,.4);
 });
+test('a condition look is kept through validation and shown even when decorative token filters are off',async()=>{
+  const f=fixture();let options;
+  f.tm.apply=(token,preset,opts)=>{options=opts;return ()=>{};};
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxPreset:'Burn',fxEssential:true}).fxEssential,true);
+  assert.equal(normalizeFxStage({kind:'tokenfx',fxPreset:'Burn'}).fxEssential,undefined);
+  const release=await f.player.retain({...tokenStage,destination:f.token,fxEssential:true},{session:'c'});
+  assert.equal(options.always,true);await release();
+});
