@@ -280,7 +280,8 @@ test('Token Magic card click starts window preview; selecting it again replays w
   await f.library.action('media-inspect',{dataset:{id:preset}});await settle();
   assert.match(f.library.fxStatus,/Playing in window/);assert.equal(f.frames.size,1);assert.equal(f.canvasCalls,0);
   [...f.frames.values()][0](performance.now()+4000);await settle();
-  assert.equal(f.library.fxStatus,'Preview finished');assert.equal(f.stops,1);
+  assert.match(f.library.fxStatus,/Playing in window/,'the card keeps playing past the stage duration');assert.equal(f.stops,0);
+  assert.equal(f.w.previewRecipe.stages[0].duration>=60000,true);
   await f.library.action('media-inspect',{dataset:{id:preset}});await settle();
   assert.match(f.library.fxStatus,/Playing in window/);assert.equal(f.renders,0);
   await f.library.stopTokenPreview();await settle();assert.equal(f.stops,2);
@@ -309,8 +310,10 @@ test('sample-token audition uses native window renderer without a scene or canva
   assert.match(f.library.fxStatus,/Playing in window/);assert.equal(f.canvasCalls,0);
   await f.library.action('media-favorite',{dataset:{id:f.library.selectedId}});
   assert.equal(f.renders,0);assert.ok(f.library.fxHandle,'Favorite preserves playing shader');
-  [...f.frames.values()][0](performance.now()+4000);await running;
-  assert.equal(f.stops,1);assert.equal(f.library.fxHandle,null);assert.equal(f.library.fxStatus,'Preview finished');
+  [...f.frames.values()][0](performance.now()+4000);await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(f.library.fxHandle,'still playing after the stage duration');
+  await f.library.stopTokenPreview();await running;
+  assert.equal(f.stops,1);assert.equal(f.library.fxHandle,null);
 });
 
 test('changing a library preset cancels a pending window renderer before it loads or touches the canvas',async t=>{

@@ -5,6 +5,9 @@ import {validateRecipe, MAX_STAGES} from '../core/model.mjs';
 import {patchDOM, reconcileChildren} from './dom-patch.mjs';
 import {RecipePreview} from '../engines/preview/recipe-preview.mjs';
 import {TELEPORT_STYLES} from '../engines/motion/teleport.mjs';
+import { sampleRecipe } from "../engines/playback/composition.mjs";
+// A library card's window preview runs in passes this long, looped without a visible restart.
+const WINDOW_LOOP_MS=10*60*1000;
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const svg = name => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">${{
   animation:'<path d="m13 3-9 11h7l-1 7 10-12h-7z"/>',
@@ -452,9 +455,13 @@ export class MediaLibrary {
         const scene=this.w.root.querySelector('[data-media-fx-scene]');
         if(!scene)throw Error('Token preview is not open.');
         delete scene.dataset.fxError;
+        // The card shows the effect continuously (one long pass, looped) until another
+        // card is chosen or the library closes; the stage duration only applies to recipes.
         const recipe=validateRecipe({id:'media-tokenfx-preview',name:this.selected.label,trigger:'manual',
           stages:[{...stage,subject:'source',persist:false}]});
-        const run=new RecipePreview(scene,recipe,()=>{
+        // Preview-only timing, never saved: past the recipe stage limit on purpose.
+        const timed=sampleRecipe(recipe);timed.stages[0].duration=WINDOW_LOOP_MS;
+        const run=new RecipePreview(scene,timed,()=>{
           // Defer until RecipeClock has registered this frame's handle, so a
           // failed first draw also cancels cleanly instead of reporting Playing.
           if(scene.dataset.fxError)queueMicrotask(()=>run.stop());
@@ -468,7 +475,7 @@ export class MediaLibrary {
         this.fxHandle=handle;
         await run.prepareTokenFx();
         if(scene.dataset.fxError)throw Error(`${scene.dataset.fxError}. Use canvas preview for this preset.`);
-        handle.done=run.play();
+        handle.done=run.play({loop:()=>epoch===this.fxPreviewEpoch});
       } else handle=await this.w.host.previewTokenFx(stage);
       if(epoch!==this.fxPreviewEpoch||this.w.abort?.signal.aborted){await handle.stop();return;}
       this.fxHandle=handle;this.fxStatus=mode==='window'?'Playing in window':'Playing on canvas · only you can see this';this.syncTokenPreview();
