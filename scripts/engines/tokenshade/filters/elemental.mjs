@@ -108,9 +108,10 @@ void main() {
 
 // Stylised magical fire. color 0 → natural flames. inlay: the fire burns inside the art
 // (frost creeping, heat shimmering). chromatic: shifting rainbow flames. dispersion: sparks.
+// fall: the flames hang and drip below the art instead of rising (venom, ooze).
 const xfire = {
   type: 'xfire', order: 800,
-  defaults: { color: 0, blend: 1, amplitude: 1, dispersion: 0, chromatic: false, inlay: false, scaleX: 1, scaleY: 1, time: 0, alphaDiscard: false, discardThreshold: 0.35 },
+  defaults: { color: 0, blend: 1, amplitude: 1, dispersion: 0, chromatic: false, inlay: false, scaleX: 1, scaleY: 1, time: 0, alphaDiscard: false, discardThreshold: 0.35, fall: false },
   timeScale: -1 / 1.5,
   uniforms: {
     uColor: ['vec3', p => rgb(p.color)], uNatural: ['bool', p => !(f(p.color) > 0 || Array.isArray(p.color))],
@@ -118,6 +119,7 @@ const xfire = {
     uChroma: ['bool', p => p.chromatic === true], uInlay: ['bool', p => p.inlay === true],
     uScale: ['vec2', p => [clamp(p.scaleX, 0.1, 10), clamp(p.scaleY, 0.1, 10)]],
     uClip: ['bool', p => p.alphaDiscard === true], uCut: ['float', p => clamp(p.discardThreshold, 0, 1)],
+    uDir: ['float', p => (p.fall === true ? -1 : 1)],
   },
   // Sparks rise at most 1.15 H (0.49 size × amplitude) above the art, plus the nearness ring.
   reach: (p, c) => (p.inlay === true ? 0 : c.size * (0.49 * clamp(p.amplitude, 0.05, 4) + 0.055)),
@@ -129,8 +131,8 @@ vec4 field() {
   vec2 q = fxCanvas() / (R * 0.16) / uScale;
   float H = R * 0.85 * uAmp;
   float sway = fbm3(vec2(q.x * 0.25, q.y * 0.1 + uTime * 0.5)) * 0.45 * H;
-  float fuel = uClip > 0.5 ? 0.0 : max(fuelBelow(H, sway), near(R * 0.08) * 0.65);
-  float sparks = uSparks > 0.0 && uClip < 0.5 ? fuelBelow(H * 1.15, 0.0) : 0.0;
+  float fuel = uClip > 0.5 ? 0.0 : max(fuelBelow(H * uDir, sway), near(R * 0.08) * 0.65);
+  float sparks = uSparks > 0.0 && uClip < 0.5 ? fuelBelow(H * 1.15 * uDir, 0.0) : 0.0;
   return vec4(fuel, depthIn(R * 0.1), 0.0, sparks);
 }` },
   glsl: `${FIRE_COLOR}
@@ -159,13 +161,13 @@ void main() {
   }
   float fuel = shape.x;
   // Sharper, braided tongues than natural fire.
-  vec2 fq = q * vec2(1.0, 0.45) + vec2(0.0, t * 2.0);
+  vec2 fq = q * vec2(1.0, 0.45) + vec2(0.0, t * 2.0 * uDir);
   float braid = ridged(fq + vec2(fbm3(fq * 0.5 + t * 0.3), 0.0) * 1.2);
   float heat = clamp(fuel * 0.85 + (braid - 0.62) * 1.6, 0.0, 1.0) * smoothstep(0.0, 0.2, fuel);
   float a = smoothstep(0.05, 0.3, heat);
   // Sparks: bright points rising and fading above the flames.
   if (uSparks > 0.0) {
-    vec2 sq = fxCanvas() / (R * 0.07) + vec2(0.0, t * 6.0);
+    vec2 sq = fxCanvas() / (R * 0.07) + vec2(0.0, t * 6.0 * uDir);
     vec3 cl = cells(sq, t * 2.0);
     float spark = smoothstep(0.12, 0.0, cl.x) * step(0.82 - uSparks * 0.05, cl.z) * smoothstep(0.0, 0.3, shape.w);
     heat = max(heat, spark);

@@ -12,6 +12,7 @@ const SELECTS = {
   materialType: { 1: 'Stone', 2: 'Ice', 3: 'Iron', 4: 'Gold', 5: 'Crystal', 6: 'Bark' },
   bindType: { 1: 'Vines', 2: 'Net', 3: 'Chains', 4: 'Ropes' },
   baseType: { 1: 'Disc', 2: 'Ring', 3: 'Pulse', 4: 'Rune circle' },
+  rayType: { 0: 'Sunburst', 1: 'Petals', 2: 'Scanning bar', 3: 'Falling shafts', 4: 'Hard spokes' },
 };
 const TYPE_SELECTS = {
   colorGradient: { type: { 0: 'Linear', 1: 'Radial', 2: 'Conic' } },
@@ -47,7 +48,7 @@ const RANGES = [
   [/^(?:redX|redY|greenX|greenY|blueX|blueY)$/, -40, 40, 0.5],
 ];
 const words = key => key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/^./, c => c.toUpperCase()).replace(/\bX\b/, '(horizontal)').replace(/\bY\b/, '(vertical)');
-const LABELS = { originalColor: 'Colour to replace', newColor: 'Replace with', alphaImg: 'Copies opacity', alphaChr: 'Copies colour fringe', nbImage: 'Copies', div1: 'Spokes', div2: 'Rings', fireBlend: 'Over the art', alphaDiscard: 'Only on the art', inlay: 'Burn inside the art', discard: 'Aura only', shadowOnly: 'Shadow only', zapshadow: 'Remove baked shadow', top: 'Over the art', cut: 'Only on the art' };
+const LABELS = { originalColor: 'Colour to replace', newColor: 'Replace with', alphaImg: 'Copies opacity', alphaChr: 'Copies colour fringe', nbImage: 'Copies', div1: 'Spokes', div2: 'Rings', fireBlend: 'Over the art', alphaDiscard: 'Only on the art', inlay: 'Burn inside the art', discard: 'Aura only', shadowOnly: 'Shadow only', zapshadow: 'Remove baked shadow', top: 'Over the art', cut: 'Only on the art', fall: 'Flames fall' };
 
 export function controlsFor(type) {
   const spec = specFor(type);

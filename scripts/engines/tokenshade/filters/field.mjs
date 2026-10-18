@@ -83,7 +83,8 @@ void main() {
 }`,
 };
 
-// Shafts of light over the art from an anchor point.
+// Shafts of light from an anchor point. alphaDiscard keeps them on the art; otherwise
+// they also spill past it. A share of plain colour keeps them visible on pale art.
 const ray = {
   type: 'ray', order: 740,
   defaults: { time: 0, color: 0xcf8000, alpha: 0.5, divisor: 24, anchorX: 0, anchorY: 0, alphaDiscard: true },
@@ -92,43 +93,104 @@ const ray = {
     uColor: ['vec3', p => rgb(p.color)], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
     uCount: ['float', p => clamp(p.divisor, 1, 128)], uAnchor: ['vec2', p => [f(p.anchorX), f(p.anchorY)]], uClip: ['bool', p => p.alphaDiscard !== false],
   },
-  reach: (p, c) => (p.alphaDiscard === false ? c.size * 0.3 : 0),
+  reach: (p, c) => (p.alphaDiscard === false ? c.size * 0.32 : 0),
   glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
   vec2 d = fxArt() - uAnchor;
+  // Spilled shafts fade out before the edge of the filter's reach.
+  float spill = smoothstep(1.6, 0.7, length(fxCanvas()) / fxTokenRadius());
   float ang = atan(d.y, d.x);
   float r = length(d);
   float beams = gnoise(vec2(ang * uCount / PI, uTime * 0.6)) * 0.5 + gnoise(vec2(ang * uCount * 0.5 / PI + 7.0, uTime * 0.35)) * 0.5;
   float a = smoothstep(0.0, 0.45, beams + 0.15) * smoothstep(1.6, 0.0, r) * uAlpha;
-  float region = uClip > 0.5 ? base.a : 1.0;
-  gl_FragColor = fxLayer(base, mix(uColor, vec3(1.0), 0.2), a * region, 9);
+  vec3 col = mix(uColor, vec3(1.0), 0.2);
+  vec4 o = fxLayer(base, uColor, a * base.a * 0.45, 0);
+  o = fxLayer(o, col, a * base.a, 9);
+  if (uClip < 0.5) o = fxBehind(o, col, a * spill * 0.8);
+  gl_FragColor = o;
 }`,
 };
 
-// Strong rotating rays (sunburst, clover, scanning beams).
+// Strong light rays around the token. rayType: 0 turning sunburst, 1 clover petals,
+// 2 scanning bar, 3 shafts falling from the anchor, 4 hard spokes with a white-hot core.
+// Beams shine past the silhouette, so they read on any art.
 const xray = {
   type: 'xray', order: 740,
-  defaults: { time: 0, color: 0xffb800, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 24, intensity: 1 },
+  defaults: { time: 0, color: 0xffb800, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 24, intensity: 1, rayType: 0 },
   timeScale: 1 / 1.2,
   uniforms: {
     uColor: ['vec3', p => rgb(p.color)], uBlend: ['int', p => clamp(Math.round(f(p.blend)), 0, 14)],
     uDim: ['vec2', p => [clamp(p.dimX, 0.01, 50), clamp(p.dimY, 0.01, 50)]], uAnchor: ['vec2', p => [f(p.anchorX), f(p.anchorY)]],
     uCount: ['float', p => clamp(p.divisor, 1, 128)], uIntensity: ['float', p => clamp(p.intensity, 0, 10)],
+    uKind: ['int', p => clamp(Math.round(f(p.rayType)), 0, 4)],
   },
-  reach: () => 0,
+  reach: (p, c) => c.size * (Math.round(f(p.rayType)) === 2 ? 0.12 : Math.round(f(p.rayType)) === 3 ? 0.6 : 0.45),
   glsl: `
+float spokes(float ang, float n, float sharp) { return pow(0.5 + 0.5 * cos(ang * n), sharp); }
 void main() {
   vec4 base = fxSample(vTextureCoord);
-  vec2 d = (fxArt() - uAnchor) / sqrt(uDim);
-  float ang = atan(d.y, d.x) + uTime * 0.35;
-  float r = length(d);
-  float beam = pow(0.5 + 0.5 * cos(ang * uCount), 3.0);
-  beam *= 0.6 + 0.4 * gnoise(vec2(ang * 3.0, r * 4.0 - uTime));
-  float core = smoothstep(0.35, 0.0, r);
-  float a = clamp((beam * smoothstep(1.1, 0.1, r) + core * 0.25) * uIntensity * 0.16, 0.0, 0.8);
+  float R = fxTokenRadius();
+  float t = uTime;
+  int kind = int(uKind + 0.5);
   int mode = int(uBlend + 0.5);
-  gl_FragColor = fxLayer(base, mix(uColor, vec3(1.0), core * 0.5), a * base.a, mode == 0 ? 9 : mode);
+  if (mode == 0) mode = 9;
+  vec3 col = uColor;
+  float on, off;
+  if (kind == 2) {
+    // A bright bar sweeps down the art; a ghost of it trails behind in scanlines.
+    vec2 art = fxArt();
+    float dy = art.y - (fract(t * 0.3) * 1.5 - 0.25);
+    float bar = exp(-dy * dy * 700.0);
+    float lines = 0.55 + 0.45 * step(0.5, fract(fxCanvas().y / 3.0));
+    float trail = (dy < 0.0 ? exp(dy * 7.0) : 0.0) * lines;
+    // The bar runs a little past the silhouette on both sides.
+    float side = max(max(fxAlphaAt(vec2(R * 0.12, 0.0)), fxAlphaAt(vec2(-R * 0.12, 0.0))),
+                     max(fxAlphaAt(vec2(R * 0.24, 0.0)), fxAlphaAt(vec2(-R * 0.24, 0.0))) * 0.6);
+    on = (bar * 1.1 + trail * 0.3) * uIntensity * 0.55;
+    off = bar * side * uIntensity * 0.6;
+    vec4 o = fxLayer(base, col, clamp(on, 0.0, 0.9) * base.a * 0.6, 0);
+    o = fxLayer(o, mix(col, vec3(1.0), bar * 0.6), clamp(on, 0.0, 0.9) * base.a, mode);
+    gl_FragColor = fxBehind(o, mix(col, vec3(1.0), 0.4), clamp(off, 0.0, 0.9));
+    return;
+  }
+  vec2 c = (fxCanvas() - fxArtToCanvas(uAnchor)) / R / sqrt(uDim);
+  float r = length(c), ang = atan(c.y, c.x);
+  float beam, core;
+  if (kind == 1) {
+    // Petals: lobes whose tips breathe, bright along their edges.
+    float lobe = abs(cos((ang + t * 0.12) * uCount * 0.5));
+    float tip = 0.45 + 0.95 * pow(lobe, 1.5) * (0.88 + 0.12 * sin(t * 2.2));
+    float fill = smoothstep(tip, tip - 0.5, r);
+    float edge = exp(-abs(r - tip) * 14.0) * smoothstep(0.2, 0.6, lobe);
+    vec3 cl = cells(c * 7.0, t * 3.0);
+    float glint = smoothstep(0.1, 0.0, cl.x) * step(0.9, cl.z) * fill;
+    beam = fill * 0.45 + edge * 0.9 + glint;
+    core = smoothstep(0.4, 0.0, r);
+    col = mix(col, vec3(1.0), edge * 0.35 + glint * 0.7);
+  } else if (kind == 3) {
+    // Shafts falling in a cone from the anchor, drifting sideways.
+    float down = ang - PI * 0.5;
+    float cone = smoothstep(0.95, 0.35, abs(down));
+    float shafts = gnoise(vec2(down * uCount * 0.35 + t * 0.25, t * 0.15)) + 0.5 * gnoise(vec2(down * uCount * 0.9 - t * 0.1, 3.0));
+    beam = smoothstep(0.0, 0.5, shafts + 0.15) * cone * smoothstep(3.2, 0.6, r) * smoothstep(2.15, 1.5, length(fxCanvas()) / R);
+    core = 0.0;
+  } else if (kind == 4) {
+    // Hard spokes, turning fast, with a flickering white-hot core.
+    beam = spokes(ang + t * 1.3, uCount, 26.0) * (0.85 + 0.15 * sin(t * 25.0)) * smoothstep(1.85, 0.25, r);
+    beam += spokes(ang - t * 0.7, uCount * 2.0, 40.0) * 0.5 * smoothstep(1.4, 0.2, r);
+    core = smoothstep(0.75, 0.0, r);
+    col = mix(col, vec3(1.0), core * 0.8);
+  } else {
+    // Soft beams turning slowly around a glowing core.
+    beam = spokes(ang + t * 0.35, uCount, 3.0) * (0.6 + 0.4 * gnoise(vec2(ang * 3.0, r * 4.0 - t))) * smoothstep(1.9, 0.3, r);
+    core = smoothstep(0.55, 0.0, r) * (0.85 + 0.15 * sin(t * 3.0));
+    col = mix(col, vec3(1.0), core * 0.5);
+  }
+  on = clamp((beam + core * 0.4) * uIntensity * 0.22, 0.0, 0.85);
+  off = clamp((beam + core * 0.6) * uIntensity * 0.3, 0.0, 0.85);
+  vec4 o = fxLayer(base, col, on * base.a, mode);
+  gl_FragColor = fxBehind(o, col, off);
 }`,
 };
 
