@@ -34,6 +34,15 @@ export function withWeaponScale(recipe, factor) {
   if (!recipe.weaponMode || recipe.weaponMode === 'area' || !(factor > 0) || factor === 1) return recipe;
   return { ...recipe, stages: recipe.stages.map(s => ['impact', 'aura'].includes(s.kind) ? { ...s, scale: (s.scale ?? 1) * factor } : s) };
 }
+// Namespaces and their entry counts: cheap enough to compare on every catalog read.
+function databaseSignature(database) {
+  try {
+    const entries = database?.entries;
+    if (entries && typeof entries === "object") return Object.entries(entries).map(([ns, list]) => `${ns}:${list?.length ?? 0}`).sort().join("|");
+    const namespaces = database?.searchFor?.("");
+    return Array.isArray(namespaces) ? [...namespaces].sort().join("|") : "";
+  } catch { return ""; }
+}
 export class AnimaterRuntime {
   constructor(host) {
     this.host = host;
@@ -83,6 +92,7 @@ export class AnimaterRuntime {
     this.host.onTrace?.();
   }
   refreshCatalog() {
+    this.catalogSignature = databaseSignature(this.host.database);
     this.catalog = registeredMedia(this.host.database).filter(a => a.type !== 'audio').sort((a,b)=>a.key.localeCompare(b.key));
     return this.catalog;
   }
@@ -116,8 +126,11 @@ export class AnimaterRuntime {
     this.trace("Stopped", `${row?.name ?? "Animation"}: stopped${everyone ? "" : " on this screen"}.`, row ? { id: row.recipeId, name: row.name } : null);
     return true;
   }
+  // A library can register with Sequencer after sequencer.ready (BLFX does): rebuild when the
+  // database's namespaces or entry counts change, or its assets read as missing until Refresh.
   getCatalog() {
-    return this.catalog.length ? this.catalog : this.refreshCatalog();
+    const stale = this.catalogSignature !== undefined && databaseSignature(this.host.database) !== this.catalogSignature;
+    return this.catalog.length && !stale ? this.catalog : this.refreshCatalog();
   }
   async dispatch(event) {
     if (!event || !this.host.enabled()) return;
@@ -193,7 +206,7 @@ export class AnimaterRuntime {
     recipe = withWeaponScale(recipe, this.host.weaponScale?.() ?? 1);
     if (!this.host.ready())
       throw Error("Activate Sequencer, then reload Foundry.");
-    if (!this.catalog.length) this.refreshCatalog();
+    this.getCatalog();
     if (!preview && !this.host.canPlay(context))
       throw Error("You need ownership of the source token.");
     let plan = planRecipe(recipe, this.catalog, {
