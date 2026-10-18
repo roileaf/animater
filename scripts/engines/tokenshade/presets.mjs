@@ -112,7 +112,6 @@ export const PRESETS = [
     translationX: sin(-0.2, 0.2, 1250, false), rotation: sin(-360, 360, 1250, false), scaleX: cos(1, 1.3, 625, false), scaleY: cos(1, 1.25, 625, false) })),
   token('Dodge Jump', F('transform', { pivotX: 0.5, pivotY: 0.9 }, { translationY: cos(0, -0.22, 900, false), scaleX: cos(1, 0.8, 450, false), scaleY: cos(1, 1.12, 450, false) })),
   token('Fairy Outline', timed('globes', 1.4, { color: 0x30a0ee, distortion: 0.9, scale: 120, alphaDiscard: true }), F('glow', { outerStrength: 3, distance: 10, color: 0xff3080 }, { color: hue(0xff3060, 0x30ff60, 3000) })),
-  token('DungeonDraft Tint', F('ddTint', { tint: [0.35, 0.85, 0.55] })),
   token('Replace Color', F('replaceColor', { originalColor: [0.85, 0.15, 0.15], newColor: [0.2, 0.5, 1], epsilon: 0.45 })),
   token('Dot Shade', F('dot', { scale: 1.1, angle: 0.4, grayscale: true })),
   token('CRT Monitor', F('crt', { curvature: 2, lineWidth: 1.2, lineContrast: 0.3, noise: 0.25, noiseSize: 1, vignetting: 0.3, vignettingAlpha: 0.8, vignettingBlur: 0.35 }, { seed: { animType: 'randomNumber', val1: 0, val2: 1 }, time: { animType: 'move', speed: 0.001 } }),
