@@ -24,6 +24,8 @@ import { mediaIndexStore } from "./media-index-store.mjs";
 import { MediaLibraryLoader } from './media-library-sources.mjs';
 import { libraryPreferences } from './media-library.mjs';
 import {TokenFxPreview} from './token-fx-preview.mjs';
+import {tokenFx} from './token-fx.mjs';
+import {normalizeLayers} from './fx/layers.mjs';
 import { SceneFxPreview } from "./scene-fx-preview.mjs";
 import {
   createCanvasPreviewArea,
@@ -88,8 +90,11 @@ let optionalFx;
 let persistentStates;
 let flash;
 const clientId = uuid();
+// animater's own token shaders: local to this client, paused while token FX are off.
+tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
+tokenFx.custom = () => { try { return game.settings.get(ID, 'tokenFxPresets') ?? []; } catch { return []; } };
 const fxCatalog = () => installedFxCatalog({
-  modules:game.modules, tokenMagic:globalThis.TokenMagic, fxmaster:globalThis.FXMASTER?.api,
+  modules:game.modules, tokenFx, fxmaster:globalThis.FXMASTER?.api,
   config:globalThis.CONFIG?.fxmaster, localize:key=>game.i18n.localize(key), isGM:game.user.isGM,
 });
 async function receiveOptionalFx(data) {
@@ -102,10 +107,10 @@ async function receiveOptionalFx(data) {
   const source=canvas.tokens.get(data.sourceId);
   if(!source || !(user.isGM || source.document.testUserPermission(user,'OWNER')))return;
   try {
-    const stage=validateRecipe({id:'socket-tokenfx',name:'Token Magic FX',trigger:'manual',stages:[{...data.stage,kind:'tokenfx',assets:[],afterStage:''}]}).stages[0];
+    const stage=validateRecipe({id:'socket-tokenfx',name:'Token FX',trigger:'manual',stages:[{...data.stage,kind:'tokenfx',assets:[],afterStage:''}]}).stages[0];
     const token=stage.subject==='targets'?canvas.tokens.get(data.tokenId):source;
     if(token)await optionalFx.play({...stage,destination:token},{session:data.session,userId:user.id});
-  } catch(error){console.warn('Animater Token Magic FX:',error.message);}
+  } catch(error){console.warn('Animater token FX:',error.message);}
 }
 async function receiveMotion(data, { strict = false } = {}) {
   if (!data || !canvas.ready) return;
@@ -865,9 +870,10 @@ function workspaceHost() {
       if(!catalog.sceneReady||!CONFIG.fxmaster?.particleEffects)return null;
       return new SceneFxPreview({scene,recipe,grid,PIXI:globalThis.PIXI,fxmaster:CONFIG.fxmaster,catalog});
     },
+    tokenFxPreset:(library,name)=>name?tokenFx.getPresets(library).find(p=>p.name===name)??null:null,
     createTokenFxPreview:async(scene,recipe)=>{
       if(!fxCatalog().tokenReady)return null;
-      return new TokenFxPreview({scene,recipe,PIXI:globalThis.PIXI,tokenMagic:globalThis.TokenMagic});
+      return new TokenFxPreview({scene,recipe,PIXI:globalThis.PIXI,tokenFx,world:()=>game.time.serverTime});
     },
     previewTokenFx:stage=>{
       if(!canvas.ready)throw Error('Open a scene first.');
@@ -880,6 +886,19 @@ function workspaceHost() {
     setCatalogFxSetting:async(key,value)=>{
       if(!game.user.isGM||!['catalogTokenFx','catalogSceneFx'].includes(key))return;
       await game.settings.set(ID,key,value===true);
+    },
+    // The world's own token FX presets: saved from an edited stage, shared by every recipe.
+    saveTokenFxPreset:async(name,layers)=>{
+      if(!game.user.isGM)throw Error('Only a GM can save token FX presets.');
+      const clean=normalizeLayers(layers),title=String(name??'').trim().slice(0,80);
+      if(!title)throw Error('Name the preset first.');
+      if(!clean)throw Error('This effect has no layers to save.');
+      const list=(game.settings.get(ID,'tokenFxPresets')??[]).filter(p=>p.name!==title);
+      await game.settings.set(ID,'tokenFxPresets',[...list,{name:title,params:clean}].slice(-200));
+    },
+    deleteTokenFxPreset:async name=>{
+      if(!game.user.isGM)throw Error('Only a GM can delete token FX presets.');
+      await game.settings.set(ID,'tokenFxPresets',(game.settings.get(ID,'tokenFxPresets')??[]).filter(p=>p.name!==name));
     },
     logs: () => runtime.log,
     isGM: () => game.user.isGM,
@@ -1027,8 +1046,9 @@ function workspaceHost() {
 }
 Hooks.once("init", () => {
   game.settings.register(ID,'mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
+  game.settings.register(ID,'tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
   for(const [key,name,hint] of [
-    ['catalogTokenFx','Add Token Magic FX filters to catalog animations','When Token Magic FX is active, catalog animations add matching token filters (glows, frost, shimmer). Skipped automatically when the module is missing.'],
+    ['catalogTokenFx','Add token filters to catalog animations','Catalog animations add matching shader effects on the token itself (flames, frost, glows, shimmer). Drawn by Animater on each screen; nothing is saved to the token.'],
     ['catalogSceneFx','Add FXMaster scene effects to catalog animations','When FXMaster is active, weather-like catalog spells add brief scene effects (rain, fog, embers). Skipped automatically when the module is missing.']])
     game.settings.register(ID,key,{name,hint,scope:'world',config:true,type:Boolean,default:true,
       onChange:()=>{persistentStates?.schedule();app?.workspace?.render();}});
@@ -1234,8 +1254,8 @@ Hooks.once("ready", () => {
   if (game.user.isGM && env.ready && !env.jb2a) ui.notifications.warn(`Animater: ${JB2A_MISSING}`, { permanent: true });
   motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) } });
   // Lasting conditions move the creature itself; one-off motions take priority.
-  conditionBody = new ConditionBody({ busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
-  optionalFx = new OptionalFxPlayer({catalog:fxCatalog,tokenMagic:()=>globalThis.TokenMagic,
+  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
+  optionalFx = new OptionalFxPlayer({catalog:fxCatalog,tokenFx:()=>tokenFx,
     fxmaster:()=>globalThis.FXMASTER?.api,scene:()=>canvas.scene,
     localParticles,
     regionFx,
@@ -1249,6 +1269,7 @@ Hooks.once("ready", () => {
     conditionBody?.clear();
     motions.stop();
     void optionalFx.stop();
+    tokenFx.clear();
     void runtime?.stop();
     app?.workspace?.syncPreviewTokens({ clear: true });
   });
@@ -1520,7 +1541,7 @@ Hooks.once("ready", () => {
   if (game.system.id === "dnd5e") Hooks.on("dnd5e.calculateDamage", (actor, damages) => remember(damageFromParts(damages, actor?.id)));
   Hooks.on("createChatMessage", (message) => remember(damageFromMessage(message, game.system.id)));
   // Stages whose artwork is not installed (Free vs Patreon) are left out rather than blocking the rest.
-  // Token Magic layers play only where Token Magic FX is available.
+  // Token filter layers play only while token FX are on.
   const installedStages = (recipe) => ({ ...recipe, stages: recipe.stages.filter((s) => ["motion", "sound"].includes(s.kind) || (s.kind === "tokenfx" ? fxCatalog().tokenReady : resolveAsset(s, runtime.getCatalog()))) });
   // A creature going down collapses once (dropping to 0 HP in D&D 5e, PF2e and SF2e; marking
   // its last hit point in Daggerheart, or a companion its last stress), finished in the damage's

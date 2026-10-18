@@ -71,8 +71,8 @@ function nextFrame(cb) {
 function cancelFrame(h) { if (h?.raf) cancelAnimationFrame(h.raf); if (h?.ticker) h.ticker.remove(h.cb); }
 
 export class ConditionBody {
-  constructor({ tokenMagic = () => globalThis.TokenMagic, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true } = {}) {
-    Object.assign(this, { tokenMagic, now, frame, cancel, busy, enabled });
+  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true } = {}) {
+    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled });
     this.records = new Map();
     // One pose per token: several conditions (PF2e Dying brings Unconscious) must not
     // each treat the other's offset as the natural pose, or the deltas compound
@@ -85,16 +85,15 @@ export class ConditionBody {
     this.remove(name, { immediate: true });
     const record = { token, kind, strength, start: this.now() };
     if (kind === 'stone') {
-      // Turned to stone: drain the colour, no overlay at all. A raw PIXI filter on
-      // a v14 token mesh renders black with streaks, so Token Magic's transient
-      // (this screen only, nothing saved) adjustment filter does it; without
-      // Token Magic the sprite is tinted stone grey.
-      const api = this.tokenMagic?.();
-      if (api?.togglePreset) {
-        const id = `animater-stone-${name}`;
-        record.stone = { api, preset: { name: id, library: 'animater', params: [{ filterType: 'adjustment', filterId: id, saturation: 0.08, brightness: 0.95, contrast: 1.1, gamma: 1, red: 1, green: 1, blue: 1, alpha: 1, enabled: true }] } };
-        void Promise.resolve(api.togglePreset(token, record.stone.preset, { action: 'add', transient: true })).catch(() => {});
-      } else {
+      // Turned to stone: drain the colour, no overlay at all, with animater's own
+      // adjustment filter (this screen only, nothing saved). Without the FX engine
+      // the sprite is tinted stone grey.
+      const api = this.tokenFx?.();
+      if (api?.apply) {
+        try { record.stone = api.apply(token, { name: `animater-stone-${name}`, library: 'animater', params: [{ filterType: 'adjustment', saturation: 0.08, brightness: 0.95, contrast: 1.1 }] }, { always: true }); }
+        catch { record.stone = null; }
+      }
+      if (!record.stone) {
         record.tint = token.mesh.tint;
         token.mesh.tint = 0xa39e94;
       }
@@ -114,7 +113,7 @@ export class ConditionBody {
     }
     this.records.delete(name);
     if (![...this.records.values()].some(o => o.token === r.token)) this.restore(r.token);
-    if (r.stone) void Promise.resolve(r.stone.api.togglePreset(r.token, r.stone.preset, { action: 'remove', transient: true })).catch(() => {});
+    if (r.stone) { try { r.stone(); } catch { /* the canvas already went away */ } }
     if (r.tint !== undefined && r.token.mesh && !r.token.mesh.destroyed) r.token.mesh.tint = r.tint;
     if (!this.records.size && this.handle) { this.cancel(this.handle); this.handle = null; }
   }

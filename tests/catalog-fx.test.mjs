@@ -93,11 +93,12 @@ test('provider removal, catalog switches and portable imports preserve base reci
  w.motionBlocked=()=>false;
  assert.equal(w.status(spell('Ignition')),'Ready to play');
  assert.deepEqual(catalogFxSettings({settings:{get:(_,key)=>key==='catalogTokenFx'?false:true}}),{token:false,scene:true});
- const previous={game:globalThis.game,TokenMagic:globalThis.TokenMagic};
+ const previous={game:globalThis.game,PIXI:globalThis.PIXI};
  try{
-  globalThis.game={modules:new Map([['tokenmagic',{active:true,version:'0.8.4'}]]),settings:{get:()=>true},user:{isGM:true}};
-  globalThis.TokenMagic={getPresets:library=>fxCatalog.presets.filter(p=>p.library===library).map(p=>({...p,params:[{}]})),togglePreset:()=>{}};
-  assert.equal(fx(spellRecipe(e)).length,1,'automatic builder discovers active modules');
+  // The built-in engine is ready wherever there is a renderer; no other module needed.
+  globalThis.game={modules:new Map(),settings:{get:()=>true},user:{isGM:true}};
+  globalThis.PIXI={Filter:class {}};
+  assert.equal(fx(spellRecipe(e)).length,1,'automatic builder uses the built-in token FX');
   globalThis.game.settings.get=()=>false;assert.deepEqual(spellRecipe(e).stages,base.stages);
  }finally{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}}
 });
@@ -108,6 +109,6 @@ test('condition filters remain document-linked; temporary previews retain finite
  assert.equal(fx(damage)[0].fxPreset,'fire');assert.equal(fx(damage)[0].persist,true);
  assert.equal(planRecipe(concealed,media(concealed),{source,targets:[]}).find(s=>s.kind==='tokenfx').duration,6000);
  const w=Object.create(Workspace.prototype);w.host={fxCatalog:()=>fxCatalog,catalogFxSettings:()=>({token:false,scene:true}),setCatalogFxSetting:()=>{}};
- const html=w.catalogFxControlsHTML({});assert.match(html,/Catalog: Token Magic FX/);assert.match(html,/Catalog: FXMaster/);assert.match(html,/catalogTokenFx[\s\S]*?aria-checked="false"/);
+ const html=w.catalogFxControlsHTML({});assert.match(html,/Catalog: Token FX/);assert.match(html,/Catalog: FXMaster/);assert.match(html,/catalogTokenFx[\s\S]*?aria-checked="false"/);
  assert.match(w.optionalFxControlsHTML(s,1),/Filter stays while the condition or effect is on the token/);
 });

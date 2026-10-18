@@ -11,21 +11,22 @@ const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function fixture() {
   const calls=[], foreign={filterId:'world-burn',filterType:'fire'};
   const filters=[foreign];
-  const token={document:{object:{}}};
-  const preset={name:'Burn',library:'tmfx-main',params:[{filterId:'Burn',filterType:'fire',color:123},{filterId:'Burn',filterType:'glow'}]};
-  const tm={getPresets:library=>library==='tmfx-main'?[preset]:[],togglePreset:async(target,preset,options)=>{
-    assert.equal(target,token);assert.equal(options.transient,true);
-    calls.push(['token',options.action,structuredClone(preset)]);
-    if(options.action==='add')filters.push(...preset.params);
-    else for(let i=filters.length-1;i>=0;i--)if(preset.params.some(p=>p.filterId===filters[i].filterId))filters.splice(i,1);
+  const token={document:{object:{id:'placeable'}}};
+  const preset={name:'Burn',library:'tmfx-main',params:[{filterType:'fire',color:123},{filterType:'glow'}]};
+  // The token FX engine's surface: presets by library, and apply → remove.
+  const tm={ready:()=>true,getPresets:library=>library==='tmfx-main'?[preset]:[],apply(target,own){
+    assert.equal(target,token.document.object);
+    calls.push(['token','add',structuredClone(own)]);
+    const mine=own.params.map(p=>({...p}));filters.push(...mine);
+    return ()=>{calls.push(['token','remove']);for(const m of mine){const i=filters.indexOf(m);if(i>=0)filters.splice(i,1);}};
   }};
   const flags={effects:{core_rain:{type:'rain'}},filters:{core_color:{type:'color'}}};
   const scene={getFlag:(_,name)=>flags[name]};
   const fx={effects:{play:async data=>{calls.push(['scene','add',data]);for(const e of data.effects)flags[e.kind==='particle'?'effects':'filters'][e.id]=e;},
     stop:async data=>{calls.push(['scene','remove',data]);for(const id of data.particles)delete flags.effects[id];for(const id of data.filters)delete flags.filters[id];}}};
-  const modules=new Map([['tokenmagic',{active:true,version:'0.8.4'}],['fxmaster',{active:true,version:'8.4.1'}]]);
+  const modules=new Map([['fxmaster',{active:true,version:'8.4.1'}]]);
   const config={particleEffects:{embers:{label:'Embers',parameters:{density:{type:'range',label:'Density',min:0,max:1,step:.1,value:.3},tint:{type:'color',label:'Tint',value:{value:'#ff7700',apply:false}},soundFxEnabled:{type:'checkbox',value:true}}}},filterEffects:{}};
-  const host={catalog:()=>installedFxCatalog({modules,tokenMagic:tm,fxmaster:fx,config,isGM:true}),tokenMagic:()=>tm,fxmaster:()=>fx,scene:()=>scene,trace:(...args)=>calls.push(['trace',...args])};
+  const host={catalog:()=>installedFxCatalog({modules,tokenFx:tm,fxmaster:fx,config,isGM:true}),tokenFx:()=>tm,fxmaster:()=>fx,scene:()=>scene,trace:(...args)=>calls.push(['trace',...args])};
   const player=new OptionalFxPlayer(host);
   return {player,host,calls,filters,foreign,preset,token,scene,flags,tm,fx,modules};
 }
@@ -44,7 +45,7 @@ test('native preset discovery exposes safe filter types and tint metadata withou
   const f=fixture(),catalog=f.host.catalog();
   assert.deepEqual(catalog.presets,[{name:'Burn',library:'tmfx-main',filterTypes:['fire','glow'],tintable:true}]);
   assert.equal(Object.hasOwn(catalog.presets[0],'params'),false);
-  f.modules.get('tokenmagic').active=false;assert.deepEqual(f.host.catalog().presets,[]);
+  f.tm.ready=()=>false;assert.deepEqual(f.host.catalog().presets,[],'no renderer, no presets');
 });
 test('private asset audition isolates its session from running choreography and validates selected tokens',async()=>{
   const f=fixture();
@@ -72,21 +73,18 @@ test('transient token presets isolate overlapping sessions and preserve existing
   await tick();
   const additions=f.calls.filter(c=>c[0]==='token' && c[1]==='add');
   assert.equal(additions.length,2);
-  assert.notEqual(additions[0][2].params[0].filterId,additions[1][2].params[0].filterId);
-  assert.equal(additions[0][2].params[0].filterId,additions[0][2].params[1].filterId);
+  assert.equal(f.filters.length,5);
   await f.player.stop({session:'one'});await a;
   assert.equal(f.filters.length,3);
   assert.equal(f.filters[0],f.foreign);
   await f.player.stop({userId:'gm'});await b;
   assert.deepEqual(f.filters,[f.foreign]);
-  assert.equal(f.preset.params[0].filterId,'Burn');
+  assert.equal(f.preset.params[0].color,123,'the shared preset is never changed');
 });
-test('Stop cleans a token filter whose provider finishes loading after cancellation',async()=>{
-  const f=fixture();let complete;
-  const toggle=f.tm.togglePreset;
-  f.tm.togglePreset=async(...args)=>{if(args[2].action==='add')await new Promise(resolve=>{complete=resolve;});return toggle(...args);};
-  const play=f.player.play({...tokenStage,destination:f.token},{session:'late',userId:'gm'});
-  await f.player.stop({session:'late'});complete();await play;
+test('Stop right after a token filter starts removes it',async()=>{
+  const f=fixture();
+  const play=f.player.play({...tokenStage,destination:f.token,duration:60000},{session:'late',userId:'gm'});
+  await tick();await f.player.stop({session:'late'});await play;
   assert.deepEqual(f.filters,[f.foreign]);assert.equal(f.player.active.size,0);
 });
 test('FXMaster private preview and non-GM playback never mutate the Scene',async()=>{
@@ -123,7 +121,7 @@ test('registry controls use native bounds and suppress unmanaged provider audio'
   const opts=effectOptions({...sceneStage,fxOptions:{density:999,tint:{value:'#00ff00',apply:true},unknown:'bad'}},effect);
   assert.equal(opts.density,1);assert.equal(opts.soundFxEnabled,false);assert.equal(opts.unknown,undefined);
   assert.deepEqual(opts.tint,{value:'#00ff00',apply:true});
-  f.modules.get('tokenmagic').version='0.8.3';
+  f.tm.ready=()=>false;
   assert.equal(f.host.catalog().tokenReady,false);
   assert.match(fxAvailability(tokenStage,f.host.catalog()),/unavailable/);
   assert.deepEqual(normalizeFxOptions(JSON.parse('{"__proto__":{},"constructor":"bad","density":0.4}')),{density:.4});
@@ -172,19 +170,19 @@ test('color overrides affect cloned colored layers without altering installed pr
  assert.equal(own.params[0].animated.intensity.active,true);assert.deepEqual(f.preset,original);
  await release();assert.deepEqual(f.filters,[f.foreign]);
 });
-test('condition removal during preset loading cleans a late transient add',async()=>{
- const f=fixture(),toggle=f.tm.togglePreset;let complete;
- f.tm.togglePreset=async(...args)=>{if(args[2].action==='add')await new Promise(resolve=>complete=resolve);return toggle(...args);};
- const pending=f.player.retain({...tokenStage,destination:f.token},{session:'condition'});
- await f.player.stop({session:'condition'});complete();const release=await pending;await release();
+test('a condition stopped before its release removes its filter exactly once',async()=>{
+ const f=fixture();
+ const release=await f.player.retain({...tokenStage,destination:f.token},{session:'condition'});
+ await f.player.stop({session:'condition'});await release();
  assert.deepEqual(f.filters,[f.foreign]);assert.equal(f.player.active.size,0);
+ assert.equal(f.calls.filter(c=>c[0]==='token'&&c[1]==='remove').length,1);
 });
 test('retained filters clean partial provider failures and missing providers stay inert',async()=>{
- const f=fixture(),toggle=f.tm.togglePreset;
- f.tm.togglePreset=async(...args)=>{await toggle(...args);if(args[2].action==='add')throw Error('Shader load failed');};
+ const f=fixture();
+ f.tm.apply=()=>{throw Error('Shader load failed');};
  await assert.rejects(f.player.retain({...tokenStage,destination:f.token},{session:'failure'}),/Shader load failed/);
  assert.deepEqual(f.filters,[f.foreign]);assert.equal(f.player.active.size,0);
- f.modules.get('tokenmagic').active=false;
+ f.tm.ready=()=>false;
  const release=await f.player.retain({...tokenStage,destination:f.token},{session:'absent'});await release();
  assert.equal(f.player.active.size,0);
 });
@@ -199,7 +197,7 @@ test('optional catalog token accents never block base playback when the sync cha
  assert.ok(calls.includes('file'));assert.ok(!calls.includes('fx'));assert.ok(runtime.log.some(e=>e.status==='Skipped'&&e.detail.includes('synchronization')));
  await assert.rejects(runtime.play(recipe(stages.map(s=>({...s,catalogFx:false}))),{source:{},targets:[]}),/token-motion channel/);
 });
-test('Strength fades a Token Magic filter by scaling every transparency setting it has, animated ones too',()=>{
+test('Strength fades a token filter by scaling every transparency setting it has, animated ones too',()=>{
  const bevel={filterType:'bevel',lightAlpha:.8,shadowAlpha:.6,thickness:3,alphaDiscard:false,animated:{lightAlpha:{val1:.4,val2:1},thickness:{val1:1,val2:5}}};
  scaleFilterStrength(bevel,.5);
  assert.equal(bevel.lightAlpha,.4);assert.equal(bevel.shadowAlpha,.3);assert.equal(bevel.thickness,3,'non-alpha settings untouched');

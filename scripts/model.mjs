@@ -68,7 +68,7 @@ export const KINDS = {
   sprite: "Token copy / shadow",
   sound: "Sound cue",
   overlay: "Screen overlay",
-  tokenfx: "Token Magic FX",
+  tokenfx: "Token FX",
   scenefx: "FXMaster scene effect",
 };
 export const MOTIONS = {
@@ -174,7 +174,7 @@ export function validateRecipe(input) {
         if (!s || !Object.hasOwn(KINDS, s.kind))
           throw Error("Unknown stage type.");
         if (input.lifecycle === "document" && input.trigger === "effect" && !['aura','tokenfx'].includes(s.kind))
-          throw Error("Document-linked visuals use “Stays on token” layers or Token Magic filters.");
+          throw Error("Document-linked visuals use “Stays on token” layers or token filters.");
         if (input.lifecycle === "document" && input.trigger === "effect" && s.subject === "targets")
           throw Error("Document-linked layers follow the affected token.");
         if (s.kind === "sound") validateSoundFile(s.soundFile);

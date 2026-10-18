@@ -7,7 +7,7 @@ import {DND5E_ENTRIES,dndRecipe} from '../scripts/dnd5e-catalog.mjs';
 import {SF2E_ENTRIES,sfRecipe} from '../scripts/sf2e-catalog.mjs';
 import {catalogFxDesign} from '../scripts/catalog-fx.mjs';
 import {MAX_STAGES} from '../scripts/model.mjs';
-const {presets}=await import('data:text/javascript;base64,'+Buffer.from(fs.readFileSync(new URL('../../tokenmagic/fx/presets/defaultpresets.js',import.meta.url))).toString('base64'));
+import {PRESETS as presets} from '../scripts/fx/presets.mjs';
 const fxCatalog={tokenReady:true,sceneReady:true,isGM:true,presets:presets.map(p=>({name:p.name,library:p.library})),effects:[{type:'screenShake',category:'filter'},{type:'clouds',category:'particle'},{type:'rain',category:'particle'}]};
 const groups=[
  ['pf2e-spell',PF2E_SPELLS,e=>[[spellRecipe,e,undefined,{fxCatalog}]]],
@@ -18,7 +18,7 @@ const groups=[
  ['sf2e',SF2E_ENTRIES,e=>e.variants.map(v=>[sfRecipe,e,v.id,{fxCatalog,variant:v}])],
 ];
 const version=name=>JSON.parse(fs.readFileSync(new URL(`../../${name}/module.json`,import.meta.url),'utf8')).version;
-const report={providerVersions:{tokenmagic:version('tokenmagic'),fxmaster:version('fxmaster')},groups:{},issues:[],rows:[],examples:[]};
+const report={providerVersions:{animater:version('animater'),fxmaster:version('fxmaster')},groups:{},issues:[],rows:[],examples:[]};
 for(const [name,entries,variants] of groups){
  const stats={entries:entries.length,recipes:0,enhanced:0,token:0,scene:0,profiles:{},maxStages:0};
  for(const entry of entries)for(const [builder,e,variant,opt] of variants(entry)){

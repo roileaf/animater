@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <base href="/" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Animater FX Gallery</title>
+  <style>
+    :root { --bg: #14161b; --panel: #1d2027; --line: #2c313b; --fg: #e9e6df; --mut: #9a978f; --acc: #e0823d; }
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; display: grid; grid-template-columns: 260px 1fr; background: var(--bg); color: var(--fg); font: 13px system-ui, sans-serif; }
+    aside { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+    aside header { padding: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+    aside input, aside select { width: 100%; padding: 6px 8px; background: #111318; border: 1px solid var(--line); color: var(--fg); border-radius: 4px; }
+    ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; flex: 1; }
+    li { padding: 5px 12px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; }
+    li:hover { background: #262a33; }
+    li.on { background: #33281f; color: #ffd2ad; }
+    li small { color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+    main { position: relative; min-width: 0; }
+    #stage { position: absolute; inset: 0; }
+    #hud { position: absolute; left: 12px; top: 10px; color: var(--mut); pointer-events: none; }
+    #errors { position: absolute; right: 12px; top: 10px; max-width: 46%; color: #ff8b7a; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <aside>
+    <header>
+      <input id="search" placeholder="Filter presets…" />
+      <select id="library"><option value="">All libraries</option><option value="tmfx-main">Token presets</option><option value="tmfx-region">Region presets</option></select>
+      <select id="zoom"><option value="1">Zoom 1×</option><option value="0.6">Zoom 0.6×</option><option value="1.6">Zoom 1.6×</option></select>
+    </header>
+    <ul id="list"></ul>
+  </aside>
+  <main><div id="stage"></div><div id="hud"></div><div id="errors"></div></main>
+  <script type="module" src="/modules/animater/tools/fx-gallery/gallery.mjs"></script>
+</body>
+</html>

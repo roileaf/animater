@@ -1,4 +1,5 @@
 import {installedFxCatalog, OPTIONAL_FX_KINDS} from './optional-fx.mjs';
+import {tokenFx} from './token-fx.mjs';
 import {validateRecipe, MAX_STAGES} from './model.mjs';
 import {applyBespoke} from './bespoke.mjs';
 import {BESPOKE} from './bespoke/index.mjs';
@@ -12,7 +13,7 @@ export function catalogFxSettings(game = globalThis.game) {
 }
 export function liveCatalogFx() {
   const game=globalThis.game, settings=catalogFxSettings(game);
-  const catalog=installedFxCatalog({modules:game?.modules,tokenMagic:globalThis.TokenMagic,
+  const catalog=installedFxCatalog({modules:game?.modules,tokenFx,
     fxmaster:globalThis.FXMASTER?.api,config:globalThis.CONFIG?.fxmaster,
     localize:key=>game?.i18n?.localize?.(key)??key,isGM:game?.user?.isGM===true});
   return {...catalog,tokenReady:catalog.tokenReady&&settings.token,sceneReady:catalog.sceneReady&&settings.scene};
@@ -68,13 +69,13 @@ function bodyProfile(recipe, entry, anchor, options) {
   if (/^(?:blur|concealed|concealment|blurred)(?:-|$)/.test(name))return 'blur';
   // Concealment of the token itself only: not a suppressed property, an
   // immunity, or a wall that hides others.
-  // Mirror Image shows its illusory duplicates with Token Magic's core image-copy filter.
+  // Mirror Image shows its illusory duplicates with the image-copy token filter.
   if (/^mirror-image(?:-|$)/.test(name))return 'mirror';
   if (/^(?:invisible|invisibility|displacement)(?:-|$)/.test(name)&&!/(?:suppressed|immunity|curtain)/.test(name))return 'distortion';
   if (/^(?:ethereal|etherealness|ghostly-form|incorporeal-form|ghost-walk)(?:-|$)/.test(name))return 'spectral';
   if (persistent && name==='poisoned')return 'poison';
   if (meaning.healing&&!healingVetoes.some(v=>v.test(name))&&/jb2a\.(?:cure_wounds|healing_generic|heal\.)/.test(art))return 'healing';
-  // Token Magic's hexa-field is a fixed, very large dome; JB2A shield art already
+  // A force-field dome around the token; JB2A shield art already
   // draws the barrier, so only shell-like fields without their own bubble get it.
   if (meaning.ward&&realWard(entry,meaning)&&anchor.kind==='aura'&&/jb2a\.(?:wall_of_force|antilife_shell|protect)/.test(art))return 'ward';
   if (anchor.kind==='aura'&&/jb2a\.fire_shield/.test(art))return 'fireWard';
@@ -120,7 +121,7 @@ export function catalogFxDesign(recipe, entry, options={}) {
     if (!spec)continue;
     const subject=persistent?'source':onTarget(anchor)?'targets':anchor.subject??'source';
     const duration=persistent?6000:Math.max(1400,Math.min(2400,anchor.duration??1600));
-    additions.push({kind:'tokenfx',stageId:`${recipe.id}-tmfx`,label:`Token Magic FX · ${spec.preset}`,assets:[],
+    additions.push({kind:'tokenfx',stageId:`${recipe.id}-tmfx`,label:`Token FX · ${spec.preset}`,assets:[],
       catalogFx:true,fxProfile:profile,fxPreset:spec.preset,...(spec.fallback?{fxFallbackPreset:spec.fallback}:{}),fxLibrary:'tmfx-main',fxTint:spec.tint??'',subject,persist:persistent,
       delay:persistent?0:anchor.delay??0,duration,optionalTargets:subject==='targets',
       ...(persistent?{}:{afterStage:anchor.stageId,timingAnchor:'start',startOffset:0,
@@ -151,7 +152,7 @@ export function withCatalogFx(recipe, entry, options={}) {
   const has=(name,library)=>catalog.presets?.some(p=>p.name===name&&p.library===library);
   // Prefer the richer preset (e.g. an ice overlay) and fall back to a core one when an install lacks it.
   const candidates=catalogFxDesign(recipe,entry,options).map(({fxFallbackPreset,...stage})=>stage.kind==='tokenfx'&&fxFallbackPreset&&!has(stage.fxPreset,stage.fxLibrary)&&has(fxFallbackPreset,stage.fxLibrary)
-    ?{...stage,fxPreset:fxFallbackPreset,label:`Token Magic FX · ${fxFallbackPreset}`}:stage).filter(stage=>stage.kind==='tokenfx'
+    ?{...stage,fxPreset:fxFallbackPreset,label:`Token FX · ${fxFallbackPreset}`}:stage).filter(stage=>stage.kind==='tokenfx'
     ? catalog.tokenReady&&catalog.presets.some(p=>p.name===stage.fxPreset&&p.library===stage.fxLibrary)
     : catalog.sceneReady&&catalog.effects.some(e=>e.type===stage.fxType&&e.category===stage.fxCategory));
   const additions=candidates.filter(stage=>!recipe.stages.some(s=>s.stageId===stage.stageId));

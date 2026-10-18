@@ -1,12 +1,12 @@
 // Per-client animation quality. Each client picks a level; it is mirrored to a
 // user flag so the client that starts an animation can send optional layers
 // only to viewers whose level allows them (Sequencer forUsers). Token motion,
-// Token Magic filters and persistent state layers are rendered locally, so each
+// Token filters and persistent state layers are rendered locally, so each
 // client filters those itself.
 export const QUALITY_LEVELS = Object.freeze({ full: 3, balanced: 2, low: 1, off: 0 });
 export const QUALITY_CHOICES = Object.freeze({
-  full: 'Full: every layer, token motion and Token Magic filters',
-  balanced: 'Balanced: skip decorative layers and Token Magic filters',
+  full: 'Full: every layer, token motion and token filters',
+  balanced: 'Balanced: skip decorative layers and token filters',
   low: 'Low: only the main effect of each animation, one effect per token',
   off: 'Off: no Animater visuals or sounds on this client',
 });

@@ -160,14 +160,14 @@ export function libraryItem(item) {
   if(!item||typeof item!=='object')return null;
   if(item.type==='tokenfx') {
     const name=typeof item.fxPreset==='string'?item.fxPreset.trim():'';
-    if(!name||name.length>100||/[\x00-\x1f]/.test(name)||!['tmfx-main','tmfx-region'].includes(item.fxLibrary))return null;
+    if(!name||name.length>100||/[\x00-\x1f]/.test(name)||!['tmfx-main','tmfx-region','animater-custom'].includes(item.fxLibrary))return null;
     const filterTypes=[...new Set((Array.isArray(item.filterTypes)?item.filterTypes:[]).filter(v=>typeof v==='string'&&/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/.test(v)))];
     const text=words(name+' '+filterTypes.join(' ')).toLowerCase();
     const category=/aura|field|mantle/.test(text)?'Auras & fields':/fire|ice|glacial|electric|water|earth|air|flood/.test(text)?'Elemental':/shadow|outline|bevel|glow|bloom/.test(text)?'Outlines & light':/distortion|warp|twist|bulge|waves|shockwave|blur/.test(text)?'Distortion':'Appearance';
     return {type:'tokenfx',id:`tokenfx:${item.fxLibrary}:${name}`,fxPreset:name,fxLibrary:item.fxLibrary,
-      filterTypes,tintable:item.tintable===true,label:title(name),source:'Token Magic FX',family:name,
+      filterTypes,tintable:item.tintable===true,label:title(name),source:'Token FX',family:name,
       category,file:'',files:[],color:'none',loop:true,
-      search:words(`${name} ${item.fxLibrary} Token Magic FX token filter shader ${filterTypes.join(' ')} ${category}`).toLowerCase()};
+      search:words(`${name} ${item.fxLibrary} Token FX token magic filter shader ${filterTypes.join(' ')} ${category}`).toLowerCase()};
   }
   const file = typeof item.file==='string'?item.file.replace(/^\//, ''):'';
   const type = item.type ?? mediaType(file);

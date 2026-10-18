@@ -32,7 +32,7 @@ const slowBorder = (hex = '#a5b0df') => P('Hampered stride', ['token_border.circ
 
 export default {
   // ---------------- illusion ----------------
-  [key('0PO5mFRhh9HxGAtv')]: design('Mirror Image: three illusory images swirl about the caster\'s space. A violet swirl and a faint refraction shimmer orbit the token; Token Magic FX\'s core `images` filter draws the duplicates.', () => [
+  [key('0PO5mFRhh9HxGAtv')]: design('Mirror Image: three illusory images swirl about the caster\'s space. A violet swirl and a faint refraction shimmer orbit the token; the `images` token filter draws the duplicates.', () => [
     P('Swirling images', ['particles.swirl.purple.01.01', 'particles.swirl.greenyellow.01.01'], { scale: 1.35, opacity: 0.6, ...tint('#c9a6f0'), ...spin(9000) }),
     P('Illusory shimmer', ['condition.boon.02.001.refraction'], { scale: 1.15, opacity: 0.45 }),
   ]),

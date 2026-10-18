@@ -6,17 +6,13 @@ import { fileURLToPath } from "node:url";
 import { databaseEntries } from "./asset-databases.mjs";
 import { soundInventory } from './sound-databases.mjs';
 import {tokenPresetMetadata} from '../scripts/optional-fx.mjs';
-import {tokenFxPreviewFixture} from './token-fx-preview-fixture.mjs';
+import {PRESETS} from '../scripts/fx/presets.mjs';
 let soundLibrary;
 const modulesRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const foundryPublic =
   "C:/Program Files/Foundry Virtual Tabletop/resources/app/public";
-let tokenPresets=[];
-try {
-  const file=resolve(modulesRoot,'tokenmagic/fx/presets/defaultpresets.js');
-  const native=await import('data:text/javascript;base64,'+Buffer.from(await readFile(file,'utf8')).toString('base64'));
-  tokenPresets=native.presets.filter(p=>p.params?.length).map(p=>tokenPresetMetadata(p));
-} catch { /* Token Magic is optional in the design preview too. */ }
+// animater's own token FX presets (the design preview lists them by name).
+const tokenPresets=PRESETS.map(p=>tokenPresetMetadata(p));
 let catalog = [];
 for (const [id, file, fn, dbName, label] of [
   [
@@ -76,10 +72,6 @@ createServer(async (req, res) => {
     if(url.pathname==='/preview-pixi.mjs') {
       const path=resolve(foundryPublic,'../node_modules/pixi.js/dist/pixi.mjs');
       res.writeHead(200,{'Content-Type':'text/javascript'});createReadStream(path).pipe(res);return;
-    }
-    if(url.pathname==='/modules/animater/preview/token-fx-native-qa.mjs') {
-      res.writeHead(200,{'Content-Type':'text/javascript','Cache-Control':'no-store'});
-      res.end(await tokenFxPreviewFixture(modulesRoot));return;
     }
     if(url.pathname==='/preview-token-fx') {
       res.writeHead(200,{'Content-Type':'application/json'});
@@ -144,11 +136,12 @@ createServer(async (req, res) => {
             "animater",
             "jb2a_patreon",
             "JB2A_DnD5e",
-            "tokenmagic",
             "ggg",
             "psfx",
             "soundfxlibrary",
             "pf2e-creature-sounds",
+            // Sample token art for the FX gallery (tools/fx-gallery/index.html?art=…).
+            "pf2e-tokens-myth-and-magic",
           ].some((id) => path.startsWith(resolve(modulesRoot, id) + sep));
     if (!allowed) {
       res.writeHead(403);

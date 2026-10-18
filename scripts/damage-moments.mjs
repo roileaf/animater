@@ -31,7 +31,7 @@ const LOOKS = {
   spirit: { color: "#dfe6f2", hit: ["jb2a.impact.005.white", "jb2a.impact.003.yellow"], death: ["jb2a.smoke.puff.ring.01.white", "jb2a.impact.005.white"], after: [], label: "loses its spirit" },
 };
 export const damageLook = (type) => LOOKS[normalizeDamageType(type)] ?? null;
-// Token Magic FX on the token's own artwork, using the presets the catalogs already use.
+// Token filters on the token's own artwork, using the presets the catalogs already use.
 const FILTERS = {
   fire: { preset: "fire", tint: "#ff9b45" }, cold: { preset: "pure-ice-aura", tint: "#9cdeff" },
   electricity: { preset: "electric", tint: "#88cfff" }, acid: { preset: "fumes", tint: "#a2dc48" },

@@ -5,7 +5,7 @@ import { ConditionBody, bodyTreatment, bodyPose, shownTreatment } from "../scrip
 const token = () => ({ w: 100, mesh: { position: { x: 500, y: 300 }, rotation: 0, scale: { x: 1, y: 1 }, filters: null } });
 function runner(extra = {}) {
   let time = 0, queued = null;
-  const body = new ConditionBody({ now: () => time, frame: (cb) => (queued = cb, 1), cancel: () => (queued = null), tokenMagic: () => null, ...extra });
+  const body = new ConditionBody({ now: () => time, frame: (cb) => (queued = cb, 1), cancel: () => (queued = null), tokenFx: () => null, ...extra });
   return { body, step: (ms) => { time += ms; const cb = queued; queued = null; cb?.(); } };
 }
 
@@ -47,19 +47,20 @@ test("one-off motions take priority and petrified drains colour without moving",
   const stone = { ...token(), mesh: { ...token().mesh, tint: 0xffffff } };
   body.add("s2", stone, "stone");
   step(400);
-  assert.equal(stone.mesh.tint, 0xa39e94, "without Token Magic the sprite is tinted stone grey");
+  assert.equal(stone.mesh.tint, 0xa39e94, "without the FX engine the sprite is tinted stone grey");
   assert.deepEqual([stone.mesh.position.x, stone.mesh.rotation], [500, 0]);
   body.remove("s2");
   assert.equal(stone.mesh.tint, 0xffffff);
 });
 
-test("with Token Magic, petrified uses a transient desaturating filter", () => {
+test("petrified uses the engine's local desaturating filter, kept even with decorative FX off", () => {
   const calls = [];
-  const tokenMagic = () => ({ togglePreset: (token, preset, opts) => calls.push([preset.params[0].filterType, preset.params[0].saturation, opts.action, opts.transient]) });
-  const { body } = runner({ tokenMagic }), t = token();
+  const tokenFx = () => ({ apply: (token, preset, opts) => { calls.push(["add", preset.params[0].filterType, preset.params[0].saturation, opts.always]); return () => calls.push(["remove"]); } });
+  const { body } = runner({ tokenFx }), t = token();
   body.add("s3", t, "stone");
+  assert.equal(t.mesh.tint, undefined, "no grey tint when the filter is on");
   body.remove("s3");
-  assert.deepEqual(calls, [["adjustment", 0.08, "add", true], ["adjustment", 0.08, "remove", true]]);
+  assert.deepEqual(calls, [["add", "adjustment", 0.08, true], ["remove"]]);
 });
 
 test("two conditions on one token share a pose instead of compounding (PF2e Dying + Unconscious)", () => {

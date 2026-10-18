@@ -230,7 +230,7 @@ export class PersistentStates{
   const filters=r.bodyOnly||r.fade?[]:plan.filter(s=>s.kind==='tokenfx'&&s.persist);
   if(filters.length)await Promise.all(filters.map(async stage=>{
    try { await h.retainFx?.({...stage,destination:r.token},{session:r.name}); }
-   catch(error){h.trace?.('Skipped',`Token Magic FX: ${error.message}`);}
+   catch(error){h.trace?.('Skipped',`Token FX: ${error.message}`);}
   }));
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   if(!r.replaying)h.trace?.('Persistent',`${r.recipe.name} follows ${r.token.name??'token'} while its condition or effect lasts.`,r.recipe,{key:r.key,automatic:true,origin:this.originOf(r)});

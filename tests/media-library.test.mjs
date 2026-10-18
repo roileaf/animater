@@ -180,13 +180,13 @@ function tokenLibraryFixture() {
   f.library.choose(f.library.items.find(v=>v.type==='tokenfx').id);
   return f;
 }
-test('Token Magic metadata includes custom and region presets without inventing file assets',()=>{
+test('token FX metadata includes custom and region presets without inventing file assets',()=>{
   const rows=tokenFxAssets(fxCatalog());assert.equal(rows.length,3);
   assert.deepEqual(tokenFxAssets({...fxCatalog(),tokenReady:false}),[]);
   assert.equal(tokenFxAssets({tokenReady:true,presets:[{name:'x',library:'unknown'}]}).length,0);
   assert.equal(rows[0].file,'');assert.deepEqual(rows[0].files,[]);
   assert.equal(mediaForReference(rows,''),null);assert.equal(safeMediaFile(rows[0].id),false);
-  const fire=mediaGroups(rows,{type:'tokenfx',search:'fire',source:'Token Magic FX'});
+  const fire=mediaGroups(rows,{type:'tokenfx',search:'fire',source:'Token FX'});
   assert.equal(fire.groups.length,1);assert.equal(fire.count,2);
   assert.equal(mediaGroups(rows,{search:'custom glow'}).count,1);
   assert.equal(mediaGroups(rows,{collection:'favorites'},{favorites:[rows[2].id]}).count,1);
@@ -209,7 +209,7 @@ test('document recipe adds retained token filter only to affected token, preserv
 });
 test('preset replacement preserves timing, placement and tint and refuses to replace media stages',async()=>{
   const f=tokenLibraryFixture();
-  await assert.rejects(f.library.action('media-apply',{dataset:{}}),/Token Magic stage/);
+  await assert.rejects(f.library.action('media-apply',{dataset:{}}),/token FX stage/);
   await f.library.action('media-add',{dataset:{}});
   const s=f.draft.stages[1];Object.assign(s,{subject:'targets',delay:1200,duration:4200,fxTint:'#1188ff',catalogFx:true,fxProfile:'fire'});
   const id=f.library.items.find(v=>v.type==='tokenfx'&&v.fxLibrary==='tmfx-region').id;f.library.choose(id);
@@ -229,7 +229,7 @@ test('native filter detail previews sample artwork in the window and keeps canva
   assert.match(html,/Preset library/);assert.ok(!html.includes('<video')&&!html.includes('<audio'));
   assert.ok(!html.includes('data-media-filter="color"')&&!html.includes('data-media-filter="loop"'));
   f.w.host.fxCatalog=()=>({tokenReady:false,presets:[]});f.library.items=[];
-  assert.match(f.library.html(f.draft),/Enable Token Magic FX 0.8.4 or newer/);
+  assert.match(f.library.html(f.draft),/Turn on token filters in Animater settings/);
 });
 test('refresh drops disabled token provider but keeps its favorites and updates only library',async()=>{
   const f=tokenLibraryFixture(),id=f.library.selectedId;let updates=0;

@@ -43,7 +43,7 @@ export function installDefeatedLook(hooks,{mode,config=()=>globalThis.CONFIG,sta
 }
 
 // The lasting look: faint grey skull smoke over the token, and the body drained of colour
-// (condition-body's 'stone' treatment: Token Magic's transient desaturation, or a grey tint).
+// (condition-body's 'stone' treatment: animater's local desaturation filter, or a grey tint).
 export const DEFEATED_RECIPE=validateRecipe({id:'animater-defeated',name:'Defeated',trigger:'effect',lifecycle:'document',color:'#9aa0a6',
  description:'Faint skull smoke over a greyed body while the token stays Defeated.',
  stages:[{stageId:'defeated-smoke',label:'Skull smoke',kind:'aura',subject:'source',persist:true,

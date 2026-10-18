@@ -49,12 +49,6 @@
         "manifest": "https://github.com/olilan1/pf2e-creature-sounds/releases/latest/download/module.json"
       },
       {
-        "id": "tokenmagic",
-        "type": "module",
-        "reason": "Token filters added by catalog animations.",
-        "manifest": "https://github.com/Feu-Secret/Tokenmagic/releases/latest/download/module.json"
-      },
-      {
         "id": "fxmaster",
         "type": "module",
         "reason": "Scene weather effects added by catalog animations.",

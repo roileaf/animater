@@ -1,10 +1,12 @@
 import { uuid } from "./uuid.mjs";
-// Optional providers own their rendering. Never replace user filters/weather.
+import { normalizeLayers } from "./fx/layers.mjs";
+
+// Preset libraries a token FX stage can name: animater's token and region presets, and
+// the world's own saved presets.
+export const TOKEN_FX_LIBRARIES = ['tmfx-main', 'tmfx-region', 'animater-custom'];
+// Token filters are animater's own (scripts/fx); scene weather comes from FXMaster when
+// installed. Never replace another module's token filters or the scene's weather.
 export const OPTIONAL_FX_KINDS = new Set(['tokenfx', 'scenefx']);
-const transientVersion = version => {
-  const [major=0,minor=0,patch=0]=String(version ?? '').split('.').map(Number);
-  return major>0 || minor>8 || minor===8 && patch>=4;
-};
 const safeKey = key => /^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/.test(key) && !['constructor','prototype','__proto__'].includes(key);
 export function normalizeFxOptions(input) {
   const result = {};
@@ -22,7 +24,10 @@ export function normalizeFxStage(stage) {
   const metadata=stage.catalogFx===true?{catalogFx:true,fxProfile:typeof stage.fxProfile==='string'?stage.fxProfile.slice(0,50):''}:{};
   return {...metadata,...(stage.kind === 'tokenfx'
     ? {fxPreset:typeof stage.fxPreset === 'string' ? stage.fxPreset.slice(0,100).trim() : '',
-       fxLibrary:stage.fxLibrary === 'tmfx-region' ? 'tmfx-region' : 'tmfx-main',
+       fxLibrary:TOKEN_FX_LIBRARIES.includes(stage.fxLibrary) ? stage.fxLibrary : 'tmfx-main',
+       // The stage's own edited copy of the effect (every layer, setting and animation).
+       ...(normalizeLayers(stage.fxLayers) ? {fxLayers:normalizeLayers(stage.fxLayers)} : {}),
+       fxSpeed:Number.isFinite(Number(stage.fxSpeed))?Math.min(5,Math.max(.1,Number(stage.fxSpeed))):1,
        fxTint:/^#[\da-f]{6}$/i.test(stage.fxTint??'')?stage.fxTint:'',
        fxStrength:Number.isFinite(Number(stage.fxStrength))?Math.min(1,Math.max(.1,Number(stage.fxStrength))):1}
     : {fxCategory:stage.fxCategory === 'filter' ? 'filter' : 'particle',
@@ -42,11 +47,11 @@ function schemaFields(parameters, localize) {
     return [];
   });
 }
-export function installedFxCatalog({modules, tokenMagic, fxmaster, config, localize = value => value, isGM = false} = {}) {
-  const tokenReady = !!(modules?.get('tokenmagic')?.active && transientVersion(modules.get('tokenmagic').version) && tokenMagic?.togglePreset && tokenMagic?.getPresets);
+export function installedFxCatalog({modules, tokenFx, fxmaster, config, localize = value => value, isGM = false} = {}) {
+  const tokenReady = !!(tokenFx?.getPresets && tokenFx?.apply && tokenFx.ready?.() !== false);
   const sceneReady = !!(modules?.get('fxmaster')?.active && fxmaster?.effects?.play && fxmaster?.effects?.stop);
-  const presets = tokenReady ? ['tmfx-main','tmfx-region'].flatMap(library => {
-    try { return (tokenMagic.getPresets(library) ?? []).filter(p=>p?.name && p.params?.length && presetAssetsAvailable(p,modules)).map(p=>tokenPresetMetadata(p,library)); }
+  const presets = tokenReady ? TOKEN_FX_LIBRARIES.flatMap(library => {
+    try { return (tokenFx.getPresets(library) ?? []).filter(p=>p?.name && p.params?.length && presetAssetsAvailable(p,modules)).map(p=>tokenPresetMetadata(p,library)); }
     catch { return []; }
   }) : [];
   const effects = sceneReady ? ['particle','filter'].flatMap(category =>
@@ -57,10 +62,10 @@ export function installedFxCatalog({modules, tokenMagic, fxmaster, config, local
     })) : [];
   return {tokenReady,sceneReady,isGM,presets,effects};
 }
-// Token Magic keeps presets in world settings, so a preset can outlive the
+// A world's own Token Magic presets live in world settings, so one can outlive the
 // module that ships its sprite images (Baileywiki '[BW]' overlays). Only offer
 // presets whose image modules are active.
-// Token Magic presets have no shared opacity: each filter has its own visibility settings (alpha,
+// Presets have no shared opacity: each filter has its own visibility settings (alpha,
 // lightAlpha, glow outerStrength, aura intensity, fog density…). Strength scales every one a filter has,
 // animated ones too; filters without any (outlines, distortions, colour shifts) are unchanged.
 const ALPHA_KEY=/^(?:alpha|[a-z]+Alpha|alphaImg|alphaChr|strength|[a-z]+Strength|intensity|[a-z]+Intensity|density|bloomScale)$/;
@@ -71,13 +76,23 @@ export function scaleFilterStrength(param, strength = 1) {
     for (const end of ['val1', 'val2']) if (typeof anim[end] === 'number') anim[end] *= strength;
   return param;
 }
+// A private copy of a preset with the stage's tint and strength applied.
+export function tintedPreset(preset, stage = {}) {
+  const own=structuredClone(stage.fxLayers?.length?{...preset,name:preset?.name??'custom',params:stage.fxLayers}:preset);
+  const tint=/^#[\da-f]{6}$/i.test(stage.fxTint??'')?Number.parseInt(stage.fxTint.slice(1),16):null;
+  for(const param of own.params??[]) {
+    if(tint!==null&&typeof param.color==='number') {param.color=tint;if(param.animated)delete param.animated.color;}
+    scaleFilterStrength(param,stage.fxStrength);
+  }
+  return own;
+}
 export function presetAssetsAvailable(preset, modules) {
   return (preset.params ?? []).every(p => {
     const id = /^modules\/([^/]+)\//.exec(String(p?.imagePath ?? ''))?.[1];
     return !id || !!modules?.get?.(id)?.active;
   });
 }
-// Discovery exposes metadata only. Native shader parameters stay with Token Magic.
+// Discovery exposes metadata only; shader parameters stay with the FX engine.
 export function tokenPresetMetadata(preset, library = preset.library) {
   return {name:preset.name,library,
     filterTypes:[...new Set((preset.params??[]).map(p=>p.filterType).filter(type=>typeof type==='string'&&safeKey(type)))],
@@ -97,8 +112,8 @@ export function startTokenFxPreview(player, stage, {tokens, userId, session = uu
 }
 export function fxAvailability(stage, catalog, {preview = false} = {}) {
   if (stage.kind === 'tokenfx') {
-    if (!catalog?.tokenReady) return 'Token Magic FX unavailable';
-    if (!catalog.presets.some(p=>p.name===stage.fxPreset && p.library===(stage.fxLibrary ?? 'tmfx-main'))) return 'Choose a Token Magic preset';
+    if (!catalog?.tokenReady) return 'Token FX unavailable';
+    if (!stage.fxLayers?.length && !catalog.presets.some(p=>p.name===stage.fxPreset && p.library===(stage.fxLibrary ?? 'tmfx-main'))) return 'Choose a token FX preset';
   } else if (stage.kind === 'scenefx') {
     if (!catalog?.sceneReady) return 'FXMaster unavailable';
     if (!catalog.effects.some(e=>e.type===stage.fxType && e.category===(stage.fxCategory ?? 'particle'))) return 'Choose an FXMaster effect';
@@ -124,24 +139,11 @@ export function effectOptions(stage, effect) {
 export class OptionalFxPlayer {
   constructor(host) { this.host=host; this.active=new Set(); }
   async addTokenFilter(stage) {
-    const api=this.host.tokenMagic();
+    const api=this.host.tokenFx();
     const preset=api.getPresets(stage.fxLibrary??'tmfx-main').find(p=>p.name===stage.fxPreset);
-    const token=stage.destination,sprite=(token?.document??token)?.object;
-    if(!preset?.params?.length||!sprite)return ()=>{};
-    const own=structuredClone(preset),ids=new Map();
-    for(const param of own.params) {
-      if(!ids.has(param.filterId))ids.set(param.filterId,`animater-${uuid()}`);
-      param.filterId=ids.get(param.filterId);
-      if(/^#[\da-f]{6}$/i.test(stage.fxTint??'')&&typeof param.color==='number') {
-        param.color=Number.parseInt(stage.fxTint.slice(1),16);
-        if(param.animated)delete param.animated.color;
-      }
-      scaleFilterStrength(param,stage.fxStrength);
-    }
-    const remove=()=>api.togglePreset(token,own,{action:'remove',transient:true});
-    try { await api.togglePreset(token,own,{action:'add',transient:true}); }
-    catch(error) { await remove();throw error; }
-    return remove;
+    const placeable=(stage.destination?.document??stage.destination)?.object;
+    if(!(preset?.params?.length||stage.fxLayers?.length)||!placeable)return ()=>{};
+    return api.apply(placeable,tintedPreset(preset??{name:stage.fxPreset},stage),{speed:stage.fxSpeed??1});
   }
   async retain(stage,{session,userId}={}) {
     if(stage.kind!=='tokenfx')throw Error('Only token filters can last while a condition or effect is on the token.');
