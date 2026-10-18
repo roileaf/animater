@@ -21,9 +21,9 @@ export function liveCatalogFx() {
 const slug = entry => String(entry.slug??entry.identifier??entry.name??'').toLowerCase()
   .replace(/^(?:spell[ -])?effect[ -:]*/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 const bodyProfiles = {
-  fire:{preset:'fire',tint:'#ff9b45'},  // '[BW] …' presets are registered by the optional Baileywiki modules, not Token
-  // Magic FX itself; without them the core frost aura plays instead.
-  cold:{preset:'[BW] Overlay Cold Ice',fallback:'pure-ice-aura',tint:'#9cdeff'},
+  fire:{preset:'fire',tint:'#ff9b45'},
+  // Cold: frost creeping over the body (Tokenshade's own); the ice aura if a world lacks it.
+  cold:{preset:'Frostbitten',fallback:'pure-ice-aura',tint:'#9cdeff'},
   // Acid and poison glow on the body's outline. The fumes and smoke presets lay a fog over the whole token
   // art in overlay blending and have no transparency setting, so even Strength 0.1 left the face buried.
   electricity:{preset:'electric',tint:'#88cfff'},acid:{preset:'glow',tint:'#a2dc48'},

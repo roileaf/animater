@@ -9,6 +9,9 @@ const SELECTS = {
   blend: Object.fromEntries(BLEND_MODES.map((label, i) => [i, label])),
   shieldType: { 1: 'Fire', 2: 'Hexagons', 3: 'Smoke', 4: 'Stone plates', 5: 'Stone crown', 6: 'Wind', 7: 'Arcane runes', 8: 'Soap film', 9: 'Water', 10: 'Plasma', 11: 'Grid', 12: 'Warped space', 13: 'Colour swirl' },
   auraType: { 1: 'Cold (soft)', 2: 'Hot (licking)' },
+  materialType: { 1: 'Stone', 2: 'Ice', 3: 'Iron', 4: 'Gold', 5: 'Crystal', 6: 'Bark' },
+  bindType: { 1: 'Vines', 2: 'Net', 3: 'Chains', 4: 'Ropes' },
+  baseType: { 1: 'Disc', 2: 'Ring', 3: 'Pulse', 4: 'Rune circle' },
 };
 const TYPE_SELECTS = {
   colorGradient: { type: { 0: 'Linear', 1: 'Radial', 2: 'Conic' } },
@@ -19,7 +22,7 @@ const HIDDEN = new Set(['time', 'seed', 'padding']);
 
 // [pattern, min, max, step] — first match wins.
 const RANGES = [
-  [/^(?:alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|density|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon)$/, 0, 1, 0.01],
+  [/^(?:amount|snow|cracks|tightness|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon)$/, 0, 1, 0.01],
   [/^(?:anchor|pivot|center|offset)[XY]$/, -0.5, 1.5, 0.01],
   [/^translation[XY]$/, -1, 1, 0.01],
   [/^(?:scale[XY]|maskSpriteScale[XY])$/, 0.05, 10, 0.05],
@@ -33,6 +36,7 @@ const RANGES = [
   [/^(?:frequency|wavelength)$/, 1, 600, 1],
   [/^(?:speed)$/, 0, 200, 1],
   [/^(?:radius)$/, -1, 3, 0.05],
+  [/^(?:grain|density)$/, 0.1, 6, 0.05],
   [/^(?:scale)$/, 0.05, 400, 0.05],
   [/^(?:size[XY]?|lineWidth|noiseSize|scratchWidth)$/, 0.5, 64, 0.5],
   [/^(?:nbImage|div1|div2|divisor|splashFactor|gridPadding)$/, 0, 64, 1],
@@ -83,7 +87,7 @@ export const FILTER_LABELS = {
   smoke: 'Smoke', flood: 'Water', images: 'Mirror images', field: 'Force field', xray: 'Sun rays', liquid: 'Liquid', xglow: 'Living aura',
   pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash',
   polymorph: 'Polymorph', xfire: 'Magic fire', sprite: 'Image overlay', spriteMask: 'Image mask', replaceColor: 'Replace colour',
-  ddTint: 'Map tint', rgbSplit: 'RGB split',
+  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', base: 'Ground marker',
 };
 export const filterLabel = type => FILTER_LABELS[type] ?? words(type);
 export const FILTER_CHOICES = Object.fromEntries(Object.keys(SPECS).map(t => [t, filterLabel(t)]).sort((a, b) => a[1].localeCompare(b[1])));

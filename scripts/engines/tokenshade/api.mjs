@@ -25,8 +25,11 @@ export function tokenFxApi({ engine = new TokenFxEngine(), tokenMagic = () => gl
       const tm = tokenMagic();
       if (!modules()?.get?.('tokenmagic')?.active || typeof tm?.getPresets !== 'function') return own;
       const names = new Set(own.map(p => p.name));
+      // Presets other modules ship into Token Magic (Baileywiki's '[BW] …' set) are theirs, not
+      // the world's own work: Tokenshade has its own takes on those looks.
+      const foreign = name => /^\[?BW\]?\s/i.test(name);
       let world = [];
-      try { world = (tm.getPresets(library) ?? []).filter(p => p?.name && Array.isArray(p.params) && !names.has(p.name)).map(p => ({ ...p, library })); }
+      try { world = (tm.getPresets(library) ?? []).filter(p => p?.name && Array.isArray(p.params) && !names.has(p.name) && !foreign(p.name)).map(p => ({ ...p, library })); }
       catch { /* Token Magic's settings unavailable: animater's own presets still play. */ }
       return world.length ? [...own, ...world] : own;
     },

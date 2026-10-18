@@ -157,6 +157,60 @@ export const PRESETS = [
   region('Flames 4 (colorizable)', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, inlay: false })),
   region('Flames 5 (colorizable)', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, inlay: false, alphaDiscard: true, discardThreshold: 0.35 })),
   region('Flames 6 (colorizable)', timed('xfire', 1, { color: 0, blend: 1, amplitude: 1, dispersion: 0, inlay: false, alphaDiscard: true, discardThreshold: 0.35 }), F('blur', { blur: 0.6 })),
+
+  // ── animater originals: creature states and looks Token Magic had no answer for ──
+  // Grounding and elevation
+  token('Grounded Shadow', F('shadow', { rotation: 90, distance: 5, blur: 3, alpha: 0.55, color: 0x0a0806 })),
+  token('Long Shadow', F('shadow', { rotation: 40, distance: 22, blur: 5, alpha: 0.45, color: 0x0a0806 })),
+  token('Levitate', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationY: cos(0, -0.07, 2600, false) }),
+    F('shadow', { rotation: 90, blur: 6, alpha: 0.4, color: 0x050505 }, { distance: cos(6, 16, 2600, false), alpha: cos(0.45, 0.28, 2600, false) })),
+  token('Gentle Sway', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-3, 3, 4200, false) })),
+  token('Hanging Swing', F('transform', { pivotX: 0.5, pivotY: 0.02 }, { rotation: sin(-9, 9, 2600, false) })),
+  // Elemental channelling: power gathered in the body
+  token('Channel: Searing', timed('xfire', 1.4, { color: 0xff6a1a, blend: 1, amplitude: 0.55, inlay: false, scaleX: 1.2, scaleY: 1 }), F('glow', { outerStrength: 2.5, distance: 12, color: 0xff7a22 }, { outerStrength: cos(1.8, 3.4, 1800) })),
+  token('Channel: Frigid', timed('xfire', 0.8, { color: 0x7fd4ff, blend: 1, amplitude: 0.5, inlay: false }), timed('frost', 1, { amount: 0.35, snow: 0, color: 0xcfeaff })),
+  token('Channel: Arcane', timed('xfire', 1, { color: 0xa070ff, blend: 1, amplitude: 0.55, inlay: false, chromatic: false }), timed('electric', 0.6, { color: 0xd9c4ff, intensity: 2.5 })),
+  token('Channel: Venom', timed('xfire', 0.9, { color: 0x7dd94a, blend: 1, amplitude: 0.5, inlay: false }), timed('fumes', 0.8, { color: 0x6fbf3a, blend: 2, alpha: 0.7 })),
+  token('Arcane Charge', F('zapshadow', { alphaTolerance: 0.5 }), timed('xglow', 1, { auraType: 1, color: 0x8a6bff, thickness: 3, scale: 3, auraIntensity: 1.6, subAuraIntensity: 0.8, threshold: 0.3 }),
+    timed('electric', 1, { color: 0xcdb8ff, intensity: 3 })),
+  // Motes around the creature
+  token('Ember Motes', timed('globes', 1.3, { color: 0xff8a2a, distortion: 0.5, scale: 60, alphaDiscard: false }), F('glow', { outerStrength: 1.5, distance: 10, color: 0xff6a1a })),
+  token('Pixie Motes', timed('globes', 0.9, { color: 0xffe08a, distortion: 0.8, scale: 70, alphaDiscard: false })),
+  // Turned into a material
+  token('Petrified', timed('material', 1, { materialType: 1, strength: 1, cracks: 0.6 })),
+  token('Frozen Solid', timed('material', 1, { materialType: 2, strength: 0.9, cracks: 0.5 }), timed('frost', 1, { amount: 0.55, snow: 0.35 })),
+  token('Gilded', timed('material', 1, { materialType: 4, strength: 1, cracks: 0 })),
+  token('Ironskin', timed('material', 1, { materialType: 3, strength: 0.85, cracks: 0.15 })),
+  token('Crystallized', timed('material', 1, { materialType: 5, strength: 0.9, cracks: 0 }), F('glow', { outerStrength: 1.5, distance: 8, color: 0xb9a0ff })),
+  token('Barkskin', timed('material', 1, { materialType: 6, strength: 0.75, cracks: 0 })),
+  // Cold, drained, washed out
+  token('Frostbitten', timed('frost', 1, { amount: 0.45, snow: 0.2 })),
+  token('Snowed Over', timed('frost', 1, { amount: 0.3, snow: 0.95 })),
+  token('Drained Colour', F('adjustment', { saturation: 0.25, brightness: 0.92, contrast: 0.95 })),
+  token('Wintry Pallor', F('adjustment', { saturation: 0.45, brightness: 1.05, red: 0.88, green: 0.97, blue: 1.12 })),
+  // Held fast
+  token('Entangled', timed('bindings', 0.6, { bindType: 1, thickness: 1.1, density: 1.5, tightness: 0.6 })),
+  token('Netted', timed('bindings', 0.4, { bindType: 2, thickness: 0.8, density: 1 })),
+  token('Chained', timed('bindings', 0.5, { bindType: 3, thickness: 1.2, density: 1, tightness: 0.4 })),
+  token('Bound', timed('bindings', 0.3, { bindType: 4, thickness: 1.1, density: 1 })),
+  // Grime and wounds
+  token('Mud-Caked', F('splash', { color: 0x4a3622, seed: 0.23, splashFactor: 7, spread: 14, cut: true }), F('splash', { color: 0x3b2a1a, seed: 0.71, splashFactor: 4, spread: 8, cut: true }),
+    F('adjustment', { saturation: 0.8, brightness: 0.9 })),
+  token('Scorched', F('adjustment', { saturation: 0.5, brightness: 0.7, contrast: 1.15, red: 1.05, green: 0.9, blue: 0.82 }), timed('xfire', 0.3, { color: 0x2a0d04, blend: 11, amplitude: 0.6, inlay: true }),
+    timed('globes', 0.6, { color: 0xff6a1a, distortion: 0.3, scale: 30, alphaDiscard: true })),
+  token('Blood-Soaked', F('splash', { color: 0x6e0505, seed: 0.42, splashFactor: 6, spread: 12, cut: true }), F('splash', { color: 0x8a0a0a, seed: 0.88, splashFactor: 3, spread: 6, cut: true })),
+  token('Molten', timed('xfire', 1.2, { color: 0xff4a10, blend: 5, amplitude: 1, inlay: true }), F('xbloom', { threshold: 0.4, bloomScale: 1.4, brightness: 1.05, blur: 2 }, { bloomScale: cos(0.9, 1.8, 2200) })),
+  // Surroundings
+  token('Submerged', F('distortion', { amount: 4, maskSpriteScaleX: 3, maskSpriteScaleY: 3 }, { maskSpriteX: { animType: 'move', speed: 0.02 }, maskSpriteY: { animType: 'move', speed: 0.015 } }),
+    F('adjustment', { saturation: 0.75, brightness: 0.9, red: 0.75, green: 0.95, blue: 1.15 }), timed('flood', 0.6, { color: 0x1a6fd6, billowy: 0.2, tintIntensity: 0.2, glint: 0.15, scale: 90 })),
+  token('Far Away', F('blur', { blur: 1.6 }), F('adjustment', { saturation: 0.7, contrast: 0.85, brightness: 1.05 })),
+  // Markers on the ground
+  token('Marker: Ally', timed('base', 1, { baseType: 3, color: 0x44dd66, radius: 0.53, alpha: 0.85 })),
+  token('Marker: Caution', timed('base', 1, { baseType: 3, color: 0xffcc33, radius: 0.53, alpha: 0.85 })),
+  token('Marker: Foe', timed('base', 1, { baseType: 3, color: 0xff4040, radius: 0.53, alpha: 0.85 })),
+  token('Marker: Ring', F('base', { baseType: 2, color: 0xffffff, radius: 0.53, alpha: 0.7 })),
+  token('Marker: Disc', F('base', { baseType: 1, color: 0x4aa3ff, radius: 0.52, alpha: 0.6 })),
+  token('Rune Circle', timed('base', 1, { baseType: 4, color: 0xb48cff, radius: 0.62, alpha: 0.85 })),
 ];
 
 // The library is shared: nothing may change it. Callers clone before tinting or scaling.

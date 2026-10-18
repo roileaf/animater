@@ -202,12 +202,12 @@ test('derived in-memory conditions without a stored item do not tie to a missing
   assert.equal(storedStateDocument({ id: 'derived', uuid: 'Actor.a.Item.derived', parent: actor }), null);
 });
 
-test('cold area spells freeze caught creatures with the ice overlay, falling back to the core frost preset', async () => {
+test('cold area spells frost caught creatures, falling back to the ice aura preset', async () => {
   const { PF2E_SPELLS, spellRecipe } = await import('../../scripts/catalogs/pf2e/spells/spell-catalog.mjs');
   const spell = PF2E_SPELLS.find(s => s.name === 'Cone of Cold');
   const fxOf = presets => spellRecipe(spell, undefined, { fxCatalog: { tokenReady: true, sceneReady: false, presets: presets.map(name => ({ name, library: 'tmfx-main' })) } }).stages.find(s => s.kind === 'tokenfx');
-  const rich = fxOf(['[BW] Overlay Cold Ice', 'pure-ice-aura']);
-  assert.equal(rich.fxPreset, '[BW] Overlay Cold Ice');
+  const rich = fxOf(['Frostbitten', 'pure-ice-aura']);
+  assert.equal(rich.fxPreset, 'Frostbitten');
   assert.equal(rich.subject, 'targets');
   assert.equal(fxOf(['pure-ice-aura']).fxPreset, 'pure-ice-aura');
   assert.equal(fxOf([]), undefined);

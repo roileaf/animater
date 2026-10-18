@@ -117,7 +117,8 @@ if (sheet !== null) {
   world.visible = false; grid.visible = false;
   document.body.style.gridTemplateColumns = "0 1fr"; app.resize();
   const per = +(params.get("per") ?? 20), cols = +(params.get("cols") ?? 5), rows = Math.ceil(per / cols);
-  const page = PRESETS.slice(+sheet * per, +sheet * per + per);
+  const start = params.has("from") ? +params.get("from") : +sheet * per;
+  const page = PRESETS.slice(start, start + per);
   const cells = new PIXI.Container();
   app.stage.addChild(cells);
   const all = [];

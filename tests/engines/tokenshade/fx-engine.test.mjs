@@ -11,14 +11,17 @@ class Filter {constructor(vertex,fragment,uniforms){this.uniforms=uniforms;this.
 const PIXI={Filter,Texture:{EMPTY:{}}};
 
 test('every Token Magic filter type and animation type has an animater implementation',()=>{
+  assert.ok(['material','frost','bindings','base'].every(t=>specFor(t)),'Tokenshade originals');
   const tmfx=['adjustment','ascii','dot','distortion','crt','oldfilm','glow','outline','colorGradient','bevel','xbloom','shadow','twist','zoomblur','blur','bulgepinch','zapshadow','ray','fog','xfog','electric','wave','shockwave','fire','fumes','smoke','flood','images','field','xray','liquid','xglow','pixel','web','ripples','globes','transform','splash','polymorph','xfire','sprite','spriteMask','replaceColor','ddTint','rgbSplit'];
   assert.deepEqual(tmfx.filter(t=>!specFor(t)),[]);
   assert.equal(ANIM_TYPES.length,18);
   for(const type of ANIM_TYPES)assert.ok(normalizeAnim({animType:type}).animType,type);
 });
-test('the built-in library has all 116 presets under their original names, every filter known',()=>{
-  assert.equal(PRESETS.length,116);
-  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,71);
+test('the built-in library has all 116 Token Magic preset names plus Tokenshade originals, every filter known',()=>{
+  assert.equal(PRESETS.length,154);
+  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,109);
+  for(const name of ['Petrified','Frozen Solid','Entangled','Chained','Netted','Levitate','Marker: Foe','Rune Circle','Frostbitten','Submerged'])assert.ok(builtinPreset(name),name);
+  assert.ok(!PRESETS.some(p=>/BW/.test(p.name)),'no Baileywiki names');
   assert.equal(PRESETS.filter(p=>p.library===LIBRARY.REGION).length,45);
   for(const p of PRESETS)for(const f of p.params)assert.ok(specFor(f.filterType),`${p.name}: ${f.filterType}`);
   for(const name of ['fire','glow','electric','blur','distortion','images','spectral-body','warp-field','fire-aura','zoomblur','pure-ice-aura','smoke','fumes'])
@@ -95,9 +98,10 @@ test('presets with unknown or disabled filters still show the rest',()=>{
 });
 test('a world’s own Token Magic presets are offered only under names animater does not use',()=>{
   const custom={name:'My ward',params:[{filterType:'glow'}]},clash={name:'fire',params:[{filterType:'glow'}]};
-  const api=tokenFxApi({engine:new TokenFxEngine({PIXI}),tokenMagic:()=>({getPresets:()=>[custom,clash]}),modules:()=>new Map([['tokenmagic',{active:true}]])});
+  const bw=[{name:'[BW] Overlay Cold Ice',params:[{filterType:'sprite'}]},{name:'BW Turn to Stone',params:[{filterType:'adjustment'}]}];
+  const api=tokenFxApi({engine:new TokenFxEngine({PIXI}),tokenMagic:()=>({getPresets:()=>[custom,clash,...bw]}),modules:()=>new Map([['tokenmagic',{active:true}]])});
   const names=api.getPresets('tmfx-main').map(p=>p.name);
-  assert.ok(names.includes('My ward'));assert.equal(names.filter(n=>n==='fire').length,1);
+  assert.ok(names.includes('My ward'));assert.ok(!names.some(n=>/BW/.test(n)),'Baileywiki presets are not offered');assert.equal(names.filter(n=>n==='fire').length,1);
   assert.equal(api.getPresets('tmfx-main').find(p=>p.name==='fire'),PRESETS.find(p=>p.name==='fire'),'ours wins');
   const off=tokenFxApi({engine:new TokenFxEngine({PIXI}),tokenMagic:()=>({getPresets:()=>[custom]}),modules:()=>new Map()});
   assert.ok(!off.getPresets('tmfx-main').some(p=>p.name==='My ward'),'only while Token Magic is active');
