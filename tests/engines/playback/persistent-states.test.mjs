@@ -251,10 +251,19 @@ test('the selected Dazzled token sees everyone else as Concealed; Blinded change
  assert.deepEqual(perceivedStates(['dazzled'],other,null),[]);
  const [seen]=perceivedStates(['dazzled'],other,me);assert.deepEqual(shownStates([seen]),[seen],'the stand-in itself still shows');
 });
-test('Dazzled keeps its token motion but draws nothing on the token',async()=>{
+test('Dazzled animates its own token too (JB2A layer and motion), not only how others look',async()=>{
  const entry=PF2E_CONDITIONS.find(e=>e.slug==='dazzled'),f=fixture([native(entry)]),bodies=[];f.manager.host.body={add:(...a)=>bodies.push(a),remove:()=>{}};
  await f.manager.reconcile();await flush();
- assert.equal(f.calls.filter(c=>c[0]==='file').length,0);assert.equal(bodies.length,1);
+ assert.ok(f.calls.filter(c=>c[0]==='file').length>0);assert.equal(bodies.length,1);
+ await f.manager.destroy();
+});
+test('Dazzled shows its own Tokenshade look on the token',async()=>{
+ const entry=PF2E_CONDITIONS.find(e=>e.slug==='dazzled'),f=fixture([native(entry)]),retained=[];
+ f.token.mesh={uid:1};f.manager.host.body={add:()=>{},remove:()=>{}};
+ f.manager.host.resolveStateRecipe=()=>stateRecipe(entry,{fxCatalog:{...stateFxCatalog,presets:[{name:'Dazzled',library:'tokenshade'}]}});
+ f.manager.host.retainFx=async stage=>{retained.push(stage.fxPreset);};
+ await f.manager.reconcile();await flush();
+ assert.deepEqual(retained,['Dazzled']);assert.equal(f.calls.filter(c=>c[0]==='file').length,0);
  await f.manager.destroy();
 });
 test('a perceived Concealed plays tied to the token only, never to its missing stand-in document',async()=>{

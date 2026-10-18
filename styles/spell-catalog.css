@@ -513,6 +513,8 @@
 .animater .an-catalog-controls > .an-catalog-automation b { overflow: visible; }
 .animater .an-catalog-controls .an-sound-settings > div { flex: 0 0 auto; }
 .animater .an-catalog-controls .an-sound-settings > button { flex: 0 0 auto; }
+/* Conditions catalogs carry four switches: cards wrap to a second line rather than clip. */
+.animater .an-catalog-controls { flex-wrap: wrap; }
 
 /* Per-card exclude toggle. */
 .animater .an-card-slot { position: relative; min-width: 0; }

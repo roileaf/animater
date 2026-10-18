@@ -121,7 +121,7 @@ test('lasting conditions show a quiet Tokenshade look instead of JB2A, or JB2A o
  const cond=slug=>PF2E_CONDITIONS.find(e=>e.slug===slug);
  const petrified=stateRecipe(cond('petrified'),{fxCatalog:shade});
  assert.deepEqual(petrified.stages.filter(s=>!['sound','motion'].includes(s.kind)).map(s=>[s.kind,s.fxPreset,s.persist,s.fxEssential]),[['tokenfx','Petrified',true,true]]);
- assert.equal(stateRecipe(cond('frightened'),{fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx').fxPreset,'Wintry Pallor');
+ assert.equal(stateRecipe(cond('frightened'),{fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx').fxPreset,'Trembling');
  const fire=stateRecipe(cond('persistent-damage'),{damageType:'fire',fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx');
  assert.equal(fire.fxPreset,'Burning');assert.equal(fire.fxStrength,.6);
  assert.equal(stateRecipe(cond('stunned'),{fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx').fxPreset,'Dazed');

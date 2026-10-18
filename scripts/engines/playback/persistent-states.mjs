@@ -73,10 +73,9 @@ export function grantedByOtherAura(item,token){const origin=item?.flags?.pf2e?.a
 // Blinded, whose darkness cloud would cover the sleeping token and its sleep symbol.
 const IMPLIED={blinded:['unconscious']};
 // Conditions about how a creature perceives others are shown through the others: select a Dazzled
-// token and everyone else looks Concealed to you. The Dazzled token keeps only its own motion.
+// token and everyone else looks Concealed to you. The Dazzled token shows its own animation too.
 export const PERCEPTION={dazzled:'concealed'};
 const stateKey=i=>String(slug(i)??'').toLowerCase();
-export const motionOnly=i=>i.type==='condition'&&!i.animaterPerceived&&!!PERCEPTION[stateKey(i)];
 // "Play once, then fade" effects: shown for this long when applied, never replayed for an effect that was
 // already on the token (a reload or scene change), since it only counts as applied within APPLIED_WINDOW.
 export const FADE_MS=3000;
@@ -156,7 +155,7 @@ export class PersistentStates{
      const kind=h.stateKind?.(item)??item.type,state=item.animaterRecipe?BUILTIN_STATE:(h.normalizeState??normalizeStateCatalogState)(h.state(kind)),recipe=item.animaterRecipe??(h.resolveStateRecipe??resolveStateRecipe)(item,state,saved,h.catalog(),{customEnabled:h.customEnabled?.()??true});if(!recipe||!recipe.stages.some(s=>['aura','tokenfx'].includes(s.kind)&&s.persist))continue;
      const signature=JSON.stringify([recipe,state.opacity,tokenFootprint(token,h.gridSize()),token.mechanicalBounds?.width,token.mesh?.uid,token.document?.texture?.src,h.gridDistance?.()??5,(h.storedDocument??storedStateDocument)(item),item.uuid,item.system?.badge?.value,item.value??item.system?.value?.value,item.system?.persistent?.damageType,grantedByOtherAura(item,token)]);
      const mode=h.lastingMode?.(),fade=item.animaterRecipe?state.fade===true:lastingFade(state.fade,mode),turn=!item.animaterRecipe&&fade&&lastingTurn(state,mode);
-     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(motionOnly(item)?'body':'')+(fade?'fade':'')+(turn?'turn':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,bodyOnly:motionOnly(item),fade,turn,quiet:fade&&!justApplied(item)});shown++;}
+     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,quiet:fade&&!justApplied(item)});shown++;}
     }
    }
    // Removed, its next application animates again.
@@ -200,7 +199,7 @@ export class PersistentStates{
   // The token can be deleted (a defeated creature removed) or the scene left while this draw was queued;
   // tying to it then fails in Sequencer with an error per layer. The next reconcile ends the record.
   if(h.tokenAlive&&!h.tokenAlive(r.token))return;
-  const shown=r.bodyOnly?[]:granted?allyCopy:lasting;
+  const shown=granted?allyCopy:lasting;
   const budget=h.budget?.()??{layers:Infinity},level=levelIntensity(conditionLevel(r.item)),maxLayers=granted?Math.min(shown.length,budget.layers):budget.layers,offset=r.offset??0;
   let layers=0;
   // The under-the-token rule fixes built-in designs; a recipe someone saved keeps its own Below tokens choice.
@@ -230,7 +229,7 @@ export class PersistentStates{
   if(r.cancelled||this.closed)return;
   // Token filters last with the state. A condition's own look (fxEssential) also plays when the state is
   // set to play once, briefly, and grows with the condition's value.
-  const filters=r.bodyOnly?[]:plan.filter(s=>s.kind==='tokenfx'&&s.persist&&(!r.fade||s.fxEssential));
+  const filters=plan.filter(s=>s.kind==='tokenfx'&&s.persist&&(!r.fade||s.fxEssential));
   const lookStrength=conditionLookStrength(conditionLevel(r.item));
   const releases=filters.length?await Promise.all(filters.map(async stage=>{
    try { return await h.retainFx?.({...stage,...(stage.fxEssential?{fxStrength:(stage.fxStrength??1)*lookStrength}:{}),destination:r.token},{session:r.name}); }
