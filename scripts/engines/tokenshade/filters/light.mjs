@@ -112,11 +112,11 @@ void main() {
 
 const shadow = {
   type: 'shadow', order: 150,
-  defaults: { rotation: 45, distance: 8, blur: 3, alpha: 0.6, color: 0x000000, shadowOnly: false },
+  defaults: { rotation: 45, distance: 8, blur: 3, alpha: 0.6, color: 0x000000, shadowOnly: false, stretch: 0 },
   uniforms: {
     uOffset: ['vec2', p => [Math.cos(deg(p.rotation)) * f(p.distance), Math.sin(deg(p.rotation)) * f(p.distance)]],
     uBlur: ['float', p => clamp(p.blur, 0, 40) * 2.2 + 0.5], uColor: ['vec3', p => rgb(p.color)],
-    uAlpha: ['float', p => clamp(p.alpha, 0, 1)], uOnly: ['bool', p => p.shadowOnly === true],
+    uAlpha: ['float', p => clamp(p.alpha, 0, 1)], uOnly: ['bool', p => p.shadowOnly === true], uStretch: ['float', p => clamp(p.stretch, 0, 1)],
   },
   reach: p => Math.abs(f(p.distance)) + clamp(p.blur, 0, 40) * 2.2 + 3,
   glsl: `
@@ -126,7 +126,9 @@ void main() {
   for (int k = 0; k < 20; k++) {
     float r = uBlur * sqrt((float(k) + 0.5) / 20.0);
     float ang = d + float(k) * 2.39996;
-    acc += fxAlphaAt(-uOffset + vec2(cos(ang), sin(ang)) * r);
+    // stretch smears the shadow back along its offset, like one cast by a low sun.
+    float along = 1.0 - uStretch * fract(float(k) * 0.618 + d * 0.159);
+    acc += fxAlphaAt(-uOffset * along + vec2(cos(ang), sin(ang)) * r);
   }
   float a = acc / 20.0 * uAlpha;
   if (uOnly > 0.5) { gl_FragColor = vec4(uColor * a, a); return; }

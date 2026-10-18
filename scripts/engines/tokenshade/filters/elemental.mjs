@@ -235,13 +235,15 @@ void main() {
 };
 
 // Smoke clinging to the body and drifting up (sinking when time runs backward).
+// ground keeps it low: a layer lying around the feet.
 const smoke = {
   type: 'smoke', order: 780,
-  defaults: { color: 0x9a9a9a, time: 0, blend: 2, dimX: 1, dimY: 1, alpha: 1 },
+  defaults: { color: 0x9a9a9a, time: 0, blend: 2, dimX: 1, dimY: 1, alpha: 1, ground: false },
   timeScale: 1 / 9 * 2.2,
   uniforms: {
     uColor: ['vec3', p => rgb(p.color)], uBlend: blendU,
     uDim: ['vec2', p => [clamp(p.dimX, 0.05, 10), clamp(p.dimY, 0.05, 10)]], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
+    uGround: ['bool', p => p.ground === true],
   },
   reach: (p, c) => c.size * 0.35,
   // x: art below and around.
@@ -256,8 +258,10 @@ void main() {
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.35) * vec2(1.0 / max(uDim.x, 0.2), 1.0 / max(uDim.y, 0.2)) * 0.7;
   float t = uTime;
-  float n = warped(q + vec2(0.0, t * 0.8), t * 0.6);
+  // Ground smoke rolls sideways instead of rising.
+  float n = warped(q + (uGround > 0.5 ? vec2(t * 0.5, 0.0) : vec2(0.0, t * 0.8)), t * 0.6);
   float density = smoothstep(0.35, 0.85, n) * fuel;
+  if (uGround > 0.5) density = smoothstep(0.25, 0.75, n) * smoothstep(-0.1, 0.55, fxCanvas().y / R) * fuel;
   // Thin over the art so the creature stays readable; thicker around it.
   float a = density * mix(0.85, 0.4, base.a) * uAlpha;
   vec3 col = uColor * (0.75 + 0.45 * n);
@@ -265,12 +269,13 @@ void main() {
 }`,
 };
 
-// Fine filaments of vapour weaving around the edges.
+// Fine filaments of vapour weaving around the edges. rise 0..1 draws them out into thin,
+// tall wisps climbing quickly.
 const fumes = {
   type: 'fumes', order: 780,
-  defaults: { color: 0x808080, time: 0, blend: 8, alpha: 1 },
+  defaults: { color: 0x808080, time: 0, blend: 8, alpha: 1, rise: 0 },
   timeScale: 1,
-  uniforms: { uColor: ['vec3', p => rgb(p.color)], uBlend: blendU, uAlpha: ['float', p => clamp(p.alpha, 0, 1)] },
+  uniforms: { uColor: ['vec3', p => rgb(p.color)], uBlend: blendU, uAlpha: ['float', p => clamp(p.alpha, 0, 1)], uRise: ['float', p => clamp(p.rise, 0, 1)] },
   reach: (p, c) => c.size * 0.25,
   // x: art around, y: depth inside it.
   field: { phases: 2, glsl: `${SILHOUETTE}
@@ -281,12 +286,14 @@ void main() {
   vec4 shape = fxField();
   if (shape.x < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
-  vec2 q = fxCanvas() / (R * 0.3);
+  vec2 q = fxCanvas() / (R * 0.3) * vec2(1.0 + uRise * 0.6, 1.0 / (1.0 + 2.5 * uRise));
   float t = uTime;
-  vec2 w = vec2(fbm3(q * 0.5 + t * 0.15), fbm3(q * 0.5 - t * 0.12 + 3.0));
-  float n = fbm3(q * 0.7 + w * 1.6 + vec2(0.0, t * 0.35));
+  vec2 w = vec2(fbm3(q * 0.5 + t * 0.15), fbm3(q * 0.5 - t * 0.12 + 3.0)) * vec2(1.0, 1.0 - 0.6 * uRise);
+  float n = fbm3(q * 0.7 + w * 1.6 + vec2(0.0, t * (0.35 + 1.2 * uRise)));
   float strands = 1.0 - abs(n) * 3.0;
-  float fil = smoothstep(0.6, 0.97, strands) * (0.5 + 0.5 * gnoise(q * 0.4 + t * 0.1));
+  float fil = smoothstep(mix(0.6, 0.8, uRise), 0.97, strands) * (0.5 + 0.5 * gnoise(q * 0.4 + t * 0.1));
+  // Tall wisps fade as they climb and stay faint low down.
+  fil *= mix(1.0, smoothstep(0.6, -0.2, fxCanvas().y / R) * 1.4, uRise);
   float around = shape.x;
   float edge = 1.0 - shape.y;
   float a = fil * around * mix(0.9, 0.2 + 0.6 * edge, base.a) * 0.7 * uAlpha;
@@ -375,11 +382,11 @@ void main() {
 // Flowing liquid colour; spectral turns it into a ghostly, see-through shimmer.
 const liquid = {
   type: 'liquid', order: 750,
-  defaults: { color: 0x20aaee, time: 0, blend: 8, intensity: 4, spectral: false, scale: 1, alphaDiscard: true },
+  defaults: { color: 0x20aaee, time: 0, blend: 8, intensity: 4, spectral: false, scale: 1, alphaDiscard: true, rainbow: false },
   timeScale: 1,
   uniforms: {
     uColor: ['vec3', p => rgb(p.color)], uBlend: blendU, uIntensity: ['float', p => clamp(p.intensity, 0, 20)],
-    uSpectral: ['bool', p => p.spectral === true], uScale: ['float', p => clamp(p.scale, 0.05, 20)],
+    uSpectral: ['bool', p => p.spectral === true], uScale: ['float', p => clamp(p.scale, 0.05, 20)], uRainbow: ['bool', p => p.rainbow === true],
   },
   reach: () => 0,
   glsl: `
@@ -400,7 +407,8 @@ void main() {
     gl_FragColor = vec4(ghost * a, a);
     return;
   }
-  vec3 tint = uColor * (0.6 + 0.8 * swirl);
+  // Rainbow: the whole colour wheel races through the swirls.
+  vec3 tint = (uRainbow > 0.5 ? hsv2rgb(vec3(fract(t * 0.4 + swirl * 0.8), 0.85, 1.0)) : uColor) * (0.6 + 0.8 * swirl);
   vec3 mixed = blendMode(int(uBlend + 0.5) == 8 ? 5 : int(uBlend + 0.5), col, tint);
   float amt = clamp(0.2 + 0.08 * k, 0.0, 0.5);
   gl_FragColor = vec4(mix(col, mixed, amt) * base.a, base.a);
@@ -435,15 +443,16 @@ void main() {
 }`,
 };
 
-// A splatter of liquid across the art (blood, ichor, paint).
+// A splatter of liquid across the art (blood, ichor, paint). edge > 0 throws the splat that far
+// out from the middle (toward the silhouette's rim); drip 0..1 makes more and longer runs.
 const splash = {
   type: 'splash', order: 760,
-  defaults: { color: 0x900505, time: 0, seed: 0.1, splashFactor: 4, spread: 6, blend: 2, dimX: 1, dimY: 1, cut: true, textureAlphaBlend: true },
+  defaults: { color: 0x900505, time: 0, seed: 0.1, splashFactor: 4, spread: 6, blend: 2, dimX: 1, dimY: 1, cut: true, textureAlphaBlend: true, edge: 0, drip: 0 },
   timeScale: 1 / 0.9,
   uniforms: {
     uColor: ['vec3', p => rgb(p.color)], uSeedP: ['float', p => f(p.seed)], uSpikes: ['float', p => clamp(p.splashFactor, 1, 20)],
     uSpread: ['float', p => clamp(p.spread, 0.5, 40)], uDim: ['vec2', p => [clamp(p.dimX, 0.1, 10), clamp(p.dimY, 0.1, 10)]],
-    uCut: ['bool', p => p.cut !== false],
+    uCut: ['bool', p => p.cut !== false], uEdge: ['float', p => clamp(p.edge, 0, 1.5)], uDrip: ['float', p => clamp(p.drip, 0, 1)],
   },
   reach: (p, c) => (p.cut !== false ? 0 : c.size * 0.4),
   glsl: `
@@ -451,7 +460,9 @@ void main() {
   vec4 base = fxSample(vTextureCoord);
   float R = fxTokenRadius();
   float s = uSeedP * 97.0;
-  vec2 c = (fxCanvas() / (R * uDim) - (vec2(hash11(s), hash11(s + 1.7)) - 0.5) * 0.5) * 1.6;
+  float ea = hash11(s + 3.1) * TAU;
+  vec2 centre = uEdge > 0.0 ? vec2(cos(ea), sin(ea)) * uEdge : (vec2(hash11(s), hash11(s + 1.7)) - 0.5) * 0.5;
+  vec2 c = (fxCanvas() / (R * uDim) - centre) * 1.6;
   float ang = atan(c.y, c.x);
   float d = length(c);
   // Ragged outline: spikes plus noise; satellite droplets around it.
@@ -459,11 +470,13 @@ void main() {
   float blob = smoothstep(edge + 0.02, edge - 0.02, d);
   vec3 drops = cells(c * 5.0 + s, 0.0);
   float droplets = smoothstep(0.18, 0.1, drops.x) * step(0.7, drops.z) * smoothstep(1.1, 0.4, d);
-  // Slow drip.
-  float drip = smoothstep(0.03, 0.0, abs(fract(c.x * 4.0 + s) - 0.5) - 0.02) * step(hash11(floor(c.x * 4.0 + s)), 0.35)
-             * smoothstep(edge, edge + 0.25 * fract(uTime * 0.05 + hash11(floor(c.x * 4.0))), c.y) * step(0.0, c.y) * step(c.y, edge + 0.3);
+  // Drips run down from the splat; with drip up they are more, longer and quicker.
+  float lane = floor(c.x * 4.0 + s);
+  float runLen = (0.25 + 1.1 * uDrip) * fract(uTime * (0.05 + 0.2 * uDrip) + hash11(lane));
+  float drip = smoothstep(0.03 + 0.02 * uDrip, 0.0, abs(fract(c.x * 4.0 + s) - 0.5) - 0.02) * step(hash11(lane), 0.35 + 0.4 * uDrip)
+             * smoothstep(edge + runLen + 0.02, edge + runLen - 0.04, c.y) * step(0.0, c.y) * step(c.y, edge + 0.3 + 1.1 * uDrip);
   float a = clamp(blob + droplets + drip * 0.8, 0.0, 1.0);
-  float shine = smoothstep(0.6, 1.0, gnoise(c * 6.0 + s) + 0.6) * 0.25;
+  float shine = smoothstep(0.6, 1.0, gnoise(c * 6.0 + s) + 0.6) * (0.25 + 0.35 * uDrip);
   vec3 col = uColor * (0.75 + 0.25 * gnoise(c * 3.0)) + shine;
   if (uCut > 0.5) a *= base.a;
   // Wet and dark where it soaks the art, glossy on top.

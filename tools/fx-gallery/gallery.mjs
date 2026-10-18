@@ -119,13 +119,15 @@ if (sheet !== null) {
   document.body.style.gridTemplateColumns = "0 1fr"; app.resize();
   const per = +(params.get("per") ?? 20), cols = +(params.get("cols") ?? 5), rows = Math.ceil(per / cols);
   const start = params.has("from") ? +params.get("from") : +sheet * per;
-  const page = PRESETS.slice(start, start + per);
+  // ?names=a|b|c puts each named preset on every art in ?art= side by side.
+  const named = params.get('names')?.split('|').map(n => PRESETS.find(p => p.name === n)).filter(Boolean);
+  const src0 = ART[+(params.get('artIndex') ?? 1)] ?? ART[0];
+  const page = named ? named.flatMap(preset => ART.map(art => ({ preset, art }))) : PRESETS.slice(start, start + per).map(preset => ({ preset, art: src0 }));
   const cells = new PIXI.Container();
   app.stage.addChild(cells);
   const all = [];
-  const src = ART[+(params.get('artIndex') ?? 1)] ?? ART[0];
   const cw = () => app.screen.width / cols, ch = () => app.screen.height / rows;
-  page.forEach((preset, i) => {
+  page.forEach(({ preset, art: src }, i) => {
     const cell = new PIXI.Container();
     const s = PIXI.Sprite.from(src); s.anchor.set(0.5);
     const size = Math.min(cw(), ch()) * 0.5;
@@ -141,5 +143,5 @@ if (sheet !== null) {
   });
   const t0 = performance.now();
   app.ticker.add(() => { const now = performance.now(); for (const f of all) f.update(now - t0, Date.now()); });
-  hud.textContent = `sheet ${sheet}: ${page[0]?.name} … ${page.at(-1)?.name}`;
+  hud.textContent = `sheet ${sheet}: ${page[0]?.preset.name} … ${page.at(-1)?.preset.name}`;
 }

@@ -6,7 +6,7 @@ const domeScale = p => clamp(0.95 + 0.12 * clamp(p.gridPadding, 0, 6), 1, 1.75) 
 
 // A glassy bubble around the token. shieldType picks the surface pattern:
 // 1 fire, 2 hexagons, 3 smoke, 4 stone plates, 5 stone crown, 6 wind, 7 arcane, 8 soap film,
-// 9 water, 10 plasma, 11 grid, 12 warped space, 13 colour swirl.
+// 9 water (refracts the token), 10 dark plasma, 11 grid, 12 warped space, 13 colour swirl.
 const field = {
   type: 'field', order: 900,
   defaults: { shieldType: 2, gridPadding: 1.5, color: 0xcc00cc, time: 0, blend: 2, intensity: 1, lightAlpha: 0.6, lightSize: 0.5, scale: 1, radius: 1, chromatic: false, alpha: 1 },
@@ -31,26 +31,59 @@ vec4 pattern(vec2 s, float z, float t, vec3 col) {
   int k = int(uType + 0.5);
   if (k == 1) { float n = warped(q * vec2(1.0, 0.6) + vec2(0.0, t * 1.5), t); return vec4(heatRamp(col, n), smoothstep(0.35, 0.85, n)); }
   if (k == 2) { float l = hexLines(q * 1.4); float cellPulse = 0.5 + 0.5 * sin(t * 2.0 + hash21(floor(q * 1.4)) * 6.28); return vec4(mix(col, vec3(1.0), 0.3), smoothstep(0.08, 0.0, l) * 0.9 + 0.12 * cellPulse); }
-  if (k == 3) { float n = warped(q * 0.8, t * 0.6); return vec4(col * (0.5 + 0.6 * n), smoothstep(0.3, 0.9, n) * 0.85); }
-  if (k == 4 || k == 5) {
-    vec3 c = cells(q * 1.1, 0.0);
-    float crack = smoothstep(0.02, 0.12, c.y - c.x);
-    vec3 stone = col * (0.55 + 0.45 * c.z) * (0.8 + 0.3 * gnoise(q * 6.0));
-    float a = mix(0.95, 0.15, crack);
-    if (k == 5) a *= smoothstep(0.1, -0.4, s.y);
-    return vec4(mix(col * 1.4, stone, crack), a);
+  if (k == 3) {
+    // Dense smoke that fills the bubble, swirling faster toward the middle.
+    float sw = t * 0.5 + (1.0 - length(s)) * 2.2;
+    float n = warped(rot2(sw) * q * 0.7, t * 0.6);
+    return vec4(col * (0.45 + 0.85 * n), 0.42 + 0.53 * smoothstep(0.25, 0.8, n));
   }
-  if (k == 6) { float ang = atan(s.y, s.x), r = length(s); float streak = gnoise(vec2(ang * 3.0 - t * 2.0 + r * 4.0, r * 6.0)); return vec4(mix(col, vec3(1.0), 0.4), smoothstep(0.15, 0.55, streak) * 0.8); }
+  if (k == 4 || k == 5) {
+    // Solid stone slabs split by dark seams. The crown (5) rises out of the ground and crumbles as it climbs.
+    vec2 rise = k == 5 ? vec2(0.0, t * 0.35) : vec2(0.0);
+    vec3 c = cells(q * 1.1 + rise, 0.0);
+    float slab = smoothstep(0.02, 0.1, c.y - c.x);
+    vec3 stone = col * (0.55 + 0.45 * c.z) * (0.75 + 0.4 * gnoise((q + rise) * 6.0));
+    float a = mix(0.95, 0.72, slab);
+    if (k == 5) a *= smoothstep(-0.35, 0.35, s.y + 0.25 * (c.z - 0.5));
+    return vec4(mix(col * 0.22, stone, slab), a);
+  }
+  if (k == 6) {
+    // Wind streaks whirling round the dome, with dust caught in them.
+    float r = length(s);
+    vec2 w = rot2(t * 3.0 + r * 1.5) * s;
+    vec2 dir = normalize(w + 1e-4);
+    float streak = gnoise(dir * 2.2 + vec2(r * 10.0, -r * 8.0));
+    float streak2 = gnoise(rot2(-t * 1.2) * dir * 3.5 + vec2(r * 16.0 + 11.0, 3.0));
+    vec3 dc = cells(rot2(t * 2.4) * q * 2.2, t);
+    float dust = smoothstep(0.07, 0.0, dc.x) * step(0.82, dc.z);
+    return vec4(mix(col, vec3(1.0), 0.45 + 0.4 * dust), clamp(smoothstep(0.1, 0.45, streak) * 0.95 + smoothstep(0.3, 0.6, streak2) * 0.6 + dust, 0.0, 1.0));
+  }
   if (k == 7) {
     float r = length(s), ang = atan(s.y, s.x);
-    float band = smoothstep(0.03, 0.0, abs(r - 0.82)) + smoothstep(0.03, 0.0, abs(r - 0.62));
-    float glyphs = step(0.55, hash21(vec2(floor((ang + t * 0.3) * 8.0), 1.0))) * smoothstep(0.08, 0.0, abs(r - 0.72)) * step(0.3, fract((ang + t * 0.3) * 8.0));
+    // Thick bands framing two rings of runes that turn opposite ways.
+    float band = smoothstep(0.08, 0.03, abs(r - 1.66)) + smoothstep(0.06, 0.02, abs(r - 1.3)) + smoothstep(0.05, 0.015, abs(r - 0.98)) * 0.8;
+    float a1 = (ang + t * 0.5) / TAU * 18.0, a2 = (ang - t * 0.75) / TAU * 12.0;
+    float g1 = step(0.4, hash21(vec2(mod(floor(a1), 18.0), 1.0))) * step(0.2, fract(a1)) * step(fract(a1), 0.8) * smoothstep(0.1, 0.05, abs(r - 1.48));
+    float g2 = step(0.35, hash21(vec2(mod(floor(a2), 12.0), 5.0))) * step(0.2, fract(a2)) * step(fract(a2), 0.8) * smoothstep(0.08, 0.035, abs(r - 1.14));
     vec3 sp = cells(q * 2.0, t * 2.0); float spark = smoothstep(0.08, 0.0, sp.x) * step(0.85, sp.z);
-    return vec4(mix(col, vec3(1.0), 0.35), clamp(band + glyphs + spark, 0.0, 1.0));
+    float pulse = 0.75 + 0.25 * sin(t * 3.0);
+    return vec4(mix(col, vec3(1.0), 0.15 + 0.35 * (g1 + g2)), clamp((band + g1 + g2) * pulse + spark, 0.0, 1.0));
   }
   if (k == 8) { float film = s.y * 2.0 + fbm3(q * 0.5 + t * 0.2) * 2.0 + z; return vec4(hsv2rgb(vec3(fract(film * 0.35), 0.6, 1.0)), 0.35); }
-  if (k == 9) { vec3 c = cells(q * 1.2, t * 1.5); float caustic = 1.0 - smoothstep(0.0, 0.5, c.y - c.x); return vec4(mix(col, vec3(0.85, 0.95, 1.0), caustic), 0.25 + caustic * 0.55); }
-  if (k == 10) { float n = ridged(q + t * 0.5); return vec4(mix(col, vec3(1.0), n * 0.5), smoothstep(0.6, 0.95, n)); }
+  if (k == 9) {
+    vec3 c = cells(q * 1.2 + vec2(fbm3(q * 0.7 + t), fbm3(q * 0.7 - t + 4.0)) * 0.5, t * 3.0);
+    float caustic = 1.0 - smoothstep(0.0, 0.35, c.y - c.x);
+    return vec4(mix(col, vec3(0.85, 0.97, 1.0), caustic), 0.22 + caustic * 0.7);
+  }
+  if (k == 10) {
+    // Dark plasma: a near-black body veined with glowing ridges, beating like a heart.
+    float ph = fract(t * 0.7);
+    float beat = exp(-pow((ph - 0.1) * 22.0, 2.0)) + 0.6 * exp(-pow((ph - 0.3) * 22.0, 2.0));
+    float n = ridged(q * 0.9 + vec2(t * 0.3, -t * 0.4));
+    float ridge = smoothstep(0.55, 0.95, n);
+    vec3 glow = mix(col, vec3(1.0, 0.8, 0.6), ridge * 0.35) * (1.0 + beat * 0.8);
+    return vec4(mix(col * 0.1, glow, ridge), 0.6 + 0.4 * ridge);
+  }
   if (k == 11) { vec2 g = abs(fract(q * 1.5 + vec2(0.0, t * 0.2)) - 0.5); float l = smoothstep(0.06, 0.0, 0.5 - max(g.x, g.y)); return vec4(col, l * 0.9 + 0.08); }
   if (k == 12) { float r = length(s); float rings = 0.5 + 0.5 * sin(r * 22.0 - t * 4.0); return vec4(mix(col, vec3(1.0), 0.5), pow(rings, 4.0) * 0.5); }
   float n = warped(q * 0.6, t * 0.4);
@@ -68,18 +101,22 @@ void main() {
   int k = int(uType + 0.5);
   float z = sqrt(max(1.0 - d * d, 0.0));
   vec2 s = c / (0.55 + 0.45 * z);
-  // Warped space bends the view of the token through the bubble.
+  // Warped space bends the view of the token through the bubble; water refracts it.
   if (k == 12) base = fxAt(-c * Rd * (1.0 - z) * 0.35 * sin(t * 1.5 + d * 6.0));
+  if (k == 9) base = fxAt(vec2(gnoise(c * 3.0 + t * 0.8), gnoise(c * 3.0 - t * 0.8 + 9.0)) * Rd * 0.05 * (0.4 + z));
   float fresnel = pow(1.0 - z, 2.2);
   vec4 pat = pattern(s, z, t, uColor);
   vec3 rimCol = uChroma > 0.5 ? hsv2rgb(vec3(fract(atan(c.y, c.x) / TAU + t * 0.1), 0.7, 1.0)) : mix(uColor, vec3(1.0), 0.25);
   // Specular glint upper-left.
   float spec = smoothstep(uLight.y * 0.45 + 0.05, 0.0, length(c - vec2(-0.38, -0.42))) * uLight.x * 0.45;
   vec3 col = mix(pat.rgb, rimCol, fresnel * 0.6) + vec3(spec);
-  float a = clamp(pat.a * (0.25 + 0.75 * fresnel) + fresnel * 0.55 + spec, 0.0, 1.0) * inside * clamp(uIntensity, 0.0, 1.5) * 0.85;
+  // Smoke, stone, wind, runes and plasma fill the face of the dome; the rest gather toward its rim.
+  float body = k == 3 ? 0.75 : (k == 4 || k == 5) ? 0.6 : k == 10 ? 0.7 : k == 7 ? 0.85 : k == 6 ? 0.6 : 0.25;
+  float a = clamp(pat.a * (body + (1.0 - body) * fresnel) + fresnel * 0.55 + spec, 0.0, 1.0) * inside * clamp(uIntensity, 0.0, 1.5) * 0.85;
   // The creature stays readable through the front of the bubble.
   a *= mix(1.0, 0.55, base.a);
-  gl_FragColor = fxLayer(base, col, a, 9);
+  // Smoke and plasma darken what they cover instead of only adding light.
+  gl_FragColor = fxLayer(base, col, a, (k == 3 || k == 10) ? 0 : 9);
 }`,
 };
 

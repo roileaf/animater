@@ -11,7 +11,7 @@ const SELECTS = {
   auraType: { 1: 'Cold (soft)', 2: 'Hot (licking)' },
   materialType: { 1: 'Stone', 2: 'Ice', 3: 'Iron', 4: 'Gold', 5: 'Crystal', 6: 'Bark' },
   bindType: { 1: 'Vines', 2: 'Net', 3: 'Chains', 4: 'Ropes' },
-  baseType: { 1: 'Disc', 2: 'Ring', 3: 'Pulse', 4: 'Rune circle' },
+  baseType: { 1: 'Disc', 2: 'Ring', 3: 'Pulse', 4: 'Rune circle', 5: 'Ally ring', 6: 'Caution (dashed)', 7: 'Foe (spiked)' },
   rayType: { 0: 'Sunburst', 1: 'Petals', 2: 'Scanning bar', 3: 'Falling shafts', 4: 'Hard spokes' },
 };
 const TYPE_SELECTS = {
@@ -22,10 +22,10 @@ const TYPE_SELECTS = {
 const HIDDEN = new Set(['time', 'seed', 'padding']);
 
 // Where a setting means something different for one filter. [min, max, step]
-const TYPE_RANGES = { veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] } };
+const TYPE_RANGES = { veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] }, splash: { edge: [0, 1.5, 0.01] } };
 // [pattern, min, max, step] — first match wins.
 const RANGES = [
-  [/^(?:amount|snow|cracks|tightness|bubbles|glow|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon)$/, 0, 1, 0.01],
+  [/^(?:amount|snow|cracks|tightness|bubbles|glow|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon|stretch|drip|rise)$/, 0, 1, 0.01],
   [/^(?:anchor|pivot|center|offset)[XY]$/, -0.5, 1.5, 0.01],
   [/^translation[XY]$/, -1, 1, 0.01],
   [/^(?:scale[XY]|maskSpriteScale[XY])$/, 0.05, 10, 0.05],
@@ -48,7 +48,7 @@ const RANGES = [
   [/^(?:redX|redY|greenX|greenY|blueX|blueY)$/, -40, 40, 0.5],
 ];
 const words = key => key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').replace(/^./, c => c.toUpperCase()).replace(/\bX\b/, '(horizontal)').replace(/\bY\b/, '(vertical)');
-const LABELS = { originalColor: 'Colour to replace', newColor: 'Replace with', alphaImg: 'Copies opacity', alphaChr: 'Copies colour fringe', nbImage: 'Copies', div1: 'Spokes', div2: 'Rings', fireBlend: 'Over the art', alphaDiscard: 'Only on the art', inlay: 'Burn inside the art', discard: 'Aura only', shadowOnly: 'Shadow only', zapshadow: 'Remove baked shadow', top: 'Over the art', cut: 'Only on the art', fall: 'Flames fall' };
+const LABELS = { originalColor: 'Colour to replace', newColor: 'Replace with', alphaImg: 'Copies opacity', alphaChr: 'Copies colour fringe', nbImage: 'Copies', div1: 'Spokes', div2: 'Rings', fireBlend: 'Over the art', alphaDiscard: 'Only on the art', inlay: 'Burn inside the art', discard: 'Aura only', shadowOnly: 'Shadow only', zapshadow: 'Remove baked shadow', top: 'Over the art', cut: 'Only on the art', fall: 'Flames fall', edge: 'Out toward the rim', drip: 'Drips', stretch: 'Stretch', rainbow: 'Rainbow', ground: 'Low on the ground', rise: 'Tall wisps' };
 
 export function controlsFor(type) {
   const spec = specFor(type);

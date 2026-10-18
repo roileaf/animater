@@ -224,16 +224,19 @@ void main() {
 }`,
 };
 
-// A marker on the ground beneath the token. baseType: 1 disc, 2 ring, 3 pulse, 4 rune circle.
+// A marker on the ground beneath the token. baseType: 1 disc, 2 ring, 3 pulse, 4 rune circle,
+// 5 ally (solid ring, soft fill), 6 caution (dashed ring, blinking), 7 foe (spiked ring).
+// The marker kinds differ in shape as well as colour, so they read without colour vision.
 const baseMark = {
   type: 'base', order: 10,
   defaults: { baseType: 2, color: 0x44dd66, radius: 0.55, alpha: 0.8, time: 0 },
   timeScale: 1,
   uniforms: {
-    uKind: ['int', p => clamp(Math.round(f(p.baseType)), 1, 4)], uColor: ['vec3', p => rgb(p.color)],
+    uKind: ['int', p => clamp(Math.round(f(p.baseType)), 1, 7)], uColor: ['vec3', p => rgb(p.color)],
     uRadius: ['float', p => clamp(p.radius, 0.2, 1.5)], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
   },
-  reach: (p, c) => Math.max(0, c.size * (clamp(p.radius, 0.2, 1.5) - 0.5)) + c.size * 0.06,
+  // Foe spikes stand 15% past the ring.
+  reach: (p, c) => Math.max(0, c.size * (clamp(p.radius, 0.2, 1.5) * (Math.round(f(p.baseType)) === 7 ? 1.15 : 1) - 0.5)) + c.size * 0.06,
   glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
@@ -246,6 +249,21 @@ void main() {
   if (k == 1) a = smoothstep(1.0 + aa, 1.0 - aa, d) * (0.35 + 0.25 * smoothstep(1.0, 0.6, d)) + smoothstep(aa * 2.0, 0.0, abs(d - 0.97)) * 0.6;
   else if (k == 2) a = smoothstep(0.045 + aa, 0.02, abs(d - 0.94)) + smoothstep(0.18, 0.0, abs(d - 0.94)) * 0.2;
   else if (k == 3) { float ring = fract(t * 0.6); a = (smoothstep(0.06 + aa, 0.0, abs(d - ring)) * (1.0 - ring)) + smoothstep(0.035 + aa, 0.015, abs(d - 0.95)) * 0.8; }
+  else if (k == 5) a = smoothstep(0.05 + aa, 0.025, abs(d - 0.94)) + smoothstep(0.96, 0.3, d) * smoothstep(0.0, 0.5, d) * 0.28;
+  else if (k == 6) {
+    float ang = atan(c.y, c.x) + t * 0.4;
+    float dash = smoothstep(0.08, 0.02, abs(fract(ang / TAU * 12.0) - 0.5) - 0.2);
+    float blink = 0.35 + 0.65 * smoothstep(0.0, 0.15, sin(t * TAU));
+    a = smoothstep(0.05 + aa, 0.02, abs(d - 0.94)) * dash * blink;
+  }
+  else if (k == 7) {
+    float ang = atan(c.y, c.x) + t * 0.3;
+    float saw = abs(fract(ang / TAU * 10.0) - 0.5) * 2.0;
+    // Spikes stand out from the ring (outward, so round art can't hide them): wide at the ring, sharp at the tip.
+    float tip = 0.95 + 0.15 * (1.0 - saw);
+    float spike = smoothstep(tip + aa, tip - aa, d) * step(0.93, d);
+    a = clamp(smoothstep(0.035 + aa, 0.015, abs(d - 0.95)) + spike * 0.9, 0.0, 1.0);
+  }
   else {
     float ang = atan(c.y, c.x) + t * 0.25;
     float rings = smoothstep(0.03 + aa, 0.0, abs(d - 0.95)) + smoothstep(0.025 + aa, 0.0, abs(d - 0.78));

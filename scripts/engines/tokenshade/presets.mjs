@@ -61,14 +61,14 @@ export const PRESETS = [
   token('spectral-images', timed('images', 1, { nbImage: 3, alphaImg: 0.5, alphaChr: 0.6, ampX: 0.1, ampY: 0.1 }, { ampX: cos(0.02, 0.2, 2500), ampY: cos(0.02, 0.22, 2500), alphaImg: sin(0.25, 0.75, 2500) })),
   token('hexa-field', FIELD(2, 0xcc33cc, { gridPadding: 1.5, lightAlpha: 0.5 })),
   token('fire-field', FIELD(1, 0xff6a1f, { gridPadding: 2, intensity: 1.1, lightAlpha: 0.9, lightSize: 0.7 })),
-  token('smoke-field', FIELD(3, 0x7a8a9a, { gridPadding: 1.5, intensity: 0.9, lightAlpha: 0.5, lightSize: 0.7 })),
+  token('smoke-field', FIELD(3, 0x5a6470, { gridPadding: 1.5, intensity: 1.1, lightAlpha: 0.5, lightSize: 0.7 })),
   token('earth-field', FIELD(4, 0xb98a5c, { gridPadding: 2, intensity: 1.15, lightAlpha: 0.5, lightSize: 0.7 })),
   token('earth-field-top', FIELD(5, 0xa9a29a, { gridPadding: 2.5, intensity: 1.2, lightAlpha: 0.6, lightSize: 0.7, chromatic: true })),
   token('air-field', FIELD(6, 0x9fd6e8, { gridPadding: 1.2, lightAlpha: 0.7, lightSize: 0.7 })),
   token('magic-field', FIELD(7, 0xb48cff, { gridPadding: 1, intensity: 0.9, lightAlpha: 0.7, lightSize: 0.45 })),
   token('chromatic-field', FIELD(8, 0xaaaaaa, { gridPadding: 1.8, lightAlpha: 0.8, lightSize: 0.4, chromatic: true }, 3)),
   token('water-field', FIELD(9, 0x2a8eee, { gridPadding: 1.2, lightAlpha: 0.7, lightSize: 0.5, scale: 0.8 })),
-  token('evil-field', FIELD(10, 0xff2a20, { gridPadding: 1.8, lightAlpha: 0.9, lightSize: 0.6, scale: 0.6 }, 0.8, { lightSize: cos(0.3, 0.9, 5000) })),
+  token('evil-field', FIELD(10, 0xff2a20, { gridPadding: 1.8, intensity: 1.1, lightAlpha: 0.9, lightSize: 0.6, scale: 0.6 }, 0.8, { lightSize: cos(0.3, 0.9, 5000) })),
   token('grid-field', FIELD(11, 0x00cccc, { gridPadding: 1.8, lightAlpha: 0.6, lightSize: 0.3, scale: 0.6 }, 0.6)),
   token('warp-field', FIELD(12, 0xe8e0ff, { gridPadding: 1.8, lightAlpha: 0.6, lightSize: 0.5, scale: 0.9 }, 0.6)),
   token('color-field', FIELD(13, 0x00cc55, { gridPadding: 1.8, lightAlpha: 0.4, lightSize: 0.3 }, 0.6)),
@@ -123,15 +123,22 @@ export const PRESETS = [
   token('Tropical Gradient', F('colorGradient', { stops: [{ offset: 0, color: 0xffa01e, alpha: 0.65 }, { offset: 0.5, color: 0xff3d7f, alpha: 0.6 }, { offset: 1, color: 0x00e5ff, alpha: 0.7 }], type: 0, angle: 90, alpha: 1, replace: false })),
 
   // ── Region library (played on tokens by animater) ─────────────────────────
-  region('Watery Surface', timed('flood', 1, { color: 0x0a46b0, billowy: 0.5, tintIntensity: 0.65, glint: 0.4, scale: 80 })),
-  region('Protoplasm', timed('liquid', 1, { color: 0x20aaee, blend: 8, intensity: 4, spectral: true, scale: 1.4 })),
+  // The region twins each have a look of their own, apart from the token preset they started as.
+  // Watery Surface: a pond seen from above, deep blue with rings spreading over it.
+  region('Watery Surface', timed('flood', 0.6, { color: 0x0a46b0, billowy: 0.25, tintIntensity: 0.9, glint: 0.6, scale: 110 }),
+    timed('ripples', 0.5, { color: 0x9fd8ff, alphaDiscard: true, intensity: 0.9 })),
+  // Protoplasm: thick, bubbling green-yellow ooze that wobbles (spectral-body is the see-through ghost).
+  region('Protoplasm', F('bulgepinch', { radiusPercent: 150, strength: 0 }, { strength: cos(-0.1, 0.1, 3200, false) }),
+    timed('liquid', 0.6, { color: 0xa6e22e, blend: 6, intensity: 10, spectral: false, scale: 1.1 }), timed('corrode', 0.7, { color: 0xd4f25a, amount: 0.35, bubbles: 0.9 })),
   region('Watery Surface 2', timed('liquid', 1, { color: 0x20aaee, blend: 4, intensity: 9, spectral: false, scale: 1.4 })),
-  region('Smoky Area', timed('smoke', 0.6, { color: 0xaaaaaa, blend: 2, dimX: 1, dimY: 1 })),
+  // Smoky Area: smoke lying low around the feet, rolling sideways.
+  region('Smoky Area', timed('smoke', 0.6, { color: 0xb4b4b4, blend: 2, dimX: 1.6, dimY: 0.4, ground: true })),
   region('Shock', timed('electric', 1, { color: 0xffffff, blend: 1, intensity: 5 })),
   region('Annihilating Rays', F('adjustment', { saturation: 0.35, contrast: 1.25, brightness: 1.1 }),
     timed('xray', 1, { rayType: 4, color: 0xffbb00, blend: 9, dimX: 1, dimY: 1, anchorX: 0.5, anchorY: 0.5, divisor: 6, intensity: 2.6 })),
   region('Classic Rays', timed('ray', 0.7, { color: 0xcf8000, alpha: 0.6, divisor: 32, anchorX: 0.5, anchorY: -0.1, alphaDiscard: false })),
-  region('Smoke Filaments', timed('fumes', 1, { color: 0x9a9a9a, blend: 2 })),
+  // Smoke Filaments: thin wisps climbing high and quick.
+  region('Smoke Filaments', timed('fumes', 1.4, { color: 0xc8c8c8, blend: 2, rise: 1 })),
   region('Flames', naturalFire({ intensity: 1.3, amplitude: 1.9 }, { intensity: cos(1.1, 1.7, 5000) })),
   region('Thick Fog', timed('xfog', 1, { color: 0x8a8f99, density: 0.85 })),
   region('Glowing Outline', F('glow', { outerStrength: 4, distance: 12, color: 0xffd36b }, { outerStrength: cos(5, 2, 3000) })),
@@ -143,10 +150,20 @@ export const PRESETS = [
   region('Zone : Electricity', timed('xglow', 1, { auraType: 2, color: 0x7fc8ff, thickness: 1.5, scale: 4, auraIntensity: 1.6, subAuraIntensity: 1, threshold: 0.35, discard: true }, { thickness: cos(1, 2, 3000, false) }), timed('electric', 1, { color: 0xdff2ff, blend: 1, intensity: 5 })),
   region('Zone : Blizzard', F('adjustment', { saturation: 0.5, brightness: 1.08, red: 0.9, blue: 1.12 }), timed('frost', 1.5, { amount: 0.4, snow: 1 }),
     timed('xfog', 2, { color: 0xe8f4ff, density: 0.55 }), timed('globes', 2.2, { color: 0xffffff, distortion: 1.2, scale: 28 })),
-  region('Bulging Out', F('bulgepinch', { radiusPercent: 160, strength: 0 }, { strength: cos(0, 0.4, 2000, false) })),
-  region('Blurred Texture', F('blur', { blur: 0 }, { blurX: cos(0, 5, 900), blurY: cos(0, 5, 1300) })),
-  region('Bloomed Texture', F('xbloom', { threshold: 0.45, bloomScale: 1, brightness: 1, blur: 2 }, { bloomScale: cos(0.2, 1.8, 2400), threshold: cos(0.25, 0.75, 1800) })),
-  region('Wild Magic', timed('liquid', 1.8, { color: 0xff2020, blend: 6, intensity: 5, spectral: false, scale: 2.5 }, { color: hue(0xff2050, 0x5020ff, 4000) }), timed('wave', 1, { strength: 0.012, frequency: 100, color: 0xffffff, maxIntensity: 1.3, minIntensity: 0.9 })),
+  // Bulging Out: slow breathing, with a faint ring thrown off at each swell.
+  region('Bulging Out', F('bulgepinch', { radiusPercent: 200, strength: 0.1 }, { strength: cos(0.1, 0.55, 4000, false) }),
+    F('shockwave', { amplitude: 3, wavelength: 70, brightness: 1.15, speed: 30, radius: -1 }, { time: { animType: 'halfCosOscillation', loopDuration: 4000, val1: 0, val2: 9 } })),
+  // Blurred Texture: a sideways heat shimmer rather than an all-over blur.
+  region('Blurred Texture', F('blur', { blur: 0, blurX: 0, blurY: 0 }, { blurX: chaos(0, 3, 700) }),
+    F('distortion', { amount: 2, maskSpriteScaleX: 3, maskSpriteScaleY: 1 }, { maskSpriteX: { animType: 'move', speed: 0.05 } })),
+  // Bloomed Texture: a warm, low-threshold bloom with gold glints on the art.
+  region('Bloomed Texture', F('adjustment', { red: 1.08, blue: 0.88, brightness: 1.05 }),
+    F('xbloom', { threshold: 0.2, bloomScale: 2, brightness: 1.1, blur: 3 }, { bloomScale: cos(1.5, 3, 1200) }),
+    timed('globes', 0.6, { color: 0xffd76a, distortion: 0.2, scale: 30, alphaDiscard: true })),
+  // Wild Magic: the whole colour wheel racing over the art, the body doubling, sparks of random colour.
+  region('Wild Magic', timed('liquid', 1.8, { color: 0xffffff, blend: 6, intensity: 6, spectral: false, scale: 2.5, rainbow: true }),
+    timed('images', 1, { nbImage: 2, alphaImg: 0.45, alphaChr: 0.8, ampX: 0.06, ampY: 0.05 }, { ampX: chaos(0.01, 0.12, 900), ampY: chaos(0.01, 0.1, 1100) }),
+    timed('globes', 2, { color: 0xffffff, distortion: 2.5, scale: 45 }, { color: { animType: 'randomColorPerLoop', loopDuration: 600 } })),
   region('Spider Web 1', timed('web', 0.3, { color: 0xdddddd, thickness: 1.4, div1: 15, div2: 6, anchorX: 0.5, anchorY: 0.5 }), F('blur', { blur: 0.3 })),
   region('Spider Web 2', timed('web', 0.2, { color: 0xcfcfcf, thickness: 1.8, div1: 12, div2: 5, anchorX: 0.5, anchorY: 0.45 }), timed('xfog', 0.4, { color: 0x6a6a6a, density: 0.4 }),
     F('bulgepinch', { radiusPercent: 140, strength: 0 }, { strength: cos(0.35, 0, 3000, false) })),
@@ -160,7 +177,8 @@ export const PRESETS = [
   region('Fairy Fireflies : Frenetic', timed('globes', 2.6, { color: 0xe1e000, distortion: 1.8, scale: 38, alphaDiscard: false }), F('glow', { outerStrength: 1, distance: 8, color: 0xe1e000 }, { outerStrength: { animType: 'randomNumber', val1: 0.4, val2: 1.6 } })),
   region('Living Fluid', timed('xfog', 1, { color: 0x30a0ff, density: 0.8, alphaDiscard: true })),
   region('Living Fluid 2', timed('xfog', 1, { color: 0x30ff9a, density: 0.8, alphaDiscard: true }), F('glow', { outerStrength: 1.5, distance: 10, color: 0x30ff9a })),
-  region('Living Fluid 3', timed('liquid', 1, { color: 0x69dc92, blend: 8, intensity: 4, spectral: true, scale: 1.4, alphaDiscard: true })),
+  // Living Fluid 3 spills past the silhouette; Living Fluid stays inside it.
+  region('Living Fluid 3', timed('liquid', 1, { color: 0x69dc92, blend: 8, intensity: 4, spectral: true, scale: 1.4, alphaDiscard: true }), timed('xfog', 0.8, { color: 0x69dc92, density: 0.55 })),
   region('Living Fluid 4', timed('liquid', 1, { color: 0xe6842b, blend: 4, intensity: 8, spectral: false, scale: 1.4, alphaDiscard: true }), F('glow', { outerStrength: 1.5, distance: 10, color: 0xe6842b })),
   region('Flames 2', F('adjustment', { saturation: 0.6, brightness: 0.55, contrast: 1.15, red: 1.15, green: 0.9, blue: 0.8 }), naturalFire({ intensity: 1.6, amplitude: 1.3, alphaDiscard: true })),
   region('Flames 3', F('adjustment', { brightness: 0.75, contrast: 1.1, red: 1.1, blue: 0.85 }), naturalFire({ intensity: 1.5, amplitude: 1.3, alphaDiscard: true }), timed('xglow', 1, { auraType: 1, color: 0xff7a1a, thickness: 3, scale: 4, auraIntensity: 1.6, subAuraIntensity: 1, threshold: 0.35, discard: true }, { thickness: cos(2, 4, 3000, false) })),
@@ -168,7 +186,9 @@ export const PRESETS = [
   region('Fire Rays', naturalFire({ intensity: 1.2, amplitude: 0.8 }),
     timed('ray', 1.8, { color: 0xffa020, alpha: 0.9, divisor: 24, anchorX: 0.5, anchorY: 0.5, alphaDiscard: false, zOrder: 850 }), F('glow', { outerStrength: 1.5, distance: 10, color: 0xff8a20 })),
   region('Splash 1', F('splash', { color: 0x900505, seed: 0.1, splashFactor: 5, spread: 10, dimX: 1, dimY: 1, cut: true }), F('glow', { outerStrength: 2, distance: 6, color: 0x400000 })),
-  region('Splash 2', timed('splash', 1, { color: 0x900505, seed: 0.37, splashFactor: 3, spread: 10, dimX: 1, dimY: 1, cut: true }), F('glow', { outerStrength: 2, distance: 6, color: 0x400000 })),
+  // Splash 2: splats thrown against the silhouette's edges rather than one in the middle.
+  region('Splash 2', timed('splash', 1, { color: 0x900505, seed: 0.37, splashFactor: 3, spread: 8, dimX: 1, dimY: 1, cut: true, edge: 0.62, drip: 0.2 }),
+    timed('splash', 1, { color: 0xa00808, seed: 0.83, splashFactor: 5, spread: 6, dimX: 1, dimY: 1, cut: true, edge: 0.7, drip: 0.2 }), F('glow', { outerStrength: 2, distance: 6, color: 0x400000 })),
   region('Splash 3', timed('fumes', 1, { color: 0x38517e, blend: 2 }), timed('splash', 1, { color: 0x38517e, seed: 0.61, splashFactor: 3, spread: 10, dimX: 1, dimY: 1, cut: true }),
     F('glow', { outerStrength: 2, distance: 6, color: 0x101a30 }), timed('liquid', 1.5, { color: 0x38517e, blend: 8, intensity: 3, spectral: false, scale: 2 })),
   region('Flames 4 (colorizable)', timed('xfire', 1.1, { color: 0, blend: 1, amplitude: 1.4, dispersion: 0, inlay: false, scaleX: 0.7, scaleY: 1.2 })),
@@ -179,7 +199,8 @@ export const PRESETS = [
   // ── animater originals: creature states and looks Token Magic had no answer for ──
   // Grounding and elevation
   token('Grounded Shadow', F('shadow', { rotation: 90, distance: 5, blur: 3, alpha: 0.55, color: 0x0a0806 })),
-  token('Long Shadow', F('shadow', { rotation: 40, distance: 22, blur: 5, alpha: 0.45, color: 0x0a0806 })),
+  // Long Shadow: a low sun throws it far and smears it out.
+  token('Long Shadow', F('shadow', { rotation: 20, distance: 40, blur: 4, alpha: 0.5, color: 0x0a0806, stretch: 0.85 })),
   token('Levitate', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationY: cos(0, -0.07, 2600, false) }),
     F('shadow', { rotation: 90, blur: 6, alpha: 0.4, color: 0x050505 }, { distance: cos(6, 16, 2600, false), alpha: cos(0.45, 0.28, 2600, false) })),
   token('Gentle Sway', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-3, 3, 4200, false) })),
@@ -223,16 +244,18 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.8, brightness: 0.9 })),
   token('Scorched', F('adjustment', { saturation: 0.5, brightness: 0.7, contrast: 1.15, red: 1.05, green: 0.9, blue: 0.82 }), timed('xfire', 0.3, { color: 0x2a0d04, blend: 11, amplitude: 0.6, inlay: true }),
     timed('globes', 0.6, { color: 0xff6a1a, distortion: 0.3, scale: 30, alphaDiscard: true })),
-  token('Blood-Soaked', F('splash', { color: 0x6e0505, seed: 0.42, splashFactor: 6, spread: 12, cut: true }), F('splash', { color: 0x8a0a0a, seed: 0.88, splashFactor: 3, spread: 6, cut: true })),
+  // Blood-Soaked: darker and glossier than the Splash presets, with blood running down from the splats.
+  token('Blood-Soaked', timed('splash', 1, { color: 0x4a0202, seed: 0.42, splashFactor: 6, spread: 12, cut: true, drip: 1 }), timed('splash', 1.3, { color: 0x6a0606, seed: 0.88, splashFactor: 3, spread: 6, cut: true, drip: 0.8 })),
   token('Molten', timed('xfire', 1.2, { color: 0xff4a10, blend: 5, amplitude: 1, inlay: true }), F('xbloom', { threshold: 0.4, bloomScale: 1.4, brightness: 1.05, blur: 2 }, { bloomScale: cos(0.9, 1.8, 2200) })),
   // Surroundings
   token('Submerged', F('distortion', { amount: 4, maskSpriteScaleX: 3, maskSpriteScaleY: 3 }, { maskSpriteX: { animType: 'move', speed: 0.02 }, maskSpriteY: { animType: 'move', speed: 0.015 } }),
     F('adjustment', { saturation: 0.75, brightness: 0.9, red: 0.75, green: 0.95, blue: 1.15 }), timed('flood', 0.6, { color: 0x1a6fd6, billowy: 0.2, tintIntensity: 0.2, glint: 0.15, scale: 90 })),
   token('Far Away', F('blur', { blur: 1.6 }), F('adjustment', { saturation: 0.7, contrast: 0.85, brightness: 1.05 })),
   // Markers on the ground
-  token('Marker: Ally', timed('base', 1, { baseType: 3, color: 0x44dd66, radius: 0.53, alpha: 0.85 })),
-  token('Marker: Caution', timed('base', 1, { baseType: 3, color: 0xffcc33, radius: 0.53, alpha: 0.85 })),
-  token('Marker: Foe', timed('base', 1, { baseType: 3, color: 0xff4040, radius: 0.53, alpha: 0.85 })),
+  // Ally, Caution and Foe differ in shape too (filled ring, blinking dashes, spikes), not only in colour.
+  token('Marker: Ally', timed('base', 1, { baseType: 5, color: 0x44dd66, radius: 0.53, alpha: 0.85 })),
+  token('Marker: Caution', timed('base', 1, { baseType: 6, color: 0xffcc33, radius: 0.53, alpha: 0.9 })),
+  token('Marker: Foe', timed('base', 1, { baseType: 7, color: 0xff4040, radius: 0.53, alpha: 0.85 })),
   token('Marker: Ring', F('base', { baseType: 2, color: 0xffffff, radius: 0.53, alpha: 0.7 })),
   token('Marker: Disc', F('base', { baseType: 1, color: 0x4aa3ff, radius: 0.52, alpha: 0.6 })),
   // Damage: how each kind of harm shows on the body (used by damage flashes and catalogs)
