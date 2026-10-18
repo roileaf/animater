@@ -1,6 +1,7 @@
 import {installedFxCatalog, OPTIONAL_FX_KINDS} from '../../engines/playback/optional-fx.mjs';
 import {tokenFx} from '../../engines/tokenshade/api.mjs';
 import {conditionLook} from './condition-looks.mjs';
+import {conditionLookMode} from './condition-look-choice.mjs';
 import {validateRecipe, MAX_STAGES} from '../../core/model.mjs';
 import {applyBespoke} from './bespoke.mjs';
 import {BESPOKE} from '../bespoke/index.mjs';
@@ -10,14 +11,15 @@ import {fitCastClips} from '../../engines/playback/cast-clip.mjs';
 
 export function catalogFxSettings(game = globalThis.game) {
   const enabled = key => { try { return game?.settings?.get('animater',key) !== false; } catch { return true; } };
-  return {token:enabled('catalogTokenFx'),scene:enabled('catalogSceneFx')};
+  let looks; try { looks = game?.settings?.get('animater','conditionLooks'); } catch { /* not registered (node, early init) */ }
+  return {token:enabled('catalogTokenFx'),scene:enabled('catalogSceneFx'),looks:conditionLookMode(looks)};
 }
 export function liveCatalogFx() {
   const game=globalThis.game, settings=catalogFxSettings(game);
   const catalog=installedFxCatalog({modules:game?.modules,tokenFx,
     fxmaster:globalThis.FXMASTER?.api,config:globalThis.CONFIG?.fxmaster,
     localize:key=>game?.i18n?.localize?.(key)??key,isGM:game?.user?.isGM===true});
-  return {...catalog,tokenReady:catalog.tokenReady&&settings.token,sceneReady:catalog.sceneReady&&settings.scene};
+  return {...catalog,tokenReady:catalog.tokenReady&&settings.token,sceneReady:catalog.sceneReady&&settings.scene,conditionLooks:settings.looks};
 }
 const slug = entry => String(entry.slug??entry.identifier??entry.name??'').toLowerCase()
   .replace(/^(?:spell[ -])?effect[ -:]*/,'').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -139,10 +141,14 @@ export function catalogFxDesign(recipe, entry, options={}) {
   return additions;
 }
 // A lasting condition with a Tokenshade look shows it on the creature instead of its JB2A
-// layers (sound and token motion stay). Without Tokenshade, the JB2A layers play as before.
+// layers (sound and token motion stay). Without Tokenshade, or with the conditions catalog's
+// Look switch on JB2A, the JB2A layers play as before.
+const jb2aOnly=(recipe,entry,catalog,options)=>recipe.lifecycle==='document'&&catalog.conditionLooks==='jb2a'
+  &&!!conditionLook(entry,{damageType:options.damageType??recipe.stateDamageType});
 export function withConditionLook(recipe, entry, options={}) {
   if(recipe.lifecycle!=='document'||options.fx===false)return recipe;
   const catalog=options.fxCatalog??liveCatalogFx();
+  if(jb2aOnly(recipe,entry,catalog,options))return recipe;
   const look=catalog.tokenReady&&conditionLook(entry,{damageType:options.damageType??recipe.stateDamageType});
   if(!look||!catalog.presets?.some(p=>p.name===look.preset&&p.library==='tokenshade'))return recipe;
   return validateRecipe({...recipe,stages:[...recipe.stages.filter(s=>['sound','motion'].includes(s.kind)),
@@ -163,6 +169,8 @@ export function withCatalogFx(recipe, entry, options={}) {
   const has=(name,library)=>catalog.presets?.some(p=>p.name===name&&p.library===library);
   const looked=withConditionLook(recipe,entry,{...options,fxCatalog:catalog});
   if(looked!==recipe)return looked;
+  // JB2A-only conditions: no Tokenshade accents either.
+  if(jb2aOnly(recipe,entry,catalog,options))return recipe;
   // Prefer the richer preset (e.g. an ice overlay) and fall back to a core one when an install lacks it.
   const candidates=catalogFxDesign(recipe,entry,options).map(({fxFallbackPreset,...stage})=>stage.kind==='tokenfx'&&fxFallbackPreset&&!has(stage.fxPreset,stage.fxLibrary)&&has(fxFallbackPreset,stage.fxLibrary)
     ?{...stage,fxPreset:fxFallbackPreset,label:`Tokenshade · ${fxFallbackPreset}`}:stage).filter(stage=>stage.kind==='tokenfx'

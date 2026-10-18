@@ -52,6 +52,7 @@ import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel } f
 import { PF2E_WEAPONS, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState, useCatalogWeapon, weaponCustomizationKey } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { weaponCatalogHTML } from "./weapon-catalog-ui.mjs";
 import { openCatalogDetails } from "../catalogs/shared/catalog-details.mjs";
+import { nextConditionLookMode } from "../catalogs/shared/condition-look-choice.mjs";
 import { PF2E_CONDITIONS, PF2E_EFFECTS, catalogStateEntry, stateRecipe, normalizeStateCatalogState, useStateEntry } from "../catalogs/pf2e/state-catalog.mjs";
 import { stateCatalogHTML } from "./state-catalog-ui.mjs";
 import { FlashEditor } from "./flash-editor.mjs";
@@ -2899,6 +2900,12 @@ export class Workspace {
       if (action === "automation") {
         await this.host.setEnabled(!this.host.enabled());
         this.message = `Automatic playback ${this.host.enabled() ? "enabled" : "disabled"}.`;
+      }
+      if(action==='condition-looks') {
+        const mode=nextConditionLookMode(this.host.catalogFxSettings?.()?.looks);
+        await this.host.setConditionLooks?.(mode);
+        this.message=mode==='jb2a'?'Conditions now play their JB2A animations, with no Tokenshade.':'Conditions now show quietly on the creature with Tokenshade.';
+        this.render();return;
       }
       if(action==='catalog-fx-toggle') {
         if(!['catalogTokenFx','catalogSceneFx'].includes(b.dataset.setting))return;

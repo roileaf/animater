@@ -293,7 +293,48 @@ export const PRESETS = [
   token('Glitching', F('rgbSplit', {}, { redX: { animType: 'randomNumberPerLoop', loopDuration: 180, val1: -5, val2: 5 }, blueY: { animType: 'randomNumberPerLoop', loopDuration: 230, val1: -3, val2: 3 } }),
     F('crt', { curvature: 0, lineWidth: 1, lineContrast: 0.22, noise: 0.15, vignetting: 0 }, { time: { animType: 'move', speed: 0.001 }, seed: { animType: 'randomNumberPerLoop', loopDuration: 120, val1: 0, val2: 1 } }),
     F('transform', {}, { translationX: { animType: 'randomNumberPerLoop', loopDuration: 260, val1: -0.015, val2: 0.015 } })),
-  token('Rune Circle', timed('base', 1, { baseType: 4, color: 0xb48cff, radius: 0.62, alpha: 0.85 })),
+  // Blinded: a dark veil drawn over the eyes, the rest dimmed.
+  token('Blinded', F('colorGradient', { type: 0, angle: 90, stops: [{ offset: 0, color: 0x050508, alpha: 0.85 }, { offset: 0.42, color: 0x050508, alpha: 0.55 }, { offset: 0.62, color: 0x050508, alpha: 0 }] }),
+    F('adjustment', { saturation: 0.6, brightness: 0.85 })),
+  // Muffled: colour dulled, faint rings spreading as if through water.
+  token('Muffled', timed('ripples', 0.4, { color: 0x9aa4b0, intensity: 0.35, alphaDiscard: true }), F('adjustment', { saturation: 0.65, contrast: 0.85, brightness: 0.95 })),
+  token('Cracked', timed('material', 1, { materialType: 1, strength: 0.18, cracks: 1, grain: 0.3 })),
+  token('Unsteady', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-3.5, 3.5, 1700, false), translationX: sin(-0.008, 0.008, 2300, false) })),
+  // Burdened: pressed down, heavier on the ground.
+  token('Burdened', F('transform', { pivotX: 0.5, pivotY: 0.95, scaleX: 1.03, scaleY: 0.95 }), F('shadow', { rotation: 90, distance: 4, blur: 4, alpha: 0.7, color: 0x080604 }),
+    F('adjustment', { brightness: 0.92 })),
+  token('Fascinated', timed('globes', 0.5, { color: 0xffe08a, distortion: 0.6, scale: 55, alphaDiscard: false }), F('glow', { outerStrength: 1.2, distance: 8, color: 0xffd36a }, { outerStrength: cos(0.8, 1.6, 3600) })),
+  // Held: a single rope looped round, drawing tight now and then.
+  token('Held', timed('bindings', 0.3, { bindType: 4, thickness: 0.9, density: 0.45 }, { tightness: cos(0.15, 0.55, 2400) })),
+  token('Rooted', timed('bindings', 0.4, { bindType: 1, thickness: 0.9, density: 0.6, tightness: 0.3 }), F('shadow', { rotation: 90, distance: 4, blur: 3, alpha: 0.6, color: 0x0a0806 })),
+  // Exposed: a thin red edge that keeps catching the eye.
+  token('Exposed', F('outline', { thickness: 1.5, color: 0xd8342c }, { alpha: cos(0.35, 0.9, 1400) })),
+  token('Prone', F('transform', { pivotX: 0.5, pivotY: 1, scaleY: 0.9 }), F('shadow', { rotation: 90, distance: 3, blur: 4, alpha: 0.65, color: 0x0a0806 }), F('adjustment', { brightness: 0.88 })),
+  // Dazed: little lights wheeling past, the creature flickering in and out of focus.
+  token('Dazed', timed('globes', 1.6, { color: 0xfff2a8, distortion: 0.9, scale: 40, alphaDiscard: false }), F('blur', { blur: 0 }, { blurX: cos(0, 1.6, 1900, false) }),
+    F('adjustment', { saturation: 0.75 }, { brightness: cos(0.85, 1, 1500, false) })),
+  token('Sluggish', timed('images', 0.35, { nbImage: 2, alphaImg: 0.35, alphaChr: 0.25, ampX: 0.035, ampY: 0.01 }), F('adjustment', { saturation: 0.7, red: 0.9, green: 0.96, blue: 1.12 })),
+  // Attitudes: how the creature regards the party, as a coloured edge (shape and pulse differ too).
+  token('Attitude: Helpful', F('outline', { thickness: 2, color: 0x3fd96a, alpha: 0.85 }), F('glow', { outerStrength: 1.5, distance: 8, color: 0x3fd96a })),
+  token('Attitude: Friendly', F('outline', { thickness: 1.5, color: 0x6fcf7f, alpha: 0.7 })),
+  token('Attitude: Indifferent', F('outline', { thickness: 1.2, color: 0xb0b4b8, alpha: 0.55 })),
+  token('Attitude: Unfriendly', F('outline', { thickness: 1.5, color: 0xe8862a, alpha: 0.75 })),
+  token('Attitude: Hostile', F('outline', { thickness: 2, color: 0xe03030 }, { alpha: cos(0.55, 1, 1800) }), F('glow', { outerStrength: 1.4, distance: 8, color: 0xc02020 }, { outerStrength: cos(0.8, 1.8, 1800) })),
+  token('Observed', F('outline', { thickness: 1, color: 0xf0f0f0 }, { alpha: cos(0.2, 0.45, 3000) })),
+  token('Unnoticed', F('distortion', { amount: 4, maskSpriteScaleX: 3, maskSpriteScaleY: 3 }, { maskSpriteX: { animType: 'move', speed: 0.02 }, maskSpriteY: { animType: 'move', speed: 0.025 } }),
+    F('adjustment', { saturation: 0.4 }, { alpha: cos(0.16, 0.26, 3200) })),
+  // Bleeding: a wound that keeps running.
+  token('Bleeding', timed('splash', 0.8, { color: 0x6a0404, seed: 0.57, splashFactor: 2, spread: 3, cut: true, edge: 0.65, drip: 1 }), F('adjustment', { saturation: 0.85, brightness: 0.95 })),
+  token('Lifeless', F('adjustment', { saturation: 0, brightness: 0.55, contrast: 0.9, blue: 1.04 })),
+  token('Stable', F('adjustment', { saturation: 0.45, brightness: 0.78 }, { brightness: cos(0.74, 0.82, 4400) })),
+  // Sleeping: dim, breathing slowly.
+  token('Sleeping', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { scaleY: cos(0.985, 1.015, 4200, false) }), F('adjustment', { saturation: 0.7, brightness: 0.78, blue: 1.06 })),
+  token('Ethereal', timed('liquid', 0.6, { color: 0xcfe2ff, blend: 8, intensity: 3, spectral: true, scale: 1.2 }), F('adjustment', { saturation: 0.5 }, { alpha: cos(0.45, 0.6, 3600) })),
+  token('Focused', F('glow', { outerStrength: 1, distance: 8, color: 0x8fc8ff }, { outerStrength: cos(0.6, 1.6, 2600) })),
+  token('Evasive', timed('images', 2, { nbImage: 2, alphaImg: 0.3, alphaChr: 0.35, ampX: 0.06, ampY: 0.015 })),
+  token('Suffocating', F('adjustment', { saturation: 0.6, red: 0.85, green: 0.92, blue: 1.15 }, { brightness: cos(0.78, 0.92, 1400, false) })),
+  token('Shifting', F('twist', { radiusPercent: 90 }, { angle: sin(-0.3, 0.3, 2800, false) }), F('glow', { outerStrength: 1.2, distance: 8 }, { color: hue(0x7ad08a, 0xa07cff, 3000) })),
+  token('Rune Circle',timed('base', 1, { baseType: 4, color: 0xb48cff, radius: 0.62, alpha: 0.85 })),
 ];
 
 // The library is shared: nothing may change it. Callers clone before tinting or scaling.

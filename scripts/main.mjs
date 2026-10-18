@@ -35,6 +35,7 @@ import {
 import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./engines/motion/motion.mjs";
 import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions } from './engines/playback/optional-fx.mjs';
 import {catalogFxSettings} from './catalogs/shared/catalog-fx.mjs';
+import {conditionLookMode} from './catalogs/shared/condition-look-choice.mjs';
 import {RUNE_SETTING} from './catalogs/pf2e/weapons/weapon-runes.mjs';
 import {
   normalizeCatalogState,
@@ -888,6 +889,10 @@ function workspaceHost() {
       if(!game.user.isGM||!['catalogTokenFx','catalogSceneFx'].includes(key))return;
       await game.settings.set(ID,key,value===true);
     },
+    setConditionLooks:async mode=>{
+      if(!game.user.isGM)throw Error('Only a GM can change how conditions look.');
+      await game.settings.set(ID,'conditionLooks',conditionLookMode(mode));
+    },
     // The world's own Tokenshade presets: saved from an edited stage, shared by every recipe.
     saveTokenFxPreset:async(name,layers)=>{
       if(!game.user.isGM)throw Error('Only a GM can save Tokenshade presets.');
@@ -1053,6 +1058,10 @@ Hooks.once("init", () => {
     ['catalogSceneFx','Add FXMaster scene effects to catalog animations','When FXMaster is active, weather-like catalog spells add brief scene effects (rain, fog, embers). Skipped automatically when the module is missing.']])
     game.settings.register(ID,key,{name,hint,scope:'world',config:true,type:Boolean,default:true,
       onChange:()=>{persistentStates?.schedule();app?.workspace?.render();}});
+  game.settings.register(ID,'conditionLooks',{name:'Condition looks',
+    hint:'How catalog conditions show on a creature. Tokenshade: a quiet look on the creature itself. JB2A: the condition’s JB2A animation only, with no Tokenshade filters. Also set from each conditions catalog in Animater.',
+    scope:'world',config:true,type:String,choices:{tokenshade:'Tokenshade',jb2a:'JB2A'},default:'tokenshade',
+    onChange:()=>{persistentStates?.schedule();app?.workspace?.render();}});
   game.settings.register(ID,'weaponScale',{name:'Weapon effect size',hint:'Multiplies the size of weapon hit and residue effects (1 = the target token\'s footprint).',
     scope:'world',config:true,type:Number,range:{min:0.5,max:3,step:0.1},default:1.5});
   game.settings.register(ID,RUNE_SETTING,{name:'Weapon rune flourishes',hint:'Catalog weapon Strikes show each weapon’s runes: potency adds a glint, striking a bigger hit, and each property rune (flaming, frost, shock, holy…) its own accent on a hit. Saved recipes are never changed.',

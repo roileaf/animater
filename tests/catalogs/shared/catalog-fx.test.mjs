@@ -92,7 +92,7 @@ test('provider removal, catalog switches and portable imports preserve base reci
  const w=Object.create(Workspace.prototype);w.host={fxCatalog:()=>({presets:[],effects:[],tokenReady:false,sceneReady:false}),catalog:()=>media(base)};
  w.motionBlocked=()=>false;
  assert.equal(w.status(spell('Ignition')),'Ready to play');
- assert.deepEqual(catalogFxSettings({settings:{get:(_,key)=>key==='catalogTokenFx'?false:true}}),{token:false,scene:true});
+ assert.deepEqual(catalogFxSettings({settings:{get:(_,key)=>key==='catalogTokenFx'?false:true}}),{token:false,scene:true,looks:'tokenshade'});
  const previous={game:globalThis.game,PIXI:globalThis.PIXI};
  try{
   // The built-in engine is ready wherever there is a renderer; no other module needed.
@@ -113,7 +113,7 @@ test('condition filters remain document-linked; temporary previews retain finite
  assert.match(w.optionalFxControlsHTML(s,1),/Filter stays while the condition or effect is on the token/);
 });
 
-test('lasting conditions show a quiet Tokenshade look instead of JB2A when one fits, and keep symbols otherwise',async()=>{
+test('lasting conditions show a quiet Tokenshade look instead of JB2A, or JB2A only when the catalog says so',async()=>{
  const {PRESETS}=await import('../../../scripts/engines/tokenshade/presets.mjs');
  const {CONDITION_LOOK_PRESETS,conditionLookStrength}=await import('../../../scripts/catalogs/shared/condition-looks.mjs');
  for(const name of CONDITION_LOOK_PRESETS)assert.ok(PRESETS.some(p=>p.name===name),`${name} exists`);
@@ -124,8 +124,35 @@ test('lasting conditions show a quiet Tokenshade look instead of JB2A when one f
  assert.equal(stateRecipe(cond('frightened'),{fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx').fxPreset,'Wintry Pallor');
  const fire=stateRecipe(cond('persistent-damage'),{damageType:'fire',fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx');
  assert.equal(fire.fxPreset,'Burning');assert.equal(fire.fxStrength,.6);
- assert.ok(stateRecipe(cond('stunned'),{fxCatalog:shade}).stages.some(s=>s.kind==='aura'),'stunned keeps its JB2A stars');
+ assert.equal(stateRecipe(cond('stunned'),{fxCatalog:shade}).stages.find(s=>s.kind==='tokenfx').fxPreset,'Dazed');
+ // JB2A mode: the JB2A layers play and no Tokenshade filter is added to the condition.
+ const jb2a={...shade,conditionLooks:'jb2a'};
+ for(const slug of ['petrified','stunned','frightened']){
+  const r=stateRecipe(cond(slug),{fxCatalog:jb2a});
+  assert.ok(r.stages.some(s=>s.kind==='aura'),slug);assert.ok(!r.stages.some(s=>s.kind==='tokenfx'),slug);
+ }
+ assert.ok(!stateRecipe(cond('persistent-damage'),{damageType:'fire',fxCatalog:jb2a}).stages.some(s=>s.kind==='tokenfx'));
  assert.ok(stateRecipe(cond('petrified'),{fxCatalog:{...shade,tokenReady:false}}).stages.some(s=>s.kind==='aura'),'without Tokenshade the JB2A layers play');
  assert.ok(stateRecipe(cond('petrified'),{fxCatalog:shade,fx:false}).stages.some(s=>s.kind==='aura'),'catalog filters off keeps JB2A');
  assert.deepEqual([0,1,2,3,4].map(conditionLookStrength),[1,.55,.7,.85,1]);
+});
+
+test('every catalogued condition in every system has its own Tokenshade look',async()=>{
+ const {PRESETS}=await import('../../../scripts/engines/tokenshade/presets.mjs');
+ const {conditionLook}=await import('../../../scripts/catalogs/shared/condition-looks.mjs');
+ const {sfEntries}=await import('../../../scripts/catalogs/sf2e/sf2e-catalog.mjs');
+ const {dndEntries}=await import('../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs');
+ const {dhEntries}=await import('../../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs');
+ for(const [system,list] of [['pf2e',PF2E_CONDITIONS],['sf2e',sfEntries('condition')],['dnd5e',dndEntries('condition')],['daggerheart',dhEntries('condition')]])
+  for(const e of list){const look=conditionLook(e);assert.ok(look&&PRESETS.some(p=>p.name===look.preset),`${system} ${e.slug??e.name}`);}
+ assert.equal(conditionLook({slug:'persistent-damage'},{damageType:'bleed'}).preset,'Bleeding');
+});
+test('the condition look switch is one world setting, Tokenshade unless set to JB2A',async()=>{
+ const {conditionLookMode,nextConditionLookMode,conditionLookSwitchHTML}=await import('../../../scripts/catalogs/shared/condition-look-choice.mjs');
+ assert.equal(conditionLookMode(undefined),'tokenshade');assert.equal(conditionLookMode('jb2a'),'jb2a');
+ assert.equal(nextConditionLookMode('tokenshade'),'jb2a');assert.equal(nextConditionLookMode('jb2a'),'tokenshade');
+ assert.match(conditionLookSwitchHTML('jb2a'),/aria-checked="false"[^>]*data-action="condition-looks"[^>]*>JB2A</);
+ const settings=values=>({settings:{get:(_,key)=>values[key]}});
+ assert.equal(catalogFxSettings(settings({conditionLooks:'jb2a'})).looks,'jb2a');
+ assert.equal(catalogFxSettings(settings({})).looks,'tokenshade');
 });
