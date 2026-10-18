@@ -1009,6 +1009,7 @@ export class Workspace {
   }
   updatePlayback(frame) {
     if (this.isStudio()) studioFrame(this, frame);
+    const stages = this.root.querySelector("[data-stage-drag]") ? this.recipe()?.stages ?? [] : [];
     this.root.querySelectorAll("[data-stage-drag]").forEach((el) => {
       const state = frame.stages[Number(el.dataset.stageDrag)].state;
       el.classList.toggle("is-playing", state === "playing");
@@ -1017,7 +1018,7 @@ export class Workspace {
       const button = el.querySelector('[data-action="stage"]');
       button?.setAttribute(
         "aria-label",
-        `Stage ${Number(el.dataset.stageDrag) + 1}: ${this.stageLabel(this.recipe().stages[Number(el.dataset.stageDrag)])}, ${state}`,
+        `Stage ${Number(el.dataset.stageDrag) + 1}: ${this.stageLabel(stages[Number(el.dataset.stageDrag)])}, ${state}`,
       );
     });
     const progress = this.root.querySelector("[data-recipe-progress]");
@@ -2845,11 +2846,14 @@ export class Workspace {
                   ...validateRecipe(this.recipe()),
                   targetCount: this.host.previewTokens?.().targetCount ?? 1,
                 };
-                const visual =
-                  scene &&
-                  new RecipePreview(scene, previewVariants(recipe, this.stageIndex), (frame) =>
+                // While the window is tucked away nobody sees its mirror of the
+                // animation; building one (an extra WebGL renderer and its shaders)
+                // only stalls the canvas just as the animation starts.
+                const visual = scene && !restore
+                  ? new RecipePreview(scene, previewVariants(recipe, this.stageIndex), (frame) =>
                     this.updatePlayback(frame),
-                  {tokenFx:this.host.createTokenFxPreview,sceneFx:this.host.createSceneFxPreview});
+                  {tokenFx:this.host.createTokenFxPreview,sceneFx:this.host.createSceneFxPreview})
+                  : null;
                 void visual?.prepareTokenFx();
                 this.previewRun = {
                   stop: () => {

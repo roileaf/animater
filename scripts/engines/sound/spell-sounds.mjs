@@ -56,10 +56,23 @@ const resolvedOptionalCue = (stage, candidate) => {
 // absence during Foundry startup must not silence a pack registered later.
 // A pack's Patreon edition has its own module id but registers the same Sequencer sounds.
 export const SOUND_PACK_EDITIONS = { psfx: ["psfx-patreon"] };
+// Resolving every cue against Sequencer's database takes ~0.1 s, and the catalog windows
+// ask for it several times per click. The answer is reused while the same packs are
+// active and the database holds the same number of entries (registering a pack later
+// grows it); a database that cannot say how many it holds is always asked again.
+let lastCatalog = null;
 export function installedSoundCatalog(modules, database) {
   const packs = SOUND_SOURCE.packs.filter(
     (p) => [p.module, ...(SOUND_PACK_EDITIONS[p.module] ?? [])].some((id) => modules?.get?.(id)?.active),
   );
+  const size = database?.flattenedEntries?.length;
+  const key = Number.isInteger(size) ? `${packs.map((p) => p.module).join()}|${size}` : null;
+  if (key && lastCatalog?.database === database && lastCatalog.key === key) return lastCatalog.value;
+  const value = resolveSoundCatalog(packs, database);
+  lastCatalog = key ? { database, key, value } : null;
+  return value;
+}
+function resolveSoundCatalog(packs, database) {
   const resolved = new Map();
   // Spell wards and physical shield impacts intentionally share a profile label,
   // not their candidates. Enumerate both namespaces instead of overwriting one.

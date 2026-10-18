@@ -237,6 +237,20 @@ test("late database registration becomes available without cached absence; PSFX 
   assert.equal(sounds(r).length, 2);
   assert.ok(sounds(r).every((s) => s.soundFile.startsWith("audio/peri/")));
 });
+test("the installed sound catalog is reused until the packs or the database's size change", () => {
+  const { modules, database } = fixture(["psfx"], true);
+  let asked = 0;
+  const db = { ...database, flattenedEntries: [1, 2], entryExists: (key) => (asked++, database.entryExists(key)) };
+  const first = installedSoundCatalog(modules, db);
+  const before = asked;
+  assert.ok(before > 0);
+  assert.equal(installedSoundCatalog(modules, db), first, "same packs, same database: no new lookups");
+  assert.equal(asked, before);
+  db.flattenedEntries.push(3);
+  assert.notEqual(installedSoundCatalog(modules, db), first, "a pack registered later is picked up");
+  const unsized = { entryExists: () => false };
+  assert.notEqual(installedSoundCatalog(modules, unsized), installedSoundCatalog(modules, unsized), "a database that cannot tell its size is always asked");
+});
 test("removed optional pack falls back or skips audio while preserving visuals and custom file overrides", () => {
   const r = spellRecipe(spell("Fireball"), undefined, {
     sounds: fixture().catalog,
