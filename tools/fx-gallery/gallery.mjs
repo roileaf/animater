@@ -2,7 +2,7 @@
 // rendered with Foundry's own PIXI build. Also compiles every filter type and reports errors.
 import * as PIXI from '/preview-pixi.mjs';
 import { PRESETS, FILTER_TYPES, presetFilters, specFor } from '../../scripts/engines/tokenshade/index.mjs';
-import { shaderSource } from '../../scripts/engines/tokenshade/filter-factory.mjs';
+import { shaderSource, fieldSource } from '../../scripts/engines/tokenshade/filter-factory.mjs';
 
 globalThis.PIXI ??= PIXI;
 const params = new URLSearchParams(location.search);
@@ -87,11 +87,12 @@ document.getElementById('zoom').onchange = e => { zoom = +e.target.value; layout
 globalThis.fxCheck = async () => {
   const gl = app.renderer.gl, failed = [], messages = [];
   const prefix = app.renderer.context.webGLVersion === 2 ? '' : '';
-  for (const type of FILTER_TYPES) {
+  for (const type of FILTER_TYPES) for (const [label, source] of [[type, shaderSource(specFor(type))], [`${type} field`, fieldSource(specFor(type))]]) {
+    if (!source) continue;
     const sh = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(sh, prefix + shaderSource(specFor(type)));
+    gl.shaderSource(sh, prefix + source);
     gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) { failed.push(type); messages.push(`${type}: ${gl.getShaderInfoLog(sh)}`); }
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) { failed.push(type); messages.push(`${label}: ${gl.getShaderInfoLog(sh)}`); }
     gl.deleteShader(sh);
   }
   const rt = PIXI.RenderTexture.create({ width: 128, height: 128 });

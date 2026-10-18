@@ -7,7 +7,7 @@ const f = v => Number(v) || 0;
 // three dithered rings. Shared by glow-like effects.
 const COVERAGE = `
 float coverage(float radius) {
-  float acc = 0.0, wsum = 0.0, d = fxDither() * TAU;
+  float acc = 0.0, wsum = 0.0, d = fxJitter() * TAU;
   for (int ring = 1; ring <= 3; ring++) {
     float r = radius * float(ring) / 3.0;
     float w = 1.25 - float(ring) * 0.3;
@@ -20,7 +20,7 @@ float coverage(float radius) {
   return acc / wsum;
 }
 float nearest(float radius) {
-  float m = 0.0, d = fxDither() * TAU;
+  float m = 0.0, d = fxJitter() * TAU;
   for (int k = 0; k < 16; k++) {
     float ang = d + TAU * float(k) / 16.0;
     m = max(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius));
@@ -28,7 +28,7 @@ float nearest(float radius) {
   return m;
 }
 float innerEdge(float radius) {
-  float m = 1.0, d = fxDither() * TAU;
+  float m = 1.0, d = fxJitter() * TAU;
   for (int k = 0; k < 12; k++) {
     float ang = d + TAU * float(k) / 12.0;
     m = min(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius));
@@ -46,13 +46,20 @@ const glow = {
     uAlpha: ['float', p => clamp(p.alpha, 0, 1)], uKnockout: ['bool', p => p.knockout === true],
   },
   reach: p => clamp(p.distance, 1, 120) * 1.15 + 2,
-  glsl: `${COVERAGE}
+  // x: coverage around, y: inner edge.
+  field: {
+    spacing: p => clamp(p.distance, 1, 120) * 0.2,
+    glsl: `${COVERAGE}
+vec4 field() { return vec4(coverage(uDistance), innerEdge(uDistance * 0.35), 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
-  float cov = coverage(uDistance);
+  vec4 shape = fxField();
+  float cov = shape.x;
+  if (base.a <= 0.0 && cov < 0.001) { gl_FragColor = uKnockout > 0.5 ? vec4(0.0) : base; return; }
   // Bright close to the edge, long soft tail: reads as light, not as a blurred halo.
   float outer = (1.0 - base.a) * (1.0 - exp(-cov * uOuter * 0.9)) * uAlpha;
-  float inner = base.a * innerEdge(uDistance * 0.35) * clamp(uInner * 0.18, 0.0, 1.0) * uAlpha;
+  float inner = base.a * shape.y * clamp(uInner * 0.18, 0.0, 1.0) * uAlpha;
   vec3 hot = mix(uColor, vec3(1.0), 0.35 * clamp(cov * 2.0 - 0.6, 0.0, 1.0));
   vec4 o = fxBehind(base, hot, outer);
   o.rgb += uColor * inner * o.a;
@@ -183,12 +190,27 @@ const xglow = {
     uThreshold: ['float', p => clamp(p.threshold, 0, 1)], uDiscard: ['bool', p => p.discard === true],
   },
   reach: p => clamp(p.thickness, 0.2, 30) * 5 * 1.3 + 4,
-  glsl: `${COVERAGE}
+  // x: coverage around, y: inner edge, z: art below (hot aura's lift).
+  field: {
+    spacing: p => clamp(p.thickness, 0.2, 30) * 5 * 0.1,
+    glsl: `${COVERAGE}
+vec4 field() {
+  float lift = 0.0;
+  if (uType > 1.5) {
+    float jit = fxJitter();
+    for (int k = 0; k < 8; k++) { float d = (float(k) + jit) / 8.0; lift = max(lift, fxAlphaAt(vec2(0.0, d * uThickness * 1.6)) * (1.0 - d)); }
+  }
+  return vec4(coverage(uThickness), innerEdge(uThickness * 0.3), lift, 0.0);
+}` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  vec4 shape = fxField();
+  float cov = shape.x;
+  // A cold aura is nothing where no art is near.
+  if (uType < 1.5 && base.a <= 0.0 && cov < 0.004) { gl_FragColor = base; return; }
   vec2 q = fxCanvas() / (fxTokenRadius() * 0.12 * uScale + 1.0);
   float t = uTime;
-  float cov = coverage(uThickness);
   float a, h;
   if (uType < 1.5) {
     // Cold: a soft breath of light with slow plumes and the odd glint.
@@ -200,8 +222,7 @@ void main() {
     h = clamp(field * 1.3, 0.0, 1.0);
   } else {
     // Hot: tongues licking upward off the outline.
-    float lift = 0.0, jit = fxDither();
-    for (int k = 0; k < 8; k++) { float d = (float(k) + jit) / 8.0; lift = max(lift, fxAlphaAt(vec2(0.0, d * uThickness * 1.6)) * (1.0 - d)); }
+    float lift = shape.z;
     float n = warped(q * vec2(0.9, 0.5) + vec2(0.0, t * 1.4), t);
     float field = max(cov * 0.9, lift) + (n - 0.5) * 0.9;
     a = smoothstep(0.3 + uThreshold * 0.2, 0.7, field);
@@ -212,7 +233,7 @@ void main() {
   float n = h;
   vec4 o = fxBehind(base, col, a);
   // Sub-aura: the light washing over the art's rim.
-  float rim = base.a * innerEdge(uThickness * 0.3) * clamp(uSub * 0.35, 0.0, 1.0) * (0.6 + 0.6 * n);
+  float rim = base.a * shape.y * clamp(uSub * 0.35, 0.0, 1.0) * (0.6 + 0.6 * n);
   if (uDiscard < 0.5) o.rgb = mix(o.rgb, col * o.a, rim * 0.7);
   gl_FragColor = o;
 }`,

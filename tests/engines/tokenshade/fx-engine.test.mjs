@@ -4,7 +4,7 @@ import {animValue, normalizeAnim, compileAnimations, ANIM_TYPES} from '../../../
 import {SPECS, FILTER_TYPES, specFor, resolveParams} from '../../../scripts/engines/tokenshade/filters/index.mjs';
 import {PRESETS, builtinPreset, LIBRARY} from '../../../scripts/engines/tokenshade/presets.mjs';
 import {TokenFxEngine, presetFilters} from '../../../scripts/engines/tokenshade/engine.mjs';
-import {shaderSource} from '../../../scripts/engines/tokenshade/filter-factory.mjs';
+import {shaderSource,fieldSource,fieldResolution,fieldSpacing} from '../../../scripts/engines/tokenshade/filter-factory.mjs';
 import {tokenFxApi} from '../../../scripts/engines/tokenshade/api.mjs';
 
 class Filter {constructor(vertex,fragment,uniforms){this.uniforms=uniforms;this.enabled=true;this.destroyed=false;}destroy(){this.destroyed=true;}}
@@ -106,4 +106,26 @@ test('a world’s own Token Magic presets are offered only under names animater 
   const off=tokenFxApi({engine:new TokenFxEngine({PIXI}),tokenMagic:()=>({getPresets:()=>[custom]}),modules:()=>new Map()});
   assert.ok(!off.getPresets('tokenshade').some(p=>p.name==='My ward'),'only while Token Magic is active');
   assert.equal(api.ready(),true);
+});
+test('silhouette fields: one small pass per frame, sized by the effect, passed through outside the reach',()=>{
+  const withField=Object.values(SPECS).filter(s=>s.field);
+  assert.ok(['fire','xfire','xglow','glow','electric','smoke','frost','veins'].every(t=>specFor(t).field),'the ring-sampling filters use fields');
+  for(const spec of withField){
+    assert.match(fieldSource(spec),/vec4 field\(\)/,spec.type);
+    assert.match(shaderSource(spec),/fxField\(\)/,`${spec.type} reads its field`);
+    assert.doesNotMatch(spec.glsl,/\b(fuelBelow|coverage|innerEdge)\(/,`${spec.type} keeps ring sampling out of its main pass`);
+  }
+  assert.equal(fieldSource(specFor('adjustment')),null);
+  for(const spec of Object.values(SPECS))assert.match(shaderSource(spec),/fxBeyondReach\(0\.0\)/,spec.type);
+  assert.equal(fieldResolution(3,1),1/3);assert.equal(fieldResolution(0.2,1),1,'never finer than the input');assert.equal(fieldResolution(100,2),0.25,'never coarser than an eighth');
+  assert.equal(fieldSpacing(specFor('fire'),resolveParams(specFor('fire'),{}),{size:200}),3,'3% of the token radius');
+  assert.ok(Math.abs(fieldSpacing(specFor('glow'),resolveParams(specFor('glow'),{distance:10}),{size:200})-2)<1e-9,'glow follows its own distance');
+});
+test('a filter reaches from what the filters ahead of it drew, plus its own padding',()=>{
+  const [glow,fire]=presetFilters(PIXI,{name:'x',params:[{filterType:'glow',distance:10},{filterType:'fire'}]},{tokenSize:{width:100,height:100}});
+  const target=fakeToken().mesh;target.worldTransform={a:1,b:0,c:0,d:1,tx:200,ty:200};
+  glow.measure(target);
+  assert.deepEqual([...glow.uniforms.uReach],[150-glow.padding-1,150-glow.padding-1,250+glow.padding+1,250+glow.padding+1]);
+  fire.measure(target,glow.padding);
+  assert.equal(fire.uniforms.uReach[0],150-glow.padding-fire.padding-1);
 });

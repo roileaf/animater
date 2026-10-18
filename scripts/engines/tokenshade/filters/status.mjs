@@ -6,12 +6,12 @@ const f = v => Number(v) || 0;
 
 const SHAPE = `
 float near(float radius) {
-  float m = 0.0, d = fxDither() * TAU;
+  float m = 0.0, d = fxJitter() * TAU;
   for (int k = 0; k < 10; k++) { float ang = d + TAU * float(k) / 10.0; m = max(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius)); }
   return m;
 }
 float depthIn(float radius) {
-  float m = 1.0, d = fxDither() * TAU + 0.4;
+  float m = 1.0, d = fxJitter() * TAU + 0.4;
   for (int k = 0; k < 8; k++) { float ang = d + TAU * float(k) / 8.0; m = min(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius)); }
   return m;
 }
@@ -95,15 +95,22 @@ const frost = {
     uAmount: ['float', p => clamp(p.amount, 0, 1)], uSnow: ['float', p => clamp(p.snow, 0, 1)], uColor: ['vec3', p => rgb(p.color)],
   },
   reach: (p, c) => c.size * 0.04,
+  // x: how deep inside the art (0 at the edge, 1 deep inside).
+  field: {
+    spacing: (p, c) => c.size * 0.012,
+    glsl: `${SHAPE}
+vec4 field() {
+  float R = fxTokenRadius(), depth = 0.0;
+  for (int i = 1; i <= 4; i++) depth += depthIn(R * 0.07 * float(i));
+  return vec4(depth / 4.0, 0.0, 0.0, 0.0);
+}` },
   glsl: `${SHAPE}
 void main() {
   vec4 base = fxSample(vTextureCoord);
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.1);
   // How far inside the art this pixel is (0 at the edge, 1 deep inside).
-  float depth = 0.0;
-  for (int i = 1; i <= 4; i++) depth += depthIn(R * 0.07 * float(i));
-  depth = 1.0 - depth / 4.0;
+  float depth = 1.0 - fxField().x;
   float lace = ridged(q * 0.9 + fbm3(q * 0.3) * 1.5);
   float reach = uAmount * 1.15;
   float frosted = smoothstep(reach, reach - 0.25, depth + (lace - 0.6) * 0.35) * base.a;

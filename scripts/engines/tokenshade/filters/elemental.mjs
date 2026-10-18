@@ -8,7 +8,7 @@ const blendU = ['int', p => clamp(Math.round(f(p.blend)), 0, 14)];
 const SILHOUETTE = `
 // How strongly art lies below this pixel within 'height' canvas px, leaning with 'sway'.
 float fuelBelow(float height, float sway) {
-  float fuel = 0.0, jit = fxDither();
+  float fuel = 0.0, jit = fxJitter();
   for (int k = 0; k < 14; k++) {
     float d = (float(k) + jit) / 14.0;
     fuel = max(fuel, fxAlphaAt(vec2(-sway * d, d * height)) * pow(1.0 - d, 1.3));
@@ -17,7 +17,7 @@ float fuelBelow(float height, float sway) {
 }
 // Art within 'radius' in any direction (soft), for edge-hugging effects.
 float near(float radius) {
-  float m = 0.0, d = fxDither() * TAU;
+  float m = 0.0, d = fxJitter() * TAU;
   for (int k = 0; k < 10; k++) {
     float ang = d + TAU * float(k) / 10.0;
     m = max(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius));
@@ -26,13 +26,15 @@ float near(float radius) {
 }
 // 1 deep inside the art, 0 at its edge.
 float depthIn(float radius) {
-  float m = 1.0, d = fxDither() * TAU + 0.4;
+  float m = 1.0, d = fxJitter() * TAU + 0.4;
   for (int k = 0; k < 8; k++) {
     float ang = d + TAU * float(k) / 8.0;
     m = min(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius));
   }
   return m;
 }
+`;
+const FIRE_COLOR = `
 vec3 naturalFire(float h) {
   vec3 c = mix(vec3(0.16, 0.03, 0.02), vec3(0.78, 0.13, 0.02), smoothstep(0.0, 0.3, h));
   c = mix(c, vec3(1.0, 0.47, 0.07), smoothstep(0.25, 0.6, h));
@@ -52,16 +54,28 @@ const fire = {
     uAmp: ['float', p => clamp(p.amplitude, 0.1, 4)], uBlend: blendU,
     uOver: ['float', p => clamp(p.fireBlend, 0, 1)], uClip: ['bool', p => p.alphaDiscard === true],
   },
-  reach: (p, c) => c.size * 0.5 * clamp(p.amplitude, 0.1, 4) + c.size * 0.1,
-  glsl: `${SILHOUETTE}
-void main() {
-  vec4 base = fxSample(vTextureCoord);
+  // Flames rise at most H (0.45 size × amplitude) above the art, plus the nearness ring.
+  reach: (p, c) => c.size * (0.45 * clamp(p.amplitude, 0.1, 4) + 0.06),
+  // x: fuel below and around, y: depth inside the art.
+  field: { glsl: `${SILHOUETTE}
+vec4 field() {
   float R = fxTokenRadius();
   float H = R * 0.9 * uAmp;
   vec2 q = fxCanvas() / (R * 0.2);
+  float sway = fbm3(vec2(q.x * 0.3, q.y * 0.12 + uTime * 0.4)) * 0.5 * H;
+  float fuel = uClip > 0.5 ? 0.0 : max(fuelBelow(H, sway), near(R * 0.09) * 0.7);
+  return vec4(fuel, depthIn(R * 0.1), 0.0, 0.0);
+}` },
+  glsl: `${FIRE_COLOR}
+void main() {
+  vec4 base = fxSample(vTextureCoord);
+  vec4 shape = fxField();
+  float fuel = shape.x;
+  // Off the art with no fuel nothing can show (heat stays under the flame threshold).
+  if (base.a <= 0.0 && (uClip > 0.5 || fuel < 0.02)) { gl_FragColor = vec4(0.0); return; }
+  float R = fxTokenRadius();
+  vec2 q = fxCanvas() / (R * 0.2);
   float t = uTime;
-  float sway = fbm3(vec2(q.x * 0.3, q.y * 0.12 + t * 0.4)) * 0.5 * H;
-  float fuel = max(fuelBelow(H, sway), near(R * 0.09) * 0.7);
   vec2 fq = q * vec2(1.0, 0.55);
   vec2 w = vec2(fbm3(fq * 0.7 + vec2(0.0, t * 0.9)), fbm3(fq * 0.7 + vec2(5.2, t * 0.9 + 1.3)));
   float n = fbm(fq + w * 1.4 + vec2(0.0, t * 1.6)) + 0.5;
@@ -73,7 +87,7 @@ void main() {
   float h = heat * heat * 0.6 + heat * 0.4;
   vec3 col = isWhite(uColor) ? naturalFire(h) : heatRamp(uColor, h);
   col *= 0.85 + 0.35 * smoothstep(0.6, 1.0, heat);
-  float inner = depthIn(R * 0.1);
+  float inner = shape.y;
   if (uClip > 0.5) {
     // Fire on the art only: tongues crawl over it.
     float lick = n * 0.75 + n2 * 0.45 + (1.0 - inner) * 0.3;
@@ -105,8 +119,21 @@ const xfire = {
     uScale: ['vec2', p => [clamp(p.scaleX, 0.1, 10), clamp(p.scaleY, 0.1, 10)]],
     uClip: ['bool', p => p.alphaDiscard === true], uCut: ['float', p => clamp(p.discardThreshold, 0, 1)],
   },
-  reach: (p, c) => (p.inlay === true ? 0 : c.size * 0.55 * clamp(p.amplitude, 0.05, 4) + c.size * 0.08),
-  glsl: `${SILHOUETTE}
+  // Sparks rise at most 1.15 H (0.49 size × amplitude) above the art, plus the nearness ring.
+  reach: (p, c) => (p.inlay === true ? 0 : c.size * (0.49 * clamp(p.amplitude, 0.05, 4) + 0.055)),
+  // x: fuel, y: depth inside the art, w: fuel for sparks.
+  field: { glsl: `${SILHOUETTE}
+vec4 field() {
+  float R = fxTokenRadius();
+  if (uInlay > 0.5) return vec4(0.0, depthIn(R * 0.12), 0.0, 0.0);
+  vec2 q = fxCanvas() / (R * 0.16) / uScale;
+  float H = R * 0.85 * uAmp;
+  float sway = fbm3(vec2(q.x * 0.25, q.y * 0.1 + uTime * 0.5)) * 0.45 * H;
+  float fuel = uClip > 0.5 ? 0.0 : max(fuelBelow(H, sway), near(R * 0.08) * 0.65);
+  float sparks = uSparks > 0.0 && uClip < 0.5 ? fuelBelow(H * 1.15, 0.0) : 0.0;
+  return vec4(fuel, depthIn(R * 0.1), 0.0, sparks);
+}` },
+  glsl: `${FIRE_COLOR}
 vec3 flameColor(float h, vec2 q) {
   if (uChroma > 0.5) return hsv2rgb(vec3(fract(q.y * 0.05 + uTime * 0.15 + h * 0.2), 0.75, 0.4 + 0.7 * h));
   if (uNatural > 0.5) return naturalFire(h);
@@ -114,6 +141,9 @@ vec3 flameColor(float h, vec2 q) {
 }
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  vec4 shape = fxField();
+  // Off the art, inlaid or clipped fire is nothing; free flames need fuel (or sparks).
+  if (base.a <= 0.0 && (uInlay > 0.5 || uClip > 0.5 || (shape.x < 0.02 && shape.w < 0.003))) { gl_FragColor = vec4(0.0); return; }
   float R = fxTokenRadius();
   float t = uTime;
   vec2 q = fxCanvas() / (R * 0.16) / uScale;
@@ -121,15 +151,13 @@ void main() {
   if (uInlay > 0.5) {
     // Burning (or freezing) inside the art: veins of colour crawl across it.
     float v = ridged(q * 0.8 + vec2(0.0, t * 0.8) + fbm3(q * 0.4 - t * 0.2) * 1.5);
-    float edge = 1.0 - depthIn(R * 0.12);
+    float edge = 1.0 - shape.y;
     float amt = clamp(smoothstep(0.42, 0.85, v) * (0.65 + 0.35 * uAmp) + edge * 0.55, 0.0, 1.0);
     vec3 col = flameColor(clamp(v * 1.2, 0.0, 1.0), q);
     gl_FragColor = fxLayer(base, col, amt * base.a * 0.9, mode == 11 ? 4 : 9);
     return;
   }
-  float H = R * 0.85 * uAmp;
-  float sway = fbm3(vec2(q.x * 0.25, q.y * 0.1 + t * 0.5)) * 0.45 * H;
-  float fuel = max(fuelBelow(H, sway), near(R * 0.08) * 0.65);
+  float fuel = shape.x;
   // Sharper, braided tongues than natural fire.
   vec2 fq = q * vec2(1.0, 0.45) + vec2(0.0, t * 2.0);
   float braid = ridged(fq + vec2(fbm3(fq * 0.5 + t * 0.3), 0.0) * 1.2);
@@ -139,7 +167,7 @@ void main() {
   if (uSparks > 0.0) {
     vec2 sq = fxCanvas() / (R * 0.07) + vec2(0.0, t * 6.0);
     vec3 cl = cells(sq, t * 2.0);
-    float spark = smoothstep(0.12, 0.0, cl.x) * step(0.82 - uSparks * 0.05, cl.z) * smoothstep(0.0, 0.3, fuelBelow(H * 1.15, 0.0));
+    float spark = smoothstep(0.12, 0.0, cl.x) * step(0.82 - uSparks * 0.05, cl.z) * smoothstep(0.0, 0.3, shape.w);
     heat = max(heat, spark);
     a = max(a, spark);
   }
@@ -147,14 +175,14 @@ void main() {
   // Blackfire: smoky dark flames with a violet edge, never a solid block.
   if (mode == 11) { col = mix(vec3(0.03, 0.0, 0.05), uColor * 0.9, smoothstep(0.1, 0.45, heat) * (1.0 - smoothstep(0.55, 0.9, heat))); a *= 0.8 * smoothstep(0.0, 0.5, braid); }
   if (uClip > 0.5) {
-    float edgeIn = 1.0 - depthIn(R * 0.1);
+    float edgeIn = 1.0 - shape.y;
     float lick = braid * 0.7 + edgeIn * 0.35;
     float on = base.a * smoothstep(uCut + 0.15, uCut + 0.45, lick) * 0.9;
     gl_FragColor = fxLayer(base, flameColor(smoothstep(0.45, 1.05, lick) * 0.85, q), on, mode == 11 ? 0 : 9);
     return;
   }
   vec4 o = fxBehind(base, col, a);
-  float inner = depthIn(R * 0.1);
+  float inner = shape.y;
   float tongues = smoothstep(0.7, 0.92, braid * 0.8 + (1.0 - inner) * 0.35);
   o = fxLayer(o, col, a * tongues * 0.7 * base.a, mode == 11 ? 0 : 9);
   gl_FragColor = o;
@@ -168,7 +196,10 @@ const electric = {
   timeScale: 1 / 2,
   uniforms: { uColor: ['vec3', p => rgb(p.color)], uBlend: blendU, uIntensity: ['float', p => clamp(p.intensity, 0, 20)] },
   reach: (p, c) => c.size * 0.12,
-  glsl: `${SILHOUETTE}
+  // x: art nearby.
+  field: { phases: 2, glsl: `${SILHOUETTE}
+vec4 field() { return vec4(near(fxTokenRadius() * 0.1), 0.0, 0.0, 0.0); }` },
+  glsl: `
 vec2 arc(vec2 q, float t, float seed) {
   // A wandering line: the zero set of a warped noise field. x = core, y = glow.
   float jump = floor(t * 7.0 + seed);
@@ -180,13 +211,15 @@ vec2 arc(vec2 q, float t, float seed) {
 }
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  float surround = fxField().x;
+  // No art here or nearby: no arcs, no halo.
+  if (base.a <= 0.0 && surround < 0.001) { gl_FragColor = vec4(0.0); return; }
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.45);
   float t = uTime;
   vec2 b1 = arc(q, t, 1.0), b2 = arc(q * 1.3 + 7.0, t * 1.1, 11.0), b3 = arc(q * 0.8 - 3.0, t * 0.9, 23.0);
   float bolt = max(max(b1.x, b2.x * 0.85), b3.x * 0.75);
   float glowB = max(max(b1.y, b2.y), b3.y);
-  float surround = near(R * 0.1);
   float k = clamp(uIntensity * 0.2, 0.0, 1.2);
   float region = max(base.a, surround * 0.85);
   float onArt = (bolt + glowB * 0.5) * region * k;
@@ -209,14 +242,19 @@ const smoke = {
     uDim: ['vec2', p => [clamp(p.dimX, 0.05, 10), clamp(p.dimY, 0.05, 10)]], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
   },
   reach: (p, c) => c.size * 0.35,
-  glsl: `${SILHOUETTE}
+  // x: art below and around.
+  field: { phases: 2, glsl: `${SILHOUETTE}
+vec4 field() { float R = fxTokenRadius(); return vec4(max(fuelBelow(R * 0.7, 0.0), near(R * 0.2) * 0.8), 0.0, 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  float fuel = fxField().x;
+  // Without art below or around there is no smoke.
+  if (fuel < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.35) * vec2(1.0 / max(uDim.x, 0.2), 1.0 / max(uDim.y, 0.2)) * 0.7;
   float t = uTime;
   float n = warped(q + vec2(0.0, t * 0.8), t * 0.6);
-  float fuel = max(fuelBelow(R * 0.7, 0.0), near(R * 0.2) * 0.8);
   float density = smoothstep(0.35, 0.85, n) * fuel;
   // Thin over the art so the creature stays readable; thicker around it.
   float a = density * mix(0.85, 0.4, base.a) * uAlpha;
@@ -232,9 +270,14 @@ const fumes = {
   timeScale: 1,
   uniforms: { uColor: ['vec3', p => rgb(p.color)], uBlend: blendU, uAlpha: ['float', p => clamp(p.alpha, 0, 1)] },
   reach: (p, c) => c.size * 0.25,
-  glsl: `${SILHOUETTE}
+  // x: art around, y: depth inside it.
+  field: { phases: 2, glsl: `${SILHOUETTE}
+vec4 field() { float R = fxTokenRadius(); return vec4(near(R * 0.25), depthIn(R * 0.18), 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  vec4 shape = fxField();
+  if (shape.x < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.3);
   float t = uTime;
@@ -242,8 +285,8 @@ void main() {
   float n = fbm3(q * 0.7 + w * 1.6 + vec2(0.0, t * 0.35));
   float strands = 1.0 - abs(n) * 3.0;
   float fil = smoothstep(0.6, 0.97, strands) * (0.5 + 0.5 * gnoise(q * 0.4 + t * 0.1));
-  float around = near(R * 0.25);
-  float edge = 1.0 - depthIn(R * 0.18);
+  float around = shape.x;
+  float edge = 1.0 - shape.y;
   float a = fil * around * mix(0.9, 0.2 + 0.6 * edge, base.a) * 0.7 * uAlpha;
   gl_FragColor = fxLayer(base, uColor * (0.8 + 0.4 * strands), a, int(uBlend + 0.5) == 8 ? 2 : int(uBlend + 0.5));
 }`,
@@ -256,13 +299,17 @@ const fog = {
   timeScale: 1 / 2200,
   uniforms: { uColor: ['vec3', p => rgb(p.color)], uDensity: ['float', p => clamp(p.density, 0, 1)], uDim: ['vec2', p => [clamp(p.dimX, 0.05, 10), clamp(p.dimY, 0.05, 10)]] },
   reach: (p, c) => c.size * 0.3,
-  glsl: `${SILHOUETTE}
+  // x: art around.
+  field: { phases: 2, glsl: `${SILHOUETTE}
+vec4 field() { return vec4(near(fxTokenRadius() * 0.3), 0.0, 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  float around = fxField().x;
+  if (around < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.5) / uDim;
   float n = warped(q, uTime * 0.35);
-  float around = near(R * 0.3);
   float a = smoothstep(0.25, 0.8, n) * uDensity * around * mix(1.0, 0.55, base.a);
   gl_FragColor = fxLayer(base, uColor + vec3(0.06) * n, a, 0);
 }`,
@@ -275,9 +322,14 @@ const xfog = {
   timeScale: 1 / 0.65,
   uniforms: { uColor: ['vec3', p => rgb(p.color)], uDensity: ['float', p => clamp(p.density, 0, 1)], uClip: ['bool', p => p.alphaDiscard === true] },
   reach: (p, c) => (p.alphaDiscard === true ? 0 : c.size * 0.3),
-  glsl: `${SILHOUETTE}
+  // x: where the fog may be.
+  field: { phases: 2, glsl: `${SILHOUETTE}
+vec4 field() { return vec4(uClip > 0.5 ? 0.0 : near(fxTokenRadius() * 0.3), 0.0, 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  float region = uClip > 0.5 ? base.a : fxField().x;
+  if (region < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.4);
   float t = uTime;
@@ -285,7 +337,6 @@ void main() {
   float billow = smoothstep(0.3, 0.75, n);
   float shade = 0.55 + 0.6 * smoothstep(0.4, 0.95, warped(q * 1.7 + 4.0, t * 0.7));
   vec3 col = uColor * shade;
-  float region = uClip > 0.5 ? base.a : near(R * 0.3);
   float a = billow * region * uDensity * mix(1.0, 0.7, base.a);
   gl_FragColor = fxLayer(base, col, a, 0);
 }`,
@@ -307,6 +358,7 @@ void main() {
   float t = uTime;
   vec2 wob = vec2(fbm3(q + t * 0.3), fbm3(q.yx - t * 0.25)) * uBillow * 6.0;
   vec4 base = fxAt(wob);
+  if (base.a <= 0.0) { gl_FragColor = vec4(0.0); return; }
   vec3 cl = cells(q * 1.6 + wob * 0.05, t * 1.2);
   float caustic = 1.0 - smoothstep(0.0, 0.14, cl.y - cl.x);
   vec3 col = unpremul(base);
@@ -336,6 +388,7 @@ void main() {
   vec2 flow = vec2(fbm(q + vec2(t * 0.4, 0.0)), fbm(q * 1.2 + vec2(0.0, -t * 0.35) + 5.0));
   float k = clamp(uIntensity / 4.0, 0.0, 3.0);
   vec4 base = fxAt(flow * R * 0.06 * k);
+  if (base.a <= 0.0) { gl_FragColor = vec4(0.0); return; }
   float swirl = warped(q * 0.8 + flow, t * 0.5);
   vec3 col = unpremul(base);
   if (uSpectral > 0.5) {
@@ -359,9 +412,14 @@ const ripples = {
   timeScale: 2,
   uniforms: { uColor: ['vec3', p => rgb(p.color)], uClip: ['bool', p => p.alphaDiscard === true], uIntensity: ['float', p => clamp(p.intensity, 0, 4)] },
   reach: (p, c) => (p.alphaDiscard === true ? 0 : c.size * 0.4),
-  glsl: `${SILHOUETTE}
+  // x: art around.
+  field: { phases: 2, glsl: `${SILHOUETTE}
+vec4 field() { return vec4(uClip > 0.5 ? 0.0 : near(fxTokenRadius() * 0.35), 0.0, 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  float region = uClip > 0.5 ? base.a : max(base.a, fxField().x);
+  if (region < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
   vec2 c = fxCanvas();
   float d = length(c) / R;
@@ -370,7 +428,6 @@ void main() {
   float ring = 0.5 + 0.5 * sin((d + wob) * 14.0 - uTime * 4.0);
   ring = pow(ring, 3.0);
   float fall = 1.0 - smoothstep(0.6, 1.5, d);
-  float region = uClip > 0.5 ? base.a : max(base.a, near(R * 0.35));
   float a = ring * fall * region * 0.6 * uIntensity;
   gl_FragColor = fxLayer(base, mix(uColor, vec3(1.0), ring * 0.3), a, 9);
 }`,
@@ -456,9 +513,17 @@ const globes = {
   timeScale: 1,
   uniforms: { uColor: ['vec3', p => rgb(p.color)], uDistortion: ['float', p => clamp(p.distortion, 0, 4)], uScale: ['float', p => clamp(p.scale, 5, 1000)], uClip: ['bool', p => p.alphaDiscard === true] },
   reach: (p, c) => (p.alphaDiscard === true ? c.size * 0.08 : c.size * 0.3),
-  glsl: `${SILHOUETTE}
+  // x: art around (closer when clipped).
+  field: {
+    phases: 2,
+    spacing: (p, c) => c.size * (p.alphaDiscard === true ? 0.01 : 0.015),
+    glsl: `${SILHOUETTE}
+vec4 field() { float R = fxTokenRadius(); return vec4(uClip > 0.5 ? near(R * 0.06) : near(R * 0.3), 0.0, 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
+  float region = fxField().x;
+  if (region < 0.001) { gl_FragColor = vec4(unpremul(base) * base.a, base.a); return; }
   float R = fxTokenRadius();
   float cell = R * clamp(uScale / 160.0, 0.15, 3.0);
   vec2 q = fxCanvas() / cell;
@@ -468,7 +533,6 @@ void main() {
   float twinkle = 0.55 + 0.45 * sin(t * 3.0 + cl.z * 40.0);
   float mote = smoothstep(0.22, 0.0, cl.x) * step(0.45, cl.z) * twinkle;
   float halo = smoothstep(0.5, 0.0, cl.x) * step(0.45, cl.z) * 0.25 * twinkle;
-  float region = uClip > 0.5 ? near(R * 0.06) : near(R * 0.3);
   vec3 col = mix(uColor, vec3(1.0), smoothstep(0.1, 0.0, cl.x) * 0.7);
   float a = (mote + halo) * region;
   gl_FragColor = fxLayer(base, col, a, 9);

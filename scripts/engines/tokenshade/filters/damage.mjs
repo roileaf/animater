@@ -3,7 +3,7 @@ import { rgb, clamp } from './util.mjs';
 
 const depthChunk = `
 float depthIn(float radius) {
-  float m = 1.0, d = fxDither() * TAU + 0.4;
+  float m = 1.0, d = fxJitter() * TAU + 0.4;
   for (int k = 0; k < 8; k++) { float ang = d + TAU * float(k) / 8.0; m = min(m, fxAlphaAt(vec2(cos(ang), sin(ang)) * radius)); }
   return m;
 }
@@ -63,14 +63,19 @@ const veins = {
     uThick: ['float', p => clamp(p.thickness, 0.2, 4)], uPulse: ['float', p => clamp(p.pulse, 0, 4)], uGlow: ['float', p => clamp(p.glow, 0, 1)],
   },
   reach: () => 0,
-  glsl: `${depthChunk}
+  // x: 0 at the art's edge, rising to 1 deep inside.
+  field: {
+    spacing: (p, c) => c.size * 0.012,
+    glsl: `${depthChunk}
+vec4 field() { return vec4(inward(fxTokenRadius()), 0.0, 0.0, 0.0); }` },
+  glsl: `
 void main() {
   vec4 base = fxSample(vTextureCoord);
   if (base.a <= 0.001) { gl_FragColor = base; return; }
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.22);
   float t = uTime;
-  float depth = inward(R);
+  float depth = fxField().x;
   // Branching lines: the creases of a warped ridged field, finer as they reach inward.
   vec2 w = vec2(fbm3(q * 0.5), fbm3(q * 0.5 + 9.0));
   // Main vessels where a warped noise field crosses zero, finer capillaries off them.

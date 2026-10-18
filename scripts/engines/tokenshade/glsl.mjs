@@ -46,6 +46,9 @@ vec2 fxArtToCanvas(vec2 art) { return ((uArtToScreen * vec3(art, 1.0)).xy - uCen
 float fxTokenRadius() { return 0.5 * max(uTokenSize.x, uTokenSize.y); }
 // Stable per-pixel dither in [0,1): hides sample banding without shimmering.
 float fxDither() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); }
+// Rotation of silhouette sample rings: the dither, unless a field pass has set its own phase.
+float fxJit = -1.0;
+float fxJitter() { return fxJit < 0.0 ? fxDither() : fxJit; }
 `;
 
 export const NOISE = `
@@ -157,6 +160,23 @@ vec4 fxBehind(vec4 base, vec3 col, float a) {
   a = clamp(a, 0.0, 1.0) * (1.0 - base.a);
   return vec4(base.rgb + col * a, base.a + a);
 }
+`;
+
+// The screen box this filter reaches (see filter-factory.mjs), widened by `margin` px.
+export const REACH = `
+uniform vec4 uReach;
+bool fxBeyondReach(float margin) {
+  vec2 s = fxScreen();
+  return s.x < uReach.x - margin || s.y < uReach.y - margin || s.x > uReach.z + margin || s.y > uReach.w + margin;
+}
+`;
+
+// Main-pass access to a spec's silhouette field (see filter-factory.mjs): one filtered
+// tap of the small texture the field pass rendered for this frame.
+export const FIELD_SAMPLER = `
+uniform sampler2D uField;
+uniform vec2 uFieldSize;
+vec4 fxField() { return texture2D(uField, (fxScreen() - outputFrame.xy) / uFieldSize); }
 `;
 
 export function fragment(uniformDecls, body) {

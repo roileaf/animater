@@ -35,7 +35,9 @@ test('window shaders run on intended token only during stage timing, then restor
   assert.deepEqual(f.calls.filter(c=>c[0]==='hide-art').map(c=>c[1]),['targets']);
   preview.draw(recipeFrame(f.recipe,1500));assert.ok(f.calls.some(c=>c[0]==='show-art'&&c[1]==='targets'));
   preview.stop();preview.stop();
-  assert.equal(f.calls.filter(c=>c[0]==='renderer-destroy').length,1);assert.equal(f.calls.filter(c=>c[0]==='filter-destroy').length,1);
+  assert.equal(f.calls.filter(c=>c[0]==='renderer-destroy').length,1);
+  // The fire filter and its silhouette field pass.
+  assert.equal(f.calls.filter(c=>c[0]==='filter-destroy').length,2);
   assert.ok(f.calls.filter(c=>c[0]==='container-destroy').every(c=>c[1].texture===false&&c[1].baseTexture===false));
 });
 test('unknown filter types are skipped; a preset with nothing drawable is refused',()=>{
