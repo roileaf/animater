@@ -127,6 +127,25 @@ test("a synthetic strike's damage remembers the attacker actor and the strike's 
   assert.equal(axe.synthetic, false);
 });
 
+test("a rule-element strike's damage names the strike, not the feat that grants it (Tiger Stance's Tiger Claw)", () => {
+  class DamageRoll { constructor(instances) { this.instances = instances; } }
+  // PF2e gives the strike its feat's id, and a damage card carries no strike identifier, so message.item is the feat.
+  const stance = { id: "tigerStance00001", type: "feat", name: "Tiger Stance", slug: "tiger-stance" };
+  const claw = { id: "tigerStance00001", type: "weapon", name: "Tiger Claw", slug: "tiger-claw" };
+  const actor = { items: { get: (id) => (id === stance.id ? stance : undefined) }, system: { actions: [{ slug: "tiger-claw", item: claw }] } };
+  claw.actor = stance.actor = actor;
+  const msg = (item, options = ["item:slug:tiger-claw"]) => ({ item, actor, speaker: { token: "atk" }, rolls: [new DamageRoll([{ type: "slashing", total: 6 }])],
+    flags: { pf2e: { origin: { type: "weapon", actor: "Actor.a", uuid: "Actor.a.Item.tigerStance00001" }, context: { type: "damage-roll", options } } } });
+  const pf = damageFromMessage(msg(stance), "pf2e");
+  assert.equal(pf.itemName, "Tiger Claw");
+  assert.equal(pf.itemSlug, "tiger-claw");
+  assert.equal(pf.synthetic, true, "its pick lives on the actor, like Fist's");
+  const lost = damageFromMessage({ ...msg(stance), actor: { system: { actions: [] } } }, "pf2e");
+  assert.equal(lost.itemName, null, "never the feat's name");
+  assert.equal(lost.itemSlug, "tiger-claw", "the slug from the roll options");
+  assert.equal(lost.synthetic, true);
+});
+
 import { rollMessage, weapon, card, dualityRoll, damageRoll } from "../../fixtures/daggerheart-messages.mjs";
 
 test("Daggerheart damage on an attack card: hit targets, physical by weapon family, magical by domain", () => {

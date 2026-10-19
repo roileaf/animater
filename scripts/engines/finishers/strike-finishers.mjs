@@ -28,6 +28,21 @@ export const strikeSlugFromOptions = (options) =>
 // PF2e's fixed synthetic ids: xxPF2ExUNARMEDxx, xxxxxxFISTxxxxxx.
 export const syntheticUuid = (uuid) => /\.Item\.xx[A-Za-z0-9]*xx$/.test(String(uuid ?? ""));
 
+const STRIKE_TYPES = ["weapon", "melee"];
+// A strike message whose item is not the strike: a rule-element strike (Tiger Stance's Tiger Claw)
+// shares its feat's id, and a damage card carries no strike identifier, so PF2e's message.item
+// falls back to origin.uuid and answers the feat.
+export const strikeLostItem = (message, systemId) =>
+  STRIKE_TYPES.includes(message?.flags?.[systemId]?.origin?.type) && Boolean(message?.item?.type) && !STRIKE_TYPES.includes(message.item.type);
+// The struck item of a PF2e/SF2e roll message: message.item, or for a rule-element strike the
+// actor's strike with that id (and the roll's item:slug), else null (never the feat).
+export function strikeItemOf(message, systemId) {
+  if (!strikeLostItem(message, systemId)) return message?.item ?? null;
+  const flags = message.flags[systemId], id = String(flags.origin.uuid ?? "").split(".").at(-1), slug = strikeSlugFromOptions(flags.context?.options);
+  const actions = (message.actor ?? message.speakerActor)?.system?.actions;
+  return (Array.isArray(actions) ? actions : []).find((a) => a?.item?.id === id && (!slug || (a.item.slug ?? a.slug) === slug))?.item ?? null;
+}
+
 // A PF2e sheet's Attacks entry dragged out: { type: "Action", index, actorUUID } (a character's
 // strike), or an Item drag whose uuid names a synthetic strike. Answers { name, slug } or null.
 export function strikeFromDrag(data, resolveActor) {

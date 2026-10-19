@@ -1,7 +1,7 @@
 // Damage moments: a token that takes energy damage flashes in that damage's look,
 // and one that drops to 0 HP goes down in it (burned to ash, shattered in ice...).
 // The damage type comes from the latest damage roll aimed at that creature.
-import { isSyntheticItem, strikeSlugFromOptions, syntheticUuid } from "../finishers/strike-finishers.mjs";
+import { isSyntheticItem, strikeItemOf, strikeLostItem, strikeSlugFromOptions, syntheticUuid } from "../finishers/strike-finishers.mjs";
 import { daggerheartAttackKind, daggerheartDamage } from "../../systems/daggerheart.mjs";
 
 // Every system's names folded onto one set of looks.
@@ -84,11 +84,12 @@ export function damageFromMessage(message, systemId) {
   const crit = pf?.outcome === "criticalSuccess" || rolls.some((r) => r?.isCritical === true || r?.options?.isCritical === true);
   // A synthetic strike (PF2e's basic unarmed, a rule-element strike) has no Item document: the
   // kill finds its pick on the attacking actor by the strike's name or slug.
-  const origin = message?.flags?.[systemId]?.origin, item = message?.item;
+  // A rule-element strike (Tiger Claw) is one too: its message.item is the feat that grants it.
+  const origin = message?.flags?.[systemId]?.origin, item = strikeItemOf(message, systemId);
   const itemUuid = origin?.uuid ?? dnd?.item?.uuid ?? null;
   return { type: normalizeDamageType(best.type), tokenIds, actorIds, sourceTokenId: message?.speaker?.token ?? null, attackKind: attackKindOf(message, systemId), crit,
     itemUuid, itemName: item?.name ?? null, itemSlug: item?.slug ?? item?.system?.slug ?? strikeSlugFromOptions(pf?.options) ?? null,
-    actorUuid: origin?.actor ?? null, synthetic: isSyntheticItem(item) || syntheticUuid(itemUuid) };
+    actorUuid: origin?.actor ?? null, synthetic: isSyntheticItem(item) || syntheticUuid(itemUuid) || strikeLostItem(message, systemId) };
 }
 
 // D&D 5e: the damage parts it is about to apply to this actor (dnd5e.calculateDamage).

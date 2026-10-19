@@ -1,6 +1,7 @@
 import { dnd5eAttackOutcome } from './outcome.mjs';
 import { twoeEventElement, dnd5eEventElement } from "../catalogs/shared/element-choice.mjs";
 import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason } from "../core/privacy.mjs";
+import { strikeItemOf } from "../engines/finishers/strike-finishers.mjs";
 // Normalize system events without changing rolls, items, HP, or system state.
 export const pf2eEvent=(message,userId)=>twoeEvent(message,userId,'pf2e');
 export const sf2eEvent=(message,userId)=>twoeEvent(message,userId,'sf2e');
@@ -21,7 +22,8 @@ export function twoeEvent(message, userId, systemId='pf2e') {
         : null;
   if (!type || (!maneuver && !message.item && !flags?.origin?.uuid))
     return null;
-  const item = maneuver ?? message.item ?? originSpell(message.actor, flags?.origin);
+  // A rule-element strike's damage (Tiger Claw) names its strike, not the feat granting it.
+  const item = maneuver ?? strikeItemOf(message, systemId) ?? originSpell(message.actor, flags?.origin);
   // See privacy.mjs: a GM's private roll plays without its outcome; hidden ones are a Skipped row.
   const privacy = rollPrivacy(message), gmPrivate = privacy === "gm";
   if (hidden(privacy)) return { skipped: hiddenReason(item?.name ?? flags?.origin?.name, privacy) };
