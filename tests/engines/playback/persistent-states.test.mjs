@@ -414,3 +414,34 @@ test('lasting flames burn over round token art at half strength; a web on round 
  assert.ok(f.calls.find(c => c[0] === 'opacity')[1] <= 0.5, 'at half strength, so the face still shows');
  await f.manager.destroy();
 });
+test('a recipe\'s own Lasting animation choice replaces its catalog\'s, and a player\'s own setting still wins', async () => {
+  const entry = auraEntry();
+  const own = (lasting) => ({ ...stateRecipe(entry), lasting });
+  const once = fixture([{ ...native(entry), _stats: { createdTime: Date.now() } }]); once.manager.host.resolveStateRecipe = () => own('once');
+  await once.manager.reconcile(); await flush();
+  assert.ok(once.calls.some(c => c[0] === 'duration' && c[1] === FADE_MS), 'this recipe plays once though its catalog stays');
+  assert.ok(!once.calls.some(c => c[0] === 'persist'));
+  await once.manager.destroy();
+  const turn = fixture([{ ...native(entry), _stats: { createdTime: Date.now() } }]); turn.manager.host.resolveStateRecipe = () => own('turn');
+  await turn.manager.reconcile(); await flush();
+  const before = turn.calls.length; await turn.manager.replay(turn.token); await flush();
+  assert.ok(turn.calls.slice(before).some(c => c[0] === 'play'), 'and again at turn start');
+  await turn.manager.destroy();
+  const stay = fixture([{ ...native(entry), _stats: { createdTime: Date.now() - 60000 } }]); stay.states.effect.fade = true; stay.manager.host.resolveStateRecipe = () => own('lasting');
+  await stay.manager.reconcile(); await flush();
+  assert.ok(stay.calls.some(c => c[0] === 'persist'), 'stays though its catalog plays once');
+  await stay.manager.destroy();
+  const player = fixture([{ ...native(entry), _stats: { createdTime: Date.now() - 60000 } }]); player.manager.host.resolveStateRecipe = () => own('once'); player.manager.host.lastingMode = () => 'always';
+  await player.manager.reconcile(); await flush();
+  assert.ok(player.calls.some(c => c[0] === 'persist'), 'a player\'s Always visible');
+  await player.manager.destroy();
+});
+test('a lasting recipe keeps a valid Lasting animation choice; other recipes and other values drop it', async () => {
+  const { validateRecipe } = await import('../../../scripts/core/model.mjs');
+  const r = stateRecipe(auraEntry());
+  assert.equal(validateRecipe({ ...r, lasting: 'turn' }).lasting, 'turn');
+  assert.equal(validateRecipe({ ...r, lasting: '' }).lasting, undefined, 'follow the catalog');
+  assert.equal(validateRecipe({ ...r, lasting: 'forever' }).lasting, undefined);
+  const action = { ...r, trigger: 'manual', lifecycle: undefined, stages: r.stages.map(s => ({ ...s, persist: false })), lasting: 'once' };
+  assert.equal(validateRecipe(action).lasting, undefined, 'not a lasting recipe');
+});

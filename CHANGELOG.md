@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3 (2026-10-19)
+
+- **Lasting animation per recipe.** A customized condition or effect animation (Customize in its catalog) has its own *Lasting animation* choice in its recipe settings: stay while active, play once, or play once and at turn start (e.g. Divine Health only when its turn starts), or follow the catalog. Each player's own *Lasting condition animations* setting still applies on their screen.
+
 ## 1.3.2 (2026-10-19)
 
 - **Choose how the default finisher ends.** A new *Default finisher ends* select under *Default finisher for other kills* overrides its ending, e.g. **Body (stays, Defeated)** so the damage-type finishers break the creature apart and then leave its token on the ground, Defeated, instead of hiding it. Finishers assigned to items keep their own ending.

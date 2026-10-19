@@ -158,7 +158,9 @@ export function validateRecipe(input) {
     ...(normalizePlaybackRoles(input.playbackRoles)?{playbackRoles:normalizePlaybackRoles(input.playbackRoles)}:{}),
     ...(input.lifecycle === "document" && input.trigger === "effect"
       ? { lifecycle: "document", stateEntry: text(input.stateEntry, 100),
-          ...(/^[a-z-]{1,30}$/.test(input.stateDamageType ?? "") ? {stateDamageType:input.stateDamageType} : {}) } : {}),
+          ...(/^[a-z-]{1,30}$/.test(input.stateDamageType ?? "") ? {stateDamageType:input.stateDamageType} : {}),
+          // This recipe's own Lasting animation choice; absent, it follows its catalog's.
+          ...(["lasting", "once", "turn"].includes(input.lasting) ? { lasting: input.lasting } : {}) } : {}),
     ...(strikeScope ? { weaponMode: strikeScope } : ["melee", "ranged", "thrown"].includes(input.weaponMode)
       ? { weaponMode: input.weaponMode } : {}),
     // Play-time element choice (scripts/catalogs/shared/element-choice.mjs).

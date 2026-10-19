@@ -154,7 +154,9 @@ export class PersistentStates{
      if(shown>=budget.states||this.stopped.has(key)||h.yields?.(item)||!(h.stateVisible??stateVisible)(item,token,visibility))continue;
      const kind=h.stateKind?.(item)??item.type,state=item.animaterRecipe?BUILTIN_STATE:(h.normalizeState??normalizeStateCatalogState)(h.state(kind)),recipe=item.animaterRecipe??(h.resolveStateRecipe??resolveStateRecipe)(item,state,saved,h.catalog(),{customEnabled:h.customEnabled?.()??true});if(!recipe||!recipe.stages.some(s=>['aura','tokenfx'].includes(s.kind)&&s.persist))continue;
      const signature=JSON.stringify([recipe,state.opacity,tokenFootprint(token,h.gridSize()),token.mechanicalBounds?.width,token.mesh?.uid,token.document?.texture?.src,h.gridDistance?.()??5,(h.storedDocument??storedStateDocument)(item),item.uuid,item.system?.badge?.value,item.value??item.system?.value?.value,item.system?.persistent?.damageType,grantedByOtherAura(item,token)]);
-     const mode=h.lastingMode?.(),fade=item.animaterRecipe?state.fade===true:lastingFade(state.fade,mode),turn=!item.animaterRecipe&&fade&&lastingTurn(state,mode);
+     // A recipe with its own Lasting animation choice uses it in place of its catalog's.
+     const lasting=recipe.lasting?{...state,fade:recipe.lasting!=='lasting',turn:recipe.lasting==='turn'}:state;
+     const mode=h.lastingMode?.(),fade=item.animaterRecipe?state.fade===true:lastingFade(lasting.fade,mode),turn=!item.animaterRecipe&&fade&&lastingTurn(lasting,mode);
      if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,quiet:fade&&!justApplied(item)});shown++;}
     }
    }
