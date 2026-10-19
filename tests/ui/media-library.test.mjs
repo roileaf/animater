@@ -426,8 +426,11 @@ test('media search and filters update results locally, repeated active controls 
   const f=libraryFixture();let updates=0,inspections=0;
   f.library.render=()=>{updates++;};f.library.inspect=id=>{inspections++;f.library.choose(id);};
   f.w.root.querySelectorAll=()=>[];
+  f.library.input({dataset:{search:'assets'},value:'r'});
   f.library.input({dataset:{search:'assets'},value:'ray'});
-  f.library.input({dataset:{search:'assets'},value:'ray'});
+  // Typing settles first: one search, after the pause.
+  await new Promise(r=>setTimeout(r,200));
+  assert.equal(f.library.filters.search,'ray');
   const target={dataset:{mediaFilter:'color'},value:'blue'};
   f.library.change(target);f.library.change(target);
   assert.equal(updates,2);
@@ -542,4 +545,36 @@ test('style and version picks are chip rows: each varying part of the key, close
  assert.equal(rows[3].chips.find(c=>c.value==='intro').id,'jb2a.magic_signs.circle.02.abjuration.intro.blue');
  assert.equal(rows[1].chips.find(c=>c.value==='01').label,'1');
  assert.deepEqual(mediaVariantFacets([items[0]],items[0]),[],'a single variant shows no rows');
+});
+
+test('browsing does not fill Recent; only an applied asset counts as used', () => {
+  const f = libraryFixture();
+  const id = f.library.items.find((v) => v.type === 'animation').id;
+  f.library.prefs.recent = [];
+  f.library.choose(id);
+  assert.deepEqual(f.library.prefs.recent, []);
+  f.library.remember(f.library.items.find((v) => v.id === id));
+  assert.equal(f.library.prefs.recent[0], id);
+});
+
+test('an empty stage opens on its track\'s category, shown as a chip that clears it', async () => {
+  const f = libraryFixture();
+  f.draft.stages[0].assets = [];
+  f.w.recipe = () => f.draft; f.w.stageIndex = 0; f.w.render = () => {}; f.w.root.querySelector = () => null;
+  f.library.open('animation');
+  assert.equal(f.library.filters.category, 'Casting');
+  assert.match(f.library.html(f.draft), /data-action="media-clear-auto"[^>]*>Casting for this stage ✕/);
+  await f.library.action('media-clear-auto', { dataset: {} });
+  assert.equal(f.library.filters.category, 'all');
+});
+
+test('a dark effect previews on a light background until you choose one', () => {
+  const f = libraryFixture();
+  const dark = f.library.items.find((v) => v.type === 'animation' && ['blue', 'purple', 'black', 'grey', 'darkpurple'].includes(v.color));
+  assert.ok(dark, 'the fixture has a dark animation');
+  f.library.selectedId = dark.id;
+  const bg = () => /an-media-detail-body[\s\S]*?class="an-media-preview" data-background="(\w+)"/.exec(f.library.detail(dark, null, f.draft))?.[1];
+  assert.equal(bg(), 'light', dark.color);
+  f.library.preview.backgroundChosen = true; f.library.preview.background = 'dark';
+  assert.equal(bg(), 'dark', 'your choice wins');
 });

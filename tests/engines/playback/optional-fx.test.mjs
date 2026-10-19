@@ -142,7 +142,7 @@ test('editor shows provider controls and explicit preview limits instead of miss
   const f=fixture(),w=Object.create(Workspace.prototype);w.host={fxCatalog:f.host.catalog};
   const token=w.optionalFxControlsHTML(tokenStage,0),scene=w.optionalFxControlsHTML({...sceneStage,fxOptions:{}},1);
   assert.match(token,/Burn/);assert.match(scene,/data-fx-option="density"/);
-  assert.match(scene,/Skipped in private preview/);assert.doesNotMatch(scene,/soundFxEnabled/);
+  assert.match(scene,/Particles also show in the studio monitor and in Local preview/);assert.match(w.optionalFxControlsHTML({...sceneStage,fxCategory:"filter",fxOptions:{}},1),/Scene filters play only at the table/);assert.doesNotMatch(scene,/soundFxEnabled/);
   assert.doesNotMatch(w.optionalFxPreviewHTML(tokenStage,0),/Missing asset/);
 });
 test('token filter recipe preview never covers token artwork with a provider information card',()=>{

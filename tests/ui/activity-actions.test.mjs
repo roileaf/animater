@@ -292,14 +292,15 @@ test("an image asset uses an img, not a video", () => {
   assert.match(html, /<img[^>]*src="art\/x\.png"/);
 });
 
-test("the token portrait shows before 'on Silva'", () => {
+test("each token is a small card with its portrait and name; its animations are one-line chips", () => {
   const html = previewWorkspace([withVisual]);
-  assert.match(html, /<img class="an-now-token"[^>]*src="tokens\/silva\.webp"[^>]*>\s*on Valeros/);
+  assert.match(html, /<div class="an-now-grid"><div class="an-now-card"><div class="an-now-card-head"><img class="an-now-token"[^>]*src="tokens\/silva\.webp"[^>]*><b>Valeros<\/b><\/div>/);
+  assert.match(html, /<div class="an-now-row an-now-chip" data-tooltip="impact\.001\.orange">/, "the asset name moves to the tooltip");
 });
 
-test("the effect line names the asset and carries the full key in a tooltip", () => {
+test("the asset name is a tooltip on the chip, not a line of its own", () => {
   const html = previewWorkspace([withVisual]);
-  assert.match(html, /<small class="an-now-asset" data-tooltip="jb2a\.impact\.001\.orange">impact\.001\.orange<\/small>/);
+  assert.doesNotMatch(html, /an-now-asset/);
 });
 
 test("preview fields are escaped", () => {
@@ -318,4 +319,41 @@ test("runtime and persistent rows carry their main visual, icon and portrait", a
   assert.equal(row.asset, "jb2a.impact.001.orange");
   assert.equal(row.portrait, "tokens/v.webp");
   assert.equal(row.icon, "icons/w.webp");
+});
+
+test("skips explain themselves in plain words with a fix; filters pick statuses", async () => {
+  const { explainEntry, activityShown, catalogPageFor } = await import("../../scripts/ui/activity-explain.mjs");
+  const none = explainEntry({ status: "Skipped", detail: "Fireball: no enabled use recipe.", item: "Fireball", reason: "no-recipe", itemType: "spell" });
+  assert.equal(none.title, "Fireball");
+  assert.match(none.text, /No animation is set for Fireball/);
+  assert.deepEqual(none.fix, { label: "Find it in a catalog", catalog: "spell" });
+  assert.equal(none.also.action, "new");
+  assert.match(explainEntry({ status: "Skipped", item: "Strike", reason: "off" }).text, /Nothing is set to play automatically/);
+  assert.equal(explainEntry({ status: "Blocked", detail: "Choose an asset first.", recipe: "Bolt" }).text, "Choose an asset first.", "unknown reasons keep the logged detail");
+  assert.equal(activityShown({ status: "Skipped" }, "played"), false);
+  assert.equal(activityShown({ status: "Previewed" }, "played"), true);
+  assert.equal(activityShown({ status: "Blocked" }, "all"), true);
+  const pages = [["spells", "", "Spells"], ["weapons", "", "Weapons"], ["feats", "", "Feats"]];
+  assert.equal(catalogPageFor("spell", pages), "spells");
+  assert.equal(catalogPageFor("melee", pages), "weapons");
+  assert.equal(catalogPageFor("unknown", pages), "spells", "falls back to the first catalog");
+});
+
+test("skip reasons travel with the log entry", async () => {
+  const { activityEntryMeta } = await import("../../scripts/ui/activity-actions.mjs");
+  assert.deepEqual(activityEntryMeta(null, { item: "Fireball", reason: "no-recipe", itemType: "spell" }), { item: "Fireball", reason: "no-recipe", itemType: "spell" });
+});
+
+test("Now playing groups by token, not by name, busiest-recent first, scene last", async () => {
+  const { groupNowPlaying, previewFields } = await import("../../scripts/ui/activity-actions.mjs");
+  const rows = [
+    { id: "a", name: "Burning", on: "Logger", tokenId: "t1", startedAt: 10 },
+    { id: "b", name: "Bless", on: "Logger", tokenId: "t2", startedAt: 30 },
+    { id: "c", name: "Frightened", on: "Logger", tokenId: "t1", startedAt: 20 },
+    { id: "d", name: "Fog", startedAt: 40 },
+  ];
+  const groups = groupNowPlaying(rows);
+  assert.deepEqual(groups.map((g) => [g.key, g.rows.map((r) => r.id)]), [["token:t2", ["b"]], ["token:t1", ["a", "c"]], ["scene", ["d"]]]);
+  assert.equal(groups[2].name, "Scene");
+  assert.equal(previewFields([], { id: "t9", document: { texture: { src: "x.webp" } } }).tokenId, "t9");
 });

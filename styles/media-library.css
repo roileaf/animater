@@ -117,7 +117,7 @@
 .animater .an-media-sources summary { cursor:pointer; list-style:none; padding:8px 10px; border:1px solid var(--an-line); border-radius:7px; white-space:nowrap; }
 .animater .an-media-sources summary::-webkit-details-marker { display:none; }
 .animater .an-media-sources summary:hover, .animater .an-media-sources[open] summary { color:var(--an-text); background:#b29aff22; border-color:#b29aff65; }
-.animater .an-media-source-panel { position:absolute; left:0; top:calc(100% + 6px); z-index:20; width:min(400px,calc(100cqw - 188px - 64px)); max-height:220px; overflow:auto; padding:12px; border:1px solid var(--an-line); border-radius:9px; background:var(--an-panel); box-shadow:0 8px 24px #0008; }
+.animater .an-media-source-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:20; width:min(360px,calc(100vw - 48px)); max-height:220px; overflow:auto; padding:12px; border:1px solid var(--an-line); border-radius:9px; background:var(--an-panel); box-shadow:0 8px 24px #0008; }
 .animater .an-media-source-panel .an-hint { margin:0 0 8px; }
 .animater .an-media-source-add, .animater .an-media-source-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
 .animater .an-media-source-add input { flex:1; min-width:0; width:auto; margin:0; }

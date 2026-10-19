@@ -57,7 +57,7 @@ export function chainPreview(recipe, tokens = {}) {
   );
   const line = recipe.previewArea?.type === "line";
   const cone = recipe.previewArea?.type === "cone";
-  const path = recipe.stages.some(isPathMotion);
+  const path = recipe.stages.some((s) => isPathMotion(s) || (s.kind === "motion" && s.motion === "path"));
   const passThrough = recipe.stages.some(
     (s) => isPathMotion(s) && s.motionEndpoint === "past",
   );

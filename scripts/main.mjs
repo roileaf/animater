@@ -69,7 +69,7 @@ import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated,
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
 import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
-import { dndSettingKey,sfSettingKey,dhSettingKey } from './catalogs/shared/catalog-system.mjs';
+import { dndSettingKey,sfSettingKey,dhSettingKey, catalogListText } from './catalogs/shared/catalog-system.mjs';
 import { dndStateHost } from './catalogs/dnd5e/dnd5e-states.mjs';
 import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState} from './catalogs/sf2e/sf2e-catalog.mjs';
 import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
@@ -262,17 +262,17 @@ function environment() {
       .filter((id) => game.modules.get(id)?.active && !(id === AA_ID && (aaTakeover() || aaFillGaps())))
       .map((id) => game.modules.get(id).title),
     problem: !seq?.active
-      ? "Activate Sequencer, then reload Foundry."
+      ? "Turn on Sequencer in Manage Modules, then reload the world (F5)."
       : !databaseReady
-        ? "Activate JB2A Free or Patreon, then reload Foundry."
-        : "Activate one JB2A pack, then reload Foundry.",
+        ? "Turn on JB2A Free or JB2A Patreon in Manage Modules, then reload the world (F5)."
+        : "Turn on one JB2A pack in Manage Modules, then reload the world (F5).",
     dependencies: [
       {
         name: "Sequencer",
         ok: seq?.active,
         detail: seq?.active
           ? `Playback engine · ${seq.version}`
-          : "Required · install and activate",
+          : "Required · install it, then turn it on in Manage Modules",
       },
       {
         name: pack,
@@ -280,8 +280,8 @@ function environment() {
         detail: databaseReady
           ? "Installed variants available · no assets bundled"
           : patreon?.active || free?.active
-            ? "Active, but Sequencer has no JB2A animations · reload Foundry; if it stays, press F12 and look for JB2A errors"
-            : "Not active · required for built-in animations",
+            ? "Turned on, but Sequencer lists no JB2A animations yet · reload the world (F5); if it stays empty, update JB2A and Sequencer to their latest versions"
+            : "Required for built-in animations · install JB2A Free (or Patreon) and turn it on in Manage Modules",
       },
       {
         name: system,
@@ -406,11 +406,22 @@ async function playSaveReaction(outcome, tokenId, messageId, sceneId) {
 }
 // Set once Foundry is ready (finisher wiring); dispatch hands every enriched event to it.
 let playUseFinishers = async () => {};
+// Items whose event came while nothing plays automatically: logged once a minute each, so the
+// Activity page can say why instead of staying silent.
+const offNoted = new Map();
 async function dispatch(event) {
-  if (!event || !(acceptsEvents() || hasOwnApproved())) return;
+  if (!event) return;
+  if (!(acceptsEvents() || hasOwnApproved())) {
+    const name = event.item?.name, now = Date.now();
+    if (name && game.user.isGM && now - (offNoted.get(name) ?? 0) > 60000) {
+      offNoted.set(name, now);
+      runtime.trace("Skipped", `${name}: nothing is set to play automatically.`, null, { item: name, reason: "off", itemType: event.item?.type });
+    }
+    return;
+  }
   // An event the adapter chose not to play (a hidden roll): Activity says why.
   if (event.skipped) return runtime.trace("Skipped", event.skipped);
-  if (yieldsToAA(event)) return runtime.trace("Skipped", `${event.item?.name ?? "Unknown item"}: ${aaYield(event)}.`);
+  if (yieldsToAA(event)) return runtime.trace("Skipped", `${event.item?.name ?? "Unknown item"}: ${aaYield(event)}.`, null, { item: event.item?.name, reason: "aa", why: aaYield(event) });
   try {
     await afterDice(event);
     const enriched = await enrich(event);
@@ -443,6 +454,13 @@ export class AnimaterApp extends HandlebarsApplicationMixin(ApplicationV2) {
     }
   }
   async close(options) {
+    // Unsaved recipe edits live only in this window: ask before throwing them away.
+    const unsaved = this.workspace?.unsavedNames?.() ?? [];
+    if (unsaved.length && !options?.force) {
+      const list = unsaved.slice(0, 3).map((n) => `“${String(n).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)}”`).join(", ") + (unsaved.length > 3 ? ` and ${unsaved.length - 3} more` : "");
+      const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Unsaved changes" }, content: `<p>Close Animater and discard your unsaved changes to ${list}?</p>` }).catch(() => false);
+      if (!ok) return this;
+    }
     this.workspace?.destroy();
     this.workspace = null;
     return super.close(options);
@@ -640,12 +658,12 @@ async function welcome() {
   if (catalogsOn().on > 0) return;
   const yes = await foundry.applications.api.DialogV2.confirm({
     window: { title: "Animater: welcome" },
-    content: "<p><b>Turn on every built-in animation?</b></p><p>Spells, feats, actions, weapons, conditions and effects then animate automatically when used: no setup. You can pause any catalog, exclude single entries or customize them later in Animater.</p>",
+    content: `<p><b>Turn on every built-in animation?</b></p><p>${(() => { const t = catalogListText({ systemId: game.system.id }); return t.charAt(0).toUpperCase() + t.slice(1); })()} then animate automatically when used: no setup. You can pause any catalog, leave out single entries or customize them later in Animater.</p>`,
     yes: { label: "Turn them all on" }, no: { label: "Not now" },
   }).catch(() => false);
   if (!yes) return void ui.notifications.info("Animater: open Animater → Setup to turn every catalog on later.");
   const { on, total } = await useEveryCatalog();
-  ChatMessage.create({ whisper: [game.user.id], speaker: { alias: "Animater" }, content: `<p><b>Animater is ready.</b> ${on} of ${total} catalogs are on: spells, feats, actions, weapons, conditions and effects animate when used. Open Animater to pause a catalog, exclude an entry or make your own version.</p>` });
+  ChatMessage.create({ whisper: [game.user.id], speaker: { alias: "Animater" }, content: `<p><b>Animater is ready.</b> ${on} of ${total} catalogs are on: ${catalogListText({ systemId: game.system.id })} animate when used. Open Animater to pause a catalog, exclude an entry or make your own version.</p>` });
 }
 // A catalog recipe by id; an SF2e id in a PF2e world (or back) once crossover is on.
 function builtinRecipe(id) {
@@ -847,6 +865,10 @@ function workspaceHost() {
     } : {}),
     // Players edit their own recipes (on their user); the GM's stay world-wide.
     // While the GM reviews a player, the Studio shows and saves that player's recipes.
+    // Whether anything plays automatically on this client (a catalog, custom recipes, or a player's approved ones).
+    acceptsEvents: () => acceptsEvents() || hasOwnApproved(),
+    // This device's "Lasting condition animations" choice ("world" follows each catalog).
+    lastingMode: () => game.settings.get(ID, "lastingMode"),
     defaultFinisher: () => game.settings.get(ID, DEFAULT_FINISHER) ?? "",
     players: () => game.users.filter((u) => !u.isGM).map((u) => ({ id: u.id, name: u.name, color: u.color?.css ?? u.color ?? "" })),
     // Players pick finishers only in pf2e-combater's item sheet: Available to shows only with it.
@@ -967,7 +989,19 @@ function workspaceHost() {
     },
     async save(data) {
       // A player saves their own recipes; each new version waits for the GM.
-      if (!game.user.isGM) return game.user.setFlag(ID, "playerRecipes", { schema: 1, recipes: validatePlayerRecipes(data) });
+      if (!game.user.isGM) {
+        const decisions = playerDecisions()[game.user.id] ?? {}, waiting = (list) => new Set(list.filter((r) => approvalState(r, decisions) === "pending").map((r) => r.id));
+        const before = waiting(ownPlayerRecipes()), recipes = validatePlayerRecipes(data);
+        await game.user.setFlag(ID, "playerRecipes", { schema: 1, recipes });
+        // Tell the GMs when something new waits for them, so it is not found by chance.
+        const fresh = recipes.filter((r) => waiting(recipes).has(r.id) && !before.has(r.id));
+        const gms = game.users.filter((u) => u.isGM && u.active).map((u) => u.id);
+        if (fresh.length && gms.length) {
+          const names = fresh.slice(0, 3).map((r) => `“${foundry.utils.escapeHTML?.(r.name) ?? r.name}”`).join(", ") + (fresh.length > 3 ? ` and ${fresh.length - 3} more` : "");
+          await ChatMessage.create({ whisper: gms, speaker: { alias: "Animater" }, content: `<p><b>${foundry.utils.escapeHTML?.(game.user.name) ?? game.user.name}</b> sent ${names} for approval. Open Animater: Recipes, at the bottom.</p>` }).catch(() => {});
+        }
+        return;
+      }
       // The GM's edits to a player's animation go back to that player; the new version still needs approving.
       const player = reviewedUser();
       if (player) return player.setFlag(ID, "playerRecipes", { schema: 1, recipes: validatePlayerRecipes(data) });
@@ -1060,8 +1094,8 @@ Hooks.once("init", () => {
   game.settings.register(ID,'mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
   game.settings.register(ID,'tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
   for(const [key,name,hint] of [
-    ['catalogTokenFx','Add token filters to catalog animations','Catalog animations add matching shader effects on the token itself (flames, frost, glows, shimmer). Drawn by Animater on each screen; nothing is saved to the token.'],
-    ['catalogSceneFx','Add FXMaster scene effects to catalog animations','When FXMaster is active, weather-like catalog spells add brief scene effects (rain, fog, embers). Skipped automatically when the module is missing.']])
+    ['catalogTokenFx','Tokenshade filters in catalog animations','Catalog animations add matching shader effects on the token itself (flames, frost, glows, shimmer). Drawn by Animater on each screen; nothing is saved to the token.'],
+    ['catalogSceneFx','FXMaster scene effects in catalog animations','When FXMaster is active, weather-like catalog spells add brief scene effects (rain, fog, embers). Skipped automatically when the module is missing.']])
     game.settings.register(ID,key,{name,hint,scope:'world',config:true,type:Boolean,default:true,
       onChange:()=>{persistentStates?.schedule();app?.workspace?.render();}});
   game.settings.register(ID,'conditionLooks',{name:'Condition looks',
@@ -1071,7 +1105,7 @@ Hooks.once("init", () => {
   game.settings.register(ID,'weaponScale',{name:'Weapon effect size',hint:'Multiplies the size of weapon hit and residue effects (1 = the target token\'s footprint).',
     scope:'world',config:true,type:Number,range:{min:0.5,max:3,step:0.1},default:1.5});
   game.settings.register(ID,RUNE_SETTING,{name:'Weapon rune flourishes',hint:'Catalog weapon Strikes show each weapon’s runes: potency adds a glint, striking a bigger hit, and each property rune (flaming, frost, shock, holy…) its own accent on a hit. Saved recipes are never changed.',
-    scope:'world',config:true,type:Boolean,default:true});
+    scope:'world',config:game.system.id==='pf2e',type:Boolean,default:true});
   game.settings.register(ID,'tuckDuringPlayback',{name:'Minimize Animater during canvas playback',
     hint:'Local preview and Play at table minimize the Animater window while the animation runs, then restore it.',
     scope:'client',config:true,type:Boolean,default:true});
@@ -1125,9 +1159,10 @@ Hooks.once("init", () => {
   });
   game.settings.register(ID, AA_TAKEOVER, {
     name: "Take over from Automated Animations when Animater has an animation",
-    hint: "Automated Animations skips items Animater animates. Items customized in Automated Animations stay with it.",
+    hint: "Automated Animations skips items Animater animates. Items customized in Automated Animations stay with it. If “Only animate what Automated Animations doesn't” is also on, that one wins.",
     scope: "world",
-    config: true,
+    // Only worth listing where Automated Animations is installed.
+    config: Boolean(game.modules.get(AA_ID)),
     type: Boolean,
     default: true,
   });
@@ -1141,8 +1176,8 @@ Hooks.once("init", () => {
     default: false,
   });
   game.settings.register(ID, "automatic", {
-    name: "Automatic playback",
-    hint: "Play saved Animater recipes on system events. Disable overlapping animations in other modules to avoid duplicate playback.",
+    name: "Play my own recipes automatically",
+    hint: "Your saved recipes play when their spell, attack, damage or area happens. The catalogs have their own Plug & play switch and play whether or not this is on. Turn off overlapping animations in other modules to avoid playing twice.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -1164,7 +1199,7 @@ Hooks.once("init", () => {
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
   game.settings.register(ID, TELEPORT_TOKENS, {
     name: "Teleport tokens",
-    hint: "Teleport spells (Translocate, Misty Step, Friendfetch…) let whoever cast them click a spot, and the token jumps there. Turn off if another module already moves tokens for these spells: they then only play their animation.",
+    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Teleport" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
     scope: "world", config: true, type: Boolean, default: true,
   });
   game.settings.register(ID, "welcomed", { scope: "world", config: false, type: Boolean, default: false });

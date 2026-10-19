@@ -159,5 +159,6 @@ test("the defeated set's entries offer no Use, Customize or Exclude: they follow
   }
   ui.selected.condition = "daggerheart-condition-vulnerable";
   const vulnerable = ui.html();
-  for (const action of ["dnd-use", "dnd-copy", "dnd-exclude"]) assert.ok(vulnerable.includes(`data-action="${action}"`), `vulnerable ${action}`);
+  // With the catalog off, an ordinary condition offers Use and Customize (Leave out only applies once the whole catalog is on).
+  for (const action of ["dnd-use", "dnd-copy"]) assert.ok(vulnerable.includes(`data-action="${action}"`), `vulnerable ${action}`);
 });

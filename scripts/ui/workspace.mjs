@@ -24,12 +24,12 @@ import { motionPose, motionDirection, poseTransform } from "../engines/motion/mo
 import { isPathMotion } from "../engines/motion/motion-path.mjs";
 import { fragmentsControlsHTML, fragmentsPreviewSVG, resetPiecesOnPattern } from "./fragments-ui.mjs";
 import { keyframesOf, keyframeDiamondsHTML, pathCanvasHTML, keyframeInspectorHTML } from "./keyframe-ui.mjs";
-import { normalizeKeyframes, insertKeyframe, moveKeyframeTime, deleteKeyframe, flipKeyframes, resetKeyframes, smoothKeyframes } from "../engines/motion/keyframe-path.mjs";
+import { normalizeKeyframes, insertKeyframe, moveKeyframeTime, deleteKeyframe, flipKeyframes, resetKeyframes, smoothKeyframes, presetKeyframes } from "../engines/motion/keyframe-path.mjs";
 import { catalogSoundOptions, previewRecipeSounds } from "../engines/sound/spell-sounds.mjs";
 import { starterRecipes } from "../core/presets.mjs";
 import { reorderStages, recipeDuration, RecipeClock, linkStartModes, moveRow, snapStart, timelineLayout, packLanes } from "../engines/playback/choreography.mjs";
 import { RecipePreview } from "../engines/preview/recipe-preview.mjs";
-import { trackOf, studioHTML, studioAfterRender, studioAction, studioFrame, studioInput, studioKey, studioPointer, studioWheel, studioContextMenu } from "./studio.mjs";
+import { trackOf, STUDIO_TRACKS, studioHTML, studioAfterRender, studioAction, studioFrame, studioInput, studioKey, studioPointer, studioWheel, studioContextMenu } from "./studio.mjs";
 import { previewMediaFailed, markPreviewMediaFailure, clearPreviewMediaFailure } from "../engines/media/preview-media-status.mjs";
 import { chainPreview, hasChain } from "../engines/preview/chain-preview.mjs";
 import { patchDOM } from "./dom-patch.mjs";
@@ -48,18 +48,19 @@ import {
   PF2E_FEATS,
 } from "../catalogs/pf2e/feats/feat-catalog.mjs";
 import { featCatalogHTML, ABILITY_PAGE_PROFILES, abilityProfileForPage, abilityProfileForKey, defaultAbilityFilters } from "./feat-catalog-ui.mjs";
-import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel } from "./activity-actions.mjs";
+import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel, groupNowPlaying } from "./activity-actions.mjs";
 import { PF2E_WEAPONS, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState, useCatalogWeapon, weaponCustomizationKey } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { weaponCatalogHTML } from "./weapon-catalog-ui.mjs";
 import { openCatalogDetails } from "../catalogs/shared/catalog-details.mjs";
 import { nextConditionLookMode } from "../catalogs/shared/condition-look-choice.mjs";
+import { ACTIVITY_FILTERS, ACTIVITY_STATUSES, activityShown, explainEntry, catalogPageFor } from "./activity-explain.mjs";
 import { LASTING_CHOICES } from "../catalogs/shared/lasting-choice.mjs";
 import { PF2E_CONDITIONS, PF2E_EFFECTS, catalogStateEntry, stateRecipe, normalizeStateCatalogState, useStateEntry } from "../catalogs/pf2e/state-catalog.mjs";
 import { stateCatalogHTML } from "./state-catalog-ui.mjs";
 import { FlashEditor } from "./flash-editor.mjs";
 import { recipeConflicts, unlinked } from "../core/recipe-conflicts.mjs";
 import { handleStateCatalogAction } from "../catalogs/pf2e/state-catalog-actions.mjs";
-import {catalogNavigation,catalogPageAllowed,catalogPageTitle,worldCatalogSystem,BORROWED_PAGES,borrowedNavigation,borrowedSystem,pf2eCatalogPage,pf2eCatalogsLive} from '../catalogs/shared/catalog-system.mjs';
+import {catalogListText,catalogNavigation,catalogPageAllowed,catalogPageTitle,worldCatalogSystem,BORROWED_PAGES,borrowedNavigation,borrowedSystem,pf2eCatalogPage,pf2eCatalogsLive} from '../catalogs/shared/catalog-system.mjs';
 import {DndCatalogWorkspace} from './dnd5e-catalog-ui.mjs';
 import {sfCatalogProfile} from '../catalogs/sf2e/sf2e-catalog.mjs';
 import {dhCatalogProfile} from '../catalogs/daggerheart/daggerheart-catalog.mjs';
@@ -96,8 +97,71 @@ const options = (items, value) =>
         `<option value="${esc(k)}" ${k === value ? "selected" : ""}>${esc(v)}</option>`,
     )
     .join("");
+// A time field shown in seconds and stored in ms (data-scale). `off` shows 0 as "Off".
+function secondsField(key, label, ms, index, { min = 0, max = 30000, step = 50, track, off = false } = {}) {
+  const value = Number.isFinite(Number(ms)) ? Math.round(Number(ms)) / 1000 : 0;
+  return `<label>${esc(label)}<span class="an-unit"><input type="number" data-field="${key}" data-index="${index}"${track === undefined ? "" : ` data-track="${track}"`} data-scale="1000" min="${min / 1000}" max="${max / 1000}" step="${Math.max(1, step) / 1000}" value="${off && !value ? "" : value}" ${off ? `placeholder="${esc(off === true ? "Off" : off)}"` : ""}><span>s</span></span></label>`;
+}
+// One option field. Times show in seconds; a number where 0 means "off" or "all" (the label's
+// "(0 = …)") shows that word for 0 instead of a bare 0.
+function optionInputHTML([key, label, fallback, min, max, step], value, index, track, attrs) {
+  const zero = /\s*\((?:ms, )?0 = ([^)]+)\)/.exec(label), word = zero ? zero[1].charAt(0).toUpperCase() + zero[1].slice(1) : null;
+  const name = zero ? label.replace(zero[0], "") : label;
+  if (typeof fallback === "number" && (/\(ms\b/.test(label) || /\(ms, /.test(label)))
+    return secondsField(key, name.replace(/\s*\(ms\)$/, "").replace(/\(ms\b/, "(s"), value, index, { min, max, step, track, off: word ?? (fallback === 0 && min === 0) });
+  if (min && typeof min === "object") return `<label>${esc(name)}<select ${attrs}>${options(min, value)}</select></label>`;
+  if (typeof fallback !== "number") return `<label>${esc(name)}<input ${attrs} type="color" value="${esc(value)}"></label>`;
+  return `<label>${esc(name)}<input ${attrs} type="number" min="${min}" max="${max}" step="${step ?? 1}" value="${word && !Number(value) ? "" : esc(value)}" ${word ? `placeholder="${esc(word)}"` : ""}></label>`;
+}
+// Stage size as a percentage of the artwork's own size (stored as a multiplier).
+function sizeField(scale, index) {
+  return `<label>Size<span class="an-unit"><input type="number" data-field="scale" data-index="${index}" data-scale="0.01" min="10" max="500" step="5" value="${Math.round(Number(scale ?? 1) * 100)}"><span>%</span></span></label>`;
+}
+// "jb2a.fire_bolt.orange" → "Fire bolt · orange".
+// The recipe with each random-variant group fixed to one stage: the edited one where it has a
+// group (others stay, hidden and silent, so links to them still hold).
+export function editedVariantOnly(recipe, index) {
+  const shown = previewVariants(recipe, index);
+  return shown === recipe ? recipe : { ...shown, stages: shown.stages.map(({ variantGroup, ...s }) => s) };
+}
+// Sidebar names without their system prefix, capitalized: "PF2e spells" → "Spells".
+const shortNav = ([page, icon, name]) => [page, icon, String(name).replace(/^(PF2e|SF2e|D&D 5e) /, "").replace(/^./, (c) => c.toUpperCase())];
+const systemCaption = (env) => { const id = worldCatalogSystem(env); return id ? ` · ${({ pf2e: "PF2E", sf2e: "SF2E", dnd5e: "D&D 5E", daggerheart: "DAGGERHEART" })[id]}` : ""; };
+// +0.25 s / −0.10 s for a timing offset.
+const signedSeconds = (ms) => `${ms < 0 ? "−" : "+"}${(Math.abs(ms) / 1000).toFixed(2)} s`;
+function assetName(key) {
+  const parts = String(key ?? "").replace(/^jb2a\./, "").split(".").map((p) => p.replace(/_/g, " ").trim()).filter(Boolean);
+  if (!parts.length) return "";
+  const [head, ...rest] = parts;
+  return [head.charAt(0).toUpperCase() + head.slice(1), ...rest].join(" · ");
+}
+// The stage panel's tabs and the option keys each one holds (for its changed dot and Reset).
+const INSPECTOR_TABS = Object.freeze([{ id: "look", label: "Look" }, { id: "motion", label: "Motion" }, { id: "place", label: "Placement" }, { id: "time", label: "Timing" }]);
+const TAB_GROUPS = { look: ["Color & filters"], motion: ["Entrance & exit"], place: ["Placement & attachment"], time: ["Timing & repetition", "Media playback"] };
+const TAB_SKIP = new Set(["fadeIn", "fadeOut", "requiresHit"]);
+const tabFields = (id) => (TAB_GROUPS[id] ?? []).flatMap((g) => OPTION_GROUPS[g]).filter(([key]) => !TAB_SKIP.has(key));
+function inspectorTabChanged(id, stage) {
+  const o = normalizeOptions(stage);
+  if (tabFields(id).some(([key, , fallback]) => o[key] !== undefined && o[key] !== fallback)) return true;
+  if (id === "look") return (stage.opacity ?? 1) !== 1 || stage.below === true;
+  if (id === "motion") return (stage.tracks?.length ?? 0) > 0;
+  if (id === "place") return Boolean(stage.landingGroup) || Number(stage.scatter ?? 0) !== 0;
+  return false;
+}
+// Reset a tab: its option fields back to their defaults (timing links are left alone).
+export function resetInspectorTab(id, stage) {
+  for (const [key] of tabFields(id)) delete stage[key];
+  if (id === "look") { stage.opacity = 1; stage.below = false; }
+  if (id === "motion") stage.tracks = [];
+  if (id === "place") { delete stage.landingGroup; stage.scatter = 0; }
+  return stage;
+}
 import { teleportPlan, teleportVisuals, teleportStyle, TELEPORT_STYLES, TELEPORT_WHO } from "../engines/motion/teleport.mjs";
-export const JB2A_MISSING = "Neither JB2A module is active, so built-in animations have no artwork to play. Activate JB2A Free (JB2A_DnD5e) or JB2A Patreon (jb2a_patreon), then reload Foundry.";
+// A GM whose table plays nothing automatically yet starts on Setup, where the catalogs are turned on.
+export function firstPage(host) {
+  try { return !host.playerMode && host.acceptsEvents?.() === false ? "setup" : "recipes"; } catch { return "recipes"; }
+}
+export const JB2A_MISSING = "Neither JB2A module is active, so built-in animations have no artwork to play. Turn on JB2A Free (JB2A_DnD5e) or JB2A Patreon (jb2a_patreon) in Manage Modules, then reload the world (F5).";
 export class Workspace {
   // Open the animation for something: a saved recipe in the Studio, or a catalog page
   // searched to a name (its first match is shown). Returns false for an unknown page.
@@ -128,7 +192,7 @@ export class Workspace {
     // A PF2e world shows the SF2e catalogs it borrows (crossover) on their own sf2e-* pages.
     this.dndCatalog = ['dnd5e','sf2e','daggerheart'].includes(catalogSystem) ? new DndCatalogWorkspace(this, catalogSystem === 'sf2e' ? sfCatalogProfile : catalogSystem === 'daggerheart' ? dhCatalogProfile : {})
       : catalogSystem === 'pf2e' ? new DndCatalogWorkspace(this, { ...sfCatalogProfile, kinds: BORROWED_PAGES, borrowed: true, intro: "Borrowed from Starfinder 2e for items this world's own catalogs do not cover; passive feats excluded." }) : null;
-    this.page = "recipes";
+    this.page = firstPage(host);
     this.search = "";
     this.category = "All";
     this.spellFilters = {
@@ -445,8 +509,52 @@ export class Workspace {
     const r = this.recipe();
     if (!r) return null;
     if (!this.drafts.has(r.id)) this.drafts.set(r.id, clone(r));
+    this.remember(r.id);
     this.dirty.add(r.id);
     return this.drafts.get(r.id);
+  }
+  // Undo history, per recipe: a snapshot before each edit; edits within 600 ms count as one step.
+  // Recipes with edits not saved yet (for the close prompt).
+  unsavedNames() { return [...this.dirty].filter((id) => this.reallyChanged(id)).map((id) => this.drafts.get(id)?.name).filter(Boolean); }
+  // A draft that differs from its saved recipe (opening a recipe makes a draft without changing it).
+  reallyChanged(id) {
+    const draft = this.drafts.get(id);
+    if (!draft) return false;
+    const saved = this.host.recipes?.().find((x) => x.id === id);
+    if (!saved) return true;
+    try { return JSON.stringify(validateRecipe(saved)) !== JSON.stringify(validateRecipe(draft)); } catch { return true; }
+  }
+  remember(id) {
+    this.histories ??= new Map();
+    const h = this.histories.get(id) ?? { undo: [], redo: [], at: 0 }, now = Date.now();
+    this.histories.set(id, h);
+    const snap = JSON.stringify(this.drafts.get(id));
+    if (snap !== h.undo.at(-1) && now - h.at > 600) { h.undo.push(snap); if (h.undo.length > 80) h.undo.shift(); h.redo = []; }
+    h.at = now;
+  }
+  canUndo(dir = "undo", r = this.recipe()) {
+    const h = r && this.histories?.get(r.id);
+    if (!h) return false;
+    const now = JSON.stringify(this.drafts.get(r.id) ?? r);
+    return (dir === "undo" ? h.undo : h.redo).some((snap) => snap !== now);
+  }
+  // Steps the edited recipe back (undo) or forward (redo) one edit.
+  history(dir) {
+    const r = this.recipe(), h = r && this.histories?.get(r.id);
+    const from = dir === "undo" ? h?.undo : h?.redo, to = dir === "undo" ? h?.redo : h?.undo;
+    const now = r && JSON.stringify(this.drafts.get(r.id) ?? r);
+    // A snapshot taken by an edit that changed nothing is skipped.
+    while (from?.length && from.at(-1) === now) from.pop();
+    if (!from?.length) { this.message = dir === "undo" ? "Nothing to undo." : "Nothing to redo."; return false; }
+    this.stopEditorPreview();
+    to.push(now);
+    const next = JSON.parse(from.pop());
+    this.drafts.set(r.id, next);
+    h.at = 0;
+    if (this.reallyChanged(r.id)) this.dirty.add(r.id); else this.dirty.delete(r.id);
+    this.stageIndex = Math.max(0, Math.min(this.stageIndex, next.stages.length - 1));
+    this.message = dir === "undo" ? "Undone." : "Redone.";
+    return true;
   }
   motionBlocked(recipe) {
     const env = this.host.environment();
@@ -516,18 +624,20 @@ export class Workspace {
     const counts = {
       recipes: listed.filter((r) => !r.finisher).length,
       finishers: listed.filter((r) => r.finisher).length,
+      waiting: this.host.playerMode ? 0 : (this.host.playerSubmissions?.() ?? []).filter((row) => row.state === "pending").length,
       flash: typeof flash === "function" && Array.isArray(flash.call(this.host)) ? flash.call(this.host).length : 0,
     };
     const item = ([page, icon, name]) =>
-      `<button class="an-nav-item ${this.page === page ? "is-active" : ""}" data-action="page" data-page="${page}"><span>${icon}</span><b>${name}</b>${count(counts[page] || 0)}</button>`;
+      `<button class="an-nav-item ${this.page === page ? "is-active" : ""}" data-action="page" data-page="${page}"><span>${icon}</span><b>${name}</b>${count(counts[page] || 0)}${page === "recipes" && counts.waiting ? `<small class="an-nav-waiting" data-tooltip="Player animations waiting for your approval (bottom of Recipes)">${counts.waiting} waiting</small>` : ""}</button>`;
     if (this.host.playerMode) {
-      return [["recipes", "✦", this.host.reviewing?.() ? `${esc(this.host.reviewing().userName)}'s animations` : "My animations"], ["assets", "▦", "Assets"]].map(item).join("");
+      return [["recipes", "✦", this.host.reviewing?.() ? `${esc(this.host.reviewing().userName)}'s animations` : "My animations"], ["assets", "▦", "Assets"], ...(this.host.reviewing?.() ? [] : [["activity", "◷", "Activity"]])].map(item).join("");
     }
     const group = (caption, items) => `<div class="an-nav-caption">${caption}</div>${items.map(item).join("")}`;
     return [
       group("CREATE", [["recipes", "✦", "Recipes"], ["finishers", "✸", "Finishers"], ...(flash ? [["flash", "⚡", "Flash screens"]] : [])]),
-      group("LIBRARY", [...catalogNavigation(env), ["assets", "▦", "Assets"]]),
-      ...(borrowedNavigation(env).length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowedNavigation(env))] : []),
+      // The caption names the system, so the items need not repeat it ("Spells", not "PF2e spells").
+      group(`LIBRARY${systemCaption(env)}`, [...catalogNavigation(env).map(shortNav), ["assets", "▦", "Assets"]]),
+      ...(borrowedNavigation(env).length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowedNavigation(env).map(shortNav))] : []),
       group("TOOLS", [["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
     ].join("");
   }
@@ -772,6 +882,7 @@ export class Workspace {
     if (this.isStudio()) others.push({ stageId: "__playhead", start: this.studioTime ?? 0, end: this.studioTime ?? 0, name: "playhead" });
     const playheadSnap = (ms) => this.isStudio() && Math.abs(ms - (this.studioTime ?? 0)) <= 10 * msPerPx ? this.studioTime ?? 0 : null;
     const guide = tl.querySelector("[data-tl-guide]"), x0 = e.clientX;
+    const linkRef = r.stages[i].startRef ?? r.stages[i].afterStage, linkedTo = linkRef ? this.stageLabel(r.stages.find(o => o.stageId === linkRef) ?? {}) : "";
     let result = null;
     bar.setPointerCapture?.(e.pointerId);
     bar.classList.add("is-moving");
@@ -780,11 +891,13 @@ export class Workspace {
       const dms = (ev.clientX - x0) * msPerPx;
       if (Math.abs(ev.clientX - x0) < 3 && !result) return;
       if (resize) {
+        // The clip draws repeats and per-target timing too; only the stage's own length changes.
+        const extra = Math.max(0, row.end - row.start - (r.stages[i].duration ?? 0));
         const end = ev.altKey ? null : playheadSnap(row.end + dms);
-        const duration = Math.max(100, end !== null && end > row.start ? end - row.start : Math.round((row.end - row.start + dms) / 50) * 50);
-        bar.style.width = `${(duration / total) * 100}%`;
+        const duration = Math.max(100, end !== null && end - extra > row.start ? end - row.start - extra : Math.round((row.end - row.start - extra + dms) / 50) * 50);
+        bar.style.width = `${((duration + extra) / total) * 100}%`;
         result = { duration };
-        show(row.start + duration, `${(duration / 1000).toFixed(2)}s long`);
+        show(row.start + duration + extra, `${(duration / 1000).toFixed(2)}s long${extra ? " each" : ""}`);
         return;
       }
       let ms = Math.max(0, row.start + dms);
@@ -793,9 +906,11 @@ export class Workspace {
       const onPlayhead = snap?.ref === "__playhead";
       if (onPlayhead) snap = null;
       bar.style.left = `${(ms / total) * 100}%`;
-      result = { ms, snap };
+      result = { ms, snap, unlink: ev.altKey };
       const ref = snap && others.find(o => o.stageId === snap.ref);
-      show(ms, snap ? `${snap.mode === "with" ? "Starts with" : "Starts after"} ${ref.name}` : onPlayhead ? `Starts at playhead ${(ms / 1000).toFixed(2)}s` : `Starts at ${(ms / 1000).toFixed(2)}s`);
+      // A linked clip keeps its link and only shifts its offset; Alt unlinks it.
+      const keeps = !snap && !ev.altKey && linkedTo;
+      show(ms, snap ? `${snap.mode === "with" ? "Starts with" : "Starts after"} ${ref.name}` : keeps ? `Still linked to ${linkedTo} · ${signedSeconds(ms - row.start)} (Alt unlinks)` : onPlayhead ? `Starts at playhead ${(ms / 1000).toFixed(2)}s` : `Starts at ${(ms / 1000).toFixed(2)}s`);
     };
     const up = ev => {
       bar.releasePointerCapture?.(ev.pointerId);
@@ -816,9 +931,20 @@ export class Workspace {
     this.stopEditorPreview();
     const r = this.edit();
     if (!r) return;
-    const s = r.stages[i], snapshot = clone(r.stages);
+    const s = r.stages[i], snapshot = clone(r.stages), was = timelineLayout(r).rows[i]?.start ?? 0;
     if (result.duration) s.duration = result.duration;
     else if (result.snap) { s.startMode = result.snap.mode; s.startRef = result.snap.ref; s.startOffset = 0; }
+    else if (!result.unlink && (s.startMode || s.afterStage)) {
+      // Moved but still linked: shift the link's offset by how far it moved. "After" with a gap of
+      // 0 or more stays "After"; anything else becomes a custom link with a signed offset.
+      const offset = Math.round((Number(s.startOffset) || 0) + result.ms - was), ref = s.startRef ?? s.afterStage;
+      if (s.startMode === "after" && offset >= 0) s.startOffset = offset;
+      else {
+        const anchor = s.startMode === "with" ? "start" : s.startMode === "after" ? "end" : s.timingAnchor ?? "end";
+        delete s.startMode; delete s.startRef;
+        Object.assign(s, { afterStage: ref, timingAnchor: anchor, startOffset: offset });
+      }
+    }
     else { delete s.startMode; delete s.startRef; s.afterStage = ""; s.delay = Math.round(result.ms); }
     linkStartModes(r.stages);
     try { timedStages(r, 0); this.message = "Timeline updated. Save recipe to apply."; }
@@ -831,7 +957,7 @@ export class Workspace {
     e.preventDefault();
     const i = Number(bar.dataset.tlBar), row = timelineLayout(this.recipe()).rows[i];
     const step = (e.shiftKey ? 500 : 50) * (e.key === "ArrowLeft" ? -1 : 1);
-    if (e.altKey) this.applyTimelineEdit(i, { duration: Math.max(100, row.end - row.start + step) });
+    if (e.altKey) this.applyTimelineEdit(i, { duration: Math.max(100, (this.recipe().stages[i].duration ?? row.end - row.start) + step) });
     else this.applyTimelineEdit(i, { ms: Math.max(0, row.start + step) });
     this.root.querySelector(`[data-tl-bar="${i}"]`)?.focus();
     return true;
@@ -885,7 +1011,7 @@ export class Workspace {
       return this.previewActorHTML({ subject, token, name: fallback, icon });
     };
     const catalog = this.host.catalog();
-    return `<div class="an-recipe-scene ${recipe.lifecycle === "document" ? "is-state-preview" : ""}" data-recipe-scene data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Full recipe composition preview">${recipe.stages
+    return `<div class="an-recipe-scene ${recipe.lifecycle === "document" ? "is-state-preview" : ""}" data-recipe-scene data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Full recipe composition preview"><span class="an-grid-key" aria-hidden="true">1 square · ${Number(tokens.gridDistance) || 5} ft</span>${recipe.stages
       .map((s, index) => {
         s = { ...s, ...normalizeOptions(s) };
         const filterId = `${filterPrefix}-${index}`;
@@ -1007,7 +1133,7 @@ export class Workspace {
         return `<div hidden class="an-recipe-layer ${s.kind === "travel" ? "is-travel" : ""} ${s.kind === "sprite" ? "an-copy-layer" : ""} ${file || s.kind === "sprite" ? "" : "is-unavailable"}" data-layer-stage="${s.index}" data-preview-plan="${planIndex}" data-target-index="${s.targetIndex}" data-preview-from="${from}" data-preview-to="${to}" data-copy="0" data-tint-filter="${filterId}" data-preview-template="${esc(JSON.stringify(media?.template ?? null))}" data-media-width="${media?.width ?? 0}" data-media-height="${media?.height ?? 0}" style="left:${destination.x}%;top:${destination.y}%">${tintFilter}${s.kind === "sprite" ? `<div class="an-copy-art">${destination.token?.img ? `<img src="${esc(destination.token.img)}" alt="Token copy">` : "✦"}</div>` : file ? this.visualMediaHTML(file,`data-preview-stage="${s.index}" data-preview-plan="${planIndex}" aria-label="Stage ${s.index + 1}: ${esc(s.label || this.stageLabel(s))}, target ${s.targetIndex + 1}"`) : "Missing asset"}</div>`;
       })
       .join("");
-    return `<div class="an-recipe-scene an-chain-scene" data-recipe-scene data-chain-preview data-preview-width="${chain.width}" data-preview-height="${chain.height}" data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Full recipe composition preview">${layers}${actors}<span class="an-preview-label">FULL RECIPE · ${hasChain(chain.recipe) ? "CHAIN" : chain.recipe.previewArea?.type === "line" ? "LINE" : chain.recipe.previewArea?.type === "cone" ? "CONE" : chain.recipe.stages.some(isPathMotion) ? "MOTION" : "VOLLEY"}</span><span class="an-preview-idle" data-preview-idle>${esc(chain.note)}</span></div>`;
+    return `<div class="an-recipe-scene an-chain-scene" style="--an-grid:${Number(chain.grid) || 55}px" data-recipe-scene data-chain-preview data-preview-width="${chain.width}" data-preview-height="${chain.height}" data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Full recipe composition preview"><span class="an-grid-key" aria-hidden="true">1 square · ${Number(tokens.gridDistance) || 5} ft</span>${layers}${actors}<span class="an-preview-label">FULL RECIPE · ${hasChain(chain.recipe) ? "CHAIN" : chain.recipe.previewArea?.type === "line" ? "LINE" : chain.recipe.previewArea?.type === "cone" ? "CONE" : chain.recipe.stages.some(isPathMotion) ? "MOTION" : "VOLLEY"}</span><span class="an-preview-idle" data-preview-idle>${esc(chain.note)}</span></div>`;
   }
   updatePlayback(frame) {
     if (this.isStudio()) studioFrame(this, frame);
@@ -1206,7 +1332,7 @@ export class Workspace {
             (
               r,
             ) => `<button data-action="select" data-id="${esc(r.id)}" class="an-card ${r.id === this.selected ? "is-selected" : ""}" style="--effect:${esc(r.color)}" aria-pressed="${r.id === this.selected}">
-        <div class="an-art"><div class="an-orbit"></div><span>${icons[r.category] ?? "◎"}</span><small>${esc(r.category)}</small></div><div class="an-card-body"><h2>${esc(r.name)}${this.dirty.has(r.id) ? " <sup>•</sup>" : ""}</h2><p>${esc(r.description)}</p><div class="an-card-meta"><span>${r.stages.length} stage${r.stages.length === 1 ? "" : "s"}</span><span>${r.enabled ? esc(EVENTS[r.trigger]) : "Disabled"}</span></div>${this.lastingLabel(r) ? `<div class="an-lasting-badge" data-tooltip="Plays for as long as the ${esc(this.lastingLabel(r).toLowerCase())} is on a token">◷ ${esc(this.lastingLabel(r))} · stays while on token</div>` : ""}<div class="an-readiness ${this.status(r) !== "Ready to play" ? "is-missing" : ""}"><span>●</span> ${this.status(r)}</div>${this.linkNoteHTML(r)}${this.approvalBadgeHTML(r)}</div></button>`,
+        <div class="an-art"><div class="an-orbit"></div><span>${icons[r.category] ?? "◎"}</span><small>${esc(r.category)}</small></div><div class="an-card-body"><h2>${esc(r.name)}${this.dirty.has(r.id) ? " <sup>•</sup>" : ""}</h2><p>${esc(r.description)}</p><div class="an-card-meta"><span>${r.stages.length} stage${r.stages.length === 1 ? "" : "s"}</span><span>${r.enabled ? esc(EVENTS[r.trigger]) : "Disabled"}</span></div>${this.lastingLabel(r) ? `<div class="an-lasting-badge" data-tooltip="Plays for as long as the ${esc(this.lastingLabel(r).toLowerCase())} is on a token">◷ ${esc(this.lastingLabel(r))} · stays while on token</div>` : ""}${this.linkNote(r)?.warn ? `<div class="an-readiness is-missing"><span>⚠</span> Won't play: ${esc(this.linkNote(r).short.toLowerCase())}</div>` : `<div class="an-readiness ${this.status(r) !== "Ready to play" ? "is-missing" : ""}"><span>●</span> ${this.status(r)}</div>`}${this.linkNoteHTML(r)}${this.approvalBadgeHTML(r)}</div></button>`,
           )
           .join("") ||
         `<div class="an-empty">No recipes found.<small>Try another search or create your own.</small></div>`
@@ -1307,7 +1433,7 @@ export class Workspace {
   }
   optionalFxPreviewHTML(stage,index) {
     if(stage.kind==='tokenfx')return '';
-    return `<div hidden class="an-provider-cue" data-layer-stage="${index}"><b>${esc(KINDS[stage.kind])}</b><small>${esc(stage.fxPreset || stage.fxType || 'Choose effect')}</small><small>${stage.kind==='scenefx'?'Play at table · shared scene':'Local canvas preview · token filter'}</small></div>`;
+    return `<div hidden class="an-provider-cue" data-layer-stage="${index}"><b>${esc(KINDS[stage.kind])}</b><small>${esc(stage.fxPreset || stage.fxType || 'Choose effect')}</small><small>${stage.kind==='scenefx'?((stage.fxCategory??'particle')==='filter'?'Scene filter · at the table only':'Scene particles · previews and table'):'Local canvas preview · token filter'}</small></div>`;
   }
   // The library preset a token FX stage starts from (null for a stage built from scratch).
   tokenFxPreset(stage) { return this.host.tokenFxPreset?.(stage.fxLibrary ?? 'tokenshade', stage.fxPreset) ?? null; }
@@ -1329,7 +1455,7 @@ export class Workspace {
       if(field.type==='select')return `<label>${esc(field.label)}<select ${attr}>${options(field.choices,value)}</select></label>`;
       return `<label>${esc(field.label)}<input type="number" ${attr} min="${field.min}" max="${field.max}" step="${field.step}" value="${esc(value)}"></label>`;
     }).join('');
-    return `<label>FXMaster category<select ${attrs('fxCategory')}>${options({particle:'Scene particles',filter:'Scene filter'},category)}</select></label><label>FXMaster effect<select ${attrs('fxType')} ${catalog.sceneReady?'':'disabled'}>${options({'':'Choose effect',...Object.fromEntries(effects.map(e=>[e.type,e.label]))},stage.fxType ?? '')}</select></label><p class="an-hint">${catalog.sceneReady?'Whole scene · GM playback. Skipped in private preview.':'Enable FXMaster with Effects API support.'}</p>${fields?`<div class="an-options-grid">${fields}</div>`:''}`;
+    return `<label>FXMaster category<select ${attrs('fxCategory')}>${options({particle:'Scene particles',filter:'Scene filter'},category)}</select></label><label>FXMaster effect<select ${attrs('fxType')} ${catalog.sceneReady?'':'disabled'}>${options({'':'Choose effect',...Object.fromEntries(effects.map(e=>[e.type,e.label]))},stage.fxType ?? '')}</select></label><p class="an-hint">${catalog.sceneReady?(category==='filter'?'Whole scene · GM playback. Scene filters play only at the table, not in previews.':'Whole scene · GM playback. Particles also show in the studio monitor and in Local preview.'):'Enable FXMaster with Effects API support.'}</p>${fields?`<div class="an-options-grid">${fields}</div>`:''}`;
   }
   boundItemHTML(uuid) {
     const info = this.host.itemSummary?.(uuid);
@@ -1353,7 +1479,7 @@ export class Workspace {
     const key = resolveAsset(s, this.host.catalog());
     const file = mediaForReference(this.host.catalog(),key)?.file;
     const assetFree = ["motion", "sprite", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind);
-    return `<div class="an-preview ${this.previewMode === "recipe" ? "an-full-preview" : ""}" style="--effect:${esc(r.color)}">${this.previewMode === "recipe" ? this.recipePreviewHTML(r) : `${OPTIONAL_FX_KINDS.has(s.kind) ? `<div class="an-preview-empty"><b>${esc(KINDS[s.kind])}</b><small>${s.kind==='scenefx'?'Play at table · shared scene':'Local canvas preview · token filter'}</small></div>` : s.kind === "motion" ? `<div class="an-motion-scene" aria-label="Token motion schematic preview"><div class="an-demo-token" data-motion-demo>✦</div><div class="an-demo-target">◇</div><small>Token motion · schematic</small></div>` : s.kind === "sound" ? (audioPreview.skipSound ? `<div class="an-preview-empty"><small>Optional sound pack unavailable. Visual stages still play.</small></div>` : `<audio controls src="${esc(this.host.mediaURL?.(audioPreview.soundFile) ?? audioPreview.soundFile)}" aria-label="Selected sound preview" data-cue-volume="${audioPreview.volume}"></audio>`) : s.kind === "sprite" ? `<div class="an-preview-empty">✦<small>Token copies appear in Full recipe preview</small></div>` : file ? this.visualMediaHTML(file,'controls autoplay aria-label="Selected stage asset preview"') : `<div class="an-preview-empty">◇<small>Choose an installed asset</small></div>`}<span class="an-preview-label">STAGE ${index + 1} · ${s.kind === "motion" ? "TOKEN MOTION" : "ASSET PREVIEW"}</span>`}</div>`;
+    return `<div class="an-preview ${this.previewMode === "recipe" ? "an-full-preview" : ""}" style="--effect:${esc(r.color)}">${this.previewMode === "recipe" ? this.recipePreviewHTML(r) : `${OPTIONAL_FX_KINDS.has(s.kind) ? `<div class="an-preview-empty"><b>${esc(KINDS[s.kind])}</b><small>${s.kind==='scenefx'?((s.fxCategory??'particle')==='filter'?'Scene filter · at the table only':'Scene particles · previews and table'):'Local canvas preview · token filter'}</small></div>` : s.kind === "motion" ? `<div class="an-motion-scene" aria-label="Token motion schematic preview"><div class="an-demo-token" data-motion-demo>✦</div><div class="an-demo-target">◇</div><small>Token motion · schematic</small></div>` : s.kind === "sound" ? (audioPreview.skipSound ? `<div class="an-preview-empty"><small>Optional sound pack unavailable. Visual stages still play.</small></div>` : `<audio controls src="${esc(this.host.mediaURL?.(audioPreview.soundFile) ?? audioPreview.soundFile)}" aria-label="Selected sound preview" data-cue-volume="${audioPreview.volume}"></audio>`) : s.kind === "sprite" ? `<div class="an-preview-empty">✦<small>Token copies appear in Full recipe preview</small></div>` : file ? this.visualMediaHTML(file,'controls autoplay aria-label="Selected stage asset preview"') : `<div class="an-preview-empty">◇<small>Choose an installed asset</small></div>`}<span class="an-preview-label">STAGE ${index + 1} · ${s.kind === "motion" ? "TOKEN MOTION" : "ASSET PREVIEW"}</span>`}</div>`;
   }
   motionSyncNoticeHTML() { return motionSyncNoticeHTML(this.host.environment()); }
   // A lasting recipe's own Lasting animation choice, or its catalog's.
@@ -1371,29 +1497,121 @@ export class Workspace {
       ${!scope && (r.weaponMode || r.category === "Weapons") ? `<label>Weapon use<select data-field="weaponMode">${options({ "": "Any usage", melee: "Melee Strike", ranged: "Ranged Strike", thrown: "Thrown Strike" }, r.weaponMode ?? "")}</select></label><p class="an-hint">The rolled usage selects this customization. Other uses keep their own animation.</p>` : ""}<div class="an-field-row"><label>Category<input data-field="category" value="${esc(r.category)}"></label><label>Accent<input type="color" aria-label="Recipe accent color" data-field="color" value="${esc(r.color)}"></label></div></div>`;
   }
   inspectorHTML(r) {
-    const canvasUnavailable = Boolean(this.host.environment().demo);
     const linked = r.lifecycle === "document";
-    const motionBlocked = this.motionBlocked(r);
-    const unconfigured = this.status(r) === "Choose an asset";
     const index = Math.min(this.stageIndex, r.stages.length - 1);
     const s = r.stages[index];
-    const audioPreview = previewRecipeSounds(r, this.host.soundCatalog?.())
-      .stages[index];
+    const audioPreview = previewRecipeSounds(r, this.host.soundCatalog?.()).stages[index];
     const key = resolveAsset(s, this.host.catalog());
-    const file = mediaForReference(this.host.catalog(),key)?.file;
-    const assetFree = ["motion", "sprite", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind);
-    return `<div class="an-inspector-head"><span class="an-eyebrow">STAGE ${index + 1} OF ${r.stages.length}</span><span class="an-inspector-tools"><span class="an-st-kind kind-${esc(s.kind)}">${esc(KINDS[s.kind])}</span><button class="an-icon is-danger an-stage-remove" data-action="remove-stage" aria-label="Remove this stage" data-tooltip="${r.stages.length === 1 ? "A recipe needs at least one stage" : "Remove this stage"}" ${r.stages.length === 1 || this.busy ? "disabled" : ""}><i class="fas fa-trash" aria-hidden="true"></i></button></span></div>
+    const file = mediaForReference(this.host.catalog(), key)?.file;
+    const members = linked ? [] : variantMembers(r.stages, s.variantGroup);
+    return `${this.stageCardHTML(r, s, index, file, key, linked)}${members.length > 1 ? this.randomVariantHTML(r, s) : ""}
       <div class="an-editor-section an-stage-fields">
-        <label>Stage name<input data-field="label" data-index="${index}" value="${esc(s.label ?? "")}" placeholder="${esc(KINDS[s.kind])}"></label>${this.stageVariantHTML(s, index, linked)}${linked ? "" : this.randomVariantHTML(r, s)}
-        ${OPTIONAL_FX_KINDS.has(s.kind) ? this.optionalFxControlsHTML(s,index) : s.kind === "motion" ? this.motionControlsHTML(s, index, r) : s.kind === "sound" ? `<label>Audio file<input data-field="soundFile" data-index="${index}" placeholder="sounds/spell.ogg" value="${esc(s.soundFile)}"></label>${this.host.soundCatalog || this.host.pickMedia ? `<button data-action="browse-sound">Browse sounds</button>` : ""}${this.soundVolumeHTML(s, index, audioPreview)}<p class="an-hint">Relative Foundry audio path. Sound plays with recipe; Stop ends it too.</p>` : s.kind === "sprite" ? `<p class="an-hint">Copies token artwork into Sequencer. Configure copies, shadows and tracks below.</p>` : `<label>Visual asset<button class="an-asset-picker" data-action="browse">${this.assetThumbHTML(file)}<span class="an-asset-picker-text">${esc(key ?? s.assets[0] ?? "Choose an asset")}<span>Browse ↗</span></span></button></label>${key && key !== s.assets[0] ? `<p class="an-hint">Using installed fallback variant. Choose another in Assets anytime.</p>` : ""}`}
-        ${["sprite", "aura", "tokenfx"].includes(s.kind) && !linked ? `<label>Subject<select data-field="subject" data-index="${index}">${options({ source: "Source token", targets: "Target tokens" }, s.subject ?? "source")}</select></label>` : ""}
-        ${r.stages.length > 1 && !linked ? `<div class="an-field-row an-start-row"><label>Start<select data-field="startMode" data-index="${index}">${options({ with: "With", after: "After", time: "At a set time", ...(s.afterStage && !s.startMode ? { link: "Linked (custom)" } : {}) }, s.startMode ?? (s.afterStage ? "link" : "time"))}</select></label>${s.startMode ? `<label>Stage<select data-field="startRef" data-index="${index}">${options(Object.fromEntries(r.stages.filter((o, j) => j !== index).map(o => [o.stageId, this.stageLabel(o)])), s.startRef ?? s.afterStage)}</select></label>` : ""}${s.startMode === "after" ? `<label>Gap (ms)<input type="number" min="0" max="30000" step="50" data-field="startOffset" data-index="${index}" value="${s.startOffset ?? 0}"></label>` : ""}</div>` : ""}
-        <div class="an-field-row"><label>${s.afterStage ? "Linked start (sample ms)" : "Start (ms)"}<input type="number" min="0" max="30000" step="50" data-field="delay" data-index="${index}" value="${s.afterStage ? sampleRecipe(r).stages[index].delay : s.delay}" ${s.afterStage ? "disabled" : ""}></label><label>${linked ? "Preview sample (ms)" : s.kind === "projectile" || isPathMotion(s) && s.motionRange === "target" ? "Base duration (ms)" : "Duration (ms)"}<input type="number" min="100" max="30000" step="100" data-field="duration" data-index="${index}" value="${s.duration}"></label>${["motion", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind) ? "" : `<label>Scale<input type="number" min="0.1" max="5" step="0.1" data-field="scale" data-index="${index}" value="${s.scale}"></label>`}</div>
-        ${linked && ["aura", "tokenfx"].includes(s.kind) ? `<p class="an-hint">Stays on the affected token for as long as the condition or effect is on it. Duration only sets the preview length.</p>` : ""}${s.kind === "aura" && !linked ? `<label class="an-check an-stay"><input type="checkbox" data-field="persist" data-index="${index}" ${s.persist ? "checked" : ""}> Stay until the effect ends</label><p class="an-hint">${s.persist ? "Loops on the token until the spell's effect (for example “Effect: Shield”) is removed, the spell ends or you press Stop. If no effect is applied within a minute, it stops on its own. Duration only sets the preview length." : "Tick to keep a looping asset on the token for as long as the spell's effect lasts."}</p>` : ""}
-        ${this.compositionHTML(r, s, index)}
-        ${this.stageOptionsHTML(s, index, linked)}
-        ${assetFree && (["motion", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind)) ? "" : `<details class="an-advanced" data-options-group="basic"><summary>Asset & visibility</summary>${assetFree ? "" : `<label>Fallback keys (comma separated)<textarea rows="2" data-field="assets" data-index="${index}">${esc(s.assets.join(","))}</textarea></label>`}${["motion", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind) ? "" : `<label>Opacity<input type="number" min="0.1" max="1" step="0.1" data-field="opacity" data-index="${index}" value="${s.opacity}"></label><label class="an-check"><input type="checkbox" data-field="below" data-index="${index}" ${s.below ? "checked" : ""}> Below tokens</label>`}</details>`}</div>
+        ${this.stageEssentialsHTML(r, s, index, key, linked, audioPreview)}
+        ${this.stageTypeHTML(r, s, index, linked, audioPreview)}
+        ${this.stageTabsHTML(r, s, index, linked)}
+      </div>
 `;
+  }
+  // Header card: what the stage is (art, readable name, type, track) and its stage actions.
+  stageCardHTML(r, s, index, file, key, linked) {
+    const track = STUDIO_TRACKS.find((t) => t.id === trackOf(s));
+    const visual = !["motion", "sound", "sprite"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
+    const thumb = visual && file ? this.assetThumbHTML(file) : `<span aria-hidden="true">${esc(track?.icon ?? "◇")}</span>`;
+    const studio = this.isStudio();
+    const full = r.stages.length >= MAX_STAGES || this.busy, only = r.stages.length === 1;
+    const variant = !linked && variantMembers(r.stages, s.variantGroup).length < 2 ? `<button class="an-icon" data-action="variant-add" aria-label="Add a random variant" data-tooltip="Add a random variant: a copy with different art, size or timing; each play picks one" ${full ? "disabled" : ""}>🎲</button>` : "";
+    const dup = studio ? `<button class="an-icon" data-action="studio-dup-stage" data-index="${index}" aria-label="Duplicate this stage" data-tooltip="Duplicate after it (Ctrl+D)" ${full ? "disabled" : ""}>⧉</button>` : "";
+    const del = `<button class="an-icon is-danger an-stage-remove" data-action="${studio ? "studio-del-stage" : "remove-stage"}" data-index="${index}" aria-label="Remove this stage" data-tooltip="${only ? "A recipe needs at least one stage" : "Remove this stage (Del)"}" ${only || this.busy ? "disabled" : ""}><i class="fas fa-trash" aria-hidden="true"></i></button>`;
+    return `<div class="an-inspector-head an-stage-card kind-${esc(s.kind)}"><div class="an-stage-thumb">${thumb}</div><div class="an-stage-id"><input class="an-stage-name" data-field="label" data-index="${index}" value="${esc(s.label ?? "")}" placeholder="${esc(KINDS[s.kind])}" aria-label="Stage name"><div class="an-stage-chips"><span class="an-st-kind kind-${esc(s.kind)}">${esc(KINDS[s.kind])}</span><span class="an-stage-chip">${esc(track?.name ?? "")} · ${index + 1} of ${r.stages.length}</span>${visual && (key || s.assets?.[0]) ? `<span class="an-stage-chip is-asset" title="${esc(key ?? s.assets[0])}">${esc(assetName(key ?? s.assets[0]))}</span>` : ""}</div></div><div class="an-stage-actions">${variant}${dup}${del}</div></div>`;
+  }
+  // The same few settings, in the same order, for every kind of stage.
+  stageEssentialsHTML(r, s, index, key, linked, audioPreview) {
+    const visual = !["motion", "sound", "sprite"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
+    const asset = s.kind === "sound"
+      ? `<label>Sound<span class="an-asset-row"><input data-field="soundFile" data-index="${index}" placeholder="sounds/spell.ogg" value="${esc(s.soundFile)}">${this.host.soundCatalog || this.host.pickMedia ? `<button data-action="browse-sound">Browse</button>` : ""}</span></label>`
+      : visual ? `<label>Art<button class="an-asset-picker" data-action="browse"><span class="an-asset-picker-text">${esc(key || s.assets[0] ? assetName(key ?? s.assets[0]) : "Choose an asset")}<span>Change ↗</span></span></button></label>${key && key !== s.assets[0] ? `<p class="an-hint">Using an installed fallback variant.</p>` : ""}` : "";
+    const subject = ["sprite", "aura", "tokenfx"].includes(s.kind) && !linked ? `<label>Plays on<select data-field="subject" data-index="${index}">${options({ source: "Source token", targets: "Target tokens" }, s.subject ?? "source")}</select></label>` : "";
+    const fades = s.kind !== "motion" && !OPTIONAL_FX_KINDS.has(s.kind) && s.kind !== "sprite";
+    const o = normalizeOptions({ ...s, kind: s.kind === "sound" ? "cast" : s.kind });
+    const lengthLabel = linked ? "Preview length" : s.kind === "projectile" || isPathMotion(s) && s.motionRange === "target" ? "Base length" : "Length";
+    const size = ["motion", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind) ? "" : sizeField(s.scale, index);
+    return `<div class="an-stage-block an-essentials"><div class="an-stage-block-title">Essentials</div>${this.stageVariantHTML(s, index, linked) || subject ? `<div class="an-field-row">${this.stageVariantHTML(s, index, linked)}${subject}</div>` : ""}${asset}
+      ${this.whenHTML(r, s, index, linked)}
+      <div class="an-field-row an-essential-row">${secondsField("duration", lengthLabel, s.duration, index, { min: 100, max: 30000, step: 100 })}${size}${fades ? secondsField("fadeIn", "Fade in", o.fadeIn, index, { off: true }) + secondsField("fadeOut", "Fade out", o.fadeOut, index, { off: true }) : ""}</div>
+      ${linked && ["aura", "tokenfx"].includes(s.kind) ? `<p class="an-hint">Stays on the token while the condition or effect is on it. Length only sets the preview.</p>` : ""}</div>`;
+  }
+  // One control for when the stage starts: at a time, with or after another stage. A custom link
+  // (an anchor or a negative offset) shows as a sentence; it is edited on the Timing tab.
+  whenHTML(r, s, index, linked) {
+    const at = sampleRecipe(r).stages[index]?.delay ?? s.delay ?? 0;
+    const sec = (ms) => `${(Math.round(ms) / 1000).toFixed(2)} s`;
+    if (r.stages.length < 2 || linked) return `<div class="an-when">${secondsField("delay", "Starts at", s.delay, index, { max: 30000 })}</div>`;
+    const custom = s.afterStage && !s.startMode;
+    const mode = s.startMode ?? (custom ? "link" : "time");
+    const others = Object.fromEntries(r.stages.filter((o, j) => j !== index).map((o) => [o.stageId, this.stageLabel(o)]));
+    const ref = r.stages.find((o) => o.stageId === (s.startRef ?? s.afterStage));
+    const name = ref ? this.stageLabel(ref) : "another stage";
+    const sentence = mode === "time" ? `Starts at ${sec(at)}` : mode === "with" ? `Starts with ${name} (at ${sec(at)})` : mode === "after" ? `Starts when ${name} ends${s.startOffset ? `, +${sec(s.startOffset)}` : ""} (at ${sec(at)})` : `Linked to ${name}: ${s.timingAnchor === "start" ? "its start" : s.timingAnchor === "arrival" ? "its arrival" : "its end"}${s.startOffset ? `, ${s.startOffset > 0 ? "+" : "−"}${sec(Math.abs(s.startOffset))}` : ""} (at ${sec(at)}). Edit on the Timing tab.`;
+    return `<div class="an-when"><div class="an-field-row"><label>When<select data-field="startMode" data-index="${index}">${options({ time: "At a set time", with: "With", after: "After", ...(custom ? { link: "Linked (custom)" } : {}) }, mode)}</select></label>${mode === "with" || mode === "after" ? `<label>Stage<select data-field="startRef" data-index="${index}">${options(others, s.startRef ?? s.afterStage)}</select></label>` : ""}${mode === "after" ? secondsField("startOffset", "Gap", s.startOffset ?? 0, index, { max: 30000 }) : mode === "time" ? secondsField("delay", "At", s.delay, index, { max: 30000 }) : ""}</div><p class="an-when-line">${esc(sentence)}</p></div>`;
+  }
+  // The settings only this kind of stage has.
+  stageTypeHTML(r, s, index, linked, audioPreview) {
+    let body = "";
+    if (OPTIONAL_FX_KINDS.has(s.kind)) body = this.optionalFxControlsHTML(s, index);
+    else if (s.kind === "motion") body = this.motionControlsHTML(s, index, r);
+    else if (s.kind === "sound") body = `${this.soundVolumeHTML(s, index, audioPreview)}<p class="an-hint">Plays with the recipe; Stop ends it too.</p>`;
+    else if (s.kind === "sprite") body = `${this.optionFieldsHTML(s, index, linked, ["Token copies"])}<p class="an-hint">Copies token artwork into Sequencer.</p>`;
+    else if (["travel", "projectile"].includes(s.kind)) body = this.flightFieldsHTML(s, index);
+    if (s.kind === "aura" && !linked) body += `<label class="an-check an-stay"><input type="checkbox" data-field="persist" data-index="${index}" ${s.persist ? "checked" : ""}> Stay until the effect ends</label><p class="an-hint">${s.persist ? "Loops on the token until the spell's effect is removed, the spell ends or you press Stop. Length only sets the preview." : "Tick to keep a looping asset on the token for as long as the spell's effect lasts."}</p>`;
+    if (["travel", "projectile", "impact"].includes(s.kind)) body += this.optionFieldsHTML(s, index, linked, ["Timing & repetition"], ["requiresHit"]);
+    if (!body.trim()) return "";
+    return `<div class="an-stage-block an-type-block"><div class="an-stage-block-title">${esc(KINDS[s.kind])}</div>${body}</div>`;
+  }
+  // Flight path, destination and pacing of a projectile or travel stage.
+  flightFieldsHTML(stage, index) {
+    const o = normalizeOptions(stage);
+    let html = `<label>Travel path<select data-field="travelOrigin" data-index="${index}">${options(stage.kind === "projectile" ? { source: "Source → each target", target: "Target → source (return)" } : { source: "Source → each target", previousTarget: "Chain through targets", firstTarget: "First target → selected endpoints", target: "Target → source (return)" }, stage.travelOrigin ?? "source")}</select></label>`;
+    html += `<label>Lands on<select data-field="travelDestination" data-index="${index}">${options({ targets: "Selected creatures", area: "Selected area center" }, stage.travelDestination ?? "targets")}</select></label>`;
+    if (stage.travelDestination === "area")
+      html += `<label>Area flight layout<select data-field="areaLayout" data-index="${index}">${options({ fit: "One flight to area center", fan: "Spread through cone" }, o.areaLayout)}</select></label>${o.areaLayout === "fan" ? `<label>Flights in fan<input type="number" min="3" max="9" step="1" data-field="fanCount" data-index="${index}" value="${o.fanCount}"></label>` : ""}`;
+    if (stage.kind === "projectile")
+      html += `<div class="an-field-row">${secondsField("perSquare", "Extra per square", stage.perSquare ?? 0, index, { max: 2000, off: true })}${secondsField("moveDelay", "Launch pause", stage.moveDelay ?? 0, index, { max: 10000, off: true })}<label>Flight easing<select data-field="moveEase" data-index="${index}">${options(EASES, stage.moveEase ?? "linear")}</select></label></div>`;
+    return html;
+  }
+  // Look / Motion / Placement / Timing: everything else, one tab open at a time. A dot marks a tab
+  // whose settings differ from the defaults; Reset puts that tab back.
+  stageTabsHTML(r, s, index, linked) {
+    const tabs = INSPECTOR_TABS.map((t) => ({ ...t, html: this.inspectorTabHTML(t.id, r, s, index, linked) })).filter((t) => t.html.trim());
+    if (!tabs.length) return "";
+    const open = tabs.find((t) => t.id === this.inspectorTab) ?? tabs[0];
+    const changed = (id) => inspectorTabChanged(id, s);
+    return `<div class="an-stage-tabs" role="tablist" aria-label="More stage settings">${tabs.map((t) => `<button role="tab" class="an-stage-tab${changed(t.id) ? " has-changes" : ""}" data-action="inspector-tab" data-tab="${t.id}" aria-selected="${t === open}" ${changed(t.id) ? `data-tooltip="Changed from the default"` : ""}>${t.label}</button>`).join("")}</div><div class="an-stage-tabpane" role="tabpanel" aria-label="${open.label}">${changed(open.id) ? `<button class="an-text-button an-tab-reset" data-action="inspector-tab-reset" data-tab="${open.id}">Reset ${open.label.toLowerCase()}</button>` : ""}${open.html}</div>`;
+  }
+  inspectorTabHTML(id, r, s, index, linked) {
+    const visual = !["motion", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
+    if (id === "look") {
+      const extra = visual ? `<div class="an-options-grid"><label>Opacity<input type="number" min="0.1" max="1" step="0.1" data-field="opacity" data-index="${index}" value="${s.opacity}"></label><label class="an-check"><input type="checkbox" data-field="below" data-index="${index}" ${s.below ? "checked" : ""}> Below tokens</label></div>${s.kind === "sprite" ? "" : `<label>Fallback assets (comma separated)<textarea rows="2" data-field="assets" data-index="${index}">${esc(s.assets.join(","))}</textarea></label>`}` : "";
+      const colour = this.optionFieldsHTML(s, index, linked, ["Color & filters"]);
+      return colour || extra ? `${colour}${extra}` : "";
+    }
+    // A sound has nothing to move: its fade easing sits on the Timing tab instead.
+    if (id === "motion" && s.kind === "sound") return "";
+    if (id === "motion") return this.optionFieldsHTML(s, index, linked, ["Entrance & exit"], null, ["fadeIn", "fadeOut"]) + (["motion", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind) ? "" : this.propertyTracksHTML(s, index));
+    if (id === "place") {
+      const landing = ["projectile", "impact"].includes(s.kind) ? `<div class="an-options-grid"><label>Shared landing group<input data-field="landingGroup" data-index="${index}" value="${esc(s.landingGroup ?? "")}" placeholder="e.g. orb-hit"></label><label>Landing scatter (squares)<input type="number" min="0" max="2" step="0.05" data-field="scatter" data-index="${index}" value="${s.scatter ?? 0}"></label></div>` : "";
+      return this.optionFieldsHTML(s, index, linked, ["Placement & attachment"]) + landing;
+    }
+    if (id === "time") {
+      const link = s.afterStage && !s.startMode ? this.customLinkHTML(r, s, index) : "";
+      const ease = s.kind === "sound" ? this.optionFieldsHTML(s, index, linked, ["Entrance & exit"], ["ease"]).replace("Transition easing", "Fade easing") : "";
+      return link + this.optionFieldsHTML(s, index, linked, ["Timing & repetition", "Media playback"], null, ["requiresHit"]) + ease;
+    }
+    return "";
+  }
+  // A custom link (anchor and signed offset), kept for recipes that use one.
+  customLinkHTML(recipe, stage, index) {
+    const refs = Object.fromEntries(recipe.stages.filter((o) => o.stageId !== stage.stageId).map((o) => [o.stageId, o.label || KINDS[o.kind]]));
+    return `<div class="an-options-grid"><label>Linked to<select data-field="afterStage" data-index="${index}">${options({ "": "Nothing (set time)", ...refs }, stage.afterStage ?? "")}</select></label><label>Anchor<select data-field="timingAnchor" data-index="${index}">${options({ start: "Stage starts", ...(isPathMotion(recipe.stages.find((o) => o.stageId === stage.afterStage)) ? { arrival: "Destination reached" } : {}), end: "Stage finishes" }, stage.timingAnchor ?? "end")}</select></label>${secondsField("startOffset", "Offset", stage.startOffset ?? 0, index, { min: -30000, max: 30000 })}</div>`;
   }
   builderHTML() {
     const r = {
@@ -1434,14 +1652,6 @@ export class Workspace {
       <p class="an-hint">${finisher ? "Moves token artwork, then restores its pose; a held travel lands, and the finisher moves the token there." : "Moves token artwork, then restores its pose. Game position and rotation stay unchanged."}</p>
       ${s.motion === "path" ? keyframeInspectorHTML(s, index, this.selectedKeyframe(s)) : ""}${s.motion === "fragments" ? fragmentsControlsHTML(s, index, this.fragmentsPreviewAt ?? 0.6, { finisher }) : ""}`;
   }
-  compositionHTML(recipe, stage, index) {
-    const refs = Object.fromEntries(
-      recipe.stages
-        .filter((s) => s.stageId !== stage.stageId)
-        .map((s, i) => [s.stageId, s.label || KINDS[s.kind]]),
-    );
-    return `<details class="an-advanced an-options" data-options-group="composition"><summary>Linked timing & flight ${stage.afterStage || stage.kind === "projectile" ? "· configured" : ""}</summary><label>Start relative to<select data-field="afterStage" data-index="${index}">${options({ "": "Absolute start time", ...refs }, stage.afterStage ?? "")}</select></label>${stage.afterStage ? `<label>Anchor<select data-field="timingAnchor" data-index="${index}">${options({ start: "Stage starts", ...(isPathMotion(recipe.stages.find(s => s.stageId === stage.afterStage)) ? { arrival: "Destination reached" } : {}), end: "Stage finishes" }, stage.timingAnchor ?? "end")}</select></label><label>Offset from stage ${stage.timingAnchor === "start" ? "start" : stage.timingAnchor === "arrival" ? "arrival" : "end"} (ms)<input type="number" data-field="startOffset" data-index="${index}" min="-30000" max="30000" step="50" value="${stage.startOffset}"></label><p class="an-hint">Offset adjusts chosen anchor. Link survives reordering; absolute Start is ignored.</p>` : ""}${stage.kind === "projectile" ? `<div class="an-options-grid"><label>Extra duration / square (ms)<input type="number" min="0" max="2000" data-field="perSquare" data-index="${index}" value="${stage.perSquare ?? 0}"></label><label>Launch pause (ms)<input type="number" min="0" max="10000" data-field="moveDelay" data-index="${index}" value="${stage.moveDelay ?? 0}"></label><label>Flight easing<select data-field="moveEase" data-index="${index}">${options(EASES, stage.moveEase ?? "linear")}</select></label></div><p class="an-hint">Moves the artwork along its travel path. Duration adds actual grid distance.</p>` : ""}${["projectile", "impact"].includes(stage.kind) ? `<label>Shared landing group<input data-field="landingGroup" data-index="${index}" value="${esc(stage.landingGroup ?? "")}" placeholder="e.g. orb-hit"></label><label>Landing scatter (squares)<input type="number" min="0" max="2" step="0.05" data-field="scatter" data-index="${index}" value="${stage.scatter ?? 0}"></label><p class="an-hint">Matching groups share one point. First layer’s scatter controls the group.</p>` : ""}</details>`;
-  }
   // The track decides what a stage is; only same-track variants are offered.
   stageVariantHTML(s, index, linked) {
     const pool = linked ? { aura: "Sustained attached layer", tokenfx: "Tokenshade" } : KINDS;
@@ -1455,7 +1665,9 @@ export class Workspace {
     const listen = s.soundFile && !audioPreview?.skipSound ? `<audio class="an-sound-listen" controls preload="none" src="${esc(this.host.mediaURL?.(audioPreview.soundFile) ?? audioPreview.soundFile)}" aria-label="Listen to this sound" data-cue-volume="${volume}"></audio>` : "";
     return `<label class="an-volume-field">Volume <span data-volume-readout>${Math.round(volume * 100)}%</span><input type="range" min="0" max="1" step="0.05" data-field="volume" data-index="${index}" value="${volume}" aria-label="Sound volume"></label>${listen}`;
   }
-  stageOptionsHTML(stage, index, linked = false) {
+  // The option fields of the chosen groups, filtered the way each stage kind needs; `only` keeps just
+  // those keys, `without` drops them. Times show in seconds.
+  optionFieldsHTML(stage, index, linked = false, groups = [], only = null, without = []) {
     if(OPTIONAL_FX_KINDS.has(stage.kind))return '';
     // Sound path can remain blank while drafting; validation occurs on save/play.
     const s = {
@@ -1470,18 +1682,14 @@ export class Workspace {
       const attrs = `data-field="${key}" data-index="${index}" ${track === undefined ? "" : `data-track="${track}"`}`;
       if (typeof fallback === "boolean")
         return `<label class="an-check"><input type="checkbox" ${attrs} ${value ? "checked" : ""}>${esc(label)}</label>`;
-      return `<label>${esc(label)}${min && typeof min === "object" ? `<select ${attrs}>${options(min, value)}</select>` : `<input ${attrs} type="${typeof fallback === "number" ? "number" : "color"}" ${typeof fallback === "number" ? `min="${min}" max="${max}" step="${step ?? 1}"` : ""} value="${esc(value)}">`}</label>`;
+      return optionInputHTML([key, label, fallback, min, max, step], value, index, track, attrs);
     };
-    let html = ["travel", "projectile"].includes(stage.kind)
-      ? `<label>Travel path<select data-field="travelOrigin" data-index="${index}">${options(stage.kind === "projectile" ? { source: "Source → each target", target: "Target → source (return)" } : { source: "Source → each target", previousTarget: "Chain through targets", firstTarget: "First target → selected endpoints", target: "Target → source (return)" }, stage.travelOrigin ?? "source")}</select></label><p class="an-hint">Chains follow targeting order. Return paths end at source; projectile returns ignore landing scatter.</p>`
-      : "";
-    if (["travel", "projectile"].includes(stage.kind))
-      html += `<label>Flight destination<select data-field="travelDestination" data-index="${index}">${options({ targets: "Selected creatures", area: "Selected area center" }, stage.travelDestination ?? "targets")}</select></label>`;
-    if (["travel", "projectile"].includes(stage.kind) && stage.travelDestination === "area")
-      html += `<label>Area flight layout<select data-field="areaLayout" data-index="${index}">${options({ fit: "One flight to area center", fan: "Spread through cone" }, s.areaLayout)}</select></label>${s.areaLayout === "fan" ? `<label>Flights in fan<input type="number" min="3" max="9" step="1" data-field="fanCount" data-index="${index}" value="${s.fanCount}"></label><p class="an-hint">Starts at the placed cone vertex. Flights spread inside its direction and reach; creature hits remain rules.</p>` : ""}`;
+    let html = "";
     // Target options only matter on stages that play on or toward targets.
     const targeted = ["travel", "projectile", "impact"].includes(s.kind) || s.subject === "targets";
-    for (const [group, fields] of Object.entries(OPTION_GROUPS)) {
+    for (const [group, all] of Object.entries(OPTION_GROUPS)) {
+      if (!groups.includes(group)) continue;
+      const fields = all.filter(([key]) => (!only || only.includes(key)) && !without.includes(key));
       if (
         (group === "Token copies" && s.kind !== "sprite") ||
         group === "Sound"
@@ -1531,10 +1739,27 @@ export class Workspace {
       // The anchor toggle reads first; its X/Y fields appear under it once ticked.
       const toggle = visible.findIndex(([key]) => key === "customAnchor"), anchor = visible.findIndex(([key]) => key === "anchorX");
       if (toggle > anchor && anchor >= 0) visible.splice(anchor, 0, ...visible.splice(toggle, 1));
-      html += `<details class="an-advanced an-options" data-options-group="${esc(group)}"><summary>${esc(group)}</summary><div class="an-options-grid">${visible.map((f) => input(f)).join("")}</div></details>`;
+      html += `<div class="an-options-grid" data-options-group="${esc(group)}">${visible.map((f) => input(f)).join("")}</div>`;
     }
-    if (!["motion", "sound"].includes(s.kind))
-      html += `<details class="an-advanced an-options" data-options-group="tracks"><summary>Property tracks <small>${s.tracks.length}/6</small></summary><p class="an-hint">Animate artwork position, rotation, size or opacity. Tracks stay inside this stage. Positions use grid squares.</p>${s.tracks
+    return html;
+  }
+  propertyTracksHTML(stage, index) {
+    // Sound path can remain blank while drafting; validation occurs on save/play.
+    const s = {
+      ...stage,
+      ...normalizeOptions({
+        ...stage,
+        kind: stage.kind === "sound" ? "cast" : stage.kind,
+      }),
+    };
+    const input = ([key, label, fallback, min, max, step], track) => {
+      const value = track === undefined ? s[key] : s.tracks[track][key];
+      const attrs = `data-field="${key}" data-index="${index}" ${track === undefined ? "" : `data-track="${track}"`}`;
+      if (typeof fallback === "boolean")
+        return `<label class="an-check"><input type="checkbox" ${attrs} ${value ? "checked" : ""}>${esc(label)}</label>`;
+      return optionInputHTML([key, label, fallback, min, max, step], value, index, track, attrs);
+    };
+    return `<div class="an-tracks" data-options-group="tracks"><div class="an-stage-block-title">Property tracks <small>${s.tracks.length}/6</small></div><p class="an-hint">Animate artwork position, rotation, size or opacity. Tracks stay inside this stage. Positions use grid squares.</p>${s.tracks
         .map(
           (t, i) =>
             `<div class="an-track"><div class="an-section-title"><b>Track ${i + 1}</b><button data-action="remove-track" data-track="${i}" aria-label="Remove track ${i + 1}">Remove</button></div><div class="an-options-grid">${[
@@ -1604,8 +1829,7 @@ export class Workspace {
         )
         .join(
           "",
-        )}<button data-action="add-track" ${s.tracks.length >= 6 ? "disabled" : ""}>+ Property track</button></details>`;
-    return html;
+        )}<button data-action="add-track" ${s.tracks.length >= 6 ? "disabled" : ""}>+ Property track</button></div>`;
   }
   assetsHTML(recipe) {
     this.mediaLibrary ??= new MediaLibrary(this);
@@ -1653,20 +1877,36 @@ export class Workspace {
   }
   activityHTML() {
     const logs = this.host.logs?.() ?? [], playing = this.nowPlaying(), now = Date.now();
-    const nowRows = playing.map((r) => {
+    // One line per animation: its picture, name and how long it has played; stop and leave-out
+    // on the right. The asset's name sits in the tooltip.
+    const nowChip = (r) => {
       const attr = `data-entry="${esc(r.id)}"`, started = Number(r.startedAt) || now;
       const tip = r.kind === "state" ? "Stop: the condition or effect stays, and animates again when reapplied" : "Stop this animation";
-      const token = r.portrait ? `<img class="an-now-token" src="${esc(r.portrait)}" alt="" loading="lazy"> ` : "";
-      const effect = r.asset ? `<small class="an-now-asset" data-tooltip="${esc(r.asset)}">${esc(assetLabel(r.asset))}</small>` : "";
-      return `<div class="an-log an-now-row">${this.nowThumbHTML(r)}<time data-started="${started}">${esc(elapsedLabel(now - started))}</time><div><b>${esc(r.name)}</b><p>${r.on ? `${token}on ${esc(r.on)}` : ""}</p>${effect}</div><div class="an-activity-actions"><button type="button" class="an-activity-btn" data-action="activity-stop" ${attr} aria-label="Stop ${esc(r.name)}" data-tooltip="${tip}">■</button>${this.activityExcludeHTML(r.origin, r.name, attr)}</div></div>`;
-    }).join("") || `<div class="an-empty">Nothing playing right now.</div>`;
+      return `<div class="an-now-row an-now-chip"${r.asset ? ` data-tooltip="${esc(assetLabel(r.asset))}"` : ""}>${this.nowThumbHTML(r)}<b>${esc(r.name)}</b><time data-started="${started}">${esc(elapsedLabel(now - started))}</time><span class="an-now-chip-actions"><button type="button" class="an-activity-btn" data-action="activity-stop" ${attr} aria-label="Stop ${esc(r.name)}" data-tooltip="${tip}">■</button>${this.activityExcludeHTML(r.origin, r.name, attr)}</span></div>`;
+    };
+    // A small card per token (portrait, name, stop all), side by side in a grid.
+    const cards = groupNowPlaying(playing).map((g) => {
+      const face = g.portrait ? `<img class="an-now-token" src="${esc(g.portrait)}" alt="" loading="lazy">` : `<span class="an-now-token is-scene" aria-hidden="true">◎</span>`;
+      const stopAll = g.rows.length > 1 ? `<button type="button" class="an-activity-btn an-now-stopall" data-action="activity-stop-group" data-entries="${esc(g.rows.map((r) => r.id).join(" "))}" aria-label="Stop all on ${esc(g.name)}" data-tooltip="Stop all ${g.rows.length} on ${esc(g.name)}">■ All</button>` : "";
+      return `<div class="an-now-card"><div class="an-now-card-head">${face}<b>${esc(g.name)}</b>${stopAll}</div><div class="an-now-chips">${g.rows.map(nowChip).join("")}</div></div>`;
+    }).join("");
+    const nowRows = cards ? `<div class="an-now-grid">${cards}</div>` : `<div class="an-empty">Nothing playing right now.</div>`;
     // Only automatic plays that played can be excluded; previews, skips and blocks get no buttons.
     const actionable = (l) => l?.automatic === true && !l.preview && ["Played", "Persistent"].includes(l.status);
-    const history = logs.map((l, i) => {
+    const filter = ACTIVITY_FILTERS[this.activityFilter] ? this.activityFilter : "all";
+    const fixButton = (f) => (f ? `<button type="button" class="an-activity-fix" data-action="activity-fix"${f.page ? ` data-page="${esc(f.page)}"` : ""}${f.catalog ? ` data-catalog="${esc(f.catalog)}"` : ""}${f.action ? ` data-fix-action="${esc(f.action)}"` : ""}>${esc(f.label)}</button>` : "");
+    const history = logs.map((l, i) => [l, i]).filter(([l]) => activityShown(l, filter)).map(([l, i]) => {
       const actions = actionable(l) ? this.activityExcludeHTML(l.origin, l.recipe, `data-index="${i}"`) : "";
-      return `<div class="an-log"><time>${esc(l.time)}</time><span class="an-badge ${l.status === "Blocked" ? "is-missing" : ""}">${esc(l.status)}</span><div><b>${esc(l.recipe)}</b><p>${esc(l.detail)}</p></div>${actions ? `<div class="an-activity-actions">${actions}</div>` : ""}</div>`;
-    }).join("") || `<div class="an-empty">No activity yet.<small>Preview a recipe or enable automatic playback.</small></div>`;
-    return `<div class="an-activity"><div class="an-info">Playback explained<p>Automatic events appear here with matching recipe, played effect count, or reason playback was blocked. The list updates live while this page is open. It shows what this browser played: each player's own casts are listed on their own Activity page.</p></div><section class="an-activity-section" data-activity="now"><h3>Now playing</h3>${nowRows}</section><section class="an-activity-section" data-activity="history"><h3>History</h3>${history}</section></div>`;
+      const e = explainEntry(l), fixes = fixButton(e.fix) + fixButton(e.also);
+      const badge = l.status === "Blocked" ? "is-missing" : l.status === "Skipped" ? "is-skipped" : "";
+      return `<div class="an-log"><time>${esc(l.time)}</time><span class="an-badge ${badge}" data-tooltip="${esc(ACTIVITY_STATUSES[l.status] ?? "")}">${esc(l.status)}</span><div><b>${esc(e.title)}</b><p>${esc(e.text)}</p>${fixes ? `<div class="an-activity-fixes">${fixes}</div>` : ""}</div>${actions ? `<div class="an-activity-actions">${actions}</div>` : ""}</div>`;
+    }).join("") || (logs.length ? `<div class="an-empty">Nothing ${esc(ACTIVITY_FILTERS[filter].label.toLowerCase())} yet.</div>` : `<div class="an-empty">No activity yet.<small>Cast a spell or use an item on the canvas, or preview a recipe.</small></div>`);
+    const chip = ([id, f]) => `<button type="button" data-action="activity-filter" data-filter="${id}" aria-pressed="${id === filter}" class="${id === filter ? "is-active" : ""}">${f.label}${id === "all" ? "" : ` <small>${logs.filter((l) => activityShown(l, id)).length}</small>`}</button>`;
+    const chips = `<div class="an-activity-filters" role="group" aria-label="Show">${Object.entries(ACTIVITY_FILTERS).map(chip).join("")}</div>`;
+    // Nothing plays automatically: the page says so, instead of just staying empty.
+    // (GM only: a player's catalog animations are played by the GM's client.)
+    const off = !this.host.playerMode && this.host.acceptsEvents && !this.host.acceptsEvents() ? `<div class="an-activity-banner" role="status"><b>Nothing plays automatically right now.</b><span>Turn on a catalog's Plug &amp; play, or turn on Play my own recipes automatically in Setup.</span><button type="button" data-action="page" data-page="setup">Open Setup</button></div>` : "";
+    return `<div class="an-activity">${off}<div class="an-info">Why did it play, or not?<p>Every automatic event on this screen is listed here as it happens: what played, or why nothing did and what to do about it. Each player sees their own casts on their own Activity page. The list keeps the last 40 events, even after a reload.</p></div><section class="an-activity-section" data-activity="now"><h3>Now playing</h3>${nowRows}</section><section class="an-activity-section" data-activity="history"><div class="an-activity-head"><h3>History</h3>${chips}</div>${history}</section></div>`;
   }
   // The Activity row a button acts on: a Now playing entry (data-entry) or a History entry (data-index).
   activityRow(b) {
@@ -1675,6 +1915,13 @@ export class Workspace {
     return l ? { ...l, name: l.recipe } : null;
   }
   async activityAction(action, b) {
+    if (action === "activity-stop-group") {
+      const rows = String(b.dataset.entries ?? "").split(" ").map((id) => this.nowPlaying().find((r) => r.id === id)).filter(Boolean);
+      for (const row of rows) await this.host.stopAnimation?.(row);
+      this.message = `${rows.length} animation${rows.length === 1 ? "" : "s"} stopped.`;
+      this.render();
+      return true;
+    }
     if (!["activity-stop", "activity-exclude", "activity-undo"].includes(action)) return false;
     const row = this.activityRow(b);
     if (!row) { this.render(); return true; }
@@ -1706,14 +1953,17 @@ export class Workspace {
     const state = this.host.catalogsOn?.();
     if (!state?.total) return "";
     const all = state.on === state.total;
-    return `<section class="an-settings-card"><div><h3>Every catalog</h3><p>${all ? `All ${state.total} catalogs are on: spells, feats, actions, weapons, conditions and effects animate when used.` : `${state.on} of ${state.total} catalogs are on. Turn them all on in one click: everything animates when used. Exclusions and your own versions stay.`}</p></div><button data-action="use-every-catalog" class="${all ? "an-quiet" : "an-primary"}" ${env.demo || !env.ready || all ? "disabled" : ""}>${all ? "All on ✓" : "Turn every catalog on"}</button></section>`;
+    return `<section class="an-settings-card"><div><h3>Every catalog</h3><p>${all ? `All ${state.total} catalogs are on: ${esc(catalogListText(env))} animate when used.` : `${state.on} of ${state.total} catalogs are on. Turn them all on in one click: everything animates when used. Exclusions and your own versions stay.`}</p></div><button data-action="use-every-catalog" class="${all ? "an-quiet" : "an-primary"}" ${env.demo || !env.ready || all ? "disabled" : ""}>${all ? "All on ✓" : "Turn every catalog on"}</button></section>`;
   }
   setupHTML(env) {
-    return `<div class="an-setup"><section class="an-setup-hero"><span>✧</span><h2>From dice roll to spectacle.</h2><p>Install your assets. Pick a recipe. Let your table do the rest.</p></section><div class="an-setup-grid">${env.dependencies.map((d) => `<div class="an-dependency"><span class="${d.ok ? "an-ok" : "an-missing"}">${d.ok ? "✓" : "!"}</span><div><h3>${esc(d.name)}</h3><p>${esc(d.detail)}</p></div></div>`).join("")}</div><section class="an-settings-card"><div><h3>Automatic playback</h3><p>${env.conflicts.length ? `Other animation engines active: ${esc(env.conflicts.join(", "))}. Overlapping triggers may play twice.` : "Your saved recipes respond to supported game events."}</p></div><button data-action="automation" class="an-toggle ${this.host.enabled() ? "is-on" : ""}" role="switch" aria-checked="${this.host.enabled()}" ${env.demo || !env.ready ? "disabled" : ""}>${this.host.enabled() ? "On" : "Off"}</button></section>${this.everyCatalogHTML(env)}${this.catalogFxControlsHTML(env)}<div class="an-guide"><h3>First animation in three steps</h3><ol><li><b>Choose a recipe.</b> Open Recipes, pick an effect, check its asset preview.</li><li><b>Try it locally.</b> Select a source token, target a token, then Local preview.</li><li><b>Make it yours.</b> Set trigger and item names, save, then enable automatic playback.</li></ol><p>Area previews create a temporary template automatically and remove it afterward. Select a native area to override placement and size. Rerolls and private PF2e messages are skipped. D&D 5e hit/miss resolution is not inferred from target AC.</p><button data-action="restore-starters">Add missing starter recipes</button></div></div>`;
+    const deps = env.dependencies.map((d) => `<div class="an-dependency"><span class="${d.ok ? "an-ok" : "an-missing"}">${d.ok ? "✓" : "!"}</span><div><h3>${esc(d.name)}</h3><p>${esc(d.detail)}</p></div></div>`).join("");
+    const ownRecipes = `<section class="an-settings-card"><div><h3>Play my own recipes automatically</h3><p>${env.conflicts.length ? `Other animation modules are on: ${esc(env.conflicts.join(", "))}. Things they animate may play twice.` : "Your saved recipes play when their spell, attack, damage or area happens. The catalogs play on their own."}</p></div><button data-action="automation" class="an-toggle ${this.host.enabled() ? "is-on" : ""}" role="switch" aria-checked="${this.host.enabled()}" ${env.demo || !env.ready ? "disabled" : ""}>${this.host.enabled() ? "On" : "Off"}</button></section>`;
+    const guide = `<div class="an-guide"><h3>Get started</h3><ol><li><b>Turn on the catalogs.</b> Use <i>Turn every catalog on</i> above, or open one catalog and switch on its Plug &amp; play.</li><li><b>Try one.</b> Select a token on the canvas (and target another), open any catalog entry and press <i>On canvas</i>.</li><li><b>Make it yours.</b> Press <i>Customize</i> on any entry, or start a <i>New recipe</i> from a template.</li></ol><p>Area spells place a temporary area for previews and remove it afterward. Rerolls and private PF2e messages never animate, and D&amp;D 5e hits and misses are not guessed from armor class.</p><button data-action="restore-starters">Add missing starter recipes</button></div>`;
+    return `<div class="an-setup"><section class="an-setup-hero"><span>✧</span><h2>From dice roll to spectacle.</h2><p>Turn on the catalogs and every spell, strike and condition animates. Change any of them later.</p></section><div class="an-setup-grid">${deps}</div>${this.everyCatalogHTML(env)}${guide}<h3 class="an-setup-subtitle">Fine-tuning</h3>${this.catalogFxControlsHTML(env)}${ownRecipes}</div>`;
   }
   catalogFxControlsHTML(env) {
     const state=this.host.catalogFxSettings?.()??{token:true,scene:true},fx=this.host.fxCatalog?.()??{};
-    return [['token','catalogTokenFx','Tokenshade','Shader effects on the token',fx.tokenReady],['scene','catalogSceneFx','FXMaster','Scene effects · GM playback',fx.sceneReady]].map(([kind,key,name,detail,ready])=>`<section class="an-settings-card"><div><h3>Catalog: ${name}</h3><p>${detail} · ${ready?'Available':'Provider unavailable'}</p></div><button data-action="catalog-fx-toggle" data-setting="${key}" data-fx-kind="${kind}" class="an-toggle ${state[kind]?'is-on':''}" role="switch" aria-label="Catalog: ${name}" aria-checked="${state[kind]}" ${env.demo||!this.host.setCatalogFxSetting?'disabled':''}>${state[kind]?'On':'Off'}</button></section>`).join('');
+    return [['token','catalogTokenFx','Tokenshade filters','Shader effects on the token',fx.tokenReady],['scene','catalogSceneFx','FXMaster scene effects','Scene effects · GM playback',fx.sceneReady]].map(([kind,key,name,detail,ready])=>`<section class="an-settings-card"><div><h3>${name} in catalog animations</h3><p>${detail} · ${ready?'Available':'Provider unavailable'}</p></div><button data-action="catalog-fx-toggle" data-setting="${key}" data-fx-kind="${kind}" class="an-toggle ${state[kind]?'is-on':''}" role="switch" aria-label="Catalog: ${name}" aria-checked="${state[kind]}" ${env.demo||!this.host.setCatalogFxSetting?'disabled':''}>${state[kind]?'On':'Off'}</button></section>`).join('');
   }
   // New recipe: the two kinds behave differently, so the author picks one up front.
   lastingRecipesAvailable() {
@@ -1721,7 +1971,7 @@ export class Workspace {
   }
   newChooserHTML() {
     const choice = (action, icon, title, text, example) => `<button class="an-new-choice" data-action="${action}"><span class="an-new-icon">${icon}</span><b>${title}</b><small>${text}</small><small class="an-new-example">${example}</small></button>`;
-    return `<div class="an-modal-scrim"><section class="an-modal an-new-chooser" role="dialog" aria-modal="true" aria-label="New recipe"><h2>What kind of animation?</h2><div class="an-new-choices">${choice("new-action", "✦", "Action animation", "Plays once when something happens: a spell is cast, an attack or damage is rolled, an area is placed.", "e.g. Fireball, a sword Strike")}${choice("new-lasting", "◷", "Lasting animation", "Stays on a token while a condition or effect is on it, and stops when it is removed.", "e.g. Frightened, Spell Effect: Shield")}</div><footer><button data-action="new-cancel">Cancel</button></footer></section></div>`;
+    return `<div class="an-modal-scrim"><section class="an-modal an-new-chooser" role="dialog" aria-modal="true" aria-label="New recipe"><h2>What kind of animation?</h2><div class="an-new-choices">${choice("new-action", "✦", "Blank action animation", "Plays once when something happens: a spell is cast, an attack or damage is rolled, an area is placed.", "e.g. Fireball, a sword Strike")}${this.lastingRecipesAvailable() ? choice("new-lasting", "◷", "Blank lasting animation", "Stays on a token while a condition or effect is on it, and stops when it is removed.", "e.g. Frightened, Spell Effect: Shield") : ""}</div><h3 class="an-new-subtitle">Or start from a template</h3><p class="an-hint">Already timed: pick one, change its art, then name what it plays for.</p><div class="an-new-templates">${starterRecipes().map((t) => `<button class="an-new-template" data-action="new-template" data-template="${esc(t.id)}" style="--effect:${esc(t.color)}"><b>${esc(t.name)}</b><small>${esc(t.description)}</small><small class="an-new-example">${t.stages.length} stage${t.stages.length === 1 ? "" : "s"} · ${esc(EVENTS[t.trigger] ?? t.trigger)}</small></button>`).join("")}</div><p class="an-hint">For a particular spell, feat or weapon, open it in its catalog and press <b>Customize</b>: you start from its finished animation.</p><footer><button data-action="new-cancel">Cancel</button></footer></section></div>`;
   }
   importHTML() {
     return `<div class="an-modal-scrim"><section class="an-modal" role="dialog" aria-modal="true" aria-label="Import Animater recipes"><h2>Import recipes</h2><p>Paste an Animater export. Existing IDs are replaced only after review.</p><textarea aria-label="Recipe import JSON" data-import rows="10" placeholder='{"schema":1,"recipes":[…]}'></textarea><div data-import-review role="status"></div><footer><button data-action="cancel-import">Cancel</button><button data-action="review-import">Review import</button><button data-action="confirm-import" class="an-primary" disabled>Import reviewed recipes</button></footer></section></div>`;
@@ -1836,11 +2086,12 @@ export class Workspace {
       return;
     }
     if (e.target.dataset.field) {
-      this.updateField(e.target);
+      this.updateField(e.target, true);
       this.render();
     }
   }
-  updateField(t) {
+  // `final`: the value is done (a change event); while typing, an unfinished number waits.
+  updateField(t, final = false) {
     if (this.busy) return;
     this.stopEditorPreview();
     const r = this.edit();
@@ -1898,6 +2149,38 @@ export class Workspace {
       }
       return;
     }
+    // Numbers are checked as they are typed: a blank "Off" field means 0, another blank keeps
+    // the old value, and anything out of range is pulled back to the nearest limit, with a note.
+    if (t.type === "number") {
+      const bound = (v, none) => (v === "" || v === undefined || v === null ? none : Number(v));
+      const lo = bound(t.min, -Infinity), hi = bound(t.max, Infinity);
+      if (!final && (t.value === "" || !(Number(t.value) >= lo && Number(t.value) <= hi))) return;
+      if (t.value === "") {
+        if (t.placeholder !== "Off") { this.message = "That field needs a number; the previous value is kept."; return; }
+        t.value = "0";
+      }
+      const v = Number(t.value), min = lo, max = hi;
+      if (!Number.isFinite(v)) { this.message = "That field needs a number; the previous value is kept."; return; }
+      if (v < min || v > max) {
+        const fixed = Math.min(max, Math.max(min, v)), label = t.closest("label")?.firstChild?.textContent?.trim() || "That value";
+        t.value = String(fixed);
+        this.message = `${label} goes from ${min} to ${max}; set to ${fixed}.`;
+      }
+    }
+    // A typed sound path: once the file's length is known, the stage runs that long (so the
+    // sound is not cut off at the table, where it plays for exactly the stage's length).
+    if (key === "soundFile" && final && t.value && typeof globalThis.Audio === "function") {
+      const id = r.id, stageId = s.stageId, audio = new globalThis.Audio();
+      audio.preload = "metadata";
+      audio.addEventListener("loadedmetadata", () => {
+        const ms = Math.round(audio.duration * 1000), stage = this.drafts.get(id)?.stages.find((x) => x.stageId === stageId);
+        if (!stage || stage.soundFile !== t.value || !Number.isFinite(ms) || ms <= 0) return;
+        stage.duration = Math.min(30000, Math.max(100, ms));
+        this.message = `Sound is ${(ms / 1000).toFixed(2)} s long; the stage now lasts that long.`;
+        this.render();
+      }, { once: true });
+      audio.src = this.host.mediaURL?.(t.value) ?? t.value;
+    }
     resetPiecesOnPattern(s, key);
     s[key] =
       t.type === "checkbox"
@@ -1913,7 +2196,7 @@ export class Workspace {
               "fxStrength",
               "fxSpeed",
             ].includes(key)
-          ? Number(t.value)
+          ? (t.dataset.scale ? (Number(t.dataset.scale) >= 1 ? Math.round(Number(t.value) * Number(t.dataset.scale)) : Number(t.value) * Number(t.dataset.scale)) : Number(t.value))
           : key === "assets"
             ? t.value
                 .split(",")
@@ -2034,10 +2317,6 @@ export class Workspace {
       }
     }
     if (["delay", "duration"].includes(key)) {
-      const label = this.root.querySelector(
-        `[data-action="stage"][data-index="${t.dataset.index}"] small`,
-      );
-      if (label) label.textContent = this.stageStartLabel(s, r);
       const duration = recipeDuration(r);
       const time = this.root.querySelector("[data-preview-time]");
       if (time) time.textContent = `0.0 / ${(duration / 1000).toFixed(1)}s`;
@@ -2052,7 +2331,7 @@ export class Workspace {
     const save = this.root.querySelector('[data-action="save"]');
     if (save) {
       save.disabled = false;
-      save.textContent = "Save recipe";
+      save.textContent = r.finisher ? "Save finisher" : "Save recipe";
     }
   }
   async onDrop(e) {
@@ -2519,6 +2798,26 @@ export class Workspace {
         this.render();
         return;
       }
+      // A Tokenshade image layer's path: Foundry's file picker fills the field beside the button.
+      if (action === "fx-image-browse") {
+        const input = b.previousElementSibling;
+        if (!input || !this.host.pickMedia) { this.message = "Type the image path; the file picker opens inside Foundry."; this.render(); return; }
+        this.host.pickMedia("image", input.value, (path) => { input.value = path; input.dispatchEvent(new Event("change", { bubbles: true })); });
+        return;
+      }
+      if (action === "activity-filter") { this.activityFilter = b.dataset.filter; this.render(); return; }
+      if (action === "activity-fix") {
+        if (b.dataset.fixAction === "new") { this.page = "recipes"; this.newChooser = true; this.render(); return; }
+        this.page = b.dataset.catalog ? catalogPageFor(b.dataset.catalog, catalogNavigation(this.host.environment())) : b.dataset.page || "setup";
+        this.render(); return;
+      }
+      if (action === "inspector-tab") { this.inspectorTab = b.dataset.tab; this.render(); return; }
+      if (action === "inspector-tab-reset") {
+        const r = this.edit(), i = Math.min(this.stageIndex, r.stages.length - 1);
+        resetInspectorTab(b.dataset.tab, r.stages[i]);
+        this.message = "Reset to the defaults. Save recipe to apply.";
+        this.render(); return;
+      }
       if (action === "variant-add" || action === "variant-leave") {
         if (b.dataset.variantPick) this.stageIndex = Number(b.dataset.variantPick);
         const r = this.edit(), i = Math.min(this.stageIndex, r.stages.length - 1), s = r.stages[i];
@@ -2609,7 +2908,19 @@ export class Workspace {
         this.render();
         return;
       }
-      if (action === "new" && this.lastingRecipesAvailable()) { this.newChooser = true; this.render(); return; }
+      if (action === "new") { this.newChooser = true; this.render(); return; }
+      if (action === "new-template") {
+        const template = starterRecipes().find((t) => t.id === b.dataset.template);
+        if (!template) return;
+        // A copy to make your own: new ids, not linked to anything yet.
+        const ids = new Map(template.stages.map((st) => [st.stageId, uuid()]));
+        const copy = { ...clone(template), id: uuid(), name: template.name + " (copy)", match: "", category: template.category, stages: template.stages.map((st) => ({ ...clone(st), stageId: ids.get(st.stageId), ...(st.afterStage ? { afterStage: ids.get(st.afterStage) ?? "" } : {}), ...(st.startRef ? { startRef: ids.get(st.startRef) } : {}) })) };
+        this.newChooser = false;
+        this.drafts.set(copy.id, copy); this.dirty.add(copy.id);
+        Object.assign(this, { selected: copy.id, page: "recipes", studio: true, studioTime: 0, builder: null, previewMode: "recipe", category: "All", search: "", stageIndex: 0, studioSettings: false });
+        this.message = `Copied “${template.name}”. Change its art, then name what it plays for in Recipe settings (⚙). Save when ready.`;
+        this.render(); return;
+      }
       if (action === "new-cancel") { this.newChooser = false; this.render(); return; }
       if (action === "new" || action === "new-basic" || action === "new-action" || action === "new-lasting") {
         const lasting = action === "new-lasting";
@@ -2654,7 +2965,7 @@ export class Workspace {
         this.render();
         return;
       }
-      if (["kf-select", "kf-add", "kf-delete", "kf-flip", "kf-reset", "kf-smooth"].includes(action)) {
+      if (["kf-select", "kf-add", "kf-delete", "kf-flip", "kf-reset", "kf-smooth", "kf-preset", "kf-playhead"].includes(action)) {
         if (action === "kf-select") {
           // Selecting is view state: it never creates a draft.
           if (this.recipe()?.stages[this.stageIndex]?.motion !== "path") return;
@@ -2665,7 +2976,15 @@ export class Workspace {
         if (!cur || cur.motion !== "path") return;
         const kfs0 = normalizeKeyframes(cur.keyframes), i = this.selectedKeyframe(cur);
         let changed = true, s = null, kfs = kfs0;
-        if (action === "kf-add") {
+        if (action === "kf-preset") { s = this.edit().stages[this.stageIndex]; s.keyframes = presetKeyframes(b.dataset.preset); this.keyframeIndex = 1; }
+        else if (action === "kf-playhead") {
+          // Where the playhead sits inside this stage, as a fraction of its length.
+          const start = sampleRecipe(this.recipe()).stages[this.stageIndex]?.delay ?? 0, t = ((this.studioTime ?? 0) - start) / Math.max(1, cur.duration);
+          const next = t > 0 && t < 1 ? insertKeyframe(kfs0, t) : kfs0;
+          if (next === kfs0) { changed = false; this.message = t > 0 && t < 1 ? "A keyframe is already there, or the path is full." : "Move the playhead inside this stage first."; }
+          else { s = this.edit().stages[this.stageIndex]; s.keyframes = next; this.keyframeIndex = next.findIndex((k) => Math.abs(k.at - t) < 0.006); }
+        }
+        else if (action === "kf-add") {
           const next = insertKeyframe(kfs0, (kfs0[i].at + kfs0[Math.min(kfs0.length - 1, i + 1)].at) / 2);
           if (next === kfs0) changed = false;
           else { s = this.edit().stages[this.stageIndex]; s.keyframes = next; this.keyframeIndex = i + 1; }
@@ -2675,7 +2994,7 @@ export class Workspace {
           if (next === kfs0) changed = false;
           else { s = this.edit().stages[this.stageIndex]; s.keyframes = next; }
         } else s = this.edit().stages[this.stageIndex];
-        if (!s) return;
+        if (!s) { this.render(); return; }
         if (action === "kf-delete") { s.keyframes = deleteKeyframe(kfs, i); this.keyframeIndex = Math.max(0, i - 1); }
         if (action === "kf-flip") s.keyframes = flipKeyframes(kfs);
         if (action === "kf-reset") { s.keyframes = resetKeyframes(); this.keyframeIndex = 1; }
@@ -2716,6 +3035,8 @@ export class Workspace {
         return;
       }
       if (action === "revert") {
+        const name = this.recipe()?.name ?? "this recipe";
+        if (this.reallyChanged(this.selected) && this.host.confirm && !(await this.host.confirm(`Discard your unsaved changes to “${name}”? Undo can bring them back while the window stays open.`))) return;
         const unsaved = !this.host
           .recipes()
           .some((r) => r.id === this.selected);
@@ -2729,6 +3050,10 @@ export class Workspace {
       if (action === "save") {
         const r = validateRecipe(this.recipe());
         const saved = this.host.recipes();
+        // A player changing an approved animation sends it back to the GM: say so first.
+        const before = saved.find((old) => old.id === r.id);
+        if (this.host.playerMode && !this.host.reviewing?.() && before && this.host.approvalState?.(before) === "approved" && this.reallyChanged(r.id)
+          && this.host.confirm && !(await this.host.confirm(`“${r.name}” is approved. Saving this change sends it back to your GM, and it stops playing until they approve it again. Save anyway?`))) return;
         await this.host.save(
           saved.some((old) => old.id === r.id)
             ? saved.map((old) => (old.id === r.id ? r : old))
@@ -2736,7 +3061,7 @@ export class Workspace {
         );
         this.drafts.delete(r.id);
         this.dirty.delete(r.id);
-        this.message = "Recipe saved.";
+        this.message = this.host.playerMode && !this.host.reviewing?.() ? "Saved. It plays once your GM approves it (GMs online are told)." : "Recipe saved.";
       }
       if (action === "add-motion" && this.recipe()?.lifecycle !== "document") {
         const r = this.edit();
@@ -2842,8 +3167,11 @@ export class Workspace {
         let restore = null;
         try {
           restore = await this.tuckForPlayback();
+          // Local preview shows the random variant being edited, as the monitor does; the table
+          // still picks one at random.
+          const playing = action === "preview" ? editedVariantOnly(validateRecipe(this.recipe()), this.stageIndex) : validateRecipe(this.recipe());
           const result = await this.host.play(
-            validateRecipe(this.recipe()),
+            playing,
             action === "preview",
             {
               onStart: (compiled) => {

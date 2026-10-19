@@ -725,7 +725,9 @@ export class FlashEditor {
       }
       case "flash-save":
         await commit(list.map((f) => (f.id === s.id ? validateFlash(s) : f)), `${s.name} saved.`); break;
-      case "flash-revert": this.draft = null; this.dirty = false; break;
+      case "flash-revert":
+        if (this.dirty && !(await this.host.confirm(`Discard your unsaved changes to “${s.name}”?`))) return true;
+        this.draft = null; this.dirty = false; break;
       case "flash-default": await this.host.setFlashDefault(b.dataset.event, toggleFlashOn(this.host.flashDefaults(), b.dataset.event, s.id)); break;
       case "flash-preview": {
         // No redraw while it plays: the label changes in place, and the page catches up after.
@@ -734,7 +736,12 @@ export class FlashEditor {
         this.w.render();
         return true;
       }
-      case "flash-play-all": this.host.playFlash(validateFlash(s), { everyone: true }); this.w.message = `Playing “${s.name}” for everyone.`; break;
+      case "flash-play-all": {
+        // It shows on every player's screen at once, unsaved changes included: ask first.
+        const players = this.host.activePlayers?.() ?? null;
+        if (!(await this.host.confirm(`Play “${s.name}” on everyone's screen now${players ? ` (${players} player${players === 1 ? "" : "s"} online)` : ""}?${this.dirty ? " It plays your unsaved changes." : ""}`))) return true;
+        this.host.playFlash(validateFlash(s), { everyone: true }); this.w.message = `Playing “${s.name}” for everyone.`; break;
+      }
       case "flash-layer": this.layerIndex = Number(b.dataset.index); this.time = this.restTime(s, this.layerIndex); this.tab = "layer"; break;
       case "flash-mute": case "flash-solo": {
         const set = action === "flash-mute" ? (this.muted ??= new Set()) : (this.soloed ??= new Set()), id = s.layers[Number(b.dataset.index)]?.id;

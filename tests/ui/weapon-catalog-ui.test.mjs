@@ -8,7 +8,7 @@ test('weapons expose only native modes, sound controls and complete highlighted 
  assert.match(html,/data-mode="ranged"/);assert.match(html,/data-mode="melee"/);assert.match(html,/data-mode="thrown"/);
  assert.match(html,/data-action="weapon-auto"/);assert.match(html,/data-action="use-weapon"/);assert.match(html,/data-action="copy-weapon"/);
  assert.match(html,/data-action="weapon-sound"/);assert.match(html,/data-ability-volume="weapon"/);assert.match(html,/data-stage-drag="4"/);
- assert.match(html,/data-action="audition-sound"/);assert.match(html,/Customize edits only thrown/);
+ assert.match(html,/data-action="audition-sound"/);assert.match(html,/Not playing automatically[\s\S]*On: [^<]*Strike attack rolls/);
  assert.match(html,/data-action="item-details" data-kind="weapon"/);assert.match(html,/aria-label="Open Dagger Pistol details"/);
  assert.doesNotMatch(html,/Weapon description|data-options-group="weapon-description"/);
  const javelin=weaponCatalogHTML(fixture('javelin','thrown'));assert.ok(!javelin.includes('data-mode="melee"'));
@@ -23,7 +23,7 @@ test('Handwraps show native unarmed Strike binding and unarmed training filter',
  assert.match(html,/Handwraps of Mighty Blows/);
  assert.match(html,/data-mode="melee"[^>]*>Unarmed<\/button>/);
  assert.match(html,/option value="unarmed"/);
- assert.match(html,/Attack rolled · Unarmed Strike/);
+ assert.match(html,/On: unarmed Strikes while these wraps are worn and invested/);
  assert.match(html,/wraps are worn and invested/);
  assert.doesNotMatch(html,/worn rune items excluded/);
  assert.match(html,/data-action="item-details" data-kind="weapon"/);

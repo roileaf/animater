@@ -103,3 +103,13 @@ export const resetKeyframes = () => DEFAULT_KEYFRAMES.map((k) => ({ ...k }));
 // "Make smooth": every keyframe linear, so the whole-path ease alone shapes the speed. An already
 // smooth path is returned as is, so the editor can tell nothing changed.
 export const smoothKeyframes = (keyframes) => (keyframes.every((k) => k.ease === "linear") ? keyframes : keyframes.map((k) => ({ ...k, ease: "linear" })));
+// Starter shapes for a keyframed path (+x away from the other token, +y down the map).
+const kf = (at, x, y, extra = {}) => ({ at, x, y, ...extra });
+export const PATH_PRESETS = Object.freeze({
+  hop: { label: "Hop", keyframes: [kf(0, 0, 0), kf(0.5, 1, -1), kf(1, 2, 0)] },
+  zigzag: { label: "Zigzag", keyframes: [kf(0, 0, 0), kf(0.25, 1, -0.6), kf(0.5, 2, 0.6), kf(0.75, 3, -0.6), kf(1, 4, 0)] },
+  circle: { label: "Circle", keyframes: [kf(0, 0, 0), kf(0.25, 1, -1), kf(0.5, 2, 0), kf(0.75, 1, 1), kf(1, 0, 0)] },
+  knockback: { label: "Knockback", keyframes: [kf(0, 0, 0), kf(0.3, 1.5, 0, { rotation: 15, ease: "easeOutQuad" }), kf(0.7, 2, 0, { rotation: -5 }), kf(1, 2, 0)] },
+  spin: { label: "Spin", keyframes: [kf(0, 0, 0), kf(1, 0, 0, { rotation: 360 })] },
+});
+export const presetKeyframes = (id) => normalizeKeyframes(PATH_PRESETS[id]?.keyframes);

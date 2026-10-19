@@ -43,10 +43,19 @@ function databaseSignature(database) {
     return Array.isArray(namespaces) ? [...namespaces].sort().join("|") : "";
   } catch { return ""; }
 }
+const LOG_KEY = "animater.activity";
+function loadLog() {
+  try { const list = JSON.parse(globalThis.sessionStorage?.getItem(LOG_KEY) ?? "[]"); return Array.isArray(list) ? list.slice(0, 40) : []; }
+  catch { return []; }
+}
+function saveLog(log) {
+  try { globalThis.sessionStorage?.setItem(LOG_KEY, JSON.stringify(log)); } catch { /* storage off or full: the log still works in memory */ }
+}
 export class AnimaterRuntime {
   constructor(host) {
     this.host = host;
-    this.log = [];
+    // The Activity log survives a page reload in this browser tab (session storage).
+    this.log = loadLog();
     this.seen = new Set();
     this.catalog = [];
     this.sessions = new Set();
@@ -89,6 +98,7 @@ export class AnimaterRuntime {
       ...activityEntryMeta(recipe, meta),
     });
     this.log.length = Math.min(this.log.length, 40);
+    saveLog(this.log);
     this.host.onTrace?.();
   }
   refreshCatalog() {
@@ -154,10 +164,12 @@ export class AnimaterRuntime {
       return this.trace(
         "Skipped",
         `${event.item?.name ?? "Unknown item"}: ${event.skipReason ?? `no enabled ${event.type} recipe`}.`,
+        null,
+        event.skipReason ? { item: event.item?.name } : { item: event.item?.name, reason: "no-recipe", itemType: event.item?.type },
       );
     // Other modules may claim the event (return false) before anything plays.
     if (globalThis.Hooks?.call?.("animater.preDispatch", event, recipe) === false)
-      return this.trace("Skipped", `${event.item?.name ?? "Unknown item"}: claimed by another module.`, recipe);
+      return this.trace("Skipped", `${event.item?.name ?? "Unknown item"}: claimed by another module.`, recipe, { item: event.item?.name, reason: "claimed" });
     await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
       try {
         await this.play(next, {...event,automatic:true});

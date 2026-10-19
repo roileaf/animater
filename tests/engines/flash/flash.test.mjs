@@ -394,3 +394,22 @@ test("sound layers: the bar is as long as the file, its end trims it, and it nev
   assert.match(html, /an-flash-bar-when">0\.00s – 1\.20s/);
   assert.match(html, /kind-sound[^]*?class="an-flash-grip is-end is-visible" data-flash-part="end"/, "an end grip to trim it");
 });
+
+test("Play for everyone and Revert ask first; a no keeps everything as it was", async () => {
+  const { FlashEditor } = await import("../../../scripts/ui/flash-editor.mjs");
+  const screens = [validateFlash({ id: "s", name: "Boss", layers: [{ kind: "text", text: "HI" }] })];
+  const asked = [], played = [];
+  let answer = false;
+  const host = { flashScreens: () => screens, flashDefaults: () => ({}), flashFonts: () => [], flashVars: () => ({}), confirm: async (text) => { asked.push(text); return answer; }, playFlash: (s, o) => played.push(o) };
+  const ed = new FlashEditor({ host, page: "flash", root: null, message: "", render() {} });
+  ed.editing = true; ed.selectedId = "s"; ed.current();
+  ed.edit().name = "Boss 2";
+  await ed.action("flash-play-all", { dataset: {} });
+  assert.equal(played.length, 0, "declined: nothing played");
+  assert.match(asked[0], /on everyone's screen now\?.*unsaved changes/);
+  await ed.action("flash-revert", { dataset: {} });
+  assert.equal(ed.dirty, true, "declined: the edit stays");
+  answer = true;
+  await ed.action("flash-play-all", { dataset: {} });
+  assert.deepEqual(played, [{ everyone: true }]);
+});

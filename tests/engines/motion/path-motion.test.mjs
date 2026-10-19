@@ -300,10 +300,10 @@ test("editor offers path controls and arrival anchor only for an appropriate ref
     kind: "impact",
     timingAnchor: "arrival",
   };
-  assert.match(w.compositionHTML(recipe, strike, 1), /Destination reached/);
+  assert.match(w.customLinkHTML(recipe, strike, 1), /Destination reached/);
   recipe.stages[0].motion = "pulse";
   assert.doesNotMatch(
-    w.compositionHTML(recipe, strike, 1),
+    w.customLinkHTML(recipe, strike, 1),
     /Destination reached/,
   );
 });

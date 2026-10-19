@@ -384,6 +384,8 @@ test("New recipe opens an unconfigured manual draft and saves only after choosin
   f.w.search = "shield";
   f.w.previewMode = "stage";
   await f.click({ action: "new" });
+  assert.ok(f.w.newChooser, "New recipe always offers blank or a template");
+  await f.click({ action: "new-action" });
   assert.equal(f.w.page, "recipes");
   assert.equal(saves, 0);
   const draft = f.w.recipe();
@@ -609,12 +611,27 @@ test("the GM opens a player's animation in the Studio, edits it for them and app
   assert.equal(f.w.studio, false);
 });
 
+test("a template makes an unlinked, already-timed copy", async () => {
+  const f = workspace();
+  f.w.host = { recipes: () => [], save: async () => {}, catalog: () => [], environment: () => ({ systemId: "pf2e", ready: true }) };
+  await f.click({ action: "new" });
+  await f.click({ action: "new-template", template: "ember" });
+  const copy = f.w.recipe();
+  assert.equal(copy.name, "Ember shot (copy)");
+  assert.equal(copy.match, "", "not linked to anything yet");
+  assert.notEqual(copy.id, "ember");
+  assert.equal(copy.stages.length, 3);
+  const ids = new Set(copy.stages.map((s) => s.stageId));
+  assert.ok(copy.stages.every((s) => !s.afterStage || ids.has(s.afterStage)), "links point inside the copy");
+  assert.ok(f.w.studio && f.w.dirty.has(copy.id));
+});
 test("New recipe asks for the kind; a lasting animation follows conditions and effects", async () => {
   const f = workspace();
   f.w.host = { recipes: () => [], save: async () => {}, catalog: () => [], environment: () => ({ systemId: "pf2e", ready: true }) };
   await f.click({ action: "new" });
   assert.ok(f.w.newChooser);
-  assert.match(f.w.newChooserHTML(), /Action animation[\s\S]*Plays once[\s\S]*Lasting animation[\s\S]*Stays on a token/);
+  assert.match(f.w.newChooserHTML(), /Blank action animation[\s\S]*Plays once[\s\S]*Blank lasting animation[\s\S]*Stays on a token/);
+  assert.match(f.w.newChooserHTML(), /Or start from a template[\s\S]*data-action="new-template" data-template="ember"/);
   await f.click({ action: "new-lasting" });
   assert.ok(!f.w.newChooser);
   const lasting = f.w.recipe();
@@ -629,7 +646,9 @@ test("New recipe asks for the kind; a lasting animation follows conditions and e
   assert.equal(f.w.recipe().lifecycle, undefined);
   f.w.host.playerMode = true;
   await f.click({ action: "new" });
-  assert.ok(!f.w.newChooser, "players only make action animations");
+  assert.ok(f.w.newChooser, "players get blank action or a template");
+  assert.doesNotMatch(f.w.newChooserHTML(), /new-lasting/, "players only make action animations");
+  await f.click({ action: "new-action" });
 });
 
 test('reveal opens a catalog page searched to an item, or a saved recipe in the Studio',()=>{
@@ -789,10 +808,11 @@ test("the GM nav groups pages under CREATE, LIBRARY and TOOLS captions in order"
   const w = navWorkspace({ flashScreens: () => [{}, {}, {}], playerMode: false });
   const html = w.navItemsHTML(navEnv);
   const captions = [...html.matchAll(/an-nav-caption">([^<]+)</g)].map((m) => m[1]);
-  assert.deepEqual(captions, ["CREATE", "LIBRARY", "TOOLS"]);
+  assert.deepEqual(captions, ["CREATE", "LIBRARY · PF2E", "TOOLS"]);
+  assert.match(html, /data-page="spells"><span>[^<]*<\/span><b>Spells<\/b>/, "no system prefix: the caption names it");
   assert.doesNotMatch(html, /WORKSPACE/);
   const order = [...html.matchAll(/an-nav-caption">([^<]+)<|data-page="([^"]+)"/g)].map((m) => m[1] || m[2]);
-  assert.deepEqual(order.slice(0, 5), ["CREATE", "recipes", "finishers", "flash", "LIBRARY"]);
+  assert.deepEqual(order.slice(0, 5), ["CREATE", "recipes", "finishers", "flash", "LIBRARY · PF2E"]);
   assert.ok(order.indexOf("assets") > order.indexOf("spells"), "Assets follows the system catalogs");
   assert.deepEqual(order.slice(order.indexOf("assets") - 0), ["assets", "TOOLS", "activity", "setup"]);
 });
@@ -813,10 +833,10 @@ test("nav counts show for recipes, finishers and flash screens, and hide at zero
   assert.doesNotMatch(none, /<small>/);
 });
 
-test("the player nav has two left-aligned items and no captions", () => {
+test("the player nav has their animations, assets and their own Activity, with no captions", () => {
   const html = navWorkspace({ playerMode: true }).navItemsHTML(navEnv);
   assert.doesNotMatch(html, /an-nav-caption/);
-  assert.deepEqual([...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]), ["recipes", "assets"]);
+  assert.deepEqual([...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]), ["recipes", "assets", "activity"]);
   assert.match(html, /My animations/);
 });
 
@@ -876,4 +896,17 @@ test("the studio inspector is never wider than the window leaves room for, witho
   assert.equal(w.inspectorWidth(), 300, "never below the 300px minimum");
   w.root = null;
   assert.equal(w.inspectorWidth(), 700);
+});
+
+test("a GM whose table plays nothing yet starts on Setup; the guide starts with the catalogs", async () => {
+  const host = (accepts) => ({ environment: () => ({ systemId: "pf2e", ready: true, dependencies: [], conflicts: [] }), recipes: () => [], acceptsEvents: () => accepts, enabled: () => false, catalogsOn: () => ({ on: 0, total: 7 }) });
+  const { firstPage } = await import("../../scripts/ui/workspace.mjs");
+  assert.equal(firstPage(host(false)), "setup");
+  assert.equal(firstPage(host(true)), "recipes");
+  assert.equal(firstPage({ ...host(false), playerMode: true }), "recipes", "players start on their animations");
+  const idle = Object.create(Workspace.prototype); idle.host = host(false);
+  const html = idle.setupHTML(host(false).environment());
+  assert.ok(html.indexOf("Turn every catalog on") < html.indexOf("Get started"), "turning the catalogs on comes first");
+  assert.match(html, /<li><b>Turn on the catalogs\.<\/b>/);
+  assert.ok(html.indexOf("Fine-tuning") < html.indexOf("Play my own recipes automatically"));
 });

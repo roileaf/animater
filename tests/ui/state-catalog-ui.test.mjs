@@ -15,7 +15,7 @@ test('conditions and effects expose opt-in sustained controls, native details, h
 });
 test('persistent damage exposes true type variants and controls cannot configure another system or preview',()=>{
  const e=PF2E_CONDITIONS.find(e=>e.slug==='persistent-damage'),html=view(e);assert.match(html,/data-state-damage/);assert.match(html,/value="fire" selected/);assert.match(html,/value="bleed"/);
- for(const env of [{demo:true},{systemId:'dnd5e'},{ready:false}])assert.match(view(e,env),/data-action="use-state" disabled/);
+ for(const env of [{demo:true},{systemId:'dnd5e'},{ready:false}])assert.match(view(e,env),/data-action="use-state"[^>]*disabled/);
 });
 test('choice-dependent aura previews expose actual materials and layer explanations instead of the old generic bearer marker',()=>{
  const e=PF2E_EFFECTS.find(e=>e.name==='Stance: Thermal Nimbus'),html=view(e,{},'cold');

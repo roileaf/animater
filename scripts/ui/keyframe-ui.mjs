@@ -1,6 +1,6 @@
 // Keyframed path editing: diamonds on the timeline bar, the grid path canvas and the inspector.
 import { EASES } from "../core/stage-options.mjs";
-import { samplePath, DEFAULT_KEYFRAMES, landsTilted, pathSquares } from "../engines/motion/keyframe-path.mjs";
+import { samplePath, DEFAULT_KEYFRAMES, landsTilted, pathSquares, PATH_PRESETS } from "../engines/motion/keyframe-path.mjs";
 import { landingSteps } from "../engines/motion/displacement.mjs";
 import { motionPose } from "../engines/motion/motion.mjs";
 
@@ -71,7 +71,8 @@ export function keyframeInspectorHTML(s, stageIndex, selected) {
     <div class="an-field-row">${num("rotation", "Rotation°", k.rotation, -1440, 1440, 5, first)}${num("scale", "Size ×", k.scale, 0.05, 5, 0.05, first)}${num("stretch", "Stretch", k.stretch ?? 0, -0.6, 0.6, 0.05, first)}${num("alpha", "Opacity", k.alpha, 0, 1, 0.05, first)}</div>
     <div class="an-field-row"><label>Speed into this keyframe<select ${attrs("ease")}>${options(k.ease ?? "linear")}</select></label><label class="an-check"><input type="checkbox" ${attrs("sharp")} ${k.sharp ? "checked" : ""}> Sharp corner</label></div>
     <p class="an-hint">Use for deliberate pauses or bounces; otherwise leave Linear.</p>
-    <div class="an-play-actions"><button data-action="kf-add" ${kfs.length >= 12 || last ? "disabled" : ""}>+ Keyframe after</button><button data-action="kf-delete" class="an-quiet" ${first || last ? "disabled" : ""}>Delete keyframe</button><button data-action="kf-flip" class="an-quiet">Flip path</button><button data-action="kf-reset" class="an-quiet">Reset to straight shove</button></div>
+    <div class="an-kf-shapes" role="group" aria-label="Start from a shape"><small>Start from a shape</small>${Object.entries(PATH_PRESETS).map(([id, p]) => `<button class="an-quiet" data-action="kf-preset" data-preset="${id}">${p.label}</button>`).join("")}</div>
+    <div class="an-play-actions"><button data-action="kf-playhead" ${kfs.length >= 12 ? "disabled" : ""} data-tooltip="Add a keyframe where the playhead is">+ At playhead</button><button data-action="kf-add" ${kfs.length >= 12 || last ? "disabled" : ""}>+ Keyframe after</button><button data-action="kf-delete" class="an-quiet" ${first || last ? "disabled" : ""}>Delete keyframe</button><button data-action="kf-flip" class="an-quiet">Flip path</button><button data-action="kf-reset" class="an-quiet">Reset to straight shove</button></div>
     <p class="an-hint">+x is away from the other token. Stretch squeezes or stretches along the travel direction (negative = flatten). In a finisher with End: hold, the token is moved to where the path ends.</p>${s.motionEnd === "hold" && landsTilted(kfs) ? `
     <p class="an-hint is-warn" role="note">This path travels: when the token lands it snaps back to upright, full size and visible. End on rotation 0/360/…, size 1, stretch 0, opacity 1 — fade or shrink in place instead.</p>` : ""}</div>`;
 }

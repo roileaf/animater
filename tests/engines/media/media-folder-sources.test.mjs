@@ -112,7 +112,7 @@ test('folder sources can be added and removed while a scan is running',async()=>
   const library=new MediaLibrary(w);library.render=()=>{};
   const first=library.load();
   assert.equal(library.loading,true);
-  assert.doesNotMatch(library.sourceControls(),/disabled/,'Add stays enabled while indexing');
+  assert.match(library.sourceControls(),/data-action="media-source-add" >\+ Add folder/,'Add stays enabled while indexing');
   await library.action('media-source-add',{dataset:{}});
   assert.ok(picked,'the folder picker opens while indexing');
   const adding=picked(root);

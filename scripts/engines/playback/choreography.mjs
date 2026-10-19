@@ -146,7 +146,8 @@ export class RecipeClock {
     this.cancel = cancel;
     this.now = now;
   }
-  play(recipe, onFrame, { from = 0 } = {}) {
+  // `until`: stop (as complete) at this time instead of the recipe's end, for looping one clip.
+  play(recipe, onFrame, { from = 0, until = Infinity } = {}) {
     this.stop();
     const start = this.now() - Math.max(0, from);
     return new Promise((resolve) => {
@@ -156,7 +157,7 @@ export class RecipeClock {
         if (this.run !== run) return;
         const snapshot = recipeFrame(recipe, time - start);
         onFrame(snapshot);
-        if (snapshot.complete) {
+        if (snapshot.complete || time - start >= until) {
           this.run = null;
           resolve(true);
         } else run.handle = this.frame(tick);

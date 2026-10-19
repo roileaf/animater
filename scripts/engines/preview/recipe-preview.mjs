@@ -106,8 +106,9 @@ export class RecipePreview {
       [...this.videos, ...this.audio].map((video) => this.ready(video)).concat(this.images.map(image=>this.readyImage(image))),
     );
   }
-  // from: start offset (ms). loop(): checked at each end to replay from 0.
-  async play({ from = 0, loop } = {}) {
+  // from: start offset (ms). loop(): checked at each end to replay. range(): { start, end } of
+  // one clip to loop instead of the whole recipe (null: the whole recipe).
+  async play({ from = 0, loop, range } = {}) {
     await this.prepare();
     await this.prepareTokenFx();
     if (this.abort.signal.aborted) return false;
@@ -116,8 +117,10 @@ export class RecipePreview {
     do {
       // Re-entering stages mid-way must seek media to the shared clock again.
       this.started.clear();
-      complete = await this.clock.play(this.recipe, (frame) => this.draw(frame), { from });
-      from = 0;
+      const span = range?.();
+      if (span && (from < span.start || from >= span.end)) from = span.start;
+      complete = await this.clock.play(this.recipe, (frame) => this.draw(frame), { from, until: span?.end ?? Infinity });
+      from = range?.()?.start ?? 0;
     } while (complete && loop?.() && !this.abort.signal.aborted);
     return complete;
   }
@@ -612,15 +615,17 @@ export class RecipePreview {
         frame.time,
       );
       const direction = this.stageDirection(stage, subject, targetIndex);
-      return state.state === "playing"
-        ? motionPose(stage, state.progress, direction, this.grid??55)
+      // A held motion stays where it ended, as the token does at the table.
+      return state.state === "playing" || (state.state === "done" && stage.motionEnd === "hold")
+        ? motionPose(stage, state.state === "done" ? 1 : state.progress, direction, this.grid??55)
         : { x: 0, y: 0, rotation: 0, scale: 1 };
       }));
     }
     return combineMotionPoses(this.recipe.stages.flatMap((stage, index) => {
       const state = frame.stages[index];
-      if (stage.kind !== "motion" || stage.subject !== subject || state.state !== "playing" || (!fragments && stage.motion === "fragments")) return [];
-      return [motionPose(stage, state.progress, this.stageDirection(stage, subject, targetIndex), 55)];
+      const held = state.state === "done" && stage.motionEnd === "hold";
+      if (stage.kind !== "motion" || stage.subject !== subject || (state.state !== "playing" && !held) || (!fragments && stage.motion === "fragments")) return [];
+      return [motionPose(stage, held ? 1 : state.progress, this.stageDirection(stage, subject, targetIndex), 55)];
     }));
   }
   stop() {

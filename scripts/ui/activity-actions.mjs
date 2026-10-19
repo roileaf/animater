@@ -24,6 +24,8 @@ export function activityEntryMeta(recipe, meta) {
   if (meta?.key) out.key = String(meta.key);
   if (meta?.preview) out.preview = true;
   if (meta?.automatic) out.automatic = true;
+  // Why nothing played, in words the Activity page can explain (activity-explain.mjs).
+  for (const key of ["item", "reason", "itemType", "why"]) if (meta?.[key]) out[key] = String(meta[key]).slice(0, 120);
   return out;
 }
 // Running runtime sessions and lasting condition/effect layers, newest first.
@@ -88,7 +90,21 @@ export function previewFields(plan, token, item) {
   if (asset) out.asset = asset;
   if (portrait) out.portrait = portrait;
   if (icon) out.icon = icon;
+  // Which token it plays on, so Now playing can group by token (names repeat: eight "Logger"s).
+  const tokenId = token?.id ?? token?.document?.id;
+  if (tokenId) out.tokenId = String(tokenId);
   return out;
+}
+// Now playing grouped by the token each animation plays on, the busiest-recent token first;
+// rows with no token ("the scene") gather in one group at the end.
+export function groupNowPlaying(rows = []) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = row.tokenId ? `token:${row.tokenId}` : row.on ? `name:${row.on}` : "scene";
+    if (!groups.has(key)) groups.set(key, { key, name: row.on || "Scene", portrait: row.portrait || "", rows: [] });
+    groups.get(key).rows.push(row);
+  }
+  return [...groups.values()].sort((a, b) => (a.key === "scene") - (b.key === "scene") || Math.max(...b.rows.map((x) => x.startedAt ?? 0)) - Math.max(...a.rows.map((x) => x.startedAt ?? 0)));
 }
 // A short name for an asset: a JB2A key loses its "jb2a." prefix; a file path becomes its file name.
 export const assetLabel = (asset) => String(asset ?? "").split(/[\/]/).pop().replace(/^jb2a\./i, "");

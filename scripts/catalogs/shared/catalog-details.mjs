@@ -18,13 +18,13 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
 
 // Per-card exclude toggle; sits beside the card button (buttons cannot nest).
 export function cardExcludeHTML(action, item, excluded) {
-  const label = `${excluded ? "Include" : "Exclude"} ${item.name} ${excluded ? "in" : "from"} plug & play`;
-  return `<button type="button" class="an-card-exclude${excluded ? " is-on" : ""}" data-action="${esc(action)}" data-id="${esc(item.id)}" aria-pressed="${excluded}" aria-label="${esc(label)}" data-tooltip="${excluded ? "Excluded from plug &amp; play. Click to include it again." : "Exclude from plug &amp; play"}">⊘</button>`;
+  const label = `${excluded ? "Put" : "Leave"} ${item.name} ${excluded ? "back in" : "out of"} Plug & play`;
+  return `<button type="button" class="an-card-exclude${excluded ? " is-on" : ""}" data-action="${esc(action)}" data-id="${esc(item.id)}" aria-pressed="${excluded}" aria-label="${esc(label)}" data-tooltip="${excluded ? "Left out of Plug &amp; play. Click to put it back." : "Exclude from Plug &amp; play"}">⊘</button>`;
 }
-// Picked-only catalogs: add or remove this entry from the plug & play list.
+// Picked-only catalogs: add or remove this entry from the Plug & play list.
 export function cardIncludeHTML(action, item, included) {
-  const label = `${included ? "Remove" : "Add"} ${item.name} ${included ? "from" : "to"} plug & play`;
-  return `<button type="button" class="an-card-include${included ? " is-on" : ""}" data-action="${esc(action)}" data-id="${esc(item.id)}" aria-pressed="${included}" aria-label="${esc(label)}" data-tooltip="${included ? "Plays automatically. Click to remove it from plug &amp; play." : "Add to plug &amp; play (just this one)"}">✓</button>`;
+  const label = `${included ? "Remove" : "Add"} ${item.name} ${included ? "from" : "to"} Plug & play`;
+  return `<button type="button" class="an-card-include${included ? " is-on" : ""}" data-action="${esc(action)}" data-id="${esc(item.id)}" aria-pressed="${included}" aria-label="${esc(label)}" data-tooltip="${included ? "Plays automatically. Click to remove it from Plug &amp; play." : "Add to Plug &amp; play (just this one)"}">✓</button>`;
 }
 // Whole catalog running: cards exclude. Otherwise: cards include specific entries.
 export function cardToggleHTML(state, excludeAction, includeAction, item) {

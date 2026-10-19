@@ -47,11 +47,11 @@ test("unavailable motion explains loaded server manifest and distinguishes serve
 test("catalog starts with direct use and optional customization while keeping step highlights visible", () => {
   const spell = PF2E_SPELLS.find((s) => s.name === "Runic Weapon");
   const html = view(spell);
-  assert.match(
-    html,
-    /data-action="use-spell" class="an-primary" >Use animation/,
-  );
-  assert.match(html, /data-action="copy-spell" class="an-quiet" >Customize/);
+  assert.match(html, /Not playing automatically/);
+  assert.match(html, /data-action="use-spell" class="an-primary"\s*>Use animation/);
+  assert.match(html, /data-action="copy-spell" class="an-quiet"\s*>Customize/);
+  assert.match(html, /data-action="recipe-preview"[^>]*>▶ Preview<\/button>[\s\S]*data-action="preview"[^>]*>▷ On canvas/, "both previews in one row");
+  assert.match(html, /<details class="an-advanced an-entry-details"><summary>Details: stages, sounds and source/);
   assert.match(html, /Use entire catalog/);
   assert.match(html, /data-stage-drag="0"/);
   assert.match(html, /data-action="item-details" data-kind="spell"/);
@@ -61,9 +61,9 @@ test("catalog starts with direct use and optional customization while keeping st
 test("direct catalog choice shows active status without Setup dependency or a custom recipe", () => {
   const spell = PF2E_SPELLS.find((s) => s.name === "Runic Weapon");
   const html = view(spell, useCatalogSpell({}, spell.id));
-  assert.match(html, /Using catalog animation/);
-  assert.match(html, /no saved recipe slot/);
-  assert.match(html, /Using catalog ✓/);
+  assert.match(html, /an-entry-status is-on[\s\S]*Plays automatically/);
+  assert.match(html, /On: [^<]+/);
+  assert.doesNotMatch(html, /data-action="use-spell"/, "already playing: no Use button");
   assert.doesNotMatch(html, /Also turn on Automatic playback/);
 });
 test("unconfigured ritual entries expose configuration rather than unrelated casting art", async () => {
@@ -79,7 +79,7 @@ test("unconfigured ritual entries expose configuration rather than unrelated cas
 test('unmatched spell detail exposes configuration without promising a generic preview',async()=>{
  await withUnconfiguredSpell('500 Toads',s=>{
  const html=view(s,{enabled:true});
- assert.match(html,/Needs configuration/);
+ assert.match(html,/Needs setup/);
  assert.match(html,/Skipped by plug &amp; play/);
   assert.match(html,/animations ready · [\d,]+ need configuration/);
  assert.match(html,/Configure animation/);

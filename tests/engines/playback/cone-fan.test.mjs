@@ -40,7 +40,7 @@ test("fan configuration roundtrips with bounded count and rejects unsupported ar
 
 test("fan editor exposes layout and count; responsive previews retain separate endpoints", () => {
   const r = recipe();
-  const html = Workspace.prototype.stageOptionsHTML(r.stages[0], 0);
+  const html = Workspace.prototype.flightFieldsHTML(r.stages[0], 0);
   assert.match(html, /Spread through cone/);
   assert.match(html, /data-field="fanCount"/);
   for (const width of [240, 400, 720]) {

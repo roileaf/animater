@@ -23,6 +23,16 @@ export const STUDIO_TRACKS = Object.freeze([
   { id: "fx", icon: "✧", name: "Filters & scene", kind: "tokenfx" },
 ]);
 const LINKED_TRACKS = new Set(["caster", "fx"]);
+// The ? panel: what you can do on the timeline, and the keys for it.
+const STUDIO_HELP = Object.freeze([
+  ["Play", "Space plays or pauses · Home / End · , and . (or the arrows) step · L loops the recipe · Shift+L loops the selected clip"],
+  ["Add", "+ on a track adds a stage; at the start, a flight follows the cast and a hit follows the flight"],
+  ["Move", "Drag a clip; it snaps to other clips and the playhead. A linked clip stays linked and shifts its offset; hold Alt to unlink it"],
+  ["Length", "Drag a clip's right edge, or Alt + arrow keys"],
+  ["Mute / solo", "M hides a track in the monitor, S shows only that track"],
+  ["Edit", "Ctrl+Z undo · Ctrl+Shift+Z or Ctrl+Y redo · Ctrl+D duplicate · Ctrl+C / Ctrl+V copy and paste a stage · Delete removes it"],
+  ["More", "Right-click a clip for start at playhead, duplicate, copy, paste and delete · Ctrl+S saves · Ctrl+wheel zooms"],
+]);
 const HEAD_WIDTH = 200, MIN_ZOOM = 1, MAX_ZOOM = 16;
 
 // Tracks hidden in the monitor: everything but the soloed tracks, else the muted ones.
@@ -96,9 +106,9 @@ export function studioHTML(w, r) {
   const index = Math.min(w.stageIndex, r.stages.length - 1), dirty = w.dirty.has(r.id), status = w.status(r), link = w.linkNote?.(r);
   const duration = w.previewDuration(r), studio = studioTracks(r, w.stageIndex, { more: !!w.studioMoreTracks }), zoom = w.studioZoom ?? 1;
   w.previewMode = "recipe";
-  const bar = `<header class="an-st-bar"><button class="an-st-back" data-action="studio-close" data-tooltip="Back to all ${r.finisher ? "finishers" : "recipes"}">← ${r.finisher ? "Finishers" : "Recipes"}</button><input class="an-st-name" aria-label="Recipe name" data-field="name" value="${esc(r.name)}">${triggerChipHTML(w, r)}<span class="an-st-state ${status !== "Ready to play" || link?.warn ? "is-missing" : ""}" ${link ? `data-tooltip="${esc(link.text)}"` : ""}>${link?.warn ? "⚠" : "●"} ${esc(dirty ? "Unsaved changes" : link?.warn ? link.short : status)}</span><div class="an-st-bar-actions"><button class="an-icon" data-action="duplicate" data-tooltip="Duplicate recipe" aria-label="Duplicate recipe">⧉</button><button class="an-icon is-danger" data-action="delete" data-tooltip="Delete recipe" aria-label="Delete recipe"><i class="fas fa-trash" aria-hidden="true"></i></button><button data-action="revert" ${dirty ? "" : "disabled"}>Revert</button><button class="an-primary" data-action="save" data-tooltip="Save (Ctrl+S)" ${!dirty || w.busy ? "disabled" : ""}>${dirty ? (r.finisher ? "Save finisher" : "Save recipe") : "Saved ✓"}</button></div></header>`;
+  const bar = `<header class="an-st-bar"><button class="an-st-back" data-action="studio-close" data-tooltip="Back to all ${r.finisher ? "finishers" : "recipes"}">← ${r.finisher ? "Finishers" : "Recipes"}</button><input class="an-st-name" aria-label="Recipe name" data-field="name" value="${esc(r.name)}">${triggerChipHTML(w, r)}${link?.warn ? `<button class="an-st-state is-missing" data-action="studio-settings" data-tooltip="${esc(link.text)} Click to open Recipe settings.">⚠ ${esc(link.short)}${dirty ? " · unsaved" : ""}</button>` : `<span class="an-st-state ${status !== "Ready to play" ? "is-missing" : ""}" ${link ? `data-tooltip="${esc(link.text)}"` : ""}>● ${esc(dirty ? "Unsaved changes" : status)}</span>`}<div class="an-st-bar-actions"><button class="an-icon" data-action="duplicate" data-tooltip="Duplicate recipe" aria-label="Duplicate recipe">⧉</button><button class="an-icon is-danger" data-action="delete" data-tooltip="Delete recipe" aria-label="Delete recipe"><i class="fas fa-trash" aria-hidden="true"></i></button><button class="an-icon" data-action="studio-undo" data-tooltip="Undo (Ctrl+Z)" aria-label="Undo" ${w.canUndo?.("undo", r) ? "" : "disabled"}>↶</button><button class="an-icon" data-action="studio-redo" data-tooltip="Redo (Ctrl+Shift+Z)" aria-label="Redo" ${w.canUndo?.("redo", r) ? "" : "disabled"}>↷</button><button data-action="revert" ${dirty ? "" : "disabled"}>Revert</button><button class="an-primary" data-action="save" data-tooltip="Save (Ctrl+S)" ${!dirty || w.busy ? "disabled" : ""}>${dirty ? (r.finisher ? "Save finisher" : "Save recipe") : "Saved ✓"}</button></div></header>`;
   const transport = `<div class="an-st-transport" role="group" aria-label="Playback">
-      <button class="an-st-tbtn" data-action="studio-home" data-tooltip="Go to start (Home)" aria-label="Go to start">⏮</button><button class="an-st-tbtn an-st-play" data-action="studio-play" data-tooltip="Play / pause (Space)" aria-label="Play" ${unconfigured ? "disabled" : ""}>▶</button><button class="an-st-tbtn" data-action="studio-stop" data-tooltip="Stop and rewind" aria-label="Stop">■</button><button class="an-st-tbtn" data-action="studio-end" data-tooltip="Go to end (End)" aria-label="Go to end">⏭</button><button class="an-st-tbtn ${w.studioLoop ? "is-active" : ""}" data-action="studio-loop" aria-pressed="${!!w.studioLoop}" data-tooltip="Loop playback (L)" aria-label="Loop">⟲</button>
+      <button class="an-st-tbtn" data-action="studio-home" data-tooltip="Go to start (Home)" aria-label="Go to start">⏮</button><button class="an-st-tbtn an-st-play" data-action="studio-play" data-tooltip="Play / pause (Space)" aria-label="Play" ${unconfigured ? "disabled" : ""}>▶</button><button class="an-st-tbtn" data-action="studio-stop" data-tooltip="Stop and rewind" aria-label="Stop">■</button><button class="an-st-tbtn" data-action="studio-end" data-tooltip="Go to end (End)" aria-label="Go to end">⏭</button><button class="an-st-tbtn ${w.studioLoop ? "is-active" : ""}" data-action="studio-loop" aria-pressed="${!!w.studioLoop}" data-tooltip="Loop playback (L)" aria-label="Loop">⟲</button><button class="an-st-tbtn an-st-loopclip ${w.studioLoopClip ? "is-active" : ""}" data-action="studio-loop-clip" aria-pressed="${!!w.studioLoopClip}" data-tooltip="Loop the selected clip (Shift+L)" aria-label="Loop the selected clip">⟲<small>clip</small></button>
       <span class="an-st-time"><b data-st-time>${seconds(w.studioTime ?? 0)}</b> / ${seconds(duration)}</span>
       <small class="an-preview-status" data-preview-status role="status" aria-live="polite">${unconfigured ? "Choose an asset to preview your first stage" : "Sample spacing · drag the ruler to scrub"}</small>
       <span class="an-st-spacer"></span>
@@ -113,15 +123,16 @@ export function studioHTML(w, r) {
   const moreRow = studio.hiddenCount ? `<div class="an-st-more-row"><button class="an-st-more" data-action="studio-more" aria-expanded="${!!w.studioMoreTracks}" data-tooltip="${w.studioMoreTracks ? "Hide the empty Source and Flight tracks" : "Show the Source and Flight tracks"}">${w.studioMoreTracks ? "− Fewer tracks" : "+ More tracks"}</button></div>` : "";
   const timeline = `<section class="an-st-timeline" aria-label="Timeline">
     <div class="an-st-scroll" data-st-scroll style="--st-zoom:${zoom}"><div class="an-tl an-st-tl" data-tl-total="${studio.total}" data-studio-tl style="--tl-label:${HEAD_WIDTH}px">
-      <div class="an-st-ruler-row"><div class="an-st-corner"><b data-st-time-corner>${seconds(w.studioTime ?? 0)}</b><span class="an-st-corner-tools"><button class="an-st-mini" data-action="studio-zoom-out" data-tooltip="Zoom out (Ctrl+wheel)" aria-label="Zoom out">−</button><button class="an-st-mini" data-action="studio-zoom-in" data-tooltip="Zoom in (Ctrl+wheel)" aria-label="Zoom in">+</button><button class="an-st-mini" data-action="studio-fit" data-tooltip="Fit the whole recipe" aria-label="Fit the whole recipe">⤢</button><button class="an-st-mini" data-action="studio-help" aria-label="Timeline help" data-tooltip="Timeline help:<br>• M / S mute or solo a track in the monitor<br>• + on a track adds a stage at the playhead<br>• Drag clips to move; they snap to other clips and the playhead (hold Alt to place freely)<br>• Drag a clip's right edge to change its length<br>• Right-click a clip: start at playhead, duplicate, delete<br>• Click or drag the ruler to scrub<br>• Space play/pause · Home/End · , . or arrows step · L loop<br>• Ctrl+D duplicate · Delete remove · Ctrl+S save · Ctrl+wheel zoom">?</button></span></div><div class="an-tl-track an-st-ruler" data-st-ruler data-tooltip="Click or drag to move the playhead">${rulerHTML(studio.total, zoom)}</div></div>
+      <div class="an-st-ruler-row"><div class="an-st-corner"><b data-st-time-corner>${seconds(w.studioTime ?? 0)}</b><span class="an-st-corner-tools"><button class="an-st-mini" data-action="studio-zoom-out" data-tooltip="Zoom out (Ctrl+wheel)" aria-label="Zoom out">−</button><button class="an-st-mini" data-action="studio-zoom-in" data-tooltip="Zoom in (Ctrl+wheel)" aria-label="Zoom in">+</button><button class="an-st-mini" data-action="studio-fit" data-tooltip="Fit the whole recipe" aria-label="Fit the whole recipe">⤢</button><button class="an-st-mini${w.studioHelp ? " is-active" : ""}" data-action="studio-help" aria-label="Timeline help and shortcuts" aria-expanded="${!!w.studioHelp}" data-tooltip="Timeline help and shortcuts">?</button></span></div><div class="an-tl-track an-st-ruler" data-st-ruler data-tooltip="Click or drag to move the playhead">${rulerHTML(studio.total, zoom)}</div></div>
       ${tracks}${moreRow}
       <div class="an-st-end" style="left:${w.timelineX(studio.total, studio.end)}" data-tooltip="Recipe ends"></div>
       <svg class="an-st-links" data-st-links aria-hidden="true"></svg>
       <div class="an-tl-playhead an-st-playhead" data-tl-playhead style="left:${w.timelineX(studio.total, w.studioTime ?? 0)}"><span></span></div>
       <div class="an-tl-guide" data-tl-guide hidden><span></span></div>
     </div></div></section>`;
+  const help = w.studioHelp ? `<div class="an-st-help" role="dialog" aria-label="Timeline help"><div class="an-st-settings-head"><b>Timeline help</b><button class="an-icon" data-action="studio-help" aria-label="Close help" data-tooltip="Close (Esc)">✕</button></div><ul>${STUDIO_HELP.map(([what, how]) => `<li><b>${esc(what)}</b><span>${esc(how)}</span></li>`).join("")}</ul></div>` : "";
   const settings = w.studioSettings ? `<div class="an-st-settings" role="dialog" aria-label="Recipe settings"><div class="an-st-settings-head"><b>Recipe settings</b><small>Applies to the whole recipe</small><button class="an-icon" data-action="studio-settings" aria-label="Close recipe settings" data-tooltip="Close (Esc)">✕</button></div>${w.recipeSettingsHTML(r)}</div>` : "";
-  return `<div class="an-studio" tabindex="-1" style="--an-inspector-width:${w.inspectorWidth()}px;--an-timeline-height:${timelineHeight(w)}px">${bar}${monitor}<div class="an-splitter" data-splitter role="separator" aria-orientation="vertical" aria-label="Resize stage inspector" tabindex="0" data-tooltip="Drag to resize · double-click to reset"></div><aside class="an-inspector">${w.inspectorHTML(r)}</aside><div class="an-st-hsplit" data-st-hsplit role="separator" aria-orientation="horizontal" aria-label="Resize timeline" tabindex="0" data-tooltip="Drag to resize the timeline · double-click to reset"></div>${timeline}${settings}</div>`;
+  return `<div class="an-studio" tabindex="-1" style="--an-inspector-width:${w.inspectorWidth()}px;--an-timeline-height:${timelineHeight(w)}px">${bar}${monitor}<div class="an-splitter" data-splitter role="separator" aria-orientation="vertical" aria-label="Resize stage inspector" tabindex="0" data-tooltip="Drag to resize · double-click to reset"></div><aside class="an-inspector">${w.inspectorHTML(r)}</aside><div class="an-st-hsplit" data-st-hsplit role="separator" aria-orientation="horizontal" aria-label="Resize timeline" tabindex="0" data-tooltip="Drag to resize the timeline · double-click to reset"></div>${timeline}${settings}${help}</div>`;
 }
 function triggerChipHTML(w, r) {
   const bound = r.itemUuid ? w.host.itemSummary?.(r.itemUuid)?.name : "";
@@ -174,6 +185,8 @@ function syncTransport(w) {
   if (play) { play.textContent = w.studioPlaying ? "❚❚" : "▶"; play.setAttribute("aria-label", w.studioPlaying ? "Pause" : "Play"); play.classList.toggle("is-active", !!w.studioPlaying); }
   const loop = el(w, '[data-action="studio-loop"]');
   if (loop) { loop.classList.toggle("is-active", !!w.studioLoop); loop.setAttribute("aria-pressed", String(!!w.studioLoop)); }
+  const clip = el(w, '[data-action="studio-loop-clip"]');
+  if (clip) { clip.classList.toggle("is-active", !!w.studioLoopClip); clip.setAttribute("aria-pressed", String(!!w.studioLoopClip)); }
 }
 function ensureRun(w) {
   const scene = el(w, "[data-recipe-scene]");
@@ -223,11 +236,16 @@ async function togglePlay(w) {
   syncTransport(w);
   const idle = el(w, "[data-preview-idle]");
   if (idle) idle.hidden = true;
-  const complete = await run.play({ from, loop: () => !!w.studioLoop });
+  const complete = await run.play({ from, loop: () => !!w.studioLoop || !!w.studioLoopClip, range: () => (w.studioLoopClip ? clipRange(w) : null) });
   if (w.previewRun !== run) return;
   w.studioPlaying = false;
   if (complete) { w.studioTime = duration; placePlayhead(w); }
   syncTransport(w);
+}
+// The selected clip's span on the timeline, for "Loop clip".
+function clipRange(w) {
+  const r = w.recipe(), row = r && timelineLayout(r).rows[Math.min(w.stageIndex, r.stages.length - 1)];
+  return row && row.end > row.start ? { start: row.start, end: row.end } : null;
 }
 function moveTo(w, ms) {
   w.studioTime = Math.max(0, Math.min(totalOf(w), Math.round(ms)));
@@ -244,6 +262,8 @@ export function studioAfterRender(w) {
   syncTransport(w);
   requestAnimationFrame(() => drawLinks(w));
   if (w.previewMode === "recipe" && !w.busy) queueSeek(w);
+  // An edit stops the running preview; playback picks up again where it was, with the edit in.
+  if (w.studioPlaying && !w.previewRun && !w.busy) { w.studioPlaying = false; void togglePlay(w); }
 }
 // Link lines for the selected clip: what it starts with/after, and what follows it.
 export function drawLinks(w) {
@@ -278,18 +298,13 @@ function applyZoom(w, zoom, anchorClientX) {
   scroll.style.setProperty("--st-zoom", zoom);
   const ruler = el(w, "[data-st-ruler]");
   if (ruler) ruler.innerHTML = rulerHTML(totalOf(w), zoom, view.width - HEAD_WIDTH);
-  const slider = el(w, "[data-st-zoom]");
-  if (slider && Number(slider.value) !== zoom) slider.value = zoom;
   scroll.scrollLeft = Math.max(0, at * trackWidth() + HEAD_WIDTH - x);
   drawLinks(w);
 }
 
 // ——— Input ———
-export function studioInput(w, t) {
-  if (!t.matches?.("[data-st-zoom]")) return false;
-  applyZoom(w, Number(t.value));
-  return true;
-}
+// The studio has no input of its own to handle (zoom is buttons and Ctrl+wheel).
+export function studioInput() { return false; }
 export function studioWheel(w, e) {
   const scroll = e.target.closest?.(".an-studio [data-st-scroll]");
   if (!scroll) return;
@@ -327,7 +342,7 @@ export function studioContextMenu(w, e) {
   menu.setAttribute("role", "menu");
   menu.style.left = `${Math.min(e.clientX - box.left, box.width - 210)}px`;
   menu.style.top = `${Math.min(e.clientY - box.top, box.height - 170)}px`;
-  menu.innerHTML = `<b>${esc(w.stageLabel(r.stages[i]))}</b><button role="menuitem" data-action="studio-at-playhead" data-index="${i}">Start at playhead <kbd>${seconds(w.studioTime ?? 0)}</kbd></button><button role="menuitem" data-action="studio-dup-stage" data-index="${i}">Duplicate after it <kbd>Ctrl+D</kbd></button><button role="menuitem" data-action="studio-del-stage" data-index="${i}" ${r.stages.length < 2 ? "disabled" : ""}>Delete <kbd>Del</kbd></button>`;
+  menu.innerHTML = `<b>${esc(w.stageLabel(r.stages[i]))}</b><button role="menuitem" data-action="studio-at-playhead" data-index="${i}">Start at playhead <kbd>${seconds(w.studioTime ?? 0)}</kbd></button><button role="menuitem" data-action="studio-dup-stage" data-index="${i}">Duplicate after it <kbd>Ctrl+D</kbd></button><button role="menuitem" data-action="studio-copy-stage" data-index="${i}">Copy <kbd>Ctrl+C</kbd></button><button role="menuitem" data-action="studio-paste-stage" data-index="${i}" ${w.stageClipboard ? "" : "disabled"}>Paste after it <kbd>Ctrl+V</kbd></button><button role="menuitem" data-action="studio-del-stage" data-index="${i}" ${r.stages.length < 2 ? "disabled" : ""}>Delete <kbd>Del</kbd></button>`;
   el(w, "").append(menu);
   menu.querySelector("button")?.focus();
 }
@@ -391,15 +406,21 @@ export function studioPointer(w, e) {
 export function studioKey(w, e) {
   if (!e.target.closest?.(".an-studio")) return false;
   if (e.key === "Escape" && w.studioSettings && !el(w, ".an-st-menu")) { e.preventDefault(); e.stopPropagation(); w.studioSettings = false; w.render(); el(w, ".an-st-trigger")?.focus(); return true; }
+  if (e.key === "Escape" && w.studioHelp) { e.preventDefault(); e.stopPropagation(); w.studioHelp = false; w.render(); return true; }
   if (e.key === "Escape" && el(w, ".an-st-menu")) { e.preventDefault(); e.stopPropagation(); closeMenu(w); el(w, `[data-tl-bar="${w.stageIndex}"]`)?.focus(); return true; }
   const ctrl = e.ctrlKey || e.metaKey;
   if (ctrl && e.key.toLowerCase() === "s") { e.preventDefault(); e.stopPropagation(); el(w, '[data-action="save"]:not(:disabled)')?.click(); return true; }
-  if (e.target.matches("input, textarea, select, [contenteditable]") || e.target.closest(".an-inspector, .an-st-menu, .an-st-settings")) return false;
+  if (e.target.matches("input, textarea, select, [contenteditable]") || e.target.closest(".an-st-menu, .an-st-settings")) return false;
+  // Undo / redo anywhere in the studio outside a text field (the field keeps its own undo).
+  const low = e.key.toLowerCase();
+  if (ctrl && (low === "z" || low === "y")) { e.preventDefault(); e.stopPropagation(); w.history(low === "y" || e.shiftKey ? "redo" : "undo"); w.render(); return true; }
+  if (e.target.closest(".an-inspector")) return false;
   const onBar = !!e.target.closest("[data-tl-bar]"), key = e.key;
   const stop = () => { e.preventDefault(); e.stopPropagation(); return true; };
   if (key === " " && !e.target.matches("button")) { stop(); void togglePlay(w); return true; }
   if (key === "Home") { moveTo(w, 0); return stop(); }
   if (key === "End") { moveTo(w, durationOf(w)); return stop(); }
+  if (key.toLowerCase() === "l" && !ctrl && e.shiftKey) { w.studioLoopClip = !w.studioLoopClip; syncTransport(w); return stop(); }
   if (key.toLowerCase() === "l" && !ctrl) { w.studioLoop = !w.studioLoop; syncTransport(w); return stop(); }
   if ((key === "," || key === ".") && !ctrl) { moveTo(w, (w.studioTime ?? 0) + (key === "," ? -1 : 1) * (e.shiftKey ? 500 : 50)); return stop(); }
   if (!onBar && (key === "ArrowLeft" || key === "ArrowRight")) { moveTo(w, (w.studioTime ?? 0) + (key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 500 : 50)); return stop(); }
@@ -415,7 +436,32 @@ export function studioKey(w, e) {
   }
   if ((key === "Delete" || key === "Backspace") && (onBar || e.target.matches(".an-studio"))) { stop(); removeStage(w, i); return true; }
   if (ctrl && key.toLowerCase() === "d") { stop(); duplicateStage(w, i); return true; }
+  if (ctrl && key.toLowerCase() === "c" && !window.getSelection?.()?.toString()) { stop(); copyStage(w, i); return true; }
+  if (ctrl && key.toLowerCase() === "v") { stop(); pasteStage(w, i); return true; }
   return false;
+}
+// The stage clipboard: kept on the workspace, so a stage copied in one recipe pastes into another.
+function copyStage(w, i) {
+  const s = w.recipe()?.stages[i];
+  if (!s) return;
+  w.stageClipboard = clone(s);
+  w.message = `Copied “${w.stageLabel(s)}”. Open any recipe and press Ctrl+V to paste it.`;
+  w.render();
+}
+// Pastes after stage i, starting after it: a fresh stage with no links into the old recipe.
+function pasteStage(w, i) {
+  if (!w.stageClipboard) { w.message = "Nothing copied yet: select a stage and press Ctrl+C."; w.render(); return; }
+  w.stopEditorPreview();
+  const r = w.edit();
+  if (!r || r.stages.length >= MAX_STAGES) return;
+  const snapshot = clone(r.stages), source = r.stages[i];
+  const copy = { ...clone(w.stageClipboard), stageId: uuid(), afterStage: "" };
+  delete copy.startMode; delete copy.startRef; delete copy.variantGroup;
+  if (r.lifecycle === "document") { if (!["aura", "tokenfx"].includes(copy.kind)) { w.message = "Lasting animations take only looping layers and token filters."; w.render(); return; } copy.persist = true; }
+  else if (source) Object.assign(copy, { startMode: "after", startRef: source.stageId, startOffset: 0 });
+  r.stages.splice(i + 1, 0, copy);
+  w.stageIndex = i + 1;
+  commit(w, r, snapshot, `Pasted “${w.stageLabel(copy)}”. Save recipe to apply.`);
 }
 
 // ——— Edits ———
@@ -451,6 +497,14 @@ function removeStage(w, i) {
   w.stageIndex = Math.max(0, Math.min(i, r.stages.length - 1));
   commit(w, r, snapshot, "Stage deleted. Save recipe to apply.");
 }
+// The stage a new one on this track should follow: flight after the last source cue, a target
+// hit after the last flight (else the last source cue). Other tracks start at the playhead.
+export function chainAnchor(stages, trackId) {
+  const lastOn = (track) => [...stages].reverse().find((s) => trackOf(s) === track);
+  if (trackId === "flight") return lastOn("caster") ?? null;
+  if (trackId === "target") return lastOn("flight") ?? lastOn("caster") ?? null;
+  return null;
+}
 function addStage(w, trackId) {
   const track = STUDIO_TRACKS.find((t) => t.id === trackId);
   w.stopEditorPreview();
@@ -466,8 +520,13 @@ function addStage(w, trackId) {
   else if (track.kind === "tokenfx") stage = { ...base, kind: "tokenfx", assets: [], subject: "source", fxLibrary: "tokenshade", fxPreset: "", persist: linked };
   else if (linked) stage = { ...base, kind: "aura", subject: "source", persist: true, assets: [...last.assets] };
   else stage = { ...base, kind: track.kind, subject: track.id === "target" ? "targets" : "source", assets: track.kind === "cast" ? ["jb2a.cast_generic"] : track.kind === "impact" ? ["jb2a.impact"] : [], duration: track.kind === "projectile" ? 800 : 1000 };
+  // Choreography by default: with the playhead left at the start, a flight follows the cast and
+  // a target hit follows the flight (or the cast), so the pieces play in order, not all at once.
+  const follows = !linked && at === 0 ? chainAnchor(r.stages, trackId) : null;
+  if (follows) Object.assign(stage, { startMode: "after", startRef: follows.stageId, startOffset: 0 });
   r.stages.push(stage);
   w.stageIndex = r.stages.length - 1;
+  if (follows) { commit(w, r, snapshot, `${KINDS[stage.kind]} stage added after ${w.stageLabel(follows)}.${stage.assets.length || ["motion", "sound", "tokenfx"].includes(stage.kind) ? "" : " Choose its asset in the inspector."}`); return; }
   commit(w, r, snapshot, `${KINDS[stage.kind]} stage added at ${seconds(at)}.${stage.assets.length || ["motion", "sound", "tokenfx"].includes(stage.kind) ? "" : " Choose its asset in the inspector."}`);
 }
 export async function studioAction(w, action, b) {
@@ -495,11 +554,15 @@ export async function studioAction(w, action, b) {
     case "studio-more": w.studioMoreTracks = !w.studioMoreTracks; w.render(); return true;
     case "studio-zoom-in": applyZoom(w, (w.studioZoom ?? 1) * 1.5); return true;
     case "studio-zoom-out": applyZoom(w, (w.studioZoom ?? 1) / 1.5); return true;
-    case "studio-help": return true;
+    case "studio-undo": case "studio-redo": w.history(action === "studio-undo" ? "undo" : "redo"); w.render(); return true;
+    case "studio-loop-clip": w.studioLoopClip = !w.studioLoopClip; syncTransport(w); if (w.studioLoopClip && !w.studioPlaying) void togglePlay(w); return true;
+    case "studio-help": w.studioHelp = !w.studioHelp; w.render(); return true;
     case "studio-settings": w.studioSettings = !w.studioSettings; w.render(); if (w.studioSettings) el(w, ".an-st-settings input, .an-st-settings select, .an-st-settings textarea")?.focus({ preventScroll: true }); else el(w, ".an-st-trigger")?.focus(); return true;
     case "studio-fit": applyZoom(w, 1); el(w, "[data-st-scroll]").scrollLeft = 0; return true;
     case "studio-add": addStage(w, b.dataset.stTrack); return true;
     case "studio-dup-stage": closeMenu(w); duplicateStage(w, Number(b.dataset.index)); return true;
+    case "studio-copy-stage": closeMenu(w); copyStage(w, Number(b.dataset.index)); return true;
+    case "studio-paste-stage": closeMenu(w); pasteStage(w, Number(b.dataset.index)); return true;
     case "studio-del-stage": closeMenu(w); removeStage(w, Number(b.dataset.index)); return true;
     case "studio-at-playhead": closeMenu(w); w.stageIndex = Number(b.dataset.index); w.applyTimelineEdit(w.stageIndex, { ms: w.studioTime ?? 0 }); return true;
     default: return false;

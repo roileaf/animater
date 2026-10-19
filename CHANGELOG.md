@@ -1,5 +1,51 @@
 # Changelog
 
+## Unreleased
+
+- **A first run that starts in the right place.** While nothing plays automatically, Animater opens on Setup, where turning the catalogs on comes first, followed by three steps that match how the module is used (turn on the catalogs, try one on the canvas, customize it). Tokenshade, FXMaster and your own recipes sit under Fine-tuning.
+- **Clearer missing-module messages:** they say to turn the module on in Manage Modules and reload the world (F5), and no longer suggest opening the browser console.
+- The asset browser's Sources menu opens inside the window.
+- **Asset browser:** opened from a recipe it says what you are choosing for (*Choosing for Source · stage 1*) with a *← Back to* button, and *Use for Source* names the stage it fills; colour, size and playback picks sit right under the preview, with background, zoom and speed folded into *View*; dark effects (fog, shadows, blue and purple magic) preview on a light background until you pick one; Folder sources, Browse files and Refresh share one *Sources* menu; repeated variant chips show once.
+- Animater's scrollbars are thin and neutral instead of Foundry's red.
+- **A clearer catalog entry panel** in every catalog: one status line says whether the entry plays (automatically, your version, left out, or not at all) with the buttons that change that (Use animation, Customize, Leave out / Put back); *Preview* and *On canvas* sit in one row; its stages (in seconds), sounds, notes and source fold into one *Details* section. The panel is about half as tall.
+- **Now playing, by token.** Each token is a small card (portrait, name, ■ All to stop everything on it), and its animations are one-line chips with their picture, time and stop buttons; tokens with the same name stay apart, and cards sit side by side.
+- **Players know where their animations stand.** Saving a change to an approved animation asks first, since it goes back for approval; GMs online get a whisper when something new waits, and the GM's Recipes item shows how many wait.
+- **Asset library:** picking art for an empty stage keeps your last search; the automatic category for the stage shows as a chip you can clear; Recent lists what you used rather than everything you clicked; typing in search no longer stalls on every key.
+- **Flash screens:** *Play for everyone* asks before showing a screen on every player's screen (and warns when it has unsaved changes), and Revert asks before discarding your edits.
+- **Catalogs speak one language.** Every system's catalog uses the same quality badges (Signature, Themed, Symbolic, Needs setup), each explained on hover, and the same Plug & play wording: *Leave out of Plug & play* / *Put back in Plug & play*.
+- **See at a glance what plays.** A chip beside the results says whether the whole catalog is on (and how many entries are left out) or only hand-picked entries play.
+- **Lasting animation is three clear choices** (stay while active, play once, play once and at turn start) side by side instead of a button that cycles, and notes when your own device setting overrides it.
+- **Shorter sidebar.** Catalog pages are listed as Spells, Feats, Conditions… under a caption naming the system (LIBRARY · PF2E).
+- **Settings say what they do.** *Automatic playback* is now *Play my own recipes automatically* (the catalogs have their own Plug & play), the Setup page uses the same names as Foundry's settings, and settings that cannot apply are hidden: Automated Animations takeover without that module, weapon rune flourishes outside PF2e. Teleport examples name the system's own spells.
+- The welcome message and Setup list the system's real catalogs (Daggerheart: domain cards, weapons and conditions).
+- D&D 5e and other catalogs show the Visibility slider's value.
+- **Activity answers "why didn't it play?"** Skipped events name the item and say why in plain words (no animation set for it, nothing set to play automatically, left to Automated Animations, claimed by another module), with a button for the fix: find it in its catalog, make a recipe, or open Setup.
+- **No more silent Activity page.** When nothing is set to play automatically, the page says so with a link to Setup, and each item used meanwhile is listed once a minute with the reason.
+- **Activity filters and legend.** Show all, played, skipped or blocked events (with counts); hover a status to see what it means. The last 40 events stay through a page reload.
+- **Players have an Activity page** for their own animations.
+- **Timeline help on click.** The ? button opens a panel of what you can do on the timeline and every shortcut (it was a hover tooltip only).
+- **Fields where 0 means off say so**: Off, All, When finished, Its end, instead of a bare 0.
+- **The art browser opens on the right shelf**: a stage with no art yet starts on Casting, Projectiles, Impacts, Areas or Auras & loops, and a one-off clip you pick sets the stage to its own length.
+- **Resizing a clip that repeats** changes the length of each play, instead of growing it by the repeats.
+- **Token filter editor:** the layer move buttons say which way they move, and image layers get a Browse button for their file.
+- Finishers show *Save finisher* while being edited, not *Save recipe*.
+- **Start from a template.** New recipe now offers the twelve sample recipes (Ember shot, Blade strike, Fire nova…) as already-timed starting points, next to a blank recipe, and points to Customize in the catalogs for a particular spell, feat or weapon.
+- **New stages play in order.** With the playhead at the start, a new flight stage follows the cast and a new target stage follows the flight (or the cast), instead of all starting at once.
+- **Copy and paste stages,** even between recipes: Ctrl+C and Ctrl+V on the timeline, or Copy / Paste after it in a clip's right-click menu.
+- **Motion path shapes.** A keyframed token path can start from Hop, Zigzag, Circle, Knockback or Spin, and *+ At playhead* adds a keyframe where the playhead is.
+- **Sounds play in full.** Typing a sound path sets the stage to the sound's real length, as choosing one in the library already did.
+- **The studio preview keeps playing while you edit.** Changing a field no longer stops playback; it picks up where it was, with your change in.
+- **Loop just one clip.** The new ⟲ clip button (or Shift+L) loops the selected clip in the monitor so you can tune it while it repeats.
+- **Local preview plays the variant you are editing**, as the monitor does, instead of a random one.
+- **True scale in the monitor.** Its grid now draws one cell per grid square, with a 1 square key, so sizes and distances read right; keyframed token paths are framed so they no longer run off the edge, and a held motion stays where it ended.
+- **Clearer scene-effect notes.** FXMaster particles say they show in previews and at the table; scene filters say they play only at the table.
+- **Undo and redo in the studio.** ↶ and ↷ in the studio bar, or Ctrl+Z and Ctrl+Shift+Z (Ctrl+Y), step through your edits to the recipe; undoing back to the saved version clears Unsaved changes.
+- **No more lost work.** Revert and closing the Animater window ask first when a recipe has unsaved changes.
+- **Timing links survive moves.** Dragging or arrow-nudging a linked clip on the timeline keeps it linked and shifts its offset (the guide says so); hold Alt while dragging to unlink it on purpose.
+- **Number fields check their range as you finish typing**, pulling a value back into range with a note instead of changing it silently on save.
+- **A recipe that can never play says so.** Its card reads *Won't play* and the studio bar shows a warning that opens Recipe settings, instead of *Ready to play*.
+- **A cleaner stage panel in the studio.** The right-hand panel now opens with a card for the stage (its art, a readable asset name, type and track, plus variant, duplicate and delete buttons), then the essentials in the same order for every stage: art, one *When* control that says in words what the stage follows, length, size and fades. The stage type's own settings come next (flight path, Tokenshade preset, token motion, sound volume), and everything else sits in four tabs, Look, Motion, Placement and Timing, instead of eight collapsed sections. A dot marks a tab with changed settings, and each tab can be reset. Times show in seconds and size as a percentage; saved recipes are unchanged.
+
 ## 1.3.3 (2026-10-19)
 
 - **Lasting animation per recipe.** A customized condition or effect animation (Customize in its catalog) has its own *Lasting animation* choice in its recipe settings: stay while active, play once, or play once and at turn start (e.g. Divine Health only when its turn starts), or follow the catalog. Each player's own *Lasting condition animations* setting still applies on their screen.

@@ -36,10 +36,10 @@ test("a card's exclude toggle excludes that card, not the selected entry", async
 test("card toggle markup reflects the excluded state", () => {
   const off = cardExcludeHTML("weapon-exclude", { id: "longsword", name: "Longsword" }, false);
   assert.match(off, /data-action="weapon-exclude" data-id="longsword" aria-pressed="false"/);
-  assert.match(off, /aria-label="Exclude Longsword from plug &amp; play"/);
+  assert.match(off, /aria-label="Leave Longsword out of Plug &amp; play"/);
   const on = cardExcludeHTML("weapon-exclude", { id: "longsword", name: "Longsword" }, true);
   assert.match(on, /class="an-card-exclude is-on"/);
-  assert.match(on, /aria-label="Include Longsword in plug &amp; play"/);
+  assert.match(on, /aria-label="Put Longsword back in Plug &amp; play"/);
 });
 
 test("with plug & play off or picked-only, a card's ✓ adds and removes just that entry", async () => {

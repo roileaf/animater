@@ -1,3 +1,4 @@
+import { qualityBadgeHTML, qualityLabel, QUALITY, plugModeHTML, catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } from "../catalogs/shared/catalog-terms.mjs";
 import { pf2eCatalogsLive } from "../catalogs/shared/catalog-system.mjs";
 import { catalogNameHTML, cardToggleHTML, cardSlotClass } from "../catalogs/shared/catalog-details.mjs";
 import { finisherLinkHTML } from "./finisher-ui.mjs";
@@ -22,12 +23,7 @@ const esc = (value) =>
         c
       ],
   );
-const qualities = {
-  signature: "Curated",
-  themed: "Themed",
-  symbolic: "Symbolic",
-  unconfigured: "Needs configuration",
-};
+const qualities = Object.fromEntries(Object.entries(QUALITY).map(([key, q]) => [key, q.label]));
 export function motionSyncNoticeHTML(env) {
   if (env.demo || env.motionReady !== false) return "";
   const loaded = env.motionServerVersion
@@ -82,8 +78,8 @@ export function spellCatalogHTML(w) {
     ${soundSettingsHTML(w, state)}
     </div>${state.motion !== false ? motionSyncNoticeHTML(env) : ""}
     ${state.enabled && !state.independent && !w.host.enabled() ? `<p class="an-hint an-sync-notice">Also turn on Automatic playback in Setup to receive roll events.</p>` : ""}
-    <div class="an-section-title"><span>${matches.length.toLocaleString()} results</span><button class="an-text-button" data-action="catalog-reset">Reset filters</button></div>
-    <div class="an-spell-grid">${current.map((spell) => `<div class="an-card-slot${cardSlotClass(state, spell.id)}"><button class="an-spell-card ${spell.id === chosen?.id ? "is-selected" : ""}" style="--effect:${SPELL_THEMES[spell.theme].color}" data-action="select-spell" data-id="${spell.id}" aria-pressed="${spell.id === chosen?.id}"><img loading="lazy" src="${esc(w.host.imageURL?.(spell.img) ?? spell.img)}" alt=""><div><b>${esc(spell.name)}</b><small>${spell.kind === "cantrip" ? "Cantrip" : `Rank ${spell.rank}`} · ${esc(spell.kind === "spell" ? spell.edition : spell.kind)} · ${esc(SPELL_THEMES[spell.theme].label)}</small><span class="an-treatment is-${spell.quality}">${qualities[spell.quality]}</span></div></button>${cardToggleHTML(state, "catalog-exclude", "card-include", spell)}</div>`).join("") || `<div class="an-empty">No spells match.<small>Try fewer filters.</small></div>`}</div>
+    <div class="an-section-title"><span>${matches.length.toLocaleString()} results</span>${plugModeHTML(state)}<button class="an-text-button" data-action="catalog-reset">Reset filters</button></div>
+    <div class="an-spell-grid">${current.map((spell) => `<div class="an-card-slot${cardSlotClass(state, spell.id)}"><button class="an-spell-card ${spell.id === chosen?.id ? "is-selected" : ""}" style="--effect:${SPELL_THEMES[spell.theme].color}" data-action="select-spell" data-id="${spell.id}" aria-pressed="${spell.id === chosen?.id}"><img loading="lazy" src="${esc(w.host.imageURL?.(spell.img) ?? spell.img)}" alt=""><div><b>${esc(spell.name)}</b><small>${spell.kind === "cantrip" ? "Cantrip" : `Rank ${spell.rank}`} · ${esc(spell.kind === "spell" ? spell.edition : spell.kind)} · ${esc(SPELL_THEMES[spell.theme].label)}</small>${qualityBadgeHTML(spell.quality)}</div></button>${cardToggleHTML(state, "catalog-exclude", "card-include", spell)}</div>`).join("") || `<div class="an-empty">No spells match.<small>Try fewer filters.</small></div>`}</div>
     <div class="an-catalog-pagination"><button data-action="catalog-page" data-index="${w.spellPage - 1}" ${w.spellPage === 0 ? "disabled" : ""}>← Previous</button><span>Page ${w.spellPage + 1} of ${pages}</span><button data-action="catalog-page" data-index="${w.spellPage + 1}" ${w.spellPage === pages - 1 ? "disabled" : ""}>Next →</button></div>
     <p class="an-hint an-catalog-source">PF2e ${PF2E_SOURCE.version} · ${PF2E_SOURCE.kinds.cantrip} cantrips · ${PF2E_SOURCE.kinds.focus} focus · ${PF2E_SOURCE.kinds.ritual} rituals. Curated entries use explicit spell mappings; themed entries use description cues and native spell fields; symbolic entries provide casting cues for complex or utility effects. No rules automation added.</p>
   </section><aside class="an-inspector an-spell-detail">${chosen ? spellDetailHTML(w, chosen, state, env) : `<div class="an-empty">Choose a spell.</div>`}</aside></div>`;
@@ -115,20 +111,29 @@ function spellDetailHTML(w, spell, state, env) {
           ? "Customization paused"
           : "Customized recipe takes priority"
         : "Ready to use";
-  return `<div class="an-eyebrow">BUILT-IN ANIMATION · ${qualities[spell.quality].toUpperCase()}</div><div class="an-spell-detail-title"><img src="${esc(w.host.imageURL?.(spell.img) ?? spell.img)}" alt=""><div><h2>${catalogNameHTML(spell, "spell", env)}</h2><small>${spell.kind === "cantrip" ? "Cantrip" : `Rank ${spell.rank}`} · ${esc(spell.edition)} · ${esc(spell.rarity)}</small></div></div><div class="an-spell-badges">${[...spell.traditions, spell.kind].map((value) => `<span>${esc(value)}</span>`).join("")}</div>
-    <div class="an-preview an-full-preview" style="--effect:${recipe.color}">${w.recipePreviewHTML(recipe)}</div><div class="an-preview-transport"><button class="an-primary" data-action="recipe-preview" ${w.busy ? "disabled" : ""}>▶ Preview recipe</button><span data-preview-time>0.0 / ${(duration / 1000).toFixed(1)}s</span></div><progress data-recipe-progress aria-label="Recipe playback progress" max="${duration}" value="0"></progress><small class="an-preview-status" data-preview-status role="status">Ready · full animation, sample spacing</small>
-    <div class="an-catalog-use-status ${usingCatalog ? "is-using" : ""}" role="status"><b>${status}</b><small>${!automatic ? "Play on demand with your selected caster and targets." : usingCatalog ? `${esc(EVENTS[recipe.trigger])} · catalog defaults · no saved recipe slot` : "Use animation enables this spell directly from the catalog."}</small></div><div class="an-play-actions an-catalog-choice"><button data-action="${automatic ? "use-spell" : "play"}" class="an-primary" ${w.busy || (automatic ? !canUse || usingCatalog : env.demo || !env.ready) ? "disabled" : ""}>${automatic ? (usingCatalog ? "Using catalog ✓" : "Use animation") : "Play animation"}</button><button data-action="copy-spell" class="an-quiet" ${w.busy ? "disabled" : ""}>${saved ? "Edit customization" : "Customize"}</button></div><button class="an-catalog-canvas-preview" data-action="preview" ${env.demo || !env.ready || w.busy ? "disabled" : ""}>▷ Local canvas preview</button>
+  return `<div class="an-eyebrow">BUILT-IN ANIMATION · ${qualityLabel(spell.quality).toUpperCase()}</div><div class="an-spell-detail-title"><img src="${esc(w.host.imageURL?.(spell.img) ?? spell.img)}" alt=""><div><h2>${catalogNameHTML(spell, "spell", env)}</h2><small>${spell.kind === "cantrip" ? "Cantrip" : `Rank ${spell.rank}`} · ${esc(spell.edition)} · ${esc(spell.rarity)}</small></div></div><div class="an-spell-badges">${[...spell.traditions, spell.kind].map((value) => `<span>${esc(value)}</span>`).join("")}</div>
+    <div class="an-preview an-full-preview" style="--effect:${recipe.color}">${w.recipePreviewHTML(recipe)}</div>${previewRowHTML({ duration, busy: w.busy, canvasDisabled: env.demo || !env.ready || w.busy, progressLabel: "Recipe playback progress" })}
+    ${spellStatusHTML(w, { spell, recipe, saved, automatic, usingCatalog, state, canUse, env })}
     ${finisherLinkHTML(w, spell.name, spell.uuid)}
-    ${spellSoundsHTML(w, spell, recipe, state)}
-    <div class="an-catalog-steps">${sampleRecipe(recipe)
-      .stages.map(
-        (s, i) =>
-          `<div class="an-stage" data-stage-drag="${i}"><span>${i + 1}</span><div><b>${esc(s.label)}</b><small>${s.delay}ms · ${s.duration}ms · ${esc(s.kind)}</small></div></div>`,
-      )
-      .join("")}</div>
-    <div class="an-editor-section"><b>When it plays</b><p class="an-hint">${esc(EVENTS[recipe.trigger])}${spell.trigger === "template" ? (spell.area?.type === "line" ? " · place a native line area" : spell.area?.type === "cone" ? " · place a native cone area" : ["square", "cube"].includes(spell.area?.type) ? " · place a square spell area" : spell.area?.type === "emanation" ? " · place its native emanation area" : " · place a circular spell area") : ""}. ${spell.kind === "ritual" ? "Ritual entries require manual playback." : usingCatalog ? "Catalog defaults active; saved edits remain available through Customize." : "Customize creates or opens an editable version."}</p><button class="an-quiet" data-action="catalog-exclude" ${env.demo || env.systemId !== "pf2e" || w.busy ? "disabled" : ""}>${state.excluded.includes(spell.id) ? "Include in automatic catalog" : "Exclude from automatic catalog"}</button></div>
-    ${spell.notes.length ? `<div class="an-catalog-notes"><b>Placement & treatment</b>${spell.notes.map((note) => `<p>${esc(note)}</p>`).join("")}</div>` : ""}
-    <details class="an-advanced" data-options-group="spell-assets"><summary>Media & source</summary>${recipe.stages.map((s) => `<p class="an-hint"><b>${esc(s.label)}</b><br>${esc(s.assets.join(" → ") || s.soundFile || s.fxPreset || s.fxType || "Native token artwork")}</p>`).join("")}<p class="an-hint">${esc(spell.publication)}. Free/Patreon keys verified; installed edition selects the fallback.</p><a href="https://github.com/foundryvtt/pf2e/blob/${PF2E_SOURCE.sha}/${esc(spell.path)}" target="_blank" rel="noopener noreferrer">PF2e source entry ↗</a></details>`;
+    ${entryDetailsHTML([
+      spellSoundsHTML(w, spell, recipe, state),
+      stageListHTML(sampleRecipe(recipe).stages),
+      spell.notes.length ? `<div class="an-catalog-notes"><b>Placement & treatment</b>${spell.notes.map((note) => `<p>${esc(note)}</p>`).join("")}</div>` : "",
+      `<div class="an-entry-source"><b>Media & source</b>${recipe.stages.map((s) => `<p class="an-hint"><b>${esc(s.label)}</b><br>${esc(s.assets.join(" → ") || s.soundFile || s.fxPreset || s.fxType || "Native token artwork")}</p>`).join("")}<p class="an-hint">${esc(spell.publication)}. Free/Patreon keys verified; installed edition selects the fallback.</p><a href="https://github.com/foundryvtt/pf2e/blob/${PF2E_SOURCE.sha}/${esc(spell.path)}" target="_blank" rel="noopener noreferrer">PF2e source entry ↗</a></div>`,
+    ])}`;
+}
+// Whether this spell plays, and the buttons that change that.
+function spellStatusHTML(w, { spell, recipe, saved, automatic, usingCatalog, state, canUse, env }) {
+  const busy = w.busy, all = state.enabled && state.scope === "all", excluded = state.excluded.includes(spell.id);
+  const when = `On: ${EVENTS[recipe.trigger] ?? recipe.trigger}${spell.trigger === "template" ? (spell.area?.type === "line" ? " · a native line area" : spell.area?.type === "cone" ? " · a native cone area" : ["square", "cube"].includes(spell.area?.type) ? " · a square area" : spell.area?.type === "emanation" ? " · its emanation" : " · a circular area") : ""}`;
+  const customize = { label: saved ? "Edit customization" : "Customize", action: "copy-spell", disabled: busy };
+  const leave = { label: excluded ? "Put back in Plug & play" : "Leave out of Plug & play", action: "catalog-exclude", disabled: env.demo || env.systemId !== "pf2e" || busy };
+  if (!automatic) return catalogStatusHTML({ tone: "manual", title: spell.kind === "ritual" ? "Rituals play on demand" : "Plays on demand", text: "Play it with your selected caster and targets.", buttons: [{ label: "Play animation", action: "play", primary: true, disabled: busy || env.demo || !env.ready }, customize] });
+  if (saved && !usingCatalog && (w.host.enabled() || (state.enabled && state.customized.includes(spell.id))))
+    return catalogStatusHTML({ tone: "custom", title: saved.enabled === false ? "Your version is paused" : "Your version plays", text: "It plays instead of the catalog animation.", buttons: [{ ...customize, primary: true }] });
+  if (usingCatalog) return catalogStatusHTML({ tone: "on", title: "Plays automatically", text: when, buttons: [customize, all ? leave : null] });
+  if (all && excluded) return catalogStatusHTML({ tone: "off", title: "Left out of Plug & play", text: when, buttons: [{ ...leave, primary: true }, customize] });
+  return catalogStatusHTML({ tone: "off", title: "Not playing automatically", text: "Use just this spell, or turn on the whole catalog above.", buttons: [{ label: "Use animation", action: "use-spell", primary: true, disabled: busy || !canUse }, customize] });
 }
 function soundSettingsHTML(w, state) {
   const catalog = w.host.soundCatalog?.();

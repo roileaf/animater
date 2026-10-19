@@ -988,7 +988,9 @@
   background-image:
     linear-gradient(#ffffff06 1px, transparent 1px),
     linear-gradient(90deg, #ffffff06 1px, transparent 1px);
-  background-size: 28px 28px;
+  /* One cell is one grid square: tokens are drawn 55 px a square (path previews zoom it). */
+  background-size: var(--an-grid, 55px) var(--an-grid, 55px);
+  background-position: center;
 }
 .animater .an-recipe-actor {
   position: absolute;
@@ -3055,3 +3057,137 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
   margin-top: 12px;
 }
 .animater .an-fx-editor-actions input { flex: 1; min-width: 120px; }
+
+/* Stage panel: header card, essentials, the kind's own block, then Look / Motion / Placement / Timing tabs. */
+.animater .an-stage-card { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 10px; align-items: center; margin: -4px 0 12px; padding: 10px; border-radius: 10px; background: var(--an-surface); border: 1px solid var(--an-line); }
+.animater .an-stage-thumb { width: 48px; height: 48px; border-radius: 8px; overflow: hidden; display: grid; place-items: center; background: var(--an-bg); border: 1px solid var(--an-line); font-size: 20px; color: var(--an-accent); }
+.animater .an-stage-thumb img, .animater .an-stage-thumb video { width: 100%; height: 100%; object-fit: cover; }
+.animater .an-stage-id { display: grid; gap: 4px; min-width: 0; }
+.animater .an-stage-name { font-size: 14px; font-weight: 600; background: transparent; border-color: transparent; padding: 2px 4px; margin: 0 0 0 -4px; min-height: 0; width: 100%; }
+.animater .an-stage-name:hover, .animater .an-stage-name:focus { border-color: var(--an-line); background: var(--an-bg); }
+.animater .an-stage-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.animater .an-stage-chips .an-st-kind { font-size: 10px; }
+.animater .an-stage-chip { font-size: 10px; color: var(--an-muted); border: 1px solid var(--an-line); border-radius: 999px; padding: 1px 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.animater .an-stage-chip.is-asset { color: var(--an-text); }
+.animater .an-stage-actions { display: flex; gap: 2px; }
+.animater .an-stage-actions .an-icon { font-size: 14px; padding: 4px 6px; }
+.animater .an-stage-block { display: grid; gap: 8px; padding: 0 0 12px; margin-bottom: 12px; border-bottom: 1px solid var(--an-line); }
+.animater .an-stage-block label { margin-bottom: 0; }
+.animater .an-stage-block-title { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--an-muted); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.animater .an-stage-block-title small { letter-spacing: 0; text-transform: none; }
+.animater .an-essential-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; align-items: end; }
+.animater .an-when { display: grid; gap: 4px; }
+.animater .an-when .an-field-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .9fr); }
+.animater .an-when-line { margin: 0; font-size: 10px; color: var(--an-green); display: flex; gap: 6px; align-items: baseline; }
+.animater .an-when-line::before { content: ""; flex: none; width: 12px; border-top: 2px dashed var(--an-green); transform: translateY(-3px); }
+.animater .an-unit { position: relative; display: block; }
+.animater .an-unit > input { width: 100%; padding-right: 22px; font-variant-numeric: tabular-nums; }
+.animater .an-unit > span { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--an-muted); pointer-events: none; }
+.animater .an-asset-row { display: flex; gap: 6px; }
+.animater .an-asset-row input { flex: 1; min-width: 0; }
+.animater .an-asset-row button { flex: none; }
+.animater .an-stage-tabs { display: flex; border-bottom: 1px solid var(--an-line); margin: 0 0 10px; position: sticky; top: -20px; background: var(--an-panel); z-index: 2; }
+.animater .an-stage-tab { flex: 1; position: relative; background: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--an-muted); font-size: 11px; padding: 8px 2px; cursor: pointer; }
+.animater .an-stage-tab[aria-selected="true"] { color: var(--an-text); border-bottom-color: var(--an-accent); }
+.animater .an-stage-tab.has-changes::after { content: ""; position: absolute; top: 6px; right: 12%; width: 6px; height: 6px; border-radius: 50%; background: var(--an-accent); }
+.animater .an-stage-tabpane { display: grid; gap: 10px; }
+.animater .an-stage-tabpane .an-options-grid { margin: 0; }
+.animater .an-tab-reset { justify-self: end; font-size: 10px; }
+.animater .an-tracks { display: grid; gap: 8px; padding-top: 4px; }
+.animater .an-essentials .an-asset-picker { min-height: 0; padding: 7px 9px; display: flex; width: 100%; }
+.animater .an-essentials .an-asset-picker-text { display: flex; width: 100%; justify-content: space-between; gap: 8px; font-size: 11px; }
+.animater .an-essentials .an-asset-picker-text span { margin: 0; padding: 0; }
+.animater .an-stage-thumb .an-asset-thumb-mini { width: 100%; height: 100%; display: block; }
+.animater .an-stage-thumb video { object-fit: contain; }
+.animater button.an-st-state { background: rgba(255, 184, 107, 0.1); border: 1px solid rgba(255, 184, 107, 0.4); border-radius: 999px; padding: 2px 10px; cursor: pointer; width: auto; height: auto; min-height: 0; }
+.animater .an-grid-key { position: absolute; right: 8px; bottom: 6px; z-index: 3; font-size: 9px; color: var(--an-muted); display: flex; align-items: center; gap: 5px; pointer-events: none; }
+.animater .an-grid-key::before { content: ""; width: var(--an-grid, 55px); height: 0; border-top: 1px solid var(--an-muted); }
+/* New recipe chooser: templates */
+.animater .an-new-subtitle { margin: 16px 0 2px; font-size: 13px; }
+.animater .an-new-templates { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; max-height: 260px; overflow: auto; padding: 2px; }
+.animater .an-new-template { display: grid; gap: 3px; text-align: left; align-content: start; padding: 9px 10px; border-radius: 9px; border: 1px solid var(--an-line); background: var(--an-surface); box-shadow: inset 3px 0 0 var(--effect, var(--an-accent)); height: auto; white-space: normal; }
+.animater .an-new-template:hover { border-color: var(--effect, var(--an-accent)); }
+.animater .an-new-template b { font-size: 12px; }
+.animater .an-new-template small { font-size: 10px; color: var(--an-muted); line-height: 1.35; }
+.animater .an-kf-shapes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 8px 0 4px; }
+.animater .an-kf-shapes small { width: 100%; font-size: 10px; color: var(--an-muted); }
+.animater .an-kf-shapes button { width: auto; height: 26px; padding: 0 9px; font-size: 11px; flex: none; }
+/* Timeline help panel (the ? button) */
+.animater .an-st-help { position: absolute; right: 16px; bottom: calc(var(--an-timeline-height, 220px) + 8px); width: min(420px, calc(100% - 32px)); max-height: 60%; overflow: auto; z-index: 40; padding: 12px 14px 14px; border: 1px solid var(--an-line); border-radius: 12px; background: var(--an-panel); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); }
+.animater .an-st-help ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.animater .an-st-help li { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 8px; font-size: 11px; line-height: 1.45; }
+.animater .an-st-help li b { color: var(--an-text); }
+.animater .an-st-help li span { color: var(--an-muted); }
+/* Activity: why it played, or not */
+.animater .an-activity-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255, 184, 107, 0.45); background: rgba(255, 184, 107, 0.08); font-size: 12px; }
+.animater .an-activity-banner b { color: #ffb86b; }
+.animater .an-activity-banner span { color: var(--an-muted); flex: 1 1 220px; }
+.animater .an-activity-banner button { width: auto; flex: none; }
+.animater .an-activity-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.animater .an-activity-filters { display: flex; gap: 4px; }
+.animater .an-activity-filters button { width: auto; height: 26px; padding: 0 10px; font-size: 11px; border-radius: 999px; }
+.animater .an-activity-filters button.is-active { background: var(--an-accent); color: #1b1530; border-color: var(--an-accent); }
+.animater .an-activity-filters small { opacity: .7; margin-left: 2px; }
+.animater .an-activity-fixes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.animater .an-activity-fix { width: auto; height: 26px; padding: 0 10px; font-size: 11px; }
+.animater .an-badge.is-skipped { color: #ffb86b; border-color: rgba(255, 184, 107, 0.4); }
+/* Lasting animation: three choices side by side */
+.animater .an-catalog-controls > .an-lasting { height: auto; min-height: 40px; flex-wrap: wrap; }
+.animater .an-segmented { display: inline-flex; border: 1px solid var(--an-line); border-radius: 999px; overflow: hidden; }
+.animater .an-segmented button { width: auto; height: 26px; padding: 0 10px; border: 0; border-radius: 0; font-size: 11px; background: transparent; color: var(--an-muted); white-space: nowrap; }
+.animater .an-segmented button + button { border-left: 1px solid var(--an-line); }
+.animater .an-segmented button.is-active { background: var(--an-accent); color: #1b1530; }
+.animater .an-lasting-override { flex-basis: 100%; font-size: 10px; color: #ffb86b; }
+/* Plug & play mode chip beside the results count */
+.animater .an-plug-mode { font-size: 10px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--an-line); color: var(--an-muted); white-space: nowrap; }
+.animater .an-plug-mode.is-all { color: var(--an-green); border-color: rgba(128, 222, 192, 0.4); }
+.animater .an-plug-mode.is-picked { color: var(--an-accent); border-color: rgba(178, 154, 255, 0.4); }
+.animater .an-plug-mode small { opacity: .7; }
+/* Now playing: a compact card per token, its animations as one-line chips */
+.animater .an-now-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.animater .an-now-card { display: grid; gap: 4px; align-content: start; padding: 8px; border: 1px solid var(--an-line); border-radius: 10px; background: var(--an-surface); min-width: 0; }
+.animater .an-now-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 12px; }
+.animater .an-now-card-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.animater .an-now-card-head .an-now-token { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none; display: inline-grid; place-items: center; background: var(--an-bg); color: var(--an-muted); }
+.animater .an-now-chips { display: grid; gap: 2px; }
+.animater .an-now-chip { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 3px 4px; margin: 0; border: 0; border-radius: 6px; min-height: 0; }
+.animater .an-now-chip:hover, .animater .an-now-chip:focus-within { background: var(--an-bg); }
+.animater .an-now-chip .an-now-thumb { width: 26px; height: 26px; border-radius: 5px; margin: 0; }
+.animater .an-now-chip b { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.animater .an-now-chip time { font-size: 10px; color: var(--an-muted); font-variant-numeric: tabular-nums; }
+.animater .an-now-chip-actions { display: flex; gap: 2px; }
+.animater .an-now-chip-actions .an-activity-btn, .animater .an-now-stopall { width: auto; min-width: 24px; height: 24px; padding: 0 6px; font-size: 11px; }
+.animater .an-now-chip .an-activity-excluded { font-size: 10px; }
+/* Catalog entry panel: one status line with its buttons; both previews in one row */
+.animater .an-entry-status { display: grid; gap: 8px; margin: 12px 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--an-line); background: var(--an-surface); }
+.animater .an-entry-status b { font-size: 13px; }
+.animater .an-entry-status small { display: block; margin-top: 2px; font-size: 11px; color: var(--an-muted); }
+.animater .an-entry-status.is-on { border-color: rgba(128, 222, 192, 0.45); }
+.animater .an-entry-status.is-on b span { color: var(--an-green); }
+.animater .an-entry-status.is-custom b span { color: var(--an-accent); }
+.animater .an-entry-status.is-off b span { color: var(--an-muted); }
+.animater .an-entry-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.animater .an-entry-actions button { flex: 1 1 auto; width: auto; }
+.animater .an-entry-preview { display: flex; align-items: center; gap: 8px; }
+.animater .an-entry-preview [data-action="recipe-preview"] { flex: 1 1 auto; }
+.animater .an-entry-preview [data-action="preview"] { flex: none; width: auto; }
+.animater .an-entry-preview + progress + .an-preview-status:empty { display: none; }
+.animater .an-entry-details { margin-top: 12px; }
+.animater .an-entry-details > summary { font-size: 11px; }
+.animater .an-entry-source { margin-top: 10px; }
+/* Scrollbars: quiet and neutral inside Animater (Foundry's theme draws them red) */
+.animater, .animater * { scrollbar-width: thin; scrollbar-color: #3a4256 transparent; }
+.animater ::-webkit-scrollbar { width: 8px; height: 8px; }
+.animater ::-webkit-scrollbar-track { background: transparent; }
+.animater ::-webkit-scrollbar-thumb { background: #3a4256; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+.animater ::-webkit-scrollbar-thumb:hover { background-color: #4c5670; }
+/* Asset browser: recipe banner, Sources menu, folded view controls */
+.animater .an-media-context { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(178, 154, 255, 0.35); background: rgba(178, 154, 255, 0.07); font-size: 12px; }
+.animater .an-media-back { width: auto; flex: none; }
+.animater .an-media-context span { color: var(--an-muted); }
+.animater .an-media-context b { color: var(--an-text); }
+.animater .an-media-source-actions { display: flex; gap: 6px; margin-bottom: 8px; }
+.animater .an-media-source-actions button { width: auto; }
+.animater .an-media-view { margin: 8px 0; }
+.animater .an-media-view > summary { font-size: 11px; color: var(--an-muted); cursor: pointer; }
+.animater .an-setup-subtitle { margin: 18px 0 8px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--an-muted); }
