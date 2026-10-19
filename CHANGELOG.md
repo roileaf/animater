@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 (2026-10-19)
 
 - **A first run that starts in the right place.** While nothing plays automatically, Animater opens on Setup, where turning the catalogs on comes first, followed by three steps that match how the module is used (turn on the catalogs, try one on the canvas, customize it). Tokenshade, FXMaster and your own recipes sit under Fine-tuning.
 - **Clearer missing-module messages:** they say to turn the module on in Manage Modules and reload the world (F5), and no longer suggest opening the browser console.
