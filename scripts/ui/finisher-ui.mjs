@@ -283,7 +283,7 @@ function presetGroupsHTML() {
 export function finishersPageHTML(w, recipe) {
   if (w.studio && recipe) return studioHTML(w, recipe);
   bindGlyphHover();
-  const all = w.listedRecipes().filter((r) => r.finisher), def = w.host.defaultFinisher?.() ?? "";
+  const all = w.listedRecipes().filter((r) => r.finisher), def = w.host.defaultFinisher?.() ?? "", defEnding = w.host.defaultFinisherEnding?.() ?? "";
   const players = w.host.players?.() ?? [], itemSummary = w.host.itemSummary ? (uuid) => w.host.itemSummary(uuid) : null;
   const playerPicks = w.host.playerPicks?.() === true;
   const cards = all.map((r) => finisherCardHTML(r, players, itemSummary, playerPicks)).join("");
@@ -291,7 +291,8 @@ export function finishersPageHTML(w, recipe) {
   return `<div class="an-work is-library"><section class="an-library an-finishers">
     <div class="an-finishers-sub"><span>${all.length} finisher${all.length === 1 ? "" : "s"}</span><small>Assign them to spells, feats, actions and weapons. They play on the real token.</small></div>
     <label class="an-finisher-default"><span>Default finisher for other kills</span><select data-finisher-default><option value="">None (plain collapse)</option><option value="${BY_DAMAGE_TYPE}" ${def === BY_DAMAGE_TYPE ? "selected" : ""}>By damage type (built-in)</option>${all.map((r) => `<option value="${esc(r.id)}" ${r.id === def ? "selected" : ""}>${esc(r.name)}</option>`).join("")}</select></label>
-    <p class="an-hint">Plays for NPC kills when no finisher matches the item.</p>
+    ${def ? `<label class="an-finisher-default"><span>Default finisher ends</span><select data-finisher-default-ending><option value="">As each finisher is made</option>${Object.entries(FINISHER_ENDINGS).map(([k, label]) => `<option value="${k}" ${k === defEnding ? "selected" : ""}>${esc(label)}</option>`).join("")}</select></label>` : ""}
+    <p class="an-hint">Plays for NPC kills when no finisher matches the item.${def && defEnding ? " Its ending is overridden; finishers assigned to items keep their own." : ""}</p>
     ${def === BY_DAMAGE_TYPE ? `<p class="an-hint" data-finisher-default-hint>Plays the built-in finisher that matches the killing blow's damage type (Perforated for piercing, Cinders for fire…).</p>` : ""}
     ${cards ? `<div class="an-grid an-fcard-grid">${cards}</div>` : `<div class="an-empty an-finishers-empty">No finishers yet. Pick a preset below or start blank.</div>`}
     <div class="an-section-title"><span>Presets</span><small>Copy one to make it yours</small>${finisherToursHTML(w.showFinisherTours)}</div>

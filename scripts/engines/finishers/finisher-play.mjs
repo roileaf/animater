@@ -230,7 +230,7 @@ export function planFinisher({ recipe, mover, attacker = null, dead = false }, h
   const offset = to && (to.x !== from.x || to.y !== from.y) ? { x: (to.x - from.x) / grid, y: (to.y - from.y) / grid } : null;
   // Where Sequencer centres an effect on the mover, taken before anything moves.
   const at = { x: from.x + (mover.w ?? (mover.document.width ?? 1) * grid) / 2, y: from.y + (mover.h ?? (mover.document.height ?? 1) * grid) / 2 };
-  const { recipe: composed, moves } = composeFinisher(recipe, { offset, frame, inPlace, survives: !dead, slam, vanishing, at });
+  const { recipe: composed, moves } = composeFinisher(recipe, { offset, frame, inPlace, survives: !dead || recipe.finisher?.revealsBody === true, slam, vanishing, at });
   return { composed, moves, to, from, context: finisherContext({ mover, attacker }) };
 }
 

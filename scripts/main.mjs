@@ -1,5 +1,5 @@
 import { uuid } from "./core/uuid.mjs";
-import { ID, validateRecipe, clone, matchRecipe, resolveAsset } from "./core/model.mjs";
+import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
 import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
@@ -387,7 +387,7 @@ function playTest(recipe, context, options = {}) {
 // Dice So Nice: an attack or damage animation waits until that roll's 3D dice land
 // (never longer than DICE_WAIT_LIMIT, and not at all when Dice So Nice shows none).
 const WAIT_FOR_DICE = "waitForDice", DICE_WAIT_LIMIT = 8000;
-const DAMAGE_REACTIONS = "damageReactions", DRAMATIC_DEATHS = "dramaticDeaths", TELEPORT_TOKENS = "teleportTokens", DEFAULT_FINISHER = "defaultFinisher", DUALITY_ACCENT = "daggerheartDualityAccent";
+const DAMAGE_REACTIONS = "damageReactions", DRAMATIC_DEATHS = "dramaticDeaths", TELEPORT_TOKENS = "teleportTokens", DEFAULT_FINISHER = "defaultFinisher", DEFAULT_FINISHER_ENDING = "defaultFinisherEnding", DUALITY_ACCENT = "daggerheartDualityAccent";
 const COLLAPSE = { id: "animater-collapse", name: "Dropped to 0 HP", trigger: "manual", stages: [{ stageId: "collapse", kind: "motion", motion: "collapse", subject: "source", duration: 1800, distance: 0.25, intensity: 0.8, assets: [] }] };
 async function afterDice(event) {
   const dice = globalThis.game?.dice3d;
@@ -855,6 +855,12 @@ function workspaceHost() {
       if (!game.user.isGM) throw Error("Only a GM can choose the default finisher.");
       await game.settings.set(ID, DEFAULT_FINISHER, String(id ?? ""));
     },
+    // How the default finisher ends: "" as each finisher is made, or a FINISHER_ENDINGS key.
+    defaultFinisherEnding: () => game.settings.get(ID, DEFAULT_FINISHER_ENDING) ?? "",
+    setDefaultFinisherEnding: async (ending) => {
+      if (!game.user.isGM) throw Error("Only a GM can choose how the default finisher ends.");
+      await game.settings.set(ID, DEFAULT_FINISHER_ENDING, Object.hasOwn(FINISHER_ENDINGS, ending) ? ending : "");
+    },
     recipes: () => { const user = reviewedUser(); return user ? clone(user.getFlag(ID, "playerRecipes")?.recipes ?? []) : game.user.isGM ? recipes() : ownPlayerRecipes(); },
     get playerMode() { return !game.user.isGM || Boolean(reviewedUser()); },
     approvalState: (recipe) => { const user = game.user.isGM ? reviewedUser() : game.user; return user ? approvalState(recipe, playerDecisions()[user.id]) : null; },
@@ -1168,6 +1174,7 @@ Hooks.once("init", () => {
     scope: "world", config: true, type: Boolean, default: true,
   });
   game.settings.register(ID, DEFAULT_FINISHER, { scope: "world", config: false, type: String, default: "" });
+  game.settings.register(ID, DEFAULT_FINISHER_ENDING, { scope: "world", config: false, type: String, default: "" });
   registerDefeatedLook(game.settings, ID, { onChange: () => persistentStates?.schedule() });
   installDefeatedLook(Hooks, { mode: () => game.settings.get(ID, DEFEATED_LOOK), statuses: () => (game.system.id === "daggerheart" ? DH_DEFEATED_STATUSES : [defeatedStatusId()]) });
   game.settings.registerMenu(ID, "workspace", {
@@ -1648,7 +1655,7 @@ Hooks.once("ready", () => {
     const saveKey = critIds.map((recipeId) => finishedKey({ ...base, recipeId, save: true })).find((key) => finished.has(key));
     const crit = by?.crit === true || Boolean(saveKey);
     const recipe = pick ? pickPlays(pick, "kill", { outcome: crit ? "criticalSuccess" : "success" })
-      : killFinisher(recipes(), item, game.settings.get(ID, DEFAULT_FINISHER), { crit, damageType: recallDamage(damageLog, ids)?.type ?? by?.type });
+      : killFinisher(recipes(), item, game.settings.get(ID, DEFAULT_FINISHER), { crit, damageType: recallDamage(damageLog, ids)?.type ?? by?.type, defaultEnding: game.settings.get(ID, DEFAULT_FINISHER_ENDING) });
     if (!recipe) return null;
     // The crit already played a finisher's travel on this token: only an ending is left. A critical
     // killing blow is that crit's own damage (the same finisher's mark); after a save crit, whichever

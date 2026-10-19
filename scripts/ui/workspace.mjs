@@ -1776,6 +1776,7 @@ export class Workspace {
     if (e.target.hasAttribute("data-finisher-link")) { void this.linkFinisherTo(e.target.dataset.finisherLink, e.target.value, e.target.dataset.finisherUuid); return; }
     if (e.target.hasAttribute("data-finisher-add")) { const name = e.target.value; e.target.value = ""; if (name.trim()) this.addFinisherName(name); return; }
     if (e.target.hasAttribute("data-finisher-player")) { this.togglePlayer(e.target.dataset.finisherPlayer, e.target.checked); return; }
+    if (e.target.hasAttribute("data-finisher-default-ending")) { void this.host.setDefaultFinisherEnding?.(e.target.value).then(() => this.render(), (error) => { this.message = error.message; this.render(); }); return; }
     if (e.target.hasAttribute("data-finisher-default")) { void this.host.setDefaultFinisher(e.target.value).then(() => this.render(), (error) => { this.message = error.message; this.render(); }); return; }
     if(e.target.hasAttribute('data-dnd-variant')||e.target.dataset.dndFilter||e.target.dataset.dndOption){void this.dndCatalog?.change(e.target).catch(error=>{this.message=error.message;this.render();});return;}
     if (e.target.hasAttribute("data-state-damage")) { this.stateDamageType = e.target.value; this.render(); return; }

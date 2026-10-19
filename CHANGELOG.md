@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Choose how the default finisher ends.** A new *Default finisher ends* select under *Default finisher for other kills* overrides its ending, e.g. **Body (stays, Defeated)** so the damage-type finishers break the creature apart and then leave its token on the ground, Defeated, instead of hiding it. Finishers assigned to items keep their own ending.
+
 ## 1.3.1 (2026-10-18)
 
 - **Conditions show on the creature, quietly.** Lasting conditions whose meaning is a change in the body now use a Tokenshade look instead of a looping JB2A animation: Petrified turns to stone; Drained greys from the feet up; Enfeebled shrinks thin; Fatigued and Exhaustion breathe heavily and sag; Dying darkens red with a slow heartbeat; Unconscious sleeps; Doomed and Cursebound grow dark veins under a black halo; Sickened turns green and queasy; Poisoned grows green veins; Diseased flushes with heat shimmer; Frightened and Fleeing go pale and shiver; Confused wanders among soft lights and Stupefied clouds over; Controlled glows violet; Charmed warms rosy pink; Dazzled glares, light streaking across it; Paralyzed locks rigid in a glassy shell; Restrained is chained; Concealed is wrapped in mist and Hidden hazes over; Invisible shimmers faintly; Quickened leaves a trail; Glitching jitters; persistent damage shows its damage type. Valued conditions grow stronger with their value. Applies to PF2e, SF2e, D&D 5e and Daggerheart; without Tokenshade the JB2A layers play as before.

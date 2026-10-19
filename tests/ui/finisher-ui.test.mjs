@@ -484,3 +484,12 @@ test("the default finisher select offers By damage type, with its hint while cho
   assert.ok(chosen.includes(`<p class="an-hint" data-finisher-default-hint>Plays the built-in finisher that matches the killing blow's damage type (Perforated for piercing, Cinders for fire…).</p>`));
   assert.match(chosen, /<p class="an-hint">Plays for NPC kills when no finisher matches the item\.<\/p>/);
 });
+
+test("a second select sets how the default finisher ends, shown only once a default is chosen", () => {
+  const page = (def, ending) => finishersPageHTML({ studio: false, listedRecipes: () => [], host: { recipes: () => [], defaultFinisher: () => def, defaultFinisherEnding: () => ending, players: () => [], playerPicks: () => true } });
+  assert.doesNotMatch(page("", ""), /data-finisher-default-ending/);
+  const set = page("by-damage-type", "body");
+  assert.match(set, /<select data-finisher-default-ending><option value="">As each finisher is made<\/option><option value="vanish" >Vanish \(fade, then hidden\)<\/option><option value="body" selected>Body \(stays, Defeated\)<\/option>/);
+  assert.match(set, /Its ending is overridden; finishers assigned to items keep their own\./);
+  assert.doesNotMatch(page("by-damage-type", ""), /Its ending is overridden/);
+});

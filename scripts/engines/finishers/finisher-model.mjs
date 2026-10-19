@@ -1,7 +1,7 @@
 import { rollPrivacy, hidden } from "../../core/privacy.mjs";
 // Which finishers an item plays, and the link between a catalog entry and a finisher.
 // Applies-to reuses recipe matching: comma-separated names in `match`, or one exact itemUuid.
-import { normalize, FINISHER_ON } from "../../core/model.mjs";
+import { normalize, FINISHER_ON, FINISHER_ENDINGS } from "../../core/model.mjs";
 import { pathSquares, landsTilted } from "../motion/keyframe-path.mjs";
 import { BY_DAMAGE_TYPE, damageTypeFinisher } from "./finisher-presets.mjs";
 
@@ -20,12 +20,17 @@ const matchAny = (recipes, item, ons) => live(recipes).filter((r) => ons.include
 // The killing item's own kill (or crit-or-kill) finisher wins; otherwise the GM's default, if it
 // is a finisher. "Needs: Only on a critical" holds for both: without a crit they are passed over.
 // The default "by-damage-type" plays the built-in preset for the killing blow's damage type.
-export function killFinisher(recipes, item = {}, defaultId = "", { crit = false, damageType = null } = {}) {
+// `defaultEnding` (a FINISHER_ENDINGS key) overrides how the default finisher ends, e.g. "body" so
+// it leaves the token Defeated instead of hiding it; the item's own finishers keep their ending.
+export function killFinisher(recipes, item = {}, defaultId = "", { crit = false, damageType = null, defaultEnding = "" } = {}) {
   const fits = (r) => passesSuccess(r.finisher, crit ? "criticalSuccess" : "success");
   const own = matchAny(recipes, item, ["kill", "criticalOrKill"]).find(fits);
   if (own) return own;
-  if (defaultId === BY_DAMAGE_TYPE) { const built = damageTypeFinisher(damageType); return built && fits(built) ? built : null; }
-  return live(recipes).find((r) => r.id === defaultId && fits(r)) ?? null;
+  const fallback = defaultId === BY_DAMAGE_TYPE ? damageTypeFinisher(damageType) : live(recipes).find((r) => r.id === defaultId);
+  if (!fallback || !fits(fallback)) return null;
+  return Object.hasOwn(FINISHER_ENDINGS, defaultEnding) && fallback.finisher.ending !== defaultEnding
+    // A finisher made to vanish that now keeps its body shows the body again once its pieces fade.
+    ? { ...fallback, finisher: { ...fallback.finisher, ending: defaultEnding, revealsBody: fallback.finisher.ending === "vanish" } } : fallback;
 }
 
 // The GM's finishers that a critical hit with this item plays (when no player pick plays instead).

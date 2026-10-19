@@ -351,3 +351,21 @@ test("the by-damage-type default plays the damage type's built-in finisher when 
   assert.equal(killFinisher(list, { itemName: "Dagger" }, "def", { damageType: "fire" }).id, "def", "another default ignores the damage type");
   assert.equal(killFinisher([fin("by-damage-type", "")], {}, "by-damage-type", { damageType: "fire" }).id, "builtin-cinders", "the built-in, not a finisher that happens to share the id");
 });
+
+test("the default finisher's ending can be overridden; the item's own finishers keep theirs", async () => {
+  const { planFinisher } = await import("../../../scripts/engines/finishers/finisher-play.mjs");
+  const own = fin("axe", "Greataxe", { ending: "vanish" }), def = fin("def", "", { ending: "vanish" });
+  const built = killFinisher([], { itemName: "Dagger" }, "by-damage-type", { damageType: "fire", defaultEnding: "body" });
+  assert.equal(built.id, "builtin-cinders");
+  assert.equal(built.finisher.ending, "body");
+  assert.equal(built.finisher.revealsBody, true, "made to vanish: its body shows again");
+  assert.equal(killFinisher([own, def], { itemName: "Dagger" }, "def", { defaultEnding: "body" }).finisher.ending, "body");
+  assert.equal(killFinisher([own, def], { itemName: "Greataxe" }, "def", { defaultEnding: "body" }).finisher.ending, "vanish", "the item's own finisher");
+  assert.equal(killFinisher([own, def], { itemName: "Dagger" }, "def", { defaultEnding: "" }).finisher.ending, "vanish", "as each finisher is made");
+  assert.equal(killFinisher([own, def], { itemName: "Dagger" }, "def", { defaultEnding: "nonsense" }).finisher.ending, "vanish");
+  // Its pieces no longer hold the real token hidden: the body comes back, then is marked Defeated.
+  const host = { gridSize: () => 100, trace: () => {} }, mover = { document: { x: 0, y: 0 }, center: { x: 50, y: 50 }, w: 100, h: 100 };
+  const held = (recipe) => planFinisher({ recipe, mover, dead: true }, host).composed.stages.filter((s) => s.motion === "fragments" && s.motionEnd === "hold").length;
+  assert.equal(held(killFinisher([], {}, "by-damage-type", { damageType: "fire" })), 1, "vanishing as made: the pieces hold it hidden");
+  assert.equal(held(built), 0);
+});
