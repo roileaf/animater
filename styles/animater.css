@@ -3191,3 +3191,15 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-media-view { margin: 8px 0; }
 .animater .an-media-view > summary { font-size: 11px; color: var(--an-muted); cursor: pointer; }
 .animater .an-setup-subtitle { margin: 18px 0 8px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--an-muted); }
+/* Window messages: errors red, things to do first amber, the rest fade on their own */
+.animater .an-toast.is-visible { display: flex; align-items: center; gap: 10px; }
+.animater .an-toast-close { margin-left: auto; width: auto; height: 22px; padding: 0 6px; border: 0; background: transparent; color: inherit; opacity: .7; }
+.animater .an-toast-close:hover { opacity: 1; }
+.animater .an-toast.is-error { background: #3a1f26; color: #ffc6cc; border-bottom-color: #7a3440; }
+.animater .an-toast.is-warn { background: #3a2f1c; color: #ffd9a3; border-bottom-color: #6e5428; }
+/* Keyframed path: the return-to-rest tail after the last keyframe */
+.animater .an-kf-return { position: absolute; top: 0; bottom: 0; right: 0; background: repeating-linear-gradient(135deg, rgba(255,255,255,.08) 0 4px, transparent 4px 8px); border-left: 1px dashed rgba(255,255,255,.35); pointer-events: none; }
+/* Plug & play chip: "N left out" filters the grid to those entries */
+.animater .an-plug-mode .an-plug-leftout { all: unset; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
+.animater .an-plug-mode .an-plug-leftout:hover, .animater .an-plug-mode .an-plug-leftout:focus-visible { color: var(--an-text, #fff); text-decoration-style: solid; }
+.animater .an-plug-mode .an-plug-leftout.is-on { color: #ffd9a3; text-decoration: none; padding: 0 5px; border-radius: 999px; background: rgba(255, 190, 90, .14); }

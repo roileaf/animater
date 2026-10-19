@@ -11,7 +11,7 @@ test("one quality badge, explained on hover, in every catalog", () => {
 });
 
 test("the Plug & play chip says whether the whole catalog plays or only picked entries", () => {
-  assert.match(plugModeHTML({ enabled: true, scope: "all", excluded: ["a", "b"] }, 500), /is-all[^>]*>Plug &amp; play: All on · 2 left out <small>of 500/);
+  assert.match(plugModeHTML({ enabled: true, scope: "all", excluded: ["a", "b"] }, 500), /is-all[^>]*>Plug &amp; play: All on · <button[^>]*catalog-left-out[^>]*>2 left out<\/button> <small>of 500/);
   assert.match(plugModeHTML({ enabled: true, scope: "selected", selected: ["a"], customized: ["a", "b"], excluded: [] }), /is-picked[^>]*>Plug &amp; play: 2 hand-picked/);
   assert.match(plugModeHTML({ enabled: false, scope: "all", excluded: [] }), /is-off[^>]*>Plug &amp; play: Off<\/span>/, "no count when nothing plays");
 });

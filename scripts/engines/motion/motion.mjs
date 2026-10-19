@@ -5,7 +5,9 @@ import { PATH_MOTIONS, HOLDING_MOTIONS, motionPhases, pathDistance } from "./mot
 import { easeValue } from "../../core/stage-options.mjs";
 // A keyframed path fills the whole motion when it holds; otherwise its last 15% eases back to
 // rest like every other gesture. A finisher's frame aims and shrinks it on every client alike.
-const PATH_RETURN = 0.15;
+export const PATH_RETURN = 0.15;
+// The share of a path stage's duration spent on the keyframes (the rest is the return to rest).
+export const pathSpan = (stage) => (stage?.motionEnd === "hold" ? 1 : 1 - PATH_RETURN);
 function pathPose(stage, p, direction, grid, holds) {
   const keyframes = stage.keyframes ?? DEFAULT_KEYFRAMES;
   const settle = holds || p <= 1 - PATH_RETURN ? 1 : 1 - settledProgress((p - (1 - PATH_RETURN)) / PATH_RETURN);

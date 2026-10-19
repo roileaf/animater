@@ -22,13 +22,20 @@ export const PLUG = Object.freeze({
   picked: (count) => (count ? `${count} hand-picked` : "Off"),
 });
 // The chip above a catalog grid: whether the whole catalog plays, or only picked entries.
-export function plugModeHTML(state, total) {
+// With the whole catalog on, "N left out" is a button that shows only those entries (leftOutOnly).
+export function plugModeHTML(state, total, showingLeftOut = false) {
   const all = state?.enabled && state.scope === "all";
   const picked = state?.enabled && !all ? [...new Set([...(state.selected ?? []), ...(state.customized ?? [])])].length : 0;
-  const text = all ? PLUG.allOn(state.excluded?.length ?? 0) : PLUG.picked(picked);
+  const out = all ? state.excluded?.length ?? 0 : 0;
+  const text = all ? PLUG.allOn(0) : PLUG.picked(picked);
+  const leftOut = out ? ` · <button type="button" class="an-plug-leftout${showingLeftOut ? " is-on" : ""}" data-action="catalog-left-out" aria-pressed="${showingLeftOut}" data-tooltip="${showingLeftOut ? "Show every entry again" : "Show only the entries left out"}">${out.toLocaleString()} left out${showingLeftOut ? " ✕" : ""}</button>` : "";
   const tip = all ? "Every entry plays automatically; ⊘ on a card leaves it out." : picked ? "Only the entries marked ✓ play automatically." : "Nothing here plays automatically yet: turn on the whole catalog, or ✓ entries one by one.";
-  return `<span class="an-plug-mode ${all ? "is-all" : picked ? "is-picked" : "is-off"}" data-tooltip="${esc(tip)}">${esc(PLUG.name)}: ${esc(text)}${total && (all || picked) ? ` <small>of ${Number(total).toLocaleString()}</small>` : ""}</span>`;
+  return `<span class="an-plug-mode ${all ? "is-all" : picked ? "is-picked" : "is-off"}" data-tooltip="${esc(tip)}">${esc(PLUG.name)}: ${esc(text)}${leftOut}${total && (all || picked) ? ` <small>of ${Number(total).toLocaleString()}</small>` : ""}</span>`;
 }
+
+// The catalog page showing only its left-out entries (toggled by the chip's "N left out").
+export const showingLeftOut = (w, state) => !!state?.enabled && state.scope === "all" && !!state.excluded?.length && w?.leftOutView === w?.page;
+export const leftOutOnly = (w, state, list) => (showingLeftOut(w, state) ? list.filter((entry) => state.excluded.includes(entry.id)) : list);
 
 // ── An entry's panel ────────────────────────────────────────────────────────
 // One status line saying whether this entry plays, then the buttons that change that.

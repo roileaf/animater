@@ -369,3 +369,10 @@ test("the default finisher's ending can be overridden; the item's own finishers 
   assert.equal(held(killFinisher([], {}, "by-damage-type", { damageType: "fire" })), 1, "vanishing as made: the pieces hold it hidden");
   assert.equal(held(built), 0);
 });
+
+test("a built-in preset can be the default finisher without copying it", () => {
+  const played = killFinisher([], { itemName: "Dagger" }, "preset:shatter");
+  assert.equal(played.id, "builtin-shatter");
+  assert.equal(played.name, "Shatter");
+  assert.equal(killFinisher([], {}, "preset:no-such-preset"), null);
+});

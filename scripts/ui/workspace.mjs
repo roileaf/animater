@@ -158,6 +158,13 @@ export function resetInspectorTab(id, stage) {
 }
 import { teleportPlan, teleportVisuals, teleportStyle, TELEPORT_STYLES, TELEPORT_WHO } from "../engines/motion/teleport.mjs";
 // A GM whose table plays nothing automatically yet starts on Setup, where the catalogs are turned on.
+// How a window message reads: "error" (something failed), "warn" (something to do first) or "ok".
+// Errors and warnings stay until dismissed; "ok" messages fade after a few seconds.
+const TODO = /^(Select|Choose|Only a|Only the|Nothing to|Nothing copied|That field|Those stages|Move the playhead|A keyframe is|Type the|Lasting animations take|Open a scene|Save your customization|Configure)/;
+export function messageTone(message, error) {
+  if (error && message === error) return "error";
+  return TODO.test(String(message ?? "")) ? "warn" : "ok";
+}
 export function firstPage(host) {
   try { return !host.playerMode && host.acceptsEvents?.() === false ? "setup" : "recipes"; } catch { return "recipes"; }
 }
@@ -643,7 +650,20 @@ export class Workspace {
   }
   // The PF2e catalog page on screen: the page itself in a PF2e world, a borrowed pf2e-* page in an SF2e one.
   pf2ePage() { return pf2eCatalogPage(this.page, this.host.environment?.() ?? {}); }
-  render() { return withRenderMemo(this, () => this.renderPage()); }
+  render() { const out = withRenderMemo(this, () => this.renderPage()); this.scheduleMessageFade(); return out; }
+  // An "ok" message fades after a few seconds; errors and warnings wait to be dismissed.
+  scheduleMessageFade() {
+    clearTimeout(this.messageFade);
+    const shown = this.message;
+    if (!shown || messageTone(shown, this.messageError) !== "ok") return;
+    this.messageFade = setTimeout(() => {
+      if (this.message !== shown) return;
+      this.message = "";
+      const toast = this.root?.querySelector?.(".an-toast");
+      if (toast) { toast.classList.remove("is-visible", "is-ok"); toast.textContent = ""; }
+    }, 4500);
+    this.messageFade?.unref?.();
+  }
   renderPage() {
     if(this.page!=='assets'||this.mediaLibrary?.fxScene)void this.mediaLibrary?.stopTokenPreview();
     if(!catalogPageAllowed(this.page,this.host.environment()))this.page='recipes';
@@ -701,7 +721,7 @@ export class Workspace {
         <div class="an-nav-bottom"><div class="an-pack"><span class="an-dot ${env.ready && env.jb2aRegistered !== false ? "is-ready" : ""}" ${env.jb2aRegistered === false ? `data-tooltip="${esc(env.pack)} is active, but Sequencer has no JB2A animations. See Setup."` : ""}></span><div>${esc(env.pack)}<small>${this.host.catalog().length.toLocaleString()} asset variants</small></div></div><button data-action="stop" class="an-stop">■ Stop my effects</button><small class="an-version">${env.version ? `v${esc(env.version)} · ` : ""}${esc(env.system)}${env.demo ? " · PREVIEW" : ""}</small></div>
       </aside>
       <main class="an-main">${this.isStudio() || (this.page === "flash" && (this.flashEditor?.editing || !this.host.flashScreens)) ? "" : `<header class="an-header"><div><div class="an-eyebrow">${this.page === "recipes" ? "YOUR EFFECTS, YOUR STYLE" : this.page === "finishers" ? "FINISHING BLOWS, YOUR WAY" : this.page === "flash" ? "TITLE CARDS FOR EVERY FIGHT" : "ANIMATER WORKSPACE"}</div><h1>${esc(catalogPageTitle(this.page,env))}</h1></div><div class="an-header-actions">${this.page === "recipes" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new" class="an-primary">+ New recipe</button>` : this.page === "finishers" ? `<button data-action="new-finisher" class="an-primary">+ New finisher</button>` : this.page === "builder" ? `<button data-action="cancel-builder">Back to recipes</button>` : this.page === "flash" ? this.flashEditor?.showGallery ? "" : `<button data-action="flash-export" class="an-quiet" ${this.host.flashScreens().length ? "" : "disabled"}>↗ Export</button><button data-action="flash-import" class="an-quiet">↙ Import</button><button data-action="flash-new" class="an-primary">+ New flash screen</button>` : ""}</div></header>`}
-        <div role="status" aria-live="polite" class="an-toast ${this.message ? "is-visible" : ""}">${esc(this.message)}</div>
+        <div role="status" aria-live="polite" class="an-toast ${this.message ? `is-visible is-${messageTone(this.message, this.messageError)}` : ""}">${esc(this.message)}${this.message ? `<button type="button" class="an-toast-close" data-action="dismiss-message" aria-label="Dismiss message">✕</button>` : ""}</div>
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
@@ -854,9 +874,9 @@ export class Workspace {
     this.stageIndex = stageIndex; this.keyframeIndex = index; this.keyframeFocus = true;
     const kfs = keyframesOf(this.recipe()?.stages[stageIndex]);
     if (index === 0 || index === kfs.length - 1 || !bar) { this.render(); return; }
-    const rect = bar.getBoundingClientRect();
+    const rect = bar.getBoundingClientRect(), span = Number(diamond.parentElement?.dataset.kfSpan) || 1;
     let at = kfs[index].at, moved = false;
-    const move = (ev) => { moved = true; at = Math.min(1, Math.max(0, (ev.clientX - rect.left) / Math.max(1, rect.width))); diamond.style.left = `${(at * 100).toFixed(2)}%`; };
+    const move = (ev) => { moved = true; at = Math.min(1, Math.max(0, (ev.clientX - rect.left) / Math.max(1, rect.width) / span)); diamond.style.left = `${(at * span * 100).toFixed(2)}%`; };
     const up = () => {
       diamond.removeEventListener("pointermove", move); diamond.removeEventListener("pointerup", up); diamond.removeEventListener("pointercancel", up);
       const s = moved ? this.edit()?.stages[stageIndex] : null;
@@ -2805,6 +2825,8 @@ export class Workspace {
         this.host.pickMedia("image", input.value, (path) => { input.value = path; input.dispatchEvent(new Event("change", { bubbles: true })); });
         return;
       }
+      if (action === "catalog-left-out") { this.leftOutView = this.leftOutView === this.page ? null : this.page; this.render(); return; }
+      if (action === "dismiss-message") { this.message = ""; this.messageError = null; this.render(); return; }
       if (action === "activity-filter") { this.activityFilter = b.dataset.filter; this.render(); return; }
       if (action === "activity-fix") {
         if (b.dataset.fixAction === "new") { this.page = "recipes"; this.newChooser = true; this.render(); return; }
@@ -3334,6 +3356,7 @@ export class Workspace {
     } catch (error) {
       this.busy = false;
       this.message = error.message;
+      this.messageError = error.message;
       // The window may have been tucked away for playback: say why nothing played.
       if (action === "play" || action === "preview") globalThis.ui?.notifications?.warn(`Animater: ${error.message}`);
       if (action === "review-import") {

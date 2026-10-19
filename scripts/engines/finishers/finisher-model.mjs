@@ -3,7 +3,7 @@ import { rollPrivacy, hidden } from "../../core/privacy.mjs";
 // Applies-to reuses recipe matching: comma-separated names in `match`, or one exact itemUuid.
 import { normalize, FINISHER_ON, FINISHER_ENDINGS } from "../../core/model.mjs";
 import { pathSquares, landsTilted } from "../motion/keyframe-path.mjs";
-import { BY_DAMAGE_TYPE, damageTypeFinisher } from "./finisher-presets.mjs";
+import { BY_DAMAGE_TYPE, damageTypeFinisher, FINISHER_PRESETS, presetFinisher } from "./finisher-presets.mjs";
 
 const names = (r) => String(r.match ?? "").split(",").map((n) => n.trim()).filter(Boolean);
 const live = (recipes) => recipes.filter((r) => r?.finisher && r.enabled !== false);
@@ -26,7 +26,11 @@ export function killFinisher(recipes, item = {}, defaultId = "", { crit = false,
   const fits = (r) => passesSuccess(r.finisher, crit ? "criticalSuccess" : "success");
   const own = matchAny(recipes, item, ["kill", "criticalOrKill"]).find(fits);
   if (own) return own;
-  const fallback = defaultId === BY_DAMAGE_TYPE ? damageTypeFinisher(damageType) : live(recipes).find((r) => r.id === defaultId);
+  // "preset:<id>": a built-in preset used as the default as it is, without copying it first.
+  const preset = String(defaultId).startsWith("preset:") ? String(defaultId).slice(7) : null;
+  const fallback = defaultId === BY_DAMAGE_TYPE ? damageTypeFinisher(damageType)
+    : preset ? (Object.hasOwn(FINISHER_PRESETS, preset) ? presetFinisher(preset, `builtin-${preset}`) : null)
+    : live(recipes).find((r) => r.id === defaultId);
   if (!fallback || !fits(fallback)) return null;
   return Object.hasOwn(FINISHER_ENDINGS, defaultEnding) && fallback.finisher.ending !== defaultEnding
     // A finisher made to vanish that now keeps its body shows the body again once its pieces fade.

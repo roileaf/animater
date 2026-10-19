@@ -156,7 +156,7 @@ test("Needs shows only for Every successful use and Killing blow, each with its 
 
 test("Available to says a player's pick replaces Applies-to for that item", () => {
   const html = finisherSettingsHTML(fin("a", "X"), { playerPicks: true, players: [{ id: "u1", name: "Ana", color: "#f00" }] });
-  assert.match(html, /<p class="an-hint">Chosen players can pick this finisher for their own items in Combater\. A player's pick replaces Applies-to for that item; with no pick, Applies-to and the default finisher still play\.<\/p>/);
+  assert.match(html, /<p class="an-hint">Chosen players can pick this finisher for their own items in PF2e Combater's item sheet \(needs the PF2e Combater module\)\. A player's pick replaces Applies-to for that item; with no pick, Applies-to and the default finisher still play\.<\/p>/);
   assert.doesNotMatch(html, /The GM always can/);
 });
 
@@ -477,7 +477,10 @@ test("finisherGlyphSVG sketches the damage patterns and hints the damage behavio
 
 test("the default finisher select offers By damage type, with its hint while chosen", () => {
   const plain = pageOf([fin("a", "X")]);
-  assert.match(plain, /<select data-finisher-default><option value="">None \(plain collapse\)<\/option><option value="by-damage-type" >By damage type \(built-in\)<\/option><option value="a" >Fin a<\/option>/);
+  assert.match(plain, /<select data-finisher-default><option value="">None \(plain collapse\)<\/option><option value="by-damage-type" >By damage type \(built-in\)<\/option><optgroup label="Your finishers"><option value="a" >Fin a<\/option><\/optgroup><optgroup label="Built-in · Flung"><option value="preset:launch" >Launch<\/option>/);
+  const preset = pageOf([], { def: "preset:shatter" });
+  assert.match(preset, /<option value="preset:shatter" selected>Shatter<\/option>/);
+  assert.match(preset, /Plays the built-in Shatter as it is/);
   assert.doesNotMatch(plain, /data-finisher-default-hint/);
   const chosen = pageOf([fin("a", "X")], { def: "by-damage-type" });
   assert.match(chosen, /<option value="by-damage-type" selected>By damage type \(built-in\)<\/option>/);

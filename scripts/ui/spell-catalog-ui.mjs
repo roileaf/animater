@@ -1,4 +1,4 @@
-import { qualityBadgeHTML, qualityLabel, QUALITY, plugModeHTML, catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } from "../catalogs/shared/catalog-terms.mjs";
+import { qualityBadgeHTML, qualityLabel, QUALITY, plugModeHTML, leftOutOnly, showingLeftOut, catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } from "../catalogs/shared/catalog-terms.mjs";
 import { pf2eCatalogsLive } from "../catalogs/shared/catalog-system.mjs";
 import { catalogNameHTML, cardToggleHTML, cardSlotClass } from "../catalogs/shared/catalog-details.mjs";
 import { finisherLinkHTML } from "./finisher-ui.mjs";
@@ -43,7 +43,7 @@ const select = (field, label, values, current) =>
     .join("")}</select></label>`;
 export function spellCatalogHTML(w) {
   const filter = w.spellFilters;
-  const matches = filterSpells(filter);
+  const matches = leftOutOnly(w, normalizeCatalogState(w.host.catalogState?.()), filterSpells(filter));
   const pages = Math.max(1, Math.ceil(matches.length / 36));
   w.spellPage = Math.min(w.spellPage, pages - 1);
   if (!matches.some((s) => s.id === w.selectedSpell))
@@ -78,7 +78,7 @@ export function spellCatalogHTML(w) {
     ${soundSettingsHTML(w, state)}
     </div>${state.motion !== false ? motionSyncNoticeHTML(env) : ""}
     ${state.enabled && !state.independent && !w.host.enabled() ? `<p class="an-hint an-sync-notice">Also turn on Automatic playback in Setup to receive roll events.</p>` : ""}
-    <div class="an-section-title"><span>${matches.length.toLocaleString()} results</span>${plugModeHTML(state)}<button class="an-text-button" data-action="catalog-reset">Reset filters</button></div>
+    <div class="an-section-title"><span>${matches.length.toLocaleString()} results</span>${plugModeHTML(state, 0, showingLeftOut(w, state))}<button class="an-text-button" data-action="catalog-reset">Reset filters</button></div>
     <div class="an-spell-grid">${current.map((spell) => `<div class="an-card-slot${cardSlotClass(state, spell.id)}"><button class="an-spell-card ${spell.id === chosen?.id ? "is-selected" : ""}" style="--effect:${SPELL_THEMES[spell.theme].color}" data-action="select-spell" data-id="${spell.id}" aria-pressed="${spell.id === chosen?.id}"><img loading="lazy" src="${esc(w.host.imageURL?.(spell.img) ?? spell.img)}" alt=""><div><b>${esc(spell.name)}</b><small>${spell.kind === "cantrip" ? "Cantrip" : `Rank ${spell.rank}`} · ${esc(spell.kind === "spell" ? spell.edition : spell.kind)} · ${esc(SPELL_THEMES[spell.theme].label)}</small>${qualityBadgeHTML(spell.quality)}</div></button>${cardToggleHTML(state, "catalog-exclude", "card-include", spell)}</div>`).join("") || `<div class="an-empty">No spells match.<small>Try fewer filters.</small></div>`}</div>
     <div class="an-catalog-pagination"><button data-action="catalog-page" data-index="${w.spellPage - 1}" ${w.spellPage === 0 ? "disabled" : ""}>← Previous</button><span>Page ${w.spellPage + 1} of ${pages}</span><button data-action="catalog-page" data-index="${w.spellPage + 1}" ${w.spellPage === pages - 1 ? "disabled" : ""}>Next →</button></div>
     <p class="an-hint an-catalog-source">PF2e ${PF2E_SOURCE.version} · ${PF2E_SOURCE.kinds.cantrip} cantrips · ${PF2E_SOURCE.kinds.focus} focus · ${PF2E_SOURCE.kinds.ritual} rituals. Curated entries use explicit spell mappings; themed entries use description cues and native spell fields; symbolic entries provide casting cues for complex or utility effects. No rules automation added.</p>

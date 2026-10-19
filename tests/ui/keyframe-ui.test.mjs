@@ -140,3 +140,16 @@ test("the Path easing select omits the overshooting back eases; per-keyframe spe
   assert.match(kfSel, /value="easeOutBack"/);
   assert.match(kfSel, /value="easeInBack"/);
 });
+
+test("diamonds sit where playback reaches each keyframe; a returning path shows its tail", async () => {
+  const { keyframeDiamondsHTML, pathPoints } = await import("../../scripts/ui/keyframe-ui.mjs");
+  const keyframes = [{ at: 0, x: 0, y: 0 }, { at: 0.5, x: 1, y: 0 }, { at: 1, x: 2, y: 0 }];
+  const back = keyframeDiamondsHTML({ motion: "path", keyframes }, 0, 0);
+  assert.match(back, /data-kf-span="0.85"/);
+  assert.match(back, /an-kf-return" style="left:85.00%"/);
+  assert.match(back, /left:42.50%/);
+  const hold = keyframeDiamondsHTML({ motion: "path", motionEnd: "hold", keyframes }, 0, 0);
+  assert.doesNotMatch(hold, /an-kf-return/);
+  assert.match(hold, /left:50.00%/);
+  assert.equal(pathPoints(keyframes).split(" ").length, 61);
+});

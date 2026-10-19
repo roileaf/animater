@@ -8,7 +8,7 @@ import { finisherChipText } from "../engines/finishers/finisher-model.mjs";
 import { KINDS, EVENTS, STRIKE_SCOPES, MAX_STAGES, validateRecipe, clone } from "../core/model.mjs";
 import { timelineLayout, packLanes, linkStartModes } from "../engines/playback/choreography.mjs";
 import { sampleRecipe, timedStages, previewVariants, variantMembers } from "../engines/playback/composition.mjs";
-import { canvasToSquares, keyframesOf, scrubPoint, keyframeDeleteApplies } from "./keyframe-ui.mjs";
+import { canvasToSquares, keyframesOf, scrubPoint, keyframeDeleteApplies, pathPoints } from "./keyframe-ui.mjs";
 import { moveKeyframePoint, deleteKeyframe, normalizeKeyframes } from "../engines/motion/keyframe-path.mjs";
 import { previewRecipeSounds } from "../engines/sound/spell-sounds.mjs";
 import { RecipePreview } from "../engines/preview/recipe-preview.mjs";
@@ -358,7 +358,15 @@ export function studioPointer(w, e) {
     const index = Number(dot.dataset.kfDot), stageIndex = w.stageIndex, recipeId = w.recipe()?.id;
     w.keyframeIndex = index; w.keyframeFocus = true;
     let last = null;
-    const move = (ev) => { last = canvasToSquares(ev, svg.getBoundingClientRect(), { x: vx, y: vy, w: vw, h: vh }); last.whole = ev.shiftKey; dot.setAttribute("cx", last.x); dot.setAttribute("cy", last.y); };
+    const start = normalizeKeyframes(w.recipe()?.stages[stageIndex]?.keyframes), curve = svg.querySelector?.(".an-kf-curve"), ghost = svg.querySelectorAll?.(".an-kf-ghost")?.[index];
+    // The curve and the token ghost follow the dot while it moves, not only on release.
+    const move = (ev) => {
+      last = canvasToSquares(ev, svg.getBoundingClientRect(), { x: vx, y: vy, w: vw, h: vh }); last.whole = ev.shiftKey;
+      const kfs = moveKeyframePoint(start, index, last.x, last.y, last.whole), k = kfs[index] ?? last;
+      dot.setAttribute("cx", k.x); dot.setAttribute("cy", k.y);
+      curve?.setAttribute("points", pathPoints(kfs));
+      ghost?.setAttribute("transform", `translate(${k.x} ${k.y}) rotate(${k.rotation ?? 0}) scale(${k.scale ?? 1})`);
+    };
     const up = (ev) => {
       dot.removeEventListener("pointermove", move); dot.removeEventListener("pointerup", up); dot.removeEventListener("pointercancel", up);
       // A cancelled drag commits nothing, and neither does one whose recipe or stage was swapped

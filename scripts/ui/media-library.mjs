@@ -38,7 +38,8 @@ export function libraryPreferences(value = {}) {
   return {favorites:ids(value.favorites,500),recent:ids(value.recent,60),custom:(Array.isArray(value.custom)?value.custom:[]).map(libraryItem).filter(item=>item&&item.type!=='tokenfx').slice(0,500),sources:mediaFolderSources(value.sources)};
 }
 // Colors that vanish on the dark preview grid: shown on a light background until a background is picked.
-const DARK_COLORS = new Set(['black','grey','gray','dark','darkblue','darkpurple','darkred','dark_red','dark_purple','dark_blue','purple','blue','bluepurple','greenpurple','purplered','brown']);
+// Only art that vanishes on the dark backdrop gets the light one; blue, purple and grey read fine on dark.
+const DARK_COLORS = new Set(['black','dark','darkblue','darkpurple','darkred','darkgreen','dark_red','dark_purple','dark_blue','dark_green','dark_black']);
 // One chip per label: two variants that read the same ("complete", "complete") show once, the
 // selected one kept.
 const uniqueChips = (chips) => { const seen = new Map(); for (const c of chips) if (!seen.has(c.label) || c.selected) seen.set(c.label, c); return [...seen.values()]; };

@@ -568,11 +568,14 @@ test('an empty stage opens on its track\'s category, shown as a chip that clears
   assert.equal(f.library.filters.category, 'all');
 });
 
-test('a dark effect previews on a light background until you choose one', () => {
+test('a black or dark_* effect previews on a light background until you choose one; blue stays on dark', () => {
   const f = libraryFixture();
-  const dark = f.library.items.find((v) => v.type === 'animation' && ['blue', 'purple', 'black', 'grey', 'darkpurple'].includes(v.color));
-  assert.ok(dark, 'the fixture has a dark animation');
+  const dark = f.library.items.find((v) => v.type === 'animation');
+  assert.ok(dark, 'the fixture has an animation');
   f.library.selectedId = dark.id;
+  dark.color = 'blue';
+  assert.notEqual(/an-media-detail-body[\s\S]*?class="an-media-preview" data-background="(\w+)"/.exec(f.library.detail(dark, null, f.draft))?.[1], 'light', 'blue reads fine on the dark backdrop');
+  dark.color = 'dark_purple';
   const bg = () => /an-media-detail-body[\s\S]*?class="an-media-preview" data-background="(\w+)"/.exec(f.library.detail(dark, null, f.draft))?.[1];
   assert.equal(bg(), 'light', dark.color);
   f.library.preview.backgroundChosen = true; f.library.preview.background = 'dark';

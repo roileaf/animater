@@ -1,4 +1,4 @@
-import { qualityBadgeHTML, qualityLabel, QUALITY, plugModeHTML, catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } from "../catalogs/shared/catalog-terms.mjs";
+import { qualityBadgeHTML, qualityLabel, QUALITY, plugModeHTML, leftOutOnly, showingLeftOut, catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } from "../catalogs/shared/catalog-terms.mjs";
 import { pf2eCatalogsLive } from "../catalogs/shared/catalog-system.mjs";
 import { finisherLinkHTML } from "./finisher-ui.mjs";
 import {
@@ -64,7 +64,7 @@ export function featCatalogHTML(w, profile = ABILITY_PAGE_PROFILES.feats) {
   const p = profile, catalog = p.catalog, key = p.key;
   const filter = w[p.filtersKey] ??= defaultAbilityFilters();
   w[p.pageKey] ??= 0;
-  const matches = catalog.filter(filter);
+  const matches = leftOutOnly(w, catalog.normalizeState(w.host[p.stateKey]?.()), catalog.filter(filter));
   const pages = Math.max(1, Math.ceil(matches.length / 36));
   w[p.pageKey] = Math.max(0, Math.min(w[p.pageKey], pages - 1));
   if (!matches.some((f) => f.id === w[p.selectedKey])) w[p.selectedKey] = matches[0]?.id;
@@ -86,7 +86,7 @@ export function featCatalogHTML(w, profile = ABILITY_PAGE_PROFILES.feats) {
     <div class="an-catalog-controls"><div class="an-catalog-automation"><div><b>Plug &amp; play</b><small>${env.demo ? "Enable inside a PF2e world." : env.systemId !== "pf2e" ? `Automatic ${p.plural} require PF2e.` : allRunning ? `${state.excluded.length} excluded · manual entries stay manual` : running ? `${selectedCount} selected ${p.plural} enabled` : `Send an active ${p.noun} to chat · no recipe setup`}</small></div><button class="${allRunning ? "an-quiet" : "an-primary"}" data-action="${key}-auto" ${!canConfigure ? "disabled" : ""}>${allRunning ? `Pause ${p.noun} catalog` : `Use ${p.noun} catalog`}</button>${running && !allRunning ? `<button class="an-quiet" data-action="${key}-pause" ${!canConfigure ? "disabled" : ""}>Pause</button>` : ""}</div>
     <div class="an-catalog-automation"><div><b>Token motion</b><small>Readable gestures and reactions. Game positions stay intact.</small></div><button role="switch" aria-checked="${state.motion !== false}" aria-label="${p.label} catalog token motion" class="${state.motion !== false ? "an-primary" : "an-quiet"}" data-action="${key}-motion" ${!canConfigure ? "disabled" : ""}>${state.motion !== false ? "On" : "Effects only"}</button></div>
     ${abilitySoundSettingsHTML(w, state, key)}
-    </div>${state.motion !== false ? motionSyncNoticeHTML(env) : ""}<div class="an-section-title"><span>${matches.length.toLocaleString()} result${matches.length === 1 ? "" : "s"}</span>${plugModeHTML(state)}<button class="an-text-button" data-action="${key}-reset">Reset filters</button></div>
+    </div>${state.motion !== false ? motionSyncNoticeHTML(env) : ""}<div class="an-section-title"><span>${matches.length.toLocaleString()} result${matches.length === 1 ? "" : "s"}</span>${plugModeHTML(state, 0, showingLeftOut(w, state))}<button class="an-text-button" data-action="${key}-reset">Reset filters</button></div>
     <div class="an-spell-grid">${current.map((feat) => `<div class="an-card-slot${cardSlotClass(state, feat.id)}"><button class="an-spell-card ${feat.id === chosen?.id ? "is-selected" : ""}" style="--effect:${theme(feat).color}" data-action="select-${key}" data-id="${esc(feat.id)}" aria-pressed="${feat.id === chosen?.id}"><img loading="lazy" src="${esc(w.host.imageURL?.(feat.img) ?? feat.img)}" alt=""><div><b>${esc(feat.name)}</b><small>Level ${feat.level} · ${esc(feat.rider ? "Damage rider" : activity(feat))} · ${esc(theme(feat).label)}</small>${qualityBadgeHTML(feat.quality)}</div></button>${cardToggleHTML(state, `${key}-exclude`, "card-include", feat)}</div>`).join("") || `<div class="an-empty">No active ${p.plural} match.<small>Try fewer filters.</small></div>`}</div>
     <div class="an-catalog-pagination"><button data-action="${key}-page" data-index="${w[p.pageKey] - 1}" ${w[p.pageKey] === 0 ? "disabled" : ""}>← Previous</button><span>Page ${w[p.pageKey] + 1} of ${pages}</span><button data-action="${key}-page" data-index="${w[p.pageKey] + 1}" ${w[p.pageKey] === pages - 1 ? "disabled" : ""}>Next →</button></div>
     <p class="an-hint an-catalog-source">PF2e ${esc(catalog.source.version)}. Description-based visual cues; gameplay, prerequisites and action costs stay with PF2e. ${esc(p.sourceNote)}</p>

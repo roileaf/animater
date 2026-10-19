@@ -2,15 +2,18 @@
 import { EASES } from "../core/stage-options.mjs";
 import { samplePath, DEFAULT_KEYFRAMES, landsTilted, pathSquares, PATH_PRESETS } from "../engines/motion/keyframe-path.mjs";
 import { landingSteps } from "../engines/motion/displacement.mjs";
-import { motionPose } from "../engines/motion/motion.mjs";
+import { motionPose, pathSpan } from "../engines/motion/motion.mjs";
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 export const keyframesOf = (s) => (Array.isArray(s?.keyframes) && s.keyframes.length >= 2 ? s.keyframes : DEFAULT_KEYFRAMES);
 const n2 = (v) => Math.round(v * 1000) / 1000;
 
+// Diamonds sit where playback reaches each keyframe: a path that returns to rest spends its last
+// 15% easing back, shown as a shaded tail after the last keyframe.
 export function keyframeDiamondsHTML(s, stageIndex, selected) {
-  const kfs = keyframesOf(s);
-  return `<span class="an-kf-diamonds">${kfs.map((k, i) => `<span class="an-kf-diamond${i === selected ? " is-on" : ""}${i === 0 || i === kfs.length - 1 ? " is-fixed" : ""}" data-kf-diamond="${i}" data-kf-stage="${stageIndex}" style="left:${(k.at * 100).toFixed(2)}%" data-tooltip="Keyframe ${i + 1}${i === 0 || i === kfs.length - 1 ? " (fixed)" : " · drag to retime"}"></span>`).join("")}</span>`;
+  const kfs = keyframesOf(s), span = pathSpan(s);
+  const tail = span < 1 ? `<span class="an-kf-return" style="left:${(span * 100).toFixed(2)}%" data-tooltip="Returns to rest"></span>` : "";
+  return `<span class="an-kf-diamonds" data-kf-span="${span}">${tail}${kfs.map((k, i) => `<span class="an-kf-diamond${i === selected ? " is-on" : ""}${i === 0 || i === kfs.length - 1 ? " is-fixed" : ""}" data-kf-diamond="${i}" data-kf-stage="${stageIndex}" style="left:${(k.at * span * 100).toFixed(2)}%" data-tooltip="Keyframe ${i + 1}${i === 0 || i === kfs.length - 1 ? " (fixed)" : " · drag to retime"}"></span>`).join("")}</span>`;
 }
 
 // A square view (in squares) holding the whole curve, the token and a margin.
@@ -34,8 +37,11 @@ export function squaresToCanvas({ x, y }, rect, view) {
   return { x: rect.left + offX + (x - view.x) * scale, y: rect.top + offY + (y - view.y) * scale };
 }
 
+// The curve as SVG polyline points, sampled along the keyframes.
+export const pathPoints = (kfs) => Array.from({ length: 61 }, (_, n) => samplePath(kfs, n / 60)).map((p) => `${n2(p.x)},${n2(p.y)}`).join(" ");
+
 export function pathCanvasHTML(s, { selected = -1, finisher = null } = {}) {
-  const kfs = keyframesOf(s), v = canvasView(kfs), curve = Array.from({ length: 61 }, (_, n) => samplePath(kfs, n / 60));
+  const kfs = keyframesOf(s), v = canvasView(kfs);
   const grid = [];
   for (let x = Math.ceil(v.x); x <= v.x + v.w; x++) grid.push(`<line x1="${x}" y1="${v.y}" x2="${x}" y2="${v.y + v.h}"/>`);
   for (let y = Math.ceil(v.y); y <= v.y + v.h; y++) grid.push(`<line x1="${v.x}" y1="${y}" x2="${v.x + v.w}" y2="${y}"/>`);
@@ -49,7 +55,7 @@ export function pathCanvasHTML(s, { selected = -1, finisher = null } = {}) {
     <svg viewBox="${v.x} ${v.y} ${v.w} ${v.h}" preserveAspectRatio="xMidYMid meet">
       <g class="an-kf-grid">${grid.join("")}</g>${landing}
       <line class="an-kf-axis" x1="0" y1="0" x2="1.2" y2="0"/>
-      <polyline class="an-kf-curve" points="${curve.map((p) => `${n2(p.x)},${n2(p.y)}`).join(" ")}"/>
+      <polyline class="an-kf-curve" points="${pathPoints(kfs)}"/>
       ${kfs.map(ghost).join("")}
       <circle class="an-kf-origin" cx="0" cy="0" r="0.42"/>
       ${kfs.map((k, i) => (i === 0 ? "" : `<circle class="an-kf-dot${i === selected ? " is-on" : ""}" data-kf-dot="${i}" cx="${k.x}" cy="${k.y}" r="0.16"/>`)).join("")}
