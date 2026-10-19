@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.3.2 (2026-10-19)
 
 - **Choose how the default finisher ends.** A new *Default finisher ends* select under *Default finisher for other kills* overrides its ending, e.g. **Body (stays, Defeated)** so the damage-type finishers break the creature apart and then leave its token on the ground, Defeated, instead of hiding it. Finishers assigned to items keep their own ending.
+- **Finishers trigger on strikes granted by feats and stances**, such as the monk's Tiger Claw from Tiger Stance. Their damage was read as the feat (Tiger Stance), so a kill finisher assigned to the strike never played.
 
 ## 1.3.1 (2026-10-18)
 
