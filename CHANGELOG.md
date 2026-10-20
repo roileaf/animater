@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.4 (2026-10-20)
 
 - **Hovering and selecting tokens no longer stutters lasting animations.** Animater re-checked every token's lasting animations each time Foundry refreshed a token, which it does many times a second while you move the mouse over tokens. It now re-checks only when something they depend on changes (the token shown or hidden, redrawn, resized, new art or actor), so busy scenes stay smooth.
 
