@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.7 (2026-10-20)
+
+- **Customizing persistent damage now says which damage type it covers.** Customize already made a copy for the previewed type only, such as fire, but nothing said so. The button now reads **Customize Fire**, the copy is named **Persistent Damage (Fire)**, and its editor has a **Damage type** choice, so a copy made for the wrong type can be switched (for example from Bleed to Fire) and given its own Lasting animation choice. Other damage types keep the catalog version.
+
 ## 1.4.6 (2026-10-20)
 
 - **You can hide the Animater button in the token controls** ([#9](https://github.com/roileaf/animater/issues/9)). Turn off **Show Animater scene control button** in the module settings. Each player chooses for their own screen, and Alt+Shift+A still opens Animater.
