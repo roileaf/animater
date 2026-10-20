@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.5 (2026-10-20)
 
 - **The canvas no longer freezes for good after a token motion** (since 1.4.3). When two of Animater's token motions finished in the same frame, such as a spell's target shake on a dying creature, Foundry stopped drawing the canvas while the rest of the interface kept working, until a reload.
 
