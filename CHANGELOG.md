@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.1 (2026-10-20)
 
 - **Your version of a catalog action plays.** A customized copy of an action rolled as a skill check (Demoralize, Shove, Trip, Grapple, Force Open…) now plays instead of the catalog default, so removing Demoralize's battle cry sticks. Pausing your version silences the default too. PF2e and SF2e.
 - **Conditions and effects set to play once stay quiet** while they last, even when the token is hidden and seen again (selecting another observer, line of sight changes) or redrawn. Removing and reapplying one plays it again. D&D 5e and Daggerheart states, and auras, now also stay quiet after a reload.
