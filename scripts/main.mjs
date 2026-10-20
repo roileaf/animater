@@ -15,6 +15,7 @@ import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
+import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -1185,6 +1186,14 @@ Hooks.once("init", () => {
     type: Boolean,
     default: false,
   });
+  game.settings.register(ID, MOTION_PRIORITY, {
+    name: "Animater's token motions come first",
+    hint: "While Animater moves a token (a finisher or attack, a condition's trembling or swaying, a look that rocks it), other modules' passing Sequencer motions on that token don't play, such as PF2e RPG Numbers' damage shake. Off: both play, and the token can jitter between them.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: true,
+  });
   game.settings.register(ID, "automatic", {
     name: "Play my own recipes automatically",
     hint: "Your saved recipes play when their spell, attack, damage or area happens. The catalogs have their own Plug & play switch and play whether or not this is on. Turn off overlapping animations in other modules to avoid playing twice.",
@@ -1319,6 +1328,11 @@ Hooks.once("ready", () => {
   motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) } });
   // Lasting conditions move the creature itself; one-off motions take priority.
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
+  guardSequencerMotions(globalThis.Sequencer?.MotionManager, { claims: (data) => {
+    if (!game.settings.get(ID, MOTION_PRIORITY)) return false;
+    const token = fromUuidSync(data?.uuid, { strict: false })?.object;
+    return Boolean(token) && (motions.active.has(token) || conditionBody.moves(token) || tokenFx.engine.moves(token));
+  } });
   optionalFx = new OptionalFxPlayer({catalog:fxCatalog,tokenFx:()=>tokenFx,
     fxmaster:()=>globalThis.FXMASTER?.api,scene:()=>canvas.scene,
     localParticles,

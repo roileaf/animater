@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **New *Animater's token motions come first* setting** (world, on by default): while Animater moves a token (a finisher or attack, a condition's trembling or swaying, a look that rocks it), other modules' passing Sequencer motions on it don't play, such as PF2e RPG Numbers' damage shake. Turn it off to let both play.
+- **A finisher no longer plays off-center** when another module was shaking the token as it started: it plays from the token's real spot, and its movement shows instead of being drawn over by the other motion.
+
 ## 1.4.2 (2026-10-20)
 
 - **Recall Knowledge has a sound.** With GGG active, Recall Knowledge, Recall the Teachings, Recall Under Pressure and Slayer's Identification play GGG's new Recall Knowledge sound. They stay silent without GGG, since the other sound packs have no match. PF2e.

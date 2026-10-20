@@ -3,6 +3,7 @@ import { MOTIONS } from "../../core/model.mjs";
 import { shakeCycles, settledProgress } from "./motion-pacing.mjs";
 import { PATH_MOTIONS, HOLDING_MOTIONS, motionPhases, pathDistance } from "./motion-path.mjs";
 import { easeValue } from "../../core/stage-options.mjs";
+import { nextFrame, cancelFrame } from "./canvas-frame.mjs";
 // A keyframed path fills the whole motion when it holds; otherwise its last 15% eases back to
 // rest like every other gesture. A finisher's frame aims and shrinks it on every client alike.
 export const PATH_RETURN = 0.15;
@@ -312,13 +313,14 @@ const geometryChanged = (token, initial) =>
 // Every client runs this renderer locally; previews bypass the module socket.
 export class TokenMotionPlayer {
   constructor({
-    frame = (callback) => globalThis.requestAnimationFrame(callback),
-    cancel = (handle) => globalThis.cancelAnimationFrame(handle),
+    frame = null,
+    cancel = cancelFrame,
     now = () => performance.now(),
     grid = () => 100,
     fragments = null,
   } = {}) {
-    this.frame = frame;
+    // Steps take the clock when they run: a ticker pass hands its listeners a delta, not a time.
+    this.frame = frame ?? ((callback) => nextFrame(() => callback(this.now())));
     this.cancel = cancel;
     this.now = now;
     this.grid = grid;
@@ -337,9 +339,12 @@ export class TokenMotionPlayer {
     if (current && (current.owner !== owner || current.mesh !== token.mesh)) this.end(token);
     const existing = this.active.get(token);
     const mesh = token.mesh;
+    // Foundry draws the mesh at the token's center; another module's shake (or a condition
+    // tremble) may have it swung aside right now, which must not become the resting spot.
+    const rest = token.center ?? mesh.position;
     const original = existing?.original ?? {
-      x: mesh.position.x,
-      y: mesh.position.y,
+      x: rest.x,
+      y: rest.y,
       rotation: mesh.rotation,
       sx: mesh.scale.x,
       sy: mesh.scale.y,

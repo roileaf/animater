@@ -49,6 +49,8 @@ export class TokenFxEngine {
   }
   clear() { for (const entry of [...this.entries]) this.remove(entry); }
   has(token) { return [...this.entries].some(e => e.token === token); }
+  // Does a shown look move the token's art (a transform: rocking, swaying, trembling)?
+  moves(token) { return [...this.entries].some(e => e.token === token && e.filters.some(f => f.spec?.type === 'transform' && f.enabled !== false)); }
 
   // Our filters sit after any other module's on the token mesh, in our stacking order.
   attach(entry) {

@@ -4,6 +4,8 @@
 // the token document never moves. One-off token motions (attacks, recoils) take
 // priority: the treatment steps aside while they play.
 
+import { nextFrame, cancelFrame } from './canvas-frame.mjs';
+
 // Condition names (D&D 5e, PF2e, SF2e) → treatment.
 const BY_NAME = {
   frightened: 'tremble', fleeing: 'tremble', glitching: 'tremble',
@@ -52,23 +54,6 @@ export function bodyPose(kind, t, strength = 1) {
   }
 }
 
-// Poses run on Foundry's canvas ticker after it refreshes tokens (priority 23) and before
-// it draws (-25). On a separate animation frame, a token refresh could be drawn for a frame
-// in its natural pose, which flickers a lying-down (prone) token upright.
-// Never added while the ticker is running (PIXI would call it again in the same pass, forever):
-// the browser's next frame queues it, and the ticker runs it once on its following pass.
-function nextFrame(cb) {
-  const h = { cb };
-  h.raf = requestAnimationFrame(() => {
-    h.raf = null;
-    const ticker = globalThis.canvas?.app?.ticker;
-    if (!ticker) return cb();
-    h.ticker = ticker;
-    ticker.addOnce(cb, null, (globalThis.PIXI?.UPDATE_PRIORITY?.NORMAL ?? 0) + 1);
-  });
-  return h;
-}
-function cancelFrame(h) { if (h?.raf) cancelAnimationFrame(h.raf); if (h?.ticker) h.ticker.remove(h.cb); }
 
 export class ConditionBody {
   constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true } = {}) {
@@ -118,6 +103,8 @@ export class ConditionBody {
     if (!this.records.size && this.handle) { this.cancel(this.handle); this.handle = null; }
   }
   clear() { for (const name of [...this.records.keys()]) this.remove(name, { immediate: true }); }
+  // Is a treatment moving this token's sprite right now (stone and stillness hold it still)?
+  moves(token) { return shownTreatment([...this.records.values()].filter(r => r.token === token).map(r => r.kind)) !== null; }
   // Undo only what this treatment set; if the token refreshed in between, its
   // pose is already natural and there is nothing to undo.
   restore(token) {

@@ -127,3 +127,15 @@ test("a prone token falls over, then stands back up smoothly when it ends", () =
   assert.deepEqual([t.mesh.rotation, t.mesh.position.y, t.mesh.scale.y], [0, 300, 1], "upright again exactly");
   assert.equal(body.records.size, 0);
 });
+
+test("a body treatment that moves the token says so; stone and stillness do not", () => {
+  const { body } = runner();
+  const frightened = token(), stone = token(), free = token();
+  body.add("Frightened", frightened, "tremble");
+  body.add("Petrified", stone, "stone");
+  assert.equal(body.moves(frightened), true);
+  assert.equal(body.moves(stone), false);
+  assert.equal(body.moves(free), false);
+  body.remove("Frightened");
+  assert.equal(body.moves(frightened), false);
+});

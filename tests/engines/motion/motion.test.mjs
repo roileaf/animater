@@ -61,6 +61,17 @@ test("token motion animates actual mesh and restores pose without document write
   assert.equal(token.mesh.rotation, 0.5);
   assert.equal(token.mesh.scale.x, 1.2);
 });
+test("a motion starting mid-shake plays from the token's own spot, not the shaken one", async () => {
+  // Another module (pf2e-rpg-numbers' damage shake, via Sequencer) has the mesh swung aside.
+  const { token, player, stage, advance } = fixture();
+  token.mesh.position.set(107, 98);
+  const playing = player.play(token, stage, { x: 1, y: 0 }, "u");
+  advance(500);
+  assert.deepEqual([token.mesh.position.x, token.mesh.position.y], [135, 100]);
+  advance(1000);
+  await playing;
+  assert.deepEqual([token.mesh.position.x, token.mesh.position.y], [100, 100]);
+});
 test("saved short motion retains explicit duration and reaches its pose midpoint", async () => {
   const { token, player, stage, advance } = fixture();
   const playing = player.play(
@@ -100,6 +111,33 @@ test("default frame functions retain browser receiver binding", async () => {
   } finally {
     globalThis.requestAnimationFrame = previousFrame;
     globalThis.cancelAnimationFrame = previousCancel;
+  }
+});
+test("default frames step on the canvas ticker after other modules' motions, so the pose is the one drawn", async () => {
+  // Sequencer moves token meshes from a NORMAL+1 ticker listener, and the ticker draws the frame.
+  // A bare animation frame would write after the draw, and the other module's pose would show.
+  const saved = { raf: globalThis.requestAnimationFrame, caf: globalThis.cancelAnimationFrame, canvas: globalThis.canvas };
+  const rafs = [], once = [];
+  globalThis.requestAnimationFrame = (fn) => rafs.push(fn);
+  globalThis.cancelAnimationFrame = () => {};
+  globalThis.canvas = { app: { ticker: { addOnce: (fn, ctx, priority) => once.push({ fn, priority }), remove: () => {} } } };
+  try {
+    const { token, stage } = fixture();
+    let now = 0;
+    const player = new TokenMotionPlayer({ now: () => now });
+    const playing = player.play(token, stage, { x: 1, y: 0 }, "u");
+    rafs.shift()();
+    assert.equal(once.length, 1);
+    assert.equal(once[0].priority, 1);
+    now = 500;
+    once.shift().fn(16.6);
+    assert.equal(token.mesh.position.x, 135);
+    player.stop();
+    await playing;
+  } finally {
+    globalThis.requestAnimationFrame = saved.raf;
+    globalThis.cancelAnimationFrame = saved.caf;
+    globalThis.canvas = saved.canvas;
   }
 });
 test("overlap and user stop restore only owned animations", async () => {

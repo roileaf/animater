@@ -157,3 +157,12 @@ test('shader warm-up compiles every Tokenshade pass in the background, the way P
   assert.ok(bound.every(([i,name])=>i===0&&name==='aVertexPosition'));
   assert.equal(await warmShaders(P,{...renderer,gl:{...gl,getExtension:()=>null}}),0,'nothing without background compiling');
 });
+test('the engine knows which tokens a look moves (a transform), not those it only colours',()=>{
+  const engine=new TokenFxEngine({PIXI,ticker:()=>({add(){},remove(){}}),now:()=>0,world:()=>0});
+  const rocking=fakeToken(),glowing=fakeToken();
+  const stop=engine.apply(rocking,{name:'rock',params:[{filterType:'transform',rotation:2}]});
+  engine.apply(glowing,builtinPreset('glow'));
+  assert.equal(engine.moves(rocking),true);
+  assert.equal(engine.moves(glowing),false);
+  stop();assert.equal(engine.moves(rocking),false);
+});
