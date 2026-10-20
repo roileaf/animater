@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.8 (2026-10-20)
+
+- **Persistent damage copies for different damage types no longer warn about each other.** A Fire copy said “Not playing: Persistent Damage plays instead” when a Bleed copy existed, though each already played for its own type.
+
 ## 1.4.7 (2026-10-20)
 
 - **Customizing persistent damage now says which damage type it covers.** Customize already made a copy for the previewed type only, such as fire, but nothing said so. The button now reads **Customize Fire**, the copy is named **Persistent Damage (Fire)**, and its editor has a **Damage type** choice, so a copy made for the wrong type can be switched (for example from Bleed to Fire) and given its own Lasting animation choice. Other damage types keep the catalog version.
