@@ -296,3 +296,21 @@ test("the timeline help opens on click and lists the shortcuts", async () => {
   await studioAction(w, "studio-help", { dataset: {} });
   assert.equal(w.studioHelp, false);
 });
+
+test("Crop to area shape stays ticked after saving a cone stage, and shows each shape's default", async () => {
+  const { Workspace } = await import("../../scripts/ui/workspace.mjs");
+  const { validateRecipe } = await import("../../scripts/core/model.mjs");
+  const box = (area, extra = {}) => {
+    const recipe = validateRecipe({ id: "c", name: "C", trigger: "template", match: "x", ...(area ? { previewArea: area } : {}), stages: [{ stageId: "a", kind: "template", assets: ["jb2a.x"], delay: 0, duration: 1000, ...extra }] });
+    const w = Object.create(Workspace.prototype);
+    w.recipe = () => recipe;
+    const html = w.optionFieldsHTML(recipe.stages[0], 0, false, ["Placement & attachment"]);
+    return /<input type="checkbox" data-field="maskArea"[^>]*checked/.test(html);
+  };
+  const cone = { type: "cone", value: 15 }, line = { type: "line", value: 30, width: 5 };
+  assert.equal(box(cone, { maskArea: true }), true, "ticked and saved: still ticked");
+  assert.equal(box(cone), true, "a cone crops by default");
+  assert.equal(box(cone, { maskArea: false }), false);
+  assert.equal(box(line), false, "a line does not by default");
+  assert.equal(box(line, { maskArea: true }), true);
+});
