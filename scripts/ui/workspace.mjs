@@ -1505,7 +1505,10 @@ export class Workspace {
   motionSyncNoticeHTML() { return motionSyncNoticeHTML(this.host.environment()); }
   // A lasting recipe's own Lasting animation choice, or its catalog's.
   lastingChoiceHTML(r) {
-    return `<label>Lasting animation<select data-field="lasting">${options({ "": "Follow the catalog setting", ...LASTING_CHOICES }, r.lasting ?? "")}</select></label><p class="an-hint">Just this animation: stay on the token, play once when applied, or also replay briefly at the creature's turn start. Each player's own Lasting condition animations setting still applies on their screen.</p>`;
+    // A persistent damage customization covers one damage type; the others keep the catalog's.
+    const types = Object.keys(catalogStateEntry(r.stateEntry)?.damageVariants ?? {}), title = (v) => v[0].toUpperCase() + v.slice(1);
+    const only = types.length ? `<label>Damage type<select data-field="stateDamageType">${options({ "": "Every damage type", ...Object.fromEntries(types.map((t) => [t, title(t)])) }, r.stateDamageType ?? "")}</select></label><p class="an-hint">${r.stateDamageType ? `Plays only for persistent ${esc(r.stateDamageType)} damage. Other damage types keep the catalog version.` : "Plays for every persistent damage type you have not customized on its own."} Changing it keeps this animation's look.</p>` : "";
+    return `${only}<label>Lasting animation<select data-field="lasting">${options({ "": "Follow the catalog setting", ...LASTING_CHOICES }, r.lasting ?? "")}</select></label><p class="an-hint">Just this animation: stay on the token, play once when applied, or also replay briefly at the creature's turn start. Each player's own Lasting condition animations setting still applies on their screen.</p>`;
   }
   recipeSettingsHTML(r) {
     if (r.finisher) return finisherSettingsHTML(r, { itemSummary: (uuid) => this.host.itemSummary?.(uuid), players: this.host.players?.() ?? [], playerPicks: this.host.playerPicks?.() === true });

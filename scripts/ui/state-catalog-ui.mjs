@@ -31,7 +31,7 @@ function stateDetailHTML(w,entry,state,env,canConfigure){
  ${entry.auraDesign?.variants?`<label class="an-state-variant">Preview aura choice<select data-state-aura-variant><option value="default">Unspecified choice</option>${Object.keys(entry.auraDesign.variants).map(type=>`<option value="${type}" ${type===w.stateAuraVariant?'selected':''}>${title(type)}</option>`).join('')}</select><small>Live aura follows the native PF2e choice.</small></label>`:''}
  ${entry.damageVariants?`<label class="an-state-variant">Preview damage type<select data-state-damage>${Object.keys(entry.damageVariants).map(type=>`<option value="${type}" ${type===w.stateDamageType?'selected':''}>${title(type)}</option>`).join('')}</select><small>Automatic playback follows the native damage type.</small></label>`:''}
  <div class="an-preview an-full-preview" style="--effect:${recipe.color}">${w.recipePreviewHTML(recipe)}</div>${previewRowHTML({duration,busy:w.busy,canvasDisabled:env.demo||!env.ready||w.busy,label:'▶ Preview loop',progressLabel:'Animation sample progress'})}
- ${stateStatusHTML(w,{entry,state,active,customized,saved,canConfigure})}
+ ${stateStatusHTML(w,{entry,recipe,state,active,customized,saved,canConfigure})}
  ${entryDetailsHTML([
   `<div class="an-catalog-steps">${recipe.stages.map((s,i)=>`<div class="an-stage" data-stage-drag="${i}"><span>${i+1}</span><div><b>${esc(s.label)}</b><small>Loops while it is on the token</small></div></div>`).join('')}</div>`,
   '<p class="an-hint">Only active conditions and unexpired effects play. Lower-valued duplicates and overridden conditions stay quiet. Previews end on their own and never create a document.</p>',
@@ -39,9 +39,9 @@ function stateDetailHTML(w,entry,state,env,canConfigure){
  ],'Details: layers, lifetime and source')}`;
 }
 // Whether this condition or effect animates, and the buttons that change that.
-function stateStatusHTML(w,{entry,state,active,customized,saved,canConfigure}){
+function stateStatusHTML(w,{entry,recipe,state,active,customized,saved,canConfigure}){
  const all=state.enabled&&state.scope==='all',excluded=state.excluded.includes(entry.id),noun=entry.kind==='condition'?'condition':'effect';
- const customize={label:saved?'Edit customization':'Customize',action:'copy-state',disabled:w.busy};
+ const kind=recipe.stateDamageType?` ${title(recipe.stateDamageType)}`:'',customize={label:saved?`Edit${kind} customization`:`Customize${kind}`,action:'copy-state',disabled:w.busy};
  const leave={label:excluded?'Put back in Plug & play':'Leave out of Plug & play',action:'state-exclude',disabled:!canConfigure};
  if(active&&customized&&saved)return catalogStatusHTML({tone:'custom',title:saved.enabled===false?'Your version is paused':'Your version plays',text:'It plays instead of the catalog animation.',buttons:[{...customize,primary:true}]});
  if(active)return catalogStatusHTML({tone:'on',title:'Animates while it is on a token',text:`Starts when the ${noun} is applied, ends when it is removed.`,buttons:[customize,all?leave:null]});

@@ -910,3 +910,16 @@ test("a GM whose table plays nothing yet starts on Setup; the guide starts with 
   assert.match(html, /<li><b>Turn on the catalogs\.<\/b>/);
   assert.ok(html.indexOf("Fine-tuning") < html.indexOf("Play my own recipes automatically"));
 });
+
+test("a persistent damage customization picks its damage type in the editor", async () => {
+  const { PF2E_CONDITIONS, stateRecipe } = await import("../../scripts/catalogs/pf2e/state-catalog.mjs");
+  const f = workspace(), r = stateRecipe(PF2E_CONDITIONS.find((e) => e.damageVariants), { damageType: "bleed" });
+  f.w.edit = () => r;
+  f.w.stopEditorPreview = () => {};
+  assert.match(f.w.lastingChoiceHTML(r), /data-field="stateDamageType"[\s\S]*value="bleed" selected/);
+  f.w.updateField({ dataset: { field: "stateDamageType" }, type: "select-one", value: "fire" });
+  assert.equal(r.stateDamageType, "fire");
+  assert.match(f.w.lastingChoiceHTML(r), /Plays only for persistent fire damage/);
+  // Lasting conditions with no damage types offer no such choice.
+  assert.doesNotMatch(f.w.lastingChoiceHTML({ ...r, stateEntry: PF2E_CONDITIONS.find((e) => !e.damageVariants).id }), /stateDamageType/);
+});
