@@ -1,18 +1,14 @@
 # Changelog
 
-## Unreleased
-
-- **Cone and line art can reach past the template.** A new *Reach past the area (%)* option on template stages runs the art on beyond the area's far edge (50% is half again as long), and a cone widens with it. It works whether *Crop to area shape* is ticked or not; the checkbox only decides the edges. Ticked, the art is cropped to the outline grown by the same reach, so a cone stays a clean, longer cone; unticked, wide art can also spill out the sides. Circles don't use it: to make circle art bigger than its template, raise the stage's *Scale* with cropping off. The studio preview shows the reach but never crops; the table and Local preview do.
-- ***Crop to cone shape* is now *Crop to area shape*** and works for circles and lines too. Cones still crop unless you untick it; circles and lines crop only when you tick it, so existing recipes look the same. A lasting emanation that follows its caster is never cropped.
-- *Take over from Automated Animations* is only listed when Automated Animations is active in the world.
-
 ## 1.4.1 (2026-10-20)
 
 - **Your version of a catalog action plays.** A customized copy of an action rolled as a skill check (Demoralize, Shove, Trip, Grapple, Force Open…) now plays instead of the catalog default, so removing Demoralize's battle cry sticks. Pausing your version silences the default too. PF2e and SF2e.
 - **Conditions and effects set to play once stay quiet** while they last, even when the token is hidden and seen again (selecting another observer, line of sight changes) or redrawn. Removing and reapplying one plays it again. D&D 5e and Daggerheart states, and auras, now also stay quiet after a reload.
 - **New *Only animate what Trigger Animations doesn't* setting** (world, listed when Trigger Animations is active): items a Trigger Animations trigger names (`attack:longsword`, `template:fireball`, `condition:frightened`, or the item's UUID) stay with it, the way Automated Animations' customized items do. Wildcard triggers such as `damage:*` don't count.
-- **Cone animations can spill past the cone.** A new *Crop to cone shape* option on template stages (on by default) can be turned off so wide art isn't cut off at the cone's edges.
+- **New *Crop to area shape* option on template stages.** Cones crop their art to the cone unless you untick it, so wide art is no longer forced inside; circles and lines crop only when you tick it, so existing recipes look the same. A lasting emanation that follows its caster is never cropped.
 - **New *Show flash screen menus in the Combat Tracker* setting** (per GM): turn it off to remove the ⚡ Opening/Ending menus from the Encounter tab, its popout and PF2e HUD's tracker. Combats still play the default flash screens.
+- **Cone and line art can reach past the template.** A new *Reach past the area (%)* option on template stages runs the art on beyond the area's far edge (50% is half again as long), and a cone widens with it. It works whether *Crop to area shape* is ticked or not; the checkbox only decides the edges. Ticked, the art is cropped to the outline grown by the same reach, so a cone stays a clean, longer cone; unticked, wide art can also spill out the sides. Circles don't use it: to make circle art bigger than its template, raise the stage's *Scale* with cropping off. The studio preview shows the reach but never crops; the table and Local preview do.
+- *Take over from Automated Animations* is only listed when Automated Animations is active in the world.
 
 ## 1.4.0 (2026-10-19)
 
