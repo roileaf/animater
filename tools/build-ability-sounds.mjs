@@ -71,6 +71,7 @@ const profiles={
  growl:[cue('Growl','cast','','','Creatures/Monsters/Growl/','Animal_Monster/Monster/Monster_Growl')],
  wail:[cue('Eerie wail','cast','^ggg-sfx\\.creatures\\.shriek\\.void','','Creatures/Monsters/Moan/','Wraith/Wraith_Monster_Attack')],
  spirit:[cue('Spirit energy','effect','^ggg-sfx\\.magic\\.occult\\.cast\\.ghostly\\.02')],
+ recallKnowledge:[cue('Remembered lore surfaces','cast','^ggg-sfx\.actions\.recall_knowledge')],
  gunshotAir:[cue('Shot fired into the air','cast','^ggg-sfx\\.ranged\\.firearm\\.old_timey\\.strike','^psfx\\.ranged-weapons\\.guns\\.single-fire')],
  // Reviewer-requested profiles for bespoke designs (sound:'<name>', soundNamespace:'ability').
  laserDischarge:[cue('Energy weapon discharge','release','^ggg-sfx\\.ranged\\.scifi\\.(laser\\.(pistol|rifle)\\.strike\\.single|plasma\\.gun\\.strike)')],

@@ -7760,6 +7760,24 @@ export const ABILITY_SOUND_PROFILES = {
       ]
     }
   ],
+  "recallKnowledge": [
+    {
+      "label": "Remembered lore surfaces",
+      "role": "cast",
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.actions.recall_knowledge.general.01.01",
+          "file": "modules/ggg/assets/sounds/SkySpeira/mysterious-sparkle-flourish.ogg",
+          "nativeDuration": 3948,
+          "meanDb": -22.7,
+          "peakDb": -2.7,
+          "gain": 0.96605,
+          "duration": 3948
+        }
+      ]
+    }
+  ],
   "gunshotAir": [
     {
       "label": "Shot fired into the air",

@@ -8,6 +8,7 @@
 - **New *Crop to area shape* option on template stages.** Cones crop their art to the cone unless you untick it, so wide art is no longer forced inside; circles and lines crop only when you tick it, so existing recipes look the same. A lasting emanation that follows its caster is never cropped.
 - **New *Show flash screen menus in the Combat Tracker* setting** (per GM): turn it off to remove the ⚡ Opening/Ending menus from the Encounter tab, its popout and PF2e HUD's tracker. Combats still play the default flash screens.
 - **Cone and line art can reach past the template.** A new *Reach past the area (%)* option on template stages runs the art on beyond the area's far edge (50% is half again as long), and a cone widens with it. It works whether *Crop to area shape* is ticked or not; the checkbox only decides the edges. Ticked, the art is cropped to the outline grown by the same reach, so a cone stays a clean, longer cone; unticked, wide art can also spill out the sides. Circles don't use it: to make circle art bigger than its template, raise the stage's *Scale* with cropping off. The studio preview shows the reach but never crops; the table and Local preview do.
+- **Recall Knowledge has a sound.** With GGG active, Recall Knowledge, Recall the Teachings, Recall Under Pressure and Slayer's Identification play GGG's new Recall Knowledge sound. They stay silent without GGG, since the other sound packs have no match. PF2e.
 - *Take over from Automated Animations* is only listed when Automated Animations is active in the world.
 
 ## 1.4.0 (2026-10-19)

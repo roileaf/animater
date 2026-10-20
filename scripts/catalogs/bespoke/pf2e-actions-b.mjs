@@ -84,7 +84,7 @@ const reroll = (why, { glint = GLINT, glintTint, extra = [] } = {}, snd = quiet(
 ], snd);
 
 // Recall/insight: a faint rune above the head while the creature thinks.
-const recall = (why, { rune = RUNE, runeTint, extra = [] } = {}, snd = quiet()) => design(why, () => [
+const recall = (why, { rune = RUNE, runeTint, extra = [] } = {}, snd = ab('recallKnowledge')) => design(why, () => [
   motion('press', 'source', { stageId: 'think', duration: 900, intensity: 0.15 }),
   aura('A remembered rune', rune, { after: 'think', anchor: 'start', offset: 150, duration: 1700, scale: 0.35, opacity: 0.8, fadeIn: 250, fadeOut: 500, ...above(-0.65), ...(runeTint ? tint(runeTint) : {}) }),
   ...extra,
