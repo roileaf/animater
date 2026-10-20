@@ -2,8 +2,9 @@ import { normalize, STRIKE_SCOPES } from "./model.mjs";
 
 // What a recipe is linked to, as comparable keys: the bound item, or each
 // name it matches (a catalog copy also matches its condition or effect name).
+// Persistent damage copies for different damage types never meet: each plays only for its own.
 function linkKeys(r, entryName) {
-  const kind = [r.trigger, r.lifecycle ?? "", r.weaponMode ?? "", r.activityId ?? ""].join("|");
+  const kind = [r.trigger, r.lifecycle ?? "", r.weaponMode ?? "", r.activityId ?? "", r.stateDamageType ?? ""].join("|");
   if (Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')) return [`${kind}|name:${STRIKE_SCOPES[r.matchScope].toLowerCase()}`];
   if (r.itemUuid) return [`${kind}|item:${r.itemUuid}`];
   const names = String(r.match ?? "").split(",").map((n) => normalize(n)).filter(Boolean);

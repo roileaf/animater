@@ -30,3 +30,11 @@ test("a triggered recipe with no names or item is not linked to anything", () =>
   assert.ok(!unlinked(recipe("x", { match: "frightened" })));
   assert.ok(!unlinked(recipe("x", { stateEntry: "e" })));
 });
+
+test("persistent damage copies for different damage types do not override each other", () => {
+  const copy = (id, type) => recipe(id, { lifecycle: "document", stateEntry: "pd", match: "Persistent Damage", itemUuid: "Item.pd", ...(type ? { stateDamageType: type } : {}) });
+  const notes = recipeConflicts([copy("bleed", "bleed"), copy("fire", "fire"), copy("fire-2", "fire")]);
+  assert.equal(notes.has("bleed"), false);
+  assert.equal(notes.get("fire-2").plays, false);
+  assert.equal(notes.get("fire-2").winner.id, "fire");
+});
