@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Hovering and selecting tokens no longer stutters lasting animations.** Animater re-checked every token's lasting animations each time Foundry refreshed a token, which it does many times a second while you move the mouse over tokens. It now re-checks only when something they depend on changes (the token shown or hidden, redrawn, resized, new art or actor), so busy scenes stay smooth.
+
 ## 1.4.3 (2026-10-20)
 
 - **New *Animater's token motions come first* setting** (world, on by default): while Animater moves a token (a finisher or attack, a condition's trembling or swaying, a look that rocks it), other modules' passing Sequencer motions on it don't play, such as PF2e RPG Numbers' damage shake. Turn it off to let both play.

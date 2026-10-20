@@ -106,6 +106,19 @@ export function perceivedStates(observerSlugs,token,observer){
  if(!seen)return [];
  return [{id:`perceived-${seen}`,uuid:`perceived:${token.id}:${seen}`,type:'condition',slug:seen,name:seen[0].toUpperCase()+seen.slice(1),system:{slug:seen,active:true},active:true,animaterPerceived:true}];
 }
+// Foundry refreshes tokens constantly (hover, selection, distance labels), each time with a visibility flag.
+// Lasting looks depend only on whether the token shows, its mesh, size, art and actor: a re-check of every
+// token's looks runs only when one of those changed, so moving the mouse over tokens costs nothing.
+export function tokenLookChanged(){
+ const seen=new WeakMap(),meshes=new WeakMap();let next=0;
+ const meshId=m=>{if(!m||typeof m!=='object')return 0;if(!meshes.has(m))meshes.set(m,++next);return meshes.get(m);};
+ return token=>{
+  if(!token||typeof token!=='object')return true;
+  const key=[token.visible,token.document?.hidden,meshId(token.mesh),token.w,token.h,token.document?.texture?.src,token.actor?.uuid].join('|');
+  if(seen.get(token)===key)return false;
+  seen.set(token,key);return true;
+ };
+}
 export function stateDocumentKey(item){return item.animaterAura?`aura:${item.animaterAura.slug}:${item.uuid}`:item.type==='condition'?`condition:${slug(item)}:${item.system?.persistent?.damageType??''}`:`effect:${item.uuid??item.id}`;}
 export function storedStateDocument(item){
  const visited=new Set();let current=item.animaterAura?.source??item;

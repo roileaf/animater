@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PersistentStates,FADE_MS,justApplied,perceivedStates,activeState,stateVisible,storedStateDocument,nativeAuraStates,shownStates} from '../../../scripts/engines/playback/persistent-states.mjs';
+import {PersistentStates,FADE_MS,justApplied,perceivedStates,activeState,stateVisible,storedStateDocument,nativeAuraStates,shownStates,tokenLookChanged} from '../../../scripts/engines/playback/persistent-states.mjs';
 import {PF2E_CONDITIONS,PF2E_EFFECTS,stateRecipe,useStateEntry} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
 const fear=PF2E_CONDITIONS.find(e=>e.slug==='frightened'),damage=PF2E_CONDITIONS.find(e=>e.slug==='persistent-damage'),bless=PF2E_EFFECTS.find(e=>e.name==='Spell Effect: Bless');
 const native=(e,id='i')=>({id,uuid:`Actor.a.Item.${id}`,type:e.kind,name:e.name,slug:e.kind==='condition'?e.slug:undefined,sourceId:e.uuid,system:{active:true,value:{isValued:e.kind==='condition',value:1}},active:true});
@@ -464,4 +464,18 @@ test('a lasting recipe keeps a valid Lasting animation choice; other recipes and
   assert.equal(validateRecipe({ ...r, lasting: 'forever' }).lasting, undefined);
   const action = { ...r, trigger: 'manual', lifecycle: undefined, stages: r.stages.map(s => ({ ...s, persist: false })), lasting: 'once' };
   assert.equal(validateRecipe(action).lasting, undefined, 'not a lasting recipe');
+});
+test('a token refresh asks for a re-check only when what lasting looks depend on changed',()=>{
+ const changed=tokenLookChanged();
+ const mesh={},token={visible:true,document:{hidden:false,texture:{src:'a.webp'}},mesh,w:100,h:100,actor:{uuid:'Actor.a'}};
+ assert.equal(changed(token),true,'first sight of a token');
+ assert.equal(changed(token),false,'hovering, selecting, a distance label: nothing a look depends on');
+ token.visible=false;assert.equal(changed(token),true,'hidden from this view');
+ token.visible=true;assert.equal(changed(token),true);
+ token.mesh={};assert.equal(changed(token),true,'redrawn: a new mesh to tie filters to');
+ token.w=200;assert.equal(changed(token),true,'resized');
+ token.document.texture.src='b.webp';assert.equal(changed(token),true,'new art');
+ token.document.hidden=true;assert.equal(changed(token),true,'GM hid it');
+ token.actor={uuid:'Actor.b'};assert.equal(changed(token),true,'another actor');
+ assert.equal(changed(token),false);
 });
