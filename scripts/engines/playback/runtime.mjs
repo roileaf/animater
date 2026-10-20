@@ -2,8 +2,16 @@ import { uuid } from "../../core/uuid.mjs";
 import { ID, matchRecipe, planRecipe, validateRecipe } from "../../core/model.mjs";
 import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
-import { applyEffectOptions, applyMediaOptions } from "../../core/stage-options.mjs";
+import { applyEffectOptions, applyMediaOptions, cropAreaArt } from "../../core/stage-options.mjs";
 import { tokenFootprint, effectFootprint, artworkSize, offsetInGridSquares, beamGeometry } from "../media/media-preview.mjs";
+// A mask (a polygon, a { points } shape, or a list of them) grown by k around a point.
+function scaleMask(mask, at, k) {
+  if (!mask || k === 1) return mask;
+  if (Array.isArray(mask)) return mask.map((m) => scaleMask(m, at, k));
+  if (!Array.isArray(mask.points)) return mask;
+  const points = mask.points.map((v, i) => (i % 2 ? at.y + (v - at.y) * k : at.x + (v - at.x) * k));
+  return mask.constructor && mask.constructor !== Object ? new mask.constructor(points) : { ...mask, points };
+}
 import { prepareRecipeSounds } from "../sound/spell-sounds.mjs";
 import { previewFields } from '../../ui/activity-actions.mjs';
 import { registeredMedia, mediaForReference } from '../media/media-library-model.mjs';
@@ -331,16 +339,20 @@ export class AnimaterRuntime {
               media?.height,
               media?.template,
             );
+            // Reach past the area: the art runs on beyond the far edge (a cone widens with it).
+            const reach = 1 + (Number(s.areaReach) || 0) / 100, { center: from, endpoint: to } = context.area;
+            const end = reach === 1 ? to : { x: from.x + (to.x - from.x) * reach, y: from.y + (to.y - from.y) * reach };
             e.atLocation(context.area.center, location)
-              .stretchTo(context.area.endpoint)
+              .stretchTo(end)
               .scale({
                 x: 1,
-                y: (s.scale * (context.area.type === "cone"
+                y: ((context.area.type === "cone" ? reach : 1) * s.scale * (context.area.type === "cone"
                   ? 2 * context.area.length * Math.tan(context.area.angle * Math.PI / 360)
                   : context.area.width)) / Math.max(1, g.height),
               });
-            if (context.area.type === "cone" && s.maskArea !== false) {
-              const mask = this.host.areaMask?.(context.template);
+            if (cropAreaArt(s, context.area.type)) {
+              // Reaching past the area crops to the same shape grown from its start by the reach.
+              const mask = scaleMask(this.host.areaMask?.(context.template), from, reach);
               if (mask) e.mask(mask);
             }
           } else {
@@ -351,6 +363,11 @@ export class AnimaterRuntime {
             e.size({
               ...artworkSize(context.area.diameter * s.scale, media),
             });
+            // A following emanation leaves its placed outline behind, so it is never cropped to it.
+            if (!follow && cropAreaArt(s, context.area.type)) {
+              const mask = this.host.areaMask?.(context.template);
+              if (mask) e.mask(mask);
+            }
           }
         } else if (s.kind === "overlay") {
           e.screenSpace()

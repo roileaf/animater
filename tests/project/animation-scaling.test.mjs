@@ -7,7 +7,7 @@ import { RecipePreview } from "../../scripts/engines/preview/recipe-preview.mjs"
 import { recipeFrame } from "../../scripts/engines/playback/choreography.mjs";
 import { artworkGeometry, artworkSize, tokenFootprint,effectFootprint,auraPreviewGrid } from "../../scripts/engines/media/media-preview.mjs";
 import { PF2E_EFFECTS,stateRecipe } from '../../scripts/catalogs/pf2e/state-catalog.mjs';
-import { previewPose } from "../../scripts/core/stage-options.mjs";
+import { previewPose, cropAreaArt } from "../../scripts/core/stage-options.mjs";
 import { motionPose, combineMotionPoses } from "../../scripts/engines/motion/motion.mjs";
 
 function runtimeFixture(file = "test_1000x400.webm", key = "jb2a.test") {
@@ -174,6 +174,41 @@ test("cone media uses native vertex/reach, aperture and a portable area mask", a
   assert.ok(Math.abs(calls.find(c => c[0] === "scale")[1].y - 2) < 1e-8);
   assert.deepEqual(calls.find(c => c[0] === "mask")[1], shape);
   assert.ok(!calls.some(c => c[0] === "size"));
+});
+test("Crop to area shape: a circle crops only when ticked, a cone unless unticked", async () => {
+  const circle = { template: {}, area: { type: "circle", center: { x: 0, y: 0 }, diameter: 600 } };
+  const plain = runtimeFixture();
+  plain.runtime.host.areaMask = () => ({ points: [1, 2, 3, 4] });
+  await plain.runtime.play(recipe("template"), circle, { preview: true });
+  assert.ok(!plain.calls.some(c => c[0] === "mask"), "a circle's art may spill by default");
+  const ticked = runtimeFixture();
+  ticked.runtime.host.areaMask = () => ({ points: [1, 2, 3, 4] });
+  const r = recipe("template");
+  r.stages[0].maskArea = true;
+  await ticked.runtime.play(validateRecipe(r), circle, { preview: true });
+  assert.deepEqual(ticked.calls.find(c => c[0] === "mask")?.[1], { points: [1, 2, 3, 4] });
+  assert.equal(cropAreaArt({}, "cone"), true);
+  assert.equal(cropAreaArt({}, "line"), false);
+  assert.equal(cropAreaArt({ maskArea: false }, "cone"), false);
+  assert.equal(cropAreaArt({ maskArea: true }, "line"), true);
+});
+test("a cone stage uncropped and reaching past the area runs its art beyond the far edge, widening with it", async () => {
+  const { runtime, calls } = runtimeFixture("Cone_600x600.webm");
+  runtime.host.areaMask = () => ({ points: [] });
+  const area = { type: "cone", center: { x: 0, y: 0 }, endpoint: { x: 600, y: 0 }, length: 600, angle: 90 };
+  const r = recipe("template");
+  Object.assign(r.stages[0], { maskArea: false, areaReach: 50 });
+  await runtime.play(validateRecipe(r), { template: {}, area }, { preview: true });
+  assert.deepEqual(calls.find(c => c[0] === "stretchTo")[1], { x: 900, y: 0 });
+  assert.ok(Math.abs(calls.find(c => c[0] === "scale")[1].y - 3) < 1e-8);
+  assert.ok(!calls.some(c => c[0] === "mask"));
+  assert.equal(validateRecipe(recipe("template")).stages[0].areaReach, undefined, "untouched recipes keep their shape");
+  const cropped = runtimeFixture("Cone_600x600.webm");
+  cropped.runtime.host.areaMask = () => ({ points: [0, 0, 600, -600, 600, 600] });
+  const kept = recipe("template");
+  Object.assign(kept.stages[0], { areaReach: 50 });
+  await cropped.runtime.play(validateRecipe(kept), { template: {}, area }, { preview: true });
+  assert.deepEqual(cropped.calls.find(c => c[0] === "mask")[1].points, [0, 0, 900, -900, 900, 900], "cropped to the cone grown by the reach");
 });
 test("editor composes active token gestures and retains unfinished earlier movement", () => {
   const recipe = validateRecipe({ id: "overlap", name: "Overlap", trigger: "manual", stages: [

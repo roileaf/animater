@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Cone and line art can reach past the template.** A new *Reach past the area (%)* option on template stages runs the art on beyond the area's far edge, and a cone widens with it. With cropping on, the crop grows with it, keeping the cone's clean sides; untick it to let wide art spill sideways too. The studio preview shows the reach.
+- ***Crop to cone shape* is now *Crop to area shape*** and works for circles and lines too. Cones still crop unless you untick it; circles and lines crop only when you tick it, so existing recipes look the same. A lasting emanation that follows its caster is never cropped.
+- *Take over from Automated Animations* is only listed when Automated Animations is active in the world.
+
 ## 1.4.1 (2026-10-20)
 
 - **Your version of a catalog action plays.** A customized copy of an action rolled as a skill check (Demoralize, Shove, Trip, Grapple, Force Open…) now plays instead of the catalog default, so removing Demoralize's battle cry sticks. Pausing your version silences the default too. PF2e and SF2e.

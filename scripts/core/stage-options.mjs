@@ -67,7 +67,9 @@ export const OPTION_GROUPS = {
     ["bindRotation", "Follow token rotation", false],
     ["bindAlpha", "Follow token opacity", true],
     ["maskToken", "Crop effect to token", false],
-    ["maskArea", "Crop to cone shape", true],
+    // Unset: a cone crops to its shape, circles and lines do not (cropAreaArt).
+    ["maskArea", "Crop to area shape", null],
+    ["areaReach", "Reach past the area (%)", 0, 0, 200, 5],
     ["zIndex", "Layer priority", 0, -100, 100, 1],
     ["overlayFit", "Fit overlay to screen", true],
   ],
@@ -104,6 +106,8 @@ export const OPTION_GROUPS = {
   Sound: [["volume", "Volume", 0.5, 0, 1, 0.05]],
 };
 export const OPTION_FIELDS = Object.values(OPTION_GROUPS).flat();
+// Does a template stage crop its art to the area's outline? Its own choice, else cones only.
+export const cropAreaArt = (stage, areaType) => (stage?.maskArea === true || stage?.maskArea === false ? stage.maskArea : areaType === "cone");
 export const number = (v, min, max, fallback) =>
   v !== undefined && v !== null && v !== "" && Number.isFinite(Number(v))
     ? Math.min(max, Math.max(min, Number(v))) + 0
@@ -132,7 +136,11 @@ export function normalizeOptions(stage) {
   if(!result.requiresHit)delete result.requiresHit;
   if(result.offsetUnits === 'grid')delete result.offsetUnits;
   // A cone's art is cropped to the cone unless the stage lets it spill past the edges.
-  if(result.maskArea !== false || stage.kind !== 'template')delete result.maskArea;
+  // Set only when chosen; unset follows the area's shape.
+  result.maskArea = stage.maskArea === true || stage.maskArea === false ? stage.maskArea : undefined;
+  if(result.maskArea === undefined || stage.kind !== 'template')delete result.maskArea;
+  // Line and cone art ends at the area's far edge unless it reaches past it.
+  if(!result.areaReach || stage.kind !== 'template')delete result.areaReach;
   if (["travel", "projectile"].includes(stage.kind) && stage.travelDestination === "area") {
     result.areaLayout = stage.areaLayout === "fan" ? "fan" : "fit";
     result.fanCount = Math.round(number(stage.fanCount, 3, 9, 5));

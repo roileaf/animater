@@ -356,8 +356,10 @@ export class RecipePreview {
               : this.chain
               ? this.chain.actors.find((a) => a.id === layer.dataset.previewTo)
               : { x: reverse ? 24 : 76, y: 45 };
-        const dx = ((to.x - from.x) * (this.scene.clientWidth || 400)) / 100,
-          dy = ((to.y - from.y) * (this.scene.clientHeight || 300)) / 100;
+        // A template stage may reach past the area's far edge (Reach past the area).
+        const reach = areaLine ? 1 + (Number(s.areaReach) || 0) / 100 : 1;
+        const dx = (reach * (to.x - from.x) * (this.scene.clientWidth || 400)) / 100,
+          dy = (reach * (to.y - from.y) * (this.scene.clientHeight || 300)) / 100;
         const g = beamGeometry(
           Math.hypot(dx, dy),
           artwork.videoWidth || artwork.naturalWidth || Number(layer.dataset.mediaWidth),

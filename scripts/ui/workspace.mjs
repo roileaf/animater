@@ -71,6 +71,7 @@ import {
   normalizeOptions,
   EASES,
   TRACK_PROPERTIES,
+  cropAreaArt,
 } from "../core/stage-options.mjs";
 const esc = (value) =>
   String(value ?? "").replace(
@@ -1700,6 +1701,9 @@ export class Workspace {
     const input = ([key, label, fallback, min, max, step], track) => {
       const value = track === undefined ? s[key] : s.tracks[track][key];
       const attrs = `data-field="${key}" data-index="${index}" ${track === undefined ? "" : `data-track="${track}"`}`;
+      // Unset, it shows the area's own default: ticked for a cone, unticked for a circle or line.
+      if (key === "maskArea")
+        return `<label class="an-check" data-tooltip="Crop the art to the area's outline. Cones crop unless unticked; circles and lines only when ticked."><input type="checkbox" ${attrs} ${cropAreaArt(s, this.recipe()?.previewArea?.type ?? "cone") ? "checked" : ""}>${esc(label)}</label>`;
       if (typeof fallback === "boolean")
         return `<label class="an-check"><input type="checkbox" ${attrs} ${value ? "checked" : ""}>${esc(label)}</label>`;
       return optionInputHTML([key, label, fallback, min, max, step], value, index, track, attrs);
@@ -1731,7 +1735,7 @@ export class Workspace {
           !(!s.customAnchor && ["anchorX", "anchorY"].includes(key)) &&
           !(!s.tintEnabled && ["tint", "colorize"].includes(key)) &&
           !(linked &&["repeats", "repeatGap", "repeatMode", "stagger", "oneShot", "targetPick", "attach", "bindAlpha"].includes(key)) &&
-          !(["areaLayout", "maskArea"].includes(key) && s.kind !== "template") &&
+          !(["areaLayout", "maskArea", "areaReach"].includes(key) && s.kind !== "template") &&
           !(
             key === "playbackRate" &&
             ["motion", "sound", "sprite"].includes(s.kind)

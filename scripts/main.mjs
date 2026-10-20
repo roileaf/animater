@@ -1162,8 +1162,8 @@ Hooks.once("init", () => {
     name: "Take over from Automated Animations when Animater has an animation",
     hint: "Automated Animations skips items Animater animates. Items customized in Automated Animations stay with it. If “Only animate what Automated Animations doesn't” is also on, that one wins.",
     scope: "world",
-    // Only worth listing where Automated Animations is installed.
-    config: Boolean(game.modules.get(AA_ID)),
+    // Only worth listing where Automated Animations is active in this world.
+    config: Boolean(game.modules.get(AA_ID)?.active),
     type: Boolean,
     default: true,
   });
