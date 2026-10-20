@@ -376,6 +376,11 @@ test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks
   await f.fire("getSceneControlButtons", playerControls);
   assert.equal(playerControls.tokens.tools.animater.visible, true);
   game.user.isGM = true;
+  await f.settings.set("showControlButton", false);
+  const hiddenControls = { tokens: { tools: {} } };
+  await f.fire("getSceneControlButtons", hiddenControls);
+  assert.equal(hiddenControls.tokens.tools.animater.visible, false);
+  await f.settings.set("showControlButton", true);
   const ember = f.api.recipes()[0];
   ember.stages.forEach((s) => (s.delay = 0));
   f.settings.set("recipes", { schema: 1, recipes: [ember] });

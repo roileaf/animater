@@ -1108,6 +1108,9 @@ Hooks.once("init", () => {
     scope:'world',config:true,type:Number,range:{min:0.5,max:3,step:0.1},default:1.5});
   game.settings.register(ID,RUNE_SETTING,{name:'Weapon rune flourishes',hint:'Catalog weapon Strikes show each weapon’s runes: potency adds a glint, striking a bigger hit, and each property rune (flaming, frost, shock, holy…) its own accent on a hit. Saved recipes are never changed.',
     scope:'world',config:game.system.id==='pf2e',type:Boolean,default:true});
+  game.settings.register(ID,'showControlButton',{name:'Show Animater scene control button',
+    hint:'Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater.',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
   game.settings.register(ID,'tuckDuringPlayback',{name:'Minimize Animater during canvas playback',
     hint:'Local preview and Play at table minimize the Animater window while the animation runs, then restore it.',
     scope:'client',config:true,type:Boolean,default:true});
@@ -2026,7 +2029,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       icon: "fas fa-wand-magic-sparkles",
       button: true,
       // Players open their own Studio; the GM sees the full workspace.
-      visible: true,
+      visible: game.settings.get(ID, "showControlButton") !== false,
       onChange: () => open(),
     };
 });
