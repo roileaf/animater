@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Cone and line art can reach past the template.** A new *Reach past the area (%)* option on template stages runs the art on beyond the area's far edge, and a cone widens with it. With cropping on, the crop grows with it, keeping the cone's clean sides; untick it to let wide art spill sideways too. The studio preview shows the reach.
+- **Cone and line art can reach past the template.** A new *Reach past the area (%)* option on template stages runs the art on beyond the area's far edge (50% is half again as long), and a cone widens with it. It works whether *Crop to area shape* is ticked or not; the checkbox only decides the edges. Ticked, the art is cropped to the outline grown by the same reach, so a cone stays a clean, longer cone; unticked, wide art can also spill out the sides. Circles don't use it: to make circle art bigger than its template, raise the stage's *Scale* with cropping off. The studio preview shows the reach but never crops; the table and Local preview do.
 - ***Crop to cone shape* is now *Crop to area shape*** and works for circles and lines too. Cones still crop unless you untick it; circles and lines crop only when you tick it, so existing recipes look the same. A lasting emanation that follows its caster is never cropped.
 - *Take over from Automated Animations* is only listed when Automated Animations is active in the world.
 
