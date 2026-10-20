@@ -90,7 +90,8 @@ export const lastingTurn=(state,mode)=>mode==='turn'||(!LASTING_MODES[mode]||mod
 // Conditions replaying together at turn start start this far apart, so they read one by one.
 export const REPLAY_STAGGER=350;
 export function justApplied(item,now=Date.now()){
- const created=(item?._stats??item?.animaterAura?.item?._stats)?.createdTime;
+ // D&D 5e and Daggerheart states wrap their document; an aura reads its source's.
+ const created=(item?._stats??item?.document?._stats??item?.animaterAura?.source?._stats)?.createdTime;
  return !Number.isFinite(created)||now-created<=APPLIED_WINDOW;
 }
 export function shownStates(states){
@@ -122,7 +123,7 @@ const BUILTIN_STATE=Object.freeze({opacity:1,motion:true});
 // Each client derives its own visible layers from native documents. Persistent
 // Sequencer media is temporary/local: no socket playback or stale scene flags.
 export class PersistentStates{
- constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();}
+ constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();}
  async end(record){this.host.body?.remove(record.name);await Promise.all([this.host.end(record.name),this.host.stopFx?.(record.name)]);}
  schedule(){if(this.closed)return;clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;void this.reconcile().catch(e=>this.host.trace?.('Blocked',`Persistent effects: ${e.message}`));},35);}
  // Would a lasting animation show for this condition or effect (its catalog on, or your own
@@ -157,11 +158,14 @@ export class PersistentStates{
      // A recipe with its own Lasting animation choice uses it in place of its catalog's.
      const lasting=recipe.lasting?{...state,fade:recipe.lasting!=='lasting',turn:recipe.lasting==='turn'}:state;
      const mode=h.lastingMode?.(),fade=item.animaterRecipe?state.fade===true:lastingFade(lasting.fade,mode),turn=!item.animaterRecipe&&fade&&lastingTurn(lasting,mode);
-     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,quiet:fade&&!justApplied(item)});shown++;}
+     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
     }
    }
    // Removed, its next application animates again.
    for(const key of this.stopped)if(!present.has(key))this.stopped.delete(key);
+   // A play-once state played on this client stays quiet while it lasts, even hidden from view or
+   // redrawn (another observer selected, a new mesh); removed, its next application plays again.
+   for(const key of this.played)if(!present.has(key))this.played.delete(key);
   }
   // A state that changed (Frightened 2 becoming 1 at the end of a turn) keeps showing until its
   // replacement is up, so it never blinks out; states that are gone end now.

@@ -64,7 +64,10 @@ export function createAbilityCatalog({ entries, source, recipeKind, label, packs
     if (found && enabled(found.id,state) && (state.selected.includes(found.id) || (state.preferCatalog && !state.customized.includes(found.id))))
       return automaticRecipe(event,state,[],soundCatalog);
     const configured = customEnabled || (found && state.enabled && !state.excluded.includes(found.id) && state.customized.includes(found.id)) ? customRecipes : [];
-    return matchRecipe(configured,event) ?? automaticRecipe(event,state,configured,soundCatalog);
+    // An action rolled as a skill check (Demoralize, Shove) has a stand-in item with no uuid: your
+    // copy, bound to the entry's uuid, still matches (and, paused, still silences the default).
+    const keyed = found?.uuid && !event.itemUuid ? { ...event, itemUuid: found.uuid } : event;
+    return matchRecipe(configured,keyed) ?? automaticRecipe(keyed,state,configured,soundCatalog);
   }
   function filter({search="",level="all",activity="all",actionType=activity,activation=actionType,category="all",classTrait="all",theme="all",quality="all",edition="all"} = {}) {
     const query = normalize(search);

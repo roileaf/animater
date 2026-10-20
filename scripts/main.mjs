@@ -14,6 +14,7 @@ import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dual
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
+import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -259,7 +260,7 @@ function environment() {
     pack,
     system,
     conflicts: ["autoanimations", "trigger-animations"]
-      .filter((id) => game.modules.get(id)?.active && !(id === AA_ID && (aaTakeover() || aaFillGaps())))
+      .filter((id) => game.modules.get(id)?.active && !(id === AA_ID && (aaTakeover() || aaFillGaps())) && !(id === TA_ID && taFillGaps()))
       .map((id) => game.modules.get(id).title),
     problem: !seq?.active
       ? "Turn on Sequencer in Manage Modules, then reload the world (F5)."
@@ -1175,6 +1176,15 @@ Hooks.once("init", () => {
     type: Boolean,
     default: false,
   });
+  game.settings.register(ID, TA_FILL_GAPS, {
+    name: "Only animate what Trigger Animations doesn't",
+    hint: "Items a Trigger Animations trigger names (attack:longsword, template:fireball, condition:frightened, or the item's UUID) stay with it; Animater animates the rest. Wildcard triggers such as damage:* don't count.",
+    scope: "world",
+    // Listed only where Trigger Animations is active.
+    config: Boolean(game.modules.get(TA_ID)?.active),
+    type: Boolean,
+    default: false,
+  });
   game.settings.register(ID, "automatic", {
     name: "Play my own recipes automatically",
     hint: "Your saved recipes play when their spell, attack, damage or area happens. The catalogs have their own Plug & play switch and play whether or not this is on. Turn off overlapping animations in other modules to avoid playing twice.",
@@ -1244,8 +1254,9 @@ function resolveEvent(event) {
   if (!event || yieldsToAA(event)) return null;
   return applyEventElement(systemRecipe({ systemId: game.system.id, ...event }, recipes()), event.element) ?? null;
 }
-// Why an event stays with Automated Animations, or null when Animater plays it.
+// Why an event stays with Automated Animations (or Trigger Animations), or null when Animater plays it.
 function aaYield(event) {
+  if (taFillGaps() && taAnimates(event)) return "Trigger Animations animates it";
   if (!game.modules.get(AA_ID)?.active) return null;
   if (aaCustomized(event.item, event.activity)) return "customized in Automated Animations";
   if (aaFillGaps() && aaAnimates(event, (key) => game.settings.get(AA_ID, key))) return "Automated Animations animates it";
@@ -1253,6 +1264,7 @@ function aaYield(event) {
 }
 const yieldsToAA = event => Boolean(aaYield(event));
 const aaFillGaps = () => Boolean(game.modules.get(AA_ID)?.active && game.settings.get(ID, AA_FILL_GAPS));
+const taFillGaps = () => Boolean(game.modules.get(TA_ID)?.active && game.settings.get(ID, TA_FILL_GAPS));
 const aaTakeover = () => Boolean(game.modules.get(AA_ID)?.active && game.settings.get(ID, AA_TAKEOVER));
 function eventFrom(input) {
   if (input?.documentName === "ChatMessage") {
@@ -1489,7 +1501,7 @@ Hooks.once("ready", () => {
       // Your own lasting recipes follow the same switch as every other custom recipe.
       customEnabled: () => enabled(),
       // Filling AA's gaps: a condition or effect AA animates stays with AA.
-      yields: (item) => aaFillGaps() && yieldsToAA({ type: "effect", item }),
+      yields: (item) => (aaFillGaps() || taFillGaps()) && yieldsToAA({ type: "effect", item }),
       catalog: () => runtime.getCatalog(),
       state: (kind) => game.settings.get(ID, game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
       visibility: () => ({ isGM: game.user.isGM, secretConditions: ['pf2e','sf2e'].includes(game.system.id)&&game.settings.get(game.system.id, "metagame_secretCondition") === true }),

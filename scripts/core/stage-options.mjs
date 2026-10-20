@@ -67,6 +67,7 @@ export const OPTION_GROUPS = {
     ["bindRotation", "Follow token rotation", false],
     ["bindAlpha", "Follow token opacity", true],
     ["maskToken", "Crop effect to token", false],
+    ["maskArea", "Crop to cone shape", true],
     ["zIndex", "Layer priority", 0, -100, 100, 1],
     ["overlayFit", "Fit overlay to screen", true],
   ],
@@ -130,6 +131,8 @@ export function normalizeOptions(stage) {
   if(!result.colorize)delete result.colorize;
   if(!result.requiresHit)delete result.requiresHit;
   if(result.offsetUnits === 'grid')delete result.offsetUnits;
+  // A cone's art is cropped to the cone unless the stage lets it spill past the edges.
+  if(result.maskArea !== false || stage.kind !== 'template')delete result.maskArea;
   if (["travel", "projectile"].includes(stage.kind) && stage.travelDestination === "area") {
     result.areaLayout = stage.areaLayout === "fan" ? "fan" : "fit";
     result.fanCount = Math.round(number(stage.fanCount, 3, 9, 5));

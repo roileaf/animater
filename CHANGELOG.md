@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Your version of a catalog action plays.** A customized copy of an action rolled as a skill check (Demoralize, Shove, Trip, Grapple, Force Open…) now plays instead of the catalog default, so removing Demoralize's battle cry sticks. Pausing your version silences the default too. PF2e and SF2e.
+- **Conditions and effects set to play once stay quiet** while they last, even when the token is hidden and seen again (selecting another observer, line of sight changes) or redrawn. Removing and reapplying one plays it again. D&D 5e and Daggerheart states, and auras, now also stay quiet after a reload.
+- **New *Only animate what Trigger Animations doesn't* setting** (world, listed when Trigger Animations is active): items a Trigger Animations trigger names (`attack:longsword`, `template:fireball`, `condition:frightened`, or the item's UUID) stay with it, the way Automated Animations' customized items do. Wildcard triggers such as `damage:*` don't count.
+- **Cone animations can spill past the cone.** A new *Crop to cone shape* option on template stages (on by default) can be turned off so wide art isn't cut off at the cone's edges.
+- **New *Show flash screen menus in the Combat Tracker* setting** (per GM): turn it off to remove the ⚡ Opening/Ending menus from the Encounter tab, its popout and PF2e HUD's tracker. Combats still play the default flash screens.
+
 ## 1.4.0 (2026-10-19)
 
 - **A first run that starts in the right place.** While nothing plays automatically, Animater opens on Setup, where turning the catalogs on comes first, followed by three steps that match how the module is used (turn on the catalogs, try one on the canvas, customize it). Tokenshade, FXMaster and your own recipes sit under Fine-tuning.

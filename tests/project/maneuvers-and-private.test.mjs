@@ -44,6 +44,17 @@ test("an athletics maneuver's skill check plays its action from the catalog", ()
   if (findSfEntry({ systemId: "sf2e", type: "use", item: { type: "action", name: "Trip", slug: "trip" } })) assert.ok(findSfEntry(sf));
 });
 
+test("a customized maneuver plays your version: Demoralize's check has no item uuid, the copy is bound to the entry's", () => {
+  const e = twoeEvent(check(["action:demoralize", "skill:intimidation"]), "p");
+  const entry = PF2E_ACTION_CATALOG.find(e);
+  assert.ok(entry?.uuid);
+  const mine = { ...PF2E_ACTION_CATALOG.recipe(entry), name: "My Demoralize", stages: PF2E_ACTION_CATALOG.recipe(entry).stages.filter((s) => s.kind !== "sound") };
+  const state = { enabled: true, scope: "all", customized: [entry.id] };
+  assert.equal(mine.itemUuid, entry.uuid);
+  assert.equal(PF2E_ACTION_CATALOG.resolveAutomaticRecipe(e, state, [mine])?.name, "My Demoralize");
+  assert.equal(PF2E_ACTION_CATALOG.resolveAutomaticRecipe(e, state, [{ ...mine, enabled: false }]), null, "paused, your version silences the default too");
+});
+
 test("a maneuver uses the actor's own action item when it has one", () => {
   const own = { type: "action", name: "Grapple", slug: "grapple", system: { slug: "grapple" }, uuid: "Actor.a.Item.g" };
   const e = twoeEvent(check(["action:grapple"], { actor: { items: [own] } }), "p");

@@ -189,6 +189,26 @@ test('Play once, then fade: a freshly applied effect plays for a moment and fade
  assert.ok(lasting.calls.some(c=>c[0]==='persist'),'the default stays while active');
  await lasting.manager.destroy();
 });
+test('Play once: hiding, re-showing or redrawing the token never replays it; removing and reapplying does',async()=>{
+ const entry=PF2E_EFFECTS.find(e=>stateRecipe(e).stages.some(s=>s.kind==='aura'&&s.persist&&!s.auraRadius));
+ for(const stats of [{_stats:{createdTime:Date.now()}},{}]){
+  const item={...native(entry),...stats},f=fixture([item]);f.states.effect.fade=true;f.token.mesh={uid:1};
+  const plays=()=>f.calls.filter(c=>c[0]==='play').length;
+  await f.manager.reconcile();await flush();assert.equal(plays(),1);
+  f.token.visible=false;await f.manager.reconcile();await flush();
+  f.token.visible=true;await f.manager.reconcile();await flush();
+  f.token.mesh.uid=2;await f.manager.reconcile();await flush();
+  assert.equal(plays(),1,'seen again (another observer, a redraw): not applied again');
+  f.actor.items=[];await f.manager.reconcile();await flush();
+  f.actor.items=[{...native(entry),_stats:{createdTime:Date.now()}}];await f.manager.reconcile();await flush();
+  assert.equal(plays(),2,'a real reapplication animates');
+  await f.manager.destroy();
+ }
+});
+test('justApplied reads the wrapped document of a D&D 5e or Daggerheart state, and an aura its source',()=>{
+ assert.equal(justApplied({document:{_stats:{createdTime:1000}}},60000),false);
+ assert.equal(justApplied({animaterAura:{source:{_stats:{createdTime:1000}}}},60000),false);
+});
 test('a token deleted while its animation is queued is not drawn on; missing documents are never tied (no Sequencer errors)',async()=>{
  const gone=fixture();gone.manager.host.tokenAlive=()=>false;
  await gone.manager.reconcile();await flush();

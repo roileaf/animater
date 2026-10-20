@@ -339,7 +339,7 @@ export class AnimaterRuntime {
                   ? 2 * context.area.length * Math.tan(context.area.angle * Math.PI / 360)
                   : context.area.width)) / Math.max(1, g.height),
               });
-            if (context.area.type === "cone") {
+            if (context.area.type === "cone" && s.maskArea !== false) {
               const mask = this.host.areaMask?.(context.template);
               if (mask) e.mask(mask);
             }

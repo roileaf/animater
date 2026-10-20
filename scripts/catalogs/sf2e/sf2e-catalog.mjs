@@ -60,6 +60,8 @@ export function resolveSfAutomaticRecipe(event,stateFor,saved=[],{customEnabled=
  const entry=findSfEntry(event),state=normalizeSfCatalogState(entry&&stateFor(entry.kind));
  const selected=entry&&sfEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id));
  const custom=customEnabled||selected&&state.customized.includes(entry.id)?saved:[];
+ // An action rolled as a skill check has a stand-in item with no uuid: a copy bound to the entry's uuid still matches.
+ if(entry?.uuid&&!event.itemUuid)event={...event,itemUuid:entry.uuid};
  const override=matchStrikeOverride(custom,event);if(override)return override;
  if(!prefer){const recipe=matchRecipe(custom,event);if(recipe)return recipe;}
  if(!selected||entry.state)return null;

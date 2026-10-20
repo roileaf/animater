@@ -1731,7 +1731,7 @@ export class Workspace {
           !(!s.customAnchor && ["anchorX", "anchorY"].includes(key)) &&
           !(!s.tintEnabled && ["tint", "colorize"].includes(key)) &&
           !(linked &&["repeats", "repeatGap", "repeatMode", "stagger", "oneShot", "targetPick", "attach", "bindAlpha"].includes(key)) &&
-          !(key === "areaLayout" && s.kind !== "template") &&
+          !(["areaLayout", "maskArea"].includes(key) && s.kind !== "template") &&
           !(
             key === "playbackRate" &&
             ["motion", "sound", "sprite"].includes(s.kind)

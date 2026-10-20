@@ -8,7 +8,7 @@ import { createFlash } from "./flash-render.mjs";
 import { pickFlash } from "./flash-picker.mjs";
 import { hpState, isKillTransition } from "../../systems/hp-state.mjs";
 
-export const FLASH_SETTING = "flashScreens", FLASH_DEFAULTS = "flashDefaults";
+export const FLASH_SETTING = "flashScreens", FLASH_DEFAULTS = "flashDefaults", FLASH_TRACKER = "flashTrackerMenus";
 const FRIENDLY = 1, HOSTILE = -1;
 const sideOf = (actor, token) => (actor?.hasPlayerOwner || token?.disposition === FRIENDLY ? "party" : token?.disposition === HOSTILE ? "enemies" : "other");
 const levelOf = (actor) => Number(actor?.level ?? actor?.system?.details?.level?.value ?? actor?.system?.details?.cr ?? 0) || 0;
@@ -48,6 +48,10 @@ export function registerFlashSettings(ID) {
     onChange: () => ui.combat?.render() });
   game.settings.register(ID, FLASH_DEFAULTS, { scope: "world", config: false, type: Object, default: { start: "none", end: "none" },
     onChange: () => ui.combat?.render() });
+  // Each GM may hide the menus from their tracker; combats still play the world's default screens.
+  game.settings.register(ID, FLASH_TRACKER, { name: "Show flash screen menus in the Combat Tracker",
+    hint: "The ⚡ Opening and Ending menus in the Encounter tab, its popout and PF2e HUD's tracker. Hidden, combats still play the default flash screens.",
+    scope: "client", config: true, type: Boolean, default: true, onChange: () => { ui.combat?.render(); for (const app of foundry.applications.instances?.values?.() ?? []) if (app.id === "pf2e-hud-tracker") app.render(); } });
 }
 
 // host: { ID, clientId, quietHere(), resolveMedia(src), trace(status, detail) }
@@ -57,6 +61,7 @@ export function flashScreens(host) {
   const defaults = () => ({ start: "none", end: "none", ...Object.fromEntries(MOMENT_EVENTS.map((e) => [e, "none"])), ...game.settings.get(ID, FLASH_DEFAULTS) });
   const vars = (combat = game.combat, extra = {}) => ({ scene: canvas.scene?.name ?? "", round: String(combat?.round ?? ""), combatants: encounterPeople(combat), ...extra });
   let showing = null;
+  const trackerMenus = () => game.settings.get(ID, FLASH_TRACKER) !== false;
   // ms > 0: a sound layer trimmed in the editor stops there, with a short fade.
   const playSound = (src, volume, ms = 0) => {
     if (!src || host.quietHere()) return;
@@ -246,8 +251,8 @@ export function flashScreens(host) {
   Hooks.on("renderCombatTracker", (app, html) => {
     const root = html instanceof HTMLElement ? html : html?.[0];
     const combat = app.viewed ?? game.combat;
-    if (!game.user.isGM || !root || !combat) return;
-    root.querySelector(".animater-flash-pick")?.remove();
+    root?.querySelector(".animater-flash-pick")?.remove();
+    if (!game.user.isGM || !root || !combat || !trackerMenus()) return;
     const bar = picker(combat), header = trackerHeader(root);
     if (header) header.append(bar); else root.prepend(bar);
   });
@@ -256,6 +261,7 @@ export function flashScreens(host) {
   Hooks.on("renderApplicationV2", (app, element) => {
     if (app.id !== "pf2e-hud-tracker" || !game.user.isGM) return;
     const root = element instanceof HTMLElement ? element : app.element, combat = app.viewed ?? app.combat ?? game.combat;
+    if (!trackerMenus()) { root?.querySelector(".animater-flash-hud")?.remove(); root?.querySelector(".animater-flash-pick")?.remove(); return; }
     const header = root?.querySelector(":scope > header, header"), footer = root?.querySelector("footer");
     if (!(header || footer) || !combat) return;
     root.querySelector(".animater-flash-hud")?.remove();
