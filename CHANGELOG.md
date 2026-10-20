@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.6 (2026-10-20)
+
+- **You can hide the Animater button in the token controls** ([#9](https://github.com/roileaf/animater/issues/9)). Turn off **Show Animater scene control button** in the module settings. Each player chooses for their own screen, and Alt+Shift+A still opens Animater.
+
 ## 1.4.5 (2026-10-20)
 
 - **The canvas no longer freezes for good after a token motion** (since 1.4.3). When two of Animater's token motions finished in the same frame, such as a spell's target shake on a dying creature, Foundry stopped drawing the canvas while the rest of the interface kept working, until a reload.
