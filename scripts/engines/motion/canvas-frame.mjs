@@ -6,14 +6,21 @@
 // Never added while the ticker is running (PIXI would call it again in the same pass, forever):
 // the browser's next frame queues it, and the ticker runs it once on its following pass.
 export function nextFrame(cb) {
-  const h = { cb };
+  const h = { cb, ran: false };
+  h.run = (...args) => { h.ran = true; return cb(...args); };
   h.raf = globalThis.requestAnimationFrame(() => {
     h.raf = null;
     const ticker = globalThis.canvas?.app?.ticker;
-    if (!ticker) return cb();
+    if (!ticker) return h.run();
     h.ticker = ticker;
-    ticker.addOnce(cb, null, (globalThis.PIXI?.UPDATE_PRIORITY?.NORMAL ?? 0) + 1);
+    ticker.addOnce(h.run, null, (globalThis.PIXI?.UPDATE_PRIORITY?.NORMAL ?? 0) + 1);
   });
   return h;
 }
-export function cancelFrame(h) { if (h?.raf) globalThis.cancelAnimationFrame(h.raf); if (h?.ticker) h.ticker.remove(h.cb); }
+// Once a frame has started, PIXI removes it itself. Removing it too (a motion ending inside its
+// own frame) destroys PIXI's listener twice, which unhooks its neighbour and can cut every later
+// listener, Foundry's draw among them, off the ticker: the canvas freezes for good.
+export function cancelFrame(h) {
+  if (h?.raf) globalThis.cancelAnimationFrame(h.raf);
+  if (h?.ticker && !h.ran) h.ticker.remove(h.run);
+}
