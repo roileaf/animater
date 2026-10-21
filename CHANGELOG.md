@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.9 (2026-10-21)
+
+- **A weapon's damage roll no longer says it has no animation.** After a Strike that animated, rolling damage logged “no enabled damage recipe”, and Activity explained that no animation was set for the weapon. The animation belongs to the attack roll, so a damage roll for a weapon that animates on its attack now logs nothing.
+- **Lasting animations no longer disappear after changing scene or floor.** Sequencer resets a scene shortly after it loads, about half a second after a scene change, and that reset also removed Animater's lasting animations without saying so. They then stayed gone until the effect was applied again. Animater now notices animations Sequencer removed and draws them again within a few seconds. It was most noticeable on maps with floors (Foundry 14 levels), such as the Secrets of Grayce maps.
+
 ## 1.4.8 (2026-10-20)
 
 - **Persistent damage copies for different damage types no longer warn about each other.** A Fire copy said “Not playing: Persistent Damage plays instead” when a Bleed copy existed, though each already played for its own type.
