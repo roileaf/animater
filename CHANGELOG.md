@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.4 (2026-10-21)
 
 - **Block or dodge.** A miss against a raised or magical shield now either rings off the shield or is dodged, never both. The shield takes about three misses in five, critical misses included; a blocked arrow or bullet flies into the shield instead of wide. Each attack draws one for each target, and every player sees the same.
 - **Steel shields ring, wooden shields thunk.** A raised shield sounds like what it is made of: steel shields, bucklers and fortress shields clang like metal; wooden, tower and hide shields knock like wood. In Starfinder, shields are metal.
