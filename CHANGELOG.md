@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+- **All hit sounds in one menu.** A new **Hit sounds** menu in Animater's module settings holds the whole hit sounds engine. The GM turns weapon surface sounds on or off for the world, and each player sets their own device: hit sounds on or off, volume, blood, echo, and hearing hits where they happen. Turning hit sounds off for your device silences surface hits and plays Animater's other sounds plain, for you only.
+- **Hear hits where they happen.** Animation sounds now come from where they happen, heard from your own token (or the middle of your view without one). A hit far away is quieter and duller, and one on the left of your screen sounds on the left. Each player can turn it off in the **Hit sounds** menu.
+- **Scenes have acoustics.** A new **Animater acoustics** field in Scene configuration sets how hits ring in that scene: **Open air** has little echo, **Hall or temple** has a longer one, and **Cave or dungeon** has a long, dark one that also gives Animater's other sounds some room.
+- **New recordings:** a magical ward now chimes like crystal instead of ringing like a bell, leather and padded armour thud like real leather, oozes have more squelches, and fire has more flame bursts.
+- **Chests, altars and traps sound like what they are made of.** Loot and hazard tokens are no longer treated as flesh: a coffin or cupboard knocks like wood, an altar or pedestal sounds like stone, an iron chest clangs, and a haunt makes no sound.
+- **Hits on flesh, shells and oozes sound real.** A blade on bare skin now slices, a dagger stabs and a hammer thuds wetly, instead of sounding like a punch. Spiders, insects and skeletons crunch and crack instead of knocking like wood, and oozes squelch. These are real recordings cut into single hits, bundled with Animater, so they play without any sound pack.
+- **Every hit rings in its own space.** Each surface hit gets an echo rolled anew every time: a shield's short metallic slap-back, a ward's long shimmer, glass ringing, metal and stone a quick slap, soft bodies only a hint of room. Everyone at the table hears the same echo.
+- **Each kind of weapon sounds like itself.** A hammer lands lower and heavier, a dagger higher and sharper, a sword in between, on every surface.
+- **Flesh bleeds.** A hit on flesh adds a short splatter of blood just after the blow: a splat for a slash, a gush for a stab, wet gore for a crushing blow.
+- **Bows, guns and attack spells sound like themselves.** An arrow thunks into wood and shields and ticks off plate; a bullet smacks into flesh and ricochets off armour; an attack spell (Produce Flame, Fire Bolt, Daggerheart magic) keeps its own impact and only rings where there is something to ring: a ward or a shield turning it aside, metal armour, a glass body.
+- **Each element has its own touch.** Fire sizzles and bursts, lightning zaps and arcs off metal, cold cracks like ice, acid hisses, on every surface; force and other energy only ring off wards, shields, metal and glass.
+- **Starfinder guns sound like what they fire.** Projectile and sniper weapons hit like bullets; lasers, flamers and plasma sizzle, shock weapons zap, cryo weapons crack like ice, corrosive weapons hiss. Grenades keep their own area sounds.
+- **A smarter, layered hit.** Each hit now builds from a main sound plus layers, each played by chance: blood on flesh (about half the time), a burst of flame under fire, icicles after a frost crack, shards after glass, a shimmer over a ward. A critical hit plays every layer, a little louder and lower. A set never plays the same recording twice in a row, and the surface lands a few milliseconds after the weapon's own impact instead of piling onto it.
+- **Big bodies and heavy weapons sound like it.** A hit on a Huge creature lands lower and heavier than one on a Tiny creature, and a two-handed or heavy weapon lands harder than a light, agile one, in every system.
+- **Your own mix.** Each player sets their own surface sounds volume, blood sounds (full, subtle or off) and echo amount in the **Hit sounds** menu. They change only what you hear.
+- **No pile-ups in busy moments.** When many hits land at once (a flurry, several attacks together), each player hears at most six surface sounds at a time, and the extra layers drop out first.
+- **Every hit at the same loudness.** All bundled recordings are balanced to one level, so no variant is near-silent or harsh, and none clip.
+- **Hits no longer cut off.** Every bundled recording now plays its full natural tail, and sizzles and hisses die away instead of stopping.
+- **The echo stays under the blow.** It now sits well below the hit itself: a clear ring off shields, wards and glass, only a hint of room on bodies.
+- **Wood is its own sound.** Treants and other plants, wooden armour, animated furniture and dolls, and Barkskin now knock like wood, apart from the crunch of chitin and bone.
+- **More free sounds, credited.** The new recordings come from Freesound creators AKkingStudio, Anthousai, Aurelon, aust_paul, birdswkaren, BrassKnucklesFilms, craigsmith, cyoung510, dav0r, DSPena, eben-frostey, egomassive, elliott.klein, exorsten, gagglepod, GodofPH, GreatNate98, harrisonlace, iainmccurdy, ihitokage, JackMenhorn, janbezouska, jawbutch, jimbo555, JustInvoke, Kreastricon62, kyles, MadPanCake, magnuswaker, martian, MHockett, modusmogulus, musmaster, nebulasnails, newagesoup, omerbhatti34, Pancakebees, RMSound, rubberduck9999, Sadiquecat, SignatureSoundsOrg, sillygrizzlies, SoundsForHim, szegvari, TheFilmLook, ThefitzyG, The_Chemical_Workshop, tortillathrilla, Vikra9409, Vinni_R, wilhellboy, all CC0 (free to use). Thank you! Each file and its source is listed in `assets/sounds/surfaces/freesound/License.txt`.
+
 ## 1.5.1 (2026-10-21)
 
 - **Surface sounds in every system.** D&D 5e, Daggerheart and Starfinder 2e weapon animations now sound like what they hit too, not only Pathfinder 2e's:

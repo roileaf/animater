@@ -21,9 +21,10 @@ import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
-import { targetSurface, withSurfaceSounds, blowOfItem } from "./engines/sound/surface-sounds.mjs";
+import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
 import { weaponFamily } from "./systems/daggerheart.mjs";
 import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
+import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
 import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
 import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
@@ -1114,9 +1115,16 @@ Hooks.once("init", () => {
   game.settings.register(ID,'showControlButton',{name:'Show Animater scene control button',
     hint:'Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater.',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
-  game.settings.register(ID,SURFACE_SETTING,{name:'Weapon surface sounds',
-    hint:'A weapon hit also sounds like what it lands on: metal armour, leather, flesh, a spider’s shell, stone, a magical ward. A miss against a raised or magical shield rings off it. Every system; uses the built-in weapon animations.',
-    scope:'world',config:true,type:Boolean,default:true,onChange:()=>app?.workspace?.render()});
+  // The hit sounds engine: one menu (Hit sounds) holds its world switch and each device's mix (ui/hit-sounds-settings.mjs).
+  game.settings.registerMenu(ID,'hitSoundsMenu',{name:'Hit sounds',label:'Hit sounds',icon:'fa-solid fa-volume-high',
+    hint:'Weapon hits that sound like what they land on, and how you hear them: on or off, volume, blood, echo, and hearing hits where they happen.',
+    type:hitSoundsMenu(ApplicationV2,{id:ID}),restricted:false});
+  game.settings.register(ID,SURFACE_SETTING,{name:'Weapon surface sounds',scope:'world',config:false,type:Boolean,default:true,onChange:()=>app?.workspace?.render()});
+  game.settings.register(ID,'hitSounds',{name:'Hit sounds on this device',scope:'client',config:false,type:Boolean,default:true});
+  game.settings.register(ID,'surfaceVolume',{name:'Surface sounds volume',scope:'client',config:false,type:Number,range:{min:0,max:1,step:0.05},default:1});
+  game.settings.register(ID,'surfaceGore',{name:'Blood sounds',scope:'client',config:false,type:String,choices:{full:'Full',subtle:'Subtle',off:'Off'},default:'full'});
+  game.settings.register(ID,'surfaceEcho',{name:'Surface echo',scope:'client',config:false,type:Number,range:{min:0,max:1.5,step:0.1},default:1});
+  game.settings.register(ID,'surfaceSpace',{name:'Hear hits where they happen',scope:'client',config:false,type:Boolean,default:true});
   game.settings.register(ID,'tuckDuringPlayback',{name:'Minimize Animater during canvas playback',
     hint:'Local preview and Play at table minimize the Animater window while the animation runs, then restore it.',
     scope:'client',config:true,type:Boolean,default:true});
@@ -1265,7 +1273,7 @@ function withWeaponSurface(recipe, event, saved, sounds) {
   if (!recipe || event?.type !== "attack" || game.settings.get(ID, SURFACE_SETTING) === false) return recipe ? (game.settings.get(ID, SURFACE_SETTING) === false ? withoutSurfaces(recipe) : recipe) : recipe;
   if (saved.some((r) => r.id === recipe.id)) return recipe;
   const item = event.item, family = game.system.id === "daggerheart" ? weaponFamily(item?.name) : null;
-  return withSurfaceSounds(recipe, { blow: blowOfItem(item, { family }), sounds, soundVolume: weaponSoundVolume() });
+  return withSurfaceSounds(recipe, { blow: blowOfItem(item, { family, element: event.element }), heft: heftOfItem(item), sounds, soundVolume: weaponSoundVolume() });
 }
 const withoutSurfaces = (recipe) => recipe.stages?.some((s) => s.surfaces) ? { ...recipe, stages: recipe.stages.filter((s) => !s.surfaces) } : recipe;
 const weaponSoundVolume = () => { const sys = game.system.id, key = sys === "dnd5e" ? dndSettingKey("weapon") : sys === "daggerheart" ? dhSettingKey("weapon") : sys === "sf2e" ? sfSettingKey("weapon") : "weaponCatalog";
@@ -1330,9 +1338,34 @@ async function loadDndBooks() {
     console.warn("Animater | official book catalog unavailable", error);
   }
 }
+// Scene configuration: how Animater's sounds ring in this scene.
+Hooks.on("renderSceneConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.acoustics"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="environment"]') ?? root.querySelector('.tab[data-tab="ambience"]') ?? root.querySelector('.tab[data-tab="basics"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  const value = app.document?.getFlag?.(ID, "acoustics") ?? "";
+  const group = document.createElement("div");
+  group.className = "form-group";
+  group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "As recorded"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's hit sounds ring in this scene.</p>`;
+  tab.append(group);
+});
 Hooks.once("ready", () => {
-  // Surface hits ask for a slight pitch shift so repeated blows vary.
-  installSoundPitch();
+  // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
+  installSoundPitch({
+    enabled: () => game.settings.get(ID, "hitSounds") !== false,
+    mix: () => ({ volume: game.settings.get(ID, "surfaceVolume"), gore: game.settings.get(ID, "surfaceGore"), echo: game.settings.get(ID, "surfaceEcho") }),
+    // Where this player hears from: their token, else the middle of their view.
+    listener: () => {
+      const stage = canvas?.stage;
+      if (!game.settings.get(ID, "surfaceSpace") || !canvas?.ready || !(stage?.scale?.x > 0)) return null;
+      const token = canvas.tokens?.controlled?.[0] ?? game.user.character?.getActiveTokens?.(true)?.find((t) => t.scene === canvas.scene || t.document?.parent === canvas.scene) ?? null;
+      const view = { x: stage.pivot.x, y: stage.pivot.y, width: window.innerWidth / stage.scale.x };
+      return { ear: token?.center ?? { x: view.x, y: view.y }, view, grid: canvas.grid?.size ?? 100 };
+    },
+    // The scene's acoustics (Scene configuration → Ambience): open air, a hall or a cave.
+    acoustics: () => canvas?.scene?.getFlag?.(ID, "acoustics") ?? null,
+  });
   void loadDndBooks();
   setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)), 1500);
   // Item sheets (GM): a shortcut to the item's animation. AppV1 sheets get a header button;
@@ -1424,6 +1457,7 @@ Hooks.once("ready", () => {
     resolveRecipe: (event, saved) => ownApprovedRecipe(event) ?? systemRecipe(event, saved),
     // What a Strike lands on (metal armour, a raised shield, chitin…), for its surface cue.
     surfaceOf: (token, outcome) => targetSurface(token?.actor ?? token?.document?.actor, outcome),
+    sizeOf: (token) => sizeOf(token?.actor ?? token?.document?.actor, token),
     surfaceSounds: () => game.settings.get(ID, SURFACE_SETTING) !== false,
     setSurfaceSounds: (on) => game.settings.set(ID, SURFACE_SETTING, on === true),
     recipeOrigin: (recipe, context) => recipeOrigin(recipe, context),

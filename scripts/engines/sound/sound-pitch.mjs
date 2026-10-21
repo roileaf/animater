@@ -1,15 +1,66 @@
-// Sequencer plays every sound at its recorded pitch. A cue that asks for a slight shift (a surface hit,
-// so blow after blow is not the same sound) carries it in the sound's data; each client that plays it
-// applies the same shift as Foundry builds the sound's audio source, before it starts.
+// Sequencer plays every sound at its recorded pitch, dry. A cue that asks for a slight pitch shift (a surface
+// hit, so blow after blow is not the same sound) or an echo (a blow ringing off a shield or a ward) carries it
+// in the sound's data; each client that plays it applies the same shaping as Foundry builds the sound's audio
+// source, before it starts.
 const MATCH_MS = 5000;
-export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now() } = {}) {
+// An echo under the sound: the dry sound passes through untouched, and quieter, darker repeats join it (a
+// feedback delay, wired as Foundry's own reverb effect is: the node is the output, the sound feeds it on connect).
+function echoNode(context, { delay = 0.05, wet = 0.1, feedback = 0.1, tone = 3000 } = {}) {
+  const out = context.createGain(), line = context.createDelay(1), dark = context.createBiquadFilter(), level = context.createGain(), back = context.createGain();
+  line.delayTime.value = Math.min(0.9, Math.max(0.01, delay));
+  dark.type = "lowpass"; dark.frequency.value = tone;
+  level.gain.value = Math.min(0.5, Math.max(0, wet));
+  back.gain.value = Math.min(0.5, Math.max(0, feedback));
+  line.connect(dark); dark.connect(level); level.connect(out); dark.connect(back); back.connect(line);
+  out.onConnectFrom = (node) => node.connect(line);
+  return out;
+}
+// Where a sound happens, heard from this player's seat: their token (else the middle of their view). Further away
+// is quieter and duller; left or right of the middle of the screen pans that way, gently.
+export function placeSound(at, { ear, view, grid = 100 } = {}) {
+  if (!at || !ear || !Number.isFinite(at.x) || !Number.isFinite(ear.x)) return null;
+  const far = Math.max(0, Math.hypot(at.x - ear.x, at.y - ear.y) / (grid || 100) - 3);
+  const pan = view?.width > 0 ? Math.max(-1, Math.min(1, (at.x - view.x) / (view.width / 2))) * 0.6 : 0;
+  return { gain: Math.max(0.35, 1 / (1 + far * 0.07)), cutoff: Math.round(Math.max(2500, 20000 / (1 + far * 0.3))), pan: Math.round(pan * 100) / 100 };
+}
+// A scene's acoustics: open air swallows the echo; a hall or a cave lengthens it, and gives every other Animater
+// sound a little room too.
+export const ACOUSTICS = {
+  outdoors: { delay: 0, wet: 0.45, feedback: 0, room: null },
+  hall: { delay: 0.04, wet: 1.4, feedback: 0.1, room: { delay: 0.07, wet: 0.08, feedback: 0.2, tone: 3500 } },
+  cave: { delay: 0.08, wet: 1.8, feedback: 0.2, tone: 2500, room: { delay: 0.11, wet: 0.12, feedback: 0.3, tone: 2500 } },
+};
+export function sceneEcho(echo, acoustics) {
+  const a = ACOUSTICS[acoustics];
+  if (!a) return echo;
+  if (!echo) return a.room ? { ...a.room } : null;
+  return { delay: echo.delay + a.delay, wet: echo.wet * a.wet, feedback: Math.min(0.5, (echo.feedback ?? 0) + a.feedback), tone: a.tone ? Math.min(a.tone, echo.tone ?? a.tone) : echo.tone };
+}
+// Each player's own mix of surface sounds: their level, how much blood they hear (gore), how much room (echo).
+const GORE = { full: 1, subtle: 0.4, off: 0 };
+export function mixSurfaceSound(data, mix) {
+  const role = data?.animaterSurface;
+  if (!role || !mix) return data;
+  data.volume = Math.max(0, (Number(data.volume) || 0) * (mix.volume ?? 1) * (role === "blood" ? GORE[mix.gore] ?? 1 : 1));
+  if (data.animaterEcho) data.animaterEcho = { ...data.animaterEcho, wet: (data.animaterEcho.wet ?? 0) * (mix.echo ?? 1) };
+  return data;
+}
+export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true } = {}) {
   if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch) return () => {};
-  // Waiting shifts by file: Sequencer announces a sound just before Foundry loads and starts it.
+  // Waiting shaping by file: Sequencer announces a sound just before Foundry loads and starts it.
   const pending = new Map();
   const id = hooks.on("createSequencerSound", (data) => {
-    const rate = Number(data?.animaterPitch);
-    if (!(rate > 0) || rate === 1 || typeof data.file !== "string") return;
-    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate, until: now() + MATCH_MS }]);
+    if (!data || typeof data !== "object") return;
+    // This player turned the engine off: no surface hits, and Animater's other sounds play plain.
+    if (!enabled()) { if (data.animaterSurface) data.volume = 0; return; }
+    mixSurfaceSound(data, mix());
+    const animater = data.animaterAt || data.animaterSurface || data.animaterEcho || data.animaterPitch;
+    const place = animater && data.animaterAt ? placeSound(data.animaterAt, listener() ?? {}) : null;
+    if (place) data.volume = (Number(data.volume) || 0) * place.gain;
+    const rate = Number(data.animaterPitch), mixed = data.animaterEcho && typeof data.animaterEcho === "object" ? data.animaterEcho : null;
+    const echo = animater ? sceneEcho(mixed, acoustics()) : mixed;
+    if (!((rate > 0 && rate !== 1) || echo || place) || typeof data.file !== "string") return;
+    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate: rate > 0 ? rate : 1, echo, place, until: now() + MATCH_MS }]);
   });
   const take = (src) => {
     const path = decodeURIComponent(String(src ?? ""));
@@ -17,16 +68,31 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
       if (!path.endsWith(file)) continue;
       const fresh = list.filter((p) => p.until > now()), next = fresh.shift();
       if (fresh.length) pending.set(file, fresh); else pending.delete(file);
-      if (next) return next.rate;
+      if (next) return next;
     }
     return null;
   };
   const create = Sound.prototype._createNodes;
   function createNodes(...args) {
-    const result = create.apply(this, args), rate = pending.size ? take(this.src) : null;
-    if (rate) {
-      if (this.sourceNode?.playbackRate) this.sourceNode.playbackRate.value = rate;
-      else if (this.element) { this.element.preservesPitch = false; this.element.playbackRate = rate; }
+    const result = create.apply(this, args), shape = pending.size ? take(this.src) : null;
+    if (shape) {
+      const source = this.sourceNode;
+      if (shape.rate !== 1) {
+        if (source?.playbackRate) source.playbackRate.value = shape.rate;
+        else if (this.element) { this.element.preservesPitch = false; this.element.playbackRate = shape.rate; }
+      }
+      // Foundry runs a sound through its effects before its volume: these join them for this play only. Distance
+      // dulls it, its place on screen pans it, then the echo.
+      if (source?.context && Array.isArray(this.effects)) {
+        const added = [], c = source.context;
+        if (shape.place?.cutoff < 18000 && c.createBiquadFilter) { const dull = c.createBiquadFilter(); dull.type = "lowpass"; dull.frequency.value = shape.place.cutoff; added.push(dull); }
+        if (shape.place?.pan && c.createStereoPanner) { const side = c.createStereoPanner(); side.pan.value = shape.place.pan; added.push(side); }
+        if (shape.echo) added.push(echoNode(c, shape.echo));
+        if (added.length) {
+          this.effects.push(...added);
+          source.addEventListener?.("ended", () => { for (const n of added) { const i = this.effects.indexOf(n); if (i >= 0) this.effects.splice(i, 1); } }, { once: true });
+        }
+      }
     }
     return result;
   }

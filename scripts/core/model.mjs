@@ -20,7 +20,7 @@ import {
 export const ID = "animater";
 export const MAX_STAGES = 16;
 // What a blow can land on; a weapon's surface cue has a recording for each (engines/sound/surface-sounds.mjs).
-export const SURFACES = ["flesh", "leather", "metal", "shield", "crunch", "stone", "glass", "squish", "ward"];
+export const SURFACES = ["flesh", "leather", "metal", "shield", "crunch", "wood", "stone", "glass", "squish", "ward"];
 export const EVENTS = {
   manual: "Manual only",
   use: "Item used / sent to chat",
@@ -245,7 +245,7 @@ export function validateRecipe(input) {
           ...(["sprite", "aura", "sound", "tokenfx"].includes(s.kind)
             ? { subject: s.subject === "targets" ? "targets" : "source" }
             : {}),
-          ...(s.kind === "sound" && s.surfaces && typeof s.surfaces === "object" ? surfaceOptions(s.surfaces) : {}),
+          ...(s.kind === "sound" && s.surfaces && typeof s.surfaces === "object" ? surfaceOptions(s.surfaces, s.surfaceLayers, s.blow, s.heft) : {}),
           ...(s.kind === "sound" && s.optionalSound
             ? {
                 optionalSound: {
@@ -439,29 +439,82 @@ class CatalogIndex {
   }
 }
 export const catalogIndex = (catalog) => new CatalogIndex(catalog);
-// A surface cue's recordings: a few per surface, each with its own balanced volume and length.
-function surfaceOptions(input) {
+// A surface cue's recordings: a few per surface, each with its own balanced volume and length, and the layers
+// played over them (blood, a flame burst, icicles...), each with a chance, a delay range and its own recordings.
+// Its kind of blow sets its pitch: a hammer lower, a point higher.
+function surfaceOptions(input, layers, blow, heft) {
   const valid = (x) => { try { validateSoundFile(x?.file); return true; } catch { return false; } };
   const number = (v, min, max, fallback) => (Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : fallback);
-  const surfaces = Object.fromEntries(Object.entries(input)
-    .filter(([k, v]) => SURFACES.includes(k) && Array.isArray(v))
-    .map(([k, v]) => [k, v.filter(valid).slice(0, 6).map((x) => ({ file: x.file, volume: number(x.volume, 0, 1, 0.35), duration: number(x.duration, 100, 30000, 800) }))])
+  const sounds = (list) => (Array.isArray(list) ? list : []).filter(valid).slice(0, 12).map((x) => ({ file: x.file, volume: number(x.volume, 0, 1, 0.35), duration: number(x.duration, 100, 30000, 800) }));
+  const surfaces = Object.fromEntries(Object.entries(input).filter(([k]) => SURFACES.includes(k)).map(([k, v]) => [k, sounds(v)]).filter(([, v]) => v.length));
+  const surfaceLayers = Object.fromEntries(Object.entries(layers && typeof layers === "object" ? layers : {}).filter(([k, v]) => SURFACES.includes(k) && Array.isArray(v))
+    .map(([k, v]) => [k, v.slice(0, 4).map((l) => ({ name: String(l?.name ?? "layer").replace(/[^a-z-]/gi, "").slice(0, 30) || "layer", chance: number(l?.chance, 0, 1, 1), offset: [number(l?.offset?.[0], 0, 1000, 15), number(l?.offset?.[1], 0, 1000, 60)], sounds: sounds(l?.sounds) })).filter((l) => l.sounds.length)])
     .filter(([, v]) => v.length));
-  return surfaces.flesh ? { surfaces } : {};
+  return Object.keys(surfaces).length ? { surfaces, ...(Object.keys(surfaceLayers).length ? { surfaceLayers } : {}),  ...(BLOW_PITCH[blow] ? { blow } : {}), ...(HEFT[heft] ? { heft } : {}) } : {};
 }
+// A heavy weapon lands lower and a little louder; a light one higher and softer. A big body sounds lower, a small one higher.
+const HEFT = { heavy: { pitch: 0.96, volume: 1.05 }, light: { pitch: 1.03, volume: 0.95 } };
+const SIZE_PITCH = { "-2": 1.12, "-1": 1.05, 0: 1, 1: 0.95, 2: 0.9, 3: 0.86 };
+// At most this many surface sounds at once on this client; past half of it, layers drop out first.
+const VOICE_LIMIT = 6;
+// What each set played last, so the next hit picks something else (a shuffle without repeats).
+const recentPicks = new Map();
+function freshPick(key, list, random) {
+  if (!list?.length) return null;
+  const recent = recentPicks.get(key) ?? [], avoid = Math.min(recent.length, list.length - 1, list.length > 3 ? 2 : 1);
+  const fresh = list.filter((x) => !recent.slice(recent.length - avoid).includes(x.file)), pool = fresh.length ? fresh : list;
+  const chosen = pool[Math.floor(random() * pool.length)];
+  recentPicks.set(key, [...recent, chosen.file].slice(-3));
+  return chosen;
+}
+// Each hit rings in its own space, rolled anew every time: a shield's metallic slap-back, a ward's shimmer,
+// glass ringing, metal and stone a short slap, soft bodies only a hint of room. [min, max] per value. The echo
+// stays under the blow: wet is how loud its first repeat is (of the hit), feedback how much each later repeat keeps.
+const SURFACE_ECHO = {
+  shield: { delay: [0.06, 0.09], wet: [0.18, 0.26], feedback: [0.15, 0.25], tone: 4000, tail: 350 },
+  ward: { delay: [0.09, 0.14], wet: [0.22, 0.3], feedback: [0.25, 0.35], tone: 3000, tail: 600 },
+  glass: { delay: [0.05, 0.08], wet: [0.15, 0.22], feedback: [0.15, 0.25], tone: 5500, tail: 350 },
+  metal: { delay: [0.04, 0.07], wet: [0.1, 0.16], feedback: [0.08, 0.15], tone: 4000, tail: 250 },
+  stone: { delay: [0.03, 0.06], wet: [0.08, 0.12], feedback: [0.05, 0.1], tone: 2400, tail: 200 },
+  wood: { delay: [0.03, 0.05], wet: [0.06, 0.1], feedback: [0.04, 0.08], tone: 2200, tail: 150 },
+  default: { delay: [0.025, 0.045], wet: [0.04, 0.08], feedback: [0, 0.05], tone: 2000, tail: 150 },
+};
+// The kind of blow colours every hit: a hammer lands lower and heavier, a point higher and sharper.
+const BLOW_PITCH = { blunt: [0.86, 0.98], blade: [0.94, 1.06], pierce: [1.0, 1.12], arrow: [0.96, 1.08], bullet: [0.95, 1.1], spell: [0.95, 1.05],
+  fire: [0.92, 1.06], electricity: [0.95, 1.15], cold: [0.95, 1.1], acid: [0.9, 1.05] };
+const rolled = (random, [a, b]) => Math.round((a + random() * (b - a)) * 1000) / 1000;
 // The recording a surface cue plays on this target: what the blow lands on (the host reads the
 // creature and the attack's outcome), else bare flesh on a hit. Null: nothing to hear (a plain miss).
 function surfaceRecording(s, destination, context) {
-  const pick = (list) => list?.length ? list[Math.floor((context.random ?? Math.random)() * list.length)] : null;
-  if (context.preview) return pick(s.surfaces.flesh);
+  const random = context.random ?? Math.random;
+  if (context.preview) return freshPick(`${s.stageId}:preview`, s.surfaces.flesh ?? Object.values(s.surfaces)[0], random);
   // Each target's own hit or miss where the system gives one (several D&D or Daggerheart targets).
   const outcome = context.targetOutcomes?.[destination?.id ?? destination?.document?.id] ?? context.outcome;
   const surface = context.surfaceOf ? context.surfaceOf(destination, outcome) : ["success", "criticalSuccess"].includes(outcome) ? "flesh" : null;
   if (!surface) return null;
-  const recording = pick(s.surfaces[surface]) ?? (surface === "shield" ? null : pick(s.surfaces.flesh));
-  // Blow after blow varies: a slightly different pitch and loudness each time.
-  const random = context.random ?? Math.random;
-  return recording && { ...recording, volume: recording.volume * (0.85 + random() * 0.15), pitch: Math.round((0.92 + random() * 0.16) * 1000) / 1000 };
+  // A busy moment (a flurry, several attacks at once) keeps only a few surface sounds, and drops layers first.
+  const voices = context.voices, now = (context.now ?? Date.now)();
+  if (voices) for (let i = voices.length - 1; i >= 0; i--) if (voices[i] <= now) voices.splice(i, 1);
+  if (voices && voices.length >= VOICE_LIMIT) return null;
+  // A surface the blow has no sound for falls back to flesh; a spell has none (only what rings sounds).
+  const set = s.surfaces[surface] ?? (surface === "shield" ? null : s.surfaces.flesh);
+  const recording = freshPick(`${s.stageId}:${surface}`, set, random);
+  if (!recording) return null;
+  // A critical hit lands harder: a little louder and lower, and every layer plays.
+  const crit = outcome === "criticalSuccess", range = SURFACE_ECHO[surface] ?? SURFACE_ECHO.default, pitch = BLOW_PITCH[s.blow] ?? [0.92, 1.08];
+  const echo = { delay: rolled(random, range.delay), wet: rolled(random, range.wet), feedback: rolled(random, range.feedback), tone: range.tone };
+  const heft = HEFT[s.heft] ?? { pitch: 1, volume: 1 }, size = SIZE_PITCH[Math.max(-2, Math.min(3, Math.round(context.sizeOf?.(destination) ?? 0)))] ?? 1;
+  const loud = (v) => Math.min(1, v * heft.volume * (crit ? 1.15 : 0.85 + random() * 0.15));
+  const busy = voices && voices.length >= VOICE_LIMIT / 2;
+  const layers = (busy ? [] : s.surfaceLayers?.[surface] ?? []).filter((l) => crit || random() < l.chance).map((l) => {
+    const sound = freshPick(`${s.stageId}:${surface}:${l.name}`, l.sounds, random);
+    return sound && { ...sound, label: l.name, volume: loud(sound.volume), pitch: rolled(random, [0.9, 1.1]), offset: Math.round(l.offset[0] + random() * (l.offset[1] - l.offset[0])) };
+  }).filter(Boolean);
+  const shift = heft.pitch * size * (crit ? 0.97 : 1), jitter = Math.round(random() * 25);
+  if (voices) voices.push(now + jitter + recording.duration + range.tail);
+  return { ...recording, volume: loud(recording.volume), pitch: Math.round(rolled(random, pitch) * shift * 1000) / 1000, echo,
+    // Just after the weapon's own impact, not on top of it, so the two do not pile into one smeared hit.
+    jitter, duration: Math.min(30000, recording.duration + range.tail), ...(layers.length ? { layers } : {}) };
 }
 export function planRecipe(recipe, catalog, context) {
   return buildPlan(recipe, catalog, context, true);
@@ -681,7 +734,7 @@ function buildPlan(recipe, catalog, context, requireMedia) {
             index,
             asset,
             destination,
-            ...(recording ? { soundFile: recording.file, volume: recording.volume, duration: recording.duration, ...(recording.pitch ? { pitch: recording.pitch } : {}) } : {}),
+            ...(recording ? { soundFile: recording.file, volume: recording.volume, duration: recording.duration, ...(recording.pitch ? { pitch: recording.pitch } : {}), ...(recording.echo ? { echo: recording.echo } : {}), ...(recording.layers ? { layers: recording.layers } : {}), ...(recording.jitter ? { jitter: recording.jitter } : {}) } : {}),
             ...(isPathMotion(s) ? { motionTarget } : {}),
             ...(areaTiles
               ? {
@@ -745,6 +798,12 @@ function buildPlan(recipe, catalog, context, requireMedia) {
           });
       }
     }
+  }
+  // A surface cue lands just after the weapon's own impact, and its layers (blood, a flame burst, icicles...)
+  // play as sounds of their own, each a moment after the blow.
+  for (const s of [...plan]) if (s.layers || s.jitter) {
+    const { layers = [], jitter = 0, ...rest } = s, cue = { ...rest, delay: (rest.delay ?? 0) + jitter, surfaceRole: "cue" };
+    plan.splice(plan.indexOf(s), 1, cue, ...layers.map((l) => ({ ...cue, stageId: `${cue.stageId}-${l.label}`, soundFile: l.file, volume: l.volume, duration: l.duration, pitch: l.pitch, delay: cue.delay + l.offset, label: l.label, surfaceRole: l.label })));
   }
   return plan;
 }

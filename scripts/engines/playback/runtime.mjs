@@ -20,6 +20,8 @@ import { withLastingArea } from './lasting-area.mjs';
 import { withOutcome } from '../../systems/outcome.mjs';
 import { pickVariants } from './composition.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
+// A token's middle, in scene pixels.
+const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 const SOUND_PRELOAD_TIMEOUT = 2000;
 // "Stay until the effect ends": if no effect from the item shows up on the token
 // within this time (never applied), the layer ends instead of lingering.
@@ -243,6 +245,8 @@ export class AnimaterRuntime {
       preview,
       // What each target's body or shield is, for a weapon's surface cue.
       surfaceOf: this.host.surfaceOf,
+      sizeOf: this.host.sizeOf,
+      voices: (this.surfaceVoices ??= []),
       gridSize: this.host.gridSize?.() ?? 100,
     });
     if (
@@ -293,8 +297,10 @@ export class AnimaterRuntime {
             .duration(s.duration)
             .volume(s.volume);
           if (listeners) sound.forUsers(listeners);
-          // Every client that plays it shifts its pitch alike (engines/sound/sound-pitch.mjs).
-          if (s.pitch > 0 && s.pitch !== 1) sound.addOverride?.(async (_, data) => ({ ...data, animaterPitch: s.pitch }));
+          // Every client that plays it shapes it alike: pitch, and an echo off a shield or a ward (engines/sound/sound-pitch.mjs).
+          // Where it happens (the target it lands on, else the source), so each client places it from its own seat.
+          const at = soundPlace(s.subject === "source" ? context.source : s.destination ?? context.source);
+          if ((s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(at ? { animaterAt: at } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
           applyMediaOptions(sound, s);
           if (s.fadeIn) sound.fadeInAudio(s.fadeIn, { ease: s.ease });
           if (s.fadeOut) sound.fadeOutAudio(s.fadeOut, { ease: s.ease });

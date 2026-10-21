@@ -1,0 +1,103 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org).
+They were trimmed, faded and loudness-matched for Animater. Thank you to each author.
+
+acid-fizz-713705-0.ogg: "Fizzing Acid" by iainmccurdy, https://freesound.org/people/iainmccurdy/sounds/713705/
+acid-fizz-713705-1.ogg: "Fizzing Acid" by iainmccurdy, https://freesound.org/people/iainmccurdy/sounds/713705/
+acid-fizz-771957-0.ogg: "TABLET DISSOLVE SFX" by harrisonlace, https://freesound.org/people/harrisonlace/sounds/771957/
+acid-fizz-771957-1.ogg: "TABLET DISSOLVE SFX" by harrisonlace, https://freesound.org/people/harrisonlace/sounds/771957/
+arrow-wood-249160-0.ogg: "CompoundBow_CloseTarget.wav" by MHockett, https://freesound.org/people/MHockett/sounds/249160/
+arrow-wood-521242-0.ogg: "arrow_.hits_target.wav" by cyoung510, https://freesound.org/people/cyoung510/sounds/521242/
+arrow-wood-521242-1.ogg: "arrow_.hits_target.wav" by cyoung510, https://freesound.org/people/cyoung510/sounds/521242/
+arrow-wood-521552-0.ogg: "Arrow Impact" by omerbhatti34, https://freesound.org/people/omerbhatti34/sounds/521552/
+blood-gore-414296-0.ogg: "goreSplat.wav" by ThefitzyG, https://freesound.org/people/ThefitzyG/sounds/414296/
+blood-gore-641046-0.ogg: "Gore Impact - "LOT OF HEART"" by magnuswaker, https://freesound.org/people/magnuswaker/sounds/641046/
+blood-gore-652679-1.ogg: "punches_juicy_processed.wav" by tortillathrilla, https://freesound.org/people/tortillathrilla/sounds/652679/
+blood-gush-563315-0.ogg: "Gushing Flesh" by magnuswaker, https://freesound.org/people/magnuswaker/sounds/563315/
+blood-splat-495117-0.ogg: "Wet Splat 2.mp3" by nebulasnails, https://freesound.org/people/nebulasnails/sounds/495117/
+blood-splat-495118-0.ogg: "Wet Splat 1.mp3" by nebulasnails, https://freesound.org/people/nebulasnails/sounds/495118/
+blood-splat-613840-0.ogg: "Splat sound effects" by exorsten, https://freesound.org/people/exorsten/sounds/613840/
+blood-splat-613840-1.ogg: "Splat sound effects" by exorsten, https://freesound.org/people/exorsten/sounds/613840/
+blood-splat-825524-0.ogg: "Blood Splat" by Vikra9409, https://freesound.org/people/Vikra9409/sounds/825524/
+bullet-flesh-138480-0.ogg: "Bullet Blood 3" by JustInvoke, https://freesound.org/people/JustInvoke/sounds/138480/
+bullet-flesh-660770-0.ogg: "Hit Impact" by MadPanCake, https://freesound.org/people/MadPanCake/sounds/660770/
+bullet-metal-182263-0.ogg: "Foley bullet hit metal 02.wav" by martian, https://freesound.org/people/martian/sounds/182263/
+bullet-metal-182263-2.ogg: "Foley bullet hit metal 02.wav" by martian, https://freesound.org/people/martian/sounds/182263/
+bullet-metal-351371-0.ogg: "HeavyBulletPing.mp3" by wilhellboy, https://freesound.org/people/wilhellboy/sounds/351371/
+crunch-192146-0.ogg: "Bone Crunch Fast.wav" by BrassKnucklesFilms, https://freesound.org/people/BrassKnucklesFilms/sounds/192146/
+crunch-336633-0.ogg: "egg - shell crunch - wide - dried - consolidated.wav" by Anthousai, https://freesound.org/people/Anthousai/sounds/336633/
+crunch-355052-0.ogg: "Bone Crunch.wav" by GreatNate98, https://freesound.org/people/GreatNate98/sounds/355052/
+crunch-630594-0.ogg: "bone break_5.wav" by Vinni_R, https://freesound.org/people/Vinni_R/sounds/630594/
+crunch-680329-0.ogg: "Violent Crunch.mp3" by Pancakebees, https://freesound.org/people/Pancakebees/sounds/680329/
+crunch-784768-0.ogg: "DeathCrunch Gore SFX Blood and Bone" by AKkingStudio, https://freesound.org/people/AKkingStudio/sounds/784768/
+electric-arc-189630-0.ogg: "Spark" by elliott.klein, https://freesound.org/people/elliott.klein/sounds/189630/
+electric-arc-403253-0.ogg: "Taser/High Voltage discharge in glass tube" by The_Chemical_Workshop, https://freesound.org/people/The_Chemical_Workshop/sounds/403253/
+electric-arc-403253-1.ogg: "Taser/High Voltage discharge in glass tube" by The_Chemical_Workshop, https://freesound.org/people/The_Chemical_Workshop/sounds/403253/
+electric-arc-536793-0.ogg: "Spark Electric SFX 200927_0054.wav" by szegvari, https://freesound.org/people/szegvari/sounds/536793/
+fire-burst-260554-0.ogg: "Basic Fire whoosh" by LookIMadeAThing, https://freesound.org/people/LookIMadeAThing/sounds/260554/
+fire-burst-260555-0.ogg: "Basic Fire Whoosh 2" by LookIMadeAThing, https://freesound.org/people/LookIMadeAThing/sounds/260555/
+fire-burst-637533-0.ogg: "flame burst ignite bbq barbecue.flac" by kyles, https://freesound.org/people/kyles/sounds/637533/
+fire-sear-630497-0.ogg: "Sizzling Meat.wav" by jimbo555, https://freesound.org/people/jimbo555/sounds/630497/
+fire-sear-630497-1.ogg: "Sizzling Meat.wav" by jimbo555, https://freesound.org/people/jimbo555/sounds/630497/
+fire-sear-852985-0.ogg: "In woodfire stove - Sizzling wood 5" by Sadiquecat, https://freesound.org/people/Sadiquecat/sounds/852985/
+fire-sear-852985-1.ogg: "In woodfire stove - Sizzling wood 5" by Sadiquecat, https://freesound.org/people/Sadiquecat/sounds/852985/
+fire-sear-873540-0.ogg: "Frying_Sausages_Sizzle_2" by SignatureSoundsOrg, https://freesound.org/people/SignatureSoundsOrg/sounds/873540/
+fire-sear-873540-1.ogg: "Frying_Sausages_Sizzle_2" by SignatureSoundsOrg, https://freesound.org/people/SignatureSoundsOrg/sounds/873540/
+flesh-blade-323525-0.ogg: "Bloody Blade.wav" by Kreastricon62, https://freesound.org/people/Kreastricon62/sounds/323525/
+flesh-blade-539535-0.ogg: "melon-chop-take1.wav" by gagglepod, https://freesound.org/people/gagglepod/sounds/539535/
+flesh-blade-539535-1.ogg: "melon-chop-take1.wav" by gagglepod, https://freesound.org/people/gagglepod/sounds/539535/
+flesh-blade-635049-0.ogg: "Flesh Stabs and Slashes 2" by sillygrizzlies, https://freesound.org/people/sillygrizzlies/sounds/635049/
+flesh-blade-635049-1.ogg: "Flesh Stabs and Slashes 2" by sillygrizzlies, https://freesound.org/people/sillygrizzlies/sounds/635049/
+flesh-blunt-223967-0.ogg: "d0 Meatslap on Glass  1" by dav0r, https://freesound.org/people/dav0r/sounds/223967/
+flesh-blunt-241950-0.ogg: "Punches and hits" by DSPena, https://freesound.org/people/DSPena/sounds/241950/
+flesh-blunt-241950-1.ogg: "Punches and hits" by DSPena, https://freesound.org/people/DSPena/sounds/241950/
+flesh-blunt-344409-0.ogg: "Three Flesh Impacts.wav" by jawbutch, https://freesound.org/people/jawbutch/sounds/344409/
+flesh-blunt-344409-1.ogg: "Three Flesh Impacts.wav" by jawbutch, https://freesound.org/people/jawbutch/sounds/344409/
+flesh-blunt-365574-1.ogg: "Blunt Force Trauma (Clean and Juicy)" by TheFilmLook, https://freesound.org/people/TheFilmLook/sounds/365574/
+flesh-blunt-399183-0.ogg: "Major punch" by janbezouska, https://freesound.org/people/janbezouska/sounds/399183/
+flesh-blunt-779805-0.ogg: "Meaty Damage Impact" by modusmogulus, https://freesound.org/people/modusmogulus/sounds/779805/
+flesh-pierce-395365-0.ogg: "Sword stab 4" by ihitokage, https://freesound.org/people/ihitokage/sounds/395365/
+flesh-pierce-395373-0.ogg: "Sword stab 2" by ihitokage, https://freesound.org/people/ihitokage/sounds/395373/
+flesh-pierce-399617-1.ogg: "Knife/sword stab #2.MP3" by SoundsForHim, https://freesound.org/people/SoundsForHim/sounds/399617/
+flesh-pierce-539539-0.ogg: "melon-stab-take1.wav" by gagglepod, https://freesound.org/people/gagglepod/sounds/539539/
+flesh-pierce-539539-1.ogg: "melon-stab-take1.wav" by gagglepod, https://freesound.org/people/gagglepod/sounds/539539/
+frost-crack-114253-0.ogg: "Icicles breaking.wav" by GodofPH, https://freesound.org/people/GodofPH/sounds/114253/
+frost-crack-213579-0.ogg: "Ice Break Crunch Crack Foott 02" by JackMenhorn, https://freesound.org/people/JackMenhorn/sounds/213579/
+frost-crack-213579-1.ogg: "Ice Break Crunch Crack Foott 02" by JackMenhorn, https://freesound.org/people/JackMenhorn/sounds/213579/
+frost-crack-264420-0.ogg: "ICICLES breaking series.wav" by RMSound, https://freesound.org/people/RMSound/sounds/264420/
+frost-crack-264420-1.ogg: "ICICLES breaking series.wav" by RMSound, https://freesound.org/people/RMSound/sounds/264420/
+frost-crack-422619-0.ogg: "Breaking ice - small 2" by Aurelon, https://freesound.org/people/Aurelon/sounds/422619/
+frost-crack-539696-0.ogg: "water - ice - throwing a single ice cube at roof.wav" by Anthousai, https://freesound.org/people/Anthousai/sounds/539696/
+frost-crack-608685-0.ogg: "Wham n Shatter" by eben-frostey, https://freesound.org/people/eben-frostey/sounds/608685/
+leather-hit-545545-1.ogg: "leather couch sounds impact thud strike.wav" by rsellick, https://freesound.org/people/rsellick/sounds/545545/
+leather-hit-545545-3.ogg: "leather couch sounds impact thud strike.wav" by rsellick, https://freesound.org/people/rsellick/sounds/545545/
+leather-hit-545545-6.ogg: "leather couch sounds impact thud strike.wav" by rsellick, https://freesound.org/people/rsellick/sounds/545545/
+leather-hit-734550-0.ogg: "Leather - Fraternal pats, brotherhood" by Vrymaa, https://freesound.org/people/Vrymaa/sounds/734550/
+leather-hit-734550-2.ogg: "Leather - Fraternal pats, brotherhood" by Vrymaa, https://freesound.org/people/Vrymaa/sounds/734550/
+leather-hit-734550-3.ogg: "Leather - Fraternal pats, brotherhood" by Vrymaa, https://freesound.org/people/Vrymaa/sounds/734550/
+leather-hit-734550-4.ogg: "Leather - Fraternal pats, brotherhood" by Vrymaa, https://freesound.org/people/Vrymaa/sounds/734550/
+leather-hit-734550-6.ogg: "Leather - Fraternal pats, brotherhood" by Vrymaa, https://freesound.org/people/Vrymaa/sounds/734550/
+leather-hit-734550-8.ogg: "Leather - Fraternal pats, brotherhood" by Vrymaa, https://freesound.org/people/Vrymaa/sounds/734550/
+ricochet-30932-0.ogg: "bullet ricochet.wav" by aust_paul, https://freesound.org/people/aust_paul/sounds/30932/
+ricochet-30932-1.ogg: "bullet ricochet.wav" by aust_paul, https://freesound.org/people/aust_paul/sounds/30932/
+ricochet-30932-2.ogg: "bullet ricochet.wav" by aust_paul, https://freesound.org/people/aust_paul/sounds/30932/
+squish-222363-4.ogg: "SFX_gross-guts-slime-goo" by Perel, https://freesound.org/people/Perel/sounds/222363/
+squish-222363-9.ogg: "SFX_gross-guts-slime-goo" by Perel, https://freesound.org/people/Perel/sounds/222363/
+squish-442772-0.ogg: "Slime Squish" by qubodup, https://freesound.org/people/qubodup/sounds/442772/
+squish-649982-0.ogg: "Squelching SFX [6]" by SoundDesignForYou, https://freesound.org/people/SoundDesignForYou/sounds/649982/
+squish-680447-0.ogg: "slime - squishing sounds" by rubberduck9999, https://freesound.org/people/rubberduck9999/sounds/680447/
+squish-680447-1.ogg: "slime - squishing sounds" by rubberduck9999, https://freesound.org/people/rubberduck9999/sounds/680447/
+squish-680447-5.ogg: "slime - squishing sounds" by rubberduck9999, https://freesound.org/people/rubberduck9999/sounds/680447/
+squish-802616-0.ogg: "Squishes for Mud, Fruit, and Blood" by JelloApocalypse, https://freesound.org/people/JelloApocalypse/sounds/802616/
+squish-802616-1.ogg: "Squishes for Mud, Fruit, and Blood" by JelloApocalypse, https://freesound.org/people/JelloApocalypse/sounds/802616/
+squish-802616-10.ogg: "Squishes for Mud, Fruit, and Blood" by JelloApocalypse, https://freesound.org/people/JelloApocalypse/sounds/802616/
+squish-802616-3.ogg: "Squishes for Mud, Fruit, and Blood" by JelloApocalypse, https://freesound.org/people/JelloApocalypse/sounds/802616/
+squish-802616-5.ogg: "Squishes for Mud, Fruit, and Blood" by JelloApocalypse, https://freesound.org/people/JelloApocalypse/sounds/802616/
+steam-hiss-438640-0.ogg: "G39-23-Steam Hiss.wav" by craigsmith, https://freesound.org/people/craigsmith/sounds/438640/
+steam-hiss-438640-1.ogg: "G39-23-Steam Hiss.wav" by craigsmith, https://freesound.org/people/craigsmith/sounds/438640/
+ward-chime-150453-0.ogg: "Crystal bowl hit F3 1.wav" by caiogracco, https://freesound.org/people/caiogracco/sounds/150453/
+ward-chime-198390-0.ogg: "ANI - Cocktail Glass - Hard 2a" by ani_music, https://freesound.org/people/ani_music/sounds/198390/
+ward-chime-570853-0.ogg: "magicShield_block.wav" by rafaelzimrp, https://freesound.org/people/rafaelzimrp/sounds/570853/
+ward-chime-707618-2.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
+ward-chime-707618-4.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
+ward-chime-707618-5.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
+ward-chime-707618-9.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/

@@ -365,7 +365,9 @@ test("cached pre-socket server manifest explains blocked PF2e attacks while priv
 test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks", async () => {
   const f = await boot("pf2e");
   assert.equal(f.settings.get("automatic"), false);
-  assert.equal(f.menus[0].restricted, true);
+  assert.equal(f.menus.find((m) => m.name === "Animater workspace").restricted, true);
+  // Every player has their own hit sounds menu (their device's mix).
+  assert.equal(f.menus.find((m) => m.name === "Hit sounds").restricted, false);
   // Players open their own Studio (recipes pending GM approval); configuration stays GM-only.
   assert.equal(f.bindings[0].restricted, false);
   const controls = { tokens: { tools: {} } };

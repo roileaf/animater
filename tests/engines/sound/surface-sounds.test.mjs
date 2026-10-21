@@ -24,23 +24,23 @@ test('a body sounds like what covers it: metal armour, chitin, bone, stone, else
  assert.equal(bodySurface(actor('Stone Golem',{traits:['construct','golem','mindless']})),'stone');
  assert.equal(bodySurface(actor('Clockwork Soldier',{traits:['construct','clockwork']})),'metal');
  assert.equal(bodySurface(actor('Goblin Warrior',{traits:['goblin','humanoid']})),'flesh');
- assert.equal(bodySurface(actor('Treant',{traits:['plant','wood']})),'crunch');
+ assert.equal(bodySurface(actor('Treant',{traits:['plant','wood']})),'wood');
  assert.equal(bodySurface(actor('Animated Armor',{traits:['construct','mindless']})),'metal');
  // Bestiary misreads, corrected: flesh golems give, bone constructs crack, machines clang, salamanders are solid.
  assert.equal(bodySurface(actor('Flesh Golem',{traits:['construct','golem','mindless']})),'flesh');
  assert.equal(bodySurface(actor('Floating Femur',{traits:['construct','mindless']})),'crunch');
- assert.equal(bodySurface(actor('Murderous Mannequin',{traits:['construct']})),'crunch');
+ assert.equal(bodySurface(actor('Murderous Mannequin',{traits:['construct']})),'wood');
  assert.equal(bodySurface(actor('Mechanical Laborer',{traits:['construct','earth','mindless']})),'metal');
  assert.equal(bodySurface(actor('Clay Golem',{traits:['construct','golem','mindless']})),'stone');
  assert.equal(bodySurface(actor('Salamander',{traits:['elemental','fire']})),'flesh');
  assert.equal(bodySurface(actor('Living Whirlwind',{traits:['air','elemental']})),null);
  assert.equal(bodySurface(actor('Brine Dragon (Adult)',{traits:['dragon','elemental','water']})),'flesh');
  assert.equal(bodySurface(actor('Kyra',{armor:{group:'ceramic',category:'medium'}})),'crunch');
- assert.equal(bodySurface(actor('Animated Broom',{traits:['construct','mindless']})),'crunch');
+ assert.equal(bodySurface(actor('Animated Broom',{traits:['construct','mindless']})),'wood');
  // A stat block's armour counts though it is not equipped.
  assert.equal(bodySurface({name:'Akiros Ismort',type:'npc',system:{traits:{value:['human']}},itemTypes:{armor:[{category:'heavy',group:'chain',isEquipped:false}]}}),'metal');
  assert.equal(bodySurface({name:'Orc Scrapper',type:'npc',system:{traits:{value:['orc']}},itemTypes:{armor:[{category:'medium',group:'leather',isEquipped:false}]}}),'leather');
- assert.equal(bodySurface(actor('Ranger',{armor:{group:'wood',category:'medium'}})),'crunch');
+ assert.equal(bodySurface(actor('Ranger',{armor:{group:'wood',category:'medium'}})),'wood');
  assert.equal(bodySurface(actor('Gelatinous Cube',{traits:['ooze','mindless']})),'squish');
  assert.equal(bodySurface(actor('Water Elemental',{traits:['elemental','water']})),'squish');
  // Nothing solid to strike: a ghost, living flame.
@@ -63,7 +63,7 @@ test('the same dagger sounds different on a spider and on an armoured ally',()=>
  const cue=recipe.stages.find(s=>s.surfaces);
  assert.ok(cue,'the contact has a surface cue');
  assert.equal(cue.subject,'targets');
- for(const surface of ['flesh','leather','metal','shield','crunch','stone','glass','squish','ward'])assert.ok(cue.surfaces[surface]?.length,surface);
+ for(const surface of ['flesh','leather','metal','shield','crunch','wood','stone','glass','squish','ward'])assert.ok(cue.surfaces[surface]?.length,surface);
  const spider={id:'spider',name:'Giant Spider',actor:actor('Giant Spider',{traits:['animal']})},ally={id:'ally',name:'Valeros',actor:actor('Valeros',{armor:{group:'plate',category:'heavy'}})};
  const surfaceOf=(token,outcome)=>targetSurface(token.actor,outcome);
  const fileOn=(target,outcome='success')=>planRecipe(recipe,installed(recipe),{source:{id:'me'},targets:[target],outcome,surfaceOf,gridSize:100,random:()=>0}).find(s=>s.surfaces)?.soundFile;
@@ -91,16 +91,19 @@ test('the weapon catalog switch turns surface sounds off',()=>{
  assert.equal(off.stages.some(s=>s.surfaces),false);
 });
 
-test('without any sound pack, every surface but an ooze still sounds from the bundled recordings',()=>{
+test('without any sound pack, every surface still sounds from the bundled recordings',()=>{
  const cue=weaponRecipe(dagger,'melee',{soundCatalog:bare}).stages.find(s=>s.surfaces);
- for(const surface of ['flesh','leather','metal','shield','crunch','stone','glass','ward'])assert.ok(cue.surfaces[surface]?.every(x=>x.file.startsWith('modules/animater/assets/sounds/surfaces/')),surface);
- assert.equal(cue.surfaces.squish,undefined);
+ for(const surface of ['flesh','leather','metal','shield','crunch','wood','stone','glass','squish','ward'])assert.ok(cue.surfaces[surface]?.every(x=>x.file.startsWith('modules/animater/assets/sounds/surfaces/')),surface);
 });
-test('each hit varies slightly in pitch and loudness',()=>{
+test('each hit varies in pitch and loudness, pitched by its kind of blow',()=>{
  const recipe=weaponRecipe(dagger,'melee',{soundCatalog:sounds}),ally={id:'ally',actor:actor('Valeros',{armor:{group:'plate',category:'heavy'}})};
  const plan=r=>planRecipe(recipe,installed(recipe),{source:{id:'me'},targets:[ally],outcome:'success',surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100,random:()=>r}).find(s=>s.surfaces);
  const low=plan(0),high=plan(.99);
- assert.ok(low.pitch>=.92&&high.pitch<=1.08&&low.pitch<high.pitch);
+ // A dagger is a light point: higher and sharper than a hammer (1-1.12, and 3% lighter), still varied hit to hit.
+ assert.ok(low.pitch>=1.02&&high.pitch<=1.16&&low.pitch<high.pitch);
+ const hammer=PF2E_WEAPONS.find(w=>w.slug==='warhammer'),heavy=weaponRecipe(hammer,'melee',{soundCatalog:sounds});
+ const blunt=planRecipe(heavy,installed(heavy),{source:{id:'me'},targets:[ally],outcome:'success',surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100,random:()=>.99}).find(s=>s.surfaces);
+ assert.ok(blunt.pitch<low.pitch,'a hammer lands lower than a dagger');
  assert.ok(low.volume<high.volume);
 });
 
