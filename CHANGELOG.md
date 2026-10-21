@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.1 (2026-10-21)
 
 - **A recipe bound to a spell plays for that spell from any book.** Dropping a spell from a compendium onto a recipe used to make it play only for items made from that very compendium entry, so the same spell from the 2024 Player's Handbook, another module, an importer or a copy stayed silent. It now plays for any item of the same name, and the exact item it was bound to still comes first. A recipe bound to one character's own item still plays for that character only. ([#10](https://github.com/roileaf/animater/issues/10))
 - **Recipes say when they won't play.** A recipe card and the Studio used to say "Ready to play" even while **Play my own recipes automatically** was off, so a recipe could preview fine and then do nothing at the table. They now say "Won't play: Own recipes are off" and how to turn it on. ([#11](https://github.com/roileaf/animater/issues/11))
