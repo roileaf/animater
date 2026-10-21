@@ -3,7 +3,7 @@
 // combat's own pick from the Combat Tracker, else the world default) and sends it
 // to everyone, so all clients show the same screen once. Any client may notice a
 // moment (a crit it rolled, a creature it dropped) and ask the active GM to play it.
-import { STARTER_FLASHES, MOMENT_EVENTS, flashesOn, validateFlashes, validateFlash, chooseFlash, FLASH_EVENTS } from "./flash-model.mjs";
+import { STARTER_FLASHES, MOMENT_EVENTS, flashesOn, validateFlashes, validateFlash, chooseFlash, FLASH_EVENTS, manualPrompts } from "./flash-model.mjs";
 import { createFlash } from "./flash-render.mjs";
 import { pickFlash } from "./flash-picker.mjs";
 import { hpState, isKillTransition } from "../../systems/hp-state.mjs";
@@ -43,6 +43,12 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 export function trackerHeader(root) {
   return root?.querySelector(".combat-tracker-header") ?? root?.querySelector("header:not(.window-header)") ?? null;
 }
+// The party's name: PF2e's Party actor, D&D 5e's primary party, else a party folder's actor, else "The Party".
+export function partyName() {
+  const pf2e = globalThis.game?.actors?.party, dnd = (() => { try { return game.settings.get("dnd5e", "primaryParty")?.actor; } catch { return null; } })();
+  const group = game?.actors?.find?.((a) => ["party", "group"].includes(a.type));
+  return (pf2e ?? dnd ?? group)?.name ?? "The Party";
+}
 export function registerFlashSettings(ID) {
   game.settings.register(ID, FLASH_SETTING, { scope: "world", config: false, type: Object, default: { schema: 1, screens: STARTER_FLASHES },
     onChange: () => ui.combat?.render() });
@@ -59,8 +65,24 @@ export function flashScreens(host) {
   const { ID } = host;
   const screens = () => validateFlashes(game.settings.get(ID, FLASH_SETTING)?.screens);
   const defaults = () => ({ start: "none", end: "none", ...Object.fromEntries(MOMENT_EVENTS.map((e) => [e, "none"])), ...game.settings.get(ID, FLASH_DEFAULTS) });
-  const vars = (combat = game.combat, extra = {}) => ({ scene: canvas.scene?.name ?? "", round: String(combat?.round ?? ""), combatants: encounterPeople(combat), ...extra });
-  let showing = null;
+  const vars = (combat = game.combat, extra = {}) => ({ scene: canvas.scene?.name ?? "", round: String(combat?.round ?? ""), party: partyName(), combatants: encounterPeople(combat), ...extra });
+  // The GM types each {manual} name as the screen plays, once for everyone; this combat remembers the answers.
+  async function askManual(screen, combat) {
+    const labels = manualPrompts(screen);
+    if (!labels.length) return null;
+    const remembered = { ...(combat?.getFlag?.(ID, "flashManual") ?? lastManual) };
+    if (!game.user.isGM) return remembered;
+    const esc = (s) => foundry.utils.escapeHTML(String(s ?? ""));
+    const content = labels.map((label, i) => `<div class="form-group"><label>${esc(label || "Name")}</label><div class="form-fields"><input name="m${i}" value="${esc(remembered[label] ?? "")}" autocomplete="off"${i ? "" : " autofocus"}></div></div>`).join("");
+    const answer = await foundry.applications.api.DialogV2.prompt({ window: { title: `Flash screen: ${screen.name ?? "names"}` }, content,
+      ok: { label: "Play", callback: (_event, button) => Object.fromEntries(labels.map((label, i) => [label, button.form.elements[`m${i}`].value.trim()])) },
+      rejectClose: false }).catch(() => null);
+    const names = { ...remembered, ...(answer ?? {}) };
+    lastManual = names;
+    if (answer && combat?.setFlag) await combat.setFlag(ID, "flashManual", names).catch(() => {});
+    return names;
+  }
+  let showing = null, lastManual = {};
   const trackerMenus = () => game.settings.get(ID, FLASH_TRACKER) !== false;
   // ms > 0: a sound layer trimmed in the editor stops there, with a short fade.
   const playSound = (src, volume, ms = 0) => {
@@ -104,9 +126,15 @@ export function flashScreens(host) {
     sound(valid);
     try { await run.play(); } finally { run.stop(); layer.remove(); unduck(); thaw(); if (showing === run) showing = null; }
   }
-  function play(screen, { everyone = false, combat, extra } = {}) {
+  // A screen that asks for names waits for the GM's answer; any other plays at once.
+  function play(screen, options = {}) {
     if (!screen) return;
-    const v = vars(combat, extra);
+    if (!manualPrompts(screen).length) return send(screen, options);
+    return askManual(screen, options.combat ?? game.combat).then((manual) => send(screen, options, manual))
+      .catch((error) => host.trace("Blocked", `Flash screen: ${error.message}`));
+  }
+  function send(screen, { everyone = false, combat, extra } = {}, manual = null) {
+    const v = { ...vars(combat, extra), ...(manual ? { manual } : {}) };
     if (everyone) game.socket.emit(`module.${ID}`, { type: "flash", sender: host.clientId, screen, vars: v });
     void show(screen, v).catch((error) => host.trace("Blocked", `Flash screen: ${error.message}`));
   }

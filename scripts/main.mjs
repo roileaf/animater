@@ -859,7 +859,7 @@ function workspaceHost() {
         input.click();
       }),
       flashVars: () => {
-        const v = { name: "Valeros", action: "Dragon's Fury", ...(flash?.vars() ?? {}) };
+        const v = { name: "Valeros", action: "Dragon's Fury", manualSample: true, ...(flash?.vars() ?? {}) };
         // The cut-in's stand-in: a selected token, else the first party member, else a silhouette.
         const tok = canvas?.tokens?.controlled?.[0], party = v.combatants?.find((c) => c.side === "party");
         v.actor = tok ? { name: tok.name, img: tok.document?.texture?.src ?? "", portrait: tok.actor?.img ?? "" } : party ?? { name: "Valeros", img: "icons/svg/mystery-man.svg", portrait: "icons/svg/mystery-man.svg" };

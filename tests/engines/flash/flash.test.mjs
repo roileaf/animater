@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateFlash, validateFlashes, chooseFlash, fillText, STARTER_FLASHES, FLASH_LIMIT } from "../../../scripts/engines/flash/flash-model.mjs";
+import { validateFlash, validateFlashes, chooseFlash, fillText, manualPrompts, STARTER_FLASHES, FLASH_LIMIT } from "../../../scripts/engines/flash/flash-model.mjs";
 import { layerKeyframes } from "../../../scripts/engines/flash/flash-render.mjs";
 
 test("flash screens are cleaned: limits, kinds, safe media only", () => {
@@ -412,4 +412,16 @@ test("Play for everyone and Revert ask first; a no keeps everything as it was", 
   answer = true;
   await ed.action("flash-play-all", { dataset: {} });
   assert.deepEqual(played, [{ everyone: true }]);
+});
+
+test('{party} names the party; {manual} is what the GM typed, asked once per label', () => {
+  assert.equal(fillText('{party} vs {manual:Enemy side}', { party: 'The Lantern Bearers', manual: { 'Enemy side': 'The Red Mantis' } }), 'The Lantern Bearers vs The Red Mantis');
+  assert.equal(fillText('{partyname}', { party: 'Heroes' }), 'Heroes');
+  assert.equal(fillText('{manual}!', { manual: { '': 'Ambush' } }), 'Ambush!');
+  // Unanswered: blank at the table, its label as a sample in the editor.
+  assert.equal(fillText('[{manual:Enemy side}]', {}), '[]');
+  assert.equal(fillText('{manual:Enemy side} / {manual}', { manualSample: true }), 'Enemy side / Typed by the GM');
+  const screen = { layers: [{ text: '{party} vs {manual:Enemy side}' }, { text: '{manual:Enemy side} at {manual:Place}' }, { text: '{manual}' }, { kind: 'band' }] };
+  assert.deepEqual(manualPrompts(screen), ['Enemy side', 'Place', '']);
+  assert.deepEqual(manualPrompts({ layers: [{ text: '{scene}' }] }), []);
 });

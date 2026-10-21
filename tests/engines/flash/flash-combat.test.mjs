@@ -168,3 +168,27 @@ test("the tracker's flash menus go in its own header, never a popped-out window'
   assert.equal(trackerHeader(plain), own, "a tracker without the usual class still uses its own header");
   assert.equal(trackerHeader({ querySelector: () => null }), null);
 });
+
+test("a screen with {manual} names asks the GM once, sends the answers to everyone, and the combat remembers them", async () => {
+  const w = world({ defaults: { start: "named" } }), { combat } = encounter({ started: true });
+  const named = validateFlash({ id: "named", name: "Showdown", event: "start", layers: [{ kind: "text", text: "{party} vs {manual:Enemy side}" }, { kind: "text", text: "{manual}" }] });
+  game.settings.set(ID, "flashScreens", { schema: 1, screens: [named] });
+  game.actors = { party: { name: "The Lantern Bearers" } };
+  const sent = [], asked = [];
+  game.socket.emit = (_, data) => sent.push(data);
+  globalThis.foundry = { utils: { escapeHTML: (s) => s }, applications: { api: { DialogV2: { prompt: async (o) => {
+    asked.push(o.content);
+    const values = { m0: "The Red Mantis", m1: "Ambush" };
+    return o.ok.callback(null, { form: { elements: Object.fromEntries(Object.entries(values).map(([k, value]) => [k, { value }])) } });
+  } } } } };
+  await w.api.play(named, { everyone: true, combat });
+  assert.equal(asked.length, 1, "one popup with every name");
+  assert.match(asked[0], /Enemy side/);
+  assert.deepEqual(sent.at(-1).vars.manual, { "Enemy side": "The Red Mantis", "": "Ambush" });
+  assert.equal(sent.at(-1).vars.party, "The Lantern Bearers");
+  assert.deepEqual(combat.getFlag(ID, "flashManual"), { "Enemy side": "The Red Mantis", "": "Ambush" });
+  // The next time, the popup starts from this combat's answers.
+  await w.api.play(named, { everyone: true, combat });
+  assert.match(asked[1], /value="The Red Mantis"/);
+  delete globalThis.foundry; delete game.actors;
+});

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Flash screens can name the party and ask the GM for names.** Two new words for any text layer:
+  - **{party}** (or **{partyname}**) is your party's name: Pathfinder 2e's Party, D&D 5e's primary party, else "The Party".
+  - **{manual}** asks the GM to type a name as the screen plays, and shows it to everyone. **{manual:Enemy side}** asks with that label, and a screen can ask for several names in one popup. The combat remembers the answers, so the next screen starts with them filled in.
+
+  Thanks to silentbrad for the idea.
+
 ## 1.5.5 (2026-10-21)
 
 - **Spells with several targets animate on all of them.** Pathfinder 2e records only the first of your targets on a damage roll, so a two-target spell such as Electric Arc could leap to just one enemy. A spell now plays on every creature you have targeted when you roll its damage. A weapon's damage still plays on the one creature its Strike hit.

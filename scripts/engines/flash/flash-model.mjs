@@ -165,7 +165,20 @@ export const bossOf = (combatants = []) => combatants.filter((c) => c.side === "
 // {scene} in text becomes the scene's name, {round} the combat round.
 // {boss} is the strongest enemy's name, {name} the creature of the moment (who crit, who fell, who
 // used the action), {action} the attack, spell or ability a screen plays before.
-export const fillText = (value, vars = {}) => String(value ?? "").replace(/\{(scene|round|boss|name|action)\}/g, (_, k) => (k === "boss" ? bossOf(vars.combatants)?.name : vars[k]) ?? "");
+// {party} (or {partyname}) is the party's name. {manual} is typed by the GM as the screen plays; {manual:Enemy side}
+// asks with that label, so one screen can ask for several names.
+const VARS = /\{(scene|round|boss|name|action|party|partyname|manual)(?::([^{}]{1,40}))?\}/g;
+export const fillText = (value, vars = {}) => String(value ?? "").replace(VARS, (whole, k, label = "") => {
+  if (k === "manual") return vars.manual?.[label.trim()] ?? (vars.manualSample ? label.trim() || "Typed by the GM" : "");
+  if (label) return whole;
+  return (k === "boss" ? bossOf(vars.combatants)?.name : k === "partyname" ? vars.party : vars[k]) ?? "";
+});
+// The names a screen asks the GM for as it plays: one per distinct {manual} label, in order.
+export function manualPrompts(screen) {
+  const labels = [];
+  for (const layer of screen?.layers ?? []) for (const [, k, label = ""] of String(layer?.text ?? "").matchAll(VARS)) if (k === "manual" && !labels.includes(label.trim())) labels.push(label.trim());
+  return labels;
+}
 
 // The screen to play: the combat's own choice, else the world default, for this event.
 // A choice is a screen id, "random" (any screen for the event) or "none".
