@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Block or dodge.** A miss against a raised or magical shield now either rings off the shield or is dodged, never both. The shield takes about three misses in five, critical misses included; a blocked arrow or bullet flies into the shield instead of wide. Each attack draws one for each target, and every player sees the same.
+- **Steel shields ring, wooden shields thunk.** A raised shield sounds like what it is made of: steel shields, bucklers and fortress shields clang like metal; wooden, tower and hide shields knock like wood. In Starfinder, shields are metal.
+- **Melee hit sounds land when the weapon connects.** A swing animation winds up before it strikes; the hit sound used to play when the swing started, up to a second early for an axe. It now lands as the weapon reaches the target. Arrow, bolt, bullet and thrown-weapon impact sounds now land as the shot arrives.
+- **Blood follows the blow.** The splatter now always comes after the body's hit, never before it.
+- **A missed arrow or bullet blocked by a raised shield now thunks as it arrives.** Before, the block sounded most of a second late, after the shot had already flown past, and the target dodged late too.
+
 ## 1.5.3 (2026-10-21)
 
 - **Cleaner hit recordings.** An audit of every hit sound found and fixed: arrows hitting flesh or leather that thunked like an archery target, two recordings that hit twice, a metal hit with its own swing baked in, five glass and plate hits that cut off abruptly (now fade out), and magical ward chimes that played quieter than the rest of their set.

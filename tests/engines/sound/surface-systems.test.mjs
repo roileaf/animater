@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {bodySurface,targetSurface,withSurfaceSounds,blowOfItem,surfaceAnchor,sizeOf,heftOfItem} from '../../../scripts/engines/sound/surface-sounds.mjs';
+import {bodySurface,targetSurface,withSurfaceSounds,blowOfItem,surfaceAnchor,sizeOf,heftOfItem,shieldIsMetal} from '../../../scripts/engines/sound/surface-sounds.mjs';
 import {DND5E_ENTRIES,dndRecipe} from '../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
 import {dhEntries,dhRecipe} from '../../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs';
 import {SF2E_ENTRIES,sfRecipe} from '../../../scripts/catalogs/sf2e/sf2e-catalog.mjs';
@@ -97,11 +97,11 @@ test('a surface cue survives a miss: on the swing that still cuts the air, or at
  assert.equal(ranged.stages.some(s=>s.stageId==='1-accent'),false);
 });
 
-test('every hit echoes, rolled anew; a shield or a ward rings longest, and the cue lasts for its tail',()=>{
+test('every hit echoes, rolled anew; a steel shield or a ward rings longest, and the cue lasts for its tail',()=>{
  const ls=longsword(),recipe=withSurfaceSounds(dndRecipe(ls,ls.variants[0].id,{sounds}),{blow:'blade',sounds}),cue=recipe.stages.find(s=>s.surfaces);
  const installed=recipe.stages.flatMap(s=>s.assets??[]).map(key=>({key}));
- const fighter={id:'f',actor:dnd('Fighter',{armor:['Chain Mail','heavy'],shield:true})},wizard={id:'w',actor:dnd('Wizard',{effects:['Shield']})};
- const cueOn=(target,outcome)=>planRecipe(recipe,installed,{source:{id:'me'},targets:[target],outcome,surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100,random:()=>0}).find(s=>s.surfaces);
+ const fighter={id:'f',actor:dnd('Fighter',{armor:['Chain Mail','heavy'],shield:true})};fighter.actor.system.attributes.ac.equippedShield.name='Steel Shield';const wizard={id:'w',actor:dnd('Wizard',{effects:['Shield']})};
+ const cueOn=(target,outcome)=>planRecipe(recipe,installed,{source:{id:'me'},targets:[target],outcome,messageId:'a5',surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100,random:()=>0}).find(s=>s.surfaces);
  const block=cueOn(fighter,'failure'),ward=cueOn(wizard,'failure'),hit=cueOn(fighter,'success');
  // Every hit rings in some space; a shield's slap-back and a ward's shimmer ring longest.
  assert.ok(block.echo&&ward.echo&&hit.echo);
@@ -109,7 +109,7 @@ test('every hit echoes, rolled anew; a shield or a ward rings longest, and the c
  // The echo stays under the blow: its first repeat at most a third as loud, and it fades fast.
  for(const e of [block.echo,ward.echo,hit.echo])assert.ok(e.wet<=.3&&e.feedback<=.35);
  assert.ok(hit.echo.wet<block.echo.wet,'a body gives only a hint of room');
- assert.ok(block.duration>cue.surfaces.shield[0].duration,'the tail is not cut');
+ assert.ok(block.duration>cue.surfaces.steel[0].duration,'the tail is not cut');
 });
 
 test('flesh bleeds: a hit on flesh adds a blood layer just after the blow; armour does not',()=>{
@@ -224,4 +224,64 @@ test('containers, scenery and traps sound like what they are made of',()=>{
  assert.equal(thing('Altar','loot'),'stone');assert.equal(thing('Coffin','loot'),'wood');assert.equal(thing('Iron Chest','loot'),'metal');
  assert.equal(thing('Rat Nest','loot'),'leather');assert.equal(thing('Falling Shelves','hazard',['trap']),'wood');
  assert.equal(thing('Poison Dart Trap','hazard',['trap']),'stone');assert.equal(thing('Spectral Choir','hazard',['haunt']),null);
+});
+test('a raised shield can take a miss or a fumble alike',()=>{
+ const guard={name:'Guard',system:{traits:{value:['humanoid']},attributes:{shield:{raised:true}}},items:[],itemTypes:{armor:[],effect:[]}};
+ assert.equal(targetSurface(guard,'failure'),'shield');
+ assert.equal(targetSurface(guard,'criticalFailure'),'shield');
+});
+test("a missed arrow's block and dodge come as it arrives, not late in its flight",()=>{
+ const recipe={id:'bow',name:'Bow',stages:[
+  {stageId:'fly',kind:'travel',delay:625,duration:2550,assets:['a']},
+  {stageId:'hit',kind:'impact',subject:'targets',delay:1275,duration:1450,assets:['b']},
+  {stageId:'hit-surface',kind:'sound',subject:'targets',afterStage:'hit',delay:0,surfaces:{shield:[{file:'s.ogg'}]},assets:[]}]};
+ const missed=withOutcome(recipe,{outcome:'failure',type:'attack',id:'x'});
+ assert.equal(missed.stages.find(s=>s.stageId==='hit-surface').delay,1275);
+ assert.equal(missed.stages.find(s=>s.stageId==='miss-dodge').delay,1275-230);
+});
+
+test('a raised steel shield rings like metal; a wooden one thunks',()=>{
+ const guard=shield=>({name:'Guard',system:{traits:{value:['humanoid']},attributes:{shield:{raised:true,itemId:'s'}}},items:{get:()=>shield},itemTypes:{armor:[],effect:[]}});
+ assert.equal(targetSurface(guard({name:'Steel Shield',system:{baseItem:'steel-shield'}}),'failure'),'steel');
+ assert.equal(targetSurface(guard({name:'Buckler'}),'failure'),'steel');
+ assert.equal(targetSurface(guard({name:'Wooden Shield',system:{baseItem:'wooden-shield'}}),'failure'),'shield');
+ assert.equal(targetSurface(guard({name:'Tower Shield'}),'failure'),'shield');
+ // Its material wins over its name; unknown is wood, except in Starfinder.
+ assert.equal(shieldIsMetal({name:'Lion Shield',system:{material:{type:'adamantine'}}},'pf2e'),true);
+ assert.equal(shieldIsMetal({name:'Spined Shield',system:{material:{type:'darkwood'}}},'pf2e'),false);
+ assert.equal(shieldIsMetal({name:'Shield'},'dnd5e'),false);assert.equal(shieldIsMetal({name:'Light Shield'},'sf2e'),true);
+});
+test('each blow has its own steel shield sounds, and the wooden ones never ring',()=>{
+ const ls=longsword(),cue=withSurfaceSounds(dndRecipe(ls,ls.variants[0].id,{sounds}),{blow:'blade',sounds}).stages.find(s=>s.surfaces);
+ assert.ok(cue.surfaces.steel.some(x=>/Metal Shield Block|impactPlate/.test(x.file)));
+ assert.ok(!cue.surfaces.shield.some(x=>/Metal|Plate|Bell/.test(x.file)));
+});
+
+test('a miss against a shield either rings off it or is dodged, never both, and every client draws the same',()=>{
+ const ls=longsword(),base=withSurfaceSounds(dndRecipe(ls,ls.variants[0].id,{sounds}),{blow:'blade',sounds});
+ const recipe=withOutcome(base,{outcome:'failure',type:'attack',id:'x'}),installed=recipe.stages.flatMap(s=>s.assets??[]).map(key=>({key}));
+ const guard={id:'guard',actor:dnd('Guard',{shield:true})};
+ const plan=messageId=>planRecipe(recipe,installed,{source:{id:'me'},targets:[guard],outcome:'failure',messageId,surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100});
+ const kinds=messageId=>{const p=plan(messageId);return {shield:p.some(s=>s.surfaces),dodge:p.some(s=>s.stageId==='miss-dodge')};};
+ assert.deepEqual(kinds('m1'),{shield:true,dodge:false},'blocked: the shield rings, no dodge');
+ assert.deepEqual(kinds('m4'),{shield:false,dodge:true},'dodged: no shield sound');
+ assert.deepEqual(kinds('m1'),kinds('m1'),'the same attack draws the same on every client');
+ // Without a shield there is nothing to block with: always a dodge.
+ const bare=planRecipe(recipe,installed,{source:{id:'me'},targets:[{id:'guard',actor:dnd('Guard')}],outcome:'failure',messageId:'m1',surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100});
+ assert.ok(bare.some(s=>s.stageId==='miss-dodge'));
+});
+test('most misses against a shield are blocked, fumbles too, and a blocked shot flies into it',()=>{
+ const bow=DND5E_ENTRIES.find(e=>e.kind==='weapon'&&e.slug==='longbow');
+ const base=withSurfaceSounds(dndRecipe(bow,bow.variants[0].id,{sounds}),{blow:'arrow',sounds});
+ const guard={id:'guard',actor:dnd('Guard',{shield:true})};
+ let blocks=0;
+ for(let i=0;i<400;i++){
+  const outcome=i%2?'failure':'criticalFailure',recipe=withOutcome(base,{outcome,type:'attack',id:'x'}),installed=recipe.stages.flatMap(s=>s.assets??[]).map(key=>({key}));
+  const plan=planRecipe(recipe,installed,{source:{id:'me'},targets:[guard],outcome,messageId:'msg'+i,surfaceOf:(t,o)=>targetSurface(t.actor,o),gridSize:100});
+  const blocked=plan.some(s=>s.surfaces),flight=plan.find(s=>['travel','projectile'].includes(s.kind));
+  if(blocked)blocks++;
+  assert.equal(Boolean(flight?.shieldBlock),blocked,'the shot flies into the shield exactly when it is blocked');
+  assert.equal(plan.some(s=>s.stageId==='miss-dodge'),!blocked);
+ }
+ assert.ok(blocks>200&&blocks<280,`about 60% blocked (${blocks}/400)`);
 });

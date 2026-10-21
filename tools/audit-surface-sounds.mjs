@@ -19,7 +19,8 @@ const FORBID = {
   stone: [SHATTER, /flesh|blood|squish|leather/i],
   squish: [SHATTER, HARD, /wood|plank|mining|stone/i],
   metal: [/flesh|blood|squish|leather|wood(?!-)|glass|chime/i],
-  shield: [/flesh|blood|squish|glass|chime|frost/i],
+  shield: [HARD, /flesh|blood|squish|glass|chime|frost|bell/i],
+  steel: [/flesh|blood|squish|glass|chime|frost|bell|wood|plank|arrow-wood/i],
   glass: [/flesh|blood|squish|leather|wood|mining/i],
   ward: [/flesh|blood|squish|leather|wood|mining|bell/i],
 };
@@ -60,9 +61,9 @@ for (const [key, [rule]] of profiles) {
     if (layer) { if (!LAYER[layer]?.test(where)) flag(key, where, "wrong-layer-sound", `a ${layer} layer`); }
     else {
       // An element's own touch is checked below; what it rings off still has to fit.
-      if (!ELEMENT[blow] || ["ward", "shield", "glass"].includes(surface)) for (const re of FORBID[surface] ?? []) if (re.test(where)) flag(key, where, "wrong-kind", `${surface} must not sound like ${re}`);
+      if (!ELEMENT[blow] || ["ward", "shield", "steel", "glass"].includes(surface)) for (const re of FORBID[surface] ?? []) if (re.test(where)) flag(key, where, "wrong-kind", `${surface} must not sound like ${re}`);
       if (REQUIRE[surface] && !REQUIRE[surface].test(where)) flag(key, where, "wrong-kind", `${surface} needs ${REQUIRE[surface]}`);
-      if (ELEMENT[blow] && !["ward", "shield", "glass"].includes(surface) && !ELEMENT[blow].test(where) && !/impactPlate/.test(where)) flag(key, where, "wrong-element", blow);
+      if (ELEMENT[blow] && !["ward", "shield", "steel", "glass"].includes(surface) && !ELEMENT[blow].test(where) && !/impactPlate/.test(where)) flag(key, where, "wrong-element", blow);
     }
     try {
       const m = await measure(where);

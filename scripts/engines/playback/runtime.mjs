@@ -345,7 +345,7 @@ export class AnimaterRuntime {
           e.atLocation(s.origin, location)
             .stretchTo(s.endpoint)
             .scale({ x: 1, y: s.scale });
-          if (["failure", "criticalFailure"].includes(context.outcome))
+          if (["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock)
             e.missed();
         } else if (s.kind === "template") {
           if (s.areaTile) {

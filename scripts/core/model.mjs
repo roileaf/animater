@@ -20,7 +20,7 @@ import {
 export const ID = "animater";
 export const MAX_STAGES = 16;
 // What a blow can land on; a weapon's surface cue has a recording for each (engines/sound/surface-sounds.mjs).
-export const SURFACES = ["flesh", "leather", "metal", "shield", "crunch", "wood", "stone", "glass", "squish", "ward"];
+export const SURFACES = ["flesh", "leather", "metal", "shield", "steel", "crunch", "wood", "stone", "glass", "squish", "ward"];
 export const EVENTS = {
   manual: "Manual only",
   use: "Item used / sent to chat",
@@ -467,11 +467,13 @@ function freshPick(key, list, random) {
   recentPicks.set(key, [...recent, chosen.file].slice(-3));
   return chosen;
 }
-// Each hit rings in its own space, rolled anew every time: a shield's metallic slap-back, a ward's shimmer,
+// Each hit rings in its own space, rolled anew every time: a steel shield's metallic slap-back, a ward's shimmer,
 // glass ringing, metal and stone a short slap, soft bodies only a hint of room. [min, max] per value. The echo
 // stays under the blow: wet is how loud its first repeat is (of the hit), feedback how much each later repeat keeps.
 const SURFACE_ECHO = {
-  shield: { delay: [0.06, 0.09], wet: [0.18, 0.26], feedback: [0.15, 0.25], tone: 4000, tail: 350 },
+  // A raised steel shield rings with a metallic slap-back; a wooden one gives a short, dull knock.
+  steel: { delay: [0.06, 0.09], wet: [0.18, 0.26], feedback: [0.15, 0.25], tone: 4000, tail: 350 },
+  shield: { delay: [0.035, 0.055], wet: [0.08, 0.13], feedback: [0.05, 0.1], tone: 2400, tail: 180 },
   ward: { delay: [0.09, 0.14], wet: [0.22, 0.3], feedback: [0.25, 0.35], tone: 3000, tail: 600 },
   glass: { delay: [0.05, 0.08], wet: [0.15, 0.22], feedback: [0.15, 0.25], tone: 5500, tail: 350 },
   metal: { delay: [0.04, 0.07], wet: [0.1, 0.16], feedback: [0.08, 0.15], tone: 4000, tail: 250 },
@@ -485,6 +487,19 @@ const BLOW_PITCH = { blunt: [0.86, 0.98], blade: [0.94, 1.06], pierce: [1.0, 1.1
 const rolled = (random, [a, b]) => Math.round((a + random() * (b - a)) * 1000) / 1000;
 // The recording a surface cue plays on this target: what the blow lands on (the host reads the
 // creature and the attack's outcome), else bare flesh on a hit. Null: nothing to hear (a plain miss).
+// A miss against a raised or magical shield either rings off it or is dodged, never both: one draw per attack and
+// target, seeded by the attack (its chat message), so every client sees the same choice. The shield takes most of
+// them (it is often why the attack missed), a wild fumble included.
+const BLOCK_CHANCE = 0.6;
+const seeded = (seed) => { let h = 2166136261; for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return ((h >>> 0) % 10000) / 10000; };
+const targetId = (destination) => destination?.id ?? destination?.document?.id ?? "";
+function blocksMiss(recipe, destination, context) {
+  const outcome = context.targetOutcomes?.[targetId(destination)] ?? context.outcome;
+  if (!["failure", "criticalFailure"].includes(outcome) || !context.surfaceOf) return false;
+  const surface = context.surfaceOf(destination, outcome), cue = recipe.stages.find((s) => s.kind === "sound" && s.surfaces);
+  if (!surface || !cue || !(cue.surfaces[surface] ?? (surface === "steel" ? cue.surfaces.shield : null))) return false;
+  return seeded(`${context.messageId ?? context.id ?? ""}:${targetId(destination)}`) < BLOCK_CHANCE;
+}
 function surfaceRecording(s, destination, context) {
   const random = context.random ?? Math.random;
   if (context.preview) return freshPick(`${s.stageId}:preview`, s.surfaces.flesh ?? Object.values(s.surfaces)[0], random);
@@ -492,12 +507,14 @@ function surfaceRecording(s, destination, context) {
   const outcome = context.targetOutcomes?.[destination?.id ?? destination?.document?.id] ?? context.outcome;
   const surface = context.surfaceOf ? context.surfaceOf(destination, outcome) : ["success", "criticalSuccess"].includes(outcome) ? "flesh" : null;
   if (!surface) return null;
+  // A miss the target dodges does not ring off its shield.
+  if (["failure", "criticalFailure"].includes(outcome) && context.blocked && !context.blocked(destination)) return null;
   // A busy moment (a flurry, several attacks at once) keeps only a few surface sounds, and drops layers first.
   const voices = context.voices, now = (context.now ?? Date.now)();
   if (voices) for (let i = voices.length - 1; i >= 0; i--) if (voices[i] <= now) voices.splice(i, 1);
   if (voices && voices.length >= VOICE_LIMIT) return null;
   // A surface the blow has no sound for falls back to flesh; a spell has none (only what rings sounds).
-  const set = s.surfaces[surface] ?? (surface === "shield" ? null : s.surfaces.flesh);
+  const set = s.surfaces[surface] ?? (surface === "steel" ? s.surfaces.shield ?? null : surface === "shield" ? null : s.surfaces.flesh);
   const recording = freshPick(`${s.stageId}:${surface}`, set, random);
   if (!recording) return null;
   // A critical hit lands harder: a little louder and lower, and every layer plays.
@@ -526,6 +543,7 @@ export function previewPlan(recipe, context) {
 }
 function buildPlan(recipe, catalog, context, requireMedia) {
   const plan = [];
+  const blocked = (destination) => !context.preview && blocksMiss(recipe, destination, context);
   const landings = new Map();
   const motionTargetFor = (s) => {
     const targets=s.targetLimit>0?context.targets?.slice(0,s.targetLimit):context.targets;
@@ -701,7 +719,10 @@ function buildPlan(recipe, catalog, context, requireMedia) {
         landing = landings.get(key);
       }
       landing ??= s.atPoint ?? null;
-      const recording = s.kind === "sound" && s.surfaces ? surfaceRecording(s, destination, context) : undefined;
+      // A miss its shield takes: no dodge (and a dodged miss plays no shield).
+      const shieldBlock = blocked(destination);
+      if (s.stageId === "miss-dodge" && shieldBlock) continue;
+      const recording = s.kind === "sound" && s.surfaces ? surfaceRecording(s, destination, { ...context, blocked }) : undefined;
       if (recording === null) continue;
       for (let iteration = 0; iteration < o.repeats; iteration++) {
         if (
@@ -736,6 +757,8 @@ function buildPlan(recipe, catalog, context, requireMedia) {
             destination,
             ...(recording ? { soundFile: recording.file, volume: recording.volume, duration: recording.duration, ...(recording.pitch ? { pitch: recording.pitch } : {}), ...(recording.echo ? { echo: recording.echo } : {}), ...(recording.layers ? { layers: recording.layers } : {}), ...(recording.jitter ? { jitter: recording.jitter } : {}) } : {}),
             ...(isPathMotion(s) ? { motionTarget } : {}),
+            // A blocked shot flies into the shield instead of wide.
+            ...(shieldBlock && ["travel", "projectile"].includes(s.kind) ? { shieldBlock: true } : {}),
             ...(areaTiles
               ? {
                   areaTile: {

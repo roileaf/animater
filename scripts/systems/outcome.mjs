@@ -26,6 +26,9 @@ export function meleeHit(key) {
 function strikeTime(recipe) {
   const timed = timedStages(recipe);
   const flight = timed.find((s) => ["travel", "projectile"].includes(s.kind));
+  // Where the flight's own hit is timed (an arrow's impact on the target), that is when it arrives.
+  const arrival = flight && timed.find((s) => s.kind === "impact" && onTargets(s) && s.delay >= flight.delay);
+  if (arrival) return arrival.delay;
   if (flight) return flight.delay + Math.min(flight.duration, Number(flight.contact) > 0 ? Number(flight.contact) : flight.duration * 0.55);
   const blow = timed.find(swing);
   if (blow) return blow.delay + blow.duration * meleeHit(blow.assets.find(meleeClip));

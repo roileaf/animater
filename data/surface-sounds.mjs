@@ -318,7 +318,7 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-arrow-shield": [
   {
-   "label": "Arrow on a raised shield",
+   "label": "Arrow on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
@@ -410,6 +410,164 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-arrow-steel": [
+  {
+   "label": "Arrow on a raised steel shield",
+   "role": "surface",
+   "candidates": [
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 001.ogg",
+     "nativeDuration": 307,
+     "meanDb": -23.3,
+     "peakDb": 0,
+     "gain": 0.70795,
+     "duration": 307
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 002.ogg",
+     "nativeDuration": 383,
+     "meanDb": -23.8,
+     "peakDb": 0,
+     "gain": 0.70795,
+     "duration": 383
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
+     "peakDb": -0.8,
+     "gain": 0.77625,
+     "duration": 489
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 003.ogg",
+     "nativeDuration": 261,
+     "meanDb": -23.1,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 261
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 004.ogg",
+     "nativeDuration": 339,
+     "meanDb": -24,
+     "peakDb": -0.3,
+     "gain": 0.73282,
+     "duration": 339
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.05",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 005.ogg",
+     "nativeDuration": 270,
+     "meanDb": -22.9,
+     "peakDb": -0.8,
+     "gain": 0.77625,
+     "duration": 270
     }
    ]
   }
@@ -1268,7 +1426,115 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-bullet-shield": [
   {
-   "label": "Bullet on a raised shield",
+   "label": "Bullet on a raised wooden shield",
+   "role": "surface",
+   "candidates": [
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlank_medium_000.ogg",
+     "nativeDuration": 780,
+     "meanDb": -23.8,
+     "peakDb": -2.3,
+     "gain": 0.92257,
+     "duration": 780
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlank_medium_001.ogg",
+     "nativeDuration": 780,
+     "meanDb": -23.7,
+     "peakDb": -4.5,
+     "gain": 1,
+     "duration": 780
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 314
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlank_medium_002.ogg",
+     "nativeDuration": 780,
+     "meanDb": -23.8,
+     "peakDb": -3.9,
+     "gain": 1,
+     "duration": 780
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20.2,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlank_medium_003.ogg",
+     "nativeDuration": 780,
+     "meanDb": -23.8,
+     "peakDb": -3.6,
+     "gain": 1,
+     "duration": 780
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlank_medium_004.ogg",
+     "nativeDuration": 780,
+     "meanDb": -23.6,
+     "peakDb": -2,
+     "gain": 0.89125,
+     "duration": 780
+    }
+   ]
+  }
+ ],
+ "surface-bullet-steel": [
+  {
+   "label": "Bullet on a raised steel shield",
    "role": "surface",
    "candidates": [
     {
@@ -1284,12 +1550,22 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
-     "nativeDuration": 314,
-     "meanDb": -20,
-     "peakDb": -1.3,
-     "gain": 0.82224,
-     "duration": 314
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ricochet-30932-0.ogg",
+     "nativeDuration": 530,
+     "meanDb": -25,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 530
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
     },
     {
      "module": "animater",
@@ -1304,12 +1580,22 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
-     "nativeDuration": 314,
-     "meanDb": -20,
-     "peakDb": -1.3,
-     "gain": 0.82224,
-     "duration": 314
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ricochet-30932-1.ogg",
+     "nativeDuration": 633,
+     "meanDb": -23.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 633
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
     },
     {
      "module": "animater",
@@ -1324,32 +1610,42 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
-     "nativeDuration": 314,
-     "meanDb": -20,
-     "peakDb": -2.1,
-     "gain": 0.90157,
-     "duration": 314
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ricochet-30932-2.ogg",
+     "nativeDuration": 601,
+     "meanDb": -23.2,
+     "peakDb": -0.8,
+     "gain": 0.77625,
+     "duration": 601
     },
     {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
-     "nativeDuration": 314,
-     "meanDb": -20.2,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 314
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
     },
     {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
-     "nativeDuration": 314,
-     "meanDb": -20,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 314
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
     }
    ]
   }
@@ -2072,88 +2368,206 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-spell-shield": [
   {
-   "label": "Spell on a raised shield",
+   "label": "Spell on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact A.ogg",
+     "nativeDuration": 902,
+     "meanDb": -24.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 902
+    },
+    {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_000.ogg",
-     "nativeDuration": 1481,
-     "meanDb": -21.3,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact B.ogg",
+     "nativeDuration": 833,
+     "meanDb": -24.2,
+     "peakDb": -2.2,
+     "gain": 0.91201,
+     "duration": 833
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact C.ogg",
+     "nativeDuration": 824,
+     "meanDb": -26,
+     "peakDb": -1.9,
+     "gain": 0.88105,
+     "duration": 824
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact D.ogg",
+     "nativeDuration": 807,
+     "meanDb": -25.5,
+     "peakDb": -1.8,
+     "gain": 0.87096,
+     "duration": 807
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20.2,
      "peakDb": -0.9,
      "gain": 0.78524,
-     "duration": 1481
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact A.ogg",
-     "nativeDuration": 888,
-     "meanDb": -20.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
-     "duration": 888
+     "duration": 314
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_001.ogg",
-     "nativeDuration": 1741,
-     "meanDb": -22.5,
-     "peakDb": -2.6,
-     "gain": 0.95499,
-     "duration": 1741
-    },
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-spell-steel": [
+  {
+   "label": "Spell on a raised steel shield",
+   "role": "surface",
+   "candidates": [
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact B.ogg",
-     "nativeDuration": 1283,
-     "meanDb": -18.6,
-     "peakDb": -1.5,
-     "gain": 0.8414,
-     "duration": 1283
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_002.ogg",
-     "nativeDuration": 698,
-     "meanDb": -21.7,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
      "peakDb": -0.8,
      "gain": 0.77625,
-     "duration": 698
+     "duration": 489
     },
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact C.ogg",
-     "nativeDuration": 998,
-     "meanDb": -19.1,
-     "peakDb": -3.6,
-     "gain": 0.90157,
-     "duration": 998
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_003.ogg",
-     "nativeDuration": 654,
-     "meanDb": -21.9,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 654
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_004.ogg",
-     "nativeDuration": 302,
-     "meanDb": -20.9,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 302
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
     }
    ]
   }
@@ -2750,19 +3164,9 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-blade-shield": [
   {
-   "label": "Blade on a raised shield",
+   "label": "Blade on a raised wooden shield",
    "role": "surface",
    "candidates": [
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
-     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
-     "nativeDuration": 1231,
-     "meanDb": -21.2,
-     "peakDb": -1,
-     "gain": 0.79433,
-     "duration": 1231
-    },
     {
      "module": "ggg",
      "key": "ggg-sfx.equipment.armor.shield.impact.01.01",
@@ -2792,16 +3196,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -2.3,
      "gain": 0.92257,
      "duration": 780
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
-     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
-     "nativeDuration": 1386,
-     "meanDb": -21.3,
-     "peakDb": -2.1,
-     "gain": 0.90157,
-     "duration": 1386
     },
     {
      "module": "ggg",
@@ -2835,16 +3229,6 @@ export const SURFACE_SOUND_PROFILES = {
     },
     {
      "module": "ggg",
-     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
-     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
-     "nativeDuration": 1318,
-     "meanDb": -21.8,
-     "peakDb": -2.4,
-     "gain": 0.93325,
-     "duration": 1318
-    },
-    {
-     "module": "ggg",
      "key": "ggg-sfx.equipment.armor.shield.impact.01.03",
      "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact C.ogg",
      "nativeDuration": 824,
@@ -2872,16 +3256,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -3.9,
      "gain": 1,
      "duration": 780
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
-     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
-     "nativeDuration": 1266,
-     "meanDb": -21.8,
-     "peakDb": -2.8,
-     "gain": 0.97724,
-     "duration": 1266
     },
     {
      "module": "ggg",
@@ -2914,16 +3288,6 @@ export const SURFACE_SOUND_PROFILES = {
      "duration": 780
     },
     {
-     "module": "ggg",
-     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
-     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
-     "nativeDuration": 1018,
-     "meanDb": -21.5,
-     "peakDb": -3,
-     "gain": 1,
-     "duration": 1018
-    },
-    {
      "module": "animater",
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
@@ -2942,6 +3306,164 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -2,
      "gain": 0.89125,
      "duration": 780
+    }
+   ]
+  }
+ ],
+ "surface-blade-steel": [
+  {
+   "label": "Blade on a raised steel shield",
+   "role": "surface",
+   "candidates": [
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.shortsword.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Medium 001.ogg",
+     "nativeDuration": 464,
+     "meanDb": -25.9,
+     "peakDb": -2.2,
+     "gain": 0.91201,
+     "duration": 464
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_medium_000.ogg",
+     "nativeDuration": 610,
+     "meanDb": -22.1,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 610
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.shortsword.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Medium 002.ogg",
+     "nativeDuration": 453,
+     "meanDb": -24.6,
+     "peakDb": -1.4,
+     "gain": 0.83176,
+     "duration": 453
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_medium_001.ogg",
+     "nativeDuration": 617,
+     "meanDb": -22.6,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 617
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.shortsword.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Medium 003.ogg",
+     "nativeDuration": 627,
+     "meanDb": -24.5,
+     "peakDb": -0.7,
+     "gain": 0.76736,
+     "duration": 627
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_medium_002.ogg",
+     "nativeDuration": 516,
+     "meanDb": -21.4,
+     "peakDb": -1.6,
+     "gain": 0.85114,
+     "duration": 516
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.shortsword.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Medium 004.ogg",
+     "nativeDuration": 499,
+     "meanDb": -23.6,
+     "peakDb": -1.4,
+     "gain": 0.83176,
+     "duration": 499
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_medium_003.ogg",
+     "nativeDuration": 654,
+     "meanDb": -21.7,
+     "peakDb": -2,
+     "gain": 0.89125,
+     "duration": 654
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.shortsword.01.05",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Medium 005.ogg",
+     "nativeDuration": 455,
+     "meanDb": -23,
+     "peakDb": -1.2,
+     "gain": 0.81283,
+     "duration": 455
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_medium_004.ogg",
+     "nativeDuration": 535,
+     "meanDb": -21.5,
+     "peakDb": -1.5,
+     "gain": 0.8414,
+     "duration": 535
     }
    ]
   }
@@ -4020,7 +4542,7 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-blunt-shield": [
   {
-   "label": "Blunt blow on a raised shield",
+   "label": "Blunt blow on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
@@ -4112,6 +4634,114 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-blunt-steel": [
+  {
+   "label": "Blunt blow on a raised steel shield",
+   "role": "surface",
+   "candidates": [
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_000.ogg",
+     "nativeDuration": 489,
+     "meanDb": -21.5,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 489
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_001.ogg",
+     "nativeDuration": 353,
+     "meanDb": -19.3,
+     "peakDb": -2.9,
+     "gain": 0.92257,
+     "duration": 353
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_002.ogg",
+     "nativeDuration": 495,
+     "meanDb": -20.6,
+     "peakDb": -0.8,
+     "gain": 0.77625,
+     "duration": 495
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_003.ogg",
+     "nativeDuration": 347,
+     "meanDb": -19.4,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 347
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_004.ogg",
+     "nativeDuration": 560,
+     "meanDb": -20.8,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 560
     }
    ]
   }
@@ -5140,7 +5770,7 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-pierce-shield": [
   {
-   "label": "Point on a raised shield",
+   "label": "Point on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
@@ -5282,6 +5912,164 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 333
+    }
+   ]
+  }
+ ],
+ "surface-pierce-steel": [
+  {
+   "label": "Point on a raised steel shield",
+   "role": "surface",
+   "candidates": [
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 001.ogg",
+     "nativeDuration": 307,
+     "meanDb": -23.3,
+     "peakDb": 0,
+     "gain": 0.70795,
+     "duration": 307
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 002.ogg",
+     "nativeDuration": 383,
+     "meanDb": -23.8,
+     "peakDb": 0,
+     "gain": 0.70795,
+     "duration": 383
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 003.ogg",
+     "nativeDuration": 261,
+     "meanDb": -23.1,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 261
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
+     "peakDb": -0.8,
+     "gain": 0.77625,
+     "duration": 489
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 004.ogg",
+     "nativeDuration": 339,
+     "meanDb": -24,
+     "peakDb": -0.3,
+     "gain": 0.73282,
+     "duration": 339
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.melee.blade.block.dagger.01.05",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Block Blade Small 005.ogg",
+     "nativeDuration": 270,
+     "meanDb": -22.9,
+     "peakDb": -0.8,
+     "gain": 0.77625,
+     "duration": 270
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
     }
    ]
   }
@@ -6174,88 +6962,206 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-fire-shield": [
   {
-   "label": "Fire on a raised shield",
+   "label": "Fire on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact A.ogg",
+     "nativeDuration": 902,
+     "meanDb": -24.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 902
+    },
+    {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_000.ogg",
-     "nativeDuration": 1481,
-     "meanDb": -21.3,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact B.ogg",
+     "nativeDuration": 833,
+     "meanDb": -24.2,
+     "peakDb": -2.2,
+     "gain": 0.91201,
+     "duration": 833
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact C.ogg",
+     "nativeDuration": 824,
+     "meanDb": -26,
+     "peakDb": -1.9,
+     "gain": 0.88105,
+     "duration": 824
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact D.ogg",
+     "nativeDuration": 807,
+     "meanDb": -25.5,
+     "peakDb": -1.8,
+     "gain": 0.87096,
+     "duration": 807
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20.2,
      "peakDb": -0.9,
      "gain": 0.78524,
-     "duration": 1481
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact A.ogg",
-     "nativeDuration": 888,
-     "meanDb": -20.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
-     "duration": 888
+     "duration": 314
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_001.ogg",
-     "nativeDuration": 1741,
-     "meanDb": -22.5,
-     "peakDb": -2.6,
-     "gain": 0.95499,
-     "duration": 1741
-    },
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-fire-steel": [
+  {
+   "label": "Fire on a raised steel shield",
+   "role": "surface",
+   "candidates": [
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact B.ogg",
-     "nativeDuration": 1283,
-     "meanDb": -18.6,
-     "peakDb": -1.5,
-     "gain": 0.8414,
-     "duration": 1283
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_002.ogg",
-     "nativeDuration": 698,
-     "meanDb": -21.7,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
      "peakDb": -0.8,
      "gain": 0.77625,
-     "duration": 698
+     "duration": 489
     },
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact C.ogg",
-     "nativeDuration": 998,
-     "meanDb": -19.1,
-     "peakDb": -3.6,
-     "gain": 0.90157,
-     "duration": 998
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_003.ogg",
-     "nativeDuration": 654,
-     "meanDb": -21.9,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 654
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_004.ogg",
-     "nativeDuration": 302,
-     "meanDb": -20.9,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 302
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
     }
    ]
   }
@@ -6944,88 +7850,206 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-electricity-shield": [
   {
-   "label": "Lightning on a raised shield",
+   "label": "Lightning on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact A.ogg",
+     "nativeDuration": 902,
+     "meanDb": -24.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 902
+    },
+    {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_000.ogg",
-     "nativeDuration": 1481,
-     "meanDb": -21.3,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact B.ogg",
+     "nativeDuration": 833,
+     "meanDb": -24.2,
+     "peakDb": -2.2,
+     "gain": 0.91201,
+     "duration": 833
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact C.ogg",
+     "nativeDuration": 824,
+     "meanDb": -26,
+     "peakDb": -1.9,
+     "gain": 0.88105,
+     "duration": 824
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact D.ogg",
+     "nativeDuration": 807,
+     "meanDb": -25.5,
+     "peakDb": -1.8,
+     "gain": 0.87096,
+     "duration": 807
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20.2,
      "peakDb": -0.9,
      "gain": 0.78524,
-     "duration": 1481
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact A.ogg",
-     "nativeDuration": 888,
-     "meanDb": -20.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
-     "duration": 888
+     "duration": 314
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_001.ogg",
-     "nativeDuration": 1741,
-     "meanDb": -22.5,
-     "peakDb": -2.6,
-     "gain": 0.95499,
-     "duration": 1741
-    },
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-electricity-steel": [
+  {
+   "label": "Lightning on a raised steel shield",
+   "role": "surface",
+   "candidates": [
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact B.ogg",
-     "nativeDuration": 1283,
-     "meanDb": -18.6,
-     "peakDb": -1.5,
-     "gain": 0.8414,
-     "duration": 1283
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_002.ogg",
-     "nativeDuration": 698,
-     "meanDb": -21.7,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
      "peakDb": -0.8,
      "gain": 0.77625,
-     "duration": 698
+     "duration": 489
     },
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact C.ogg",
-     "nativeDuration": 998,
-     "meanDb": -19.1,
-     "peakDb": -3.6,
-     "gain": 0.90157,
-     "duration": 998
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_003.ogg",
-     "nativeDuration": 654,
-     "meanDb": -21.9,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 654
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_004.ogg",
-     "nativeDuration": 302,
-     "meanDb": -20.9,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 302
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
     }
    ]
   }
@@ -7614,88 +8638,206 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-cold-shield": [
   {
-   "label": "Cold on a raised shield",
+   "label": "Cold on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact A.ogg",
+     "nativeDuration": 902,
+     "meanDb": -24.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 902
+    },
+    {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_000.ogg",
-     "nativeDuration": 1481,
-     "meanDb": -21.3,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact B.ogg",
+     "nativeDuration": 833,
+     "meanDb": -24.2,
+     "peakDb": -2.2,
+     "gain": 0.91201,
+     "duration": 833
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact C.ogg",
+     "nativeDuration": 824,
+     "meanDb": -26,
+     "peakDb": -1.9,
+     "gain": 0.88105,
+     "duration": 824
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact D.ogg",
+     "nativeDuration": 807,
+     "meanDb": -25.5,
+     "peakDb": -1.8,
+     "gain": 0.87096,
+     "duration": 807
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20.2,
      "peakDb": -0.9,
      "gain": 0.78524,
-     "duration": 1481
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact A.ogg",
-     "nativeDuration": 888,
-     "meanDb": -20.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
-     "duration": 888
+     "duration": 314
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_001.ogg",
-     "nativeDuration": 1741,
-     "meanDb": -22.5,
-     "peakDb": -2.6,
-     "gain": 0.95499,
-     "duration": 1741
-    },
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-cold-steel": [
+  {
+   "label": "Cold on a raised steel shield",
+   "role": "surface",
+   "candidates": [
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact B.ogg",
-     "nativeDuration": 1283,
-     "meanDb": -18.6,
-     "peakDb": -1.5,
-     "gain": 0.8414,
-     "duration": 1283
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_002.ogg",
-     "nativeDuration": 698,
-     "meanDb": -21.7,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
      "peakDb": -0.8,
      "gain": 0.77625,
-     "duration": 698
+     "duration": 489
     },
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact C.ogg",
-     "nativeDuration": 998,
-     "meanDb": -19.1,
-     "peakDb": -3.6,
-     "gain": 0.90157,
-     "duration": 998
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_003.ogg",
-     "nativeDuration": 654,
-     "meanDb": -21.9,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 654
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_004.ogg",
-     "nativeDuration": 302,
-     "meanDb": -20.9,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 302
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
     }
    ]
   }
@@ -8404,88 +9546,206 @@ export const SURFACE_SOUND_PROFILES = {
  ],
  "surface-acid-shield": [
   {
-   "label": "Acid on a raised shield",
+   "label": "Acid on a raised wooden shield",
    "role": "surface",
    "candidates": [
     {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.01",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact A.ogg",
+     "nativeDuration": 902,
+     "meanDb": -24.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 902
+    },
+    {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_000.ogg",
-     "nativeDuration": 1481,
-     "meanDb": -21.3,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_000.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.02",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact B.ogg",
+     "nativeDuration": 833,
+     "meanDb": -24.2,
+     "peakDb": -2.2,
+     "gain": 0.91201,
+     "duration": 833
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_001.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -1.3,
+     "gain": 0.82224,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.03",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact C.ogg",
+     "nativeDuration": 824,
+     "meanDb": -26,
+     "peakDb": -1.9,
+     "gain": 0.88105,
+     "duration": 824
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_002.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 314
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.01.04",
+     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Armor/Shield Impact D.ogg",
+     "nativeDuration": 807,
+     "meanDb": -25.5,
+     "peakDb": -1.8,
+     "gain": 0.87096,
+     "duration": 807
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_003.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20.2,
      "peakDb": -0.9,
      "gain": 0.78524,
-     "duration": 1481
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact A.ogg",
-     "nativeDuration": 888,
-     "meanDb": -20.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
-     "duration": 888
+     "duration": 314
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_001.ogg",
-     "nativeDuration": 1741,
-     "meanDb": -22.5,
-     "peakDb": -2.6,
-     "gain": 0.95499,
-     "duration": 1741
-    },
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactWood_heavy_004.ogg",
+     "nativeDuration": 314,
+     "meanDb": -20,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 314
+    }
+   ]
+  }
+ ],
+ "surface-acid-steel": [
+  {
+   "label": "Acid on a raised steel shield",
+   "role": "surface",
+   "candidates": [
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact B.ogg",
-     "nativeDuration": 1283,
-     "meanDb": -18.6,
-     "peakDb": -1.5,
-     "gain": 0.8414,
-     "duration": 1283
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
+     "nativeDuration": 1231,
+     "meanDb": -21.2,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 1231
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_002.ogg",
-     "nativeDuration": 698,
-     "meanDb": -21.7,
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_000.ogg",
+     "nativeDuration": 543,
+     "meanDb": -22.8,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 543
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.02",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 2.ogg",
+     "nativeDuration": 1386,
+     "meanDb": -21.3,
+     "peakDb": -2.1,
+     "gain": 0.90157,
+     "duration": 1386
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_001.ogg",
+     "nativeDuration": 655,
+     "meanDb": -23.3,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 655
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.03",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 3.ogg",
+     "nativeDuration": 1318,
+     "meanDb": -21.8,
+     "peakDb": -2.4,
+     "gain": 0.93325,
+     "duration": 1318
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_002.ogg",
+     "nativeDuration": 489,
+     "meanDb": -22.9,
      "peakDb": -0.8,
      "gain": 0.77625,
-     "duration": 698
+     "duration": 489
     },
     {
      "module": "ggg",
-     "key": "ggg-sfx.impact.scifi.shield.general.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Science Fiction SFX 2/Misc/Shields and Impacts/Shield Impact C.ogg",
-     "nativeDuration": 998,
-     "meanDb": -19.1,
-     "peakDb": -3.6,
-     "gain": 0.90157,
-     "duration": 998
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.04",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 4.ogg",
+     "nativeDuration": 1266,
+     "meanDb": -21.8,
+     "peakDb": -2.8,
+     "gain": 0.97724,
+     "duration": 1266
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_003.ogg",
-     "nativeDuration": 654,
-     "meanDb": -21.9,
-     "peakDb": -0.9,
-     "gain": 0.78524,
-     "duration": 654
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_003.ogg",
+     "nativeDuration": 553,
+     "meanDb": -22.9,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 553
+    },
+    {
+     "module": "ggg",
+     "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.05",
+     "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 5.ogg",
+     "nativeDuration": 1018,
+     "meanDb": -21.5,
+     "peakDb": -3,
+     "gain": 1,
+     "duration": 1018
     },
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/kenney/impactBell_heavy_004.ogg",
-     "nativeDuration": 302,
-     "meanDb": -20.9,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 302
+     "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_light_004.ogg",
+     "nativeDuration": 681,
+     "meanDb": -23.6,
+     "peakDb": -1.1,
+     "gain": 0.80353,
+     "duration": 681
     }
    ]
   }

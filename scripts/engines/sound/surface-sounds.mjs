@@ -97,6 +97,20 @@ const METAL_GROUPS=new Set(['chain','plate','composite']),HARD_GROUPS=new Set(['
 const GLASSY=/\b(glass|crystal(line)?|mirror|obsidian|ice)\b/i;
 // An armour known only by name (D&D 5e, Daggerheart): what it is made of.
 const ARMOR_NAMES=[[/\b(chain|ring|scale|splint|plate|breastplate|mail|brigandine|lamellar|cuirass|harness)\b/i,'chain'],[/\b(bone|chitin)\b/i,'skeletal'],[/\b(wood|bark)/i,'wood'],[/\b(hide|leather|studded|fur)/i,'leather'],[/\b(padded|gambeson|cloth|robe|quilted|silk)\b/i,'cloth']];
+// A shield's material: steel (a buckler, a steel or fortress shield, any metal) rings; wood thunks. Its material
+// first, then its base item and name; unknown is wood, except in Starfinder, where shields are metal.
+const METAL_MATERIAL=/steel|iron|adamantine|mithral|silver|orichalcum|bronze|copper|gold|siccatite|dawnsilver|djezet|inubrix|noqual|metal|abysium|sovereign/i,WOOD_MATERIAL=/wood|bark|bone|hide|leather|duskwood|darkwood/i;
+const METAL_SHIELD=/\b(steel|iron|metal|buckler|fortress|meteor|adamantine|mithral|silver|bronze|plate|kite)\b/i;
+export function shieldIsMetal(shield,systemId=globalThis.game?.system?.id){
+ if(!shield)return systemId==='sf2e';
+ const material=String(shield.system?.material?.type??shield.material?.type??'');
+ if(METAL_MATERIAL.test(material))return true;
+ if(WOOD_MATERIAL.test(material))return false;
+ const named=[shield.system?.baseItem,shield.slug??shield.system?.slug,shield.name].filter(Boolean).join(' ').replace(/-/g,' ');
+ if(METAL_SHIELD.test(named))return true;
+ if(/\b(wood(en)?|tower|hide|bark)\b/i.test(named))return false;
+ return systemId==='sf2e';
+}
 const armorGroupOf=name=>ARMOR_NAMES.find(([re])=>re.test(name??''))?.[1]??null;
 // D&D 5e has creature types rather than traits, and its ghosts and elementals are told apart by name.
 const DND_INCORPOREAL=/\b(ghosts?|specters?|spectres?|wraiths?|shadows?|poltergeists?|banshees?|will-o['’]?-wisps?|allips?)\b/i;
@@ -114,25 +128,28 @@ export function describeTarget(actor){
  const s=actor.system??{},items=Array.from(actor.items??[]);
  const effects=[...(actor.itemTypes?.effect??items.filter(i=>i?.type==='effect')),...Array.from(actor.appliedEffects??actor.effects??[])].filter(e=>!e.disabled);
  const pf=Array.isArray(s.traits?.value);
- let armor=null,raised=false;
+ let armor=null,raised=false,shield=null;
  if(pf){
   // A creature's stat block lists its armour without equipping it (its AC is fixed): any armour it carries counts.
   const body=(actor.itemTypes?.armor??[]).filter(a=>(a.category??a.system?.category)!=='shield');
   const a=actor.wornArmor??body.find(x=>x.isEquipped??x.system?.equipped?.inSlot)??(actor.type==='npc'?body[0]:null);
   // Padded armour, clothes and aprons carry no armour group: soft, like leather.
   if(a)armor={group:a.group??a.system?.group??(((a.category??a.system?.category)==='heavy')?null:'cloth'),category:a.category??a.system?.category};
-  raised=(actor.attributes?.shield?.raised??s.attributes?.shield?.raised)===true;
+  const held=actor.attributes?.shield??s.attributes?.shield;
+  raised=held?.raised===true;
+  if(raised)shield=actor.heldShield??actor.items?.get?.(held.itemId)??items.find(i=>i?.type==='shield'&&(i.isEquipped??i.system?.equipped?.handsHeld>0))??{name:held.name??''};
  }else if(s.attributes?.ac&&'equippedArmor' in s.attributes.ac||s.details?.type?.value!==undefined){
   // D&D 5e: the armour and shield it wears; a shield is always in the way.
   const a=s.attributes?.ac?.equippedArmor;
   if(a)armor={group:armorGroupOf(a.name),category:a.system?.type?.value};
   raised=Boolean(s.attributes?.ac?.equippedShield);
+  if(raised)shield=s.attributes.ac.equippedShield;
  }else{
   // Daggerheart (and others): the armour it has equipped, known by name.
   const a=items.find(i=>i?.type==='armor'&&(i.system?.equipped??true));
   if(a)armor={group:armorGroupOf(a.name),category:null};
  }
- return {name:actor.name??'',traits:new Set(pf?s.traits.value:dndTraits(actor)),armor,raised,
+ return {name:actor.name??'',traits:new Set(pf?s.traits.value:dndTraits(actor)),armor,raised,shield,
   slugs:effects.map(e=>e.slug??e.system?.slug).filter(Boolean),names:effects.map(e=>e.name??'').filter(Boolean),mageArmor:s.attributes?.ac?.calc==='mage'};
 }
 // What a blow that connects lands on. Null: nothing to hear (a ghost, an illusion, living flame or wind).
@@ -173,7 +190,8 @@ export function targetSurface(actor,outcome){
   return armor&&['flesh','leather'].includes(body)?madeOf(armor):body;
  }
  if(!MISS.has(outcome)||!t)return null;
- if(t.raised)return 'shield';
+ // A raised shield: steel rings, wood thunks.
+ if(t.raised)return shieldIsMetal(t.shield)?'steel':'shield';
  const shield=t.slugs.find(s=>MAGIC_SHIELD.test(s))??t.names.find(n=>SHIELD_NAMES.test(n));
  return shield?madeOf(shield):null;
 }

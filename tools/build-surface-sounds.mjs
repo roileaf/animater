@@ -17,6 +17,7 @@ const SOURCES = {
     leather: ["freesound:leather-hit", "freesound:flesh-pierce"],
     metal: ["kenney:impactPlate_light", "ggg-sfx.melee.blade.block.dagger.01"],
     shield: ["freesound:arrow-wood", "kenney:impactWood_heavy"],
+    steel: ["kenney:impactPlate_light", "ggg-sfx.equipment.armor.shield.impact.02.metal", "ggg-sfx.melee.blade.block.dagger.01"],
     crunch: ["freesound:crunch"],
     wood: ["freesound:arrow-wood", "kenney:impactWood_medium"],
     stone: ["kenney:impactMining", "ggg-sfx.ranged.thrown.stone.impact.01"],
@@ -29,7 +30,8 @@ const SOURCES = {
     flesh: ["freesound:bullet-flesh", "freesound:flesh-pierce"],
     leather: ["freesound:leather-hit", "freesound:bullet-flesh"],
     metal: ["freesound:bullet-metal", "freesound:ricochet"],
-    shield: ["freesound:bullet-metal", "kenney:impactWood_heavy"],
+    shield: ["kenney:impactWood_heavy", "kenney:impactPlank_medium"],
+    steel: ["freesound:bullet-metal", "freesound:ricochet", "ggg-sfx.equipment.armor.shield.impact.02.metal"],
     crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_light", "kenney:impactPlank_medium"],
     stone: ["kenney:impactMining", "freesound:ricochet"],
@@ -41,7 +43,8 @@ const SOURCES = {
   // turning it aside, a glass body, metal armour.
   spell: {
     ward: ["freesound:ward-chime", "ggg-sfx.impact.scifi.shield.deflector.01", "ggg-sfx.magic.divine.cast.dispel.general.01"],
-    shield: ["kenney:impactBell_heavy", "ggg-sfx.impact.scifi.shield.general.01"],
+    shield: ["ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactWood_heavy"],
+    steel: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "kenney:impactPlate_light"],
     glass: ["kenney:impactGlass_light"],
     metal: ["kenney:impactPlate_light"],
   },
@@ -49,7 +52,8 @@ const SOURCES = {
     flesh: ["freesound:flesh-blade", "ggg-sfx.melee.axe.slash.flesh.01", "kenney:knifeSlice", "ggg-sfx.impact.flesh.01"],
     leather: ["freesound:leather-hit", "kenney:dropLeather"],
     metal: ["ggg-sfx.melee.blade.block.shortsword.01", "ggg-sfx.melee.blade.block.greatsword.01", "kenney:impactPlate_medium", "kenney:impactPlate_heavy"],
-    shield: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactWood_heavy", "kenney:impactPlank_medium"],
+    shield: ["ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactWood_heavy", "kenney:impactPlank_medium"],
+    steel: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "ggg-sfx.melee.blade.block.shortsword.01", "kenney:impactPlate_medium"],
     crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_light", "ggg-sfx.impact.wood.01", "kenney:chop"],
     stone: ["ggg-sfx.ranged.thrown.stone.impact.01", "kenney:impactMining"],
@@ -62,6 +66,7 @@ const SOURCES = {
     leather: ["freesound:leather-hit", "kenney:dropLeather"],
     metal: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "kenney:impactPlate_heavy"],
     shield: ["ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactWood_heavy"],
+    steel: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "kenney:impactPlate_heavy"],
     crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_medium", "ggg-sfx.impact.wood.01"],
     stone: ["ggg-sfx.ranged.thrown.stone.impact.01", "kenney:impactMining"],
@@ -74,6 +79,7 @@ const SOURCES = {
     leather: ["freesound:leather-hit", "kenney:handleSmallLeather"],
     metal: ["ggg-sfx.melee.blade.block.dagger.01", "ggg-sfx.melee.blade.block.rapier.01", "kenney:impactPlate_light"],
     shield: ["ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactPlank_medium", "kenney:impactWood_medium"],
+    steel: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "ggg-sfx.melee.blade.block.dagger.01", "kenney:impactPlate_light"],
     crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_light", "kenney:impactPlank_medium"],
     stone: ["ggg-sfx.ranged.thrown.stone.impact.01", "kenney:impactMining"],
@@ -94,7 +100,7 @@ const ELEMENT_TOUCH = {
   acid: { body: ["freesound:acid-fizz"], metal: ["freesound:acid-fizz"] },
 };
 for (const [element, touch] of Object.entries(ELEMENT_TOUCH)) {
-  SOURCES[element] = { ward: SOURCES.spell.ward, shield: SOURCES.spell.shield, glass: SOURCES.spell.glass };
+  SOURCES[element] = { ward: SOURCES.spell.ward, shield: SOURCES.spell.shield, steel: SOURCES.spell.steel, glass: SOURCES.spell.glass };
   for (const surface of ["flesh", "leather", "crunch", "wood", "stone", "squish", "metal", "glass"]) SOURCES[element][surface] = touch[surface] ?? (surface === "glass" ? SOURCES.spell.glass : touch.body);
 }
 // Layers played over a surface's sound, each with its own chance (a critical hit plays them all), delay after
@@ -109,7 +115,7 @@ const LAYER_RULES = [
   { name: "shards", label: "Shards", blows: null, surfaces: ["glass"], sources: () => ["kenney:impactGlass_light"], chance: 0.5, offset: [50, 150], gain: 0.45 },
   { name: "shimmer", label: "Shimmer", blows: null, surfaces: ["ward"], sources: () => ["freesound:ward-chime-707618", "kenney:impactGlass_light"], chance: 0.7, offset: [15, 50], gain: 0.35 },
 ];
-const LABELS = { flesh: "flesh", leather: "leather or cloth", metal: "metal armour", shield: "a raised shield", crunch: "chitin or bone", wood: "wood or bark", stone: "stone", glass: "glass or crystal", squish: "an ooze", ward: "a magical shield or armour" };
+const LABELS = { flesh: "flesh", leather: "leather or cloth", metal: "metal armour", shield: "a raised wooden shield", steel: "a raised steel shield", crunch: "chitin or bone", wood: "wood or bark", stone: "stone", glass: "glass or crystal", squish: "an ooze", ward: "a magical shield or armour" };
 const BLOWS = { blade: "Blade", blunt: "Blunt blow", pierce: "Point", arrow: "Arrow", bullet: "Bullet", spell: "Spell", fire: "Fire", electricity: "Lightning", cold: "Cold", acid: "Acid" };
 
 const { entries } = await soundInventory();
