@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.1 (2026-10-21)
+
+- **Surface sounds in every system.** D&D 5e, Daggerheart and Starfinder 2e weapon animations now sound like what they hit too, not only Pathfinder 2e's:
+  - **D&D 5e:** reads the armour and shield a creature wears, its creature type (constructs, oozes, plants, elementals), and Mage Armor, Shield or Barkskin.
+  - **Daggerheart:** reads the armour a character has equipped.
+  - **Several targets:** with more than one D&D 5e or Daggerheart target, each gets its own hit or miss, and its own sound.
+  - **One setting:** **Weapon surface sounds** in Animater's module settings turns them on or off for every system. The switch in the PF2e Weapons catalog changes the same setting.
+- **A miss against a raised or magical shield now rings off it.** Before, the block sound could be dropped along with the missed hit.
+- **More creatures sound right:** illusions are silent, as are more creatures made of flame or wind (Storm Lord, Living Wildfire); padded armour, clothes and aprons sound like leather; robots clang.
+
 ## 1.5.0 (2026-10-21)
 
 - **Weapon hits sound like what they land on.** The same dagger clangs off plate, slaps leather, thuds into flesh, cracks a spider's shell, knocks on a skeleton and rings off a wizard's Shield. Every catalog weapon Strike that connects adds a second sound under its own, picked for each target:
