@@ -479,3 +479,15 @@ test('a token refresh asks for a re-check only when what lasting looks depend on
  token.actor={uuid:'Actor.b'};assert.equal(changed(token),true,'another actor');
  assert.equal(changed(token),false);
 });
+test('a lasting layer Sequencer dropped (its scene re-initializing) is drawn again; one still showing is left alone',async()=>{
+ const f=fixture([native(bless)]),alive=new Set();
+ f.manager.host.alive=name=>alive.has(name);
+ const plays=()=>f.calls.filter(c=>c[0]==='play').length;
+ await f.manager.reconcile();await flush();assert.equal(plays(),1);
+ const first=[...f.manager.active.values()][0].name;alive.add(first);
+ await f.manager.reconcile();await flush();assert.equal(plays(),1,'still showing: not redrawn');
+ alive.clear();
+ await f.manager.reconcile();await flush();assert.equal(plays(),2,'dropped: drawn again');
+ assert.notEqual([...f.manager.active.values()][0].name,first);
+ await f.manager.destroy();
+});

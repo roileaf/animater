@@ -137,6 +137,9 @@ const BUILTIN_STATE=Object.freeze({opacity:1,motion:true});
 // Sequencer media is temporary/local: no socket playback or stale scene flags.
 export class PersistentStates{
  constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();}
+ // A lasting layer Sequencer no longer has: its scene re-initializing destroys every effect on the canvas
+ // without an ended event. Played-once layers end on their own, so only lasting ones count.
+ lost(r){return r.drawn===true&&!r.fade&&!r.cancelled&&this.host.alive?.(r.name)===false;}
  async end(record){this.host.body?.remove(record.name);await Promise.all([this.host.end(record.name),this.host.stopFx?.(record.name)]);}
  schedule(){if(this.closed)return;clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;void this.reconcile().catch(e=>this.host.trace?.('Blocked',`Persistent effects: ${e.message}`));},35);}
  // Would a lasting animation show for this condition or effect (its catalog on, or your own
@@ -183,7 +186,7 @@ export class PersistentStates{
   // A state that changed (Frightened 2 becoming 1 at the end of a turn) keeps showing until its
   // replacement is up, so it never blinks out; states that are gone end now.
   const stops=[],replaced=new Map();
-  for(const [key,record] of this.active){const d=desired.get(key);if(d?.signature===record.signature)continue;this.active.delete(key);if(d)replaced.set(key,record);else{record.cancelled=true;stops.push(this.end(record));}}
+  for(const [key,record] of this.active){const d=desired.get(key);if(d?.signature===record.signature&&!this.lost(record))continue;this.active.delete(key);if(d)replaced.set(key,record);else{record.cancelled=true;stops.push(this.end(record));}}
   await Promise.all(stops);
   const retire=key=>{const old=replaced.get(key);if(!old)return;replaced.delete(key);old.cancelled=true;return this.end(old);};
   if(revision!==this.revision){await Promise.all([...replaced.keys()].map(retire));return;}
@@ -261,6 +264,7 @@ export class PersistentStates{
   if(shown.length)await sequence.play({local:true});
   // Removal/scene changes can race asynchronous texture loading.
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
+  r.drawn=shown.length>0;
   // The creature itself reacts (trembles, sways, turns to stone…) while the state lasts.
   if(r.motion!==false){
    h.body?.add(r.name,r.token,r.item.animaterBody??bodyTreatment(r.item.name??r.recipe.name),{strength:level.scale});

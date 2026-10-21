@@ -1526,6 +1526,7 @@ Hooks.once("ready", () => {
       gridDistance: () => canvas.scene?.grid?.distance ?? 5,
       sequence: () => new Sequence({ moduleName: ID }),
       end: (name) => Sequencer.EffectManager.endEffects({ name }, false),
+      alive: (name) => Sequencer.EffectManager.getEffects({ name }).length > 0,
       // Condition looks are how the state shows at all, so they play down to Low quality; other filters need Full.
       retainFx:(stage,{session})=>(stage.fxEssential?allowsMotion(localQuality()):allowsTokenFx(localQuality()))?optionalFx.retain(stage,{session,userId:`state:${clientId}`}):undefined,
       budget:()=>stateBudget(localQuality()),
@@ -1552,6 +1553,9 @@ Hooks.once("ready", () => {
     // Hovering or selecting refreshes tokens many times a second; only a change a look depends on re-checks.
     const lookChanged = tokenLookChanged();
     Hooks.on("refreshToken", (token) => { if (lookChanged(token)) persistentStates.schedule(); });
+    // Sequencer re-initializes a drawn scene shortly after it is ready (450 ms after a scene switch), destroying
+    // every effect on the canvas, ours included; check again once it has (token refreshes can delay it), and redraw what it dropped.
+    Hooks.on("canvasReady", () => { for (const ms of [1000, 3000]) setTimeout(() => persistentStates?.schedule(), ms); });
     // A creature's turn starts: its played-once conditions show again for a moment (lastingMode "turn").
     Hooks.on("updateCombat", (combat, changed) => {
       if (!("turn" in (changed ?? {}) || "round" in (changed ?? {})) || combat?.scene?.id && combat.scene.id !== canvas.scene?.id) return;
