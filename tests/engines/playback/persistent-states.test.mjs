@@ -491,3 +491,11 @@ test('a lasting layer Sequencer dropped (its scene re-initializing) is drawn aga
  assert.notEqual([...f.manager.active.values()][0].name,first);
  await f.manager.destroy();
 });
+test('a defeated creature drops its other lasting animations, and gets them back if revived',async()=>{
+ const f=fixture([native(fear),native(bless,'b')]);let dead=false;
+ f.manager.host.defeated=()=>dead;
+ await f.manager.reconcile();await flush();assert.equal(f.manager.active.size,2);
+ dead=true;await f.manager.reconcile();await flush();assert.equal(f.manager.active.size,0,'frightened and blessed while dead: no');
+ dead=false;await f.manager.reconcile();await flush();assert.equal(f.manager.active.size,2);
+ await f.manager.destroy();
+});

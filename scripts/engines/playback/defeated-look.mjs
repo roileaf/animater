@@ -50,6 +50,10 @@ export const DEFEATED_RECIPE=validateRecipe({id:'animater-defeated',name:'Defeat
   assets:['jb2a.toll_the_dead.grey.skull_smoke','jb2a.smoke.puff.centered.grey'],
   duration:6000,fadeIn:800,fadeOut:800,scale:0.9,opacity:0.35,bindAlpha:true,bindRotation:false}]});
 
+// Is this creature Defeated (dead), whatever its look? Its other lasting animations stop while it is.
+export function isDefeated(actor,statusIds){
+ return statusIds.some(statusId=>Array.from(actor?.effects??[]).some(e=>hasStatus(e,statusId)&&!e.disabled&&e.active!==false));
+}
 // The defeated status as a lasting state the persistent layers can show, in effect mode only.
 export function defeatedStates(actor,{mode,statusId}){
  if(normalizeDefeatedLook(mode)!=='effect')return [];

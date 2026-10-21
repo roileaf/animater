@@ -163,7 +163,9 @@ export class PersistentStates{
     if(!token.actor)continue;
     let shown=0;
     // Built-in states (Defeated, in the Animater effect look) carry their own recipe.
-    const states=shownStates([...(h.actorStates??actorStates)(token.actor),...(h.builtinStates?.(token)??[]),...(h.perceivedStates?.(token)??[])]);
+    // A dead creature is not frightened or blessed any more: only its Defeated look stays.
+    const builtin=h.builtinStates?.(token)??[],dead=h.defeated?.(token)===true;
+    const states=dead?builtin:shownStates([...(h.actorStates??actorStates)(token.actor),...builtin,...(h.perceivedStates?.(token)??[])]);
     for(const item of states){
      if(!(h.activeState??activeState)(item))continue;
      // A state stopped from the Activity page stays off while it remains on the token.
