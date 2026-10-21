@@ -21,7 +21,8 @@ import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
-import { targetSurface } from "./engines/sound/surface-sounds.mjs";
+import { targetSurface, withSurfaceSounds, blowOfItem } from "./engines/sound/surface-sounds.mjs";
+import { weaponFamily } from "./systems/daggerheart.mjs";
 import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
 import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
 import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
@@ -1113,6 +1114,9 @@ Hooks.once("init", () => {
   game.settings.register(ID,'showControlButton',{name:'Show Animater scene control button',
     hint:'Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater.',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
+  game.settings.register(ID,SURFACE_SETTING,{name:'Weapon surface sounds',
+    hint:'A weapon hit also sounds like what it lands on: metal armour, leather, flesh, a spider’s shell, stone, a magical ward. A miss against a raised or magical shield rings off it. Every system; uses the built-in weapon animations.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>app?.workspace?.render()});
   game.settings.register(ID,'tuckDuringPlayback',{name:'Minimize Animater during canvas playback',
     hint:'Local preview and Play at table minimize the Animater window while the animation runs, then restore it.',
     scope:'client',config:true,type:Boolean,default:true});
@@ -1255,8 +1259,23 @@ Hooks.once("init", () => {
     },
   });
 });
+const SURFACE_SETTING = "surfaceSounds";
+// A built-in weapon animation, in any system, also sounds like what each target is (surface sounds).
+function withWeaponSurface(recipe, event, saved, sounds) {
+  if (!recipe || event?.type !== "attack" || game.settings.get(ID, SURFACE_SETTING) === false) return recipe ? (game.settings.get(ID, SURFACE_SETTING) === false ? withoutSurfaces(recipe) : recipe) : recipe;
+  if (saved.some((r) => r.id === recipe.id)) return recipe;
+  const item = event.item, family = game.system.id === "daggerheart" ? weaponFamily(item?.name) : null;
+  return withSurfaceSounds(recipe, { blow: blowOfItem(item, { family }), sounds, soundVolume: weaponSoundVolume() });
+}
+const withoutSurfaces = (recipe) => recipe.stages?.some((s) => s.surfaces) ? { ...recipe, stages: recipe.stages.filter((s) => !s.surfaces) } : recipe;
+const weaponSoundVolume = () => { const sys = game.system.id, key = sys === "dnd5e" ? dndSettingKey("weapon") : sys === "daggerheart" ? dhSettingKey("weapon") : sys === "sf2e" ? sfSettingKey("weapon") : "weaponCatalog";
+  try { return game.settings.get(ID, key)?.soundVolume ?? 0.35; } catch { return 0.35; } };
 function systemRecipe(event, saved) {
-  const sys = game.system.id, sounds = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database);
+  const sounds = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database);
+  return withWeaponSurface(catalogSystemRecipe(event, saved, sounds), event, saved, sounds);
+}
+function catalogSystemRecipe(event, saved, sounds) {
+  const sys = game.system.id;
   if (["pf2e", "sf2e"].includes(sys)) return crossoverResolve(event, { systemId: sys, on: crossoverOn(),
     // Borrowed catalogs are managed on their own pages, so each reads its own settings.
     resolve: (from, e) => twoeCatalogRecipe(from, e, saved, { customEnabled: enabled(), sounds, stateFor: (kind) => game.settings.get(ID, twoeSettingKey(from, kind)) }),
@@ -1404,7 +1423,9 @@ Hooks.once("ready", () => {
     // A player's GM-approved recipe animates their own characters first.
     resolveRecipe: (event, saved) => ownApprovedRecipe(event) ?? systemRecipe(event, saved),
     // What a Strike lands on (metal armour, a raised shield, chitin…), for its surface cue.
-    surfaceOf: ["pf2e", "sf2e"].includes(game.system.id) ? (token, outcome) => targetSurface(token?.actor ?? token?.document?.actor, outcome) : undefined,
+    surfaceOf: (token, outcome) => targetSurface(token?.actor ?? token?.document?.actor, outcome),
+    surfaceSounds: () => game.settings.get(ID, SURFACE_SETTING) !== false,
+    setSurfaceSounds: (on) => game.settings.set(ID, SURFACE_SETTING, on === true),
     recipeOrigin: (recipe, context) => recipeOrigin(recipe, context),
     ready: () => Boolean(canvas.ready && environment().ready),
     canPlay: (context) => Boolean(game.user.isGM || context.source?.isOwner),

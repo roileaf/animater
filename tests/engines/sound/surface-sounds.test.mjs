@@ -116,3 +116,14 @@ test("magical protection: a wizard's Shield rings on a miss, Mystic Armor on a h
  const paladin={...actor('Seelah',{armor:{group:'plate',category:'heavy'}}),itemTypes:{armor:[],effect:[{slug:'spell-effect-protection'}]}};
  assert.equal(targetSurface(paladin,'success'),'metal');
 });
+
+test(`stat-block armour: padded and clothes sound like leather; a stat block's "with mage armor" is not an active spell; illusions are silent`,()=>{
+ // "AC 21 with mage armor": the AC once she casts it. Only an active spell effect counts.
+ assert.equal(targetSurface({name:'Voz Lirayne',type:'npc',system:{traits:{value:['human','humanoid']},attributes:{ac:{details:'21 with mage armor'}}},itemTypes:{armor:[],effect:[]}},'success'),'flesh');
+ const npc=(name,armor,details='',traits=['human','humanoid'])=>({name,type:'npc',system:{traits:{value:traits},attributes:{ac:{details}}},itemTypes:{armor,effect:[]}});
+ assert.equal(bodySurface(npc('Pirate',[{category:'light',group:null,isEquipped:false}])),'leather');
+ assert.equal(bodySurface(npc('Juggernaut',[{category:'heavy',group:null,isEquipped:false}])),'metal');
+ assert.equal(bodySurface(npc('Phantasmal Protagonist',[],'',['illusion','mental'])),null);
+ assert.equal(bodySurface(npc('Storm Lord',[],'',['air','elemental'])),null);
+ assert.equal(bodySurface(npc('Air Mephit',[],'',['air','elemental'])),'flesh');
+});

@@ -42,7 +42,9 @@ export function withOutcome(recipe, { outcome, type, messageId, id } = {}) {
     // nothing reaches the target, which dodges aside as the attack arrives.
     const strike = strikeTime(recipe);
     const dropped = new Set(recipe.stages.filter((s) => s.kind !== "sound" && onTargets(s) && !swing(s) && !isDodge(s)).map((s) => s.stageId));
-    let stages = recipe.stages.filter((s) => !dropped.has(s.stageId) && !(s.kind === "sound" && dropped.has(s.afterStage)));
+    // A surface cue still sounds on a miss (a raised shield's block, a magical shield's ring): it keeps the blow's time.
+    const at = (s) => dropped.has(s.afterStage) ? { ...s, afterStage: "", startMode: undefined, startRef: undefined, delay: Math.max(0, Math.round(strike ?? s.delay ?? 0)) } : s;
+    let stages = recipe.stages.filter((s) => !dropped.has(s.stageId) && !(s.kind === "sound" && !s.surfaces && dropped.has(s.afterStage))).map((s) => (s.kind === "sound" && s.surfaces ? at(s) : s));
     if (strike !== null && !stages.some(isDodge))
       stages.push({ stageId: "miss-dodge", kind: "motion", motion: "dodge", subject: "targets", delay: Math.max(0, Math.round(strike - DODGE.lead)), duration: DODGE.duration, distance: 0.38, intensity: 0.85, motionArrival: 35, motionHold: 15, motionSide: sideOf(messageId ?? id), assets: [], label: "Target dodges", optionalTargets: true });
     // A critical failure is a fumble: the attacker stumbles as the attack goes astray.
@@ -96,6 +98,16 @@ export function dnd5eSaveOutcome(rolls = [], { isGM = globalThis.game?.user?.isG
   return privacy === "gm" ? "hidden" : Number(roll.total) >= dc ? "success" : "failure";
 }
 
+// D&D 5e, per target (several targets each against their own AC), by token id. Unknown ACs are left out.
+export function dnd5eTargetOutcomes(rolls = [], targets = []) {
+  const roll = rolls[0], total = Number(roll?.total);
+  if (!roll) return {};
+  return Object.fromEntries(targets.map((t) => {
+    const id = String((typeof t === "string" ? t : t?.token ?? t?.uuid) ?? "").split(".").at(-1), ac = Number(t?.ac);
+    const outcome = roll.isCritical ? "criticalSuccess" : roll.isFumble ? "criticalFailure" : Number.isFinite(ac) && Number.isFinite(total) ? (total >= ac ? "success" : "failure") : null;
+    return [id, outcome];
+  }).filter(([id, outcome]) => id && outcome));
+}
 // D&D 5e: a natural 20 is a critical hit, a natural 1 a miss; otherwise the total
 // against the single target's AC decides (unknown with several targets or no AC).
 export function dnd5eAttackOutcome(rolls = [], targets = []) {

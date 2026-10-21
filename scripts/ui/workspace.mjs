@@ -2536,6 +2536,7 @@ export class Workspace {
       if (action === "weapon-mode") { if (this.weaponMode === b.dataset.mode) return; this.weaponMode = b.dataset.mode; this.stageIndex = 0; this.render(); return; }
       if (action === "weapon-page") { this.weaponPage = Math.max(0, Number(b.dataset.index)); this.render(); return; }
       if (action === "weapon-reset") { for (const key of Object.keys(this.weaponFilters)) this.weaponFilters[key] = key === "search" ? "" : "all"; this.weaponPage = 0; this.render(); return; }
+      if (action === "weapon-surface" && this.host.setSurfaceSounds) { await this.host.setSurfaceSounds(!this.host.surfaceSounds()); this.message = "Weapon catalog settings updated."; this.render(); return; }
       if (["weapon-auto", "weapon-pause", "weapon-exclude", "weapon-motion", "weapon-sound", "weapon-surface", "use-weapon"].includes(action)) {
         const env = this.host.environment(), state = normalizeWeaponCatalogState(this.host.weaponCatalogState?.());
         if (!["weapon-sound", "weapon-surface", "weapon-motion"].includes(action) && (env.demo || !pf2eCatalogsLive(env) || !env.ready)) throw Error("Configure automatic weapon animations inside a PF2e world.");

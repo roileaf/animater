@@ -454,7 +454,9 @@ function surfaceOptions(input) {
 function surfaceRecording(s, destination, context) {
   const pick = (list) => list?.length ? list[Math.floor((context.random ?? Math.random)() * list.length)] : null;
   if (context.preview) return pick(s.surfaces.flesh);
-  const surface = context.surfaceOf ? context.surfaceOf(destination, context.outcome) : ["success", "criticalSuccess"].includes(context.outcome) ? "flesh" : null;
+  // Each target's own hit or miss where the system gives one (several D&D or Daggerheart targets).
+  const outcome = context.targetOutcomes?.[destination?.id ?? destination?.document?.id] ?? context.outcome;
+  const surface = context.surfaceOf ? context.surfaceOf(destination, outcome) : ["success", "criticalSuccess"].includes(outcome) ? "flesh" : null;
   if (!surface) return null;
   const recording = pick(s.surfaces[surface]) ?? (surface === "shield" ? null : pick(s.surfaces.flesh));
   // Blow after blow varies: a slightly different pitch and loudness each time.
