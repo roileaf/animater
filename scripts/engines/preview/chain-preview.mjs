@@ -2,6 +2,7 @@ import { previewPlan } from "../../core/model.mjs";
 import { isPathMotion } from "../motion/motion-path.mjs";
 import { motionDirection, motionPose, combineMotionPoses } from "../motion/motion.mjs";
 import { stageFrame } from "../../core/stage-options.mjs";
+import { isMoveStage, moveOptions } from "../motion/move-targets.mjs";
 
 // Fit the complete cosmetic route rather than clipping long fixed movements.
 // Only the schematic camera/grid changes; recipe distances and durations stay.
@@ -61,7 +62,9 @@ export function chainPreview(recipe, tokens = {}) {
   const passThrough = recipe.stages.some(
     (s) => isPathMotion(s) && s.motionEndpoint === "past",
   );
-  if (!chained && !overlapping && !line && !cone && !path) return null;
+  // A push or pull shows where the target can go (engines/motion/move-targets.mjs).
+  const moveStage = recipe.stages.find(isMoveStage);
+  if (!chained && !overlapping && !line && !cone && !path && !moveStage) return null;
   const actual = tokens.targetList ?? (tokens.targets ? [tokens.targets] : []);
   const flights=recipe.stages.filter(s=>s.kind==='travel');
   const boundedChain=chained&&flights.length>0&&flights.every(s=>s.targetLimit>0);
@@ -110,6 +113,19 @@ export function chainPreview(recipe, tokens = {}) {
     })),
   ];
   const width = tokens.previewWidth || 400, height = tokens.previewHeight || 300;
+  // A push: the target beside the source, the wedge opening away from it. A pull: the target its squares away, the
+  // wedge pointing back. Laid out in real pixels from the left edge (`left`), in whole squares of the grid key, so it
+  // reads true whatever the panel's size; the squares shrink only for a long reach. With nobody picking, a straight line.
+  const moving = moveStage && !chained && count === 1 ? moveStage : null;
+  let moveCone = null, moveGrid = 55;
+  if (moving) {
+    const { squares, moveCone: degrees, moveAsk } = moveOptions(moving), pull = moving.motion === "pull";
+    moveGrid = Math.max(24, Math.min(55, 560 / (squares + 1.6)));
+    const sx = 70, tx = sx + (pull ? squares + 1 : 1) * moveGrid;
+    Object.assign(actors[0], { x: (sx / width) * 100, y: 50, left: `${sx}px` });
+    Object.assign(actors[1], { x: (tx / width) * 100, y: 50, left: `${tx}px` });
+    moveCone = { left: tx, r: squares * moveGrid + moveGrid / 2, angle: pull ? Math.PI : 0, half: moveAsk === "none" ? 0 : ((degrees / 2) * Math.PI) / 180, pull, squares, picked: moveAsk !== "none" };
+  }
   const places = actors.map((a) => ({
     ...a,
     center: { x: a.x * width / 100, y: a.y * height / 100 },
@@ -136,16 +152,18 @@ export function chainPreview(recipe, tokens = {}) {
       : { center: places[1].center, diameter: 200 },
     random: () => 0.5,
   });
-  const grid=path?fitPathPreview(actors,places,plan,width,height):55;
+  const grid=path?fitPathPreview(actors,places,plan,width,height):moving?moveGrid:55;
   return {
     actors,
     width,
     height,
     grid,
+    ...(moveCone ? { moveCone } : {}),
     pathFrame: path,
     recipe: { ...recipe, targetCount: count, playbackPlan: plan },
-    note:
-      actual.length > 1
+    note: moveCone
+      ? `${moveCone.pull ? "Pull" : "Push"} · up to ${moveCone.squares} square${moveCone.squares === 1 ? "" : "s"}${moveCone.picked ? " · shaded: where it can be placed" : " · straight along the line"}`
+      : actual.length > 1
         ? `${count} targets in targeting order${actual.length > 6 ? " · first 6 shown" : ""}`
         : chained
           ? boundedChain?`${sampleCount}-target route · canvas uses your actual targets`:recipe.stages.some(s=>s.travelOrigin==='firstTarget') ? "Secondary-ray example · canvas uses your actual targets" : "Three-hop example · canvas uses your actual targets"

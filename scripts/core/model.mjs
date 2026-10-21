@@ -1,3 +1,4 @@
+import { MOVE_MOTIONS, moveOptions } from "../engines/motion/move-targets.mjs";
 import { normalizeKeyframes } from "../engines/motion/keyframe-path.mjs";
 import { normalizeFragments } from "../engines/fragments/fragments.mjs";
 import { normalizeOptions, validateSoundFile, EASES } from "./stage-options.mjs";
@@ -98,6 +99,9 @@ export const MOTIONS = {
   fade: "Fade out",
   path: "Keyframed path",
   fragments: "Token fragments",
+  // These two really move the target on the canvas (engines/motion/move-targets.mjs).
+  push: "Push away (moves the token)",
+  pull: "Pull closer (moves the token)",
 };
 export const clone = (value) => structuredClone(value);
 export const normalize = (value) =>
@@ -281,7 +285,9 @@ export function validateRecipe(input) {
           ...(s.kind === "motion"
             ? {
                 motion: MOTIONS[s.motion] ? s.motion : "lunge",
-                subject: s.subject === "targets" ? "targets" : "source",
+                // A push or pull moves the targets, never the one who acted.
+                subject: s.subject === "targets" || MOVE_MOTIONS.has(s.motion) ? "targets" : "source",
+                ...(MOVE_MOTIONS.has(s.motion) ? moveOptions(s) : {}),
                 intensity: number(s.intensity, 0.1, 3, 1),
                 distance: number(
                   s.distance,
@@ -350,6 +356,14 @@ export function parseImport(text) {
   if (new Set(recipes.map((r) => r.id)).size !== recipes.length)
     throw Error("Duplicate recipe IDs in import.");
   return recipes;
+}
+// The starter recipes every world begins with (core/presets.mjs): broad examples ("Blade strike" for any sword) that
+// make way for a catalog you turned on. Any other recipe is the GM's own.
+export const STARTER_RECIPE_IDS = new Set(["ember", "frost", "storm", "force", "mend", "ward", "arrow", "blade", "nova", "cinematic-blade", "casting-flourish", "impact-reaction"]);
+// The GM's own enabled recipe for this event, if any: it plays instead of a catalog turned on wholesale (Plug &
+// play); only a catalog entry picked by hand ("Use animation") still plays over it.
+export function ownRecipe(recipes, event) {
+  return matchRecipe((recipes ?? []).filter((r) => !STARTER_RECIPE_IDS.has(r.id)), event);
 }
 export function matchRecipe(recipes, event) {
   const names = new Set(

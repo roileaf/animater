@@ -69,7 +69,7 @@ test('SF2e events use SF flags, recorded targets/cast rank and native weapon usa
  const origin={uuid:'Actor.a.Item.i',castRank:5},message={id:'m',author:{id:'u'},item:{type:'spell',system:{}},flags:{sf2e:{origin,context:{type:'spell-attack-roll',target:{token:'Scene.s.Token.t'},outcome:'success'}}},speaker:{token:'c',scene:'s'},isRoll:true};
  const event=sf2eEvent(message,'u');assert.equal(event.systemId,'sf2e');assert.equal(event.type,'attack');assert.equal(event.castRank,5);assert.equal(event.targetUuid,'Scene.s.Token.t');assert.equal(event.itemUuid,origin.uuid);
  assert.equal(pf2eEvent({...message,item:undefined},'u'),null);
- for(const change of [{author:{id:'other'}},{flags:{sf2e:{...message.flags.sf2e,context:{isReroll:true}}}}])assert.equal(sf2eEvent({...message,...change},'u'),null);
+ for(const change of [{author:{id:'other'}},{content:'<div class="">old</div><div class="reroll-second reroll-discard">new</div>',flags:{sf2e:{...message.flags.sf2e,context:{...message.flags.sf2e.context,isReroll:true}}}}])assert.equal(sf2eEvent({...message,...change},'u'),null);
  for(const change of [{blind:true},{whisper:['u']}])assert.match(sf2eEvent({...message,...change},'u').skipped,/stays hidden/);
  const grenade={...message,item:{type:'weapon',system:{group:'grenade',range:70}},flags:{sf2e:{context:{type:'attack-roll'}}}};assert.equal(sf2eEvent(grenade,'u').weaponMode,'thrown');
  assert.equal(sf2eEvent({...grenade,flags:{sf2e:{context:{type:'attack-roll',altUsage:'melee'}}}},'u').weaponMode,'melee');

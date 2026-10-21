@@ -101,7 +101,10 @@ test("a PF2e Shove check becomes a finisher event with its outcome and target", 
   assert.equal(checkFinisherEvent({ ...message("u", ["action:shove"]), whisper: ["gm"] }, "pf2e", "u"), null, "whispered");
   assert.notEqual(checkFinisherEvent({ ...message("u", ["action:shove"]), whisper: [] }, "pf2e", "u"), null, "an empty whisper list is public");
   const reroll = message("u", ["action:shove"]); reroll.flags.pf2e.context.isReroll = true;
-  assert.equal(checkFinisherEvent(reroll, "pf2e", "u"), null, "reroll");
+  reroll.content = '<div class="reroll-discard">old</div><div class="reroll-second ">new</div>';
+  assert.notEqual(checkFinisherEvent(reroll, "pf2e", "u"), null, "a reroll that kept its new roll plays");
+  reroll.content = '<div class="">old</div><div class="reroll-second reroll-discard">new</div>';
+  assert.equal(checkFinisherEvent(reroll, "pf2e", "u"), null, "a reroll that kept the old roll changed nothing");
 });
 
 // PF2e/SF2e saving-throw messages (checked against the PF2e system's Check.roll): flags.pf2e.context
@@ -114,7 +117,8 @@ test("a saving throw against a spell is a finisher event: the saver is the targe
   assert.deepEqual(saveFinisherEvent(saveMessage("criticalFailure"), "pf2e", "u"), { type: "save", systemId: "pf2e", id: "finisher-save:sv1", messageId: "sv1", itemUuid: "Actor.wiz.Item.fireball", tokenId: "wizard", sceneId: "s", targetUuid: "Scene.s.Token.orc", outcome: "criticalFailure" });
   assert.equal(saveFinisherEvent(saveMessage("criticalFailure"), "pf2e", "other"), null, "only the roller's client");
   assert.equal(saveFinisherEvent({ ...saveMessage("criticalFailure"), whisper: ["gm"] }, "pf2e", "u"), null, "a hidden save stays quiet");
-  assert.equal(saveFinisherEvent(saveMessage("criticalFailure", { isReroll: true }), "pf2e", "u"), null, "reroll");
+  assert.notEqual(saveFinisherEvent({ ...saveMessage("criticalFailure", { isReroll: true }), content: '<div class="reroll-discard">old</div><div class="reroll-second ">new</div>' }, "pf2e", "u"), null, "a rerolled save that now critically fails");
+  assert.equal(saveFinisherEvent({ ...saveMessage("criticalFailure", { isReroll: true }), content: '<div class="">old</div><div class="reroll-second reroll-discard">new</div>' }, "pf2e", "u"), null, "a reroll that kept the old roll");
   assert.equal(saveFinisherEvent(saveMessage("criticalFailure", { type: "skill-check" }), "pf2e", "u"), null, "not a save");
   const plain = saveMessage("criticalFailure"); delete plain.flags.pf2e.origin;
   assert.equal(saveFinisherEvent(plain, "pf2e", "u"), null, "a save against no item has nothing to play");

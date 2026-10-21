@@ -91,9 +91,11 @@ export function withinReach({ from, fromSize, to, toSize, feet, gridSize, gridDi
   return Math.hypot(to.x - from.x, to.y - from.y) <= reach + 1;
 }
 
-// Foundry part: show the range and a ghost of the token, wait for a click (Esc or right-click
+// Foundry part: show the range and a ghost of the token, wait for a click (Esc
 // cancels). Resolves { x, y } (the token's new top-left) or null.
-export function pickTeleportSpot({ caster, mover, feet, notify }) {
+// `allow(center)` (optional) narrows the spots inside the ring further: a push or pull's direction, a wall in the way.
+// `cone` ({ angle, half } in radians) draws a wedge instead of the whole ring: the directions a push or pull allows.
+export function pickTeleportSpot({ caster, mover, feet, notify, allow = null, outside = "Out of range: pick a spot inside the ring.", cone = null }) {
   const C = globalThis.canvas, view = C?.app?.view;
   if (!view || !caster || !mover) return Promise.resolve(null);
   return new Promise((resolve) => {
@@ -102,7 +104,10 @@ export function pickTeleportSpot({ caster, mover, feet, notify }) {
     const ring = new PIXI.Graphics(), ghost = new PIXI.Sprite(mover.mesh?.texture ?? PIXI.Texture.WHITE);
     if (Number.isFinite(feet)) {
       const radius = (feet / distance) * grid + caster.w / 2;
-      ring.lineStyle(3, 0x9e8aff, 0.9).beginFill(0x9e8aff, 0.08).drawCircle(from.x, from.y, radius).endFill();
+      ring.lineStyle(3, 0x9e8aff, 0.9).beginFill(0x9e8aff, 0.08);
+      if (cone && cone.half < Math.PI) ring.moveTo(from.x, from.y).arc(from.x, from.y, radius, cone.angle - cone.half, cone.angle + cone.half).lineTo(from.x, from.y);
+      else ring.drawCircle(from.x, from.y, radius);
+      ring.endFill();
     }
     ghost.anchor.set(0.5); ghost.width = mover.w; ghost.height = mover.h; ghost.alpha = 0.55;
     layer.addChild(ring, ghost);
@@ -111,7 +116,7 @@ export function pickTeleportSpot({ caster, mover, feet, notify }) {
       const p = C.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
       const top = mover.getSnappedPosition?.({ x: p.x - mover.w / 2, y: p.y - mover.h / 2 }) ?? { x: p.x - mover.w / 2, y: p.y - mover.h / 2 };
       const center = { x: top.x + mover.w / 2, y: top.y + mover.h / 2 };
-      const ok = withinReach({ from, fromSize: caster.w, to: center, toSize: mover.w, feet, gridSize: grid, gridDistance: distance });
+      const ok = withinReach({ from, fromSize: caster.w, to: center, toSize: mover.w, feet, gridSize: grid, gridDistance: distance }) && (!allow || allow(center));
       ghost.position.set(center.x, center.y); ghost.tint = ok ? 0xffffff : 0xff5a5a;
       return ok ? top : null;
     };
@@ -122,12 +127,12 @@ export function pickTeleportSpot({ caster, mover, feet, notify }) {
       resolve(result);
     };
     const move = (e) => { spot = at(e); };
+    // Only a left click picks. Right-click and drag still pans the canvas (Foundry's own); only Esc cancels.
     const down = (e) => {
-      e.preventDefault(); e.stopPropagation();
-      if (e.button === 2) return finish(null);
       if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
       spot = at(e);
-      if (spot) finish(spot); else notify?.("Out of range: pick a spot inside the ring.");
+      if (spot) finish(spot); else notify?.(outside);
     };
     const block = (e) => { e.preventDefault(); e.stopPropagation(); };
     const key = (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(null); } };

@@ -1,4 +1,5 @@
 import { rollPrivacy, hidden } from "../../core/privacy.mjs";
+import { rerollChangesNothing } from "../../systems/reroll.mjs";
 // Which finishers an item plays, and the link between a catalog entry and a finisher.
 // Applies-to reuses recipe matching: comma-separated names in `match`, or one exact itemUuid.
 import { normalize, FINISHER_ON, FINISHER_ENDINGS } from "../../core/model.mjs";
@@ -70,10 +71,10 @@ export function finisherMoment(event) {
 export function checkFinisherEvent(message, systemId, userId) {
   const context = message?.flags?.[systemId]?.context;
   if ((message?.author?.id ?? message?.user?.id) !== userId || context?.type !== "skill-check") return null;
-  // Hidden or repeated rolls stay quiet, as normal dispatch does (twoeEvent); a GM's private one
-  // plays without its outcome, so no crit finisher gives it away.
+  // Hidden rolls, and rerolls that kept the old roll, stay quiet, as normal dispatch does (twoeEvent); a GM's
+  // private one plays without its outcome, so no crit finisher gives it away.
   const privacy = rollPrivacy(message);
-  if (hidden(privacy) || context.isReroll) return null;
+  if (hidden(privacy) || rerollChangesNothing(message, systemId)) return null;
   const action = (context.options ?? []).map(String).find((o) => o.startsWith("action:"))?.slice(7);
   if (!action) return null;
   return { type: "check", systemId, id: `finisher-check:${message.id}`, messageId: message.id, itemName: action, tokenId: message.speaker?.token, sceneId: message.speaker?.scene, targetUuid: context.target?.token, outcome: privacy === "gm" ? undefined : context.outcome };
@@ -87,7 +88,7 @@ export function checkFinisherEvent(message, systemId, userId) {
 export function saveFinisherEvent(message, systemId, userId) {
   const flags = message?.flags?.[systemId], context = flags?.context, speaker = message?.speaker ?? {};
   if ((message?.author?.id ?? message?.user?.id) !== userId || context?.type !== "saving-throw" || context.outcome !== "criticalFailure") return null;
-  if (message.blind || message.whisper?.length || context.isReroll || !flags.origin?.uuid) return null;
+  if (message.blind || message.whisper?.length || rerollChangesNothing(message, systemId) || !flags.origin?.uuid) return null;
   const saver = context.target?.token ?? (speaker.scene && speaker.token ? `Scene.${speaker.scene}.Token.${speaker.token}` : null);
   if (!saver) return null;
   const self = context.origin?.token === saver;

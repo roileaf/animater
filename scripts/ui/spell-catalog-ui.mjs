@@ -12,7 +12,7 @@ import {
   catalogSpellEnabled,
   catalogSpellReady,
 } from "../catalogs/pf2e/spells/spell-catalog.mjs";
-import { EVENTS } from "../core/model.mjs";
+import { ownRecipe, EVENTS } from "../core/model.mjs";
 import { catalogSoundOptions, spellSoundInfo } from "../engines/sound/spell-sounds.mjs";
 import { sampleRecipe } from "../engines/playback/composition.mjs";
 const esc = (value) =>
@@ -92,13 +92,15 @@ function spellDetailHTML(w, spell, state, env) {
   if(!catalogSpellReady(spell))return `<div class="an-eyebrow">${qualities.unconfigured}</div><div class="an-spell-detail-title"><img src="${esc(w.host.imageURL?.(spell.img)??spell.img)}" alt=""><div><h2>${catalogNameHTML(spell,'spell',env)}</h2><small>${spell.kind==='cantrip'?'Cantrip':`Rank ${spell.rank}`} · ${esc(spell.edition)}</small></div></div><div class="an-catalog-design"><b>No built-in animation yet</b><p>This spell needs a matching composition. Generic casting rings and impacts are skipped.</p></div><div class="an-catalog-use-status" role="status"><b>Skipped by plug &amp; play</b><small>Your saved custom animation can still play normally.</small></div><button class="an-primary" data-action="copy-spell" ${w.busy?'disabled':''}>${saved?'Edit customization':'Configure animation'}</button><p class="an-hint">Opens a blank recipe bound to this spell. Choose its assets and choreography, then enable it.</p>`;
   const duration = w.previewDuration(recipe);
   const automatic = spell.trigger !== "manual";
+  // Your own recipe for it (bound by its name) plays instead of a catalog turned on wholesale.
+  const own = w.host.enabled() && ["attack", "damage", "use", "template"].some((type) => ownRecipe(w.host.recipes(), { type, systemId: "pf2e", item: { name: spell.name, slug: spell.slug, system: { slug: spell.slug } } }));
   const usingCatalog =
     automatic &&
     (state.independent || w.host.enabled()) &&
     catalogSpellEnabled(spell.id, state) &&
-    (!saved ||
+    (!(saved || own) ||
       state.selected.includes(spell.id) ||
-      (state.preferCatalog && !state.customized.includes(spell.id)));
+      (state.preferCatalog && !state.customized.includes(spell.id) && !own));
   const canUse = !env.demo && pf2eCatalogsLive(env) && env.ready;
   const status = !automatic
     ? "Manual animation"

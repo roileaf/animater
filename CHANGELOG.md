@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Push and Pull stages move targets for real.** Two new motions on the timeline, **Push away** and **Pull closer**, move each target a set number of squares (1 to 10) away from whoever acted, or toward them, at the moment the stage starts: place it after the blast, the swing or anything else. Walls stop the move, and a pull stops beside the puller. **Only on a hit** leaves targets that were missed where they are. **Who picks the square** lets the one who acted, or the target's side (the GM for monsters, the player for their character), click where the target goes: any square inside a shaded wedge pointing away from the attacker (toward them, for a pull), 90° wide unless you set its **Direction cone**, with no wall in between. Esc, or no pick within a minute, leaves it in place. A local preview shows a recoil or lunge and moves nothing, and the recipe's composition preview draws the reach: a push with the target beside the caster and the wedge opening away, a pull with the target its squares away and the wedge pointing back (a straight arrow when nobody picks). Thanks to doubledunkindonuts and camrun91 for the ideas.
+- **Pan the map while picking a spot.** While you pick where a teleport lands or where a push or pull goes, right-click and drag pans the canvas as usual; only Esc cancels. Before, a right-click cancelled the pick.
+- **Your own recipes beat a catalog you turned on.** With a catalog on (Plug & play), a recipe you made for an item, such as your own dagger animation, now plays instead of the catalog's. Before, turning the weapons catalog on (and the others) silently replaced it. A catalog entry you picked by hand (Use animation) still plays over your recipe, and the starter recipes every world begins with still make way for the catalog. The catalog pages say which one plays.
+- **Rerolls animate.** A Pathfinder 2e or Starfinder 2e reroll (a Hero Point, a fortune effect) now plays with its new result: a miss turned into a critical hit plays the critical hit, crit finishers and Shove or Trip finishers included. A reroll that kept the old roll changed nothing and stays quiet.
+- **Finish Him! plays before the finishing blow.** When a finisher kills the last enemy, the Last enemy falls screen now plays first and the finisher follows it, instead of both playing at once.
+
 ## 1.5.6 (2026-10-21)
 
 - **Flash screens can name the party and ask the GM for names.** Two new words for any text layer:

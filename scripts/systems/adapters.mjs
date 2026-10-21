@@ -2,12 +2,14 @@ import { dnd5eAttackOutcome, dnd5eTargetOutcomes } from './outcome.mjs';
 import { twoeEventElement, dnd5eEventElement } from "../catalogs/shared/element-choice.mjs";
 import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason } from "../core/privacy.mjs";
 import { strikeItemOf } from "../engines/finishers/strike-finishers.mjs";
+import { rerollChangesNothing } from "./reroll.mjs";
 // Normalize system events without changing rolls, items, HP, or system state.
 export const pf2eEvent=(message,userId)=>twoeEvent(message,userId,'pf2e');
 export const sf2eEvent=(message,userId)=>twoeEvent(message,userId,'sf2e');
 export function twoeEvent(message, userId, systemId='pf2e') {
   const flags=message.flags?.[systemId], author=message.author ?? message.user, context = flags?.context;
-  if (author?.id !== userId || context?.isReroll) return null;
+  // A reroll plays with its new result, unless it kept the old roll (reroll.mjs).
+  if (author?.id !== userId || rerollChangesNothing(message, systemId)) return null;
   if (["damage-taken", "saving-throw", "perception-check", "flat-check"].includes(context?.type)) return null;
   // An action rolled as a skill check (Shove, Trip, Grapple, Demoralize: action:shove) plays as that
   // action's use; other skill checks are no event. Finishers ride the check (checkFinisherEvent).

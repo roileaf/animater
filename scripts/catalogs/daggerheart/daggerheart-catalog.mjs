@@ -6,7 +6,7 @@
 import { DAGGERHEART_SOURCE, DAGGERHEART_CARDS, DAGGERHEART_WEAPONS } from "../../../data/daggerheart-catalog.mjs";
 import { CARD_DESIGNS } from "../../../data/daggerheart-card-designs/index.mjs";
 import { designStages } from "./daggerheart-card-design.mjs";
-import { clone, normalize, validateRecipe, matchRecipe, matchStrikeOverride } from "../../core/model.mjs";
+import { clone, normalize, validateRecipe, matchRecipe, ownRecipe, matchStrikeOverride } from "../../core/model.mjs";
 import { DH_ROLL_TYPES, MELEE_RANGES, dhDamageKind, weaponFamily } from "../../systems/daggerheart.mjs";
 import { DEFEATED_RECIPE } from "../../engines/playback/defeated-look.mjs";
 import { weaponSoundDesign, cardSoundDesign, featureSoundDesign, utilitySoundDesign, withDhSounds, weaponMotion, featureMotion, utilityMotion } from "./daggerheart-polish.mjs";
@@ -387,8 +387,8 @@ export function findDhEntry(event) {
 // lasting conditions and the defeated set belong to the persistent layers, not to dispatch.
 export function resolveDaggerheartAutomaticRecipe(event, stateFor, saved = [], { customEnabled = true, sounds = null } = {}) {
   const entry = findDhEntry(event), state = normalizeDhCatalogState(entry && stateFor(entry.kind));
-  const selected = entry && dhEntryEnabled(entry.id, state), prefer = selected && (state.selected.includes(entry.id) || (state.preferCatalog && !state.customized.includes(entry.id)));
-  const custom = customEnabled || (selected && state.customized.includes(entry.id)) ? saved : [];
+  const custom = customEnabled || (entry && dhEntryEnabled(entry.id, state) && state.customized.includes(entry.id)) ? saved : [];
+  const selected = entry && dhEntryEnabled(entry.id, state), prefer = selected && (state.selected.includes(entry.id) || (state.preferCatalog && !state.customized.includes(entry.id) && !ownRecipe(custom, event)));
   const override = matchStrikeOverride(custom, event);
   if (override) return override;
   if (!prefer) { const match = matchRecipe(custom, event); if (match) return match; }

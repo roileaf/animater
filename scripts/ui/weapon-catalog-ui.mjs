@@ -1,3 +1,4 @@
+import {ownRecipe} from '../core/model.mjs';
 import { plugModeHTML, leftOutOnly, showingLeftOut, catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } from "../catalogs/shared/catalog-terms.mjs";
 import { pf2eCatalogsLive } from "../catalogs/shared/catalog-system.mjs";
 import { catalogNameHTML, cardToggleHTML, cardSlotClass } from "../catalogs/shared/catalog-details.mjs";
@@ -25,7 +26,9 @@ export function weaponCatalogHTML(w){
 function detail(w,weapon,state,env){
  const mode=weapon.modes.find(m=>m.mode===w.weaponMode),recipe=weaponRecipe(weapon,mode.mode,{motion:state.motion,soundCatalog:state.sound?w.host.soundCatalog?.():null,soundVolume:state.soundVolume});
  const saved=w.host.recipes().find(r=>r.id===recipe.id||r.itemUuid===recipe.itemUuid&&r.weaponMode===mode.mode),key=weaponCustomizationKey(weapon.id,mode.mode);
- const using=catalogWeaponEnabled(weapon.id,state)&&(state.independent||w.host.enabled())&&(!saved||(state.selected.includes(weapon.id)||state.preferCatalog)&&!state.customized.includes(key));
+ // Your own recipe for this weapon (bound by its name) plays instead of a catalog turned on wholesale.
+ const own=w.host.enabled()?ownRecipe(w.host.recipes(),{type:'attack',systemId:'pf2e',weaponMode:mode.mode,itemUuid:recipe.itemUuid,item:{name:weapon.name,slug:weapon.slug,type:'weapon',system:{slug:weapon.slug,group:weapon.group}}}):null;
+ const using=catalogWeaponEnabled(weapon.id,state)&&(state.independent||w.host.enabled())&&(!(saved||own)||(state.selected.includes(weapon.id)||state.preferCatalog&&!own)&&!state.customized.includes(key));
  const duration=w.previewDuration(recipe);
  return `<div class="an-eyebrow">BUILT-IN WEAPON · ${esc(useTitle(weapon,mode.mode))}</div><div class="an-spell-detail-title"><img src="${esc(w.host.imageURL?.(weapon.img)??weapon.img)}" alt=""><div><h2>${catalogNameHTML(weapon, "weapon", env)}</h2><small>${esc(title(weapon.group))} · Level ${weapon.level} · ${esc(weapon.rarity)}</small></div></div><div class="an-mode-picker" role="group" aria-label="Weapon use">${weapon.modes.map(m=>`<button data-action="weapon-mode" data-mode="${m.mode}" aria-pressed="${m.mode===mode.mode}" class="${m.mode===mode.mode?'an-primary':'an-quiet'}">${useTitle(weapon,m.mode)}</button>`).join('')}</div><p class="an-hint">${weapon.strikeBinding==='unarmed'?'Roll an unarmed Strike while these wraps are worn and invested.':weapon.modes.length>1?'Automatic playback follows the actual PF2e roll. Preview selection does not change your weapon usage.':'This is the native use supported by PF2e.'}</p><div class="an-spell-badges">${[mode.damage,mode.range?`${mode.range} ft range`:'Close contact',...mode.traits.slice(0,6)].map(t=>`<span>${esc(title(t))}</span>`).join('')}</div><div class="an-preview an-full-preview" style="--effect:${recipe.color}">${w.recipePreviewHTML(recipe)}</div>${previewRowHTML({duration,busy:w.busy,canvasDisabled:env.demo||!env.ready,progressLabel:'Recipe playback progress'})}${weaponStatusHTML(w,{weapon,mode,saved,using,state,env})}${finisherLinkHTML(w,weapon.name,weapon.uuid)}${entryDetailsHTML([
   abilitySoundDetailHTML(w,weapon,recipe,state,mode.mode),

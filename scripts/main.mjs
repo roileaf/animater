@@ -63,6 +63,7 @@ import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes 
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
 import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot } from "./engines/motion/teleport.mjs";
+import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
 import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { findStateEntry as findConditionEntry } from "./catalogs/pf2e/state-catalog.mjs";
@@ -596,6 +597,52 @@ async function receiveTeleport(data, senderId) {
   if (!user || !doc || doc.documentName !== "Token" || !Number.isFinite(data.x) || !Number.isFinite(data.y)) return;
   if (caster?.documentName !== "Token" || caster.parent !== doc.parent || !caster.testUserPermission(user, "OWNER")) return;
   await moveToken(doc, data.x, data.y);
+}
+// Push and Pull stages where someone picks the square. "actor": the one playing the recipe (this client).
+// "target": the target's side, its connected owning player (their character), else the GM, on their own screen.
+// Esc, or no pick in time, leaves the target where it is.
+const movePicks = new Map();
+const tokenOf = (doc) => doc?.object ?? doc;
+// The square (top-left) picked on this screen: inside the ring, the right way, with no wall in between.
+function pickMoveSpot({ mover, source, squares, pull, degrees = 90 }) {
+  const grid = canvas.grid.size, distance = canvas.scene?.grid?.distance ?? 5;
+  const wallFree = (center) => !CONFIG.Canvas.polygonBackends?.move?.testCollision?.(mover.center, center, { type: "move", mode: "any" });
+  ui.notifications.info(movePrompt(pull, mover, source, squares));
+  return pickTeleportSpot({ caster: mover, mover, feet: squares * distance, notify: (text) => ui.notifications.warn(text),
+    allow: (center) => allowedSpot({ mover, source, center, pull, grid, degrees }) && wallFree(center), cone: moveCone({ mover, source, pull, degrees }),
+    outside: `Pick a square inside the shaded area, ${pull ? "toward" : "away from"} ${source.name}, with no wall in the way.` });
+}
+// A picked square stands only if it keeps the rules here too (an answer from another screen included).
+function keepsMoveRules(spot, { mover, source, squares, pull, degrees = 90 }) {
+  if (!spot || !Number.isFinite(spot.x) || !Number.isFinite(spot.y)) return null;
+  const grid = canvas.grid.size, center = { x: spot.x + mover.w / 2, y: spot.y + mover.h / 2 };
+  const far = Math.max(Math.abs(center.x - mover.center.x), Math.abs(center.y - mover.center.y)) / grid;
+  return far <= squares + 0.01 && allowedSpot({ mover, source, center, pull, grid, degrees }) ? { x: spot.x, y: spot.y } : null;
+}
+async function pickMove(who, request) {
+  const { mover } = request, doc = mover?.document ?? mover;
+  const player = who === "target" ? game.users.find((u) => u.active && !u.isGM && doc?.testUserPermission?.(u, "OWNER")) : null;
+  const asked = who === "target" ? player ?? game.users.activeGM : game.user;
+  if (!asked || asked.isSelf) return keepsMoveRules(await pickMoveSpot(request), request);
+  const id = foundry.utils.randomID();
+  const picked = new Promise((resolve) => { movePicks.set(id, { resolve, from: asked.id }); setTimeout(() => { if (movePicks.delete(id)) resolve(null); }, ASK_TIMEOUT); });
+  game.socket.emit(`module.${ID}`, { type: "move-pick", sender: clientId, id, to: asked.id, moverUuid: doc.uuid, sourceUuid: (request.source.document ?? request.source).uuid, squares: request.squares, pull: request.pull === true, degrees: request.degrees });
+  return keepsMoveRules(await picked, request);
+}
+// Asked on this screen: pick, and send the square back. A square counts only from the user it was asked of.
+async function receiveMovePick(data, senderId) {
+  if (data?.type === "move-pick" && data.to === game.user.id && senderId) {
+    const mover = tokenOf(await fromUuid(String(data.moverUuid ?? ""))), source = tokenOf(await fromUuid(String(data.sourceUuid ?? "")));
+    const squares = Math.min(10, Math.max(1, Math.round(Number(data.squares) || 1)));
+    const degrees = Math.min(180, Math.max(10, Math.round(Number(data.degrees) || 90)));
+    const spot = mover?.center && source?.center ? await pickMoveSpot({ mover, source, squares, pull: data.pull === true, degrees }) : null;
+    game.socket.emit(`module.${ID}`, { type: "move-picked", sender: clientId, id: data.id, spot: spot ? { x: spot.x, y: spot.y } : null });
+  } else if (data?.type === "move-picked") {
+    const waiting = movePicks.get(data.id);
+    if (!waiting || waiting.from !== senderId) return;
+    movePicks.delete(data.id);
+    waiting.resolve(data.spot ?? null);
+  }
 }
 // A finisher ends in at most three writes: the move where its travel landed, then hidden
 // or Defeated. A player's request goes to the active GM.
@@ -1401,7 +1448,7 @@ Hooks.once("ready", () => {
     trace:(status,detail)=>runtime?.trace(status,detail)});
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
-    if (data?.sender !== clientId) { void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); }
+    if (data?.sender !== clientId) { void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
     void persistentStates?.clear();
@@ -1528,6 +1575,16 @@ Hooks.once("ready", () => {
     // Where a loaded sound is loudest (ms in), measured once per file.
     soundPeak: (file) => { if (!soundPeaks.has(file)) { const b = game.audio?.buffers?.getBuffer?.(file); if (!b) return null; soundPeaks.set(file, peakOf(b)); } return soundPeaks.get(file); },
     motion: async (stage, context, { preview, session }) => {
+      if (isMoveStage(stage)) {
+        if (!preview) return playMoveStage(stage, context, {
+          gridSize: () => canvas.grid.size,
+          pick: pickMove,
+          // A picked square is where it lands, exactly; otherwise the shove walks the line and stops at walls.
+          playFinisher: (shove, mover, source, spot) => playFinisher({ recipe: shove, mover, attacker: source }, spot ? { ...finisherHost(source), landing: () => ({ x: spot.x, y: spot.y }) } : finisherHost(source))
+            .catch((error) => { runtime.trace("Blocked", error.message); return null; }),
+        });
+        stage = previewMotion(stage);
+      }
       stage = withFragmentSeed(stage);
       // The cut follows this client's view of the swing; receivers reuse it, as they do the seed.
       if (stage.motion === "fragments") {
@@ -1838,7 +1895,9 @@ Hooks.once("ready", () => {
     for (let waited = 0; motions?.active.has(token) && waited < limit; waited += 100) await new Promise((resolve) => setTimeout(resolve, 100));
   };
   const playKill = async (actor, token, kill) => {
-    await motionSettled(token);
+    // The last enemy falling: its screen (Finish Him!) plays first, then the finisher.
+    const finale = flash?.finaleLength?.(actor) ?? 0;
+    await Promise.all([motionSettled(token), finale ? new Promise((resolve) => setTimeout(resolve, finale + 150)) : null]);
     if (kill.endingOnly) return void await finishOnly(kill.recipe, token, kill.attacker);
     // Nothing played and nothing was written: the old collapse stands in.
     if ((await runFinisher(kill.recipe, { mover: token, attacker: kill.attacker })) === null) playDamageMoment(actor, token, true);

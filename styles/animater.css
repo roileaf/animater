@@ -3203,3 +3203,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-plug-mode .an-plug-leftout { all: unset; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 2px; }
 .animater .an-plug-mode .an-plug-leftout:hover, .animater .an-plug-mode .an-plug-leftout:focus-visible { color: var(--an-text, #fff); text-decoration-style: solid; }
 .animater .an-plug-mode .an-plug-leftout.is-on { color: #ffd9a3; text-decoration: none; padding: 0 5px; border-radius: 999px; background: rgba(255, 190, 90, .14); }
+
+/* A push or pull's reach in the composition preview (workspace.mjs moveConeHTML). */
+.animater .an-move-cone { position: absolute; z-index: 1; pointer-events: none; overflow: visible; }
+.animater .an-move-cone path { fill: rgba(158, 138, 255, 0.14); stroke: #9e8aff; stroke-width: 2; stroke-dasharray: 5 4; }
+.animater .an-move-cone line { stroke: #9e8aff; stroke-width: 2.5; stroke-dasharray: 6 4; }
+.animater .an-move-cone marker path { fill: #9e8aff; stroke: none; }

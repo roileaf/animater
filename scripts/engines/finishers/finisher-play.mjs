@@ -223,7 +223,9 @@ export function planFinisher({ recipe, mover, attacker = null, dead = false }, h
         }
       }
     } else {
-      const direction = f.knockback > 0 ? (finisherDirection({ mover, attacker }) ?? defaultAim(mover)) : null;
+      // A pull (a recipe's Move targets) goes the other way: toward the attacker.
+      const away = f.knockback > 0 ? (finisherDirection({ mover, attacker }) ?? defaultAim(mover)) : null;
+      const direction = away && f.pull ? { x: -away.x, y: -away.y } : away;
       to = direction ? host.landing(mover, direction, f.knockback) : null;
     }
   } catch (error) { host.trace("Blocked", `Finisher ${recipe.name} landing: ${error.message}`); }

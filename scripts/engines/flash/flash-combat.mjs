@@ -168,6 +168,14 @@ export function flashScreens(host) {
     if (showing) return;
     play(forCombat(combat, event), { everyone: true, combat, extra });
   }
+  // How long a kill finisher waits for the last enemy's screen (Finish Him!): its length when this drop is the
+  // last enemy falling and that screen is on, else 0. The screen itself plays from this drop (the updateActor hook).
+  function finaleLength(actor) {
+    const combat = runningCombat(actor);
+    if (!combat?.started || downMoment(combat, actor) !== "finalEnemy") return 0;
+    const screen = forCombat(combat, "finalEnemy");
+    return screen ? validateFlash(screen).duration : 0;
+  }
   function receive(data) {
     if (data?.type === "flash" && data.screen) void show(data.screen, data.vars ?? {}).catch(() => {});
     if (data?.type === "flash-moment" && MOMENT_EVENTS.includes(data.event) && data.event !== "initiated" && activeGM()) moment(data.event, { name: String(data.extra?.name ?? "").slice(0, 80) }, game.combats?.get(data.combatId) ?? runningCombat());
@@ -322,7 +330,7 @@ export function flashScreens(host) {
     await new Promise((r) => setTimeout(r, Math.max(0, screen.duration - 400)));
   }
   return {
-    screens, defaults, vars, play, receive, sound, playSound, before,
+    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength,
     save: (list) => game.settings.set(ID, FLASH_SETTING, { schema: 1, screens: validateFlashes(list) }),
     setDefault: (event, id) => game.settings.set(ID, FLASH_DEFAULTS, { ...defaults(), [event]: id }),
     events: FLASH_EVENTS,

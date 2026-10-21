@@ -3,7 +3,7 @@
 // (featRecipe), with their own native packs, settings and enable/exclude state.
 import { PF2E_ACTIONS, PF2E_ACTION_SOURCE } from "../../../data/pf2e-actions.mjs";
 import { PF2E_CLASS_FEATURES, PF2E_CLASS_FEATURE_SOURCE } from "../../../data/pf2e-class-features.mjs";
-import { normalize, matchRecipe } from "../../core/model.mjs";
+import { normalize, matchRecipe, ownRecipe } from "../../core/model.mjs";
 import { featRecipe } from "./feats/feat-choreography.mjs";
 import { withElementChoice } from "../shared/element-choice.mjs";
 export { PF2E_ACTIONS, PF2E_ACTION_SOURCE, PF2E_CLASS_FEATURES, PF2E_CLASS_FEATURE_SOURCE };
@@ -61,7 +61,7 @@ export function createAbilityCatalog({ entries, source, recipeKind, label, packs
   function resolveAutomaticRecipe(event, state, customRecipes = [], { customEnabled = true, soundCatalog } = {}) {
     state = normalizeState(state);
     const found = find(event);
-    if (found && enabled(found.id,state) && (state.selected.includes(found.id) || (state.preferCatalog && !state.customized.includes(found.id))))
+    if (found && enabled(found.id,state) && (state.selected.includes(found.id) || (state.preferCatalog && !state.customized.includes(found.id) && !ownRecipe(customEnabled ? customRecipes : [], found?.uuid && !event.itemUuid ? { ...event, itemUuid: found.uuid } : event))))
       return automaticRecipe(event,state,[],soundCatalog);
     const configured = customEnabled || (found && state.enabled && !state.excluded.includes(found.id) && state.customized.includes(found.id)) ? customRecipes : [];
     // An action rolled as a skill check (Demoralize, Shove) has a stand-in item with no uuid: your

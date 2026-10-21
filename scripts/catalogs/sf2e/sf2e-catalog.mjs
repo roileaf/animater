@@ -1,6 +1,6 @@
 import {SF2E_ENTRIES,SF2E_SOURCE} from '../../../data/sf2e-catalog.mjs';
 import {withoutBespoke} from '../shared/bespoke.mjs';
-import {clone,normalize,validateRecipe,matchRecipe,matchStrikeOverride} from '../../core/model.mjs';
+import {clone,normalize,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
 import {spellRecipe} from '../pf2e/spells/spell-choreography.mjs';
 import {stateRecipe} from '../pf2e/state-catalog.mjs';
 import {addSpellSounds} from '../../engines/sound/spell-sounds.mjs';
@@ -58,10 +58,10 @@ export function sfVariantForEvent(entry,event){
 export function resolveSfAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds,runes=runeFlourishesEnabled()}={}){
  if(event.systemId&&event.systemId!=='sf2e')return null;
  const entry=findSfEntry(event),state=normalizeSfCatalogState(entry&&stateFor(entry.kind));
- const selected=entry&&sfEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id));
- const custom=customEnabled||selected&&state.customized.includes(entry.id)?saved:[];
+ const custom=customEnabled||entry&&sfEntryEnabled(entry.id,state)&&state.customized.includes(entry.id)?saved:[];
  // An action rolled as a skill check has a stand-in item with no uuid: a copy bound to the entry's uuid still matches.
  if(entry?.uuid&&!event.itemUuid)event={...event,itemUuid:entry.uuid};
+ const selected=entry&&sfEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id)&&!ownRecipe(custom,event));
  const override=matchStrikeOverride(custom,event);if(override)return override;
  if(!prefer){const recipe=matchRecipe(custom,event);if(recipe)return recipe;}
  if(!selected||entry.state)return null;

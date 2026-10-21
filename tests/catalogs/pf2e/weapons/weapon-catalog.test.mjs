@@ -141,3 +141,15 @@ test('all elemental weapon uses have meaningful target finishes; residue cues en
   assert.ok(p.every(s=>s.kind==='motion'||s.stageId.endsWith('-muzzle')&&s.destination.id==='s'&&s.facing?.id==='t'||s.destination.id==='t'),w.name);
  }
 });
+test('your own recipe for a weapon beats a catalog turned on wholesale; starters and a hand-picked entry do not',async()=>{
+ const {starterRecipes}=await import('../../../../scripts/core/presets.mjs');
+ const {STARTER_RECIPE_IDS}=await import('../../../../scripts/core/model.mjs');
+ assert.deepEqual([...STARTER_RECIPE_IDS],starterRecipes().map(r=>r.id),'the starter list matches the starters');
+ const w=weapon('dagger'),strike=event(w,'melee'),plugAndPlay={...normalizeWeaponCatalogState({}),enabled:true,scope:'all',independent:true,preferCatalog:true};
+ const mine=validateRecipe({id:'my-dagger',name:'My dagger',trigger:'attack',match:'dagger',enabled:true,stages:[{kind:'impact',assets:['jb2a.impact.001'],subject:'targets'}]});
+ assert.equal(resolveAutomaticWeaponRecipe(strike,plugAndPlay,[mine]).name,'My dagger','your recipe plays');
+ const blade=starterRecipes().find(r=>r.id==='blade');
+ assert.notEqual(resolveAutomaticWeaponRecipe(strike,plugAndPlay,[blade]).id,'blade','a starter makes way for the catalog');
+ assert.notEqual(resolveAutomaticWeaponRecipe(strike,{...plugAndPlay,selected:[w.id]},[mine]).name,'My dagger','a catalog entry picked by hand still wins');
+ assert.notEqual(resolveAutomaticWeaponRecipe(strike,plugAndPlay,[{...mine,enabled:false}])?.name,'My dagger');
+});

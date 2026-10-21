@@ -192,3 +192,19 @@ test("a screen with {manual} names asks the GM once, sends the answers to everyo
   assert.match(asked[1], /value="The Red Mantis"/);
   delete globalThis.foundry; delete game.actors;
 });
+
+test("a kill finisher on the last enemy waits for Finish Him!: as long as the screen, only for the last one", () => {
+  const w = world({ defaults: { finalEnemy: "finish" } });
+  const finish = validateFlash({ id: "finish", name: "Finish Him!", event: "finalEnemy", duration: 2600 });
+  game.settings.set(ID, "flashScreens", { schema: 1, screens: [finish] });
+  const who = (id, disposition, hp) => ({ actor: { id, hasPlayerOwner: disposition > 0, system: { attributes: { hp: { value: hp } } } }, token: { disposition }, defeated: false });
+  const orc = who("orc", -1, 0), ogre = who("ogre", -1, 9), hero = who("hero", 1, 12);
+  const fight = { id: "f", started: true, combatants: [orc, ogre, hero], scene: { id: "s" } };
+  game.combats = [fight];
+  assert.equal(w.api.finaleLength(orc.actor), 0, "another enemy still stands");
+  fight.combatants = [orc, hero];
+  assert.equal(w.api.finaleLength(orc.actor), 2600, "the last enemy: the screen plays first");
+  assert.equal(w.api.finaleLength(hero.actor), 0, "a hero falling is not the finale");
+  game.settings.set(ID, "flashDefaults", { start: "none", end: "none", finalEnemy: "none" });
+  assert.equal(w.api.finaleLength(orc.actor), 0, "screen off: no wait");
+});

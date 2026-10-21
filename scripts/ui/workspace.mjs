@@ -158,6 +158,7 @@ export function resetInspectorTab(id, stage) {
   return stage;
 }
 import { teleportPlan, teleportVisuals, teleportStyle, TELEPORT_STYLES, TELEPORT_WHO } from "../engines/motion/teleport.mjs";
+import { MAX_MOVE, MOVE_ASK, MOVE_MOTIONS, moveOptions } from "../engines/motion/move-targets.mjs";
 // A GM whose table plays nothing automatically yet starts on Setup, where the catalogs are turned on.
 // How a window message reads: "error" (something failed), "warn" (something to do first) or "ok".
 // Errors and warnings stay until dismissed; "ok" messages fade after a few seconds.
@@ -170,6 +171,18 @@ export function firstPage(host) {
   try { return !host.playerMode && host.acceptsEvents?.() === false ? "setup" : "recipes"; } catch { return "recipes"; }
 }
 export const JB2A_MISSING = "Neither JB2A module is active, so built-in animations have no artwork to play. Turn on JB2A Free (JB2A_DnD5e) or JB2A Patreon (jb2a_patreon) in Manage Modules, then reload the world (F5).";
+// A push or pull's reach in the composition preview: the wedge where the target may be placed (or, with nobody
+// picking, the straight line it slides along), drawn around the target in real pixels, the grid key's squares.
+function moveConeHTML(chain) {
+  const c = chain.moveCone;
+  if (!c) return "";
+  const size = 2 * c.r + 12, mid = size / 2;
+  const at = (a) => [mid + Math.cos(a) * c.r, mid + Math.sin(a) * c.r].map((v) => v.toFixed(1)).join(" ");
+  const shape = c.half > 0
+    ? `<path d="M ${mid} ${mid} L ${at(c.angle - c.half)} A ${c.r.toFixed(1)} ${c.r.toFixed(1)} 0 ${c.half > Math.PI / 2 ? 1 : 0} 1 ${at(c.angle + c.half)} Z" />`
+    : `<line x1="${mid}" y1="${mid}" x2="${at(c.angle).split(" ")[0]}" y2="${at(c.angle).split(" ")[1]}" marker-end="url(#an-move-arrow)" />`;
+  return `<svg class="an-move-cone ${c.half > 0 ? "is-wedge" : "is-line"}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="left:${c.left - mid}px;top:calc(50% - ${mid}px)" aria-hidden="true"><defs><marker id="an-move-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" /></marker></defs>${shape}</svg>`;
+}
 export class Workspace {
   // Open the animation for something: a saved recipe in the Studio, or a catalog page
   // searched to a name (its first match is shown). Returns false for an unknown page.
@@ -1090,7 +1103,8 @@ export class Workspace {
     const url=esc(this.host.mediaURL?.(file)??file);
     return mediaType(file)==='image'?`<img src="${url}" alt="Effect artwork" ${attributes}>`:`<video muted playsinline loop preload="auto" src="${url}" ${attributes}></video>`;
   }
-  previewActorHTML({ subject, token, name, icon, x, y, id, targetIndex }) {
+  // `left` (a CSS length) places it exactly instead of `x` (a percentage of the scene's width).
+  previewActorHTML({ subject, token, name, icon, x, y, id, targetIndex, left }) {
     const dimension = (value, fallback = 1) =>
       Number.isFinite(Number(value)) && Number(value) > 0
         ? Number(value)
@@ -1106,7 +1120,7 @@ export class Workspace {
       y === undefined
         ? `calc(45% + 27px - ${height / 2}px)`
         : `calc(${y}% - ${height / 2}px)`;
-    const style = `width:${width}px;margin-left:${-width / 2}px;top:${top}${x === undefined ? "" : `;left:${x}%`}`;
+    const style = `width:${width}px;margin-left:${-width / 2}px;top:${top}${left ? `;left:${left}` : x === undefined ? "" : `;left:${x}%`}`;
     const art = token?.img
       ? `<img src="${esc(token.img)}" alt="${esc(token.name ?? name)}" style="position:absolute;left:50%;top:50%;width:${spriteWidth}px;height:${spriteHeight}px;max-width:none;max-height:none;transform:translate(-50%,-50%) rotate(${rotation}deg) scale(${sx},${sy})">`
       : icon;
@@ -1151,10 +1165,10 @@ export class Workspace {
         const tintFilter = s.tintEnabled
           ? `<svg class="an-tint-filter" aria-hidden="true"><defs><filter id="${filterId}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb[0]} 0 0 0 0 0 ${rgb[1]} 0 0 0 0 0 ${rgb[2]} 0 0 0 0 0 1 0"/></filter></defs></svg>`
           : "";
-        return `<div hidden class="an-recipe-layer ${s.kind === "travel" ? "is-travel" : ""} ${s.kind === "sprite" ? "an-copy-layer" : ""} ${file || s.kind === "sprite" ? "" : "is-unavailable"}" data-layer-stage="${s.index}" data-preview-plan="${planIndex}" data-target-index="${s.targetIndex}" data-preview-from="${from}" data-preview-to="${to}" data-copy="0" data-tint-filter="${filterId}" data-preview-template="${esc(JSON.stringify(media?.template ?? null))}" data-media-width="${media?.width ?? 0}" data-media-height="${media?.height ?? 0}" style="left:${destination.x}%;top:${destination.y}%">${tintFilter}${s.kind === "sprite" ? `<div class="an-copy-art">${destination.token?.img ? `<img src="${esc(destination.token.img)}" alt="Token copy">` : "✦"}</div>` : file ? this.visualMediaHTML(file,`data-preview-stage="${s.index}" data-preview-plan="${planIndex}" aria-label="Stage ${s.index + 1}: ${esc(s.label || this.stageLabel(s))}, target ${s.targetIndex + 1}"`) : "Missing asset"}</div>`;
+        return `<div hidden class="an-recipe-layer ${s.kind === "travel" ? "is-travel" : ""} ${s.kind === "sprite" ? "an-copy-layer" : ""} ${file || s.kind === "sprite" ? "" : "is-unavailable"}" data-layer-stage="${s.index}" data-preview-plan="${planIndex}" data-target-index="${s.targetIndex}" data-preview-from="${from}" data-preview-to="${to}" data-copy="0" data-tint-filter="${filterId}" data-preview-template="${esc(JSON.stringify(media?.template ?? null))}" data-media-width="${media?.width ?? 0}" data-media-height="${media?.height ?? 0}" style="left:${destination.left ?? `${destination.x}%`};top:${destination.y}%">${tintFilter}${s.kind === "sprite" ? `<div class="an-copy-art">${destination.token?.img ? `<img src="${esc(destination.token.img)}" alt="Token copy">` : "✦"}</div>` : file ? this.visualMediaHTML(file,`data-preview-stage="${s.index}" data-preview-plan="${planIndex}" aria-label="Stage ${s.index + 1}: ${esc(s.label || this.stageLabel(s))}, target ${s.targetIndex + 1}"`) : "Missing asset"}</div>`;
       })
       .join("");
-    return `<div class="an-recipe-scene an-chain-scene" style="--an-grid:${Number(chain.grid) || 55}px" data-recipe-scene data-chain-preview data-preview-width="${chain.width}" data-preview-height="${chain.height}" data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Full recipe composition preview"><span class="an-grid-key" aria-hidden="true">1 square · ${Number(tokens.gridDistance) || 5} ft</span>${layers}${actors}<span class="an-preview-label">FULL RECIPE · ${hasChain(chain.recipe) ? "CHAIN" : chain.recipe.previewArea?.type === "line" ? "LINE" : chain.recipe.previewArea?.type === "cone" ? "CONE" : chain.recipe.stages.some(isPathMotion) ? "MOTION" : "VOLLEY"}</span><span class="an-preview-idle" data-preview-idle>${esc(chain.note)}</span></div>`;
+    return `<div class="an-recipe-scene an-chain-scene" style="--an-grid:${Number(chain.grid) || 55}px" data-recipe-scene data-chain-preview data-preview-width="${chain.width}" data-preview-height="${chain.height}" data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Full recipe composition preview"><span class="an-grid-key" aria-hidden="true">1 square · ${Number(tokens.gridDistance) || 5} ft</span>${moveConeHTML(chain)}${layers}${actors}<span class="an-preview-label">FULL RECIPE · ${hasChain(chain.recipe) ? "CHAIN" : chain.recipe.previewArea?.type === "line" ? "LINE" : chain.recipe.previewArea?.type === "cone" ? "CONE" : chain.recipe.stages.some(isPathMotion) ? "MOTION" : chain.moveCone ? (chain.moveCone.pull ? "PULL" : "PUSH") : "VOLLEY"}</span><span class="an-preview-idle" data-preview-idle>${esc(chain.note)}</span></div>`;
   }
   updatePlayback(frame) {
     if (this.isStudio()) studioFrame(this, frame);
@@ -1664,6 +1678,10 @@ export class Workspace {
     const toward = (s.motionHeading ?? "toward") === "toward";
     const field = (key, label, value, min, max, step = 1) => `<label>${label}<input type="number" min="${min}" max="${max}" step="${step}" data-field="${key}" data-index="${index}" value="${s[key] ?? value}"></label>`;
     const select = (key, label, values, value) => `<label>${label}<select data-field="${key}" data-index="${index}">${options(values, s[key] ?? value)}</select></label>`;
+    if (MOVE_MOTIONS.has(s.motion)) {
+      const m = moveOptions(s), pull = s.motion === "pull";
+      return `${select("motion", "Motion", MOTIONS, "lunge")}${select("targetSelection", "Move which targets", { all: "All selected targets", first: "First selected target", second: "Second selected target", last: "Last selected target" }, "all")}<div class="an-field-row">${field("squares", "Squares", m.squares, 1, MAX_MOVE)}<label class="an-check"><input type="checkbox" data-field="requiresHit" data-index="${index}" ${s.requiresHit ? "checked" : ""}> Only on a hit</label></div>${select("moveAsk", "Who picks the square", MOVE_ASK, "none")}${m.moveAsk === "none" ? "" : `<div class="an-field-row">${field("moveCone", "Direction cone (°)", m.moveCone, 10, 180, 5)}</div>`}<p class="an-hint">When this stage starts, each target is ${pull ? "pulled toward" : "pushed away from"} whoever acted, up to ${m.squares} square${m.squares === 1 ? "" : "s"}${pull ? ", stopping beside them" : ""}. ${m.moveAsk === "none" ? "It goes straight along the line between them, and walls stop it." : `The one picking clicks a square inside a ${m.moveCone}° wedge pointing ${pull ? "toward" : "away from"} whoever acted (the picker shades it), with no wall in between; Esc, or no pick within a minute, leaves it in place.`} The token really moves. Only on a hit: an attack that misses moves no one; a use with no attack roll moves every target. A local preview only shows a ${pull ? "lunge" : "recoil"}.</p>`;
+    }
     return `${select("motion", "Motion", MOTIONS, "lunge")}${select("subject", "Animate", { source: "Source token", targets: "Target tokens" }, "source")}
       ${path && s.motion !== "dodge" ? select("motionRange", "Path", { target: toward ? s.subject === "targets" ? "Approach source" : "Approach selected target" : "Use token separation for distance", distance: "Fixed-distance gesture" }, "target") : ""}
       ${path ? select("motionHeading", "Path heading", { toward: "Toward selected token", away: "Away from selected token", up: "Upward on map", down: "Downward on map", left: "Leftward on map", right: "Rightward on map" }, "toward") : ""}
@@ -2280,6 +2298,14 @@ export class Workspace {
       s.subject ??= "source";
       s.distance ??= 0.35;
       s.intensity ??= 1;
+    }
+    // A push or pull moves the targets: 2 squares, only on a hit, unless changed.
+    if (key === "motion" && MOVE_MOTIONS.has(s.motion) && !MOVE_MOTIONS.has(previous)) {
+      s.subject = "targets";
+      s.targetSelection ??= "all";
+      s.squares ??= 2;
+      s.requiresHit ??= true;
+      s.duration = Math.max(400, Math.min(Number(s.duration) || 600, 1200));
     }
     if (key === "motion" && isPathMotion(s)) {
       if (!isPathMotion({ ...s, motion: previous })) {

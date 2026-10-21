@@ -45,6 +45,10 @@ export class RecipePreview {
         // otherwise generate fewer area tiles and invalidate playback indices.
         ? chainPreview(recipe, { ...JSON.parse(scene.dataset.previewTokens ?? "{}"), previewWidth: Number(scene.dataset.previewWidth) || scene.clientWidth, previewHeight: Number(scene.dataset.previewHeight) || scene.clientHeight })
         : null;
+    // Actors laid out in real pixels (a push or pull's reach): their percentage for this panel's actual width, so
+    // flights, beams and impacts meet the tokens where they are drawn.
+    const across = scene.clientWidth;
+    if (this.chain && across > 0) for (const actor of this.chain.actors) if (actor.left) actor.x = (parseFloat(actor.left) / across) * 100;
     this.recipe = this.chain?.recipe ?? sampleRecipe(recipe);
     this.tokenInfo = JSON.parse(scene.dataset.previewTokens ?? "{}");
     this.onFrame = onFrame;

@@ -1,5 +1,5 @@
 import { PF2E_FEATS, PF2E_FEAT_SOURCE } from "../../../../data/pf2e-feats.mjs";
-import { normalize, matchRecipe } from "../../../core/model.mjs";
+import { normalize, matchRecipe, ownRecipe } from "../../../core/model.mjs";
 import { featRecipe, FEAT_THEMES, FEAT_MOTIFS } from "./feat-choreography.mjs";
 export { PF2E_FEATS, PF2E_FEAT_SOURCE, featRecipe, FEAT_THEMES, FEAT_MOTIFS };
 
@@ -40,7 +40,7 @@ export function automaticFeatCatalogRecipe(event, state, customRecipes = [], sou
 }
 export function resolveAutomaticFeatRecipe(event, state, customRecipes = [], {customEnabled = true,soundCatalog} = {}) {
   const feat = findCatalogFeat(event);
-  if (feat && catalogFeatEnabled(feat.id,state) && (state.selected?.includes(feat.id) || (state.preferCatalog && !state.customized?.includes(feat.id))))
+  if (feat && catalogFeatEnabled(feat.id,state) && (state.selected?.includes(feat.id) || (state.preferCatalog && !state.customized?.includes(feat.id) && !ownRecipe(customEnabled ? customRecipes : [], event))))
     return automaticFeatCatalogRecipe(event,state,[],soundCatalog);
   const configured = customEnabled || (feat && state?.enabled && !state.excluded?.includes(feat.id) && state.customized?.includes(feat.id)) ? customRecipes : [];
   return matchRecipe(configured,event) ?? automaticFeatCatalogRecipe(event,state,configured,soundCatalog);

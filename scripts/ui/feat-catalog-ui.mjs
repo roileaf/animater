@@ -13,7 +13,7 @@ import {
 } from "../catalogs/pf2e/feats/feat-catalog.mjs";
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG } from "../catalogs/pf2e/ability-catalog.mjs";
 import { SPELL_THEMES } from "../catalogs/pf2e/spells/spell-choreography.mjs";
-import { EVENTS } from "../core/model.mjs";
+import { ownRecipe, EVENTS } from "../core/model.mjs";
 import { sampleRecipe } from "../engines/playback/composition.mjs";
 import { motionSyncNoticeHTML } from "./spell-catalog-ui.mjs";
 import { abilitySoundSettingsHTML, abilitySoundDetailHTML } from "./ability-sounds-ui.mjs";
@@ -99,8 +99,10 @@ function featDetailHTML(w, feat, state, env, p) {
   const saved = w.host.recipes().find((r) => r.id === recipe.id || r.itemUuid === recipe.itemUuid);
   const roleNotice=recipe.playbackRoles?.reason;
   const automatic = recipe.trigger !== "manual" && !roleNotice;
+  // Your own recipe for it (bound by its name) plays instead of a catalog turned on wholesale.
+  const own = w.host.enabled() && ["attack", "damage", "use", "template"].some((type) => ownRecipe(w.host.recipes(), { type, systemId: "pf2e", item: { name: feat.name, slug: feat.slug, system: { slug: feat.slug } } }));
   const usingCatalog = automatic && (state.independent || w.host.enabled()) && catalog.enabled(feat.id, state) &&
-    (!saved || state.selected.includes(feat.id) || (state.preferCatalog && !state.customized.includes(feat.id)));
+    (!(saved || own) || state.selected.includes(feat.id) || (state.preferCatalog && !state.customized.includes(feat.id) && !own));
   const canUse = !env.demo && pf2eCatalogsLive(env) && env.ready;
   const duration = w.previewDuration(recipe);
   const status = roleNotice ? "Manual token selection needed" : !automatic ? "Manual animation" : usingCatalog ? "Using catalog animation"

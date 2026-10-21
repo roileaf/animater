@@ -1,6 +1,6 @@
 import {PF2E_WEAPONS as EQUIPMENT,PF2E_WEAPON_SOURCE} from '../../../../data/pf2e-weapons.mjs';
 import {weaponRecipe} from './weapon-choreography.mjs';
-import {normalize,matchRecipe,matchStrikeOverride} from '../../../core/model.mjs';
+import {normalize,matchRecipe, ownRecipe,matchStrikeOverride} from '../../../core/model.mjs';
 import {withRuneFlourishes,runeFlourishesEnabled} from './weapon-runes.mjs';
 import {NATURAL_WEAPONS,naturalWeaponFor,naturalVariant} from '../natural-weapons.mjs';
 // Equipment weapons, then creature attacks (Jaws, Claw) the equipment has no entry for.
@@ -66,7 +66,7 @@ export function resolveAutomaticWeaponRecipe(event,state,custom=[],{customEnable
  const bound={...event,weaponMode:mode,...(weapon?.strikeBinding==='unarmed'?{itemUuid:`Compendium.pf2e.equipment-srd.Item.${weapon.id}`}:{})};
  const configured=customEnabled||active&&state.customized?.includes(key)?custom:[];
  const override=matchStrikeOverride(configured,bound);if(override)return override;
- if(active&&(state.selected?.includes(weapon.id)||state.preferCatalog)&&!state.customized?.includes(key))return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume,surfaceSound:state.surfaceSound}));
+ if(active&&(state.selected?.includes(weapon.id)||state.preferCatalog&&!ownRecipe(configured,bound))&&!state.customized?.includes(key))return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume,surfaceSound:state.surfaceSound}));
  const saved=matchRecipe(configured,bound);if(saved)return saved;
  if(!active||configured.some(r=>!r.enabled&&matchRecipe([{...r,enabled:true}],bound)))return null;
  return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume,surfaceSound:state.surfaceSound}));

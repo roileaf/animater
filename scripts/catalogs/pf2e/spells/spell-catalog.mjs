@@ -1,5 +1,5 @@
 import { PF2E_SOURCE, PF2E_SPELLS } from "../../../../data/pf2e-spells.mjs";
-import { normalize, matchRecipe } from "../../../core/model.mjs";
+import { normalize, matchRecipe, ownRecipe } from "../../../core/model.mjs";
 import {
   spellRecipe,
   SPELL_THEMES,
@@ -133,7 +133,7 @@ export function resolveAutomaticRecipe(
     spell &&
     catalogSpellEnabled(spell.id, state) &&
     (state.selected?.includes(spell.id) ||
-      (state.preferCatalog && !state.customized?.includes(spell.id)))
+      (state.preferCatalog && !state.customized?.includes(spell.id) && !ownRecipe(customEnabled ? customRecipes : [], event)))
   )
     return automaticCatalogRecipe(event, state, [], soundCatalog);
   const configured =
