@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.6 (2026-10-21)
 
 - **Flash screens can name the party and ask the GM for names.** Two new words for any text layer:
   - **{party}** (or **{partyname}**) is your party's name: Pathfinder 2e's Party, D&D 5e's primary party, else "The Party".
