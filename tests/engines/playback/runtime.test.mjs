@@ -888,3 +888,15 @@ test("a lasting layer loops its whole clip: no stage duration cuts its loop shor
   await runtime.play(r, { source: {}, targets: [] }, { preview: true });
   assert.ok(calls.some((c) => c[0] === "duration"), "a preview still plays its stage length");
 });
+
+test("a weapon's damage roll is not reported as having no animation when its attack animates", async () => {
+  const f = fixture(), item = { name: "+1 Dagger", type: "weapon" }, recipe = starterRecipes()[0];
+  f.host.recipes = () => [];
+  f.host.resolveRecipe = (event) => (event.type === "attack" ? recipe : null);
+  await f.runtime.dispatch({ type: "damage", item });
+  assert.equal(f.runtime.log.some((e) => e.status === "Skipped"), false);
+  // A weapon with no attack animation either is still reported.
+  f.host.resolveRecipe = () => null;
+  await f.runtime.dispatch({ type: "damage", item });
+  assert.match(f.runtime.log.find((e) => e.status === "Skipped").detail, /\+1 Dagger: no enabled damage recipe/);
+});

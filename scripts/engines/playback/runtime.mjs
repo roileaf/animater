@@ -150,6 +150,12 @@ export class AnimaterRuntime {
     const stale = this.catalogSignature !== undefined && databaseSignature(this.host.database) !== this.catalogSignature;
     return this.catalog.length && !stale ? this.catalog : this.refreshCatalog();
   }
+  // Would this event's attack roll play something (the same weapon, as an attack)?
+  attackAnimates(event, saved) {
+    const attack = { ...event, type: "attack", id: undefined };
+    try { return Boolean(this.host.resolveRecipe ? this.host.resolveRecipe(attack, saved) : (matchRecipe(saved, attack) ?? this.host.catalogRecipe?.(attack, saved))); }
+    catch { return false; }
+  }
   async dispatch(event) {
     if (!event || !this.host.enabled()) return;
     if (event.id && this.seen.has(event.id)) return;
@@ -168,13 +174,16 @@ export class AnimaterRuntime {
     });
     // Damage riders (e.g. Sneak Attack) play alongside the event's own recipe.
     const riders = (this.host.riderRecipes?.(event, saved) ?? []).filter(Boolean);
-    if (!recipe && !riders.length)
+    if (!recipe && !riders.length) {
+      // A weapon animates on its attack roll; its damage roll having nothing more is not "no animation".
+      if (event.type === "damage" && event.item?.type === "weapon" && this.attackAnimates(event, saved)) return;
       return this.trace(
         "Skipped",
         `${event.item?.name ?? "Unknown item"}: ${event.skipReason ?? `no enabled ${event.type} recipe`}.`,
         null,
         event.skipReason ? { item: event.item?.name } : { item: event.item?.name, reason: "no-recipe", itemType: event.item?.type },
       );
+    }
     // Other modules may claim the event (return false) before anything plays.
     if (globalThis.Hooks?.call?.("animater.preDispatch", event, recipe) === false)
       return this.trace("Skipped", `${event.item?.name ?? "Unknown item"}: claimed by another module.`, recipe, { item: event.item?.name, reason: "claimed" });
