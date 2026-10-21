@@ -131,3 +131,11 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {} } = {}) {
     rolls,
   };
 }
+// PF2e and SF2e record only the first of the roller's targets on a damage roll. A spell that strikes several
+// (Electric Arc's two creatures) plays on all of them when the roller still targets the recorded one among
+// others; a weapon's damage stays on the one creature its Strike hit.
+export function eventTargets(event, recorded, mine = []) {
+  if (!recorded) return [];
+  const several = event?.item?.type === "spell" && event.type !== "attack" && mine.length > 1 && mine.some((t) => t === recorded || t?.document === recorded?.document);
+  return several ? mine : [recorded];
+}

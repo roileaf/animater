@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **Spells with several targets animate on all of them.** Pathfinder 2e records only the first of your targets on a damage roll, so a two-target spell such as Electric Arc could leap to just one enemy. A spell now plays on every creature you have targeted when you roll its damage. A weapon's damage still plays on the one creature its Strike hit.
+- **The weapon catalog's switches no longer overlap.** In a narrow window, the Weapon sounds switch could slide under Surface sounds; the switches now wrap to a second line instead.
+
 ## 1.5.4 (2026-10-21)
 
 - **Block or dodge.** A miss against a raised or magical shield now either rings off the shield or is dodged, never both. The shield takes about three misses in five, critical misses included; a blocked arrow or bullet flies into the shield instead of wide. Each attack draws one for each target, and every player sees the same.

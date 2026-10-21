@@ -9,7 +9,7 @@ import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { starterRecipes } from "./core/presets.mjs";
-import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent } from "./systems/adapters.mjs";
+import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
@@ -356,7 +356,7 @@ async function enrich(event) {
       typeof event.targetUuid === "string"
         ? await fromUuid(event.targetUuid)
         : null;
-    event.targets = doc?.object ? [doc.object] : [];
+    event.targets = eventTargets(event, doc?.object ?? null, Array.from(game.user.targets ?? []));
   } else event.targets = Array.from(game.user.targets ?? []);
   event.area = eventArea(event);
   return event;

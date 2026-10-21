@@ -509,7 +509,8 @@
 .animater .an-catalog-controls .an-sound-settings input[type="range"] { height: 14px; margin: 0; }
 /* Only the sound card flexes (its slider absorbs the slack); labels stay whole. */
 .animater .an-catalog-controls > .an-catalog-automation { flex: 0 0 auto; }
-.animater .an-catalog-controls > .an-sound-settings { flex: 1 1 0; min-width: 0; }
+/* It grows into spare room but never below its own content: a narrow row wraps the next card instead of overlapping it. */
+.animater .an-catalog-controls > .an-sound-settings { flex: 1 1 auto; min-width: max-content; }
 .animater .an-catalog-controls > .an-catalog-automation b { overflow: visible; }
 .animater .an-catalog-controls .an-sound-settings > div { flex: 0 0 auto; }
 .animater .an-catalog-controls .an-sound-settings > button { flex: 0 0 auto; }
