@@ -21,6 +21,8 @@ import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
+import { targetSurface } from "./engines/sound/surface-sounds.mjs";
+import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
 import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
 import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
 import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
@@ -67,7 +69,7 @@ const abilitySettingKey = item => item?.type === "action" ? "actionCatalog" : is
 import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalogState, catalogStateEntry, stateRecipe } from "./catalogs/pf2e/state-catalog.mjs";
 import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } from "./engines/playback/persistent-states.mjs";
-import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId } from "./engines/playback/defeated-look.mjs";
+import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId, isDefeated } from "./engines/playback/defeated-look.mjs";
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
 import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
@@ -1310,6 +1312,8 @@ async function loadDndBooks() {
   }
 }
 Hooks.once("ready", () => {
+  // Surface hits ask for a slight pitch shift so repeated blows vary.
+  installSoundPitch();
   void loadDndBooks();
   setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)), 1500);
   // Item sheets (GM): a shortcut to the item's animation. AppV1 sheets get a header button;
@@ -1399,6 +1403,8 @@ Hooks.once("ready", () => {
     },
     // A player's GM-approved recipe animates their own characters first.
     resolveRecipe: (event, saved) => ownApprovedRecipe(event) ?? systemRecipe(event, saved),
+    // What a Strike lands on (metal armour, a raised shield, chitin…), for its surface cue.
+    surfaceOf: ["pf2e", "sf2e"].includes(game.system.id) ? (token, outcome) => targetSurface(token?.actor ?? token?.document?.actor, outcome) : undefined,
     recipeOrigin: (recipe, context) => recipeOrigin(recipe, context),
     ready: () => Boolean(canvas.ready && environment().ready),
     canPlay: (context) => Boolean(game.user.isGM || context.source?.isOwner),
@@ -1540,6 +1546,8 @@ Hooks.once("ready", () => {
       },
       opaqueArt:(token)=>squareTokenArt(token),
       // Daggerheart's defeated set (Defeated, Unconscious, Dead, Death move) follows the Defeated look, as one layer per actor.
+      // Defeated (dead) creatures keep only their Defeated look; their conditions and effects stop showing.
+      defeated:(token)=>isDefeated(token.actor,game.system.id==='daggerheart'?DH_DEFEATED_STATUSES:[defeatedStatusId()]),
       builtinStates:(token)=>game.system.id==='daggerheart'?dhDefeatedStates(token.actor,game.settings.get(ID,DEFEATED_LOOK)):defeatedStates(token.actor,{mode:game.settings.get(ID,DEFEATED_LOOK),statusId:defeatedStatusId()}),
       // A token deleted or left behind with its scene is not drawn on, and only existing documents are tied.
       tokenAlive:(token)=>!token?.destroyed&&(typeof fromUuidSync!=="function"||!token?.document?.uuid||!!fromUuidSync(token.document.uuid,{strict:false})),

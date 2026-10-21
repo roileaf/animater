@@ -6,6 +6,7 @@ import {
 import { validateSoundFile } from "../../core/stage-options.mjs";
 import { timedStages } from "../playback/composition.mjs";
 import { ABILITY_SOUND_PROFILES } from "../../../data/ability-sounds.mjs";
+import { SURFACE_SOUND_PROFILES } from "../../../data/surface-sounds.mjs";
 import { MAX_STAGES } from "../../core/model.mjs";
 import { repeatStride } from "../../core/stage-options.mjs";
 export { SOUND_SOURCE, SOUND_PROFILES, SPELL_SOUND_DESIGNS };
@@ -76,7 +77,7 @@ function resolveSoundCatalog(packs, database) {
   const resolved = new Map();
   // Spell wards and physical shield impacts intentionally share a profile label,
   // not their candidates. Enumerate both namespaces instead of overwriting one.
-  for (const cues of [...Object.values(SOUND_PROFILES), ...Object.values(ABILITY_SOUND_PROFILES)])
+  for (const cues of [...Object.values(SOUND_PROFILES), ...Object.values(ABILITY_SOUND_PROFILES), ...Object.values(SURFACE_SOUND_PROFILES)])
     for (const c of cues)
       for (const candidate of c.candidates) {
         if (!packs.some((p) => p.module === candidate.module)) continue;

@@ -19,6 +19,8 @@ import {
 } from "../engines/playback/composition.mjs";
 export const ID = "animater";
 export const MAX_STAGES = 16;
+// What a blow can land on; a weapon's surface cue has a recording for each (engines/sound/surface-sounds.mjs).
+export const SURFACES = ["flesh", "leather", "metal", "shield", "crunch", "stone", "glass", "squish", "ward"];
 export const EVENTS = {
   manual: "Manual only",
   use: "Item used / sent to chat",
@@ -243,6 +245,7 @@ export function validateRecipe(input) {
           ...(["sprite", "aura", "sound", "tokenfx"].includes(s.kind)
             ? { subject: s.subject === "targets" ? "targets" : "source" }
             : {}),
+          ...(s.kind === "sound" && s.surfaces && typeof s.surfaces === "object" ? surfaceOptions(s.surfaces) : {}),
           ...(s.kind === "sound" && s.optionalSound
             ? {
                 optionalSound: {
@@ -436,6 +439,28 @@ class CatalogIndex {
   }
 }
 export const catalogIndex = (catalog) => new CatalogIndex(catalog);
+// A surface cue's recordings: a few per surface, each with its own balanced volume and length.
+function surfaceOptions(input) {
+  const valid = (x) => { try { validateSoundFile(x?.file); return true; } catch { return false; } };
+  const number = (v, min, max, fallback) => (Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : fallback);
+  const surfaces = Object.fromEntries(Object.entries(input)
+    .filter(([k, v]) => SURFACES.includes(k) && Array.isArray(v))
+    .map(([k, v]) => [k, v.filter(valid).slice(0, 6).map((x) => ({ file: x.file, volume: number(x.volume, 0, 1, 0.35), duration: number(x.duration, 100, 30000, 800) }))])
+    .filter(([, v]) => v.length));
+  return surfaces.flesh ? { surfaces } : {};
+}
+// The recording a surface cue plays on this target: what the blow lands on (the host reads the
+// creature and the attack's outcome), else bare flesh on a hit. Null: nothing to hear (a plain miss).
+function surfaceRecording(s, destination, context) {
+  const pick = (list) => list?.length ? list[Math.floor((context.random ?? Math.random)() * list.length)] : null;
+  if (context.preview) return pick(s.surfaces.flesh);
+  const surface = context.surfaceOf ? context.surfaceOf(destination, context.outcome) : ["success", "criticalSuccess"].includes(context.outcome) ? "flesh" : null;
+  if (!surface) return null;
+  const recording = pick(s.surfaces[surface]) ?? (surface === "shield" ? null : pick(s.surfaces.flesh));
+  // Blow after blow varies: a slightly different pitch and loudness each time.
+  const random = context.random ?? Math.random;
+  return recording && { ...recording, volume: recording.volume * (0.85 + random() * 0.15), pitch: Math.round((0.92 + random() * 0.16) * 1000) / 1000 };
+}
 export function planRecipe(recipe, catalog, context) {
   return buildPlan(recipe, catalog, context, true);
 }
@@ -621,6 +646,8 @@ function buildPlan(recipe, catalog, context, requireMedia) {
         landing = landings.get(key);
       }
       landing ??= s.atPoint ?? null;
+      const recording = s.kind === "sound" && s.surfaces ? surfaceRecording(s, destination, context) : undefined;
+      if (recording === null) continue;
       for (let iteration = 0; iteration < o.repeats; iteration++) {
         if (
           o.repeatScope === "total" &&
@@ -652,6 +679,7 @@ function buildPlan(recipe, catalog, context, requireMedia) {
             index,
             asset,
             destination,
+            ...(recording ? { soundFile: recording.file, volume: recording.volume, duration: recording.duration, ...(recording.pitch ? { pitch: recording.pitch } : {}) } : {}),
             ...(isPathMotion(s) ? { motionTarget } : {}),
             ...(areaTiles
               ? {

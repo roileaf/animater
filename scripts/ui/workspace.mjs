@@ -2536,13 +2536,14 @@ export class Workspace {
       if (action === "weapon-mode") { if (this.weaponMode === b.dataset.mode) return; this.weaponMode = b.dataset.mode; this.stageIndex = 0; this.render(); return; }
       if (action === "weapon-page") { this.weaponPage = Math.max(0, Number(b.dataset.index)); this.render(); return; }
       if (action === "weapon-reset") { for (const key of Object.keys(this.weaponFilters)) this.weaponFilters[key] = key === "search" ? "" : "all"; this.weaponPage = 0; this.render(); return; }
-      if (["weapon-auto", "weapon-pause", "weapon-exclude", "weapon-motion", "weapon-sound", "use-weapon"].includes(action)) {
+      if (["weapon-auto", "weapon-pause", "weapon-exclude", "weapon-motion", "weapon-sound", "weapon-surface", "use-weapon"].includes(action)) {
         const env = this.host.environment(), state = normalizeWeaponCatalogState(this.host.weaponCatalogState?.());
-        if (!["weapon-sound", "weapon-motion"].includes(action) && (env.demo || !pf2eCatalogsLive(env) || !env.ready)) throw Error("Configure automatic weapon animations inside a PF2e world.");
+        if (!["weapon-sound", "weapon-surface", "weapon-motion"].includes(action) && (env.demo || !pf2eCatalogsLive(env) || !env.ready)) throw Error("Configure automatic weapon animations inside a PF2e world.");
         const change = action === "weapon-auto" ? { enabled: !(state.enabled && state.scope === "all" && (state.independent || this.host.enabled())), independent: true, scope: "all", preferCatalog: true }
           : action === "weapon-pause" ? { enabled: false }
           : action === "weapon-motion" ? { motion: !state.motion }
           : action === "weapon-sound" ? { sound: !state.sound }
+          : action === "weapon-surface" ? { surfaceSound: !state.surfaceSound }
           : action === "use-weapon" ? useCatalogWeapon(state, this.selectedWeapon)
           : { excluded: state.excluded.includes(b.dataset.id ?? this.selectedWeapon) ? state.excluded.filter(id => id !== (b.dataset.id ?? this.selectedWeapon)) : [...state.excluded, b.dataset.id ?? this.selectedWeapon] };
         await this.host.setWeaponCatalogState(change);

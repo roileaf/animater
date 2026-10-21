@@ -241,6 +241,8 @@ export class AnimaterRuntime {
     let plan = planRecipe(recipe, this.catalog, {
       ...context,
       preview,
+      // What each target's body or shield is, for a weapon's surface cue.
+      surfaceOf: this.host.surfaceOf,
       gridSize: this.host.gridSize?.() ?? 100,
     });
     if (
@@ -291,6 +293,8 @@ export class AnimaterRuntime {
             .duration(s.duration)
             .volume(s.volume);
           if (listeners) sound.forUsers(listeners);
+          // Every client that plays it shifts its pitch alike (engines/sound/sound-pitch.mjs).
+          if (s.pitch > 0 && s.pitch !== 1) sound.addOverride?.(async (_, data) => ({ ...data, animaterPitch: s.pitch }));
           applyMediaOptions(sound, s);
           if (s.fadeIn) sound.fadeInAudio(s.fadeIn, { ease: s.ease });
           if (s.fadeOut) sound.fadeOutAudio(s.fadeOut, { ease: s.ease });

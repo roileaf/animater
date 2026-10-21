@@ -15,7 +15,7 @@ export const catalogWeapon=id=>byId.get(String(id).replace(/^pf2e-weapon-/,'').r
 export const weaponCustomizationKey=(id,mode)=>`${id}:${mode}`;
 export function normalizeWeaponCatalogState(state={}){
  state??={};const ids=list=>[...new Set((Array.isArray(list)?list:[]).map(id=>catalogWeapon(id)?.id).filter(Boolean))];
- return {enabled:state.enabled===true,independent:state.independent===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:[...new Set((Array.isArray(state.customized)?state.customized:[]).map(String).filter(k=>{const[id,mode,...extra]=k.split(':');return !extra.length&&byId.get(id)?.modes.some(m=>m.mode===mode);}))],preferCatalog:state.preferCatalog===true,motion:state.motion!==false,sound:state.sound!==false,soundVolume:Number.isFinite(Number(state.soundVolume))?Math.max(0,Math.min(1,Number(state.soundVolume))):.35};
+ return {enabled:state.enabled===true,independent:state.independent===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:[...new Set((Array.isArray(state.customized)?state.customized:[]).map(String).filter(k=>{const[id,mode,...extra]=k.split(':');return !extra.length&&byId.get(id)?.modes.some(m=>m.mode===mode);}))],preferCatalog:state.preferCatalog===true,motion:state.motion!==false,sound:state.sound!==false,surfaceSound:state.surfaceSound!==false,soundVolume:Number.isFinite(Number(state.soundVolume))?Math.max(0,Math.min(1,Number(state.soundVolume))):.35};
 }
 export const catalogWeaponEnabled=(id,state)=>state?.enabled===true&&!state.excluded?.includes(id)&&(state.scope!=='selected'||state.selected?.includes(id)===true);
 export function useCatalogWeapon(state,id){state=normalizeWeaponCatalogState(state);id=catalogWeapon(id)?.id;if(!id)throw Error('Choose a weapon first.');return normalizeWeaponCatalogState({...state,enabled:true,independent:true,scope:state.enabled?state.scope:'selected',selected:state.enabled?[...state.selected,id]:[id],excluded:state.excluded.filter(k=>k!==id),customized:state.customized.filter(k=>!k.startsWith(id+':'))});}
@@ -66,9 +66,9 @@ export function resolveAutomaticWeaponRecipe(event,state,custom=[],{customEnable
  const bound={...event,weaponMode:mode,...(weapon?.strikeBinding==='unarmed'?{itemUuid:`Compendium.pf2e.equipment-srd.Item.${weapon.id}`}:{})};
  const configured=customEnabled||active&&state.customized?.includes(key)?custom:[];
  const override=matchStrikeOverride(configured,bound);if(override)return override;
- if(active&&(state.selected?.includes(weapon.id)||state.preferCatalog)&&!state.customized?.includes(key))return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume}));
+ if(active&&(state.selected?.includes(weapon.id)||state.preferCatalog)&&!state.customized?.includes(key))return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume,surfaceSound:state.surfaceSound}));
  const saved=matchRecipe(configured,bound);if(saved)return saved;
  if(!active||configured.some(r=>!r.enabled&&matchRecipe([{...r,enabled:true}],bound)))return null;
- return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume}));
+ return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume,surfaceSound:state.surfaceSound}));
 }
 export function filterWeapons({search='',group='all',mode='all',category='all',edition='all'}={}){const q=normalize(search);return PF2E_WEAPONS.filter(w=>(group==='all'||w.group===group)&&(mode==='all'||w.modes.some(m=>m.mode===mode))&&(category==='all'||w.category===category)&&(edition==='all'||w.edition===edition)&&(!q||normalize(`${w.name} ${w.slug} ${w.traits.join(' ')} ${w.publication} ${w.plainDescription}`).includes(q)));}

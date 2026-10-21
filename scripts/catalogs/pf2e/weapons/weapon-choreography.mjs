@@ -1,6 +1,7 @@
 import {validateRecipe} from '../../../core/model.mjs';
 import {withCatalogFx} from '../../shared/catalog-fx.mjs';
 import {addAbilitySounds} from '../../../engines/sound/ability-sounds.mjs';
+import {addSurfaceSounds} from '../../../engines/sound/surface-sounds.mjs';
 import {WEAPON_COLORS as colors,BOMB_PAYLOADS,payloadAppearance} from './weapon-payloads.mjs';
 export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}){
  const mode=weapon?.modes?.find(m=>m.mode===modeName);
@@ -56,5 +57,7 @@ export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}
  for(const [index,flavor]of (mode.flavor??[]).entries())if(mode.assets[`flavor${index+1}`]?.length)stages.push(stage('impact',`flavor${index+1}`,`${flavor} flourish`,contactStage.delay+220+index*110,{afterStage:contactStage.stageId,timingAnchor:'start',startOffset:220+index*110,scale:.8,opacity:.9,...payloadAppearance(flavor,mode.assets[`flavor${index+1}`])}));
  if(mode.assets.residue?.length)stages.push(stage('aura','residue',`${mode.payload?.style==='spores'?'Fungal growth':mode.payload?.style==='foam'?'Hardening debris':mode.persistent||mode.payload?.element||mode.element} residue · brief visual cue`,contactStage.delay+300,{subject:'targets',afterStage:contactStage.stageId,timingAnchor:'start',startOffset:300,duration:2400,oneShot:false,fadeIn:180,fadeOut:500,scale:.85,opacity:.75,persist:false,...payloadAppearance(mode.payload?.style==='spores'?'poison':mode.payload?.style==='insects'?'darkInsects':mode.persistent||mode.payload?.element||mode.element,mode.assets.residue)}));
  stages=addAbilitySounds(weapon,stages,{...options,mode:mode.mode,...(mode.soundDesign?{design:mode.soundDesign}:{})});
+ // The blow also sounds like what it lands on (armour, a shield, chitin, stone), chosen per target as it plays.
+ if(options.surfaceSound!==false)stages=addSurfaceSounds(weapon,stages,{sounds:options.sounds??options.soundCatalog,soundVolume:options.soundVolume,mode,anchor:contactStage});
  return withCatalogFx(validateRecipe({id,name:`${weapon.name} · ${mode.mode}`,description:mode.rationale,category:'Weapons',color,trigger:'attack',match:`${weapon.name},${weapon.slug}`,itemUuid:weapon.uuid??`Compendium.${systemId}.${systemId==='sf2e'?'equipment':'equipment-srd'}.Item.${weapon.id}`,weaponMode:mode.mode,stages}),weapon,{...options,mode});
 }
