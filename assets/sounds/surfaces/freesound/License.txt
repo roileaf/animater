@@ -25,7 +25,6 @@ bullet-metal-182263-2.ogg: "Foley bullet hit metal 02.wav" by martian, https://f
 bullet-metal-351371-0.ogg: "HeavyBulletPing.mp3" by wilhellboy, https://freesound.org/people/wilhellboy/sounds/351371/
 crunch-192146-0.ogg: "Bone Crunch Fast.wav" by BrassKnucklesFilms, https://freesound.org/people/BrassKnucklesFilms/sounds/192146/
 crunch-336633-0.ogg: "egg - shell crunch - wide - dried - consolidated.wav" by Anthousai, https://freesound.org/people/Anthousai/sounds/336633/
-crunch-355052-0.ogg: "Bone Crunch.wav" by GreatNate98, https://freesound.org/people/GreatNate98/sounds/355052/
 crunch-630594-0.ogg: "bone break_5.wav" by Vinni_R, https://freesound.org/people/Vinni_R/sounds/630594/
 crunch-680329-0.ogg: "Violent Crunch.mp3" by Pancakebees, https://freesound.org/people/Pancakebees/sounds/680329/
 crunch-784768-0.ogg: "DeathCrunch Gore SFX Blood and Bone" by AKkingStudio, https://freesound.org/people/AKkingStudio/sounds/784768/
@@ -97,7 +96,6 @@ steam-hiss-438640-1.ogg: "G39-23-Steam Hiss.wav" by craigsmith, https://freesoun
 ward-chime-150453-0.ogg: "Crystal bowl hit F3 1.wav" by caiogracco, https://freesound.org/people/caiogracco/sounds/150453/
 ward-chime-198390-0.ogg: "ANI - Cocktail Glass - Hard 2a" by ani_music, https://freesound.org/people/ani_music/sounds/198390/
 ward-chime-570853-0.ogg: "magicShield_block.wav" by rafaelzimrp, https://freesound.org/people/rafaelzimrp/sounds/570853/
-ward-chime-707618-2.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
 ward-chime-707618-4.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
 ward-chime-707618-5.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
 ward-chime-707618-9.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/

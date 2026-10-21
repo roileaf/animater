@@ -20,32 +20,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-249160-0.ogg",
-     "nativeDuration": 348,
-     "meanDb": -20.5,
-     "peakDb": -0.5,
-     "gain": 0.74989,
-     "duration": 348
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-395373-0.ogg",
      "nativeDuration": 517,
      "meanDb": -19.9,
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 517
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-521242-0.ogg",
-     "nativeDuration": 261,
-     "meanDb": -20.2,
-     "peakDb": -1.3,
-     "gain": 0.82224,
-     "duration": 261
     },
     {
      "module": "animater",
@@ -60,32 +40,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-521242-1.ogg",
-     "nativeDuration": 312,
-     "meanDb": -22.6,
-     "peakDb": -0.5,
-     "gain": 0.74989,
-     "duration": 312
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-539539-0.ogg",
      "nativeDuration": 1343,
      "meanDb": -23.8,
      "peakDb": -8.5,
      "gain": 1,
      "duration": 1343
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-521552-0.ogg",
-     "nativeDuration": 240,
-     "meanDb": -16.7,
-     "peakDb": -2.6,
-     "gain": 0.68391,
-     "duration": 240
     },
     {
      "module": "animater",
@@ -118,12 +78,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-249160-0.ogg",
-     "nativeDuration": 348,
-     "meanDb": -20.5,
-     "peakDb": -0.5,
-     "gain": 0.74989,
-     "duration": 348
+     "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-395365-0.ogg",
+     "nativeDuration": 281,
+     "meanDb": -18.5,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 281
     },
     {
      "module": "animater",
@@ -138,12 +98,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-521242-0.ogg",
-     "nativeDuration": 261,
-     "meanDb": -20.2,
-     "peakDb": -1.3,
-     "gain": 0.82224,
-     "duration": 261
+     "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-395373-0.ogg",
+     "nativeDuration": 517,
+     "meanDb": -19.9,
+     "peakDb": -0.9,
+     "gain": 0.78524,
+     "duration": 517
     },
     {
      "module": "animater",
@@ -158,12 +118,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-521242-1.ogg",
-     "nativeDuration": 312,
-     "meanDb": -22.6,
-     "peakDb": -0.5,
-     "gain": 0.74989,
-     "duration": 312
+     "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-399617-1.ogg",
+     "nativeDuration": 236,
+     "meanDb": -18.1,
+     "peakDb": -1.5,
+     "gain": 0.80353,
+     "duration": 236
     },
     {
      "module": "animater",
@@ -178,12 +138,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/arrow-wood-521552-0.ogg",
-     "nativeDuration": 240,
-     "meanDb": -16.7,
-     "peakDb": -2.6,
-     "gain": 0.68391,
-     "duration": 240
+     "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-539539-0.ogg",
+     "nativeDuration": 1343,
+     "meanDb": -23.8,
+     "peakDb": -8.5,
+     "gain": 1,
+     "duration": 1343
     },
     {
      "module": "animater",
@@ -194,6 +154,16 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1,
      "gain": 0.79433,
      "duration": 240
+    },
+    {
+     "module": "animater",
+     "key": "",
+     "file": "modules/animater/assets/sounds/surfaces/freesound/flesh-pierce-539539-1.ogg",
+     "nativeDuration": 362,
+     "meanDb": -19.4,
+     "peakDb": -1,
+     "gain": 0.79433,
+     "duration": 362
     },
     {
      "module": "animater",
@@ -468,16 +438,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.7,
      "gain": 0.76736,
      "duration": 649
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-355052-0.ogg",
-     "nativeDuration": 1400,
-     "meanDb": -18.1,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 1400
     },
     {
      "module": "animater",
@@ -914,9 +874,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -944,9 +904,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -974,9 +934,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -992,12 +952,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -1012,12 +972,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -1032,21 +992,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -1432,16 +1382,6 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-355052-0.ogg",
-     "nativeDuration": 1400,
-     "meanDb": -18.1,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 1400
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-630594-0.ogg",
      "nativeDuration": 315,
      "meanDb": -18.9,
@@ -1678,7 +1618,7 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_000.ogg",
      "nativeDuration": 242,
-     "meanDb": -20.5,
+     "meanDb": -20.6,
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 242
@@ -1698,7 +1638,7 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_002.ogg",
      "nativeDuration": 248,
-     "meanDb": -21.5,
+     "meanDb": -21.7,
      "peakDb": -1,
      "gain": 0.79433,
      "duration": 248
@@ -1708,9 +1648,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_003.ogg",
      "nativeDuration": 172,
-     "meanDb": -19,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -19.4,
+     "peakDb": -1.2,
+     "gain": 0.81283,
      "duration": 172
     },
     {
@@ -1864,9 +1804,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -1894,9 +1834,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -1924,9 +1864,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -1942,12 +1882,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -1962,12 +1902,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -1982,21 +1922,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -2012,9 +1942,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -2042,9 +1972,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -2072,9 +2002,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -2090,12 +2020,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -2110,12 +2040,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -2130,21 +2060,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -2821,8 +2741,8 @@ export const SURFACE_SOUND_PROFILES = {
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_004.ogg",
      "nativeDuration": 560,
      "meanDb": -20.8,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "peakDb": -0.9,
+     "gain": 0.78524,
      "duration": 560
     }
    ]
@@ -3042,16 +2962,6 @@ export const SURFACE_SOUND_PROFILES = {
      "duration": 782
     },
     {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break A.ogg",
-     "nativeDuration": 1280,
-     "meanDb": -23.5,
-     "peakDb": -4.6,
-     "gain": 1,
-     "duration": 1280
-    },
-    {
      "module": "animater",
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-336633-0.ogg",
@@ -3060,36 +2970,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.7,
      "gain": 0.76736,
      "duration": 649
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break B.ogg",
-     "nativeDuration": 1227,
-     "meanDb": -24.8,
-     "peakDb": -7.3,
-     "gain": 1,
-     "duration": 1227
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-355052-0.ogg",
-     "nativeDuration": 1400,
-     "meanDb": -18.1,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 1400
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break C.ogg",
-     "nativeDuration": 958,
-     "meanDb": -23.9,
-     "peakDb": -5.3,
-     "gain": 1,
-     "duration": 958
     },
     {
      "module": "animater",
@@ -3330,7 +3210,7 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_000.ogg",
      "nativeDuration": 242,
-     "meanDb": -20.5,
+     "meanDb": -20.6,
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 242
@@ -3370,7 +3250,7 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_002.ogg",
      "nativeDuration": 248,
-     "meanDb": -21.5,
+     "meanDb": -21.7,
      "peakDb": -1,
      "gain": 0.79433,
      "duration": 248
@@ -3390,9 +3270,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_003.ogg",
      "nativeDuration": 172,
-     "meanDb": -19,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -19.4,
+     "peakDb": -1.2,
+     "gain": 0.81283,
      "duration": 172
     },
     {
@@ -3626,9 +3506,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -3666,9 +3546,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -3706,9 +3586,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -3734,12 +3614,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -3754,12 +3634,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -3774,21 +3654,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -4047,16 +3917,6 @@ export const SURFACE_SOUND_PROFILES = {
    "candidates": [
     {
      "module": "ggg",
-     "key": "ggg-sfx.melee.bludgeoning.strike.general.01.metal_hit",
-     "file": "modules/ggg/assets/sounds/Soniss/GDC2026/David Dumais Audio/Swing Metal Hit.ogg",
-     "nativeDuration": 2936,
-     "meanDb": -24.5,
-     "peakDb": -2.9,
-     "gain": 0.98855,
-     "duration": 2000
-    },
-    {
-     "module": "ggg",
      "key": "ggg-sfx.equipment.armor.shield.impact.02.metal.01",
      "file": "modules/ggg/assets/sounds/Soniss/GDC2024/Justsoundeffects/Metal Shield Block 1.ogg",
      "nativeDuration": 1231,
@@ -4151,8 +4011,8 @@ export const SURFACE_SOUND_PROFILES = {
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_004.ogg",
      "nativeDuration": 560,
      "meanDb": -20.8,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "peakDb": -0.9,
+     "gain": 0.78524,
      "duration": 560
     }
    ]
@@ -4272,16 +4132,6 @@ export const SURFACE_SOUND_PROFILES = {
      "duration": 782
     },
     {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break A.ogg",
-     "nativeDuration": 1280,
-     "meanDb": -23.5,
-     "peakDb": -4.6,
-     "gain": 1,
-     "duration": 1280
-    },
-    {
      "module": "animater",
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-336633-0.ogg",
@@ -4290,36 +4140,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.7,
      "gain": 0.76736,
      "duration": 649
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break B.ogg",
-     "nativeDuration": 1227,
-     "meanDb": -24.8,
-     "peakDb": -7.3,
-     "gain": 1,
-     "duration": 1227
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-355052-0.ogg",
-     "nativeDuration": 1400,
-     "meanDb": -18.1,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 1400
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break C.ogg",
-     "nativeDuration": 958,
-     "meanDb": -23.9,
-     "peakDb": -5.3,
-     "gain": 1,
-     "duration": 958
     },
     {
      "module": "animater",
@@ -4540,7 +4360,7 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_000.ogg",
      "nativeDuration": 242,
-     "meanDb": -20.5,
+     "meanDb": -20.6,
      "peakDb": -0.9,
      "gain": 0.78524,
      "duration": 242
@@ -4560,7 +4380,7 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_002.ogg",
      "nativeDuration": 248,
-     "meanDb": -21.5,
+     "meanDb": -21.7,
      "peakDb": -1,
      "gain": 0.79433,
      "duration": 248
@@ -4570,9 +4390,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/kenney/impactGlass_heavy_003.ogg",
      "nativeDuration": 172,
-     "meanDb": -19,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -19.4,
+     "peakDb": -1.2,
+     "gain": 0.81283,
      "duration": 172
     },
     {
@@ -4796,9 +4616,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -4836,9 +4656,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -4876,9 +4696,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -4904,12 +4724,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -4924,12 +4744,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -4944,21 +4764,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -5492,16 +5302,6 @@ export const SURFACE_SOUND_PROFILES = {
      "duration": 782
     },
     {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.01",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break A.ogg",
-     "nativeDuration": 1280,
-     "meanDb": -23.5,
-     "peakDb": -4.6,
-     "gain": 1,
-     "duration": 1280
-    },
-    {
      "module": "animater",
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-336633-0.ogg",
@@ -5510,36 +5310,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -0.7,
      "gain": 0.76736,
      "duration": 649
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.02",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break B.ogg",
-     "nativeDuration": 1227,
-     "meanDb": -24.8,
-     "peakDb": -7.3,
-     "gain": 1,
-     "duration": 1227
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/crunch-355052-0.ogg",
-     "nativeDuration": 1400,
-     "meanDb": -18.1,
-     "peakDb": -0.7,
-     "gain": 0.76736,
-     "duration": 1400
-    },
-    {
-     "module": "ggg",
-     "key": "ggg-sfx.ranged.bomb.break.01.03",
-     "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Weapons/Pot Break C.ogg",
-     "nativeDuration": 958,
-     "meanDb": -23.9,
-     "peakDb": -5.3,
-     "gain": 1,
-     "duration": 958
     },
     {
      "module": "animater",
@@ -6106,9 +5876,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -6146,9 +5916,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -6186,9 +5956,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -6214,12 +5984,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -6234,12 +6004,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -6254,21 +6024,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -6284,9 +6044,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -6314,9 +6074,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -6344,9 +6104,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -6362,12 +6122,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -6382,12 +6142,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -6402,21 +6162,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -7064,9 +6814,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -7094,9 +6844,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -7124,9 +6874,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -7142,12 +6892,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -7162,12 +6912,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -7182,21 +6932,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -7744,9 +7484,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -7774,9 +7514,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -7804,9 +7544,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -7822,12 +7562,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -7842,12 +7582,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -7862,21 +7602,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -8544,9 +8274,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-150453-0.ogg",
      "nativeDuration": 1900,
-     "meanDb": -23.2,
-     "peakDb": -1.6,
-     "gain": 0.85114,
+     "meanDb": -16.8,
+     "peakDb": -1.3,
+     "gain": 0.69183,
      "duration": 1900
     },
     {
@@ -8574,9 +8304,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-198390-0.ogg",
      "nativeDuration": 940,
-     "meanDb": -25.9,
-     "peakDb": -1.1,
-     "gain": 0.80353,
+     "meanDb": -16.7,
+     "peakDb": -1,
+     "gain": 0.68391,
      "duration": 940
     },
     {
@@ -8604,9 +8334,9 @@ export const SURFACE_SOUND_PROFILES = {
      "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-570853-0.ogg",
      "nativeDuration": 1320,
-     "meanDb": -22.1,
-     "peakDb": -1.7,
-     "gain": 0.86099,
+     "meanDb": -17.9,
+     "peakDb": -0.1,
+     "gain": 0.71614,
      "duration": 1320
     },
     {
@@ -8622,12 +8352,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "ggg",
@@ -8642,12 +8372,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "ggg",
@@ -8662,21 +8392,11 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
-    },
-    {
-     "module": "animater",
-     "key": "",
      "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
      "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
      "duration": 340
     }
    ]
@@ -10760,12 +10480,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -10780,12 +10500,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -10800,12 +10520,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -10816,16 +10536,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -10864,12 +10574,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -10884,12 +10594,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -10904,12 +10614,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -10920,16 +10630,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -10968,12 +10668,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -10988,12 +10688,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11008,12 +10708,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11024,16 +10724,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11072,12 +10762,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11092,12 +10782,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11112,12 +10802,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11128,16 +10818,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11176,12 +10856,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11196,12 +10876,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11216,12 +10896,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11232,16 +10912,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11280,12 +10950,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11300,12 +10970,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11320,12 +10990,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11336,16 +11006,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11384,12 +11044,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11404,12 +11064,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11424,12 +11084,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11440,16 +11100,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11488,12 +11138,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11508,12 +11158,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11528,12 +11178,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11544,16 +11194,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11592,12 +11232,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11612,12 +11252,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11632,12 +11272,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11648,16 +11288,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",
@@ -11696,12 +11326,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-2.ogg",
-     "nativeDuration": 930,
-     "meanDb": -19.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 930
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
+     "nativeDuration": 580,
+     "meanDb": -14.9,
+     "peakDb": -0.9,
+     "gain": 0.5559,
+     "duration": 580
     },
     {
      "module": "animater",
@@ -11716,12 +11346,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-4.ogg",
-     "nativeDuration": 580,
-     "meanDb": -20.6,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 580
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
+     "nativeDuration": 540,
+     "meanDb": -14.8,
+     "peakDb": -1.1,
+     "gain": 0.54954,
+     "duration": 540
     },
     {
      "module": "animater",
@@ -11736,12 +11366,12 @@ export const SURFACE_SOUND_PROFILES = {
     {
      "module": "animater",
      "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-5.ogg",
-     "nativeDuration": 540,
-     "meanDb": -20.4,
-     "peakDb": -1.2,
-     "gain": 0.81283,
-     "duration": 540
+     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
+     "nativeDuration": 340,
+     "meanDb": -16.3,
+     "peakDb": -1,
+     "gain": 0.65313,
+     "duration": 340
     },
     {
      "module": "animater",
@@ -11752,16 +11382,6 @@ export const SURFACE_SOUND_PROFILES = {
      "peakDb": -1.3,
      "gain": 0.82224,
      "duration": 210
-    },
-    {
-     "module": "animater",
-     "key": "",
-     "file": "modules/animater/assets/sounds/surfaces/freesound/ward-chime-707618-9.ogg",
-     "nativeDuration": 340,
-     "meanDb": -21.2,
-     "peakDb": -1.8,
-     "gain": 0.87096,
-     "duration": 340
     },
     {
      "module": "animater",

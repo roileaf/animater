@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Cleaner hit recordings.** An audit of every hit sound found and fixed: arrows hitting flesh or leather that thunked like an archery target, two recordings that hit twice, a metal hit with its own swing baked in, five glass and plate hits that cut off abruptly (now fade out), and magical ward chimes that played quieter than the rest of their set.
+- **Skeletons and shelled creatures no longer sound like breaking glass.** Their hits now use only bone and shell crunches; a shattering pot recording is gone from the set.
+- **The body answers the blow.** A weapon's own hit now always comes first, and what it lands on (armour, flesh, a shell) follows a moment later. Before, a clang could ring before the strike, and a slow crunch could trail far behind it.
+
 ## 1.5.2 (2026-10-21)
 
 - **All hit sounds in one menu.** A new **Hit sounds** menu in Animater's module settings holds the whole hit sounds engine. The GM turns weapon surface sounds on or off for the world, and each player sets their own device: hit sounds on or off, volume, blood, echo, and hearing hits where they happen. Turning hit sounds off for your device silences surface hits and plays Animater's other sounds plain, for you only.

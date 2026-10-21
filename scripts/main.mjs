@@ -25,6 +25,8 @@ import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from
 import { weaponFamily } from "./systems/daggerheart.mjs";
 import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
+import { peakOf } from "./engines/sound/hit-timing.mjs";
+const soundPeaks = new Map();
 import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
 import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
 import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
@@ -1523,6 +1525,8 @@ Hooks.once("ready", () => {
     // Sequencer synchronizes playback and loads media on each receiving client.
     // Waiting for every client here can stall the rolling user's animation.
     preloadSounds: files => Sequencer.Preloader.preload(files,false),
+    // Where a loaded sound is loudest (ms in), measured once per file.
+    soundPeak: (file) => { if (!soundPeaks.has(file)) { const b = game.audio?.buffers?.getBuffer?.(file); if (!b) return null; soundPeaks.set(file, peakOf(b)); } return soundPeaks.get(file); },
     motion: async (stage, context, { preview, session }) => {
       stage = withFragmentSeed(stage);
       // The cut follows this client's view of the swing; receivers reuse it, as they do the seed.

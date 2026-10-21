@@ -13,8 +13,8 @@ const BUNDLED = "modules/animater/assets/sounds/surfaces";
 const SOURCES = {
   // An arrow or bolt: thunks into wood and shields, ticks off plate, stabs into flesh.
   arrow: {
-    flesh: ["freesound:flesh-pierce", "freesound:arrow-wood"],
-    leather: ["freesound:leather-hit", "freesound:arrow-wood"],
+    flesh: ["freesound:flesh-pierce"],
+    leather: ["freesound:leather-hit", "freesound:flesh-pierce"],
     metal: ["kenney:impactPlate_light", "ggg-sfx.melee.blade.block.dagger.01"],
     shield: ["freesound:arrow-wood", "kenney:impactWood_heavy"],
     crunch: ["freesound:crunch"],
@@ -50,7 +50,7 @@ const SOURCES = {
     leather: ["freesound:leather-hit", "kenney:dropLeather"],
     metal: ["ggg-sfx.melee.blade.block.shortsword.01", "ggg-sfx.melee.blade.block.greatsword.01", "kenney:impactPlate_medium", "kenney:impactPlate_heavy"],
     shield: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactWood_heavy", "kenney:impactPlank_medium"],
-    crunch: ["freesound:crunch", "ggg-sfx.ranged.bomb.break.01"],
+    crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_light", "ggg-sfx.impact.wood.01", "kenney:chop"],
     stone: ["ggg-sfx.ranged.thrown.stone.impact.01", "kenney:impactMining"],
     glass: ["kenney:impactGlass_medium", "kenney:impactGlass_heavy"],
@@ -60,9 +60,9 @@ const SOURCES = {
   blunt: {
     flesh: ["freesound:flesh-blunt", "ggg-sfx.melee.unarmed.fist.strike.04", "ggg-sfx.melee.unarmed.fist.strike.03"],
     leather: ["freesound:leather-hit", "kenney:dropLeather"],
-    metal: ["ggg-sfx.melee.bludgeoning.strike.general.01.metal_hit", "ggg-sfx.equipment.armor.shield.impact.02.metal", "kenney:impactPlate_heavy"],
+    metal: ["ggg-sfx.equipment.armor.shield.impact.02.metal", "kenney:impactPlate_heavy"],
     shield: ["ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactWood_heavy"],
-    crunch: ["freesound:crunch", "ggg-sfx.ranged.bomb.break.01"],
+    crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_medium", "ggg-sfx.impact.wood.01"],
     stone: ["ggg-sfx.ranged.thrown.stone.impact.01", "kenney:impactMining"],
     glass: ["kenney:impactGlass_heavy"],
@@ -74,7 +74,7 @@ const SOURCES = {
     leather: ["freesound:leather-hit", "kenney:handleSmallLeather"],
     metal: ["ggg-sfx.melee.blade.block.dagger.01", "ggg-sfx.melee.blade.block.rapier.01", "kenney:impactPlate_light"],
     shield: ["ggg-sfx.equipment.armor.shield.impact.01", "kenney:impactPlank_medium", "kenney:impactWood_medium"],
-    crunch: ["freesound:crunch", "ggg-sfx.ranged.bomb.break.01"],
+    crunch: ["freesound:crunch"],
     wood: ["kenney:impactWood_light", "kenney:impactPlank_medium"],
     stone: ["ggg-sfx.ranged.thrown.stone.impact.01", "kenney:impactMining"],
     glass: ["kenney:impactGlass_light", "kenney:impactGlass_medium"],

@@ -19,6 +19,7 @@ import { stageTiers } from '../../core/quality.mjs';
 import { withLastingArea } from './lasting-area.mjs';
 import { withOutcome } from '../../systems/outcome.mjs';
 import { pickVariants } from './composition.mjs';
+import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
@@ -445,6 +446,8 @@ export class AnimaterRuntime {
           if(!plan.length)throw Error(reason);
           this.trace('Skipped',`${reason}; playing animation without audio.`,recipe);
         }
+        // Loaded: each surface hit lands just after the weapon's own (engines/sound/hit-timing.mjs).
+        else if(this.host.soundPeak) plan=alignSurfaceHits(plan,this.host.soundPeak);
       }
       const groups = new Map();
       for (const s of plan) {

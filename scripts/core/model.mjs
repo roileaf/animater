@@ -510,7 +510,7 @@ function surfaceRecording(s, destination, context) {
     const sound = freshPick(`${s.stageId}:${surface}:${l.name}`, l.sounds, random);
     return sound && { ...sound, label: l.name, volume: loud(sound.volume), pitch: rolled(random, [0.9, 1.1]), offset: Math.round(l.offset[0] + random() * (l.offset[1] - l.offset[0])) };
   }).filter(Boolean);
-  const shift = heft.pitch * size * (crit ? 0.97 : 1), jitter = Math.round(random() * 25);
+  const shift = heft.pitch * size * (crit ? 0.97 : 1), jitter = Math.round(random() * 30);
   if (voices) voices.push(now + jitter + recording.duration + range.tail);
   return { ...recording, volume: loud(recording.volume), pitch: Math.round(rolled(random, pitch) * shift * 1000) / 1000, echo,
     // Just after the weapon's own impact, not on top of it, so the two do not pile into one smeared hit.
@@ -802,7 +802,7 @@ function buildPlan(recipe, catalog, context, requireMedia) {
   // A surface cue lands just after the weapon's own impact, and its layers (blood, a flame burst, icicles...)
   // play as sounds of their own, each a moment after the blow.
   for (const s of [...plan]) if (s.layers || s.jitter) {
-    const { layers = [], jitter = 0, ...rest } = s, cue = { ...rest, delay: (rest.delay ?? 0) + jitter, surfaceRole: "cue" };
+    const { layers = [], jitter = 0, ...rest } = s, cue = { ...rest, delay: (rest.delay ?? 0) + jitter, surfaceRole: "cue", ...(jitter ? { surfaceJitter: jitter } : {}) };
     plan.splice(plan.indexOf(s), 1, cue, ...layers.map((l) => ({ ...cue, stageId: `${cue.stageId}-${l.label}`, soundFile: l.file, volume: l.volume, duration: l.duration, pitch: l.pitch, delay: cue.delay + l.offset, label: l.label, surfaceRole: l.label })));
   }
   return plan;
