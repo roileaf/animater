@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.2 (2026-10-21)
 
 - **All hit sounds in one menu.** A new **Hit sounds** menu in Animater's module settings holds the whole hit sounds engine. The GM turns weapon surface sounds on or off for the world, and each player sets their own device: hit sounds on or off, volume, blood, echo, and hearing hits where they happen. Turning hit sounds off for your device silences surface hits and plays Animater's other sounds plain, for you only.
 - **Hear hits where they happen.** Animation sounds now come from where they happen, heard from your own token (or the middle of your view without one). A hit far away is quieter and duller, and one on the left of your screen sounds on the left. Each player can turn it off in the **Hit sounds** menu.
@@ -22,7 +22,7 @@
 - **Hits no longer cut off.** Every bundled recording now plays its full natural tail, and sizzles and hisses die away instead of stopping.
 - **The echo stays under the blow.** It now sits well below the hit itself: a clear ring off shields, wards and glass, only a hint of room on bodies.
 - **Wood is its own sound.** Treants and other plants, wooden armour, animated furniture and dolls, and Barkskin now knock like wood, apart from the crunch of chitin and bone.
-- **More free sounds, credited.** The new recordings come from Freesound creators AKkingStudio, Anthousai, Aurelon, aust_paul, birdswkaren, BrassKnucklesFilms, craigsmith, cyoung510, dav0r, DSPena, eben-frostey, egomassive, elliott.klein, exorsten, gagglepod, GodofPH, GreatNate98, harrisonlace, iainmccurdy, ihitokage, JackMenhorn, janbezouska, jawbutch, jimbo555, JustInvoke, Kreastricon62, kyles, MadPanCake, magnuswaker, martian, MHockett, modusmogulus, musmaster, nebulasnails, newagesoup, omerbhatti34, Pancakebees, RMSound, rubberduck9999, Sadiquecat, SignatureSoundsOrg, sillygrizzlies, SoundsForHim, szegvari, TheFilmLook, ThefitzyG, The_Chemical_Workshop, tortillathrilla, Vikra9409, Vinni_R, wilhellboy, all CC0 (free to use). Thank you! Each file and its source is listed in `assets/sounds/surfaces/freesound/License.txt`.
+- **More free sounds, credited.** The new recordings come from Freesound creators AKkingStudio, ani_music, Anthousai, Aurelon, aust_paul, BrassKnucklesFilms, caiogracco, craigsmith, cyoung510, dav0r, DSPena, eben-frostey, elliott.klein, exorsten, gagglepod, GodofPH, GreatNate98, harrisonlace, iainmccurdy, ihitokage, JackMenhorn, janbezouska, jawbutch, JelloApocalypse, jimbo555, JustInvoke, Kreastricon62, kyles, LookIMadeAThing, lori.mortimer, MadPanCake, magnuswaker, martian, MHockett, modusmogulus, nebulasnails, omerbhatti34, Pancakebees, Perel, qubodup, rafaelzimrp, RMSound, rsellick, rubberduck9999, Sadiquecat, SignatureSoundsOrg, sillygrizzlies, SoundDesignForYou, SoundsForHim, szegvari, The_Chemical_Workshop, TheFilmLook, ThefitzyG, tortillathrilla, Vikra9409, Vinni_R, Vrymaa and wilhellboy, all CC0 (free to use). Thank you! Each file and its source is listed in `assets/sounds/surfaces/freesound/License.txt`.
 
 ## 1.5.1 (2026-10-21)
 
