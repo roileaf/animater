@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.6.0 (2026-10-21)
 
 - **Push and Pull stages move targets for real.** Two new motions on the timeline, **Push away** and **Pull closer**, move each target a set number of squares (1 to 10) away from whoever acted, or toward them, at the moment the stage starts: place it after the blast, the swing or anything else. Walls stop the move, and a pull stops beside the puller. **Only on a hit** leaves targets that were missed where they are. **Who picks the square** lets the one who acted, or the target's side (the GM for monsters, the player for their character), click where the target goes: any square inside a shaded wedge pointing away from the attacker (toward them, for a pull), 90° wide unless you set its **Direction cone**, with no wall in between. Esc, or no pick within a minute, leaves it in place. A local preview shows a recoil or lunge and moves nothing, and the recipe's composition preview draws the reach: a push with the target beside the caster and the wedge opening away, a pull with the target its squares away and the wedge pointing back (a straight arrow when nobody picks). Thanks to doubledunkindonuts and camrun91 for the ideas.
 - **Pan the map while picking a spot.** While you pick where a teleport lands or where a push or pull goes, right-click and drag pans the canvas as usual; only Esc cancels. Before, a right-click cancelled the pick.
