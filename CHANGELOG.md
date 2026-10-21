@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.0 (2026-10-21)
+
+- **Weapon hits sound like what they land on.** The same dagger clangs off plate, slaps leather, thuds into flesh, cracks a spider's shell, knocks on a skeleton and rings off a wizard's Shield. Every catalog weapon Strike that connects adds a second sound under its own, picked for each target:
+  - **Metal:** chain, plate or any heavy armour, metal creatures, clockwork and animated armour.
+  - **Leather:** leather, hide, cloth and polymer armour.
+  - **Crunch:** spiders, insects and other shelled creatures, skeletons and bone constructs, plants, wooden, bone or ceramic armour, and animated furniture or dolls.
+  - **Stone:** golems and earth elementals.
+  - **Glass:** glass and crystal creatures.
+  - **Squish:** oozes and water elementals.
+  - **Ward:** magical armour such as Mystic Armor or Protection, on a target with no real armour.
+  - **Flesh:** everyone else.
+  - **Misses:** a miss against a raised shield clangs off it; against a magical shield (Shield, Glass Shield, Prismatic Shield…) it rings off the ward. Other misses stay silent.
+  - **Silent:** ghosts and creatures made of flame or wind.
+  Each hit picks one of several recordings, at a slightly different pitch and loudness, so blow after blow never sounds the same. Edged, blunt and piercing weapons each have their own set. Turn them off with **Surface sounds** in the Weapons catalog.
+- **Surface sounds work without any sound pack.** Animater now bundles about a hundred short impact recordings from Kenney's [Impact Sounds](https://kenney.nl/assets/impact-sounds) and [RPG Audio](https://kenney.nl/assets/rpg-audio) packs (CC0, free to use). Thank you, Kenney! With GGG's sound collection installed, its recordings join them for more variety.
+- **A defeated creature drops its other lasting animations.** A dead monster no longer stays Frightened or Blessed on screen; only its Defeated look remains, and the others return if it is revived.
+
 ## 1.4.9 (2026-10-21)
 
 - **A weapon's damage roll no longer says it has no animation.** After a Strike that animated, rolling damage logged “no enabled damage recipe”, and Activity explained that no animation was set for the weapon. The animation belongs to the attack roll, so a damage roll for a weapon that animates on its attack now logs nothing.
