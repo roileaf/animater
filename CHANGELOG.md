@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.3 (2026-10-21)
 
 - **Cleaner hit recordings.** An audit of every hit sound found and fixed: arrows hitting flesh or leather that thunked like an archery target, two recordings that hit twice, a metal hit with its own swing baked in, five glass and plate hits that cut off abruptly (now fade out), and magical ward chimes that played quieter than the rest of their set.
 - **Skeletons and shelled creatures no longer sound like breaking glass.** Their hits now use only bone and shell crunches; a shattering pot recording is gone from the set.
