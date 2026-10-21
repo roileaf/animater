@@ -1429,6 +1429,10 @@ export class Workspace {
   linkNote(r) {
     const thing = r.lifecycle === "document" ? "condition or effect" : "item";
     if (unlinked(r)) return { warn: true, short: "Not linked yet", text: `Not linked to anything yet: name the ${thing} in Recipe settings.` };
+    // A GM's own recipe plays at the table only with this world setting on (it is off in a new world): the preview works
+    // either way, so say so instead of "Ready to play".
+    if (r.enabled && r.trigger !== "manual" && !r.finisher && globalThis.game?.user?.isGM !== false && this.host.enabled && !this.host.enabled())
+      return { warn: true, short: "Own recipes are off", text: "Won't play at the table yet: “Play my own recipes automatically” is off. Turn it on in Animater's module settings (or on the Setup page), and your recipes play when their item, effect or condition happens." };
     const entryName = (id) => catalogStateEntry(id)?.name;
     // One conflicts pass per render, not one per recipe card.
     const note = (this.host.recipes ? renderMemo(this.host, "recipeConflicts", () => recipeConflicts(this.listedRecipes(), { entryName })) : recipeConflicts([r], { entryName })).get(r.id);

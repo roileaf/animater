@@ -166,3 +166,18 @@ test("D&D 5e adapter reads activity subject and skips anonymous global rolls", (
   assert.equal(e.outcome, null);
   assert.match(dnd5eEvent("use", subject, { results: { message: { blind: true } } }).skipped, /blind roll/);
 });
+test("a recipe bound to a compendium spell also plays for the same spell from another book; one bound to a character's own item does not", () => {
+  const spell = (uuid, extra = {}) => ({ id: "r", name: "Fireball look", trigger: "attack", enabled: true, match: "Fireball", itemUuid: uuid, stages: [], ...extra });
+  const cast = (uuid) => ({ type: "attack", item: { name: "Fireball", uuid: `Actor.hero.Item.x`, _stats: { compendiumSource: uuid } } });
+  const srd = spell("Compendium.dnd5e.spells.Item.fireball");
+  assert.equal(matchRecipe([srd], cast("Compendium.dnd5e.spells.Item.fireball")), srd, "the bound spell itself");
+  assert.equal(matchRecipe([srd], cast("Compendium.dnd-players-handbook.spells.Item.ztgcdrWPshKRpFd0")), srd, "the same spell from the 2024 Player's Handbook");
+  assert.equal(matchRecipe([srd], { type: "attack", item: { name: "Fireball" } }), srd, "an imported copy with no compendium link");
+  // The exact item still wins over a same-named one.
+  const phb = spell("Compendium.dnd-players-handbook.spells.Item.ztgcdrWPshKRpFd0", { id: "phb" });
+  assert.equal(matchRecipe([srd, phb], cast("Compendium.dnd-players-handbook.spells.Item.ztgcdrWPshKRpFd0")).id, "phb");
+  // One hero's own spell: only theirs.
+  const heroes = spell("Actor.hero.Item.x", { id: "hero" });
+  assert.equal(matchRecipe([heroes], { type: "attack", item: { name: "Fireball", uuid: "Actor.other.Item.y" } }), null);
+  assert.equal(matchRecipe([heroes], { type: "attack", item: { name: "Fireball", uuid: "Actor.hero.Item.x" } }), heroes);
+});

@@ -386,6 +386,12 @@ export function matchRecipe(recipes, event) {
     event.item?.flags?.core?.sourceId,
     event.item?._stats?.compendiumSource,
   ];
+  const named = (r) => String(r.match ?? "").split(",").some((n) => n.trim() && names.has(normalize(n)));
+  // A recipe bound to one creature's own item (Actor... or a token's) plays for that item only: one hero's look for
+  // their spell. Bound to a compendium or world item (the spell as such), it plays for that item first, and for any
+  // item of the same name: the same spell from another book's compendium, an importer or a copy has another link.
+  const exact = (r) => Boolean(r.itemUuid) && uuids.includes(r.itemUuid);
+  const owned = (r) => /(^|\.)Actor\./.test(String(r.itemUuid ?? ""));
   return (
     recipes
       .filter(
@@ -397,15 +403,12 @@ export function matchRecipe(recipes, event) {
           r.trigger === event.type &&
           (Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')
             ? event.weaponMode === r.matchScope && ['weapon', 'melee'].includes(event.item?.type)
-            : r.itemUuid
-            ? uuids.includes(r.itemUuid)
-            : r.match
-                .split(",")
-                .some((n) => n.trim() && names.has(normalize(n)))),
+            : exact(r) || (!owned(r) && named(r))),
       )
       .sort(
         (a, b) =>
           Number(Object.hasOwn(STRIKE_SCOPES, a.matchScope ?? '')) - Number(Object.hasOwn(STRIKE_SCOPES, b.matchScope ?? '')) ||
+          Number(exact(b)) - Number(exact(a)) ||
           Number(Boolean(b.itemUuid)) - Number(Boolean(a.itemUuid)) ||
           a.id.localeCompare(b.id),
       )[0] ?? null
