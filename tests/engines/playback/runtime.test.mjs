@@ -5,6 +5,7 @@ import { starterRecipes } from "../../../scripts/core/presets.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 import { orbRecipe } from "../../../scripts/catalogs/shared/orb-builder.mjs";
 import { PF2E_SPELLS, spellRecipe } from "../../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { SURFACE_SOUND_PROFILES } from "../../../scripts/engines/sound/surface-sounds.mjs";
 
 test("native line effects use exact area endpoints, stationary cues are sized rather than stretched", async () => {
   const source = { center: { x: 0, y: 0 } },
@@ -1352,4 +1353,173 @@ test("lights on a crit play follow the hit-stop retiming", async () => {
   assert.equal(crit.light.startMs, 700);
   assert.equal(crit.plan.find((s) => s.stageId === "boom").delay - crit.plan.find((s) => s.stageId === "hit").delay, 700);
   assert.equal(crit.light.shape, "flash");
+});
+
+// Wall-aware shots (engines/playback/flight-path.mjs): a wall runs north-south at x = 300.
+const WALL_X = 300;
+const wallAt = ({ door = false } = {}) => (a, b) => {
+  if ((a.x - WALL_X) * (b.x - WALL_X) >= 0) return null;
+  const t = (WALL_X - a.x) / (b.x - a.x);
+  return { x: WALL_X, y: a.y + (b.y - a.y) * t, ...(door ? { door: true } : {}) };
+};
+const WALL_IMPACT = "jb2a.impact.005.white";
+// A bolt, its hit on the target 600 ms in, the target's reaction, and the shooter recoiling after the hit.
+function boltAttack(extra = {}) {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [
+      { stageId: "fly", kind: "travel", assets: ["jb2a.fire_bolt.orange"], delay: 0, duration: 1000 },
+      { stageId: "hit", kind: "impact", assets: ["jb2a.impact.001.orange"], delay: 600, duration: 500 },
+      { stageId: "react", kind: "motion", motion: "stagger", subject: "targets", assets: [], afterStage: "hit", timingAnchor: "start", startOffset: 0, duration: 400 },
+      { stageId: "recoil", kind: "motion", motion: "stagger", subject: "source", assets: [], afterStage: "hit", timingAnchor: "start", startOffset: 0, duration: 300 },
+    ],
+  });
+  const context = {
+    id: "shot1",
+    type: "attack",
+    outcome: "success",
+    source: { id: "s", center: { x: 0, y: 0 }, w: 100, h: 100 },
+    targets: [{ id: "t1", center: { x: 600, y: 0 }, w: 100, h: 100 }],
+    ...extra,
+  };
+  return { recipe, context };
+}
+// A missed bolt (nothing hangs off its hit, which a miss drops).
+function boltMiss() {
+  const { recipe, context } = boltAttack({ outcome: "failure" });
+  return { recipe: validateRecipe({ ...recipe, stages: recipe.stages.slice(0, 2) }), context };
+}
+function wallFixture(collides = wallAt()) {
+  const f = fixture();
+  f.runtime.catalog = ["jb2a.fire_bolt.orange", "jb2a.impact.001.orange", "jb2a.fireball.beam.orange", WALL_IMPACT].map((key) => ({ key }));
+  f.runtime.wait = async () => true;
+  f.host.collides = collides;
+  return f;
+}
+const filesOf = (calls) => calls.filter((c) => c[0] === "file").map((c) => c[1]);
+async function playWall(recipe, context, { collides, options = {}, setup } = {}) {
+  const f = wallFixture(collides);
+  setup?.(f);
+  let plan;
+  await f.runtime.play(recipe, context, { ...options, onStart: (r) => { plan = r.playbackPlan; } });
+  return { ...f, plan };
+}
+test("blocked attack strikes the wall", async () => {
+  const { recipe, context } = boltAttack();
+  const { calls, plan } = await playWall(recipe, context);
+  // The bolt stretches to the wall point, from a fixed start.
+  const stretch = calls.find((c) => c[0] === "stretchTo");
+  assert.deepEqual(stretch[1], { x: WALL_X, y: 0 });
+  assert.deepEqual(stretch[2], { cacheLocation: true });
+  assert.ok(calls.some((c) => c[0] === "atLocation" && c[1].x === 0 && c[1].y === 0 && !c[1].id));
+  // The target's hit and its reaction are gone; a small impact plays at the wall as the bolt arrives.
+  const files = filesOf(calls);
+  assert.ok(!files.includes("jb2a.impact.001.orange"));
+  assert.ok(files.includes(WALL_IMPACT));
+  assert.ok(!calls.some((c) => c[0] === "motion" && c[1].stageId === "react"));
+  const wall = plan.find((s) => s.kind === "impact");
+  assert.deepEqual(wall.landing, { x: WALL_X, y: 0 });
+  // The flight arrives at 55% of 1000 ms over the full distance; the wall is halfway.
+  assert.equal(wall.delay, 275);
+  assert.equal(plan.find((s) => s.stageId === "fly").contact, 275);
+  // What followed the hit moves up with the shorter flight (275 ms earlier).
+  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 600 - 275);
+  // Sized to 0.6 of the bolt's footprint, not the target.
+  const at = calls.findIndex((c) => c[0] === "file" && c[1] === WALL_IMPACT);
+  assert.equal(calls.slice(at).find((c) => c[0] === "size")[1].width, 60);
+  assert.ok(calls.slice(at).some((c) => c[0] === "atLocation" && c[1].x === WALL_X));
+});
+test("a wall strike knocks on stone, on wood for a door, when the recipe has sounds", async () => {
+  const sounded = (r) => validateRecipe({ ...r, stages: [...r.stages, { stageId: "twang", kind: "sound", soundFile: "sounds/bow.ogg", assets: [], delay: 0, duration: 400, volume: 0.5 }] });
+  const files = (key) => SURFACE_SOUND_PROFILES[key][0].candidates.filter((c) => c.module === "animater").map((c) => c.file);
+  for (const [door, key] of [[false, "surface-blunt-stone"], [true, "surface-blunt-wood"]]) {
+    const { recipe, context } = boltAttack();
+    const { plan } = await playWall(sounded(recipe), context, { collides: wallAt({ door }) });
+    const cue = plan.find((s) => s.kind === "sound" && s.surfaceRole === "cue");
+    assert.ok(cue, "a wall cue plays");
+    assert.ok(files(key).includes(cue.soundFile), `${cue.soundFile} from ${key}`);
+    assert.equal(cue.delay, 275);
+  }
+  // Without sounds in the recipe the wall stays silent.
+  const { recipe, context } = boltAttack();
+  const { plan } = await playWall(recipe, context);
+  assert.ok(!plan.some((s) => s.kind === "sound"));
+});
+test("only the blocked target loses its impact", async () => {
+  const clear = { id: "t2", center: { x: 0, y: 600 }, w: 100, h: 100 };
+  const { recipe, context } = boltAttack();
+  const { calls, plan } = await playWall(recipe, { ...context, targets: [...context.targets, clear] });
+  const hits = plan.filter((s) => s.stageId === "hit");
+  assert.deepEqual(hits.map((s) => s.destination.id), ["t2"]);
+  assert.ok(calls.some((c) => c[0] === "atLocation" && c[1] === clear));
+  assert.ok(!calls.some((c) => c[0] === "atLocation" && c[1] === context.targets[0]));
+  assert.equal(plan.filter((s) => s.kind === "impact" && s.landing?.x === WALL_X).length, 1);
+  // The clear target still reacts; the shooter's recoil keeps the clear hit's time.
+  assert.deepEqual(plan.filter((s) => s.stageId === "react").map((s) => s.destination.id), ["t2"]);
+  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 600);
+});
+test("miss uses the planned line, not missed()", async () => {
+  const { recipe, context } = boltMiss();
+  const { calls } = await playWall(recipe, context, { collides: () => null });
+  assert.ok(!calls.some((c) => c[0] === "missed"));
+  const stretch = calls.find((c) => c[0] === "stretchTo");
+  assert.deepEqual(stretch[2], { cacheLocation: true });
+  // On past the target, off to one side, and fading out over its last 150 ms.
+  assert.ok(Math.hypot(stretch[1].x, stretch[1].y) > 600);
+  assert.ok(stretch[1].y !== 0);
+  assert.ok(calls.some((c) => c[0] === "fadeOut" && c[1] === 150));
+});
+test("a miss into a wall strikes the wall", async () => {
+  const { recipe, context } = boltMiss();
+  const { calls, plan } = await playWall(recipe, context);
+  assert.ok(!calls.some((c) => c[0] === "missed"));
+  assert.equal(calls.find((c) => c[0] === "stretchTo")[1].x, WALL_X);
+  assert.ok(filesOf(calls).includes(WALL_IMPACT));
+  assert.ok(!calls.some((c) => c[0] === "fadeOut" && c[1] === 150));
+  assert.equal(plan.filter((s) => s.kind === "impact").length, 1);
+});
+test("collides failure falls back to today", async () => {
+  const { recipe, context } = boltMiss();
+  const { calls, plan } = await playWall(recipe, context, { collides: () => { throw Error("no backend"); } });
+  assert.ok(calls.some((c) => c[0] === "missed"));
+  assert.equal(calls.find((c) => c[0] === "stretchTo")[1], context.targets[0]);
+  assert.ok(!plan.some((s) => s.flightTo));
+});
+test("setting off keeps today's flights", async () => {
+  const { recipe, context } = boltAttack();
+  const { calls, plan } = await playWall(recipe, context, { setup: (f) => { f.host.projectileWalls = () => false; } });
+  assert.equal(calls.find((c) => c[0] === "stretchTo")[1], context.targets[0]);
+  assert.ok(filesOf(calls).includes("jb2a.impact.001.orange"));
+  assert.ok(!filesOf(calls).includes(WALL_IMPACT));
+  assert.ok(!plan.some((s) => s.flightTo));
+  // Arcs off: every flight flies straight.
+  const flat = await playWall(recipe, context, { setup: (f) => { f.host.arcingThrows = () => false; } });
+  assert.equal(flat.plan.find((s) => s.stageId === "fly").flightArc.kind, "none");
+});
+test("preview never drops on-target stages", async () => {
+  const { recipe, context } = boltAttack();
+  const { calls } = await playWall(recipe, context, { options: { preview: true } });
+  assert.ok(filesOf(calls).includes("jb2a.impact.001.orange"));
+  assert.ok(!filesOf(calls).includes(WALL_IMPACT));
+});
+test("hit-stop contact lands on the wall impact", async () => {
+  const { recipe, context } = boltAttack({ outcome: "criticalSuccess" });
+  const { calls } = await playWall(recipe, context);
+  const tags = Object.fromEntries((await overridesByAsset(calls)).map(([asset, data]) => [asset, data.animaterHitStop]));
+  assert.deepEqual(tags[WALL_IMPACT], { afterMs: 0, holdMs: 100 });
+  assert.deepEqual(tags["jb2a.fire_bolt.orange"], { afterMs: 275, holdMs: 100 });
+});
+test("a fire bolt into a wall lights its path to the wall point", async () => {
+  const { recipe, context } = boltAttack();
+  const fiery = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, assets: ["jb2a.fireball.beam.orange"] } : s)) });
+  const { calls } = await playWall(fiery, context, { setup: (f) => { f.host.effectLights = () => true; } });
+  const glow = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
+  assert.deepEqual(glow.from, { x: 0, y: 0 });
+  assert.deepEqual(glow.to, { x: WALL_X, y: 0 });
+  assert.equal(glow.arriveMs, 275);
+  // Slowed, the glow and the wall impact still meet at the wall.
+  const slowed = await playWall(fiery, { ...context, tempo: 0.5 }, { setup: (f) => { f.host.effectLights = () => true; } });
+  const slowGlow = (await overridesByAsset(slowed.calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
+  assert.equal(slowGlow.arriveMs, 550);
+  assert.equal(slowed.plan.find((s) => s.kind === "impact").delay, 550);
 });

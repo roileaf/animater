@@ -1593,6 +1593,17 @@ Hooks.once("ready", () => {
     // Effects light the scene (world setting); in daylight only when allowed.
     effectLights: () => game.settings.get(ID, "effectLighting") !== false
       && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
+    // Shots stop at walls and throws arc (world settings); on while a setting is not registered.
+    projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
+    arcingThrows: () => { try { return game.settings.get(ID, "arcingThrows") !== false; } catch { return true; } },
+    // The first wall on a line ("sight" or "move"), and whether it is a door. A failing backend throws,
+    // and the runtime plays its flights as before.
+    collides: (a, b, type) => {
+      const hit = CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest" });
+      if (!hit) return null;
+      const door = [...(hit.edges ?? [])].some((edge) => Number((edge.object?.document ?? edge.object)?.door) > 0);
+      return { x: hit.x, y: hit.y, ...(door ? { door: true } : {}) };
+    },
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,

@@ -1,8 +1,8 @@
 import { uuid } from "../../core/uuid.mjs";
-import { ID, matchRecipe, planRecipe, validateRecipe } from "../../core/model.mjs";
+import { ID, matchRecipe, planRecipe, resolveAsset, validateRecipe } from "../../core/model.mjs";
 import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
-import { applyEffectOptions, applyMediaOptions, cropAreaArt } from "../../core/stage-options.mjs";
+import { applyEffectOptions, applyMediaOptions, cropAreaArt, normalizeOptions } from "../../core/stage-options.mjs";
 import { tokenFootprint, effectFootprint, artworkSize, offsetInGridSquares, beamGeometry } from "../media/media-preview.mjs";
 // A mask (a polygon, a { points } shape, or a list of them) grown by k around a point.
 function scaleMask(mask, at, k) {
@@ -24,6 +24,8 @@ import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 import { planLights } from '../lighting/effect-lights.mjs';
+import { withFlightPaths } from './flight-path.mjs';
+import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
 // ...and, when its attack starts beside it (a check's action), this long for that play to begin.
@@ -51,6 +53,63 @@ export function templateDocument(template) {
 export function withWeaponScale(recipe, factor) {
   if (!recipe.weaponMode || recipe.weaponMode === 'area' || !(factor > 0) || factor === 1) return recipe;
   return { ...recipe, stages: recipe.stages.map(s => ['impact', 'aura'].includes(s.kind) ? { ...s, scale: (s.scale ?? 1) * factor } : s) };
+}
+// A shot that ends at a wall bursts there in a small generic impact (the first installed), 0.6 of the shot's size.
+export const WALL_IMPACTS = ['jb2a.impact.001.white', 'jb2a.impact.002.white', 'jb2a.impact.010.white', 'jb2a.impact.005.white', 'jb2a.impact.009.white'];
+const WALL_IMPACT_SIZE = 0.6, WALL_IMPACT_MS = 900;
+// A shot that flies on past its target fades out over its last moments.
+const PAST_FADE_MS = 150;
+const tokenIdOf = (t) => t?.id ?? t?.document?.id;
+// When a flight reaches its end, from its start (its measured contact, else 55% of it).
+const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
+// Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
+// effects (its impacts, reactions and surface sounds) do not play; what followed its impacts moves up with the
+// shorter flight (flightArrivalCut); a small impact and a knock on stone (wood for a door) play at the wall point
+// as the shot arrives. asset: the wall impact, or null; cueOf(material) -> { file, volume, duration } | null.
+export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf = () => null } = {}) {
+  const walls = plan.filter((s) => s.flightOutcome === 'wall');
+  if (!walls.length) return plan;
+  const targets = new Set(plan.filter((s) => s.kind === 'impact' || s.subject === 'targets').map((s) => tokenIdOf(s.destination)).filter(Boolean));
+  const cut = new Set(walls.filter((f) => f.flightArrivalCut > 0).map((f) => tokenIdOf(f.endpoint)));
+  const dropped = (s) => blocked.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets');
+  // Stages tied (by afterStage, through any chain) to the target's impacts start that much earlier. A stage of
+  // another target stays, and so does one not on a target while those impacts also land on a target not cut short.
+  const earlier = new Map();
+  for (const f of walls.filter((w) => w.flightArrivalCut > 0)) {
+    const id = tokenIdOf(f.endpoint);
+    const anchors = new Set(plan.filter((s) => s.kind === 'impact' && tokenIdOf(s.destination) === id && (s.delay ?? 0) >= (f.delay ?? 0)).map((s) => s.stageId));
+    const elsewhere = () => plan.some((s) => anchors.has(s.stageId) && targets.has(tokenIdOf(s.destination)) && !cut.has(tokenIdOf(s.destination)));
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const s of plan) {
+        if (!s.afterStage || !anchors.has(s.afterStage) || earlier.has(s)) continue;
+        const on = tokenIdOf(s.destination);
+        if (targets.has(on) ? on !== id : elsewhere()) continue;
+        earlier.set(s, f.flightArrivalCut);
+        if (!anchors.has(s.stageId)) { anchors.add(s.stageId); grew = true; }
+      }
+    }
+  }
+  const out = [], struck = new Set();
+  for (const s of plan) {
+    if (dropped(s)) continue;
+    out.push(earlier.has(s) ? { ...s, delay: Math.max(0, (s.delay ?? 0) - earlier.get(s)) } : s);
+    if (s.flightOutcome !== 'wall') continue;
+    // Right after its flight, so the moment of contact (outcome.mjs strikeAt) finds it.
+    const at = Math.round((s.delay ?? 0) + arrivalOf(s)), landing = { x: s.flightTo.x, y: s.flightTo.y };
+    const key = `${Math.round(landing.x)},${Math.round(landing.y)},${at}`;
+    if (struck.has(key)) continue;
+    struck.add(key);
+    if (asset) out.push({
+      ...normalizeOptions({ kind: 'impact' }), stageId: `${s.stageId}-wall`, kind: 'impact', label: 'Strikes the wall', assets: [asset], asset,
+      delay: at, duration: WALL_IMPACT_MS, scale: 1, opacity: 1, destination: s.endpoint, landing,
+      // Its size in pixels: sized to the shot, not to the target it never reached.
+      footprint: WALL_IMPACT_SIZE * tokenFootprint(s.origin, grid) * (s.scale ?? 1),
+    });
+    const cue = cueOf(s.wallDoor ? 'wood' : 'stone');
+    if (cue) out.push({ stageId: `${s.stageId}-wall-cue`, kind: 'sound', label: 'Strikes the wall', assets: [], soundFile: cue.file, volume: cue.volume, duration: cue.duration, delay: at, destination: landing, surfaceRole: 'cue' });
+  }
+  return out;
 }
 // Namespaces and their entry counts: cheap enough to compare on every catalog read.
 function databaseSignature(database) {
@@ -281,6 +340,9 @@ export class AnimaterRuntime {
       voices: (this.surfaceVoices ??= []),
       gridSize: this.host.gridSize?.() ?? 100,
     });
+    // Where each shot really flies (stopping at walls) and how (straight or arcing). Planned before slow motion
+    // stretches the plan, so a shortened flight's contact stays in the clip's own time, as the lights read it.
+    plan = this.flightPaths(plan, recipe, context, preview);
     // Slow motion (a notable kill): the whole one-time play stretches, a long one less (never past the cap).
     let tempo = 1;
     if (context.tempo < 1) {
@@ -388,9 +450,10 @@ export class AnimaterRuntime {
         const media = mediaForReference(this.catalog, s.asset);
         const grid = this.host.gridSize?.() ?? 100;
         if (s.kind === "projectile") {
-          e.atLocation(s.origin, location)
+          // A planned path (flightFrom/flightTo) is literal points: every client flies the same line.
+          e.atLocation(s.flightFrom ?? s.origin, location)
             .size(artworkSize(tokenFootprint(s.origin, grid) * s.scale, media))
-            .moveTowards(s.landing ?? s.endpoint, {
+            .moveTowards(s.flightTo ?? s.landing ?? s.endpoint, {
               delay: s.moveDelay,
               ease: s.moveEase,
               rotate: false,
@@ -399,11 +462,18 @@ export class AnimaterRuntime {
         } else if (s.kind === "travel") {
           // Sequencer divides distance by scale.x. A scalar cancels its own
           // thickness; keep x=1 so the user's scale controls beam thickness.
-          e.atLocation(s.origin, location)
-            .stretchTo(s.endpoint)
-            .scale({ x: 1, y: s.scale });
-          if (["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock)
-            e.missed();
+          // A planned path already flies a miss wide (or into a wall); Sequencer's own miss bend is for unplanned ones.
+          if (s.flightTo)
+            e.atLocation(s.flightFrom, location)
+              .stretchTo(s.flightTo, { cacheLocation: true })
+              .scale({ x: 1, y: s.scale });
+          else {
+            e.atLocation(s.origin, location)
+              .stretchTo(s.endpoint)
+              .scale({ x: 1, y: s.scale });
+            if (["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock)
+              e.missed();
+          }
         } else if (s.kind === "template") {
           if (s.areaTile) {
             e.atLocation(s.areaTile.center, location).size(
@@ -469,7 +539,7 @@ export class AnimaterRuntime {
           if (s.kind === "sprite") e.scale(s.scale);
           else
             e.size(
-              artworkSize(effectFootprint(s,s.destination,grid,this.host.gridDistance?.()??5) * s.scale, media),
+              artworkSize((s.footprint ?? effectFootprint(s,s.destination,grid,this.host.gridDistance?.()??5)) * s.scale, media),
             );
           if (s.kind === "aura" || s.attach)
             e.attachTo(s.destination, {
@@ -480,6 +550,7 @@ export class AnimaterRuntime {
           if (s.maskToken) e.mask(s.destination);
         }
         applyEffectOptions(e, s);
+        if (s.flightOutcome === "past" && !(s.fadeOut >= PAST_FADE_MS)) e.fadeOut(PAST_FADE_MS);
         if (s.below) e.belowTokens();
         if (s.persist && !preview) {
           // A lasting area loops until its template (a Region on Foundry 14) is
@@ -540,14 +611,15 @@ export class AnimaterRuntime {
         lights = planLights(plan, {
           tiers,
           grid,
-          pointOf: (s) => soundPlace(s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? areaPoint : null) ?? soundPlace(s.destination),
+          // A flight with a planned path lights along it (a bolt stopped by a wall glows only to the wall).
+          pointOf: (s) => soundPlace(s.flightTo ?? s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? areaPoint : null) ?? soundPlace(s.destination),
           // The footprint the effect is sized to, as a radius in pixels.
           radiusOf: (s) => {
             if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : along ? area.length : area?.diameter * s.scale);
             if (s.kind === "travel" || s.kind === "projectile") return half(tokenFootprint(s.origin, grid) * s.scale);
-            return half(effectFootprint(s, s.destination, grid, gridDistance) * s.scale);
+            return half((s.footprint ?? effectFootprint(s, s.destination, grid, gridDistance)) * s.scale);
           },
-          originOf: (s) => soundPlace(s.origin),
+          originOf: (s) => soundPlace(s.flightFrom ?? s.origin),
           // Effects attached to a token (auras, a following emanation) carry their light with them; see build().
           follows: (s) => s.kind === "template"
             ? !s.areaTile && !along && !!s.followSource && !!context.source
@@ -666,6 +738,34 @@ export class AnimaterRuntime {
       if (failed || preview || !plan.some((s) => s.persist))
         this.sessions.delete(session);
     }
+  }
+  // The plan with its flights' paths (engines/playback/flight-path.mjs) and their wall strikes. Without a wall
+  // test, or when it fails (no collision backend), the flights play as they always did.
+  flightPaths(plan, recipe, context, preview) {
+    const grid = this.host.gridSize?.() ?? 100, collides = this.host.collides;
+    let paths;
+    try {
+      paths = withFlightPaths(plan, {
+        context, gridPx: grid, preview,
+        collides: collides ? (a, b, type) => this.host.collides(a, b, type) : null,
+        walls: this.host.projectileWalls?.() !== false,
+        arcs: this.host.arcingThrows?.() !== false,
+      });
+    } catch {
+      return plan;
+    }
+    const random = context.random ?? Math.random;
+    // The knock on the wall: the recipe's own surface sounds for stone or wood, else Animater's bundled ones.
+    // A recipe that plays no sounds stays silent.
+    const sounded = recipe.stages.some((s) => s.kind === 'sound');
+    const surfaces = recipe.stages.find((s) => s.surfaces)?.surfaces;
+    const cueOf = (material) => {
+      if (!sounded) return null;
+      const set = surfaces?.[material] ?? addSurfaceSounds(null, [], { sounds: {}, blow: 'blunt', anchor: { stageId: 'wall', delay: 0 } })[0]?.surfaces?.[material];
+      return set?.length ? set[Math.floor(random() * set.length)] : null;
+    };
+    const asset = resolveAsset({ kind: 'impact', assets: WALL_IMPACTS }, this.catalog);
+    return withWallStrikes(paths.plan, paths.blocked, { asset, grid, cueOf });
   }
   wait(delay, session) {
     return new Promise((resolve) => {
