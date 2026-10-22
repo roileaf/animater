@@ -393,6 +393,8 @@ export function matchRecipe(recipes, event) {
       event.item?.name,
       event.item?.slug,
       event.item?.system?.slug,
+      // D&D 5e's identifier ("fireball") stays the same in every language and every book, unlike the name.
+      event.item?.system?.identifier,
       event.item?.system?.baseItem,
       event.item?.system?.group,
       event.activityName,

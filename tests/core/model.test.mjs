@@ -209,3 +209,8 @@ test("a copy of a spell linked back to the SRD original, with activities of its 
   assert.equal(matchRecipe([saved], cast("second", ["dnd5eactivity000", "second"])), null);
   assert.equal(matchRecipe([saved], cast("dnd5eactivity000", ["dnd5eactivity000", "second"]))?.id, "mine");
 });
+test("a D&D 5e recipe plays for its spell in any language: the identifier matches when the name is translated", () => {
+  const recipe = { id: "r", name: "My fireball", trigger: "template", enabled: true, match: "fireball", stages: [] };
+  assert.equal(matchRecipe([recipe], { type: "template", item: { name: "Огненный шар", system: { identifier: "fireball" } } })?.id, "r");
+  assert.equal(matchRecipe([recipe], { type: "template", item: { name: "Огненный шар", system: { identifier: "fire-storm" } } }), null);
+});
