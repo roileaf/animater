@@ -4,6 +4,9 @@ import { timedStages } from "../engines/playback/composition.mjs";
 // a critical hit lands harder and knocks the target back further. Outcomes use PF2e's
 // degrees of success; D&D 5e attack rolls are mapped onto them (see dnd5eAttackOutcome).
 export const MISS = new Set(["failure", "criticalFailure"]);
+// An attack whose result is not shown: a GM's private roll, or a D&D target without an AC (total cover).
+// It plays neutrally, neither a hit nor a miss.
+export const HIDDEN = "hidden";
 export const CRIT_IMPACT_SCALE = 1.35;
 
 const onTargets = (s) => s.subject === "targets" || ["impact"].includes(s.kind);
@@ -40,14 +43,17 @@ function strikeTime(recipe) {
 
 export function withOutcome(recipe, { outcome, type, messageId, id } = {}) {
   if (!outcome || !recipe?.stages?.length) return recipe;
-  if (MISS.has(outcome) && type === "attack") {
+  const neutral = outcome === HIDDEN;
+  if ((MISS.has(outcome) || neutral) && type === "attack") {
     // The flight still plays (bent wide by the runtime) and a melee swing still cuts the air;
     // nothing reaches the target, which dodges aside as the attack arrives.
+    // A hidden result shows the attack only: nothing lands, no dodge, no block, no fumble.
     const strike = strikeTime(recipe);
-    const dropped = new Set(recipe.stages.filter((s) => s.kind !== "sound" && onTargets(s) && !swing(s) && !isDodge(s)).map((s) => s.stageId));
+    const dropped = new Set(recipe.stages.filter((s) => s.kind !== "sound" && onTargets(s) && !swing(s) && (neutral || !isDodge(s))).map((s) => s.stageId));
     // A surface cue still sounds on a miss (a raised shield's block, a magical shield's ring): it keeps the blow's time.
     const at = (s) => dropped.has(s.afterStage) ? { ...s, afterStage: "", startMode: undefined, startRef: undefined, delay: Math.max(0, Math.round(strike ?? s.delay ?? 0)) } : s;
-    let stages = recipe.stages.filter((s) => !dropped.has(s.stageId) && !(s.kind === "sound" && !s.surfaces && dropped.has(s.afterStage))).map((s) => (s.kind === "sound" && s.surfaces ? at(s) : s));
+    let stages = recipe.stages.filter((s) => !dropped.has(s.stageId) && !(s.kind === "sound" && (neutral || !s.surfaces) && dropped.has(s.afterStage))).map((s) => (s.kind === "sound" && s.surfaces ? at(s) : s));
+    if (neutral) return stages.some((s) => s.kind !== "sound") ? { ...recipe, stages } : recipe;
     if (strike !== null && !stages.some(isDodge))
       stages.push({ stageId: "miss-dodge", kind: "motion", motion: "dodge", subject: "targets", delay: Math.max(0, Math.round(strike - DODGE.lead)), duration: DODGE.duration, distance: 0.38, intensity: 0.85, motionArrival: 35, motionHold: 15, motionSide: sideOf(messageId ?? id), assets: [], label: "Target dodges", optionalTargets: true });
     // A critical failure is a fumble: the attacker stumbles as the attack goes astray.
@@ -101,24 +107,30 @@ export function dnd5eSaveOutcome(rolls = [], { isGM = globalThis.game?.user?.isG
   return privacy === "gm" ? "hidden" : Number(roll.total) >= dc ? "success" : "failure";
 }
 
-// D&D 5e, per target (several targets each against their own AC), by token id. Unknown ACs are left out.
+// A target's AC, or NaN when D&D left it out: a target in total cover is stored with `ac: null`,
+// and Number(null) would be 0, a hit for every roll.
+const acOf = (t) => (t?.ac === null || t?.ac === undefined || t?.ac === "" ? NaN : Number(t.ac));
+// D&D 5e, per target (several targets each against their own AC), by token id. A target without
+// an AC is hidden (plays neutrally); a bare uuid with no target data is left out.
 export function dnd5eTargetOutcomes(rolls = [], targets = []) {
   const roll = rolls[0], total = Number(roll?.total);
   if (!roll) return {};
   return Object.fromEntries(targets.map((t) => {
-    const id = String((typeof t === "string" ? t : t?.token ?? t?.uuid) ?? "").split(".").at(-1), ac = Number(t?.ac);
-    const outcome = roll.isCritical ? "criticalSuccess" : roll.isFumble ? "criticalFailure" : Number.isFinite(ac) && Number.isFinite(total) ? (total >= ac ? "success" : "failure") : null;
+    const id = String((typeof t === "string" ? t : t?.token ?? t?.uuid) ?? "").split(".").at(-1), ac = acOf(t);
+    const outcome = roll.isCritical ? "criticalSuccess" : roll.isFumble ? "criticalFailure" : !Number.isFinite(total) ? null
+      : Number.isFinite(ac) ? (total >= ac ? "success" : "failure") : typeof t === "object" && t ? HIDDEN : null;
     return [id, outcome];
   }).filter(([id, outcome]) => id && outcome));
 }
 // D&D 5e: a natural 20 is a critical hit, a natural 1 a miss; otherwise the total
-// against the single target's AC decides (unknown with several targets or no AC).
+// against the single target's AC decides (unknown with several targets; hidden without an AC).
 export function dnd5eAttackOutcome(rolls = [], targets = []) {
   const roll = rolls[0];
   if (!roll) return null;
   if (roll.isCritical) return "criticalSuccess";
   if (roll.isFumble) return "criticalFailure";
-  const ac = targets.length === 1 ? Number(targets[0]?.ac) : NaN;
-  if (!Number.isFinite(ac) || !Number.isFinite(Number(roll.total))) return null;
+  if (targets.length !== 1 || !Number.isFinite(Number(roll.total))) return null;
+  const ac = acOf(targets[0]);
+  if (!Number.isFinite(ac)) return typeof targets[0] === "object" && targets[0] ? HIDDEN : null;
   return Number(roll.total) >= ac ? "success" : "failure";
 }

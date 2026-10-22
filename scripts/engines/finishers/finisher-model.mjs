@@ -41,8 +41,11 @@ export function killFinisher(recipes, item = {}, defaultId = "", { crit = false,
 // The GM's finishers that a critical hit with this item plays (when no player pick plays instead).
 export const critFinishers = (recipes, item = {}) => matchAny(recipes, item, ["critical", "criticalOrKill"]);
 
+// A hidden result (a GM's private roll, a D&D target without an AC) is as unknown as none.
+const unknown = (outcome) => outcome === undefined || outcome === null || outcome === "hidden";
+
 export function passesSuccess(finisher, outcome) {
-  if (outcome === undefined || outcome === null) return true;
+  if (unknown(outcome)) return true;
   // Needs is hidden for the critical modes: a value stored before a switch must not gate them.
   if (["critical", "criticalOrKill"].includes(finisher.on)) return true;
   return finisher.success === "critical" ? outcome === "criticalSuccess" : ["success", "criticalSuccess"].includes(outcome);
@@ -52,7 +55,7 @@ export function passesSuccess(finisher, outcome) {
 // skip it. Only a use without any roll passes without an outcome.
 export function usePasses(finisher, event) {
   const moment = finisherMoment(event);
-  if (!moment || (moment === "roll" && (event.outcome === undefined || event.outcome === null))) return false;
+  if (!moment || (moment === "roll" && unknown(event.outcome))) return false;
   return passesSuccess(finisher, event.outcome);
 }
 

@@ -356,3 +356,11 @@ test('a hit with no landing measured for its variant keeps the recipe contact', 
   const past = withFlightPaths([bomb(600)], opts({ context: ctx({ outcome: 'failure' }), collides: () => null })).plan[0];
   assert.deepEqual([past.flightOutcome, past.contact], ['past', 1080]);
 });
+
+test('a hidden roll flies like a hit: to a target in sight, into the wall when the target is hidden', () => {
+  const seen = withFlightPaths([flight()], opts({ context: ctx({ outcome: 'hidden' }), collides: () => null }));
+  assert.equal(seen.plan[0].flightOutcome, 'target');
+  assert.equal(seen.missed.size, 0);
+  const hidden = withFlightPaths([flight({ kind: 'projectile' })], opts({ context: ctx({ outcome: 'hidden' }) }));
+  assert.equal(hidden.plan[0].flightOutcome, 'wall');
+});

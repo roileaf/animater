@@ -113,7 +113,7 @@ test("D&D 5e: a GM's private roll animates without its outcome", () => {
   const rolls = (mode) => [{ total: 25, isCritical: true, options: { rollMode: mode }, parent: { id: "m", author: gm, whisper: mode === "gmroll" ? ["gm"] : [] } }];
   const e = dnd5eEvent("attack", subject, { rolls: rolls("gmroll") });
   assert.ok(e && !e.skipped, "monsters in Private GM Roll mode animate");
-  assert.equal(e.outcome, undefined);
+  assert.equal(e.outcome, "hidden", "plays neutrally: neither a hit nor a miss");
   assert.equal(e.private, true);
   assert.equal(dnd5eEvent("attack", subject, { rolls: rolls("publicroll") }).outcome, "criticalSuccess");
   const mine = [{ total: 25, options: { rollMode: "gmroll" }, parent: { id: "m", author: player, whisper: ["gm"] } }];

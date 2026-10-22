@@ -84,9 +84,12 @@ export function planMarks(plan, { context = {}, recipe, tiers, gridPx = 100, poi
   if (!element) return marks;
   const isTier0 = stage => tiers?.get(stage.stageId) === 0;
   const missed = MISS.has(context.outcome);
+  // A hidden roll (a GM's private attack) must not mark under its target: only a wall it strikes.
+  const hiddenRoll = context.outcome === 'hidden';
   const lands = stage => {
     if (stage.kind === 'impact' || stage.kind === 'template') return true;
     if (!FLIGHTS.has(stage.kind) || stage.flightOutcome === 'past') return false;
+    if (hiddenRoll) return stage.flightOutcome === 'wall';
     // A miss whose end was never planned (Sequencer bends it wide) lands nowhere known.
     return !missed || !!stage.flightTo || !!stage.landing;
   };

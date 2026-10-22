@@ -11,7 +11,7 @@ test("a GM's private roll animates for the table, without giving away its result
   const e = twoeEvent(strike({ whisper: ["gm"] }), "gm");
   assert.ok(e, "monsters rolled in Private GM Roll mode still animate");
   assert.equal(e.type, "attack");
-  assert.equal(e.outcome, undefined, "no crit, hit or miss variant reveals the hidden roll");
+  assert.equal(e.outcome, "hidden", "no crit, hit or miss variant reveals the hidden roll");
   assert.equal(e.private, true);
   assert.equal(twoeEvent(strike(), "gm").outcome, "criticalSuccess", "a public roll keeps its outcome");
   assert.match(twoeEvent(strike({ whisper: ["gm"], blind: true }), "gm").skipped, /blind roll/, "blind rolls stay hidden");

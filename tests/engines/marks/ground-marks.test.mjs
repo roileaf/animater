@@ -203,3 +203,15 @@ test('markAlpha: before landing nothing; custom timings', () => {
   assert.equal(markAlpha(50, { inMs: 100 }), 0.5);
   assert.equal(markAlpha(1500, { holdMs: 1000, fadeMs: 1000 }), 0.5);
 });
+
+test('a hidden attack marks only a wall it strikes, never under its target', () => {
+  const context = { element: 'fire', outcome: 'hidden', sceneId: 's' };
+  const at = { x: sq(3), y: sq(3) };
+  const onTarget = st('bolt', 'projectile', at, { flightTo: at, flightOutcome: 'target', size: sq(1) });
+  assert.equal(planMarks([onTarget], opts({ bolt: 0 }, { context })).size, 0);
+  const flask = st('flask', 'travel', at, { landing: at });
+  assert.equal(planMarks([flask], opts({ flask: 0 }, { context })).size, 0);
+  const wall = { x: sq(4), y: sq(1) };
+  const atWall = st('bolt', 'projectile', wall, { flightTo: wall, flightOutcome: 'wall', size: sq(1) });
+  assert.equal(planMarks([atWall], opts({ bolt: 0 }, { context })).size, 1);
+});

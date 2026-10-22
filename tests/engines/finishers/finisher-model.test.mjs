@@ -64,6 +64,8 @@ test("a crit plays the item's critical and crit-or-kill finishers", () => {
 test("a use finisher on a roll needs a known outcome; a plain use needs none", () => {
   const plain = normalizeFinisher({ on: "use" });
   assert.equal(usePasses(plain, { type: "attack", outcome: null }), false, "D&D with several targets or hidden AC");
+  assert.equal(usePasses(plain, { type: "attack", outcome: "hidden" }), false, "a GM's private roll may be a miss");
+  assert.equal(passesSuccess(plain, "hidden"), true, "hidden reads as unknown, as before");
   assert.equal(usePasses(plain, { type: "check" }), false);
   assert.equal(usePasses(plain, { type: "attack", outcome: "success" }), true);
   assert.equal(usePasses(plain, { type: "attack", outcome: "failure" }), false);

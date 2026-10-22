@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { withOutcome, dnd5eAttackOutcome, CRIT_IMPACT_SCALE, saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from "../../scripts/systems/outcome.mjs";
+import { withOutcome, dnd5eAttackOutcome, dnd5eTargetOutcomes, CRIT_IMPACT_SCALE, saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from "../../scripts/systems/outcome.mjs";
 import { validateRecipe } from "../../scripts/core/model.mjs";
 import { motionPose } from "../../scripts/engines/motion/motion.mjs";
 
@@ -78,4 +78,18 @@ test("four degrees on saves: the saving creature reacts by its result", () => {
   assert.equal(dnd5eSaveOutcome([{ total: 13, options: { target: 14 } }]), "failure");
   assert.equal(dnd5eSaveOutcome([{ total: 13, options: {} }]), null, "no DC known");
   assert.equal(dnd5eSaveOutcome([{ total: 20, options: { target: 14, rollMode: "gmroll" } }]), null);
+});
+
+test("D&D 5e: a target without an AC (total cover) is unknown, never AC 0", () => {
+  assert.equal(dnd5eAttackOutcome([{ total: 6 }], [{ ac: null }]), "hidden", "a miss at total cover is not a hit");
+  assert.equal(dnd5eAttackOutcome([{ total: 6 }], [{}]), "hidden");
+  assert.equal(dnd5eAttackOutcome([{ total: 6 }], [{ ac: "" }]), "hidden");
+  assert.equal(dnd5eAttackOutcome([{ total: 25, isCritical: true }], [{ ac: null }]), "criticalSuccess", "a natural 20 still decides");
+  assert.equal(dnd5eAttackOutcome([{ total: 3, isFumble: true }], [{ ac: null }]), "criticalFailure", "a natural 1 still decides");
+  assert.deepEqual(dnd5eTargetOutcomes([{ total: 6 }], [{ token: "Scene.s.Token.a", ac: null }, { token: "Scene.s.Token.b", ac: 5 }]), { a: "hidden", b: "success" });
+});
+
+test("a hidden attack plays neutrally: the flight, but nothing lands on the target, no dodge or fumble", () => {
+  assert.deepEqual(withOutcome(bolt(), { outcome: "hidden", type: "attack" }).stages.map((s) => s.stageId), ["c", "t", "r"]);
+  assert.equal(withOutcome(bolt(), { outcome: "hidden", type: "damage" }).stages.length, 6, "damage keeps its look");
 });
