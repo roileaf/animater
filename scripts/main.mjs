@@ -16,6 +16,7 @@ import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
+import { registerSequencerSpeedups, sequencerSpeedupsApi } from "./integrations/sequencer-turbo/index.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -1148,6 +1149,7 @@ function workspaceHost() {
   };
 }
 Hooks.once("init", () => {
+  registerSequencerSpeedups(ID);
   game.settings.register(ID,'mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
   game.settings.register(ID,'tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
   for(const [key,name,hint] of [
@@ -1715,6 +1717,7 @@ Hooks.once("ready", () => {
     effects: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), effects: clone(game.system.id==='sf2e'?sfEntries('effect'):game.system.id==='dnd5e'?dndEntries('effect'):game.system.id==='pf2e'?PF2E_EFFECTS:[]) }),
     refreshPersistent: () => persistentStates?.reconcile(),
     finishers: finishersApi,
+    sequencerSpeedups: sequencerSpeedupsApi,
     // id, saved recipe name, or a recipe object (e.g. from resolve()).
     async play(id, context = manualContext()) {
       const recipe = findRecipe(id);

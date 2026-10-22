@@ -89,6 +89,18 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Add token filters to catalog animations | World | Catalog animations add matching Tokenshade effects on the token itself (flames, frost, glows, shimmer) |
 | Add FXMaster scene effects to catalog animations | World | Optional scene effects when FXMaster is active |
 | Take over from Automated Animations | World | When both modules would animate the same item, Animater plays and Automated Animations stands down |
+| Sequencer speed-ups | Each player | Makes Sequencer itself faster, for every module's effects (on by default; see below) |
+
+### Sequencer speed-ups
+
+Animater patches Sequencer in memory (its files are untouched) so every Sequencer effect in the world costs less per frame:
+
+- **Animation engine**: the same animations, with no per-frame allocations. Tested frame for frame against Sequencer's own engine.
+- **Attached effects**: effects attached to or stretched between tokens only recompute when something they follow moved.
+- **Positional sounds**: a sound's area and muffling are reused until the sound, the listener or the walls change.
+- **Off-screen effects**: effects with filters or masks are not drawn while out of view.
+
+Cached results are recomputed every 30 frames regardless (*Sequencer speed-ups: safety refresh*). If an effect from any module looks wrong, turn the setting off. Single patches can be switched from the console, e.g. `game.modules.get("animater").api.sequencerSpeedups.set("sound", false)`. To measure, run `await game.modules.get("animater").api.sequencerSpeedups.profile(10)` with the setting on and again with it off.
 
 The per-user preview setting can minimize the Animater window during local previews and table playback, then restore it afterward.
 

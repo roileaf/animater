@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Sequencer speed-ups.** Animater now makes Sequencer itself cheaper to run, for every module's effects, not only Animater's. Sequencer's animation engine no longer allocates every frame (same results, checked frame for frame against the original); effects attached to or stretched between tokens only recompute when something moved; positional sounds stop rebuilding their area and muffling every frame; and effects with filters or masks are skipped while off-screen. On by default under **Sequencer speed-ups** (each player); turn it off if an effect from any module looks wrong.
+
 ## 1.6.3 (2026-10-22)
 
 - **A Light animation quality.** **Animation quality (this device)** has a new **Light** level between Full and Balanced: every animation and every layer still plays, with token motion, but cheaper to draw. Token shader filters are off (as on Balanced), and the costliest effect filters, blur and glow, are left out; colours and tints stay. Balanced and Low now leave out blur and glow too. Like the other levels, it only changes what you see on your own screen.
