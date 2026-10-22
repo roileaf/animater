@@ -36,7 +36,7 @@ import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
 import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
 import { weaponFamily } from "./systems/daggerheart.mjs";
-import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
+import { installSoundPitch, muffleEar } from "./engines/sound/sound-pitch.mjs";
 import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acoustics.mjs";
 import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
@@ -1688,7 +1688,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const value = app.document?.getFlag?.(ID, "acoustics") ?? "";
   const group = document.createElement("div");
   group.className = "form-group";
-  group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "As recorded"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's hit sounds ring in this scene.</p>`;
+  group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);
 });
 Hooks.once("ready", () => {
@@ -1699,17 +1699,23 @@ Hooks.once("ready", () => {
       const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
       return CONFIG.Canvas.polygonBackends.sound.create(at, { type: "sound", radius: 30 * canvas.grid.size, ...(level ? { level } : {}) })?.points;
     },
+    // A sound sweep also stops at the canvas edge (its outer bounds): that edge is open, not a wall.
+    bounds: () => canvas.dimensions?.rect ?? null,
   });
   for (const hook of ["createWall", "updateWall", "deleteWall", "canvasReady", "updateScene", "createLevel", "updateLevel", "deleteLevel"])
     Hooks.on(hook, () => rooms.bump());
   // One shared reverb per room class, built from Foundry's own impulse in the context Animater's sounds play in.
   const reverb = createReverbBuses({ contextOf: () => game.audio?.interface ?? null });
-  // Where this player hears walls from: their controlled token, else (for a player) their first token on the
-  // scene, else the middle of their view.
-  const soundEar = () => {
-    const token = canvas.tokens?.controlled?.[0] ?? (game.user.isGM ? null : canvas.tokens?.placeables?.find((t) => t.isOwner)) ?? null;
-    return token?.center ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y };
-  };
+  // Load Foundry's impulse ahead of the first sound (it waits for the audio context, and retries cheaply).
+  reverb.ready();
+  Hooks.on("canvasReady", () => reverb.ready());
+  // Where this player hears walls from (none for a GM with no token selected: nothing muffled, as in Foundry).
+  const soundEar = () => muffleEar({
+    controlled: canvas.tokens?.controlled?.[0] ?? null,
+    owned: game.user.isGM ? null : canvas.tokens?.placeables?.find((t) => t.isOwner) ?? null,
+    isGM: game.user.isGM,
+    view: { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y },
+  });
   // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
   installSoundPitch({
     enabled: () => game.settings.get(ID, "hitSounds") !== false,
@@ -1742,8 +1748,10 @@ Hooks.once("ready", () => {
     muffle: (data) => {
       const at = data.animaterAt;
       if (!game.settings.get(ID, "muffleWalls") || !canvas.ready || (data.animaterScene && data.animaterScene !== canvas.scene?.id)) return false;
+      const ear = soundEar();
+      if (!ear) return false;
       const level = typeof data.animaterLevel === "string" ? canvas.scene?.levels?.get?.(data.animaterLevel) : undefined;
-      return CONFIG.Canvas.polygonBackends.sound.testCollision(soundEar(), at, { type: "sound", mode: "any", ...(level ? { level } : {}) }) === true;
+      return CONFIG.Canvas.polygonBackends.sound.testCollision(ear, at, { type: "sound", mode: "any", ...(level ? { level } : {}) }) === true;
     },
   });
   void loadDndBooks();

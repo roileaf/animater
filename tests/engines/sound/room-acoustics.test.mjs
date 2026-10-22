@@ -39,6 +39,32 @@ test('measurePolygon: a half-open sweep counts the share at the radius', () => {
   assert.equal(m.openness, 0.5);
 });
 
+// A small unwalled map: the sweep stops at the canvas edge, never at its reach.
+const canvasRect = { x: 0, y: 0, width: 2500, height: 2500 };
+test('measurePolygon: the canvas edge is open, not a wall', () => {
+  const pts = [0, 0, 2500, 0, 2500, 2500, 0, 2500];
+  const m = measurePolygon(pts, { origin: { x: 1250, y: 1250 }, radius: 3000, gridPx: 100, bounds: canvasRect });
+  assert.equal(m.openness, 1);
+  assert.equal(classifyRoom(m), 'open');
+  // Without the bounds it would read as a closed 625-square hall.
+  assert.equal(classifyRoom(measurePolygon(pts, { origin: { x: 1250, y: 1250 }, radius: 3000, gridPx: 100 })), 'hall');
+});
+
+test('measurePolygon: walls on two sides, the canvas edge on the others', () => {
+  // A wall across x = 1000 and one across y = 1000, the rest the canvas edge.
+  const pts = [1000, 1000, 2500, 1000, 2500, 2500, 1000, 2500];
+  const m = measurePolygon(pts, { origin: { x: 1500, y: 1500 }, radius: 3000, gridPx: 100, bounds: canvasRect });
+  assert.equal(m.openness, 0.75);
+  // A closed room inside the canvas stays closed.
+  const room = measurePolygon(square(200).map((v) => v + 1250), { origin: { x: 1250, y: 1250 }, radius: 3000, gridPx: 100, bounds: canvasRect });
+  assert.equal(room.openness, 0);
+});
+
+test('cache measures against the canvas bounds', () => {
+  const cache = createRoomCache({ sweep: () => [0, 0, 2500, 0, 2500, 2500, 0, 2500], bounds: () => canvasRect });
+  assert.equal(cache.classAt('s', 'l', { x: 1250, y: 1250 }, 100), 'open');
+});
+
 test('cache sweeps once per square and epoch', () => {
   let sweeps = 0;
   const cache = createRoomCache({ sweep: () => { sweeps++; return square(200); } });

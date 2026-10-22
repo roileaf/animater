@@ -10,7 +10,7 @@ export const HIT_SOUND_FIELDS = [
   { key: "surfaceGore", scope: "client", type: "select", choices: { full: "Full", subtle: "Subtle", off: "Off" }, name: "Blood",
     hint: "The splatter of blood on hits to flesh. Subtle keeps it faint; Off removes it for you only." },
   { key: "surfaceEcho", scope: "client", type: "range", min: 0, max: 1.5, step: 0.1, name: "Echo",
-    hint: "How much room the hits ring in: 0 for a dry sound, higher for a bigger space. A scene’s own acoustics (Scene configuration) come on top." },
+    hint: "How much room the hits ring in: 0 for a dry sound, higher for a bigger space. Also scales the room reverb Animater’s sounds get from a scene’s walls. A scene’s own acoustics (Scene configuration) come on top." },
   { key: "surfaceSpace", scope: "client", type: "boolean", name: "Hear hits where they happen",
     hint: "Sounds come from where they happen: further from your token is quieter and duller, and a hit on the left of your screen sounds on the left. Without a token, from the middle of your view." },
 ];

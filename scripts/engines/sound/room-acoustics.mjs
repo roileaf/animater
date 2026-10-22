@@ -13,15 +13,18 @@ export function classifyRoom({ openness, area }) {
   if (area > 120) return 'hall';
   return 'room';
 }
-// A sweep polygon (flat x,y list): openness is the share of corners out at the sweep's reach (no wall there),
-// area is in grid squares.
-export function measurePolygon(points, { origin, radius, tolerance = 2, gridPx = 100 } = {}) {
+// A sweep polygon (flat x,y list): openness is the share of corners out at the sweep's reach or on the edge of
+// the canvas (bounds, {x, y, width, height}: the sweep stops there too, but no wall stands there), area is in grid
+// squares.
+export function measurePolygon(points, { origin, radius, tolerance = 2, gridPx = 100, bounds = null } = {}) {
   const n = Math.floor((points?.length ?? 0) / 2);
   if (n < 3) return { openness: 0, area: 0 };
+  const onEdge = bounds ? (x, y) => Math.abs(x - bounds.x) <= tolerance || Math.abs(x - (bounds.x + bounds.width)) <= tolerance
+    || Math.abs(y - bounds.y) <= tolerance || Math.abs(y - (bounds.y + bounds.height)) <= tolerance : () => false;
   let far = 0, twice = 0;
   for (let i = 0; i < n; i++) {
     const x = points[i * 2], y = points[i * 2 + 1], j = (i + 1) % n;
-    if (Math.hypot(x - origin.x, y - origin.y) >= radius - tolerance) far++;
+    if (Math.hypot(x - origin.x, y - origin.y) >= radius - tolerance || onEdge(x, y)) far++;
     twice += x * points[j * 2 + 1] - points[j * 2] * y;
   }
   return { openness: far / n, area: Math.abs(twice / 2) / (gridPx * gridPx) };
@@ -30,7 +33,8 @@ export function measurePolygon(points, { origin, radius, tolerance = 2, gridPx =
 // A failed sweep (or one with no real shape) is remembered too, but only for a few seconds, so a canvas that
 // was not ready yet recovers without every sound re-sweeping a square that keeps failing.
 const FAIL_MS = 5000;
-export function createRoomCache({ sweep, limit = 500, now = () => Date.now() }) {
+// bounds(): the canvas rectangle the sweep is clipped to, read at sweep time.
+export function createRoomCache({ sweep, bounds = () => null, limit = 500, now = () => Date.now() }) {
   const known = new Map();
   let epoch = 0;
   return {
@@ -43,7 +47,7 @@ export function createRoomCache({ sweep, limit = 500, now = () => Date.now() }) 
       let room = null;
       try {
         const points = sweep(centre, levelId);
-        if (points && points.length >= 6) room = classifyRoom(measurePolygon(points, { origin: centre, radius: 30 * gridPx, gridPx }));
+        if (points && points.length >= 6) room = classifyRoom(measurePolygon(points, { origin: centre, radius: 30 * gridPx, gridPx, bounds: bounds() }));
       } catch {
         room = null;
       }

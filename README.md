@@ -104,11 +104,11 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Projectiles stop at walls | World | Arrows, bolts, spell bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see (on by default) |
 | Room acoustics from walls | World | In scenes without an Acoustics choice, Animater's sounds echo to fit the space around them, worked out from the walls: dry outdoors, tight in small rooms, ringing in halls (on by default; see below) |
 | Room reverb on my screen | Each player | Turn off to hear Animater's sounds without room reverb. Scenes with an Acoustics choice keep their echo (on by default) |
-| Muffle sounds behind walls | Each player | Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do, heard from your selected token, else your own token, else the middle of your view (on by default) |
+| Muffle sounds behind walls | Each player | Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do, heard from your selected token, else your own token, else (players) the middle of your view; a GM with no token selected hears nothing muffled, as in Foundry (on by default) |
 
 ### Scene acoustics
 
-Each scene's configuration has an **Animater acoustics** choice: open air, hall or cave. A scene with a choice sounds that way everywhere. A scene left unset follows its walls: each sound gets reverb to fit the space where it happens, worked out from the walls around it (dry in the open, short and tight in a small room, fuller in a room, long and dark in a large hall), using Foundry's own reverb. Every player hears the same room for the same spot; a player viewing another scene hears it dry. Turn this off with **Room acoustics from walls**.
+Each scene's configuration has an **Animater acoustics** choice: open air, hall or cave. A scene with a choice sounds that way everywhere. A scene left unset (**From the walls**) follows its walls: each sound gets reverb to fit the space where it happens, worked out from the walls around it (dry in the open, short and tight in a small room, fuller in a room, long and dark in a large hall), using Foundry's own reverb. Every player hears the same room for the same spot; a player viewing another scene hears it dry. The edge of the canvas counts as open, not as a wall. Each player's **Echo** slider (Hit sounds menu) scales this reverb. Turn this off with **Room acoustics from walls**.
 
 ### Faster animations
 

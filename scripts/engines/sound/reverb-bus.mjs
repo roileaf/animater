@@ -1,6 +1,6 @@
 // Room-aware sound, the audio side: one shared reverb per room class per audio context. A sound joins the room
-// it is heard in through a send, which slots into its effects like Foundry's own reverb: the dry sound passes
-// through untouched and a quieter copy feeds the room's convolver.
+// it is heard in through a send: a quieter copy of the sound, taken after its own volume, feeds the room's
+// convolver, while the dry sound plays on untouched.
 import { ROOMS, shapeImpulse } from './room-acoustics.mjs';
 
 // Foundry's own reverb impulse, loaded as its ConvolverEffect does.
@@ -74,18 +74,18 @@ export function createReverbBuses({ contextOf = () => null, loadImpulse = () => 
   };
   return {
     ready() { load(); return !!impulse; },
-    // Runs inside Foundry's play path: never throws, null means "play it dry".
+    // Runs inside Foundry's play path: never throws, null means "play it dry". Else the send's input: the caller
+    // feeds it the sound after its volume, so the sound's own level, fades and mutes scale its reverb too.
     send(context, room, level) {
       try {
         load();
         if (!impulse || !context || !ROOMS[room] || !(Number.isFinite(level) && level > 0)) return null;
         const into = busesFor(context)?.[room];
         if (!into) return null;
-        const through = context.createGain(), tap = context.createGain();
+        const tap = context.createGain();
         tap.gain.value = level;
         tap.connect(into);
-        through.onConnectFrom = (node) => node.connect(tap);
-        return through;
+        return tap;
       } catch {
         return null;
       }

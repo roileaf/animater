@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {installSoundPitch,placeSound,sceneEcho} from '../../../scripts/engines/sound/sound-pitch.mjs';
+import {installSoundPitch,placeSound,sceneEcho,muffleEar} from '../../../scripts/engines/sound/sound-pitch.mjs';
 import {createRoomCache,roomFor,reverbSend} from '../../../scripts/engines/sound/room-acoustics.mjs';
 import {createReverbBuses} from '../../../scripts/engines/sound/reverb-bus.mjs';
 
@@ -76,7 +76,7 @@ test('a placed sound is quieter far away, and gets a dulling filter and a panner
 // audio context), and the scene's own Acoustics choice.
 function fakeContext(){
  const made=[];
- const node=(kind,extra={})=>{const n={kind,outs:[],connect(to){this.outs.push(to);return to;},disconnect(){this.outs.length=0;},...extra};made.push(n);return n;};
+ const node=(kind,extra={})=>{const n={kind,outs:[],connect(to){this.outs.push(to);return to;},disconnect(to){if(to===undefined)this.outs.length=0;else{const i=this.outs.indexOf(to);if(i<0)throw new Error('not connected');this.outs.splice(i,1);}},...extra};made.push(n);return n;};
  return {sampleRate:1000,made,destination:{kind:'destination',outs:[]},gainNode:{kind:'master',outs:[],connect(){}},
   createGain:()=>node('gain',{gain:{value:1}}),createDelay:()=>node('delay',{delayTime:{value:0}}),createStereoPanner:()=>node('pan',{pan:{value:0}}),
   createConvolver:()=>node('convolver',{buffer:null}),createBiquadFilter:()=>node('filter',{type:'lowpass',frequency:{value:350}}),
@@ -96,23 +96,40 @@ async function roomRig({muffle=()=>false}={}){
   const r=roomFor(data,{sceneAcoustics:world.acoustics,viewedScene:'S1',enabled:true,cache,gridPx:100});
   return r.kind==='reverb'?{node:(c)=>buses.send(c,r.room,reverbSend(r.room,1))}:null;
  };
- class Sound{constructor(src){this.src=src;this.effects=[];}_createNodes(){const ended=[];this.sourceNode={context,playbackRate:{value:1},addEventListener:(e,fn)=>ended.push(fn)};this.end=()=>ended.forEach(fn=>fn());}}
+ // Foundry's Sound, as far as the pipeline goes: source, effects, then its volume node, then the context's master.
+ class Sound{constructor(src){this.src=src;this.effects=[];}
+  _createNodes(){this.gainNode||=context.createGain();const ended=[];this.sourceNode={kind:'source',outs:[],connect(to){this.outs.push(to);return to;},disconnect(){this.outs.length=0;},context,playbackRate:{value:1},addEventListener:(e,fn)=>ended.push(fn)};this.end=()=>ended.forEach(fn=>fn());}
+  _connectPipeline(){let n=this.sourceNode;this.pipeline=[n];for(const e of this.effects){n.connect(e);e.onConnectFrom?.(n);n=e;this.pipeline.push(e);}n.connect(this.gainNode);this.pipeline.push(this.gainNode);this.gainNode.connect(context.gainNode);}
+  _disconnectPipeline(){for(const n of [...this.pipeline].reverse())n.disconnect();}
+  set volume(v){this.gainNode.gain.value=v;}}
  const uninstall=installSoundPitch({hooks,Sound,room,muffle,acoustics:()=>world.acoustics});
- const play=(at,extra={})=>{hooks.call('createSequencerSound',{file:'boom.ogg',volume:1,animaterAt:at,animaterScene:'S1',animaterLevel:'L1',...extra});const s=new Sound('boom.ogg');s._createNodes();return s;};
+ const play=(at,extra={})=>{hooks.call('createSequencerSound',{file:'boom.ogg',volume:1,animaterAt:at,animaterScene:'S1',animaterLevel:'L1',...extra});const s=new Sound('boom.ogg');s._createNodes();s._connectPipeline();return s;};
  const convolvers=()=>context.made.filter((n)=>n.kind==='convolver');
  return {play,context,world,convolvers,uninstall};
 }
-// What a node feeds once the sound connects to it: a reverb send taps into a convolver, an echo into a delay line.
-const feeds=(n)=>{if(typeof n.onConnectFrom!=='function')return [];const probe={outs:[],connect(to){this.outs.push(to);return to;}};n.onConnectFrom(probe);return probe.outs;};
-const sendOf=(s)=>s.effects.find((n)=>feeds(n).some((t)=>t.outs?.some((o)=>o.kind==='convolver')));
+// The reverb send a sound got: a tap off its volume node into a convolver.
+const sendOf=(s)=>s.gainNode?.outs.find((n)=>n.outs?.some((o)=>o.kind==='convolver'));
+// How loud the sound reaches a node, following every connection from its source (gains multiply).
+const levelAt=(from,target,seen=new Set())=>{if(from===target)return 1;if(seen.has(from)||!from.outs)return 0;seen.add(from);
+ const own=from.kind==='gain'?from.gain?.value??1:1;let sum=0;for(const o of from.outs)sum+=levelAt(o,target,new Set(seen));return own*sum;};
+const wet=(s,convolvers,length)=>levelAt(s.sourceNode,convolvers().find((c)=>c.buffer.length===length));
 test('unset scene adds a send into the room\'s bus',async()=>{
  const {play,convolvers,uninstall}=await roomRig();
  const s=play({x:1500,y:500});
- assert.equal(s.effects.length,1,'the send alone: no other shaping asked for');
- const send=s.effects[0];assert.equal(send.gain.value,1,'the dry sound passes through untouched');
- const source={outs:[],connect(to){this.outs.push(to);return to;}};source.connect(send);send.onConnectFrom(source);
- const tap=source.outs.find((n)=>n!==send),room=convolvers().find((c)=>c.buffer.length===800);
+ assert.equal(s.effects.length,0,'no effect in the dry chain: no other shaping asked for');
+ const tap=sendOf(s),room=convolvers().find((c)=>c.buffer.length===800);
  assert.ok(Math.abs(tap.gain.value-.22)<1e-9);assert.deepEqual(tap.outs,[room]);
+ assert.ok(Math.abs(wet(s,convolvers,800)-.22)<1e-9,'the room hears it at the send level');
+ assert.equal(levelAt(s.sourceNode,s.gainNode),1,'the dry sound passes through untouched');
+ uninstall();
+});
+test('the send follows the sound\'s own volume: muted sends nothing, a fade scales it, stop cuts it',async()=>{
+ const {play,convolvers,uninstall}=await roomRig();
+ const s=play({x:1500,y:500});
+ s.volume=0;assert.equal(wet(s,convolvers,800),0,'volume 0 (Blood off, a muted cue): no reverb either');
+ s.volume=.5;assert.ok(Math.abs(wet(s,convolvers,800)-.11)<1e-9,'half volume, half the send');
+ s._disconnectPipeline();s.volume=1;assert.equal(wet(s,convolvers,800),0,'stopped: Foundry cuts the volume node and the send with it');
+ s.end();assert.equal(sendOf(s),undefined);
  uninstall();
 });
 test('GM choice wins after a change',async()=>{
@@ -121,7 +138,7 @@ test('GM choice wins after a change',async()=>{
  world.acoustics='hall';
  const s=play({x:2500,y:500});
  assert.equal(s.effects.length,1,'the scene\'s own echo only');
- assert.equal(feeds(s.effects[0])[0]?.kind,'delay','its feedback echo, not a reverb send');
+ assert.equal(s.effects[0].kind,'gain','its feedback echo');
  assert.equal(sendOf(s),undefined);
  world.acoustics=null;assert.ok(sendOf(play({x:2500,y:500})),'back to the walls once cleared');
  uninstall();
@@ -147,11 +164,12 @@ test('muffled behind a wall',async()=>{
  quiet.uninstall();uninstall();
 });
 test('send is removed when the sound ends',async()=>{
- const {play,uninstall}=await roomRig({muffle:()=>true});
+ const {play,convolvers,uninstall}=await roomRig({muffle:()=>true});
  const s=play({x:500,y:500});
- assert.equal(s.effects.length,2,'muffled, then sent to the cell');
- assert.equal(s.effects[0].kind,'filter');assert.ok(sendOf(s)===s.effects[1]);
- s.end();assert.equal(s.effects.length,0);
+ assert.equal(s.effects.length,1,'muffled');assert.equal(s.effects[0].kind,'filter');
+ const tap=sendOf(s);assert.ok(tap,'and sent to the cell, after the muffling');
+ assert.ok(wet(s,convolvers,300)>0);
+ s.end();assert.equal(s.effects.length,0);assert.equal(sendOf(s),undefined);assert.deepEqual(tap.outs,[],'the tap lets go of the bus');
  uninstall();
 });
 test('ten sounds, one bus each class',async()=>{
@@ -161,4 +179,12 @@ test('ten sounds, one bus each class',async()=>{
  assert.equal(convolvers().length,3,'small, room and hall, shared');
  const before=world.sweeps;play({x:310,y:520});assert.equal(world.sweeps,before,'same square: no second sweep');
  uninstall();
+});
+test('walls are heard from the selected token, else a player\'s own, else a player\'s view; a GM without a token hears nothing muffled',()=>{
+ const view={x:5,y:5},picked={center:{x:1,y:1}},mine={center:{x:2,y:2}};
+ assert.deepEqual(muffleEar({controlled:picked,owned:mine,view}),{x:1,y:1});
+ assert.deepEqual(muffleEar({owned:mine,view}),{x:2,y:2});
+ assert.deepEqual(muffleEar({view}),view,'a player with no token: the middle of the view');
+ assert.deepEqual(muffleEar({controlled:picked,isGM:true,view}),{x:1,y:1},'a GM with a token selected hears from it');
+ assert.equal(muffleEar({owned:mine,isGM:true,view}),null,'a GM with none selected: no ear, as in Foundry');
 });

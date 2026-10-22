@@ -59,16 +59,12 @@ test('send wires into its class', async () => {
   const { buses } = await readyBuses(ctx);
   const out = buses.send(ctx, 'room', 0.22);
   const conv = convolvers(ctx).find((c) => c.buffer.length === 800);
-  // The dry sound passes through the returned node untouched; a copy at the send level feeds the room's convolver.
+  // The send is the tap itself: the sound (after its volume) feeds it, and it feeds the room's convolver at the
+  // send level. It is not an effect in the sound's chain, so the dry sound is left alone.
   assert.equal(out.kind, 'gain');
-  assert.equal(out.gain.value, 1);
-  assert.equal(typeof out.onConnectFrom, 'function');
-  const source = { outs: [], connect(to) { this.outs.push(to); return to; } };
-  source.connect(out); out.onConnectFrom(source);
-  const tap = source.outs.find((n) => n !== out);
-  assert.equal(tap.kind, 'gain');
-  assert.equal(tap.gain.value, 0.22);
-  assert.deepEqual(tap.outs, [conv]);
+  assert.equal(out.gain.value, 0.22);
+  assert.equal(out.onConnectFrom, undefined);
+  assert.deepEqual(out.outs, [conv]);
   // Wet joins the context's master volume, as Foundry's own sounds do.
   assert.deepEqual(conv.outs, [ctx.gainNode]);
   // A fresh send each time.

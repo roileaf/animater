@@ -47,7 +47,14 @@ export function mixSurfaceSound(data, mix) {
 }
 // A wall between this player and a sound muffles it as Foundry muffles a door's sound (lowpass, intensity 5).
 const MUFFLED_HZ = 600;
-// room(data): the room the sound rings in, as { node(context) } giving its reverb send, or null. muffle(data): a wall
+// Where walls are heard from: the selected token, else (a player) their own token, else (a player) the middle of
+// their view. A GM with no token selected has no ear, as in Foundry: nothing is muffled for them.
+export function muffleEar({ controlled = null, owned = null, isGM = false, view = null } = {}) {
+  const token = controlled ?? (isGM ? null : owned);
+  if (token) return token.center ?? null;
+  return isGM ? null : view;
+}
+// room(data): the room the sound rings in, as { node(context) } giving its reverb send's input, or null. muffle(data): a wall
 // stands between this player and the sound. Either one failing leaves the sound as it was.
 export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false } = {}) {
   if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch) return () => {};
@@ -89,18 +96,27 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
         else if (this.element) { this.element.preservesPitch = false; this.element.playbackRate = shape.rate; }
       }
       // Foundry runs a sound through its effects before its volume: these join them for this play only. Distance
-      // dulls it, a wall muffles it, its place on screen pans it, then the echo, then a share of it all goes to the
-      // room's reverb (so a muffled sound's room is muffled too).
+      // dulls it, a wall muffles it, its place on screen pans it, then the echo.
       if (source?.context && Array.isArray(this.effects)) {
         const added = [], c = source.context;
         if (shape.place?.cutoff < 18000 && c.createBiquadFilter) { const dull = c.createBiquadFilter(); dull.type = "lowpass"; dull.frequency.value = shape.place.cutoff; added.push(dull); }
         if (shape.muffled && c.createBiquadFilter) { const wall = c.createBiquadFilter(); wall.type = "lowpass"; wall.frequency.value = MUFFLED_HZ; added.push(wall); }
         if (shape.place?.pan && c.createStereoPanner) { const side = c.createStereoPanner(); side.pan.value = shape.place.pan; added.push(side); }
         if (shape.echo) added.push(echoNode(c, shape.echo));
-        if (shape.space) { let send = null; try { send = shape.space.node?.(c) ?? null; } catch { /* plays dry */ } if (send) added.push(send); }
-        if (added.length) {
-          this.effects.push(...added);
-          source.addEventListener?.("ended", () => { for (const n of added) { const i = this.effects.indexOf(n); if (i >= 0) this.effects.splice(i, 1); } }, { once: true });
+        // A share of it all, taken after the sound's own volume, goes to the room's reverb: a muffled sound's room
+        // is muffled too, and the sound's level, fades and mutes (Blood off) carry to its reverb. Foundry cuts every
+        // output of the volume node when the sound stops.
+        let send = null;
+        if (shape.space && this.gainNode?.connect) {
+          try { send = shape.space.node?.(c) ?? null; if (send) this.gainNode.connect(send); } catch { try { send?.disconnect?.(); } catch { /* gone */ } send = null; /* plays dry */ }
+        }
+        if (added.length) this.effects.push(...added);
+        if (added.length || send) {
+          const gain = this.gainNode;
+          source.addEventListener?.("ended", () => {
+            for (const n of added) { const i = this.effects.indexOf(n); if (i >= 0) this.effects.splice(i, 1); }
+            if (send) { try { gain.disconnect(send); } catch { /* already cut at stop */ } try { send.disconnect(); } catch { /* gone */ } }
+          }, { once: true });
         }
       }
     }
