@@ -196,3 +196,16 @@ test("a recipe for one activity plays for the same activity of the spell from an
   const legacy = { ...saved, id: "old" }; delete legacy.activityType; delete legacy.activityName;
   assert.equal(matchRecipe([legacy], cast("Compendium.other.spells.Item.fb", "dNWpG5SEHROQG5AS"))?.id, "old");
 });
+test("a copy of a spell linked back to the SRD original, with activities of its own, plays the recipe; the original keeps its activities apart", async () => {
+  const { DND5E_ENTRIES, dndRecipe } = await import("../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs");
+  const entry = DND5E_ENTRIES.find((e) => e.kind === "spell" && e.slug === "fireball");
+  const saved = validateRecipe({ ...dndRecipe(entry, "dnd5eactivity000"), id: "mine", enabled: true });
+  const cast = (activityId, activities, type = "save") => ({ type: saved.trigger, systemId: "dnd5e", activityId, activity: { id: activityId, type },
+    item: { name: "Fireball", uuid: "Actor.hero.Item.f", _stats: { compendiumSource: saved.itemUuid }, system: { activities: new Map(activities.map((id) => [id, {}])) } } });
+  // Another book built from the SRD: linked to the SRD Fireball, its save activity has a new id.
+  assert.equal(matchRecipe([saved], cast("dNWpG5SEHROQG5AS", ["dNWpG5SEHROQG5AS"]))?.id, "mine");
+  assert.equal(matchRecipe([saved], cast("dNWpG5SEHROQG5AS", ["dNWpG5SEHROQG5AS"], "attack")), null, "but not a different kind of activity");
+  // The SRD Fireball itself, with a second activity of the same kind: only the recipe's own activity plays it.
+  assert.equal(matchRecipe([saved], cast("second", ["dnd5eactivity000", "second"])), null);
+  assert.equal(matchRecipe([saved], cast("dnd5eactivity000", ["dnd5eactivity000", "second"]))?.id, "mine");
+});

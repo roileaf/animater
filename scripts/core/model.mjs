@@ -374,9 +374,18 @@ export function ownRecipe(recipes, event) {
 // book's "Save", a translation's own): the same kind of activity counts as the same.
 function sameActivity(r, event, exactItem) {
   if (!r.activityId || r.activityId === event.activityId) return true;
-  if (exactItem || !event.activityId) return false;
+  if (!event.activityId) return false;
+  // The item still has the recipe's own activity: only that one plays it (a spell's Save and its Heal stay apart).
+  // A copy linked back to the original (a book or module built from the SRD) has activities of its own instead.
+  if (exactItem && hasActivity(event.item, r.activityId)) return false;
   const type = event.activity?.type;
   return !(r.activityType && type && r.activityType !== type);
+}
+function hasActivity(item, id) {
+  const activities = item?.system?.activities;
+  if (!activities) return true;
+  if (typeof activities.has === "function") return activities.has(id);
+  return Object.hasOwn(activities, id);
 }
 export function matchRecipe(recipes, event) {
   const names = new Set(
