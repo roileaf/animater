@@ -20,6 +20,17 @@ function resample(channel, from, to) {
   return out;
 }
 
+// An impulse channel scaled to carry a sound's energy through unchanged (sum of squares 1): a send at level L
+// comes back as a room L² as strong as the sound.
+function unitEnergy(channel) {
+  let sum = 0;
+  for (const v of channel) sum += v * v;
+  if (!(sum > 0)) return channel;
+  const k = 1 / Math.sqrt(sum), out = new Float32Array(channel.length);
+  for (let i = 0; i < channel.length; i++) out[i] = channel[i] * k;
+  return out;
+}
+
 export function createReverbBuses({ contextOf = () => null, loadImpulse = () => loadFoundryImpulse(contextOf()), now = () => Date.now(), warn = (...a) => console.warn(...a) } = {}) {
   // The loaded impulse, and its cut to each room's tail per sample rate (worked out once per rate).
   let impulse = null, loading = null, retryAt = 0, warned = false;
@@ -55,8 +66,11 @@ export function createReverbBuses({ contextOf = () => null, loadImpulse = () => 
       for (const [room, { lowpass }] of Object.entries(ROOMS)) {
         const channels = shaped[room];
         const buffer = context.createBuffer(channels.length, channels[0].length, rate);
-        channels.forEach((c, i) => buffer.copyToChannel(c, i));
+        channels.forEach((c, i) => buffer.copyToChannel(unitEnergy(c), i));
+        // The browser's own normalizing is calibrated so quiet that the room sank ~30 dB under the dry sound:
+        // the impulse is scaled here instead, so the send level alone sets how loud the room is.
         const convolver = context.createConvolver();
+        convolver.normalize = false;
         convolver.buffer = buffer;
         if (lowpass) {
           const dark = context.createBiquadFilter();

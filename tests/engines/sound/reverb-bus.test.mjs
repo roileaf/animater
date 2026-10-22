@@ -139,7 +139,20 @@ test('each context gets the impulse at its own sample rate', async () => {
   const roomOf = (ctx) => convolvers(ctx).find((c) => c.buffer.length === Math.round(0.8 * ctx.sampleRate));
   assert.equal(roomOf(a).buffer.sampleRate, 1000);
   assert.equal(roomOf(b).buffer.sampleRate, 2000);
-  assert.equal(roomOf(b).buffer.getChannelData(0)[0], 1);
+  assert.ok(roomOf(b).buffer.getChannelData(0)[0] > 0);
+});
+
+test('the room is as loud as its send: unit-energy impulse, no browser normalizing', async () => {
+  const ctx = fakeContext();
+  const { buses } = await readyBuses(ctx);
+  buses.send(ctx, 'hall', 0.32);
+  for (const conv of convolvers(ctx)) {
+    assert.equal(conv.normalize, false);
+    for (let i = 0; i < conv.buffer.numberOfChannels; i++) {
+      const energy = conv.buffer.getChannelData(i).reduce((a, v) => a + v * v, 0);
+      assert.ok(Math.abs(energy - 1) < 1e-3, `energy ${energy}`);
+    }
+  }
 });
 
 test('no send for a silent or missing level', async () => {
