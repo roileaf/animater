@@ -21,6 +21,7 @@ import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState, holdSession, hitStopReady } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createHitStopHost } from "./engines/playback/hit-stop-host.mjs";
+import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -131,15 +132,42 @@ const hitStopHost = createHitStopHost({
   holdEffects: holdSession,
   holdMotions: (owner, ms) => motions.hold(owner, ms),
 });
+// Effect lights on this client (engines/lighting/light-host.mjs): local Foundry light sources, never documents.
+const lightHost = createLightHost({
+  makeSource: (id) => {
+    const source = new CONFIG.Canvas.lightSourceClass({ sourceId: `${ID}.light.${id}`, object: null });
+    return {
+      initialize: (data) => source.initialize(data),
+      add: () => source.add(),
+      // Brightness only: uniforms are refreshed, the wall polygon is kept.
+      setLevel: ({ alpha, luminosity }) => { source.data.alpha = alpha; source.data.luminosity = luminosity; source.refresh(); },
+      destroy: () => source.destroy(),
+    };
+  },
+  refreshLighting: () => canvas?.perception?.update({ refreshLighting: true, refreshVision: true }),
+  sceneId: () => canvas?.scene?.id,
+  levelOk: (level) => { try { return !!canvas?.scene?.levels?.get(level ?? canvas.level?.id); } catch { return false; } },
+  heldMs: (session, since) => sequencerSpeedupsApi.holds.heldMs(session, since),
+  steady: () => { try { return game.settings.get(ID, "effectLightAnimation") === false; } catch { return false; } },
+  gridSize: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+});
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
-Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); });
+Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); lightHost.onEffect(effect); });
+Hooks.on("endedSequencerEffect", (effect) => lightHost.onEnded(effect));
+Hooks.on("canvasTearDown", () => lightHost.clear());
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
 // every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
 Hooks.on("canvasReady", () => {
   adaptiveHost.onCanvasReady(performance.now());
   const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
-  if (ticker && P && adaptiveTicker !== ticker) { adaptiveTicker = ticker; ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2); ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY); }
+  if (ticker && P && adaptiveTicker !== ticker) {
+    adaptiveTicker = ticker;
+    ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2);
+    ticker.add(() => lightHost.tick(), undefined, P.NORMAL);
+    ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
+  }
 });
 // The next combatant's likely files load ahead on every client, one turn early.
 Hooks.on("updateCombat", (combat, changed) => { if ("turn" in (changed ?? {}) || "round" in (changed ?? {})) adaptiveHost.onTurn(combat); });
@@ -1333,6 +1361,21 @@ Hooks.once("init", () => {
     hint: "Turn off to never freeze animations on this screen; they still keep the short beat after a critical hit.",
     scope: "client", config: true, type: Boolean, default: true,
   });
+  game.settings.register(ID, "effectLighting", {
+    name: "Effect lighting",
+    hint: "Fire, lightning and other glowing effects light up the scene around them for a moment, blocked by walls like any light.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "effectLightingDaylight", {
+    name: "Effect lighting in daylight",
+    hint: "Also add a soft coloured glow around effects in fully lit scenes.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "effectLightAnimation", {
+    name: "Flickering and flashing effect lights",
+    hint: "Turn off to see effect lights as a steady glow, without flicker or strobe.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1547,11 +1590,9 @@ Hooks.once("ready", () => {
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
     // Crits freeze at contact (world setting); on while the setting is not registered.
     hitStop: () => game.settings.get(ID, "hitStop") !== false,
-    // Effects light the scene (world setting); in daylight only when allowed. On while the settings are not registered.
-    effectLights: () => {
-      const setting = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
-      return setting("effectLighting") && (setting("effectLightingDaylight") || (canvas?.environment?.darknessLevel ?? 0) > 0);
-    },
+    // Effects light the scene (world setting); in daylight only when allowed.
+    effectLights: () => game.settings.get(ID, "effectLighting") !== false
+      && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
