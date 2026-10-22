@@ -84,7 +84,7 @@ import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState}
 import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
 import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingText, twoeCatalogRecipe, twoeSettingKey, seedBorrowedState, TWOE_KINDS } from "./systems/twoe-crossover.mjs";
 import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./catalogs/daggerheart/daggerheart-catalog.mjs";
-import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
+import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 let conditionBody;
 const localQuality=()=>{try{return game.settings.get('animater','quality');}catch{return 'full';}};
@@ -103,6 +103,8 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
+// Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
+Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); });
 tokenFx.custom = () => { try { return game.settings.get(ID, 'tokenFxPresets') ?? []; } catch { return []; } };
 const fxCatalog = () => installedFxCatalog({
   modules:game.modules, tokenFx, fxmaster:globalThis.FXMASTER?.api,

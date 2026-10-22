@@ -3,9 +3,11 @@
 // only to viewers whose level allows them (Sequencer forUsers). Token motion,
 // Token filters and persistent state layers are rendered locally, so each
 // client filters those itself.
-export const QUALITY_LEVELS = Object.freeze({ full: 3, balanced: 2, low: 1, off: 0 });
+// Light plays every layer, as Full does, only cheaper to draw: no blur or glow on the effects and no token filters.
+export const QUALITY_LEVELS = Object.freeze({ full: 3, light: 3, balanced: 2, low: 1, off: 0 });
 export const QUALITY_CHOICES = Object.freeze({
   full: 'Full: every layer, token motion and token filters',
+  light: 'Light: every layer and token motion, without blur, glow or token filters',
   balanced: 'Balanced: skip decorative layers and token filters',
   low: 'Low: only the main effect of each animation, one effect per token',
   off: 'Off: no Animater visuals or sounds on this client',
@@ -29,7 +31,18 @@ export function stageTiers(stages) {
 }
 export const allowsTier = (value, tier) => qualityRank(value) > 0 && tier <= qualityRank(value) - 1;
 export const allowsMotion = value => qualityRank(value) >= QUALITY_LEVELS.low;
-export const allowsTokenFx = value => qualityRank(value) >= QUALITY_LEVELS.full;
+export const allowsTokenFx = value => value !== 'light' && qualityRank(value) >= QUALITY_LEVELS.full;
+// Blur and glow on Animater's effects: drawn several times over every frame, the costliest part of an effect after its
+// video. Only Full keeps them; colour filters (an element's tint) stay at every level, as they decide how it looks.
+export const EXPENSIVE_FILTERS = new Set(['Blur', 'Glow']);
+export const allowsEffectFilters = value => value !== 'light' && qualityRank(value) >= QUALITY_LEVELS.full;
+// An effect's data before Sequencer builds it on this client (its createSequencerEffect hook): the costly filters
+// dropped when this client's level says so. Only Animater's own effects are touched.
+export function lightenEffect(data, value, moduleName = 'animater') {
+  if (!data || data.moduleName !== moduleName || allowsEffectFilters(value) || !Array.isArray(data.filters)) return data;
+  data.filters = data.filters.filter((f) => !EXPENSIVE_FILTERS.has(f?.className));
+  return data;
+}
 // Persistent state layers: how many states per token, and layers per state.
 export function stateBudget(value) {
   return ({ 3: { states: Infinity, layers: Infinity, pips: true }, 2: { states: 3, layers: 1, pips: true }, 1: { states: 1, layers: 1, pips: false }, 0: { states: 0, layers: 0, pips: false } })[qualityRank(value)];
