@@ -1,12 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2.0.1 (2026-10-22)
 
 - **A GM's private attack no longer shows a miss as a hit.** Attacks and saves rolled as a Private GM Roll used to hide their result, and the hidden result played as a hit: the arrow flew into the target with its impact, even straight through a wall. Private GM rolls now animate their real result, like public ones (a miss flies wide or into the wall), while the numbers stay private. To keep players guessing, turn on **Hide the result of private GM rolls** (world): the shot then flies at the visible part of the target (or into the wall if it is out of sight) and nothing lands, no impact, flinch, dodge or ground mark. PF2e, SF2e, D&D 5e and Daggerheart. Thanks to y_deda_povis for the video.
 - **D&D 5e: an attack at a target in total cover no longer always hits.** D&D leaves out the AC of a target in total cover, and Animater read it as AC 0, so every roll looked like a hit. Such an attack now plays neutrally too; a natural 20 or a natural 1 still shows as a crit or a fumble.
-
-## 2.0.1 (2026-10-22)
-
 - **Clear ground marks at once.** A GM can now wipe every ground mark from the floor on all connected screens: run the macro `game.modules.get("animater").api.clearGroundMarks()`, or bind **Clear ground marks** under Configure Controls (no key by default). A player running the macro clears only their own screen. Marks under a lasting area that is still on the board go too, and come back only if the area plays again. Thanks to y_deda_povis for the request.
 
 ## 2.0.0 (2026-10-22)
