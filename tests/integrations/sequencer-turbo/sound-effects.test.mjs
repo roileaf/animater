@@ -198,3 +198,31 @@ test('unfingerprintable sources always run', () => {
   for (let i = 0; i < 5; i++) effect._transformAttachedNoStretchSprite();
   assert.equal(effect.calls, 5);
 });
+
+// A Drawing moved by a Sequencer motion moves its shape, not the placeable.
+class Drawing extends PlaceableObject {
+  constructor() {
+    super();
+    this.x = 0; this.y = 0; this.w = 100; this.h = 100;
+    this.document = { x: 0, y: 0, width: 100, height: 100, rotation: 0, elevation: 0 };
+    this.shape = { x: 0, y: 0 };
+  }
+}
+class DrawingEffect extends FakeEffect {
+  _transformAttachedNoStretchSprite() {
+    this.calls++;
+    this.position.x = this.source.shape.x + 50;
+  }
+}
+
+test('attached effect follows a drawing whose shape moved', () => {
+  const drawing = new Drawing();
+  const effect = new DrawingEffect(drawing);
+  patchEffectPrototype(effect, makeState());
+  for (let i = 0; i < 5; i++) effect._transformAttachedNoStretchSprite();
+  const settled = effect.calls;
+  drawing.shape.x = 30;
+  effect._transformAttachedNoStretchSprite();
+  assert.equal(effect.calls, settled + 1);
+  assert.equal(effect.position.x, 80);
+});

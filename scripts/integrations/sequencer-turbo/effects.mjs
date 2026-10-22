@@ -43,6 +43,9 @@ function pushObject(out, o) {
     );
     const m = o.mesh;
     if (m && !m.destroyed) out.push(m.x, m.y, m.rotation, m.scale.x, m.scale.y, m.width, m.height);
+    // A Drawing moved by a Sequencer motion moves its shape.
+    const s = o.shape;
+    if (s) out.push(s.x, s.y);
     return true;
   }
 
