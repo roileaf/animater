@@ -10,6 +10,7 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { starterRecipes } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
+import { usedItemDamages } from "./systems/item-damages.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
@@ -108,25 +109,6 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
-// Whether a used item deals damage (ground marks): a PF2e/SF2e spell with a damage (not only healing) formula, or
-// a weapon or consumable with damage; a D&D 5e activity with damage parts (a heal activity has none); a
-// Daggerheart action, or a weapon's attack, with hit-point damage (system.damage.main) that is not healing.
-function usedItemDamages(item, systemId) {
-  try {
-    const sys = item?.system;
-    if (!sys) return false;
-    const values = (v) => (v instanceof Map ? [...v.values()] : Array.isArray(v) ? v : Object.values(v ?? {}));
-    if (systemId === "pf2e" || systemId === "sf2e") {
-      if (item.type === "spell") return values(sys.damage).some((d) => d?.formula && [...(d.kinds ?? ["damage"])].includes("damage"));
-      if (item.type === "weapon") return Number(sys.damage?.dice) > 0 || !!sys.damage?.damageType;
-      if (item.type === "consumable") return !!sys.damage?.formula && sys.damage.kind !== "healing";
-      return false;
-    }
-    if (systemId === "dnd5e") return values(sys.activities).some((a) => a?.damage?.parts?.length > 0);
-    if (systemId === "daggerheart") return [...values(sys.actions), sys.attack].some((a) => a && a.type !== "healing" && !!a.damage?.main);
-    return false;
-  } catch { return false; }
-}
 // Adaptive playback on this client (engines/playback/adaptive-host.mjs): Foundry is read only when it runs.
 const adaptiveHost = createAdaptiveHost({
   state: turboState,
@@ -1643,7 +1625,7 @@ Hooks.once("ready", () => {
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
     itemDamages: (item) => usedItemDamages(item, game.system.id),
     // The level this client views and its floor, for a mark whose source token names none.
-    viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.bottom } : null; },
+    viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.base } : null; },
     // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
     // otherwise tests the level this client views). A failing backend throws, and the runtime plays its flights as before.
     collides: (a, b, type, source) => {

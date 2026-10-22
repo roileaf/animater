@@ -93,8 +93,8 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Effect lighting | World | Fire, lightning, radiant and other glowing effects light the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light (on by default) |
 | Effect lighting in daylight | World | Also adds a soft coloured glow around effects in fully lit scenes (on by default) |
 | Flickering and flashing effect lights | Each player | Turn off to see effect lights as a steady glow, without flicker or strobe (on by default) |
-| Ground marks | World | Harmful elemental hits (attacks, damaging spells and areas, alchemical bombs and flasks) leave a painted mark on the floor where they landed: scorch, rime, acid, streaks, stains or cracks by element. Full for 2 minutes, then fading over the next 3; areas get a cluster clipped to the template (on by default) |
-| Ground marks on my screen | Each player | Turn off to never draw ground marks on this screen. Marks are drawn locally, never saved, cleared on reload or scene change, not drawn at Off quality, and Low quality draws half as many (on by default) |
+| Ground marks | World | Elemental spells, areas and alchemical bombs/flasks leave a painted mark on the floor where they landed (ordinary weapon strikes and rune damage do not): scorch, rime, acid, streaks, stains or cracks by element. Full for 2 minutes, then fading over the next 3; areas get a cluster clipped to the template, and a lasting area's mark stays until the area ends. PF2e impulses and NPC actions mark only when their animation plays on the damage roll (on by default) |
+| Ground marks on my screen | Each player | Turn off to never draw ground marks on this screen. Marks are drawn locally, never saved, cleared on reload or on a scene or level change, not drawn at Off quality, and Low quality draws half as many (on by default) |
 | Projectiles stop at walls | World | Arrows, bolts, spell bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see (on by default) |
 
 ### Faster animations

@@ -10,6 +10,8 @@ const FADE_MS = 180000;
 const IN_MS = 300;
 const CAP_FADE_MS = 2000;
 const RIM_MS = 10000;
+// Longest a mark waits for its anchor's clip to load before it lands anyway.
+const READY_MS = 5000;
 
 export const TEXTURE_PX = 256;
 // The blotch body's radius inside its texture; spikes, drips and rims reach past it towards the edge.
@@ -49,6 +51,13 @@ export function createMarkLayer({
   let lastViewed;
 
   const shows = (tag, viewed) => !tag.level || !viewed || tag.level === viewed;
+  // A lasting mark whose anchor is still on the board: it stays full and the cap passes it over.
+  const holding = (mark) => mark.tag.lasting && mark.endedAt === null;
+  // Sequencer announces an effect before its clip has loaded; the anchor shows once it is ready (or gone).
+  const anchorShows = (mark, t) => {
+    const e = mark.anchor;
+    return !e || e.ready !== false || e._ended || e.destroyed || mark.endedAt !== null || t - mark.heldAt >= READY_MS;
+  };
 
   const remove = (mark) => {
     marks = marks.filter((m) => m !== mark);
@@ -101,12 +110,13 @@ export function createMarkLayer({
     update(mark, t);
   };
 
-  // Over the cap, the oldest painted marks fade out quickly.
+  // Over the cap, the oldest painted marks fade out quickly; a lasting mark is kept while its area lives, even
+  // when that leaves more than the cap.
   const enforceCap = (t) => {
-    const live = marks.filter((m) => m.sprite && m.capAt === null).sort((a, b) => a.landAt - b.landAt);
+    const live = marks.filter((m) => m.sprite && m.capAt === null);
     let total = live.reduce((n, m) => n + m.size, 0);
     const most = cap();
-    for (const mark of live) {
+    for (const mark of live.filter((m) => !holding(m)).sort((a, b) => a.landAt - b.landAt)) {
       if (total <= most) break;
       mark.capAt = t;
       mark.nextAt = t;
@@ -125,10 +135,12 @@ export function createMarkLayer({
       let shape = null;
       if (AREAS.has(tag.shape) && mask) { try { shape = mask(tag) ?? null; } catch { shape = null; } }
       const t = now();
+      // Not landed until the anchor's clip shows (landAt null): its delay counts from then.
       const mark = {
-        tag, mask: shape, landAt: t + tag.delayMs, endedAt: null, capAt: null,
+        tag, mask: shape, landAt: null, anchor: effect, heldAt: t, endedAt: null, capAt: null,
         sprite: null, size: 0, nextAt: 0, rimDone: false, effect: tag.lasting ? effect : null,
       };
+      if (anchorShows(mark, t)) { mark.landAt = t + tag.delayMs; mark.anchor = null; }
       marks.push(mark);
       if (tag.lasting) waiting.set(effect, mark);
     },
@@ -153,6 +165,11 @@ export function createMarkLayer({
       for (const mark of [...marks]) {
         try {
           if (!mark.sprite) {
+            if (mark.landAt === null) {
+              if (!anchorShows(mark, t)) continue;
+              mark.landAt = t + mark.tag.delayMs;
+              mark.anchor = null;
+            }
             if (t < mark.landAt) continue;
             paint(mark, t, viewed);
             painted = true;

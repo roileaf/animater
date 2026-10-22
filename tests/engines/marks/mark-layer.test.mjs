@@ -300,3 +300,62 @@ test('settings changes: off wipes the floor, a smaller cap fades the oldest', ()
   assert.equal(layer.count(), 0);
   assert.ok(out.sprites.every((s) => s.removed));
 });
+
+// Sequencer fires its create hook before the clip loads: `ready` turns true once the effect shows.
+const loading = (tag) => Object.assign(effect(tag), { ready: false, _ended: false, destroyed: false });
+
+test('a mark waits for its anchor clip to load, then counts its delay from there', () => {
+  const { layer, out, at } = make();
+  const e = loading(spot({ delayMs: 400 }));
+  layer.onEffect(e);
+  at(400); at(2000);
+  assert.equal(out.sprites.length, 0, 'nothing while the clip is still loading');
+  e.ready = true;
+  at(2100);
+  assert.equal(out.sprites.length, 0, 'the delay starts when the anchor shows');
+  at(2499);
+  assert.equal(out.sprites.length, 0);
+  at(2500);
+  assert.equal(out.sprites.length, 1);
+});
+
+test('an anchor that ends or never loads still lets its mark land', () => {
+  const { layer, out, at } = make();
+  const ended = loading(spot({ delayMs: 0 }));
+  const stuck = loading(spot({ delayMs: 0, at: { x: 1500, y: 500 } }));
+  layer.onEffect(ended); layer.onEffect(stuck);
+  at(100);
+  ended._ended = true;
+  at(200);
+  assert.equal(out.sprites.length, 1, 'an ended anchor releases its mark');
+  at(4999);
+  assert.equal(out.sprites.length, 1, 'a loading anchor still holds');
+  at(5000);
+  assert.equal(out.sprites.length, 2, 'released after five seconds anyway');
+});
+
+test('the cap fades other marks before a lasting mark whose area still lives', () => {
+  const area = spot({ delayMs: 0, lasting: true }), first = spot({ delayMs: 0, seed: 99, at: { x: 1500, y: 500 } });
+  const second = spot({ delayMs: 0, seed: 5, at: { x: 2500, y: 500 } });
+  const n = (t) => layoutBlotches(t, 100).length;
+  // Room for the area and one more.
+  const { layer, out, at } = make({ cap: () => n(area) + Math.max(n(first), n(second)) });
+  const anchor = effect(area);
+  layer.onEffect(anchor); at(0);
+  layer.onEffect(effect(first)); at(1000);
+  layer.onEffect(effect(second)); at(2000);
+  const [held, old, young] = out.sprites;
+  at(5000);
+  assert.equal(held.removed, false, 'the oldest mark is kept while its area lives');
+  assert.equal(old.removed, true, 'the oldest other mark goes');
+  assert.equal(young.removed, false);
+});
+
+test('lasting marks alone may go past the cap', () => {
+  const a = spot({ delayMs: 0, lasting: true }), b = spot({ delayMs: 0, lasting: true, seed: 99, at: { x: 1500, y: 500 } });
+  const { layer, out, at } = make({ cap: () => 1 });
+  layer.onEffect(effect(a)); layer.onEffect(effect(b));
+  at(0); at(5000);
+  assert.equal(out.sprites.length, 2);
+  assert.ok(out.sprites.every((s) => !s.removed && s.alpha === 1));
+});
