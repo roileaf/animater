@@ -11,7 +11,7 @@ import { MISS } from '../../systems/outcome.mjs';
 export const MARKS = { fire: 'scorch', cold: 'rime', acid: 'residue', electricity: 'streaks', poison: 'stain', sonic: 'cracks', force: 'cracks', void: 'withered' };
 
 const ROLLS = new Set(['attack', 'damage', 'save']);
-const USES = new Set(['spell', 'action']);
+const USES = new Set(['spell', 'action', 'use']);
 const NOT_VISUAL = new Set(['sound', 'motion', 'tokenfx', 'scenefx']);
 const FLIGHTS = new Set(['travel', 'projectile']);
 const MIN_SQUARES = 0.5;
@@ -26,7 +26,7 @@ const startOf = stage => stage.delay ?? 0;
 
 /**
  * A play that harms: started by Animater's own dispatch (`automatic`) as an attack, damage or save roll, or as a
- * spell or action whose item deals damage. Damage moments, finishers, deaths and integration plays are not
+ * spell, action or item use (D&D 5e activities, Daggerheart) whose item deals damage. Damage moments, finishers, deaths and integration plays are not
  * dispatched, so they never mark; nor do buffs that only pick an element (Resist Energy).
  */
 export function isHarmful(context, { itemDamages } = {}) {

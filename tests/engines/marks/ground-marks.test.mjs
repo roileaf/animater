@@ -17,13 +17,16 @@ test('damage moments and buffs never mark', () => {
   assert.equal(isHarmful({ automatic: true, type: 'spell', item: {} }, { itemDamages: () => false }), false); // Resist Energy
   assert.equal(isHarmful({ type: 'attack' }, { itemDamages: () => true }), false); // not dispatched (damage moment, finisher)
 });
-test('harmful: damage and save rolls, damaging spells and actions; not checks or uses', () => {
+test('harmful: damage and save rolls, damaging spells, actions and uses; not checks', () => {
   const item = { name: 'Fireball' };
   assert.equal(isHarmful({ automatic: true, type: 'damage' }, { itemDamages: () => false }), true);
   assert.equal(isHarmful({ automatic: true, type: 'save' }, { itemDamages: () => false }), true);
   assert.equal(isHarmful({ automatic: true, type: 'spell', item }, { itemDamages: i => i === item }), true);
   assert.equal(isHarmful({ automatic: true, type: 'action', item }, { itemDamages: () => true }), true);
   assert.equal(isHarmful({ automatic: true, type: 'check', item }, { itemDamages: () => true }), false);
+  // D&D 5e activities and Daggerheart actions arrive as a 'use'.
+  assert.equal(isHarmful({ automatic: true, type: 'use', item }, { itemDamages: i => i === item }), true);
+  assert.equal(isHarmful({ automatic: true, type: 'use', item }, { itemDamages: () => false }), false);
   assert.equal(isHarmful({ automatic: false, type: 'spell', item }, { itemDamages: () => true }), false);
   assert.equal(isHarmful(null, { itemDamages: () => true }), false);
 });
@@ -69,6 +72,15 @@ test('a target outside the area keeps its own spot', () => {
   assert.equal(marks.get(blast).shape, 'circle');
   assert.equal(marks.get(outside).shape, 'spot');
   assert.equal(marks.has(inside), false);
+});
+test('an area whose template is not tier 0 rides on a tier 0 stage inside it', () => {
+  const center = { x: sq(10), y: sq(10) };
+  const blast = st('blast', 'template', center, { delay: 800 });
+  const hit = st('hit', 'impact', { x: sq(11), y: sq(10) }, { delay: 500 });
+  const [anchor, tag] = only(planMarks([hit, blast], opts({ blast: 1, hit: 0 }, { area: { type: 'circle', center, diameter: sq(4) } })));
+  assert.equal(anchor, hit);
+  assert.equal(tag.shape, 'circle');
+  assert.equal(tag.delayMs, 300); // the area lands at 800, its anchor started at 500
 });
 test('lines and cones carry their geometry; a lasting area is lasting', () => {
   const line = { type: 'line', center: { x: 0, y: 0 }, endpoint: { x: sq(6), y: 0 }, length: sq(6), width: sq(1) };
