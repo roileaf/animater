@@ -44,7 +44,7 @@ export function trackAnimaterEffect(effect) {
   trackedEffects.set(effect.id, { effect, session });
   // Its timers (the end timer among them) wait out held time. Lasting effects end on their own terms.
   // Every arm goes through Sequencer's own _setTimeout, so destroy() still clears them all.
-  if (!data.animaterLasting)
+  if (!data.animaterLasting && typeof effect._setTimeout === 'function')
     effect._setTimeout = pausableTimeout(turboState.holds, session, { set: effect._setTimeout.bind(effect) });
 }
 
@@ -62,7 +62,8 @@ function isHeldOrigin(origin) {
 export function holdSession(session, ms) {
   if (!turboState.holds.hold(session, ms)) return false;
   for (const { effect, session: s } of trackedEffects.values()) {
-    if (s !== session || effect.destroyed) continue;
+    // Media Sequencer paused itself (a loop delay, a held last frame) stays as it was.
+    if (s !== session || effect.destroyed || !effect.mediaIsPlaying) continue;
     effect.pauseMedia?.();
     setTimeout(() => {
       if (effect.destroyed || trackedEffects.get(effect.id)?.effect !== effect) return;

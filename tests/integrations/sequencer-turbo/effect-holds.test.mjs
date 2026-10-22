@@ -16,6 +16,9 @@ function fakeEffect(session, { lasting = false } = {}) {
     },
     destroyed: false,
     playing: true,
+    get mediaIsPlaying() {
+      return this.playing;
+    },
     calls: [],
     _timeouts: new Set(),
     _setTimeout(fn, ms) {
@@ -111,4 +114,29 @@ test('other modules\' effects are not tracked', () => {
   assert.equal(other._setTimeout, own);
   holdSession('s6', 100);
   assert.deepEqual(other.calls, []);
+});
+
+test('media Sequencer paused itself stays paused after the hold', () => {
+  const gap = fakeEffect('s7');
+  gap.playing = false; // e.g. waiting out a loop delay
+  const live = fakeEffect('s7');
+  trackAnimaterEffect(gap);
+  trackAnimaterEffect(live);
+  holdSession('s7', 100);
+  mock.timers.tick(100);
+  assert.deepEqual(gap.calls, []);
+  assert.equal(gap.playing, false);
+  assert.deepEqual(live.calls, ['pause', 'play']);
+  untrackAnimaterEffect(gap);
+  untrackAnimaterEffect(live);
+});
+
+test('an effect without _setTimeout is tracked without wrapping', () => {
+  const bare = fakeEffect('s8');
+  delete bare._setTimeout;
+  assert.doesNotThrow(() => trackAnimaterEffect(bare));
+  assert.equal(bare._setTimeout, undefined);
+  holdSession('s8', 100);
+  assert.deepEqual(bare.calls, ['pause']);
+  untrackAnimaterEffect(bare);
 });
