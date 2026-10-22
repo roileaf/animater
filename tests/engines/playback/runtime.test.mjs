@@ -1419,11 +1419,11 @@ test("blocked attack strikes the wall", async () => {
   assert.ok(!calls.some((c) => c[0] === "motion" && c[1].stageId === "react"));
   const wall = plan.find((s) => s.kind === "impact");
   assert.deepEqual(wall.landing, { x: WALL_X, y: 0 });
-  // The flight arrives at 55% of 1000 ms over the full distance; the wall is halfway.
-  assert.equal(wall.delay, 275);
-  assert.equal(plan.find((s) => s.stageId === "fly").contact, 275);
-  // What followed the hit moves up with the shorter flight (275 ms earlier).
-  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 600 - 275);
+  // A travel clip keeps its own arrival (Sequencer picks its range variant by the shorter line): 55% of 1000 ms.
+  assert.equal(wall.delay, 550);
+  assert.equal(plan.find((s) => s.stageId === "fly").flightArrivalCut, undefined);
+  // What followed the hit keeps its time.
+  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 600);
   // Sized to 0.6 of the bolt's footprint, not the target.
   const at = calls.findIndex((c) => c[0] === "file" && c[1] === WALL_IMPACT);
   assert.equal(calls.slice(at).find((c) => c[0] === "size")[1].width, 60);
@@ -1438,7 +1438,7 @@ test("a wall strike knocks on stone, on wood for a door, when the recipe has sou
     const cue = plan.find((s) => s.kind === "sound" && s.surfaceRole === "cue");
     assert.ok(cue, "a wall cue plays");
     assert.ok(files(key).includes(cue.soundFile), `${cue.soundFile} from ${key}`);
-    assert.equal(cue.delay, 275);
+    assert.equal(cue.delay, 550);
   }
   // Without sounds in the recipe the wall stays silent.
   const { recipe, context } = boltAttack();
@@ -1558,6 +1558,8 @@ test("an arcing projectile touches down as its impact lands, sooner at a wall", 
   // A wall halfway: the contact shortens to 300 ms, and the flask lands there with the wall strike.
   const walled = await playWall(thrown("projectile", [FLASK]), context, { setup: add });
   assert.equal(walled.plan.find((s) => s.kind === "impact").delay, 300);
+  // What followed the hit moves up with it (a projectile's shorter flight; a travel clip keeps its arrival).
+  assert.equal(walled.plan.find((s) => s.stageId === "recoil").delay, 300);
   assert.equal(durationOf(walled.calls, FLASK), 300);
   assert.equal(shadowOf(walled.calls).find((c) => c[0] === "duration")[1], 300);
   // A straight projectile keeps its whole duration.
@@ -1575,7 +1577,7 @@ test("hit-stop contact lands on the wall impact", async () => {
   const { calls } = await playWall(recipe, context);
   const tags = Object.fromEntries((await overridesByAsset(calls)).map(([asset, data]) => [asset, data.animaterHitStop]));
   assert.deepEqual(tags[WALL_IMPACT], { afterMs: 0, holdMs: 100 });
-  assert.deepEqual(tags["jb2a.fire_bolt.orange"], { afterMs: 275, holdMs: 100 });
+  assert.deepEqual(tags["jb2a.fire_bolt.orange"], { afterMs: 550, holdMs: 100 });
 });
 test("a fire bolt into a wall lights its path to the wall point", async () => {
   const { recipe, context } = boltAttack();
@@ -1584,10 +1586,61 @@ test("a fire bolt into a wall lights its path to the wall point", async () => {
   const glow = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
   assert.deepEqual(glow.from, { x: 0, y: 0 });
   assert.deepEqual(glow.to, { x: WALL_X, y: 0 });
-  assert.equal(glow.arriveMs, 275);
+  assert.equal(glow.arriveMs, 550);
   // Slowed, the glow and the wall impact still meet at the wall.
   const slowed = await playWall(fiery, { ...context, tempo: 0.5 }, { setup: (f) => { f.host.effectLights = () => true; } });
   const slowGlow = (await overridesByAsset(slowed.calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
-  assert.equal(slowGlow.arriveMs, 550);
-  assert.equal(slowed.plan.find((s) => s.kind === "impact").delay, 550);
+  assert.equal(slowGlow.arriveMs, 1100);
+  assert.equal(slowed.plan.find((s) => s.kind === "impact").delay, 1100);
+});
+test("a target missed in a multi-target roll loses its own effects", async () => {
+  const hit = { id: "t2", center: { x: 0, y: 600 }, w: 100, h: 100 };
+  const { recipe, context } = boltAttack();
+  // D&D 5e (no roll-wide outcome) and Daggerheart (the best outcome roll-wide).
+  for (const outcome of [undefined, "success"]) {
+    const several = { ...context, outcome, targets: [...context.targets, hit], targetOutcomes: { t1: "failure", t2: "success" } };
+    // Flying wide past it, or stopped by a wall before it.
+    for (const collides of [() => null, wallAt()]) {
+      const { plan } = await playWall(recipe, several, { collides });
+      // (A wall strike plays at its wall point, not on the target.)
+      const on = (id) => plan.filter((s) => s.destination?.id === id && !s.landing && (s.kind === "impact" || s.subject === "targets")).map((s) => s.stageId);
+      assert.deepEqual(on("t1"), [], `${outcome}: the missed target keeps nothing`);
+      assert.deepEqual(on("t2"), ["hit", "react"], `${outcome}: the hit target keeps its hit and reaction`);
+      // The shooter's recoil keeps the hit's time.
+      assert.equal(plan.find((s) => s.stageId === "recoil").delay, 600);
+    }
+  }
+  // The miss into the wall strikes it.
+  const { plan } = await playWall(recipe, { ...context, outcome: undefined, targets: [...context.targets, hit], targetOutcomes: { t1: "failure", t2: "success" } });
+  assert.equal(plan.find((s) => s.stageId === "fly" && s.endpoint?.id === "t1").flightOutcome, "wall");
+  assert.ok(plan.some((s) => s.kind === "impact" && s.landing?.x === WALL_X));
+  // Clear of walls it flies on past.
+  const past = await playWall(recipe, { ...context, outcome: undefined, targets: [...context.targets, hit], targetOutcomes: { t1: "failure", t2: "success" } }, { collides: () => null });
+  assert.equal(past.plan.find((s) => s.stageId === "fly" && s.endpoint?.id === "t1").flightOutcome, "past");
+});
+test("a missed target keeps its dodge as the shot passes it", async () => {
+  const { recipe, context } = boltAttack();
+  const dodging = validateRecipe({ ...recipe, stages: [...recipe.stages, { stageId: "duck", kind: "motion", motion: "dodge", subject: "targets", assets: [], delay: 400, duration: 500 }] });
+  const { plan } = await playWall(dodging, { ...context, outcome: undefined, targetOutcomes: { t1: "failure" } }, { collides: () => null });
+  assert.deepEqual(plan.filter((s) => s.destination?.id === "t1" && s.subject === "targets").map((s) => s.stageId), ["duck"]);
+});
+test("slowed, an arcing projectile lands with its slowed impact", async () => {
+  const FLASK = "jb2a.throwable.throw.flask.01.orange";
+  const { recipe, context } = boltAttack();
+  const thrown = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, kind: "projectile", assets: [FLASK], contact: 600 } : s)) });
+  const { calls, plan } = await playWall(thrown, { ...context, tempo: 0.5 }, { collides: () => null, setup: (f) => f.runtime.catalog.push({ key: FLASK }) });
+  const effects = effectsOf(calls);
+  // The hit lands at 1200 ms; the flask's effect ends then (600 ms of clip at half speed).
+  assert.equal(plan.find((s) => s.stageId === "hit").delay, 1200);
+  const flask = effects.find((e) => e.some((c) => c[0] === "file" && c[1] === FLASK));
+  assert.equal(flask.find((c) => c[0] === "duration")[1], 600);
+  // Its arc falls back over the second half of those 1200 ms, and its shadow lands with it.
+  assert.ok(flask.some((c) => c[0] === "animateProperty" && c[3].delay === 600 && c[3].duration === 600));
+  assert.equal(effects.find((e) => e.some((c) => c[0] === "shape")).find((c) => c[0] === "duration")[1], 1200);
+});
+test("the wall test is told who shoots (for the shooter's level)", async () => {
+  const { recipe, context } = boltAttack();
+  const seen = [];
+  await playWall(recipe, context, { collides: (a, b, type, source) => { seen.push(source); return null; } });
+  assert.ok(seen.length && seen.every((s) => s === context.source));
 });

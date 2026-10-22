@@ -118,6 +118,8 @@ test('footprint points: centre, inset edge midpoints, then inset corners', () =>
 test('arcs by asset and override', () => {
   assert.equal(arcOf({ assets: ['jb2a.throwable.throw.bomb.01.red'] }).kind, 'lob');
   assert.equal(arcOf({ assets: ['jb2a.throwable.launch.cannon_ball.01.black'] }).kind, 'lob');
+  for (const key of ['jb2a.throwable.throw.grenade.01.black', 'jb2a.throwable.throw.dynamite.01', 'jb2a.throwable.throw.stick_grenade.01', 'jb2a.throwable.launch.grenade.01.black'])
+    assert.equal(arcOf({ assets: [key] }).kind, 'lob', key);
   assert.equal(arcOf({ assets: ['jb2a.javelin.01.throw'] }).kind, 'low');
   assert.equal(arcOf({ assets: ['jb2a.dagger.throw.01.white'] }).kind, 'low');
   assert.equal(arcOf({ asset: 'jb2a.chakram.01.throw.blue', assets: [] }).kind, 'low');
@@ -140,8 +142,8 @@ const flight = (extra = {}) => ({ stageId: 'shot', kind: 'travel', origin: shoot
 const ctx = (extra = {}) => ({ source: shooter, targets: [far], type: 'attack', outcome: 'success', messageId: seedA, ...extra });
 const opts = (extra = {}) => ({ context: ctx(), gridPx: 100, collides: wallAtX(500), walls: true, arcs: true, preview: false, ...extra });
 
-test('a flight cut short by a wall arrives sooner', () => {
-  const { plan, blocked } = withFlightPaths([flight()], opts());
+test('a projectile cut short by a wall arrives sooner', () => {
+  const { plan, blocked, missed } = withFlightPaths([flight({ kind: 'projectile' })], opts());
   const [s] = plan;
   assert.equal(s.flightOutcome, 'wall');
   assert.deepEqual(s.flightFrom, { x: 0, y: 0 });
@@ -149,32 +151,57 @@ test('a flight cut short by a wall arrives sooner', () => {
   assert.equal(s.contact, 300);
   assert.equal(s.flightArrivalCut, 300);
   assert.deepEqual([...blocked], ['t1']);
+  assert.equal(missed.size, 0);
+});
+
+test('a travel clip cut short by a wall keeps its own arrival', () => {
+  // Sequencer picks the clip's range variant by the shorter line; its object still lands at the clip's contact.
+  const { plan, blocked } = withFlightPaths([flight()], opts());
+  const [s] = plan;
+  assert.deepEqual([s.flightOutcome, s.flightTo.x, s.contact, s.flightArrivalCut], ['wall', 500, 600, undefined]);
+  assert.deepEqual([...blocked], ['t1']);
 });
 
 test('without a contact the arrival is 55% of the flight', () => {
-  const { plan } = withFlightPaths([flight({ contact: 0 })], opts());
+  const { plan } = withFlightPaths([flight({ kind: 'projectile', contact: 0 })], opts());
   assert.equal(plan[0].contact, 275);
 });
 
+test('a projectile at another speed: contact stays clip time, the cut is elapsed time', () => {
+  // Twice as fast: contact 600 of clip arrives 300 ms in; halfway is 150 ms, 300 ms of clip.
+  const { plan } = withFlightPaths([flight({ kind: 'projectile', playbackRate: 2 })], opts());
+  assert.deepEqual([plan[0].contact, plan[0].flightArrivalCut], [300, 150]);
+});
+
 test('a clear hit keeps its timing and blocks nothing', () => {
-  const { plan, blocked } = withFlightPaths([flight()], opts({ collides: () => null }));
+  const { plan, blocked, missed } = withFlightPaths([flight()], opts({ collides: () => null }));
   assert.equal(plan[0].flightOutcome, 'target');
   assert.deepEqual(plan[0].flightTo, { x: 1000, y: 0 });
   assert.equal(plan[0].contact, 600);
   assert.equal(plan[0].flightArrivalCut, undefined);
   assert.equal(blocked.size, 0);
+  assert.equal(missed.size, 0);
 });
 
-test('a D&D per-target outcome decides the role', () => {
-  const { plan, blocked } = withFlightPaths([flight()], opts({ context: ctx({ outcome: undefined, targetOutcomes: { t1: 'failure' } }), collides: () => null }));
+test('a D&D per-target outcome decides the role, and its miss is reported', () => {
+  // The roll-wide outcome is empty (several targets), so nothing else drops the missed target's effects.
+  const { plan, blocked, missed } = withFlightPaths([flight()], opts({ context: ctx({ outcome: undefined, targetOutcomes: { t1: 'failure' } }), collides: () => null }));
   assert.equal(plan[0].flightOutcome, 'past');
   assert.equal(blocked.size, 0);
+  assert.deepEqual([...missed], ['t1']);
 });
 
-test('a miss into a wall blocks nothing (its target effects are already gone)', () => {
-  const { plan, blocked } = withFlightPaths([flight()], opts({ context: ctx({ outcome: 'criticalFailure' }) }));
+test('a miss into a wall is a miss, not a block', () => {
+  const { plan, blocked, missed } = withFlightPaths([flight()], opts({ context: ctx({ outcome: 'criticalFailure' }) }));
   assert.equal(plan[0].flightOutcome, 'wall');
   assert.equal(blocked.size, 0);
+  assert.deepEqual([...missed], ['t1']);
+});
+
+test('a miss with no planned path (walls off, no backend, a shield block) is not reported', () => {
+  const miss = ctx({ outcome: 'failure' });
+  for (const [stage, extra] of [[flight(), { walls: false }], [flight(), { collides: null }], [flight({ shieldBlock: true }), {}]])
+    assert.equal(withFlightPaths([stage], opts({ context: miss, ...extra })).missed.size, 0);
 });
 
 test('flights with no attack outcome never stop at walls', () => {
@@ -333,4 +360,15 @@ test('an arcing projectile lands at its arrival; a straight one keeps its whole 
   const s = shadowStage(fly);
   assert.deepEqual([s.duration, s.moveDelay, s.moveEase], [550, 100, 'easeOutCubic']);
   assert.equal(s.flightTracks[0].delay, 100);
+});
+
+test('slowed, a contact (clip time) arrives later in elapsed time', () => {
+  // Slow motion at half speed: duration 2000 and moveDelay 200 elapsed, contact 600 of clip at rate 0.5.
+  const arc = { kind: 'low', apexPx: 40, peakScale: 1.1 };
+  const slowed = flight({ kind: 'projectile', duration: 2000, moveDelay: 200, contact: 600, playbackRate: 0.5, flightArc: arc });
+  assert.equal(moveEnd(slowed), 1200);
+  assert.deepEqual(flightTiming(slowed), { start: 200, arrive: 1000 });
+  assert.equal(shadowStage(slowed).duration, 1200);
+  // A travel clip lands at its slowed contact too.
+  assert.deepEqual(flightTiming({ ...slowed, kind: 'travel' }), { start: 0, arrive: 1200 });
 });

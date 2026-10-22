@@ -18,7 +18,7 @@ import { registeredMedia, mediaForReference } from '../media/media-library-model
 import { staggerDelays } from './adaptive.mjs';
 import { stageTiers } from '../../core/quality.mjs';
 import { withLastingArea } from './lasting-area.mjs';
-import { withOutcome } from '../../systems/outcome.mjs';
+import { meleeClip, withOutcome } from '../../systems/outcome.mjs';
 import { centerOf, pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
@@ -69,9 +69,19 @@ function applyFlightTracks(effect, tracks) {
   for (const t of tracks)
     effect.animateProperty("spriteContainer", t.property, { from: t.from, to: t.to, duration: t.duration, delay: t.delay, ease: t.ease, gridUnits: t.property.startsWith("position"), absolute: true });
 }
+// A target whose own shot was planned to miss (engines/playback/flight-path.mjs missed: one target missed in a
+// multi-target roll, D&D 5e targetOutcomes or Daggerheart's mixed results, which the roll-wide withOutcome never
+// sees) loses its own effects as a whole miss does: its impacts, reactions and surface sounds. A melee swing and
+// its dodge stay (withWallStrikes drops the dodge of a miss stopped short of it).
+export function withoutMissedTargets(plan, missed) {
+  if (!missed?.size) return plan;
+  const keeps = (s) => s.kind === 'motion' && s.motion === 'dodge' || s.kind === 'impact' && s.subject !== 'targets' && s.assets?.some(meleeClip);
+  return plan.filter((s) => !(missed.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets') && !keeps(s)));
+}
 // Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
 // effects (its impacts, reactions and surface sounds) do not play, nor does the dodge of a target a miss never
-// reached; what followed its impacts moves up with the shorter flight (flightArrivalCut); a small impact and a
+// reached; what followed its impacts moves up with a projectile's shorter flight (flightArrivalCut; a travel clip
+// keeps its arrival); a small impact and a
 // knock on stone (wood for a door) play at the wall point as the shot arrives. asset: the wall impact, or null;
 // cueOf(material) -> { file, volume, duration } | null.
 export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf = () => null } = {}) {
@@ -774,7 +784,8 @@ export class AnimaterRuntime {
     try {
       paths = withFlightPaths(plan, {
         context, gridPx: grid, preview,
-        collides: collides ? (a, b, type) => this.host.collides(a, b, type) : null,
+        // The shooter rides along so the wall test reads its level (a multi-level scene).
+        collides: collides ? (a, b, type) => this.host.collides(a, b, type, context.source) : null,
         walls: this.host.projectileWalls?.() !== false,
         arcs: this.host.arcingThrows?.() !== false,
       });
@@ -797,7 +808,7 @@ export class AnimaterRuntime {
       return set?.length ? set[Math.floor(random() * set.length)] : null;
     };
     const asset = resolveAsset({ kind: 'impact', assets: WALL_IMPACTS }, this.catalog);
-    return withWallStrikes(paths.plan, paths.blocked, { asset, grid, cueOf });
+    return withWallStrikes(withoutMissedTargets(paths.plan, paths.missed), paths.blocked, { asset, grid, cueOf });
   }
   wait(delay, session) {
     return new Promise((resolve) => {

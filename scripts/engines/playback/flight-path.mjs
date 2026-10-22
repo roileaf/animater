@@ -6,7 +6,7 @@ import { centerOf } from './composition.mjs';
 import { normalizeOptions } from '../../core/stage-options.mjs';
 
 const FLIGHTS = ['travel', 'projectile'];
-const LOB = /throwable\.(throw\.(bomb|flask)|launch)\./;
+const LOB = /throwable\.(throw\.(bomb|flask|grenade|stick_grenade|dynamite)|launch)\./;
 const LOW = /\.throw(\.|$)|shuriken|chakram|kunai|boomerang/;
 const OVERRIDE = { straight: 'none', low: 'low', lob: 'lob' };
 const INSET = 0.2;
@@ -99,8 +99,10 @@ function roleOf(s, context, preview) {
   return preview ? 'other' : 'attack-hit';
 }
 
-// When a flight reaches its end (the moment its impact is timed to).
-export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
+const rateOf = (s) => (Number(s.playbackRate) > 0 ? Number(s.playbackRate) : 1);
+// When a flight reaches its end (the moment its impact is timed to), in elapsed time: its contact is clip time,
+// which a slowed clip (slow motion) reaches later.
+export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) / rateOf(s) : s.duration * 0.55);
 
 // When a projectile's effect (and so its moveTowards) ends. An arcing one touches down at the flight's arrival
 // (a wall-shortened contact included), as its impact does; any other keeps its whole duration.
@@ -179,10 +181,14 @@ export function shadowStage(flight) {
 }
 
 // Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply), flightArc,
-// and an earlier contact for a flight cut short by a wall (flightArrivalCut: how much earlier).
-// blocked: target ids whose attack hit ended at a wall (their target effects must not play).
+// and an earlier contact for a projectile cut short by a wall (flightArrivalCut: how much earlier). A projectile
+// moves at its own pace over the line, so a shorter line arrives sooner. A travel clip keeps its arrival: Sequencer
+// picks the clip's range variant (05/15/30/60/90 ft) by the shorter line, and its object reaches the far end at
+// about the same clip time in every one.
+// blocked: target ids whose attack hit ended at a wall; missed: target ids whose own shot was planned to miss
+// (flying past or into a wall). The target effects of both must not play.
 export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = null, walls = true, arcs = true, preview = false } = {}) {
-  const blocked = new Set();
+  const blocked = new Set(), missed = new Set();
   const seed = context.messageId ?? context.id;
   const out = plan.map((s) => {
     if (!FLIGHTS.includes(s.kind)) return s;
@@ -196,12 +202,14 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
     if (role === 'fixed') return next;
     Object.assign(next, { flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}) });
     const full = distance(from, aim), reached = distance(path.from, path.to);
-    if (path.outcome === 'wall' && reached < full && s.duration > 0) {
-      const arrival = arrivalOf(s), contact = Math.max(1, Math.round(arrival * reached / full));
-      Object.assign(next, { contact, flightArrivalCut: Math.round(arrival) - contact });
+    if (path.outcome === 'wall' && s.kind === 'projectile' && reached < full && s.duration > 0) {
+      const arrival = arrivalOf(s), at = Math.max(1, Math.round(arrival * reached / full));
+      // contact is clip time; the cut is elapsed time, as delays are.
+      Object.assign(next, { contact: Math.max(1, Math.round(at * rateOf(s))), flightArrivalCut: Math.round(arrival) - at });
     }
     if (path.outcome === 'wall' && role === 'attack-hit') blocked.add(tokenId(s.endpoint));
+    if (role === 'attack-miss' && path.outcome !== 'target') missed.add(tokenId(s.endpoint));
     return next;
   });
-  return { plan: out, blocked };
+  return { plan: out, blocked, missed };
 }

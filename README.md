@@ -61,7 +61,7 @@ Build your own animation or customize a catalog entry in a timeline workspace.
 - **Clip editing:** Drag clips to change timing, drag their right edge to trim duration, and right-click to duplicate or delete. Clips snap to other clips and the playhead; hold **Alt** to place freely.
 - **Choreography:** Start a stage *With* or *After* another stage, or *At a set time*. Linked stages stay attached when their timing changes.
 - **Mute and solo:** Isolate tracks while previewing to check visuals, motion, sound and filters separately.
-- **Stage inspector:** Choose assets, stage types and stage-specific options. Visual assets have previews; sound stages have a listen player and volume control.
+- **Stage inspector:** Choose assets, stage types and stage-specific options. Visual assets have previews; sound stages have a listen player and volume control. A flight stage's **Flight** option (under Placement) sets how it flies: **Auto** (from its asset), **Straight**, **Low arc** or **Lob**.
 - **Recipe settings:** Set the trigger, bound item, description, category and accent through the **⚙** trigger chip.
 - **One animation for a strike type:** In **Recipe settings**, choose **Attack rolled** (or **Damage rolled**) → **Applies to: All melee strikes** or **All ranged strikes**, then save. Melee covers melee weapons, unarmed attacks and NPC melee strikes; ranged covers ranged weapons and NPC ranged strikes. No name lists needed. Both override built-in weapon animations, with specific saved bindings taking priority. Thrown and spell attacks retain their own animations.
 - **Teleport appearance:** In a teleport recipe's **Recipe settings**, choose **Teleport look**, or click the **Departure effect** and **Arrival effect** preview cards to browse Assets, preview variants and choose artwork for each cue. The browser also supports your own media files. **No effect** and **Default blue mist** work separately for each cue. Set size and optional tint there too. **No extra effects** keeps the token move while suppressing the blue puffs; the recipe's normal stages still play. Existing recipes keep blue mist by default.
@@ -96,9 +96,9 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Effect lighting | World | Fire, lightning, radiant and other glowing effects light the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light (on by default) |
 | Effect lighting in daylight | World | Also adds a soft coloured glow around effects in fully lit scenes (on by default) |
 | Flickering and flashing effect lights | Each player | Turn off to see effect lights as a steady glow, without flicker or strobe (on by default) |
-| Projectiles stop at walls | World | Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see (on by default) |
-| Arcing throws | World | Bombs and flasks are lobbed high and thrown weapons fly a low arc, with a shadow on the ground beneath them (on by default) |
-| Projectile shadows | Each player | Turn off to hide the ground shadow under thrown objects on your screen (on by default) |
+| Projectiles stop at walls | World | Arrows, bolts, spell bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see (on by default) |
+| Arcing throws | World | Bombs, flasks, grenades and dynamite are lobbed high and thrown weapons fly a low arc, with a shadow on the ground beneath them (on by default). A stage's **Flight** option in Recipe Studio overrides this |
+| Projectile shadows | Each player | Turn off to hide the ground shadow under thrown objects on your screen (on by default). Shadows are decoration, so Balanced and Low quality skip them |
 
 ### Faster animations
 

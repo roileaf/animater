@@ -1620,9 +1620,13 @@ Hooks.once("ready", () => {
     // Shots stop at walls and throws arc (world settings); on while a setting is not registered.
     projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
     arcingThrows: () => { try { return game.settings.get(ID, "arcingThrows") !== false; } catch { return true; } },
-    // The first wall on a line ("sight" or "move"), and whether it is a door. A failing backend throws,
-    // and the runtime plays its flights as before.
-    collides: (a, b, type) => wallHit(CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest" }), CONST.WALL_DOOR_TYPES.DOOR),
+    // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
+    // otherwise tests the level this client views). A failing backend throws, and the runtime plays its flights as before.
+    collides: (a, b, type, source) => {
+      const levelId = (source?.document ?? source)?.level;
+      const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
+      return wallHit(CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest", ...(level ? { level } : {}) }), CONST.WALL_DOOR_TYPES.DOOR);
+    },
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
