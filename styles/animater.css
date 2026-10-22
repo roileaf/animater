@@ -993,6 +993,10 @@
   background-size: var(--an-grid, 55px) var(--an-grid, 55px);
   background-position: center;
 }
+/* A teleport stage playing: its mover is gone from the monitor until the stage ends. */
+.animater .an-recipe-token { transition: opacity 0.12s; }
+.animater .an-recipe-scene:has(.an-teleport-layer[data-teleport="source"]:not([hidden])) [data-preview-token="source"],
+.animater .an-recipe-scene:has(.an-teleport-layer[data-teleport="targets"]:not([hidden])) [data-preview-token="targets"] { opacity: 0; }
 .animater .an-recipe-actor {
   position: absolute;
   top: 45%;

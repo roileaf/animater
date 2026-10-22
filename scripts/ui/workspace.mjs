@@ -1058,6 +1058,8 @@ export class Workspace {
           ? `<svg class="an-tint-filter" aria-hidden="true"><defs><filter id="${filterId}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb[0]} 0 0 0 0 0 ${rgb[1]} 0 0 0 0 0 ${rgb[2]} 0 0 0 0 0 1 0"/></filter></defs></svg>`
           : "";
         if (s.kind === "motion") return "";
+        // A teleport has no art of its own: while it plays, the mover's portrait is gone (styles: an-teleport-layer).
+        if (s.kind === "teleport") return `<div hidden class="an-recipe-layer an-teleport-layer" data-layer-stage="${index}" data-teleport="${teleportPlan(recipe)?.who === "target" ? "targets" : "source"}"></div>`;
         if(OPTIONAL_FX_KINDS.has(s.kind))return this.optionalFxPreviewHTML(s, s.index ?? index);
         if (s.kind === "sound")
           return s.skipSound
@@ -1143,6 +1145,7 @@ export class Workspace {
       .map((s, planIndex) => {
         s = { ...s, ...normalizeOptions(s) };
         if (s.kind === "motion") return "";
+        if (s.kind === "teleport") return `<div hidden class="an-recipe-layer an-teleport-layer" data-layer-stage="${s.index}" data-preview-plan="${planIndex}" data-teleport="${teleportPlan(chain.recipe)?.who === "target" ? "targets" : "source"}"></div>`;
         if(OPTIONAL_FX_KINDS.has(s.kind))return this.optionalFxPreviewHTML(s, s.index);
         if (s.kind === "sound")
           return s.skipSound
