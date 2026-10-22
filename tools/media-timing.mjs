@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { resolve, basename } from "node:path";
-import { fileURLToPath } from "node:url";
-import { variantFiles } from "./asset-databases.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { assetDatabases, variantFiles } from "./asset-databases.mjs";
 import { assetGeometry } from "./spell-asset-selection.mjs";
 import { persistentProbe } from "./probe-cache.mjs";
 const exec = promisify(execFile),
@@ -68,15 +69,37 @@ async function representativeTiming(row, databases) {
     const { path, metadata, duration } = measured;
     const baked = ["beam", "line", "projectile"].includes(assetGeometry(row));
     if (!baked) return { duration, baked };
-    // Transparent pixels retain arbitrary RGB values. Decode alpha with the
-    // correct libvpx decoder before estimating visible destination contact.
-    const decoder =
-      metadata.streams[0].codec_name === "vp8" ? "libvpx" : "libvpx-vp9";
-    const endpoint = Math.round(
-      100 * (1 - (row.template?.[2] ?? 0) / (row.width || 1000)),
-    );
-    // Persisted per file, decoder and endpoint: the same frames give the same contact.
-    const contact = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint }, async () => {
+    const contact = await fileContact(measured, row.template, row.width);
+    // Magic Missile has a large leading glow. Frame inspection places its head
+    // at destination around 1s; a glow threshold alone registers too early.
+    const calibrated =
+      /^MagicMissile_01_Regular_.*_15ft_01_1000x400\.webm$/i.test(filename)
+        ? 1000
+        : null;
+    return {
+      duration,
+      baked,
+      contact: calibrated ?? contact,
+      ...(calibrated
+        ? { contactMethod: "frame-reviewed" }
+        : { contactMethod: "alpha-weighted-estimate" }),
+    };
+  })();
+  cache.set(identity, run);
+  return run;
+}
+// When the shot in one measured file reaches its far end (media ms): the
+// endpoint column sits template[2] px before the file's right edge.
+async function fileContact({ path, metadata, duration }, template, width) {
+  // Transparent pixels retain arbitrary RGB values. Decode alpha with the
+  // correct libvpx decoder before estimating visible destination contact.
+  const decoder =
+    metadata.streams[0].codec_name === "vp8" ? "libvpx" : "libvpx-vp9";
+  const endpoint = Math.round(
+    100 * (1 - (template?.[2] ?? 0) / (width || 1000)),
+  );
+  // Persisted per file, decoder and endpoint: the same frames give the same contact.
+  return persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint }, async () => {
     const { stdout: frames } = await exec(
       "ffmpeg",
       [
@@ -101,24 +124,25 @@ async function representativeTiming(row, databases) {
       { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
     );
     return visibleContact(frames, duration, endpoint);
-    });
-    // Magic Missile has a large leading glow. Frame inspection places its head
-    // at destination around 1s; a glow threshold alone registers too early.
-    const calibrated =
-      /^MagicMissile_01_Regular_.*_15ft_01_1000x400\.webm$/i.test(filename)
-        ? 1000
-        : null;
-    return {
-      duration,
-      baked,
-      contact: calibrated ?? contact,
-      ...(calibrated
-        ? { contactMethod: "frame-reviewed" }
-        : { contactMethod: "alpha-weighted-estimate" }),
-    };
-  })();
-  cache.set(identity, run);
-  return run;
+  });
+}
+// When the shot lands in each range variant (05/15/30/60/90 ft) of a ranged
+// clip, in media ms rounded up to 10 ms: { "30ft": 650, ... }. A variant with
+// random alternatives takes the latest of them, so a strike timed to it is
+// never early. Null when the row has no measured variant.
+export async function variantLandings(row, databases) {
+  if (!row?.distanceFiles) return null;
+  const landings = {};
+  for (const [ft, files] of Object.entries(row.distanceFiles)) {
+    const times = [];
+    for (const file of [files].flat(Infinity).filter((f) => typeof f === "string" && f.endsWith(".webm"))) {
+      const measured = await mediaMetadata(file, databases);
+      const width = Number(basename(file).match(/_(\d+)x\d+\.webm$/i)?.[1]);
+      if (measured) times.push(await fileContact(measured, row.template, width));
+    }
+    if (times.length) landings[ft] = Math.ceil(Math.max(...times) / 10) * 10;
+  }
+  return Object.keys(landings).length ? landings : null;
 }
 export async function mediaTiming(row, databases) {
   if (!row) return null;
@@ -185,4 +209,29 @@ export async function designMediaTiming(assets, databases) {
     };
   }
   return result;
+}
+// Writes data/media-landings.mjs: when the shot lands in each range variant of
+// every ranged (projectile) clip, keyed by the variant's Sequencer database path.
+// Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href && process.argv.includes("--write-landings")) {
+  const databases = await assetDatabases(), landings = {};
+  for (const rows of Object.values(databases))
+    for (const row of rows) {
+      if (!row.distanceFiles || assetGeometry(row) !== "projectile") continue;
+      for (const [ft, ms] of Object.entries((await variantLandings(row, databases)) ?? {})) {
+        const key = `${row.key}.${ft}`;
+        landings[key] = Math.max(landings[key] ?? 0, ms);
+      }
+    }
+  const keys = Object.keys(landings).sort();
+  await writeFile(new URL("../data/media-landings.mjs", import.meta.url),
+    `// When the shot in each range variant of a JB2A ranged clip reaches its far end
+// (media ms from the clip's start, rounded up to 10 ms; the latest of a variant's
+// random alternatives). Keyed by the variant's Sequencer database path.
+// Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
+export const MEDIA_LANDINGS = {
+${keys.map((k) => `  ${JSON.stringify(k)}: ${landings[k]},`).join("\n")}
+};
+`);
+  console.log(`${keys.length} variant landings`);
 }

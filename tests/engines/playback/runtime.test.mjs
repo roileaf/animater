@@ -5,6 +5,7 @@ import { starterRecipes } from "../../../scripts/core/presets.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 import { orbRecipe } from "../../../scripts/catalogs/shared/orb-builder.mjs";
 import { PF2E_SPELLS, spellRecipe } from "../../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { MEDIA_LANDINGS } from "../../../data/media-landings.mjs";
 import { SURFACE_SOUND_PROFILES } from "../../../scripts/engines/sound/surface-sounds.mjs";
 
 test("native line effects use exact area endpoints, stationary cues are sized rather than stretched", async () => {
@@ -1231,12 +1232,13 @@ test("blocked attack strikes the wall", async () => {
   assert.ok(!calls.some((c) => c[0] === "motion" && c[1].stageId === "react"));
   const wall = plan.find((s) => s.kind === "impact");
   assert.deepEqual(wall.landing, { x: WALL_X, y: 0 });
-  // As the bolt reaches the wall: a travel clip's range variant lands at a time no data here holds, so at the
-  // end of its travel (200 ms before its 1000 ms stage ends), never at 55% while the bolt is still flying.
-  assert.equal(wall.delay, 800);
-  assert.equal(plan.find((s) => s.stageId === "fly").flightArrivalShift, 250);
+  // As the bolt reaches the wall: 3 squares out Sequencer plays the 15 ft fire bolt clip, whose bolt lands at
+  // its measured time (data/media-landings.mjs), not at 55% of the flight.
+  const landing = MEDIA_LANDINGS["jb2a.fire_bolt.orange.15ft"];
+  assert.equal(wall.delay, landing);
+  assert.equal(plan.find((s) => s.stageId === "fly").flightArrivalShift, landing - 550);
   // What followed the hit moves with the strike (the hit was 50 ms after the recipe's 550 ms arrival).
-  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 850);
+  assert.equal(plan.find((s) => s.stageId === "recoil").delay, landing + 50);
   // Sized to 0.6 of the bolt's footprint, not the target.
   const at = calls.findIndex((c) => c[0] === "file" && c[1] === WALL_IMPACT);
   assert.equal(calls.slice(at).find((c) => c[0] === "size")[1].width, 60);
@@ -1251,7 +1253,7 @@ test("a wall strike knocks on stone, on wood for a door, when the recipe has sou
     const cue = plan.find((s) => s.kind === "sound" && s.surfaceRole === "cue");
     assert.ok(cue, "a wall cue plays");
     assert.ok(files(key).includes(cue.soundFile), `${cue.soundFile} from ${key}`);
-    assert.equal(cue.delay, 800);
+    assert.equal(cue.delay, MEDIA_LANDINGS["jb2a.fire_bolt.orange.15ft"]);
   }
   // Without sounds in the recipe the wall stays silent.
   const { recipe, context } = boltAttack();

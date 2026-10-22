@@ -3,6 +3,7 @@
 // the first wall point on the line.
 import { MISS, sideOf } from '../../systems/outcome.mjs';
 import { centerOf } from './composition.mjs';
+import { rangeLanding } from './range-landing.mjs';
 
 const FLIGHTS = ['travel', 'projectile'];
 const INSET = 0.2;
@@ -83,19 +84,26 @@ function roleOf(s, context, preview) {
 // When a flight reaches its end (the moment its impact is timed to).
 export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
 
-// When a flight stopped by a wall reaches it (elapsed ms into the stage, as its duration and contact are).
-// A projectile: Sequencer's moveTowards (no move speed) runs from its launch pause to the end of the effect,
-// so it touches the wall as the stage ends, however short the line. A travel clip: Sequencer picks its range
-// variant (05/15/30/60/90 ft) by the line to the wall, and the object in each variant lands at a time of its
-// own (measured JB2A arrows: 500 ms at 05 ft to 1150 ms at 90 ft) that no data here holds; the measured contact
-// is one variant's. So the wall is struck at the end of the travel, 200 ms before the stage ends (as the PF2e
-// weapon recipes time an unmeasured contact; every measured JB2A ranged weapon clip lands at least 267 ms
-// before its own end), never before the recipe's own arrival.
-export const wallArrivalOf = (s) => (s.kind === 'projectile' ? s.duration : Math.min(s.duration, Math.max(arrivalOf(s), 400, s.duration - 200)));
+// When a flight stopped by a wall (s.flightFrom -> s.flightTo) reaches it, in elapsed ms into the stage (as its
+// duration and contact are). A projectile: Sequencer's moveTowards (no move speed) runs from its launch pause to
+// the end of the effect, so it touches the wall as the stage ends, however short the line. A travel clip:
+// Sequencer picks its range variant (05/15/30/60/90 ft) by the line to the wall, and the object in each variant
+// lands at a time of its own (range-landing.mjs, measured: a JB2A arrow 500 ms at 05 ft to 1150 ms at 90 ft),
+// played from the skipped opening at the stage's media speed. An unmeasured clip is struck at the end of its
+// travel, 200 ms before the stage ends (as the PF2e weapon recipes time an unmeasured contact; every measured
+// JB2A ranged weapon clip lands at least 267 ms before its own end), never before the recipe's own arrival.
+export function wallArrivalOf(s, { gridPx = 100, landings } = {}) {
+  if (s.kind === 'projectile') return s.duration;
+  const reach = s.flightFrom && s.flightTo ? distance(s.flightFrom, s.flightTo) : null;
+  const landing = reach === null ? null : rangeLanding(s.asset, reach, gridPx, landings);
+  if (landing === null) return Math.min(s.duration, Math.max(arrivalOf(s), 400, s.duration - 200));
+  const elapsed = Math.max(0, landing - (Number(s.clipStart) || 0)) / (Number(s.playbackRate) || 1);
+  return Math.min(s.duration, elapsed);
+}
 
 // Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply). A flight stopped by a wall
-// gets its wall arrival as its contact (wallArrivalOf) and flightArrivalShift: how much later
-// that is than the recipe's own arrival, which what followed its target's impacts moves with.
+// gets its wall arrival as its contact (wallArrivalOf) and flightArrivalShift: how much later (earlier when
+// negative) that is than the recipe's own arrival, which what followed its target's impacts moves with.
 // blocked: target ids whose attack hit ended at a wall; missed: target ids whose own shot was planned to miss
 // (flying past or into a wall). The target effects of both must not play.
 export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = null, walls = true, preview = false } = {}) {
@@ -109,7 +117,7 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
     const path = planFlight({ from, targetRect: footprintOf(s.endpoint, gridPx), to: aim, role, seed, gridPx, collides, shieldBlock: s.shieldBlock });
     const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}) };
     if (path.outcome === 'wall' && s.duration > 0) {
-      const contact = Math.max(1, Math.round(wallArrivalOf(s))), shift = contact - Math.round(arrivalOf(s));
+      const contact = Math.max(1, Math.round(wallArrivalOf(next, { gridPx }))), shift = contact - Math.round(arrivalOf(s));
       Object.assign(next, { contact, ...(shift ? { flightArrivalShift: shift } : {}) });
     }
     if (path.outcome === 'wall' && role === 'attack-hit') blocked.add(tokenId(s.endpoint));
