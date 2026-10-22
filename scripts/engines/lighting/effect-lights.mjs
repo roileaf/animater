@@ -29,6 +29,9 @@ const LUMINOUS = word('fire\\w*|flame\\w*|flaming|explosion|lightning|electric\\
 const VETO = word('physical|smoke|blood|liquid|web|crack\\w*|darkness');
 const LIGHTNING = word('lightning|electric\\w*');
 const FIRE = word('fire\\w*|flame\\w*|flaming');
+// Flights that stretch from caster to target for their whole life (a tether, a ray) rather than fly along it.
+// Not JB2A's '<spell>.beam' clips: those are a fireball or bolt flying with its trail.
+const BEAM = word('energy_beam|energy_strands|energy_conduit|chain_lightning|lightning_bolt|ray_of_frost|witch_bolt|disintegrate|breath_weapon\\w*|laser\\w*|tether');
 
 const assetOf = stage => String(stage?.asset ?? stage?.assets?.[0] ?? '').toLowerCase();
 const hex = value => {
@@ -50,9 +53,13 @@ function isLasting(stage) {
   return !!stage?.persist || (['aura', 'template'].includes(stage?.kind) && (stage.duration ?? 0) > LASTING_AREA_MS);
 }
 
+export const isBeam = stage => ['travel', 'projectile'].includes(stage?.kind) && BEAM.test(assetOf(stage));
+
 export function lightShape(stage) {
-  if (['travel', 'projectile'].includes(stage?.kind)) return 'glow';
   const asset = assetOf(stage);
+  // A beam lights its whole line while it shows; anything else in flight is a glow travelling with it.
+  if (isBeam(stage)) return LIGHTNING.test(asset) ? 'strobe' : 'pulse';
+  if (['travel', 'projectile'].includes(stage?.kind)) return 'glow';
   // A lasting area keeps glowing; a strobe would go dark after its first second.
   if (isLasting(stage)) return FIRE.test(asset) ? 'flicker' : 'pulse';
   if (LIGHTNING.test(asset)) return 'strobe';
@@ -130,7 +137,7 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
   const reach = spotSquares * grid;
 
   placed.filter(p => isFlight(p.stage) && isLuminous(assetOf(p.stage)) && isTier0(p.stage)).sort(byStart)
-    .slice(0, perAnimation).forEach(p => lights.set(p.stage, buildTag(p, p.stage)));
+    .slice(0, perAnimation).forEach(p => lights.set(p.stage, buildTag(p, p.stage, isBeam(p.stage) ? perAnimation : 1)));
 
   const still = placed.filter(p => !isFlight(p.stage));
   const spots = [];
@@ -182,6 +189,16 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
       tag.lengthMs = tag.arriveMs;
       const from = originOf?.(stage);
       if (from) Object.assign(tag, { from: { x: from.x, y: from.y }, to: { x: at.x, y: at.y } });
+    } else if (isFlight(stage)) {
+      // A beam: lights along it from where it starts to where it lands, each sized to its stretch.
+      const from = originOf?.(stage);
+      if (!from) tag.at = { x: at.x, y: at.y };
+      else {
+        const length = distance(from, at);
+        Object.assign(tag, lightRadius(Math.max(radiusOf(stage) ?? 0, length / 2), grid), { at: { x: (from.x + at.x) / 2, y: (from.y + at.y) / 2 } });
+        const lights = spreadAlong(from, at, grid, { spanSquares, max: budget });
+        if (lights) Object.assign(tag, lights);
+      }
     } else if (follows?.(anchor)) {
       tag.follow = true;
     } else {

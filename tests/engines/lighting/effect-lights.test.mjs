@@ -215,6 +215,31 @@ test('a travelling stage carries its route and arrival time', () => {
   assert.equal(planLights([slow], opts({ slow: 0 })).get(slow).from, undefined);
 });
 
+test('a beam lights its whole line for as long as it shows, instead of a glow flying to the target', () => {
+  // Friendfetch's tether: a purple energy beam stretched from the caster to a target 10 squares away.
+  const tether = st('tether', 'travel', 'jb2a.energy_beam.normal.purple.01', { at: { x: sq(10), y: 0 }, r: sq(1), duration: 4000, delay: 500 });
+  const tag = planLights([tether], opts({ tether: 0 }, { originOf: () => ({ x: 0, y: 0 }) })).get(tether);
+  assert.equal(tag.shape, 'pulse');
+  assert.equal(tag.arriveMs, undefined);
+  assert.equal(tag.from, undefined);
+  assert.equal(tag.lengthMs, 4000);
+  assert.deepEqual(tag.points.map(p => p.x), [sq(10) / 6, sq(10) / 2, sq(50) / 6]);
+  // A lightning beam strobes like a bolt.
+  assert.equal(lightShape(st('a', 'travel', 'jb2a.chain_lightning.primary.blue')), 'strobe');
+  // A short beam is one light at its middle, sized to reach both ends.
+  const short = st('short', 'travel', 'jb2a.energy_beam.normal.purple.01', { at: { x: sq(2), y: 0 }, r: sq(0.5) });
+  const one = planLights([short], opts({ short: 0 }, { originOf: () => ({ x: 0, y: 0 }) })).get(short);
+  assert.deepEqual(one.at, { x: sq(1), y: 0 });
+  assert.equal(one.points, undefined);
+  assert.ok(one.dim >= 1.5);
+  // Without a known start it lights where it lands.
+  assert.deepEqual(planLights([short], opts({ short: 0 })).get(short).at, { x: sq(2), y: 0 });
+  // Real projectiles still fly.
+  assert.equal(lightShape(st('a', 'travel', 'jb2a.magic_missile.purple')), 'glow');
+  assert.equal(lightShape(st('a', 'projectile', 'jb2a.scorching_ray.01.orange')), 'glow');
+  assert.equal(lightShape(st('a', 'travel', 'jb2a.fireball.beam.orange')), 'glow');
+});
+
 test('every light fades over at least 300 ms, or the stage fade-out if larger', () => {
   const a = st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
   const b = st('b', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: sq(20), y: 0 }, fadeOut: 900 });
