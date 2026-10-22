@@ -1647,3 +1647,84 @@ test("world setting off sends never", async () => {
   assert.equal((await sentMotion(trailRecipe(), {}, (host) => { host.afterimages = () => true; })).afterimages, undefined, "on: Auto stays the default");
   assert.equal((await sentMotion(trailRecipe({ afterimages: "always" }))).afterimages, "always", "a host without the setting lets motions trail");
 });
+
+// Map distortion: the starting client tags each distortion's anchor effect (engines/distortion/scene-distortion.mjs).
+function warpFixture(on = true) {
+  const f = lightFixture(false);
+  f.host.mapDistortion = () => on;
+  return f;
+}
+const warpsOf = async (calls) => (await overridesByAsset(calls)).filter(([, d]) => d.animaterWarp).map(([asset, d]) => [asset, d.animaterWarp]);
+test("fireball explosion is tagged with a shock at its contact", async () => {
+  const { recipe, context } = fireball();
+  const { runtime, calls } = warpFixture();
+  let plan;
+  await runtime.play(recipe, context, { onStart: (r) => { plan = r.playbackPlan; } });
+  const warps = await warpsOf(calls);
+  assert.equal(warps.length, 1);
+  const [asset, tag] = warps[0];
+  assert.equal(asset, "jb2a.fireball.explosion.orange");
+  assert.equal(tag.kind, "shock");
+  assert.deepEqual(tag.at, { x: 600, y: 0 });
+  const boom = plan.find((s) => s.stageId === "boom");
+  assert.equal(tag.startMs, boom.contact > 0 ? boom.contact : 0, "the ring starts at the blast's contact");
+  assert.equal(tag.radius, 1.5 * 200, "about 1.5 times the blast radius");
+});
+test("wall of fire is tagged with a haze along the wall for as long as it stands", async () => {
+  const item = { type: "spell", name: "Wall of Fire", system: { duration: { value: "1 minute", sustained: false }, area: null, traits: { value: ["concentrate", "fire", "manipulate"] }, description: { value: "<p>You raise a blazing wall.</p>" } } };
+  const recipe = spellRecipe(PF2E_SPELLS.find((s) => s.slug === "wall-of-fire"), undefined, { sound: false });
+  const f = warpFixture();
+  f.runtime.catalog = [...new Set(recipe.stages.flatMap((s) => s.assets))].map((key) => ({ key }));
+  f.host.resolveRecipe = () => recipe;
+  await f.runtime.dispatch({ id: "wall-haze", type: "template", item, source: { id: "s", center: { x: 0, y: 0 } }, targets: [], template: { documentName: "Region", id: "r1" }, area: WALL_LINE });
+  const tagged = (await overridesByAsset(f.calls)).filter(([, d]) => d.animaterWarp);
+  assert.equal(tagged.length, 1);
+  const [[, { animaterWarp: tag, animaterLasting }]] = tagged;
+  assert.equal(animaterLasting, true, "rides on the lasting wall");
+  assert.equal(tag.kind, "haze");
+  assert.equal(tag.lengthMs, null, "until its anchor ends");
+  assert.equal(tag.follow, false);
+  assert.deepEqual(tag.area, { type: "capsule", a: { x: 0, y: 0 }, b: { x: 1200, y: 0 }, width: 100 });
+});
+test("a burning aura on a token is tagged with a following haze", async () => {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "burn", kind: "aura", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 1000, persist: true }],
+  });
+  const { runtime, calls } = warpFixture();
+  await runtime.play(recipe, { ...fireball().context, element: "fire" });
+  const warps = await warpsOf(calls);
+  assert.equal(warps.length, 1);
+  assert.equal(warps[0][1].kind, "haze");
+  assert.equal(warps[0][1].follow, true, "rides the token it is attached to");
+});
+test("a critical hit with a heavy weapon is tagged with a shock", async () => {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "hit", kind: "impact", assets: ["jb2a.impact.001.orange"], delay: 0, duration: 500 }],
+  });
+  const context = { type: "attack", outcome: "criticalSuccess", item: { id: "axe" }, source: { id: "s", center: { x: 0, y: 0 } }, targets: [{ id: "t1", center: { x: 300, y: 0 } }] };
+  const kindsOf = async (heavy, outcome = "criticalSuccess") => {
+    const { runtime, calls } = warpFixture();
+    runtime.catalog = [{ key: "jb2a.impact.001.orange" }];
+    const seen = [];
+    runtime.host.heavyItem = (item) => { seen.push(item); return heavy; };
+    await runtime.play(recipe, { ...context, outcome });
+    if (heavy) assert.deepEqual(seen, [context.item]);
+    return (await warpsOf(calls)).map(([, t]) => t.kind);
+  };
+  assert.deepEqual(await kindsOf(true), ["shock"]);
+  assert.deepEqual(await kindsOf(false), [], "a light weapon's crit does not ripple");
+  assert.deepEqual(await kindsOf(true, "success"), [], "nor does an ordinary hit");
+});
+test("map distortion setting off: no tags", async () => {
+  const { recipe, context } = fireball();
+  for (const setup of [(f) => { f.host.mapDistortion = () => false; }, (f) => { delete f.host.mapDistortion; }]) {
+    const f = warpFixture();
+    setup(f);
+    await f.runtime.play(recipe, context);
+    const data = await overridesByAsset(f.calls);
+    assert.ok(data.length);
+    for (const [, d] of data) assert.equal("animaterWarp" in d, false);
+  }
+});

@@ -1,5 +1,6 @@
 import { resolveAsset } from '../../core/model.mjs';
 import { lightColor } from '../lighting/effect-lights.mjs';
+import { warpTag } from '../distortion/scene-distortion.mjs';
 
 // Teleport spells: the one who cast clicks a spot within range, and the caster (or the
 // first target) vanishes and reappears there. With finishers, the only Animater features that
@@ -53,16 +54,20 @@ export function teleportVisuals(recipe, catalog) {
 // The host retains ownership/socket rules; visuals bracket the same real token move.
 // The arrival effect carries the afterimage streak (`animaterTrail`), tinted like that effect: its tint, the
 // colour word in its key, else the spell's element ("" leaves each client's soft white).
+// Both effects also carry a warp of space (`animaterWarp`, map distortion), the token's size plus a square, when the
+// host turns it on. No effect, no warp.
 export async function playTeleport({ mover, x, y, visuals, element }, host) {
   const size = mover.w * visuals.scale, from = { ...mover.center };
   const to = { x: x + mover.w / 2, y: y + mover.h / 2 };
+  const warps = host.mapDistortion?.() === true, radius = Math.max(mover.w, mover.h) + (host.gridSize?.() ?? mover.w);
+  const warp = (at) => (warps ? { animaterWarp: warpTag(at, radius) } : null);
   await host.wait(450);
-  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint);
+  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, warp(from));
   await host.wait(700);
   await host.move(mover, x, y);
   if (!visuals.in) return;
   const tint = lightColor({ tint: visuals.tint, asset: visuals.in }, { element, fallback: '' });
-  host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: mover.document?.id ?? mover.id } });
+  host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: mover.document?.id ?? mover.id }, ...warp(to) });
 }
 
 // The token a teleport's arrival streak copies, or null: the effect played on another scene, the token is gone,

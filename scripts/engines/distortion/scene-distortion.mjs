@@ -127,6 +127,11 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
   }
 }
 
+/** A teleport's warp at `at`, `radius` pixels: starts as its effect arrives, ~500 ms. */
+export function warpTag(at, radius) {
+  return { kind: 'warp', at: { x: at.x, y: at.y }, radius, startMs: 0, lengthMs: WARM_MS, strength: 1, follow: false };
+}
+
 const easeOutCubic = x => 1 - (1 - x) ** 3;
 
 /**

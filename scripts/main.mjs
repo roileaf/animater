@@ -13,6 +13,7 @@ import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { starterRecipes } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
+import { heavyItem } from "./systems/heavy-item.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
@@ -714,15 +715,22 @@ async function pickTeleport(recipe, context) {
   const spot = await pickTeleportSpot({ caster, mover, feet, notify: (text) => ui.notifications.warn(text) });
   return spot ? { mover, caster, ...spot, visuals: teleportVisuals(recipe, runtime.getCatalog()), element: context.element ?? recipe.chosenElement } : null;
 }
+// Big magic bends the scene (world setting); on while the setting is not registered.
+function mapDistortion() { try { return game.settings.get(ID, "mapDistortion") !== false; } catch { return true; } }
 async function moveToken(doc, x, y) { await doc.update({ x, y }, { animate: false, animater: { teleport: true } }); }
 async function teleport(spot) {
   return playTeleport(spot, {
     wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
-    // `data` (the arrival's afterimage streak) rides on the effect to every client, unless the world turned trails off.
+    mapDistortion,
+    gridSize: () => canvas.grid?.size ?? 100,
+    // `data` (the arrival's afterimage streak, either end's warp) rides on the effect to every client; the streak
+    // only while the world has trails on.
     effect: (asset, point, size, tint, data = null) => {
       const effect = new Sequence({ moduleName: ID }).effect().file(asset).atLocation(point).size(size);
       if (tint) effect.tint(tint);
-      if (data && game.settings.get(ID, "afterimages") !== false) effect.addOverride(async (_, effectData) => ({ ...effectData, ...data }));
+      const { animaterTrail, ...rest } = data ?? {};
+      const tags = { ...rest, ...(animaterTrail && game.settings.get(ID, "afterimages") !== false ? { animaterTrail } : {}) };
+      if (Object.keys(tags).length) effect.addOverride(async (_, effectData) => ({ ...effectData, ...tags }));
       void effect.play().catch(error => console.warn('Animater teleport effect:', error.message));
     },
     move: async (mover, x, y) => {
@@ -1707,6 +1715,10 @@ Hooks.once("ready", () => {
     groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
     // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
     afterimages: () => game.settings.get(ID, "afterimages") !== false,
+    // Big blasts, lasting fire and teleports bend the scene (world setting).
+    mapDistortion,
+    // A two-handed heavy weapon: its critical hit sends a shockwave.
+    heavyItem: (item) => heavyItem(item, game.system.id),
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
     itemDamages: (item) => usedItemDamages(item, game.system.id),
     // The element of that damage, for a placed area no damage roll names one for.

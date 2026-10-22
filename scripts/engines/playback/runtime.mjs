@@ -24,6 +24,7 @@ import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { planLights, lightColor } from '../lighting/effect-lights.mjs';
 import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
+import { planDistortions } from '../distortion/scene-distortion.mjs';
 import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A token's middle, in scene pixels.
@@ -375,6 +376,8 @@ export class AnimaterRuntime {
     let lights = null;
     // Ground marks (anchor stage -> mark), planned from the same timings.
     let groundMarks = null;
+    // Map distortions (anchor stage -> warp), planned from the same timings.
+    let distortions = null;
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -426,7 +429,9 @@ export class AnimaterRuntime {
         const animaterLight = lights?.get(s) ?? null;
         // ...and paints the floor mark from this one (engines/marks/ground-marks.mjs).
         const animaterMark = groundMarks?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}) }));
+        // ...and bends the scene from this one (engines/distortion/scene-distortion.mjs).
+        const animaterWarp = distortions?.get(s) ?? null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -579,6 +584,10 @@ export class AnimaterRuntime {
       };
       // The source token's level and elevation, so every client lights and marks the same floor.
       const token = context.source?.document ?? context.source;
+      // Effects attached to a token (auras, a following emanation) carry their light and haze with them; see build().
+      const follows = (s) => s.kind === "template"
+        ? !s.areaTile && !along && !!s.followSource && !!context.source
+        : s.kind !== "overlay" && !s.meleeFrom && (s.kind === "aura" || !!s.attach);
       // Effect lighting: planned once here from the final plan; previews always show it.
       if (preview || this.host.effectLights?.() === true) {
         lights = planLights(plan, {
@@ -589,10 +598,7 @@ export class AnimaterRuntime {
           originOf: (s) => soundPlace(s.flightFrom ?? s.origin),
           // A line area stretched along its template (a wall) is lit along its length.
           spanOf: (s) => (s.kind === "template" && !s.areaTile && area?.type === "line" && along ? { from: area.center, to: area.endpoint } : null),
-          // Effects attached to a token (auras, a following emanation) carry their light with them; see build().
-          follows: (s) => s.kind === "template"
-            ? !s.areaTile && !along && !!s.followSource && !!context.source
-            : s.kind !== "overlay" && !s.meleeFrom && (s.kind === "aura" || !!s.attach),
+          follows,
           element: context.element ?? recipe.chosenElement,
           recipeColor: recipe.color,
           level: token?.level,
@@ -621,6 +627,21 @@ export class AnimaterRuntime {
         // An area mark names its placed Region, so every client clips it to that shape (mark-paint.mjs areaMaskFor).
         const region = templateDocument(context.template);
         if (region?.documentName === "Region") for (const tag of groundMarks.values()) if (tag.shape !== "spot") tag.regionId = region.id;
+      }
+      // Map distortion (world setting): described once here on the same final plan.
+      if (this.host.mapDistortion?.() === true) {
+        distortions = planDistortions(plan, {
+          context,
+          tiers,
+          gridPx: grid,
+          pointOf,
+          radiusOf,
+          follows,
+          // A placed area has no damage roll to name its element: the item's own damage does.
+          element: context.element ?? recipe.chosenElement ?? this.host.itemElement?.(context.item, context) ?? undefined,
+          // A critical hit with a heavy weapon ripples too.
+          heavyItem: context.item ? this.host.heavyItem?.(context.item) === true : false,
+        });
       }
       // Afterimage trails (world setting; on while the host has none).
       // An unpicked recipe colour (the default card accent) leaves plain motions their soft white.

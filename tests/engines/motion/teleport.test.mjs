@@ -102,3 +102,23 @@ test('hidden or off-scene mover draws no streak', () => {
   assert.equal(streakToken(null, { sceneId: 's1', scene: scene(shown) }), null);
   assert.equal(streakToken(trail, { sceneId: 's1', scene: null }), null);
 });
+
+test('teleport tags out and in with a warp; style none tags nothing', async () => {
+  const mover = { id: 'tok', document: { id: 'tok' }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  const run = async (visuals, extra = {}) => {
+    const effects = [];
+    await playTeleport({ mover, x: 400, y: 0, visuals: { scale: 1, tint: '', ...visuals } }, {
+      wait: async () => {}, move: async () => {}, gridSize: () => 100, mapDistortion: () => true, ...extra,
+      effect: (asset, point, size, tint, data = null) => effects.push([asset, data]),
+    });
+    return effects;
+  };
+  const [out, arrival] = await run({ out: 'custom.out', in: 'custom.in' });
+  assert.deepEqual(out[1], { animaterWarp: { kind: 'warp', at: { x: 50, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false } },
+    'the departure warps at the token, its size plus a square');
+  assert.deepEqual(arrival[1].animaterWarp, { kind: 'warp', at: { x: 450, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false });
+  assert.ok(arrival[1].animaterTrail, 'the arrival still carries its streak');
+  assert.deepEqual(await run({ out: null, in: null }), [], 'no extra effects: no warp');
+  const off = await run({ out: 'custom.out', in: 'custom.in' }, { mapDistortion: () => false });
+  assert.deepEqual(off.map(([, d]) => !!d?.animaterWarp), [false, false], 'the world setting turns it off');
+});
