@@ -1728,10 +1728,12 @@ test("a weapon's mark comes only from its recipe, never from rune damage", async
 // Sequencer's moveTowards merges its defaults with our options, so an explicit undefined
 // (no moveEase / moveDelay) overrides a default and fails its type checks. Mirror those checks.
 test("a thrown flask's shadow and projectile moveTowards get a string ease and numeric delay", async () => {
-  const recipe = validateRecipe({
-    ...starterRecipes()[0],
-    stages: [{ stageId: "flask", kind: "projectile", assets: ["jb2a.arrow.physical.white"], flight: "lob", delay: 0, duration: 800 }],
-  });
+  // A lobbed travel flight has no moveEase of its own, so its shadow (added after composition) has none either.
+  const stages = [
+    { stageId: "flask", kind: "travel", assets: ["jb2a.arrow.physical.white"], flight: "lob", delay: 0, duration: 800 },
+    { stageId: "dart", kind: "projectile", assets: ["jb2a.arrow.physical.white"], flight: "lob", delay: 0, duration: 800 },
+  ];
+  const recipe = validateRecipe({ ...starterRecipes()[0], stages });
   const { runtime, calls } = fixture();
   runtime.catalog = [{ key: "jb2a.arrow.physical.white" }];
   runtime.wait = async () => true;
@@ -1741,7 +1743,7 @@ test("a thrown flask's shadow and projectile moveTowards get a string ease and n
     { preview: true },
   );
   const moves = calls.filter((c) => c[0] === "moveTowards");
-  assert.equal(moves.length, 2, "projectile and its shadow");
+  assert.equal(moves.length, 3, "flask shadow, dart and dart shadow");
   for (const [, , options] of moves) {
     assert.equal(typeof options.ease, "string");
     assert.ok(Number.isFinite(options.delay));
