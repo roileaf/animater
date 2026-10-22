@@ -22,6 +22,12 @@ const finitePoint = (p) => (p && Number.isFinite(p.x) && Number.isFinite(p.y) ? 
 const validTag = (tag) => !!tag && typeof tag === 'object'
   && ['startMs', 'lengthMs', 'dim', 'bright'].every((k) => Number.isFinite(tag[k]))
   && (tag.fadeMs == null || Number.isFinite(tag.fadeMs));
+// A wall's lights stand at its tagged points; a missing or malformed list means one light.
+const pointsOf = (tag) => {
+  if (tag.follow || !Array.isArray(tag.points) || !tag.points.length || tag.points.length > 3) return null;
+  const points = tag.points.map(finitePoint);
+  return points.every(Boolean) ? points : null;
+};
 
 /** Light source alpha and luminosity at envelope level 0..1. */
 export function lightLevels(level, shape) {
@@ -42,15 +48,17 @@ export function createLightHost({
 
   const remove = (light) => {
     lights.delete(light.effect);
-    if (!light.source) return;
-    try { light.source.destroy(); } catch { /* already gone */ }
+    if (!light.sources.length) return;
+    for (const source of light.sources) {
+      try { source.destroy(); } catch { /* already gone */ }
+    }
     dirty = true;
   };
 
   // Fade from where it is now; a light not yet shown just goes.
   const end = (light, at) => {
     if (light.endedAt !== null) return;
-    if (!light.source || light.level <= 0) return remove(light);
+    if (!light.sources.length || light.level <= 0) return remove(light);
     light.endedAt = at;
     light.endLevel = light.level;
   };
@@ -77,15 +85,19 @@ export function createLightHost({
     if (t - tag.startMs > LATE_MS) { light.rampAt = t; level = 0; }
     const grid = gridSize();
     try {
-      light.source = makeSource(light.id);
-      light.source.initialize({
-        x: at.x, y: at.y, dim: tag.dim * grid, bright: tag.bright * grid, color: tag.color,
-        ...lightLevels(level, tag.shape), coloration: 1, attenuation: 0.5, vision: false, walls: true, priority: 0,
-        animation: animationOf(tag.shape, isSteady),
-        ...(levelOf(tag, data) ? { level: levelOf(tag, data) } : {}),
-        ...(Number.isFinite(tag.elevation) ? { elevation: tag.elevation } : {}),
+      // One source per point of a wall, else one at its place; all share the light's level.
+      (light.points ?? [at]).forEach((p, i) => {
+        const source = makeSource(i ? `${light.id}.${i}` : light.id);
+        light.sources.push(source);
+        source.initialize({
+          x: p.x, y: p.y, dim: tag.dim * grid, bright: tag.bright * grid, color: tag.color,
+          ...lightLevels(level, tag.shape), coloration: 1, attenuation: 0.5, vision: false, walls: true, priority: 0,
+          animation: animationOf(tag.shape, isSteady),
+          ...(levelOf(tag, data) ? { level: levelOf(tag, data) } : {}),
+          ...(Number.isFinite(tag.elevation) ? { elevation: tag.elevation } : {}),
+        });
+        source.add();
       });
-      light.source.add();
     } catch (err) {
       console.warn('Animater | could not place an effect light', err);
       remove(light);
@@ -98,10 +110,10 @@ export function createLightHost({
   };
 
   const follow = (light, t) => {
-    if (frame - light.movedFrame < MOVE_EVERY_FRAMES) return;
+    if (light.points || frame - light.movedFrame < MOVE_EVERY_FRAMES) return;
     const at = positionOf(light, t);
     if (!at || Math.hypot(at.x - light.at.x, at.y - light.at.y) < MOVE_SQUARES * gridSize()) return;
-    try { light.source.initialize({ x: at.x, y: at.y }); } catch { return; }
+    try { light.sources[0].initialize({ x: at.x, y: at.y }); } catch { return; }
     light.at = at;
     light.movedFrame = frame;
     dirty = true;
@@ -121,7 +133,7 @@ export function createLightHost({
       if (t >= tag.startMs + tag.lengthMs + (tag.fadeMs ?? 0)) return remove(light);
       if (light.effect.destroyed) return end(light, t0);
       level = envelope(tag, t, { steady: isSteady });
-      if (!light.source) {
+      if (!light.sources.length) {
         if (light.effect.ready && t >= tag.startMs) show(light, t, level, isSteady);
         return;
       }
@@ -131,7 +143,7 @@ export function createLightHost({
     // Skip changes too small to see, but always reach zero.
     if (level === light.level || (level !== 0 && Math.abs(level - light.level) < LEVEL_STEP)) return;
     light.level = level;
-    light.source.setLevel(lightLevels(level, tag.shape));
+    for (const source of light.sources) source.setLevel(lightLevels(level, tag.shape));
   };
 
   return {
@@ -139,17 +151,22 @@ export function createLightHost({
       const data = effect?.data, tag = data?.animaterLight;
       if (!validTag(tag) || data.moduleName !== 'animater' || lights.has(effect)) return;
       if (data.sceneId !== sceneId() || !levelOk(levelOf(tag, data))) return;
-      // Same rule on every client, in arrival order: when full the newest one-shot is skipped, and a
-      // lasting light makes room by fading out the oldest one-shot.
+      // Same rule on every client, in arrival order (a wall counts each of its points): when full the
+      // newest one-shot is skipped, and a lasting light makes room by fading out the oldest one-shots.
+      const points = pointsOf(tag), weight = points?.length ?? 1;
       const live = [...lights.values()].filter((l) => l.endedAt === null);
-      if (live.length >= max) {
+      let used = live.reduce((n, l) => n + l.weight, 0);
+      if (used + weight > max) {
         if (!tag.lasting) return;
-        const oldest = live.find((l) => !l.tag.lasting);
-        if (oldest) end(oldest, now());
+        for (const oldest of live.filter((l) => !l.tag.lasting)) {
+          if (used + weight <= max) break;
+          end(oldest, now());
+          used -= oldest.weight;
+        }
       }
       lights.set(effect, {
-        id: ++nextId, effect, data, tag, receivedAt: now(),
-        source: null, at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0, rampAt: null,
+        id: ++nextId, effect, data, tag, points, weight, receivedAt: now(),
+        sources: [], at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0, rampAt: null,
       });
     },
 
@@ -187,7 +204,9 @@ export function createLightHost({
 
     clear() {
       for (const light of lights.values()) {
-        try { light.source?.destroy(); } catch { /* already gone */ }
+        for (const source of light.sources) {
+          try { source.destroy(); } catch { /* already gone */ }
+        }
       }
       lights.clear();
       dirty = false;

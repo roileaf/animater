@@ -104,8 +104,11 @@ function lightRadius(pixels, grid) {
  * `originOf` (optional) gives where a flight starts. A spot light sits at its
  * stage's place (`at`), except on an anchor that `follows` (optional) says moves
  * with a token, which it follows. `level` and `elevation` are the source token's.
+ * A lasting stage that `spanOf` (optional) says stands along a line ({from, to},
+ * a wall) is lit by up to three lights spaced along it, one per `spanSquares`;
+ * each counts towards the spot lights' cap.
  */
-export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, follows, element, recipeColor, level, elevation, spotSquares = 2, perAnimation = 3 } = {}) {
+export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, follows, spanOf, element, recipeColor, level, elevation, spotSquares = 2, spanSquares = 4, perAnimation = 3 } = {}) {
   const lights = new Map();
   const isTier0 = stage => tiers?.get(stage.stageId) === 0;
   const isFlight = stage => ['travel', 'projectile'].includes(stage.kind);
@@ -125,13 +128,15 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
   }
 
   const taken = new Set();
+  // Spot lights placed so far (a wall's lights each count).
+  let used = 0;
   const earliest = members => members.reduce((best, m) => (startOf(m.stage) < startOf(best.stage) || (startOf(m.stage) === startOf(best.stage) && rank(m.stage) < rank(best.stage)) ? m : best));
   for (const spot of spots) {
     // One-shot members share one light, lasting members another. When a spot has both, each rides on a
     // tier 0 stage of its own kind (a lasting light on a one-shot anchor would end with it).
     const both = spot.members.some(m => isLasting(m.stage)) && spot.members.some(m => !isLasting(m.stage));
     for (const lasting of [false, true]) {
-      if (taken.size >= perAnimation) break;
+      if (used >= perAnimation) break;
       const group = spot.members.filter(m => isLasting(m.stage) === lasting);
       if (!group.length) continue;
       const lead = earliest(group);
@@ -140,12 +145,14 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
         ?? near.find(p => isLasting(p.stage) === lasting) ?? (both || lasting ? null : near[0]);
       if (!anchor) continue;
       taken.add(anchor.stage);
-      lights.set(anchor.stage, buildTag(lead, anchor.stage));
+      const tag = buildTag(lead, anchor.stage, perAnimation - used);
+      used += tag.points?.length ?? 1;
+      lights.set(anchor.stage, tag);
     }
   }
   return lights;
 
-  function buildTag({ stage, at }, anchor) {
+  function buildTag({ stage, at }, anchor, budget = 1) {
     const shape = lightShape(stage);
     // The light can only start once its anchor does; a stage that began earlier is cut short.
     const offset = startOf(stage) - startOf(anchor);
@@ -167,8 +174,23 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
     } else {
       // A still light sits where its stage is: the anchor's own position can be elsewhere (a line starts at the caster).
       tag.at = { x: at.x, y: at.y };
+      if (tag.lasting) spread(tag, stage, budget);
     }
     return tag;
+  }
+
+  // A lasting wall along a line: lights at the middles of equal stretches of it, each sized to its stretch.
+  function spread(tag, stage, budget) {
+    const span = spanOf?.(stage);
+    const length = span ? distance(span.from, span.to) : 0;
+    const n = Math.min(3, budget, Math.ceil(length / (spanSquares * grid)));
+    if (!(n > 1)) return;
+    const { from, to } = span;
+    tag.points = Array.from({ length: n }, (_, i) => {
+      const k = (i + 0.5) / n;
+      return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
+    });
+    Object.assign(tag, lightRadius(length / n / 2, grid));
   }
 }
 

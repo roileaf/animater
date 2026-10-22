@@ -289,3 +289,33 @@ test('a stage missing from the tiers map is not tier 0 and cannot anchor', () =>
   const impact = st('impact', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
   assert.equal(planLights([impact], opts({})).size, 0);
 });
+
+// A lasting wall along a line (Wall of Fire) is lit along its length, not by one blob at its middle.
+test('a lasting line area gets up to three lights spaced along it, within the cap', () => {
+  const span = { from: { x: 0, y: 0 }, to: { x: sq(12), y: 0 } };
+  const wall = st('wall', 'template', 'jb2a.wall_of_fire.300x100.yellow', { at: { x: sq(6), y: 0 }, r: sq(6), persist: true });
+  const spanOf = s => (s === wall ? span : null);
+  const tag = planLights([wall], opts({ wall: 0 }, { spanOf })).get(wall);
+  assert.equal(tag.shape, 'flicker');
+  assert.equal(tag.lasting, true);
+  assert.deepEqual(tag.points, [{ x: sq(2), y: 0 }, { x: sq(6), y: 0 }, { x: sq(10), y: 0 }]);
+  // Each light covers its third of the wall: 1.5x half of 4 squares.
+  assert.equal(tag.dim, 3);
+  assert.equal(tag.bright, 1.5);
+  // The middle stays the light's place (older clients light it there).
+  assert.deepEqual(tag.at, { x: sq(6), y: 0 });
+  // A shorter wall needs fewer lights; a short one keeps the single middle light.
+  const six = planLights([wall], opts({ wall: 0 }, { spanOf: () => ({ from: { x: 0, y: 0 }, to: { x: sq(6), y: 0 } }) })).get(wall);
+  assert.equal(six.points.length, 2);
+  const three = planLights([wall], opts({ wall: 0 }, { spanOf: () => ({ from: { x: 0, y: 0 }, to: { x: sq(3), y: 0 } }) })).get(wall);
+  assert.equal(three.points, undefined);
+  assert.equal(three.dim, 1.5 * sq(6) / GRID);
+  // The points count towards the per-animation cap, after lights planned before them.
+  const burst = st('burst', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: sq(30), y: 0 }, delay: 0 });
+  const capped = planLights([burst, { ...wall, delay: 100 }], opts({ burst: 0, wall: 0 }, { spanOf: s => (s.stageId === 'wall' ? span : null) }));
+  const wallTag = [...capped].find(([s]) => s.stageId === 'wall')[1];
+  assert.equal(wallTag.points.length, 2);
+  // A one-shot line (a lightning bolt) keeps its one middle light.
+  const bolt = st('bolt', 'template', 'jb2a.fireball.explosion.orange', { at: { x: sq(6), y: 0 }, r: sq(6) });
+  assert.equal(planLights([bolt], opts({ bolt: 0 }, { spanOf: () => span })).get(bolt).points, undefined);
+});

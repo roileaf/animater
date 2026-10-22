@@ -7,6 +7,7 @@ import { orbRecipe } from "../../../scripts/catalogs/shared/orb-builder.mjs";
 import { PF2E_SPELLS, spellRecipe } from "../../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
 import { MEDIA_LANDINGS } from "../../../data/media-landings.mjs";
 import { SURFACE_SOUND_PROFILES } from "../../../scripts/engines/sound/surface-sounds.mjs";
+import { dndEntries, dndRecipe } from "../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs";
 
 test("native line effects use exact area endpoints, stationary cues are sized rather than stretched", async () => {
   const source = { center: { x: 0, y: 0 } },
@@ -1508,5 +1509,55 @@ test("a projectile's moveTowards gets a string ease and numeric delay", async ()
     assert.ok(Number.isFinite(options.delay));
     assert.equal(typeof options.rotate, "boolean");
     assert.equal(typeof options.cacheLocation, "boolean");
+  }
+});
+
+// Wall of Fire, as cast: the real catalog recipes, a placed template, its lasting light along the wall.
+const WALL_LINE = { type: "line", center: { x: 0, y: 0 }, endpoint: { x: 1200, y: 0 }, length: 1200, width: 100 };
+const WALL_RING = { center: { x: 500, y: 500 }, diameter: 400 };
+async function wallLights(recipe, area, { dispatchItem } = {}) {
+  const f = lightFixture();
+  f.runtime.catalog = [...new Set(recipe.stages.flatMap((s) => s.assets))].map((key) => ({ key }));
+  const context = { source: { id: "s", center: { x: 0, y: 0 } }, targets: [], template: { documentName: "Region", id: "r1" }, area };
+  if (dispatchItem) {
+    f.host.resolveRecipe = () => recipe;
+    await f.runtime.dispatch({ id: `wall-${area.type ?? "ring"}`, type: "template", item: dispatchItem, ...context });
+  } else await f.runtime.play(recipe, context);
+  return (await overridesByAsset(f.calls)).filter(([, d]) => d.animaterLight).map(([asset, d]) => ({ asset, ...d }));
+}
+const assertWallLit = (lights, area) => {
+  assert.equal(lights.length, 1);
+  const [{ animaterLight: tag, animaterLasting }] = lights;
+  assert.equal(animaterLasting, true, "the wall stays on its template");
+  assert.equal(tag.shape, "flicker");
+  assert.equal(tag.lasting, true);
+  assert.equal(tag.lengthMs, 86400000, "lit until the template is removed");
+  if (area.type === "line") {
+    // Three lights along a 12-square wall, one per third, each sized to its third.
+    assert.deepEqual(tag.points, [{ x: 200, y: 0 }, { x: 600, y: 0 }, { x: 1000, y: 0 }]);
+    assert.equal(tag.dim, 3);
+    assert.deepEqual(tag.at, { x: 600, y: 0 });
+  } else {
+    assert.equal(tag.points, undefined);
+    assert.deepEqual(tag.at, area.center);
+    assert.equal(tag.dim, 3);
+  }
+};
+test("PF2e Wall of Fire (catalog recipe, placed line or ring) flickers along the wall for as long as it stands", async () => {
+  const item = { type: "spell", name: "Wall of Fire", system: { duration: { value: "1 minute", sustained: false }, area: null, traits: { value: ["concentrate", "fire", "manipulate"] }, description: { value: "<p>You raise a blazing wall.</p>" } } };
+  const recipe = spellRecipe(PF2E_SPELLS.find((s) => s.slug === "wall-of-fire"), undefined, { sound: false });
+  for (const area of [WALL_LINE, WALL_RING]) assertWallLit(await wallLights(recipe, area, { dispatchItem: item }), area);
+});
+test("D&D 5e Wall of Fire (bespoke line and ring, both editions) flickers along the wall for as long as it stands", async () => {
+  for (const edition of ["2014", "2024"]) {
+    const entry = dndEntries("spell").find((e) => e.name === "Wall of Fire" && e.edition === edition);
+    const walls = entry.variants.filter((v) => v.recipe.trigger === "template");
+    assert.equal(walls.length, 2, edition);
+    for (const variant of walls) {
+      const recipe = dndRecipe(entry, variant.id);
+      assert.ok(recipe.bespoke, `${edition} ${variant.label}`);
+      const area = variant.recipe.previewArea?.type === "line" ? WALL_LINE : WALL_RING;
+      assertWallLit(await wallLights(recipe, area), area);
+    }
   }
 });

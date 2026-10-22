@@ -580,6 +580,8 @@ export class AnimaterRuntime {
           pointOf,
           radiusOf,
           originOf: (s) => soundPlace(s.flightFrom ?? s.origin),
+          // A line area stretched along its template (a wall) is lit along its length.
+          spanOf: (s) => (s.kind === "template" && !s.areaTile && area?.type === "line" && along ? { from: area.center, to: area.endpoint } : null),
           // Effects attached to a token (auras, a following emanation) carry their light with them; see build().
           follows: (s) => s.kind === "template"
             ? !s.areaTile && !along && !!s.followSource && !!context.source

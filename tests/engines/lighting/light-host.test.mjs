@@ -374,3 +374,51 @@ test('the source level and elevation from the tag place the light', () => {
   assert.equal('level' in bare.out.sources[0].inits[0], false);
   assert.equal('elevation' in bare.out.sources[0].inits[0], false);
 });
+
+test('a wall tag with points lights each point, levels them together and ends them together', () => {
+  const { host, out } = make();
+  const points = [{ x: 200, y: 0 }, { x: 600, y: 0 }, { x: 1000, y: 0 }];
+  const e = effect({ ...lasting, at: { x: 600, y: 0 }, points });
+  host.onEffect(e);
+  out.t = 20;
+  host.tick();
+  assert.equal(out.sources.length, 3);
+  assert.deepEqual(out.sources.map((s) => ({ x: s.inits[0].x, y: s.inits[0].y })), points);
+  for (const s of out.sources) assert.equal(s.added, 1);
+  out.t = 5000;
+  host.tick();
+  assert.equal(host.count(), 1, 'one light entry for the one effect');
+  host.onEnded(e);
+  for (let t = 5000; t <= 6000; t += 50) { out.t = t; host.tick(); }
+  // All three fade together, then go.
+  assert.equal(new Set(out.sources.map((s) => JSON.stringify(s.levels))).size, 1);
+  for (const s of out.sources) assert.equal(s.destroyed, 1);
+  assert.equal(host.count(), 0);
+  // A malformed point list falls back to the single place.
+  const bad = make();
+  bad.host.onEffect(effect({ ...lasting, at: { x: 600, y: 0 }, points: [{ x: 'a', y: 0 }] }));
+  bad.out.t = 20;
+  bad.host.tick();
+  assert.equal(bad.out.sources.length, 1);
+  assert.equal(bad.out.sources[0].inits[0].x, 600);
+});
+
+test('a wall\'s points count towards the cap', () => {
+  const { host, out } = make({ max: 4 });
+  for (let i = 0; i < 2; i++) host.onEffect(effect({ ...flash, lengthMs: 5000 }, { x: i }));
+  out.t = 20;
+  host.tick();
+  assert.equal(out.sources.length, 2);
+  host.onEffect(effect({ ...lasting, at: { x: 600, y: 0 }, points: [{ x: 200, y: 0 }, { x: 600, y: 0 }, { x: 1000, y: 0 }] }));
+  out.t = 40;
+  host.tick();
+  // 2 + 3 > 4: the lasting wall makes room by fading the oldest one-shot.
+  assert.equal(out.sources.length, 5);
+  for (let t = 40; t <= 600; t += 20) { out.t = t; host.tick(); }
+  assert.equal(out.sources[0].destroyed, 1, 'the oldest one-shot faded out');
+  assert.equal(out.sources[1].destroyed, 0);
+  host.onEffect(effect({ ...flash, lengthMs: 5000 }, { x: 9 }));
+  out.t = 620;
+  host.tick();
+  assert.equal(out.sources.length, 5, 'full: a new one-shot is skipped');
+});
