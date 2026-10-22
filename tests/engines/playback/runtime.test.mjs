@@ -1104,3 +1104,41 @@ test("a crit with no moment of contact tells its finisher at once", async () => 
   runtime.recordContact("ev3", 1234);
   assert.equal(runtime.contacts.get("ev3"), 1234);
 });
+
+// Slow motion: a notable kill plays at a slower tempo (engines/playback/impact-moments.mjs).
+test("tempo doubles timings and halves rates", async () => {
+  const { recipe, context } = critAttack();
+  const { runtime, waits } = critFixture();
+  let plan;
+  await runtime.play(recipe, { ...context, outcome: "success", tempo: 0.5 }, { onStart: (r) => { plan = r.playbackPlan; } });
+  const stage = (id) => plan.find((s) => s.stageId === id);
+  assert.equal(stage("hit").delay, 1200);
+  assert.equal(stage("hit").duration, 1000);
+  assert.equal(stage("after").delay, 2400);
+  assert.equal(stage("windup").delay, 600);
+  assert.equal(stage("windup").duration, 1200);
+  assert.equal(stage("fly").playbackRate, 0.5);
+  assert.equal(stage("hit").playbackRate, 0.5);
+  assert.ok(waits.includes(2400));
+  // Without a tempo the plan keeps its own timing.
+  const plain = critFixture();
+  let plainPlan;
+  await plain.runtime.play(recipe, { ...context, outcome: "success" }, { onStart: (r) => { plainPlan = r.playbackPlan; } });
+  assert.equal(plainPlan.find((s) => s.stageId === "after").delay, 1200);
+  assert.equal(plainPlan.find((s) => s.stageId === "fly").playbackRate, 1);
+});
+test("tempo cap keeps a long play under 6 s", async () => {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [
+      { stageId: "fly", kind: "travel", assets: ["jb2a.fire_bolt.orange"], delay: 0, duration: 1000 },
+      { stageId: "fling", kind: "impact", assets: ["jb2a.finisher.test"], delay: 1000, duration: 4000 },
+    ],
+  });
+  const { runtime } = critFixture();
+  let plan;
+  await runtime.play(recipe, { source: { id: "s", center: { x: 0, y: 0 } }, targets: [{ id: "t1", center: { x: 300, y: 0 } }], tempo: 0.5 }, { onStart: (r) => { plan = r.playbackPlan; } });
+  const end = Math.max(...plan.map((s) => s.delay + s.duration));
+  assert.ok(Math.abs(end - 6000) < 1e-6, `slowed end ${end}`);
+  assert.ok(Math.abs(plan.find((s) => s.stageId === "fling").playbackRate - 5 / 6) < 1e-9);
+});

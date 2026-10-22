@@ -22,7 +22,7 @@ import { withOutcome } from '../../systems/outcome.mjs';
 import { pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
-import { plannedCrit, critTargetIds, contactTime, withHitStop } from './impact-moments.mjs';
+import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
 // A token's middle, in scene pixels.
@@ -276,6 +276,11 @@ export class AnimaterRuntime {
       voices: (this.surfaceVoices ??= []),
       gridSize: this.host.gridSize?.() ?? 100,
     });
+    // Slow motion (a notable kill): the whole one-time play stretches, a long one less (never past the cap).
+    if (context.tempo < 1) {
+      const planEnd = Math.max(0, ...plan.filter((s) => !s.persist).map((s) => (s.delay ?? 0) + (s.duration ?? 0)));
+      plan = withTempo(plan, tempoFor(planEnd, context.tempo));
+    }
     if (
       !preview &&
       plan.some((s) => s.kind === "motion" || s.kind === "tokenfx" && !s.catalogFx && this.host.fxCatalog?.().tokenReady) &&

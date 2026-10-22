@@ -1,6 +1,8 @@
 import { uuid } from "./core/uuid.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
-import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
+import { registerFlashSettings, flashScreens, downMoment } from "./engines/flash/flash-combat.mjs";
+import { creatureRank, partyLevels, isNotableKill } from "./systems/notable-kill.mjs";
+import { SLOW_TEMPO } from "./engines/playback/impact-moments.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
@@ -1835,7 +1837,8 @@ Hooks.once("ready", () => {
   });
   // Finishers play on the real token (finisher-play.mjs): travel lands, the token is moved
   // there, then it vanishes, stays as a body, or stays.
-  const finisherHost = (attacker) => ({
+  // A slowed kill (tempo) slows its ending fade too.
+  const finisherHost = (attacker, { tempo } = {}) => ({
     gridSize: () => canvas.grid.size,
     landing: finisherLanding,
     wallHit: finisherWallHit,
@@ -1844,14 +1847,14 @@ Hooks.once("ready", () => {
         .then(() => resolve(null), (error) => { runtime.trace("Blocked", error.message); resolve(null); });
     }),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [] }),
+    fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [], tempo }),
     commit: (token, data) => commitDisplace(token, data, attacker),
     trace: (status, detail) => runtime.trace(status, detail),
   });
   // Resolves playFinisher's answer: true played, false a write failed, null never played.
   const runFinisher = (recipe, { mover, attacker, extra }) => {
     const dead = hpOf(mover.actor)?.down === true;
-    return playFinisher({ recipe, mover, attacker, dead, extra }, finisherHost(attacker)).catch((error) => { runtime.trace("Blocked", error.message); return null; });
+    return playFinisher({ recipe, mover, attacker, dead, extra }, finisherHost(attacker, extra)).catch((error) => { runtime.trace("Blocked", error.message); return null; });
   };
   // A critical strike: a player's pick plays when it plays on crits; with no pick, the GM's critical
   // finishers. It plays on each critically struck target (critTargets), from the event's source
@@ -1917,7 +1920,19 @@ Hooks.once("ready", () => {
     // killing blow is that crit's own damage (the same finisher's mark); after a save crit, whichever
     // finisher the kill chose (the default included) only ends it, never travels again. Marks are used once.
     const endingOnly = saveKey ? finished.consume(saveKey) : by?.crit === true && finished.consume(finishedKey({ ...base, recipeId: recipe.id }));
-    return { recipe, attacker, endingOnly };
+    return { recipe, attacker, endingOnly, crit };
+  };
+  // Slow motion for a notable kill (systems/notable-kill.mjs): the last enemy, a critical kill or a
+  // boss-level foe, in a started combat it fights in (with none, only a crit counts).
+  const killTempo = (actor, crit) => {
+    if (!game.settings.get(ID, "slowMotionKills")) return undefined;
+    const systemId = game.system.id;
+    const combat = game.combats?.find((c) => c.started && Array.from(c.combatants).some((cb) => cb.actor?.id === actor.id)) ?? game.combat;
+    const notable = isNotableKill({
+      finalEnemy: downMoment(combat, actor, systemId) === "finalEnemy", crit,
+      rank: creatureRank(actor, systemId), partyLevels: combat?.started ? partyLevels(combat, systemId) : [], systemId,
+    });
+    return notable ? SLOW_TEMPO : undefined;
   };
   // The item that struck the killing blow, from the damage roll's origin. A synthetic strike (no
   // Item document) answers a descriptor on the attacking actor, whose flag holds its pick.
@@ -1933,8 +1948,9 @@ Hooks.once("ready", () => {
     return item ?? attacker?.actor?.items?.find?.((i) => (by.itemUuid && i.uuid === by.itemUuid) || (!by.itemUuid && i.name === by.itemName)) ?? null;
   };
   // Just the ending of a finisher whose travel already played: hidden or Defeated, as playFinisher ends.
-  const finishOnly = async (recipe, token, attacker) => {
-    const host = finisherHost(attacker), ending = recipe.finisher?.ending;
+  // A slowed kill fades slowly; hidden is written once the fade ends.
+  const finishOnly = async (recipe, token, attacker, tempo) => {
+    const host = finisherHost(attacker, { tempo }), ending = recipe.finisher?.ending;
     host.trace("Finisher", `${recipe.name}: ${token.name ?? "token"} (ending)`);
     try {
       if (ending === "vanish") { await host.fade(token); await host.commit(token, { hidden: true, finisher: recipe.id }); }
@@ -1943,12 +1959,12 @@ Hooks.once("ready", () => {
     } catch (error) { host.trace("Blocked", `Finisher ${recipe.name}: ${error.message}`); return false; }
   };
   // The collapse (or dramatic death) on a drop to 0 HP, else the energy-damage flash.
-  const playDamageMoment = (actor, token, dropped) => {
+  const playDamageMoment = (actor, token, dropped, tempo) => {
     const type = recallDamage(damageLog, { actorId: actor.id, tokenId: token.id })?.type;
     const recipe = dropped ? (game.settings.get(ID, DRAMATIC_DEATHS) ? deathRecipe(type, COLLAPSE) : COLLAPSE) : hitRecipe(type);
     const playable = recipe && installedStages(recipe);
     if (!playable?.stages.length) return;
-    void runtime.play(playable, { source: token, targets: [] }).catch((error) => runtime.trace("Blocked", error.message));
+    void runtime.play(playable, { source: token, targets: [], tempo }).catch((error) => runtime.trace("Blocked", error.message));
   };
   // A use finisher's travel (and its move write) still playing on this token finishes first,
   // so the kill finisher starts from where it landed.
@@ -1956,12 +1972,20 @@ Hooks.once("ready", () => {
     for (let waited = 0; motions?.active.has(token) && waited < limit; waited += 100) await new Promise((resolve) => setTimeout(resolve, 100));
   };
   const playKill = async (actor, token, kill) => {
+    // Notable or not is read at the drop, before the finale screen.
+    const tempo = killTempo(actor, kill.crit);
     // The last enemy falling: its screen (Finish Him!) plays first, then the finisher.
     const finale = flash?.finaleLength?.(actor) ?? 0;
     await Promise.all([motionSettled(token), finale ? new Promise((resolve) => setTimeout(resolve, finale + 150)) : null]);
-    if (kill.endingOnly) return void await finishOnly(kill.recipe, token, kill.attacker);
+    if (kill.endingOnly) return void await finishOnly(kill.recipe, token, kill.attacker, tempo);
     // Nothing played and nothing was written: the old collapse stands in.
-    if ((await runFinisher(kill.recipe, { mover: token, attacker: kill.attacker })) === null) playDamageMoment(actor, token, true);
+    const extra = tempo ? { tempo } : {};
+    if ((await runFinisher(kill.recipe, { mover: token, attacker: kill.attacker, extra })) === null) playDamageMoment(actor, token, true, tempo);
+  };
+  // A drop with no kill finisher (a player character, a hidden token) collapses, slowed when notable.
+  const dropTempo = (actor, token) => {
+    const ids = { actorId: actor.id, tokenId: token.id };
+    return killTempo(actor, (recallAttribution(damageLog, ids) ?? recallDamage(damageLog, ids))?.crit === true);
   };
   Hooks.on("updateActor", (actor, changes, options, userId) => {
     const change = hpChange(options.animaterHpBefore, hpOf(actor));
@@ -1972,7 +1996,7 @@ Hooks.once("ready", () => {
       if (token.document?.parent?.id !== canvas.scene?.id) continue;
       const kill = dropped ? killFinisherFor(actor, token) : null;
       if (kill) void playKill(actor, token, kill).catch((error) => runtime.trace("Blocked", error.message));
-      else playDamageMoment(actor, token, dropped);
+      else playDamageMoment(actor, token, dropped, dropped ? dropTempo(actor, token) : undefined);
     }
   });
   if (["pf2e","sf2e"].includes(game.system.id)) {
