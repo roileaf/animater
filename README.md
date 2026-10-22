@@ -90,6 +90,9 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Add FXMaster scene effects to catalog animations | World | Optional scene effects when FXMaster is active |
 | Take over from Automated Animations | World | When both modules would animate the same item, Animater plays and Automated Animations stands down |
 | Faster animations (this device) | Each player | Makes animations cheaper to draw on your computer, for every module that uses Sequencer, with no change in how they look (on by default; see below) |
+| Hit-stop on critical hits | World | A critical hit freezes its animation for a split second at contact, on every screen (on by default; needs *Faster animations*, skipped at Low and Off quality) |
+| Slow motion on notable kills | World | The last enemy of a fight, a boss-level foe or a critical kill plays its finisher at half speed (on by default) |
+| Hit-stop on my screen | Each player | Turn off to never freeze animations on your screen; they still keep the short beat after a critical hit (on by default) |
 
 ### Faster animations
 
