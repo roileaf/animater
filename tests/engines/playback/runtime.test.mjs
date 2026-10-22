@@ -1236,6 +1236,41 @@ test("setting off: no tags", async () => {
   await preview.runtime.play(recipe, context, { preview: true });
   assert.ok((await overridesByAsset(preview.calls)).some(([, d]) => d.animaterLight));
 });
+test("a line template lights its middle, as far as half its length", async () => {
+  const bolt = { stageId: "bolt", kind: "template", assets: ["jb2a.fireball.explosion.orange"], delay: 100, duration: 1000 };
+  const context = {
+    source: { id: "s", center: { x: 0, y: 0 } },
+    // The target stands at the line's middle, far from its start.
+    targets: [{ id: "t1", center: { x: 500, y: 0 } }],
+    template: {},
+    area: { type: "line", center: { x: 0, y: 0 }, endpoint: { x: 1000, y: 0 }, length: 1000, width: 100 },
+  };
+  const lightsOf = async (stages) => {
+    const { runtime, calls } = lightFixture();
+    await runtime.play(validateRecipe({ ...starterRecipes()[0], stages }), context);
+    return (await overridesByAsset(calls)).map(([, d]) => d.animaterLight).filter(Boolean);
+  };
+  // Alone, the line lights half its length.
+  const alone = await lightsOf([bolt]);
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].dim, 1.5 * 500 / 100);
+  // An earlier burst on the target, at the line's middle, shares the line's spot and describes its light.
+  // (Listed second, the burst is not tier 0, so only the line can carry a light.)
+  const shared = await lightsOf([bolt, { stageId: "burn", kind: "impact", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 500, scale: 4 }]);
+  assert.equal(shared.length, 1);
+  assert.equal(shared[0].dim, 1.5 * (100 * 4 / 2) / 100);
+});
+test("a circle template's light follows its diameter and scale", async () => {
+  const { context } = fireball();
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "boom", kind: "template", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 1500, scale: 1.5 }],
+  });
+  const { runtime, calls } = lightFixture();
+  await runtime.play(recipe, context);
+  const light = (await overridesByAsset(calls)).map(([, d]) => d.animaterLight).find(Boolean);
+  assert.equal(light.dim, 1.5 * (400 * 1.5 / 2) / 100);
+});
 test("slowed play tags slowed timings", async () => {
   const { recipe, context } = fireball();
   const glow = async (ctx) => {

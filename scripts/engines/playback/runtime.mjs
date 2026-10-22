@@ -530,13 +530,16 @@ export class AnimaterRuntime {
       if (preview || this.host.effectLights?.() === true) {
         const grid = this.host.gridSize?.() ?? 100, gridDistance = this.host.gridDistance?.() ?? 5;
         const half = (n) => (Number(n) > 0 ? Number(n) / 2 : null);
+        // A line or cone lights its middle, as far as half its length; any other area lights its centre.
+        const area = context.area, along = ["line", "cone"].includes(area?.type) && area.center && area.endpoint;
+        const areaPoint = along ? { x: (area.center.x + area.endpoint.x) / 2, y: (area.center.y + area.endpoint.y) / 2 } : area?.center;
         lights = planLights(plan, {
           tiers,
           grid,
-          pointOf: (s) => soundPlace(s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? context.area?.center : null) ?? soundPlace(s.destination),
+          pointOf: (s) => soundPlace(s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? areaPoint : null) ?? soundPlace(s.destination),
           // The footprint the effect is sized to, as a radius in pixels.
           radiusOf: (s) => {
-            if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : context.area?.diameter);
+            if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : along ? area.length : area?.diameter * s.scale);
             if (s.kind === "travel" || s.kind === "projectile") return half(tokenFootprint(s.origin, grid) * s.scale);
             return half(effectFootprint(s, s.destination, grid, gridDistance) * s.scale);
           },
