@@ -24,7 +24,7 @@ import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 import { planLights } from '../lighting/effect-lights.mjs';
-import { arcTracks, arrivalOf, flightLine, flightTiming, shadowStage, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
+import { arcTracks, arrivalOf, flightLine, flightTiming, moveEnd, shadowStage, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
@@ -62,6 +62,8 @@ const PAST_FADE_MS = 150;
 let flightPathsWarned = false;
 // A flight that arcs (engines/playback/flight-path.mjs); its shadow does not.
 const arcs = (s) => ["travel", "projectile"].includes(s.kind) && !s.animaterShadow && !!s.flightArc && s.flightArc.kind !== "none";
+// A travel clip Sequencer bends wide itself (.missed()): a miss with no planned path.
+const missBent = (s, context) => s.kind === "travel" && !s.flightTo && ["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock;
 // Arc and shadow tracks: absolute values on the effect's spriteContainer (why: flight-path.mjs arcTracks).
 function applyFlightTracks(effect, tracks) {
   for (const t of tracks)
@@ -441,7 +443,8 @@ export class AnimaterRuntime {
         // A lasting layer loops its whole clip: a stage duration would make Sequencer loop
         // only that much of it and jump back (a lasting Darkness looped 2.3s of its 5s clip).
         const lasts = s.persist && !preview && (s.kind !== "template" || templateDocument(context.template));
-        if (!lasts) e.duration(s.duration * s.playbackRate + (s.clipEnd ? 0 : s.clipStart));
+        // An arcing projectile ends (lands) at its flight's arrival (flight-path.mjs moveEnd).
+        if (!lasts) e.duration((arcs(s) ? moveEnd(s) : s.duration) * s.playbackRate + (s.clipEnd ? 0 : s.clipStart));
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tier, animaterLasting = Boolean(lasts);
@@ -485,8 +488,7 @@ export class AnimaterRuntime {
             e.atLocation(s.origin, location)
               .stretchTo(s.endpoint)
               .scale({ x: 1, y: s.scale });
-            if (["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock)
-              e.missed();
+            if (missBent(s, context)) e.missed();
           }
         } else if (s.kind === "template") {
           if (s.areaTile) {
@@ -654,8 +656,8 @@ export class AnimaterRuntime {
       // Each arcing flight's shadow plays beside it (tier 2, engines/playback/flight-path.mjs). It is drawn, not
       // planned: the editor's preview and the plan's timings never see it, and it ends when its flight lands.
       // Sequencer's own miss bend (an unplanned miss) lands where the shadow cannot know, so that one has none.
-      const bent = (s) => s.kind === "travel" && !s.flightTo && ["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock;
-      const drawn = plan.flatMap((s) => (arcs(s) && !bent(s) ? [s, shadowStage(s)] : [s]));
+      // No hit-stop mark on purpose: the shadow ends as its flight lands, at contact, before any freeze.
+      const drawn = plan.flatMap((s) => (arcs(s) && !missBent(s, context) ? [s, shadowStage(s)] : [s]));
       const groups = new Map();
       for (const s of drawn) {
         if (!groups.has(s.delay)) groups.set(s.delay, []);

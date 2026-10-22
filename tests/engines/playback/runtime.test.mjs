@@ -1528,7 +1528,9 @@ test("a lobbed throw lifts screen-up in its turned frame and casts a tier 2 shad
     ["spriteContainer", "scale.y", 1.35, 1, 275, "easeInQuad", true],
   ]);
   const shadow = effects.find((e) => e.some((c) => c[0] === "shape"));
-  assert.deepEqual(shadow.find((c) => c[0] === "shape").slice(1), ["ellipse", { type: "ellipse", width: 0.25, height: 0.15, gridUnits: true, fillColor: "#000000", fillAlpha: 1 }]);
+  assert.deepEqual(shadow.find((c) => c[0] === "shape").slice(1), ["ellipse", { type: "ellipse", width: 0.25, height: 0.15, gridUnits: true, fillColor: "#000000", fillAlpha: 1, alpha: 0.35 }]);
+  // The shape carries the shadow's alpha; the effect's opacity stays 1.
+  assert.equal(shadow.find((c) => c[0] === "opacity")[1], 1);
   assert.ok(shadow.some((c) => c[0] === "belowTokens"));
   assert.deepEqual(shadow.find((c) => c[0] === "moveTowards")[1], { x: 0, y: 600 });
   assert.equal(shadow.find((c) => c[0] === "duration")[1], 550);
@@ -1540,6 +1542,27 @@ test("a lobbed throw lifts screen-up in its turned frame and casts a tier 2 shad
   // A straight bolt neither arcs nor casts a shadow.
   const straight = await playWall(recipe, context, { collides: () => null });
   assert.ok(!straight.calls.some((c) => c[0] === "shape" || c[0] === "animateProperty"));
+});
+test("an arcing projectile touches down as its impact lands, sooner at a wall", async () => {
+  const FLASK = "jb2a.throwable.throw.flask.01.orange";
+  const { recipe, context } = boltAttack();
+  const thrown = (kind, assets) => validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, kind, assets, contact: 600 } : s)) });
+  const durationOf = (calls, file) => effectsOf(calls).find((e) => e.some((c) => c[0] === "file" && c[1] === file)).find((c) => c[0] === "duration")[1];
+  const shadowOf = (calls) => effectsOf(calls).find((e) => e.some((c) => c[0] === "shape"));
+  const add = (f) => f.runtime.catalog.push({ key: FLASK });
+  // Clear: the flask's move ends at its arrival (contact 600), when the hit plays.
+  const clear = await playWall(thrown("projectile", [FLASK]), context, { collides: () => null, setup: add });
+  assert.equal(clear.plan.find((s) => s.stageId === "hit").delay, 600);
+  assert.equal(durationOf(clear.calls, FLASK), 600);
+  assert.equal(shadowOf(clear.calls).find((c) => c[0] === "duration")[1], 600);
+  // A wall halfway: the contact shortens to 300 ms, and the flask lands there with the wall strike.
+  const walled = await playWall(thrown("projectile", [FLASK]), context, { setup: add });
+  assert.equal(walled.plan.find((s) => s.kind === "impact").delay, 300);
+  assert.equal(durationOf(walled.calls, FLASK), 300);
+  assert.equal(shadowOf(walled.calls).find((c) => c[0] === "duration")[1], 300);
+  // A straight projectile keeps its whole duration.
+  const bolt = await playWall(thrown("projectile", ["jb2a.fire_bolt.orange"]), context, { collides: () => null });
+  assert.equal(durationOf(bolt.calls, "jb2a.fire_bolt.orange"), 1000);
 });
 test("preview never drops on-target stages", async () => {
   const { recipe, context } = boltAttack();

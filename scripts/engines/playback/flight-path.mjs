@@ -102,12 +102,16 @@ function roleOf(s, context, preview) {
 // When a flight reaches its end (the moment its impact is timed to).
 export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
 
+// When a projectile's effect (and so its moveTowards) ends. An arcing one touches down at the flight's arrival
+// (a wall-shortened contact included), as its impact does; any other keeps its whole duration.
+export const moveEnd = (s) => (s.kind === 'projectile' && s.flightArc && s.flightArc.kind !== 'none' ? arrivalOf(s) : s.duration);
+
 // When the flying object leaves and how long until it lands. A projectile (moveTowards) moves from its
-// moveDelay to the end of the effect; a travel clip's object lands at the flight's arrival.
+// moveDelay to the end of its effect; a travel clip's object lands at the flight's arrival.
 export function flightTiming(s) {
   if (s.kind !== 'projectile') return { start: 0, arrive: arrivalOf(s) };
   const start = Math.max(0, Number(s.moveDelay) || 0);
-  return { start, arrive: Math.max(0, s.duration - start) };
+  return { start, arrive: Math.max(0, moveEnd(s) - start) };
 }
 
 // The ground line a flight follows: its planned path, else the points Sequencer flies it between
@@ -152,18 +156,19 @@ const SHADOW = { width: 0.5, height: 0.3, alpha: 0.35, apexScale: 0.6, apexAlpha
 // The arcing flight's shadow on the floor: a soft dark ellipse moving straight from the thrower to the landing
 // point as the object flies, smallest and faintest at the apex. Decoration (tier 2); tagged animaterShadow so
 // each client can drop it (main.mjs, setting projectileShadows). Its tracks (flightTracks) are set like arcTracks:
-// absolute on spriteContainer, alpha times the stage's opacity.
+// absolute on spriteContainer, alpha times the shape's own. The stage's opacity stays 1: Sequencer draws a shape
+// at its own alpha (canvas-lib.js createShape), not at the effect's opacity.
 export function shadowStage(flight) {
   const { start, arrive } = flightTiming(flight), { from, to } = flightLine(flight), half = arrive / 2;
   return {
     ...normalizeOptions({ kind: 'projectile', duration: start + arrive }),
     stageId: `${flight.stageId}-shadow`, kind: 'projectile', label: 'Shadow', assets: [], asset: null,
-    delay: flight.delay ?? 0, duration: start + arrive, scale: 1, opacity: SHADOW.alpha, below: true,
+    delay: flight.delay ?? 0, duration: start + arrive, scale: 1, opacity: 1, below: true,
     origin: flight.origin, endpoint: flight.endpoint, destination: flight.destination,
     flightFrom: from, flightTo: to, moveDelay: start,
     ...(flight.kind === 'projectile' && flight.moveEase ? { moveEase: flight.moveEase } : {}),
     // Sequencer draws an ellipse from its half width and half height.
-    shape: { type: 'ellipse', width: SHADOW.width / 2, height: SHADOW.height / 2, gridUnits: true, fillColor: '#000000', fillAlpha: 1 },
+    shape: { type: 'ellipse', width: SHADOW.width / 2, height: SHADOW.height / 2, gridUnits: true, fillColor: '#000000', fillAlpha: 1, alpha: SHADOW.alpha },
     flightTracks: [
       ...rise('scale.x', 1, SHADOW.apexScale, half, start),
       ...rise('scale.y', 1, SHADOW.apexScale, half, start),

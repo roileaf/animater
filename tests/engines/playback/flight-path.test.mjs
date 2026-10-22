@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arcOf, arcShape, arcTracks, flightTiming, shadowStage, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
+import { arcOf, arcShape, arcTracks, flightTiming, moveEnd, shadowStage, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 
 // A full-height wall at x (blocks every line that crosses it, of any type).
@@ -299,15 +299,16 @@ test('shadow follows the ground line and is tier 2', () => {
   // It lands when the object does (55% of a travel clip without a contact).
   assert.deepEqual([s.delay, s.duration, s.moveDelay ?? 0], [250, 550, 0]);
   // A soft black ellipse, half a square by 0.3 (Sequencer draws an ellipse from its half sizes).
-  assert.deepEqual(s.shape, { type: 'ellipse', width: 0.25, height: 0.15, gridUnits: true, fillColor: '#000000', fillAlpha: 1 });
-  assert.equal(s.opacity, 0.35);
-  // Smallest and faintest at the apex: 0.6 of its size, 0.15 opacity (0.35 x the track).
+  // Its 0.35 is the shape's own alpha (Sequencer draws a shape at that, not at the effect's opacity).
+  assert.deepEqual(s.shape, { type: 'ellipse', width: 0.25, height: 0.15, gridUnits: true, fillColor: '#000000', fillAlpha: 1, alpha: 0.35 });
+  assert.equal(s.opacity, 1);
+  // Smallest and faintest at the apex: 0.6 of its size, 0.15 opacity (the shape's 0.35 x the track).
   const at = (p, delay) => s.flightTracks.find((t) => t.property === p && t.delay === delay);
   for (const p of ['scale.x', 'scale.y']) {
     assert.deepEqual(at(p, 0), up(p, 1, 0.6, 275, 0));
     assert.deepEqual(at(p, 275), down(p, 0.6, 1, 275, 275));
   }
-  assert.ok(near(at('alpha', 0).to * s.opacity, 0.15, 1e-4));
+  assert.ok(near(at('alpha', 0).to * s.shape.alpha, 0.15, 1e-4));
   assert.equal(at('alpha', 275).to, 1);
   // Without a planned path it runs between the flight's own ends.
   const plain = shadowStage(flight({ flightArc: arc }));
@@ -315,12 +316,21 @@ test('shadow follows the ground line and is tier 2', () => {
   assert.equal(plain.duration, 600);
 });
 
-test('a projectile arcs over its whole move', () => {
+test('an arcing projectile lands at its arrival; a straight one keeps its whole move', () => {
   const arc = { kind: 'low', apexPx: 40, peakScale: 1.1 };
   const fly = flight({ kind: 'projectile', moveDelay: 100, moveEase: 'easeOutCubic', contact: 0, flightArc: arc });
-  assert.deepEqual(flightTiming(fly), { start: 100, arrive: 900 });
+  // 55% of 1000 ms without a contact: it moves from 100 ms and touches down at 550.
+  assert.equal(moveEnd(fly), 550);
+  assert.deepEqual(flightTiming(fly), { start: 100, arrive: 450 });
+  // A wall-shortened contact lands it sooner.
+  assert.equal(moveEnd({ ...fly, contact: 300 }), 300);
+  assert.deepEqual(flightTiming({ ...fly, contact: 300 }), { start: 100, arrive: 200 });
+  // Not arcing: the projectile moves over its whole effect, as before.
+  const straight = { ...fly, flightArc: { kind: 'none', apexPx: 0, peakScale: 1 } };
+  assert.equal(moveEnd(straight), 1000);
+  assert.deepEqual(flightTiming(straight), { start: 100, arrive: 900 });
   assert.deepEqual(flightTiming(flight({ contact: 0 })), { start: 0, arrive: 550 });
   const s = shadowStage(fly);
-  assert.deepEqual([s.duration, s.moveDelay, s.moveEase], [1000, 100, 'easeOutCubic']);
+  assert.deepEqual([s.duration, s.moveDelay, s.moveEase], [550, 100, 'easeOutCubic']);
   assert.equal(s.flightTracks[0].delay, 100);
 });
