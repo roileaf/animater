@@ -136,30 +136,17 @@ test('a still light carries its place; a light on a following anchor and a fligh
   assert.equal(planLights([bolt], opts({ bolt: 0 }, { follows: () => true })).get(bolt).at, undefined);
 });
 
-test('slow motion stretches flash, strobe and a flight arrival; lasting lights keep their speed', () => {
+test('flash, strobe and a flight arrival keep their own timing', () => {
   const boom = st('boom', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
   const zap = st('zap', 'impact', 'jb2a.chain_lightning.primary.blue', { at: { x: sq(20), y: 0 } });
   const bolt = st('bolt', 'projectile', 'jb2a.fire_bolt.orange', { at: { x: sq(8), y: 0 }, duration: 1600, contact: 500 });
-  const ring = st('ring', 'template', 'jb2a.fire_ring.orange', { at: { x: sq(40), y: 0 }, persist: true });
-  const tiers = { boom: 0, zap: 0, bolt: 0, ring: 0 };
-  const plain = planLights([boom, zap, bolt, ring], opts(tiers));
-  const slowed = planLights([boom, zap, bolt, ring], opts(tiers, { tempo: 0.5 }));
-  assert.equal(slowed.get(boom).lengthMs, 2 * plain.get(boom).lengthMs);
-  assert.equal(slowed.get(zap).lengthMs, 2 * plain.get(zap).lengthMs);
-  assert.equal(slowed.get(boom).rate, 0.5);
-  assert.equal(slowed.get(bolt).arriveMs, 1000);
-  assert.equal(slowed.get(ring).rate, undefined);
-  assert.equal(plain.get(boom).rate, undefined);
-  // The flash peaks at 120 ms instead of 60 ms, and is still lit when the plain one is gone.
-  assert.equal(envelope(slowed.get(boom), 120), 1);
-  assert.ok(envelope(slowed.get(boom), 60) < 1);
-  assert.equal(envelope(plain.get(boom), 1000), 0);
-  assert.ok(envelope(slowed.get(boom), 1000) > 0);
-  // A one-shot area slowed past the lasting length is still a one-shot flash.
-  const burst = st('burst', 'template', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 }, duration: 3000 });
-  const tag = planLights([burst], opts({ burst: 0 }, { tempo: 0.5 })).get(burst);
-  assert.equal(tag.shape, 'flash');
-  assert.equal(tag.lasting, false);
+  const lights = planLights([boom, zap, bolt], opts({ boom: 0, zap: 0, bolt: 0 }));
+  assert.equal(lights.get(bolt).arriveMs, 500);
+  for (const tag of lights.values()) assert.equal('rate' in tag, false);
+  // The flash peaks at 60 ms and is gone a second later.
+  assert.equal(envelope(lights.get(boom), 60), 1);
+  assert.equal(envelope(lights.get(boom), 1000), 0);
+  assert.equal(lights.get(zap).shape, 'strobe');
 });
 
 test('a burst and a later lasting area at one spot each keep their light', () => {

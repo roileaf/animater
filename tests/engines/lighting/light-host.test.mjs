@@ -10,7 +10,7 @@ function effect(tag, { ready = true, x = 500, y = 600, sceneId = 's1', name = 'a
   return { data: { moduleName, name, sceneId, ...(tag ? { animaterLight: tag } : {}) }, ready, worldPosition: { x, y } };
 }
 
-function make({ held = () => 0, steady = false, levelOk = () => true, max = 8 } = {}) {
+function make({ steady = false, levelOk = () => true, max = 8 } = {}) {
   const out = { t: 0, sources: [], refreshes: 0, steady };
   const host = createLightHost({
     makeSource: (id) => {
@@ -25,7 +25,6 @@ function make({ held = () => 0, steady = false, levelOk = () => true, max = 8 } 
     refreshLighting: () => { out.refreshes++; },
     sceneId: () => 's1',
     levelOk,
-    heldMs: held,
     steady: () => out.steady,
     gridSize: () => 100,
     now: () => out.t,
@@ -179,24 +178,6 @@ test('cap keeps 8 and lets lasting lights in', () => {
   host.tick();
   assert.equal(out.sources[0].destroyed, 1);
   assert.equal(out.sources.slice(1).filter((s) => s.destroyed).length, 0);
-});
-
-test('held session freezes the envelope', () => {
-  // Held from 100 to 400 ms.
-  const held = (session, since) => (session === 'animater-u1-abc' ? Math.max(0, Math.min(400, out.t) - Math.max(100, since)) : 0);
-  const { host, out } = make({ held });
-  host.onEffect(effect(flash));
-  host.tick();
-  const [s] = out.sources;
-  out.t = 100; host.tick();
-  const frozen = lastLevel(s).alpha;
-  out.t = 250; host.tick();
-  assert.equal(lastLevel(s).alpha, frozen);
-  out.t = 399; host.tick();
-  assert.ok(Math.abs(lastLevel(s).alpha - frozen) < 0.01);
-  out.t = 700; host.tick();
-  assert.deepEqual(lastLevel(s), lightLevels(envelope(flash, 400), 'flash'));
-  assert.equal(s.destroyed, 0, 'still alive after its wall-clock end');
 });
 
 test('steady client gets no animation type', () => {
@@ -392,15 +373,4 @@ test('the source level and elevation from the tag place the light', () => {
   bare.host.tick();
   assert.equal('level' in bare.out.sources[0].inits[0], false);
   assert.equal('elevation' in bare.out.sources[0].inits[0], false);
-});
-
-test('a slowed flash keeps its light twice as long', () => {
-  const { host, out } = make();
-  host.onEffect(effect({ ...flash, lengthMs: 1420, rate: 0.5 }));
-  host.tick();
-  out.t = 1000; host.tick();
-  assert.equal(host.count(), 1);
-  assert.equal(lastLevel(out.sources[0]).alpha, lightLevels(envelope({ ...flash, lengthMs: 1420, rate: 0.5 }, 1000), 'flash').alpha);
-  out.t = 1800; host.tick();
-  assert.equal(host.count(), 0);
 });

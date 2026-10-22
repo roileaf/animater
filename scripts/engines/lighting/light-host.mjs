@@ -21,8 +21,7 @@ const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const finitePoint = (p) => (p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null);
 const validTag = (tag) => !!tag && typeof tag === 'object'
   && ['startMs', 'lengthMs', 'dim', 'bright'].every((k) => Number.isFinite(tag[k]))
-  && (tag.fadeMs == null || Number.isFinite(tag.fadeMs))
-  && (tag.rate == null || tag.rate > 0);
+  && (tag.fadeMs == null || Number.isFinite(tag.fadeMs));
 
 /** Light source alpha and luminosity at envelope level 0..1. */
 export function lightLevels(level, shape) {
@@ -35,7 +34,7 @@ const animationOf = (shape, steady) => (steady ? {} : {
 });
 
 export function createLightHost({
-  makeSource, refreshLighting, sceneId, levelOk, heldMs = () => 0, steady = () => false,
+  makeSource, refreshLighting, sceneId, levelOk, steady = () => false,
   gridSize = () => 100, now = () => performance.now(), max = 8,
 }) {
   const lights = new Map(); // anchor effect -> light, in arrival order
@@ -117,8 +116,8 @@ export function createLightHost({
       if (k >= 1) return remove(light);
       level = light.endLevel * (1 - k);
     } else {
-      // The anchor's own clock: hit-stop time does not count.
-      const t = t0 - light.receivedAt - (heldMs(light.session, light.receivedAt) || 0);
+      // The anchor's own clock.
+      const t = t0 - light.receivedAt;
       if (t >= tag.startMs + tag.lengthMs + (tag.fadeMs ?? 0)) return remove(light);
       if (light.effect.destroyed) return end(light, t0);
       level = envelope(tag, t, { steady: isSteady });
@@ -149,7 +148,7 @@ export function createLightHost({
         if (oldest) end(oldest, now());
       }
       lights.set(effect, {
-        id: ++nextId, effect, data, tag, session: data.name, receivedAt: now(),
+        id: ++nextId, effect, data, tag, receivedAt: now(),
         source: null, at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0, rampAt: null,
       });
     },
