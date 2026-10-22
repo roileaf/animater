@@ -21,6 +21,13 @@ test("plannedCrit reads outcome and per-target outcomes, never saves", () => {
   assert.equal(plannedCrit({}), false);
 });
 
+test("a crit damage roll (or its rider) never hit-stops: only attacks and checks", () => {
+  assert.equal(plannedCrit({ type: "damage", outcome: "criticalSuccess" }), false);
+  assert.equal(plannedCrit({ type: "damage", targetOutcomes: { a: "criticalSuccess" } }), false);
+  assert.equal(plannedCrit({ type: "attack", outcome: "criticalSuccess" }), true);
+  assert.equal(plannedCrit({ type: "use", skillCheck: true, outcome: "criticalSuccess" }), true, "a Shove's check");
+});
+
 test("critTargetIds names crit targets, or null when the whole roll is critical", () => {
   assert.equal(critTargetIds({ outcome: "criticalSuccess" }), null);
   assert.deepEqual([...critTargetIds({ targetOutcomes: { a: "success", b: "criticalSuccess" } })], ["b"]);
@@ -60,4 +67,11 @@ test("withTempo scales moveDelay but not percentage motion fields, and leaves fu
   const [m] = withTempo(plan, 0.5);
   assert.deepEqual([m.moveDelay, m.motionHold, m.motionArrival], [100, 25, 45]);
   assert.equal(withTempo(plan, 1), plan);
+});
+
+test("withTempo keeps a lasting layer's speed and length; only its start moves with the plan", () => {
+  const lasting = { kind: "aura", delay: 300, duration: 5000, persist: true, playbackRate: 1 };
+  const [l] = withTempo([lasting], 0.5);
+  assert.deepEqual([l.delay, l.duration, l.playbackRate], [600, 5000, 1]);
+  assert.equal(lasting.delay, 300, "the input plan is not changed");
 });

@@ -1,6 +1,8 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { trackAnimaterEffect, untrackAnimaterEffect, holdSession, turboState } from '../../../scripts/integrations/sequencer-turbo/index.mjs';
+import { trackAnimaterEffect, untrackAnimaterEffect, holdSession, turboState, engineState } from '../../../scripts/integrations/sequencer-turbo/index.mjs';
+import { turboizeEngine } from '../../../scripts/integrations/sequencer-turbo/engine.mjs';
+import { createOriginalEngine } from '../../fixtures/sequencer-engine/original-engine.mjs';
 
 // Fake timers, with performance.now following the fake clock (holds read it).
 mock.timers.enable({ apis: ['setTimeout', 'Date'] });
@@ -129,6 +131,34 @@ test('media Sequencer paused itself stays paused after the hold', () => {
   assert.deepEqual(live.calls, ['pause', 'play']);
   untrackAnimaterEffect(gap);
   untrackAnimaterEffect(live);
+});
+
+test('a held session\'s tracked effect stops advancing in the turbo engine; others run on', () => {
+  globalThis.foundry ??= { utils: { randomID: () => `id${nextId++}` } };
+  const engine = createOriginalEngine();
+  turboizeEngine(engine, engineState);
+  engine.ticker = { elapsedMS: 50, deltaMS: 50, add() {} };
+  const frozen = fakeEffect('s9'), other = fakeEffect('s10'), untracked = fakeEffect('s9');
+  trackAnimaterEffect(frozen);
+  trackAnimaterEffect(other);
+  // Sequencer animates an effect's sprite with the effect id as the origin.
+  const [a, b, c] = [{ id: 'a', alpha: 0 }, { id: 'b', alpha: 0 }, { id: 'c', alpha: 0 }];
+  engine.addAnimation(frozen.id, { target: a, propertyName: 'alpha', from: 0, to: 1, duration: 200, delay: 0, absolute: true });
+  engine.addAnimation(other.id, { target: b, propertyName: 'alpha', from: 0, to: 1, duration: 200, delay: 0, absolute: true });
+  engine.addAnimation(untracked.id, { target: c, propertyName: 'alpha', from: 0, to: 1, duration: 200, delay: 0, absolute: true });
+  engine.nextFrame();
+  assert.deepEqual([a.alpha, b.alpha, c.alpha], [0.25, 0.25, 0.25]);
+
+  assert.equal(holdSession('s9', 100), true);
+  engine.nextFrame();
+  // Only the tracked effect of the held session waits; an untracked origin of the same name runs.
+  assert.deepEqual([a.alpha, b.alpha, c.alpha], [0.25, 0.5, 0.5]);
+
+  mock.timers.tick(100);
+  engine.nextFrame();
+  assert.deepEqual([a.alpha, b.alpha, c.alpha], [0.5, 0.75, 0.75]);
+  untrackAnimaterEffect(frozen);
+  untrackAnimaterEffect(other);
 });
 
 test('an effect without _setTimeout is tracked without wrapping', () => {

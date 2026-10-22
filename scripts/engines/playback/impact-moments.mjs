@@ -7,8 +7,10 @@ export const SLOW_CAP_MS = 6000;
 
 const CRIT = "criticalSuccess";
 
-// A crit is read from the roll's outcome, never from saves.
+// A crit is read from the roll's outcome, never from saves. Only attacks and checks freeze:
+// a crit's damage roll (and its riders, e.g. Sneak Attack) never freezes again.
 export function plannedCrit(context = {}) {
+  if (context.type === "damage") return false;
   return context.outcome === CRIT || Object.values(context.targetOutcomes ?? {}).includes(CRIT);
 }
 
@@ -40,10 +42,13 @@ export function withHitStop(plan, at, holdMs = HOLD_MS) {
 export const tempoFor = (lengthMs, tempo = SLOW_TEMPO, capMs = SLOW_CAP_MS) => Math.min(1, Math.max(tempo, lengthMs / capMs));
 
 // Stretch a plan in time. motionHold and motionArrival are percentages of the move, so they stay.
+// A lasting (persist) layer keeps its speed and length, else it loops slowed for its whole life;
+// only its start moves with the slowed plan around it.
 export function withTempo(plan, tempo) {
   if (!(tempo < 1)) return plan;
   const slow = (n) => (n == null ? n : n / tempo);
   return plan.map((s) => {
+    if (s.persist) return { ...s, delay: slow(s.delay) };
     const next = { ...s, delay: slow(s.delay), duration: slow(s.duration) };
     if (s.moveDelay != null) next.moveDelay = slow(s.moveDelay);
     if (s.kind === "sound") next.pitch = (s.pitch || 1) * SLOW_PITCH;

@@ -79,7 +79,9 @@ export const hitStopReady = () => !!(turboState.enabled && turboState.engine && 
 // Sequencer's animation engine starts lazily on its first animation, so hooking at import time is early
 // enough. The engine flag is read through a view so switching it off hands frames back to the original.
 // Another Sequencer version keeps its own engine (engine.mjs checks the methods' source first).
-installEngineCapture({ get enabled() { return turboState.enabled && turboState.engine; }, isHeldOrigin },
+// The view the captured engine reads (exported for tests).
+export const engineState = { get enabled() { return turboState.enabled && turboState.engine; }, isHeldOrigin };
+installEngineCapture(engineState,
   () => { turboState.engineCaptured = true; }, {
     onSkipped: () => {
       turboState.engineCaptured = false;
