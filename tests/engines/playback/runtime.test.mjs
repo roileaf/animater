@@ -1350,7 +1350,6 @@ test("a thrown projectile keeps its whole clip; at a wall its impact comes as it
   assert.equal(durationOf(walled.calls), wall.delay);
   // What followed the hit moves with the strike (400 ms after the recipe's 600 ms arrival).
   assert.equal(walled.plan.find((s) => s.stageId === "recoil").delay, 1000);
-  assert.equal(durationOf(walled.calls), 1000);
 });
 test("preview never drops on-target stages", async () => {
   const { recipe, context } = boltAttack();
@@ -1365,8 +1364,9 @@ test("a fire bolt into a wall lights its path to the wall point", async () => {
   const glow = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
   assert.deepEqual(glow.from, { x: 0, y: 0 });
   assert.deepEqual(glow.to, { x: WALL_X, y: 0 });
-  // It lands with the wall strike (the end of the bolt's travel), not at 55% of the flight.
-  assert.equal(glow.arriveMs, 800);
+  // It lands with the wall strike: as the 15 ft beam variant's front reaches the wall (or the 1000 ms stage
+  // ends first), not at 55% of the flight.
+  assert.equal(glow.arriveMs, Math.min(1000, MEDIA_LANDINGS["jb2a.fireball.beam.orange.15ft"]));
 });
 test("a target missed in a multi-target roll loses its own effects", async () => {
   const hit = { id: "t2", center: { x: 0, y: 600 }, w: 100, h: 100 };

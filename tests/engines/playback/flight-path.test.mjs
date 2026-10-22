@@ -171,24 +171,39 @@ test('a measured landing plays from the skipped opening at the stage media speed
   assert.equal(withFlightPaths([longbow({ duration: 300 })], opts({ collides: wallAtX(1200) })).plan[0].contact, 300);
 });
 
-test('an unmeasured travel clip stopped by a wall strikes it at the end of its travel', () => {
-  // No measurement says when its variant's object lands: the wall is struck 200 ms before the stage ends,
-  // never before the recipe's arrival.
-  const { plan, blocked } = withFlightPaths([flight({ asset: 'jb2a.unmeasured.clip' })], opts());
+test('a travel clip without range variants stopped by a wall keeps the recipe arrival', () => {
+  // Sequencer stretches its one file over any line, so the shot lands when it would at the target.
+  const { plan, blocked } = withFlightPaths([flight({ asset: 'jb2a.plain.stretch' })], opts());
   const [s] = plan;
-  assert.deepEqual([s.flightOutcome, s.flightTo.x, s.contact, s.flightArrivalShift], ['wall', 500, 800, 200]);
+  assert.deepEqual([s.flightOutcome, s.flightTo.x, s.contact, s.flightArrivalShift], ['wall', 500, 600, undefined]);
   assert.deepEqual([...blocked], ['t1']);
+  // Without a measured contact: 55% of the flight.
+  assert.equal(withFlightPaths([flight({ asset: 'jb2a.plain.stretch', contact: 0 })], opts()).plan[0].contact, 550);
 });
 
-test('the fallback wall arrival never comes before the recipe arrival, nor after the stage', () => {
+test('an unmeasured range clip stopped by a wall strikes it at the end of its travel', () => {
+  // A range clip whose variant was not measured: 200 ms before the stage ends, never before the recipe's arrival.
   const line = { flightFrom: { x: 0, y: 0 }, flightTo: { x: 500, y: 0 } };
-  assert.equal(wallArrivalOf({ kind: 'travel', duration: 1000, contact: 950 }), 950);
-  assert.equal(wallArrivalOf({ kind: 'travel', duration: 1000 }), 800);
-  assert.equal(wallArrivalOf({ kind: 'travel', duration: 300 }), 300);
-  assert.equal(wallArrivalOf({ kind: 'travel', duration: 500 }), 400);
-  assert.equal(wallArrivalOf({ kind: 'travel', duration: 1000, asset: ARROW, ...line }, { landings: {} }), 800);
-  assert.equal(wallArrivalOf({ kind: 'travel', duration: 1000, asset: ARROW, ...line }, { landings: { [`${ARROW}.30ft`]: 420 } }), 420);
+  const tables = { landings: { 'jb2a.r.a.05ft': 300 }, unmeasured: ['jb2a.r.b.30ft'] };
+  const at = (extra) => wallArrivalOf({ kind: 'travel', duration: 1000, asset: 'jb2a.r.b', ...line, ...extra }, { tables });
+  assert.equal(at({}), 800);
+  assert.equal(at({ contact: 950 }), 950);
+  assert.equal(at({ duration: 300 }), 300);
+  assert.equal(at({ duration: 500 }), 400);
+  // A partial path with an unmeasured entry is unmeasured too; a named variant missing from the table as well.
+  assert.equal(at({ asset: 'jb2a.r' }), 800);
+  assert.equal(at({ asset: 'jb2a.r.a.30ft' }), 800);
+  // A measured entry plays its landing; a clip of no range at all its recipe arrival.
+  assert.equal(at({ asset: 'jb2a.r.a' }), 300);
+  assert.equal(at({ asset: 'jb2a.other', contact: 450 }), 450);
   assert.equal(wallArrivalOf({ kind: 'projectile', duration: 1200, contact: 400, moveDelay: 200, asset: ARROW, ...line }), 1200);
+});
+
+test('a beam stopped by a wall reaches it at its measured landing', () => {
+  const BEAM = 'jb2a.fireball.beam.orange';
+  const { plan } = withFlightPaths([flight({ asset: BEAM, assets: [BEAM], duration: 4000 })], opts({ collides: wallAtX(300) }));
+  assert.ok(MEDIA_LANDINGS[`${BEAM}.15ft`] < 4000);
+  assert.equal(plan[0].contact, MEDIA_LANDINGS[`${BEAM}.15ft`]);
 });
 
 test('without a contact the arrival is 55% of the flight', () => {

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { assetDatabases, variantFiles } from "./asset-databases.mjs";
@@ -89,8 +89,9 @@ async function representativeTiming(row, databases) {
   return run;
 }
 // When the shot in one measured file reaches its far end (media ms): the
-// endpoint column sits template[2] px before the file's right edge.
-async function fileContact({ path, metadata, duration }, template, width) {
+// endpoint column sits template[2] px before the file's right edge. When no
+// frame crosses the threshold: 60% of the clip (guess), else null.
+async function fileContact({ path, metadata, duration }, template, width, { guess = true } = {}) {
   // Transparent pixels retain arbitrary RGB values. Decode alpha with the
   // correct libvpx decoder before estimating visible destination contact.
   const decoder =
@@ -99,7 +100,7 @@ async function fileContact({ path, metadata, duration }, template, width) {
     100 * (1 - (template?.[2] ?? 0) / (width || 1000)),
   );
   // Persisted per file, decoder and endpoint: the same frames give the same contact.
-  return persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint }, async () => {
+  const crossed = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint }, async () => {
     const { stdout: frames } = await exec(
       "ffmpeg",
       [
@@ -123,13 +124,16 @@ async function fileContact({ path, metadata, duration }, template, width) {
       ],
       { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
     );
-    return visibleContact(frames, duration, endpoint);
+    return crossedContact(frames, endpoint);
   });
+  return crossed ?? (guess ? Math.round(duration * 0.6) : null);
 }
 // When the shot lands in each range variant (05/15/30/60/90 ft) of a ranged
 // clip, in media ms rounded up to 10 ms: { "30ft": 650, ... }. A variant with
 // random alternatives takes the latest of them, so a strike timed to it is
-// never early. Null when the row has no measured variant.
+// never early. A variant is left out when any of its files is missing or no
+// frame of one crosses the endpoint (a guess is not a measurement). Null when
+// the row has no measured variant.
 export async function variantLandings(row, databases) {
   if (!row?.distanceFiles) return null;
   const landings = {};
@@ -138,9 +142,9 @@ export async function variantLandings(row, databases) {
     for (const file of [files].flat(Infinity).filter((f) => typeof f === "string" && f.endsWith(".webm"))) {
       const measured = await mediaMetadata(file, databases);
       const width = Number(basename(file).match(/_(\d+)x\d+\.webm$/i)?.[1]);
-      if (measured) times.push(await fileContact(measured, row.template, width));
+      times.push(measured ? await fileContact(measured, row.template, width, { guess: false }) : null);
     }
-    if (times.length) landings[ft] = Math.ceil(Math.max(...times) / 10) * 10;
+    if (times.length && times.every(Number.isFinite)) landings[ft] = Math.ceil(Math.max(...times) / 10) * 10;
   }
   return Object.keys(landings).length ? landings : null;
 }
@@ -183,12 +187,15 @@ export function contactFrames(frames, endpoint) {
   }
   return weights;
 }
-export function visibleContact(frames, duration, endpoint) {
+// The first frame (ms) whose endpoint column crosses half the peak weight, or null.
+export function crossedContact(frames, endpoint) {
   const weights = contactFrames(frames, endpoint),
     threshold = Math.max(3, Math.max(...weights) * 0.5);
   const contact = weights.findIndex((weight) => weight >= threshold);
-  if (contact >= 0) return Math.max(50, contact * 50);
-  return Math.round(duration * 0.6);
+  return contact >= 0 ? Math.max(50, contact * 50) : null;
+}
+export function visibleContact(frames, duration, endpoint) {
+  return crossedContact(frames, endpoint) ?? Math.round(duration * 0.6);
 }
 export async function designMediaTiming(assets, databases) {
   const result = {};
@@ -211,27 +218,44 @@ export async function designMediaTiming(assets, databases) {
   return result;
 }
 // Writes data/media-landings.mjs: when the shot lands in each range variant of
-// every ranged (projectile) clip, keyed by the variant's Sequencer database path.
+// every stretched (projectile or beam) clip, keyed by the variant's Sequencer
+// database path, and the range variants left unmeasured.
 // Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
+const STRETCHED = ["projectile", "beam"];
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href && process.argv.includes("--write-landings")) {
-  const databases = await assetDatabases(), landings = {};
+  const databases = await assetDatabases(), landings = {}, gaps = new Set();
   for (const rows of Object.values(databases))
     for (const row of rows) {
-      if (!row.distanceFiles || assetGeometry(row) !== "projectile") continue;
-      for (const [ft, ms] of Object.entries((await variantLandings(row, databases)) ?? {})) {
+      if (!row.distanceFiles) continue;
+      // An edition whose files are not on this machine says nothing either way.
+      const present = await Promise.all(variantFiles(row).map((file) => mediaMetadata(file, databases)));
+      if (!present.some(Boolean)) continue;
+      const measured = STRETCHED.includes(assetGeometry(row)) ? (await variantLandings(row, databases)) ?? {} : {};
+      for (const [ft, ms] of Object.entries(measured)) {
         const key = `${row.key}.${ft}`;
         landings[key] = Math.max(landings[key] ?? 0, ms);
       }
+      for (const ft of Object.keys(row.distanceFiles))
+        if (!(ft in measured)) gaps.add(`${row.key}.${ft}`);
     }
+  // A variant measured in one edition but not the other is not known for both.
+  for (const key of gaps) delete landings[key];
   const keys = Object.keys(landings).sort();
+  const { version } = JSON.parse(await readFile(new URL("../../jb2a_patreon/module.json", import.meta.url), "utf8"));
   await writeFile(new URL("../data/media-landings.mjs", import.meta.url),
-    `// When the shot in each range variant of a JB2A ranged clip reaches its far end
-// (media ms from the clip's start, rounded up to 10 ms; the latest of a variant's
-// random alternatives). Keyed by the variant's Sequencer database path.
+    `// When the shot in each range variant of a JB2A ranged clip (projectile or beam)
+// reaches its far end (media ms from the clip's start, rounded up to 10 ms; the
+// latest of a variant's random alternatives). Keyed by the variant's Sequencer
+// database path. Measured from JB2A Patreon ${version} (Free edition files when present).
+// RANGE_UNMEASURED: range variants not measured (a file missing, no frame
+// crossing the endpoint, or not a projectile or beam clip).
 // Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
 export const MEDIA_LANDINGS = {
 ${keys.map((k) => `  ${JSON.stringify(k)}: ${landings[k]},`).join("\n")}
 };
+export const RANGE_UNMEASURED = [
+${[...gaps].sort().map((k) => `  ${JSON.stringify(k)},`).join("\n")}
+];
 `);
-  console.log(`${keys.length} variant landings`);
+  console.log(`${keys.length} variant landings, ${gaps.size} range variants unmeasured`);
 }

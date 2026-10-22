@@ -89,13 +89,16 @@ export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Num
 // the end of the effect, so it touches the wall as the stage ends, however short the line. A travel clip:
 // Sequencer picks its range variant (05/15/30/60/90 ft) by the line to the wall, and the object in each variant
 // lands at a time of its own (range-landing.mjs, measured: a JB2A arrow 500 ms at 05 ft to 1150 ms at 90 ft),
-// played from the skipped opening at the stage's media speed. An unmeasured clip is struck at the end of its
-// travel, 200 ms before the stage ends (as the PF2e weapon recipes time an unmeasured contact; every measured
-// JB2A ranged weapon clip lands at least 267 ms before its own end), never before the recipe's own arrival.
-export function wallArrivalOf(s, { gridPx = 100, landings } = {}) {
+// played from the skipped opening at the stage's media speed. A clip without range variants is stretched
+// whole over any line, so its shot lands at the recipe's own arrival. A range clip left unmeasured is struck
+// at the end of its travel, 200 ms before the stage ends (as the PF2e weapon recipes time an unmeasured
+// contact; every measured JB2A ranged weapon clip lands at least 267 ms before its own end), never before the
+// recipe's own arrival. tables: { landings, unmeasured } in place of data/media-landings.mjs.
+export function wallArrivalOf(s, { gridPx = 100, tables } = {}) {
   if (s.kind === 'projectile') return s.duration;
-  const reach = s.flightFrom && s.flightTo ? distance(s.flightFrom, s.flightTo) : null;
-  const landing = reach === null ? null : rangeLanding(s.asset, reach, gridPx, landings);
+  const reach = s.flightFrom && s.flightTo ? distance(s.flightFrom, s.flightTo) : 0;
+  const { range, landing } = rangeLanding(s.asset, reach, gridPx, tables);
+  if (!range) return arrivalOf(s);
   if (landing === null) return Math.min(s.duration, Math.max(arrivalOf(s), 400, s.duration - 200));
   const elapsed = Math.max(0, landing - (Number(s.clipStart) || 0)) / (Number(s.playbackRate) || 1);
   return Math.min(s.duration, elapsed);
