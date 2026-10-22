@@ -143,7 +143,12 @@ function nextFrame() {
 
   const stored = (this._storedValues = {});
 
-  for (let i = 0; i < animations.length; i++) this._animate(animations[i]);
+  // A held origin (hit-stop) keeps its time and its targets' values for this frame.
+  const isHeld = this.__turbo.isHeldOrigin;
+  for (let i = 0; i < animations.length; i++) {
+    if (isHeld && isHeld(animations[i].origin)) continue;
+    this._animate(animations[i]);
+  }
 
   for (const key in stored) {
     const delta = stored[key];
@@ -232,13 +237,16 @@ function animateAttribute(attribute) {
 
 /**
  * Replace the engine's hot methods in place. Returns the function the ticker
- * should call each frame.
+ * should call each frame. An optional `state.isHeldOrigin(origin)` freezes that origin's animations.
  */
 export function turboizeEngine(engine, state = { enabled: true }) {
   if (engine.__turbo) return engine.nextFrame;
   engine.__turbo = {
     get enabled() {
       return state.enabled;
+    },
+    get isHeldOrigin() {
+      return state.isHeldOrigin;
     },
     orig: {
       addAnimation: engine.addAnimation,

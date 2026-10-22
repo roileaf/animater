@@ -219,3 +219,29 @@ test('capture keeps a bind wrapper installed after it', () => withBind(() => {
   assert.equal(typeof engine.__turbo, 'object');
   assert.equal(Function.prototype.bind, laterBind);
 }));
+
+test('held origin does not advance', () => {
+  const held = new Set();
+  const engine = createOriginalEngine();
+  turboizeEngine(engine, { enabled: true, isHeldOrigin: (origin) => held.has(origin) });
+  engine.ticker = ticker;
+  const [a, b] = makeTargets();
+  engine.addAnimation('x', { target: a, propertyName: 'alpha', from: 0, to: 1, duration: 200, delay: 0, absolute: true });
+  engine.addAnimation('y', { target: b, propertyName: 'alpha', from: 0, to: 1, duration: 200, delay: 0, absolute: true });
+  ticker.elapsedMS = ticker.deltaMS = 50;
+  engine.nextFrame();
+  assert.equal(a.alpha, 0.25);
+  assert.equal(b.alpha, 0.25);
+
+  held.add('x');
+  const xAnimation = engine._animations.find((animation) => animation.origin === 'x');
+  engine.nextFrame();
+  assert.equal(a.alpha, 0.25);
+  assert.equal(xAnimation.totalDt, 50);
+  assert.equal(b.alpha, 0.5);
+
+  held.delete('x');
+  engine.nextFrame();
+  assert.equal(a.alpha, 0.5);
+  assert.equal(b.alpha, 0.75);
+});

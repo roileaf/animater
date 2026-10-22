@@ -6,6 +6,7 @@ import { patchEffectPrototype, repointTickHandlers } from './effects.mjs';
 import { installSoundPatch, bumpGeometryEpoch } from './sound.mjs';
 import { patchEffectRender } from './culling.mjs';
 import { runBenchmark } from './benchmark.mjs';
+import { createHolds, pausableTimeout } from './holds.mjs';
 
 // The last four drive adaptive playback (engines/playback/adaptive-host.mjs) on this client.
 export const PATCHES = ['engine', 'effects', 'sound', 'culling', 'preload', 'stagger', 'lod', 'budget'];
@@ -27,12 +28,57 @@ export const turboState = {
   // Set when Sequencer's engine is not the 4.3.0 code the engine patch was written against.
   engineSkipped: null,
   stats: { effectRuns: 0, effectSkips: 0, soundRuns: 0, soundSkips: 0, culled: 0, preloaded: 0, staggered: 0, droppedSize: 0, droppedBudget: 0, lightened: 0 },
+  // Hit-stop: animation sessions frozen right now on this client.
+  holds: createHolds(),
 };
+
+// Animater's live effects by effect id (the engine's animation origin), for hit-stop.
+const trackedEffects = new Map(); // effect id -> { effect, session }
+
+export function trackAnimaterEffect(effect) {
+  const data = effect?.data;
+  if (data?.moduleName !== 'animater' || trackedEffects.get(effect.id)?.effect === effect) return;
+  const session = data.name;
+  // Scene teardown destroys persistent effects without endedSequencerEffect; drop those here.
+  for (const [id, entry] of trackedEffects) if (entry.effect.destroyed) trackedEffects.delete(id);
+  trackedEffects.set(effect.id, { effect, session });
+  // Its timers (the end timer among them) wait out held time. Lasting effects end on their own terms.
+  // Every arm goes through Sequencer's own _setTimeout, so destroy() still clears them all.
+  if (!data.animaterLasting)
+    effect._setTimeout = pausableTimeout(turboState.holds, session, { set: effect._setTimeout.bind(effect) });
+}
+
+export function untrackAnimaterEffect(effect) {
+  if (trackedEffects.get(effect?.id)?.effect === effect) trackedEffects.delete(effect.id);
+}
+
+function isHeldOrigin(origin) {
+  const entry = trackedEffects.get(origin);
+  return entry !== undefined && turboState.holds.isHeld(entry.session);
+}
+
+// Freeze one session for `ms`: engine tweens stop (via isHeldOrigin), video pauses, timers wait.
+// False when the session was already held once.
+export function holdSession(session, ms) {
+  if (!turboState.holds.hold(session, ms)) return false;
+  for (const { effect, session: s } of trackedEffects.values()) {
+    if (s !== session || effect.destroyed) continue;
+    effect.pauseMedia?.();
+    setTimeout(() => {
+      if (effect.destroyed || trackedEffects.get(effect.id)?.effect !== effect) return;
+      effect.playMedia?.();
+    }, ms);
+  }
+  return true;
+}
+
+// Holds freeze tweens only through the patched engine.
+export const hitStopReady = () => !!(turboState.enabled && turboState.engine && turboState.engineCaptured);
 
 // Sequencer's animation engine starts lazily on its first animation, so hooking at import time is early
 // enough. The engine flag is read through a view so switching it off hands frames back to the original.
 // Another Sequencer version keeps its own engine (engine.mjs checks the methods' source first).
-installEngineCapture({ get enabled() { return turboState.enabled && turboState.engine; } },
+installEngineCapture({ get enabled() { return turboState.enabled && turboState.engine; }, isHeldOrigin },
   () => { turboState.engineCaptured = true; }, {
     onSkipped: () => {
       turboState.engineCaptured = false;
@@ -96,7 +142,14 @@ async function set(key, value) {
 // A local stress scene measured with each speed-up off and on: api.sequencerSpeedups.benchmark().
 const benchmark = (options = {}) => runBenchmark({ ...options, state: turboState, profile });
 
-export const sequencerSpeedupsApi = { status, profile, set, benchmark };
+export const sequencerSpeedupsApi = {
+  status, profile, set, benchmark,
+  holds: {
+    holdSession,
+    isHeld: (session) => turboState.holds.isHeld(session),
+    heldMs: (session, sinceMs) => turboState.holds.heldMs(session, sinceMs),
+  },
+};
 
 export function registerSequencerSpeedups(ID) {
   game.settings.register(ID, 'sequencerSpeedups', {
@@ -126,6 +179,8 @@ export function registerSequencerSpeedups(ID) {
   try {
     installSoundPatch(turboState);
     Hooks.on('createSequencerEffect', onEffectCreated);
+    Hooks.on('createSequencerEffect', trackAnimaterEffect);
+    Hooks.on('endedSequencerEffect', untrackAnimaterEffect);
     for (const hook of ['createWall', 'updateWall', 'deleteWall', 'canvasReady', 'canvasInit', 'updateScene', 'createRegion', 'updateRegion', 'deleteRegion'])
       Hooks.on(hook, bumpGeometryEpoch);
 
