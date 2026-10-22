@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, withinReach, streakToken } from "../../../scripts/engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, withinReach, streakToken, previewSpot } from "../../../scripts/engines/motion/teleport.mjs";
 import { HEX } from "../../../scripts/engines/playback/color-parity.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 
@@ -101,6 +101,28 @@ test('hidden or off-scene mover draws no streak', () => {
   assert.equal(streakToken(trail, { sceneId: 's1', scene: scene({ ...token(), visible: false }) }), null, 'out of this screen\'s sight');
   assert.equal(streakToken(null, { sceneId: 's1', scene: scene(shown) }), null);
   assert.equal(streakToken(trail, { sceneId: 's1', scene: null }), null);
+});
+
+test('a preview jumps to a spot three squares off, toward the target, inside the scene', () => {
+  const mover = { document: { x: 500, y: 500 }, w: 100, h: 100 };
+  const scene = { x: 0, y: 0, width: 2000, height: 2000 };
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene }), { x: 800, y: 500 }, 'no target: to the right');
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene, toward: { x: 550, y: 1550 } }), { x: 500, y: 800 }, 'toward a target below');
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene, toward: { x: 1550, y: 1550 } }), { x: 700, y: 700 }, 'diagonal snaps to squares');
+  assert.deepEqual(previewSpot({ ...mover, document: { x: 1800, y: 500 } }, { gridSize: 100, bounds: scene }), { x: 1500, y: 500 }, 'flips back from the edge');
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene, toward: { x: 550, y: 550 } }), { x: 800, y: 500 }, 'a target on its own square counts as none');
+});
+
+test('a preview keeps the token hidden while its copy holds at the spot', async () => {
+  const effects = [], moves = [], mover = { id: 'tok', document: { id: 'tok', x: 0, y: 0 }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  await playTeleport({ mover, x: 300, y: 0, visuals: { out: 'custom.out', in: 'custom.in', scale: 1, tint: '' } }, {
+    wait: async () => {}, holdMs: 1200, vanishGrace: 0,
+    move: async (token, x, y) => moves.push([x, y]),
+    effect: (asset, point, size, tint, data = null) => effects.push([asset, data]),
+  });
+  assert.deepEqual(effects[0][1].animaterVanish, { tokenId: 'tok', ms: 1900, from: { x: 0, y: 0 }, grace: 0 });
+  assert.deepEqual(moves, [[300, 0]]);
+  assert.deepEqual(effects[1][0], 'custom.in');
 });
 
 test('teleport tags out and in with a warp; style none tags nothing', async () => {

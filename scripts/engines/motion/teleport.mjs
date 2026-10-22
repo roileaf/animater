@@ -129,13 +129,29 @@ export async function playTeleport({ mover, x, y, visuals, element }, host, { ou
   const stays = origin.from && origin.from.x === x && origin.from.y === y;
   const grace = stays ? { grace: 0 } : Number.isFinite(host.vanishGrace) ? { grace: host.vanishGrace } : {};
   if (outAt > 0) await host.wait(outAt);
-  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: goneMs, ...origin, ...grace }, ...warp(from) } : warp(from));
+  // A preview holds its copy at the spot for host.holdMs: the token stays hidden until that is over.
+  const hidden = goneMs + (host.holdMs > 0 ? host.holdMs : 0);
+  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: hidden, ...origin, ...grace }, ...warp(from) } : warp(from));
   else await host.move(mover, x, y);
   if (goneMs > 0) await host.wait(goneMs);
   if (visuals.out) await host.move(mover, x, y);
   if (!visuals.in) return;
   const tint = lightColor({ tint: visuals.tint, asset: visuals.in }, { element, fallback: '' });
   host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: id }, ...warp(to) });
+}
+
+// Where a preview shows its jump landing (the token never moves there): `squares` away toward `toward` (a
+// target's centre; none, or one on the token's own square, means to the right), on the grid, flipped to the
+// other side when it would leave `bounds` (the scene rectangle).
+export function previewSpot(mover, { gridSize = 100, bounds = null, toward = null, squares = 3 } = {}) {
+  const doc = mover.document, w = mover.w ?? gridSize, h = mover.h ?? gridSize;
+  const cx = doc.x + w / 2, cy = doc.y + h / 2;
+  const far = toward ? Math.hypot(toward.x - cx, toward.y - cy) : 0;
+  const [dx, dy] = far >= gridSize / 2 ? [(toward.x - cx) / far, (toward.y - cy) / far] : [1, 0];
+  const at = (side) => ({ x: doc.x + Math.round(side * dx * squares) * gridSize, y: doc.y + Math.round(side * dy * squares) * gridSize });
+  const inside = (p) => !bounds || (p.x >= bounds.x && p.y >= bounds.y && p.x + w <= bounds.x + bounds.width && p.y + h <= bounds.y + bounds.height);
+  const ahead = at(1);
+  return inside(ahead) ? ahead : at(-1);
 }
 
 // One client's part of a vanish: the token's art held out of sight (a token refresh would show it again, so

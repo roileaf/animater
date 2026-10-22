@@ -77,7 +77,7 @@ import {
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./catalogs/pf2e/ability-catalog.mjs";
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden } from "./engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden, previewSpot } from "./engines/motion/teleport.mjs";
 import { fetchLandings } from "./engines/motion/fetch-path.mjs";
 import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
@@ -810,17 +810,42 @@ function teleportHost({ local = false } = {}) {
       if (Object.keys(tags).length) effect.addOverride(async (_, effectData) => ({ ...effectData, ...tags }));
       void effect.play(local ? { local: true } : {}).catch(error => console.warn('Animater teleport effect:', error.message));
     },
-    move: async () => {},
-    // A preview's token never moves: it comes back as the arrival effect plays.
-    ...(local ? { vanishGrace: 0 } : {}),
+    // A preview's token never moves: a copy of its art lands at the spot, holds, and fades as the token comes back.
+    move: local ? async (mover, x, y) => previewLanding(mover, x, y) : async () => {},
+    ...(local ? { vanishGrace: 0, holdMs: PREVIEW_HOLD_MS } : {}),
   };
 }
-// A preview's teleport: the token vanishes and reappears where it stands; the document never moves.
+// A preview's teleport: the token vanishes and a copy of it appears three squares off (toward its target), on this
+// screen only; the document never moves.
+const PREVIEW_HOLD_MS = 1200, PREVIEW_FADE_MS = 300;
 function previewTeleport(mover, recipe, context, timing) {
   const token = placeable(mover);
   if (!token?.center || !token.document) return null;
   const visuals = teleportVisuals(recipe, runtime.getCatalog());
-  return playTeleport({ mover: token, x: token.document.x, y: token.document.y, visuals, element: context.element ?? recipe.chosenElement }, teleportHost({ local: true }), timing);
+  const target = (context.targets ?? []).map(placeable).find((t) => t?.center && t !== token);
+  const spot = previewSpot(token, { gridSize: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, toward: target?.center ?? null });
+  return playTeleport({ mover: token, x: spot.x, y: spot.y, visuals, element: context.element ?? recipe.chosenElement }, teleportHost({ local: true }), timing);
+}
+// The copy a preview lands: the token's art at (x, y), in at once, held, then faded out and removed.
+function previewLanding(token, x, y) {
+  const mesh = token?.mesh;
+  if (!mesh?.texture || mesh.destroyed) return;
+  const copy = new PIXI.Sprite(mesh.texture);
+  copy.anchor.set(mesh.anchor?.x ?? 0.5, mesh.anchor?.y ?? 0.5);
+  copy.scale.set(mesh.scale.x, mesh.scale.y);
+  copy.rotation = mesh.rotation;
+  copy.position.set(x + token.w / 2, y + token.h / 2);
+  placeUnder(copy, mesh);
+  copy.zIndex = (mesh.zIndex ?? 0) + 1;
+  const start = performance.now();
+  const step = () => {
+    if (copy.destroyed) return;
+    const fade = performance.now() - start - PREVIEW_HOLD_MS;
+    if (fade >= PREVIEW_FADE_MS || !copy.parent) { copy.destroy(); return; }
+    copy.alpha = fade > 0 ? 1 - fade / PREVIEW_FADE_MS : 1;
+    requestAnimationFrame(step);
+  };
+  step();
 }
 // Only the move: from the token's document alone, so it works after the canvas is gone (a stopped play).
 // A creature this player does not own (an ally fetched to them) is moved by the active GM.
