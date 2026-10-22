@@ -23,10 +23,13 @@ export function nextCombatantActor(combat, sceneId) {
 
 const defaultView = () => ({ zoom: 1, gridSize: 100, targetMs: 1000 / 60, tokenSize: () => null });
 const defaultHidden = () => Boolean(globalThis.document?.hidden);
+// Off the calling hook: when the browser is idle, else on the next task.
+const defaultDefer = (fn) => (typeof globalThis.requestIdleCallback === 'function'
+  ? globalThis.requestIdleCallback(fn, { timeout: 1000 }) : setTimeout(fn, 0));
 
 export function createAdaptiveHost({
   state, quality, catalog, weaponRecipes, preload, endLocally, sceneId,
-  hidden = defaultHidden, view = defaultView,
+  hidden = defaultHidden, view = defaultView, defer = defaultDefer,
 }) {
   const monitor = createFrameMonitor({ windowMs: 3000, warmupMs: 3000 });
   const decisions = createSessionDecisions();
@@ -51,6 +54,40 @@ export function createAdaptiveHost({
     return safeMediaFile(asset) ? asset : null;
   };
 
+  // Every client keeps what each actor played as the effects arrive. Lasting and preview effects are not
+  // turn-by-turn files; untagged ones are not Animater's play.
+  const remember = (data) => {
+    const actor = data.animaterActor, file = data.file;
+    if (!actor || typeof file !== 'string' || !file || data.animaterTier === undefined || data.animaterLasting || data.animaterPreview) return;
+    memory.remember(actor, [{ asset: file, tier: data.animaterTier }]);
+  };
+
+  const prepareTurn = (combat) => {
+    try {
+      if (!on('preload')) return;
+      const actor = nextCombatantActor(combat, sceneId());
+      if (!actor) return;
+      const level = quality();
+      const entries = catalog() ?? [];
+      const weaponAssets = [];
+      if (allowsTier(level, WEAPON_TIER)) {
+        for (const recipe of weaponRecipes(actor) ?? []) {
+          for (const stage of recipe?.stages ?? []) {
+            if (OPTIONAL_FX_KINDS.has(stage.kind) || !Array.isArray(stage.assets)) continue;
+            const key = resolveAsset(stage, entries);
+            if (key) weaponAssets.push(key);
+          }
+        }
+      }
+      const recentAssets = memory.recall(actor.id).filter((e) => allowsTier(level, e.tier)).map((e) => e.asset);
+      const files = preloadFiles({ weaponAssets, recentAssets, toFile: fileOf(entries), has: (f) => warmed.has(f) });
+      for (const f of files) warmed.add(f);
+      if (files.length) queue.add(files);
+    } catch (err) {
+      console.warn('Animater | could not preload the next turn', err);
+    }
+  };
+
   // Set when a frame's work begins (before everything else on the ticker), read after it is drawn.
   let frameStart = -1;
 
@@ -70,6 +107,7 @@ export function createAdaptiveHost({
       try {
         const data = effect?.data;
         if (!data || !state.enabled || data.moduleName !== 'animater') return;
+        remember(data);
         const { zoom, gridSize, targetMs, tokenSize } = view();
         const opts = { tight: monitor.isTight(targetMs), zoom, gridSize, tokenSize, decisions, lod: on('lod'), budget: on('budget') };
         const verdict = adaptEffect(data, opts);
@@ -86,36 +124,9 @@ export function createAdaptiveHost({
         console.warn('Animater | adaptive playback skipped an effect', err);
       }
     },
+    // Resolving weapon recipes is real work: never inside the combat update itself.
     onTurn(combat) {
-      try {
-        if (!on('preload')) return;
-        const actor = nextCombatantActor(combat, sceneId());
-        if (!actor) return;
-        const level = quality();
-        const entries = catalog() ?? [];
-        const weaponAssets = [];
-        if (allowsTier(level, WEAPON_TIER)) {
-          for (const recipe of weaponRecipes(actor) ?? []) {
-            for (const stage of recipe?.stages ?? []) {
-              if (OPTIONAL_FX_KINDS.has(stage.kind) || !Array.isArray(stage.assets)) continue;
-              const key = resolveAsset(stage, entries);
-              if (key) weaponAssets.push(key);
-            }
-          }
-        }
-        const recentAssets = memory.recall(actor.id).filter((e) => allowsTier(level, e.tier)).map((e) => e.asset);
-        const files = preloadFiles({ weaponAssets, recentAssets, toFile: fileOf(entries), has: (f) => warmed.has(f) });
-        for (const f of files) warmed.add(f);
-        if (files.length) queue.add(files);
-      } catch (err) {
-        console.warn('Animater | could not preload the next turn', err);
-      }
-    },
-    // Advisory: a failure here must never stop a play.
-    rememberAssets(actorId, assets) {
-      try {
-        memory.remember(actorId, Array.isArray(assets) ? assets : []);
-      } catch { /* ignore */ }
+      try { defer(() => prepareTurn(combat)); } catch { /* advisory */ }
     },
     adaptive() {
       return { stagger: on('stagger'), staggered: (n) => { state.stats.staggered += n; } };

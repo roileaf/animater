@@ -24,7 +24,8 @@ function makeHost({ state = freshState(), quality = 'full', recipes = [], catalo
 }
 
 const big = { width: 3, height: 3, gridUnits: true };
-const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+// Turn preparation is deferred, and the queue rests between batches.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
 const combatWith = (actor, sceneId = 's') => ({ nextCombatant: { token: { parent: { id: sceneId } }, actor } });
 
 // Foundry's default 60 fps cap on a display refreshing at `hz` (PIXI Ticker.update's frame gating),
@@ -164,7 +165,8 @@ test('onTurn preloads the next combatant: weapons + recently used, minus tiers a
   ];
   const recipes = [{ stages: [{ kind: 'melee', assets: ['jb2a.sword'] }, { kind: 'sound', assets: ['x.ogg'] }] }];
   const { host, preloaded, state } = makeHost({ quality: 'balanced', recipes, catalog });
-  host.rememberAssets('A1', [{ asset: 'jb2a.fire', tier: 1 }, { asset: 'jb2a.sparkle', tier: 2 }, { asset: 'mods/raw.webm', tier: 0 }]);
+  for (const [file, tier] of [['jb2a.fire', 1], ['jb2a.sparkle', 2], ['mods/raw.webm', 0]])
+    host.onEffect({ data: { moduleName: 'animater', animaterTier: tier, animaterActor: 'A1', file, name: `s-${file}` } });
   host.onTurn(combatWith({ id: 'A1' }));
   await settle();
   assert.deepEqual(preloaded, ['mods/sword.webm', 'mods/fire.webm', 'mods/raw.webm']);
@@ -175,15 +177,48 @@ test('onTurn preloads the next combatant: weapons + recently used, minus tiers a
   assert.equal(preloaded.length, 3);
 });
 
-test('rememberAssets and onTurn never throw', async () => {
-  const { host } = makeHost();
-  assert.doesNotThrow(() => host.rememberAssets('A1', null));
-  const throwing = createAdaptiveHost({
-    state: freshState(), quality: () => 'full', catalog: () => { throw Error('x'); },
-    weaponRecipes: () => { throw Error('y'); }, preload: async () => {}, endLocally: () => {}, sceneId: () => 's',
+test('an effect started by another client is remembered for its actor and warmed on their next turn', async () => {
+  const catalog = [{ key: 'jb2a.fire', file: 'mods/fire.webm' }];
+  // This client started nothing: the effects arrive through Sequencer's sync.
+  const { host, preloaded } = makeHost({ catalog });
+  host.onEffect({ data: { moduleName: 'animater', animaterTier: 0, animaterActor: 'A1', file: 'jb2a.fire', name: 'remote' } });
+  host.onEffect({ data: { moduleName: 'animater', animaterTier: 0, animaterActor: 'A1', file: 'mods/aura.webm', animaterLasting: true, name: 'aura' } });
+  host.onEffect({ data: { moduleName: 'animater', animaterTier: 0, animaterActor: 'A1', file: 'mods/preview.webm', animaterPreview: true, name: 'p' } });
+  host.onEffect({ data: { moduleName: 'other', animaterTier: 0, animaterActor: 'A1', file: 'mods/foreign.webm', name: 'f' } });
+  host.onEffect({ data: { moduleName: 'animater', animaterActor: 'A1', file: 'mods/untagged.webm', name: 'u' } });
+  host.onEffect({ data: { moduleName: 'animater', animaterTier: 0, file: 'mods/no-actor.webm', name: 'n' } });
+  host.onTurn(combatWith({ id: 'A1' }));
+  await settle();
+  assert.deepEqual(preloaded, ['mods/fire.webm']);
+});
+
+test('onTurn never throws, and prepares the preload off the combat hook', async () => {
+  const warn = console.warn;
+  const warned = [];
+  console.warn = (...args) => warned.push(args);
+  try {
+    const throwing = createAdaptiveHost({
+      state: freshState(), quality: () => 'full', catalog: () => { throw Error('x'); },
+      weaponRecipes: () => { throw Error('y'); }, preload: async () => {}, endLocally: () => {}, sceneId: () => 's',
+    });
+    assert.doesNotThrow(() => throwing.onTurn(combatWith({ id: 'A1' })));
+    assert.doesNotThrow(() => throwing.onTurn(null));
+    assert.equal(warned.length, 0);
+    await settle();
+    assert.equal(warned.length, 1);
+  } finally {
+    console.warn = warn;
+  }
+  let resolved = 0;
+  const recipes = [{ stages: [{ kind: 'melee', assets: ['jb2a.sword'] }] }];
+  const lazy = createAdaptiveHost({
+    state: freshState(), quality: () => 'full', catalog: () => [], sceneId: () => 's', hidden: () => false,
+    weaponRecipes: () => { resolved++; return recipes; }, preload: async () => {}, endLocally: () => {},
   });
-  assert.doesNotThrow(() => throwing.onTurn(combatWith({ id: 'A1' })));
-  assert.doesNotThrow(() => throwing.onTurn(null));
+  lazy.onTurn(combatWith({ id: 'A1' }));
+  assert.equal(resolved, 0);
+  await settle();
+  assert.equal(resolved, 1);
 });
 
 test('the runtime counts staggered copies through adaptive()', () => {

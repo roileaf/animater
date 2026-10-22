@@ -1603,7 +1603,6 @@ Hooks.once("ready", () => {
     // Waiting for every client here can stall the rolling user's animation.
     preloadSounds: files => Sequencer.Preloader.preload(files,false),
     adaptive: () => adaptiveHost.adaptive(),
-    rememberAssets: (id, assets) => adaptiveHost.rememberAssets(id, assets),
     // Where a loaded sound is loudest (ms in), measured once per file.
     soundPeak: (file) => { if (!soundPeaks.has(file)) { const b = game.audio?.buffers?.getBuffer?.(file); if (!b) return null; soundPeaks.set(file, peakOf(b)); } return soundPeaks.get(file); },
     motion: async (stage, context, { preview, session }) => {

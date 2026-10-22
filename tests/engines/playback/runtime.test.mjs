@@ -953,20 +953,20 @@ test("every effect is tagged with its tier and whether it lasts", async () => {
   assert.ok(tagged.length);
   for (const [, fn] of tagged) assert.equal((await fn(null, {})).animaterPreview, true);
 });
-test("played visual assets are remembered for the source actor", async () => {
+test("effects carry the source actor so every client can remember what it played", async () => {
   const { recipe, context } = manyTargets();
-  const { runtime, host } = fixture();
-  const seen = [];
-  host.rememberAssets = (actorId, assets) => seen.push([actorId, assets]);
+  const { runtime, host, calls } = fixture();
+  const remembered = [];
+  host.rememberAssets = (...args) => remembered.push(args);
   runtime.wait = async () => true;
   await runtime.play(recipe, context);
-  assert.equal(seen.length, 1);
-  assert.equal(seen[0][0], "A1");
-  assert.equal(seen[0][1].length, 1);
-  assert.equal(typeof seen[0][1][0].asset, "string");
-  assert.ok([0, 1, 2].includes(seen[0][1][0].tier));
-  seen.length = 0;
-  await runtime.play(recipe, context, { preview: true });
-  await runtime.play(recipe, { ...context, source: { ...context.source, actor: undefined } });
-  assert.equal(seen.length, 0);
+  const overrides = calls.filter((c) => c[0] === "addOverride");
+  assert.ok(overrides.length);
+  for (const [, fn] of overrides) assert.equal((await fn(null, {})).animaterActor, "A1");
+  // Remembering happens on each client as effects arrive (engines/playback/adaptive-host.mjs).
+  assert.deepEqual(remembered, []);
+  const anonymous = fixture();
+  anonymous.runtime.wait = async () => true;
+  await anonymous.runtime.play(recipe, { ...context, source: { ...context.source, actor: undefined } });
+  for (const [, fn] of anonymous.calls.filter((c) => c[0] === "addOverride")) assert.equal("animaterActor" in (await fn(null, {})), false);
 });

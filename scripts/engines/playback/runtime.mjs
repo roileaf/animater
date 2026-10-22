@@ -283,6 +283,8 @@ export class AnimaterRuntime {
     // A stage planned once per target keeps the tier of its first copy.
     const tiers = new Map();
     for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
+    // Every client remembers what this actor played, so it can warm those files on their next turn.
+    const animaterActor = context.source?.actor?.id;
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -329,7 +331,7 @@ export class AnimaterRuntime {
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tiers.get(s.stageId) ?? 0, animaterLasting = Boolean(lasts);
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(preview ? { animaterPreview: true } : {}) }));
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -470,16 +472,6 @@ export class AnimaterRuntime {
         motions: stages.filter((s) => s.kind === "motion"),
         optionalFx: stages.filter((s) => OPTIONAL_FX_KINDS.has(s.kind)),
       }));
-      // What this actor's animations use, so the next turn's files can load ahead.
-      const actorId = context.source?.actor?.id;
-      if (!preview && actorId && this.host.rememberAssets) {
-        const seen = new Map();
-        for (const s of plan) {
-          if (s.persist || !s.asset || s.kind === "sound" || s.kind === "motion" || OPTIONAL_FX_KINDS.has(s.kind) || seen.has(s.asset)) continue;
-          seen.set(s.asset, { asset: s.asset, tier: tiers.get(s.stageId) ?? 0 });
-        }
-        if (seen.size) this.host.rememberAssets(actorId, [...seen.values()]);
-      }
       onStart?.({ ...recipe, playbackPlan: plan });
       // Local previews never broadcast; real plays use Sequencer's own sync.
       const results = await Promise.all([
