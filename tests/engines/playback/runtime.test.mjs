@@ -1231,11 +1231,12 @@ test("blocked attack strikes the wall", async () => {
   assert.ok(!calls.some((c) => c[0] === "motion" && c[1].stageId === "react"));
   const wall = plan.find((s) => s.kind === "impact");
   assert.deepEqual(wall.landing, { x: WALL_X, y: 0 });
-  // A travel clip keeps its own arrival (Sequencer picks its range variant by the shorter line): 55% of 1000 ms.
-  assert.equal(wall.delay, 550);
-  assert.equal(plan.find((s) => s.stageId === "fly").flightArrivalCut, undefined);
-  // What followed the hit keeps its time.
-  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 600);
+  // As the bolt reaches the wall: a travel clip's range variant lands at a time no data here holds, so at the
+  // end of its travel (200 ms before its 1000 ms stage ends), never at 55% while the bolt is still flying.
+  assert.equal(wall.delay, 800);
+  assert.equal(plan.find((s) => s.stageId === "fly").flightArrivalShift, 250);
+  // What followed the hit moves with the strike (the hit was 50 ms after the recipe's 550 ms arrival).
+  assert.equal(plan.find((s) => s.stageId === "recoil").delay, 850);
   // Sized to 0.6 of the bolt's footprint, not the target.
   const at = calls.findIndex((c) => c[0] === "file" && c[1] === WALL_IMPACT);
   assert.equal(calls.slice(at).find((c) => c[0] === "size")[1].width, 60);
@@ -1250,7 +1251,7 @@ test("a wall strike knocks on stone, on wood for a door, when the recipe has sou
     const cue = plan.find((s) => s.kind === "sound" && s.surfaceRole === "cue");
     assert.ok(cue, "a wall cue plays");
     assert.ok(files(key).includes(cue.soundFile), `${cue.soundFile} from ${key}`);
-    assert.equal(cue.delay, 550);
+    assert.equal(cue.delay, 800);
   }
   // Without sounds in the recipe the wall stays silent.
   const { recipe, context } = boltAttack();
@@ -1330,7 +1331,7 @@ test("a thrown bomb flies its plain clip: no arc, no shadow", async () => {
   assert.equal(fly.find((c) => c[0] === "duration")[1], 1000);
   assert.ok(!calls.some((c) => c[0] === "shape" || c[0] === "animateProperty"));
 });
-test("a thrown projectile keeps its whole clip; at a wall its impact comes sooner", async () => {
+test("a thrown projectile keeps its whole clip; at a wall its impact comes as its move ends", async () => {
   const FLASK = "jb2a.throwable.throw.flask.01.orange";
   const { recipe, context } = boltAttack();
   const thrown = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, kind: "projectile", assets: [FLASK], contact: 600 } : s)) });
@@ -1339,11 +1340,14 @@ test("a thrown projectile keeps its whole clip; at a wall its impact comes soone
   const clear = await playWall(thrown, context, { collides: () => null, setup: add });
   assert.equal(clear.plan.find((s) => s.stageId === "hit").delay, 600);
   assert.equal(durationOf(clear.calls), 1000);
-  // A wall halfway: the contact shortens to 300 ms, with the wall strike.
+  // A wall halfway: Sequencer still moves the flask over its whole 1000 ms, so it reaches the wall then.
   const walled = await playWall(thrown, context, { setup: add });
-  assert.equal(walled.plan.find((s) => s.kind === "impact").delay, 300);
-  // What followed the hit moves up with it (a projectile's shorter flight; a travel clip keeps its arrival).
-  assert.equal(walled.plan.find((s) => s.stageId === "recoil").delay, 300);
+  const wall = walled.plan.find((s) => s.kind === "impact");
+  assert.equal(wall.delay, 1000);
+  // The flask's effect (and so its move) lasts exactly that long.
+  assert.equal(durationOf(walled.calls), wall.delay);
+  // What followed the hit moves with the strike (400 ms after the recipe's 600 ms arrival).
+  assert.equal(walled.plan.find((s) => s.stageId === "recoil").delay, 1000);
   assert.equal(durationOf(walled.calls), 1000);
 });
 test("preview never drops on-target stages", async () => {
@@ -1359,7 +1363,8 @@ test("a fire bolt into a wall lights its path to the wall point", async () => {
   const glow = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
   assert.deepEqual(glow.from, { x: 0, y: 0 });
   assert.deepEqual(glow.to, { x: WALL_X, y: 0 });
-  assert.equal(glow.arriveMs, 550);
+  // It lands with the wall strike (the end of the bolt's travel), not at 55% of the flight.
+  assert.equal(glow.arriveMs, 800);
 });
 test("a target missed in a multi-target roll loses its own effects", async () => {
   const hit = { id: "t2", center: { x: 0, y: 600 }, w: 100, h: 100 };

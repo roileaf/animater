@@ -83,11 +83,19 @@ function roleOf(s, context, preview) {
 // When a flight reaches its end (the moment its impact is timed to).
 export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
 
-// Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply),
-// and an earlier contact for a projectile cut short by a wall (flightArrivalCut: how much earlier). A projectile
-// moves at its own pace over the line, so a shorter line arrives sooner. A travel clip keeps its arrival: Sequencer
-// picks the clip's range variant (05/15/30/60/90 ft) by the shorter line, and its object reaches the far end at
-// about the same clip time in every one.
+// When a flight stopped by a wall reaches it (elapsed ms into the stage, as its duration and contact are).
+// A projectile: Sequencer's moveTowards (no move speed) runs from its launch pause to the end of the effect,
+// so it touches the wall as the stage ends, however short the line. A travel clip: Sequencer picks its range
+// variant (05/15/30/60/90 ft) by the line to the wall, and the object in each variant lands at a time of its
+// own (measured JB2A arrows: 500 ms at 05 ft to 1150 ms at 90 ft) that no data here holds; the measured contact
+// is one variant's. So the wall is struck at the end of the travel, 200 ms before the stage ends (as the PF2e
+// weapon recipes time an unmeasured contact; every measured JB2A ranged weapon clip lands at least 267 ms
+// before its own end), never before the recipe's own arrival.
+export const wallArrivalOf = (s) => (s.kind === 'projectile' ? s.duration : Math.min(s.duration, Math.max(arrivalOf(s), 400, s.duration - 200)));
+
+// Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply). A flight stopped by a wall
+// gets its wall arrival as its contact (wallArrivalOf) and flightArrivalShift: how much later
+// that is than the recipe's own arrival, which what followed its target's impacts moves with.
 // blocked: target ids whose attack hit ended at a wall; missed: target ids whose own shot was planned to miss
 // (flying past or into a wall). The target effects of both must not play.
 export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = null, walls = true, preview = false } = {}) {
@@ -100,10 +108,9 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
     if (role === 'fixed') return s;
     const path = planFlight({ from, targetRect: footprintOf(s.endpoint, gridPx), to: aim, role, seed, gridPx, collides, shieldBlock: s.shieldBlock });
     const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}) };
-    const full = distance(from, aim), reached = distance(path.from, path.to);
-    if (path.outcome === 'wall' && s.kind === 'projectile' && reached < full && s.duration > 0) {
-      const arrival = arrivalOf(s), contact = Math.max(1, Math.round(arrival * reached / full));
-      Object.assign(next, { contact, flightArrivalCut: Math.round(arrival) - contact });
+    if (path.outcome === 'wall' && s.duration > 0) {
+      const contact = Math.max(1, Math.round(wallArrivalOf(s))), shift = contact - Math.round(arrivalOf(s));
+      Object.assign(next, { contact, ...(shift ? { flightArrivalShift: shift } : {}) });
     }
     if (path.outcome === 'wall' && role === 'attack-hit') blocked.add(tokenId(s.endpoint));
     if (role === 'attack-miss' && path.outcome !== 'target') missed.add(tokenId(s.endpoint));

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
+import { footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 
 // A full-height wall at x (blocks every line that crosses it, of any type).
@@ -122,29 +122,60 @@ const flight = (extra = {}) => ({ stageId: 'shot', kind: 'travel', origin: shoot
 const ctx = (extra = {}) => ({ source: shooter, targets: [far], type: 'attack', outcome: 'success', messageId: seedA, ...extra });
 const opts = (extra = {}) => ({ context: ctx(), gridPx: 100, collides: wallAtX(500), walls: true, preview: false, ...extra });
 
-test('a projectile cut short by a wall arrives sooner', () => {
+test('a projectile stopped by a wall strikes it as its move ends', () => {
+  // Sequencer moves it over its whole stage (no move speed), so the shorter line arrives no sooner.
   const { plan, blocked, missed } = withFlightPaths([flight({ kind: 'projectile' })], opts());
   const [s] = plan;
   assert.equal(s.flightOutcome, 'wall');
   assert.deepEqual(s.flightFrom, { x: 0, y: 0 });
   assert.equal(s.flightTo.x, 500);
-  assert.equal(s.contact, 300);
-  assert.equal(s.flightArrivalCut, 300);
+  assert.equal(s.contact, 1000);
+  // 400 ms after the recipe's own arrival (600 ms): what followed the hit moves with it.
+  assert.equal(s.flightArrivalShift, 400);
   assert.deepEqual([...blocked], ['t1']);
   assert.equal(missed.size, 0);
+  // A launch pause does not change it: the move still ends with the stage.
+  assert.equal(withFlightPaths([flight({ kind: 'projectile', moveDelay: 300, contact: 0 })], opts()).plan[0].contact, 1000);
 });
 
-test('a travel clip cut short by a wall keeps its own arrival', () => {
-  // Sequencer picks the clip's range variant by the shorter line; its object still lands at the clip's contact.
+test('a travel clip stopped by a wall strikes it at the end of its travel', () => {
+  // Sequencer picks the clip's range variant by the shorter line, and no measurement here says when that
+  // variant's object lands: the wall is struck 200 ms before the stage ends, never before the recipe's arrival.
   const { plan, blocked } = withFlightPaths([flight()], opts());
   const [s] = plan;
-  assert.deepEqual([s.flightOutcome, s.flightTo.x, s.contact, s.flightArrivalCut], ['wall', 500, 600, undefined]);
+  assert.deepEqual([s.flightOutcome, s.flightTo.x, s.contact, s.flightArrivalShift], ['wall', 500, 800, 200]);
   assert.deepEqual([...blocked], ['t1']);
+});
+
+test('a long-range arrow stopped by a near wall never strikes it before the arrow lands', () => {
+  // A longbow's flight: the 90 ft arrow clip (2400 ms) + 150 ms, its measured contact 650 ms (the 15/30 ft clips).
+  // A wall 20 ft out picks a shorter variant; the measured JB2A arrow variants land at 500-1150 ms and every
+  // measured ranged weapon clip at least 267 ms before its own end.
+  const arrow = flight({ duration: 2550, contact: 650, endpoint: token('t1', 1800, 0), destination: token('t1', 1800, 0) });
+  const { plan } = withFlightPaths([arrow], opts({ collides: wallAtX(400) }));
+  const [s] = plan;
+  assert.equal(s.flightOutcome, 'wall');
+  assert.equal(s.contact, 2350);
+  assert.ok(s.contact >= 1150 && s.contact >= arrow.contact);
+  assert.equal(s.flightArrivalShift, 2350 - 650);
+});
+
+test('the wall arrival never comes before the recipe arrival, nor after the stage', () => {
+  assert.equal(wallArrivalOf({ kind: 'travel', duration: 1000, contact: 950 }), 950);
+  assert.equal(wallArrivalOf({ kind: 'travel', duration: 1000 }), 800);
+  assert.equal(wallArrivalOf({ kind: 'travel', duration: 300 }), 300);
+  assert.equal(wallArrivalOf({ kind: 'travel', duration: 500 }), 400);
+  assert.equal(wallArrivalOf({ kind: 'projectile', duration: 1200, contact: 400, moveDelay: 200 }), 1200);
 });
 
 test('without a contact the arrival is 55% of the flight', () => {
-  const { plan } = withFlightPaths([flight({ kind: 'projectile', contact: 0 })], opts());
-  assert.equal(plan[0].contact, 275);
+  assert.equal(arrivalOf({ kind: 'projectile', duration: 500 }), 275);
+  assert.equal(arrivalOf({ kind: 'projectile', duration: 500, contact: 0 }), 275);
+});
+
+test('a miss into a wall strikes it at the end of its travel too', () => {
+  const { plan } = withFlightPaths([flight()], opts({ context: ctx({ outcome: 'failure' }), collides: wallAtX(200) }));
+  assert.deepEqual([plan[0].flightOutcome, plan[0].contact], ['wall', 800]);
 });
 
 test('a clear hit keeps its timing and blocks nothing', () => {
@@ -152,7 +183,7 @@ test('a clear hit keeps its timing and blocks nothing', () => {
   assert.equal(plan[0].flightOutcome, 'target');
   assert.deepEqual(plan[0].flightTo, { x: 1000, y: 0 });
   assert.equal(plan[0].contact, 600);
-  assert.equal(plan[0].flightArrivalCut, undefined);
+  assert.equal(plan[0].flightArrivalShift, undefined);
   assert.equal(blocked.size, 0);
   assert.equal(missed.size, 0);
 });
