@@ -1610,3 +1610,28 @@ test("D&D 5e Wall of Fire (bespoke line and ring, both editions) flickers along 
     }
   }
 });
+
+// Afterimage trails: the starting client tints every motion's ghosts and applies the world setting.
+const trailRecipe = (stage = {}, extra = {}) => validateRecipe({ id: "dash", name: "Dash", trigger: "manual", ...extra,
+  stages: [{ kind: "motion", motion: "rush", subject: "source", motionRange: "distance", distance: 3, assets: [], delay: 0, duration: 800, ...stage }] });
+const sentMotion = async (recipe, context = {}, setup = () => {}) => {
+  const { runtime, host, calls } = fixture();
+  setup(host);
+  runtime.wait = async () => true;
+  await runtime.play(recipe, { source: { id: "source" }, targets: [], ...context }, { preview: true });
+  return calls.find((c) => c[0] === "motion")[1];
+};
+test("motion stages carry the play's tint", async () => {
+  assert.equal((await sentMotion(trailRecipe({ tintEnabled: true, tint: "#ff8800" }), { element: "cold" })).trailTint, "#ff8800", "the stage's own tint first");
+  assert.equal((await sentMotion(trailRecipe(), { element: "fire" })).trailTint, "#ff9a4d", "then the play's element");
+  assert.equal((await sentMotion(trailRecipe({}, { color: "#33aa55" }))).trailTint, "#33aa55", "then the recipe colour");
+  assert.equal((await sentMotion(trailRecipe())).trailTint, "", "none (the recipe's unpicked default colour): each client's soft white");
+  const sent = await sentMotion(trailRecipe({ afterimages: "always" }));
+  assert.equal(sent.afterimages, "always", "the stage's own choice rides along");
+  assert.equal(sent.destination.id, "source", "still the placeable the host resolves");
+});
+test("world setting off sends never", async () => {
+  assert.equal((await sentMotion(trailRecipe({ afterimages: "always" }), {}, (host) => { host.afterimages = () => false; })).afterimages, "never");
+  assert.equal((await sentMotion(trailRecipe(), {}, (host) => { host.afterimages = () => true; })).afterimages, undefined, "on: Auto stays the default");
+  assert.equal((await sentMotion(trailRecipe({ afterimages: "always" }))).afterimages, "always", "a host without the setting lets motions trail");
+});

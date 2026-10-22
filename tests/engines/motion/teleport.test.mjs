@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, withinReach } from "../../../scripts/engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, withinReach, streakToken } from "../../../scripts/engines/motion/teleport.mjs";
+import { HEX } from "../../../scripts/engines/playback/color-parity.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 
 test("known teleport spells teleport by default; a recipe can turn it off or change it", () => {
@@ -70,4 +71,34 @@ test('actual teleport playback uses chosen effects around token move, without de
     wait: async () => {}, effect: () => assert.fail('disabled puffs should never play'), move: async () => calls.push('moved'),
   });
   assert.deepEqual(calls, ['moved']);
+});
+
+test('teleport tags its arrival with the trail', async () => {
+  const effects = [], mover = { id: 'tok', document: { id: 'tok' }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  const host = (out) => ({ wait: async () => {}, move: async () => {}, effect: (asset, point, size, tint, data = null) => out.push([asset, data]) });
+  await playTeleport({ mover, x: 400, y: 0, visuals: { out: 'custom.out', in: 'custom.in', scale: 1, tint: '#aa33ff' }, element: 'fire' }, host(effects));
+  assert.deepEqual(effects, [
+    ['custom.out', null],
+    ['custom.in', { animaterTrail: { from: { x: 50, y: 50 }, to: { x: 450, y: 50 }, tint: '#aa33ff', tokenId: 'tok' } }],
+  ], 'only the arrival carries it, tinted like that effect');
+  const tintOf = async (visuals, element) => { const out = []; await playTeleport({ mover, x: 0, y: 0, visuals: { out: null, scale: 1, tint: '', ...visuals }, element }, host(out)); return out[0][1].animaterTrail.tint; };
+  assert.equal(await tintOf({ in: 'jb2a.misty_step.02.blue' }, 'fire'), HEX.blue, 'a misty step streaks blue');
+  assert.equal(await tintOf({ in: 'modules/art/arrival.webm' }, 'fire'), '#ff9a4d', 'else the spell element');
+  assert.equal(await tintOf({ in: 'modules/art/arrival.webm' }), '', 'else the soft white');
+});
+
+test('hidden or off-scene mover draws no streak', () => {
+  const token = (doc = {}) => ({ mesh: {}, visible: true, document: { hidden: false, ...doc } });
+  const scene = (tok) => ({ id: 's1', tokens: new Map(tok ? [['tok', { object: tok }]] : []) });
+  const trail = { from: { x: 0, y: 0 }, to: { x: 400, y: 0 }, tint: '', tokenId: 'tok' };
+  const shown = token();
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene(shown) }), shown);
+  assert.equal(streakToken(trail, { sceneId: 's2', scene: scene(shown) }), null, 'played on another scene');
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene() }), null, 'missing token');
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene(token({ hidden: true })) }), null, 'hidden from players');
+  const gmSees = token({ hidden: true });
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene(gmSees), isGM: true }), gmSees, 'the GM sees hidden tokens');
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene({ ...token(), visible: false }) }), null, 'out of this screen\'s sight');
+  assert.equal(streakToken(null, { sceneId: 's1', scene: scene(shown) }), null);
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: null }), null);
 });

@@ -9,6 +9,7 @@ import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
+import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { starterRecipes } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
@@ -71,7 +72,7 @@ import {
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./catalogs/pf2e/ability-catalog.mjs";
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot } from "./engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken } from "./engines/motion/teleport.mjs";
 import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
 import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
@@ -711,15 +712,17 @@ async function pickTeleport(recipe, context) {
   const feet = plan.adjacent ? 5 : plan.range || itemRangeFeet(context.item) || Infinity;
   ui.notifications.info(`Teleport ${mover.name}: click a spot${Number.isFinite(feet) ? ` within ${feet} feet` : ""} (Esc to cancel).`);
   const spot = await pickTeleportSpot({ caster, mover, feet, notify: (text) => ui.notifications.warn(text) });
-  return spot ? { mover, caster, ...spot, visuals: teleportVisuals(recipe, runtime.getCatalog()) } : null;
+  return spot ? { mover, caster, ...spot, visuals: teleportVisuals(recipe, runtime.getCatalog()), element: context.element ?? recipe.chosenElement } : null;
 }
 async function moveToken(doc, x, y) { await doc.update({ x, y }, { animate: false, animater: { teleport: true } }); }
 async function teleport(spot) {
   return playTeleport(spot, {
     wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
-    effect: (asset, point, size, tint) => {
+    // `data` (the arrival's afterimage streak) rides on the effect to every client, unless the world turned trails off.
+    effect: (asset, point, size, tint, data = null) => {
       const effect = new Sequence({ moduleName: ID }).effect().file(asset).atLocation(point).size(size);
       if (tint) effect.tint(tint);
+      if (data && game.settings.get(ID, "afterimages") !== false) effect.addOverride(async (_, effectData) => ({ ...effectData, ...data }));
       void effect.play().catch(error => console.warn('Animater teleport effect:', error.message));
     },
     move: async (mover, x, y) => {
@@ -1458,6 +1461,16 @@ Hooks.once("init", () => {
     // Turning it off wipes the marks already on the floor.
     onChange: () => markLayer.refresh(),
   });
+  game.settings.register(ID, "afterimages", {
+    name: "Afterimage trails",
+    hint: "Charges, leaps, knockbacks and teleports that Animater plays leave a brief trail of ghost copies behind the token.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "afterimagesLocal", {
+    name: "Afterimages on my screen",
+    hint: "Turn off to never draw afterimage trails on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1616,9 +1629,17 @@ Hooks.once("ready", () => {
   const env = environment();
   if (game.user.isGM && env.ready && !env.jb2a) ui.notifications.warn(`Animater: ${JB2A_MISSING}`, { permanent: true });
   // Afterimages show at Full, Light and Balanced, unless this client turned them off.
-  const afterimagesHere = () => { try { return game.settings.get(ID, "afterimagesLocal") !== false; } catch { return true; } };
   const afterimages = createAfterimages({ makeSprite: (texture) => new globalThis.PIXI.Sprite(texture), place: placeUnder,
-    enabled: () => afterimagesHere() && qualityRank(localQuality()) >= 2 });
+    enabled: () => game.settings.get(ID, "afterimagesLocal") !== false && qualityRank(localQuality()) >= 2 });
+  // A teleport's arrival effect carries its streak (playTeleport): every client draws it as that effect arrives.
+  Hooks.on("createSequencerEffect", (effect) => {
+    const trail = effect?.data?.animaterTrail;
+    if (!trail) return;
+    try {
+      const token = streakToken(trail, { sceneId: effect.data.sceneId, scene: canvas?.scene, isGM: game.user.isGM });
+      if (token) afterimages.streak(token.mesh, trail.tint, streakLayout(trail.from, trail.to));
+    } catch (error) { console.warn("Animater afterimages:", error?.message ?? error); }
+  });
   motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
@@ -1682,6 +1703,8 @@ Hooks.once("ready", () => {
     projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
     // Harmful plays leave ground marks (world setting).
     groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
+    // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
+    afterimages: () => game.settings.get(ID, "afterimages") !== false,
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
     itemDamages: (item) => usedItemDamages(item, game.system.id),
     // The element of that damage, for a placed area no damage roll names one for.

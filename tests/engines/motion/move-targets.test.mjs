@@ -105,3 +105,12 @@ test("the composition preview shows the reach: a push beside the source, a pull 
   assert.ok(far.grid < 55 && parseFloat(far.actors[1].left) <= 640, "a long reach shrinks the squares to fit");
   assert.equal(push.grid, 55, "a short reach keeps full-size squares, the size of the grid key");
 });
+
+test("a push or pull's Afterimages choice rides on its shove", () => {
+  const me = token("me", 0, 0), t = token("t", 5, 0), host = { gridSize: () => 100, trace: () => {}, landing: (mover) => ({ x: mover.document.x + 200, y: mover.document.y }) };
+  const shoveOf = (s) => planFinisher({ recipe: shoveRecipe(s, 2), mover: t, attacker: me }, host).composed.stages.find((x) => x.kind === "motion");
+  assert.equal(shoveOf(stage("push", { afterimages: "never" })).afterimages, "never");
+  assert.equal(shoveOf(stage("pull", { afterimages: "always" })).afterimages, "always");
+  assert.equal(shoveOf(stage("push")).afterimages, undefined, "Auto");
+  assert.equal(shoveRecipe(stage("push"), 2).finisher.afterimages, undefined);
+});

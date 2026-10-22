@@ -36,7 +36,9 @@ export function createAfterimages({ makeSprite, place, enabled, max = 8, now = (
     if (!list) return;
     const kept = list.filter((ghost) => {
       const sprite = ghost.sprite, gone = sprite.destroyed || !sprite.texture?.baseTexture || sprite.texture.baseTexture.destroyed;
-      const alpha = gone ? 0 : ghost.evicted ? ghost.evicted.from * Math.min(1, 1 - (clockMs - ghost.evicted.at) / EVICT_MS) : ghostAlpha(clockMs - ghost.born);
+      // A streak ghost waits unseen until its turn.
+      if (!gone && clockMs < ghost.born) { sprite.alpha = 0; return true; }
+      const alpha = gone ? 0 : ghost.evicted ? ghost.evicted.from * Math.min(1, 1 - (clockMs - ghost.evicted.at) / EVICT_MS) : ghostAlpha(clockMs - ghost.born, ghost.fade);
       if (alpha > 0) { ghost.sprite.alpha = alpha; return true; }
       recycle(ghost.sprite);
       return false;
@@ -53,26 +55,41 @@ export function createAfterimages({ makeSprite, place, enabled, max = 8, now = (
     }
     if (fading.size) loop = frame(run);
   };
+  // A ghost with the mesh's pose and art (drawn at `at`, else where the mesh is), under it.
+  const add = (key, mesh, tint, ghost, at = mesh.position) => {
+    let sprite = pool.pop();
+    if (sprite) sprite.texture = mesh.texture;
+    else sprite = makeSprite(mesh.texture);
+    sprite.position.set(at.x, at.y);
+    sprite.rotation = mesh.rotation;
+    sprite.scale.set(mesh.scale.x, mesh.scale.y);
+    sprite.anchor.set(mesh.anchor?.x ?? 0.5, mesh.anchor?.y ?? 0.5);
+    sprite.tint = tintNumber(tint);
+    sprite.alpha = ghostAlpha(0);
+    sprite.visible = true;
+    try { place(sprite, mesh); } catch (error) { recycle(sprite); throw error; }
+    const list = ghosts.get(key) ?? [];
+    list.push({ sprite, ...ghost });
+    ghosts.set(key, list);
+    return list;
+  };
+  const drawable = (mesh) => mesh && !mesh.destroyed && mesh.texture && enabled();
   return {
     drop(token, mesh, tint, clockMs) {
-      if (!mesh || mesh.destroyed || !mesh.texture || !enabled()) return;
-      let sprite = pool.pop();
-      if (sprite) sprite.texture = mesh.texture;
-      else sprite = makeSprite(mesh.texture);
-      sprite.position.set(mesh.position.x, mesh.position.y);
-      sprite.rotation = mesh.rotation;
-      sprite.scale.set(mesh.scale.x, mesh.scale.y);
-      sprite.anchor.set(mesh.anchor?.x ?? 0.5, mesh.anchor?.y ?? 0.5);
-      sprite.tint = tintNumber(tint);
-      sprite.alpha = ghostAlpha(0);
-      sprite.visible = true;
-      try { place(sprite, mesh); } catch (error) { recycle(sprite); throw error; }
-      const list = ghosts.get(token) ?? [];
-      list.push({ sprite, born: clockMs });
-      ghosts.set(token, list);
+      if (!drawable(mesh)) return;
+      const list = add(token, mesh, tint, { born: clockMs });
       // Over the cap the oldest fades out early (it no longer counts toward the cap).
       const counted = list.filter((ghost) => !ghost.evicted);
       for (const ghost of counted.slice(0, Math.max(0, counted.length - max))) ghost.evicted = { at: clockMs, from: ghost.sprite.alpha };
+    },
+    // A teleport's streak: ghosts of the token's art at `points` (token centres in canvas px, where Foundry draws
+    // a token's mesh), each shown after its delayMs, fading on this renderer's own frames.
+    streak(mesh, tint, points, { fadeMs = 400 } = {}) {
+      if (!drawable(mesh)) return;
+      const key = {}, start = now();
+      for (const point of points) add(key, mesh, tint, { born: start + point.delayMs, fade: { fadeMs } }, point);
+      tick(key, start);
+      this.fadeOut(key);
     },
     tick,
     fadeOut(token) {

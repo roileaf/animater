@@ -1,5 +1,5 @@
 import { uuid } from "../../core/uuid.mjs";
-import { ID, matchRecipe, planRecipe, resolveAsset, validateRecipe } from "../../core/model.mjs";
+import { ID, DEFAULT_RECIPE_COLOR, matchRecipe, planRecipe, resolveAsset, validateRecipe } from "../../core/model.mjs";
 import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
 import { applyEffectOptions, applyMediaOptions, cropAreaArt, normalizeOptions } from "../../core/stage-options.mjs";
@@ -22,7 +22,7 @@ import { meleeClip, withOutcome } from '../../systems/outcome.mjs';
 import { centerOf, pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
-import { planLights } from '../lighting/effect-lights.mjs';
+import { planLights, lightColor } from '../lighting/effect-lights.mjs';
 import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
 import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
@@ -51,6 +51,12 @@ export function templateDocument(template) {
 export function withWeaponScale(recipe, factor) {
   if (!recipe.weaponMode || recipe.weaponMode === 'area' || !(factor > 0) || factor === 1) return recipe;
   return { ...recipe, stages: recipe.stages.map(s => ['impact', 'aura'].includes(s.kind) ? { ...s, scale: (s.scale ?? 1) * factor } : s) };
+}
+// Afterimage trails, decided on the starting client so every client trails alike: ghosts take the stage's tint,
+// else the play's element, else the recipe colour ("" leaves each client's soft white). The world setting off
+// keeps any motion from trailing.
+export function withTrail(stage, { element, recipeColor, allowed = true } = {}) {
+  return { ...stage, trailTint: lightColor(stage, { element, recipeColor, fallback: "" }), ...(allowed ? {} : { afterimages: "never" }) };
 }
 // A shot that ends at a wall bursts there in a small generic impact (the first installed), 0.6 of the shot's size.
 export const WALL_IMPACTS = ['jb2a.impact.001.white', 'jb2a.impact.002.white', 'jb2a.impact.010.white', 'jb2a.impact.005.white', 'jb2a.impact.009.white'];
@@ -615,6 +621,10 @@ export class AnimaterRuntime {
         const region = templateDocument(context.template);
         if (region?.documentName === "Region") for (const tag of groundMarks.values()) if (tag.shape !== "spot") tag.regionId = region.id;
       }
+      // Afterimage trails (world setting; on while the host has none).
+      // An unpicked recipe colour (the default card accent) leaves plain motions their soft white.
+      const trail = { element: context.element ?? recipe.chosenElement, recipeColor: recipe.color === DEFAULT_RECIPE_COLOR ? undefined : recipe.color,
+        allowed: this.host.afterimages?.() !== false };
       const groups = new Map();
       for (const s of plan) {
         if (!groups.has(s.delay)) groups.set(s.delay, []);
@@ -646,7 +656,7 @@ export class AnimaterRuntime {
                 })()]
               : []),
             ...motions.map((s) =>
-              this.host.motion(s, context, { preview, session }),
+              this.host.motion(withTrail(s, trail), context, { preview, session }),
             ),
             ...optionalFx.map(s=>this.host.optionalFx?.(s,context,{preview,session})),
           ]);

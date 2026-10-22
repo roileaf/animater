@@ -140,3 +140,26 @@ test('clear removes every ghost and stops fading', () => {
   assert.equal(pending(), 0);
   assert.ok(made.every((s) => s.destroyed));
 });
+
+test('a teleport streak shows its ghosts in order along the line, then fades on its own frames', () => {
+  const { ghosts, mesh, live, advance, pending } = fixture();
+  ghosts.streak(mesh, '#3366ff', [{ x: 0, y: 150, delayMs: 0 }, { x: 150, y: 150, delayMs: 75 }, { x: 300, y: 150, delayMs: 150 }]);
+  assert.deepEqual(live().map((g) => [g.position.x, g.position.y]), [[0, 150], [150, 150], [300, 150]]);
+  assert.deepEqual(live().map((g) => g.rotation), [0.3, 0.3, 0.3], 'the token art as it stands');
+  assert.deepEqual(live().map((g) => g.tint), [0x3366ff, 0x3366ff, 0x3366ff]);
+  assert.deepEqual(live().map((g) => g.alpha), [0.4, 0, 0], 'later ghosts wait their turn');
+  assert.equal(live()[0].zIndex, 1, 'under the token like any ghost');
+  advance(200);
+  assert.ok(Math.abs(live()[0].alpha - 0.2) < 1e-9, 'fades over 400 ms');
+  assert.ok(Math.abs(live()[2].alpha - 0.35) < 1e-9, 'the last one, 50 ms old');
+  advance(560);
+  assert.equal(live().length, 0);
+  assert.equal(pending(), 0);
+});
+
+test('a disabled client draws no streak', () => {
+  const { ghosts, mesh, live, pending } = fixture({ on: false });
+  ghosts.streak(mesh, '', [{ x: 0, y: 0, delayMs: 0 }]);
+  assert.equal(live().length, 0);
+  assert.equal(pending(), 0);
+});

@@ -1,4 +1,5 @@
 import { resolveAsset } from '../../core/model.mjs';
+import { lightColor } from '../lighting/effect-lights.mjs';
 
 // Teleport spells: the one who cast clicks a spot within range, and the caster (or the
 // first target) vanishes and reappears there. With finishers, the only Animater features that
@@ -50,14 +51,27 @@ export function teleportVisuals(recipe, catalog) {
 }
 
 // The host retains ownership/socket rules; visuals bracket the same real token move.
-export async function playTeleport({ mover, x, y, visuals }, host) {
+// The arrival effect carries the afterimage streak (`animaterTrail`), tinted like that effect: its tint, the
+// colour word in its key, else the spell's element ("" leaves each client's soft white).
+export async function playTeleport({ mover, x, y, visuals, element }, host) {
   const size = mover.w * visuals.scale, from = { ...mover.center };
   const to = { x: x + mover.w / 2, y: y + mover.h / 2 };
   await host.wait(450);
   if (visuals.out) host.effect(visuals.out, from, size, visuals.tint);
   await host.wait(700);
   await host.move(mover, x, y);
-  if (visuals.in) host.effect(visuals.in, to, size, visuals.tint);
+  if (!visuals.in) return;
+  const tint = lightColor({ tint: visuals.tint, asset: visuals.in }, { element, fallback: '' });
+  host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: mover.document?.id ?? mover.id } });
+}
+
+// The token a teleport's arrival streak copies, or null: the effect played on another scene, the token is gone,
+// or this screen cannot see it (hidden from players, out of sight).
+export function streakToken(trail, { sceneId, scene, isGM = false }) {
+  if (!trail?.tokenId || !scene || (sceneId && sceneId !== scene.id)) return null;
+  const token = scene.tokens?.get(trail.tokenId)?.object;
+  if (!token?.mesh || token.visible === false || (token.document?.hidden && !isGM)) return null;
+  return token;
 }
 
 // An item's range in feet, or null when it names none. PF2e: "30 feet", "touch"; D&D: { value, units }.

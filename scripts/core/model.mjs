@@ -1,7 +1,7 @@
 import { MOVE_MOTIONS, moveOptions } from "../engines/motion/move-targets.mjs";
 import { normalizeKeyframes } from "../engines/motion/keyframe-path.mjs";
 import { normalizeFragments } from "../engines/fragments/fragments.mjs";
-import { normalizeOptions, validateSoundFile, EASES } from "./stage-options.mjs";
+import { normalizeOptions, validateSoundFile, EASES, afterimagesChoice } from "./stage-options.mjs";
 import { fallbackColorParity } from "../engines/playback/color-parity.mjs";
 import { OPTIONAL_FX_KINDS, normalizeFxStage } from '../engines/playback/optional-fx.mjs';
 import { visualReference, safeMediaFile, mediaType } from '../engines/media/media-library-model.mjs';
@@ -30,6 +30,8 @@ export const EVENTS = {
   template: "Area placed",
   effect: "Effect added",
 };
+// A recipe's colour when none was picked (its card accent).
+export const DEFAULT_RECIPE_COLOR = "#9e8aff";
 export const STRIKE_SCOPES = { melee: 'All melee strikes', ranged: 'All ranged strikes' };
 // Finishers: recipes that play on the real token for assigned items (scripts/engines/finishers/finisher-model.mjs).
 export const FINISHER_ON = { kill: "Killing blow", use: "Every successful use", critical: "Critical hit", criticalOrKill: "Critical hit or killing blow" };
@@ -142,7 +144,7 @@ export function validateRecipe(input) {
     name: text(input.name),
     description: text(input.description, 600),
     category: text(input.category, 40) || "Custom",
-    color: /^#[\da-f]{6}$/i.test(input.color) ? input.color : "#9e8aff",
+    color: /^#[\da-f]{6}$/i.test(input.color) ? input.color : DEFAULT_RECIPE_COLOR,
     enabled: input.enabled !== false,
     trigger: input.trigger,
     match: text(input.match, 1000),
@@ -294,6 +296,7 @@ export function validateRecipe(input) {
                 // A push or pull moves the targets, never the one who acted.
                 subject: s.subject === "targets" || MOVE_MOTIONS.has(s.motion) ? "targets" : "source",
                 ...(MOVE_MOTIONS.has(s.motion) ? moveOptions(s) : {}),
+                ...afterimagesChoice({ ...s, motion: MOTIONS[s.motion] ? s.motion : "lunge" }),
                 intensity: number(s.intensity, 0.1, 3, 1),
                 distance: number(
                   s.distance,

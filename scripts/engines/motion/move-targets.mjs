@@ -3,6 +3,8 @@
 // vine), a set number of squares: straight along the line between them, or to a square someone picks (the one
 // who acted, or the target's side: the GM for a monster, the player for their character). The move plays through the finisher engine
 // (finisher-play.mjs): a quick shove that stops at walls, written by the token's owner or the GM.
+import { afterimagesChoice } from "../../core/stage-options.mjs";
+
 export const MOVE_MOTIONS = new Set(["push", "pull"]);
 export const MAX_MOVE = 10;
 export const MOVE_ASK = { none: "Nobody: straight along the line", actor: "The one who acted", target: "The target's side (GM for monsters)" };
@@ -52,7 +54,7 @@ function footprint(token, grid) {
 export function shoveRecipe(stage, squares) {
   const pull = stage.motion === "pull";
   return { id: `animater-${pull ? "pull" : "push"}-${stage.stageId ?? "stage"}`, name: stage.label || (pull ? "Pull" : "Push"), trigger: "manual",
-    finisher: { knockback: squares, ending: "stay", ...(pull ? { pull: true } : {}) }, stages: [] };
+    finisher: { knockback: squares, ending: "stay", ...(pull ? { pull: true } : {}), ...afterimagesChoice(stage) }, stages: [] };
 }
 
 // What the one picking is told.

@@ -60,8 +60,8 @@ export function lightShape(stage) {
   return 'flash';
 }
 
-// Stage tint, then the colour word in the asset key, then the element, then the recipe colour.
-export function lightColor(stage, { element, recipeColor } = {}) {
+// Stage tint, then the colour word in the asset key, then the element, then the recipe colour, else `fallback`.
+export function lightColor(stage, { element, recipeColor, fallback = WARM_WHITE } = {}) {
   const tint = stage?.tintEnabled === false ? null : hex(stage?.tint);
   if (tint) return tint;
   const hue = keyHue(assetOf(stage));
@@ -69,7 +69,7 @@ export function lightColor(stage, { element, recipeColor } = {}) {
   if (hue) return HEX[hue];
   const named = normalizeElement(element);
   if (named) return ELEMENT_COLORS[named][0];
-  return hex(recipeColor) ?? WARM_WHITE;
+  return hex(recipeColor) ?? fallback;
 }
 
 const startOf = stage => stage.delay ?? 0;
