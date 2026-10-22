@@ -1477,13 +1477,26 @@ test("a miss into a wall strikes the wall", async () => {
   assert.ok(filesOf(calls).includes(WALL_IMPACT));
   assert.ok(!calls.some((c) => c[0] === "fadeOut" && c[1] === 150));
   assert.equal(plan.filter((s) => s.kind === "impact").length, 1);
+  // The shot never reached the target, so it does not dodge.
+  assert.ok(!plan.some((s) => s.stageId === "miss-dodge"));
 });
-test("collides failure falls back to today", async () => {
+test("a miss that passes its target before a wall still dodges", async () => {
+  const { recipe, context } = boltMiss();
+  const beyond = (a, b) => ((a.x - 700) * (b.x - 700) >= 0 ? null : { x: 700, y: a.y + (b.y - a.y) * (700 - a.x) / (b.x - a.x) });
+  const { calls, plan } = await playWall(recipe, context, { collides: beyond });
+  assert.equal(calls.find((c) => c[0] === "stretchTo")[1].x, 700);
+  assert.ok(plan.some((s) => s.stageId === "miss-dodge"));
+});
+test("collides failure falls back to today", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
   const { recipe, context } = boltMiss();
   const { calls, plan } = await playWall(recipe, context, { collides: () => { throw Error("no backend"); } });
   assert.ok(calls.some((c) => c[0] === "missed"));
   assert.equal(calls.find((c) => c[0] === "stretchTo")[1], context.targets[0]);
   assert.ok(!plan.some((s) => s.flightTo));
+  // It says so once, not on every play.
+  await playWall(recipe, context, { collides: () => { throw Error("no backend"); } });
+  assert.equal(warn.mock.callCount(), 1);
 });
 test("setting off keeps today's flights", async () => {
   const { recipe, context } = boltAttack();

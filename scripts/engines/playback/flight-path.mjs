@@ -38,6 +38,14 @@ export function footprintPoints({ x, y, w, h }) {
     .filter((p, i, all) => all.findIndex((q) => q.x === p.x && q.y === p.y) === i);
 }
 
+// A collision backend's first wall point (a PolygonVertex with its edges) as collides() returns it. Only a
+// plain door counts as a door (it knocks on wood); a secret door sounds like the stone it hides in.
+export function wallHit(vertex, doorType = 1) {
+  if (!vertex) return null;
+  const door = [...(vertex.edges ?? [])].some((edge) => Number((edge.object?.document ?? edge.object)?.door) === doorType);
+  return { x: vertex.x, y: vertex.y, ...(door ? { door: true } : {}) };
+}
+
 // The first footprint point the shooter can see, or null.
 export function clearPoint(from, rect, collides, first = null) {
   const candidates = first ? [first, ...footprintPoints(rect)] : footprintPoints(rect);
@@ -70,7 +78,7 @@ export function planFlight({ from, targetRect, to, role, seed, gridPx, collides,
   return hit ? atWall(hit) : straight;
 }
 
-const tokenId = (t) => t?.id ?? t?.document?.id;
+export const tokenId = (t) => t?.id ?? t?.document?.id;
 const isToken = (t) => !!tokenId(t);
 // A token's footprint in scene pixels, around its centre.
 function footprintOf(token, gridPx) {
@@ -91,7 +99,7 @@ function roleOf(s, context, preview) {
 }
 
 // When a flight reaches its end (the moment its impact is timed to).
-const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
+export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
 
 // Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply), flightArc,
 // and an earlier contact for a flight cut short by a wall (flightArrivalCut: how much earlier).

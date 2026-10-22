@@ -19,12 +19,12 @@ import { staggerDelays } from './adaptive.mjs';
 import { stageTiers } from '../../core/quality.mjs';
 import { withLastingArea } from './lasting-area.mjs';
 import { withOutcome } from '../../systems/outcome.mjs';
-import { pickVariants } from './composition.mjs';
+import { centerOf, pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 import { planLights } from '../lighting/effect-lights.mjs';
-import { withFlightPaths } from './flight-path.mjs';
+import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
@@ -59,19 +59,21 @@ export const WALL_IMPACTS = ['jb2a.impact.001.white', 'jb2a.impact.002.white', '
 const WALL_IMPACT_SIZE = 0.6, WALL_IMPACT_MS = 900;
 // A shot that flies on past its target fades out over its last moments.
 const PAST_FADE_MS = 150;
-const tokenIdOf = (t) => t?.id ?? t?.document?.id;
-// When a flight reaches its end, from its start (its measured contact, else 55% of it).
-const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
+let flightPathsWarned = false;
 // Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
-// effects (its impacts, reactions and surface sounds) do not play; what followed its impacts moves up with the
-// shorter flight (flightArrivalCut); a small impact and a knock on stone (wood for a door) play at the wall point
-// as the shot arrives. asset: the wall impact, or null; cueOf(material) -> { file, volume, duration } | null.
+// effects (its impacts, reactions and surface sounds) do not play, nor does the dodge of a target a miss never
+// reached; what followed its impacts moves up with the shorter flight (flightArrivalCut); a small impact and a
+// knock on stone (wood for a door) play at the wall point as the shot arrives. asset: the wall impact, or null;
+// cueOf(material) -> { file, volume, duration } | null.
 export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf = () => null } = {}) {
   const walls = plan.filter((s) => s.flightOutcome === 'wall');
   if (!walls.length) return plan;
   const targets = new Set(plan.filter((s) => s.kind === 'impact' || s.subject === 'targets').map((s) => tokenIdOf(s.destination)).filter(Boolean));
   const cut = new Set(walls.filter((f) => f.flightArrivalCut > 0).map((f) => tokenIdOf(f.endpoint)));
-  const dropped = (s) => blocked.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets');
+  const reach = (f, p) => Math.hypot(p.x - f.flightFrom.x, p.y - f.flightFrom.y);
+  const unreached = new Set(walls.filter((f) => !blocked.has(tokenIdOf(f.endpoint)) && reach(f, f.flightTo) < reach(f, centerOf(f.endpoint))).map((f) => tokenIdOf(f.endpoint)));
+  const dropped = (s) => blocked.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets')
+    || s.stageId === 'miss-dodge' && unreached.has(tokenIdOf(s.destination));
   // Stages tied (by afterStage, through any chain) to the target's impacts start that much earlier. A stage of
   // another target stays, and so does one not on a target while those impacts also land on a target not cut short.
   const earlier = new Map();
@@ -751,7 +753,12 @@ export class AnimaterRuntime {
         walls: this.host.projectileWalls?.() !== false,
         arcs: this.host.arcingThrows?.() !== false,
       });
-    } catch {
+    } catch (error) {
+      // Said once, so a broken wall test (or a planner bug) does not quietly switch the feature off.
+      if (!flightPathsWarned) {
+        flightPathsWarned = true;
+        console.warn("Animater | Flight paths unavailable; projectiles fly as before.", error);
+      }
       return plan;
     }
     const random = context.random ?? Math.random;

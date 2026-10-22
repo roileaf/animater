@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arcOf, arcShape, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths } from '../../../scripts/engines/playback/flight-path.mjs';
+import { arcOf, arcShape, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 
 // A full-height wall at x (blocks every line that crosses it, of any type).
@@ -238,4 +238,13 @@ test('other stages pass through untouched', () => {
 test('a projectile aims at its landing point', () => {
   const { plan } = withFlightPaths([flight({ kind: 'projectile', landing: { x: 1020, y: 10 } })], opts({ collides: () => null }));
   assert.deepEqual(plan[0].flightTo, { x: 1020, y: 10 });
+});
+
+test('wallHit: a plain door knocks on wood; a secret door stays stone', () => {
+  const vertex = (door, viaPlaceable = false) => ({ x: 12, y: 34, edges: new Set([{ object: viaPlaceable ? { document: { door } } : { door } }]) });
+  assert.deepEqual(wallHit(vertex(1)), { x: 12, y: 34, door: true });
+  assert.deepEqual(wallHit(vertex(1, true)), { x: 12, y: 34, door: true });
+  assert.deepEqual(wallHit(vertex(2)), { x: 12, y: 34 });
+  assert.deepEqual(wallHit(vertex(0)), { x: 12, y: 34 });
+  assert.equal(wallHit(null), null);
 });

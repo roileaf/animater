@@ -25,6 +25,7 @@ import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
+import { wallHit } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
 import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
@@ -1598,12 +1599,7 @@ Hooks.once("ready", () => {
     arcingThrows: () => { try { return game.settings.get(ID, "arcingThrows") !== false; } catch { return true; } },
     // The first wall on a line ("sight" or "move"), and whether it is a door. A failing backend throws,
     // and the runtime plays its flights as before.
-    collides: (a, b, type) => {
-      const hit = CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest" });
-      if (!hit) return null;
-      const door = [...(hit.edges ?? [])].some((edge) => Number((edge.object?.document ?? edge.object)?.door) > 0);
-      return { x: hit.x, y: hit.y, ...(door ? { door: true } : {}) };
-    },
+    collides: (a, b, type) => wallHit(CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest" }), CONST.WALL_DOOR_TYPES.DOOR),
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
