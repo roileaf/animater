@@ -900,3 +900,63 @@ test("a weapon's damage roll is not reported as having no animation when its att
   await f.runtime.dispatch({ type: "damage", item });
   assert.match(f.runtime.log.find((e) => e.status === "Skipped").detail, /\+1 Dagger: no enabled damage recipe/);
 });
+
+// One impact per target over five targets: the per-target copies of one stage.
+function manyTargets() {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ kind: "impact", assets: ["jb2a.impact.001.orange"], delay: 0, duration: 100 }],
+  });
+  const context = {
+    source: { id: "tok", actor: { id: "A1" }, center: { x: 0, y: 0 } },
+    targets: Array.from({ length: 5 }, (_, i) => ({ id: `t${i}`, center: { x: (i + 1) * 100, y: 0 } })),
+  };
+  return { recipe, context };
+}
+test("per-target copies are staggered at the table, never in preview", async () => {
+  const { recipe, context } = manyTargets();
+  const delaysOf = async (preview) => {
+    const { runtime, host, calls } = fixture();
+    host.adaptive = () => ({ stagger: true });
+    runtime.wait = async () => true;
+    await runtime.play(recipe, context, { preview });
+    return calls.filter((c) => c[0] === "delay").map((c) => c[1]);
+  };
+  assert.deepEqual(await delaysOf(false), [16, 32, 48, 50]);
+  assert.deepEqual(await delaysOf(true), []);
+  const { runtime, calls } = fixture();
+  runtime.wait = async () => true;
+  await runtime.play(recipe, context);
+  assert.deepEqual(calls.filter((c) => c[0] === "delay"), []);
+});
+test("every effect is tagged with its tier and whether it lasts", async () => {
+  const { recipe, context } = manyTargets();
+  const { runtime, calls } = fixture();
+  runtime.wait = async () => true;
+  await runtime.play(recipe, context);
+  const overrides = calls.filter((c) => c[0] === "addOverride");
+  assert.equal(overrides.length, 5);
+  for (const [, fn] of overrides) {
+    const data = await fn(null, { keep: 1 });
+    assert.ok([0, 1, 2].includes(data.animaterTier));
+    assert.equal(data.animaterLasting, false);
+    assert.equal(data.keep, 1);
+  }
+});
+test("played visual assets are remembered for the source actor", async () => {
+  const { recipe, context } = manyTargets();
+  const { runtime, host } = fixture();
+  const seen = [];
+  host.rememberAssets = (actorId, assets) => seen.push([actorId, assets]);
+  runtime.wait = async () => true;
+  await runtime.play(recipe, context);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0][0], "A1");
+  assert.equal(seen[0][1].length, 1);
+  assert.equal(typeof seen[0][1][0].asset, "string");
+  assert.ok([0, 1, 2].includes(seen[0][1][0].tier));
+  seen.length = 0;
+  await runtime.play(recipe, context, { preview: true });
+  await runtime.play(recipe, { ...context, source: { ...context.source, actor: undefined } });
+  assert.equal(seen.length, 0);
+});

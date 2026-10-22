@@ -1,5 +1,7 @@
 // Pure decisions for adaptive playback: is this client's frame time tight, how
 // big is an effect on screen, and what to do with it. No Foundry globals here.
+import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
+
 const SMALL_PX = 48;
 const MIN_SAMPLES = 10;
 const TIGHT_RATIO = 1.25;
@@ -80,4 +82,20 @@ export function createSessionDecisions(limit = 200) {
       return value;
     },
   };
+}
+
+// Copies of one stage (a hit per target) start a few ms apart so one frame never builds them all.
+export function staggerDelays(stages, { step = 16, cap = 50, min = 4 } = {}) {
+  const groups = new Map();
+  for (const s of stages) {
+    if (s.kind === 'sound' || s.kind === 'motion' || OPTIONAL_FX_KINDS.has(s.kind)) continue;
+    if (!groups.has(s.stageId)) groups.set(s.stageId, []);
+    groups.get(s.stageId).push(s);
+  }
+  const delays = new Map();
+  for (const copies of groups.values()) {
+    if (copies.length < min) continue;
+    copies.forEach((s, k) => delays.set(s, Math.min(k * step, cap)));
+  }
+  return delays;
 }

@@ -5,6 +5,7 @@ import {
   effectScreenSize,
   adaptEffect,
   createSessionDecisions,
+  staggerDelays,
 } from '../../../scripts/engines/playback/adaptive.mjs';
 
 test('frame monitor reports the 75th percentile of the last 3 s', () => {
@@ -94,4 +95,20 @@ test('unnamed effects do not share a decision', () => {
 
 test('effectScreenSize is null for a size without dimensions', () => {
   assert.equal(effectScreenSize({ size: {} }, { gridSize: 100, zoom: 1 }), null);
+});
+
+test('staggerDelays spreads only copies of one stage, first on time, capped at 50 ms', () => {
+  const copies = Array.from({ length: 5 }, () => ({ stageId: 'hit', kind: 'impact' }));
+  const ring = { stageId: 'ring', kind: 'impact' };
+  const delays = staggerDelays([...copies, ring]);
+  assert.deepEqual(copies.map((s) => delays.get(s) ?? 0), [0, 16, 32, 48, 50]);
+  assert.equal(delays.has(ring), false);
+  assert.equal(staggerDelays(copies.slice(0, 3)).size, 0);
+});
+
+test('staggerDelays ignores sounds, motion and optional layers', () => {
+  const sounds = Array.from({ length: 5 }, () => ({ stageId: 'hit', kind: 'sound' }));
+  const motion = Array.from({ length: 5 }, () => ({ stageId: 'hit', kind: 'motion' }));
+  const fx = Array.from({ length: 5 }, () => ({ stageId: 'hit', kind: 'tokenfx' }));
+  assert.equal(staggerDelays([...sounds, ...motion, ...fx]).size, 0);
 });

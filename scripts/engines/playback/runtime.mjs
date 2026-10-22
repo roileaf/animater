@@ -15,6 +15,7 @@ function scaleMask(mask, at, k) {
 import { prepareRecipeSounds } from "../sound/spell-sounds.mjs";
 import { previewFields } from '../../ui/activity-actions.mjs';
 import { registeredMedia, mediaForReference } from '../media/media-library-model.mjs';
+import { staggerDelays } from './adaptive.mjs';
 import { stageTiers } from '../../core/quality.mjs';
 import { withLastingArea } from './lasting-area.mjs';
 import { withOutcome } from '../../systems/outcome.mjs';
@@ -284,6 +285,8 @@ export class AnimaterRuntime {
     for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
     const build = (stages) => {
       const sequence = this.host.sequence();
+      // Copies of one stage start a few ms apart on the table, never in the preview.
+      const spread = !preview && this.host.adaptive?.()?.stagger ? staggerDelays(stages) : null;
       for (const s of stages) {
         if (s.kind === "motion" || OPTIONAL_FX_KINDS.has(s.kind)) continue;
         if (s.kind === "sound") {
@@ -322,6 +325,10 @@ export class AnimaterRuntime {
         const lasts = s.persist && !preview && (s.kind !== "template" || templateDocument(context.template));
         if (!lasts) e.duration(s.duration * s.playbackRate + (s.clipEnd ? 0 : s.clipStart));
         if (users) e.forUsers(users);
+        // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
+        const animaterTier = tiers.get(s.stageId) ?? 0, animaterLasting = Boolean(lasts);
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting }));
+        if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
         const location = {
@@ -461,6 +468,16 @@ export class AnimaterRuntime {
         motions: stages.filter((s) => s.kind === "motion"),
         optionalFx: stages.filter((s) => OPTIONAL_FX_KINDS.has(s.kind)),
       }));
+      // What this actor's animations use, so the next turn's files can load ahead.
+      const actorId = context.source?.actor?.id;
+      if (!preview && actorId && this.host.rememberAssets) {
+        const seen = new Map();
+        for (const s of plan) {
+          if (s.persist || !s.asset || s.kind === "sound" || s.kind === "motion" || OPTIONAL_FX_KINDS.has(s.kind) || seen.has(s.asset)) continue;
+          seen.set(s.asset, { asset: s.asset, tier: tiers.get(s.stageId) ?? 0 });
+        }
+        if (seen.size) this.host.rememberAssets(actorId, [...seen.values()]);
+      }
       onStart?.({ ...recipe, playbackPlan: plan });
       // Local previews never broadcast; real plays use Sequencer's own sync.
       const results = await Promise.all([
