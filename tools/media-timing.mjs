@@ -91,7 +91,9 @@ async function representativeTiming(row, databases) {
 // When the shot in one measured file reaches its far end (media ms): the
 // endpoint column sits template[2] px before the file's right edge. When no
 // frame crosses the threshold: 60% of the clip (guess), else null.
-async function fileContact({ path, metadata, duration }, template, width, { guess = true } = {}) {
+// reach: time it by the object's leading edge (reachedContact) instead of the
+// glow at the endpoint column.
+async function fileContact({ path, metadata, duration }, template, width, { guess = true, reach = false } = {}) {
   // Transparent pixels retain arbitrary RGB values. Decode alpha with the
   // correct libvpx decoder before estimating visible destination contact.
   const decoder =
@@ -100,7 +102,7 @@ async function fileContact({ path, metadata, duration }, template, width, { gues
     100 * (1 - (template?.[2] ?? 0) / (width || 1000)),
   );
   // Persisted per file, decoder and endpoint: the same frames give the same contact.
-  const crossed = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint }, async () => {
+  const crossed = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint, ...(reach ? { method: "reach" } : {}) }, async () => {
     const { stdout: frames } = await exec(
       "ffmpeg",
       [
@@ -124,7 +126,7 @@ async function fileContact({ path, metadata, duration }, template, width, { gues
       ],
       { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
     );
-    return crossedContact(frames, endpoint);
+    return reach ? reachedContact(frames, endpoint) : crossedContact(frames, endpoint);
   });
   return crossed ?? (guess ? Math.round(duration * 0.6) : null);
 }
@@ -133,16 +135,20 @@ async function fileContact({ path, metadata, duration }, template, width, { gues
 // random alternatives takes the latest of them, so a strike timed to it is
 // never early. A variant is left out when any of its files is missing or no
 // frame of one crosses the endpoint (a guess is not a measurement). Null when
-// the row has no measured variant.
+// the row has no measured variant. A thrown or launched object (jb2a.throwable)
+// is timed by its leading edge (reachedContact): it is small and arcs, so the
+// glow it leaves at the endpoint column is too faint to cross the threshold in
+// most variants.
 export async function variantLandings(row, databases) {
   if (!row?.distanceFiles) return null;
+  const reach = row.key.startsWith("jb2a.throwable.");
   const landings = {};
   for (const [ft, files] of Object.entries(row.distanceFiles)) {
     const times = [];
     for (const file of [files].flat(Infinity).filter((f) => typeof f === "string" && f.endsWith(".webm"))) {
       const measured = await mediaMetadata(file, databases);
       const width = Number(basename(file).match(/_(\d+)x\d+\.webm$/i)?.[1]);
-      times.push(measured ? await fileContact(measured, row.template, width, { guess: false }) : null);
+      times.push(measured ? await fileContact(measured, row.template, width, { guess: false, reach }) : null);
     }
     if (times.length && times.every(Number.isFinite)) landings[ft] = Math.ceil(Math.max(...times) / 10) * 10;
   }
@@ -193,6 +199,24 @@ export function crossedContact(frames, endpoint) {
     threshold = Math.max(3, Math.max(...weights) * 0.5);
   const contact = weights.findIndex((weight) => weight >= threshold);
   return contact >= 0 ? Math.max(50, contact * 50) : null;
+}
+// The first frame (ms) whose leading edge (the rightmost column with a solid
+// pixel, any row: the object arcs) gets within 3 columns of the endpoint, or
+// null. The object is wound back first (it moves left), then flies right and
+// vanishes as it lands. A frame lit over more than a quarter of its pixels is
+// a flash, not the object, and is skipped (ThrowFlask03 White 05ft).
+export function reachedContact(frames, endpoint) {
+  for (let frame = 0; frame < frames.length / 16000; frame++) {
+    let lit = 0, edge = -1;
+    for (let y = 0; y < 40; y++)
+      for (let x = 0; x < 100; x++)
+        if (frames[(frame * 4000 + y * 100 + x) * 4 + 3] > 60) {
+          lit++;
+          if (x > edge) edge = x;
+        }
+    if (lit <= 1000 && edge >= endpoint - 3) return Math.max(50, frame * 50);
+  }
+  return null;
 }
 export function visibleContact(frames, duration, endpoint) {
   return crossedContact(frames, endpoint) ?? Math.round(duration * 0.6);
@@ -247,6 +271,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 // reaches its far end (media ms from the clip's start, rounded up to 10 ms; the
 // latest of a variant's random alternatives). Keyed by the variant's Sequencer
 // database path. Measured from JB2A Patreon ${version} (Free edition files when present).
+// A thrown or launched object (jb2a.throwable) is timed by its leading edge.
 // RANGE_UNMEASURED: range variants not measured (a file missing, no frame
 // crossing the endpoint, or not a projectile or beam clip).
 // Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
