@@ -75,7 +75,11 @@ export const KINDS = {
   overlay: "Screen overlay",
   tokenfx: "Tokenshade",
   scenefx: "FXMaster scene effect",
+  // When a teleporting token vanishes and how long it stays gone (engines/motion/teleport.mjs).
+  teleport: "Teleport",
 };
+// How long a teleport stage keeps the token gone unless it says otherwise.
+export const TELEPORT_GONE_MS = 500;
 export const MOTIONS = {
   rush: "Rush and hold at destination",
   leap: "Arcing leap and landing",
@@ -204,7 +208,7 @@ export function validateRecipe(input) {
             visualReference,
           )
           .slice(0, 8);
-        if (!assets.length && !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind))
+        if (!assets.length && !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind))
           throw Error("Each effect stage needs a database key or relative media file.");
         return {
           kind: s.kind,
@@ -215,7 +219,8 @@ export function validateRecipe(input) {
           ),
           assets,
           delay: number(s.delay, 0, 30000, 0),
-          duration: number(s.duration, 100, 30000, 1500),
+          // A teleport may be gone for no time at all (it reappears as it vanishes).
+          duration: s.kind === "teleport" ? number(s.duration, 0, 30000, TELEPORT_GONE_MS) : number(s.duration, 100, 30000, 1500),
           scale: number(s.scale, 0.1, 5, 1),
           opacity: number(s.opacity, 0.1, 1, 1),
           below: s.below === true,
@@ -251,8 +256,10 @@ export function validateRecipe(input) {
             : {}),
           ...normalizeOptions({
             ...s,
-            duration: number(s.duration, 100, 30000, 1500),
+            duration: s.kind === "teleport" ? number(s.duration, 0, 30000, TELEPORT_GONE_MS) : number(s.duration, 100, 30000, 1500),
           }),
+          // A teleport plays once, on the token that moves.
+          ...(s.kind === "teleport" ? { repeats: 1 } : {}),
           ...(OPTIONAL_FX_KINDS.has(s.kind) ? normalizeFxStage(s) : {}),
           ...(["sprite", "aura", "sound", "tokenfx"].includes(s.kind)
             ? { subject: s.subject === "targets" ? "targets" : "source" }
@@ -445,7 +452,7 @@ export function resolveAsset(stage, catalog) {
 // Every installed asset in the stage's list, in list order (the first is the one that plays,
 // unless the stage picks at random).
 export function installedAssets(stage, catalog, limit = Infinity) {
-  if (["motion", "sprite", "sound"].includes(stage.kind)) return [];
+  if (["motion", "sprite", "sound", "teleport"].includes(stage.kind)) return [];
   const index = catalog instanceof CatalogIndex ? catalog : null, keys = index ? null : catalog.map((e) => e.key), found = [];
   for (const key of stage.assets) {
     if (found.length >= limit) break;
@@ -620,7 +627,7 @@ function buildPlan(recipe, catalog, context, requireMedia) {
     if (
       requireMedia &&
       !asset &&
-      !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind)
+      !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind)
     )
       throw Error(
         `Stage ${index + 1}: no installed asset. Open Assets and choose a replacement.`,

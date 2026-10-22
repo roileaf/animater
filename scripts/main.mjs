@@ -77,7 +77,7 @@ import {
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./catalogs/pf2e/ability-catalog.mjs";
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken } from "./engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden } from "./engines/motion/teleport.mjs";
 import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
 import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
@@ -773,28 +773,42 @@ async function pickTeleport(recipe, context) {
 // Big magic bends the scene (world setting); on while the setting is not registered.
 function mapDistortion() { try { return game.settings.get(ID, "mapDistortion") !== false; } catch { return true; } }
 async function moveToken(doc, x, y) { await doc.update({ x, y }, { animate: false, animater: { teleport: true } }); }
-async function teleport(spot) {
-  return playTeleport(spot, {
+// What a teleport's effects play through. `local`: a preview, on this screen only, with no streak.
+function teleportHost({ local = false } = {}) {
+  return {
     wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
     mapDistortion,
     gridSize: () => canvas.grid?.size ?? 100,
-    // `data` (the arrival's afterimage streak, either end's warp) rides on the effect to every client; the streak
-    // only while the world has trails on.
+    // `data` (the departure's vanish, the arrival's afterimage streak, either end's warp) rides on the effect to
+    // every client; the streak only while the world has trails on.
     effect: (asset, point, size, tint, data = null) => {
       const effect = new Sequence({ moduleName: ID }).effect().file(asset).atLocation(point).size(size);
       if (tint) effect.tint(tint);
       const { animaterTrail, ...rest } = data ?? {};
-      const tags = { ...rest, ...(animaterTrail && game.settings.get(ID, "afterimages") !== false ? { animaterTrail } : {}) };
+      const tags = { ...rest, ...(animaterTrail && !local && game.settings.get(ID, "afterimages") !== false ? { animaterTrail } : {}) };
       if (Object.keys(tags).length) effect.addOverride(async (_, effectData) => ({ ...effectData, ...tags }));
-      void effect.play().catch(error => console.warn('Animater teleport effect:', error.message));
+      void effect.play(local ? { local: true } : {}).catch(error => console.warn('Animater teleport effect:', error.message));
     },
+    move: async () => {},
+  };
+}
+// A preview's teleport: the token vanishes and reappears where it stands; the document never moves.
+function previewTeleport(mover, recipe, context, timing) {
+  const token = placeable(mover);
+  if (!token?.center || !token.document) return null;
+  const visuals = teleportVisuals(recipe, runtime.getCatalog());
+  return playTeleport({ mover: token, x: token.document.x, y: token.document.y, visuals, element: context.element ?? recipe.chosenElement }, teleportHost({ local: true }), timing);
+}
+async function teleport(spot, timing) {
+  return playTeleport(spot, {
+    ...teleportHost(),
     move: async (mover, x, y) => {
       const doc = mover.document;
       // A creature this player does not own (an ally fetched to them) is moved by the active GM.
       if (doc.isOwner) await moveToken(doc, x, y);
       else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x, y });
     },
-  });
+  }, timing);
 }
 // The active GM moves a teleported token for the player who cast the spell: only when that
 // player owns the caster, and only a token on the caster's scene.
@@ -1776,6 +1790,13 @@ Hooks.once("ready", () => {
   const afterimages = createAfterimages({ makeSprite: (texture) => new globalThis.PIXI.Sprite(texture), place: placeUnder,
     enabled: () => game.settings.get(ID, "afterimagesLocal") !== false && qualityRank(localQuality()) >= 2 });
   // A teleport's arrival effect carries its streak (playTeleport): every client draws it as that effect arrives.
+  // Its departure effect carries its vanish: every client hides the token until it has moved (holdHidden).
+  Hooks.on("createSequencerEffect", (effect) => {
+    const vanish = effect?.data?.animaterVanish;
+    if (!vanish?.tokenId || (effect.data.sceneId && effect.data.sceneId !== canvas?.scene?.id)) return;
+    try { holdHidden(canvas.scene?.tokens?.get(vanish.tokenId)?.object, Number(vanish.ms)); }
+    catch (error) { console.warn("Animater teleport:", error?.message ?? error); }
+  });
   Hooks.on("createSequencerEffect", (effect) => {
     const trail = effect?.data?.animaterTrail;
     if (!trail) return;
@@ -1891,6 +1912,7 @@ Hooks.once("ready", () => {
     flashBefore: (recipe, context) => flash?.before(recipe, context),
     pickTeleport,
     teleport,
+    previewTeleport,
     // Does the token still carry an effect from this item ("Effect: Shield")?
     hasItemEffect: (actor, item) => {
       const name = sameEffectName(item?.name), id = item?.id;

@@ -27,6 +27,7 @@ import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
 import { isCritical, planDistortions } from '../distortion/scene-distortion.mjs';
 import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
+import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 // A token's scene and level, else the scene and level this client views.
@@ -362,13 +363,21 @@ export class AnimaterRuntime {
       await this.host.flashBefore?.(recipe, context)?.catch?.(() => {});
       if (this.epoch !== before) return null;
     }
-    // Teleport: the one who cast clicks the spot first; the jump plays alongside the animation.
-    // Cancelling the pick still plays the animation, without moving anyone.
+    // Teleport: the one who cast clicks the spot first; the jump plays at the recipe's teleport stage, its own
+    // or one placed where the animation reaches the mover (engines/motion/teleport.mjs).
+    // Cancelling the pick still plays the animation, without moving anyone. A preview vanishes and reappears in place.
+    let jump = null;
+    const who = teleportPlan(recipe)?.who;
     if (!preview && this.host.pickTeleport) {
       const before = this.epoch, spot = await this.host.pickTeleport(recipe, context)?.catch?.(() => null);
       if (this.epoch !== before) return null;
-      if (spot) void this.host.teleport?.(spot)?.catch?.((error) => this.trace("Blocked", `Teleport: ${error.message}`));
+      if (spot) jump = { spot, mover: spot.mover };
+    } else if (preview && who && this.host.previewTeleport) {
+      const mover = who === "target" ? context.targets?.[0] : context.source;
+      if (mover) jump = { mover };
     }
+    const jumps = jump ? withTeleportStage(plan, { who, mover: jump.mover }).filter((s) => s.kind === "teleport").slice(0, 1) : [];
+    plan = plan.filter((s) => s.kind !== "teleport");
     const session = `${ID}-${this.host.userId()}-${uuid()}`;
     const epoch = this.epoch;
     let failed = false;
@@ -658,21 +667,23 @@ export class AnimaterRuntime {
       const trail = { element: context.element ?? recipe.chosenElement, recipeColor: recipe.color === DEFAULT_RECIPE_COLOR ? undefined : recipe.color,
         allowed: this.host.afterimages?.() !== false };
       const groups = new Map();
-      for (const s of plan) {
+      // The teleport waits with the stages that start with it, so a slow wait or path delays it alike.
+      for (const s of [...plan, ...jumps]) {
         if (!groups.has(s.delay)) groups.set(s.delay, []);
         groups.get(s.delay).push(s);
       }
       // Prebuild every group so a bad Sequencer option cannot produce half a recipe.
       const sequences = [...groups].map(([delay, stages]) => ({
         delay,
-        sequence: stages.some((s) => s.kind !== "motion" && !OPTIONAL_FX_KINDS.has(s.kind)) ? build(stages) : null,
+        sequence: stages.some((s) => s.kind !== "motion" && s.kind !== "teleport" && !OPTIONAL_FX_KINDS.has(s.kind)) ? build(stages.filter((s) => s.kind !== "teleport")) : null,
         motions: stages.filter((s) => s.kind === "motion"),
         optionalFx: stages.filter((s) => OPTIONAL_FX_KINDS.has(s.kind)),
+        teleports: stages.filter((s) => s.kind === "teleport"),
       }));
       onStart?.({ ...recipe, playbackPlan: plan });
       // Local previews never broadcast; real plays use Sequencer's own sync.
       const results = await Promise.all([
-        ...sequences.map(async ({ delay, sequence, motions, optionalFx }) => {
+        ...sequences.map(async ({ delay, sequence, motions, optionalFx, teleports }) => {
           if (delay && !(await this.wait(delay, session))) return false;
           if (this.epoch !== epoch || failed) return false;
           await Promise.all([
@@ -691,13 +702,14 @@ export class AnimaterRuntime {
               this.host.motion(withTrail(s, trail), context, { preview, session }),
             ),
             ...optionalFx.map(s=>this.host.optionalFx?.(s,context,{preview,session})),
+            ...teleports.map((s) => this.playTeleportStage(jump, s, recipe, context, preview)),
           ]);
           return this.epoch===epoch && !failed;
         }),
         ...(preview
           ? [
               this.wait(
-                Math.max(...plan.map((s) => s.delay + s.duration)),
+                Math.max(...[...plan, ...jumps].map((s) => s.delay + s.duration)),
                 session,
               ),
             ]
@@ -761,6 +773,18 @@ export class AnimaterRuntime {
     } finally {
       if (failed || preview || !plan.some((s) => s.persist))
         this.sessions.delete(session);
+    }
+  }
+  // The teleport stage has started (its group waited for it): the token vanishes now and reappears after the
+  // stage's length. The timing is decided here, on the client that played; a mover this user does not own is
+  // moved by the GM when its time comes (main.mjs receiveTeleport).
+  async playTeleportStage(jump, stage, recipe, context, preview) {
+    const timing = { outAt: 0, goneMs: Math.max(0, stage.duration ?? 0) };
+    try {
+      if (preview) await this.host.previewTeleport?.(jump.mover, recipe, context, timing);
+      else await this.host.teleport?.(jump.spot, timing);
+    } catch (error) {
+      this.trace("Blocked", `Teleport: ${error.message}`);
     }
   }
   // The plan with its flights' paths (engines/playback/flight-path.mjs) and their wall strikes. Without a wall

@@ -873,6 +873,7 @@
 .animater .an-tl-bar.kind-motion,
 .animater .an-tl-bar.kind-sprite { background: linear-gradient(180deg, #e3b341, #b88916); }
 .animater .an-tl-bar.kind-sound { background: linear-gradient(180deg, #8f98a8, #636b7a); }
+.animater .an-tl-bar.kind-teleport { background: linear-gradient(180deg, #6fd3ff, #3a8fc0); }
 .animater .an-tl-bar.kind-tokenfx,
 .animater .an-tl-bar.kind-scenefx,
 .animater .an-tl-bar.kind-overlay { background: linear-gradient(180deg, #e070c0, #b04494); }

@@ -78,7 +78,7 @@ test('teleport tags its arrival with the trail', async () => {
   const host = (out) => ({ wait: async () => {}, move: async () => {}, effect: (asset, point, size, tint, data = null) => out.push([asset, data]) });
   await playTeleport({ mover, x: 400, y: 0, visuals: { out: 'custom.out', in: 'custom.in', scale: 1, tint: '#aa33ff' }, element: 'fire' }, host(effects));
   assert.deepEqual(effects, [
-    ['custom.out', null],
+    ['custom.out', { animaterVanish: { tokenId: 'tok', ms: 700 } }],
     ['custom.in', { animaterTrail: { from: { x: 50, y: 50 }, to: { x: 450, y: 50 }, tint: '#aa33ff', tokenId: 'tok' } }],
   ], 'only the arrival carries it, tinted like that effect');
   const tintOf = async (visuals, element) => { const out = []; await playTeleport({ mover, x: 0, y: 0, visuals: { out: null, scale: 1, tint: '', ...visuals }, element }, host(out)); return out[0][1].animaterTrail.tint; };
@@ -114,7 +114,7 @@ test('teleport tags out and in with a warp; style none tags nothing', async () =
     return effects;
   };
   const [out, arrival] = await run({ out: 'custom.out', in: 'custom.in' });
-  assert.deepEqual(out[1], { animaterWarp: { kind: 'warp', at: { x: 50, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false } },
+  assert.deepEqual(out[1], { animaterVanish: { tokenId: 'tok', ms: 700 }, animaterWarp: { kind: 'warp', at: { x: 50, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false } },
     'the departure warps at the token, its size plus a square');
   assert.deepEqual(arrival[1].animaterWarp, { kind: 'warp', at: { x: 450, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false });
   assert.ok(arrival[1].animaterTrail, 'the arrival still carries its streak');

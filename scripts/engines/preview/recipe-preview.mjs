@@ -10,6 +10,7 @@ import { sampleRecipe } from "../playback/composition.mjs";
 import { chainPreview } from "./chain-preview.mjs";
 import { prepareFragments, fragmentPieces, fragmentFlight, fragmentPose, FRAGMENT_TINT_LOOKS } from "../fragments/fragments.mjs";
 import { clearPreviewMediaFailure, markPreviewMediaFailure } from "../media/preview-media-status.mjs";
+import { teleportPlan } from "../motion/teleport.mjs";
 import {
   beamGeometry,
   artworkGeometry,
@@ -461,9 +462,18 @@ export class RecipePreview {
       if (art) this.drawFragments(token, art, subject, targetIndex, frame);
       const pose = this.subjectPose(subject, frame, targetIndex, { fragments: !art });
       token.style.transform = poseTransform(pose);
-      token.style.opacity = pose.alpha ?? "";
+      token.style.opacity = this.teleportGone(subject, targetIndex, frame) ? 0 : pose.alpha ?? "";
     }
     this.onFrame(frame);
+  }
+  // Is this token gone in a teleport now (its teleport stage playing)? It moves nowhere here.
+  teleportGone(subject, targetIndex, frame) {
+    const who = teleportPlan(this.recipe)?.who;
+    if (!who || subject !== (who === "target" ? "targets" : "source") || (subject === "targets" && targetIndex !== 0)) return false;
+    const playing = (s, state) => s.kind === "teleport" && !this.muted?.has(s.index) && state?.state === "playing";
+    return this.chain
+      ? this.recipe.playbackPlan.some((s) => playing(s, stageFrame({ ...s, repeats: 1, targetStagger: 0 }, frame.time)))
+      : this.recipe.stages.some((s, index) => playing({ ...s, index }, frame.stages[index]));
   }
   // The fragments stage on this token now: playing (with progress), or ended but held.
   activeFragments(subject, targetIndex, frame) {

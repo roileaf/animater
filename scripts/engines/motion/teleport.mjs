@@ -1,6 +1,8 @@
-import { resolveAsset } from '../../core/model.mjs';
+import { resolveAsset, TELEPORT_GONE_MS } from '../../core/model.mjs';
 import { lightColor } from '../lighting/effect-lights.mjs';
 import { warpTag } from '../distortion/scene-distortion.mjs';
+import { arrivalOf, tokenId } from '../playback/flight-path.mjs';
+import { nextFrame, cancelFrame } from './canvas-frame.mjs';
 
 // Teleport spells: the one who cast clicks a spot within range, and the caster (or the
 // first target) vanishes and reappears there. With finishers, the only Animater features that
@@ -51,23 +53,88 @@ export function teleportVisuals(recipe, catalog) {
   };
 }
 
+// The Teleport stage (Recipe Studio): its start is when the token vanishes, its length how long it stays gone
+// before it reappears at the spot. A recipe without one (catalogs, older recipes) gets one here, at the moment
+// the animation reaches the mover: a flight's arrival at it (Friendfetch's ray to the ally), else the caster's
+// gesture at its key moment (strikeTime's last resort, outcome.mjs), else 450 ms.
+export { TELEPORT_GONE_MS };
+const TELEPORT_FALLBACK_MS = 450;
+const sameToken = (a, b) => Boolean(a && b) && (a === b || (tokenId(a) !== undefined && tokenId(a) === tokenId(b)));
+export function teleportMoment(plan, { who, mover } = {}) {
+  if (who === 'target') {
+    const flights = plan.filter((s) => ['travel', 'projectile'].includes(s.kind) && s.travelOrigin !== 'target' && sameToken(s.endpoint, mover));
+    if (flights.length) return Math.round(Math.min(...flights.map((s) => (s.delay ?? 0) + arrivalOf(s))));
+  }
+  const gesture = plan.find((s) => s.kind === 'motion' && s.subject === 'source');
+  return gesture ? Math.round(gesture.delay + gesture.duration * 0.45) : TELEPORT_FALLBACK_MS;
+}
+// The plan with its teleport stage: the recipe's own (the first), else one placed at teleportMoment.
+export function withTeleportStage(plan, { who, mover } = {}) {
+  if (plan.some((s) => s.kind === 'teleport')) return plan;
+  return [...plan, { kind: 'teleport', stageId: 'teleport', label: 'Teleport', synthesized: true, assets: [], delay: teleportMoment(plan, { who, mover }), duration: TELEPORT_GONE_MS }];
+}
+// A new Teleport stage in the Studio starts where one would be placed for this recipe: on its flight's arrival
+// (a teleported target), else on the caster's gesture, else at 450 ms. Links, so it moves with that stage.
+export function teleportLink(stages, who) {
+  const flight = who === 'target' && stages.find((s) => ['travel', 'projectile'].includes(s.kind) && s.travelOrigin !== 'target' && s.travelDestination !== 'area');
+  if (flight) return { afterStage: flight.stageId, timingAnchor: 'arrival', startOffset: 0, delay: 0 };
+  const gesture = stages.find((s) => s.kind === 'motion' && (s.subject ?? 'source') === 'source');
+  if (gesture) return { afterStage: gesture.stageId, timingAnchor: 'start', startOffset: Math.round((gesture.duration ?? 0) * 0.45), delay: 0 };
+  return { afterStage: '', delay: TELEPORT_FALLBACK_MS };
+}
+
 // The host retains ownership/socket rules; visuals bracket the same real token move.
+// timing: outAt, ms until the token vanishes (the departure effect plays); goneMs, how long it stays gone before
+// it is moved and the arrival effect plays. Without it, the old fixed timing (450 ms, then 700 ms).
+// The departure effect carries the vanish (`animaterVanish`): every client hides the token from then on until it
+// has moved (holdHidden). No departure effect, no vanish: the token simply jumps when it arrives.
 // The arrival effect carries the afterimage streak (`animaterTrail`), tinted like that effect: its tint, the
 // colour word in its key, else the spell's element ("" leaves each client's soft white).
 // Both effects also carry a warp of space (`animaterWarp`, map distortion), the token's size plus a square, when the
 // host turns it on. No effect, no warp.
-export async function playTeleport({ mover, x, y, visuals, element }, host) {
+export async function playTeleport({ mover, x, y, visuals, element }, host, { outAt = TELEPORT_FALLBACK_MS, goneMs = 700 } = {}) {
   const size = mover.w * visuals.scale, from = { ...mover.center };
   const to = { x: x + mover.w / 2, y: y + mover.h / 2 };
   const warps = host.mapDistortion?.() === true, radius = Math.max(mover.w, mover.h) + (host.gridSize?.() ?? mover.w);
   const warp = (at) => (warps ? { animaterWarp: warpTag(at, radius, mover.document?.level) } : null);
-  await host.wait(450);
-  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, warp(from));
-  await host.wait(700);
+  const id = mover.document?.id ?? mover.id;
+  if (outAt > 0) await host.wait(outAt);
+  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: goneMs }, ...warp(from) } : warp(from));
+  if (goneMs > 0) await host.wait(goneMs);
   await host.move(mover, x, y);
   if (!visuals.in) return;
   const tint = lightColor({ tint: visuals.tint, asset: visuals.in }, { element, fallback: '' });
-  host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: mover.document?.id ?? mover.id }, ...warp(to) });
+  host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: id }, ...warp(to) });
+}
+
+// One client's part of a vanish: the token's art held out of sight (a token refresh would show it again, so
+// every frame, as motions do) for `ms`, a little longer while its move is still on the way, and given back as
+// soon as it has moved (the arrival effect plays there). Returns a function that gives it back early.
+export const VANISH_GRACE_MS = 250;
+const FADE_MS = 120;
+export function holdHidden(token, ms, { now = () => performance.now(), frame = nextFrame, cancel = cancelFrame } = {}) {
+  const mesh = token?.mesh;
+  if (!mesh || !(ms > 0)) return () => {};
+  const start = now(), at = { x: token.document?.x, y: token.document?.y }, alpha = mesh.alpha ?? 1;
+  let handle = null, done = false;
+  const moved = () => token.document && (token.document.x !== at.x || token.document.y !== at.y);
+  const finish = () => {
+    if (done) return;
+    done = true;
+    cancel(handle);
+    if (mesh.destroyed) return;
+    mesh.alpha = alpha;
+    token.renderFlags?.set?.({ refreshState: true });
+  };
+  const step = () => {
+    const elapsed = now() - start;
+    if (mesh.destroyed || moved() || elapsed >= ms + VANISH_GRACE_MS) return finish();
+    // A quick fade, then gone.
+    mesh.alpha = alpha * Math.max(0, 1 - elapsed / FADE_MS);
+    handle = frame(step);
+  };
+  step();
+  return finish;
 }
 
 // The token a teleport's arrival streak copies, or null: the effect played on another scene, the token is gone,
