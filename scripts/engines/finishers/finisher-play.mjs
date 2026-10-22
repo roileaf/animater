@@ -134,7 +134,8 @@ function unlinkDropped(before, after) {
   });
 }
 
-const ends = (stages) => Math.max(0, ...stages.map((s) => (s.delay ?? 0) + (s.duration ?? 0)));
+// A stage frozen by a crit's hit-stop (runtime.mjs) ends that much later.
+const ends = (stages) => Math.max(0, ...stages.map((s) => (s.delay ?? 0) + (s.duration ?? 0) + (s.hitStop?.holdMs ?? 0)));
 export const travelEnd = (plan) => ends(plan.filter((s) => s.kind === "motion" && (s.motionOffset || s.motionFrame)));
 export const planEnd = (plan) => ends(plan);
 // A vanish fades when the mover's last motion ends: waiting for trailing effects would let

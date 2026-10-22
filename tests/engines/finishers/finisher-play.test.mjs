@@ -104,6 +104,17 @@ test("without an attacker the knockback falls back to +x, and the ending still w
   assert.deepEqual(host.log.at(-2), ["wait", 1500]);
 });
 
+test("a crit finisher whose travel freezes across contact moves the token only once the hold is over", async () => {
+  const frozen = { kind: "motion", motionOffset: { x: 2, y: 0 }, delay: 0, duration: 1000, hitStop: { afterMs: 300, holdMs: 100 } };
+  assert.equal(travelEnd([frozen]), 1100);
+  assert.equal(motionEnd([frozen]), 1100);
+  assert.equal(planEnd([frozen, { kind: "impact", delay: 0, duration: 1050 }]), 1100);
+  const host = fakeHost({ plan: [frozen] });
+  await playFinisher({ recipe: recipe({ ending: "body" }), mover: token(), attacker: null, dead: true, extra: { hitStopOf: "ev1" } }, host);
+  const commit = host.log.findIndex((e) => e[0] === "commit");
+  assert.deepEqual(host.log[commit - 1], ["wait", 1100]);
+});
+
 test("extra context reaches the play: a crit finisher names the event it freezes with", async () => {
   const host = fakeHost(), seen = [];
   const play = host.play;

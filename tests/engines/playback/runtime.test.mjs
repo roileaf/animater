@@ -1077,3 +1077,30 @@ test("a finisher whose event plays nothing does not wait for a contact", async (
   assert.ok(performance.now() - started < 100);
   for (const [, data] of await overridesByAsset(calls)) assert.equal("animaterHitStop" in data, false);
 });
+test("every stage frozen across contact carries its hold in the started plan", async () => {
+  const { recipe, context } = critAttack();
+  const { runtime } = critFixture();
+  let plan;
+  await runtime.play(recipe, context, { onStart: (r) => { plan = r.playbackPlan; } });
+  const hold = (id) => plan.find((s) => s.stageId === id).hitStop;
+  assert.deepEqual(hold("fly"), { afterMs: 600, holdMs: 100 });
+  assert.deepEqual(hold("hit"), { afterMs: 0, holdMs: 100 });
+  assert.equal(hold("after"), undefined);
+});
+test("a crit with no moment of contact tells its finisher at once", async () => {
+  const { runtime } = critFixture();
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "glow", kind: "aura", subject: "source", assets: ["jb2a.impact.001.orange"], delay: 0, duration: 500 }],
+  });
+  await runtime.play(recipe, { id: "ev3", outcome: "criticalSuccess", source: { id: "s", center: { x: 0, y: 0 } }, targets: [] });
+  assert.equal(runtime.contacts.has("ev3"), true);
+  assert.equal(runtime.contacts.get("ev3"), null);
+  runtime.dispatching.add("ev3");
+  const started = performance.now();
+  assert.equal(await runtime.contactOf("ev3"), null);
+  assert.ok(performance.now() - started < 16);
+  // A real contact from another play of the same event still wins.
+  runtime.recordContact("ev3", 1234);
+  assert.equal(runtime.contacts.get("ev3"), 1234);
+});

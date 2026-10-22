@@ -95,8 +95,9 @@ export class AnimaterRuntime {
     while (!this.contacts.has(eventId) && this.dispatching.has(eventId) && performance.now() < until) await new Promise((resolve) => setTimeout(resolve, 16));
     return this.contacts.get(eventId) ?? null;
   }
+  // null: this crit names no contact, so its finisher need not wait (a later real contact still wins).
   recordContact(eventId, at) {
-    if (eventId == null || this.contacts.has(eventId)) return;
+    if (eventId == null || this.contacts.get(eventId) != null) return;
     this.contacts.set(eventId, at);
     if (this.contacts.size > 50) this.contacts.delete(this.contacts.keys().next().value);
   }
@@ -502,11 +503,13 @@ export class AnimaterRuntime {
         } else if (plannedCrit(context)) {
           at = contactTime(plan, critTargetIds(context));
           if (at !== null) contact = at;
+          else this.recordContact(context.id, null);
         }
         if (at !== null) {
           ({ plan, marks } = withHitStop(plan, at));
-          // A motion takes its mark along in its stage data.
-          for (const [s, mark] of marks) if (s.kind === "motion") s.hitStop = { ...mark };
+          // Each marked stage carries its mark: a motion takes it to host.motion, and the plan's
+          // ends (finisher waits, the stall watchdog) count the freeze.
+          for (const [s, mark] of marks) s.hitStop = { ...mark };
         }
       }
       const groups = new Map();
@@ -551,7 +554,7 @@ export class AnimaterRuntime {
         ...(preview
           ? [
               this.wait(
-                Math.max(...plan.map((s) => s.delay + s.duration + (marks?.get(s)?.holdMs ?? 0))),
+                Math.max(...plan.map((s) => s.delay + s.duration + (s.hitStop?.holdMs ?? 0))),
                 session,
               ),
             ]
@@ -561,7 +564,7 @@ export class AnimaterRuntime {
       // A one-time animation never outstays its plan: if a client's Sequencer stalls (a cast circle
       // left on the tokens after a session), the caster's client ends it everywhere shortly after.
       if (!preview && !plan.some((s) => s.persist)) {
-        const end = Math.max(0, ...plan.map((s) => (s.delay ?? 0) + (s.duration ?? 0)));
+        const end = Math.max(0, ...plan.map((s) => (s.delay ?? 0) + (s.duration ?? 0) + (s.hitStop?.holdMs ?? 0)));
         const timer = setTimeout(() => { this.watchdogs.delete(timer); void this.host.endEffects({ name: session }); }, end + STALL_GRACE_MS);
         timer.unref?.();
         this.watchdogs.add(timer);
