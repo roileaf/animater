@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.4 (2026-10-22)
+
+- **D&D 5e recipes now really play for spells from other books.** 1.6.2 still missed one common case: a book or module whose spells were built from the SRD ones keeps a link back to the SRD spell but gives each activity a new id, and Animater treated it as the SRD spell itself, which needed the SRD activity id. Now, when the spell does not have the recipe's activity at all, the same kind of activity (save, attack, heal) plays the recipe; on a spell that does have it, only that activity does. Thanks again to y-deda-povis. ([#10](https://github.com/roileaf/animater/issues/10))
+
 ## 1.6.3 (2026-10-22)
 
 - **A Light animation quality.** **Animation quality (this device)** has a new **Light** level between Full and Balanced: every animation and every layer still plays, with token motion, but cheaper to draw. Token shader filters are off (as on Balanced), and the costliest effect filters, blur and glow, are left out; colours and tints stay. Balanced and Low now leave out blur and glow too. Like the other levels, it only changes what you see on your own screen.
