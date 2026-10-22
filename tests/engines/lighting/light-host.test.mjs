@@ -123,6 +123,24 @@ test('anchor end fades then removes', () => {
   assert.equal(out.refreshes, refreshes + 1);
 });
 
+test('the last light ended outside a tick still gets its refresh on the next tick', () => {
+  const { host, out } = make();
+  const e = effect(lasting);
+  host.onEffect(e);
+  // Shown late, so it starts at level 0 and onEnded removes it at once.
+  out.t = 200;
+  host.tick();
+  assert.equal(out.sources.length, 1);
+  const before = out.refreshes;
+  host.onEnded(e);
+  assert.equal(host.count(), 0);
+  assert.equal(out.sources[0].destroyed, 1);
+  host.tick();
+  assert.equal(out.refreshes, before + 1);
+  host.tick();
+  assert.equal(out.refreshes, before + 1, 'flushed once only');
+});
+
 test('a one-shot light is removed when its envelope is over', () => {
   const { host, out } = make();
   host.onEffect(effect(flash));

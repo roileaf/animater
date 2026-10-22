@@ -143,7 +143,7 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
       const lead = earliest(group);
       const near = still.filter(p => distance(p.at, spot.at) <= reach && isTier0(p.stage) && !taken.has(p.stage)).sort(byStart);
       const anchor = near.find(p => p.stage === lead.stage) ?? near.find(p => group.includes(p))
-        ?? near.find(p => lasts(p.stage) === lasting) ?? (both ? null : near[0]);
+        ?? near.find(p => lasts(p.stage) === lasting) ?? (both || lasting ? null : near[0]);
       if (!anchor) continue;
       taken.add(anchor.stage);
       lights.set(anchor.stage, buildTag(lead, anchor.stage));

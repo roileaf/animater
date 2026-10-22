@@ -177,6 +177,15 @@ test('a burst and a later lasting area at one spot each keep their light', () =>
   assert.deepEqual([...one.keys()].map(s => s.stageId), ['wall']);
 });
 
+test('a lasting light never rides on a non-luminous one-shot stage', () => {
+  const puff = st('puff', 'impact', 'jb2a.smoke.puff.centered.grey', { at: { x: 0, y: 0 } });
+  const wall = st('wall', 'template', 'jb2a.fire_ring.orange', { at: { x: sq(1), y: 0 }, persist: true });
+  assert.equal(planLights([puff, wall], opts({ puff: 0, wall: 1 })).size, 0);
+  // With a lasting tier 0 stage at the spot it still gets its light.
+  const ok = planLights([puff, wall], opts({ puff: 0, wall: 0 }));
+  assert.deepEqual([...ok.keys()].map(s => s.stageId), ['wall']);
+});
+
 test('tags carry the source level and elevation when known', () => {
   const boom = st('boom', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
   const tag = planLights([boom], opts({ boom: 0 }, { level: 'lvl2', elevation: 10 })).get(boom);

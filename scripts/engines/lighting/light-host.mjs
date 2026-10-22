@@ -162,7 +162,14 @@ export function createLightHost({
     // Runs on the PIXI ticker, where a throw would stop the canvas: it never throws, and a light
     // that fails is dropped.
     tick() {
-      if (lights.size === 0) return;
+      if (lights.size === 0) {
+        // The last light may have been removed outside a tick (onEnded): still flush its refresh.
+        if (dirty) {
+          dirty = false;
+          try { refreshLighting(); } catch { /* canvas going away */ }
+        }
+        return;
+      }
       frame++;
       let t0, isSteady;
       try { t0 = now(); isSteady = steady(); } catch { return; }
