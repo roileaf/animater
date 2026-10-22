@@ -7,8 +7,8 @@ import { dndEntries, dndRecipe, addDndBookEntries } from '../../../scripts/catal
 import { DND5E_BOOK_ENTRIES } from '../../../data/dnd5e-book-catalog.mjs';
 import { SF2E_ENTRIES, sfRecipe } from '../../../scripts/catalogs/sf2e/sf2e-catalog.mjs';
 import { dhEntries, dhRecipe } from '../../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs';
-import { withCatalogTeleport } from '../../../scripts/catalogs/shared/catalog-teleport.mjs';
-import { teleportPlan, teleportVisuals } from '../../../scripts/engines/motion/teleport.mjs';
+import { withCatalogTeleport, FETCH_HOLD_MS } from '../../../scripts/catalogs/shared/catalog-teleport.mjs';
+import { teleportPlan, teleportVisuals, withTeleportStage } from '../../../scripts/engines/motion/teleport.mjs';
 import { timedStages } from '../../../scripts/engines/playback/composition.mjs';
 import { arrivalOf } from '../../../scripts/engines/playback/flight-path.mjs';
 import { validateRecipe } from '../../../scripts/core/model.mjs';
@@ -73,6 +73,23 @@ test('every catalog teleport has one Teleport stage inside its animation, moving
     const look = teleportVisuals(r, free);
     assert.ok(look.out && look.in, `${name} has departure and arrival effects`);
   }
+});
+
+test('Friendfetch drags each ally only after its own tether has reached it and held', () => {
+  const r = spellRecipe(PF2E_SPELLS.find((s) => s.slug === 'friendfetch'));
+  const own = r.stages.find((s) => s.kind === 'teleport');
+  const beam = r.stages.find((s) => s.stageId === own.afterStage);
+  assert.ok(FLIGHT.has(beam.kind), 'linked to the tether itself, not the glint on it');
+  assert.deepEqual([own.timingAnchor, own.startOffset], ['arrival', FETCH_HOLD_MS]);
+  // Played: each ally's own tether arrival (a farther one later), then the hold.
+  const timed = timedStages(r), stage = timed.find((s) => s.kind === 'teleport'), flight = timed.find((s) => s.stageId === beam.stageId);
+  const near = { id: 'near' }, far = { id: 'far' };
+  const plan = [{ ...flight, endpoint: near, contact: 300 }, { ...flight, endpoint: far, contact: 900 }, stage];
+  const at = (mover) => withTeleportStage(plan, { who: 'target', mover }).find((s) => s.kind === 'teleport').delay;
+  assert.equal(at(near), flight.delay + 300 + FETCH_HOLD_MS);
+  assert.equal(at(far), flight.delay + 900 + FETCH_HOLD_MS);
+  // The drag ends while the tether still shows.
+  assert.ok(at(far) + stage.duration <= flight.delay + flight.duration, 'slide inside the tether');
 });
 
 test('a teleport is never on a damage roll, nor on the plain cast of a spell that teleports later', () => {

@@ -1,8 +1,8 @@
 // Catalog teleports (Misty Step, Dimension Door, Translocate, Friendfetch…): their recipes carry an explicit
 // Teleport stage, so the Studio timeline shows when the mover vanishes and lets it be dragged
 // (engines/motion/teleport.mjs plays the jump from it).
-// - A teleported target (Friendfetch) vanishes as the hit on it lands (the tether connecting), else as the
-//   flight reaches it. A move the animation only acted out for it (the pull toward the caster) gives way.
+// - A teleported target vanishes as the hit on it lands (the tether connecting), else as the flight reaches
+//   it. A fetched one (Friendfetch) is dragged a moment after its own tether reaches it. A move the animation only acted out for it (the pull toward the caster) gives way.
 // - A caster vanishes at the cast's key moment: its gesture's, else its own departure art's (a mist, a flash,
 //   a portal), 45% in, linked to that stage.
 // - It stays gone as long as its spell says (teleportGoneMs, or the entry's own below): a short blink, or a
@@ -69,8 +69,12 @@ function mistColour(stages) {
 }
 // Where the mover vanishes: as the hit on a target lands (else its flight arrives), at the caster's gesture,
 // else 45% into its own departure art.
-function vanishLink(stages, who) {
+// A fetch (Friendfetch) is dragged once its own tether has reached it and been seen to hold: its flight's
+// arrival at that target (measured per distance at play), FETCH_HOLD_MS later.
+export const FETCH_HOLD_MS = 600;
+function vanishLink(stages, who, fetch = false) {
   const link = teleportLink(stages, who);
+  if (fetch && link.timingAnchor === 'arrival') return { ...link, startOffset: FETCH_HOLD_MS };
   if (who === 'target' && link.timingAnchor === 'arrival') {
     const hit = stages.find((s) => s.kind === 'impact' && s.afterStage === link.afterStage);
     return hit ? { afterStage: hit.stageId, timingAnchor: 'start', startOffset: 0, delay: 0 } : link;
@@ -96,7 +100,7 @@ export function withCatalogTeleport(recipe, entry = {}) {
   const who = plan.who;
   const stageId = recipe.stages.some((s) => s.stageId === 'teleport') ? `${recipe.id}-teleport` : 'teleport';
   const gone = own?.gone ?? teleportGoneMs(recipe);
-  const teleport = { kind: 'teleport', stageId, label: plan.fetch ? 'Dragged to the caster' : 'Vanish and reappear', assets: [], duration: gone, ...vanishLink(recipe.stages, who) };
+  const teleport = { kind: 'teleport', stageId, label: plan.fetch ? 'Dragged to the caster' : 'Vanish and reappear', assets: [], duration: gone, ...vanishLink(recipe.stages, who, plan.fetch) };
   const timed = timedStages({ stages: [...recipe.stages, teleport] }), at = new Map(timed.map((s) => [s.stageId, s.delay]));
   const start = at.get(stageId), moved = start + gone;
   // The stages the vanish is timed from stay as they are (no loop).
