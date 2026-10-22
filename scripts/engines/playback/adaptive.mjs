@@ -4,26 +4,38 @@ import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
 
 const SMALL_PX = 48;
 const MIN_SAMPLES = 10;
-const TIGHT_RATIO = 1.25;
+const TIGHT_RATIO = 0.85;
 
-// Typical frame time (75th percentile) over a short recent window.
-export function createFrameMonitor({ windowMs = 3000, warmupMs = 3000 } = {}) {
-  let samples = [];
+// Typical main-thread work per frame (75th percentile) over a short recent window. Work, not the
+// frame interval: a 60 fps cap on a 75 Hz screen gives uneven intervals on an idle machine.
+// A fixed ring of samples, so sampling every frame allocates nothing.
+export function createFrameMonitor({ windowMs = 3000, warmupMs = 3000, capacity = 1024 } = {}) {
+  const times = new Float64Array(capacity), works = new Float64Array(capacity), scratch = new Float64Array(capacity);
+  let head = 0, count = 0, last = 0;
   let ignoreUntil = -Infinity;
   return {
-    sample(deltaMS, nowMs, { hidden = false } = {}) {
+    sample(workMs, nowMs, hidden = false) {
       if (hidden || nowMs < ignoreUntil) return;
-      samples.push({ t: nowMs, ms: deltaMS });
-      samples = samples.filter((s) => s.t >= nowMs - windowMs);
+      times[head] = nowMs;
+      works[head] = workMs;
+      head = (head + 1) % capacity;
+      if (count < capacity) count++;
+      last = nowMs;
     },
     warmup(nowMs) {
-      samples = [];
+      count = 0;
       ignoreUntil = nowMs + warmupMs;
     },
     typicalMs() {
-      if (samples.length < MIN_SAMPLES) return null;
-      const sorted = samples.map((s) => s.ms).sort((a, b) => a - b);
-      return sorted[Math.floor(0.75 * sorted.length)];
+      let n = 0;
+      // Newest first, back to the start of the window.
+      for (let i = 1; i <= count; i++) {
+        const at = (head - i + capacity) % capacity;
+        if (times[at] < last - windowMs) break;
+        scratch[n++] = works[at];
+      }
+      if (n < MIN_SAMPLES) return null;
+      return scratch.subarray(0, n).sort()[Math.floor(0.75 * n)];
     },
     isTight(targetMs) {
       const typical = this.typicalMs();

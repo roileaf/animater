@@ -1,4 +1,4 @@
-// Adaptive playback on this client: watches its own frame time, adapts Animater's effects as they
+// Adaptive playback on this client: times its own work per frame, adapts Animater's effects as they
 // arrive, and warms the next combatant's files. Foundry is reached only through the options.
 import {
   createFrameMonitor, adaptEffect, createSessionDecisions, createAssetMemory, preloadFiles, createPreloadQueue,
@@ -51,9 +51,17 @@ export function createAdaptiveHost({
     return safeMediaFile(asset) ? asset : null;
   };
 
+  // Set when a frame's work begins (before everything else on the ticker), read after it is drawn.
+  let frameStart = -1;
+
   return {
-    onTick(deltaMS, nowMs) {
-      monitor.sample(deltaMS, nowMs, { hidden: hidden() });
+    onFrameStart(nowMs) {
+      if (state.enabled) frameStart = nowMs;
+    },
+    onFrameEnd(nowMs) {
+      if (!state.enabled || frameStart < 0) return;
+      monitor.sample(nowMs - frameStart, nowMs, hidden());
+      frameStart = -1;
     },
     onCanvasReady(nowMs) {
       monitor.warmup(nowMs);

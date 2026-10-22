@@ -27,10 +27,69 @@ const big = { width: 3, height: 3, gridUnits: true };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 const combatWith = (actor, sceneId = 's') => ({ nextCombatant: { token: { parent: { id: sceneId } }, actor } });
 
+// Foundry's default 60 fps cap on a display refreshing at `hz` (PIXI Ticker.update's frame gating),
+// with `work` ms of main-thread work in every frame that runs.
+function runDisplay(host, { hz, work, from = 3000, seconds = 3 }) {
+  const vsync = 1000 / hz, min = 1000 / 60;
+  let lastFrame = -1, intervals = [], last = null;
+  for (let t = from; t < from + seconds * 1000; t += vsync) {
+    const delta = (t - lastFrame) | 0;
+    if (delta < min) continue;
+    lastFrame = t - (delta % min);
+    if (last !== null) intervals.push(t - last);
+    last = t;
+    host.onFrameStart(t);
+    host.onFrameEnd(t + work);
+  }
+  intervals.sort((a, b) => a - b);
+  return intervals[Math.floor(0.75 * intervals.length)];
+}
+
+test('light work is never tight, whatever the display cadence', () => {
+  for (const hz of [30, 60, 75, 90, 144]) {
+    const { host, ended } = makeHost();
+    host.onCanvasReady(0);
+    runDisplay(host, { hz, work: 5 });
+    host.onEffect({ data: { moduleName: 'animater', animaterTier: 2, name: `big${hz}`, size: { ...big } } });
+    assert.deepEqual(ended, [], `${hz} Hz`);
+    assert.equal(host.stats().typicalMs, 5);
+  }
+  // The frame interval alone would have read 75 Hz and 30 fps as overloaded.
+  const { host } = makeHost();
+  assert.ok(runDisplay(host, { hz: 75, work: 5 }) > 1.25 * (1000 / 60));
+  assert.ok(runDisplay(host, { hz: 30, work: 5 }) > 1.25 * (1000 / 60));
+});
+
+test('heavy work at a 60 fps target is tight', () => {
+  const { host, ended, state } = makeHost();
+  host.onCanvasReady(0);
+  runDisplay(host, { hz: 60, work: 15 });
+  host.onEffect({ data: { moduleName: 'animater', animaterTier: 2, name: 'heavy', size: { ...big } } });
+  assert.equal(ended.length, 1);
+  assert.equal(state.stats.droppedBudget, 1);
+});
+
+test('frames are not sampled while hidden, warming up or switched off', () => {
+  const hiddenHost = createAdaptiveHost({
+    state: freshState(), quality: () => 'full', catalog: () => [], weaponRecipes: () => [],
+    preload: async () => {}, endLocally: () => {}, sceneId: () => 's', hidden: () => true,
+  });
+  runDisplay(hiddenHost, { hz: 60, work: 20 });
+  assert.equal(hiddenHost.stats().typicalMs, null);
+  const warm = makeHost();
+  warm.host.onCanvasReady(3000);
+  runDisplay(warm.host, { hz: 60, work: 20, seconds: 2.9 });
+  assert.equal(warm.host.stats().typicalMs, null);
+  const off = makeHost();
+  off.state.enabled = false;
+  runDisplay(off.host, { hz: 60, work: 20 });
+  assert.equal(off.host.stats().typicalMs, null);
+});
+
 test('onEffect drops a tier 2 effect when the client ran slow, and only Animater effects', () => {
   const { host, ended, state } = makeHost();
   host.onCanvasReady(0);
-  for (let i = 0; i < 40; i++) host.onTick(40, 3000 + i * 40);
+  runDisplay(host, { hz: 60, work: 40 });
   const effect = { data: { moduleName: 'animater', animaterTier: 2, name: 's', size: { ...big } } };
   host.onEffect(effect);
   assert.deepEqual(ended, [effect]);

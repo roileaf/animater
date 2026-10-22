@@ -122,12 +122,13 @@ const adaptiveHost = createAdaptiveHost({
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); });
-// canvas.app (and its ticker) survives scene changes; sample frame time once per ticker.
+// canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
+// every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
 Hooks.on("canvasReady", () => {
   adaptiveHost.onCanvasReady(performance.now());
-  const ticker = canvas?.app?.ticker;
-  if (ticker && adaptiveTicker !== ticker) { adaptiveTicker = ticker; ticker.add(() => adaptiveHost.onTick(ticker.deltaMS, performance.now())); }
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  if (ticker && P && adaptiveTicker !== ticker) { adaptiveTicker = ticker; ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2); ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY); }
 });
 // The next combatant's likely files load ahead on every client, one turn early.
 Hooks.on("updateCombat", (combat, changed) => { if ("turn" in (changed ?? {}) || "round" in (changed ?? {})) adaptiveHost.onTurn(combat); });

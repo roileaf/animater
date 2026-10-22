@@ -11,19 +11,29 @@ import {
   createPreloadQueue,
 } from '../../../scripts/engines/playback/adaptive.mjs';
 
-test('frame monitor reports the 75th percentile of the last 3 s', () => {
+test('frame monitor reports the 75th percentile of the work in the last 3 s', () => {
   const m = createFrameMonitor();
-  for (let i = 0; i < 40; i++) m.sample(i < 30 ? 16 : 40, 5000 + i * 16);
-  assert.equal(m.typicalMs(), 40);
-  assert.equal(m.isTight(16.7), true);
+  for (let i = 0; i < 40; i++) m.sample(i < 30 ? 4 : 15, 5000 + i * 16);
+  assert.equal(m.typicalMs(), 15);
+  assert.equal(m.isTight(1000 / 60), true);
+});
+
+test('frame monitor: tight means typical work above 0.85 of the target interval', () => {
+  const at = (work) => {
+    const m = createFrameMonitor();
+    for (let i = 0; i < 40; i++) m.sample(work, 5000 + i * 16);
+    return m.isTight(1000 / 60);
+  };
+  assert.equal(at(14), false);
+  assert.equal(at(14.5), true);
 });
 
 test('frame monitor ignores hidden and warm-up samples', () => {
   const m = createFrameMonitor();
   m.warmup(0);
   for (let i = 0; i < 40; i++) m.sample(80, 100 + i); // inside warm-up
-  for (let i = 0; i < 40; i++) m.sample(80, 4000 + i, { hidden: true });
-  for (let i = 0; i < 40; i++) m.sample(16, 5000 + i * 16);
+  for (let i = 0; i < 40; i++) m.sample(80, 4000 + i, true);
+  for (let i = 0; i < 40; i++) m.sample(4, 5000 + i * 16);
   assert.equal(m.isTight(16.7), false);
 });
 
@@ -33,8 +43,15 @@ test('frame monitor needs 10 samples and drops old ones', () => {
   assert.equal(m.typicalMs(), null);
   assert.equal(m.isTight(16.7), false);
   for (let i = 0; i < 20; i++) m.sample(80, 5000 + i);
-  for (let i = 0; i < 20; i++) m.sample(16, 9000 + i);
-  assert.equal(m.typicalMs(), 16);
+  for (let i = 0; i < 20; i++) m.sample(4, 9000 + i);
+  assert.equal(m.typicalMs(), 4);
+});
+
+test('frame monitor keeps a fixed-size ring: the newest samples win', () => {
+  const m = createFrameMonitor({ capacity: 16 });
+  for (let i = 0; i < 16; i++) m.sample(80, 5000 + i);
+  for (let i = 0; i < 16; i++) m.sample(2, 5100 + i);
+  assert.equal(m.typicalMs(), 2);
 });
 
 test('effectScreenSize scales size, grid units and token-scaled effects by zoom', () => {
