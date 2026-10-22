@@ -23,8 +23,7 @@ export function meleeHit(key) {
   return MELEE_HIT[family === "melee_attack" ? `melee_attack.${n}` : family.replace(/_/g, "")] ?? MELEE_HIT[family] ?? 0.5;
 }
 // The moment the attack reaches the target: a flight's arrival, else a swing's or impact's start.
-function strikeTime(recipe) {
-  const timed = timedStages(recipe);
+export function strikeAt(timed) {
   const flight = timed.find((s) => ["travel", "projectile"].includes(s.kind));
   // Where the flight's own hit is timed (an arrow's impact on the target), that is when it arrives.
   const arrival = flight && timed.find((s) => s.kind === "impact" && onTargets(s) && s.delay >= flight.delay);
@@ -37,6 +36,7 @@ function strikeTime(recipe) {
   const gesture = timed.find((s) => s.kind === "motion" && s.subject === "source");
   return gesture ? gesture.delay + gesture.duration * 0.45 : null;
 }
+const strikeTime = (recipe) => strikeAt(timedStages(recipe));
 
 export function withOutcome(recipe, { outcome, type, messageId, id } = {}) {
   if (!outcome || !recipe?.stages?.length) return recipe;
