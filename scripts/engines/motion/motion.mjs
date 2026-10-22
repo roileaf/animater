@@ -457,19 +457,19 @@ export class TokenMotionPlayer {
   }
   // Fast outbound travel leaves a ghost where the token is drawn now (at most one a frame). Each
   // trailing track keeps its own gate, made on its first frame; drawn spot and rest are both in canvas px.
+  // Runs on the ticker: anything broken here only loses ghosts; the motion plays on.
   trail(token, run, time) {
-    const grid = this.grid(), drawn = { x: run.mesh.position.x, y: run.mesh.position.y }, rest = { x: run.original.x, y: run.original.y };
-    let dropFor = null;
-    for (const track of run.tracks) {
-      track.trails ??= trails(track.stage, grid);
-      if (!track.trails) continue;
-      track.gate ??= createTrailGate();
-      const dt = time - (track.trailAt ?? track.start);
-      track.trailAt = time;
-      if (track.gate.step(drawn, rest, dt, grid)) dropFor ??= track;
-    }
-    // A broken renderer only loses its ghosts; the motion plays on.
     try {
+      const grid = this.grid(), drawn = { x: run.mesh.position.x, y: run.mesh.position.y }, rest = { x: run.original.x, y: run.original.y };
+      let dropFor = null;
+      for (const track of run.tracks) {
+        track.trails ??= trails(track.stage, grid, track.direction);
+        if (!track.trails) continue;
+        track.gate ??= createTrailGate();
+        const dt = time - (track.trailAt ?? track.start);
+        track.trailAt = time;
+        if (track.gate.step(drawn, rest, dt, grid)) dropFor ??= track;
+      }
       if (dropFor) this.afterimages.drop(token, run.mesh, dropFor.stage.trailTint, time);
       this.afterimages.tick(token, time);
     } catch (error) { this.warnAfterimages(error); }

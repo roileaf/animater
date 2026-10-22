@@ -16,7 +16,7 @@ function fixture({ on = true } = {}) {
   let now = 0, id = 0;
   const callbacks = new Map(), made = [];
   const parent = layer();
-  const mesh = { texture: { id: 'art' }, position: point(250, 120), rotation: 0.3, scale: point(-1.2, 0.8), anchor: point(0.5, 0.6),
+  const mesh = { texture: { id: 'art', baseTexture: { destroyed: false } }, position: point(250, 120), rotation: 0.3, scale: point(-1.2, 0.8), anchor: point(0.5, 0.6),
     elevation: 5, sortLayer: 700, sort: 3, zIndex: 2, parent };
   const ghosts = createAfterimages({
     makeSprite: (texture) => { const s = sprite(texture); made.push(s); return s; },
@@ -70,12 +70,30 @@ test('ghosts fade over 350 ms on the clock they are given', () => {
 
 test('cap keeps 8', () => {
   const { ghosts, mesh, token, live, made } = fixture();
-  for (let i = 0; i < 10; i++) ghosts.drop(token, mesh, '#ffffff', i * 10);
+  for (let i = 0; i < 9; i++) ghosts.drop(token, mesh, '#ffffff', i * 10);
+  // The ninth pushes the oldest out: it fades from where it is to nothing over 80 ms.
+  const [oldest] = made;
+  assert.equal(live().length, 9);
+  ghosts.tick(token, 80);
+  assert.ok(Math.abs(oldest.alpha - 0.4) < 1e-9);
+  ghosts.tick(token, 120);
+  assert.ok(Math.abs(oldest.alpha - 0.2) < 1e-9);
+  assert.ok(made.slice(1).every((s) => s.alpha > 0.25));
+  ghosts.tick(token, 160);
   assert.equal(live().length, 8);
-  // Each oldest goes back to the pool and the next ghost reuses it: nine sprites ever made.
-  ghosts.drop(token, mesh, '#ffffff', 100);
+  assert.ok(!live().includes(oldest));
+  // Back in the pool: the next ghost reuses it.
+  ghosts.drop(token, mesh, '#ffffff', 160);
   assert.equal(made.length, 9);
-  assert.equal(live().length, 8);
+  assert.equal(live().length, 9);
+});
+
+test('a ghost whose art was destroyed leaves', () => {
+  const { ghosts, mesh, token, live } = fixture();
+  ghosts.drop(token, mesh, '#ffffff', 0);
+  mesh.texture.baseTexture.destroyed = true;
+  ghosts.tick(token, 10);
+  assert.equal(live().length, 0);
 });
 
 test('stop lets ghosts fade out', () => {

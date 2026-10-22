@@ -26,6 +26,15 @@ test("travel comes from the kind: offset, path end, dodge distance", () => {
   assert.equal(trails({ motion: "fade", afterimages: "always" }, G), false);
 });
 
+test("auto measures a rush's real travel toward its target when the direction is known", () => {
+  // 1.5 squares apart, one square of clearance and a 0.1 gap: it stops 0.4 squares out.
+  const near = { x: 1, y: 0, length: 150, clearance: 100 };
+  assert.equal(trails({ motion: "rush", distance: 8 }, G), true);
+  assert.equal(trails({ motion: "rush", distance: 8 }, G, near), false);
+  assert.equal(trails({ motion: "rush", distance: 8 }, G, { ...near, length: 400 }), true);
+  assert.equal(trails({ motion: "rush", distance: 8, afterimages: "always" }, G, near), true);
+});
+
 test("gate drops a ghost every 0.4 squares while fast and outbound", () => {
   const g = createTrailGate();
   const poses = Array.from({ length: 20 }, (_, i) => ({ x: (i + 1) * 10, y: 0 }));

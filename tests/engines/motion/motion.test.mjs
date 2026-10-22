@@ -372,6 +372,22 @@ test("a destroyed mesh ends the motion and its ghosts cleanly", async () => {
   assert.equal(log.drops.length, dropped);
 });
 
+test("a broken trail decision does not stop the motion", async () => {
+  const log = ghostLog();
+  const { token, player, advance } = fixture({ afterimages: log.renderer });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    // The trail decision throws on the ticker (the pose never reads this field).
+    const stage = { ...rush, get afterimages() { throw new Error("boom"); } };
+    const playing = player.play(token, stage, { x: 1, y: 0 }, "u");
+    playFrames(advance, 640);
+    await playing;
+  } finally { console.warn = warn; }
+  assert.equal(token.mesh.position.x, 100);
+  assert.equal(player.active.size, 0);
+});
+
 test("a broken afterimage renderer does not stop the motion", async () => {
   const log = ghostLog({ throws: true });
   const { token, player, advance } = fixture({ afterimages: log.renderer });

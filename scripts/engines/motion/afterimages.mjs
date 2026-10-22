@@ -5,8 +5,8 @@ import { pathEnd } from './keyframe-path.mjs';
 export const TRAILING = new Set(['rush', 'leap', 'roll', 'dodge', 'path']);
 const MIN_TRAVEL_SQ = 1;
 
-// Squares the stage covers from its resting spot.
-function travelSquares(stage, gridPx) {
+// Squares the stage covers from its resting spot; with the play's direction, a rush stops short of its target.
+function travelSquares(stage, gridPx, direction = {}) {
   if (stage.motion === 'path') {
     if (!Array.isArray(stage.keyframes) || !stage.keyframes.length) return 0;
     const end = pathEnd(stage.keyframes);
@@ -15,17 +15,17 @@ function travelSquares(stage, gridPx) {
   const offset = stage.motionOffset;
   const offsetLength = offset ? Math.hypot(offset.x, offset.y) : null;
   if (offsetLength !== null) return offsetLength;
-  return pathDistance(stage, {}, gridPx) / gridPx;
+  return pathDistance(stage, direction ?? {}, gridPx) / gridPx;
 }
 
 // Push/pull are held `rush` stages, so they trail like a rush. `afterimages` is auto | always | never.
-export function trails(stage, gridPx) {
+export function trails(stage, gridPx, direction) {
   if (stage?.kind && stage.kind !== 'motion') return false;
   if (!TRAILING.has(stage?.motion)) return false;
   const mode = stage.afterimages ?? 'auto';
   if (mode === 'never') return false;
   if (mode === 'always') return true;
-  return travelSquares(stage, gridPx) >= MIN_TRAVEL_SQ;
+  return travelSquares(stage, gridPx, direction) >= MIN_TRAVEL_SQ;
 }
 
 // Drops a ghost each `spacingSq` squares of outbound travel while moving faster than minSpeedSq squares per second.

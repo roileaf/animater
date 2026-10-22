@@ -4,6 +4,8 @@ import { nextFrame, cancelFrame } from './canvas-frame.mjs';
 
 // A motion with no tint of its own trails a soft cool white.
 const SOFT_WHITE = 0xdfe8ff;
+// A ghost pushed over the cap fades from where it is to nothing over this long.
+const EVICT_MS = 80;
 const tintNumber = (tint) => (typeof tint === 'string' && /^#?[0-9a-f]{6}$/i.test(tint) ? parseInt(tint.replace('#', ''), 16) : SOFT_WHITE);
 
 // Foundry's primary group sorts by elevation, sortLayer, sort, then zIndex: one zIndex under the token.
@@ -33,7 +35,8 @@ export function createAfterimages({ makeSprite, place, enabled, max = 8, now = (
     const list = ghosts.get(token);
     if (!list) return;
     const kept = list.filter((ghost) => {
-      const alpha = ghost.sprite.destroyed ? 0 : ghostAlpha(clockMs - ghost.born);
+      const sprite = ghost.sprite, gone = sprite.destroyed || !sprite.texture?.baseTexture || sprite.texture.baseTexture.destroyed;
+      const alpha = gone ? 0 : ghost.evicted ? ghost.evicted.from * Math.min(1, 1 - (clockMs - ghost.evicted.at) / EVICT_MS) : ghostAlpha(clockMs - ghost.born);
       if (alpha > 0) { ghost.sprite.alpha = alpha; return true; }
       recycle(ghost.sprite);
       return false;
@@ -67,8 +70,9 @@ export function createAfterimages({ makeSprite, place, enabled, max = 8, now = (
       const list = ghosts.get(token) ?? [];
       list.push({ sprite, born: clockMs });
       ghosts.set(token, list);
-      // Over the cap the oldest goes at once.
-      while (list.length > max) recycle(list.shift().sprite);
+      // Over the cap the oldest fades out early (it no longer counts toward the cap).
+      const counted = list.filter((ghost) => !ghost.evicted);
+      for (const ghost of counted.slice(0, Math.max(0, counted.length - max))) ghost.evicted = { at: clockMs, from: ghost.sprite.alpha };
     },
     tick,
     fadeOut(token) {
