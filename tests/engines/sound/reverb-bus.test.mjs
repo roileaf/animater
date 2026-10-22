@@ -93,16 +93,64 @@ test('buses wait for the context', async () => {
   assert.ok(buses.send(a, 'room', 0.2));
 });
 
-test('a failed load tries again later', async () => {
+test('a failed load warns once and tries again after a pause', async () => {
   const ctx = fakeContext();
-  let loads = 0;
-  const buses = createReverbBuses({ loadImpulse: async () => { if (++loads === 1) throw new Error('no file'); return impulse(); }, contextOf: () => ctx });
+  let loads = 0, t = 0;
+  const warnings = [];
+  const buses = createReverbBuses({ loadImpulse: async () => { if (++loads <= 2) throw new Error('no file'); return impulse(); }, contextOf: () => ctx, now: () => t, warn: (...a) => warnings.push(a) });
   buses.ready();
   await settle();
   assert.equal(buses.ready(), false);
   await settle();
-  assert.equal(buses.ready(), true);
+  assert.equal(loads, 1);
+  t = 29000;
+  assert.equal(buses.send(ctx, 'room', 0.2), null);
+  await settle();
+  assert.equal(loads, 1);
+  t = 30000;
+  buses.ready();
+  await settle();
   assert.equal(loads, 2);
+  assert.equal(warnings.length, 1);
+  t = 60000;
+  buses.ready();
+  await settle();
+  assert.equal(loads, 3);
+  assert.equal(buses.ready(), true);
+});
+
+test('send never throws: a failed build plays dry and is not retried', async () => {
+  const ctx = fakeContext();
+  let builds = 0;
+  ctx.createConvolver = () => { builds++; throw new Error('no convolver'); };
+  const warnings = [];
+  const buses = createReverbBuses({ loadImpulse: async () => impulse(), contextOf: () => ctx, warn: (...a) => warnings.push(a) });
+  buses.ready();
+  await settle();
+  assert.equal(buses.send(ctx, 'room', 0.2), null);
+  assert.equal(buses.send(ctx, 'hall', 0.3), null);
+  assert.equal(builds, 1);
+  assert.equal(warnings.length, 1);
+  // A context that throws on anything still gets null.
+  const broken = { get sampleRate() { throw new Error('closed'); } };
+  assert.equal(buses.send(broken, 'room', 0.2), null);
+});
+
+test('each context gets the impulse at its own sample rate', async () => {
+  const a = fakeContext({ sampleRate: 1000 }), b = fakeContext({ sampleRate: 2000 });
+  const { buses } = await readyBuses(a);
+  buses.send(a, 'room', 0.2); buses.send(b, 'room', 0.2);
+  const roomOf = (ctx) => convolvers(ctx).find((c) => c.buffer.length === Math.round(0.8 * ctx.sampleRate));
+  assert.equal(roomOf(a).buffer.sampleRate, 1000);
+  assert.equal(roomOf(b).buffer.sampleRate, 2000);
+  assert.equal(roomOf(b).buffer.getChannelData(0)[0], 1);
+});
+
+test('no send for a silent or missing level', async () => {
+  const ctx = fakeContext();
+  const { buses } = await readyBuses(ctx);
+  for (const level of [0, -0.2, NaN, undefined, null, 'loud']) assert.equal(buses.send(ctx, 'room', level), null);
+  assert.ok(buses.send(ctx, 'room', 0.01));
 });
 
 test('hall has a lowpass, small does not', async () => {
