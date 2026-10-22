@@ -70,6 +70,20 @@ test('heavy work at a 60 fps target is tight', () => {
   assert.equal(state.stats.droppedBudget, 1);
 });
 
+test('tight() tells other features this client is over budget', () => {
+  const heavy = makeHost();
+  heavy.host.onCanvasReady(0);
+  assert.equal(heavy.host.tight(), false, 'nothing measured yet');
+  runDisplay(heavy.host, { hz: 60, work: 15 });
+  assert.equal(heavy.host.tight(), true);
+  heavy.state.enabled = false;
+  assert.equal(heavy.host.tight(), false, 'never while adaptive playback is off');
+  const light = makeHost();
+  light.host.onCanvasReady(0);
+  runDisplay(light.host, { hz: 60, work: 5 });
+  assert.equal(light.host.tight(), false);
+});
+
 test('frames are not sampled while hidden, warming up or switched off', () => {
   const hiddenHost = createAdaptiveHost({
     state: freshState(), quality: () => 'full', catalog: () => [], weaponRecipes: () => [],

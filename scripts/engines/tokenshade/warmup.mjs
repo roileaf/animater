@@ -8,6 +8,7 @@
 // compiling up front would freeze the canvas just the same.
 import { shaderSource, fieldSource } from './filter-factory.mjs';
 import { SPECS } from './filters/index.mjs';
+import { sceneWarpProgram } from './filters/scene-warp.mjs';
 
 const COMPLETION_STATUS = 0x91b1; // COMPLETION_STATUS_KHR
 // Looks the catalogs reach for first (damage accents, hit reactions), then everything else.
@@ -27,15 +28,15 @@ export function tokenshadePrograms(PIXI, types = Object.keys(SPECS)) {
   return out;
 }
 
-// Warms every program PIXI has not built yet. Resolves with how many were warmed; `stop()`
-// on the returned promise ends it early. A build that still takes long means the cache is
+// Warms every program PIXI has not built yet (`sceneWarp`: map distortion's scene filter too,
+// first). Resolves with how many were warmed; `stop()` on the returned promise ends it early. A build that still takes long means the cache is
 // not helping on this machine, so warming stops rather than freezing the canvas itself.
-export function warmShaders(PIXI, renderer, { types, parallel = 3, tick = 40, slowBuild = 120, now = () => performance.now() } = {}) {
+export function warmShaders(PIXI, renderer, { types, sceneWarp = false, parallel = 3, tick = 40, slowBuild = 120, now = () => performance.now() } = {}) {
   const gl = renderer?.gl, uid = renderer?.CONTEXT_UID;
   let stopped = false;
   const done = new Promise(resolve => {
     if (!gl?.getExtension?.('KHR_parallel_shader_compile') || gl.isContextLost?.()) return resolve(0);
-    const queue = tokenshadePrograms(PIXI, types).filter(p => !p.glPrograms[uid]);
+    const queue = [...(sceneWarp ? [sceneWarpProgram(PIXI)] : []), ...tokenshadePrograms(PIXI, types)].filter(p => !p.glPrograms[uid]);
     const active = [];
     let warmed = 0;
     const start = program => {

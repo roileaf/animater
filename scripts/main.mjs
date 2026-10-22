@@ -23,6 +23,8 @@ import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
+import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
+import { sceneWarpFilter } from "./engines/tokenshade/filters/scene-warp.mjs";
 import { createSummonsLights } from "./integrations/summons-walls.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { markTiming } from "./engines/marks/ground-marks.mjs";
@@ -148,6 +150,36 @@ const lightHost = createLightHost({
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
 });
+// Map distortion on this client (engines/distortion/distortion-host.mjs): one screen filter on the primary group,
+// after Foundry's own, only while something distorts. Full quality only, unless this client turned it off.
+const distortsHere = () => {
+  let local = true;
+  try { local = game.settings.get(ID, "mapDistortionLocal"); } catch { /* not registered yet */ }
+  return canDistort(localQuality(), local);
+};
+const distortionHost = createDistortionHost({
+  makeFilter: () => {
+    const renderer = canvas.app.renderer, gl = renderer.gl, filter = sceneWarpFilter(globalThis.PIXI);
+    // Built now (warm-up has usually done it): a shader this GPU cannot compile turns distortion off instead.
+    const built = filter.program.glPrograms[renderer.CONTEXT_UID] ?? renderer.shader.generateProgram(filter);
+    if (!gl.getProgramParameter(built.program, gl.LINK_STATUS)) {
+      filter.destroy();
+      throw new Error("the scene filter's shader did not compile");
+    }
+    return filter;
+  },
+  attach: (filter) => attachFilter(canvas.primary, filter, canvas.app.renderer.screen),
+  detach: (filter) => detachFilter(canvas?.primary, filter),
+  allowed: distortsHere,
+  tight: () => adaptiveHost.tight(),
+  sceneId: () => canvas?.scene?.id,
+  // The stage maps world to screen pixels (no rotation); the view is the screen's world rectangle.
+  view: () => {
+    const wt = canvas.stage.worldTransform, screen = canvas.app.renderer.screen;
+    return { x: -wt.tx / wt.a, y: -wt.ty / wt.d, w: screen.width / wt.a, h: screen.height / wt.d, zoom: Math.hypot(wt.a, wt.b) || 1, worldToScreen: wt };
+  },
+  now: () => performance.now(),
+});
 // PF2e Summons Assistant's glowing walls and summons (integrations/summons-walls.mjs): lit on every client
 // from their own effect or token data, on the same light host. Only its creatures' tokens qualify.
 const finitePoint = (p) => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x, y: p.y } : null);
@@ -227,10 +259,12 @@ const markLayer = createMarkLayer({
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
   lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect); markLayer.onEffect(effect);
-  summonsLights.onEffect(effect);
+  summonsLights.onEffect(effect); distortionHost.onEffect(effect);
 });
-Hooks.on("endedSequencerEffect", (effect) => { lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); });
-Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); });
+Hooks.on("endedSequencerEffect", (effect) => {
+  lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); distortionHost.onEnded(effect);
+});
+Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); });
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
 // every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
@@ -243,6 +277,7 @@ Hooks.on("canvasReady", () => {
     ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2);
     ticker.add(() => { try { summonsLights.tick(); } catch { /* never stop the canvas */ } lightHost.tick(); }, undefined, P.NORMAL);
     ticker.add(() => markLayer.tick(), undefined, P.NORMAL);
+    ticker.add(() => distortionHost.tick(), undefined, P.NORMAL);
     ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
   }
 });
@@ -1481,6 +1516,18 @@ Hooks.once("init", () => {
     // Off: the ghosts already drawn go at once.
     onChange: (on) => { if (on === false) motions?.afterimages?.clear(); },
   });
+  game.settings.register(ID, "mapDistortion", {
+    name: "Map distortion",
+    hint: "Big blasts ripple across the map, lasting fire shimmers with heat and teleports warp the air. Drawn only on screens at Full animation quality.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "mapDistortionLocal", {
+    name: "Map distortion on my screen",
+    hint: "Turn off to never bend the map on this screen (for example if it is uncomfortable to watch).",
+    scope: "client", config: true, type: Boolean, default: true,
+    // Off: whatever is bending stops at once.
+    onChange: (on) => { if (on === false) distortionHost.clear(); },
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1689,12 +1736,13 @@ Hooks.once("ready", () => {
   setInterval(pruneFx,30000).unref?.();
   pruneFx();
   // Compile Tokenshade's shaders in the background once the scene has settled, so the
-  // first token look of the session does not freeze the canvas while it compiles.
+  // first token look of the session does not freeze the canvas while it compiles (and
+  // map distortion's scene filter, on a client that draws it).
   let warming=null;
   const warmTokenFx=()=>void setTimeout(()=>{
     const renderer=canvas?.ready?canvas.app?.renderer:null;
     if(warming||!renderer||!globalThis.PIXI?.Program||!allowsTokenFx(localQuality()))return;
-    warming=warmShaders(globalThis.PIXI,renderer).catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{warming=null;});
+    warming=warmShaders(globalThis.PIXI,renderer,{sceneWarp:distortsHere()}).catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{warming=null;});
   },3000).unref?.();
   Hooks.on('canvasReady',warmTokenFx);
   if(canvas?.ready)warmTokenFx();

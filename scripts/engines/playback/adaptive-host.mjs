@@ -128,6 +128,10 @@ export function createAdaptiveHost({
     onTurn(combat) {
       try { defer(() => prepareTurn(combat)); } catch { /* advisory */ }
     },
+    // Whether this client's frames are over budget lately (never while adaptive playback is off).
+    tight() {
+      try { return Boolean(state.enabled) && monitor.isTight(view().targetMs); } catch { return false; }
+    },
     adaptive() {
       return { stagger: on('stagger'), staggered: (n) => { state.stats.staggered += n; } };
     },

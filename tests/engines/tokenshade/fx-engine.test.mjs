@@ -156,6 +156,11 @@ test('shader warm-up compiles every Tokenshade pass in the background, the way P
   assert.equal(links.length,8,'linked twice each, as PIXI does');
   assert.ok(bound.every(([i,name])=>i===0&&name==='aVertexPosition'));
   assert.equal(await warmShaders(P,{...renderer,gl:{...gl,getExtension:()=>null}}),0,'nothing without background compiling');
+  // A client that can distort the map also warms the scene filter, ahead of the token looks.
+  const {sceneWarpProgram}=await import('../../../scripts/engines/tokenshade/filters/scene-warp.mjs');
+  built.length=0;
+  assert.equal(await warmShaders(P,renderer,{tick:0,types:['bevel'],sceneWarp:true}),1);
+  assert.deepEqual(built,[sceneWarpProgram(P)],'bevel was built above; the scene filter now');
 });
 test('the engine knows which tokens a look moves (a transform), not those it only colours',()=>{
   const engine=new TokenFxEngine({PIXI,ticker:()=>({add(){},remove(){}}),now:()=>0,world:()=>0});
