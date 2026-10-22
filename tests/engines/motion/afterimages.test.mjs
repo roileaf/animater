@@ -51,3 +51,18 @@ test("ghost alpha and streak layout", () => {
   assert.equal(ghostAlpha(400), 0);
   assert.deepEqual(streakLayout({ x: 0, y: 0 }, { x: 400, y: 0 }).map((p) => [p.x, p.delayMs]), [[0, 0], [100, 37.5], [200, 75], [300, 112.5], [400, 150]]);
 });
+
+test("minimum speed is in squares per second", () => {
+  const at = (pxPerStep) => Array.from({ length: 40 }, (_, i) => ({ x: (i + 1) * pxPerStep, y: 0 }));
+  assert.equal(run(createTrailGate(), at(4.8)), 0); // 3 squares/s
+  assert.ok(run(createTrailGate(), at(9.6)) > 0); // 6 squares/s
+});
+
+test("remainder carries so fast motion keeps a 0.4 square pitch", () => {
+  const poses = Array.from({ length: 10 }, (_, i) => ({ x: (i + 1) * 15, y: 0 })); // 1.5 squares total
+  assert.equal(run(createTrailGate(), poses), 3);
+});
+
+test("a zero motionOffset is zero travel", () => {
+  assert.equal(trails({ motion: "rush", distance: 8, motionOffset: { x: 0, y: 0 } }, G), false);
+});

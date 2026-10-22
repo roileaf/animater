@@ -1,6 +1,6 @@
 // Afterimage trails: pure decisions about when a fast, ground-covering motion drops ghosts.
-import { pathDistance } from "./motion-path.mjs";
-import { pathEnd } from "./keyframe-path.mjs";
+import { pathDistance } from './motion-path.mjs';
+import { pathEnd } from './keyframe-path.mjs';
 
 export const TRAILING = new Set(['rush', 'leap', 'roll', 'dodge', 'path']);
 const MIN_TRAVEL_SQ = 1;
@@ -13,8 +13,8 @@ function travelSquares(stage, gridPx) {
     return Math.hypot(end.x, end.y);
   }
   const offset = stage.motionOffset;
-  const offsetLength = offset ? Math.hypot(offset.x, offset.y) : 0;
-  if (offsetLength) return offsetLength;
+  const offsetLength = offset ? Math.hypot(offset.x, offset.y) : null;
+  if (offsetLength !== null) return offsetLength;
   return pathDistance(stage, {}, gridPx) / gridPx;
 }
 
@@ -28,7 +28,7 @@ export function trails(stage, gridPx) {
   return travelSquares(stage, gridPx) >= MIN_TRAVEL_SQ;
 }
 
-// Drops a ghost each `spacingSq` squares of outbound travel while moving faster than sqrt(minSpeedSq) squares/s.
+// Drops a ghost each `spacingSq` squares of outbound travel while moving faster than minSpeedSq squares per second.
 export function createTrailGate({ spacingSq = 0.4, minSpeedSq = 4 } = {}) {
   let last = null, carried = 0;
   return {
@@ -39,10 +39,10 @@ export function createTrailGate({ spacingSq = 0.4, minSpeedSq = 4 } = {}) {
       const moved = Math.hypot(pose.x - from.x, pose.y - from.y) / gridPx;
       const speed = moved / (dtMs / 1000);
       const outbound = Math.hypot(pose.x - rest.x, pose.y - rest.y) > Math.hypot(from.x - rest.x, from.y - rest.y);
-      if (!outbound || speed * speed < minSpeedSq) return false;
+      if (!outbound || speed < minSpeedSq) return false;
       carried += moved;
       if (carried < spacingSq - 1e-9) return false;
-      carried = 0;
+      carried -= spacingSq;
       return true;
     },
   };
