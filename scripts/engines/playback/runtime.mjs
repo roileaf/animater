@@ -24,7 +24,7 @@ import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { planLights, lightColor } from '../lighting/effect-lights.mjs';
 import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
-import { planDistortions } from '../distortion/scene-distortion.mjs';
+import { isCritical, planDistortions } from '../distortion/scene-distortion.mjs';
 import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A token's middle, in scene pixels.
@@ -639,8 +639,8 @@ export class AnimaterRuntime {
           follows,
           // A placed area has no damage roll to name its element: the item's own damage does.
           element: context.element ?? recipe.chosenElement ?? this.host.itemElement?.(context.item, context) ?? undefined,
-          // A critical hit with a heavy weapon ripples too.
-          heavyItem: context.item ? this.host.heavyItem?.(context.item) === true : false,
+          // A critical hit with a heavy weapon ripples too (only a critical play asks).
+          heavyItem: context.item && isCritical(context) ? this.host.heavyItem?.(context.item) === true : false,
         });
       }
       // Afterimage trails (world setting; on while the host has none).

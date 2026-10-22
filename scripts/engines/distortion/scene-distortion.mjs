@@ -31,7 +31,7 @@ const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 
 // A play counts as critical on an attack or check roll, never on damage or a save.
-function isCritical(context) {
+export function isCritical(context) {
   if (!['attack', 'check'].includes(context?.type)) return false;
   if (context.outcome === 'criticalSuccess') return true;
   const outcomes = context.targetOutcomes;

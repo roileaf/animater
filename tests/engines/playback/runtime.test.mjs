@@ -1710,7 +1710,7 @@ test("a critical hit with a heavy weapon is tagged with a shock", async () => {
     const seen = [];
     runtime.host.heavyItem = (item) => { seen.push(item); return heavy; };
     await runtime.play(recipe, { ...context, outcome });
-    if (heavy) assert.deepEqual(seen, [context.item]);
+    assert.deepEqual(seen, outcome === "criticalSuccess" ? [context.item] : [], "only a critical play asks");
     return (await warpsOf(calls)).map(([, t]) => t.kind);
   };
   assert.deepEqual(await kindsOf(true), ["shock"]);
