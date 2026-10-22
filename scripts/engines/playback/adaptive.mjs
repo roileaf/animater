@@ -42,8 +42,11 @@ export function effectScreenSize(data, { gridSize, zoom, tokenSize } = {}) {
   }
   if (data.size) {
     const unit = data.size.gridUnits ? gridSize : 1;
-    const width = (Number(data.size.width) || 0) * unit * (scale.x ?? 1);
-    const height = (Number(data.size.height) || 0) * unit * (scale.y ?? 1);
+    const rawWidth = Number(data.size.width);
+    const rawHeight = Number(data.size.height);
+    if (!Number.isFinite(rawWidth) && !Number.isFinite(rawHeight)) return null;
+    const width = (Number.isFinite(rawWidth) ? rawWidth : 0) * unit * (scale.x ?? 1);
+    const height = (Number.isFinite(rawHeight) ? rawHeight : 0) * unit * (scale.y ?? 1);
     return Math.max(width, height) * zoom;
   }
   return null;
@@ -53,7 +56,9 @@ export function effectScreenSize(data, { gridSize, zoom, tokenSize } = {}) {
 export function adaptEffect(data, { tight, zoom, gridSize, tokenSize, decisions, lod = true, budget = true }) {
   if (data.moduleName !== 'animater' || data.animaterTier === undefined || data.animaterLasting) return 'keep';
   const tier = data.animaterTier;
-  const session = decisions.decide(data.name, () => ({ tight, small: {} }));
+  // Unnamed effects get a throwaway session so they never share one verdict.
+  const fresh = () => ({ tight, small: {} });
+  const session = data.name ? decisions.decide(data.name, fresh) : fresh();
   if (session.small[tier] === undefined) {
     const px = effectScreenSize(data, { gridSize, zoom, tokenSize });
     session.small[tier] = px !== null && px < SMALL_PX;

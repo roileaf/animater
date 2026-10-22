@@ -82,3 +82,16 @@ test('session decisions are bounded', () => {
   d.decide('a', () => (recomputed = true, {}));
   assert.equal(recomputed, true);
 });
+
+test('unnamed effects do not share a decision', () => {
+  const decisions = createSessionDecisions();
+  const opts = { tight: false, zoom: 1, gridSize: 100, decisions };
+  const tiny = { moduleName: 'animater', animaterTier: 2, size: { width: 0.2, height: 0.2, gridUnits: true } };
+  const big = { moduleName: 'animater', animaterTier: 2, size: { width: 3, height: 3, gridUnits: true } };
+  assert.equal(adaptEffect(tiny, opts), 'drop');
+  assert.equal(adaptEffect(big, opts), 'keep');
+});
+
+test('effectScreenSize is null for a size without dimensions', () => {
+  assert.equal(effectScreenSize({ size: {} }, { gridSize: 100, zoom: 1 }), null);
+});
