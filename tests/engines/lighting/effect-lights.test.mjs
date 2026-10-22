@@ -182,3 +182,40 @@ test('steady envelope never strobes', () => {
   assert.ok(falling);
   assert.equal(Math.max(...Array.from({ length: 201 }, (_, i) => envelope(tag, i * 5, { steady: true }))), 1);
 });
+
+test('a flight and its impact are separate lights: a glow on the projectile, a flash on the impact', () => {
+  const bolt = st('bolt', 'projectile', 'jb2a.fire_bolt.orange', { at: { x: sq(8), y: 0 }, r: sq(1), duration: 800, contact: 500 });
+  const boom = st('boom', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: sq(8), y: 0 }, r: sq(2), delay: 500 });
+  const lights = planLights([bolt, boom], opts({ bolt: 0, boom: 0 }));
+  assert.equal(lights.size, 2);
+  assert.equal(lights.get(bolt).shape, 'glow');
+  assert.equal(lights.get(boom).shape, 'flash');
+  // A flight that is not tier 0 gets no glow, and does not take the impact's place.
+  const noGlow = planLights([bolt, boom], opts({ bolt: 1, boom: 0 }));
+  assert.deepEqual([...noGlow.keys()].map(s => s.stageId), ['boom']);
+});
+
+test('flight glows and spot lights are capped separately', () => {
+  const bolts = [0, 1, 2, 3].map(i => st('b' + i, 'projectile', 'jb2a.fire_bolt.orange', { at: { x: sq(5 * i), y: 0 }, delay: 50 * i }));
+  const hits = [0, 1, 2, 3].map(i => st('h' + i, 'impact', 'jb2a.fireball.explosion.orange', { at: { x: sq(5 * i), y: 0 }, delay: 500 + 50 * i }));
+  const tiers = Object.fromEntries([...bolts, ...hits].map(s => [s.stageId, 0]));
+  const lights = planLights([...bolts, ...hits], opts(tiers));
+  assert.deepEqual([...lights.keys()].map(s => s.stageId).sort(), ['b0', 'b1', 'b2', 'h0', 'h1', 'h2']);
+});
+
+test('a glow ends when the flight lands, then fades out', () => {
+  const bolt = st('bolt', 'projectile', 'jb2a.fire_bolt.orange', { at: { x: sq(8), y: 0 }, duration: 800, contact: 500 });
+  const tag = planLights([bolt], opts({ bolt: 0 })).get(bolt);
+  assert.equal(tag.arriveMs, 500);
+  assert.equal(tag.lengthMs, 500);
+  assert.equal(envelope(tag, 400), 1);
+  assert.equal(envelope(tag, 650), 0.5);
+  assert.equal(envelope(tag, 800), 0);
+  const slow = st('slow', 'travel', 'jb2a.fire_bolt.orange', { at: { x: sq(8), y: 0 }, duration: 1000 });
+  assert.equal(planLights([slow], opts({ slow: 0 })).get(slow).lengthMs, 550);
+});
+
+test('a stage missing from the tiers map is not tier 0 and cannot anchor', () => {
+  const impact = st('impact', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
+  assert.equal(planLights([impact], opts({})).size, 0);
+});
