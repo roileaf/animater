@@ -1505,66 +1505,35 @@ test("setting off keeps today's flights", async () => {
   assert.ok(filesOf(calls).includes("jb2a.impact.001.orange"));
   assert.ok(!filesOf(calls).includes(WALL_IMPACT));
   assert.ok(!plan.some((s) => s.flightTo));
-  // Arcs off: every flight flies straight.
-  const flat = await playWall(recipe, context, { setup: (f) => { f.host.arcingThrows = () => false; } });
-  assert.equal(flat.plan.find((s) => s.stageId === "fly").flightArc.kind, "none");
 });
 // Each Sequencer effect's own calls (the fixture shares one effect proxy).
 const effectsOf = (calls) => calls.reduce((all, c) => (c[0] === "effect" ? all.push([]) : all.at(-1)?.push(c), all), []);
-test("a lobbed throw lifts screen-up in its turned frame and casts a tier 2 shadow", async () => {
+test("a thrown bomb flies its plain clip: no arc, no shadow", async () => {
   const BOMB = "jb2a.throwable.throw.bomb.01.black";
   const { recipe, context } = boltAttack();
   const lob = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, assets: [BOMB] } : s)) });
-  // Thrown straight down the screen, 600 px: a 1.5-square apex, landing at 55% of 1000 ms.
   const below = { ...context, targets: [{ id: "t1", center: { x: 0, y: 600 }, w: 100, h: 100 }] };
   const { calls, plan } = await playWall(lob, below, { collides: () => null, setup: (f) => f.runtime.catalog.push({ key: BOMB }) });
-  const effects = effectsOf(calls);
-  const fly = effects.find((e) => e.some((c) => c[0] === "file" && c[1] === BOMB));
-  // The stretched clip is turned a quarter, so screen-up is its -x; it only thickens.
-  assert.deepEqual(fly.filter((c) => c[0] === "animateProperty").map((c) => [c[1], c[2], c[3].from, c[3].to, c[3].delay, c[3].ease, c[3].absolute]), [
-    ["spriteContainer", "position.x", 0, -1.5, 0, "easeOutQuad", true],
-    ["spriteContainer", "position.x", -1.5, 0, 275, "easeInQuad", true],
-    ["spriteContainer", "scale.y", 1, 1.35, 0, "easeOutQuad", true],
-    ["spriteContainer", "scale.y", 1.35, 1, 275, "easeInQuad", true],
-  ]);
-  const shadow = effects.find((e) => e.some((c) => c[0] === "shape"));
-  assert.deepEqual(shadow.find((c) => c[0] === "shape").slice(1), ["ellipse", { type: "ellipse", width: 0.25, height: 0.15, gridUnits: true, fillColor: "#000000", fillAlpha: 1, alpha: 0.35 }]);
-  // The shape carries the shadow's alpha; the effect's opacity stays 1.
-  assert.equal(shadow.find((c) => c[0] === "opacity")[1], 1);
-  assert.ok(shadow.some((c) => c[0] === "belowTokens"));
-  assert.deepEqual(shadow.find((c) => c[0] === "moveTowards")[1], { x: 0, y: 600 });
-  assert.equal(shadow.find((c) => c[0] === "duration")[1], 550);
-  assert.ok(!shadow.some((c) => c[0] === "file"));
-  const data = await shadow.find((c) => c[0] === "addOverride")[1](null, {});
-  assert.deepEqual([data.animaterTier, data.animaterShadow], [2, true]);
-  // The shadow is drawn, not planned.
-  assert.ok(!plan.some((s) => s.animaterShadow));
-  // A straight bolt neither arcs nor casts a shadow.
-  const straight = await playWall(recipe, context, { collides: () => null });
-  assert.ok(!straight.calls.some((c) => c[0] === "shape" || c[0] === "animateProperty"));
+  const fly = effectsOf(calls).find((e) => e.some((c) => c[0] === "file" && c[1] === BOMB));
+  assert.equal(fly.find((c) => c[0] === "duration")[1], 1000);
+  assert.ok(!calls.some((c) => c[0] === "shape" || c[0] === "animateProperty"));
+  assert.ok(!plan.some((s) => s.flightArc));
 });
-test("an arcing projectile touches down as its impact lands, sooner at a wall", async () => {
+test("a thrown projectile keeps its whole clip; at a wall its impact comes sooner", async () => {
   const FLASK = "jb2a.throwable.throw.flask.01.orange";
   const { recipe, context } = boltAttack();
-  const thrown = (kind, assets) => validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, kind, assets, contact: 600 } : s)) });
-  const durationOf = (calls, file) => effectsOf(calls).find((e) => e.some((c) => c[0] === "file" && c[1] === file)).find((c) => c[0] === "duration")[1];
-  const shadowOf = (calls) => effectsOf(calls).find((e) => e.some((c) => c[0] === "shape"));
+  const thrown = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, kind: "projectile", assets: [FLASK], contact: 600 } : s)) });
+  const durationOf = (calls) => effectsOf(calls).find((e) => e.some((c) => c[0] === "file" && c[1] === FLASK)).find((c) => c[0] === "duration")[1];
   const add = (f) => f.runtime.catalog.push({ key: FLASK });
-  // Clear: the flask's move ends at its arrival (contact 600), when the hit plays.
-  const clear = await playWall(thrown("projectile", [FLASK]), context, { collides: () => null, setup: add });
+  const clear = await playWall(thrown, context, { collides: () => null, setup: add });
   assert.equal(clear.plan.find((s) => s.stageId === "hit").delay, 600);
-  assert.equal(durationOf(clear.calls, FLASK), 600);
-  assert.equal(shadowOf(clear.calls).find((c) => c[0] === "duration")[1], 600);
-  // A wall halfway: the contact shortens to 300 ms, and the flask lands there with the wall strike.
-  const walled = await playWall(thrown("projectile", [FLASK]), context, { setup: add });
+  assert.equal(durationOf(clear.calls), 1000);
+  // A wall halfway: the contact shortens to 300 ms, with the wall strike.
+  const walled = await playWall(thrown, context, { setup: add });
   assert.equal(walled.plan.find((s) => s.kind === "impact").delay, 300);
   // What followed the hit moves up with it (a projectile's shorter flight; a travel clip keeps its arrival).
   assert.equal(walled.plan.find((s) => s.stageId === "recoil").delay, 300);
-  assert.equal(durationOf(walled.calls, FLASK), 300);
-  assert.equal(shadowOf(walled.calls).find((c) => c[0] === "duration")[1], 300);
-  // A straight projectile keeps its whole duration.
-  const bolt = await playWall(thrown("projectile", ["jb2a.fire_bolt.orange"]), context, { collides: () => null });
-  assert.equal(durationOf(bolt.calls, "jb2a.fire_bolt.orange"), 1000);
+  assert.equal(durationOf(walled.calls), 1000);
 });
 test("preview never drops on-target stages", async () => {
   const { recipe, context } = boltAttack();
@@ -1623,20 +1592,6 @@ test("a missed target keeps its dodge as the shot passes it", async () => {
   const dodging = validateRecipe({ ...recipe, stages: [...recipe.stages, { stageId: "duck", kind: "motion", motion: "dodge", subject: "targets", assets: [], delay: 400, duration: 500 }] });
   const { plan } = await playWall(dodging, { ...context, outcome: undefined, targetOutcomes: { t1: "failure" } }, { collides: () => null });
   assert.deepEqual(plan.filter((s) => s.destination?.id === "t1" && s.subject === "targets").map((s) => s.stageId), ["duck"]);
-});
-test("slowed, an arcing projectile lands with its slowed impact", async () => {
-  const FLASK = "jb2a.throwable.throw.flask.01.orange";
-  const { recipe, context } = boltAttack();
-  const thrown = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, kind: "projectile", assets: [FLASK], contact: 600 } : s)) });
-  const { calls, plan } = await playWall(thrown, { ...context, tempo: 0.5 }, { collides: () => null, setup: (f) => f.runtime.catalog.push({ key: FLASK }) });
-  const effects = effectsOf(calls);
-  // The hit lands at 1200 ms; the flask's effect ends then (600 ms of clip at half speed).
-  assert.equal(plan.find((s) => s.stageId === "hit").delay, 1200);
-  const flask = effects.find((e) => e.some((c) => c[0] === "file" && c[1] === FLASK));
-  assert.equal(flask.find((c) => c[0] === "duration")[1], 600);
-  // Its arc falls back over the second half of those 1200 ms, and its shadow lands with it.
-  assert.ok(flask.some((c) => c[0] === "animateProperty" && c[3].delay === 600 && c[3].duration === 600));
-  assert.equal(effects.find((e) => e.some((c) => c[0] === "shape")).find((c) => c[0] === "duration")[1], 1200);
 });
 test("the wall test is told who shoots (for the shooter's level)", async () => {
   const { recipe, context } = boltAttack();
@@ -1727,11 +1682,9 @@ test("a weapon's mark comes only from its recipe, never from rune damage", async
 
 // Sequencer's moveTowards merges its defaults with our options, so an explicit undefined
 // (no moveEase / moveDelay) overrides a default and fails its type checks. Mirror those checks.
-test("a thrown flask's shadow and projectile moveTowards get a string ease and numeric delay", async () => {
-  // A lobbed travel flight has no moveEase of its own, so its shadow (added after composition) has none either.
+test("a projectile's moveTowards gets a string ease and numeric delay", async () => {
   const stages = [
-    { stageId: "flask", kind: "travel", assets: ["jb2a.arrow.physical.white"], flight: "lob", delay: 0, duration: 800 },
-    { stageId: "dart", kind: "projectile", assets: ["jb2a.arrow.physical.white"], flight: "lob", delay: 0, duration: 800 },
+    { stageId: "dart", kind: "projectile", assets: ["jb2a.arrow.physical.white"], delay: 0, duration: 800 },
   ];
   const recipe = validateRecipe({ ...starterRecipes()[0], stages });
   const { runtime, calls } = fixture();
@@ -1743,7 +1696,7 @@ test("a thrown flask's shadow and projectile moveTowards get a string ease and n
     { preview: true },
   );
   const moves = calls.filter((c) => c[0] === "moveTowards");
-  assert.equal(moves.length, 3, "flask shadow, dart and dart shadow");
+  assert.equal(moves.length, 1);
   for (const [, , options] of moves) {
     assert.equal(typeof options.ease, "string");
     assert.ok(Number.isFinite(options.delay));

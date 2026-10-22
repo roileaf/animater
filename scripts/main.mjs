@@ -112,8 +112,6 @@ const clientId = uuid();
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
 // Ends an effect on this client only (it still plays for everyone else).
 const endLocally = (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false));
-// Projectile shadows on this client (setting projectileShadows; unregistered: on).
-const projectileShadows = () => { try { return game.settings.get(ID, "projectileShadows") !== false; } catch { return true; } };
 // Whether a used item deals damage (ground marks): a PF2e/SF2e spell with a damage (not only healing) formula, or
 // a weapon or consumable with damage; a D&D 5e activity with damage parts (a heal activity has none); a
 // Daggerheart action, or a weapon's attack, with hit-point damage (system.damage.main) that is not healing.
@@ -178,8 +176,6 @@ const lightHost = createLightHost({
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
-  // An arcing flight's shadow (engines/playback/flight-path.mjs) is dropped here when this client turned them off.
-  if (effect?.data?.animaterShadow && !projectileShadows()) return endLocally(effect);
   lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); lightHost.onEffect(effect);
 });
 Hooks.on("endedSequencerEffect", (effect) => lightHost.onEnded(effect));
@@ -1409,16 +1405,6 @@ Hooks.once("init", () => {
     hint: "Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "arcingThrows", {
-    name: "Arcing throws",
-    hint: "Bombs and flasks are lobbed high and thrown weapons fly a low arc, with a shadow on the ground beneath them.",
-    scope: "world", config: true, type: Boolean, default: true,
-  });
-  game.settings.register(ID, "projectileShadows", {
-    name: "Projectile shadows",
-    hint: "Show the ground shadow under thrown objects on this screen.",
-    scope: "client", config: true, type: Boolean, default: true,
-  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1636,9 +1622,8 @@ Hooks.once("ready", () => {
     // Effects light the scene (world setting); in daylight only when allowed.
     effectLights: () => game.settings.get(ID, "effectLighting") !== false
       && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
-    // Shots stop at walls and throws arc (world settings); on while a setting is not registered.
+    // Shots stop at walls (world setting); on while the setting is not registered.
     projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
-    arcingThrows: () => { try { return game.settings.get(ID, "arcingThrows") !== false; } catch { return true; } },
     // Harmful plays leave ground marks (world setting); on while the setting is not registered.
     groundMarks: () => { try { return game.settings.get(ID, "groundMarks") !== false; } catch { return true; } },
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).

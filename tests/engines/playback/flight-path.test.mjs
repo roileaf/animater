@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arcOf, arcShape, arcTracks, flightTiming, moveEnd, shadowStage, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
+import { footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 
 // A full-height wall at x (blocks every line that crosses it, of any type).
@@ -115,32 +115,12 @@ test('footprint points: centre, inset edge midpoints, then inset corners', () =>
   assert.equal(clearPoint(from, rect, wallAtX(200)), null);
 });
 
-test('arcs by asset and override', () => {
-  assert.equal(arcOf({ assets: ['jb2a.throwable.throw.bomb.01.red'] }).kind, 'lob');
-  assert.equal(arcOf({ assets: ['jb2a.throwable.launch.cannon_ball.01.black'] }).kind, 'lob');
-  for (const key of ['jb2a.throwable.throw.grenade.01.black', 'jb2a.throwable.throw.dynamite.01', 'jb2a.throwable.throw.stick_grenade.01', 'jb2a.throwable.launch.grenade.01.black'])
-    assert.equal(arcOf({ assets: [key] }).kind, 'lob', key);
-  assert.equal(arcOf({ assets: ['jb2a.javelin.01.throw'] }).kind, 'low');
-  assert.equal(arcOf({ assets: ['jb2a.dagger.throw.01.white'] }).kind, 'low');
-  assert.equal(arcOf({ asset: 'jb2a.chakram.01.throw.blue', assets: [] }).kind, 'low');
-  assert.equal(arcOf({ assets: ['jb2a.arrow.physical.white.01'] }).kind, 'none');
-  assert.equal(arcOf({ assets: ['jb2a.arrow.physical.white.01'], flight: 'lob' }).kind, 'lob');
-  assert.equal(arcOf({ assets: ['jb2a.javelin.01.throw'], flight: 'straight' }).kind, 'none');
-  assert.equal(arcOf({ assets: ['jb2a.javelin.01.throw'], flight: 'auto' }).kind, 'low');
-  assert.deepEqual(arcShape('lob', 1000, 100), { apexPx: 250, peakScale: 1.35 });
-  assert.equal(arcShape('lob', 100, 100).apexPx, 75);
-  assert.equal(arcShape('lob', 10000, 100).apexPx, 300);
-  assert.equal(arcShape('low', 3000, 100).apexPx, 100);
-  assert.deepEqual(arcShape('low', 500, 100), { apexPx: 40, peakScale: 1.1 });
-  assert.deepEqual(arcShape('none', 500, 100), { apexPx: 0, peakScale: 1 });
-});
-
 // withFlightPaths over planned stages.
 const token = (id, cx, cy, size = 100) => ({ id, center: { x: cx, y: cy }, w: size, h: size });
 const shooter = token('src', 0, 0), far = token('t1', 1000, 0);
 const flight = (extra = {}) => ({ stageId: 'shot', kind: 'travel', origin: shooter, endpoint: far, destination: far, delay: 0, duration: 1000, contact: 600, assets: ['jb2a.arrow.physical.white.01'], asset: 'jb2a.arrow.physical.white.01', ...extra });
 const ctx = (extra = {}) => ({ source: shooter, targets: [far], type: 'attack', outcome: 'success', messageId: seedA, ...extra });
-const opts = (extra = {}) => ({ context: ctx(), gridPx: 100, collides: wallAtX(500), walls: true, arcs: true, preview: false, ...extra });
+const opts = (extra = {}) => ({ context: ctx(), gridPx: 100, collides: wallAtX(500), walls: true, preview: false, ...extra });
 
 test('a projectile cut short by a wall arrives sooner', () => {
   const { plan, blocked, missed } = withFlightPaths([flight({ kind: 'projectile' })], opts());
@@ -165,12 +145,6 @@ test('a travel clip cut short by a wall keeps its own arrival', () => {
 test('without a contact the arrival is 55% of the flight', () => {
   const { plan } = withFlightPaths([flight({ kind: 'projectile', contact: 0 })], opts());
   assert.equal(plan[0].contact, 275);
-});
-
-test('a projectile at another speed: contact stays clip time, the cut is elapsed time', () => {
-  // Twice as fast: contact 600 of clip arrives 300 ms in; halfway is 150 ms, 300 ms of clip.
-  const { plan } = withFlightPaths([flight({ kind: 'projectile', playbackRate: 2 })], opts());
-  assert.deepEqual([plan[0].contact, plan[0].flightArrivalCut], [300, 150]);
 });
 
 test('a clear hit keeps its timing and blocks nothing', () => {
@@ -212,36 +186,28 @@ test('flights with no attack outcome never stop at walls', () => {
   }
 });
 
-test('reverse, chain, fan and area flights keep their path but still arc', () => {
-  const bomb = { assets: ['jb2a.throwable.throw.bomb.01.red'], asset: 'jb2a.throwable.throw.bomb.01.red' };
+test('reverse, chain, fan and area flights keep their path', () => {
   for (const extra of [{ travelOrigin: 'target', origin: far, endpoint: shooter }, { travelOrigin: 'previousTarget' }, { areaFan: true }, { travelDestination: 'area', endpoint: { x: 1000, y: 0 } }]) {
-    const { plan, blocked } = withFlightPaths([flight({ ...bomb, ...extra })], opts());
+    const stage = flight(extra);
+    const { plan, blocked } = withFlightPaths([stage], opts());
     const [s] = plan;
+    assert.equal(s, stage);
     assert.equal(s.flightTo, undefined); assert.equal(s.flightOutcome, undefined);
     assert.equal(s.contact, 600);
-    assert.deepEqual(s.flightArc, { kind: 'lob', apexPx: 250, peakScale: 1.35 });
     assert.equal(blocked.size, 0);
   }
 });
 
-test('walls off: only arcs; arcs off: straight', () => {
+test('walls off: flights play as planned', () => {
   const off = withFlightPaths([flight()], opts({ walls: false }));
   assert.equal(off.plan[0].flightTo, undefined); assert.equal(off.plan[0].contact, 600);
-  assert.deepEqual(off.plan[0].flightArc, { kind: 'none', apexPx: 0, peakScale: 1 });
+  assert.equal(off.plan[0].flightArc, undefined);
   assert.equal(off.blocked.size, 0);
-  const flat = withFlightPaths([flight({ asset: 'jb2a.javelin.01.throw', assets: ['jb2a.javelin.01.throw'], flight: 'lob' })], opts({ arcs: false, collides: () => null }));
-  assert.deepEqual(flat.plan[0].flightArc, { kind: 'none', apexPx: 0, peakScale: 1 });
 });
 
 test('no collision backend: flights play as today', () => {
   const { plan } = withFlightPaths([flight()], opts({ collides: null }));
   assert.equal(plan[0].flightTo, undefined);
-});
-
-test('the arc spans the planned flight, wall included', () => {
-  const lob = { asset: 'jb2a.throwable.throw.flask.01.orange', assets: ['jb2a.throwable.throw.flask.01.orange'] };
-  const { plan } = withFlightPaths([flight(lob)], opts());
-  assert.deepEqual(plan[0].flightArc, { kind: 'lob', apexPx: 125, peakScale: 1.35 });
 });
 
 test('preview never blocks', () => {
@@ -274,101 +240,4 @@ test('wallHit: a plain door knocks on wood; a secret door stays stone', () => {
   assert.deepEqual(wallHit(vertex(2)), { x: 12, y: 34 });
   assert.deepEqual(wallHit(vertex(0)), { x: 12, y: 34 });
   assert.equal(wallHit(null), null);
-});
-
-// Arc drawing: absolute values on the effect's spriteContainer (grid squares for position).
-const up = (property, from, to, duration, delay) => ({ property, from, to, duration, delay, ease: 'easeOutQuad' });
-const down = (property, from, to, duration, delay) => ({ property, from, to, duration, delay, ease: 'easeInQuad' });
-
-test('lob tracks rise then fall around the apex', () => {
-  const arc = { kind: 'lob', ...arcShape('lob', 1000, 100) };
-  assert.deepEqual(arcTracks(arc, 800, 100), [
-    up('position.y', 0, -2.5, 400, 0), down('position.y', -2.5, 0, 400, 400),
-    up('scale.x', 1, 1.35, 400, 0), down('scale.x', 1.35, 1, 400, 400),
-    up('scale.y', 1, 1.35, 400, 0), down('scale.y', 1.35, 1, 400, 400),
-  ]);
-  // A flight that starts moving later arcs from then.
-  assert.deepEqual(arcTracks(arc, 800, 100, { start: 100 }).slice(0, 2), [up('position.y', 0, -2.5, 400, 100), down('position.y', -2.5, 0, 400, 500)]);
-});
-
-test('straight has no tracks', () => {
-  assert.deepEqual(arcTracks({ kind: 'none', apexPx: 0, peakScale: 1 }, 800, 100), []);
-  assert.deepEqual(arcTracks(undefined, 800, 100), []);
-  assert.deepEqual(arcTracks({ kind: 'lob', apexPx: 250, peakScale: 1.35 }, 0, 100), []);
-});
-
-test('a stretched clip lifts screen-up in its own turned frame and only thickens', () => {
-  const arc = { kind: 'lob', apexPx: 250, peakScale: 1.35 };
-  // Flying straight down the screen: the clip's x axis points down, so screen-up is its -x.
-  const downScreen = arcTracks(arc, 800, 100, { angle: Math.PI / 2, stretched: true });
-  assert.deepEqual(downScreen, [
-    up('position.x', 0, -2.5, 400, 0), down('position.x', -2.5, 0, 400, 400),
-    up('scale.y', 1, 1.35, 400, 0), down('scale.y', 1.35, 1, 400, 400),
-  ]);
-  // Flying right to left: the clip is upside down, so screen-up is its +y.
-  assert.deepEqual(arcTracks(arc, 800, 100, { angle: Math.PI, stretched: true }).slice(0, 2), [up('position.y', 0, 2.5, 400, 0), down('position.y', 2.5, 0, 400, 400)]);
-  // On a diagonal both axes share the lift.
-  const diagonal = arcTracks(arc, 800, 100, { angle: Math.PI / 4, stretched: true });
-  const peak = (p) => diagonal.find((t) => t.property === p && t.delay === 0).to;
-  assert.ok(near(peak('position.x'), -2.5 * Math.SQRT1_2, 1e-4) && near(peak('position.y'), -2.5 * Math.SQRT1_2, 1e-4));
-});
-
-test('shadow follows the ground line and is tier 2', () => {
-  const arc = { kind: 'lob', apexPx: 250, peakScale: 1.35 };
-  const fly = flight({ stageId: 'fly', delay: 250, contact: 0, flightFrom: { x: 0, y: 0 }, flightTo: { x: 500, y: 20 }, flightArc: arc });
-  const s = shadowStage(fly);
-  assert.equal(s.stageId, 'fly-shadow');
-  assert.equal(s.kind, 'projectile');
-  assert.equal(s.tier, 2);
-  assert.equal(s.animaterShadow, true);
-  assert.equal(s.below, true);
-  assert.deepEqual([s.flightFrom, s.flightTo], [{ x: 0, y: 0 }, { x: 500, y: 20 }]);
-  // It lands when the object does (55% of a travel clip without a contact).
-  assert.deepEqual([s.delay, s.duration, s.moveDelay ?? 0], [250, 550, 0]);
-  // A soft black ellipse, half a square by 0.3 (Sequencer draws an ellipse from its half sizes).
-  // Its 0.35 is the shape's own alpha (Sequencer draws a shape at that, not at the effect's opacity).
-  assert.deepEqual(s.shape, { type: 'ellipse', width: 0.25, height: 0.15, gridUnits: true, fillColor: '#000000', fillAlpha: 1, alpha: 0.35 });
-  assert.equal(s.opacity, 1);
-  // Smallest and faintest at the apex: 0.6 of its size, 0.15 opacity (the shape's 0.35 x the track).
-  const at = (p, delay) => s.flightTracks.find((t) => t.property === p && t.delay === delay);
-  for (const p of ['scale.x', 'scale.y']) {
-    assert.deepEqual(at(p, 0), up(p, 1, 0.6, 275, 0));
-    assert.deepEqual(at(p, 275), down(p, 0.6, 1, 275, 275));
-  }
-  assert.ok(near(at('alpha', 0).to * s.shape.alpha, 0.15, 1e-4));
-  assert.equal(at('alpha', 275).to, 1);
-  // Without a planned path it runs between the flight's own ends.
-  const plain = shadowStage(flight({ flightArc: arc }));
-  assert.deepEqual([plain.flightFrom, plain.flightTo], [{ x: 0, y: 0 }, { x: 1000, y: 0 }]);
-  assert.equal(plain.duration, 600);
-});
-
-test('an arcing projectile lands at its arrival; a straight one keeps its whole move', () => {
-  const arc = { kind: 'low', apexPx: 40, peakScale: 1.1 };
-  const fly = flight({ kind: 'projectile', moveDelay: 100, moveEase: 'easeOutCubic', contact: 0, flightArc: arc });
-  // 55% of 1000 ms without a contact: it moves from 100 ms and touches down at 550.
-  assert.equal(moveEnd(fly), 550);
-  assert.deepEqual(flightTiming(fly), { start: 100, arrive: 450 });
-  // A wall-shortened contact lands it sooner.
-  assert.equal(moveEnd({ ...fly, contact: 300 }), 300);
-  assert.deepEqual(flightTiming({ ...fly, contact: 300 }), { start: 100, arrive: 200 });
-  // Not arcing: the projectile moves over its whole effect, as before.
-  const straight = { ...fly, flightArc: { kind: 'none', apexPx: 0, peakScale: 1 } };
-  assert.equal(moveEnd(straight), 1000);
-  assert.deepEqual(flightTiming(straight), { start: 100, arrive: 900 });
-  assert.deepEqual(flightTiming(flight({ contact: 0 })), { start: 0, arrive: 550 });
-  const s = shadowStage(fly);
-  assert.deepEqual([s.duration, s.moveDelay, s.moveEase], [550, 100, 'easeOutCubic']);
-  assert.equal(s.flightTracks[0].delay, 100);
-});
-
-test('slowed, a contact (clip time) arrives later in elapsed time', () => {
-  // Slow motion at half speed: duration 2000 and moveDelay 200 elapsed, contact 600 of clip at rate 0.5.
-  const arc = { kind: 'low', apexPx: 40, peakScale: 1.1 };
-  const slowed = flight({ kind: 'projectile', duration: 2000, moveDelay: 200, contact: 600, playbackRate: 0.5, flightArc: arc });
-  assert.equal(moveEnd(slowed), 1200);
-  assert.deepEqual(flightTiming(slowed), { start: 200, arrive: 1000 });
-  assert.equal(shadowStage(slowed).duration, 1200);
-  // A travel clip lands at its slowed contact too.
-  assert.deepEqual(flightTiming({ ...slowed, kind: 'travel' }), { start: 0, arrive: 1200 });
 });

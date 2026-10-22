@@ -53,8 +53,6 @@ export const OPTION_GROUPS = {
       "fit",
       { fit: "Stretch along line", tiles: "Separate cues along line" },
     ],
-    // Flights only: how a shot rises on its way (flight-path.mjs). Auto lets the weapon or spell decide.
-    ["flight", "Flight", "auto", { auto: "Auto", straight: "Straight", low: "Low arc", lob: "Lob" }],
     ["offsetX", "Horizontal offset (squares)", 0, -10, 10, 0.1],
     ["offsetY", "Vertical offset (squares)", 0, -10, 10, 0.1],
     ["offsetUnits", "Offset reference", "grid", {grid:"Scene grid squares",token:"Token footprint"}],
@@ -137,8 +135,6 @@ export function normalizeOptions(stage) {
   if(!result.colorize)delete result.colorize;
   if(!result.requiresHit)delete result.requiresHit;
   if(result.offsetUnits === 'grid')delete result.offsetUnits;
-  // Only a flight with a chosen arc keeps it; the rest follow the weapon or spell.
-  if(result.flight === 'auto' || !['travel', 'projectile'].includes(stage.kind))delete result.flight;
   // A cone's art is cropped to the cone unless the stage lets it spill past the edges.
   // Set only when chosen; unset follows the area's shape.
   result.maskArea = stage.maskArea === true || stage.maskArea === false ? stage.maskArea : undefined;
