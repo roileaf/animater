@@ -24,7 +24,7 @@ import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 import { planLights } from '../lighting/effect-lights.mjs';
-import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
+import { arcTracks, arrivalOf, flightLine, flightTiming, shadowStage, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
@@ -60,6 +60,13 @@ const WALL_IMPACT_SIZE = 0.6, WALL_IMPACT_MS = 900;
 // A shot that flies on past its target fades out over its last moments.
 const PAST_FADE_MS = 150;
 let flightPathsWarned = false;
+// A flight that arcs (engines/playback/flight-path.mjs); its shadow does not.
+const arcs = (s) => ["travel", "projectile"].includes(s.kind) && !s.animaterShadow && !!s.flightArc && s.flightArc.kind !== "none";
+// Arc and shadow tracks: absolute values on the effect's spriteContainer (why: flight-path.mjs arcTracks).
+function applyFlightTracks(effect, tracks) {
+  for (const t of tracks)
+    effect.animateProperty("spriteContainer", t.property, { from: t.from, to: t.to, duration: t.duration, delay: t.delay, ease: t.ease, gridUnits: t.property.startsWith("position"), absolute: true });
+}
 // Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
 // effects (its impacts, reactions and surface sounds) do not play, nor does the dodge of a target a miss never
 // reached; what followed its impacts moves up with the shorter flight (flightArrivalCut); a small impact and a
@@ -420,7 +427,9 @@ export class AnimaterRuntime {
           continue;
         }
         // Optional layers only reach viewers whose quality setting allows them.
-        const users = preview ? null : this.host.usersFor?.(tiers.get(s.stageId) ?? 0) ?? null;
+        // A shadow is not in the plan the tiers were read from: it carries its own (2).
+        const tier = s.tier ?? tiers.get(s.stageId) ?? 0;
+        const users = preview ? null : this.host.usersFor?.(tier) ?? null;
         if (users && !users.length) continue;
         const e = sequence
           .effect()
@@ -435,15 +444,16 @@ export class AnimaterRuntime {
         if (!lasts) e.duration(s.duration * s.playbackRate + (s.clipEnd ? 0 : s.clipStart));
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
-        const animaterTier = tiers.get(s.stageId) ?? 0, animaterLasting = Boolean(lasts);
+        const animaterTier = tier, animaterLasting = Boolean(lasts);
         // Freezes on every client at contact; a staggered copy starts later, so contact comes sooner into it.
         const mark = marks?.get(s), afterMs = mark ? mark.afterMs - (spread?.get(s) ?? 0) : -1;
         const animaterHitStop = afterMs >= 0 ? { afterMs, holdMs: mark.holdMs } : null;
         // Every client lights the scene from this one description (engines/lighting/effect-lights.mjs).
         const animaterLight = lights?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}), ...(animaterLight ? { animaterLight } : {}) }));
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}), ...(animaterLight ? { animaterLight } : {}), ...(s.animaterShadow ? { animaterShadow: true } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
+        else if (s.shape) e.shape(s.shape.type, { ...s.shape });
         else e.file(s.asset);
         const location = {
           offset: offsetInGridSquares(s, s.destination, this.host.gridSize?.() ?? 100),
@@ -451,7 +461,9 @@ export class AnimaterRuntime {
         };
         const media = mediaForReference(this.catalog, s.asset);
         const grid = this.host.gridSize?.() ?? 100;
-        if (s.kind === "projectile") {
+        if (s.animaterShadow) {
+          e.atLocation(s.flightFrom, location).moveTowards(s.flightTo, { delay: s.moveDelay, ease: s.moveEase, rotate: false, cacheLocation: true });
+        } else if (s.kind === "projectile") {
           // A planned path (flightFrom/flightTo) is literal points: every client flies the same line.
           e.atLocation(s.flightFrom ?? s.origin, location)
             .size(artworkSize(tokenFootprint(s.origin, grid) * s.scale, media))
@@ -552,6 +564,12 @@ export class AnimaterRuntime {
           if (s.maskToken) e.mask(s.destination);
         }
         applyEffectOptions(e, s);
+        if (s.animaterShadow) applyFlightTracks(e, s.flightTracks);
+        else if (arcs(s)) {
+          // A stretched clip is turned along its flight; a projectile is not (flight-path.mjs arcTracks).
+          const { start, arrive } = flightTiming(s), { from, to } = flightLine(s), stretched = s.kind === "travel";
+          applyFlightTracks(e, arcTracks(s.flightArc, arrive, grid, { start, stretched, angle: stretched ? Math.atan2(to.y - from.y, to.x - from.x) : 0 }));
+        }
         if (s.flightOutcome === "past" && !(s.fadeOut >= PAST_FADE_MS)) e.fadeOut(PAST_FADE_MS);
         if (s.below) e.belowTokens();
         if (s.persist && !preview) {
@@ -633,8 +651,13 @@ export class AnimaterRuntime {
           elevation: token?.elevation,
         });
       }
+      // Each arcing flight's shadow plays beside it (tier 2, engines/playback/flight-path.mjs). It is drawn, not
+      // planned: the editor's preview and the plan's timings never see it, and it ends when its flight lands.
+      // Sequencer's own miss bend (an unplanned miss) lands where the shadow cannot know, so that one has none.
+      const bent = (s) => s.kind === "travel" && !s.flightTo && ["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock;
+      const drawn = plan.flatMap((s) => (arcs(s) && !bent(s) ? [s, shadowStage(s)] : [s]));
       const groups = new Map();
-      for (const s of plan) {
+      for (const s of drawn) {
         if (!groups.has(s.delay)) groups.set(s.delay, []);
         groups.get(s.delay).push(s);
       }

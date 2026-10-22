@@ -1509,6 +1509,38 @@ test("setting off keeps today's flights", async () => {
   const flat = await playWall(recipe, context, { setup: (f) => { f.host.arcingThrows = () => false; } });
   assert.equal(flat.plan.find((s) => s.stageId === "fly").flightArc.kind, "none");
 });
+// Each Sequencer effect's own calls (the fixture shares one effect proxy).
+const effectsOf = (calls) => calls.reduce((all, c) => (c[0] === "effect" ? all.push([]) : all.at(-1)?.push(c), all), []);
+test("a lobbed throw lifts screen-up in its turned frame and casts a tier 2 shadow", async () => {
+  const BOMB = "jb2a.throwable.throw.bomb.01.black";
+  const { recipe, context } = boltAttack();
+  const lob = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, assets: [BOMB] } : s)) });
+  // Thrown straight down the screen, 600 px: a 1.5-square apex, landing at 55% of 1000 ms.
+  const below = { ...context, targets: [{ id: "t1", center: { x: 0, y: 600 }, w: 100, h: 100 }] };
+  const { calls, plan } = await playWall(lob, below, { collides: () => null, setup: (f) => f.runtime.catalog.push({ key: BOMB }) });
+  const effects = effectsOf(calls);
+  const fly = effects.find((e) => e.some((c) => c[0] === "file" && c[1] === BOMB));
+  // The stretched clip is turned a quarter, so screen-up is its -x; it only thickens.
+  assert.deepEqual(fly.filter((c) => c[0] === "animateProperty").map((c) => [c[1], c[2], c[3].from, c[3].to, c[3].delay, c[3].ease, c[3].absolute]), [
+    ["spriteContainer", "position.x", 0, -1.5, 0, "easeOutQuad", true],
+    ["spriteContainer", "position.x", -1.5, 0, 275, "easeInQuad", true],
+    ["spriteContainer", "scale.y", 1, 1.35, 0, "easeOutQuad", true],
+    ["spriteContainer", "scale.y", 1.35, 1, 275, "easeInQuad", true],
+  ]);
+  const shadow = effects.find((e) => e.some((c) => c[0] === "shape"));
+  assert.deepEqual(shadow.find((c) => c[0] === "shape").slice(1), ["ellipse", { type: "ellipse", width: 0.25, height: 0.15, gridUnits: true, fillColor: "#000000", fillAlpha: 1 }]);
+  assert.ok(shadow.some((c) => c[0] === "belowTokens"));
+  assert.deepEqual(shadow.find((c) => c[0] === "moveTowards")[1], { x: 0, y: 600 });
+  assert.equal(shadow.find((c) => c[0] === "duration")[1], 550);
+  assert.ok(!shadow.some((c) => c[0] === "file"));
+  const data = await shadow.find((c) => c[0] === "addOverride")[1](null, {});
+  assert.deepEqual([data.animaterTier, data.animaterShadow], [2, true]);
+  // The shadow is drawn, not planned.
+  assert.ok(!plan.some((s) => s.animaterShadow));
+  // A straight bolt neither arcs nor casts a shadow.
+  const straight = await playWall(recipe, context, { collides: () => null });
+  assert.ok(!straight.calls.some((c) => c[0] === "shape" || c[0] === "animateProperty"));
+});
 test("preview never drops on-target stages", async () => {
   const { recipe, context } = boltAttack();
   const { calls } = await playWall(recipe, context, { options: { preview: true } });

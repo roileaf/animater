@@ -110,6 +110,10 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
+// Ends an effect on this client only (it still plays for everyone else).
+const endLocally = (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false));
+// Projectile shadows on this client (setting projectileShadows; unregistered: on).
+const projectileShadows = () => { try { return game.settings.get(ID, "projectileShadows") !== false; } catch { return true; } };
 // Adaptive playback on this client (engines/playback/adaptive-host.mjs): Foundry is read only when it runs.
 const adaptiveHost = createAdaptiveHost({
   state: turboState,
@@ -118,7 +122,7 @@ const adaptiveHost = createAdaptiveHost({
   weaponRecipes: (actor) => (actor?.items?.contents ?? []).filter((item) => ["weapon", "melee"].includes(item.type)).slice(0, 6)
     .map((item) => { try { return resolveEvent({ type: "attack", item, actor }); } catch { return null; } }).filter(Boolean),
   preload: (files) => Sequencer.Preloader.preload(files, false),
-  endLocally: (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false)),
+  endLocally,
   sceneId: () => canvas?.scene?.id,
   view: () => ({
     zoom: canvas?.stage?.scale?.x ?? 1, gridSize: canvas?.grid?.size ?? 100, targetMs: 1000 / (canvas?.app?.ticker?.maxFPS || 60),
@@ -154,7 +158,11 @@ const lightHost = createLightHost({
   now: () => performance.now(),
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
-Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); lightHost.onEffect(effect); });
+Hooks.on("createSequencerEffect", (effect) => {
+  // An arcing flight's shadow (engines/playback/flight-path.mjs) is dropped here when this client turned them off.
+  if (effect?.data?.animaterShadow && !projectileShadows()) return endLocally(effect);
+  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); lightHost.onEffect(effect);
+});
 Hooks.on("endedSequencerEffect", (effect) => lightHost.onEnded(effect));
 Hooks.on("canvasTearDown", () => lightHost.clear());
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before

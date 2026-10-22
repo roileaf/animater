@@ -3,6 +3,7 @@
 // through collides(a, b, type) -> { x, y, door? } | null, the first wall point on the line.
 import { MISS, sideOf } from '../../systems/outcome.mjs';
 import { centerOf } from './composition.mjs';
+import { normalizeOptions } from '../../core/stage-options.mjs';
 
 const FLIGHTS = ['travel', 'projectile'];
 const LOB = /throwable\.(throw\.(bomb|flask)|launch)\./;
@@ -100,6 +101,77 @@ function roleOf(s, context, preview) {
 
 // When a flight reaches its end (the moment its impact is timed to).
 export const arrivalOf = (s) => Math.min(s.duration, Number(s.contact) > 0 ? Number(s.contact) : s.duration * 0.55);
+
+// When the flying object leaves and how long until it lands. A projectile (moveTowards) moves from its
+// moveDelay to the end of the effect; a travel clip's object lands at the flight's arrival.
+export function flightTiming(s) {
+  if (s.kind !== 'projectile') return { start: 0, arrive: arrivalOf(s) };
+  const start = Math.max(0, Number(s.moveDelay) || 0);
+  return { start, arrive: Math.max(0, s.duration - start) };
+}
+
+// The ground line a flight follows: its planned path, else the points Sequencer flies it between
+// (a travel clip stretches to the endpoint token, a projectile moves to its landing point).
+export function flightLine(s) {
+  const from = s.flightFrom ?? point(centerOf(s.origin));
+  const to = s.flightTo ?? point(s.kind === 'projectile' && s.landing ? s.landing : centerOf(s.endpoint));
+  return { from, to };
+}
+
+const round = (v) => Math.round(v * 1e4) / 1e4 + 0;
+// A value that rises to its peak over the first half of the flight and comes back over the second.
+const rise = (property, base, peak, half, start) => [
+  { property, from: base, to: peak, duration: half, delay: start, ease: 'easeOutQuad' },
+  { property, from: peak, to: base, duration: half, delay: start + half, ease: 'easeInQuad' },
+];
+
+// The arc of a flying object as tracks on its effect's spriteContainer (core/stage-options.mjs format;
+// position in grid squares). The runtime sets them as absolute values: Sequencer never moves or scales that
+// container itself (rest 0 and 1), and a relative track keeps its end value when it completes, so the fall
+// from the apex would otherwise end an apex too high.
+// angle: the turn of the effect's frame. Sequencer's stretchTo turns rotationContainer, the parent of
+// spriteContainer, along the flight (canvas-effect.js _rotateTowards), so a lift on position.y would rise
+// sideways to the throw; the screen-up lift is turned back into that frame instead (a projectile is not turned:
+// angle 0). stretched: a travel clip runs from the thrower to the landing point, with spriteContainer's origin
+// at the thrower, so growing its x would push the object along the line (to 67% of the way at a lob's apex); it
+// only thickens (scale.y), which scales about the line itself.
+export function arcTracks(arc, arriveMs, gridPx, { angle = 0, stretched = false, start = 0 } = {}) {
+  if (!arc || arc.kind === 'none' || !(arriveMs > 0) || !(gridPx > 0)) return [];
+  const half = arriveMs / 2, lift = arc.apexPx / gridPx;
+  // Screen-up (0, -lift) seen from a frame turned by angle.
+  const x = round(-lift * Math.sin(angle)), y = round(-lift * Math.cos(angle));
+  return [
+    ...(x ? rise('position.x', 0, x, half, start) : []),
+    ...(y ? rise('position.y', 0, y, half, start) : []),
+    ...(stretched ? [] : rise('scale.x', 1, arc.peakScale, half, start)),
+    ...rise('scale.y', 1, arc.peakScale, half, start),
+  ];
+}
+
+const SHADOW = { width: 0.5, height: 0.3, alpha: 0.35, apexScale: 0.6, apexAlpha: 0.15 };
+// The arcing flight's shadow on the floor: a soft dark ellipse moving straight from the thrower to the landing
+// point as the object flies, smallest and faintest at the apex. Decoration (tier 2); tagged animaterShadow so
+// each client can drop it (main.mjs, setting projectileShadows). Its tracks (flightTracks) are set like arcTracks:
+// absolute on spriteContainer, alpha times the stage's opacity.
+export function shadowStage(flight) {
+  const { start, arrive } = flightTiming(flight), { from, to } = flightLine(flight), half = arrive / 2;
+  return {
+    ...normalizeOptions({ kind: 'projectile', duration: start + arrive }),
+    stageId: `${flight.stageId}-shadow`, kind: 'projectile', label: 'Shadow', assets: [], asset: null,
+    delay: flight.delay ?? 0, duration: start + arrive, scale: 1, opacity: SHADOW.alpha, below: true,
+    origin: flight.origin, endpoint: flight.endpoint, destination: flight.destination,
+    flightFrom: from, flightTo: to, moveDelay: start,
+    ...(flight.kind === 'projectile' && flight.moveEase ? { moveEase: flight.moveEase } : {}),
+    // Sequencer draws an ellipse from its half width and half height.
+    shape: { type: 'ellipse', width: SHADOW.width / 2, height: SHADOW.height / 2, gridUnits: true, fillColor: '#000000', fillAlpha: 1 },
+    flightTracks: [
+      ...rise('scale.x', 1, SHADOW.apexScale, half, start),
+      ...rise('scale.y', 1, SHADOW.apexScale, half, start),
+      ...rise('alpha', 1, round(SHADOW.apexAlpha / SHADOW.alpha), half, start),
+    ],
+    tier: 2, animaterShadow: true,
+  };
+}
 
 // Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply), flightArc,
 // and an earlier contact for a flight cut short by a wall (flightArrivalCut: how much earlier).

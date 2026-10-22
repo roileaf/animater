@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { arcOf, arcShape, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
+import { arcOf, arcShape, arcTracks, flightTiming, shadowStage, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 
 // A full-height wall at x (blocks every line that crosses it, of any type).
@@ -247,4 +247,80 @@ test('wallHit: a plain door knocks on wood; a secret door stays stone', () => {
   assert.deepEqual(wallHit(vertex(2)), { x: 12, y: 34 });
   assert.deepEqual(wallHit(vertex(0)), { x: 12, y: 34 });
   assert.equal(wallHit(null), null);
+});
+
+// Arc drawing: absolute values on the effect's spriteContainer (grid squares for position).
+const up = (property, from, to, duration, delay) => ({ property, from, to, duration, delay, ease: 'easeOutQuad' });
+const down = (property, from, to, duration, delay) => ({ property, from, to, duration, delay, ease: 'easeInQuad' });
+
+test('lob tracks rise then fall around the apex', () => {
+  const arc = { kind: 'lob', ...arcShape('lob', 1000, 100) };
+  assert.deepEqual(arcTracks(arc, 800, 100), [
+    up('position.y', 0, -2.5, 400, 0), down('position.y', -2.5, 0, 400, 400),
+    up('scale.x', 1, 1.35, 400, 0), down('scale.x', 1.35, 1, 400, 400),
+    up('scale.y', 1, 1.35, 400, 0), down('scale.y', 1.35, 1, 400, 400),
+  ]);
+  // A flight that starts moving later arcs from then.
+  assert.deepEqual(arcTracks(arc, 800, 100, { start: 100 }).slice(0, 2), [up('position.y', 0, -2.5, 400, 100), down('position.y', -2.5, 0, 400, 500)]);
+});
+
+test('straight has no tracks', () => {
+  assert.deepEqual(arcTracks({ kind: 'none', apexPx: 0, peakScale: 1 }, 800, 100), []);
+  assert.deepEqual(arcTracks(undefined, 800, 100), []);
+  assert.deepEqual(arcTracks({ kind: 'lob', apexPx: 250, peakScale: 1.35 }, 0, 100), []);
+});
+
+test('a stretched clip lifts screen-up in its own turned frame and only thickens', () => {
+  const arc = { kind: 'lob', apexPx: 250, peakScale: 1.35 };
+  // Flying straight down the screen: the clip's x axis points down, so screen-up is its -x.
+  const downScreen = arcTracks(arc, 800, 100, { angle: Math.PI / 2, stretched: true });
+  assert.deepEqual(downScreen, [
+    up('position.x', 0, -2.5, 400, 0), down('position.x', -2.5, 0, 400, 400),
+    up('scale.y', 1, 1.35, 400, 0), down('scale.y', 1.35, 1, 400, 400),
+  ]);
+  // Flying right to left: the clip is upside down, so screen-up is its +y.
+  assert.deepEqual(arcTracks(arc, 800, 100, { angle: Math.PI, stretched: true }).slice(0, 2), [up('position.y', 0, 2.5, 400, 0), down('position.y', 2.5, 0, 400, 400)]);
+  // On a diagonal both axes share the lift.
+  const diagonal = arcTracks(arc, 800, 100, { angle: Math.PI / 4, stretched: true });
+  const peak = (p) => diagonal.find((t) => t.property === p && t.delay === 0).to;
+  assert.ok(near(peak('position.x'), -2.5 * Math.SQRT1_2, 1e-4) && near(peak('position.y'), -2.5 * Math.SQRT1_2, 1e-4));
+});
+
+test('shadow follows the ground line and is tier 2', () => {
+  const arc = { kind: 'lob', apexPx: 250, peakScale: 1.35 };
+  const fly = flight({ stageId: 'fly', delay: 250, contact: 0, flightFrom: { x: 0, y: 0 }, flightTo: { x: 500, y: 20 }, flightArc: arc });
+  const s = shadowStage(fly);
+  assert.equal(s.stageId, 'fly-shadow');
+  assert.equal(s.kind, 'projectile');
+  assert.equal(s.tier, 2);
+  assert.equal(s.animaterShadow, true);
+  assert.equal(s.below, true);
+  assert.deepEqual([s.flightFrom, s.flightTo], [{ x: 0, y: 0 }, { x: 500, y: 20 }]);
+  // It lands when the object does (55% of a travel clip without a contact).
+  assert.deepEqual([s.delay, s.duration, s.moveDelay ?? 0], [250, 550, 0]);
+  // A soft black ellipse, half a square by 0.3 (Sequencer draws an ellipse from its half sizes).
+  assert.deepEqual(s.shape, { type: 'ellipse', width: 0.25, height: 0.15, gridUnits: true, fillColor: '#000000', fillAlpha: 1 });
+  assert.equal(s.opacity, 0.35);
+  // Smallest and faintest at the apex: 0.6 of its size, 0.15 opacity (0.35 x the track).
+  const at = (p, delay) => s.flightTracks.find((t) => t.property === p && t.delay === delay);
+  for (const p of ['scale.x', 'scale.y']) {
+    assert.deepEqual(at(p, 0), up(p, 1, 0.6, 275, 0));
+    assert.deepEqual(at(p, 275), down(p, 0.6, 1, 275, 275));
+  }
+  assert.ok(near(at('alpha', 0).to * s.opacity, 0.15, 1e-4));
+  assert.equal(at('alpha', 275).to, 1);
+  // Without a planned path it runs between the flight's own ends.
+  const plain = shadowStage(flight({ flightArc: arc }));
+  assert.deepEqual([plain.flightFrom, plain.flightTo], [{ x: 0, y: 0 }, { x: 1000, y: 0 }]);
+  assert.equal(plain.duration, 600);
+});
+
+test('a projectile arcs over its whole move', () => {
+  const arc = { kind: 'low', apexPx: 40, peakScale: 1.1 };
+  const fly = flight({ kind: 'projectile', moveDelay: 100, moveEase: 'easeOutCubic', contact: 0, flightArc: arc });
+  assert.deepEqual(flightTiming(fly), { start: 100, arrive: 900 });
+  assert.deepEqual(flightTiming(flight({ contact: 0 })), { start: 0, arrive: 550 });
+  const s = shadowStage(fly);
+  assert.deepEqual([s.duration, s.moveDelay, s.moveEase], [1000, 100, 'easeOutCubic']);
+  assert.equal(s.flightTracks[0].delay, 100);
 });
