@@ -41,11 +41,11 @@ test('creates one light per tagged effect when ready', () => {
   const e = effect(flash, { ready: false });
   host.onEffect(e);
   host.onEffect(e);
-  out.t = 30;
+  out.t = 20;
   host.tick();
   assert.equal(out.sources.length, 0, 'waits for the effect to be ready');
   e.ready = true;
-  out.t = 60;
+  out.t = 40;
   host.tick();
   assert.equal(out.sources.length, 1);
   const [s] = out.sources;
@@ -61,7 +61,7 @@ test('creates one light per tagged effect when ready', () => {
   assert.equal(data.vision, false);
   assert.equal(data.walls, true);
   assert.equal(data.priority, 0);
-  assert.deepEqual({ alpha: data.alpha, luminosity: data.luminosity }, lightLevels(envelope(flash, 60), 'flash'));
+  assert.deepEqual({ alpha: data.alpha, luminosity: data.luminosity }, lightLevels(envelope(flash, 40), 'flash'));
   assert.equal(out.refreshes, 1);
   assert.equal(host.count(), 1);
   // A still anchor is not re-initialised and nothing is refreshed again.
@@ -228,6 +228,80 @@ test('a source that cannot initialise is dropped', (t) => {
   assert.equal(out.sources[0].destroyed, 1);
   assert.equal(host.count(), 0);
   assert.equal(warned.mock.callCount(), 1);
+});
+
+test('a light that throws is dropped and tick never throws', (t) => {
+  const warned = t.mock.method(console, 'warn', () => {});
+  let throwing = true;
+  const out = { sources: 0 };
+  const host = createLightHost({
+    makeSource: () => { if (throwing) throw new Error('no canvas'); out.sources++; return { initialize() {}, add() {}, setLevel() {}, destroy() {} }; },
+    refreshLighting: () => {}, sceneId: () => 's1', levelOk: () => true, now: () => 0,
+  });
+  host.onEffect(effect(flash));
+  host.onEffect(effect(flash, { name: 'animater-u1-2' }));
+  assert.doesNotThrow(() => host.tick());
+  assert.equal(host.count(), 0);
+  assert.ok(warned.mock.callCount() >= 2);
+
+  // A broken clock or envelope input drops only that light.
+  throwing = false;
+  const bad = effect(flash, { name: 'animater-u1-3' });
+  host.onEffect(bad);
+  host.onEffect(effect(flash, { name: 'animater-u1-4' }));
+  Object.defineProperty(bad, 'ready', { get() { throw new Error('gone'); } });
+  assert.doesNotThrow(() => host.tick());
+  assert.equal(host.count(), 1);
+  assert.equal(out.sources, 1);
+});
+
+test('malformed tags are ignored', () => {
+  const { host, out } = make();
+  host.onEffect(effect({ ...flash, startMs: undefined }));
+  host.onEffect(effect({ ...flash, lengthMs: NaN }, { name: 'animater-u1-2' }));
+  host.onEffect(effect({ ...flash, dim: '3' }, { name: 'animater-u1-3' }));
+  host.onEffect(effect({ ...flash, bright: Infinity }, { name: 'animater-u1-4' }));
+  host.onEffect(effect({ ...flash, fadeMs: 'x' }, { name: 'animater-u1-5' }));
+  host.tick();
+  assert.equal(host.count(), 0);
+  assert.equal(out.sources.length, 0);
+  host.onEffect(effect({ ...flash, fadeMs: undefined }, { name: 'animater-u1-6' }));
+  assert.equal(host.count(), 1, 'no fade is allowed');
+});
+
+test('a light shown late ramps in instead of popping on', () => {
+  const { host, out } = make();
+  const e = effect(lasting, { ready: false });
+  host.onEffect(e);
+  out.t = 400; host.tick();
+  e.ready = true;
+  out.t = 500; host.tick();
+  const [s] = out.sources;
+  assert.equal(s.inits[0].alpha, 0);
+  assert.equal(s.inits[0].luminosity, 0);
+  out.t = 550; host.tick();
+  assert.ok(Math.abs(lastLevel(s).alpha - lightLevels(0.5, 'flicker').alpha) < 1e-9, 'half way after 50 ms');
+  out.t = 600; host.tick();
+  assert.deepEqual(lastLevel(s), lightLevels(1, 'flicker'));
+});
+
+test('a light shown on time does not ramp', () => {
+  const { host, out } = make();
+  host.onEffect(effect(lasting));
+  out.t = 16; host.tick();
+  assert.deepEqual(lastLevel(out.sources[0]), lightLevels(1, 'flicker'));
+});
+
+test('a lasting light gets in when all 8 live lights are lasting', () => {
+  const { host, out } = make();
+  for (let i = 0; i < 8; i++) host.onEffect(effect(lasting, { name: `animater-u1-${i}` }));
+  host.tick();
+  host.onEffect(effect(lasting, { name: 'animater-u1-9' }));
+  host.onEffect(effect(flash, { name: 'animater-u1-10' }));
+  out.t = 16; host.tick();
+  assert.equal(host.count(), 9, 'the lasting one in, the one-shot skipped');
+  assert.equal(out.sources.length, 9);
+  assert.equal(out.sources.filter((s) => s.destroyed).length, 0, 'no lasting light is pushed out');
 });
 
 test('clear destroys every light', () => {

@@ -8,6 +8,9 @@ const END_FADE_MS = 300;
 const MOVE_SQUARES = 0.25;
 const MOVE_EVERY_FRAMES = 2;
 const LEVEL_STEP = 0.002;
+// A light first shown well after its start (slow file load) ramps in instead of popping on.
+const LATE_MS = 50;
+const RAMP_MS = 100;
 // Full brightness is Foundry's default light (alpha 0.5, luminosity 0.5); a
 // flash peaks above it. Luminosity 0 adds no illumination, so it fades cleanly.
 const ALPHA = 0.5;
@@ -16,6 +19,9 @@ const FLASH_PEAK = 1.3;
 
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const finitePoint = (p) => (p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null);
+const validTag = (tag) => !!tag && typeof tag === 'object'
+  && ['startMs', 'lengthMs', 'dim', 'bright'].every((k) => Number.isFinite(tag[k]))
+  && (tag.fadeMs == null || Number.isFinite(tag.fadeMs));
 
 /** Light source alpha and luminosity at envelope level 0..1. */
 export function lightLevels(level, shape) {
@@ -63,9 +69,10 @@ export function createLightHost({
     const at = positionOf(light, t);
     if (!at) return;
     const { tag, data } = light;
+    if (t - tag.startMs > LATE_MS) { light.rampAt = t; level = 0; }
     const grid = gridSize();
-    light.source = makeSource(light.id);
     try {
+      light.source = makeSource(light.id);
       light.source.initialize({
         x: at.x, y: at.y, dim: tag.dim * grid, bright: tag.bright * grid, color: tag.color,
         ...lightLevels(level, tag.shape), coloration: 1, attenuation: 0.5, vision: false, walls: true, priority: 0,
@@ -94,10 +101,37 @@ export function createLightHost({
     dirty = true;
   };
 
+  // One light's frame: its level on the anchor's clock, its place, and when it is done.
+  const step = (light, t0, isSteady) => {
+    const { tag } = light;
+    let level;
+    if (light.endedAt !== null) {
+      const k = (t0 - light.endedAt) / END_FADE_MS;
+      if (k >= 1) return remove(light);
+      level = light.endLevel * (1 - k);
+    } else {
+      // The anchor's own clock: hit-stop time does not count.
+      const t = t0 - light.receivedAt - (heldMs(light.session, light.receivedAt) || 0);
+      if (t >= tag.startMs + tag.lengthMs + (tag.fadeMs ?? 0)) return remove(light);
+      if (light.effect.destroyed) return end(light, t0);
+      level = envelope(tag, t, { steady: isSteady });
+      if (!light.source) {
+        if (light.effect.ready && t >= tag.startMs) show(light, t, level, isSteady);
+        return;
+      }
+      if (light.rampAt !== null) level *= clamp01((t - light.rampAt) / RAMP_MS);
+      follow(light, t);
+    }
+    // Skip changes too small to see, but always reach zero.
+    if (level === light.level || (level !== 0 && Math.abs(level - light.level) < LEVEL_STEP)) return;
+    light.level = level;
+    light.source.setLevel(lightLevels(level, tag.shape));
+  };
+
   return {
     onEffect(effect) {
       const data = effect?.data, tag = data?.animaterLight;
-      if (!tag || typeof tag !== 'object' || data.moduleName !== 'animater' || lights.has(effect)) return;
+      if (!validTag(tag) || data.moduleName !== 'animater' || lights.has(effect)) return;
       if (data.sceneId !== sceneId() || !levelOk(data.level)) return;
       // Same rule on every client, in arrival order: when full the newest one-shot is skipped, and a
       // lasting light makes room by fading out the oldest one-shot.
@@ -109,7 +143,7 @@ export function createLightHost({
       }
       lights.set(effect, {
         id: ++nextId, effect, data, tag, session: data.name, receivedAt: now(),
-        source: null, at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0,
+        source: null, at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0, rampAt: null,
       });
     },
 
@@ -118,32 +152,17 @@ export function createLightHost({
       if (light) end(light, now());
     },
 
+    // Runs on the PIXI ticker, where a throw would stop the canvas: it never throws, and a light
+    // that fails is dropped.
     tick() {
       frame++;
-      const t0 = now(), isSteady = steady();
+      let t0, isSteady;
+      try { t0 = now(); isSteady = steady(); } catch { return; }
       for (const light of [...lights.values()]) {
-        const { tag } = light;
-        let level;
-        if (light.endedAt !== null) {
-          const k = (t0 - light.endedAt) / END_FADE_MS;
-          if (k >= 1) { remove(light); continue; }
-          level = light.endLevel * (1 - k);
-        } else {
-          // The anchor's own clock: hit-stop time does not count.
-          const t = t0 - light.receivedAt - (heldMs(light.session, light.receivedAt) || 0);
-          if (t >= tag.startMs + tag.lengthMs + (tag.fadeMs ?? 0)) { remove(light); continue; }
-          if (light.effect.destroyed) { end(light, t0); continue; }
-          level = envelope(tag, t, { steady: isSteady });
-          if (!light.source) {
-            if (light.effect.ready && t >= tag.startMs) show(light, t, level, isSteady);
-            continue;
-          }
-          follow(light, t);
+        try { step(light, t0, isSteady); } catch (err) {
+          console.warn('Animater | dropped an effect light', err);
+          remove(light);
         }
-        // Skip changes too small to see, but always reach zero.
-        if (level === light.level || (level !== 0 && Math.abs(level - light.level) < LEVEL_STEP)) continue;
-        light.level = level;
-        try { light.source.setLevel(lightLevels(level, tag.shape)); } catch { /* source gone */ }
       }
       // One perception update per frame at most.
       if (dirty) {
