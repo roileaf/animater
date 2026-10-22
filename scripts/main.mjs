@@ -37,6 +37,8 @@ import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spel
 import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
 import { weaponFamily } from "./systems/daggerheart.mjs";
 import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
+import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acoustics.mjs";
+import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
@@ -1528,6 +1530,21 @@ Hooks.once("init", () => {
     // Off: whatever is bending stops at once.
     onChange: (on) => { if (on === false) distortionHost.clear(); },
   });
+  game.settings.register(ID, "roomAcoustics", {
+    name: "Room acoustics from walls",
+    hint: "In scenes without an Acoustics choice, Animater's sounds echo to fit the space around them, worked out from the walls: dry outdoors, tight in small rooms, ringing in halls.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "roomReverbLocal", {
+    name: "Room reverb on my screen",
+    hint: "Turn off to hear Animater's sounds without room reverb.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "muffleWalls", {
+    name: "Muffle sounds behind walls",
+    hint: "Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1652,6 +1669,24 @@ Hooks.on("renderSceneConfig", (app, html) => {
   tab.append(group);
 });
 Hooks.once("ready", () => {
+  // Room-aware sound: each grid square's room, swept once on the sound's level, forgotten when walls, doors, the
+  // scene or its levels change.
+  const rooms = createRoomCache({
+    sweep: (at, levelId) => {
+      const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
+      return CONFIG.Canvas.polygonBackends.sound.create(at, { type: "sound", radius: 30 * canvas.grid.size, ...(level ? { level } : {}) })?.points;
+    },
+  });
+  for (const hook of ["createWall", "updateWall", "deleteWall", "canvasReady", "updateScene", "createLevel", "updateLevel", "deleteLevel"])
+    Hooks.on(hook, () => rooms.bump());
+  // One shared reverb per room class, built from Foundry's own impulse in the context Animater's sounds play in.
+  const reverb = createReverbBuses({ contextOf: () => game.audio?.interface ?? null });
+  // Where this player hears walls from: their controlled token, else (for a player) their first token on the
+  // scene, else the middle of their view.
+  const soundEar = () => {
+    const token = canvas.tokens?.controlled?.[0] ?? (game.user.isGM ? null : canvas.tokens?.placeables?.find((t) => t.isOwner)) ?? null;
+    return token?.center ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y };
+  };
   // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
   installSoundPitch({
     enabled: () => game.settings.get(ID, "hitSounds") !== false,
@@ -1666,6 +1701,27 @@ Hooks.once("ready", () => {
     },
     // The scene's acoustics (Scene configuration → Ambience): open air, a hall or a cave.
     acoustics: () => canvas?.scene?.getFlag?.(ID, "acoustics") ?? null,
+    // Where the GM chose none: the room around the sound, from the walls of the scene this client views.
+    room: (data) => {
+      const r = roomFor(data, {
+        sceneAcoustics: canvas.scene?.getFlag(ID, "acoustics") || null,
+        viewedScene: canvas.scene?.id,
+        enabled: canvas.ready && game.settings.get(ID, "roomAcoustics") && game.settings.get(ID, "roomReverbLocal"),
+        cache: rooms,
+        gridPx: canvas.grid.size,
+      });
+      if (r.kind !== "reverb") return null;
+      // This player's echo strength scales the room too.
+      const level = reverbSend(r.room, game.settings.get(ID, "surfaceEcho"));
+      return { node: (context) => reverb.send(context, r.room, level) };
+    },
+    // A wall between this player and the sound muffles it, in any scene.
+    muffle: (data) => {
+      const at = data.animaterAt;
+      if (!game.settings.get(ID, "muffleWalls") || !canvas.ready || (data.animaterScene && data.animaterScene !== canvas.scene?.id)) return false;
+      const level = typeof data.animaterLevel === "string" ? canvas.scene?.levels?.get?.(data.animaterLevel) : undefined;
+      return CONFIG.Canvas.polygonBackends.sound.testCollision(soundEar(), at, { type: "sound", mode: "any", ...(level ? { level } : {}) }) === true;
+    },
   });
   void loadDndBooks();
   setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)), 1500);
@@ -1773,6 +1829,8 @@ Hooks.once("ready", () => {
     itemElement: (item, context) => usedItemElement(item, game.system.id, context?.activity),
     // The level this client views and its floor, for a mark whose source token names none.
     viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.base } : null; },
+    // The scene this client views, for a sound whose token names none.
+    viewedScene: () => canvas?.scene?.id ?? null,
     // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
     // otherwise tests the level this client views). A failing backend throws, and the runtime plays its flights as before.
     collides: (a, b, type, source) => {

@@ -811,6 +811,25 @@ test("players who turned Animater off hear no sounds either", async () => {
   }
 });
 
+test("sound data carries scene and level", async () => {
+  const recipe = validateRecipe({ id: "s", name: "S", trigger: "manual", stages: [{ stageId: "b", kind: "sound", soundFile: "hit.ogg", subject: "source", assets: [] }] });
+  const dataOf = async (source) => {
+    const { runtime, host, calls } = fixture();
+    host.viewedScene = () => "viewed";
+    host.viewedLevel = () => ({ level: "viewedLevel", elevation: 0 });
+    runtime.wait = async () => true;
+    await runtime.play(recipe, { source, targets: [] });
+    const [, fn] = calls.find((c) => c[0] === "addOverride");
+    return fn(null, {});
+  };
+  // The token's own scene and level.
+  const token = await dataOf({ id: "s", center: { x: 50, y: 50 }, document: { parent: { id: "S1" }, level: "L2" } });
+  assert.deepEqual([token.animaterScene, token.animaterLevel, token.animaterAt], ["S1", "L2", { x: 50, y: 50 }]);
+  // Without them, what the caster views.
+  const bare = await dataOf({ id: "s", center: { x: 50, y: 50 } });
+  assert.deepEqual([bare.animaterScene, bare.animaterLevel], ["viewed", "viewedLevel"]);
+});
+
 test("a stay-until-the-effect-ends layer ends with its item's effect", async () => {
   const recipe = validateRecipe({ id: "shield", name: "Shield", trigger: "manual", stages: [{ kind: "aura", assets: ["jb2a.impact.001.orange"], persist: true }] });
   const { runtime, calls } = fixture();

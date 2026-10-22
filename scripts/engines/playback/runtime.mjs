@@ -29,6 +29,11 @@ import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
+// A token's scene and level, else the scene and level this client views.
+const soundFloor = (t, host) => {
+  const doc = t?.document ?? t, own = typeof doc?.level === "string" && doc.level ? doc.level : null;
+  return { scene: doc?.parent?.id ?? host.viewedScene?.() ?? null, level: own ?? host.viewedLevel?.()?.level ?? null };
+};
 const SOUND_PRELOAD_TIMEOUT = 2000;
 // A play's id as a number (FNV-1a), the seed every client lays its marks' blotches out from.
 const hashSeed = (text) => { let h = 0x811c9dc5; for (const c of String(text)) h = Math.imul(h ^ c.codePointAt(0), 0x01000193); return h >>> 0; };
@@ -400,8 +405,10 @@ export class AnimaterRuntime {
           if (listeners) sound.forUsers(listeners);
           // Every client that plays it shapes it alike: pitch, and an echo off a shield or a ward (engines/sound/sound-pitch.mjs).
           // Where it happens (the target it lands on, else the source), so each client places it from its own seat.
-          const at = soundPlace(s.subject === "source" ? context.source : s.destination ?? context.source);
-          if ((s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(at ? { animaterAt: at } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
+          const from = s.subject === "source" ? context.source : s.destination ?? context.source, at = soundPlace(from);
+          // ...and on which scene and level (its token's, else what this client views), so others hear its room's walls.
+          const floor = at ? soundFloor(from, this.host) : null;
+          if ((s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(at ? { animaterAt: at } : {}), ...(floor?.scene ? { animaterScene: floor.scene } : {}), ...(floor?.level ? { animaterLevel: floor.level } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
           applyMediaOptions(sound, s);
           if (s.fadeIn) sound.fadeInAudio(s.fadeIn, { ease: s.ease });
           if (s.fadeOut) sound.fadeOutAudio(s.fadeOut, { ease: s.ease });

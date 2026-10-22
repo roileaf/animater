@@ -101,6 +101,13 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Map distortion | World | Big blasts ripple across the map, lasting fire shimmers with heat and teleports warp the air. Explosions, area bursts of 2 squares or more and critical hits with heavy two-handed weapons send a shockwave ring; lasting fire areas and auras shimmer until they end (an aura's shimmer moves with its token); a teleport pinches space at both ends. Drawn only on screens at Full animation quality (on by default) |
 | Map distortion on my screen | Each player | Turn off to never bend the map on this screen (for example if it is uncomfortable to watch). Distortion is drawn locally, only at Full quality, and skips new ripples while your computer is busy (on by default) |
 | Projectiles stop at walls | World | Arrows, bolts, spell bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see (on by default) |
+| Room acoustics from walls | World | In scenes without an Acoustics choice, Animater's sounds echo to fit the space around them, worked out from the walls: dry outdoors, tight in small rooms, ringing in halls (on by default; see below) |
+| Room reverb on my screen | Each player | Turn off to hear Animater's sounds without room reverb. Scenes with an Acoustics choice keep their echo (on by default) |
+| Muffle sounds behind walls | Each player | Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do, heard from your selected token, else your own token, else the middle of your view (on by default) |
+
+### Scene acoustics
+
+Each scene's configuration has an **Animater acoustics** choice: open air, hall or cave. A scene with a choice sounds that way everywhere. A scene left unset follows its walls: each sound gets reverb to fit the space where it happens, worked out from the walls around it (dry in the open, short and tight in a small room, fuller in a room, long and dark in a large hall), using Foundry's own reverb. Every player hears the same room for the same spot; a player viewing another scene hears it dry. Turn this off with **Room acoustics from walls**.
 
 ### Faster animations
 

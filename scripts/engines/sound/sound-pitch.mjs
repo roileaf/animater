@@ -45,7 +45,11 @@ export function mixSurfaceSound(data, mix) {
   if (data.animaterEcho) data.animaterEcho = { ...data.animaterEcho, wet: (data.animaterEcho.wet ?? 0) * (mix.echo ?? 1) };
   return data;
 }
-export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true } = {}) {
+// A wall between this player and a sound muffles it as Foundry muffles a door's sound (lowpass, intensity 5).
+const MUFFLED_HZ = 600;
+// room(data): the room the sound rings in, as { node(context) } giving its reverb send, or null. muffle(data): a wall
+// stands between this player and the sound. Either one failing leaves the sound as it was.
+export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false } = {}) {
   if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch) return () => {};
   // Waiting shaping by file: Sequencer announces a sound just before Foundry loads and starts it.
   const pending = new Map();
@@ -59,8 +63,11 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
     if (place) data.volume = (Number(data.volume) || 0) * place.gain;
     const rate = Number(data.animaterPitch), mixed = data.animaterEcho && typeof data.animaterEcho === "object" ? data.animaterEcho : null;
     const echo = animater ? sceneEcho(mixed, acoustics()) : mixed;
-    if (!((rate > 0 && rate !== 1) || echo || place) || typeof data.file !== "string") return;
-    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate: rate > 0 ? rate : 1, echo, place, until: now() + MATCH_MS }]);
+    // The walls around where it happens: the room it rings in, and whether one stands between it and this player.
+    const walled = (fn) => { try { return data.animaterAt ? fn(data) : null; } catch { return null; } };
+    const space = walled(room) ?? null, muffled = walled(muffle) === true;
+    if (!((rate > 0 && rate !== 1) || echo || place || space || muffled) || typeof data.file !== "string") return;
+    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate: rate > 0 ? rate : 1, echo, place, space, muffled, until: now() + MATCH_MS }]);
   });
   const take = (src) => {
     const path = decodeURIComponent(String(src ?? ""));
@@ -82,12 +89,15 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
         else if (this.element) { this.element.preservesPitch = false; this.element.playbackRate = shape.rate; }
       }
       // Foundry runs a sound through its effects before its volume: these join them for this play only. Distance
-      // dulls it, its place on screen pans it, then the echo.
+      // dulls it, a wall muffles it, its place on screen pans it, then the echo, then a share of it all goes to the
+      // room's reverb (so a muffled sound's room is muffled too).
       if (source?.context && Array.isArray(this.effects)) {
         const added = [], c = source.context;
         if (shape.place?.cutoff < 18000 && c.createBiquadFilter) { const dull = c.createBiquadFilter(); dull.type = "lowpass"; dull.frequency.value = shape.place.cutoff; added.push(dull); }
+        if (shape.muffled && c.createBiquadFilter) { const wall = c.createBiquadFilter(); wall.type = "lowpass"; wall.frequency.value = MUFFLED_HZ; added.push(wall); }
         if (shape.place?.pan && c.createStereoPanner) { const side = c.createStereoPanner(); side.pan.value = shape.place.pan; added.push(side); }
         if (shape.echo) added.push(echoNode(c, shape.echo));
+        if (shape.space) { let send = null; try { send = shape.space.node?.(c) ?? null; } catch { /* plays dry */ } if (send) added.push(send); }
         if (added.length) {
           this.effects.push(...added);
           source.addEventListener?.("ended", () => { for (const n of added) { const i = this.effects.indexOf(n); if (i >= 0) this.effects.splice(i, 1); } }, { once: true });
