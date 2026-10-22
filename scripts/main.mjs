@@ -8,6 +8,7 @@ import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment,
 import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
+import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { starterRecipes } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
@@ -1614,7 +1615,11 @@ Hooks.once("ready", () => {
   syncQuality();
   const env = environment();
   if (game.user.isGM && env.ready && !env.jb2a) ui.notifications.warn(`Animater: ${JB2A_MISSING}`, { permanent: true });
-  motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) } });
+  // Afterimages show at Full, Light and Balanced, unless this client turned them off.
+  const afterimagesHere = () => { try { return game.settings.get(ID, "afterimagesLocal") !== false; } catch { return true; } };
+  const afterimages = createAfterimages({ makeSprite: (texture) => new globalThis.PIXI.Sprite(texture), place: placeUnder,
+    enabled: () => afterimagesHere() && qualityRank(localQuality()) >= 2 });
+  motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
   guardSequencerMotions(globalThis.Sequencer?.MotionManager, { claims: (data) => {
@@ -1635,6 +1640,7 @@ Hooks.once("ready", () => {
     void persistentStates?.clear();
     conditionBody?.clear();
     motions.stop();
+    motions.afterimages?.clear();
     void optionalFx.stop();
     tokenFx.clear();
     void runtime?.stop();
