@@ -4,6 +4,7 @@
 
 - **Importing flash screens no longer duplicates them.** Export used to save every flash screen, the untouched starters included, and import added each one again under a new id, so a world ended up with two of everything. Export now saves only the screens you made or changed. Import replaces the screen with the same id, so a starter you customized overwrites the starter, and screens you already have are skipped: importing the same file twice adds nothing. Thanks to silentbrad for the report.
 - **Duplicates from an earlier import are cleaned up.** When the GM loads the world, exact copies of a flash screen are removed and the first one is kept; a screen switched on through a copy stays on. If you imported into another world, your customized starter and that world's original are not exact copies and both stay: delete the one you don't want.
+- **Recipes and finishers export separately, and only what's yours.** Export on the Recipes page saves your own recipes and the starters you changed, and leaves out the starters you never touched. Finishers have their own Export and Import on the Finishers page. Either Import takes either file and replaces entries with the same id. It also skips unchanged starters from an older export, so they can't undo a starter you changed.
 - **Delete a flash screen from the library.** Each tile has a delete button on hover, and right-clicking a tile offers Edit and Delete, so you no longer have to open a screen to delete it.
 
 ## 1.6.3 (2026-10-22)

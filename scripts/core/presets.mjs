@@ -281,3 +281,15 @@ export function starterRecipes() {
       });},
   );
 }
+
+// Sharing recipes between worlds. A starter recipe nobody changed is in every world already, so export
+// leaves it out and import skips it (an old export holding it would otherwise undo a customized starter).
+let starterBodies;
+const body = (r) => { try { return JSON.stringify(validateRecipe(r)); } catch { return null; } };
+export function untouchedStarterRecipe(r) {
+  starterBodies ??= new Map(starterRecipes().map((s) => [s.id, body(s)]));
+  return starterBodies.get(r?.id) === body(r);
+}
+// Each page exports its own kind: the Recipes page plain recipes, the Finishers page finishers.
+export const recipesToExport = (list, { finishers = false } = {}) => (list ?? []).filter((r) => !!r.finisher === finishers && !untouchedStarterRecipe(r));
+export const importableRecipes = (list) => (list ?? []).filter((r) => !untouchedStarterRecipe(r));
