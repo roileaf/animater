@@ -1644,3 +1644,83 @@ test("the wall test is told who shoots (for the shooter's level)", async () => {
   await playWall(recipe, context, { collides: (a, b, type, source) => { seen.push(source); return null; } });
   assert.ok(seen.length && seen.every((s) => s === context.source));
 });
+
+// Ground marks: the starting client describes each mark on its spot's tier 0 effect (engines/marks/ground-marks.mjs).
+function markFixture({ on = true, level = null, damages = false } = {}) {
+  const f = lightFixture(false);
+  f.host.groundMarks = () => on;
+  f.host.viewedLevel = () => (level ? { level, elevation: 30 } : null);
+  f.host.itemDamages = () => damages;
+  return f;
+}
+const marksOf = async (calls) => (await overridesByAsset(calls)).filter(([, d]) => d.animaterMark).map(([asset, d]) => [asset, d.animaterMark]);
+const fireAttack = (extra = {}) => ({ ...fireball().context, automatic: true, type: "attack", element: "fire", sceneId: "scene1", messageId: "m1", ...extra });
+test("fire spell impact is tagged with a scorch", async () => {
+  const { runtime, calls } = markFixture();
+  await runtime.play(fireball().recipe, fireAttack());
+  const marks = await marksOf(calls);
+  assert.equal(marks.length, 1);
+  const [asset, tag] = marks[0];
+  // The area's mark rides on its explosion and covers the whole circle.
+  assert.equal(asset, "jb2a.fireball.explosion.orange");
+  assert.equal(tag.mark, "scorch");
+  assert.equal(tag.shape, "circle");
+  assert.deepEqual(tag.at, { x: 600, y: 0 });
+  assert.equal(tag.radius, 200);
+  assert.equal(tag.sceneId, "scene1");
+  assert.equal(tag.delayMs, 0);
+  assert.ok(Number.isInteger(tag.seed));
+  // The same message plays the same blotches on every client: the seed comes from it.
+  const again = markFixture();
+  await again.runtime.play(fireball().recipe, fireAttack());
+  assert.equal((await marksOf(again.calls))[0][1].seed, tag.seed);
+});
+test("setting off: no tags", async () => {
+  const { runtime, calls } = markFixture({ on: false });
+  await runtime.play(fireball().recipe, fireAttack());
+  const data = await overridesByAsset(calls);
+  assert.ok(data.length);
+  for (const [, d] of data) assert.equal("animaterMark" in d, false);
+  // A preview never marks the floor.
+  const preview = markFixture();
+  await preview.runtime.play(fireball().recipe, fireAttack(), { preview: true });
+  assert.equal((await marksOf(preview.calls)).length, 0);
+});
+test("only harmful plays from Animater's own dispatch mark", async () => {
+  const marked = async (context, options) => { const f = markFixture(options); await f.runtime.play(fireball().recipe, context); return (await marksOf(f.calls)).length; };
+  assert.equal(await marked(fireAttack({ automatic: undefined })), 0);
+  // A spell cast marks when its item deals damage (host.itemDamages).
+  assert.equal(await marked(fireAttack({ type: "spell" })), 0);
+  assert.equal(await marked(fireAttack({ type: "spell" }), { damages: true }), 1);
+  // No element with a mark, no mark.
+  assert.equal(await marked(fireAttack({ element: "mental" })), 0);
+});
+test("marks carry the source token's level, else the viewed one", async () => {
+  const source = { ...fireball().context.source, document: { level: "lvl2", elevation: 15 } };
+  const own = markFixture({ level: "lvl1" });
+  await own.runtime.play(fireball().recipe, fireAttack({ source }));
+  const [[, tag]] = await marksOf(own.calls);
+  assert.equal(tag.level, "lvl2");
+  assert.equal(tag.elevation, 15);
+  const viewed = markFixture({ level: "lvl1" });
+  await viewed.runtime.play(fireball().recipe, fireAttack());
+  const [[, fallback]] = await marksOf(viewed.calls);
+  assert.equal(fallback.level, "lvl1");
+  assert.equal(fallback.elevation, 30);
+});
+test("a weapon's mark comes only from its recipe, never from rune damage", async () => {
+  const strike = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "hit", kind: "impact", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 800 }],
+  });
+  const context = fireAttack({ item: { type: "weapon", name: "Longsword" }, area: undefined, template: undefined });
+  const plain = markFixture();
+  await plain.runtime.play(strike, context);
+  assert.equal((await marksOf(plain.calls)).length, 0);
+  const bomb = markFixture();
+  await bomb.runtime.play(validateRecipe({ ...strike, markElement: "acid" }), context);
+  const marks = await marksOf(bomb.calls);
+  assert.equal(marks.length, 1);
+  assert.equal(marks[0][1].mark, "residue");
+  assert.equal(marks[0][1].shape, "spot");
+});

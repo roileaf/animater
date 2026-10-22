@@ -153,3 +153,22 @@ test('your own recipe for a weapon beats a catalog turned on wholesale; starters
  assert.notEqual(resolveAutomaticWeaponRecipe(strike,{...plugAndPlay,selected:[w.id]},[mine]).name,'My dagger','a catalog entry picked by hand still wins');
  assert.notEqual(resolveAutomaticWeaponRecipe(strike,plugAndPlay,[{...mine,enabled:false}])?.name,'My dagger');
 });
+// Ground marks: payload weapons name the mark their contents leave on the floor (engines/marks/ground-marks.mjs).
+test("alchemist's fire recipe carries markElement fire",()=>{
+ assert.equal(weaponRecipe(weapon('alchemists-fire-lesser'),'thrown').markElement,'fire');
+ assert.equal(weaponRecipe(weapon('acid-flask-lesser'),'thrown').markElement,'acid');
+ assert.equal(weaponRecipe(weapon('frost-vial-lesser'),'thrown').markElement,'cold');
+ // Through the catalog as it plays (bespoke designs and rune flourishes keep it).
+ const state=normalizeWeaponCatalogState({enabled:true});
+ assert.equal(resolveAutomaticWeaponRecipe(event(weapon('alchemists-fire-lesser'),'thrown'),state,[],{runes:true}).markElement,'fire');
+ // A payload with no mark (a glue bomb, a gas cloud) names none.
+ for(const w of PF2E_WEAPONS)for(const m of w.modes)if(m.payload&&['glue','foam','mud'].includes(m.payload.element)||m.payload?.style==='gas')assert.equal(weaponRecipe(w,m.mode).markElement,undefined,w.slug);
+});
+test('flaming longsword carries none',()=>{
+ const w=weapon('longsword'),state=normalizeWeaponCatalogState({enabled:true});
+ const flaming={...event(w,'melee')};flaming.item={...flaming.item,system:{...flaming.item.system,runes:{potency:1,striking:1,property:['flaming']}}};
+ const recipe=resolveAutomaticWeaponRecipe(flaming,state,[],{runes:true});
+ assert.ok(recipe.stages.some(s=>s.stageId.includes('-rune-flaming')));
+ assert.equal(recipe.markElement,undefined);
+ assert.equal(weaponRecipe(w,'melee').markElement,undefined);
+});

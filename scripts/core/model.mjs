@@ -175,6 +175,8 @@ export function validateRecipe(input) {
       ? { weaponMode: input.weaponMode } : {}),
     // Play-time element choice (scripts/catalogs/shared/element-choice.mjs).
     ...(input.elementChoice === true ? { elementChoice: true } : {}),
+    // The floor mark a payload weapon's contents leave (scripts/engines/marks/ground-marks.mjs).
+    ...(/^[a-z]{1,20}$/.test(input.markElement ?? "") ? { markElement: input.markElement } : {}),
     ...(text(input.bespoke, 120) ? { bespoke: text(input.bespoke, 120) } : {}),
     ...(normalizePreviewArea(input.previewArea)
       ? { previewArea: normalizePreviewArea(input.previewArea) }

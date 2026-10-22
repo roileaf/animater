@@ -114,6 +114,25 @@ tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
 const endLocally = (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false));
 // Projectile shadows on this client (setting projectileShadows; unregistered: on).
 const projectileShadows = () => { try { return game.settings.get(ID, "projectileShadows") !== false; } catch { return true; } };
+// Whether a used item deals damage (ground marks): a PF2e/SF2e spell with a damage (not only healing) formula, or
+// a weapon or consumable with damage; a D&D 5e activity with damage parts (a heal activity has none); a
+// Daggerheart action, or a weapon's attack, with hit-point damage (system.damage.main) that is not healing.
+function usedItemDamages(item, systemId) {
+  try {
+    const sys = item?.system;
+    if (!sys) return false;
+    const values = (v) => (v instanceof Map ? [...v.values()] : Array.isArray(v) ? v : Object.values(v ?? {}));
+    if (systemId === "pf2e" || systemId === "sf2e") {
+      if (item.type === "spell") return values(sys.damage).some((d) => d?.formula && [...(d.kinds ?? ["damage"])].includes("damage"));
+      if (item.type === "weapon") return Number(sys.damage?.dice) > 0 || !!sys.damage?.damageType;
+      if (item.type === "consumable") return !!sys.damage?.formula && sys.damage.kind !== "healing";
+      return false;
+    }
+    if (systemId === "dnd5e") return values(sys.activities).some((a) => a?.damage?.parts?.length > 0);
+    if (systemId === "daggerheart") return [...values(sys.actions), sys.attack].some((a) => a && a.type !== "healing" && !!a.damage?.main);
+    return false;
+  } catch { return false; }
+}
 // Adaptive playback on this client (engines/playback/adaptive-host.mjs): Foundry is read only when it runs.
 const adaptiveHost = createAdaptiveHost({
   state: turboState,
@@ -1620,6 +1639,12 @@ Hooks.once("ready", () => {
     // Shots stop at walls and throws arc (world settings); on while a setting is not registered.
     projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
     arcingThrows: () => { try { return game.settings.get(ID, "arcingThrows") !== false; } catch { return true; } },
+    // Harmful plays leave ground marks (world setting); on while the setting is not registered.
+    groundMarks: () => { try { return game.settings.get(ID, "groundMarks") !== false; } catch { return true; } },
+    // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
+    itemDamages: (item) => usedItemDamages(item, game.system.id),
+    // The level this client views and its floor, for a mark whose source token names none.
+    viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.bottom } : null; },
     // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
     // otherwise tests the level this client views). A failing backend throws, and the runtime plays its flights as before.
     collides: (a, b, type, source) => {

@@ -24,6 +24,7 @@ import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 import { planLights } from '../lighting/effect-lights.mjs';
+import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
 import { arcTracks, arrivalOf, flightLine, flightTiming, moveEnd, shadowStage, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
@@ -33,6 +34,8 @@ const CONTACT_GRACE_MS = 300;
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 const SOUND_PRELOAD_TIMEOUT = 2000;
+// A play's id as a number (FNV-1a), the seed every client lays its marks' blotches out from.
+const hashSeed = (text) => { let h = 0x811c9dc5; for (const c of String(text)) h = Math.imul(h ^ c.codePointAt(0), 0x01000193); return h >>> 0; };
 // "Stay until the effect ends": if no effect from the item shows up on the token
 // within this time (never applied), the layer ends instead of lingering.
 export const EFFECT_GRACE_MS = 60000;
@@ -409,6 +412,8 @@ export class AnimaterRuntime {
     let marks = null;
     // Effect lights (anchor stage -> light), planned from the final timings.
     let lights = null;
+    // Ground marks (anchor stage -> mark), planned from the same timings.
+    let groundMarks = null;
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -463,7 +468,9 @@ export class AnimaterRuntime {
         const animaterHitStop = afterMs >= 0 ? { afterMs, holdMs: mark.holdMs } : null;
         // Every client lights the scene from this one description (engines/lighting/effect-lights.mjs).
         const animaterLight = lights?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}), ...(animaterLight ? { animaterLight } : {}), ...(s.animaterShadow ? { animaterShadow: true } : {}) }));
+        // ...and paints the floor mark from this one (engines/marks/ground-marks.mjs).
+        const animaterMark = groundMarks?.get(s) ?? null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(s.animaterShadow ? { animaterShadow: true } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else if (s.shape) e.shape(s.shape.type, { ...s.shape });
@@ -631,26 +638,29 @@ export class AnimaterRuntime {
           for (const [s, mark] of marks) s.hitStop = { ...mark };
         }
       }
+      // Where each stage shows and how big, for the lights and the marks below (pixels).
+      const grid = this.host.gridSize?.() ?? 100, gridDistance = this.host.gridDistance?.() ?? 5;
+      const half = (n) => (Number(n) > 0 ? Number(n) / 2 : null);
+      // A line or cone shows at its middle, as far as half its length; any other area at its centre.
+      const area = context.area, along = ["line", "cone"].includes(area?.type) && area.center && area.endpoint;
+      const areaPoint = along ? { x: (area.center.x + area.endpoint.x) / 2, y: (area.center.y + area.endpoint.y) / 2 } : area?.center;
+      // A flight with a planned path ends where it stops (a bolt stopped by a wall, at the wall).
+      const pointOf = (s) => soundPlace(s.flightTo ?? s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? areaPoint : null) ?? soundPlace(s.destination);
+      // The footprint the effect is sized to, as a radius.
+      const radiusOf = (s) => {
+        if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : along ? area.length : area?.diameter * s.scale);
+        if (s.kind === "travel" || s.kind === "projectile") return half(tokenFootprint(s.origin, grid) * s.scale);
+        return half((s.footprint ?? effectFootprint(s, s.destination, grid, gridDistance)) * s.scale);
+      };
+      // The source token's level and elevation, so every client lights and marks the same floor.
+      const token = context.source?.document ?? context.source;
       // Effect lighting: planned once here from the final plan (slowed and held already); previews always show it.
       if (preview || this.host.effectLights?.() === true) {
-        const grid = this.host.gridSize?.() ?? 100, gridDistance = this.host.gridDistance?.() ?? 5;
-        const half = (n) => (Number(n) > 0 ? Number(n) / 2 : null);
-        // A line or cone lights its middle, as far as half its length; any other area lights its centre.
-        const area = context.area, along = ["line", "cone"].includes(area?.type) && area.center && area.endpoint;
-        const areaPoint = along ? { x: (area.center.x + area.endpoint.x) / 2, y: (area.center.y + area.endpoint.y) / 2 } : area?.center;
-        // The source token's level and elevation, so every client lights the same floor.
-        const token = context.source?.document ?? context.source;
         lights = planLights(plan, {
           tiers,
           grid,
-          // A flight with a planned path lights along it (a bolt stopped by a wall glows only to the wall).
-          pointOf: (s) => soundPlace(s.flightTo ?? s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? areaPoint : null) ?? soundPlace(s.destination),
-          // The footprint the effect is sized to, as a radius in pixels.
-          radiusOf: (s) => {
-            if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : along ? area.length : area?.diameter * s.scale);
-            if (s.kind === "travel" || s.kind === "projectile") return half(tokenFootprint(s.origin, grid) * s.scale);
-            return half((s.footprint ?? effectFootprint(s, s.destination, grid, gridDistance)) * s.scale);
-          },
+          pointOf,
+          radiusOf,
           originOf: (s) => soundPlace(s.flightFrom ?? s.origin),
           // Effects attached to a token (auras, a following emanation) carry their light with them; see build().
           follows: (s) => s.kind === "template"
@@ -662,6 +672,24 @@ export class AnimaterRuntime {
           level: token?.level,
           elevation: token?.elevation,
         });
+      }
+      // Ground marks (world setting): described once here on the same final plan; a preview never marks the floor.
+      if (!preview && this.host.groundMarks?.() === true && isHarmful(context, { itemDamages: this.host.itemDamages })) {
+        // A weapon's mark is its payload's (recipe.markElement): rune or rider damage leaves none.
+        const strike = ["weapon", "melee"].includes(context.item?.type);
+        groundMarks = planMarks(plan, {
+          context: strike ? { ...context, element: undefined } : context,
+          recipe,
+          tiers,
+          gridPx: grid,
+          pointOf,
+          sizeOf: (s) => 2 * (radiusOf(s) ?? 0) || null,
+          area: area?.center ? area : null,
+          seed: hashSeed(context.messageId ?? context.id ?? session),
+        });
+        // Without the source token's level, the level this client views.
+        const viewed = typeof token?.level === "string" && token.level ? null : this.host.viewedLevel?.();
+        if (viewed?.level) for (const tag of groundMarks.values()) Object.assign(tag, { level: viewed.level, ...(Number.isFinite(viewed.elevation) && !Number.isFinite(tag.elevation) ? { elevation: viewed.elevation } : {}) });
       }
       // Each arcing flight's shadow plays beside it (tier 2, engines/playback/flight-path.mjs). It is drawn, not
       // planned: the editor's preview and the plan's timings never see it, and it ends when its flight lands.

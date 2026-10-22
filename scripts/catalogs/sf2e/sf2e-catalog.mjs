@@ -9,6 +9,8 @@ import {withoutCatalogMotion} from '../shared/catalog-motion.mjs';
 import {withCatalogFx} from '../shared/catalog-fx.mjs';
 import {applySfMotionPatch} from './sf2e-motion.mjs';
 import {withRuneFlourishes,runeFlourishesEnabled} from '../pf2e/weapons/weapon-runes.mjs';
+import {normalizeElement} from '../shared/element-choice.mjs';
+import {MARKS} from '../../engines/marks/ground-marks.mjs';
 export {SF2E_ENTRIES,SF2E_SOURCE};
 export const SF_KINDS=['spell','feat','action','feature','weapon','condition','effect'];
 const byId=new Map(SF2E_ENTRIES.map(e=>[e.id,e]));
@@ -30,7 +32,8 @@ export function sfRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,cas
  if(!entry)throw Error('Choose an SF2e catalog entry.');
  const variant=entry.variants.find(v=>v.id===variantId)??entry.variants[0];
  let recipe=withoutBespoke(()=>entry.kind==='spell'?spellRecipe(entry.spell,undefined,{motion,castRank,sounds:null,fx:false}):entry.state?stateRecipe(entry.state,{damageType:damageType??variant.damageType,aura,catalog,fx:false}):clone(variant.recipe));
- recipe={...recipe,id:variant.recipe.id,name:entry.name,description:'',itemUuid:entry.uuid,systemId:'sf2e',catalogEntry:entry.id,...(entry.state?{stateEntry:entry.id,lifecycle:'document'}:{})};
+ const markElement=grenadeMark(entry);
+ recipe={...recipe,id:variant.recipe.id,name:entry.name,description:'',itemUuid:entry.uuid,systemId:'sf2e',catalogEntry:entry.id,...(entry.state?{stateEntry:entry.id,lifecycle:'document'}:{}),...(markElement?{markElement}:{})};
  // Reviewed SF2e motion corrections for spells rebuilt from the shared choreography.
  if(motion&&entry.spell?.motionPatch)recipe.stages=applySfMotionPatch(entry.spell,recipe.stages,entry.spell.motionPatch);
  if(!motion)recipe.stages=withoutCatalogMotion(recipe.stages);
@@ -39,6 +42,13 @@ export function sfRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,cas
   recipe.stages=variant.soundNamespace==='ability'?addAbilitySounds(item,recipe.stages,{sounds,soundVolume,mode:variant.weaponMode,design}):addSpellSounds(item,recipe.stages,{sounds,soundVolume,design});
  }
  return withCatalogFx(validateRecipe(recipe),{...entry,...entry.spell,...entry.state},{fx,fxCatalog,motion,sounds,soundVolume,variant,damageType:damageType??variant.damageType});
+}
+// The floor mark a grenade's payload leaves: its theme, when its traits name that element (a foam or stench
+// grenade's theme is only its look). Other SF2e weapons leave none, as PF2e Strikes do.
+function grenadeMark(entry){
+ if(entry.kind!=='weapon'||entry.group!=='grenade')return null;
+ const element=normalizeElement(entry.theme);
+ return element&&MARKS[element]&&entry.traits?.includes(element)?element:null;
 }
 export function findSfEntry(event){
  if(event.systemId&&event.systemId!=='sf2e')return null;

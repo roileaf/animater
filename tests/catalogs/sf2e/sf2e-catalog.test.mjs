@@ -100,3 +100,12 @@ test('SF2e catalog keeps the lasting animation choice so Play once, then fade st
  assert.equal(normalizeSfCatalogState({fade:true}).fade, true);
  assert.equal(normalizeSfCatalogState({...normalizeSfCatalogState({fade:true}),motion:false}).fade, true);
 });
+// Ground marks: grenades name the mark their element leaves on the floor (engines/marks/ground-marks.mjs).
+test('SF2e elemental grenades carry their markElement',()=>{
+ const grenade=name=>sfEntries('weapon').find(e=>e.name===name);
+ for(const v of grenade('Incendiary Grenade (Commercial)').variants)assert.equal(sfRecipe(grenade('Incendiary Grenade (Commercial)'),v.id).markElement,'fire');
+ assert.equal(sfRecipe(grenade('Degradation Grenade (Commercial)')).markElement,'acid');
+ // Its theme is not its damage: foam and stench grenades, a frag's shrapnel and a laser's beam leave none.
+ for(const name of ['Hardening Foam Grenade (Commercial)','Miasmatic Grenade (Commercial)','Frag Grenade (Commercial)'])assert.equal(sfRecipe(grenade(name)).markElement,undefined,name);
+ assert.equal(sfRecipe(sfEntries('weapon').find(e=>e.group==='laser')).markElement,undefined);
+});
