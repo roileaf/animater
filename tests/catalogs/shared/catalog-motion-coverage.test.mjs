@@ -40,6 +40,8 @@ test('spell movement is creature motion; movement grants stay activation-only',(
  for(const slug of ['airlift','comet-charge','dive-and-breach','earth-and-sky','warp-step','friendfetch','friendly-push'])assert.ok(route(spellRecipe(spell(slug))),slug);
  assert.equal(route(spellRecipe(spell('warp-step'))).repeats,2);
  assert.equal(route(spellRecipe(spell('friendfetch'))).subject,'targets');
+ // The pull is acted out only when nobody is teleported: a teleported ally is already beside the caster.
+ assert.equal(route(spellRecipe(spell('friendfetch'))).skipOnTeleport,true);
  assert.equal(route(spellRecipe(spell('friendly-push'))).motionHeading,'away');
  for(const slug of ['synchronize-steps','connective-current','wind-jump','earthbreaker-stride'])assert.equal(route(spellRecipe(spell(slug))),undefined,slug+' grants a later action');
 });

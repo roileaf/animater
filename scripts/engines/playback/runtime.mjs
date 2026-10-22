@@ -382,7 +382,9 @@ export class AnimaterRuntime {
     const tiers = new Map();
     try {
       jumps = jump ? withTeleportStage(plan, { who, mover: jump.mover }).filter((s) => s.kind === "teleport").slice(0, 1) : [];
-      plan = plan.filter((s) => s.kind !== "teleport");
+      // A stage that only stands in for the move (Friendfetch's pull) gives way on the token that really moves.
+      const standIn = (s) => s.skipOnTeleport && jumps.length && (s.subject === "targets" ? tokenIdOf(s.destination) === tokenIdOf(jump.mover) : who === "source");
+      plan = plan.filter((s) => s.kind !== "teleport" && !standIn(s));
       session = `${ID}-${this.host.userId()}-${uuid()}`;
       for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
     } catch (error) {

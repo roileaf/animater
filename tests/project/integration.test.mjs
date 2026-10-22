@@ -22,6 +22,7 @@ import {tokenFx} from '../../scripts/engines/tokenshade/api.mjs';
 import {MediaLibrary} from '../../scripts/ui/media-library.mjs';
 import { rollMessage, dualityRoll, adversaryRoll, damageRoll, useHook, target as dhTarget } from "../fixtures/daggerheart-messages.mjs";
 import { dhEntries, dhRecipe as dhCatalogRecipe, useDhEntry } from "../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs";
+import { timedStages } from "../../scripts/engines/playback/composition.mjs";
 globalThis.requestAnimationFrame = (fn) =>
   setTimeout(() => fn(performance.now()), 5);
 globalThis.cancelAnimationFrame = clearTimeout;
@@ -1660,7 +1661,7 @@ test("Daggerheart catalog: a card's spellcast roll plays its domain animation wi
   Object.assign(f.item, { type: "domainCard", name: card.name, system: { domain: card.domain, level: card.level, type: card.cardType } });
   await f.fire("createChatMessage", rollMessage({ item: f.item, actor: f.actor, roll: dualityRoll({ type: "spellcast" }), action: { name: "Cast", roll: { type: "spellcast" } } }));
   // "Played" is traced once the last delayed stage has started.
-  const last = Math.max(...card.variants.flatMap((v) => dhCatalogRecipe(card, v.id).stages.map((s) => s.delay ?? 0)));
+  const last = Math.max(...card.variants.flatMap((v) => timedStages(dhCatalogRecipe(card, v.id)).map((s) => s.delay ?? 0)));
   await new Promise((resolve) => setTimeout(resolve, last + 400));
   assert.equal(played(f, card.name), 1, JSON.stringify(f.api.activity()));
   assert.equal(f.api.spells().spells.length, 210);

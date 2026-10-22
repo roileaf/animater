@@ -87,7 +87,8 @@ test("effects-only catalog preserves VFX and removes native token motion without
   for (const s of PF2E_SPELLS) {
     const full = spellRecipe(s),
       effects = spellRecipe(s, undefined, { motion: false });
-    const resolvedEffects = r => timedStages(r).filter(p => p.kind !== 'motion')
+    // A teleport's vanish is timed from the gesture when there is one, else from the art (catalog-teleport.mjs).
+    const resolvedEffects = r => timedStages(r).filter(p => p.kind !== 'motion' && p.kind !== 'teleport')
       .map(p => ({...p,afterStage:'',timingAnchor:'end',startOffset:0}));
     assert.deepEqual(
       resolvedEffects(effects),

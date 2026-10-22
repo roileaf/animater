@@ -229,6 +229,9 @@ export function validateRecipe(input) {
           ...(["impact", "aura"].includes(s.kind) && Number.isFinite(s.atPoint?.x) && Number.isFinite(s.atPoint?.y) ? { atPoint: { x: s.atPoint.x, y: s.atPoint.y } } : {}),
           // Random variants: stages sharing a group are alternatives, one plays each time.
           ...(/^[A-Za-z0-9-]{1,40}$/.test(s.variantGroup ?? "") ? { variantGroup: s.variantGroup } : {}),
+          // Stands in for a move the recipe's teleport makes for real (Friendfetch's pull): it plays only when no
+          // token is teleported.
+          ...(s.skipOnTeleport === true ? { skipOnTeleport: true } : {}),
           // Drawn over the bearer's artwork (head-level stars, strands across the body).
           ...(s.above === true && s.below !== true ? { above: true } : {}),
           // Editor start mode; the link itself lives in afterStage/timingAnchor/startOffset.

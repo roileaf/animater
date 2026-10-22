@@ -165,7 +165,7 @@ export function withCatalogFx(recipe, entry, options={}) {
   const fitted=fitCastClips(recipe);
   if(fitted!==recipe)recipe=validateRecipe(fitted);
   // A teleport spell's own Teleport stage, timed to its art (catalog-teleport.mjs).
-  recipe=withCatalogTeleport(recipe);
+  recipe=withCatalogTeleport(recipe,entry);
   if (options.fx===false||BESPOKE[recipe.bespoke]?.fx===false)return recipe;
   const catalog=options.fxCatalog??liveCatalogFx();
   if (!catalog.tokenReady&&!catalog.sceneReady)return recipe;

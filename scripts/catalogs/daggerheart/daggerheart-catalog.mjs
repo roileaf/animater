@@ -344,7 +344,7 @@ export function dhRecipe(entry, variantId, { motion = true, actionId = null, sou
   if (!motion && recipe.stages.some((s) => s.kind !== "motion")) recipe.stages = recipe.stages.filter((s) => s.kind !== "motion");
   if (recipe.lifecycle !== "document") recipe.stages = withDhSounds(entry, variant, recipe.stages, { sounds, soundVolume });
   // Lasting conditions (Hidden, Restrained) show a quiet Tokenshade look when it is available.
-  return withConditionLook(withCatalogTeleport(validateRecipe(recipe)), entry);
+  return withConditionLook(withCatalogTeleport(validateRecipe(recipe), entry), entry);
 }
 // A feature fallback plays the variant of the event's shape.
 export function dhVariantForEvent(entry, event) {

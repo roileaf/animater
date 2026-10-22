@@ -1592,7 +1592,7 @@ Hooks.once("init", () => {
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
   game.settings.register(ID, TELEPORT_TOKENS, {
     name: "Teleport tokens",
-    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Teleport" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
+    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Blink Out" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
     scope: "world", config: true, type: Boolean, default: true,
   });
   game.settings.register(ID, "welcomed", { scope: "world", config: false, type: Boolean, default: false });

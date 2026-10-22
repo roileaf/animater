@@ -26,19 +26,24 @@ function* catalogRecipes() {
     for (const e of dhEntries()) for (const v of e.variants) yield [slugOf(e.name), () => dhRecipe(e, v.id, { motion })];
   }
 }
-// Who each catalog teleport moves. A new teleporting entry fails here until it is reviewed and listed.
-const MOVER = { friendfetch: 'target', translocate: 'source', 'misty-step': 'source', 'dimension-door': 'source' };
+// Who each catalog teleport moves, and the picker's range in feet (0: the item's own). A new teleporting entry
+// fails here until it is reviewed and listed.
+const MOVER = { friendfetch: 'target', translocate: 'source', 'misty-step': 'source', 'dimension-door': 'source',
+  'dimensional-steps': 'source', 'echo-jump': 'source', flicker: 'source', blink: 'source', 'shadowy-teleport': 'source', 'warp-step': 'source',
+  'deathly-teleport': 'source', 'radiant-teleport': 'source', 'tricksters-transposition': 'source', 'blink-out': 'source' };
+const RANGE = { flicker: 10, blink: 10, 'shadowy-teleport': 30, 'warp-step': 30, 'deathly-teleport': 60, 'radiant-teleport': 60, 'tricksters-transposition': 120, 'blink-out': 60 };
 const FLIGHT = new Set(['travel', 'projectile']);
 let teleports;
 const built = () => teleports ??= [...catalogRecipes()].map(([slug, build]) => [slug, build()]).filter(([slug, r]) => teleportPlan(r) || r.stages.some((s) => s.kind === 'teleport') || MOVER[slug]);
 
 test('every catalog teleport has one Teleport stage inside its animation, moving the right token', () => {
   const moving = built().filter(([, r]) => teleportPlan(r));
-  assert.ok(moving.length >= 16, `found ${moving.length}`);
+  assert.ok(moving.length >= 36, `found ${moving.length}`);
   assert.deepEqual(new Set(moving.map(([slug]) => slug)), new Set(Object.keys(MOVER)));
   for (const [slug, r] of moving) {
     const who = teleportPlan(r).who, name = `${r.id} (${slug})`;
     assert.equal(who, MOVER[slug], `${name} moves the ${MOVER[slug]}`);
+    if (RANGE[slug]) assert.equal(teleportPlan(r).range, RANGE[slug], `${name} range`);
     const own = r.stages.filter((s) => s.kind === 'teleport');
     assert.equal(own.length, 1, `${name} has one teleport stage`);
     // Linked, so it moves with the art it is timed from when that is dragged.
@@ -48,10 +53,15 @@ test('every catalog teleport has one Teleport stage inside its animation, moving
     const first = Math.min(...visuals.map((s) => s.delay)), last = Math.max(...visuals.map((s) => s.delay + s.duration));
     assert.ok(stage.delay >= first && stage.delay <= last, `${name} vanishes at ${stage.delay}, inside ${first}..${last}`);
     if (who === 'target') {
-      const flights = timed.filter((s) => FLIGHT.has(s.kind) && s.travelOrigin !== 'target');
-      assert.ok(flights.length, `${name} reaches its target`);
-      assert.equal(own[0].timingAnchor, 'arrival');
-      assert.ok(stage.delay >= Math.min(...flights.map((s) => s.delay + arrivalOf(s))) - 1, `${name} vanishes once its flight arrives`);
+      // As the hit on it lands (linked to the flight), else as the flight arrives.
+      const anchor = timed.find((s) => s.stageId === own[0].afterStage);
+      const flight = timed.find((s) => FLIGHT.has(s.kind) && s.travelOrigin !== 'target' && s.stageId === (anchor.kind === 'impact' ? anchor.afterStage : anchor.stageId));
+      assert.ok(flight, `${name} follows the flight to its target`);
+      if (anchor.kind === 'impact') assert.ok(stage.delay >= anchor.delay && stage.delay >= flight.delay, `${name} vanishes as the hit lands`);
+      else assert.ok(own[0].timingAnchor === 'arrival' && stage.delay >= flight.delay + arrivalOf(flight) - 1, `${name} vanishes once its flight arrives`);
+      // The pull it only acted out gives way to the real move.
+      for (const s of timed.filter((s) => s.kind === 'motion' && ['rush', 'leap', 'roll', 'dodge'].includes(s.motion) && s.subject === 'targets' && s.delay >= stage.delay))
+        assert.equal(s.skipOnTeleport, true, `${name}: ${s.label} plays only without a teleport`);
     } else {
       // Nothing on the caster rides along when it jumps; arrival art plays once it has landed.
       const moved = stage.delay + stage.duration;
@@ -59,19 +69,30 @@ test('every catalog teleport has one Teleport stage inside its animation, moving
         assert.ok(s.delay >= moved || s.delay + s.duration <= stage.delay, `${name}: ${s.label || s.stageId} is not dragged along`);
     }
     // Its departure and arrival effects exist in either JB2A library.
-    const free = ['blue', 'purple', 'yellow'].flatMap((c) => [`jb2a.misty_step.01.${c}`, `jb2a.misty_step.02.${c}`]).map((key) => ({ key }));
+    const free = [...['blue', 'purple', 'yellow'].flatMap((c) => [`jb2a.misty_step.01.${c}`, `jb2a.misty_step.02.${c}`]), 'jb2a.teleport.01.yellow', 'jb2a.teleport.01.blue'].map((key) => ({ key }));
     const look = teleportVisuals(r, free);
     assert.ok(look.out && look.in, `${name} has departure and arrival effects`);
   }
 });
 
-test('a teleport spell only teleports when it is cast, not on its damage roll', () => {
-  const others = built().filter(([slug, r]) => MOVER[slug] && !['use', 'manual'].includes(r.trigger));
-  assert.ok(others.length >= 2, 'Dimension Door has failed-teleport damage activities');
-  for (const [, r] of others) {
+test('a teleport is never on a damage roll, nor on the plain cast of a spell that teleports later', () => {
+  const still = built().filter(([slug, r]) => MOVER[slug] && (r.trigger === 'damage' || slug === 'blink' && r.activityName === 'Cast'));
+  assert.ok(still.length >= 6, 'Dimension Door failed-teleport damage, Blink 2014 cast');
+  for (const [, r] of still) {
     assert.equal(teleportPlan(r), null, r.id);
     assert.ok(!r.stages.some((s) => s.kind === 'teleport'), r.id);
   }
+  // Blink 2014 teleports on its Blink Check; 2024 (no roll activity) on its cast.
+  assert.ok(built().some(([slug, r]) => slug === 'blink' && r.activityName === 'Blink Check' && teleportPlan(r)));
+});
+
+test('rules fixes: Warp Step moves the one who acts, Radiant Teleport bursts where it lands', () => {
+  const find = (slug) => built().find(([s, r]) => s === slug && teleportPlan(r))[1];
+  const warp = find('warp-step');
+  assert.ok(!warp.stages.some((s) => s.subject === 'targets'), 'its art is on itself, not a companion');
+  const radiant = find('radiant-teleport'), timed = timedStages(radiant), tp = timed.find((s) => s.kind === 'teleport');
+  assert.ok(timed.find((s) => s.kind === 'template').delay >= tp.delay + tp.duration);
+  assert.deepEqual([radiant.teleportOut, radiant.teleportIn], ['jb2a.teleport.01.yellow', 'jb2a.teleport.01.yellow']);
 });
 
 test('withCatalogTeleport times the vanish and moves art the jump would carry off', () => {

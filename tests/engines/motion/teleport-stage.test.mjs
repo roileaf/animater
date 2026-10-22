@@ -120,6 +120,20 @@ test("a cancelled pick or a recipe that does not teleport plays without a jump",
   assert.equal(teleportCall(calls), null);
 });
 
+test("a pull acted out for a teleported target plays only on those who are not teleported", async () => {
+  const pull = { stageId: "pull", kind: "motion", motion: "rush", subject: "targets", afterStage: "ray", timingAnchor: "end", duration: 1000, skipOnTeleport: true };
+  const pulls = (calls) => calls.filter((c) => c[0] === "motion" && c[1] === "rush").length;
+  const recipe = friendfetch([cast, ray, pull]);
+  assert.equal(recipe.stages[2].skipOnTeleport, true, "validation keeps the flag");
+  let { runtime, calls } = fixture({ spot: { mover: ally, x: 0, y: 100 } });
+  await runtime.play(recipe, { source, targets: [ally, other] });
+  assert.ok(teleportCall(calls));
+  assert.equal(pulls(calls), 1, "the ally teleports; the other target is still pulled");
+  ({ runtime, calls } = fixture({ spot: null }));
+  await runtime.play(recipe, { source, targets: [ally, other] });
+  assert.equal(pulls(calls), 2, "no spot picked: both are pulled");
+});
+
 test("a preview vanishes in place: no pick, no real teleport", async () => {
   const { runtime, calls } = fixture({ spot: { mover: ally, x: 0, y: 0 } });
   await runtime.play(friendfetch(), { source, targets: [ally] }, { preview: true });

@@ -123,7 +123,8 @@ for (const [domain, designs] of designed) {
       assert.equal(Boolean(record.use), triggers.length === 2, `${card.name}: a \`use\` design exactly when the card has a second (use) variant`);
       for (const v of entry.variants) {
         const r = dhRecipe(entry, v.id), part = v.recipe.trigger === "use" && record.use ? record.use : record;
-        assert.equal(stageSignature(r.stages), stageSignature(designStages(part, { palette: DOMAIN_PALETTES[domain], level: card.level, levelScale })), `${card.name} ${v.id}`);
+        // A teleporting card (Blink Out) adds its Teleport stage (catalog-teleport.mjs).
+        assert.equal(stageSignature(r.stages.filter((s) => s.kind !== "teleport")), stageSignature(designStages(part, { palette: DOMAIN_PALETTES[domain], level: card.level, levelScale })), `${card.name} ${v.id}`);
       }
       for (const [id, design] of Object.entries(record.actions ?? {})) {
         const action = text.actions.find((a) => a.id === id);
