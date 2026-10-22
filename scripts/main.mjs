@@ -16,8 +16,9 @@ import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
-import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
+import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState, holdSession, hitStopReady } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
+import { createHitStopHost } from "./engines/playback/hit-stop-host.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -120,8 +121,16 @@ const adaptiveHost = createAdaptiveHost({
     tokenSize: (uuid) => { try { const t = fromUuidSync(uuid)?.object; return t ? { width: t.w, height: t.h } : null; } catch { return null; } },
   }),
 });
+// Hit-stop on this client: a crit's tagged effects and motions freeze together at contact.
+const hitStopHost = createHitStopHost({
+  allowed: () => {
+    try { return game.settings.get(ID, "hitStopLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.app?.ticker?.started && hitStopReady(); } catch { return false; }
+  },
+  holdEffects: holdSession,
+  holdMotions: (owner, ms) => motions.hold(owner, ms),
+});
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
-Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); });
+Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); });
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
 // every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
@@ -180,6 +189,7 @@ async function receiveMotion(data, { strict = false } = {}) {
       stage.subject === "targets" ? canvas.tokens.get(data.tokenId) : source;
     if (!token) return;
     const target = canvas.tokens.get(data.targetId);
+    hitStopHost.onMotion(data);
     await motions.play(
       token,
       stage,
@@ -1306,6 +1316,21 @@ Hooks.once("init", () => {
     hint: "Daggerheart: a duality roll with Hope adds a short gold glint on the roller's token, one with Fear a dark purple wisp, beside the item's own animation. Critical successes keep their own crit visuals.",
     scope: "world", config: game.system.id === "daggerheart", type: Boolean, default: true,
   });
+  game.settings.register(ID, "hitStop", {
+    name: "Hit-stop on critical hits",
+    hint: "A critical hit freezes its animation for a split second at the moment of contact, on every screen.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "slowMotionKills", {
+    name: "Slow motion on notable kills",
+    hint: "The last enemy of a fight, a boss-level foe or a critical kill falls in slow motion.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "hitStopLocal", {
+    name: "Hit-stop on my screen",
+    hint: "Turn off to never freeze animations on this screen; they still keep the short beat after a critical hit.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1519,7 +1544,7 @@ Hooks.once("ready", () => {
     enabled: () => acceptsEvents() || hasOwnApproved(),
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
     // Crits freeze at contact (world setting); on while the setting is not registered.
-    hitStop: () => { try { return game.settings.get(ID, "hitStop") !== false; } catch { return true; } },
+    hitStop: () => game.settings.get(ID, "hitStop") !== false,
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
