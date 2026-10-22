@@ -972,8 +972,7 @@ test("effects carry the source actor so every client can remember what it played
   for (const [, fn] of anonymous.calls.filter((c) => c[0] === "addOverride")) assert.equal("animaterActor" in (await fn(null, {})), false);
 });
 
-// Hit-stop: a crit freezes at the moment of contact (engines/playback/impact-moments.mjs).
-// A flight lands at 600 ms (its own impact); the attacker's wind-up spans contact; one more hit follows.
+// A critical attack: a flight lands at 600 ms (its own impact); the attacker's wind-up spans it; one more hit follows.
 function critAttack() {
   const recipe = validateRecipe({
     ...starterRecipes()[0],
@@ -1004,181 +1003,19 @@ async function overridesByAsset(calls) {
   }
   return out;
 }
-test("crit attack retimes after contact and tags effects playing across it", async () => {
+test("a crit attack plays on its own timing", async () => {
   const { recipe, context } = critAttack();
-  const { runtime, calls, waits } = critFixture();
-  let plan;
-  await runtime.play(recipe, context, { onStart: (r) => { plan = r.playbackPlan; } });
-  const tags = Object.fromEntries((await overridesByAsset(calls)).map(([asset, data]) => [asset, data.animaterHitStop]));
-  assert.deepEqual(tags["jb2a.fire_bolt.orange"], { afterMs: 600, holdMs: 100 });
-  assert.deepEqual(tags["jb2a.impact.001.orange"], { afterMs: 0, holdMs: 100 });
-  assert.equal(tags["jb2a.impact.002.blue"], undefined);
-  const delay = (id) => plan.find((s) => s.stageId === id).delay;
-  assert.equal(delay("after"), 1300);
-  assert.equal(delay("hit"), 600);
-  assert.ok(waits.includes(1300) && !waits.includes(1200));
-  assert.equal(typeof runtime.contacts.get("ev1"), "number");
-});
-test("no hit-stop when the world setting is off or the outcome is a plain success", async () => {
-  for (const [hitStop, outcome] of [[() => false, "criticalSuccess"], [undefined, "success"]]) {
-    const { recipe, context } = critAttack();
-    const { runtime, host, calls, waits } = critFixture();
-    host.hitStop = hitStop;
-    await runtime.play(recipe, { ...context, outcome });
-    for (const [, data] of await overridesByAsset(calls)) assert.equal("animaterHitStop" in data, false);
-    assert.ok(waits.includes(1200) && !waits.includes(1300));
-    assert.equal(runtime.contacts.has("ev1"), false);
-  }
-});
-test("motion stage carries hitStop", async () => {
-  const { recipe, context } = critAttack();
-  const { runtime, calls } = critFixture();
-  await runtime.play(recipe, context);
-  const windup = calls.find((c) => c[0] === "motion" && c[1].stageId === "windup")[1];
-  assert.deepEqual(windup.hitStop, { afterMs: 300, holdMs: 100 });
-});
-test("staggered copies count their own start: a copy starting after contact is not frozen", async () => {
-  const { recipe, context } = manyTargets();
-  const { runtime, host, calls } = fixture();
-  host.adaptive = () => ({ stagger: true });
-  runtime.wait = async () => true;
-  await runtime.play(recipe, { ...context, id: "ev2", outcome: "criticalSuccess" });
-  const tags = (await overridesByAsset(calls)).map(([, data]) => data.animaterHitStop);
-  assert.deepEqual(tags, [{ afterMs: 0, holdMs: 100 }, undefined, undefined, undefined, undefined]);
-});
-test("finisher shares the attack's contact", async () => {
-  const { recipe, context } = critAttack();
-  const { runtime, host, calls } = critFixture();
-  const sequence = host.sequence;
-  host.sequence = () => ({ ...sequence(), play: async (options) => calls.push(["play", options, performance.now()]) });
-  const finisher = validateRecipe({
-    ...starterRecipes()[0],
-    stages: [{ stageId: "fling", kind: "impact", assets: ["jb2a.finisher.test"], delay: 0, duration: 3000 }],
-  });
-  host.resolveRecipe = () => recipe;
-  // The attack is dispatched; the finisher starts later than its planning but before its time zero.
-  host.pickTeleport = (_, ctx) => (ctx.hitStopOf ? null : new Promise((resolve) => setTimeout(() => resolve(null), 50)));
-  const attacking = runtime.dispatch(context);
-  const finishing = runtime.play(finisher, { source: context.source, targets: context.targets, hitStopOf: "ev1" });
-  await Promise.all([attacking, finishing]);
-  const contact = runtime.contacts.get("ev1");
-  const finisherStart = calls.filter((c) => c[0] === "play").at(-1)[2];
-  const mark = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.finisher.test")[1].animaterHitStop;
-  assert.equal(mark.holdMs, 100);
-  assert.ok(Math.abs(finisherStart + mark.afterMs - contact) <= 16, `${finisherStart + mark.afterMs} vs ${contact}`);
-});
-test("a finisher whose event plays nothing does not wait for a contact", async () => {
-  const { runtime, calls } = critFixture();
-  const finisher = validateRecipe({
-    ...starterRecipes()[0],
-    stages: [{ stageId: "fling", kind: "impact", assets: ["jb2a.finisher.test"], delay: 0, duration: 3000 }],
-  });
-  const started = performance.now();
-  await runtime.play(finisher, { source: { id: "s", center: { x: 0, y: 0 } }, targets: [{ id: "t1", center: { x: 300, y: 0 } }], hitStopOf: "save-1" });
-  assert.ok(performance.now() - started < 100);
-  for (const [, data] of await overridesByAsset(calls)) assert.equal("animaterHitStop" in data, false);
-});
-test("a check finisher that starts before its action's play still freezes with it", async () => {
-  const { recipe, context } = critAttack();
-  const { runtime, host, calls } = critFixture();
-  const sequence = host.sequence;
-  host.sequence = () => ({ ...sequence(), play: async (options) => calls.push(["play", options, performance.now()]) });
-  const finisher = validateRecipe({
-    ...starterRecipes()[0],
-    stages: [{ stageId: "fling", kind: "impact", assets: ["jb2a.finisher.test"], delay: 0, duration: 3000 }],
-  });
-  host.resolveRecipe = () => recipe;
-  host.pickTeleport = (_, ctx) => (ctx.hitStopOf ? null : new Promise((resolve) => setTimeout(() => resolve(null), 50)));
-  // The check chain reaches the finisher first; the Shove's own dispatch starts a little later.
-  const finishing = runtime.play(finisher, { source: context.source, targets: context.targets, hitStopOf: "chat:m1", hitStopLate: true });
-  await new Promise((resolve) => setTimeout(resolve, 60));
-  const attacking = runtime.dispatch({ ...context, id: "chat:m1" });
-  await Promise.all([attacking, finishing]);
-  const contact = runtime.contacts.get("chat:m1");
-  assert.equal(typeof contact, "number");
-  const finisherStart = calls.filter((c) => c[0] === "play").at(-1)[2];
-  const mark = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.finisher.test")[1].animaterHitStop;
-  assert.equal(mark?.holdMs, 100);
-  assert.ok(Math.abs(finisherStart + mark.afterMs - contact) <= 16, `${finisherStart + mark.afterMs} vs ${contact}`);
-});
-test("a late contact wait gives up after its grace when the action never plays", async () => {
-  const { runtime } = critFixture();
-  const started = performance.now();
-  assert.equal(await runtime.contactOf("chat:none", { late: true }), null);
-  const waited = performance.now() - started;
-  assert.ok(waited >= 250 && waited < 600, `${waited}`);
-});
-test("a crit damage roll never hit-stops", async () => {
-  const { recipe, context } = critAttack();
-  const { runtime, calls } = critFixture();
-  await runtime.play(recipe, { ...context, type: "damage" });
-  for (const [, data] of await overridesByAsset(calls)) assert.equal("animaterHitStop" in data, false);
-  assert.equal(runtime.contacts.has("ev1"), false);
-});
-test("every stage frozen across contact carries its hold in the started plan", async () => {
-  const { recipe, context } = critAttack();
-  const { runtime } = critFixture();
-  let plan;
-  await runtime.play(recipe, context, { onStart: (r) => { plan = r.playbackPlan; } });
-  const hold = (id) => plan.find((s) => s.stageId === id).hitStop;
-  assert.deepEqual(hold("fly"), { afterMs: 600, holdMs: 100 });
-  assert.deepEqual(hold("hit"), { afterMs: 0, holdMs: 100 });
-  assert.equal(hold("after"), undefined);
-});
-test("a crit with no moment of contact tells its finisher at once", async () => {
-  const { runtime } = critFixture();
-  const recipe = validateRecipe({
-    ...starterRecipes()[0],
-    stages: [{ stageId: "glow", kind: "aura", subject: "source", assets: ["jb2a.impact.001.orange"], delay: 0, duration: 500 }],
-  });
-  await runtime.play(recipe, { id: "ev3", outcome: "criticalSuccess", source: { id: "s", center: { x: 0, y: 0 } }, targets: [] });
-  assert.equal(runtime.contacts.has("ev3"), true);
-  assert.equal(runtime.contacts.get("ev3"), null);
-  runtime.dispatching.add("ev3");
-  const started = performance.now();
-  assert.equal(await runtime.contactOf("ev3"), null);
-  assert.ok(performance.now() - started < 16);
-  // A real contact from another play of the same event still wins.
-  runtime.recordContact("ev3", 1234);
-  assert.equal(runtime.contacts.get("ev3"), 1234);
-});
-
-// Slow motion: a notable kill plays at a slower tempo (engines/playback/impact-moments.mjs).
-test("tempo doubles timings and halves rates", async () => {
-  const { recipe, context } = critAttack();
-  const { runtime, waits } = critFixture();
-  let plan;
-  await runtime.play(recipe, { ...context, outcome: "success", tempo: 0.5 }, { onStart: (r) => { plan = r.playbackPlan; } });
-  const stage = (id) => plan.find((s) => s.stageId === id);
-  assert.equal(stage("hit").delay, 1200);
-  assert.equal(stage("hit").duration, 1000);
-  assert.equal(stage("after").delay, 2400);
-  assert.equal(stage("windup").delay, 600);
-  assert.equal(stage("windup").duration, 1200);
-  assert.equal(stage("fly").playbackRate, 0.5);
-  assert.equal(stage("hit").playbackRate, 0.5);
-  assert.ok(waits.includes(2400));
-  // Without a tempo the plan keeps its own timing.
-  const plain = critFixture();
-  let plainPlan;
-  await plain.runtime.play(recipe, { ...context, outcome: "success" }, { onStart: (r) => { plainPlan = r.playbackPlan; } });
-  assert.equal(plainPlan.find((s) => s.stageId === "after").delay, 1200);
-  assert.equal(plainPlan.find((s) => s.stageId === "fly").playbackRate, 1);
-});
-test("tempo cap keeps a long play under 6 s", async () => {
-  const recipe = validateRecipe({
-    ...starterRecipes()[0],
-    stages: [
-      { stageId: "fly", kind: "travel", assets: ["jb2a.fire_bolt.orange"], delay: 0, duration: 1000 },
-      { stageId: "fling", kind: "impact", assets: ["jb2a.finisher.test"], delay: 1000, duration: 4000 },
-    ],
-  });
-  const { runtime } = critFixture();
-  let plan;
-  await runtime.play(recipe, { source: { id: "s", center: { x: 0, y: 0 } }, targets: [{ id: "t1", center: { x: 300, y: 0 } }], tempo: 0.5 }, { onStart: (r) => { plan = r.playbackPlan; } });
-  const end = Math.max(...plan.map((s) => s.delay + s.duration));
-  assert.ok(Math.abs(end - 6000) < 1e-6, `slowed end ${end}`);
-  assert.ok(Math.abs(plan.find((s) => s.stageId === "fling").playbackRate - 5 / 6) < 1e-9);
+  const planOf = async (outcome) => {
+    const { runtime } = critFixture();
+    let plan;
+    await runtime.play(recipe, { ...context, outcome }, { onStart: (r) => { plan = r.playbackPlan; } });
+    return { plan };
+  };
+  const crit = await planOf("criticalSuccess"), plain = await planOf("success");
+  // The recipe's own stages keep their times (a crit only adds its own accents).
+  const delays = ({ plan }) => Object.fromEntries(plan.filter((s) => recipe.stages.some((r) => r.stageId === s.stageId)).map((s) => [s.stageId, s.delay]));
+  assert.deepEqual(delays(crit), { fly: 0, windup: 300, hit: 600, after: 1200 });
+  assert.deepEqual(delays(crit), delays(plain));
 });
 
 // Effect lighting: the starting client tags each light's anchor effect (engines/lighting/effect-lights.mjs).
@@ -1272,17 +1109,6 @@ test("a circle template's light follows its diameter and scale", async () => {
   const light = (await overridesByAsset(calls)).map(([, d]) => d.animaterLight).find(Boolean);
   assert.equal(light.dim, 1.5 * (400 * 1.5 / 2) / 100);
 });
-test("slowed play tags slowed timings", async () => {
-  const { recipe, context } = fireball();
-  const glow = async (ctx) => {
-    const { runtime, calls } = lightFixture();
-    await runtime.play(recipe, ctx);
-    return (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
-  };
-  const plain = await glow(context), slowed = await glow({ ...context, tempo: 0.5 });
-  assert.ok(plain.lengthMs > 0);
-  assert.equal(slowed.lengthMs, 2 * plain.lengthMs);
-});
 const tagsOf = async (stages, context, extra = {}) => {
   const { runtime, calls } = lightFixture();
   await runtime.play(validateRecipe({ ...starterRecipes()[0], stages }), { ...context, ...extra });
@@ -1310,19 +1136,6 @@ test("an aura's light follows its token", async () => {
   assert.equal(tag.follow, true);
   assert.equal(tag.at, undefined);
 });
-test("slowed play stretches an impact's flash", async () => {
-  const { recipe, context } = fireball();
-  const flashOf = async (ctx) => {
-    const { runtime, calls } = lightFixture();
-    await runtime.play(recipe, ctx);
-    return (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.explosion.orange")[1].animaterLight;
-  };
-  const plain = await flashOf(context), slowed = await flashOf({ ...context, tempo: 0.5 });
-  assert.equal(plain.shape, "flash");
-  assert.equal(slowed.lengthMs, 2 * plain.lengthMs);
-  assert.equal(slowed.rate, 0.5);
-  assert.equal(plain.rate, undefined);
-});
 test("lights carry the source token's level and elevation", async () => {
   const { context } = fireball();
   const source = { ...context.source, document: { level: "lvl2", elevation: 15 } };
@@ -1334,7 +1147,7 @@ test("lights carry the source token's level and elevation", async () => {
   }
   for (const tag of await tagsOf(fireball().recipe.stages, context)) assert.equal("level" in tag, false);
 });
-test("lights on a crit play follow the hit-stop retiming", async () => {
+test("lights on a crit play keep the plan's own timing", async () => {
   const { recipe, context } = critAttack();
   // A luminous burst after contact, lit through the tier 0 hit at the same spot.
   const stages = [...recipe.stages, { stageId: "boom", kind: "impact", assets: ["jb2a.fireball.explosion.orange"], delay: 1200, duration: 500 }];
@@ -1349,9 +1162,8 @@ test("lights on a crit play follow the hit-stop retiming", async () => {
   };
   const crit = await lightOnHit("criticalSuccess"), plain = await lightOnHit("success");
   assert.equal(plain.light.startMs, 600);
-  // The burst starts after contact, so the hold (100 ms) moves its light; the hit started before contact.
-  assert.equal(crit.light.startMs, 700);
-  assert.equal(crit.plan.find((s) => s.stageId === "boom").delay - crit.plan.find((s) => s.stageId === "hit").delay, 700);
+  assert.equal(crit.light.startMs, 600);
+  assert.equal(crit.plan.find((s) => s.stageId === "boom").delay - crit.plan.find((s) => s.stageId === "hit").delay, 600);
   assert.equal(crit.light.shape, "flash");
 });
 
@@ -1513,11 +1325,10 @@ test("a thrown bomb flies its plain clip: no arc, no shadow", async () => {
   const { recipe, context } = boltAttack();
   const lob = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, assets: [BOMB] } : s)) });
   const below = { ...context, targets: [{ id: "t1", center: { x: 0, y: 600 }, w: 100, h: 100 }] };
-  const { calls, plan } = await playWall(lob, below, { collides: () => null, setup: (f) => f.runtime.catalog.push({ key: BOMB }) });
+  const { calls } = await playWall(lob, below, { collides: () => null, setup: (f) => f.runtime.catalog.push({ key: BOMB }) });
   const fly = effectsOf(calls).find((e) => e.some((c) => c[0] === "file" && c[1] === BOMB));
   assert.equal(fly.find((c) => c[0] === "duration")[1], 1000);
   assert.ok(!calls.some((c) => c[0] === "shape" || c[0] === "animateProperty"));
-  assert.ok(!plan.some((s) => s.flightArc));
 });
 test("a thrown projectile keeps its whole clip; at a wall its impact comes sooner", async () => {
   const FLASK = "jb2a.throwable.throw.flask.01.orange";
@@ -1541,13 +1352,6 @@ test("preview never drops on-target stages", async () => {
   assert.ok(filesOf(calls).includes("jb2a.impact.001.orange"));
   assert.ok(!filesOf(calls).includes(WALL_IMPACT));
 });
-test("hit-stop contact lands on the wall impact", async () => {
-  const { recipe, context } = boltAttack({ outcome: "criticalSuccess" });
-  const { calls } = await playWall(recipe, context);
-  const tags = Object.fromEntries((await overridesByAsset(calls)).map(([asset, data]) => [asset, data.animaterHitStop]));
-  assert.deepEqual(tags[WALL_IMPACT], { afterMs: 0, holdMs: 100 });
-  assert.deepEqual(tags["jb2a.fire_bolt.orange"], { afterMs: 550, holdMs: 100 });
-});
 test("a fire bolt into a wall lights its path to the wall point", async () => {
   const { recipe, context } = boltAttack();
   const fiery = validateRecipe({ ...recipe, stages: recipe.stages.map((s) => (s.stageId === "fly" ? { ...s, assets: ["jb2a.fireball.beam.orange"] } : s)) });
@@ -1556,11 +1360,6 @@ test("a fire bolt into a wall lights its path to the wall point", async () => {
   assert.deepEqual(glow.from, { x: 0, y: 0 });
   assert.deepEqual(glow.to, { x: WALL_X, y: 0 });
   assert.equal(glow.arriveMs, 550);
-  // Slowed, the glow and the wall impact still meet at the wall.
-  const slowed = await playWall(fiery, { ...context, tempo: 0.5 }, { setup: (f) => { f.host.effectLights = () => true; } });
-  const slowGlow = (await overridesByAsset(slowed.calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
-  assert.equal(slowGlow.arriveMs, 1100);
-  assert.equal(slowed.plan.find((s) => s.kind === "impact").delay, 1100);
 });
 test("a target missed in a multi-target roll loses its own effects", async () => {
   const hit = { id: "t2", center: { x: 0, y: 600 }, w: 100, h: 100 };

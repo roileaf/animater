@@ -1,12 +1,10 @@
 import { uuid } from "./core/uuid.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
-import { registerFlashSettings, flashScreens, downMoment } from "./engines/flash/flash-combat.mjs";
-import { creatureRank, partyLevels, isNotableKill } from "./systems/notable-kill.mjs";
-import { SLOW_TEMPO } from "./engines/playback/impact-moments.mjs";
+import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
-import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent, finisherHitStop } from "./engines/finishers/finisher-model.mjs";
+import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent } from "./engines/finishers/finisher-model.mjs";
 import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
@@ -18,9 +16,8 @@ import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
-import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState, holdSession, hitStopReady } from "./integrations/sequencer-turbo/index.mjs";
+import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
-import { createHitStopHost } from "./engines/playback/hit-stop-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
@@ -110,8 +107,6 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
-// Ends an effect on this client only (it still plays for everyone else).
-const endLocally = (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false));
 // Whether a used item deals damage (ground marks): a PF2e/SF2e spell with a damage (not only healing) formula, or
 // a weapon or consumable with damage; a D&D 5e activity with damage parts (a heal activity has none); a
 // Daggerheart action, or a weapon's attack, with hit-point damage (system.damage.main) that is not healing.
@@ -139,20 +134,12 @@ const adaptiveHost = createAdaptiveHost({
   weaponRecipes: (actor) => (actor?.items?.contents ?? []).filter((item) => ["weapon", "melee"].includes(item.type)).slice(0, 6)
     .map((item) => { try { return resolveEvent({ type: "attack", item, actor }); } catch { return null; } }).filter(Boolean),
   preload: (files) => Sequencer.Preloader.preload(files, false),
-  endLocally,
+  endLocally: (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false)),
   sceneId: () => canvas?.scene?.id,
   view: () => ({
     zoom: canvas?.stage?.scale?.x ?? 1, gridSize: canvas?.grid?.size ?? 100, targetMs: 1000 / (canvas?.app?.ticker?.maxFPS || 60),
     tokenSize: (uuid) => { try { const t = fromUuidSync(uuid)?.object; return t ? { width: t.w, height: t.h } : null; } catch { return null; } },
   }),
-});
-// Hit-stop on this client: a crit's tagged effects and motions freeze together at contact.
-const hitStopHost = createHitStopHost({
-  allowed: () => {
-    try { return game.settings.get(ID, "hitStopLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.app?.ticker?.started && hitStopReady(); } catch { return false; }
-  },
-  holdEffects: holdSession,
-  holdMotions: (owner, ms) => motions.hold(owner, ms),
 });
 // Effect lights on this client (engines/lighting/light-host.mjs): local Foundry light sources, never documents.
 const lightHost = createLightHost({
@@ -169,14 +156,13 @@ const lightHost = createLightHost({
   refreshLighting: () => canvas?.perception?.update({ refreshLighting: true, refreshVision: true }),
   sceneId: () => canvas?.scene?.id,
   levelOk: (level) => { try { return !!canvas?.scene?.levels?.get(level ?? canvas.level?.id); } catch { return false; } },
-  heldMs: (session, since) => sequencerSpeedupsApi.holds.heldMs(session, since),
   steady: () => { try { return game.settings.get(ID, "effectLightAnimation") === false; } catch { return false; } },
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
-  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); hitStopHost.onEffect(effect?.data); lightHost.onEffect(effect);
+  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect);
 });
 Hooks.on("endedSequencerEffect", (effect) => lightHost.onEnded(effect));
 Hooks.on("canvasTearDown", () => lightHost.clear());
@@ -243,7 +229,6 @@ async function receiveMotion(data, { strict = false } = {}) {
       stage.subject === "targets" ? canvas.tokens.get(data.tokenId) : source;
     if (!token) return;
     const target = canvas.tokens.get(data.targetId);
-    hitStopHost.onMotion(data);
     await motions.play(
       token,
       stage,
@@ -1370,21 +1355,6 @@ Hooks.once("init", () => {
     hint: "Daggerheart: a duality roll with Hope adds a short gold glint on the roller's token, one with Fear a dark purple wisp, beside the item's own animation. Critical successes keep their own crit visuals.",
     scope: "world", config: game.system.id === "daggerheart", type: Boolean, default: true,
   });
-  game.settings.register(ID, "hitStop", {
-    name: "Hit-stop on critical hits",
-    hint: "A critical hit freezes its animation for a split second at the moment of contact, on every screen.",
-    scope: "world", config: true, type: Boolean, default: true,
-  });
-  game.settings.register(ID, "slowMotionKills", {
-    name: "Slow motion on notable kills",
-    hint: "The last enemy of a fight, a boss-level foe or a critical kill falls in slow motion.",
-    scope: "world", config: true, type: Boolean, default: true,
-  });
-  game.settings.register(ID, "hitStopLocal", {
-    name: "Hit-stop on my screen",
-    hint: "Turn off to never freeze animations on this screen; they still keep the short beat after a critical hit.",
-    scope: "client", config: true, type: Boolean, default: true,
-  });
   game.settings.register(ID, "effectLighting", {
     name: "Effect lighting",
     hint: "Fire, lightning and other glowing effects light up the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light.",
@@ -1617,8 +1587,6 @@ Hooks.once("ready", () => {
     },
     enabled: () => acceptsEvents() || hasOwnApproved(),
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
-    // Crits freeze at contact (world setting); on while the setting is not registered.
-    hitStop: () => game.settings.get(ID, "hitStop") !== false,
     // Effects light the scene (world setting); in daylight only when allowed.
     effectLights: () => game.settings.get(ID, "effectLighting") !== false
       && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
@@ -1927,8 +1895,7 @@ Hooks.once("ready", () => {
   });
   // Finishers play on the real token (finisher-play.mjs): travel lands, the token is moved
   // there, then it vanishes, stays as a body, or stays.
-  // A slowed kill (tempo) slows its ending fade too.
-  const finisherHost = (attacker, { tempo } = {}) => ({
+  const finisherHost = (attacker) => ({
     gridSize: () => canvas.grid.size,
     landing: finisherLanding,
     wallHit: finisherWallHit,
@@ -1937,14 +1904,14 @@ Hooks.once("ready", () => {
         .then(() => resolve(null), (error) => { runtime.trace("Blocked", error.message); resolve(null); });
     }),
     wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [], tempo }),
+    fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [] }),
     commit: (token, data) => commitDisplace(token, data, attacker),
     trace: (status, detail) => runtime.trace(status, detail),
   });
   // Resolves playFinisher's answer: true played, false a write failed, null never played.
-  const runFinisher = (recipe, { mover, attacker, extra }) => {
+  const runFinisher = (recipe, { mover, attacker }) => {
     const dead = hpOf(mover.actor)?.down === true;
-    return playFinisher({ recipe, mover, attacker, dead, extra }, finisherHost(attacker, extra)).catch((error) => { runtime.trace("Blocked", error.message); return null; });
+    return playFinisher({ recipe, mover, attacker, dead }, finisherHost(attacker)).catch((error) => { runtime.trace("Blocked", error.message); return null; });
   };
   // A critical strike: a player's pick plays when it plays on crits; with no pick, the GM's critical
   // finishers. It plays on each critically struck target (critTargets), from the event's source
@@ -1958,10 +1925,8 @@ Hooks.once("ready", () => {
     for (const mover of struck) {
       started.add(mover.id);
       announceFinished(keyOf(mover), true);
-      // It freezes with the attack's hit-stop, if the event is playing one (runtime.mjs: contactOf).
-      const extra = finisherHitStop(event);
       // A play that never started (blocked) takes its mark back, so the kill plays it in full.
-      void runFinisher(recipe, { mover, attacker: event.source, extra }).then((played) => { if (played === null) announceFinished(keyOf(mover), false); });
+      void runFinisher(recipe, { mover, attacker: event.source }).then((played) => { if (played === null) announceFinished(keyOf(mover), false); });
     }
     return started;
   };
@@ -2010,19 +1975,7 @@ Hooks.once("ready", () => {
     // killing blow is that crit's own damage (the same finisher's mark); after a save crit, whichever
     // finisher the kill chose (the default included) only ends it, never travels again. Marks are used once.
     const endingOnly = saveKey ? finished.consume(saveKey) : by?.crit === true && finished.consume(finishedKey({ ...base, recipeId: recipe.id }));
-    return { recipe, attacker, endingOnly, crit };
-  };
-  // Slow motion for a notable kill (systems/notable-kill.mjs): the last enemy, a critical kill or a
-  // boss-level foe, in a started combat it fights in (with none, only a crit counts).
-  const killTempo = (actor, crit) => {
-    if (!game.settings.get(ID, "slowMotionKills")) return undefined;
-    const systemId = game.system.id;
-    const combat = game.combats?.find((c) => c.started && Array.from(c.combatants).some((cb) => cb.actor?.id === actor.id)) ?? game.combat;
-    const notable = isNotableKill({
-      finalEnemy: downMoment(combat, actor, systemId) === "finalEnemy", crit,
-      rank: creatureRank(actor, systemId), partyLevels: combat?.started ? partyLevels(combat, systemId) : [], systemId,
-    });
-    return notable ? SLOW_TEMPO : undefined;
+    return { recipe, attacker, endingOnly };
   };
   // The item that struck the killing blow, from the damage roll's origin. A synthetic strike (no
   // Item document) answers a descriptor on the attacking actor, whose flag holds its pick.
@@ -2038,9 +1991,8 @@ Hooks.once("ready", () => {
     return item ?? attacker?.actor?.items?.find?.((i) => (by.itemUuid && i.uuid === by.itemUuid) || (!by.itemUuid && i.name === by.itemName)) ?? null;
   };
   // Just the ending of a finisher whose travel already played: hidden or Defeated, as playFinisher ends.
-  // A slowed kill fades slowly; hidden is written once the fade ends.
-  const finishOnly = async (recipe, token, attacker, tempo) => {
-    const host = finisherHost(attacker, { tempo }), ending = recipe.finisher?.ending;
+  const finishOnly = async (recipe, token, attacker) => {
+    const host = finisherHost(attacker), ending = recipe.finisher?.ending;
     host.trace("Finisher", `${recipe.name}: ${token.name ?? "token"} (ending)`);
     try {
       if (ending === "vanish") { await host.fade(token); await host.commit(token, { hidden: true, finisher: recipe.id }); }
@@ -2049,12 +2001,12 @@ Hooks.once("ready", () => {
     } catch (error) { host.trace("Blocked", `Finisher ${recipe.name}: ${error.message}`); return false; }
   };
   // The collapse (or dramatic death) on a drop to 0 HP, else the energy-damage flash.
-  const playDamageMoment = (actor, token, dropped, tempo) => {
+  const playDamageMoment = (actor, token, dropped) => {
     const type = recallDamage(damageLog, { actorId: actor.id, tokenId: token.id })?.type;
     const recipe = dropped ? (game.settings.get(ID, DRAMATIC_DEATHS) ? deathRecipe(type, COLLAPSE) : COLLAPSE) : hitRecipe(type);
     const playable = recipe && installedStages(recipe);
     if (!playable?.stages.length) return;
-    void runtime.play(playable, { source: token, targets: [], tempo }).catch((error) => runtime.trace("Blocked", error.message));
+    void runtime.play(playable, { source: token, targets: [] }).catch((error) => runtime.trace("Blocked", error.message));
   };
   // A use finisher's travel (and its move write) still playing on this token finishes first,
   // so the kill finisher starts from where it landed.
@@ -2062,20 +2014,12 @@ Hooks.once("ready", () => {
     for (let waited = 0; motions?.active.has(token) && waited < limit; waited += 100) await new Promise((resolve) => setTimeout(resolve, 100));
   };
   const playKill = async (actor, token, kill) => {
-    // Notable or not is read at the drop, before the finale screen.
-    const tempo = killTempo(actor, kill.crit);
     // The last enemy falling: its screen (Finish Him!) plays first, then the finisher.
     const finale = flash?.finaleLength?.(actor) ?? 0;
     await Promise.all([motionSettled(token), finale ? new Promise((resolve) => setTimeout(resolve, finale + 150)) : null]);
-    if (kill.endingOnly) return void await finishOnly(kill.recipe, token, kill.attacker, tempo);
+    if (kill.endingOnly) return void await finishOnly(kill.recipe, token, kill.attacker);
     // Nothing played and nothing was written: the old collapse stands in.
-    const extra = tempo ? { tempo } : {};
-    if ((await runFinisher(kill.recipe, { mover: token, attacker: kill.attacker, extra })) === null) playDamageMoment(actor, token, true, tempo);
-  };
-  // A drop with no kill finisher (a player character, a hidden token) collapses, slowed when notable.
-  const dropTempo = (actor, token) => {
-    const ids = { actorId: actor.id, tokenId: token.id };
-    return killTempo(actor, (recallAttribution(damageLog, ids) ?? recallDamage(damageLog, ids))?.crit === true);
+    if ((await runFinisher(kill.recipe, { mover: token, attacker: kill.attacker })) === null) playDamageMoment(actor, token, true);
   };
   Hooks.on("updateActor", (actor, changes, options, userId) => {
     const change = hpChange(options.animaterHpBefore, hpOf(actor));
@@ -2086,7 +2030,7 @@ Hooks.once("ready", () => {
       if (token.document?.parent?.id !== canvas.scene?.id) continue;
       const kill = dropped ? killFinisherFor(actor, token) : null;
       if (kill) void playKill(actor, token, kill).catch((error) => runtime.trace("Blocked", error.message));
-      else playDamageMoment(actor, token, dropped, dropped ? dropTempo(actor, token) : undefined);
+      else playDamageMoment(actor, token, dropped);
     }
   });
   if (["pf2e","sf2e"].includes(game.system.id)) {

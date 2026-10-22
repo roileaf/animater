@@ -22,15 +22,10 @@ import { meleeClip, withOutcome } from '../../systems/outcome.mjs';
 import { centerOf, pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
-import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 import { planLights } from '../lighting/effect-lights.mjs';
 import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
 import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
-// A crit finisher waits this long for its attack's moment of contact.
-const CONTACT_WAIT_MS = 1000;
-// ...and, when its attack starts beside it (a check's action), this long for that play to begin.
-const CONTACT_GRACE_MS = 300;
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 const SOUND_PRELOAD_TIMEOUT = 2000;
@@ -112,7 +107,7 @@ export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf
     if (dropped(s)) continue;
     out.push(earlier.has(s) ? { ...s, delay: Math.max(0, (s.delay ?? 0) - earlier.get(s)) } : s);
     if (s.flightOutcome !== 'wall') continue;
-    // Right after its flight, so the moment of contact (outcome.mjs strikeAt) finds it.
+    // Right after its flight, so the moment of contact (outcome.mjs strikeTime) finds it.
     const at = Math.round((s.delay ?? 0) + arrivalOf(s)), landing = { x: s.flightTo.x, y: s.flightTo.y };
     const key = `${Math.round(landing.x)},${Math.round(landing.y)},${at}`;
     if (struck.has(key)) continue;
@@ -162,25 +157,6 @@ export class AnimaterRuntime {
     this.lasting = [];
     // Lasting plays still on the table, for the Activity page's Now playing: session -> row.
     this.running = new Map();
-    // When each crit event's blow lands (performance.now() ms), so its finisher freezes with it.
-    this.contacts = new Map();
-    // Events whose animations are still playing (dispatch): only they can still name a contact.
-    this.dispatching = new Set();
-  }
-  // A crit event's moment of contact, once its attack starts; null when the event is not
-  // playing or names none within CONTACT_WAIT_MS. `late`: the event's play starts beside the
-  // caller (a check's action), so it may not be dispatching yet; wait up to CONTACT_GRACE_MS for it.
-  async contactOf(eventId, { late = false } = {}) {
-    const now = performance.now(), until = now + CONTACT_WAIT_MS, expected = late ? now + CONTACT_GRACE_MS : now;
-    const pending = () => this.dispatching.has(eventId) || performance.now() < expected;
-    while (!this.contacts.has(eventId) && pending() && performance.now() < until) await new Promise((resolve) => setTimeout(resolve, 16));
-    return this.contacts.get(eventId) ?? null;
-  }
-  // null: this crit names no contact, so its finisher need not wait (a later real contact still wins).
-  recordContact(eventId, at) {
-    if (eventId == null || this.contacts.get(eventId) != null) return;
-    this.contacts.set(eventId, at);
-    if (this.contacts.size > 50) this.contacts.delete(this.contacts.keys().next().value);
   }
   // The caster stopped concentrating: end the lasting areas of that spell (or, when
   // the spell is unknown, every concentration area that caster still holds).
@@ -292,18 +268,13 @@ export class AnimaterRuntime {
     // Other modules may claim the event (return false) before anything plays.
     if (globalThis.Hooks?.call?.("animater.preDispatch", event, recipe) === false)
       return this.trace("Skipped", `${event.item?.name ?? "Unknown item"}: claimed by another module.`, recipe, { item: event.item?.name, reason: "claimed" });
-    if (event.id) this.dispatching.add(event.id);
-    try {
-      await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
-        try {
-          await this.play(next, {...event,automatic:true});
-        } catch (error) {
-          this.trace("Blocked", error.message, next);
-        }
-      }));
-    } finally {
-      if (event.id) this.dispatching.delete(event.id);
-    }
+    await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
+      try {
+        await this.play(next, {...event,automatic:true});
+      } catch (error) {
+        this.trace("Blocked", error.message, next);
+      }
+    }));
     globalThis.Hooks?.callAll?.("animater.played", event, recipe);
   }
   async play(recipe, context, { preview = false, onStart, sampleArea = false } = {}) {
@@ -357,16 +328,8 @@ export class AnimaterRuntime {
       voices: (this.surfaceVoices ??= []),
       gridSize: this.host.gridSize?.() ?? 100,
     });
-    // Where each shot really flies (stopping at walls). Planned before slow motion
-    // stretches the plan, so a shortened flight's contact stays in the clip's own time, as the lights read it.
+    // Where each shot really flies (stopping at walls).
     plan = this.flightPaths(plan, recipe, context, preview);
-    // Slow motion (a notable kill): the whole one-time play stretches, a long one less (never past the cap).
-    let tempo = 1;
-    if (context.tempo < 1) {
-      const planEnd = Math.max(0, ...plan.filter((s) => !s.persist).map((s) => (s.delay ?? 0) + (s.duration ?? 0)));
-      tempo = tempoFor(planEnd, context.tempo);
-      plan = withTempo(plan, tempo);
-    }
     if (
       !preview &&
       plan.some((s) => s.kind === "motion" || s.kind === "tokenfx" && !s.catalogFx && this.host.fxCatalog?.().tokenReady) &&
@@ -401,8 +364,6 @@ export class AnimaterRuntime {
     for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
     // Every client remembers what this actor played, so it can warm those files on their next turn.
     const animaterActor = context.source?.actor?.id;
-    // Hit-stop marks (stage -> { afterMs, holdMs }): what plays across a crit's contact.
-    let marks = null;
     // Effect lights (anchor stage -> light), planned from the final timings.
     let lights = null;
     // Ground marks (anchor stage -> mark), planned from the same timings.
@@ -454,14 +415,11 @@ export class AnimaterRuntime {
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tier, animaterLasting = Boolean(lasts);
-        // Freezes on every client at contact; a staggered copy starts later, so contact comes sooner into it.
-        const mark = marks?.get(s), afterMs = mark ? mark.afterMs - (spread?.get(s) ?? 0) : -1;
-        const animaterHitStop = afterMs >= 0 ? { afterMs, holdMs: mark.holdMs } : null;
         // Every client lights the scene from this one description (engines/lighting/effect-lights.mjs).
         const animaterLight = lights?.get(s) ?? null;
         // ...and paints the floor mark from this one (engines/marks/ground-marks.mjs).
         const animaterMark = groundMarks?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}) }));
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -598,28 +556,6 @@ export class AnimaterRuntime {
         // Loaded: each surface hit lands just after the weapon's own (engines/sound/hit-timing.mjs).
         else if(this.host.soundPeak) plan=alignSurfaceHits(plan,this.host.soundPeak);
       }
-      // Hit-stop: a crit freezes for a moment as its blow lands; everything after waits for it.
-      // A crit finisher freezes at its attack's contact, measured from its own start.
-      let contact = null;
-      if (this.host.hitStop?.() !== false) {
-        let at = null;
-        if (context.hitStopOf != null) {
-          const shared = await this.contactOf(context.hitStopOf, { late: context.hitStopLate === true });
-          if (this.epoch !== epoch) return null;
-          const ahead = shared === null ? 0 : shared - performance.now();
-          if (ahead > 0) at = ahead;
-        } else if (plannedCrit(context)) {
-          at = contactTime(plan, critTargetIds(context));
-          if (at !== null) contact = at;
-          else this.recordContact(context.id, null);
-        }
-        if (at !== null) {
-          ({ plan, marks } = withHitStop(plan, at));
-          // Each marked stage carries its mark: a motion takes it to host.motion, and the plan's
-          // ends (finisher waits, the stall watchdog) count the freeze.
-          for (const [s, mark] of marks) s.hitStop = { ...mark };
-        }
-      }
       // Where each stage shows and how big, for the lights and the marks below (pixels).
       const grid = this.host.gridSize?.() ?? 100, gridDistance = this.host.gridDistance?.() ?? 5;
       const half = (n) => (Number(n) > 0 ? Number(n) / 2 : null);
@@ -636,7 +572,7 @@ export class AnimaterRuntime {
       };
       // The source token's level and elevation, so every client lights and marks the same floor.
       const token = context.source?.document ?? context.source;
-      // Effect lighting: planned once here from the final plan (slowed and held already); previews always show it.
+      // Effect lighting: planned once here from the final plan; previews always show it.
       if (preview || this.host.effectLights?.() === true) {
         lights = planLights(plan, {
           tiers,
@@ -650,7 +586,6 @@ export class AnimaterRuntime {
             : s.kind !== "overlay" && !s.meleeFrom && (s.kind === "aura" || !!s.attach),
           element: context.element ?? recipe.chosenElement,
           recipeColor: recipe.color,
-          tempo,
           level: token?.level,
           elevation: token?.elevation,
         });
@@ -686,8 +621,6 @@ export class AnimaterRuntime {
         optionalFx: stages.filter((s) => OPTIONAL_FX_KINDS.has(s.kind)),
       }));
       onStart?.({ ...recipe, playbackPlan: plan });
-      // The plan's time zero is now: its first group starts.
-      if (contact !== null) this.recordContact(context.id, performance.now() + contact);
       // Local previews never broadcast; real plays use Sequencer's own sync.
       const results = await Promise.all([
         ...sequences.map(async ({ delay, sequence, motions, optionalFx }) => {
@@ -715,7 +648,7 @@ export class AnimaterRuntime {
         ...(preview
           ? [
               this.wait(
-                Math.max(...plan.map((s) => s.delay + s.duration + (s.hitStop?.holdMs ?? 0))),
+                Math.max(...plan.map((s) => s.delay + s.duration)),
                 session,
               ),
             ]
@@ -725,7 +658,7 @@ export class AnimaterRuntime {
       // A one-time animation never outstays its plan: if a client's Sequencer stalls (a cast circle
       // left on the tokens after a session), the caster's client ends it everywhere shortly after.
       if (!preview && !plan.some((s) => s.persist)) {
-        const end = Math.max(0, ...plan.map((s) => (s.delay ?? 0) + (s.duration ?? 0) + (s.hitStop?.holdMs ?? 0)));
+        const end = Math.max(0, ...plan.map((s) => (s.delay ?? 0) + (s.duration ?? 0)));
         const timer = setTimeout(() => { this.watchdogs.delete(timer); void this.host.endEffects({ name: session }); }, end + STALL_GRACE_MS);
         timer.unref?.();
         this.watchdogs.add(timer);

@@ -309,8 +309,6 @@ const tokenGeometry = token => ({
 });
 const geometryChanged = (token, initial) =>
   Object.entries(initial).some(([key, value]) => tokenGeometry(token)[key] !== value);
-// A held track reads its frozen moment until the hold ends (its start already moved on).
-const elapsedOf = (track, time) => (time < track.frozenUntil ? track.frozenAt : time - track.start);
 // Animate the existing rendered token mesh. Never write TokenDocument fields.
 // Every client runs this renderer locally; previews bypass the module socket.
 export class TokenMotionPlayer {
@@ -375,8 +373,8 @@ export class TokenMotionPlayer {
         const resized = geometryChanged(token, location.geometry);
         // A finisher wrote the square its held travel landed on: the document now carries
         // that offset, so rebase onto it and let the other tracks (a collapse) play on.
-        const isHeld = (track) => elapsedOf(track, time) >= track.stage.duration &&
-          Boolean(heldPose(track.stage, elapsedOf(track, time) - track.stage.duration, track.direction, this.grid()));
+        const isHeld = (track) => time - track.start >= track.stage.duration &&
+          Boolean(heldPose(track.stage, time - track.start - track.stage.duration, track.direction, this.grid()));
         if (moved && !rotated && !resized && run.tracks.some(isHeld)) {
           const dx = token.document.x - location.x, dy = token.document.y - location.y;
           // A held track stands for the square it reached (even while it eases back late), so pieces
@@ -412,7 +410,7 @@ export class TokenMotionPlayer {
         }
         const poses = [];
         run.tracks = run.tracks.filter(track => {
-          const elapsed = elapsedOf(track, time);
+          const elapsed = time - track.start;
           const progress = Math.min(1, elapsed / track.stage.duration);
           if (track.stage.motion === "fragments" && progress > 0 && !track.started && progress < 1) {
             track.started = true;
@@ -420,7 +418,7 @@ export class TokenMotionPlayer {
             // The pieces stay anchored there: a rebase (the finisher writing the square a held travel
             // reached) keeps the token where it is drawn, so it moves them only by its drift.
             const others = combineMotionPoses(run.tracks.filter((other) => other !== track).map((other) => {
-              const ms = elapsedOf(other, time);
+              const ms = time - other.start;
               return ms < other.stage.duration ? motionPose(other.stage, ms / other.stage.duration, other.direction, this.grid())
                 : heldPose(other.stage, ms - other.stage.duration, other.direction, this.grid()) ?? motionPose(other.stage, 1, other.direction, this.grid());
             }));
@@ -452,24 +450,6 @@ export class TokenMotionPlayer {
       };
       run.frame = this.frame(tick);
     });
-  }
-  // Freeze the motions of one owner's run for ms (a crit's hit-stop). Only tracks mid-motion
-  // freeze; later tracks, finished ones and held end poses play on. Returns how many froze.
-  hold(owner, ms) {
-    const now = this.now();
-    let held = 0;
-    for (const run of this.active.values()) {
-      if (run.owner !== owner) continue;
-      for (const track of run.tracks) {
-        const elapsed = now - track.start;
-        if (elapsed >= track.stage.duration) continue;
-        track.frozenAt = elapsed;
-        track.frozenUntil = now + ms;
-        track.start += ms;
-        held++;
-      }
-    }
-    return held;
   }
   // A broken renderer must never stick the token: drop its pieces and play on without them.
   release(track) {

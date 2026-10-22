@@ -298,34 +298,3 @@ test("user prefix stops every owned session without affecting another user's mot
   await second;
   assert.equal(player.active.size, 0);
 });
-test("hold only shifts tracks running at hold time", async () => {
-  const lunge = { kind: "motion", motion: "lunge", duration: 400, distance: 0.35, intensity: 1 };
-  const fade = { kind: "motion", motion: "fade", motionEnd: "hold", duration: 50 };
-  const sample = (at) => {
-    const f = fixture();
-    void f.player.play(f.token, lunge, { x: 1, y: 0 }, "u");
-    f.advance(at);
-    return f.token.mesh.position.x;
-  };
-  const { token, player, advance } = fixture();
-  let done = false;
-  const playing = player.play(token, lunge, { x: 1, y: 0 }, "u").then(() => { done = true; });
-  void player.play(token, fade, { x: 1, y: 0 }, "u");
-  advance(200);
-  const alpha = token.mesh.alpha;
-  assert.equal(token.mesh.position.x, sample(200));
-  assert.equal(player.hold("other", 100), 0);
-  assert.equal(player.hold("u", 100), 1);
-  advance(250);
-  assert.equal(token.mesh.position.x, sample(200));
-  assert.equal(token.mesh.alpha, alpha);
-  advance(400);
-  assert.equal(token.mesh.position.x, sample(300));
-  advance(499);
-  await Promise.resolve();
-  assert.equal(done, false);
-  advance(500);
-  await playing;
-  assert.equal(done, true);
-  assert.equal(player.hold("u", 100), 0);
-});

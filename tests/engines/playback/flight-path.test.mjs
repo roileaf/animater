@@ -201,7 +201,6 @@ test('reverse, chain, fan and area flights keep their path', () => {
 test('walls off: flights play as planned', () => {
   const off = withFlightPaths([flight()], opts({ walls: false }));
   assert.equal(off.plan[0].flightTo, undefined); assert.equal(off.plan[0].contact, 600);
-  assert.equal(off.plan[0].flightArc, undefined);
   assert.equal(off.blocked.size, 0);
 });
 
