@@ -2530,6 +2530,8 @@ export class Workspace {
     e.preventDefault();
     let action = b.dataset.action;
     if (this.busy && action !== "stop") return;
+    // A flash tile's right-click menu closes once used.
+    if (action.startsWith("flash-") && b.closest(".an-st-menu")) this.root.querySelector(".an-st-menu")?.remove();
     // A recipe card's right-click menu acts on that recipe as if it were open.
     if (action.startsWith("recipe-menu-")) {
       this.root.querySelector(".an-st-menu")?.remove();

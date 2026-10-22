@@ -1754,6 +1754,7 @@ Hooks.once("ready", () => {
     resolveMedia: (src) => (!src || /\.(webm|mp4|png|jpe?g|webp|gif|svg)$/i.test(src) ? src : runtime.getCatalog().find((i) => i.key === src || i.key.startsWith(`${src}.`))?.file ?? ""),
     trace: (status, detail) => runtime.trace(status, detail),
   });
+  void flash.tidy().catch((error) => console.warn("Animater | flash screen cleanup failed", error));
   // Damage rolls are remembered briefly so the HP change that follows knows its damage type.
   // D&D reports the damage it applies on the applying client; PF2e/SF2e through the roll message.
   const damageLog = [];

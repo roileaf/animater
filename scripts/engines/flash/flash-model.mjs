@@ -303,3 +303,45 @@ export const STARTER_FLASHES = [
       { kind: "text", name: "Title", text: "The battle is over", y: 50, size: 7, italic: true, bold: false, glow: "#7aa7ff", glowSize: 2, enter: "blur", enterMs: 800, exit: "blur", exitMs: 700 },
     ] },
 ].map(validateFlash);
+
+// Sharing screens between worlds. Two screens are the same when everything but their ids (and their
+// layers' ids, made fresh when a starter is first saved) matches.
+const flashBody = (s) => { const { id: _, layers, ...rest } = validateFlash(s); return JSON.stringify({ ...rest, layers: layers.map(({ id: _l, ...l }) => l) }); };
+let starterBodies;
+// A starter screen nobody changed: every world already has it, so it is not exported or imported.
+export function untouchedStarter(s) {
+  starterBodies ??= new Map(STARTER_FLASHES.map((t) => [t.id, flashBody(t)]));
+  return starterBodies.get(s?.id) === flashBody(s);
+}
+export const flashesToExport = (list) => validateFlashes(list).filter((s) => !untouchedStarter(s));
+// Importing: a screen with an id here overwrites it in place (a customized starter replaces the starter);
+// one matching a screen here in all but its id is already here; untouched starters bring nothing; the rest are added.
+export function mergeFlashImport(list, incoming, limit = FLASH_LIMIT) {
+  const screens = validateFlashes(list), bodies = new Set(screens.map(flashBody));
+  let added = 0, replaced = 0, skipped = 0;
+  for (const s of validateFlashes(incoming)) {
+    const body = flashBody(s), at = screens.findIndex((x) => x.id === s.id);
+    if (untouchedStarter(s) || bodies.has(body)) continue;
+    if (at >= 0) { screens[at] = s; replaced++; }
+    else if (screens.length < limit) { screens.push(s); added++; }
+    else { skipped++; continue; }
+    bodies.add(body);
+  }
+  return { screens, added, replaced, skipped };
+}
+// 1.6.3 gave an imported screen whose id was taken a fresh one, so a world could hold the same screen
+// twice. Later copies go; removed maps each dropped id to the one kept.
+export function dedupeFlashes(list) {
+  const kept = new Map(), removed = new Map(), screens = [];
+  for (const s of validateFlashes(list)) {
+    const body = flashBody(s);
+    if (kept.has(body)) removed.set(s.id, kept.get(body));
+    else { kept.set(body, s.id); screens.push(s); }
+  }
+  return { screens, removed };
+}
+// The world's defaults with dropped screens pointing at the copy that was kept.
+export function remapFlashDefaults(defaults, removed) {
+  const map = (v) => removed.get(v) ?? v;
+  return Object.fromEntries(Object.entries(defaults ?? {}).map(([event, v]) => [event, Array.isArray(v) ? [...new Set(v.map(map))] : map(v)]));
+}

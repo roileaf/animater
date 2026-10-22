@@ -317,10 +317,20 @@ function recipeCardMenu(w, e, card) {
   e.preventDefault();
   const id = card.dataset.id, r = w.listedRecipes?.().find((x) => x.id === id) ?? w.host.recipes().find((x) => x.id === id);
   if (!r) return;
+  cardMenu(w, e, `<b>${esc(r.name)}</b><button role="menuitem" data-action="recipe-menu-open" data-id="${esc(id)}">Open in Studio</button><button role="menuitem" data-action="recipe-menu-duplicate" data-id="${esc(id)}">Duplicate</button><button role="menuitem" class="is-danger" data-action="recipe-menu-delete" data-id="${esc(id)}">Delete…</button>`);
+}
+// Right-click a flash screen tile: open or delete it.
+function flashTileMenu(w, e, tile) {
+  e.preventDefault();
+  const id = tile.dataset.flashTile, s = w.host.flashScreens?.().find((x) => x.id === id);
+  if (!s) return;
+  cardMenu(w, e, `<b>${esc(s.name)}</b><button role="menuitem" data-action="flash-select" data-id="${esc(id)}">Edit</button><button role="menuitem" class="is-danger" data-action="flash-delete" data-id="${esc(id)}">Delete…</button>`);
+}
+function cardMenu(w, e, html) {
   const menu = document.createElement("div");
   menu.className = "an-st-menu";
   menu.setAttribute("role", "menu");
-  menu.innerHTML = `<b>${esc(r.name)}</b><button role="menuitem" data-action="recipe-menu-open" data-id="${esc(id)}">Open in Studio</button><button role="menuitem" data-action="recipe-menu-duplicate" data-id="${esc(id)}">Duplicate</button><button role="menuitem" class="is-danger" data-action="recipe-menu-delete" data-id="${esc(id)}">Delete…</button>`;
+  menu.innerHTML = html;
   w.root.append(menu);
   // Place it at the pointer, relative to whatever box it is positioned in.
   const box = (menu.offsetParent ?? document.body).getBoundingClientRect();
@@ -333,6 +343,8 @@ export function studioContextMenu(w, e) {
   closeMenu(w);
   const card = !bar && e.target.closest?.('.an-card[data-action="select"][data-id]');
   if (card && !w.busy) return recipeCardMenu(w, e, card);
+  const tile = !bar && e.target.closest?.("[data-flash-tile]");
+  if (tile && !w.busy) return flashTileMenu(w, e, tile);
   if (!bar || w.busy) return;
   e.preventDefault();
   const i = Number(bar.dataset.tlBar), studio = el(w, ""), box = studio.getBoundingClientRect(), r = w.recipe();
