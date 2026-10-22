@@ -13,12 +13,14 @@ const LASTING_MS = 86400000;
 const MIN_FADE_MS = 300;
 const GLOW_IN_MS = 100;
 const FLASH_RISE_MS = 60;
-const FLASH_DECAY_MS = 650;
+// A burst settles to a held glow by SETTLE_MS, then dims slowly until its stage ends.
+const SETTLE_MS = 700;
+const HELD_LEVEL = 0.45;
+const END_LEVEL = 0.35;
 const STROBE_PEAKS_MS = 300;
 const STROBE_PERIOD_MS = 100;
 const STROBE_RISE_MS = 20;
 const STROBE_TROUGH = 0.5;
-const STROBE_DECAY_MS = 400;
 const NOT_VISUAL = new Set(['sound', 'motion', 'tokenfx', 'scenefx']);
 
 // Asset keys are dotted words ('jb2a.fire_bolt.orange'); words match whole, with a numeric suffix allowed.
@@ -72,13 +74,8 @@ export function lightColor(stage, { element, recipeColor } = {}) {
 
 const startOf = stage => stage.delay ?? 0;
 // A persisting stage loops until it is ended, so its light lasts until its anchor ends (the host's onEnded).
-const lengthOf = (stage, shape) => {
-  if (stage.persist) return LASTING_MS;
-  if (isLasting(stage)) return Math.max(stage.duration ?? 0, 0);
-  if (shape === 'flash') return FLASH_RISE_MS + FLASH_DECAY_MS;
-  if (shape === 'strobe') return STROBE_PEAKS_MS + STROBE_DECAY_MS;
-  return Math.max(stage.duration ?? 0, 0);
-};
+// Any other light lasts as long as its stage plays (duration is elapsed ms), a burst included.
+const lengthOf = stage => (stage.persist ? LASTING_MS : Math.max(stage.duration ?? 0, 0));
 // When two stages start together the impact wins as the one that describes the spot.
 const KIND_RANK = { impact: 0, template: 1, travel: 2, projectile: 2, cast: 3, aura: 4 };
 const rank = stage => KIND_RANK[stage.kind] ?? 5;
@@ -158,7 +155,7 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
     const offset = startOf(stage) - startOf(anchor);
     const tag = {
       color: lightColor(stage, { element, recipeColor }), shape, ...lightRadius(radiusOf(stage), grid),
-      startMs: Math.max(0, offset), lengthMs: Math.max(0, lengthOf(stage, shape) + Math.min(0, offset)),
+      startMs: Math.max(0, offset), lengthMs: Math.max(0, lengthOf(stage) + Math.min(0, offset)),
       fadeMs: Math.max(MIN_FADE_MS, stage.fadeOut ?? 0), lasting: isLasting(stage),
     };
     if (typeof level === 'string' && level) tag.level = level;
@@ -194,14 +191,26 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
   }
 }
 
-// Brightness 0..1 of each light shape at u ms after its start.
+// The held glow after a burst settles: HELD_LEVEL, dimming to END_LEVEL by the light's end.
+const held = (u, end) => {
+  const span = end - SETTLE_MS;
+  return span > 0 ? HELD_LEVEL - (HELD_LEVEL - END_LEVEL) * clamp01((u - SETTLE_MS) / span) : HELD_LEVEL;
+};
+const easeOut = x => 1 - (1 - x) ** 2;
+
+// Brightness 0..1 of each light shape at u ms after its start; `end` is the light's length.
 const SHAPES = {
   glow: u => clamp01(u / GLOW_IN_MS),
   flicker: () => 1,
   pulse: () => 1,
-  flash: u => u < FLASH_RISE_MS ? u / FLASH_RISE_MS : clamp01(1 - (u - FLASH_RISE_MS) / FLASH_DECAY_MS),
-  strobe: u => {
-    if (u >= STROBE_PEAKS_MS) return STROBE_TROUGH * clamp01(1 - (u - STROBE_PEAKS_MS) / STROBE_DECAY_MS);
+  flash: (u, end) => {
+    if (u < FLASH_RISE_MS) return u / FLASH_RISE_MS;
+    if (u < SETTLE_MS) return 1 - (1 - HELD_LEVEL) * easeOut((u - FLASH_RISE_MS) / (SETTLE_MS - FLASH_RISE_MS));
+    return held(u, end);
+  },
+  strobe: (u, end) => {
+    if (u >= SETTLE_MS) return held(u, end);
+    if (u >= STROBE_PEAKS_MS) return STROBE_TROUGH - (STROBE_TROUGH - HELD_LEVEL) * (u - STROBE_PEAKS_MS) / (SETTLE_MS - STROBE_PEAKS_MS);
     const phase = u % STROBE_PERIOD_MS;
     return phase < STROBE_RISE_MS ? phase / STROBE_RISE_MS : 1 - (1 - STROBE_TROUGH) * (phase - STROBE_RISE_MS) / (STROBE_PERIOD_MS - STROBE_RISE_MS);
   },
@@ -215,6 +224,6 @@ export function envelope(tag, tMs, { steady = false } = {}) {
   const fade = tag.fadeMs ?? 0;
   if (u >= end + fade) return 0;
   const shape = steady && tag.shape === 'strobe' ? 'flash' : tag.shape;
-  const level = (SHAPES[shape] ?? SHAPES.glow)(u);
+  const level = (SHAPES[shape] ?? SHAPES.glow)(u, end);
   return clamp01(u <= end || fade <= 0 ? level : level * (1 - (u - end) / fade));
 }

@@ -143,10 +143,31 @@ test('flash, strobe and a flight arrival keep their own timing', () => {
   const lights = planLights([boom, zap, bolt], opts({ boom: 0, zap: 0, bolt: 0 }));
   assert.equal(lights.get(bolt).arriveMs, 500);
   for (const tag of lights.values()) assert.equal('rate' in tag, false);
-  // The flash peaks at 60 ms and is gone a second later.
+  // The flash peaks at 60 ms and lasts as long as its stage plays, then fades out.
   assert.equal(envelope(lights.get(boom), 60), 1);
-  assert.equal(envelope(lights.get(boom), 1000), 0);
+  assert.equal(lights.get(boom).lengthMs, 1000);
+  assert.equal(lights.get(zap).lengthMs, 1000);
+  assert.ok(envelope(lights.get(boom), 1000) > 0);
+  assert.equal(envelope(lights.get(boom), 1300), 0);
   assert.equal(lights.get(zap).shape, 'strobe');
+});
+
+// A fireball's explosion clip runs for seconds: its light must not go out under it.
+test('a long explosion keeps its flash until the clip ends, then fades out', () => {
+  const boom = st('boom', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 }, duration: 2500 });
+  const tag = planLights([boom], opts({ boom: 0 })).get(boom);
+  assert.equal(tag.lengthMs, 2500);
+  assert.equal(envelope(tag, 60), 1);
+  assert.ok(Math.abs(envelope(tag, 700) - 0.45) < 1e-9);
+  assert.ok(envelope(tag, 2000) > 0.3);
+  assert.ok(Math.abs(envelope(tag, 2500) - 0.35) < 1e-9);
+  assert.ok(envelope(tag, 2500 + tag.fadeMs - 1) > 0);
+  assert.equal(envelope(tag, 2500 + tag.fadeMs), 0);
+  // After the burst it only dims.
+  for (let t = 60; t < 2800; t += 10) assert.ok(envelope(tag, t + 10) <= envelope(tag, t), String(t));
+  // A burst that starts before its anchor is cut short by the same amount.
+  const anchor = st('anchor', 'impact', 'jb2a.smoke.puff.centered.grey', { at: { x: 0, y: 0 }, delay: 500 });
+  assert.equal(planLights([boom, anchor], opts({ boom: 1, anchor: 0 })).get(anchor).lengthMs, 2000);
 });
 
 test('a burst and a later lasting area at one spot each keep their light', () => {
@@ -225,23 +246,25 @@ test('envelope: glow fades in over 100 ms, holds, then fades out; flicker and pu
   }
 });
 
-test('strobe peaks three times in the first 300 ms, then decays', () => {
-  const tag = { shape: 'strobe', startMs: 0, lengthMs: 700, fadeMs: 300 };
+test('strobe peaks three times in the first 300 ms, then holds a glow until its end', () => {
+  const tag = { shape: 'strobe', startMs: 0, lengthMs: 2000, fadeMs: 300 };
   const samples = [];
-  for (let t = 0; t <= 1000; t += 2) samples.push(envelope(tag, t));
+  for (let t = 0; t <= 2300; t += 2) samples.push(envelope(tag, t));
   let peaks = 0;
   for (let i = 1; i < samples.length - 1; i++) if (samples[i] > samples[i - 1] && samples[i] >= samples[i + 1] && samples[i] > 0.9) peaks++;
   assert.equal(peaks, 3);
   assert.ok(samples.every(v => v >= 0 && v <= 1));
-  // After the strobes it only goes down.
-  for (let t = 300; t < 1000; t += 10) assert.ok(envelope(tag, t + 10) <= envelope(tag, t), String(t));
-  assert.equal(envelope(tag, 1000), 0);
+  // After the strobes it holds, only ever dimming.
+  for (let t = 300; t < 2300; t += 10) assert.ok(envelope(tag, t + 10) <= envelope(tag, t), String(t));
+  assert.ok(envelope(tag, 1500) > 0.35);
+  assert.ok(Math.abs(envelope(tag, 2000) - 0.35) < 1e-9);
+  assert.equal(envelope(tag, 2300), 0);
 });
 
 test('steady envelope never strobes', () => {
-  const tag = { shape: 'strobe', startMs: 0, lengthMs: 700, fadeMs: 300 };
+  const tag = { shape: 'strobe', startMs: 0, lengthMs: 2500, fadeMs: 300 };
   let falling = false, prev = 0;
-  for (let t = 0; t <= 1000; t += 5) {
+  for (let t = 0; t <= 2800; t += 5) {
     const v = envelope(tag, t, { steady: true });
     assert.ok(v >= 0 && v <= 1);
     if (v < prev) falling = true;
@@ -250,7 +273,9 @@ test('steady envelope never strobes', () => {
     prev = v;
   }
   assert.ok(falling);
-  assert.equal(Math.max(...Array.from({ length: 201 }, (_, i) => envelope(tag, i * 5, { steady: true }))), 1);
+  assert.equal(Math.max(...Array.from({ length: 561 }, (_, i) => envelope(tag, i * 5, { steady: true }))), 1);
+  assert.ok(envelope(tag, 2000, { steady: true }) > 0);
+  assert.equal(envelope(tag, 2800, { steady: true }), 0);
 });
 
 test('a flight and its impact are separate lights: a glow on the projectile, a flash on the impact', () => {
