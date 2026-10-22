@@ -22,6 +22,9 @@ import { withOutcome } from '../../systems/outcome.mjs';
 import { pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
+import { plannedCrit, critTargetIds, contactTime, withHitStop } from './impact-moments.mjs';
+// A crit finisher waits this long for its attack's moment of contact.
+const CONTACT_WAIT_MS = 1000;
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 const SOUND_PRELOAD_TIMEOUT = 2000;
@@ -80,6 +83,22 @@ export class AnimaterRuntime {
     this.lasting = [];
     // Lasting plays still on the table, for the Activity page's Now playing: session -> row.
     this.running = new Map();
+    // When each crit event's blow lands (performance.now() ms), so its finisher freezes with it.
+    this.contacts = new Map();
+    // Events whose animations are still playing (dispatch): only they can still name a contact.
+    this.dispatching = new Set();
+  }
+  // A crit event's moment of contact, once its attack starts; null when the event is not
+  // playing or names none within CONTACT_WAIT_MS.
+  async contactOf(eventId) {
+    const until = performance.now() + CONTACT_WAIT_MS;
+    while (!this.contacts.has(eventId) && this.dispatching.has(eventId) && performance.now() < until) await new Promise((resolve) => setTimeout(resolve, 16));
+    return this.contacts.get(eventId) ?? null;
+  }
+  recordContact(eventId, at) {
+    if (eventId == null || this.contacts.has(eventId)) return;
+    this.contacts.set(eventId, at);
+    if (this.contacts.size > 50) this.contacts.delete(this.contacts.keys().next().value);
   }
   // The caster stopped concentrating: end the lasting areas of that spell (or, when
   // the spell is unknown, every concentration area that caster still holds).
@@ -191,13 +210,18 @@ export class AnimaterRuntime {
     // Other modules may claim the event (return false) before anything plays.
     if (globalThis.Hooks?.call?.("animater.preDispatch", event, recipe) === false)
       return this.trace("Skipped", `${event.item?.name ?? "Unknown item"}: claimed by another module.`, recipe, { item: event.item?.name, reason: "claimed" });
-    await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
-      try {
-        await this.play(next, {...event,automatic:true});
-      } catch (error) {
-        this.trace("Blocked", error.message, next);
-      }
-    }));
+    if (event.id) this.dispatching.add(event.id);
+    try {
+      await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
+        try {
+          await this.play(next, {...event,automatic:true});
+        } catch (error) {
+          this.trace("Blocked", error.message, next);
+        }
+      }));
+    } finally {
+      if (event.id) this.dispatching.delete(event.id);
+    }
     globalThis.Hooks?.callAll?.("animater.played", event, recipe);
   }
   async play(recipe, context, { preview = false, onStart, sampleArea = false } = {}) {
@@ -285,6 +309,8 @@ export class AnimaterRuntime {
     for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
     // Every client remembers what this actor played, so it can warm those files on their next turn.
     const animaterActor = context.source?.actor?.id;
+    // Hit-stop marks (stage -> { afterMs, holdMs }): what plays across a crit's contact.
+    let marks = null;
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -331,7 +357,10 @@ export class AnimaterRuntime {
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tiers.get(s.stageId) ?? 0, animaterLasting = Boolean(lasts);
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}) }));
+        // Freezes on every client at contact; a staggered copy starts later, so contact comes sooner into it.
+        const mark = marks?.get(s), afterMs = mark ? mark.afterMs - (spread?.get(s) ?? 0) : -1;
+        const animaterHitStop = afterMs >= 0 ? { afterMs, holdMs: mark.holdMs } : null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -460,6 +489,26 @@ export class AnimaterRuntime {
         // Loaded: each surface hit lands just after the weapon's own (engines/sound/hit-timing.mjs).
         else if(this.host.soundPeak) plan=alignSurfaceHits(plan,this.host.soundPeak);
       }
+      // Hit-stop: a crit freezes for a moment as its blow lands; everything after waits for it.
+      // A crit finisher freezes at its attack's contact, measured from its own start.
+      let contact = null;
+      if (this.host.hitStop?.() !== false) {
+        let at = null;
+        if (context.hitStopOf != null) {
+          const shared = await this.contactOf(context.hitStopOf);
+          if (this.epoch !== epoch) return null;
+          const ahead = shared === null ? 0 : shared - performance.now();
+          if (ahead > 0) at = ahead;
+        } else if (plannedCrit(context)) {
+          at = contactTime(plan, critTargetIds(context));
+          if (at !== null) contact = at;
+        }
+        if (at !== null) {
+          ({ plan, marks } = withHitStop(plan, at));
+          // A motion takes its mark along in its stage data.
+          for (const [s, mark] of marks) if (s.kind === "motion") s.hitStop = { ...mark };
+        }
+      }
       const groups = new Map();
       for (const s of plan) {
         if (!groups.has(s.delay)) groups.set(s.delay, []);
@@ -473,6 +522,8 @@ export class AnimaterRuntime {
         optionalFx: stages.filter((s) => OPTIONAL_FX_KINDS.has(s.kind)),
       }));
       onStart?.({ ...recipe, playbackPlan: plan });
+      // The plan's time zero is now: its first group starts.
+      if (contact !== null) this.recordContact(context.id, performance.now() + contact);
       // Local previews never broadcast; real plays use Sequencer's own sync.
       const results = await Promise.all([
         ...sequences.map(async ({ delay, sequence, motions, optionalFx }) => {
@@ -500,7 +551,7 @@ export class AnimaterRuntime {
         ...(preview
           ? [
               this.wait(
-                Math.max(...plan.map((s) => s.delay + s.duration)),
+                Math.max(...plan.map((s) => s.delay + s.duration + (marks?.get(s)?.holdMs ?? 0))),
                 session,
               ),
             ]

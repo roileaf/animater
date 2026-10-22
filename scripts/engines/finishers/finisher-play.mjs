@@ -239,12 +239,13 @@ export function planFinisher({ recipe, mover, attacker = null, dead = false }, h
 // The finisher plays from the attacker (or, with none, the mover itself) on the target it moves.
 const finisherContext = ({ mover, attacker }) => ({ source: attacker ?? mover, targets: [mover] });
 
-export async function playFinisher({ recipe, mover, attacker = null, dead = false }, host) {
+// `extra` joins the play's context (a crit finisher's { hitStopOf: eventId } freezes with its attack).
+export async function playFinisher({ recipe, mover, attacker = null, dead = false, extra = {} }, host) {
   const f = recipe.finisher;
   const { composed, moves, to, from, context } = planFinisher({ recipe, mover, attacker, dead }, host);
   const commit = async (data) => host.commit(mover, { ...data, finisher: recipe.id });
   host.trace("Finisher", `${recipe.name}: ${mover.name ?? "token"}`);
-  const plan = await host.play(composed, context);
+  const plan = await host.play(composed, { ...context, ...extra });
   // null: nothing played and nothing was written, so the caller may play its own fallback.
   // false: it played but a write failed.
   if (!plan) return null;

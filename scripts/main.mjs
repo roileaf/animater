@@ -1518,6 +1518,8 @@ Hooks.once("ready", () => {
     },
     enabled: () => acceptsEvents() || hasOwnApproved(),
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
+    // Crits freeze at contact (world setting); on while the setting is not registered.
+    hitStop: () => { try { return game.settings.get(ID, "hitStop") !== false; } catch { return true; } },
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
@@ -1822,9 +1824,9 @@ Hooks.once("ready", () => {
     trace: (status, detail) => runtime.trace(status, detail),
   });
   // Resolves playFinisher's answer: true played, false a write failed, null never played.
-  const runFinisher = (recipe, { mover, attacker }) => {
+  const runFinisher = (recipe, { mover, attacker, extra }) => {
     const dead = hpOf(mover.actor)?.down === true;
-    return playFinisher({ recipe, mover, attacker, dead }, finisherHost(attacker)).catch((error) => { runtime.trace("Blocked", error.message); return null; });
+    return playFinisher({ recipe, mover, attacker, dead, extra }, finisherHost(attacker)).catch((error) => { runtime.trace("Blocked", error.message); return null; });
   };
   // A critical strike: a player's pick plays when it plays on crits; with no pick, the GM's critical
   // finishers. It plays on each critically struck target (critTargets), from the event's source
@@ -1838,8 +1840,10 @@ Hooks.once("ready", () => {
     for (const mover of struck) {
       started.add(mover.id);
       announceFinished(keyOf(mover), true);
+      // It freezes with the attack's hit-stop, if the event is playing one (runtime.mjs: contactOf).
+      const extra = event.id ? { hitStopOf: event.id } : {};
       // A play that never started (blocked) takes its mark back, so the kill plays it in full.
-      void runFinisher(recipe, { mover, attacker: event.source }).then((played) => { if (played === null) announceFinished(keyOf(mover), false); });
+      void runFinisher(recipe, { mover, attacker: event.source, extra }).then((played) => { if (played === null) announceFinished(keyOf(mover), false); });
     }
     return started;
   };

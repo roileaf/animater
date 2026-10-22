@@ -104,6 +104,15 @@ test("without an attacker the knockback falls back to +x, and the ending still w
   assert.deepEqual(host.log.at(-2), ["wait", 1500]);
 });
 
+test("extra context reaches the play: a crit finisher names the event it freezes with", async () => {
+  const host = fakeHost(), seen = [];
+  const play = host.play;
+  host.play = (r, context) => { seen.push(context); return play(r, context); };
+  await playFinisher({ recipe: recipe(), mover: token(), attacker: null, dead: true, extra: { hitStopOf: "ev1" } }, host);
+  assert.equal(seen[0].hitStopOf, "ev1");
+  assert.equal(seen[0].targets[0].name, "Orc");
+});
+
 test("a finisher that never starts writes nothing and says so (null), so the caller can fall back", async () => {
   const host = fakeHost({ plan: null });
   assert.equal(await playFinisher({ recipe: recipe(), mover: token(), attacker: null, dead: true }, host), null);
