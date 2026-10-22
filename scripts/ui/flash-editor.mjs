@@ -2,7 +2,7 @@ import { uuid } from "../core/uuid.mjs";
 // The Flash screens page: a library of combat title cards and an editor with a
 // live 16:9 stage (drag layers to place them), a scrub bar, a layer timeline and
 // an inspector for the selected layer.
-import { soundEnd, FLASH_BACKGROUNDS, MOMENT_EVENTS, flashOn, toggleFlashOn, validateFlashes, PORTRAIT_SIDES, PORTRAIT_SHAPES, FLASH_EVENTS, FLASH_MOTIONS, FLASH_KINDS, FLASH_LOOPS, LAYER_LIMIT, FLASH_LIMIT, KEY_LIMIT, validateFlash, validateLayer, keyValueAt, MOMENT_KINDS, FLASH_BLENDS, PARTICLE_TYPES, PARTICLE_DIRECTIONS, SCENE_LOOKS, STARTER_FLASHES } from "../engines/flash/flash-model.mjs";
+import { soundEnd, FLASH_BACKGROUNDS, MOMENT_EVENTS, flashOn, toggleFlashOn, validateFlashes, PORTRAIT_SIDES, PORTRAIT_SHAPES, FLASH_EVENTS, FLASH_MOTIONS, FLASH_KINDS, FLASH_LOOPS, LAYER_LIMIT, FLASH_LIMIT, KEY_LIMIT, validateFlash, validateLayer, keyValueAt, MOMENT_KINDS, FLASH_BLENDS, PARTICLE_TYPES, PARTICLE_DIRECTIONS, SCENE_LOOKS, STARTER_FLASHES, flashesToExport, mergeFlashImport } from "../engines/flash/flash-model.mjs";
 import { createFlash } from "../engines/flash/flash-render.mjs";
 import { runFlashTour, FLASH_TOURS } from "./flash-tour.mjs";
 
@@ -250,7 +250,8 @@ export class FlashEditor {
       const open = `<button class="an-flash-tile-open" data-action="flash-select" data-id="${esc(f.id)}" aria-label="Edit ${esc(f.name)}"><span class="an-flash-tpl-thumb" data-flash-thumb="mine:${esc(f.id)}"></span><span class="an-flash-tile-text"><span class="an-flash-card-name">${esc(f.name)}${unsaved ? ` <span class="an-flash-unsaved" title="Unsaved changes">•</span>` : ""}</span><small>${esc(detail)}</small></span></button>`;
       const tip = on ? (sectionKey === "start" || sectionKey === "end" ? `Plays on every ${esc(evName)} unless the Combat Tracker picks another: click to turn off` : `Plays on every ${esc(evName)}: click to turn off`) : `Off: click to play it on every ${esc(evName)}`;
       const toggle = switchable ? `<button class="an-flash-switch${on ? " is-on" : ""}" data-action="flash-moment-toggle" data-id="${esc(f.id)}" data-event="${esc(ev)}" role="switch" aria-checked="${on}" data-tooltip="${tip}"><span></span>${on ? "On" : "Off"}</button>` : "";
-      return `<div class="an-flash-tile is-${group(f)}">${open}${toggle}</div>`;
+      const remove = `<button class="an-icon is-danger an-flash-tile-delete" data-action="flash-delete" data-id="${esc(f.id)}" data-tooltip="Delete" aria-label="Delete ${esc(f.name)}"><i class="fas fa-trash" aria-hidden="true"></i></button>`;
+      return `<div data-flash-tile="${esc(f.id)}" class="an-flash-tile is-${group(f)}">${open}${toggle}${remove}</div>`;
     };
     const section = (key, title, hint) => { const items = list.filter((x) => group(x) === key); return items.length ? `<div class="an-flash-libgroup"><div class="an-flash-libgroup-head"><span class="an-flash-sub">${title}</span><small>${hint}</small></div><div class="an-flash-tiles">${items.map((x) => card(x, key)).join("")}</div></div>` : ""; };
     return `<section class="an-flash-page is-library">${list.length
@@ -722,9 +723,13 @@ export class FlashEditor {
         this.selectedId = base.id; this.draft = null; this.editing = true; break;
       }
       case "flash-delete": {
-        if (!(await this.host.confirm(`Delete the flash screen “${s.name}”?`))) return true;
-        await commit(list.filter((f) => f.id !== s.id), `${s.name} deleted.`);
-        this.selectedId = null; this.draft = null; this.editing = false; break;
+        // From a tile (its id) or the open screen.
+        const target = list.find((f) => f.id === b.dataset.id) ?? s;
+        if (!target || !(await this.host.confirm(`Delete the flash screen “${target.name}”?`))) return true;
+        const open = target.id === this.selectedId, dirty = this.dirty;
+        await commit(list.filter((f) => f.id !== target.id), `${target.name} deleted.`);
+        if (open) { this.selectedId = null; this.draft = null; this.editing = false; } else this.dirty = dirty;
+        break;
       }
       case "flash-save":
         await commit(list.map((f) => (f.id === s.id ? validateFlash(s) : f)), `${s.name} saved.`); break;
@@ -823,8 +828,11 @@ export class FlashEditor {
       case "flash-keys-copy": { const l = s.layers[this.layerIndex]; this.keyClipboard = l.keys.map((k) => ({ ...k, x: k.x - l.x, y: k.y - l.y })); this.w.message = `Copied ${l.keys.length} keyframe${l.keys.length === 1 ? "" : "s"}.`; break; }
       case "flash-keys-paste": { const l = this.edit().layers[this.layerIndex]; l.keys = this.keyClipboard.map((k) => ({ ...k, x: k.x + l.x, y: k.y + l.y })); break; }
       case "flash-export": {
-        this.host.downloadJSON({ schema: 1, type: "animater-flash-screens", screens: list }, "animater-flash-screens.json");
-        this.w.message = `Exported ${list.length} flash screen${list.length === 1 ? "" : "s"}.`; break;
+        // Untouched starters stay home: every world has them already.
+        const out = flashesToExport(list);
+        if (!out.length) { this.w.message = "Nothing to export: only your own and changed flash screens are exported."; break; }
+        this.host.downloadJSON({ schema: 1, type: "animater-flash-screens", screens: out }, "animater-flash-screens.json");
+        this.w.message = `Exported ${out.length} flash screen${out.length === 1 ? "" : "s"}.`; break;
       }
       case "flash-import": {
         if (this.dirty && !(await this.host.confirm(`Discard your unsaved changes to “${s?.name}”?`))) return true;
@@ -833,11 +841,12 @@ export class FlashEditor {
         let data; try { data = JSON.parse(text); } catch { throw Error("That file is not an Animater flash screens export."); }
         const incoming = validateFlashes(Array.isArray(data) ? data : data?.screens);
         if (!incoming.length) throw Error("No flash screens found in that file.");
-        const ids = new Set(list.map((x) => x.id)), room = FLASH_LIMIT - list.length;
-        if (room <= 0) throw Error(`You already have the most flash screens (${FLASH_LIMIT}).`);
-        const added = incoming.slice(0, room).map((x) => (ids.has(x.id) ? { ...x, id: newId() } : x));
-        await commit([...list, ...added], `Imported ${added.length} flash screen${added.length === 1 ? "" : "s"}${added.length < incoming.length ? ` (${incoming.length - added.length} over the limit were skipped)` : ""}.`);
-        this.selectedId = added[0].id; this.draft = null; this.editing = false; break;
+        // Same id: the screen here is overwritten (a changed starter replaces the starter). Already here: skipped.
+        const { screens, added, replaced, skipped } = mergeFlashImport(list, incoming);
+        const message = added || replaced ? `Imported ${added + replaced} flash screen${added + replaced === 1 ? "" : "s"}: ${added} new, ${replaced} replaced${skipped ? `, ${skipped} over the limit of ${FLASH_LIMIT} skipped` : ""}.`
+          : skipped ? `You already have the most flash screens (${FLASH_LIMIT}).` : "Nothing new: you already have every flash screen in that file.";
+        await commit(screens, message);
+        this.draft = null; this.editing = false; break;
       }
       case "flash-key-go": this.layerIndex = Number(b.dataset.index); this.time = Number(b.dataset.at); break;
       case "flash-key-add": { const layer = this.edit().layers[this.layerIndex]; layer.keys ??= []; this.keyForEdit(layer); break; }

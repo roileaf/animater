@@ -208,3 +208,16 @@ test("a kill finisher on the last enemy waits for Finish Him!: as long as the sc
   game.settings.set(ID, "flashDefaults", { start: "none", end: "none", finalEnemy: "none" });
   assert.equal(w.api.finaleLength(orc.actor), 0, "screen off: no wait");
 });
+
+test("on load the active GM drops copies a 1.6.3 import made and keeps defaults pointing at the kept screen", async () => {
+  const { api } = world({ defaults: { start: "boss-copy", initiated: ["roll", "roll-copy"] } });
+  const settings = { ...game.settings };
+  const [roll, , , boss] = api.screens();
+  game.settings.set(ID, "flashScreens", { schema: 1, screens: [...api.screens(), { ...roll, id: "roll-copy" }, { ...boss, id: "boss-copy" }] });
+  assert.equal(await api.tidy(), 2);
+  assert.deepEqual(api.screens().map((s) => s.id).filter((id) => id.endsWith("-copy")), []);
+  assert.equal(api.defaults().start, "boss");
+  assert.deepEqual(api.defaults().initiated, ["roll"]);
+  assert.equal(await api.tidy(), 0, "nothing left to tidy");
+  game.settings = settings;
+});

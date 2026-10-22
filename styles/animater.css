@@ -2718,6 +2718,10 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 @media (hover: none), (max-width: 700px) { .animater .an-flash-tile .an-flash-default.is-offer { opacity: 1; } }
 .animater .an-flash-unsaved { color: #ffd34d; }
 .animater .an-flash-tile .an-flash-switch { top: auto; bottom: 12px; right: 10px; transform: none; }
+/* Delete sits on the thumbnail's corner, shown on hover or focus (always on touch). */
+.animater .an-flash-tile .an-flash-tile-delete { position: absolute; top: 12px; right: 12px; width: 26px; height: 26px; min-height: 0; padding: 0; background: rgba(0, 0, 0, 0.6); opacity: 0; }
+.animater .an-flash-tile:hover .an-flash-tile-delete, .animater .an-flash-tile:focus-within .an-flash-tile-delete { opacity: 1; }
+@media (hover: none), (max-width: 700px) { .animater .an-flash-tile .an-flash-tile-delete { opacity: 1; } }
 .animater .an-brand small { white-space: nowrap; letter-spacing: 0.06em; }
 /* Editor header: back, name and actions; then the screen's timing. */
 .animater .an-flash-page .an-flash-head { display: grid; gap: 8px; }

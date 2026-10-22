@@ -1,6 +1,7 @@
 import { tokenFxEditorHTML, applyTokenFxEdit, tokenFxAction } from "./token-fx-editor.mjs";
 import { layersOf } from "../engines/tokenshade/layers.mjs";
 import { uuid } from "../core/uuid.mjs";
+import { recipesToExport, importableRecipes } from "../core/presets.mjs";
 import { strikeFromDrag } from "../engines/finishers/strike-finishers.mjs";
 import { OPTIONAL_FX_KINDS, fxAvailability } from '../engines/playback/optional-fx.mjs';
 import {
@@ -736,7 +737,7 @@ export class Workspace {
         ${this.navItemsHTML(env)}
         <div class="an-nav-bottom"><div class="an-pack"><span class="an-dot ${env.ready && env.jb2aRegistered !== false ? "is-ready" : ""}" ${env.jb2aRegistered === false ? `data-tooltip="${esc(env.pack)} is active, but Sequencer has no JB2A animations. See Setup."` : ""}></span><div>${esc(env.pack)}<small>${this.host.catalog().length.toLocaleString()} asset variants</small></div></div><button data-action="stop" class="an-stop">■ Stop my effects</button><small class="an-version">${env.version ? `v${esc(env.version)} · ` : ""}${esc(env.system)}${env.demo ? " · PREVIEW" : ""}</small></div>
       </aside>
-      <main class="an-main">${this.isStudio() || (this.page === "flash" && (this.flashEditor?.editing || !this.host.flashScreens)) ? "" : `<header class="an-header"><div><div class="an-eyebrow">${this.page === "recipes" ? "YOUR EFFECTS, YOUR STYLE" : this.page === "finishers" ? "FINISHING BLOWS, YOUR WAY" : this.page === "flash" ? "TITLE CARDS FOR EVERY FIGHT" : "ANIMATER WORKSPACE"}</div><h1>${esc(catalogPageTitle(this.page,env))}</h1></div><div class="an-header-actions">${this.page === "recipes" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new" class="an-primary">+ New recipe</button>` : this.page === "finishers" ? `<button data-action="new-finisher" class="an-primary">+ New finisher</button>` : this.page === "builder" ? `<button data-action="cancel-builder">Back to recipes</button>` : this.page === "flash" ? this.flashEditor?.showGallery ? "" : `<button data-action="flash-export" class="an-quiet" ${this.host.flashScreens().length ? "" : "disabled"}>↗ Export</button><button data-action="flash-import" class="an-quiet">↙ Import</button><button data-action="flash-new" class="an-primary">+ New flash screen</button>` : ""}</div></header>`}
+      <main class="an-main">${this.isStudio() || (this.page === "flash" && (this.flashEditor?.editing || !this.host.flashScreens)) ? "" : `<header class="an-header"><div><div class="an-eyebrow">${this.page === "recipes" ? "YOUR EFFECTS, YOUR STYLE" : this.page === "finishers" ? "FINISHING BLOWS, YOUR WAY" : this.page === "flash" ? "TITLE CARDS FOR EVERY FIGHT" : "ANIMATER WORKSPACE"}</div><h1>${esc(catalogPageTitle(this.page,env))}</h1></div><div class="an-header-actions">${this.page === "recipes" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new" class="an-primary">+ New recipe</button>` : this.page === "finishers" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new-finisher" class="an-primary">+ New finisher</button>` : this.page === "builder" ? `<button data-action="cancel-builder">Back to recipes</button>` : this.page === "flash" ? this.flashEditor?.showGallery ? "" : `<button data-action="flash-export" class="an-quiet" ${this.host.flashScreens().length ? "" : "disabled"}>↗ Export</button><button data-action="flash-import" class="an-quiet">↙ Import</button><button data-action="flash-new" class="an-primary">+ New flash screen</button>` : ""}</div></header>`}
         <div role="status" aria-live="polite" class="an-toast ${this.message ? `is-visible is-${messageTone(this.message, this.messageError)}` : ""}">${esc(this.message)}${this.message ? `<button type="button" class="an-toast-close" data-action="dismiss-message" aria-label="Dismiss message">✕</button>` : ""}</div>
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
@@ -2035,7 +2036,7 @@ export class Workspace {
     return `<div class="an-modal-scrim"><section class="an-modal an-new-chooser" role="dialog" aria-modal="true" aria-label="New recipe"><h2>What kind of animation?</h2><div class="an-new-choices">${choice("new-action", "✦", "Blank action animation", "Plays once when something happens: a spell is cast, an attack or damage is rolled, an area is placed.", "e.g. Fireball, a sword Strike")}${this.lastingRecipesAvailable() ? choice("new-lasting", "◷", "Blank lasting animation", "Stays on a token while a condition or effect is on it, and stops when it is removed.", "e.g. Frightened, Spell Effect: Shield") : ""}</div><h3 class="an-new-subtitle">Or start from a template</h3><p class="an-hint">Already timed: pick one, change its art, then name what it plays for.</p><div class="an-new-templates">${starterRecipes().map((t) => `<button class="an-new-template" data-action="new-template" data-template="${esc(t.id)}" style="--effect:${esc(t.color)}"><b>${esc(t.name)}</b><small>${esc(t.description)}</small><small class="an-new-example">${t.stages.length} stage${t.stages.length === 1 ? "" : "s"} · ${esc(EVENTS[t.trigger] ?? t.trigger)}</small></button>`).join("")}</div><p class="an-hint">For a particular spell, feat or weapon, open it in its catalog and press <b>Customize</b>: you start from its finished animation.</p><footer><button data-action="new-cancel">Cancel</button></footer></section></div>`;
   }
   importHTML() {
-    return `<div class="an-modal-scrim"><section class="an-modal" role="dialog" aria-modal="true" aria-label="Import Animater recipes"><h2>Import recipes</h2><p>Paste an Animater export. Existing IDs are replaced only after review.</p><textarea aria-label="Recipe import JSON" data-import rows="10" placeholder='{"schema":1,"recipes":[…]}'></textarea><div data-import-review role="status"></div><footer><button data-action="cancel-import">Cancel</button><button data-action="review-import">Review import</button><button data-action="confirm-import" class="an-primary" disabled>Import reviewed recipes</button></footer></section></div>`;
+    return `<div class="an-modal-scrim"><section class="an-modal" role="dialog" aria-modal="true" aria-label="Import Animater ${this.page === "finishers" ? "finishers" : "recipes"}"><h2>Import ${this.page === "finishers" ? "finishers" : "recipes"}</h2><p>Paste an Animater export. Existing IDs are replaced only after review.</p><textarea aria-label="Recipe import JSON" data-import rows="10" placeholder='{"schema":1,"recipes":[…]}'></textarea><div data-import-review role="status"></div><footer><button data-action="cancel-import">Cancel</button><button data-action="review-import">Review import</button><button data-action="confirm-import" class="an-primary" disabled>Import reviewed recipes</button></footer></section></div>`;
   }
   onInput(e) {
     const t = e.target;
@@ -2542,6 +2543,8 @@ export class Workspace {
     e.preventDefault();
     let action = b.dataset.action;
     if (this.busy && action !== "stop") return;
+    // A flash tile's right-click menu closes once used.
+    if (action.startsWith("flash-") && b.closest(".an-st-menu")) this.root.querySelector(".an-st-menu")?.remove();
     // A recipe card's right-click menu acts on that recipe as if it were open.
     if (action.startsWith("recipe-menu-")) {
       this.root.querySelector(".an-st-menu")?.remove();
@@ -3322,9 +3325,9 @@ export class Workspace {
       }
       if (action === "export") {
         await this.host.export(
-          JSON.stringify({ schema: 1, recipes: this.host.recipes() }, null, 2),
+          JSON.stringify({ schema: 1, recipes: recipesToExport(this.host.recipes(), { finishers: this.page === "finishers" }) }, null, 2),
         );
-        this.message = "Saved recipes exported. Unsaved edits excluded.";
+        this.message = `Your own and changed ${this.page === "finishers" ? "finishers" : "recipes"} exported. Unsaved edits excluded.`;
       }
       if (action === "import") {
         this.pendingImport = [];
@@ -3337,16 +3340,20 @@ export class Workspace {
         this.message = "";
       }
       if (action === "review-import") {
-        this.pendingImport = parseImport(
+        // Untouched starters in an older export are skipped: they would undo a starter you changed.
+        const parsed = parseImport(
           this.root.querySelector("[data-import]").value,
         );
+        this.pendingImport = importableRecipes(parsed);
         const replaced = this.pendingImport.filter((r) =>
           this.host.recipes().some((old) => old.id === r.id),
-        ).length;
+        ).length, skipped = parsed.length - this.pendingImport.length, finishers = this.pendingImport.filter((r) => r.finisher).length;
+        // Either page takes either file; the review says what is in it.
+        const kinds = finishers ? ` (${finishers} finisher${finishers === 1 ? "" : "s"})` : "";
         this.root.querySelector("[data-import-review]").textContent =
-          `${this.pendingImport.length} recipes: ${this.pendingImport.length - replaced} new, ${replaced} existing replaced.`;
+          `${this.pendingImport.length} recipes${kinds}: ${this.pendingImport.length - replaced} new, ${replaced} existing replaced${skipped ? `, ${skipped} unchanged starter${skipped === 1 ? "" : "s"} skipped` : ""}.`;
         this.root.querySelector('[data-action="confirm-import"]').disabled =
-          false;
+          !this.pendingImport.length;
         return;
       }
       if (action === "confirm-import") {

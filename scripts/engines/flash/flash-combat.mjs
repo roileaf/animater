@@ -3,7 +3,7 @@
 // combat's own pick from the Combat Tracker, else the world default) and sends it
 // to everyone, so all clients show the same screen once. Any client may notice a
 // moment (a crit it rolled, a creature it dropped) and ask the active GM to play it.
-import { STARTER_FLASHES, MOMENT_EVENTS, flashesOn, validateFlashes, validateFlash, chooseFlash, FLASH_EVENTS, manualPrompts } from "./flash-model.mjs";
+import { STARTER_FLASHES, MOMENT_EVENTS, flashesOn, validateFlashes, validateFlash, dedupeFlashes, remapFlashDefaults, chooseFlash, FLASH_EVENTS, manualPrompts } from "./flash-model.mjs";
 import { createFlash } from "./flash-render.mjs";
 import { pickFlash } from "./flash-picker.mjs";
 import { hpState, isKillTransition } from "../../systems/hp-state.mjs";
@@ -329,8 +329,19 @@ export function flashScreens(host) {
     play(screen, { everyone: true, extra: { name: context.source?.name ?? actor?.name ?? "", action: context.item?.name ?? recipe.name, ...(who ? { actor: who } : {}) } });
     await new Promise((r) => setTimeout(r, Math.max(0, screen.duration - 400)));
   }
+  // Imports in 1.6.3 and earlier could add a second copy of a screen under a new id: the active GM drops the copies
+  // once, and defaults that named a copy name the screen kept. Returns how many went.
+  async function tidy() {
+    if (!game.users?.activeGM?.isSelf) return 0;
+    const { screens: kept, removed } = dedupeFlashes(screens());
+    if (!removed.size) return 0;
+    await game.settings.set(ID, FLASH_SETTING, { schema: 1, screens: kept });
+    await game.settings.set(ID, FLASH_DEFAULTS, remapFlashDefaults(game.settings.get(ID, FLASH_DEFAULTS), removed));
+    globalThis.ui?.notifications?.info(`Animater removed ${removed.size} duplicate flash screen${removed.size === 1 ? "" : "s"} left by an earlier import.`);
+    return removed.size;
+  }
   return {
-    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength,
+    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength, tidy,
     save: (list) => game.settings.set(ID, FLASH_SETTING, { schema: 1, screens: validateFlashes(list) }),
     setDefault: (event, id) => game.settings.set(ID, FLASH_DEFAULTS, { ...defaults(), [event]: id }),
     events: FLASH_EVENTS,
