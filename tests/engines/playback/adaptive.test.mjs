@@ -6,6 +6,9 @@ import {
   adaptEffect,
   createSessionDecisions,
   staggerDelays,
+  createAssetMemory,
+  preloadFiles,
+  createPreloadQueue,
 } from '../../../scripts/engines/playback/adaptive.mjs';
 
 test('frame monitor reports the 75th percentile of the last 3 s', () => {
@@ -111,4 +114,71 @@ test('staggerDelays ignores sounds, motion and optional layers', () => {
   const motion = Array.from({ length: 5 }, () => ({ stageId: 'hit', kind: 'motion' }));
   const fx = Array.from({ length: 5 }, () => ({ stageId: 'hit', kind: 'tokenfx' }));
   assert.equal(staggerDelays([...sounds, ...motion, ...fx]).size, 0);
+});
+
+test('asset memory keeps the newest 24 per actor', () => {
+  const m = createAssetMemory();
+  m.remember('A', Array.from({ length: 30 }, (_, i) => ({ asset: `f${i}`, tier: 0 })));
+  m.remember('A', [{ asset: 'f5', tier: 1 }]);
+  assert.equal(m.recall('A').length, 24);
+  assert.deepEqual(m.recall('A').at(-1), { asset: 'f5', tier: 1 });
+  m.remember(undefined, [{ asset: 'x', tier: 0 }]);
+  assert.deepEqual(m.recall('B'), []);
+});
+
+test('preloadFiles puts weapons first, resolves keys, skips cached and unknown', () => {
+  const files = preloadFiles({
+    weaponAssets: ['jb2a.sword'],
+    recentAssets: ['jb2a.fire', 'jb2a.sword', 'missing'],
+    toFile: (k) => (k === 'missing' ? null : `${k}.webm`),
+    has: (f) => f === 'jb2a.fire.webm',
+  });
+  assert.deepEqual(files, ['jb2a.sword.webm']);
+});
+
+const settle = async (done) => {
+  for (let i = 0; i < 200 && !done(); i++) await new Promise((r) => setImmediate(r));
+};
+
+test('preload queue loads two at a time and waits while hidden', async () => {
+  const batches = [];
+  let hidden = true;
+  const pauses = [];
+  const queue = createPreloadQueue({
+    load: async (files) => { batches.push(files); },
+    hidden: () => hidden,
+    pause: async (ms) => { pauses.push(ms); if (pauses.length === 2) hidden = false; },
+  });
+  queue.add(['a', 'b', 'c', 'd', 'e']);
+  await settle(() => batches.length === 3);
+  assert.deepEqual(batches, [['a', 'b'], ['c', 'd'], ['e']]);
+  assert.ok(pauses.length >= 2);
+  assert.equal(queue.size(), 0);
+});
+
+test('a failing preload batch is dropped without throwing', async () => {
+  const batches = [];
+  const queue = createPreloadQueue({
+    load: async (files) => {
+      batches.push(files);
+      if (batches.length === 1) throw new Error('boom');
+    },
+    hidden: () => false,
+    pause: async () => {},
+  });
+  queue.add(['a', 'b', 'c']);
+  await settle(() => batches.length === 2);
+  assert.deepEqual(batches, [['a', 'b'], ['c']]);
+});
+
+test('a synchronously throwing load does not escape the queue', async () => {
+  let calls = 0;
+  const queue = createPreloadQueue({
+    load: () => { calls++; throw new Error('sync'); },
+    hidden: () => false,
+    pause: async () => {},
+  });
+  queue.add(['a', 'b', 'c']);
+  await settle(() => calls === 2);
+  assert.equal(calls, 2);
 });

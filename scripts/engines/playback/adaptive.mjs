@@ -99,3 +99,67 @@ export function staggerDelays(stages, { step = 16, cap = 50, min = 4 } = {}) {
   }
   return delays;
 }
+
+// What each actor played lately, newest last, so a client can warm those files.
+export function createAssetMemory(perActor = 24) {
+  const byActor = new Map();
+  return {
+    remember(actorId, assets) {
+      if (!actorId) return;
+      const list = (byActor.get(actorId) || []).slice();
+      for (const entry of assets) {
+        const at = list.findIndex((e) => e.asset === entry.asset);
+        if (at >= 0) list.splice(at, 1);
+        list.push({ asset: entry.asset, tier: entry.tier });
+      }
+      byActor.set(actorId, list.slice(-perActor));
+    },
+    recall(actorId) {
+      return (byActor.get(actorId) || []).map((e) => ({ ...e }));
+    },
+  };
+}
+
+// Files worth warming: weapon assets first, then recent ones, no repeats or cached.
+export function preloadFiles({ weaponAssets = [], recentAssets = [], toFile, has }) {
+  const out = new Set();
+  for (const asset of [...weaponAssets, ...recentAssets]) {
+    const file = toFile(asset);
+    if (file && !has(file)) out.add(file);
+  }
+  return [...out];
+}
+
+// Loads a couple of files at a time, resting between batches and while hidden.
+export function createPreloadQueue({
+  load,
+  hidden,
+  batch = 2,
+  pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  const queue = [];
+  let running = false;
+  async function run() {
+    running = true;
+    try {
+      while (queue.length) {
+        if (hidden()) {
+          await pause(250);
+          continue;
+        }
+        const files = queue.splice(0, batch);
+        // A failed batch is dropped, never retried.
+        try { await load(files); } catch { /* ignore */ }
+        await pause(0);
+      }
+    } catch { /* never throw */ }
+    running = false;
+  }
+  return {
+    add(files) {
+      for (const f of files) if (!queue.includes(f)) queue.push(f);
+      if (!running && queue.length) run();
+    },
+    size: () => queue.length,
+  };
+}
