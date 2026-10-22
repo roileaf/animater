@@ -110,7 +110,81 @@ test('tag carries colour, timing relative to the anchor, fade and lasting', () =
   assert.equal(tag.lasting, true);
   assert.equal(tag.startMs, 0);
   assert.equal(tag.fadeMs, 800);
-  assert.ok(tag.lengthMs >= 6000);
+  // A persisting stage loops until it is ended: its light lasts until its anchor ends, whatever its duration.
+  assert.equal(tag.lengthMs, 86400000);
+  // A long area that does not persist lasts its own duration.
+  const timed = st('timed', 'template', 'jb2a.fire_ring.orange', { at: { x: 0, y: 0 }, duration: 6000 });
+  const timedTag = planLights([timed], opts({ timed: 0 })).get(timed);
+  assert.equal(timedTag.lasting, true);
+  assert.equal(timedTag.lengthMs, 6000);
+});
+
+test('a lasting lightning area pulses instead of strobing out', () => {
+  assert.equal(lightShape(st('a', 'template', 'jb2a.lightning_ball.blue', { persist: true })), 'pulse');
+  assert.equal(lightShape(st('a', 'impact', 'jb2a.lightning_ball.blue')), 'strobe');
+});
+
+test('a still light carries its place; a light on a following anchor and a flight do not', () => {
+  const cone = st('cone', 'template', 'jb2a.breath_weapons.fire.cone.orange', { at: { x: sq(5), y: sq(1) } });
+  assert.deepEqual(planLights([cone], opts({ cone: 0 })).get(cone).at, { x: sq(5), y: sq(1) });
+  assert.equal(planLights([cone], opts({ cone: 0 })).get(cone).follow, undefined);
+  const aura = st('aura', 'aura', 'jb2a.flames.orange', { at: { x: 0, y: 0 }, persist: true });
+  const auraTag = planLights([aura], opts({ aura: 0 }, { follows: s => s.kind === 'aura' })).get(aura);
+  assert.equal(auraTag.follow, true);
+  assert.equal(auraTag.at, undefined);
+  const bolt = st('bolt', 'projectile', 'jb2a.fire_bolt.orange', { at: { x: sq(8), y: 0 } });
+  assert.equal(planLights([bolt], opts({ bolt: 0 }, { follows: () => true })).get(bolt).at, undefined);
+});
+
+test('slow motion stretches flash, strobe and a flight arrival; lasting lights keep their speed', () => {
+  const boom = st('boom', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
+  const zap = st('zap', 'impact', 'jb2a.chain_lightning.primary.blue', { at: { x: sq(20), y: 0 } });
+  const bolt = st('bolt', 'projectile', 'jb2a.fire_bolt.orange', { at: { x: sq(8), y: 0 }, duration: 1600, contact: 500 });
+  const ring = st('ring', 'template', 'jb2a.fire_ring.orange', { at: { x: sq(40), y: 0 }, persist: true });
+  const tiers = { boom: 0, zap: 0, bolt: 0, ring: 0 };
+  const plain = planLights([boom, zap, bolt, ring], opts(tiers));
+  const slowed = planLights([boom, zap, bolt, ring], opts(tiers, { tempo: 0.5 }));
+  assert.equal(slowed.get(boom).lengthMs, 2 * plain.get(boom).lengthMs);
+  assert.equal(slowed.get(zap).lengthMs, 2 * plain.get(zap).lengthMs);
+  assert.equal(slowed.get(boom).rate, 0.5);
+  assert.equal(slowed.get(bolt).arriveMs, 1000);
+  assert.equal(slowed.get(ring).rate, undefined);
+  assert.equal(plain.get(boom).rate, undefined);
+  // The flash peaks at 120 ms instead of 60 ms, and is still lit when the plain one is gone.
+  assert.equal(envelope(slowed.get(boom), 120), 1);
+  assert.ok(envelope(slowed.get(boom), 60) < 1);
+  assert.equal(envelope(plain.get(boom), 1000), 0);
+  assert.ok(envelope(slowed.get(boom), 1000) > 0);
+  // A one-shot area slowed past the lasting length is still a one-shot flash.
+  const burst = st('burst', 'template', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 }, duration: 3000 });
+  const tag = planLights([burst], opts({ burst: 0 }, { tempo: 0.5 })).get(burst);
+  assert.equal(tag.shape, 'flash');
+  assert.equal(tag.lasting, false);
+});
+
+test('a burst and a later lasting area at one spot each keep their light', () => {
+  const burst = st('burst', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 }, delay: 0 });
+  const wall = st('wall', 'template', 'jb2a.fire_ring.orange', { at: { x: sq(1), y: 0 }, delay: 400, persist: true });
+  const lights = planLights([burst, wall], opts({ burst: 0, wall: 0 }));
+  assert.equal(lights.get(burst).shape, 'flash');
+  assert.equal(lights.get(wall).shape, 'flicker');
+  assert.equal(lights.get(wall).lasting, true);
+  assert.equal(lights.get(wall).lengthMs, 86400000);
+  // The two count towards the same cap.
+  assert.equal(planLights([burst, wall], opts({ burst: 0, wall: 0 }, { perAnimation: 1 })).size, 1);
+  // With one tier 0 stage at the spot, the lasting light rides on the lasting stage.
+  const one = planLights([burst, wall], opts({ burst: 1, wall: 0 }));
+  assert.deepEqual([...one.keys()].map(s => s.stageId), ['wall']);
+});
+
+test('tags carry the source level and elevation when known', () => {
+  const boom = st('boom', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 } });
+  const tag = planLights([boom], opts({ boom: 0 }, { level: 'lvl2', elevation: 10 })).get(boom);
+  assert.equal(tag.level, 'lvl2');
+  assert.equal(tag.elevation, 10);
+  const bare = planLights([boom], opts({ boom: 0 })).get(boom);
+  assert.equal('level' in bare, false);
+  assert.equal('elevation' in bare, false);
 });
 
 test('a travelling stage carries its route and arrival time', () => {

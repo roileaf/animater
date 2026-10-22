@@ -1282,3 +1282,74 @@ test("slowed play tags slowed timings", async () => {
   assert.ok(plain.lengthMs > 0);
   assert.equal(slowed.lengthMs, 2 * plain.lengthMs);
 });
+const tagsOf = async (stages, context, extra = {}) => {
+  const { runtime, calls } = lightFixture();
+  await runtime.play(validateRecipe({ ...starterRecipes()[0], stages }), { ...context, ...extra });
+  return (await overridesByAsset(calls)).map(([, d]) => d.animaterLight).filter(Boolean);
+};
+test("a cone's light sits at the cone's middle, not on the caster", async () => {
+  const context = {
+    source: { id: "s", center: { x: 0, y: 0 } },
+    targets: [{ id: "t1", center: { x: 500, y: 0 } }],
+    template: {},
+    area: { type: "cone", center: { x: 0, y: 0 }, endpoint: { x: 1000, y: 0 }, length: 1000, angle: 90 },
+  };
+  const [tag] = await tagsOf([{ stageId: "cone", kind: "template", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 1000 }], context);
+  assert.deepEqual(tag.at, { x: 500, y: 0 });
+  assert.equal(tag.follow, undefined);
+});
+test("a persisted area's light lasts until its effect ends", async () => {
+  const [tag] = await tagsOf([{ stageId: "wall", kind: "template", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 1500, persist: true }], fireball().context);
+  assert.equal(tag.lasting, true);
+  assert.equal(tag.lengthMs, 86400000);
+  assert.deepEqual(tag.at, { x: 600, y: 0 });
+});
+test("an aura's light follows its token", async () => {
+  const [tag] = await tagsOf([{ stageId: "aura", kind: "aura", assets: ["jb2a.fireball.explosion.orange"], delay: 0, duration: 1500, persist: true }], fireball().context);
+  assert.equal(tag.follow, true);
+  assert.equal(tag.at, undefined);
+});
+test("slowed play stretches an impact's flash", async () => {
+  const { recipe, context } = fireball();
+  const flashOf = async (ctx) => {
+    const { runtime, calls } = lightFixture();
+    await runtime.play(recipe, ctx);
+    return (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.explosion.orange")[1].animaterLight;
+  };
+  const plain = await flashOf(context), slowed = await flashOf({ ...context, tempo: 0.5 });
+  assert.equal(plain.shape, "flash");
+  assert.equal(slowed.lengthMs, 2 * plain.lengthMs);
+  assert.equal(slowed.rate, 0.5);
+  assert.equal(plain.rate, undefined);
+});
+test("lights carry the source token's level and elevation", async () => {
+  const { context } = fireball();
+  const source = { ...context.source, document: { level: "lvl2", elevation: 15 } };
+  const tags = await tagsOf(fireball().recipe.stages, { ...context, source });
+  assert.ok(tags.length >= 2);
+  for (const tag of tags) {
+    assert.equal(tag.level, "lvl2");
+    assert.equal(tag.elevation, 15);
+  }
+  for (const tag of await tagsOf(fireball().recipe.stages, context)) assert.equal("level" in tag, false);
+});
+test("lights on a crit play follow the hit-stop retiming", async () => {
+  const { recipe, context } = critAttack();
+  // A luminous burst after contact, lit through the tier 0 hit at the same spot.
+  const stages = [...recipe.stages, { stageId: "boom", kind: "impact", assets: ["jb2a.fireball.explosion.orange"], delay: 1200, duration: 500 }];
+  const lightOnHit = async (outcome) => {
+    const f = critFixture();
+    f.runtime.catalog = [...f.runtime.catalog, { key: "jb2a.fireball.explosion.orange" }];
+    f.host.effectLights = () => true;
+    let plan;
+    await f.runtime.play(validateRecipe({ ...recipe, stages }), { ...context, outcome }, { onStart: (r) => { plan = r.playbackPlan; } });
+    const data = (await overridesByAsset(f.calls)).find(([asset]) => asset === "jb2a.impact.001.orange")[1];
+    return { light: data.animaterLight, plan };
+  };
+  const crit = await lightOnHit("criticalSuccess"), plain = await lightOnHit("success");
+  assert.equal(plain.light.startMs, 600);
+  // The burst starts after contact, so the hold (100 ms) moves its light; the hit started before contact.
+  assert.equal(crit.light.startMs, 700);
+  assert.equal(crit.plan.find((s) => s.stageId === "boom").delay - crit.plan.find((s) => s.stageId === "hit").delay, 700);
+  assert.equal(crit.light.shape, "flash");
+});

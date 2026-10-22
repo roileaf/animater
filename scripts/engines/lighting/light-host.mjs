@@ -21,7 +21,8 @@ const clamp01 = (n) => Math.min(1, Math.max(0, n));
 const finitePoint = (p) => (p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : null);
 const validTag = (tag) => !!tag && typeof tag === 'object'
   && ['startMs', 'lengthMs', 'dim', 'bright'].every((k) => Number.isFinite(tag[k]))
-  && (tag.fadeMs == null || Number.isFinite(tag.fadeMs));
+  && (tag.fadeMs == null || Number.isFinite(tag.fadeMs))
+  && (tag.rate == null || tag.rate > 0);
 
 /** Light source alpha and luminosity at envelope level 0..1. */
 export function lightLevels(level, shape) {
@@ -55,15 +56,20 @@ export function createLightHost({
     light.endLevel = light.level;
   };
 
-  // A flight's glow slides along its path on the effect's clock; anything else sits on its anchor.
+  // A flight's glow slides along its path on the effect's clock; a still light sits at its tagged place
+  // (a stretched line's own position is its start); a light that follows a token rides on its anchor.
   const positionOf = (light, t) => {
-    const { from, to, arriveMs } = light.tag;
+    const { from, to, arriveMs, at, follow } = light.tag;
     if (from && to && arriveMs > 0) {
       const k = clamp01(t / arriveMs);
       return finitePoint({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
     }
+    const fixed = follow ? null : finitePoint(at);
+    if (fixed) return fixed;
     try { return finitePoint(light.effect.worldPosition); } catch { return null; }
   };
+  // The source token's level and elevation, from the tag; else Foundry's canvas level.
+  const levelOf = (tag, data) => (typeof tag.level === 'string' ? tag.level : typeof data.level === 'string' ? data.level : undefined);
 
   const show = (light, t, level, isSteady) => {
     const at = positionOf(light, t);
@@ -77,7 +83,8 @@ export function createLightHost({
         x: at.x, y: at.y, dim: tag.dim * grid, bright: tag.bright * grid, color: tag.color,
         ...lightLevels(level, tag.shape), coloration: 1, attenuation: 0.5, vision: false, walls: true, priority: 0,
         animation: animationOf(tag.shape, isSteady),
-        ...(typeof data.level === 'string' ? { level: data.level } : {}),
+        ...(levelOf(tag, data) ? { level: levelOf(tag, data) } : {}),
+        ...(Number.isFinite(tag.elevation) ? { elevation: tag.elevation } : {}),
       });
       light.source.add();
     } catch (err) {
@@ -132,7 +139,7 @@ export function createLightHost({
     onEffect(effect) {
       const data = effect?.data, tag = data?.animaterLight;
       if (!validTag(tag) || data.moduleName !== 'animater' || lights.has(effect)) return;
-      if (data.sceneId !== sceneId() || !levelOk(data.level)) return;
+      if (data.sceneId !== sceneId() || !levelOk(levelOf(tag, data))) return;
       // Same rule on every client, in arrival order: when full the newest one-shot is skipped, and a
       // lasting light makes room by fading out the oldest one-shot.
       const live = [...lights.values()].filter((l) => l.endedAt === null);
@@ -155,6 +162,7 @@ export function createLightHost({
     // Runs on the PIXI ticker, where a throw would stop the canvas: it never throws, and a light
     // that fails is dropped.
     tick() {
+      if (lights.size === 0) return;
       frame++;
       let t0, isSteady;
       try { t0 = now(); isSteady = steady(); } catch { return; }

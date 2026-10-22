@@ -282,9 +282,11 @@ export class AnimaterRuntime {
       gridSize: this.host.gridSize?.() ?? 100,
     });
     // Slow motion (a notable kill): the whole one-time play stretches, a long one less (never past the cap).
+    let tempo = 1;
     if (context.tempo < 1) {
       const planEnd = Math.max(0, ...plan.filter((s) => !s.persist).map((s) => (s.delay ?? 0) + (s.duration ?? 0)));
-      plan = withTempo(plan, tempoFor(planEnd, context.tempo));
+      tempo = tempoFor(planEnd, context.tempo);
+      plan = withTempo(plan, tempo);
     }
     if (
       !preview &&
@@ -533,6 +535,8 @@ export class AnimaterRuntime {
         // A line or cone lights its middle, as far as half its length; any other area lights its centre.
         const area = context.area, along = ["line", "cone"].includes(area?.type) && area.center && area.endpoint;
         const areaPoint = along ? { x: (area.center.x + area.endpoint.x) / 2, y: (area.center.y + area.endpoint.y) / 2 } : area?.center;
+        // The source token's level and elevation, so every client lights the same floor.
+        const token = context.source?.document ?? context.source;
         lights = planLights(plan, {
           tiers,
           grid,
@@ -544,8 +548,15 @@ export class AnimaterRuntime {
             return half(effectFootprint(s, s.destination, grid, gridDistance) * s.scale);
           },
           originOf: (s) => soundPlace(s.origin),
+          // Effects attached to a token (auras, a following emanation) carry their light with them; see build().
+          follows: (s) => s.kind === "template"
+            ? !s.areaTile && !along && !!s.followSource && !!context.source
+            : s.kind !== "overlay" && !s.meleeFrom && (s.kind === "aura" || !!s.attach),
           element: context.element ?? recipe.chosenElement,
           recipeColor: recipe.color,
+          tempo,
+          level: token?.level,
+          elevation: token?.elevation,
         });
       }
       const groups = new Map();

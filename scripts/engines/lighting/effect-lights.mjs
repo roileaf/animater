@@ -43,16 +43,18 @@ export function isLuminous(assetKey) {
   return !!key && !VETO.test(key) && LUMINOUS.test(key);
 }
 
-// A light that stays for the effect's life instead of playing once.
-function isLasting(stage) {
-  return !!stage?.persist || (['aura', 'template'].includes(stage?.kind) && (stage.duration ?? 0) > LASTING_AREA_MS);
+// A light that stays for the effect's life instead of playing once. `rate` below 1 is slow motion:
+// a slowed one-shot area is judged by its own, unslowed length.
+function isLasting(stage, rate = 1) {
+  return !!stage?.persist || (['aura', 'template'].includes(stage?.kind) && (stage.duration ?? 0) * rate > LASTING_AREA_MS);
 }
 
-export function lightShape(stage) {
+export function lightShape(stage, rate = 1) {
   if (['travel', 'projectile'].includes(stage?.kind)) return 'glow';
   const asset = assetOf(stage);
+  // A lasting area keeps glowing; a strobe would go dark after its first second.
+  if (isLasting(stage, rate)) return FIRE.test(asset) ? 'flicker' : 'pulse';
   if (LIGHTNING.test(asset)) return 'strobe';
-  if (isLasting(stage)) return FIRE.test(asset) ? 'flicker' : 'pulse';
   if (stage?.kind === 'aura') return 'pulse';
   return 'flash';
 }
@@ -70,10 +72,13 @@ export function lightColor(stage, { element, recipeColor } = {}) {
 }
 
 const startOf = stage => stage.delay ?? 0;
-const lengthOf = (stage, shape) => {
-  if (isLasting(stage)) return stage.persist && !(stage.duration > 0) ? LASTING_MS : Math.max(stage.duration ?? 0, 0);
-  if (shape === 'flash') return FLASH_RISE_MS + FLASH_DECAY_MS;
-  if (shape === 'strobe') return STROBE_PEAKS_MS + STROBE_DECAY_MS;
+// A persisting stage loops until it is ended, so its light lasts until its anchor ends (the host's onEnded).
+// Flash and strobe lengths stretch with the play's slow motion (rate below 1).
+const lengthOf = (stage, shape, rate) => {
+  if (stage.persist) return LASTING_MS;
+  if (isLasting(stage, rate)) return Math.max(stage.duration ?? 0, 0);
+  if (shape === 'flash') return (FLASH_RISE_MS + FLASH_DECAY_MS) / rate;
+  if (shape === 'strobe') return (STROBE_PEAKS_MS + STROBE_DECAY_MS) / rate;
   return Math.max(stage.duration ?? 0, 0);
 };
 // When two stages start together the impact wins as the one that describes the spot.
@@ -92,20 +97,27 @@ function lightRadius(pixels, grid) {
  * spot: each luminous flight that is itself tier 0 gets its own travelling glow,
  * which fades out when it lands. The other luminous stages whose places lie
  * within `spotSquares` of each other share a light, described by the spot's
- * earliest luminous stage and riding on the spot's tier 0 stage. Both kinds are
- * keyed by the anchor stage; a spot with no tier 0 stage gets none, and at most
- * `perAnimation` spot lights and, separately, `perAnimation` flight glows are
- * kept, earliest first. `tiers` maps stageId to tier (a stage missing from it is
- * not tier 0 and cannot anchor); `radiusOf` gives pixels; `originOf` (optional)
- * gives where a flight starts.
+ * earliest luminous stage and riding on the spot's tier 0 stage; a lasting stage
+ * at a spot gets a light of its own, so a burst before it does not take its
+ * glow. All are keyed by the anchor stage; a spot with no free tier 0 stage gets
+ * none, and at most `perAnimation` spot lights and, separately, `perAnimation`
+ * flight glows are kept, earliest first. `tiers` maps stageId to tier (a stage
+ * missing from it is not tier 0 and cannot anchor); `radiusOf` gives pixels;
+ * `originOf` (optional) gives where a flight starts. A spot light sits at its
+ * stage's place (`at`), except on an anchor that `follows` (optional) says moves
+ * with a token, which it follows. `tempo` is the play's slow motion (below 1
+ * stretches every one-shot light); `level` and `elevation` are the source token's.
  */
-export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, element, recipeColor, spotSquares = 2, perAnimation = 3 } = {}) {
+export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, follows, element, recipeColor, tempo = 1, level, elevation, spotSquares = 2, perAnimation = 3 } = {}) {
   const lights = new Map();
   const isTier0 = stage => tiers?.get(stage.stageId) === 0;
   const isFlight = stage => ['travel', 'projectile'].includes(stage.kind);
   const placed = (plan ?? []).filter(s => !NOT_VISUAL.has(s.kind)).map(stage => ({ stage, at: pointOf(stage) })).filter(p => p.at);
   const byStart = (a, b) => startOf(a.stage) - startOf(b.stage);
   const reach = spotSquares * grid;
+  // A persisting stage keeps its speed in slow motion; any other plays slowed.
+  const rateOf = stage => !stage.persist && tempo > 0 && tempo < 1 ? tempo : 1;
+  const lasts = stage => isLasting(stage, rateOf(stage));
 
   placed.filter(p => isFlight(p.stage) && isLuminous(assetOf(p.stage)) && isTier0(p.stage)).sort(byStart)
     .slice(0, perAnimation).forEach(p => lights.set(p.stage, buildTag(p, p.stage)));
@@ -119,32 +131,50 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, ele
   }
 
   const taken = new Set();
+  const earliest = members => members.reduce((best, m) => (startOf(m.stage) < startOf(best.stage) || (startOf(m.stage) === startOf(best.stage) && rank(m.stage) < rank(best.stage)) ? m : best));
   for (const spot of spots) {
-    if (taken.size >= perAnimation) break;
-    const lead = spot.members.reduce((best, m) => (startOf(m.stage) < startOf(best.stage) || (startOf(m.stage) === startOf(best.stage) && rank(m.stage) < rank(best.stage)) ? m : best));
-    const near = still.filter(p => distance(p.at, spot.at) <= reach && isTier0(p.stage) && !taken.has(p.stage));
-    const anchor = near.find(p => p.stage === lead.stage) ?? near.find(p => spot.members.includes(p)) ?? near.sort(byStart)[0];
-    if (!anchor) continue;
-    taken.add(anchor.stage);
-    lights.set(anchor.stage, buildTag(lead, anchor.stage));
+    // One-shot members share one light, lasting members another. When a spot has both, each rides on a
+    // tier 0 stage of its own kind (a lasting light on a one-shot anchor would end with it).
+    const both = spot.members.some(m => lasts(m.stage)) && spot.members.some(m => !lasts(m.stage));
+    for (const lasting of [false, true]) {
+      if (taken.size >= perAnimation) break;
+      const group = spot.members.filter(m => lasts(m.stage) === lasting);
+      if (!group.length) continue;
+      const lead = earliest(group);
+      const near = still.filter(p => distance(p.at, spot.at) <= reach && isTier0(p.stage) && !taken.has(p.stage)).sort(byStart);
+      const anchor = near.find(p => p.stage === lead.stage) ?? near.find(p => group.includes(p))
+        ?? near.find(p => lasts(p.stage) === lasting) ?? (both ? null : near[0]);
+      if (!anchor) continue;
+      taken.add(anchor.stage);
+      lights.set(anchor.stage, buildTag(lead, anchor.stage));
+    }
   }
   return lights;
 
   function buildTag({ stage, at }, anchor) {
-    const shape = lightShape(stage);
+    const rate = rateOf(stage);
+    const shape = lightShape(stage, rate);
     // The light can only start once its anchor does; a stage that began earlier is cut short.
     const offset = startOf(stage) - startOf(anchor);
     const tag = {
       color: lightColor(stage, { element, recipeColor }), shape, ...lightRadius(radiusOf(stage), grid),
-      startMs: Math.max(0, offset), lengthMs: Math.max(0, lengthOf(stage, shape) + Math.min(0, offset)),
-      fadeMs: Math.max(MIN_FADE_MS, stage.fadeOut ?? 0), lasting: isLasting(stage),
+      startMs: Math.max(0, offset), lengthMs: Math.max(0, lengthOf(stage, shape, rate) + Math.min(0, offset)),
+      fadeMs: Math.max(MIN_FADE_MS, stage.fadeOut ?? 0), lasting: lasts(stage),
     };
+    if (rate !== 1) tag.rate = rate;
+    if (typeof level === 'string' && level) tag.level = level;
+    if (Number.isFinite(elevation)) tag.elevation = elevation;
     if (shape === 'glow') {
-      // A flight's glow lasts until it lands, then fades out.
-      tag.arriveMs = stage.contact > 0 ? stage.contact : 0.55 * (stage.duration ?? 0);
+      // A flight's glow lasts until it lands, then fades out; `contact` is clip time, slowed with the clip.
+      tag.arriveMs = stage.contact > 0 ? stage.contact / rate : 0.55 * (stage.duration ?? 0);
       tag.lengthMs = tag.arriveMs;
       const from = originOf?.(stage);
       if (from) Object.assign(tag, { from: { x: from.x, y: from.y }, to: { x: at.x, y: at.y } });
+    } else if (follows?.(anchor)) {
+      tag.follow = true;
+    } else {
+      // A still light sits where its stage is: the anchor's own position can be elsewhere (a line starts at the caster).
+      tag.at = { x: at.x, y: at.y };
     }
     return tag;
   }
@@ -163,7 +193,10 @@ const SHAPES = {
   },
 };
 
-/** Light level 0..1 at time `tMs` on the anchor's clock; `steady` swaps a strobe for one flash. */
+/**
+ * Light level 0..1 at time `tMs` on the anchor's clock; `steady` swaps a strobe for one flash. A tag `rate`
+ * below 1 (slow motion) plays the shape that much slower.
+ */
 export function envelope(tag, tMs, { steady = false } = {}) {
   const u = tMs - tag.startMs;
   if (u < 0) return 0;
@@ -171,6 +204,7 @@ export function envelope(tag, tMs, { steady = false } = {}) {
   const fade = tag.fadeMs ?? 0;
   if (u >= end + fade) return 0;
   const shape = steady && tag.shape === 'strobe' ? 'flash' : tag.shape;
-  const level = (SHAPES[shape] ?? SHAPES.glow)(u);
+  const rate = tag.rate > 0 ? tag.rate : 1;
+  const level = (SHAPES[shape] ?? SHAPES.glow)(u * rate);
   return clamp01(u <= end || fade <= 0 ? level : level * (1 - (u - end) / fade));
 }

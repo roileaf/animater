@@ -1363,7 +1363,7 @@ Hooks.once("init", () => {
   });
   game.settings.register(ID, "effectLighting", {
     name: "Effect lighting",
-    hint: "Fire, lightning and other glowing effects light up the scene around them for a moment, blocked by walls like any light.",
+    hint: "Fire, lightning and other glowing effects light up the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   game.settings.register(ID, "effectLightingDaylight", {

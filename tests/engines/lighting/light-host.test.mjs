@@ -330,3 +330,59 @@ test('untagged and foreign effects ignored', () => {
   assert.equal(out.sources.length, 0);
   assert.equal(out.refreshes, 0);
 });
+
+test('a still light sits at its tagged place, not on its anchor', () => {
+  const { host, out } = make();
+  // A stretched cone's anchor reports its start (the caster); the tag says where its middle is.
+  const e = effect({ ...flash, at: { x: 900, y: 300 } }, { x: 100, y: 100 });
+  host.onEffect(e);
+  host.tick();
+  const [s] = out.sources;
+  assert.equal(s.inits[0].x, 900);
+  assert.equal(s.inits[0].y, 300);
+  e.worldPosition = { x: 400, y: 100 };
+  out.t = 16; host.tick(); out.t = 32; host.tick();
+  assert.equal(s.inits.length, 1, 'never moves');
+});
+
+test('a light that follows rides on its anchor even with a place', () => {
+  const { host, out } = make();
+  const e = effect({ ...lasting, follow: true, at: { x: 900, y: 300 } }, { x: 100, y: 100 });
+  host.onEffect(e);
+  host.tick();
+  const [s] = out.sources;
+  assert.equal(s.inits[0].x, 100);
+  e.worldPosition = { x: 200, y: 100 };
+  out.t = 16; host.tick(); out.t = 32; host.tick();
+  assert.deepEqual(s.inits.at(-1), { x: 200, y: 100 });
+});
+
+test('the source level and elevation from the tag place the light', () => {
+  const asked = [];
+  const { host, out } = make({ levelOk: (level) => { asked.push(level); return level !== 'gone'; } });
+  host.onEffect(effect({ ...flash, level: 'lvl2', elevation: 10 }));
+  host.tick();
+  assert.deepEqual(asked, ['lvl2']);
+  assert.equal(out.sources[0].inits[0].level, 'lvl2');
+  assert.equal(out.sources[0].inits[0].elevation, 10);
+  // A level this canvas does not have: no light.
+  host.onEffect(effect({ ...flash, level: 'gone' }));
+  assert.equal(host.count(), 1);
+  // No level in the tag: Foundry's canvas level (none passed), no elevation.
+  const bare = make();
+  bare.host.onEffect(effect(flash));
+  bare.host.tick();
+  assert.equal('level' in bare.out.sources[0].inits[0], false);
+  assert.equal('elevation' in bare.out.sources[0].inits[0], false);
+});
+
+test('a slowed flash keeps its light twice as long', () => {
+  const { host, out } = make();
+  host.onEffect(effect({ ...flash, lengthMs: 1420, rate: 0.5 }));
+  host.tick();
+  out.t = 1000; host.tick();
+  assert.equal(host.count(), 1);
+  assert.equal(lastLevel(out.sources[0]).alpha, lightLevels(envelope({ ...flash, lengthMs: 1420, rate: 0.5 }, 1000), 'flash').alpha);
+  out.t = 1800; host.tick();
+  assert.equal(host.count(), 0);
+});
