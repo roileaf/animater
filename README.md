@@ -102,6 +102,8 @@ Animater patches Sequencer in memory (its files are untouched) so every Sequence
 
 Cached results are recomputed every 30 frames regardless (*Sequencer speed-ups: safety refresh*). If an effect from any module looks wrong, turn the setting off. Single patches can be switched from the console, e.g. `game.modules.get("animater").api.sequencerSpeedups.set("sound", false)`. To measure, run `await game.modules.get("animater").api.sequencerSpeedups.profile(10)` with the setting on and again with it off.
 
+Animater also works ahead for your own screen. The next creature's weapons and recently used footage load before its turn starts. Copies of an effect aimed at several targets start a frame apart, so they do not all land at once. Small decoration that you could not see at your zoom, or that would arrive while your computer is busy, is skipped on your screen only. The main hit of a spell always plays.
+
 The per-user preview setting can minimize the Animater window during local previews and table playback, then restore it afterward.
 
 ### Animation quality

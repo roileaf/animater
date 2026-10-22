@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Sequencer speed-ups.** Animater now makes Sequencer itself cheaper to run, for every module's effects, not only Animater's. Sequencer's animation engine no longer allocates every frame (same results, checked frame for frame against the original); effects attached to or stretched between tokens only recompute when something moved; positional sounds stop rebuilding their area and muffling every frame; and effects with filters or masks are skipped while off-screen. On by default under **Sequencer speed-ups** (each player); turn it off if an effect from any module looks wrong.
+- **Sequencer speed-ups.** Animater now makes Sequencer itself cheaper to run, for every module's effects, not only Animater's. Sequencer's animation engine no longer allocates every frame (same results, checked frame for frame against the original); effects attached to or stretched between tokens only recompute when something moved; positional sounds stop rebuilding their area and muffling every frame; and effects with filters or masks are skipped while off-screen. On by default under **Sequencer speed-ups** (each player); turn it off if an effect from any module looks wrong. Animater also loads the next creature's weapons and recently used footage before its turn, starts per-target copies a frame apart, skips decoration too small to see at your zoom or arriving while your computer is busy (on your screen only), and always plays a spell's main hit.
 
 ## 1.6.3 (2026-10-22)
 
