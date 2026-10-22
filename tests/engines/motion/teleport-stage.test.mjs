@@ -239,3 +239,89 @@ test("the Studio never doubles a teleport stage by duplicating or pasting it", a
   await studioAction(w, "studio-paste-stage", { dataset: { index: "0" } });
   assert.equal(w.recipe().stages.filter((s) => s.kind === "teleport").length, 1);
 });
+
+// Fix round 1: a picked spot is a game move, never dropped with the animation.
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+test("a picked teleport still moves the token when the animation fails before its stage", async () => {
+  const spot = { mover: ally, x: 0, y: 100, visuals: { out: "o", in: "i", scale: 1, tint: "" } };
+  const { runtime, host, calls } = fixture({ spot });
+  host.motion = async () => { throw Error("motion channel gone"); };
+  // The ray is still in flight (real time) when the gesture fails.
+  runtime.wait = (ms) => new Promise((resolve) => setTimeout(() => resolve(true), ms >= 1200 ? 20 : 0));
+  const recipe = friendfetch([cast, ray, { stageId: "g", kind: "motion", motion: "pulse", subject: "source", delay: 0, duration: 500 }]);
+  await assert.rejects(runtime.play(recipe, { source, targets: [ally] }), /motion channel gone/);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const moves = calls.filter((c) => c[0] === "teleport");
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0][1].x, 0);
+  assert.deepEqual([moves[0][1].visuals.out, moves[0][1].visuals.in], [null, null], "a plain move, no effects");
+  assert.deepEqual(moves[0][2], { outAt: 0, goneMs: 0 });
+});
+
+test("Stop before the teleport stage still moves the token, once", async () => {
+  const spot = { mover: ally, x: 0, y: 100, visuals: { out: "o", in: "i", scale: 1, tint: "" } };
+  const { runtime, calls } = fixture({ spot });
+  runtime.wait = async (ms) => { calls.push(["wait", ms]); return ms < 1200; }; // stopped while the ray flies
+  assert.equal(await runtime.play(friendfetch(), { source, targets: [ally] }), null);
+  await settle();
+  const moves = calls.filter((c) => c[0] === "teleport");
+  assert.equal(moves.length, 1);
+  assert.deepEqual(moves[0][2], { outAt: 0, goneMs: 0 });
+  // Played normally: the stage's own jump, and no second move after.
+  const ok = fixture({ spot });
+  await ok.runtime.play(friendfetch(), { source, targets: [ally] });
+  await settle();
+  assert.equal(ok.calls.filter((c) => c[0] === "teleport").length, 1);
+  assert.deepEqual(ok.calls.find((c) => c[0] === "teleport")[2], { outAt: 0, goneMs: 500 });
+});
+
+test("an authored stage linked to a flight's arrival follows the flight as planned (a wall stop)", () => {
+  const own = { kind: "teleport", stageId: "t", afterStage: "ray", timingAnchor: "arrival", startOffset: 100, delay: 1300, duration: 400 };
+  const plan = [{ kind: "projectile", stageId: "ray", delay: 600, duration: 1000, contact: 250, endpoint: ally }, own];
+  const out = withTeleportStage(plan, { who: "target", mover: ally });
+  assert.equal(out.find((s) => s.kind === "teleport").delay, 950, "600 + the wall contact 250 + 100");
+  assert.equal(out.find((s) => s.kind === "teleport").duration, 400);
+  const r = friendfetch([cast, ray, { stageId: "t", kind: "teleport", afterStage: "ray", timingAnchor: "arrival", startOffset: 0 }]);
+  assert.deepEqual([r.stages[2].afterStage, r.stages[2].timingAnchor], ["ray", "arrival"], "validation keeps the arrival link");
+});
+
+test("with no departure effect the token moves as the stage starts", async () => {
+  const calls = [], mover = { id: "tok", document: { id: "tok", x: 0, y: 0 }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  await playTeleport({ mover, x: 400, y: 0, visuals: { out: null, in: "i", scale: 1, tint: "" } }, {
+    wait: async (ms) => calls.push(["wait", ms]), effect: (asset) => calls.push(["effect", asset]), move: async () => calls.push(["move"]),
+  }, { outAt: 0, goneMs: 300 });
+  assert.deepEqual(calls, [["move"], ["wait", 300], ["effect", "i"]]);
+});
+
+test("the vanish names the spot it leaves and the preview's short grace", async () => {
+  const tags = [], mover = { id: "tok", document: { id: "tok", x: 0, y: 100 }, w: 100, h: 100, center: { x: 50, y: 150 } };
+  await playTeleport({ mover, x: 400, y: 0, visuals: { out: "o", in: null, scale: 1, tint: "" } },
+    { wait: async () => {}, move: async () => {}, vanishGrace: 0, effect: (a, p, s, t, data) => tags.push(data) }, { outAt: 0, goneMs: 500 });
+  assert.deepEqual(tags[0].animaterVanish, { tokenId: "tok", ms: 500, from: { x: 0, y: 100 }, grace: 0 });
+});
+
+test("a vanish that arrives after the move never hides the token at its destination", () => {
+  let clock = 0;
+  const frames = [];
+  const opts = { now: () => clock, frame: (cb) => { frames.push(cb); return cb; }, cancel: () => {} };
+  const landed = { mesh: { alpha: 1 }, document: { x: 400, y: 0 } };
+  holdHidden(landed, 500, { ...opts, origin: { x: 0, y: 0 } });
+  assert.equal(landed.mesh.alpha, 1);
+  assert.equal(frames.length, 0);
+  // A GM-moved ally: hidden well past its time until the move lands, then back at once.
+  const ally = { mesh: { alpha: 1 }, document: { x: 0, y: 0 } };
+  holdHidden(ally, 500, { ...opts, origin: { x: 0, y: 0 } });
+  for (let i = 0; i < 10; i++) { clock += 100; frames.shift()?.(); }
+  assert.equal(ally.mesh.alpha, 0, "1 s in, still waiting for its move");
+  ally.document.x = 400; clock += 16; frames.shift()?.();
+  assert.equal(ally.mesh.alpha, 1);
+  // A preview's grace of 0: back as its arrival plays.
+  clock = 0;
+  const shown = { mesh: { alpha: 1 }, document: { x: 0, y: 0 } };
+  holdHidden(shown, 500, { ...opts, grace: 0 });
+  clock += 499; frames.shift()?.();
+  assert.equal(shown.mesh.alpha, 0);
+  clock += 1; frames.shift()?.();
+  assert.equal(shown.mesh.alpha, 1);
+  assert.equal(VANISH_GRACE_MS, 1500);
+});

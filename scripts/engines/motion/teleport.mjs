@@ -69,8 +69,17 @@ export function teleportMoment(plan, { who, mover } = {}) {
   return gesture ? Math.round(gesture.delay + gesture.duration * 0.45) : TELEPORT_FALLBACK_MS;
 }
 // The plan with its teleport stage: the recipe's own (the first), else one placed at teleportMoment.
+// The recipe's own, linked to a flight's arrival, takes that flight's arrival as planned (a shot stopped by a
+// wall arrives there sooner), the mover's own flight first.
 export function withTeleportStage(plan, { who, mover } = {}) {
-  if (plan.some((s) => s.kind === 'teleport')) return plan;
+  const own = plan.find((s) => s.kind === 'teleport');
+  if (own) {
+    const linked = own.timingAnchor === 'arrival' && own.afterStage ? plan.filter((s) => ['travel', 'projectile'].includes(s.kind) && s.stageId === own.afterStage) : [];
+    if (!linked.length) return plan;
+    const flights = linked.some((s) => sameToken(s.endpoint, mover)) ? linked.filter((s) => sameToken(s.endpoint, mover)) : linked;
+    const delay = Math.max(0, Math.round(Math.min(...flights.map((s) => (s.delay ?? 0) + arrivalOf(s))) + (Number(own.startOffset) || 0)));
+    return plan.map((s) => (s === own ? { ...own, delay } : s));
+  }
   return [...plan, { kind: 'teleport', stageId: 'teleport', label: 'Teleport', synthesized: true, assets: [], delay: teleportMoment(plan, { who, mover }), duration: TELEPORT_GONE_MS }];
 }
 // A new Teleport stage in the Studio starts where one would be placed for this recipe: on its flight's arrival
@@ -86,8 +95,10 @@ export function teleportLink(stages, who) {
 // The host retains ownership/socket rules; visuals bracket the same real token move.
 // timing: outAt, ms until the token vanishes (the departure effect plays); goneMs, how long it stays gone before
 // it is moved and the arrival effect plays. Without it, the old fixed timing (450 ms, then 700 ms).
-// The departure effect carries the vanish (`animaterVanish`): every client hides the token from then on until it
-// has moved (holdHidden). No departure effect, no vanish: the token simply jumps when it arrives.
+// The departure effect carries the vanish (`animaterVanish`, with the spot it leaves): every client hides the token
+// from then on until it has moved (holdHidden); host.vanishGrace (ms) shortens the wait for a move that never comes
+// (a preview). No departure effect (none chosen, or not installed): nothing hides it, so it jumps as the stage
+// starts rather than standing there and popping away later.
 // The arrival effect carries the afterimage streak (`animaterTrail`), tinted like that effect: its tint, the
 // colour word in its key, else the spell's element ("" leaves each client's soft white).
 // Both effects also carry a warp of space (`animaterWarp`, map distortion), the token's size plus a square, when the
@@ -97,27 +108,34 @@ export async function playTeleport({ mover, x, y, visuals, element }, host, { ou
   const to = { x: x + mover.w / 2, y: y + mover.h / 2 };
   const warps = host.mapDistortion?.() === true, radius = Math.max(mover.w, mover.h) + (host.gridSize?.() ?? mover.w);
   const warp = (at) => (warps ? { animaterWarp: warpTag(at, radius, mover.document?.level) } : null);
-  const id = mover.document?.id ?? mover.id;
+  const id = mover.document?.id ?? mover.id, doc = mover.document;
+  const origin = Number.isFinite(doc?.x) && Number.isFinite(doc?.y) ? { from: { x: doc.x, y: doc.y } } : {};
+  const grace = Number.isFinite(host.vanishGrace) ? { grace: host.vanishGrace } : {};
   if (outAt > 0) await host.wait(outAt);
-  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: goneMs }, ...warp(from) } : warp(from));
+  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: goneMs, ...origin, ...grace }, ...warp(from) } : warp(from));
+  else await host.move(mover, x, y);
   if (goneMs > 0) await host.wait(goneMs);
-  await host.move(mover, x, y);
+  if (visuals.out) await host.move(mover, x, y);
   if (!visuals.in) return;
   const tint = lightColor({ tint: visuals.tint, asset: visuals.in }, { element, fallback: '' });
   host.effect(visuals.in, to, size, visuals.tint, { animaterTrail: { from, to, tint, tokenId: id }, ...warp(to) });
 }
 
 // One client's part of a vanish: the token's art held out of sight (a token refresh would show it again, so
-// every frame, as motions do) for `ms`, a little longer while its move is still on the way, and given back as
-// soon as it has moved (the arrival effect plays there). Returns a function that gives it back early.
-export const VANISH_GRACE_MS = 250;
+// every frame, as motions do) for `ms`, then up to `grace` longer while its move is still on the way (a creature
+// the GM moves for the caster takes two socket trips), and given back as soon as it has left `origin` (the arrival
+// effect plays there). A token already gone from its origin (the move came first) is not hidden at all.
+// Returns a function that gives it back early.
+export const VANISH_GRACE_MS = 1500;
 const FADE_MS = 120;
-export function holdHidden(token, ms, { now = () => performance.now(), frame = nextFrame, cancel = cancelFrame } = {}) {
+export function holdHidden(token, ms, { origin = null, grace = VANISH_GRACE_MS, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame } = {}) {
   const mesh = token?.mesh;
   if (!mesh || !(ms > 0)) return () => {};
-  const start = now(), at = { x: token.document?.x, y: token.document?.y }, alpha = mesh.alpha ?? 1;
-  let handle = null, done = false;
+  const at = Number.isFinite(origin?.x) && Number.isFinite(origin?.y) ? origin : { x: token.document?.x, y: token.document?.y };
   const moved = () => token.document && (token.document.x !== at.x || token.document.y !== at.y);
+  if (moved()) return () => {};
+  const start = now(), alpha = mesh.alpha ?? 1;
+  let handle = null, done = false;
   const finish = () => {
     if (done) return;
     done = true;
@@ -128,7 +146,7 @@ export function holdHidden(token, ms, { now = () => performance.now(), frame = n
   };
   const step = () => {
     const elapsed = now() - start;
-    if (mesh.destroyed || moved() || elapsed >= ms + VANISH_GRACE_MS) return finish();
+    if (mesh.destroyed || moved() || elapsed >= ms + grace) return finish();
     // A quick fade, then gone.
     mesh.alpha = alpha * Math.max(0, 1 - elapsed / FADE_MS);
     handle = frame(step);

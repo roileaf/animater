@@ -790,6 +790,8 @@ function teleportHost({ local = false } = {}) {
       void effect.play(local ? { local: true } : {}).catch(error => console.warn('Animater teleport effect:', error.message));
     },
     move: async () => {},
+    // A preview's token never moves: it comes back as the arrival effect plays.
+    ...(local ? { vanishGrace: 0 } : {}),
   };
 }
 // A preview's teleport: the token vanishes and reappears where it stands; the document never moves.
@@ -1794,7 +1796,8 @@ Hooks.once("ready", () => {
   Hooks.on("createSequencerEffect", (effect) => {
     const vanish = effect?.data?.animaterVanish;
     if (!vanish?.tokenId || (effect.data.sceneId && effect.data.sceneId !== canvas?.scene?.id)) return;
-    try { holdHidden(canvas.scene?.tokens?.get(vanish.tokenId)?.object, Number(vanish.ms)); }
+    const ms = Math.min(30000, Number(vanish.ms) || 0), grace = Number(vanish.grace);
+    try { holdHidden(canvas.scene?.tokens?.get(vanish.tokenId)?.object, ms, { origin: vanish.from, ...(Number.isFinite(grace) ? { grace: Math.min(30000, Math.max(0, grace)) } : {}) }); }
     catch (error) { console.warn("Animater teleport:", error?.message ?? error); }
   });
   Hooks.on("createSequencerEffect", (effect) => {

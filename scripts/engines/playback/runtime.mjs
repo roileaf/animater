@@ -366,12 +366,13 @@ export class AnimaterRuntime {
     // Teleport: the one who cast clicks the spot first; the jump plays at the recipe's teleport stage, its own
     // or one placed where the animation reaches the mover (engines/motion/teleport.mjs).
     // Cancelling the pick still plays the animation, without moving anyone. A preview vanishes and reappears in place.
+    // A picked spot is a move in the game: it happens even when the animation fails or is stopped first (landTeleport).
     let jump = null;
     const who = teleportPlan(recipe)?.who;
     if (!preview && this.host.pickTeleport) {
       const before = this.epoch, spot = await this.host.pickTeleport(recipe, context)?.catch?.(() => null);
-      if (this.epoch !== before) return null;
       if (spot) jump = { spot, mover: spot.mover };
+      if (this.epoch !== before) { this.landTeleport(jump); return null; }
     } else if (preview && who && this.host.previewTeleport) {
       const mover = who === "target" ? context.targets?.[0] : context.source;
       if (mover) jump = { mover };
@@ -773,12 +774,23 @@ export class AnimaterRuntime {
     } finally {
       if (failed || preview || !plan.some((s) => s.persist))
         this.sessions.delete(session);
+      // Stopped or failed before its teleport stage started: the token still goes to its spot.
+      this.landTeleport(jump);
     }
+  }
+  // A picked teleport whose stage never started: the move at once, without its effects.
+  landTeleport(jump) {
+    if (!jump?.spot || jump.started) return;
+    jump.started = true;
+    const plain = { ...jump.spot, visuals: { ...(jump.spot.visuals ?? {}), out: null, in: null } };
+    Promise.resolve().then(() => this.host.teleport?.(plain, { outAt: 0, goneMs: 0 })).catch((error) => this.trace("Blocked", `Teleport: ${error.message}`));
   }
   // The teleport stage has started (its group waited for it): the token vanishes now and reappears after the
   // stage's length. The timing is decided here, on the client that played; a mover this user does not own is
   // moved by the GM when its time comes (main.mjs receiveTeleport).
   async playTeleportStage(jump, stage, recipe, context, preview) {
+    if (jump.started) return;
+    jump.started = true;
     const timing = { outAt: 0, goneMs: Math.max(0, stage.duration ?? 0) };
     try {
       if (preview) await this.host.previewTeleport?.(jump.mover, recipe, context, timing);
