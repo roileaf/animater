@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.5 (2026-10-22)
+
+- **D&D 5e recipes play in any language.** A recipe made from a catalog spell matches it by name ("fireball"), so in a translated world a copy of the spell that is not linked to the SRD (an importer's, say: "Огненный шар") never matched. Recipes now also match the spell's D&D identifier, which stays the same in every language and book. ([#10](https://github.com/roileaf/animater/issues/10))
+
 ## 1.6.4 (2026-10-22)
 
 - **D&D 5e recipes now really play for spells from other books.** 1.6.2 still missed one common case: a book or module whose spells were built from the SRD ones keeps a link back to the SRD spell but gives each activity a new id, and Animater treated it as the SRD spell itself, which needed the SRD activity id. Now, when the spell does not have the recipe's activity at all, the same kind of activity (save, attack, heal) plays the recipe; on a spell that does have it, only that activity does. Thanks again to y-deda-povis. ([#10](https://github.com/roileaf/animater/issues/10))
