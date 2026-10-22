@@ -2,7 +2,7 @@
 // installed fallback has a clearly different hue, colorize the fallback to the
 // first choice's color so fire stays orange, acid green and void purple.
 const HUES = { red: 0, orange: 30, brown: 28, gold: 45, yellow: 55, green: 120, teal: 175, blue: 220, purple: 275, pink: 320 };
-const HEX = { red: '#e8564b', orange: '#ff9a4d', brown: '#b48b60', gold: '#f0c24a', yellow: '#f6dc5c', green: '#7fd36b', teal: '#5ccfc2', blue: '#5fa8ff', purple: '#a874ee', pink: '#f08fcf' };
+export const HEX = { red: '#e8564b', orange: '#ff9a4d', brown: '#b48b60', gold: '#f0c24a', yellow: '#f6dc5c', green: '#7fd36b', teal: '#5ccfc2', blue: '#5fa8ff', purple: '#a874ee', pink: '#f08fcf' };
 const NEUTRAL = /^(?:white|grey|gray|black|silver|rainbow|multicolou?red|textured)$/;
 const BASES = [...Object.keys(HUES), 'white', 'grey', 'gray', 'black', 'silver'].sort((a, b) => b.length - a.length);
 function firstHue(token) {
@@ -15,7 +15,7 @@ function firstHue(token) {
   }
   return null;
 }
-function keyHue(key) {
+export function keyHue(key) {
   const parts = String(key ?? '').toLowerCase().split('.');
   for (let i = parts.length - 1; i >= 0; i--) {
     if (NEUTRAL.test(parts[i])) return 'neutral';

@@ -106,6 +106,12 @@ export const OPTION_GROUPS = {
   Sound: [["volume", "Volume", 0.5, 0, 1, 0.05]],
 };
 export const OPTION_FIELDS = Object.values(OPTION_GROUPS).flat();
+// Afterimage trails: ground-covering motions (push and pull included) leave ghosts behind; Auto is the unset default.
+export const AFTERIMAGES = { auto: "Auto (fast moves of a square or more)", always: "Always (any fast move)", never: "Never" };
+const AFTERIMAGE_MOTIONS = new Set(["rush", "leap", "roll", "dodge", "path", "push", "pull"]);
+export const showsAfterimages = (stage) => stage?.kind === "motion" && AFTERIMAGE_MOTIONS.has(stage.motion);
+// The stage's saved choice: always or never, else nothing (Auto).
+export const afterimagesChoice = (stage) => (showsAfterimages(stage) && ["always", "never"].includes(stage.afterimages) ? { afterimages: stage.afterimages } : {});
 // Does a template stage crop its art to the area's outline? Its own choice, else cones only.
 export const cropAreaArt = (stage, areaType) => (stage?.maskArea === true || stage?.maskArea === false ? stage.maskArea : areaType === "cone");
 export const number = (v, min, max, fallback) =>

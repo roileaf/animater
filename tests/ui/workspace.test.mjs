@@ -923,3 +923,15 @@ test("a persistent damage customization picks its damage type in the editor", as
   // Lasting conditions with no damage types offer no such choice.
   assert.doesNotMatch(f.w.lastingChoiceHTML({ ...r, stateEntry: PF2E_CONDITIONS.find((e) => !e.damageVariants).id }), /stateDamageType/);
 });
+
+test("a teleport stage hides its mover in the monitor instead of showing a missing asset", () => {
+  const recipe = spellRecipe(PF2E_SPELLS.find((s) => s.name === "Translocate"));
+  assert.ok(recipe.stages.some((s) => s.kind === "teleport"));
+  const catalog = recipe.stages.flatMap((s) => s.assets ?? []).map((key) => ({ key, file: `${key}.webm` }));
+  const w = Object.create(Workspace.prototype);
+  w.host = { catalog: () => catalog, soundCatalog: () => [], previewTokens: () => ({}) };
+  w.stageIndex = 0;
+  const html = w.recipePreviewHTML(recipe);
+  assert.doesNotMatch(html, /is-unavailable/);
+  assert.match(html, /class="an-recipe-layer an-teleport-layer"[^>]*data-teleport="source"/);
+});

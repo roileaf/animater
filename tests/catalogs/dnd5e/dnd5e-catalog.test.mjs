@@ -199,3 +199,13 @@ test('official-book entries join only for active book modules', async () => {
   assert.equal(addDndBookEntries([book],id=>id==='dnd-test-book'),1);
   assert.equal(findDndEntry({item:{type:'spell',name:'x',_stats:{compendiumSource:book.uuid}}})?.id,book.id);
 });
+// Ground marks: thrown flasks name the mark their contents leave on the floor (engines/marks/ground-marks.mjs).
+test('D&D thrown flasks carry their markElement',()=>{
+ const item=(name,edition)=>find(name,'item',edition);
+ assert.equal(dndRecipe(item("Alchemist's Fire",'2024')).markElement,'fire');
+ assert.equal(dndRecipe(item("Alchemist's Fire",'2014')).markElement,'fire');
+ assert.equal(dndRecipe(item('Acid','2024')).markElement,'acid');
+ assert.equal(dndRecipe(item('Acid (vial)','2014')).markElement,'acid');
+ assert.equal(dndRecipe(item('Flask of Holy Water','2014')).markElement,undefined);
+ assert.equal(dndRecipe(item('Oil Flask','2014')).markElement,undefined);
+});

@@ -1,8 +1,8 @@
 import { uuid } from "../../core/uuid.mjs";
-import { ID, matchRecipe, planRecipe, validateRecipe } from "../../core/model.mjs";
+import { ID, DEFAULT_RECIPE_COLOR, matchRecipe, planRecipe, resolveAsset, validateRecipe } from "../../core/model.mjs";
 import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
-import { applyEffectOptions, applyMediaOptions, cropAreaArt } from "../../core/stage-options.mjs";
+import { applyEffectOptions, applyMediaOptions, cropAreaArt, normalizeOptions } from "../../core/stage-options.mjs";
 import { tokenFootprint, effectFootprint, artworkSize, offsetInGridSquares, beamGeometry } from "../media/media-preview.mjs";
 // A mask (a polygon, a { points } shape, or a list of them) grown by k around a point.
 function scaleMask(mask, at, k) {
@@ -15,15 +15,29 @@ function scaleMask(mask, at, k) {
 import { prepareRecipeSounds } from "../sound/spell-sounds.mjs";
 import { previewFields } from '../../ui/activity-actions.mjs';
 import { registeredMedia, mediaForReference } from '../media/media-library-model.mjs';
+import { staggerDelays } from './adaptive.mjs';
 import { stageTiers } from '../../core/quality.mjs';
 import { withLastingArea } from './lasting-area.mjs';
-import { withOutcome } from '../../systems/outcome.mjs';
-import { pickVariants } from './composition.mjs';
+import { meleeClip, withOutcome } from '../../systems/outcome.mjs';
+import { centerOf, pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
+import { planLights, lightColor } from '../lighting/effect-lights.mjs';
+import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
+import { isCritical, planDistortions } from '../distortion/scene-distortion.mjs';
+import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
+import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
+import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
+// A token's scene and level, else the scene and level this client views.
+const soundFloor = (t, host) => {
+  const doc = t?.document ?? t, own = typeof doc?.level === "string" && doc.level ? doc.level : null;
+  return { scene: doc?.parent?.id ?? host.viewedScene?.() ?? null, level: own ?? host.viewedLevel?.()?.level ?? null };
+};
 const SOUND_PRELOAD_TIMEOUT = 2000;
+// A play's id as a number (FNV-1a), the seed every client lays its marks' blotches out from.
+const hashSeed = (text) => { let h = 0x811c9dc5; for (const c of String(text)) h = Math.imul(h ^ c.codePointAt(0), 0x01000193); return h >>> 0; };
 // "Stay until the effect ends": if no effect from the item shows up on the token
 // within this time (never applied), the layer ends instead of lingering.
 export const EFFECT_GRACE_MS = 60000;
@@ -44,6 +58,94 @@ export function templateDocument(template) {
 export function withWeaponScale(recipe, factor) {
   if (!recipe.weaponMode || recipe.weaponMode === 'area' || !(factor > 0) || factor === 1) return recipe;
   return { ...recipe, stages: recipe.stages.map(s => ['impact', 'aura'].includes(s.kind) ? { ...s, scale: (s.scale ?? 1) * factor } : s) };
+}
+// Afterimage trails, decided on the starting client so every client trails alike: ghosts take the stage's tint,
+// else the play's element, else the recipe colour ("" leaves each client's soft white). The world setting off
+// keeps any motion from trailing.
+export function withTrail(stage, { element, recipeColor, allowed = true } = {}) {
+  // A tint already set (a push's shove, replayed without the play's element) is kept.
+  return { ...stage, trailTint: stage.trailTint || lightColor(stage, { element, recipeColor, fallback: "" }), ...(allowed ? {} : { afterimages: "never" }) };
+}
+// A shot that ends at a wall bursts there in a small generic impact (the first installed), 0.6 of the shot's size.
+export const WALL_IMPACTS = ['jb2a.impact.001.white', 'jb2a.impact.002.white', 'jb2a.impact.010.white', 'jb2a.impact.005.white', 'jb2a.impact.009.white'];
+const WALL_IMPACT_SIZE = 0.6, WALL_IMPACT_MS = 900;
+// A shot that flies on past its target fades out over its last moments.
+const PAST_FADE_MS = 150;
+let flightPathsWarned = false;
+// A travel clip Sequencer bends wide itself (.missed()): a miss with no planned path.
+const missBent = (s, context) => s.kind === "travel" && !s.flightTo && ["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock;
+// A target whose own shot was planned to miss (engines/playback/flight-path.mjs missed: one target missed in a
+// multi-target roll, D&D 5e targetOutcomes or Daggerheart's mixed results, which the roll-wide withOutcome never
+// sees) loses its own effects as a whole miss does: its impacts, reactions and surface sounds. A melee swing and
+// its dodge stay (withWallStrikes drops the dodge of a miss stopped short of it).
+export function withoutMissedTargets(plan, missed) {
+  if (!missed?.size) return plan;
+  const keeps = (s) => s.kind === 'motion' && s.motion === 'dodge' || s.kind === 'impact' && s.subject !== 'targets' && s.assets?.some(meleeClip);
+  return plan.filter((s) => !(missed.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets') && !keeps(s)));
+}
+// Flights whose arrival moved (flightArrivalShift, engines/playback/flight-path.mjs: a shot stopped by a wall, or
+// landing on its target when its range variant's shot lands). Its target's impacts from the flight on, and
+// stages tied to the flight or those impacts (by afterStage, through any chain), move by that much. A stage of
+// another target stays, and so does one not on a target while those impacts also land on a target whose flight
+// kept its time. A stage tied to several moved flights moves with the first that reaches its target. A stage
+// timed to the flight's end (D&D 5e's contact) keeps that time: the flight's length does not change.
+export function withFlightArrivals(plan) {
+  const moved = plan.filter((f) => f.flightArrivalShift).sort((a, b) => (a.flightOutcome === 'wall') - (b.flightOutcome === 'wall'));
+  if (!moved.length) return plan;
+  const targets = new Set(plan.filter((s) => s.kind === 'impact' || s.subject === 'targets').map((s) => tokenIdOf(s.destination)).filter(Boolean));
+  const shifted = new Set(moved.map((f) => tokenIdOf(f.endpoint)));
+  const shift = new Map();
+  for (const f of moved) {
+    const id = tokenIdOf(f.endpoint), atEnd = (s) => s.afterStage === f.stageId && s.timingAnchor === 'end';
+    const hits = plan.filter((s) => s.kind === 'impact' && tokenIdOf(s.destination) === id && (s.delay ?? 0) >= (f.delay ?? 0) && !atEnd(s));
+    for (const s of hits) if (!shift.has(s)) shift.set(s, f.flightArrivalShift);
+    const anchors = new Set([f.stageId, ...hits.map((s) => s.stageId)]);
+    const elsewhere = () => plan.some((s) => anchors.has(s.stageId) && targets.has(tokenIdOf(s.destination)) && !shifted.has(tokenIdOf(s.destination)));
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const s of plan) {
+        if (!s.afterStage || !anchors.has(s.afterStage) || shift.has(s) || atEnd(s)) continue;
+        const on = tokenIdOf(s.destination);
+        if (targets.has(on) ? on !== id : elsewhere()) continue;
+        shift.set(s, f.flightArrivalShift);
+        if (!anchors.has(s.stageId)) { anchors.add(s.stageId); grew = true; }
+      }
+    }
+  }
+  return plan.map((s) => (shift.has(s) ? { ...s, delay: Math.max(0, (s.delay ?? 0) + shift.get(s)) } : s));
+}
+// Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
+// effects (its impacts, reactions and surface sounds) do not play, nor does the dodge of a target a miss never
+// reached; a small impact and a knock on stone (wood for a door) play at the wall point as the shot arrives there
+// (its contact, flight-path.mjs wallArrivalOf). What followed the hit moves first (withFlightArrivals).
+// asset: the wall impact, or null; cueOf(material) -> { file, volume, duration } | null.
+export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf = () => null } = {}) {
+  const walls = plan.filter((s) => s.flightOutcome === 'wall');
+  if (!walls.length) return plan;
+  const reach = (f, p) => Math.hypot(p.x - f.flightFrom.x, p.y - f.flightFrom.y);
+  const unreached = new Set(walls.filter((f) => !blocked.has(tokenIdOf(f.endpoint)) && reach(f, f.flightTo) < reach(f, centerOf(f.endpoint))).map((f) => tokenIdOf(f.endpoint)));
+  const dropped = (s) => blocked.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets')
+    || s.stageId === 'miss-dodge' && unreached.has(tokenIdOf(s.destination));
+  const out = [], struck = new Set();
+  for (const s of plan) {
+    if (dropped(s)) continue;
+    out.push(s);
+    if (s.flightOutcome !== 'wall') continue;
+    // Right after its flight, so the moment of contact (outcome.mjs strikeTime) finds it.
+    const at = Math.round((s.delay ?? 0) + arrivalOf(s)), landing = { x: s.flightTo.x, y: s.flightTo.y };
+    const key = `${Math.round(landing.x)},${Math.round(landing.y)},${at}`;
+    if (struck.has(key)) continue;
+    struck.add(key);
+    if (asset) out.push({
+      ...normalizeOptions({ kind: 'impact' }), stageId: `${s.stageId}-wall`, kind: 'impact', label: 'Strikes the wall', assets: [asset], asset,
+      delay: at, duration: WALL_IMPACT_MS, scale: 1, opacity: 1, destination: s.endpoint, landing,
+      // Its size in pixels: sized to the shot, not to the target it never reached.
+      footprint: WALL_IMPACT_SIZE * tokenFootprint(s.origin, grid) * (s.scale ?? 1),
+    });
+    const cue = cueOf(s.wallDoor ? 'wood' : 'stone');
+    if (cue) out.push({ stageId: `${s.stageId}-wall-cue`, kind: 'sound', label: 'Strikes the wall', assets: [], soundFile: cue.file, volume: cue.volume, duration: cue.duration, delay: at, destination: landing, surfaceRole: 'cue' });
+  }
+  return out;
 }
 // Namespaces and their entry counts: cheap enough to compare on every catalog read.
 function databaseSignature(database) {
@@ -250,6 +352,8 @@ export class AnimaterRuntime {
       voices: (this.surfaceVoices ??= []),
       gridSize: this.host.gridSize?.() ?? 100,
     });
+    // Where each shot really flies (stopping at walls).
+    plan = this.flightPaths(plan, recipe, context, preview);
     if (
       !preview &&
       plan.some((s) => s.kind === "motion" || s.kind === "tokenfx" && !s.catalogFx && this.host.fxCatalog?.().tokenReady) &&
@@ -269,21 +373,56 @@ export class AnimaterRuntime {
       await this.host.flashBefore?.(recipe, context)?.catch?.(() => {});
       if (this.epoch !== before) return null;
     }
-    // Teleport: the one who cast clicks the spot first; the jump plays alongside the animation.
-    // Cancelling the pick still plays the animation, without moving anyone.
+    // Teleport: the one who cast clicks the spot first; the jump plays at the recipe's teleport stage, its own
+    // or one placed where the animation reaches the mover (engines/motion/teleport.mjs).
+    // Cancelling the pick still plays the animation, without moving anyone. A preview vanishes and reappears in place.
+    // A picked spot is a move in the game: it happens even when the animation fails or is stopped first (landTeleport).
+    // A fetch (Friendfetch) moves every target, each to its own spot (a list from the host); each jumps on its
+    // own copy of the teleport stage. Its preview acts the pull out instead.
+    let moves = [];
+    const teleporting = teleportPlan(recipe), who = teleporting?.who;
     if (!preview && this.host.pickTeleport) {
-      const before = this.epoch, spot = await this.host.pickTeleport(recipe, context)?.catch?.(() => null);
-      if (this.epoch !== before) return null;
-      if (spot) void this.host.teleport?.(spot)?.catch?.((error) => this.trace("Blocked", `Teleport: ${error.message}`));
+      const before = this.epoch, picked = await this.host.pickTeleport(recipe, context)?.catch?.(() => null);
+      moves = (Array.isArray(picked) ? picked : [picked]).filter(Boolean).map((spot) => ({ spot, mover: spot.mover }));
+      if (this.epoch !== before) { this.landTeleports(moves); return null; }
+    } else if (preview && who && !teleporting.fetch && this.host.previewTeleport) {
+      const mover = who === "target" ? context.targets?.[0] : context.source;
+      if (mover) moves = [{ mover }];
     }
-    const session = `${ID}-${this.host.userId()}-${uuid()}`;
-    const epoch = this.epoch;
-    let failed = false;
+    let jumps = [], session;
     // A stage planned once per target keeps the tier of its first copy.
     const tiers = new Map();
-    for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
+    try {
+      jumps = moves.map((move) => {
+        const stage = withTeleportStage(plan, { who, mover: move.mover }).find((s) => s.kind === "teleport");
+        return stage && { ...stage, move };
+      }).filter(Boolean);
+      // A stage that only stands in for the move (Friendfetch's pull) gives way on the tokens that really move.
+      const moved = (token) => jumps.some((j) => tokenIdOf(j.move.mover) === tokenIdOf(token));
+      const standIn = (s) => s.skipOnTeleport && jumps.length && (s.subject === "targets" ? moved(s.destination) : who === "source");
+      plan = plan.filter((s) => s.kind !== "teleport" && !standIn(s));
+      session = `${ID}-${this.host.userId()}-${uuid()}`;
+      for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
+    } catch (error) {
+      this.landTeleports(moves);
+      throw error;
+    }
+    const epoch = this.epoch;
+    let failed = false;
+    // Every client remembers what this actor played, so it can warm those files on their next turn.
+    const animaterActor = context.source?.actor?.id;
+    // Effect lights (anchor stage -> light), planned from the final timings.
+    let lights = null;
+    // Ground marks (anchor stage -> mark), planned from the same timings.
+    let groundMarks = null;
+    // Map distortions (anchor stage -> warp), planned from the same timings.
+    let distortions = null;
     const build = (stages) => {
       const sequence = this.host.sequence();
+      // Copies of one stage start a few ms apart on the table, never in the preview.
+      const adapt = preview ? null : this.host.adaptive?.();
+      const spread = adapt?.stagger ? staggerDelays(stages) : null;
+      if (spread?.size) adapt.staggered?.([...spread.values()].filter((ms) => ms > 0).length);
       for (const s of stages) {
         if (s.kind === "motion" || OPTIONAL_FX_KINDS.has(s.kind)) continue;
         if (s.kind === "sound") {
@@ -300,15 +439,18 @@ export class AnimaterRuntime {
           if (listeners) sound.forUsers(listeners);
           // Every client that plays it shapes it alike: pitch, and an echo off a shield or a ward (engines/sound/sound-pitch.mjs).
           // Where it happens (the target it lands on, else the source), so each client places it from its own seat.
-          const at = soundPlace(s.subject === "source" ? context.source : s.destination ?? context.source);
-          if ((s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(at ? { animaterAt: at } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
+          const from = s.subject === "source" ? context.source : s.destination ?? context.source, at = soundPlace(from);
+          // ...and on which scene and level (its token's, else what this client views), so others hear its room's walls.
+          const floor = at ? soundFloor(from, this.host) : null;
+          if ((s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(at ? { animaterAt: at } : {}), ...(floor?.scene ? { animaterScene: floor.scene } : {}), ...(floor?.level ? { animaterLevel: floor.level } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
           applyMediaOptions(sound, s);
           if (s.fadeIn) sound.fadeInAudio(s.fadeIn, { ease: s.ease });
           if (s.fadeOut) sound.fadeOutAudio(s.fadeOut, { ease: s.ease });
           continue;
         }
         // Optional layers only reach viewers whose quality setting allows them.
-        const users = preview ? null : this.host.usersFor?.(tiers.get(s.stageId) ?? 0) ?? null;
+        const tier = tiers.get(s.stageId) ?? 0;
+        const users = preview ? null : this.host.usersFor?.(tier) ?? null;
         if (users && !users.length) continue;
         const e = sequence
           .effect()
@@ -322,6 +464,16 @@ export class AnimaterRuntime {
         const lasts = s.persist && !preview && (s.kind !== "template" || templateDocument(context.template));
         if (!lasts) e.duration(s.duration * s.playbackRate + (s.clipEnd ? 0 : s.clipStart));
         if (users) e.forUsers(users);
+        // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
+        const animaterTier = tier, animaterLasting = Boolean(lasts);
+        // Every client lights the scene from this one description (engines/lighting/effect-lights.mjs).
+        const animaterLight = lights?.get(s) ?? null;
+        // ...and paints the floor mark from this one (engines/marks/ground-marks.mjs).
+        const animaterMark = groundMarks?.get(s) ?? null;
+        // ...and bends the scene from this one (engines/distortion/scene-distortion.mjs).
+        const animaterWarp = distortions?.get(s) ?? null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}) }));
+        if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
         const location = {
@@ -331,22 +483,29 @@ export class AnimaterRuntime {
         const media = mediaForReference(this.catalog, s.asset);
         const grid = this.host.gridSize?.() ?? 100;
         if (s.kind === "projectile") {
-          e.atLocation(s.origin, location)
+          // A planned path (flightFrom/flightTo) is literal points: every client flies the same line.
+          e.atLocation(s.flightFrom ?? s.origin, location)
             .size(artworkSize(tokenFootprint(s.origin, grid) * s.scale, media))
-            .moveTowards(s.landing ?? s.endpoint, {
-              delay: s.moveDelay,
-              ease: s.moveEase,
+            .moveTowards(s.flightTo ?? s.landing ?? s.endpoint, {
+              delay: s.moveDelay ?? 0,
+              ease: s.moveEase || 'linear',
               rotate: false,
               cacheLocation: true,
             });
         } else if (s.kind === "travel") {
           // Sequencer divides distance by scale.x. A scalar cancels its own
           // thickness; keep x=1 so the user's scale controls beam thickness.
-          e.atLocation(s.origin, location)
-            .stretchTo(s.endpoint)
-            .scale({ x: 1, y: s.scale });
-          if (["failure", "criticalFailure"].includes(context.outcome) && !s.shieldBlock)
-            e.missed();
+          // A planned path already flies a miss wide (or into a wall); Sequencer's own miss bend is for unplanned ones.
+          if (s.flightTo)
+            e.atLocation(s.flightFrom, location)
+              .stretchTo(s.flightTo, { cacheLocation: true })
+              .scale({ x: 1, y: s.scale });
+          else {
+            e.atLocation(s.origin, location)
+              .stretchTo(s.endpoint)
+              .scale({ x: 1, y: s.scale });
+            if (missBent(s, context)) e.missed();
+          }
         } else if (s.kind === "template") {
           if (s.areaTile) {
             e.atLocation(s.areaTile.center, location).size(
@@ -412,7 +571,7 @@ export class AnimaterRuntime {
           if (s.kind === "sprite") e.scale(s.scale);
           else
             e.size(
-              artworkSize(effectFootprint(s,s.destination,grid,this.host.gridDistance?.()??5) * s.scale, media),
+              artworkSize((s.footprint ?? effectFootprint(s,s.destination,grid,this.host.gridDistance?.()??5)) * s.scale, media),
             );
           if (s.kind === "aura" || s.attach)
             e.attachTo(s.destination, {
@@ -423,6 +582,7 @@ export class AnimaterRuntime {
           if (s.maskToken) e.mask(s.destination);
         }
         applyEffectOptions(e, s);
+        if (s.flightOutcome === "past" && !(s.fadeOut >= PAST_FADE_MS)) e.fadeOut(PAST_FADE_MS);
         if (s.below) e.belowTokens();
         if (s.persist && !preview) {
           // A lasting area loops until its template (a Region on Foundry 14) is
@@ -449,22 +609,106 @@ export class AnimaterRuntime {
         // Loaded: each surface hit lands just after the weapon's own (engines/sound/hit-timing.mjs).
         else if(this.host.soundPeak) plan=alignSurfaceHits(plan,this.host.soundPeak);
       }
+      // Where each stage shows and how big, for the lights and the marks below (pixels).
+      const grid = this.host.gridSize?.() ?? 100, gridDistance = this.host.gridDistance?.() ?? 5;
+      const half = (n) => (Number(n) > 0 ? Number(n) / 2 : null);
+      // A line or cone shows at its middle, as far as half its length; any other area at its centre.
+      const area = context.area, along = ["line", "cone"].includes(area?.type) && area.center && area.endpoint;
+      const areaPoint = along ? { x: (area.center.x + area.endpoint.x) / 2, y: (area.center.y + area.endpoint.y) / 2 } : area?.center;
+      // A flight with a planned path ends where it stops (a bolt stopped by a wall, at the wall).
+      const pointOf = (s) => soundPlace(s.flightTo ?? s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? areaPoint : null) ?? soundPlace(s.destination);
+      // The footprint the effect is sized to, as a radius.
+      const radiusOf = (s) => {
+        if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : along ? area.length : area?.diameter * s.scale);
+        if (s.kind === "travel" || s.kind === "projectile") return half(tokenFootprint(s.origin, grid) * s.scale);
+        return half((s.footprint ?? effectFootprint(s, s.destination, grid, gridDistance)) * s.scale);
+      };
+      // The source token's level and elevation, so every client lights and marks the same floor.
+      const token = context.source?.document ?? context.source;
+      // Effects attached to a token (auras, a following emanation) carry their light and haze with them; see build().
+      const follows = (s) => s.kind === "template"
+        ? !s.areaTile && !along && !!s.followSource && !!context.source
+        : s.kind !== "overlay" && !s.meleeFrom && (s.kind === "aura" || !!s.attach);
+      // Effect lighting: planned once here from the final plan; previews always show it.
+      if (preview || this.host.effectLights?.() === true) {
+        lights = planLights(plan, {
+          tiers,
+          grid,
+          pointOf,
+          radiusOf,
+          originOf: (s) => soundPlace(s.flightFrom ?? s.origin),
+          // A line area stretched along its template (a wall) is lit along its length.
+          spanOf: (s) => (s.kind === "template" && !s.areaTile && area?.type === "line" && along ? { from: area.center, to: area.endpoint } : null),
+          follows,
+          element: context.element ?? recipe.chosenElement,
+          recipeColor: recipe.color,
+          level: token?.level,
+          elevation: token?.elevation,
+        });
+      }
+      // Ground marks (world setting): described once here on the same final plan; a preview never marks the floor.
+      if (!preview && this.host.groundMarks?.() === true && isHarmful(context, { itemDamages: this.host.itemDamages })) {
+        // A weapon's mark is its payload's (recipe.markElement): rune or rider damage leaves none.
+        const strike = ["weapon", "melee"].includes(context.item?.type);
+        // A placed area has no damage roll to name its element: the item's own damage does.
+        const element = strike ? undefined : context.element ?? this.host.itemElement?.(context.item, context) ?? undefined;
+        groundMarks = planMarks(plan, {
+          context: { ...context, element },
+          recipe,
+          tiers,
+          gridPx: grid,
+          pointOf,
+          sizeOf: (s) => 2 * (radiusOf(s) ?? 0) || null,
+          area: area?.center ? area : null,
+          seed: hashSeed(context.messageId ?? context.id ?? session),
+        });
+        // Without the source token's level, the level this client views.
+        const viewed = typeof token?.level === "string" && token.level ? null : this.host.viewedLevel?.();
+        if (viewed?.level) for (const tag of groundMarks.values()) Object.assign(tag, { level: viewed.level, ...(Number.isFinite(viewed.elevation) && !Number.isFinite(tag.elevation) ? { elevation: viewed.elevation } : {}) });
+        // An area mark names its placed Region, so every client clips it to that shape (mark-paint.mjs areaMaskFor).
+        const region = templateDocument(context.template);
+        if (region?.documentName === "Region") for (const tag of groundMarks.values()) if (tag.shape !== "spot") tag.regionId = region.id;
+      }
+      // Map distortion (world setting): described once here on the same final plan.
+      if (this.host.mapDistortion?.() === true) {
+        distortions = planDistortions(plan, {
+          context,
+          tiers,
+          gridPx: grid,
+          pointOf,
+          radiusOf,
+          follows,
+          // The source token's level: a client viewing another level is not distorted.
+          level: token?.level,
+          shockReach: this.host.shockwaveReach?.(),
+          // A placed area has no damage roll to name its element: the item's own damage does.
+          element: context.element ?? recipe.chosenElement ?? this.host.itemElement?.(context.item, context) ?? undefined,
+          // A critical hit with a heavy weapon ripples too (only a critical play asks).
+          heavyItem: context.item && isCritical(context) ? this.host.heavyItem?.(context.item) === true : false,
+        });
+      }
+      // Afterimage trails (world setting; on while the host has none).
+      // An unpicked recipe colour (the default card accent) leaves plain motions their soft white.
+      const trail = { element: context.element ?? recipe.chosenElement, recipeColor: recipe.color === DEFAULT_RECIPE_COLOR ? undefined : recipe.color,
+        allowed: this.host.afterimages?.() !== false };
       const groups = new Map();
-      for (const s of plan) {
+      // The teleport waits with the stages that start with it, so a slow wait or path delays it alike.
+      for (const s of [...plan, ...jumps]) {
         if (!groups.has(s.delay)) groups.set(s.delay, []);
         groups.get(s.delay).push(s);
       }
       // Prebuild every group so a bad Sequencer option cannot produce half a recipe.
       const sequences = [...groups].map(([delay, stages]) => ({
         delay,
-        sequence: stages.some((s) => s.kind !== "motion" && !OPTIONAL_FX_KINDS.has(s.kind)) ? build(stages) : null,
+        sequence: stages.some((s) => s.kind !== "motion" && s.kind !== "teleport" && !OPTIONAL_FX_KINDS.has(s.kind)) ? build(stages.filter((s) => s.kind !== "teleport")) : null,
         motions: stages.filter((s) => s.kind === "motion"),
         optionalFx: stages.filter((s) => OPTIONAL_FX_KINDS.has(s.kind)),
+        teleports: stages.filter((s) => s.kind === "teleport"),
       }));
       onStart?.({ ...recipe, playbackPlan: plan });
       // Local previews never broadcast; real plays use Sequencer's own sync.
       const results = await Promise.all([
-        ...sequences.map(async ({ delay, sequence, motions, optionalFx }) => {
+        ...sequences.map(async ({ delay, sequence, motions, optionalFx, teleports }) => {
           if (delay && !(await this.wait(delay, session))) return false;
           if (this.epoch !== epoch || failed) return false;
           await Promise.all([
@@ -480,16 +724,17 @@ export class AnimaterRuntime {
                 })()]
               : []),
             ...motions.map((s) =>
-              this.host.motion(s, context, { preview, session }),
+              this.host.motion(withTrail(s, trail), context, { preview, session }),
             ),
             ...optionalFx.map(s=>this.host.optionalFx?.(s,context,{preview,session})),
+            ...teleports.map((s) => this.playTeleportStage(s.move, s, recipe, context, preview)),
           ]);
           return this.epoch===epoch && !failed;
         }),
         ...(preview
           ? [
               this.wait(
-                Math.max(...plan.map((s) => s.delay + s.duration)),
+                Math.max(...[...plan, ...jumps].map((s) => s.delay + s.duration)),
                 session,
               ),
             ]
@@ -553,7 +798,74 @@ export class AnimaterRuntime {
     } finally {
       if (failed || preview || !plan.some((s) => s.persist))
         this.sessions.delete(session);
+      // Stopped or failed before its teleport stage started: the token still goes to its spot.
+      this.landTeleports(moves);
     }
+  }
+  landTeleports(moves) {
+    for (const move of moves) this.landTeleport(move);
+  }
+  // A picked teleport whose stage never started: the move at once, without its effects.
+  landTeleport(jump) {
+    if (!jump?.spot || jump.started) return;
+    jump.started = true;
+    this.placeTeleport(jump.spot);
+  }
+  // Only the move (host.place: the token's document, no canvas reads), never its effects; a host without it
+  // plays a teleport with no effects and no time gone.
+  placeTeleport(spot) {
+    const plain = { ...spot, visuals: { ...(spot.visuals ?? {}), out: null, in: null } };
+    Promise.resolve().then(() => this.host.place ? this.host.place(spot) : this.host.teleport?.(plain, { outAt: 0, goneMs: 0 }))
+      .catch((error) => this.trace("Blocked", `Teleport: ${error.message}`));
+  }
+  // The teleport stage has started (its group waited for it): the token vanishes now and reappears after the
+  // stage's length. The timing is decided here, on the client that played; a mover this user does not own is
+  // moved by the GM when its time comes (main.mjs receiveTeleport).
+  async playTeleportStage(jump, stage, recipe, context, preview) {
+    if (jump.started) return;
+    jump.started = true;
+    const timing = { outAt: 0, goneMs: Math.max(0, stage.duration ?? 0) };
+    try {
+      if (preview) await this.host.previewTeleport?.(jump.mover, recipe, context, timing);
+      else await this.host.teleport?.(jump.spot, timing);
+    } catch (error) {
+      this.trace("Blocked", `Teleport: ${error.message}`);
+      // The effects failed (a token torn down mid-way): the move still happens, once.
+      if (!preview) this.placeTeleport(jump.spot);
+    }
+  }
+  // The plan with its flights' paths (engines/playback/flight-path.mjs) and their wall strikes. Without a wall
+  // test, or when it fails (no collision backend), the flights play as they always did.
+  flightPaths(plan, recipe, context, preview) {
+    const grid = this.host.gridSize?.() ?? 100, collides = this.host.collides;
+    let paths;
+    try {
+      paths = withFlightPaths(plan, {
+        context, gridPx: grid, preview,
+        // The shooter rides along so the wall test reads its level (a multi-level scene).
+        collides: collides ? (a, b, type) => this.host.collides(a, b, type, context.source) : null,
+        walls: this.host.projectileWalls?.() !== false,
+      });
+    } catch (error) {
+      // Said once, so a broken wall test (or a planner bug) does not quietly switch the feature off.
+      if (!flightPathsWarned) {
+        flightPathsWarned = true;
+        console.warn("Animater | Flight paths unavailable; projectiles fly as before.", error);
+      }
+      return plan;
+    }
+    const random = context.random ?? Math.random;
+    // The knock on the wall: the recipe's own surface sounds for stone or wood, else Animater's bundled ones.
+    // A recipe that plays no sounds stays silent.
+    const sounded = recipe.stages.some((s) => s.kind === 'sound');
+    const surfaces = recipe.stages.find((s) => s.surfaces)?.surfaces;
+    const cueOf = (material) => {
+      if (!sounded) return null;
+      const set = surfaces?.[material] ?? addSurfaceSounds(null, [], { sounds: {}, blow: 'blunt', anchor: { stageId: 'wall', delay: 0 } })[0]?.surfaces?.[material];
+      return set?.length ? set[Math.floor(random() * set.length)] : null;
+    };
+    const asset = resolveAsset({ kind: 'impact', assets: WALL_IMPACTS }, this.catalog);
+    return withWallStrikes(withFlightArrivals(withoutMissedTargets(paths.plan, paths.missed)), paths.blocked, { asset, grid, cueOf });
   }
   wait(delay, session) {
     return new Promise((resolve) => {

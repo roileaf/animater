@@ -4,6 +4,7 @@ import { shakeCycles, settledProgress } from "./motion-pacing.mjs";
 import { PATH_MOTIONS, HOLDING_MOTIONS, motionPhases, pathDistance } from "./motion-path.mjs";
 import { easeValue } from "../../core/stage-options.mjs";
 import { nextFrame, cancelFrame } from "./canvas-frame.mjs";
+import { trails, createTrailGate } from "./afterimages.mjs";
 // A keyframed path fills the whole motion when it holds; otherwise its last 15% eases back to
 // rest like every other gesture. A finisher's frame aims and shrinks it on every client alike.
 export const PATH_RETURN = 0.15;
@@ -318,6 +319,7 @@ export class TokenMotionPlayer {
     now = () => performance.now(),
     grid = () => 100,
     fragments = null,
+    afterimages = null,
   } = {}) {
     // Steps take the clock when they run: a ticker pass hands its listeners a delta, not a time.
     this.frame = frame ?? ((callback) => nextFrame(() => callback(this.now())));
@@ -325,6 +327,7 @@ export class TokenMotionPlayer {
     this.now = now;
     this.grid = grid;
     this.fragments = fragments;
+    this.afterimages = afterimages;
     this.active = new Map();
   }
   play(token, stage, direction, owner, { target } = {}) {
@@ -445,11 +448,36 @@ export class TokenMotionPlayer {
         mesh.scale.set(original.sx * pose.scale * (pose.scaleX ?? 1), original.sy * pose.scale * (pose.scaleY ?? 1));
         if (pose.alpha !== undefined) { mesh.alpha = meshAlpha(original.alpha, pose.alpha); run.alphaTouched = true; }
         else if (run.alphaTouched) mesh.alpha = original.alpha;
+        if (this.afterimages) this.trail(token, run, time);
         if (!run.tracks.length) this.end(token);
         else run.frame = this.frame(tick);
       };
       run.frame = this.frame(tick);
     });
+  }
+  // Fast outbound travel leaves a ghost where the token is drawn now (at most one a frame). Each
+  // trailing track keeps its own gate, made on its first frame; drawn spot and rest are both in canvas px.
+  // Runs on the ticker: anything broken here only loses ghosts; the motion plays on.
+  trail(token, run, time) {
+    try {
+      const grid = this.grid(), drawn = { x: run.mesh.position.x, y: run.mesh.position.y }, rest = { x: run.original.x, y: run.original.y };
+      let dropFor = null;
+      for (const track of run.tracks) {
+        track.trails ??= trails(track.stage, grid, track.direction);
+        if (!track.trails) continue;
+        track.gate ??= createTrailGate();
+        const dt = time - (track.trailAt ?? track.start);
+        track.trailAt = time;
+        if (track.gate.step(drawn, rest, dt, grid)) dropFor ??= track;
+      }
+      if (dropFor) this.afterimages.drop(token, run.mesh, dropFor.stage.trailTint, time);
+      this.afterimages.tick(token, time);
+    } catch (error) { this.warnAfterimages(error); }
+  }
+  warnAfterimages(error) {
+    if (this.warnedAfterimages) return;
+    this.warnedAfterimages = true;
+    console.warn("Animater afterimages:", error?.message ?? error);
   }
   // A broken renderer must never stick the token: drop its pieces and play on without them.
   release(track) {
@@ -477,6 +505,8 @@ export class TokenMotionPlayer {
       if (restoreScale) run.mesh.scale.set(run.original.sx, run.original.sy);
       if (run.alphaTouched) run.mesh.alpha = run.original.alpha;
     }
+    // Ghosts outlive the motion only to finish fading.
+    try { this.afterimages?.fadeOut(token); } catch (error) { this.warnAfterimages(error); }
     for (const track of run.tracks) this.release(track);
     for (const track of run.tracks) track.resolve(true);
   }

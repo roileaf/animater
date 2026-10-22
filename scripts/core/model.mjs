@@ -1,7 +1,7 @@
 import { MOVE_MOTIONS, moveOptions } from "../engines/motion/move-targets.mjs";
 import { normalizeKeyframes } from "../engines/motion/keyframe-path.mjs";
 import { normalizeFragments } from "../engines/fragments/fragments.mjs";
-import { normalizeOptions, validateSoundFile, EASES } from "./stage-options.mjs";
+import { normalizeOptions, validateSoundFile, EASES, afterimagesChoice } from "./stage-options.mjs";
 import { fallbackColorParity } from "../engines/playback/color-parity.mjs";
 import { OPTIONAL_FX_KINDS, normalizeFxStage } from '../engines/playback/optional-fx.mjs';
 import { visualReference, safeMediaFile, mediaType } from '../engines/media/media-library-model.mjs';
@@ -30,6 +30,8 @@ export const EVENTS = {
   template: "Area placed",
   effect: "Effect added",
 };
+// A recipe's colour when none was picked (its card accent).
+export const DEFAULT_RECIPE_COLOR = "#9e8aff";
 export const STRIKE_SCOPES = { melee: 'All melee strikes', ranged: 'All ranged strikes' };
 // Finishers: recipes that play on the real token for assigned items (scripts/engines/finishers/finisher-model.mjs).
 export const FINISHER_ON = { kill: "Killing blow", use: "Every successful use", critical: "Critical hit", criticalOrKill: "Critical hit or killing blow" };
@@ -73,7 +75,11 @@ export const KINDS = {
   overlay: "Screen overlay",
   tokenfx: "Tokenshade",
   scenefx: "FXMaster scene effect",
+  // When a teleporting token vanishes and how long it stays gone (engines/motion/teleport.mjs).
+  teleport: "Teleport",
 };
+// How long a teleport stage keeps the token gone unless it says otherwise.
+export const TELEPORT_GONE_MS = 500;
 export const MOTIONS = {
   rush: "Rush and hold at destination",
   leap: "Arcing leap and landing",
@@ -142,7 +148,7 @@ export function validateRecipe(input) {
     name: text(input.name),
     description: text(input.description, 600),
     category: text(input.category, 40) || "Custom",
-    color: /^#[\da-f]{6}$/i.test(input.color) ? input.color : "#9e8aff",
+    color: /^#[\da-f]{6}$/i.test(input.color) ? input.color : DEFAULT_RECIPE_COLOR,
     enabled: input.enabled !== false,
     trigger: input.trigger,
     match: text(input.match, 1000),
@@ -175,6 +181,8 @@ export function validateRecipe(input) {
       ? { weaponMode: input.weaponMode } : {}),
     // Play-time element choice (scripts/catalogs/shared/element-choice.mjs).
     ...(input.elementChoice === true ? { elementChoice: true } : {}),
+    // The floor mark a payload weapon's contents leave (scripts/engines/marks/ground-marks.mjs).
+    ...(/^[a-z]{1,20}$/.test(input.markElement ?? "") ? { markElement: input.markElement } : {}),
     ...(text(input.bespoke, 120) ? { bespoke: text(input.bespoke, 120) } : {}),
     ...(normalizePreviewArea(input.previewArea)
       ? { previewArea: normalizePreviewArea(input.previewArea) }
@@ -200,7 +208,7 @@ export function validateRecipe(input) {
             visualReference,
           )
           .slice(0, 8);
-        if (!assets.length && !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind))
+        if (!assets.length && !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind))
           throw Error("Each effect stage needs a database key or relative media file.");
         return {
           kind: s.kind,
@@ -211,7 +219,8 @@ export function validateRecipe(input) {
           ),
           assets,
           delay: number(s.delay, 0, 30000, 0),
-          duration: number(s.duration, 100, 30000, 1500),
+          // A teleport may be gone for no time at all (it reappears as it vanishes).
+          duration: s.kind === "teleport" ? number(s.duration, 0, 30000, TELEPORT_GONE_MS) : number(s.duration, 100, 30000, 1500),
           scale: number(s.scale, 0.1, 5, 1),
           opacity: number(s.opacity, 0.1, 1, 1),
           below: s.below === true,
@@ -220,6 +229,9 @@ export function validateRecipe(input) {
           ...(["impact", "aura"].includes(s.kind) && Number.isFinite(s.atPoint?.x) && Number.isFinite(s.atPoint?.y) ? { atPoint: { x: s.atPoint.x, y: s.atPoint.y } } : {}),
           // Random variants: stages sharing a group are alternatives, one plays each time.
           ...(/^[A-Za-z0-9-]{1,40}$/.test(s.variantGroup ?? "") ? { variantGroup: s.variantGroup } : {}),
+          // Stands in for a move the recipe's teleport makes for real (Friendfetch's pull): it plays only when no
+          // token is teleported.
+          ...(s.skipOnTeleport === true ? { skipOnTeleport: true } : {}),
           // Drawn over the bearer's artwork (head-level stars, strands across the body).
           ...(s.above === true && s.below !== true ? { above: true } : {}),
           // Editor start mode; the link itself lives in afterStage/timingAnchor/startOffset.
@@ -247,8 +259,10 @@ export function validateRecipe(input) {
             : {}),
           ...normalizeOptions({
             ...s,
-            duration: number(s.duration, 100, 30000, 1500),
+            duration: s.kind === "teleport" ? number(s.duration, 0, 30000, TELEPORT_GONE_MS) : number(s.duration, 100, 30000, 1500),
           }),
+          // A teleport plays once, on the token that moves.
+          ...(s.kind === "teleport" ? { repeats: 1 } : {}),
           ...(OPTIONAL_FX_KINDS.has(s.kind) ? normalizeFxStage(s) : {}),
           ...(["sprite", "aura", "sound", "tokenfx"].includes(s.kind)
             ? { subject: s.subject === "targets" ? "targets" : "source" }
@@ -292,6 +306,9 @@ export function validateRecipe(input) {
                 // A push or pull moves the targets, never the one who acted.
                 subject: s.subject === "targets" || MOVE_MOTIONS.has(s.motion) ? "targets" : "source",
                 ...(MOVE_MOTIONS.has(s.motion) ? moveOptions(s) : {}),
+                ...afterimagesChoice({ ...s, motion: MOTIONS[s.motion] ? s.motion : "lunge" }),
+                // The play's ghost tint (withTrail) must cross the socket; anything but a hex colour is soft white.
+                ...(/^#[\da-f]{6}$/i.test(s.trailTint ?? "") ? { trailTint: s.trailTint } : {}),
                 intensity: number(s.intensity, 0.1, 3, 1),
                 distance: number(
                   s.distance,
@@ -449,7 +466,7 @@ export function resolveAsset(stage, catalog) {
 // Every installed asset in the stage's list, in list order (the first is the one that plays,
 // unless the stage picks at random).
 export function installedAssets(stage, catalog, limit = Infinity) {
-  if (["motion", "sprite", "sound"].includes(stage.kind)) return [];
+  if (["motion", "sprite", "sound", "teleport"].includes(stage.kind)) return [];
   const index = catalog instanceof CatalogIndex ? catalog : null, keys = index ? null : catalog.map((e) => e.key), found = [];
   for (const key of stage.assets) {
     if (found.length >= limit) break;
@@ -624,7 +641,7 @@ function buildPlan(recipe, catalog, context, requireMedia) {
     if (
       requireMedia &&
       !asset &&
-      !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind)
+      !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind)
     )
       throw Error(
         `Stage ${index + 1}: no installed asset. Open Assets and choose a replacement.`,

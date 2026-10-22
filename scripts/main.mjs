@@ -8,22 +8,37 @@ import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment,
 import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
+import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
+import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { starterRecipes } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
+import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
+import { heavyItem } from "./systems/heavy-item.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
+import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
+import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
+import { createLightHost } from "./engines/lighting/light-host.mjs";
+import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
+import { sceneWarpFilter } from "./engines/tokenshade/filters/scene-warp.mjs";
+import { createSummonsLights } from "./integrations/summons-walls.mjs";
+import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
+import { markTiming } from "./engines/marks/ground-marks.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
+import { wallHit } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
 import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
 import { weaponFamily } from "./systems/daggerheart.mjs";
-import { installSoundPitch } from "./engines/sound/sound-pitch.mjs";
+import { installSoundPitch, muffleEar } from "./engines/sound/sound-pitch.mjs";
+import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acoustics.mjs";
+import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
@@ -33,7 +48,7 @@ import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
 import { libraryPreferences } from './ui/media-library.mjs';
 import {TokenFxPreview} from './engines/preview/token-fx-preview.mjs';
 import {tokenFx} from './engines/tokenshade/api.mjs';
-import {warmShaders} from './engines/tokenshade/warmup.mjs';
+import {warmShaders,buildSceneWarpNow} from './engines/tokenshade/warmup.mjs';
 import {normalizeLayers} from './engines/tokenshade/layers.mjs';
 import { SceneFxPreview } from "./engines/preview/scene-fx-preview.mjs";
 import {
@@ -62,7 +77,8 @@ import {
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./catalogs/pf2e/ability-catalog.mjs";
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot } from "./engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden, previewSpot } from "./engines/motion/teleport.mjs";
+import { fetchLandings } from "./engines/motion/fetch-path.mjs";
 import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
 import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
@@ -103,8 +119,191 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
+// Adaptive playback on this client (engines/playback/adaptive-host.mjs): Foundry is read only when it runs.
+const adaptiveHost = createAdaptiveHost({
+  state: turboState,
+  quality: localQuality,
+  catalog: () => runtime?.getCatalog() ?? [],
+  weaponRecipes: (actor) => (actor?.items?.contents ?? []).filter((item) => ["weapon", "melee"].includes(item.type)).slice(0, 6)
+    .map((item) => { try { return resolveEvent({ type: "attack", item, actor }); } catch { return null; } }).filter(Boolean),
+  preload: (files) => Sequencer.Preloader.preload(files, false),
+  endLocally: (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false)),
+  sceneId: () => canvas?.scene?.id,
+  view: () => ({
+    zoom: canvas?.stage?.scale?.x ?? 1, gridSize: canvas?.grid?.size ?? 100, targetMs: 1000 / (canvas?.app?.ticker?.maxFPS || 60),
+    tokenSize: (uuid) => { try { const t = fromUuidSync(uuid)?.object; return t ? { width: t.w, height: t.h } : null; } catch { return null; } },
+  }),
+});
+// Effect lights on this client (engines/lighting/light-host.mjs): local Foundry light sources, never documents.
+const lightHost = createLightHost({
+  makeSource: (id) => {
+    const source = new CONFIG.Canvas.lightSourceClass({ sourceId: `${ID}.light.${id}`, object: null });
+    return {
+      initialize: (data) => source.initialize(data),
+      add: () => source.add(),
+      // Brightness only: uniforms are refreshed, the wall polygon is kept.
+      setLevel: ({ alpha, luminosity }) => { source.data.alpha = alpha; source.data.luminosity = luminosity; source.refresh(); },
+      destroy: () => source.destroy(),
+    };
+  },
+  refreshLighting: () => canvas?.perception?.update({ refreshLighting: true, refreshVision: true }),
+  sceneId: () => canvas?.scene?.id,
+  levelOk: (level) => { try { return !!canvas?.scene?.levels?.get(level ?? canvas.level?.id); } catch { return false; } },
+  steady: () => { try { return game.settings.get(ID, "effectLightAnimation") === false; } catch { return false; } },
+  gridSize: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+});
+// Map distortion on this client (engines/distortion/distortion-host.mjs): one screen filter on the primary group,
+// after Foundry's own, only while something distorts. Full quality only, unless this client turned it off.
+const distortsHere = () => {
+  let local = true;
+  try { local = game.settings.get(ID, "mapDistortionLocal"); } catch { /* not registered yet */ }
+  return canDistort(localQuality(), local);
+};
+// Builds or warms the shaders this client now needs (set once the canvas is up, in "ready"); the quality and
+// "Map distortion on my screen" settings call it when they change.
+let rewarmShaders = () => {};
+const distortionHost = createDistortionHost({
+  makeFilter: () => {
+    const renderer = canvas.app.renderer, gl = renderer.gl, filter = sceneWarpFilter(globalThis.PIXI);
+    // Built now (warm-up has usually done it): a shader this GPU cannot compile turns distortion off instead.
+    const built = filter.program.glPrograms[renderer.CONTEXT_UID] ?? renderer.shader.generateProgram(filter);
+    if (!gl.getProgramParameter(built.program, gl.LINK_STATUS)) {
+      filter.destroy();
+      throw new Error("the scene filter's shader did not compile");
+    }
+    return filter;
+  },
+  attach: (filter) => attachFilter(canvas.primary, filter, canvas.app.renderer.screen),
+  detach: (filter) => detachFilter(canvas?.primary, filter),
+  allowed: distortsHere,
+  tight: () => adaptiveHost.tight(),
+  sceneId: () => canvas?.scene?.id,
+  // The stage maps world to screen pixels (no rotation); the view is the screen's world rectangle. This tick runs
+  // before the render updates transforms, so this frame's pan and zoom are read from the stage's own transform
+  // (the stage is the root: local is world).
+  view: () => {
+    const t = canvas.stage.transform, screen = canvas.app.renderer.screen;
+    t.updateLocalTransform();
+    const wt = t.localTransform;
+    return { x: -wt.tx / wt.a, y: -wt.ty / wt.d, w: screen.width / wt.a, h: screen.height / wt.d, zoom: Math.hypot(wt.a, wt.b) || 1, worldToScreen: wt };
+  },
+  now: () => performance.now(),
+  // The level this client views, as ground marks use; and whether it can see any of an area (its centre and
+  // points around it), as Foundry tests a point.
+  viewedLevel: () => canvas?.level?.id ?? null,
+  seen: (point, radius) => {
+    try {
+      const v = canvas?.visibility;
+      if (!v?.tokenVision) return true;
+      const r = radius / Math.SQRT2;
+      return v.testVisibility({ x: point.x, y: point.y }, { tolerance: Math.max(2, r) });
+    } catch { return true; }
+  },
+});
+// PF2e Summons Assistant's glowing walls and summons (integrations/summons-walls.mjs): lit on every client
+// from their own effect or token data, on the same light host. Only its creatures' tokens qualify.
+const finitePoint = (p) => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x, y: p.y } : null);
+const summonsLights = createSummonsLights({
+  host: lightHost,
+  enabled: () => game.settings.get(ID, "effectLighting") !== false
+    && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
+  grid: () => canvas?.grid?.size ?? 100,
+  // The token an effect is tied to (or drawn on), on the viewed scene; a stretched line's two ends.
+  describeEffect: (effect) => {
+    const data = effect?.data, scene = canvas?.scene;
+    if (!data || !scene || data.sceneId !== scene.id) return null;
+    const uuid = [...(data.tiedDocuments ?? []), data.source?.uuid ?? data.source].find((u) => typeof u === "string" && u.includes(".Token."));
+    const doc = uuid ? fromUuidSync(uuid) : null;
+    if (!doc || doc.parent?.id !== scene.id) return null;
+    const line = !!data.stretchTo;
+    const end = (raw, live) => finitePoint(raw) ?? (() => { try { return finitePoint(live()); } catch { return null; } })();
+    return {
+      data, tokenId: doc.id, actor: doc.actor, hidden: doc.hidden, elevation: doc.elevation,
+      from: line ? end(data.source, () => effect.sourcePosition) : null,
+      to: line ? end(data.target, () => effect.targetPosition) : null,
+      sizePx: Math.max(effect.sprite?.width ?? 0, effect.sprite?.height ?? 0),
+    };
+  },
+  describeToken: (doc) => {
+    const grid = canvas?.grid?.size ?? 100;
+    return {
+      id: doc.id, actor: doc.actor, hidden: doc.hidden, src: doc.texture?.src, elevation: doc.elevation,
+      widthPx: (doc.width ?? 1) * grid, heightPx: (doc.height ?? 1) * grid,
+      scale: Math.max(Math.abs(doc.texture?.scaleX ?? 1), Math.abs(doc.texture?.scaleY ?? 1)),
+    };
+  },
+  // The drawn token's centre (it follows the token while it slides), else its document's.
+  centerOf: (doc) => {
+    const grid = canvas?.grid?.size ?? 100;
+    const object = doc.object;
+    return object && !object.destroyed ? object.center
+      : { x: doc.x + (doc.width ?? 1) * grid / 2, y: doc.y + (doc.height ?? 1) * grid / 2 };
+  },
+});
+Hooks.on("createToken", (doc) => { if (doc.parent?.id === canvas?.scene?.id) summonsLights.onToken(doc); });
+Hooks.on("updateToken", (doc, changes) => { if (doc.parent?.id === canvas?.scene?.id) summonsLights.onTokenUpdate(doc, changes); });
+Hooks.on("deleteToken", (doc) => summonsLights.onTokenDelete(doc));
+// Ground marks on this client (engines/marks/mark-paint.mjs): local sprites on the floor, never documents. One
+// container per scene in the primary group at the viewed level's floor, between drawings (600) and tokens (700).
+// Viewing another level redraws the whole canvas (Scene#view -> Canvas#draw), so its tear-down clears them too.
+let markTex = null, markRoot = null;
+const clearMarks = () => {
+  markLayer.clear();
+  try { markRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  markRoot = null;
+};
+const markLayer = createMarkLayer({
+  makeSprite: (tag, blotches, mask) => markSprite(PIXI, markTex ??= markTextures(PIXI, canvas.app.renderer), tag, blotches, mask),
+  addToScene: (sprite) => {
+    if (!markRoot || markRoot.destroyed) {
+      markRoot = new PIXI.Container();
+      markRoot.eventMode = "none";
+      markRoot.elevation = canvas.level?.elevation?.base ?? 0;
+      markRoot.sortLayer = 650;
+      canvas.primary.addChild(markRoot);
+    }
+    markRoot.addChild(sprite);
+  },
+  removeFromScene: (sprite) => sprite.destroy({ children: true }),
+  viewedLevel: () => canvas?.level?.id ?? null,
+  sceneId: () => canvas?.scene?.id,
+  gridSize: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+  // Off draws none; Low keeps half as many.
+  enabled: () => game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
+  cap: () => (localQuality() === "low" ? 30 : 60),
+  timing: () => markTiming(game.settings.get(ID, "groundMarkMinutes")),
+  // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
+  mask: (tag) => areaMaskFor(tag, { regions: canvas?.scene?.regions, grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask }),
+});
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
-Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); });
+Hooks.on("createSequencerEffect", (effect) => {
+  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect); markLayer.onEffect(effect);
+  summonsLights.onEffect(effect); distortionHost.onEffect(effect);
+});
+Hooks.on("endedSequencerEffect", (effect) => {
+  lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); distortionHost.onEnded(effect);
+});
+Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); });
+// canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
+// every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
+let adaptiveTicker = null;
+Hooks.on("canvasReady", () => {
+  adaptiveHost.onCanvasReady(performance.now());
+  for (const doc of canvas?.scene?.tokens ?? []) summonsLights.onToken(doc);
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  if (ticker && P && adaptiveTicker !== ticker) {
+    adaptiveTicker = ticker;
+    ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2);
+    ticker.add(() => { try { summonsLights.tick(); } catch { /* never stop the canvas */ } lightHost.tick(); }, undefined, P.NORMAL);
+    ticker.add(() => markLayer.tick(), undefined, P.NORMAL);
+    ticker.add(() => distortionHost.tick(), undefined, P.NORMAL);
+    ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
+  }
+});
+// The next combatant's likely files load ahead on every client, one turn early.
+Hooks.on("updateCombat", (combat, changed) => { if ("turn" in (changed ?? {}) || "round" in (changed ?? {})) adaptiveHost.onTurn(combat); });
 tokenFx.custom = () => { try { return game.settings.get(ID, 'tokenFxPresets') ?? []; } catch { return []; } };
 const fxCatalog = () => installedFxCatalog({
   modules:game.modules, tokenFx, fxmaster:globalThis.FXMASTER?.api,
@@ -566,28 +765,101 @@ async function pickTeleport(recipe, context) {
   if (!plan) return null;
   const caster = placeable(context.source), mover = plan.who === "target" ? placeable(context.targets?.[0]) : caster;
   if (!caster?.center) return null;
+  if (plan.fetch) return fetchSpots(recipe, context, caster);
   if (!mover?.center) { ui.notifications.warn("Teleport: target the creature to move first."); return null; }
   const feet = plan.adjacent ? 5 : plan.range || itemRangeFeet(context.item) || Infinity;
   ui.notifications.info(`Teleport ${mover.name}: click a spot${Number.isFinite(feet) ? ` within ${feet} feet` : ""} (Esc to cancel).`);
   const spot = await pickTeleportSpot({ caster, mover, feet, notify: (text) => ui.notifications.warn(text) });
-  return spot ? { mover, caster, ...spot, visuals: teleportVisuals(recipe, runtime.getCatalog()) } : null;
+  return spot ? { mover, caster, ...spot, visuals: teleportVisuals(recipe, runtime.getCatalog()), element: context.element ?? recipe.chosenElement } : null;
 }
-async function moveToken(doc, x, y) { await doc.update({ x, y }, { animate: false, animater: { teleport: true } }); }
-async function teleport(spot) {
-  return playTeleport(spot, {
+// Friendfetch: no pick. Each target (up to 2) is dragged straight toward the caster, to the closest free space on
+// that line short of any wall (engines/motion/fetch-path.mjs), and slides there. One with no closer free space stays.
+const FETCH_LIMIT = 2;
+function fetchSpots(recipe, context, caster) {
+  const targets = (context.targets ?? []).map(placeable).filter((t) => t?.document && t !== caster).slice(0, FETCH_LIMIT);
+  if (!targets.length) { ui.notifications.warn("Friendfetch: target the creatures to bring to you first."); return null; }
+  const box = (t) => ({ id: t.document.id, x: t.document.x, y: t.document.y, w: t.w, h: t.h });
+  const level = caster.document?.level;
+  const tokens = canvas.tokens.placeables.filter((t) => t.document && (level === undefined || t.document.level === undefined || t.document.level === level)).map(box);
+  const blocked = (from, to) => Boolean(CONFIG.Canvas.polygonBackends?.move?.testCollision?.(from, to, { type: "move", mode: "any" }));
+  const snap = (point, target) => targets.find((t) => t.document.id === target.id)?.getSnappedPosition?.(point) ?? point;
+  const landings = fetchLandings({ caster: box(caster), targets: targets.map(box), tokens, snap, blocked, gridSize: canvas.grid.size });
+  const visuals = teleportVisuals(recipe, runtime.getCatalog()), element = context.element ?? recipe.chosenElement;
+  return landings.map((spot) => ({ mover: targets.find((t) => t.document.id === spot.id), caster, x: spot.x, y: spot.y, slide: true, visuals, element }));
+}
+// Big magic bends the scene (world setting); on while the setting is not registered.
+function mapDistortion() { try { return game.settings.get(ID, "mapDistortion") !== false; } catch { return true; } }
+// `slide` (ms): Foundry's own move animation over that long (a fetch dragged along its line), else a jump.
+const SLIDE_MS = 500, SLIDE_MAX_MS = 3000;
+async function moveToken(doc, x, y, slide = 0) {
+  await doc.update({ x, y }, slide > 0 ? { animation: { duration: slide }, animater: { teleport: true } } : { animate: false, animater: { teleport: true } });
+}
+// What a teleport's effects play through. `local`: a preview, on this screen only, with no streak.
+function teleportHost({ local = false } = {}) {
+  return {
     wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
-    effect: (asset, point, size, tint) => {
+    mapDistortion,
+    gridSize: () => canvas.grid?.size ?? 100,
+    // `data` (the departure's vanish, the arrival's afterimage streak, either end's warp) rides on the effect to
+    // every client; the streak only while the world has trails on.
+    effect: (asset, point, size, tint, data = null) => {
       const effect = new Sequence({ moduleName: ID }).effect().file(asset).atLocation(point).size(size);
       if (tint) effect.tint(tint);
-      void effect.play().catch(error => console.warn('Animater teleport effect:', error.message));
+      const { animaterTrail, ...rest } = data ?? {};
+      const tags = { ...rest, ...(animaterTrail && !local && game.settings.get(ID, "afterimages") !== false ? { animaterTrail } : {}) };
+      if (Object.keys(tags).length) effect.addOverride(async (_, effectData) => ({ ...effectData, ...tags }));
+      void effect.play(local ? { local: true } : {}).catch(error => console.warn('Animater teleport effect:', error.message));
     },
-    move: async (mover, x, y) => {
-      const doc = mover.document;
-      // A creature this player does not own (an ally fetched to them) is moved by the active GM.
-      if (doc.isOwner) await moveToken(doc, x, y);
-      else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x, y });
-    },
-  });
+    // A preview's token never moves: a copy of its art lands at the spot, holds, and fades as the token comes back.
+    move: local ? async (mover, x, y) => previewLanding(mover, x, y) : async () => {},
+    ...(local ? { vanishGrace: 0, holdMs: PREVIEW_HOLD_MS } : {}),
+  };
+}
+// A preview's teleport: the token vanishes and a copy of it appears three squares off (toward its target), on this
+// screen only; the document never moves.
+const PREVIEW_HOLD_MS = 1200, PREVIEW_FADE_MS = 300;
+function previewTeleport(mover, recipe, context, timing) {
+  const token = placeable(mover);
+  if (!token?.center || !token.document) return null;
+  const visuals = teleportVisuals(recipe, runtime.getCatalog());
+  const target = (context.targets ?? []).map(placeable).find((t) => t?.center && t !== token);
+  const spot = previewSpot(token, { gridSize: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, toward: target?.center ?? null });
+  return playTeleport({ mover: token, x: spot.x, y: spot.y, visuals, element: context.element ?? recipe.chosenElement }, teleportHost({ local: true }), timing);
+}
+// The copy a preview lands: the token's art at (x, y), in at once, held, then faded out and removed.
+function previewLanding(token, x, y) {
+  const mesh = token?.mesh;
+  if (!mesh?.texture || mesh.destroyed) return;
+  const copy = new PIXI.Sprite(mesh.texture);
+  copy.anchor.set(mesh.anchor?.x ?? 0.5, mesh.anchor?.y ?? 0.5);
+  copy.scale.set(mesh.scale.x, mesh.scale.y);
+  copy.rotation = mesh.rotation;
+  copy.position.set(x + token.w / 2, y + token.h / 2);
+  placeUnder(copy, mesh);
+  copy.zIndex = (mesh.zIndex ?? 0) + 1;
+  const start = performance.now();
+  const step = () => {
+    if (copy.destroyed) return;
+    const fade = performance.now() - start - PREVIEW_HOLD_MS;
+    if (fade >= PREVIEW_FADE_MS || !copy.parent) { copy.destroy(); return; }
+    copy.alpha = fade > 0 ? 1 - fade / PREVIEW_FADE_MS : 1;
+    requestAnimationFrame(step);
+  };
+  step();
+}
+// Only the move: from the token's document alone, so it works after the canvas is gone (a stopped play).
+// A creature this player does not own (an ally fetched to them) is moved by the active GM.
+async function placeTeleport(spot) {
+  const doc = spot?.mover?.document;
+  if (!doc) return;
+  const slide = spot.slide ? (Number(spot.slide) > 1 ? Number(spot.slide) : SLIDE_MS) : 0;
+  if (doc.isOwner) await moveToken(doc, spot.x, spot.y, slide);
+  else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x: spot.x, y: spot.y, slide });
+}
+// A fetch slides over its stage's length, with no departure or arrival effects.
+async function teleport(spot, timing) {
+  if (spot.slide) return placeTeleport({ ...spot, slide: Math.max(1, timing?.goneMs || SLIDE_MS) });
+  return playTeleport(spot, { ...teleportHost(), move: (mover, x, y) => placeTeleport({ ...spot, mover, x, y }) }, timing);
 }
 // The active GM moves a teleported token for the player who cast the spell: only when that
 // player owns the caster, and only a token on the caster's scene.
@@ -598,7 +870,7 @@ async function receiveTeleport(data, senderId) {
   const caster = await fromUuid(String(data.casterUuid ?? ""));
   if (!user || !doc || doc.documentName !== "Token" || !Number.isFinite(data.x) || !Number.isFinite(data.y)) return;
   if (caster?.documentName !== "Token" || caster.parent !== doc.parent || !caster.testUserPermission(user, "OWNER")) return;
-  await moveToken(doc, data.x, data.y);
+  await moveToken(doc, data.x, data.y, Math.min(SLIDE_MAX_MS, Math.max(0, Number(data.slide) || 0)));
 }
 // Push and Pull stages where someone picks the square. "actor": the one playing the recipe (this client).
 // "target": the target's side, its connected owning player (their character), else the GM, on their own screen.
@@ -1148,6 +1420,7 @@ function workspaceHost() {
   };
 }
 Hooks.once("init", () => {
+  registerSequencerSpeedups(ID);
   game.settings.register(ID,'mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
   game.settings.register(ID,'tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
   for(const [key,name,hint] of [
@@ -1182,7 +1455,7 @@ Hooks.once("init", () => {
   game.settings.register(ID,'quality',{name:'Animation quality (this device)',
     hint:'Lower this on slower computers. Applies only to what you see; other players keep their own setting.',
     scope:'client',config:true,type:String,choices:{...QUALITY_CHOICES},default:'full',
-    onChange:()=>{syncQuality();persistentStates?.schedule();}});
+    onChange:()=>{syncQuality();persistentStates?.schedule();markLayer.refresh();rewarmShaders();}});
   game.settings.register(ID,'lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
@@ -1278,6 +1551,88 @@ Hooks.once("init", () => {
     hint: "Daggerheart: a duality roll with Hope adds a short gold glint on the roller's token, one with Fear a dark purple wisp, beside the item's own animation. Critical successes keep their own crit visuals.",
     scope: "world", config: game.system.id === "daggerheart", type: Boolean, default: true,
   });
+  game.settings.register(ID, "effectLighting", {
+    name: "Effect lighting",
+    hint: "Fire, lightning and other glowing effects light up the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "effectLightingDaylight", {
+    name: "Effect lighting in daylight",
+    hint: "Also add a soft coloured glow around effects in fully lit scenes.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "effectLightAnimation", {
+    name: "Flickering and flashing effect lights",
+    hint: "Turn off to see effect lights as a steady glow, without flicker or strobe.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "projectileWalls", {
+    name: "Projectiles stop at walls",
+    hint: "Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "groundMarks", {
+    name: "Ground marks",
+    hint: "Fire, frost, acid and other elemental hits leave a fading mark on the floor where they landed. Marks are drawn on each screen and never saved.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "groundMarkMinutes", {
+    name: "Ground mark lifetime (minutes)",
+    hint: "How long a ground mark stays before it is gone: fully visible for the first 40%, then fading. 0 keeps marks until the scene changes or the page reloads.",
+    scope: "world", config: true, type: Number, range: { min: 0, max: 60, step: 1 }, default: 5,
+    onChange: () => markLayer.refresh(),
+  });
+  game.settings.register(ID, "groundMarksLocal", {
+    name: "Ground marks on my screen",
+    hint: "Turn off to never draw ground marks on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    // Turning it off wipes the marks already on the floor.
+    onChange: () => markLayer.refresh(),
+  });
+  game.settings.register(ID, "afterimages", {
+    name: "Afterimage trails",
+    hint: "Charges, leaps, knockbacks and teleports that Animater plays leave a brief trail of ghost copies behind the token.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "afterimagesLocal", {
+    name: "Afterimages on my screen",
+    hint: "Turn off to never draw afterimage trails on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    // Off: the ghosts already drawn go at once.
+    onChange: (on) => { if (on === false) motions?.afterimages?.clear(); },
+  });
+  game.settings.register(ID, "mapDistortion", {
+    name: "Map distortion",
+    hint: "Big blasts ripple across the map, lasting fire shimmers with heat and teleports warp the air. Drawn only on screens at Full animation quality.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "shockwaveReach", {
+    name: "Shockwave reach (× blast size)",
+    hint: "How far a blast's shockwave ripples, as a multiple of the blast's size. Larger values reach further across the map.",
+    scope: "world", config: true, type: Number, range: { min: 0.5, max: 4, step: 0.25 }, default: 1.5,
+  });
+  game.settings.register(ID, "mapDistortionLocal", {
+    name: "Map distortion on my screen",
+    hint: "Turn off to never bend the map on this screen (for example if it is uncomfortable to watch).",
+    scope: "client", config: true, type: Boolean, default: true,
+    // Off: whatever is bending stops at once. On: its shader is readied before the next blast.
+    onChange: (on) => { if (on === false) distortionHost.clear(); else rewarmShaders(); },
+  });
+  game.settings.register(ID, "roomAcoustics", {
+    name: "Room acoustics from walls",
+    hint: "In scenes without an Acoustics choice, Animater's sounds echo to fit the space around them, worked out from the walls: dry outdoors, tight in small rooms, ringing in halls.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "roomReverbLocal", {
+    name: "Room reverb on my screen",
+    hint: "Turn off to hear Animater's sounds without room reverb.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "muffleWalls", {
+    name: "Muffle sounds behind walls",
+    hint: "Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1286,7 +1641,7 @@ Hooks.once("init", () => {
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
   game.settings.register(ID, TELEPORT_TOKENS, {
     name: "Teleport tokens",
-    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Teleport" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
+    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Blink Out" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there${game.system.id === "pf2e" ? " (Friendfetch drags its targets to the caster on its own)" : ""}. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
     scope: "world", config: true, type: Boolean, default: true,
   });
   game.settings.register(ID, "welcomed", { scope: "world", config: false, type: Boolean, default: false });
@@ -1398,10 +1753,34 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const value = app.document?.getFlag?.(ID, "acoustics") ?? "";
   const group = document.createElement("div");
   group.className = "form-group";
-  group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "As recorded"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's hit sounds ring in this scene.</p>`;
+  group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);
 });
 Hooks.once("ready", () => {
+  // Room-aware sound: each grid square's room, swept once on the sound's level, forgotten when walls, doors, the
+  // scene or its levels change.
+  const rooms = createRoomCache({
+    sweep: (at, levelId) => {
+      const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
+      return CONFIG.Canvas.polygonBackends.sound.create(at, { type: "sound", radius: 30 * canvas.grid.size, ...(level ? { level } : {}) })?.points;
+    },
+    // A sound sweep also stops at the canvas edge (its outer bounds): that edge is open, not a wall.
+    bounds: () => canvas.dimensions?.rect ?? null,
+  });
+  for (const hook of ["createWall", "updateWall", "deleteWall", "canvasReady", "updateScene", "createLevel", "updateLevel", "deleteLevel"])
+    Hooks.on(hook, () => rooms.bump());
+  // One shared reverb per room class, built from Foundry's own impulse in the context Animater's sounds play in.
+  const reverb = createReverbBuses({ contextOf: () => game.audio?.interface ?? null });
+  // Load Foundry's impulse ahead of the first sound (it waits for the audio context, and retries cheaply).
+  reverb.ready();
+  Hooks.on("canvasReady", () => reverb.ready());
+  // Where this player hears walls from (none for a GM with no token selected: nothing muffled, as in Foundry).
+  const soundEar = () => muffleEar({
+    controlled: canvas.tokens?.controlled?.[0] ?? null,
+    owned: game.user.isGM ? null : canvas.tokens?.placeables?.find((t) => t.isOwner) ?? null,
+    isGM: game.user.isGM,
+    view: { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y },
+  });
   // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
   installSoundPitch({
     enabled: () => game.settings.get(ID, "hitSounds") !== false,
@@ -1416,6 +1795,29 @@ Hooks.once("ready", () => {
     },
     // The scene's acoustics (Scene configuration → Ambience): open air, a hall or a cave.
     acoustics: () => canvas?.scene?.getFlag?.(ID, "acoustics") ?? null,
+    // Where the GM chose none: the room around the sound, from the walls of the scene this client views.
+    room: (data) => {
+      const r = roomFor(data, {
+        sceneAcoustics: canvas.scene?.getFlag(ID, "acoustics") || null,
+        viewedScene: canvas.scene?.id,
+        enabled: canvas.ready && game.settings.get(ID, "roomAcoustics") && game.settings.get(ID, "roomReverbLocal"),
+        cache: rooms,
+        gridPx: canvas.grid.size,
+      });
+      if (r.kind !== "reverb") return null;
+      // This player's echo strength scales the room too.
+      const level = reverbSend(r.room, game.settings.get(ID, "surfaceEcho"));
+      return { node: (context) => reverb.send(context, r.room, level) };
+    },
+    // A wall between this player and the sound muffles it, in any scene.
+    muffle: (data) => {
+      const at = data.animaterAt;
+      if (!game.settings.get(ID, "muffleWalls") || !canvas.ready || (data.animaterScene && data.animaterScene !== canvas.scene?.id)) return false;
+      const ear = soundEar();
+      if (!ear) return false;
+      const level = typeof data.animaterLevel === "string" ? canvas.scene?.levels?.get?.(data.animaterLevel) : undefined;
+      return CONFIG.Canvas.polygonBackends.sound.testCollision(ear, at, { type: "sound", mode: "any", ...(level ? { level } : {}) }) === true;
+    },
   });
   void loadDndBooks();
   setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)), 1500);
@@ -1435,7 +1837,27 @@ Hooks.once("ready", () => {
   syncQuality();
   const env = environment();
   if (game.user.isGM && env.ready && !env.jb2a) ui.notifications.warn(`Animater: ${JB2A_MISSING}`, { permanent: true });
-  motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) } });
+  // Afterimages show at Full, Light and Balanced, unless this client turned them off.
+  const afterimages = createAfterimages({ makeSprite: (texture) => new globalThis.PIXI.Sprite(texture), place: placeUnder,
+    enabled: () => game.settings.get(ID, "afterimagesLocal") !== false && qualityRank(localQuality()) >= 2 });
+  // A teleport's arrival effect carries its streak (playTeleport): every client draws it as that effect arrives.
+  // Its departure effect carries its vanish: every client hides the token until it has moved (holdHidden).
+  Hooks.on("createSequencerEffect", (effect) => {
+    const vanish = effect?.data?.animaterVanish;
+    if (!vanish?.tokenId || (effect.data.sceneId && effect.data.sceneId !== canvas?.scene?.id)) return;
+    const ms = Math.min(30000, Number(vanish.ms) || 0), grace = Number(vanish.grace);
+    try { holdHidden(canvas.scene?.tokens?.get(vanish.tokenId)?.object, ms, { origin: vanish.from, ...(Number.isFinite(grace) ? { grace: Math.min(30000, Math.max(0, grace)) } : {}) }); }
+    catch (error) { console.warn("Animater teleport:", error?.message ?? error); }
+  });
+  Hooks.on("createSequencerEffect", (effect) => {
+    const trail = effect?.data?.animaterTrail;
+    if (!trail) return;
+    try {
+      const token = streakToken(trail, { sceneId: effect.data.sceneId, scene: canvas?.scene, isGM: game.user.isGM });
+      if (token) afterimages.streak(token.mesh, trail.tint, streakLayout(trail.from, trail.to));
+    } catch (error) { console.warn("Animater afterimages:", error?.message ?? error); }
+  });
+  motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
   guardSequencerMotions(globalThis.Sequencer?.MotionManager, { claims: (data) => {
@@ -1456,6 +1878,7 @@ Hooks.once("ready", () => {
     void persistentStates?.clear();
     conditionBody?.clear();
     motions.stop();
+    motions.afterimages?.clear();
     void optionalFx.stop();
     tokenFx.clear();
     void runtime?.stop();
@@ -1473,15 +1896,29 @@ Hooks.once("ready", () => {
   setInterval(pruneFx,30000).unref?.();
   pruneFx();
   // Compile Tokenshade's shaders in the background once the scene has settled, so the
-  // first token look of the session does not freeze the canvas while it compiles.
+  // first token look of the session does not freeze the canvas while it compiles (and
+  // map distortion's scene filter, on a client that draws it).
   let warming=null;
   const warmTokenFx=()=>void setTimeout(()=>{
     const renderer=canvas?.ready?canvas.app?.renderer:null;
-    if(warming||!renderer||!globalThis.PIXI?.Program||!allowsTokenFx(localQuality()))return;
-    warming=warmShaders(globalThis.PIXI,renderer).catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{warming=null;});
+    if(!renderer||!globalThis.PIXI?.Program||!allowsTokenFx(localQuality()))return;
+    const sceneWarp=distortsHere();
+    // A warm-up already running is kept, unless this client has just started drawing map distortion.
+    if(warming){if(!sceneWarp||warming.sceneWarp)return;warming.stop();}
+    const run=warmShaders(globalThis.PIXI,renderer,{sceneWarp});
+    run.sceneWarp=sceneWarp;warming=run;
+    run.catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{if(warming===run)warming=null;});
   },3000).unref?.();
-  Hooks.on('canvasReady',warmTokenFx);
-  if(canvas?.ready)warmTokenFx();
+  // Without background compiling, map distortion's scene filter is built now, while the scene loads, rather than
+  // at the first blast; with it, the warm-up above does it.
+  const prepareShaders=()=>{
+    try{const renderer=canvas?.ready?canvas.app?.renderer:null;if(renderer&&globalThis.PIXI?.Program&&distortsHere())buildSceneWarpNow(globalThis.PIXI,renderer);}
+    catch(error){console.warn('Animater map distortion warm-up:',error.message);}
+    warmTokenFx();
+  };
+  rewarmShaders=prepareShaders;
+  Hooks.on('canvasReady',prepareShaders);
+  if(canvas?.ready)prepareShaders();
   runtime = new AnimaterRuntime({
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),
@@ -1490,6 +1927,36 @@ Hooks.once("ready", () => {
     },
     enabled: () => acceptsEvents() || hasOwnApproved(),
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
+    // Effects light the scene (world setting); in daylight only when allowed.
+    effectLights: () => game.settings.get(ID, "effectLighting") !== false
+      && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
+    // Shots stop at walls (world setting); on while the setting is not registered.
+    projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
+    // Harmful plays leave ground marks (world setting).
+    groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
+    // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
+    afterimages: () => game.settings.get(ID, "afterimages") !== false,
+    // Big blasts, lasting fire and teleports bend the scene (world setting).
+    mapDistortion,
+    // How far a blast's shockwave ripples, as a multiple of its radius (world setting).
+    shockwaveReach: () => { try { return Number(game.settings.get(ID, "shockwaveReach")); } catch { return undefined; } },
+    // A two-handed heavy weapon: its critical hit sends a shockwave.
+    heavyItem: (item) => heavyItem(item, game.system.id),
+    // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
+    itemDamages: (item) => usedItemDamages(item, game.system.id),
+    // The element of that damage, for a placed area no damage roll names one for.
+    itemElement: (item, context) => usedItemElement(item, game.system.id, context?.activity),
+    // The level this client views and its floor, for a mark whose source token names none.
+    viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.base } : null; },
+    // The scene this client views, for a sound whose token names none.
+    viewedScene: () => canvas?.scene?.id ?? null,
+    // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
+    // otherwise tests the level this client views). A failing backend throws, and the runtime plays its flights as before.
+    collides: (a, b, type, source) => {
+      const levelId = (source?.document ?? source)?.level;
+      const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
+      return wallHit(CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest", ...(level ? { level } : {}) }), CONST.WALL_DOOR_TYPES.DOOR);
+    },
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
@@ -1497,6 +1964,8 @@ Hooks.once("ready", () => {
     flashBefore: (recipe, context) => flash?.before(recipe, context),
     pickTeleport,
     teleport,
+    place: placeTeleport,
+    previewTeleport,
     // Does the token still carry an effect from this item ("Effect: Shield")?
     hasItemEffect: (actor, item) => {
       const name = sameEffectName(item?.name), id = item?.id;
@@ -1574,6 +2043,7 @@ Hooks.once("ready", () => {
     // Sequencer synchronizes playback and loads media on each receiving client.
     // Waiting for every client here can stall the rolling user's animation.
     preloadSounds: files => Sequencer.Preloader.preload(files,false),
+    adaptive: () => adaptiveHost.adaptive(),
     // Where a loaded sound is loudest (ms in), measured once per file.
     soundPeak: (file) => { if (!soundPeaks.has(file)) { const b = game.audio?.buffers?.getBuffer?.(file); if (!b) return null; soundPeaks.set(file, peakOf(b)); } return soundPeaks.get(file); },
     motion: async (stage, context, { preview, session }) => {
@@ -1715,6 +2185,7 @@ Hooks.once("ready", () => {
     effects: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), effects: clone(game.system.id==='sf2e'?sfEntries('effect'):game.system.id==='dnd5e'?dndEntries('effect'):game.system.id==='pf2e'?PF2E_EFFECTS:[]) }),
     refreshPersistent: () => persistentStates?.reconcile(),
     finishers: finishersApi,
+    sequencerSpeedups: sequencerSpeedupsApi,
     // id, saved recipe name, or a recipe object (e.g. from resolve()).
     async play(id, context = manualContext()) {
       const recipe = findRecipe(id);

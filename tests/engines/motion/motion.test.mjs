@@ -6,7 +6,7 @@ import {
   motionDirection,
 } from "../../../scripts/engines/motion/motion.mjs";
 import { validateRecipe, planRecipe } from "../../../scripts/core/model.mjs";
-function fixture() {
+function fixture({ afterimages = null } = {}) {
   let now = 0,
     id = 0;
   const callbacks = new Map();
@@ -32,6 +32,7 @@ function fixture() {
     },
     cancel: (i) => callbacks.delete(i),
     grid: () => 100,
+    afterimages,
   });
   const advance = (t) => {
     now = t;
@@ -296,5 +297,109 @@ test("user prefix stops every owned session without affecting another user's mot
   assert.equal(other.mesh.position.x, 135);
   player.stop("user-two", { prefix: true });
   await second;
+  assert.equal(player.active.size, 0);
+});
+
+// Records what the player hands the afterimage renderer.
+function ghostLog({ throws = false } = {}) {
+  const log = { drops: [], ticks: 0, fadeOuts: 0 };
+  log.renderer = {
+    drop(token, mesh, tint, clock) {
+      if (throws) throw new Error("boom");
+      log.drops.push({ x: mesh.position.x, y: mesh.position.y, tint, clock });
+    },
+    tick() { log.ticks++; },
+    fadeOut() { log.fadeOuts++; },
+  };
+  return log;
+}
+const rush = { kind: "motion", motion: "rush", duration: 600, motionOffset: { x: 3, y: 0 }, trailTint: "#ff8800" };
+const playFrames = (advance, until, from = 0, step = 16) => { for (let t = from + step; t <= until; t += step) advance(t); };
+
+test("a 3-square rush drops ghosts behind the token", async () => {
+  const log = ghostLog();
+  const { token, player, advance } = fixture({ afterimages: log.renderer });
+  const xs = [];
+  const playing = player.play(token, rush, { x: 1, y: 0 }, "u");
+  for (let t = 16; t <= 640; t += 16) { advance(t); xs.push({ t, x: token.mesh.position.x }); }
+  await playing;
+  assert.ok(log.drops.length >= 4, `${log.drops.length} ghosts`);
+  assert.ok(log.drops.every((d) => d.tint === "#ff8800"));
+  // Each ghost is where the token was drawn that frame, and the token then moves on past it.
+  const peak = Math.max(...xs.map((p) => p.x));
+  for (const d of log.drops) {
+    assert.equal(d.x, xs.find((p) => p.t === d.clock).x);
+    assert.ok(d.x > 100 && d.x < peak);
+  }
+  // Outbound only: dropped in order away from rest, none on the way back.
+  const peakAt = xs.find((p) => p.x === peak).t;
+  assert.ok(log.drops.every((d, i) => d.clock <= peakAt && (i === 0 || d.x > log.drops[i - 1].x)));
+  assert.ok(log.ticks > 0);
+  assert.equal(log.fadeOuts, 1);
+});
+
+test("an in-place lunge drops no ghosts", async () => {
+  const log = ghostLog();
+  const { token, player, stage, advance } = fixture({ afterimages: log.renderer });
+  const playing = player.play(token, { ...stage, duration: 200, distance: 1 }, { x: 1, y: 0 }, "u");
+  playFrames(advance, 220);
+  await playing;
+  assert.equal(log.drops.length, 0);
+});
+
+test("stopping a rush lets its ghosts fade out", async () => {
+  const log = ghostLog();
+  const { token, player, advance } = fixture({ afterimages: log.renderer });
+  const playing = player.play(token, rush, { x: 1, y: 0 }, "u");
+  playFrames(advance, 160);
+  assert.ok(log.drops.length > 0);
+  player.stop("u");
+  await playing;
+  assert.equal(log.fadeOuts, 1);
+  assert.equal(token.mesh.position.x, 100);
+});
+
+test("a destroyed mesh ends the motion and its ghosts cleanly", async () => {
+  const log = ghostLog();
+  const { token, player, advance } = fixture({ afterimages: log.renderer });
+  const playing = player.play(token, rush, { x: 1, y: 0 }, "u");
+  playFrames(advance, 160);
+  const dropped = log.drops.length;
+  token.mesh.destroyed = true;
+  playFrames(advance, 320, 160);
+  assert.equal(await playing, true);
+  assert.equal(log.fadeOuts, 1);
+  assert.equal(log.drops.length, dropped);
+});
+
+test("a broken trail decision does not stop the motion", async () => {
+  const log = ghostLog();
+  const { token, player, advance } = fixture({ afterimages: log.renderer });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    // The trail decision throws on the ticker (the pose never reads this field).
+    const stage = { ...rush, get afterimages() { throw new Error("boom"); } };
+    const playing = player.play(token, stage, { x: 1, y: 0 }, "u");
+    playFrames(advance, 640);
+    await playing;
+  } finally { console.warn = warn; }
+  assert.equal(token.mesh.position.x, 100);
+  assert.equal(player.active.size, 0);
+});
+
+test("a broken afterimage renderer does not stop the motion", async () => {
+  const log = ghostLog({ throws: true });
+  const { token, player, advance } = fixture({ afterimages: log.renderer });
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const playing = player.play(token, rush, { x: 1, y: 0 }, "u");
+    playFrames(advance, 160);
+    assert.ok(token.mesh.position.x > 100);
+    playFrames(advance, 640, 160);
+    await playing;
+  } finally { console.warn = warn; }
+  assert.equal(token.mesh.position.x, 100);
   assert.equal(player.active.size, 0);
 });

@@ -72,6 +72,8 @@ import {
   EASES,
   TRACK_PROPERTIES,
   cropAreaArt,
+  AFTERIMAGES,
+  showsAfterimages,
 } from "../core/stage-options.mjs";
 const esc = (value) =>
   String(value ?? "").replace(
@@ -590,7 +592,7 @@ export class Workspace {
     if (
       recipe.stages.some(
         (s) =>
-          !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind) && !s.assets.length,
+          !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind) && !s.assets.length,
       )
     )
       return "Choose an asset";
@@ -604,7 +606,7 @@ export class Workspace {
     const catalog = renderMemo(this.host, "catalogIndex", () => catalogIndex(this.host.catalog()), () => this.host.catalog());
     const missing = recipe.stages.filter(
       (s) =>
-        !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind) &&
+        !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind) &&
         !resolveAsset(s, catalog),
     );
     return missing.length
@@ -1033,7 +1035,7 @@ export class Workspace {
     if (
       recipe.stages.every(
         (s) =>
-          !["motion", "sprite", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind) && !s.assets.length,
+          !["motion", "sprite", "sound", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind) && !s.assets.length,
       )
     )
       return `<div class="an-preview-empty" data-recipe-scene data-preview-tokens="${esc(JSON.stringify(tokens))}" data-preview-grid-distance="${Number(tokens.gridDistance) || 5}" aria-label="Unconfigured recipe preview">◇<small>Choose an asset or token motion to begin</small></div>`;
@@ -1056,6 +1058,8 @@ export class Workspace {
           ? `<svg class="an-tint-filter" aria-hidden="true"><defs><filter id="${filterId}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb[0]} 0 0 0 0 0 ${rgb[1]} 0 0 0 0 0 ${rgb[2]} 0 0 0 0 0 1 0"/></filter></defs></svg>`
           : "";
         if (s.kind === "motion") return "";
+        // A teleport has no art of its own: while it plays, the mover's portrait is gone (styles: an-teleport-layer).
+        if (s.kind === "teleport") return `<div hidden class="an-recipe-layer an-teleport-layer" data-layer-stage="${index}" data-teleport="${teleportPlan(recipe)?.who === "target" ? "targets" : "source"}"></div>`;
         if(OPTIONAL_FX_KINDS.has(s.kind))return this.optionalFxPreviewHTML(s, s.index ?? index);
         if (s.kind === "sound")
           return s.skipSound
@@ -1141,6 +1145,7 @@ export class Workspace {
       .map((s, planIndex) => {
         s = { ...s, ...normalizeOptions(s) };
         if (s.kind === "motion") return "";
+        if (s.kind === "teleport") return `<div hidden class="an-recipe-layer an-teleport-layer" data-layer-stage="${s.index}" data-preview-plan="${planIndex}" data-teleport="${teleportPlan(chain.recipe)?.who === "target" ? "targets" : "source"}"></div>`;
         if(OPTIONAL_FX_KINDS.has(s.kind))return this.optionalFxPreviewHTML(s, s.index);
         if (s.kind === "sound")
           return s.skipSound
@@ -1517,7 +1522,7 @@ export class Workspace {
       .stages[index];
     const key = resolveAsset(s, this.host.catalog());
     const file = mediaForReference(this.host.catalog(),key)?.file;
-    const assetFree = ["motion", "sprite", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind);
+    const assetFree = ["motion", "sprite", "sound", "teleport"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind);
     return `<div class="an-preview ${this.previewMode === "recipe" ? "an-full-preview" : ""}" style="--effect:${esc(r.color)}">${this.previewMode === "recipe" ? this.recipePreviewHTML(r) : `${OPTIONAL_FX_KINDS.has(s.kind) ? `<div class="an-preview-empty"><b>${esc(KINDS[s.kind])}</b><small>${s.kind==='scenefx'?((s.fxCategory??'particle')==='filter'?'Scene filter · at the table only':'Scene particles · previews and table'):'Local canvas preview · token filter'}</small></div>` : s.kind === "motion" ? `<div class="an-motion-scene" aria-label="Token motion schematic preview"><div class="an-demo-token" data-motion-demo>✦</div><div class="an-demo-target">◇</div><small>Token motion · schematic</small></div>` : s.kind === "sound" ? (audioPreview.skipSound ? `<div class="an-preview-empty"><small>Optional sound pack unavailable. Visual stages still play.</small></div>` : `<audio controls src="${esc(this.host.mediaURL?.(audioPreview.soundFile) ?? audioPreview.soundFile)}" aria-label="Selected sound preview" data-cue-volume="${audioPreview.volume}"></audio>`) : s.kind === "sprite" ? `<div class="an-preview-empty">✦<small>Token copies appear in Full recipe preview</small></div>` : file ? this.visualMediaHTML(file,'controls autoplay aria-label="Selected stage asset preview"') : `<div class="an-preview-empty">◇<small>Choose an installed asset</small></div>`}<span class="an-preview-label">STAGE ${index + 1} · ${s.kind === "motion" ? "TOKEN MOTION" : "ASSET PREVIEW"}</span>`}</div>`;
   }
   motionSyncNoticeHTML() { return motionSyncNoticeHTML(this.host.environment()); }
@@ -1557,29 +1562,30 @@ export class Workspace {
   // Header card: what the stage is (art, readable name, type, track) and its stage actions.
   stageCardHTML(r, s, index, file, key, linked) {
     const track = STUDIO_TRACKS.find((t) => t.id === trackOf(s));
-    const visual = !["motion", "sound", "sprite"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
+    const visual = !["motion", "sound", "sprite", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
     const thumb = visual && file ? this.assetThumbHTML(file) : `<span aria-hidden="true">${esc(track?.icon ?? "◇")}</span>`;
     const studio = this.isStudio();
     const full = r.stages.length >= MAX_STAGES || this.busy, only = r.stages.length === 1;
-    const variant = !linked && variantMembers(r.stages, s.variantGroup).length < 2 ? `<button class="an-icon" data-action="variant-add" aria-label="Add a random variant" data-tooltip="Add a random variant: a copy with different art, size or timing; each play picks one" ${full ? "disabled" : ""}>🎲</button>` : "";
+    // A teleport has no variants: the token vanishes once.
+    const variant = !linked && s.kind !== "teleport" && variantMembers(r.stages, s.variantGroup).length < 2 ? `<button class="an-icon" data-action="variant-add" aria-label="Add a random variant" data-tooltip="Add a random variant: a copy with different art, size or timing; each play picks one" ${full ? "disabled" : ""}>🎲</button>` : "";
     const dup = studio ? `<button class="an-icon" data-action="studio-dup-stage" data-index="${index}" aria-label="Duplicate this stage" data-tooltip="Duplicate after it (Ctrl+D)" ${full ? "disabled" : ""}>⧉</button>` : "";
     const del = `<button class="an-icon is-danger an-stage-remove" data-action="${studio ? "studio-del-stage" : "remove-stage"}" data-index="${index}" aria-label="Remove this stage" data-tooltip="${only ? "A recipe needs at least one stage" : "Remove this stage (Del)"}" ${only || this.busy ? "disabled" : ""}><i class="fas fa-trash" aria-hidden="true"></i></button>`;
     return `<div class="an-inspector-head an-stage-card kind-${esc(s.kind)}"><div class="an-stage-thumb">${thumb}</div><div class="an-stage-id"><input class="an-stage-name" data-field="label" data-index="${index}" value="${esc(s.label ?? "")}" placeholder="${esc(KINDS[s.kind])}" aria-label="Stage name"><div class="an-stage-chips"><span class="an-st-kind kind-${esc(s.kind)}">${esc(KINDS[s.kind])}</span><span class="an-stage-chip">${esc(track?.name ?? "")} · ${index + 1} of ${r.stages.length}</span>${visual && (key || s.assets?.[0]) ? `<span class="an-stage-chip is-asset" title="${esc(key ?? s.assets[0])}">${esc(assetName(key ?? s.assets[0]))}</span>` : ""}</div></div><div class="an-stage-actions">${variant}${dup}${del}</div></div>`;
   }
   // The same few settings, in the same order, for every kind of stage.
   stageEssentialsHTML(r, s, index, key, linked, audioPreview) {
-    const visual = !["motion", "sound", "sprite"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
+    const visual = !["motion", "sound", "sprite", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
     const asset = s.kind === "sound"
       ? `<label>Sound<span class="an-asset-row"><input data-field="soundFile" data-index="${index}" placeholder="sounds/spell.ogg" value="${esc(s.soundFile)}">${this.host.soundCatalog || this.host.pickMedia ? `<button data-action="browse-sound">Browse</button>` : ""}</span></label>`
       : visual ? `<label>Art<button class="an-asset-picker" data-action="browse"><span class="an-asset-picker-text">${esc(key || s.assets[0] ? assetName(key ?? s.assets[0]) : "Choose an asset")}<span>Change ↗</span></span></button></label>${key && key !== s.assets[0] ? `<p class="an-hint">Using an installed fallback variant.</p>` : ""}` : "";
     const subject = ["sprite", "aura", "tokenfx"].includes(s.kind) && !linked ? `<label>Plays on<select data-field="subject" data-index="${index}">${options({ source: "Source token", targets: "Target tokens" }, s.subject ?? "source")}</select></label>` : "";
-    const fades = s.kind !== "motion" && !OPTIONAL_FX_KINDS.has(s.kind) && s.kind !== "sprite";
+    const fades = !["motion", "sprite", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
     const o = normalizeOptions({ ...s, kind: s.kind === "sound" ? "cast" : s.kind });
-    const lengthLabel = linked ? "Preview length" : s.kind === "projectile" || isPathMotion(s) && s.motionRange === "target" ? "Base length" : "Length";
-    const size = ["motion", "sound"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind) ? "" : sizeField(s.scale, index);
+    const lengthLabel = linked ? "Preview length" : s.kind === "teleport" ? "Gone for" : s.kind === "projectile" || isPathMotion(s) && s.motionRange === "target" ? "Base length" : "Length";
+    const size = ["motion", "sound", "teleport"].includes(s.kind) || OPTIONAL_FX_KINDS.has(s.kind) ? "" : sizeField(s.scale, index);
     return `<div class="an-stage-block an-essentials"><div class="an-stage-block-title">Essentials</div>${this.stageVariantHTML(s, index, linked) || subject ? `<div class="an-field-row">${this.stageVariantHTML(s, index, linked)}${subject}</div>` : ""}${asset}
       ${this.whenHTML(r, s, index, linked)}
-      <div class="an-field-row an-essential-row">${secondsField("duration", lengthLabel, s.duration, index, { min: 100, max: 30000, step: 100 })}${size}${fades ? secondsField("fadeIn", "Fade in", o.fadeIn, index, { off: true }) + secondsField("fadeOut", "Fade out", o.fadeOut, index, { off: true }) : ""}</div>
+      <div class="an-field-row an-essential-row">${secondsField("duration", lengthLabel, s.duration, index, { min: s.kind === "teleport" ? 0 : 100, max: 30000, step: s.kind === "teleport" ? 50 : 100 })}${size}${fades ? secondsField("fadeIn", "Fade in", o.fadeIn, index, { off: true }) + secondsField("fadeOut", "Fade out", o.fadeOut, index, { off: true }) : ""}</div>
       ${linked && ["aura", "tokenfx"].includes(s.kind) ? `<p class="an-hint">Stays on the token while the condition or effect is on it. Length only sets the preview.</p>` : ""}</div>`;
   }
   // One control for when the stage starts: at a time, with or after another stage. A custom link
@@ -1604,6 +1610,7 @@ export class Workspace {
     else if (s.kind === "sound") body = `${this.soundVolumeHTML(s, index, audioPreview)}<p class="an-hint">Plays with the recipe; Stop ends it too.</p>`;
     else if (s.kind === "sprite") body = `${this.optionFieldsHTML(s, index, linked, ["Token copies"])}<p class="an-hint">Copies token artwork into Sequencer.</p>`;
     else if (["travel", "projectile"].includes(s.kind)) body = this.flightFieldsHTML(s, index);
+    else if (s.kind === "teleport") body = `<p class="an-hint">${teleportPlan(r)?.fetch ? "Each target slides to the caster as this stage starts (its own copy, on its own hit), taking this stage's length; its square follows the spell's rules." : teleportPlan(r) ? "The token vanishes as this stage starts (the departure effect plays) and reappears at the picked spot when it ends (the arrival effect). Change who moves and the two effects in Recipe settings › Teleport." : "This recipe does not teleport anyone: turn Teleport on in Recipe settings, or remove this stage."}</p>`;
     if (s.kind === "aura" && !linked) body += `<label class="an-check an-stay"><input type="checkbox" data-field="persist" data-index="${index}" ${s.persist ? "checked" : ""}> Stay until the effect ends</label><p class="an-hint">${s.persist ? "Loops on the token until the spell's effect is removed, the spell ends or you press Stop. Length only sets the preview." : "Tick to keep a looping asset on the token for as long as the spell's effect lasts."}</p>`;
     if (["travel", "projectile", "impact"].includes(s.kind)) body += this.optionFieldsHTML(s, index, linked, ["Timing & repetition"], ["requiresHit"]);
     if (!body.trim()) return "";
@@ -1631,6 +1638,8 @@ export class Workspace {
   }
   inspectorTabHTML(id, r, s, index, linked) {
     const visual = !["motion", "sound"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
+    // A teleport has only its start and length (and a custom link, when it has one).
+    if (s.kind === "teleport") return id === "time" && s.afterStage && !s.startMode ? this.customLinkHTML(r, s, index) : "";
     if (id === "look") {
       const extra = visual ? `<div class="an-options-grid"><label>Opacity<input type="number" min="0.1" max="1" step="0.1" data-field="opacity" data-index="${index}" value="${s.opacity}"></label><label class="an-check"><input type="checkbox" data-field="below" data-index="${index}" ${s.below ? "checked" : ""}> Below tokens</label></div>${s.kind === "sprite" ? "" : `<label>Fallback assets (comma separated)<textarea rows="2" data-field="assets" data-index="${index}">${esc(s.assets.join(","))}</textarea></label>`}` : "";
       const colour = this.optionFieldsHTML(s, index, linked, ["Color & filters"]);
@@ -1653,7 +1662,7 @@ export class Workspace {
   // A custom link (anchor and signed offset), kept for recipes that use one.
   customLinkHTML(recipe, stage, index) {
     const refs = Object.fromEntries(recipe.stages.filter((o) => o.stageId !== stage.stageId).map((o) => [o.stageId, o.label || KINDS[o.kind]]));
-    return `<div class="an-options-grid"><label>Linked to<select data-field="afterStage" data-index="${index}">${options({ "": "Nothing (set time)", ...refs }, stage.afterStage ?? "")}</select></label><label>Anchor<select data-field="timingAnchor" data-index="${index}">${options({ start: "Stage starts", ...(isPathMotion(recipe.stages.find((o) => o.stageId === stage.afterStage)) ? { arrival: "Destination reached" } : {}), end: "Stage finishes" }, stage.timingAnchor ?? "end")}</select></label>${secondsField("startOffset", "Offset", stage.startOffset ?? 0, index, { min: -30000, max: 30000 })}</div>`;
+    return `<div class="an-options-grid"><label>Linked to<select data-field="afterStage" data-index="${index}">${options({ "": "Nothing (set time)", ...refs }, stage.afterStage ?? "")}</select></label><label>Anchor<select data-field="timingAnchor" data-index="${index}">${options({ start: "Stage starts", ...(isPathMotion(recipe.stages.find((o) => o.stageId === stage.afterStage)) ? { arrival: "Destination reached" } : ["travel", "projectile"].includes(recipe.stages.find((o) => o.stageId === stage.afterStage)?.kind) ? { arrival: "Reaches its target" } : {}), end: "Stage finishes" }, stage.timingAnchor ?? "end")}</select></label>${secondsField("startOffset", "Offset", stage.startOffset ?? 0, index, { min: -30000, max: 30000 })}</div>`;
   }
   builderHTML() {
     const r = {
@@ -1682,9 +1691,11 @@ export class Workspace {
     const toward = (s.motionHeading ?? "toward") === "toward";
     const field = (key, label, value, min, max, step = 1) => `<label>${label}<input type="number" min="${min}" max="${max}" step="${step}" data-field="${key}" data-index="${index}" value="${s[key] ?? value}"></label>`;
     const select = (key, label, values, value) => `<label>${label}<select data-field="${key}" data-index="${index}">${options(values, s[key] ?? value)}</select></label>`;
+    // Ground-covering motions leave afterimage ghosts behind (Auto: fast moves of a square or more).
+    const trail = showsAfterimages(s) ? select("afterimages", "Afterimages", AFTERIMAGES, "auto") : "";
     if (MOVE_MOTIONS.has(s.motion)) {
       const m = moveOptions(s), pull = s.motion === "pull";
-      return `${select("motion", "Motion", MOTIONS, "lunge")}${select("targetSelection", "Move which targets", { all: "All selected targets", first: "First selected target", second: "Second selected target", last: "Last selected target" }, "all")}<div class="an-field-row">${field("squares", "Squares", m.squares, 1, MAX_MOVE)}<label class="an-check"><input type="checkbox" data-field="requiresHit" data-index="${index}" ${s.requiresHit ? "checked" : ""}> Only on a hit</label></div>${select("moveAsk", "Who picks the square", MOVE_ASK, "none")}${m.moveAsk === "none" ? "" : `<div class="an-field-row">${field("moveCone", "Direction cone (°)", m.moveCone, 10, 180, 5)}</div>`}<p class="an-hint">When this stage starts, each target is ${pull ? "pulled toward" : "pushed away from"} whoever acted, up to ${m.squares} square${m.squares === 1 ? "" : "s"}${pull ? ", stopping beside them" : ""}. ${m.moveAsk === "none" ? "It goes straight along the line between them, and walls stop it." : `The one picking clicks a square inside a ${m.moveCone}° wedge pointing ${pull ? "toward" : "away from"} whoever acted (the picker shades it), with no wall in between; Esc, or no pick within a minute, leaves it in place.`} The token really moves. Only on a hit: an attack that misses moves no one; a use with no attack roll moves every target. A local preview only shows a ${pull ? "lunge" : "recoil"}.</p>`;
+      return `${select("motion", "Motion", MOTIONS, "lunge")}${select("targetSelection", "Move which targets", { all: "All selected targets", first: "First selected target", second: "Second selected target", last: "Last selected target" }, "all")}<div class="an-field-row">${field("squares", "Squares", m.squares, 1, MAX_MOVE)}<label class="an-check"><input type="checkbox" data-field="requiresHit" data-index="${index}" ${s.requiresHit ? "checked" : ""}> Only on a hit</label></div>${select("moveAsk", "Who picks the square", MOVE_ASK, "none")}${m.moveAsk === "none" ? "" : `<div class="an-field-row">${field("moveCone", "Direction cone (°)", m.moveCone, 10, 180, 5)}</div>`}${trail}<p class="an-hint">When this stage starts, each target is ${pull ? "pulled toward" : "pushed away from"} whoever acted, up to ${m.squares} square${m.squares === 1 ? "" : "s"}${pull ? ", stopping beside them" : ""}. ${m.moveAsk === "none" ? "It goes straight along the line between them, and walls stop it." : `The one picking clicks a square inside a ${m.moveCone}° wedge pointing ${pull ? "toward" : "away from"} whoever acted (the picker shades it), with no wall in between; Esc, or no pick within a minute, leaves it in place.`} The token really moves. Only on a hit: an attack that misses moves no one; a use with no attack roll moves every target. A local preview only shows a ${pull ? "lunge" : "recoil"}.</p>`;
     }
     return `${select("motion", "Motion", MOTIONS, "lunge")}${select("subject", "Animate", { source: "Source token", targets: "Target tokens" }, "source")}
       ${path && s.motion !== "dodge" ? select("motionRange", "Path", { target: toward ? s.subject === "targets" ? "Approach source" : "Approach selected target" : "Use token separation for distance", distance: "Fixed-distance gesture" }, "target") : ""}
@@ -1694,6 +1705,7 @@ export class Workspace {
       ${s.subject === "targets" ? select("targetSelection", "Animate which targets", { all: "All selected targets", first: "First selected target", second: "Second selected target", last: "Last selected target" }, "all") : ""}
       ${target && toward ? select("motionEndpoint", "Finish beside", { near: "Near side of target", past: "Far side — pass through" }, "near") : ""}
       ${s.motion === "fragments" ? "" : `<div class="an-field-row">${field("distance", target ? "Maximum path (squares)" : "Distance (grid squares)", path ? 8 : .35, .05, path ? 20 : 2, .05)}${field("intensity", "Flourish intensity", 1, .1, 3, .1)}</div>`}
+      ${trail}
       ${path ? `<details class="an-advanced an-options" data-options-group="motion-path"><summary>Path &amp; pacing</summary><div class="an-options-grid">${field("motionArrival", "Reach destination (% of duration)", 45, 15, 70)}${field("motionHold", "Hold at destination (%)", 25, 5, 90 - (s.motionArrival ?? 45))}${target ? field("perSquare", "Extra duration / square (ms)", 0, 0, 2000, 50) + field("stopGap", "Gap beside target (squares)", .1, 0, 2, .05) : ""}${s.motion === "leap" ? field("jumpHeight", "Arc height (squares)", .8, 0, 3, .05) + field("arrivalLift", "Height at Strike (squares)", 0, 0, 2, .05) : ""}</div>${["roll", "dodge"].includes(s.motion) ? select("motionSide", s.motion === "dodge" ? "Dodge direction" : "Roll direction", { 1: "Right / clockwise", "-1": "Left / counterclockwise" }, 1) : ""}<p class="an-hint">Approach → hold → return. Link a Strike or cue to “Destination reached” to keep contact synchronized. Total includes distance pacing; remaining time restores the pose.</p></details>` : ""}
       <p class="an-hint">${finisher ? "Moves token artwork, then restores its pose; a held travel lands, and the finisher moves the token there." : "Moves token artwork, then restores its pose. Game position and rotation stay unchanged."}</p>
       ${s.motion === "path" ? keyframeInspectorHTML(s, index, this.selectedKeyframe(s)) : ""}${s.motion === "fragments" ? fragmentsControlsHTML(s, index, this.fragmentsPreviewAt ?? 0.6, { finisher }) : ""}`;
@@ -1763,7 +1775,7 @@ export class Workspace {
           !(["areaLayout", "maskArea", "areaReach"].includes(key) && s.kind !== "template") &&
           !(
             key === "playbackRate" &&
-            ["motion", "sound", "sprite"].includes(s.kind)
+            ["motion", "sound", "sprite", "teleport"].includes(s.kind)
           ) &&
           !(
             s.kind === "sound" &&

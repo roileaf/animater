@@ -13,7 +13,7 @@ export const meleeClip = (key) => /(^|\.)(melee(_attack)?|unarmed_strike)(\.|$)/
 const swing = (s) => s.kind === "impact" && s.subject !== "targets" && s.assets?.some(meleeClip);
 const isDodge = (s) => s.kind === "motion" && s.subject === "targets" && s.motion === "dodge";
 // The same side on every client: it follows the message, not a random draw.
-const sideOf = (seed) => [...String(seed ?? "")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 2 ? -1 : 1;
+export const sideOf = (seed) => [...String(seed ?? "")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 2 ? -1 : 1;
 const DODGE = { duration: 700, lead: 230 };
 // How far into each JB2A melee clip the blow lands (its reach first gets 80% of the way from
 // rest to its furthest point), measured from the clips; other melee clips land about halfway.

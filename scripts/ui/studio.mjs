@@ -5,13 +5,14 @@ import { uuid } from "../core/uuid.mjs";
 // not overlap share a lane. Saved recipe data is unchanged: tracks, lanes,
 // playhead and zoom are presentation only.
 import { finisherChipText } from "../engines/finishers/finisher-model.mjs";
-import { KINDS, EVENTS, STRIKE_SCOPES, MAX_STAGES, validateRecipe, clone } from "../core/model.mjs";
+import { KINDS, EVENTS, STRIKE_SCOPES, MAX_STAGES, TELEPORT_GONE_MS, validateRecipe, clone } from "../core/model.mjs";
 import { timelineLayout, packLanes, linkStartModes } from "../engines/playback/choreography.mjs";
 import { sampleRecipe, timedStages, previewVariants, variantMembers } from "../engines/playback/composition.mjs";
 import { canvasToSquares, keyframesOf, scrubPoint, keyframeDeleteApplies, pathPoints } from "./keyframe-ui.mjs";
 import { moveKeyframePoint, deleteKeyframe, normalizeKeyframes } from "../engines/motion/keyframe-path.mjs";
 import { previewRecipeSounds } from "../engines/sound/spell-sounds.mjs";
 import { RecipePreview } from "../engines/preview/recipe-preview.mjs";
+import { teleportPlan, teleportLink } from "../engines/motion/teleport.mjs";
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 export const STUDIO_TRACKS = Object.freeze([
@@ -21,6 +22,8 @@ export const STUDIO_TRACKS = Object.freeze([
   { id: "motion", icon: "⇄", name: "Token motion", kind: "motion" },
   { id: "sound", icon: "♪", name: "Sound", kind: "sound" },
   { id: "fx", icon: "✧", name: "Filters & scene", kind: "tokenfx" },
+  // Only on recipes that teleport (or already hold a teleport stage).
+  { id: "teleport", icon: "⤳", name: "Teleport", kind: "teleport" },
 ]);
 const LINKED_TRACKS = new Set(["caster", "fx"]);
 // The ? panel: what you can do on the timeline, and the keys for it.
@@ -52,6 +55,7 @@ export function trackOf(stage) {
   if (k === "motion" || k === "sprite") return "motion";
   if (k === "sound") return "sound";
   if (k === "tokenfx" || k === "scenefx" || k === "overlay") return "fx";
+  if (k === "teleport") return "teleport";
   return "target";
 }
 // Tracks with their lanes; empty tracks still show so stages can be added there.
@@ -74,7 +78,7 @@ export function studioTracks(recipe, selectedIndex = -1, { more = false } = {}) 
   let tracks = order.map((t) => {
     const rows = visible.filter((row) => trackOf(recipe.stages[row.index]) === t.id);
     return { ...t, lanes: rows.length ? packLanes(rows) : [[]] };
-  }).filter((t) => !linked || LINKED_TRACKS.has(t.id) || t.lanes[0].length);
+  }).filter((t) => (!linked || LINKED_TRACKS.has(t.id) || t.lanes[0].length) && (t.id !== "teleport" || t.lanes[0].length || teleportPlan(recipe)));
   let hiddenCount = 0;
   if (recipe.finisher) {
     const tucked = (t) => FINISHER_HIDDEN.has(t.id) && !t.lanes[0].length;
@@ -117,7 +121,8 @@ export function studioHTML(w, r) {
   const monitor = `<section class="an-st-monitor" aria-label="Preview">${w.monitorHTML(r)}${transport}
       </section>`;
   const tracks = studio.tracks.map((t) => {
-    const canAdd = !w.busy && r.stages.length < MAX_STAGES && (!linked || LINKED_TRACKS.has(t.id));
+    // One teleport stage per recipe: the token vanishes once.
+    const canAdd = !w.busy && r.stages.length < MAX_STAGES && (!linked || LINKED_TRACKS.has(t.id)) && (t.id !== "teleport" || !r.stages.some((s) => s.kind === "teleport"));
     return `<div class="an-st-track${silenced(w).has(t.id) ? " is-muted" : ""}" data-st-track="${t.id}"><div class="an-st-head"><span class="an-st-head-icon">${t.icon}</span><b>${esc(t.name)}</b><button class="an-st-ms${w.studioMuted?.has(t.id) ? " is-on" : ""}" data-action="studio-mute" data-st-track="${t.id}" aria-pressed="${!!w.studioMuted?.has(t.id)}" data-tooltip="Mute: hide this track in the monitor">M</button><button class="an-st-ms is-solo${w.studioSolo?.has(t.id) ? " is-on" : ""}" data-action="studio-solo" data-st-track="${t.id}" aria-pressed="${!!w.studioSolo?.has(t.id)}" data-tooltip="Solo: show only soloed tracks in the monitor">S</button><button class="an-st-add" data-action="studio-add" data-st-track="${t.id}" data-tooltip="Add a ${esc(KINDS[t.kind])} stage at the playhead" aria-label="Add ${esc(t.name)} stage at playhead" ${canAdd ? "" : "disabled"}>+</button></div><div class="an-st-lanes">${t.lanes.map((lane) => `<div class="an-tl-lane"><div class="an-tl-track">${lane.map((row) => w.timelineBarHTML(r, row, index, studio.total)).join("")}</div></div>`).join("")}</div></div>`;
   }).join("");
   const moreRow = studio.hiddenCount ? `<div class="an-st-more-row"><button class="an-st-more" data-action="studio-more" aria-expanded="${!!w.studioMoreTracks}" data-tooltip="${w.studioMoreTracks ? "Hide the empty Source and Flight tracks" : "Show the Source and Flight tracks"}">${w.studioMoreTracks ? "− Fewer tracks" : "+ More tracks"}</button></div>` : "";
@@ -465,6 +470,7 @@ function pasteStage(w, i) {
   const snapshot = clone(r.stages), source = r.stages[i];
   const copy = { ...clone(w.stageClipboard), stageId: uuid(), afterStage: "" };
   delete copy.startMode; delete copy.startRef; delete copy.variantGroup;
+  if (copy.kind === "teleport" && r.stages.some((s) => s.kind === "teleport")) { w.message = "This recipe already has its Teleport stage: the token vanishes once."; w.render(); return; }
   if (r.lifecycle === "document") { if (!["aura", "tokenfx"].includes(copy.kind)) { w.message = "Lasting animations take only looping layers and token filters."; w.render(); return; } copy.persist = true; }
   else if (source) Object.assign(copy, { startMode: "after", startRef: source.stageId, startOffset: 0 });
   r.stages.splice(i + 1, 0, copy);
@@ -485,6 +491,7 @@ function duplicateStage(w, i) {
   const r = w.edit();
   if (!r || r.stages.length >= MAX_STAGES) return;
   const snapshot = clone(r.stages), source = r.stages[i];
+  if (source?.kind === "teleport") { w.message = "A recipe has one Teleport stage: the token vanishes once."; w.render(); return; }
   const copy = { ...clone(source), stageId: uuid(), label: source.label ? `${source.label} copy` : "" };
   if (r.lifecycle === "document") copy.afterStage = "";
   else Object.assign(copy, { startMode: "after", startRef: source.stageId, startOffset: 0 });
@@ -526,16 +533,21 @@ function addStage(w, trackId) {
   if (track.kind === "motion") stage = { ...base, kind: "motion", motion: "lunge", subject: "source", assets: [], duration: 800, distance: 0.35, intensity: 1, scale: 1, opacity: 1, below: false, persist: false };
   else if (track.kind === "sound") stage = { ...base, kind: "sound", assets: [], soundFile: "", volume: 0.8, duration: Math.max(500, last.duration ?? 1000) };
   else if (track.kind === "tokenfx") stage = { ...base, kind: "tokenfx", assets: [], subject: "source", fxLibrary: "tokenshade", fxPreset: "", persist: linked };
+  else if (track.kind === "teleport") {
+    if (r.stages.some((s) => s.kind === "teleport")) return;
+    // At the start, it lands where the recipe would teleport anyway: on the flight's arrival or the caster's gesture.
+    stage = { kind: "teleport", stageId: uuid(), label: "", assets: [], duration: TELEPORT_GONE_MS, delay: at, afterStage: "", ...(at === 0 ? teleportLink(r.stages, teleportPlan(r)?.who) : {}) };
+  }
   else if (linked) stage = { ...base, kind: "aura", subject: "source", persist: true, assets: [...last.assets] };
   else stage = { ...base, kind: track.kind, subject: track.id === "target" ? "targets" : "source", assets: track.kind === "cast" ? ["jb2a.cast_generic"] : track.kind === "impact" ? ["jb2a.impact"] : [], duration: track.kind === "projectile" ? 800 : 1000 };
   // Choreography by default: with the playhead left at the start, a flight follows the cast and
   // a target hit follows the flight (or the cast), so the pieces play in order, not all at once.
-  const follows = !linked && at === 0 ? chainAnchor(r.stages, trackId) : null;
+  const follows = !linked && at === 0 && track.kind !== "teleport" ? chainAnchor(r.stages, trackId) : null;
   if (follows) Object.assign(stage, { startMode: "after", startRef: follows.stageId, startOffset: 0 });
   r.stages.push(stage);
   w.stageIndex = r.stages.length - 1;
   if (follows) { commit(w, r, snapshot, `${KINDS[stage.kind]} stage added after ${w.stageLabel(follows)}.${stage.assets.length || ["motion", "sound", "tokenfx"].includes(stage.kind) ? "" : " Choose its asset in the inspector."}`); return; }
-  commit(w, r, snapshot, `${KINDS[stage.kind]} stage added at ${seconds(at)}.${stage.assets.length || ["motion", "sound", "tokenfx"].includes(stage.kind) ? "" : " Choose its asset in the inspector."}`);
+  commit(w, r, snapshot, `${KINDS[stage.kind]} stage added${stage.afterStage ? "" : ` at ${seconds(stage.delay)}`}.${stage.assets.length || ["motion", "sound", "tokenfx", "teleport"].includes(stage.kind) ? "" : " Choose its asset in the inspector."}`);
 }
 export async function studioAction(w, action, b) {
   switch (action) {

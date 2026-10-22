@@ -12,6 +12,7 @@ import {selectWeaponMedia} from './weapon-asset-selection.mjs';
 import {ABILITY_SOUND_PROFILES} from '../data/ability-sounds.mjs';
 import {SOUND_PROFILES} from '../data/spell-sounds.mjs';
 import {MEDIA_DURATIONS} from '../data/media-durations.mjs';
+import {rangeLanding} from '../scripts/engines/playback/range-landing.mjs';
 const hash=v=>createHash('sha256').update(String(v)).digest('hex');
 const seed=v=>parseInt(hash(v).slice(0,8),16);
 // --books builds the official-book catalog from the developer's local export (see
@@ -100,6 +101,14 @@ function capOneShot(s){
  s.playbackRate=Math.round(Math.min(1.5,Math.max(1,native/cap))*100)/100;
  if(native/s.playbackRate>cap+250){s.clipEnd=Math.round(cap*s.playbackRate);s.duration=cap;s.fadeOut=Math.max(s.fadeOut??0,500);}
 }
+// A range clip's landing (data/media-landings.mjs) at the preview's 3 squares,
+// the latest of its edition keys; null unless every variant of each is measured.
+const RANGE_REACHES=[0,200,500,900,1500];
+function flightContact(keys){
+ const all=keys.flatMap(k=>RANGE_REACHES.map(r=>rangeLanding(k,r,100)));
+ if(!all.length||!all.every(l=>l.range&&Number.isFinite(l.landing)))return null;
+ return Math.max(...keys.map(k=>rangeLanding(k,300,100).landing));
+}
 function finiteRecipe(entry,row,raw,mode){
  const d=nativeDirection(row,raw,mode),id=`${raw._id}${mode?'-'+mode:''}`,m=mode?{}:media(d,row,entry.id+id),a=d.activity;
  let elementalSound;
@@ -166,7 +175,12 @@ function finiteRecipe(entry,row,raw,mode){
  }else if(['missile','ray','areaMissile'].includes(d.delivery)){
   const volley=d.count?{repeats:d.count,repeatScope:'total',repeatSimultaneous:entry.slug==='magic-missile',repeatInterval:120}:{};
   const travel=add('travel','bolt',physical?'Weapon release':d.delivery==='ray'?'Ray to recipient':'Flight to recipient',{delay:physical?250:400,scale:d.delivery==='ray'?.6:.7,...(d.delivery==='areaMissile'?{travelDestination:'area'}:{}),...volley});
-  add(d.area?'template':'impact',d.area?'area':'hit',physical?'Weapon contact':'Payload contact',{afterStage:travel.stageId,timingAnchor:'end',scale:d.area?1:1.55,...volley});
+  // A thrown or launched weapon lands at its measured time (flightContact), not
+  // as its stage ends: the flask stage lasts its 90 ft variant, the 05 ft vial
+  // is gone 2.4 s earlier. Playback moves the contact to the variant played.
+  const landing=physical&&!d.area&&d.delivery==='missile'&&flightContact(travel.assets);
+  if(landing)travel.contact=landing;
+  add(d.area?'template':'impact',d.area?'area':'hit',physical?'Weapon contact':'Payload contact',{afterStage:travel.stageId,timingAnchor:landing?'arrival':'end',scale:d.area?1:1.55,...volley});
   if(physical&&launcher)stages.push({stageId:'motion-'+stages.length,kind:'motion',assets:[],label:'Release and settle',motion:'recoil',subject:'source',delay:250,duration:1100,distance:.06,intensity:.5});
   else if(physical)motion('throw','source',0,1400,.12),stages.at(-1).label='Wind-up and throw';else gesture('source',0);
  }else if(d.area){

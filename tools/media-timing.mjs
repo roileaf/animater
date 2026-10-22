@@ -1,9 +1,10 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { existsSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve, basename } from "node:path";
-import { fileURLToPath } from "node:url";
-import { variantFiles } from "./asset-databases.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { assetDatabases, variantFiles } from "./asset-databases.mjs";
 import { assetGeometry } from "./spell-asset-selection.mjs";
 import { persistentProbe } from "./probe-cache.mjs";
 const exec = promisify(execFile),
@@ -68,15 +69,40 @@ async function representativeTiming(row, databases) {
     const { path, metadata, duration } = measured;
     const baked = ["beam", "line", "projectile"].includes(assetGeometry(row));
     if (!baked) return { duration, baked };
-    // Transparent pixels retain arbitrary RGB values. Decode alpha with the
-    // correct libvpx decoder before estimating visible destination contact.
-    const decoder =
-      metadata.streams[0].codec_name === "vp8" ? "libvpx" : "libvpx-vp9";
-    const endpoint = Math.round(
-      100 * (1 - (row.template?.[2] ?? 0) / (row.width || 1000)),
-    );
-    // Persisted per file, decoder and endpoint: the same frames give the same contact.
-    const contact = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint }, async () => {
+    const contact = await fileContact(measured, row.template, row.width);
+    // Magic Missile has a large leading glow. Frame inspection places its head
+    // at destination around 1s; a glow threshold alone registers too early.
+    const calibrated =
+      /^MagicMissile_01_Regular_.*_15ft_01_1000x400\.webm$/i.test(filename)
+        ? 1000
+        : null;
+    return {
+      duration,
+      baked,
+      contact: calibrated ?? contact,
+      ...(calibrated
+        ? { contactMethod: "frame-reviewed" }
+        : { contactMethod: "alpha-weighted-estimate" }),
+    };
+  })();
+  cache.set(identity, run);
+  return run;
+}
+// When the shot in one measured file reaches its far end (media ms): the
+// endpoint column sits template[2] px before the file's right edge. When no
+// frame crosses the threshold: 60% of the clip (guess), else null.
+// reach: time it by the object's leading edge (reachedContact) instead of the
+// glow at the endpoint column.
+async function fileContact({ path, metadata, duration }, template, width, { guess = true, reach = false } = {}) {
+  // Transparent pixels retain arbitrary RGB values. Decode alpha with the
+  // correct libvpx decoder before estimating visible destination contact.
+  const decoder =
+    metadata.streams[0].codec_name === "vp8" ? "libvpx" : "libvpx-vp9";
+  const endpoint = Math.round(
+    100 * (1 - (template?.[2] ?? 0) / (width || 1000)),
+  );
+  // Persisted per file, decoder and endpoint: the same frames give the same contact.
+  const crossed = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint, ...(reach ? { method: "reach" } : {}) }, async () => {
     const { stdout: frames } = await exec(
       "ffmpeg",
       [
@@ -100,25 +126,33 @@ async function representativeTiming(row, databases) {
       ],
       { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
     );
-    return visibleContact(frames, duration, endpoint);
-    });
-    // Magic Missile has a large leading glow. Frame inspection places its head
-    // at destination around 1s; a glow threshold alone registers too early.
-    const calibrated =
-      /^MagicMissile_01_Regular_.*_15ft_01_1000x400\.webm$/i.test(filename)
-        ? 1000
-        : null;
-    return {
-      duration,
-      baked,
-      contact: calibrated ?? contact,
-      ...(calibrated
-        ? { contactMethod: "frame-reviewed" }
-        : { contactMethod: "alpha-weighted-estimate" }),
-    };
-  })();
-  cache.set(identity, run);
-  return run;
+    return reach ? reachedContact(frames, endpoint) : crossedContact(frames, endpoint);
+  });
+  return crossed ?? (guess ? Math.round(duration * 0.6) : null);
+}
+// When the shot lands in each range variant (05/15/30/60/90 ft) of a ranged
+// clip, in media ms rounded up to 10 ms: { "30ft": 650, ... }. A variant with
+// random alternatives takes the latest of them, so a strike timed to it is
+// never early. A variant is left out when any of its files is missing or no
+// frame of one crosses the endpoint (a guess is not a measurement). Null when
+// the row has no measured variant. A thrown or launched object (jb2a.throwable)
+// is timed by its leading edge (reachedContact): it is small and arcs, so the
+// glow it leaves at the endpoint column is too faint to cross the threshold in
+// most variants.
+export async function variantLandings(row, databases) {
+  if (!row?.distanceFiles) return null;
+  const reach = row.key.startsWith("jb2a.throwable.");
+  const landings = {};
+  for (const [ft, files] of Object.entries(row.distanceFiles)) {
+    const times = [];
+    for (const file of [files].flat(Infinity).filter((f) => typeof f === "string" && f.endsWith(".webm"))) {
+      const measured = await mediaMetadata(file, databases);
+      const width = Number(basename(file).match(/_(\d+)x\d+\.webm$/i)?.[1]);
+      times.push(measured ? await fileContact(measured, row.template, width, { guess: false, reach }) : null);
+    }
+    if (times.length && times.every(Number.isFinite)) landings[ft] = Math.ceil(Math.max(...times) / 10) * 10;
+  }
+  return Object.keys(landings).length ? landings : null;
 }
 export async function mediaTiming(row, databases) {
   if (!row) return null;
@@ -159,12 +193,33 @@ export function contactFrames(frames, endpoint) {
   }
   return weights;
 }
-export function visibleContact(frames, duration, endpoint) {
+// The first frame (ms) whose endpoint column crosses half the peak weight, or null.
+export function crossedContact(frames, endpoint) {
   const weights = contactFrames(frames, endpoint),
     threshold = Math.max(3, Math.max(...weights) * 0.5);
   const contact = weights.findIndex((weight) => weight >= threshold);
-  if (contact >= 0) return Math.max(50, contact * 50);
-  return Math.round(duration * 0.6);
+  return contact >= 0 ? Math.max(50, contact * 50) : null;
+}
+// The first frame (ms) whose leading edge (the rightmost column with a solid
+// pixel, any row: the object arcs) gets within 3 columns of the endpoint, or
+// null. The object is wound back first (it moves left), then flies right and
+// vanishes as it lands. A frame lit over more than a quarter of its pixels is
+// a flash, not the object, and is skipped (ThrowFlask03 White 05ft).
+export function reachedContact(frames, endpoint) {
+  for (let frame = 0; frame < frames.length / 16000; frame++) {
+    let lit = 0, edge = -1;
+    for (let y = 0; y < 40; y++)
+      for (let x = 0; x < 100; x++)
+        if (frames[(frame * 4000 + y * 100 + x) * 4 + 3] > 60) {
+          lit++;
+          if (x > edge) edge = x;
+        }
+    if (lit <= 1000 && edge >= endpoint - 3) return Math.max(50, frame * 50);
+  }
+  return null;
+}
+export function visibleContact(frames, duration, endpoint) {
+  return crossedContact(frames, endpoint) ?? Math.round(duration * 0.6);
 }
 export async function designMediaTiming(assets, databases) {
   const result = {};
@@ -185,4 +240,47 @@ export async function designMediaTiming(assets, databases) {
     };
   }
   return result;
+}
+// Writes data/media-landings.mjs: when the shot lands in each range variant of
+// every stretched (projectile or beam) clip, keyed by the variant's Sequencer
+// database path, and the range variants left unmeasured.
+// Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
+const STRETCHED = ["projectile", "beam"];
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href && process.argv.includes("--write-landings")) {
+  const databases = await assetDatabases(), landings = {}, gaps = new Set();
+  for (const rows of Object.values(databases))
+    for (const row of rows) {
+      if (!row.distanceFiles) continue;
+      // An edition whose files are not on this machine says nothing either way.
+      const present = await Promise.all(variantFiles(row).map((file) => mediaMetadata(file, databases)));
+      if (!present.some(Boolean)) continue;
+      const measured = STRETCHED.includes(assetGeometry(row)) ? (await variantLandings(row, databases)) ?? {} : {};
+      for (const [ft, ms] of Object.entries(measured)) {
+        const key = `${row.key}.${ft}`;
+        landings[key] = Math.max(landings[key] ?? 0, ms);
+      }
+      for (const ft of Object.keys(row.distanceFiles))
+        if (!(ft in measured)) gaps.add(`${row.key}.${ft}`);
+    }
+  // A variant measured in one edition but not the other is not known for both.
+  for (const key of gaps) delete landings[key];
+  const keys = Object.keys(landings).sort();
+  const { version } = JSON.parse(await readFile(new URL("../../jb2a_patreon/module.json", import.meta.url), "utf8"));
+  await writeFile(new URL("../data/media-landings.mjs", import.meta.url),
+    `// When the shot in each range variant of a JB2A ranged clip (projectile or beam)
+// reaches its far end (media ms from the clip's start, rounded up to 10 ms; the
+// latest of a variant's random alternatives). Keyed by the variant's Sequencer
+// database path. Measured from JB2A Patreon ${version} (Free edition files when present).
+// A thrown or launched object (jb2a.throwable) is timed by its leading edge.
+// RANGE_UNMEASURED: range variants not measured (a file missing, no frame
+// crossing the endpoint, or not a projectile or beam clip).
+// Rebuild: rtk proxy node tools/media-timing.mjs --write-landings
+export const MEDIA_LANDINGS = {
+${keys.map((k) => `  ${JSON.stringify(k)}: ${landings[k]},`).join("\n")}
+};
+export const RANGE_UNMEASURED = [
+${[...gaps].sort().map((k) => `  ${JSON.stringify(k)},`).join("\n")}
+];
+`);
+  console.log(`${keys.length} variant landings, ${gaps.size} range variants unmeasured`);
 }

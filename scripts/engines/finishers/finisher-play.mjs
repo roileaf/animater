@@ -37,7 +37,7 @@ export function composeFinisher(recipe, { offset = null, frame = null, inPlace, 
   // Knockback with no travel of its own (a slice, a cleave): a short held rush shoves the mover onto
   // the landing square first, and everything else plays after it, the mover's effects on that square.
   const shove = offset && !frame && !travel && !recipe.stages.some((s) => s.kind === "motion" && TRAVEL.has(s.motion) && s.motionEnd === "hold" && mine(s))
-    ? shoveStage(recipe.stages, offset) : null;
+    ? shoveStage(recipe.stages, offset, recipe.finisher?.afterimages, recipe.finisher?.trailTint) : null;
   const stages = recipe.stages.flatMap((original) => {
     const s = cut && original === travel ? cut : original;
     if (String(s.stageId ?? "").startsWith("wall")) {
@@ -99,13 +99,14 @@ export function composeFinisher(recipe, { offset = null, frame = null, inPlace, 
 const PINNABLE = new Set(["impact", "aura"]);
 // A quick held rush onto the landing square: about a quarter second, a little longer the farther it
 // goes. It arrives at 70% and holds upright there until the document is written at its end.
-function shoveStage(stages, offset) {
+// A push or pull's Afterimages choice (always / never) and its play's ghost tint ride on it.
+function shoveStage(stages, offset, afterimages, trailTint) {
   const ids = new Set(stages.map((s) => s.stageId));
   let stageId = "shove";
   while (ids.has(stageId)) stageId += "-auto";
   const squares = Math.min(4, Math.hypot(offset.x, offset.y));
   return { stageId, label: "Knockback", kind: "motion", motion: "rush", subject: "targets", motionEnd: "hold", motionOffset: { x: offset.x, y: offset.y },
-    motionArrival: 70, delay: 0, duration: Math.round(250 + 25 * squares), assets: [] };
+    motionArrival: 70, delay: 0, duration: Math.round(250 + 25 * squares), assets: [], ...(afterimages ? { afterimages } : {}), ...(trailTint ? { trailTint } : {}) };
 }
 
 // Moves the stages that `eligible` picks and that start at or after the mover's travel lands (its

@@ -63,7 +63,7 @@ test("recipe clock can start part-way through", async () => {
 
 test("solo overrides mute; muting alone hides only muted tracks", () => {
   assert.deepEqual([...silencedTracks(new Set(["sound"]))], ["sound"]);
-  assert.deepEqual([...silencedTracks(new Set(["sound"]), new Set(["target", "sound"]))].sort(), ["caster", "flight", "fx", "motion"]);
+  assert.deepEqual([...silencedTracks(new Set(["sound"]), new Set(["target", "sound"]))].sort(), ["caster", "flight", "fx", "motion", "teleport"]);
   assert.equal(silencedTracks().size, 0);
 });
 

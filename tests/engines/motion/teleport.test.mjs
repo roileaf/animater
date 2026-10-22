@@ -1,14 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, withinReach } from "../../../scripts/engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, withinReach, streakToken, previewSpot } from "../../../scripts/engines/motion/teleport.mjs";
+import { HEX } from "../../../scripts/engines/playback/color-parity.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 
 test("known teleport spells teleport by default; a recipe can turn it off or change it", () => {
-  assert.deepEqual(teleportPlan({ match: "Misty Step,misty-step" }), { who: "source", range: 30, adjacent: false });
-  assert.deepEqual(teleportPlan({ match: "Friendfetch" }), { who: "target", range: 0, adjacent: true });
+  assert.deepEqual(teleportPlan({ match: "Misty Step,misty-step" }), { who: "source", range: 30, adjacent: false, fetch: false });
+  assert.deepEqual(teleportPlan({ match: "Friendfetch" }), { who: "target", range: 0, adjacent: false, fetch: true });
   assert.equal(teleportPlan({ match: "Fireball,fireball" }), null);
   assert.equal(teleportPlan({ match: "Translocate", teleport: "none" }), null, "off wins");
-  assert.deepEqual(teleportPlan({ match: "Fireball", teleport: "source", teleportRange: 60 }), { who: "source", range: 60, adjacent: false });
+  assert.deepEqual(teleportPlan({ match: "Fireball", teleport: "source", teleportRange: 60 }), { who: "source", range: 60, adjacent: false, fetch: false });
 });
 
 test("ranges come from the spell: PF2e text, D&D value and units", () => {
@@ -70,4 +71,81 @@ test('actual teleport playback uses chosen effects around token move, without de
     wait: async () => {}, effect: () => assert.fail('disabled puffs should never play'), move: async () => calls.push('moved'),
   });
   assert.deepEqual(calls, ['moved']);
+});
+
+test('teleport tags its arrival with the trail', async () => {
+  const effects = [], mover = { id: 'tok', document: { id: 'tok' }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  const host = (out) => ({ wait: async () => {}, move: async () => {}, effect: (asset, point, size, tint, data = null) => out.push([asset, data]) });
+  await playTeleport({ mover, x: 400, y: 0, visuals: { out: 'custom.out', in: 'custom.in', scale: 1, tint: '#aa33ff' }, element: 'fire' }, host(effects));
+  assert.deepEqual(effects, [
+    ['custom.out', { animaterVanish: { tokenId: 'tok', ms: 700 } }],
+    ['custom.in', { animaterTrail: { from: { x: 50, y: 50 }, to: { x: 450, y: 50 }, tint: '#aa33ff', tokenId: 'tok' } }],
+  ], 'only the arrival carries it, tinted like that effect');
+  const tintOf = async (visuals, element) => { const out = []; await playTeleport({ mover, x: 0, y: 0, visuals: { out: null, scale: 1, tint: '', ...visuals }, element }, host(out)); return out[0][1].animaterTrail.tint; };
+  assert.equal(await tintOf({ in: 'jb2a.misty_step.02.blue' }, 'fire'), HEX.blue, 'a misty step streaks blue');
+  assert.equal(await tintOf({ in: 'modules/art/arrival.webm' }, 'fire'), '#ff9a4d', 'else the spell element');
+  assert.equal(await tintOf({ in: 'modules/art/arrival.webm' }), '', 'else the soft white');
+});
+
+test('hidden or off-scene mover draws no streak', () => {
+  const token = (doc = {}) => ({ mesh: {}, visible: true, document: { hidden: false, ...doc } });
+  const scene = (tok) => ({ id: 's1', tokens: new Map(tok ? [['tok', { object: tok }]] : []) });
+  const trail = { from: { x: 0, y: 0 }, to: { x: 400, y: 0 }, tint: '', tokenId: 'tok' };
+  const shown = token();
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene(shown) }), shown);
+  assert.equal(streakToken(trail, { sceneId: 's2', scene: scene(shown) }), null, 'played on another scene');
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene() }), null, 'missing token');
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene(token({ hidden: true })) }), null, 'hidden from players');
+  const gmSees = token({ hidden: true });
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene(gmSees), isGM: true }), gmSees, 'the GM sees hidden tokens');
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: scene({ ...token(), visible: false }) }), null, 'out of this screen\'s sight');
+  assert.equal(streakToken(null, { sceneId: 's1', scene: scene(shown) }), null);
+  assert.equal(streakToken(trail, { sceneId: 's1', scene: null }), null);
+});
+
+test('a preview jumps to a spot three squares off, toward the target, inside the scene', () => {
+  const mover = { document: { x: 500, y: 500 }, w: 100, h: 100 };
+  const scene = { x: 0, y: 0, width: 2000, height: 2000 };
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene }), { x: 800, y: 500 }, 'no target: to the right');
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene, toward: { x: 550, y: 1550 } }), { x: 500, y: 800 }, 'toward a target below');
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene, toward: { x: 1550, y: 1550 } }), { x: 700, y: 700 }, 'diagonal snaps to squares');
+  assert.deepEqual(previewSpot({ ...mover, document: { x: 1800, y: 500 } }, { gridSize: 100, bounds: scene }), { x: 1500, y: 500 }, 'flips back from the edge');
+  assert.deepEqual(previewSpot(mover, { gridSize: 100, bounds: scene, toward: { x: 550, y: 550 } }), { x: 800, y: 500 }, 'a target on its own square counts as none');
+});
+
+test('a preview keeps the token hidden while its copy holds at the spot', async () => {
+  const effects = [], moves = [], mover = { id: 'tok', document: { id: 'tok', x: 0, y: 0 }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  await playTeleport({ mover, x: 300, y: 0, visuals: { out: 'custom.out', in: 'custom.in', scale: 1, tint: '' } }, {
+    wait: async () => {}, holdMs: 1200, vanishGrace: 0,
+    move: async (token, x, y) => moves.push([x, y]),
+    effect: (asset, point, size, tint, data = null) => effects.push([asset, data]),
+  });
+  assert.deepEqual(effects[0][1].animaterVanish, { tokenId: 'tok', ms: 1900, from: { x: 0, y: 0 }, grace: 0 });
+  assert.deepEqual(moves, [[300, 0]]);
+  assert.deepEqual(effects[1][0], 'custom.in');
+});
+
+test('teleport tags out and in with a warp; style none tags nothing', async () => {
+  const mover = { id: 'tok', document: { id: 'tok' }, w: 100, h: 100, center: { x: 50, y: 50 } };
+  const run = async (visuals, extra = {}) => {
+    const effects = [];
+    await playTeleport({ mover, x: 400, y: 0, visuals: { scale: 1, tint: '', ...visuals } }, {
+      wait: async () => {}, move: async () => {}, gridSize: () => 100, mapDistortion: () => true, ...extra,
+      effect: (asset, point, size, tint, data = null) => effects.push([asset, data]),
+    });
+    return effects;
+  };
+  const [out, arrival] = await run({ out: 'custom.out', in: 'custom.in' });
+  assert.deepEqual(out[1], { animaterVanish: { tokenId: 'tok', ms: 700 }, animaterWarp: { kind: 'warp', at: { x: 50, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false } },
+    'the departure warps at the token, its size plus a square');
+  assert.deepEqual(arrival[1].animaterWarp, { kind: 'warp', at: { x: 450, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false });
+  assert.ok(arrival[1].animaterTrail, 'the arrival still carries its streak');
+  assert.deepEqual(await run({ out: null, in: null }), [], 'no extra effects: no warp');
+  // A token on a level warps on that level only.
+  mover.document.level = 'L2';
+  const leveled = await run({ out: 'custom.out', in: 'custom.in' });
+  assert.deepEqual(leveled.map(([, d]) => d.animaterWarp.level), ['L2', 'L2']);
+  delete mover.document.level;
+  const off = await run({ out: 'custom.out', in: 'custom.in' }, { mapDistortion: () => false });
+  assert.deepEqual(off.map(([, d]) => !!d?.animaterWarp), [false, false], 'the world setting turns it off');
 });

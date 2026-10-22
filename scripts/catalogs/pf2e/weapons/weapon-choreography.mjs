@@ -3,6 +3,8 @@ import {withCatalogFx} from '../../shared/catalog-fx.mjs';
 import {addAbilitySounds} from '../../../engines/sound/ability-sounds.mjs';
 import {addSurfaceSounds} from '../../../engines/sound/surface-sounds.mjs';
 import {WEAPON_COLORS as colors,BOMB_PAYLOADS,payloadAppearance} from './weapon-payloads.mjs';
+import {normalizeElement} from '../../shared/element-choice.mjs';
+import {MARKS} from '../../../engines/marks/ground-marks.mjs';
 export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}){
  const mode=weapon?.modes?.find(m=>m.mode===modeName);
  if(!mode?.assets)throw Error('Choose a supported weapon use from the catalog.');
@@ -36,6 +38,9 @@ export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}
   stages.push(flight);
   const contacts=mode.assets.flight.map(k=>mode.mediaTiming?.[k]?.contact).filter(Number.isFinite);
   const offset=contacts.length?Math.max(...contacts):Math.max(400,flight.duration-200);
+  // The flight arrives when its contact lands: playback moves that contact (and what is timed to it) to the
+  // landing of the range variant it plays (engines/playback/flight-path.mjs).
+  flight.contact=offset;
   const payload=mode.payload;
   contactStage=stage('impact','accent',payload?`${BOMB_PAYLOADS[payload.style]?.label??'Contents splash'} · ${payload.element}`:mode.element!=='physical'?`${mode.element} contact finish`:'Contact finish',start+offset,{afterStage:flight.stageId,timingAnchor:'start',startOffset:offset,scale:payload?1.25:.65,...payloadAppearance(payload?.element??mode.element,mode.assets.accent)});
   stages.push(contactStage);
@@ -59,5 +64,12 @@ export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}
  stages=addAbilitySounds(weapon,stages,{...options,mode:mode.mode,...(mode.soundDesign?{design:mode.soundDesign}:{})});
  // The blow also sounds like what it lands on (armour, a shield, chitin, stone), chosen per target as it plays.
  if(options.surfaceSound!==false)stages=addSurfaceSounds(weapon,stages,{sounds:options.sounds??options.soundCatalog,soundVolume:options.soundVolume,mode,anchor:contactStage,heft:mode.heavy?'heavy':mode.agile||mode.traits?.includes('finesse')?'light':null});
- return withCatalogFx(validateRecipe({id,name:`${weapon.name} · ${mode.mode}`,description:mode.rationale,category:'Weapons',color,trigger:'attack',match:`${weapon.name},${weapon.slug}`,itemUuid:weapon.uuid??`Compendium.${systemId}.${systemId==='sf2e'?'equipment':'equipment-srd'}.Item.${weapon.id}`,weaponMode:mode.mode,stages}),weapon,{...options,mode});
+ const markElement=payloadMark(mode);
+ return withCatalogFx(validateRecipe({id,name:`${weapon.name} · ${mode.mode}`,description:mode.rationale,category:'Weapons',color,trigger:'attack',match:`${weapon.name},${weapon.slug}`,itemUuid:weapon.uuid??`Compendium.${systemId}.${systemId==='sf2e'?'equipment':'equipment-srd'}.Item.${weapon.id}`,weaponMode:mode.mode,...(markElement?{markElement}:{}),stages}),weapon,{...options,mode});
+}
+// The floor mark a payload weapon's contents leave: its payload's element, else a bomb's persistent one. A gas
+// cloud leaves nothing, nor do runes (a flaming longsword has no payload).
+function payloadMark(mode){
+ if(!mode.payload||mode.payload.style==='gas')return null;
+ return [mode.payload.element,mode.persistent].map(normalizeElement).find(e=>e&&MARKS[e])??null;
 }

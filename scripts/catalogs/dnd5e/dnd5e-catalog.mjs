@@ -4,6 +4,8 @@ import {addSpellSounds} from '../../engines/sound/spell-sounds.mjs';
 import {addAbilitySounds} from '../../engines/sound/ability-sounds.mjs';
 import {applyCatalogMotion,dndMotionReview,withoutCatalogMotion} from '../shared/catalog-motion.mjs';
 import {withCatalogFx} from '../shared/catalog-fx.mjs';
+import {normalizeElement} from '../shared/element-choice.mjs';
+import {MARKS} from '../../engines/marks/ground-marks.mjs';
 export {DND5E_ENTRIES,DND5E_SOURCE};
 export const DND_KINDS=['spell','feat','weapon','item','condition','effect'];
 const byId=new Map(DND5E_ENTRIES.map(e=>[e.id,e]));
@@ -36,6 +38,8 @@ export function dndRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,fx
  if(!entry)throw Error('Choose a D&D catalog entry first.');
  const variant=entry.variants.find(v=>v.id===variantId)??entry.variants[0];
  let recipe=clone(variant.recipe);
+ const markElement=flaskMark(entry,variant);
+ if(markElement)recipe.markElement=markElement;
  // Its activity's kind and name, so a copy of this spell from another book plays it too (model.mjs sameActivity).
  if(recipe.activityId){recipe.activityType??=variant.activityType;recipe.activityName??=variant.activityName;}
  recipe.stages=applyCatalogMotion(entry,recipe.stages,dndMotionReview(entry,variant));
@@ -46,6 +50,14 @@ export function dndRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,fx
   recipe.stages=variant.soundNamespace==='ability'?addAbilitySounds(item,recipe.stages,{sounds,soundVolume,mode:variant.weaponMode,design}):addSpellSounds(item,recipe.stages,{sounds,soundVolume,design});
  }
  return withoutHexDome(withCatalogFx(validateRecipe(recipe),entry,{fx,fxCatalog,variant,motion,sounds,soundVolume}));
+}
+// The floor mark a thrown flask's contents leave (Alchemist's Fire, Acid): its theme, when the item is thrown as
+// a flask or vial. Holy water and oil leave none (no mark for their themes).
+const FLASK=/throwable\.throw\.(flask|vial)/;
+function flaskMark(entry,variant){
+ if(entry.kind!=='item'||!variant.recipe.stages.some(s=>['travel','projectile'].includes(s.kind)&&s.assets?.some(a=>FLASK.test(a))))return null;
+ const element=normalizeElement(variant.theme??entry.theme);
+ return element&&MARKS[element]?element:null;
 }
 // JB2A's hexagonal force-field domes (shield.01-03) swamp the token at 1.15-1.8x and
 // read as sci-fi barriers. D&D wards, resistances and armour show the compact shield

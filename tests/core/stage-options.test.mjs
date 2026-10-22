@@ -6,6 +6,8 @@ import {
   normalizeOptions,
   applyEffectOptions,
   previewPose,
+  AFTERIMAGES,
+  showsAfterimages,
 } from "../../scripts/core/stage-options.mjs";
 import { recipeDuration, recipeFrame } from "../../scripts/engines/playback/choreography.mjs";
 
@@ -267,4 +269,20 @@ test("media clips validate before playback and end-relative tracks use Sequencer
   assert.equal(previewPose(s, 600).alpha, 1);
   assert.equal(previewPose(s, 800).alpha, 0.5);
   assert.equal(previewPose(s, 900).alpha, 0);
+});
+
+test("afterimages option validates and shows only on trailing motions", () => {
+  assert.deepEqual(Object.keys(AFTERIMAGES), ["auto", "always", "never"]);
+  for (const motion of ["rush", "leap", "roll", "dodge", "path", "push", "pull"])
+    assert.ok(showsAfterimages({ kind: "motion", motion }), motion);
+  for (const motion of ["lunge", "shake", "recoil", "spin", "fade", "fragments"])
+    assert.ok(!showsAfterimages({ kind: "motion", motion }), motion);
+  assert.ok(!showsAfterimages({ kind: "cast", motion: "rush" }));
+  const stageOf = (stage) => validateRecipe({ id: "a", name: "A", trigger: "manual", stages: [{ kind: "motion", assets: [], duration: 800, ...stage }] }).stages[0];
+  assert.equal(stageOf({ motion: "rush", afterimages: "never" }).afterimages, "never");
+  assert.equal(stageOf({ motion: "push", afterimages: "always" }).afterimages, "always");
+  assert.equal(stageOf({ motion: "rush" }).afterimages, undefined, "Auto is the unset default, so saved recipes stay as they were");
+  assert.equal(stageOf({ motion: "rush", afterimages: "auto" }).afterimages, undefined);
+  assert.equal(stageOf({ motion: "rush", afterimages: "sometimes" }).afterimages, undefined);
+  assert.equal(stageOf({ motion: "lunge", afterimages: "always" }).afterimages, undefined, "in-place motions never trail");
 });
