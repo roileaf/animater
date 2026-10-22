@@ -100,14 +100,14 @@ export const sequencerSpeedupsApi = { status, profile, set, benchmark };
 
 export function registerSequencerSpeedups(ID) {
   game.settings.register(ID, 'sequencerSpeedups', {
-    name: 'Sequencer speed-ups',
-    hint: 'Makes Sequencer itself faster for every module in this world: a lighter animation engine, attached effects and positional sounds that only recompute when something moved, and filtered effects skipped while off-screen. Turn off if a Sequencer effect from any module looks wrong.',
+    name: 'Faster animations (this device)',
+    hint: 'Makes animations cheaper for your computer to draw, with no change in how they look. Covers every module that plays animations through Sequencer, not only Animater. In combat it also loads the next creature’s animations ahead of its turn, and it skips tiny details you could not see at your current zoom. Only your screen is affected. Turn this off if an animation from any module looks wrong.',
     scope: 'client', config: true, type: Boolean, default: true,
     onChange: (value) => { turboState.enabled = value; },
   });
   game.settings.register(ID, 'sequencerSpeedupRefresh', {
-    name: 'Sequencer speed-ups: safety refresh',
-    hint: 'Frames between forced full recomputes of cached effects and sounds. Lower it if an attached effect lags behind a token moved by another module.',
+    name: 'Faster animations: position recheck (frames)',
+    hint: 'How often effects and sounds that follow a token double-check where it is, even when nothing seems to have moved. 30 frames is about half a second. Lower it if an effect trails behind a token that another module moves.',
     scope: 'client', config: true, type: Number, default: 30, range: { min: 1, max: 600, step: 1 },
     onChange: (value) => { turboState.refreshFrames = value; },
   });

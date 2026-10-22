@@ -89,9 +89,9 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Add token filters to catalog animations | World | Catalog animations add matching Tokenshade effects on the token itself (flames, frost, glows, shimmer) |
 | Add FXMaster scene effects to catalog animations | World | Optional scene effects when FXMaster is active |
 | Take over from Automated Animations | World | When both modules would animate the same item, Animater plays and Automated Animations stands down |
-| Sequencer speed-ups | Each player | Makes Sequencer itself faster, for every module's effects (on by default; see below) |
+| Faster animations (this device) | Each player | Makes animations cheaper to draw on your computer, for every module that uses Sequencer, with no change in how they look (on by default; see below) |
 
-### Sequencer speed-ups
+### Faster animations
 
 Animater patches Sequencer in memory (its files are untouched) so every Sequencer effect in the world costs less per frame:
 
@@ -100,9 +100,9 @@ Animater patches Sequencer in memory (its files are untouched) so every Sequence
 - **Positional sounds**: a sound's area and muffling are reused until the sound, the listener or the walls change.
 - **Off-screen effects**: effects with filters or masks are not drawn while out of view.
 
-Cached results are recomputed every 30 frames regardless (*Sequencer speed-ups: safety refresh*). If an effect from any module looks wrong, turn the setting off. Single patches can be switched from the console, e.g. `game.modules.get("animater").api.sequencerSpeedups.set("sound", false)`. To measure, run `await game.modules.get("animater").api.sequencerSpeedups.profile(10)` with the setting on and again with it off.
+Effects that follow a token still double-check its position every 30 frames, about half a second (*Faster animations: position recheck*). If an effect from any module looks wrong, turn the setting off. Single patches can be switched from the console, e.g. `game.modules.get("animater").api.sequencerSpeedups.set("sound", false)`. To measure, run `await game.modules.get("animater").api.sequencerSpeedups.profile(10)` with the setting on and again with it off.
 
-Animater also works ahead for your own screen. The next creature's weapons and recently used footage load before its turn starts. Copies of an effect aimed at several targets start a frame apart, so they do not all land at once. Small decorative layers that you could not see at your zoom, or that would arrive while your computer is busy, are skipped on your screen only. Skipping never drops a spell's main hit. Turning off the **Sequencer speed-ups** setting turns this preloading and skipping off too.
+Animater also works ahead for your own screen. The next creature's weapons and recently used footage load before its turn starts. Copies of an effect aimed at several targets start a frame apart, so they do not all land at once. Small decorative layers that you could not see at your zoom, or that would arrive while your computer is busy, are skipped on your screen only. Skipping never drops a spell's main hit. Turning off **Faster animations (this device)** turns this preloading and skipping off too.
 
 The per-user preview setting can minimize the Animater window during local previews and table playback, then restore it afterward.
 
