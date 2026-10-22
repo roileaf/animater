@@ -2,11 +2,9 @@
 // effect's `animaterMark` tag, on the floor under tokens, fades them over minutes and
 // never saves anything. Textures are drawn here once per mark and reused; Foundry and
 // the canvas are reached only through the options (main.mjs).
-import { MARKS, layoutBlotches, markAlpha } from './ground-marks.mjs';
+import { MARKS, layoutBlotches, markAlpha, markTiming } from './ground-marks.mjs';
 import { seededRandom } from '../fragments/fragments.mjs';
 
-const HOLD_MS = 120000;
-const FADE_MS = 180000;
 const IN_MS = 300;
 const CAP_FADE_MS = 2000;
 const RIM_MS = 10000;
@@ -39,11 +37,12 @@ const finiteBlotch = (b) => ['x', 'y', 'r', 'rotation'].every((k) => finite(b[k]
  * The layer of marks on one scene. `makeSprite(tag, blotches, mask)` builds one display object for a mark (with
  * `alpha`, `visible` and optional `rims`, the scorch's ember rims); `addToScene`/`removeFromScene` put it on the
  * floor and take it off (and destroy it). `viewedLevel()` is the level this client views; `cap()` the most blotches
- * kept; `mask(tag)` an area's template shape; `enabled()` whether this client paints marks at all.
+ * kept; `mask(tag)` an area's template shape; `enabled()` whether this client paints marks at all;
+ * `timing()` gives `{ holdMs, fadeMs }` (read each look, so a changed setting reaches marks already down).
  */
 export function createMarkLayer({
   makeSprite, addToScene, removeFromScene, viewedLevel, now = () => performance.now(), cap = () => 60,
-  mask, enabled = () => true, sceneId, gridSize = () => 100,
+  mask, enabled = () => true, sceneId, gridSize = () => 100, timing = () => markTiming(5),
 }) {
   let marks = []; // in arrival order
   const waiting = new Map(); // lasting anchor effect -> its mark, until the effect ends
@@ -78,9 +77,10 @@ export function createMarkLayer({
       // A lasting mark's clock starts when its anchor ends (or at the landing, if that was later).
       const clock = tag.lasting ? Math.max(mark.endedAt, mark.landAt) : mark.landAt;
       const life = t - clock;
-      if (life >= HOLD_MS + FADE_MS) return remove(mark);
-      if (life >= HOLD_MS) { alpha *= markAlpha(life, { holdMs: HOLD_MS, fadeMs: FADE_MS, inMs: 0 }); next = t; }
-      else next = Math.min(next, clock + HOLD_MS);
+      const { holdMs, fadeMs } = timing();
+      if (life >= holdMs + fadeMs) return remove(mark);
+      if (life >= holdMs) { alpha *= markAlpha(life, { holdMs, fadeMs, inMs: 0 }); next = t; }
+      else next = Math.min(next, clock + holdMs);
     }
     if (mark.capAt !== null) {
       const k = (t - mark.capAt) / CAP_FADE_MS;
@@ -191,6 +191,8 @@ export function createMarkLayer({
       try { on = enabled(); } catch { on = false; }
       if (!on) return this.clear();
       try { enforceCap(now()); } catch { /* keep what is there */ }
+      // Marks already down look again next frame, in case the lifetime changed.
+      for (const mark of marks) if (mark.sprite) mark.nextAt = 0;
     },
 
     clear() {

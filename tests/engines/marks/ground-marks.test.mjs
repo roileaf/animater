@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MARKS, isHarmful, markElement, planMarks, layoutBlotches, markAlpha } from '../../../scripts/engines/marks/ground-marks.mjs';
+import { MARKS, isHarmful, markElement, planMarks, layoutBlotches, markAlpha, markTiming } from '../../../scripts/engines/marks/ground-marks.mjs';
 
 const GRID = 100;
 const sq = n => n * GRID;
@@ -185,6 +185,12 @@ test('lines and cones lay blotches along their shape', () => {
   for (const b of cone) assert.ok(b.y > 0 && b.y <= sq(6) && Math.abs(b.x) <= b.y, JSON.stringify(b));
 });
 
+test('markTiming: minutes split 40/60, 0 never fades', () => {
+  assert.deepEqual(markTiming(5), { holdMs: 120000, fadeMs: 180000 });
+  assert.deepEqual(markTiming(10), { holdMs: 240000, fadeMs: 360000 });
+  assert.deepEqual(markTiming(0), { holdMs: Infinity, fadeMs: 0 });
+  assert.equal(markAlpha(1e12, markTiming(0)), 1);
+});
 test('markAlpha: in, hold, fade, gone', () => {
   assert.equal(markAlpha(150), 0.5);
   assert.equal(markAlpha(60000), 1);

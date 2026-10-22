@@ -18,7 +18,7 @@ function fakeSprite(tag, blotches, mask) {
   return s;
 }
 
-function make({ enabled = () => true, cap = () => 60, mask, viewed = 'L1' } = {}) {
+function make({ enabled = () => true, cap = () => 60, mask, viewed = 'L1', timing } = {}) {
   const out = { t: 0, sprites: [], viewed, makes: 0 };
   const layer = createMarkLayer({
     makeSprite: (tag, blotches, m) => { out.makes++; const s = fakeSprite(tag, blotches, m); out.sprites.push(s); return s; },
@@ -31,6 +31,7 @@ function make({ enabled = () => true, cap = () => 60, mask, viewed = 'L1' } = {}
     cap,
     enabled,
     ...(mask ? { mask } : {}),
+    ...(timing ? { timing } : {}),
   });
   const at = (t) => { out.t = t; layer.tick(); };
   return { layer, out, at };
@@ -62,6 +63,34 @@ test('paints at the landing, not before', () => {
   at(400 + 300000);
   assert.equal(s.removed, true);
   assert.equal(layer.count(), 0);
+});
+
+test('a custom timing sets when a mark fades and goes', () => {
+  const { layer, out, at } = make({ timing: () => ({ holdMs: 1000, fadeMs: 2000 }) });
+  layer.onEffect(effect(spot({ delayMs: 0 })));
+  at(0);
+  const [s] = out.sprites;
+  at(1000 - 1);
+  assert.equal(s.alpha, 1);
+  at(1000 + 1000);
+  close(s.alpha, 0.5);
+  at(3000);
+  assert.equal(s.removed, true);
+  assert.equal(layer.count(), 0);
+});
+
+test('a lifetime of 0 never removes a mark and schedules no per-frame work', () => {
+  const { layer, out, at } = make({ timing: () => ({ holdMs: Infinity, fadeMs: 0 }) });
+  layer.onEffect(effect(spot({ delayMs: 0 })));
+  at(0);
+  at(500);
+  const [s] = out.sprites;
+  const writes = s.writes;
+  for (const t of [1000, 3600000, 86400000]) at(t);
+  assert.equal(s.writes, writes);
+  assert.equal(s.alpha, 1);
+  assert.equal(s.removed, false);
+  assert.equal(layer.count(), 1);
 });
 
 test('lasting marks hold until the anchor ends', () => {

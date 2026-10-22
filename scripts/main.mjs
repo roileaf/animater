@@ -22,6 +22,7 @@ import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createSummonsLights } from "./integrations/summons-walls.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
+import { markTiming } from "./engines/marks/ground-marks.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -216,6 +217,7 @@ const markLayer = createMarkLayer({
   // Off draws none; Low keeps half as many.
   enabled: () => game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
   cap: () => (localQuality() === "low" ? 30 : 60),
+  timing: () => markTiming(game.settings.get(ID, "groundMarkMinutes")),
   // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
   mask: (tag) => areaMaskFor(tag, { regions: canvas?.scene?.regions, grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask }),
 });
@@ -1441,6 +1443,12 @@ Hooks.once("init", () => {
     name: "Ground marks",
     hint: "Fire, frost, acid and other elemental hits leave a fading mark on the floor where they landed. Marks are drawn on each screen and never saved.",
     scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "groundMarkMinutes", {
+    name: "Ground mark lifetime (minutes)",
+    hint: "How long a ground mark stays before it is gone: fully visible for the first 40%, then fading. 0 keeps marks until the scene changes or the page reloads.",
+    scope: "world", config: true, type: Number, range: { min: 0, max: 60, step: 1 }, default: 5,
+    onChange: () => markLayer.refresh(),
   });
   game.settings.register(ID, "groundMarksLocal", {
     name: "Ground marks on my screen",

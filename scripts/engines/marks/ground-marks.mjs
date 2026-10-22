@@ -187,6 +187,13 @@ export function layoutBlotches(tag, gridPx = 100) {
   return blotches;
 }
 
+// How long a mark lives, from the setting's minutes: full for the first 40%, then fading over the rest.
+// 0 never fades (holdMs Infinity).
+export function markTiming(minutes) {
+  const total = Math.max(0, Number(minutes) || 0) * 60000;
+  return total > 0 ? { holdMs: total * 0.4, fadeMs: total * 0.6 } : { holdMs: Infinity, fadeMs: 0 };
+}
+
 // Opacity 0..1 of a mark `ageMs` after it landed: fades in, stays full until `holdMs`, then fades out linearly.
 export function markAlpha(ageMs, { holdMs = 120000, fadeMs = 180000, inMs = 300 } = {}) {
   if (!(ageMs >= 0)) return 0;
