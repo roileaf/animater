@@ -1724,3 +1724,28 @@ test("a weapon's mark comes only from its recipe, never from rune damage", async
   assert.equal(marks[0][1].mark, "residue");
   assert.equal(marks[0][1].shape, "spot");
 });
+
+// Sequencer's moveTowards merges its defaults with our options, so an explicit undefined
+// (no moveEase / moveDelay) overrides a default and fails its type checks. Mirror those checks.
+test("a thrown flask's shadow and projectile moveTowards get a string ease and numeric delay", async () => {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "flask", kind: "projectile", assets: ["jb2a.arrow.physical.white"], flight: "lob", delay: 0, duration: 800 }],
+  });
+  const { runtime, calls } = fixture();
+  runtime.catalog = [{ key: "jb2a.arrow.physical.white" }];
+  runtime.wait = async () => true;
+  await runtime.play(
+    recipe,
+    { source: { id: "s", center: { x: 0, y: 0 } }, targets: [{ id: "t", center: { x: 400, y: 0 } }] },
+    { preview: true },
+  );
+  const moves = calls.filter((c) => c[0] === "moveTowards");
+  assert.equal(moves.length, 2, "projectile and its shadow");
+  for (const [, , options] of moves) {
+    assert.equal(typeof options.ease, "string");
+    assert.ok(Number.isFinite(options.delay));
+    assert.equal(typeof options.rotate, "boolean");
+    assert.equal(typeof options.cacheLocation, "boolean");
+  }
+});

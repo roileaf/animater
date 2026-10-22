@@ -482,14 +482,14 @@ export class AnimaterRuntime {
         const media = mediaForReference(this.catalog, s.asset);
         const grid = this.host.gridSize?.() ?? 100;
         if (s.animaterShadow) {
-          e.atLocation(s.flightFrom, location).moveTowards(s.flightTo, { delay: s.moveDelay, ease: s.moveEase, rotate: false, cacheLocation: true });
+          e.atLocation(s.flightFrom, location).moveTowards(s.flightTo, { delay: s.moveDelay ?? 0, ease: s.moveEase || 'linear', rotate: false, cacheLocation: true });
         } else if (s.kind === "projectile") {
           // A planned path (flightFrom/flightTo) is literal points: every client flies the same line.
           e.atLocation(s.flightFrom ?? s.origin, location)
             .size(artworkSize(tokenFootprint(s.origin, grid) * s.scale, media))
             .moveTowards(s.flightTo ?? s.landing ?? s.endpoint, {
-              delay: s.moveDelay,
-              ease: s.moveEase,
+              delay: s.moveDelay ?? 0,
+              ease: s.moveEase || 'linear',
               rotate: false,
               cacheLocation: true,
             });
