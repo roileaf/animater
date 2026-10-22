@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { twoeEvent } from "../../scripts/systems/adapters.mjs";
 import { resolveAutomaticRecipe } from "../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { setHidePrivateResults } from "../../scripts/core/privacy.mjs";
+// These tests cover the world setting "Hide the result of private GM rolls" turned on (each test file
+// runs in its own process); the default, private rolls showing their result, is in tests/core/private-results.test.mjs.
+setHidePrivateResults(true);
 
 const strike = (over = {}) => ({ id: "m", author: { id: "gm", isGM: true }, isRoll: true, speaker: {}, actor: {},
   item: { type: "weapon", name: "Shortsword", system: {} },

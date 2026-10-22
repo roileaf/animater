@@ -9,7 +9,7 @@
 // (DHActorRoll._getCurrentTargets): a critical, or the total reaching difficulty || evasion.
 // Every read is optional-chained: a shape that moves in a later version skips the event
 // ({ skipped } for the caller to trace) and never throws.
-import { rollPrivacy, modePrivacy, hidden, hiddenReason } from "../core/privacy.mjs";
+import { rollPrivacy, modePrivacy, hidden, hiddenReason, hidesResult } from "../core/privacy.mjs";
 export const DAGGERHEART_VERIFIED = "2.10.12";
 export const DH_ROLL_TYPES = new Set(["attack", "spellcast"]);
 export const DH_MESSAGE_TYPES = new Set(["dualityRoll", "adversaryRoll"]);
@@ -196,7 +196,7 @@ export function daggerheartRollEvent(message, userId, { sceneId = null } = {}) {
   if (!name) return { skipped: `${message?.system?.title || "Daggerheart roll"}: its item or action could not be found.` };
   if (!roll) return { skipped: `${name}: its roll could not be read.` };
   const scene = message?.speaker?.scene ?? sceneId, outcomes = targetOutcomes(message?.system, roll);
-  if (privacy === "gm") return { type: "attack", systemId: "daggerheart", id: `chat:${message?.id}`, messageId: message?.id,
+  if (hidesResult(privacy)) return { type: "attack", systemId: "daggerheart", id: `chat:${message?.id}`, messageId: message?.id,
     item, itemUuid: item?.uuid, ...named(item, name), actor, tokenId: message?.speaker?.token, sceneId: scene,
     targetUuids: tokenUuids(outcomes.map((o) => o.id), scene), outcome: undefined, private: true,
     rollType, duality: null, actionId: message?.system?.source?.action || actionIdOf(action),
@@ -292,7 +292,7 @@ export function daggerheartDamageEvent(message, userId, { sceneId = null } = {})
     type: "damage", systemId: "daggerheart", id: `damage:${message?.id}`, messageId: message?.id,
     item, itemUuid: item?.uuid, ...named(item, name), actor,
     tokenId: message?.speaker?.token, sceneId: scene, targetUuids: tokenUuids(hit.map((o) => o.id), scene),
-    damageType: damageKindOf(message), healing: Boolean(system?.hasHealing), crit: privacy === "gm" ? false : damageCrit(message),
+    damageType: damageKindOf(message), healing: Boolean(system?.hasHealing), crit: hidesResult(privacy) ? false : damageCrit(message),
     ...weaponModeOf(item, action), ...cardFields(item),
   };
 }

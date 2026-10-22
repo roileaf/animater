@@ -1,4 +1,5 @@
 import { uuid } from "./core/uuid.mjs";
+import { setHidePrivateResults } from "./core/privacy.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
 import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
@@ -1577,6 +1578,13 @@ Hooks.once("init", () => {
     hint: "Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  game.settings.register(ID, "hidePrivateResults", {
+    name: "Hide the result of private GM rolls",
+    hint: "A GM's private attack or save animates without showing whether it hit or missed: the shot flies at the target and nothing lands. Off: private rolls animate their real result, like public ones (the numbers stay private either way).",
+    scope: "world", config: true, type: Boolean, default: false,
+    onChange: (on) => setHidePrivateResults(on),
+  });
+  setHidePrivateResults(game.settings.get(ID, "hidePrivateResults"));
   game.settings.register(ID, "groundMarks", {
     name: "Ground marks",
     hint: "Fire, frost, acid and other elemental hits leave a fading mark on the floor where they landed. Marks are drawn on each screen and never saved.",

@@ -1,6 +1,6 @@
 import { dnd5eAttackOutcome, dnd5eTargetOutcomes, HIDDEN } from './outcome.mjs';
 import { twoeEventElement, dnd5eEventElement } from "../catalogs/shared/element-choice.mjs";
-import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason } from "../core/privacy.mjs";
+import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason, hidesResult } from "../core/privacy.mjs";
 import { strikeItemOf } from "../engines/finishers/strike-finishers.mjs";
 import { rerollChangesNothing } from "./reroll.mjs";
 // Normalize system events without changing rolls, items, HP, or system state.
@@ -61,8 +61,8 @@ export function twoeEvent(message, userId, systemId='pf2e') {
     targetUuid: context?.target?.token ?? flags?.target?.token,
     ...(twoeEventElement(message, systemId) ? { element: twoeEventElement(message, systemId) } : {}),
     ...(maneuver ? { skillCheck: true } : {}),
-    // A GM's private attack plays neutrally (hidden): neither a hit nor a miss gives the roll away.
-    outcome: gmPrivate ? (type === "attack" ? HIDDEN : undefined) : context?.outcome,
+    // A GM's private roll shows its result unless the world hides it: then an attack plays neutrally (hidden).
+    outcome: hidesResult(privacy) ? (type === "attack" ? HIDDEN : undefined) : context?.outcome,
     ...(gmPrivate ? { private: true } : {}),
   };
 }
@@ -127,9 +127,9 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {} } = {}) {
     ...(subject.item.type==='weapon'?{weaponMode:String(rolls[0]?.options?.attackMode??'').startsWith('thrown')?'thrown':rolls[0]?.options?.attackMode==='ranged'||subject.attack?.type?.value==='ranged'?'ranged':'melee'}:{}),
     spellLevel: subject.item.type==='spell' ? Number(message?.system?.level??message?.data?.system?.level??subject.getRollData?.()?.item?.level??rolls[0]?.data?.item?.level??subject.item.getRollData?.()?.item?.level??subject.item.system?.level) : undefined,
     // Attack rolls: natural 20/1, or the total against a single target's AC.
-    outcome: gmPrivate ? (type === "attack" ? HIDDEN : undefined) : type === "attack" ? dnd5eAttackOutcome(rolls, Array.from(message?.system?.targets ?? [])) : null,
+    outcome: hidesResult(privacy) ? (type === "attack" ? HIDDEN : undefined) : type === "attack" ? dnd5eAttackOutcome(rolls, Array.from(message?.system?.targets ?? [])) : null,
     // Each target's own hit or miss, for sounds that differ per target (what each blow lands on).
-    ...(!gmPrivate && type === "attack" ? { targetOutcomes: dnd5eTargetOutcomes(rolls, Array.from(message?.system?.targets ?? [])) } : {}),
+    ...(!hidesResult(privacy) && type === "attack" ? { targetOutcomes: dnd5eTargetOutcomes(rolls, Array.from(message?.system?.targets ?? [])) } : {}),
     ...(gmPrivate ? { private: true } : {}),
     rolls,
   };

@@ -7,7 +7,10 @@ import { checkFinisherEvent } from "../../scripts/engines/finishers/finisher-mod
 import { twoeSaveOutcome, dnd5eSaveOutcome, saveReaction } from "../../scripts/systems/outcome.mjs";
 import { daggerheartRollEvent, daggerheartDamageEvent, daggerheartUseEvent } from "../../scripts/systems/daggerheart.mjs";
 import { weapon, damageRoll, rollMessage, useHook } from "../fixtures/daggerheart-messages.mjs";
-import { rollPrivacy, modePrivacy } from "../../scripts/core/privacy.mjs";
+import { rollPrivacy, modePrivacy, setHidePrivateResults } from "../../scripts/core/privacy.mjs";
+// These tests cover the world setting "Hide the result of private GM rolls" turned on (each test file
+// runs in its own process); the default, private rolls showing their result, is in tests/core/private-results.test.mjs.
+setHidePrivateResults(true);
 
 const gm = { id: "gm", isGM: true }, player = { id: "p", isGM: false };
 const check = (options, over = {}) => ({ id: "m", author: player, isRoll: true, speaker: { token: "t", scene: "s" }, actor: { items: [] },

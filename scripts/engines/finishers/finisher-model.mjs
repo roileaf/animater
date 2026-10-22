@@ -1,4 +1,4 @@
-import { rollPrivacy, hidden } from "../../core/privacy.mjs";
+import { rollPrivacy, hidden, hidesResult } from "../../core/privacy.mjs";
 import { rerollChangesNothing } from "../../systems/reroll.mjs";
 // Which finishers an item plays, and the link between a catalog entry and a finisher.
 // Applies-to reuses recipe matching: comma-separated names in `match`, or one exact itemUuid.
@@ -80,7 +80,7 @@ export function checkFinisherEvent(message, systemId, userId) {
   if (hidden(privacy) || rerollChangesNothing(message, systemId)) return null;
   const action = (context.options ?? []).map(String).find((o) => o.startsWith("action:"))?.slice(7);
   if (!action) return null;
-  return { type: "check", systemId, id: `finisher-check:${message.id}`, messageId: message.id, itemName: action, tokenId: message.speaker?.token, sceneId: message.speaker?.scene, targetUuid: context.target?.token, outcome: privacy === "gm" ? undefined : context.outcome };
+  return { type: "check", systemId, id: `finisher-check:${message.id}`, messageId: message.id, itemName: action, tokenId: message.speaker?.token, sceneId: message.speaker?.scene, targetUuid: context.target?.token, outcome: hidesResult(privacy) ? undefined : context.outcome };
 }
 
 // PF2e/SF2e: a creature's saving throw against a spell or effect. The saver (the speaker, also

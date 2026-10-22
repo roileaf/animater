@@ -1,4 +1,4 @@
-import { rollPrivacy, modePrivacy, stricter, hidden } from "../core/privacy.mjs";
+import { rollPrivacy, modePrivacy, stricter, hidden, hidesResult } from "../core/privacy.mjs";
 import { timedStages } from "../engines/playback/composition.mjs";
 // Roll outcomes shape the animation: a miss flies wide and never lands on the target,
 // a critical hit lands harder and knocks the target back further. Outcomes use PF2e's
@@ -96,7 +96,7 @@ export function twoeSaveOutcome(message, systemId = "pf2e") {
   const context = message?.flags?.[systemId]?.context;
   if (context?.type !== "saving-throw" || !SAVE_REACTIONS[context.outcome] || !context.origin) return null;
   const privacy = rollPrivacy(message);
-  return hidden(privacy) ? null : privacy === "gm" ? "hidden" : context.outcome;
+  return hidden(privacy) ? null : hidesResult(privacy) ? "hidden" : context.outcome;
 }
 // D&D 5e: pass or fail against the save DC, when the roll knows it.
 export function dnd5eSaveOutcome(rolls = [], { isGM = globalThis.game?.user?.isGM } = {}) {
@@ -104,7 +104,7 @@ export function dnd5eSaveOutcome(rolls = [], { isGM = globalThis.game?.user?.isG
   if (!roll || !Number.isFinite(dc) || !Number.isFinite(Number(roll.total))) return null;
   const privacy = stricter(modePrivacy(roll.options?.rollMode, isGM), rollPrivacy(roll.parent, { isGM }));
   if (hidden(privacy)) return null;
-  return privacy === "gm" ? "hidden" : Number(roll.total) >= dc ? "success" : "failure";
+  return hidesResult(privacy) ? "hidden" : Number(roll.total) >= dc ? "success" : "failure";
 }
 
 // A target's AC, or NaN when D&D left it out: a target in total cover is stored with `ac: null`,

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **A GM's private attack no longer shows a miss as a hit.** An attack rolled as a Private GM Roll (or a GM's self roll) keeps its result hidden from the players, but it used to play as a hit: the arrow flew into the target with its impact, even straight through a wall. It now plays neutrally: the shot flies to the part of the target the shooter can see (or into the wall if the target is out of sight) and nothing lands, no impact, flinch, dodge or ground mark, so the table learns nothing either way. PF2e, SF2e and D&D 5e. Thanks to y_deda_povis for the video.
+- **A GM's private attack no longer shows a miss as a hit.** Attacks and saves rolled as a Private GM Roll used to hide their result, and the hidden result played as a hit: the arrow flew into the target with its impact, even straight through a wall. Private GM rolls now animate their real result, like public ones (a miss flies wide or into the wall), while the numbers stay private. To keep players guessing, turn on **Hide the result of private GM rolls** (world): the shot then flies at the visible part of the target (or into the wall if it is out of sight) and nothing lands, no impact, flinch, dodge or ground mark. PF2e, SF2e, D&D 5e and Daggerheart. Thanks to y_deda_povis for the video.
 - **D&D 5e: an attack at a target in total cover no longer always hits.** D&D leaves out the AC of a target in total cover, and Animater read it as AC 0, so every roll looked like a hit. Such an attack now plays neutrally too; a natural 20 or a natural 1 still shows as a crit or a fumble.
 
 ## 2.0.1 (2026-10-22)
