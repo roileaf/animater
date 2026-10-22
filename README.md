@@ -96,6 +96,9 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Effect lighting | World | Fire, lightning, radiant and other glowing effects light the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light (on by default) |
 | Effect lighting in daylight | World | Also adds a soft coloured glow around effects in fully lit scenes (on by default) |
 | Flickering and flashing effect lights | Each player | Turn off to see effect lights as a steady glow, without flicker or strobe (on by default) |
+| Projectiles stop at walls | World | Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see (on by default) |
+| Arcing throws | World | Bombs and flasks are lobbed high and thrown weapons fly a low arc, with a shadow on the ground beneath them (on by default) |
+| Projectile shadows | Each player | Turn off to hide the ground shadow under thrown objects on your screen (on by default) |
 
 ### Faster animations
 

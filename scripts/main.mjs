@@ -1385,6 +1385,21 @@ Hooks.once("init", () => {
     hint: "Turn off to see effect lights as a steady glow, without flicker or strobe.",
     scope: "client", config: true, type: Boolean, default: true,
   });
+  game.settings.register(ID, "projectileWalls", {
+    name: "Projectiles stop at walls",
+    hint: "Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "arcingThrows", {
+    name: "Arcing throws",
+    hint: "Bombs and flasks are lobbed high and thrown weapons fly a low arc, with a shadow on the ground beneath them.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "projectileShadows", {
+    name: "Projectile shadows",
+    hint: "Show the ground shadow under thrown objects on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",

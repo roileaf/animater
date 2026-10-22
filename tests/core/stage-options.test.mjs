@@ -268,3 +268,15 @@ test("media clips validate before playback and end-relative tracks use Sequencer
   assert.equal(previewPose(s, 800).alpha, 0.5);
   assert.equal(previewPose(s, 900).alpha, 0);
 });
+test("flight option validates and defaults to auto", () => {
+  const flight = (value) => recipe({ kind: "projectile", assets: ["jb2a.arrow"], flight: value }).stages[0].flight;
+  assert.equal(flight(undefined), undefined);
+  assert.equal(flight("auto"), undefined);
+  assert.equal(flight("bogus"), undefined);
+  for (const choice of ["straight", "low", "lob"]) assert.equal(flight(choice), choice);
+});
+test("flight option shows only on flights", () => {
+  assert.equal(recipe({ kind: "travel", assets: ["jb2a.arrow"], flight: "lob" }).stages[0].flight, "lob");
+  assert.equal(recipe({ kind: "cast", flight: "lob" }).stages[0].flight, undefined);
+  assert.equal(recipe({ kind: "impact", flight: "low" }).stages[0].flight, undefined);
+});
