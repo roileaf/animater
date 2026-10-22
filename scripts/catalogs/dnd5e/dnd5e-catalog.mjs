@@ -36,6 +36,8 @@ export function dndRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,fx
  if(!entry)throw Error('Choose a D&D catalog entry first.');
  const variant=entry.variants.find(v=>v.id===variantId)??entry.variants[0];
  let recipe=clone(variant.recipe);
+ // Its activity's kind and name, so a copy of this spell from another book plays it too (model.mjs sameActivity).
+ if(recipe.activityId){recipe.activityType??=variant.activityType;recipe.activityName??=variant.activityName;}
  recipe.stages=applyCatalogMotion(entry,recipe.stages,dndMotionReview(entry,variant));
  if(!motion)recipe.stages=withoutCatalogMotion(recipe.stages);
  if(!['condition','effect'].includes(entry.kind)){

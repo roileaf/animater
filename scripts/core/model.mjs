@@ -161,6 +161,10 @@ export function validateRecipe(input) {
     ...(['pf2e','sf2e','dnd5e','daggerheart'].includes(input.systemId)?{systemId:input.systemId}:/^Compendium\.(pf2e|sf2e|dnd5e|daggerheart)\./.test(input.itemUuid??'')?{systemId:input.itemUuid.split('.')[1]}:{}),
     ...(!strikeScope&&text(input.catalogEntry,100)?{catalogEntry:text(input.catalogEntry,100)}:{}),
     ...(!strikeScope&&text(input.activityId,100)?{activityId:text(input.activityId,100)}:{}),
+    // The activity's kind and name (a D&D 5e spell's Save, Attack, Heal...): the same activity on a copy of the item from
+    // another book, whose activities have ids of their own.
+    ...(!strikeScope&&text(input.activityId,100)&&/^[a-z-]{1,30}$/i.test(input.activityType??'')?{activityType:input.activityType}:{}),
+    ...(!strikeScope&&text(input.activityId,100)&&text(input.activityName,100)?{activityName:text(input.activityName,100)}:{}),
     ...(normalizePlaybackRoles(input.playbackRoles)?{playbackRoles:normalizePlaybackRoles(input.playbackRoles)}:{}),
     ...(input.lifecycle === "document" && input.trigger === "effect"
       ? { lifecycle: "document", stateEntry: text(input.stateEntry, 100),
@@ -365,6 +369,15 @@ export const STARTER_RECIPE_IDS = new Set(["ember", "frost", "storm", "force", "
 export function ownRecipe(recipes, event) {
   return matchRecipe((recipes ?? []).filter((r) => !STARTER_RECIPE_IDS.has(r.id)), event);
 }
+// A recipe for one activity of an item (D&D 5e): that very activity on the item it was made for. On a copy of the item
+// from another book or an importer, its activities have other ids, and their names differ too (SRD's "Cast", another
+// book's "Save", a translation's own): the same kind of activity counts as the same.
+function sameActivity(r, event, exactItem) {
+  if (!r.activityId || r.activityId === event.activityId) return true;
+  if (exactItem || !event.activityId) return false;
+  const type = event.activity?.type;
+  return !(r.activityType && type && r.activityType !== type);
+}
 export function matchRecipe(recipes, event) {
   const names = new Set(
     [
@@ -398,7 +411,7 @@ export function matchRecipe(recipes, event) {
         (r) =>
           r.enabled &&
           (!r.systemId || !event.systemId || r.systemId === event.systemId) &&
-          (!r.activityId || r.activityId === event.activityId) &&
+          sameActivity(r, event, exact(r)) &&
           (!r.weaponMode || r.weaponMode === event.weaponMode) &&
           r.trigger === event.type &&
           (Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')

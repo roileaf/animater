@@ -181,3 +181,18 @@ test("a recipe bound to a compendium spell also plays for the same spell from an
   assert.equal(matchRecipe([heroes], { type: "attack", item: { name: "Fireball", uuid: "Actor.other.Item.y" } }), null);
   assert.equal(matchRecipe([heroes], { type: "attack", item: { name: "Fireball", uuid: "Actor.hero.Item.x" } }), heroes);
 });
+test("a recipe for one activity plays for the same activity of the spell from another book (its activity has another id)", async () => {
+  const { DND5E_ENTRIES, dndRecipe } = await import("../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs");
+  const entry = DND5E_ENTRIES.find((e) => e.kind === "spell" && e.slug === "fireball");
+  const saved = { ...validateRecipe({ ...dndRecipe(entry, "dnd5eactivity000"), id: "my-fireball", enabled: true }) };
+  assert.equal(saved.activityType, "save", "a customized copy remembers its activity's kind");
+  const cast = (uuid, activityId, type = "save") => ({ type: saved.trigger, systemId: "dnd5e", activityId, activity: { id: activityId, type, name: "Save" },
+    item: { name: "Fireball", uuid: "Actor.hero.Item.f", _stats: { compendiumSource: uuid } } });
+  assert.equal(matchRecipe([saved], cast(saved.itemUuid, "dnd5eactivity000"))?.id, "my-fireball", "SRD 5.2's own Fireball");
+  assert.equal(matchRecipe([saved], cast("Compendium.other.spells.Item.fb", "dNWpG5SEHROQG5AS"))?.id, "my-fireball", "another book's Fireball, another activity id");
+  assert.equal(matchRecipe([saved], cast("Compendium.other.spells.Item.fb", "dNWpG5SEHROQG5AS", "attack")), null, "not a different kind of activity");
+  assert.equal(matchRecipe([saved], cast(saved.itemUuid, "someOtherActivity")), null, "on the very item it was made for, only its own activity");
+  // A recipe saved before activity kinds were remembered still plays for the other book's copy.
+  const legacy = { ...saved, id: "old" }; delete legacy.activityType; delete legacy.activityName;
+  assert.equal(matchRecipe([legacy], cast("Compendium.other.spells.Item.fb", "dNWpG5SEHROQG5AS"))?.id, "old");
+});

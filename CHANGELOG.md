@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **D&D 5e recipes play for the same spell from any book, activity included.** A recipe made for one of a spell's activities (every catalog recipe you customize is) only played for that exact activity id, and each compendium gives its activities ids of their own: the 2024 Player's Handbook Fireball or Sorcerous Burst still did nothing. On a copy of the spell from another book, a module or an importer, the same kind of activity (a save, an attack, a heal) now counts as the same. On the very spell it was made for, a recipe still plays only for its own activity. Thanks to y-deda-povis for tracking this down. ([#10](https://github.com/roileaf/animater/issues/10))
+
 ## 1.6.1 (2026-10-21)
 
 - **A recipe bound to a spell plays for that spell from any book.** Dropping a spell from a compendium onto a recipe used to make it play only for items made from that very compendium entry, so the same spell from the 2024 Player's Handbook, another module, an importer or a copy stayed silent. It now plays for any item of the same name, and the exact item it was bound to still comes first. A recipe bound to one character's own item still plays for that character only. ([#10](https://github.com/roileaf/animater/issues/10))
