@@ -146,28 +146,40 @@ export function createLightHost({
     for (const source of light.sources) source.setLevel(lightLevels(level, tag.shape));
   };
 
+  const add = (effect, data, tag) => {
+    if (!levelOk(levelOf(tag, data))) return;
+    // Same rule on every client, in arrival order (a wall counts each of its points): when full the
+    // newest one-shot is skipped, and a lasting light makes room by fading out the oldest one-shots.
+    const points = pointsOf(tag), weight = points?.length ?? 1;
+    const live = [...lights.values()].filter((l) => l.endedAt === null);
+    let used = live.reduce((n, l) => n + l.weight, 0);
+    if (used + weight > max) {
+      if (!tag.lasting) return;
+      for (const oldest of live.filter((l) => !l.tag.lasting)) {
+        if (used + weight <= max) break;
+        end(oldest, now());
+        used -= oldest.weight;
+      }
+    }
+    lights.set(effect, {
+      id: ++nextId, effect, data, tag, points, weight, receivedAt: now(),
+      sources: [], at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0, rampAt: null,
+    });
+  };
+
   return {
     onEffect(effect) {
       const data = effect?.data, tag = data?.animaterLight;
       if (!validTag(tag) || data.moduleName !== 'animater' || lights.has(effect)) return;
-      if (data.sceneId !== sceneId() || !levelOk(levelOf(tag, data))) return;
-      // Same rule on every client, in arrival order (a wall counts each of its points): when full the
-      // newest one-shot is skipped, and a lasting light makes room by fading out the oldest one-shots.
-      const points = pointsOf(tag), weight = points?.length ?? 1;
-      const live = [...lights.values()].filter((l) => l.endedAt === null);
-      let used = live.reduce((n, l) => n + l.weight, 0);
-      if (used + weight > max) {
-        if (!tag.lasting) return;
-        for (const oldest of live.filter((l) => !l.tag.lasting)) {
-          if (used + weight <= max) break;
-          end(oldest, now());
-          used -= oldest.weight;
-        }
-      }
-      lights.set(effect, {
-        id: ++nextId, effect, data, tag, points, weight, receivedAt: now(),
-        sources: [], at: null, level: 0, movedFrame: 0, endedAt: null, endLevel: 0, rampAt: null,
-      });
+      if (data.sceneId === sceneId()) add(effect, data, tag);
+    },
+
+    // A light kept on something other than an Animater effect (another module's wall, a token): the
+    // caller gives the tag and an anchor shaped like an effect ({ ready, destroyed, worldPosition }),
+    // already on this scene. It lives on the anchor's clock from now and ends through onEnded.
+    onAnchor(anchor, tag) {
+      if (!anchor || !validTag(tag) || lights.has(anchor)) return;
+      add(anchor, {}, tag);
     },
 
     onEnded(effect) {

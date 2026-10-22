@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isLuminous, lightShape, lightColor, planLights, envelope } from '../../../scripts/engines/lighting/effect-lights.mjs';
+import { isLuminous, lightShape, lightColor, planLights, envelope, spreadAlong } from '../../../scripts/engines/lighting/effect-lights.mjs';
 import { HEX } from '../../../scripts/engines/playback/color-parity.mjs';
 import { ELEMENT_COLORS } from '../../../scripts/catalogs/shared/element-choice.mjs';
 
@@ -343,4 +343,17 @@ test('a lasting line area gets up to three lights spaced along it, within the ca
   // A one-shot line (a lightning bolt) keeps its one middle light.
   const bolt = st('bolt', 'template', 'jb2a.fireball.explosion.orange', { at: { x: sq(6), y: 0 }, r: sq(6) });
   assert.equal(planLights([bolt], opts({ bolt: 0 }, { spanOf: () => span })).get(bolt).points, undefined);
+});
+
+test('classifier: flaming art is fire', () => {
+  assert.equal(isLuminous('flaming.sphere.flaming.sphere.02.orange.400x400'), true);
+  assert.equal(lightShape({ asset: 'flaming.sphere.02.orange', persist: true }), 'flicker');
+});
+
+test('spreadAlong: up to three lights along a line, one per four squares, sized to their stretch', () => {
+  assert.equal(spreadAlong({ x: 0, y: 0 }, { x: 300, y: 0 }, GRID), null);
+  assert.deepEqual(spreadAlong({ x: 0, y: 0 }, { x: 800, y: 0 }, GRID), { points: [{ x: 200, y: 0 }, { x: 600, y: 0 }], dim: 3, bright: 1.5 });
+  assert.equal(spreadAlong({ x: 0, y: 0 }, { x: 4000, y: 0 }, GRID).points.length, 3);
+  assert.equal(spreadAlong({ x: 0, y: 0 }, { x: 4000, y: 0 }, GRID, { max: 2 }).points.length, 2);
+  assert.equal(spreadAlong(null, { x: 1, y: 1 }, GRID), null);
 });

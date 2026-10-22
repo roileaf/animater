@@ -20,6 +20,7 @@ import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
+import { createSummonsLights } from "./integrations/summons-walls.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
@@ -143,6 +144,49 @@ const lightHost = createLightHost({
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
 });
+// PF2e Summons Assistant's glowing walls and summons (integrations/summons-walls.mjs): lit on every client
+// from their own effect or token data, on the same light host. Only its creatures' tokens qualify.
+const finitePoint = (p) => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x, y: p.y } : null);
+const summonsLights = createSummonsLights({
+  host: lightHost,
+  enabled: () => game.settings.get(ID, "effectLighting") !== false
+    && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
+  grid: () => canvas?.grid?.size ?? 100,
+  // The token an effect is tied to (or drawn on), on the viewed scene; a stretched line's two ends.
+  describeEffect: (effect) => {
+    const data = effect?.data, scene = canvas?.scene;
+    if (!data || !scene || data.sceneId !== scene.id) return null;
+    const uuid = [...(data.tiedDocuments ?? []), data.source?.uuid ?? data.source].find((u) => typeof u === "string" && u.includes(".Token."));
+    const doc = uuid ? fromUuidSync(uuid) : null;
+    if (!doc || doc.parent?.id !== scene.id) return null;
+    const line = !!data.stretchTo;
+    const end = (raw, live) => finitePoint(raw) ?? (() => { try { return finitePoint(live()); } catch { return null; } })();
+    return {
+      data, tokenId: doc.id, actor: doc.actor, hidden: doc.hidden, elevation: doc.elevation,
+      from: line ? end(data.source, () => effect.sourcePosition) : null,
+      to: line ? end(data.target, () => effect.targetPosition) : null,
+      sizePx: Math.max(effect.sprite?.width ?? 0, effect.sprite?.height ?? 0),
+    };
+  },
+  describeToken: (doc) => {
+    const grid = canvas?.grid?.size ?? 100;
+    return {
+      id: doc.id, actor: doc.actor, hidden: doc.hidden, src: doc.texture?.src, elevation: doc.elevation,
+      widthPx: (doc.width ?? 1) * grid, heightPx: (doc.height ?? 1) * grid,
+      scale: Math.max(Math.abs(doc.texture?.scaleX ?? 1), Math.abs(doc.texture?.scaleY ?? 1)),
+    };
+  },
+  // The drawn token's centre (it follows the token while it slides), else its document's.
+  centerOf: (doc) => {
+    const grid = canvas?.grid?.size ?? 100;
+    const object = doc.object;
+    return object && !object.destroyed ? object.center
+      : { x: doc.x + (doc.width ?? 1) * grid / 2, y: doc.y + (doc.height ?? 1) * grid / 2 };
+  },
+});
+Hooks.on("createToken", (doc) => { if (doc.parent?.id === canvas?.scene?.id) summonsLights.onToken(doc); });
+Hooks.on("updateToken", (doc, changes) => { if (doc.parent?.id === canvas?.scene?.id) summonsLights.onTokenUpdate(doc, changes); });
+Hooks.on("deleteToken", (doc) => summonsLights.onTokenDelete(doc));
 // Ground marks on this client (engines/marks/mark-paint.mjs): local sprites on the floor, never documents. One
 // container per scene in the primary group at the viewed level's floor, between drawings (600) and tokens (700).
 // Viewing another level redraws the whole canvas (Scene#view -> Canvas#draw), so its tear-down clears them too.
@@ -178,19 +222,21 @@ const markLayer = createMarkLayer({
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
   lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect); markLayer.onEffect(effect);
+  summonsLights.onEffect(effect);
 });
-Hooks.on("endedSequencerEffect", (effect) => { lightHost.onEnded(effect); markLayer.onEnded(effect); });
-Hooks.on("canvasTearDown", () => { lightHost.clear(); clearMarks(); });
+Hooks.on("endedSequencerEffect", (effect) => { lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); });
+Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); });
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
 // every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
 Hooks.on("canvasReady", () => {
   adaptiveHost.onCanvasReady(performance.now());
+  for (const doc of canvas?.scene?.tokens ?? []) summonsLights.onToken(doc);
   const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
   if (ticker && P && adaptiveTicker !== ticker) {
     adaptiveTicker = ticker;
     ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2);
-    ticker.add(() => lightHost.tick(), undefined, P.NORMAL);
+    ticker.add(() => { try { summonsLights.tick(); } catch { /* never stop the canvas */ } lightHost.tick(); }, undefined, P.NORMAL);
     ticker.add(() => markLayer.tick(), undefined, P.NORMAL);
     ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
   }

@@ -9,7 +9,7 @@ const WARM_WHITE = '#ffe8c0';
 const MIN_SQUARES = 1;
 const MAX_SQUARES = 12;
 const LASTING_AREA_MS = 2000;
-const LASTING_MS = 86400000;
+export const LASTING_MS = 86400000;
 const MIN_FADE_MS = 300;
 const GLOW_IN_MS = 100;
 const FLASH_RISE_MS = 60;
@@ -25,10 +25,10 @@ const NOT_VISUAL = new Set(['sound', 'motion', 'tokenfx', 'scenefx']);
 
 // Asset keys are dotted words ('jb2a.fire_bolt.orange'); words match whole, with a numeric suffix allowed.
 const word = names => new RegExp(`(?:^|[._])(?:${names})(?=$|[._\\d])`);
-const LUMINOUS = word('fire\\w*|flame\\w*|explosion|lightning|electric\\w*|energy|arcane|magic_missile|eldritch|ray|beam|laser|radiant|divine|holy|sun\\w*|light\\w*|plasma|spark\\w*|glow\\w*|healing\\w*');
+const LUMINOUS = word('fire\\w*|flame\\w*|flaming|explosion|lightning|electric\\w*|energy|arcane|magic_missile|eldritch|ray|beam|laser|radiant|divine|holy|sun\\w*|light\\w*|plasma|spark\\w*|glow\\w*|healing\\w*');
 const VETO = word('physical|smoke|blood|liquid|web|crack\\w*|darkness');
 const LIGHTNING = word('lightning|electric\\w*');
-const FIRE = word('fire\\w*|flame\\w*');
+const FIRE = word('fire\\w*|flame\\w*|flaming');
 
 const assetOf = stage => String(stage?.asset ?? stage?.assets?.[0] ?? '').toLowerCase();
 const hex = value => {
@@ -82,9 +82,25 @@ const rank = stage => KIND_RANK[stage.kind] ?? 5;
 
 // Radii come in as pixels (radiusOf) and go out in grid squares: dim 1.5x the
 // footprint, bright half of that, both clamped so no light is tiny or map-wide.
-function lightRadius(pixels, grid) {
+export function lightRadius(pixels, grid) {
   const dim = Math.min(MAX_SQUARES, Math.max(MIN_SQUARES, 1.5 * (pixels ?? 0) / grid));
   return { dim, bright: dim / 2 };
+}
+
+/**
+ * Lights along a line from `from` to `to`: at the middles of up to `max` equal
+ * stretches of it, one per `spanSquares`, each sized to its stretch. Null when
+ * the line is short enough for one light.
+ */
+export function spreadAlong(from, to, grid, { spanSquares = 4, max = 3 } = {}) {
+  const length = from && to ? distance(from, to) : 0;
+  const n = Math.min(3, max, Math.ceil(length / (spanSquares * grid)));
+  if (!(n > 1)) return null;
+  const points = Array.from({ length: n }, (_, i) => {
+    const k = (i + 0.5) / n;
+    return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
+  });
+  return { points, ...lightRadius(length / n / 2, grid) };
 }
 
 /**
@@ -179,15 +195,8 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
   // A lasting wall along a line: lights at the middles of equal stretches of it, each sized to its stretch.
   function spread(tag, stage, budget) {
     const span = spanOf?.(stage);
-    const length = span ? distance(span.from, span.to) : 0;
-    const n = Math.min(3, budget, Math.ceil(length / (spanSquares * grid)));
-    if (!(n > 1)) return;
-    const { from, to } = span;
-    tag.points = Array.from({ length: n }, (_, i) => {
-      const k = (i + 0.5) / n;
-      return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
-    });
-    Object.assign(tag, lightRadius(length / n / 2, grid));
+    const lights = span && spreadAlong(span.from, span.to, grid, { spanSquares, max: budget });
+    if (lights) Object.assign(tag, lights);
   }
 }
 

@@ -422,3 +422,28 @@ test('a wall\'s points count towards the cap', () => {
   host.tick();
   assert.equal(out.sources.length, 5, 'full: a new one-shot is skipped');
 });
+
+test('an anchor that is not an Animater effect carries the light it is given', () => {
+  const { host, out } = make();
+  const anchor = { ready: true, destroyed: false, worldPosition: { x: 70, y: 80 } };
+  host.onAnchor(anchor, { ...lasting, follow: true });
+  host.onAnchor(anchor, { ...lasting, follow: true });
+  host.onAnchor({ ready: true, worldPosition: { x: 0, y: 0 } }, { shape: 'flash' });
+  out.t = 20;
+  host.tick();
+  assert.equal(out.sources.length, 1, 'once per anchor; a malformed tag is ignored');
+  assert.equal(out.sources[0].inits[0].x, 70);
+  assert.equal(out.sources[0].inits[0].animation.type, 'torch');
+  host.onEnded(anchor);
+  for (let t = 40; t <= 400; t += 20) { out.t = t; host.tick(); }
+  assert.equal(out.sources[0].destroyed, 1);
+  assert.equal(host.count(), 0);
+});
+
+test('an anchor light is skipped on a level that is not shown', () => {
+  const { host, out } = make({ levelOk: () => false });
+  host.onAnchor({ ready: true, destroyed: false, worldPosition: { x: 0, y: 0 } }, lasting);
+  out.t = 20;
+  host.tick();
+  assert.equal(out.sources.length, 0);
+});
