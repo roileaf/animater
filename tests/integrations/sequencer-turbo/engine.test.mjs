@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createOriginalEngine } from '../../fixtures/sequencer-engine/original-engine.mjs';
-import { turboizeEngine, installEngineCapture } from '../../../scripts/integrations/sequencer-turbo/engine.mjs';
+import {
+  turboizeEngine, installEngineCapture, engineHashes, isKnownEngine, hashSource, ENGINE_METHODS, SEQUENCER_ENGINE_HASHES,
+} from '../../../scripts/integrations/sequencer-turbo/engine.mjs';
 
 // Minimal Foundry globals the engine touches.
 const ticker = {
@@ -132,7 +134,7 @@ test('disabling turbo delegates to the original methods', async () => {
 test('bind capture swaps in the turbo frame function once', () => {
   const engine = createOriginalEngine();
   let captured = null;
-  installEngineCapture({ enabled: true }, (e) => (captured = e));
+  installEngineCapture({ enabled: true }, (e) => (captured = e), { knownHashes: engineHashes(createOriginalEngine()) });
   ticker.listeners.length = 0;
   engine.start();
   assert.equal(captured, engine);
@@ -143,3 +145,77 @@ test('bind capture swaps in the turbo frame function once', () => {
   assert.equal(Function.prototype.bind.name, 'bind');
   assert.match(Function.prototype.bind.toString(), /native code/);
 });
+
+// The capture tests run real binds; whatever happens, leave Function.prototype.bind as it was.
+function withBind(fn) {
+  const before = Function.prototype.bind;
+  try {
+    return fn();
+  } finally {
+    Function.prototype.bind = before;
+  }
+}
+
+test('the shipped hashes are Sequencer 4.3.0 as installed, not the test copy', () => {
+  assert.deepEqual(Object.keys(SEQUENCER_ENGINE_HASHES).sort(), [...ENGINE_METHODS].sort());
+  for (const hash of Object.values(SEQUENCER_ENGINE_HASHES)) assert.match(hash, /^[0-9a-f]{8}$/);
+  // The fixture is the same code with different whitespace and imports, so it must not pass as 4.3.0.
+  assert.equal(isKnownEngine(createOriginalEngine()), false);
+  assert.equal(isKnownEngine(createOriginalEngine(), engineHashes(createOriginalEngine())), true);
+  assert.equal(hashSource('abc'), hashSource('abc'));
+  assert.notEqual(hashSource('abc'), hashSource('abd'));
+});
+
+test('capture patches an engine whose methods match the known hashes', () => withBind(() => {
+  const knownHashes = engineHashes(createOriginalEngine());
+  const engine = createOriginalEngine();
+  let captured = null, skipped = null;
+  installEngineCapture({ enabled: true }, (e) => (captured = e), { knownHashes, onSkipped: (e) => (skipped = e) });
+  ticker.listeners.length = 0;
+  engine.start();
+  assert.equal(captured, engine);
+  assert.equal(skipped, null);
+  assert.equal(typeof engine.__turbo, 'object');
+}));
+
+test('capture leaves an engine it does not recognise alone, and still removes the hook', () => withBind(() => {
+  const knownHashes = engineHashes(createOriginalEngine());
+  const engine = createOriginalEngine();
+  const original = { nextFrame: engine.nextFrame, addAnimation: engine.addAnimation };
+  // A newer Sequencer that changed one method.
+  engine.updateStartValues = function updateStartValues(target, propertyName) {
+    return [target, propertyName];
+  };
+  let captured = null, skipped = null;
+  installEngineCapture({ enabled: true }, (e) => (captured = e), { knownHashes, onSkipped: (e) => (skipped = e) });
+  ticker.listeners.length = 0;
+  engine.start();
+  assert.equal(captured, null);
+  assert.equal(skipped, engine);
+  assert.equal(engine.__turbo, undefined);
+  assert.equal(engine.nextFrame, original.nextFrame);
+  assert.equal(engine.addAnimation, original.addAnimation);
+  assert.equal(ticker.listeners.length, 1);
+  assert.match(Function.prototype.bind.toString(), /native code/);
+  // The original frame function is what runs.
+  const target = makeTargets()[0];
+  engine.addAnimation(target.id, { target, propertyName: 'alpha', from: 0, to: 1, duration: 100, delay: 0, absolute: true });
+  ticker.elapsedMS = ticker.deltaMS = 50;
+  ticker.listeners[0]();
+  assert.equal(target.alpha, 0.5);
+}));
+
+test('capture keeps a bind wrapper installed after it', () => withBind(() => {
+  const knownHashes = engineHashes(createOriginalEngine());
+  installEngineCapture({ enabled: true }, null, { knownHashes });
+  const inner = Function.prototype.bind;
+  function laterBind(...args) {
+    return inner.apply(this, args);
+  }
+  Function.prototype.bind = laterBind;
+  const engine = createOriginalEngine();
+  ticker.listeners.length = 0;
+  engine.start();
+  assert.equal(typeof engine.__turbo, 'object');
+  assert.equal(Function.prototype.bind, laterBind);
+}));

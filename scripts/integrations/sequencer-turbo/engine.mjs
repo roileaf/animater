@@ -254,6 +254,42 @@ export function turboizeEngine(engine, state = { enabled: true }) {
   return engine.nextFrame;
 }
 
+// The replacements copy Sequencer 4.3.0's logic, so they only go in when the engine is that code.
+export const ENGINE_METHODS = ['addAnimation', 'nextFrame', '_animate', '_animateAttribute', 'updateStartValues'];
+
+// FNV-1a (32 bit) of each method's source as dist/sequencer.js 4.3.0 ships it, which is what the
+// browser's toString() returns. Recompute with `node tools/hash-sequencer-engine.mjs` after a Sequencer update.
+export const SEQUENCER_ENGINE_HASHES = {
+  addAnimation: 'bf7c81b3',
+  nextFrame: '9bfe0b6b',
+  _animate: '3df5ee8d',
+  _animateAttribute: 'fe4db622',
+  updateStartValues: '9225c97f',
+};
+
+export function hashSource(text) {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+const fnToString = Function.prototype.toString;
+
+export function engineHashes(engine) {
+  const out = {};
+  for (const name of ENGINE_METHODS)
+    out[name] = typeof engine?.[name] === 'function' ? hashSource(fnToString.call(engine[name])) : null;
+  return out;
+}
+
+export function isKnownEngine(engine, knownHashes = SEQUENCER_ENGINE_HASHES) {
+  const hashes = engineHashes(engine);
+  return ENGINE_METHODS.every((name) => hashes[name] !== null && hashes[name] === knownHashes?.[name]);
+}
+
 function looksLikeEngine(fn, thisArg) {
   return (
     fn?.name === 'nextFrame' &&
@@ -268,16 +304,22 @@ function looksLikeEngine(fn, thisArg) {
 
 /**
  * Install the one-shot bind hook. Must run before Sequencer's first animation
- * (module top level is early enough: the engine starts lazily).
+ * (module top level is early enough: the engine starts lazily). An engine whose methods do not match
+ * `knownHashes` (another Sequencer version) is left alone and reported through `onSkipped`.
  */
-export function installEngineCapture(state, onCaptured) {
+export function installEngineCapture(state, onCaptured, { knownHashes = SEQUENCER_ENGINE_HASHES, onSkipped } = {}) {
   const nativeBind = Function.prototype.bind;
   let done = false;
   function turboBind(thisArg, ...args) {
     if (!done && looksLikeEngine(this, thisArg)) {
       done = true;
-      Function.prototype.bind = nativeBind;
+      // A bind wrapper installed after this one stays in place; it reaches here and passes through.
+      if (Function.prototype.bind === turboBind) Function.prototype.bind = nativeBind;
       try {
+        if (!isKnownEngine(thisArg, knownHashes)) {
+          onSkipped?.(thisArg);
+          return nativeBind.call(this, thisArg, ...args);
+        }
         const frame = turboizeEngine(thisArg, state);
         onCaptured?.(thisArg);
         return nativeBind.call(frame, thisArg, ...args);

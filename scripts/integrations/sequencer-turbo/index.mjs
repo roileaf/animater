@@ -24,13 +24,22 @@ export const turboState = {
   refreshFrames: 30,
   frame: 0,
   engineCaptured: false,
+  // Set when Sequencer's engine is not the 4.3.0 code the engine patch was written against.
+  engineSkipped: null,
   stats: { effectRuns: 0, effectSkips: 0, soundRuns: 0, soundSkips: 0, culled: 0, preloaded: 0, staggered: 0, droppedSize: 0, droppedBudget: 0, lightened: 0 },
 };
 
 // Sequencer's animation engine starts lazily on its first animation, so hooking at import time is early
 // enough. The engine flag is read through a view so switching it off hands frames back to the original.
+// Another Sequencer version keeps its own engine (engine.mjs checks the methods' source first).
 installEngineCapture({ get enabled() { return turboState.enabled && turboState.engine; } },
-  () => { turboState.engineCaptured = true; });
+  () => { turboState.engineCaptured = true; }, {
+    onSkipped: () => {
+      turboState.engineCaptured = false;
+      turboState.engineSkipped = 'unknown Sequencer engine';
+      console.info('Animater | Sequencer speed-ups: this Sequencer version has an unknown animation engine, left unpatched');
+    },
+  });
 
 function onEffectCreated(effect) {
   try {
@@ -74,7 +83,7 @@ async function profile(seconds = 10, { quiet = false } = {}) {
   return result;
 }
 
-const status = () => ({ ...Object.fromEntries(['enabled', ...PATCHES, 'refreshFrames', 'engineCaptured'].map((k) => [k, turboState[k]])), stats: { ...turboState.stats }, typicalFrameMs: turboState.typicalFrame?.() ?? null });
+const status = () => ({ ...Object.fromEntries(['enabled', ...PATCHES, 'refreshFrames', 'engineCaptured', 'engineSkipped'].map((k) => [k, turboState[k]])), stats: { ...turboState.stats }, typicalFrameMs: turboState.typicalFrame?.() ?? null });
 
 // Per-patch switches are client settings kept out of the settings window; flip them from the console
 // when tracking down a problem: game.modules.get('animater').api.sequencerSpeedups.set('sound', false).
