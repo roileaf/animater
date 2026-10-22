@@ -19,6 +19,7 @@ import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
+import { createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -160,12 +161,43 @@ const lightHost = createLightHost({
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
 });
+// Ground marks on this client (engines/marks/mark-paint.mjs): local sprites on the floor, never documents. One
+// container per scene in the primary group at the viewed level's floor, between drawings (600) and tokens (700).
+// Viewing another level redraws the whole canvas (Scene#view -> Canvas#draw), so its tear-down clears them too.
+let markTex = null, markRoot = null;
+const clearMarks = () => {
+  markLayer.clear();
+  try { markRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  markRoot = null;
+};
+const markLayer = createMarkLayer({
+  makeSprite: (tag, blotches, mask) => markSprite(PIXI, markTex ??= markTextures(PIXI, canvas.app.renderer), tag, blotches, mask),
+  addToScene: (sprite) => {
+    if (!markRoot || markRoot.destroyed) {
+      markRoot = new PIXI.Container();
+      markRoot.eventMode = "none";
+      markRoot.elevation = canvas.level?.elevation?.base ?? 0;
+      markRoot.sortLayer = 650;
+      canvas.primary.addChild(markRoot);
+    }
+    markRoot.addChild(sprite);
+  },
+  removeFromScene: (sprite) => sprite.destroy({ children: true }),
+  viewedLevel: () => canvas?.level?.id ?? null,
+  sceneId: () => canvas?.scene?.id,
+  gridSize: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+  // Off draws none; Low keeps half as many.
+  enabled: () => game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
+  cap: () => (localQuality() === "low" ? 30 : 60),
+  mask: (tag) => markAreaMask(tag),
+});
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
-  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect);
+  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect); markLayer.onEffect(effect);
 });
-Hooks.on("endedSequencerEffect", (effect) => lightHost.onEnded(effect));
-Hooks.on("canvasTearDown", () => lightHost.clear());
+Hooks.on("endedSequencerEffect", (effect) => { lightHost.onEnded(effect); markLayer.onEnded(effect); });
+Hooks.on("canvasTearDown", () => { lightHost.clear(); clearMarks(); });
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
 // every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
@@ -176,6 +208,7 @@ Hooks.on("canvasReady", () => {
     adaptiveTicker = ticker;
     ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2);
     ticker.add(() => lightHost.tick(), undefined, P.NORMAL);
+    ticker.add(() => markLayer.tick(), undefined, P.NORMAL);
     ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
   }
 });
@@ -884,6 +917,20 @@ function areaMask(template) {
   const points = template?.shape?.points;
   return points?.length ? new PIXI.Polygon(Array.from(points, (n, i) => n + (i % 2 ? doc.y : doc.x))) : null;
 }
+// The placed area a ground mark covers, on this client: the scene's Region (v14 templates are Regions) whose shape
+// starts at the mark's centre (within half a square) and holds it. Its shape clips the mark; none leaves it unclipped.
+function markAreaMask(tag) {
+  const grid = canvas?.grid?.size ?? 100, { x, y } = tag.at;
+  const near = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Math.hypot(p.x - x, p.y - y) <= grid / 2;
+  // An emanation grows from its base: a token's footprint (top-left corner and size in squares) is centred on it.
+  const centre = (b) => (b?.type === "token" && b.width > 0 && b.height > 0 ? { x: b.x + b.width * grid / 2, y: b.y + b.height * grid / 2 } : null);
+  for (const region of canvas?.scene?.regions ?? []) {
+    if (!Array.from(region.shapes ?? []).some((s) => near(s) || near(s?.base) || near(centre(s?.base)))) continue;
+    const polygons = [areaMask(region)].flat().filter(Boolean);
+    if (polygons.some((p) => p.contains(x, y))) return polygons;
+  }
+  return null;
+}
 function localParticles(stage, effect, template) {
   const Effect = CONFIG.fxmaster?.particleEffects?.[stage.fxType], PIXI = globalThis.PIXI;
   // Foundry 14's weather layer draws only its own containers; the interface layer
@@ -1375,6 +1422,18 @@ Hooks.once("init", () => {
     hint: "Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  game.settings.register(ID, "groundMarks", {
+    name: "Ground marks",
+    hint: "Fire, frost, acid and other elemental hits leave a fading mark on the floor where they landed. Marks are drawn on each screen and never saved.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "groundMarksLocal", {
+    name: "Ground marks on my screen",
+    hint: "Turn off to never draw ground marks on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    // Turning it off wipes the marks already on the floor.
+    onChange: (value) => { if (value === false) clearMarks(); },
+  });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -1592,8 +1651,8 @@ Hooks.once("ready", () => {
       && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
     // Shots stop at walls (world setting); on while the setting is not registered.
     projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
-    // Harmful plays leave ground marks (world setting); on while the setting is not registered.
-    groundMarks: () => { try { return game.settings.get(ID, "groundMarks") !== false; } catch { return true; } },
+    // Harmful plays leave ground marks (world setting).
+    groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
     itemDamages: (item) => usedItemDamages(item, game.system.id),
     // The level this client views and its floor, for a mark whose source token names none.
