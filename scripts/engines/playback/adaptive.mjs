@@ -54,9 +54,9 @@ export function effectScreenSize(data, { gridSize, zoom, tokenSize } = {}) {
   return null;
 }
 
-// Keep, drop or lighten one Animater effect. Tier 0 is never dropped.
+// Keep, drop or lighten one Animater effect. Tier 0 is never dropped; the preview is never touched.
 export function adaptEffect(data, { tight, zoom, gridSize, tokenSize, decisions, lod = true, budget = true }) {
-  if (data.moduleName !== 'animater' || data.animaterTier === undefined || data.animaterLasting) return 'keep';
+  if (data.moduleName !== 'animater' || data.animaterTier === undefined || data.animaterLasting || data.animaterPreview) return 'keep';
   const tier = data.animaterTier;
   // Unnamed effects get a throwaway session so they never share one verdict.
   const fresh = () => ({ tight, small: {} });

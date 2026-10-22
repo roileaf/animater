@@ -286,7 +286,9 @@ export class AnimaterRuntime {
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
-      const spread = !preview && this.host.adaptive?.()?.stagger ? staggerDelays(stages) : null;
+      const adapt = preview ? null : this.host.adaptive?.();
+      const spread = adapt?.stagger ? staggerDelays(stages) : null;
+      if (spread?.size) adapt.staggered?.([...spread.values()].filter((ms) => ms > 0).length);
       for (const s of stages) {
         if (s.kind === "motion" || OPTIONAL_FX_KINDS.has(s.kind)) continue;
         if (s.kind === "sound") {
@@ -327,7 +329,7 @@ export class AnimaterRuntime {
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tiers.get(s.stageId) ?? 0, animaterLasting = Boolean(lasts);
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting }));
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(preview ? { animaterPreview: true } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);

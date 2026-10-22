@@ -7,7 +7,8 @@ import { installSoundPatch, bumpGeometryEpoch } from './sound.mjs';
 import { patchEffectRender } from './culling.mjs';
 import { runBenchmark } from './benchmark.mjs';
 
-export const PATCHES = ['engine', 'effects', 'sound', 'culling'];
+// The last four drive adaptive playback (engines/playback/adaptive-host.mjs) on this client.
+export const PATCHES = ['engine', 'effects', 'sound', 'culling', 'preload', 'stagger', 'lod', 'budget'];
 const speedupKey = (key) => `speedup${key[0].toUpperCase()}${key.slice(1)}`;
 
 export const turboState = {
@@ -16,10 +17,14 @@ export const turboState = {
   effects: true,
   sound: true,
   culling: true,
+  preload: true,
+  stagger: true,
+  lod: true,
+  budget: true,
   refreshFrames: 30,
   frame: 0,
   engineCaptured: false,
-  stats: { effectRuns: 0, effectSkips: 0, soundRuns: 0, soundSkips: 0, culled: 0 },
+  stats: { effectRuns: 0, effectSkips: 0, soundRuns: 0, soundSkips: 0, culled: 0, preloaded: 0, staggered: 0, droppedSize: 0, droppedBudget: 0, lightened: 0 },
 };
 
 // Sequencer's animation engine starts lazily on its first animation, so hooking at import time is early
@@ -69,7 +74,7 @@ async function profile(seconds = 10, { quiet = false } = {}) {
   return result;
 }
 
-const status = () => ({ ...Object.fromEntries(['enabled', ...PATCHES, 'refreshFrames', 'engineCaptured'].map((k) => [k, turboState[k]])), stats: { ...turboState.stats } });
+const status = () => ({ ...Object.fromEntries(['enabled', ...PATCHES, 'refreshFrames', 'engineCaptured'].map((k) => [k, turboState[k]])), stats: { ...turboState.stats }, typicalFrameMs: turboState.typicalFrame?.() ?? null });
 
 // Per-patch switches are client settings kept out of the settings window; flip them from the console
 // when tracking down a problem: game.modules.get('animater').api.sequencerSpeedups.set('sound', false).

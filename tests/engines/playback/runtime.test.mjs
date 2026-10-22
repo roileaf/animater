@@ -917,13 +917,16 @@ test("per-target copies are staggered at the table, never in preview", async () 
   const { recipe, context } = manyTargets();
   const delaysOf = async (preview) => {
     const { runtime, host, calls } = fixture();
-    host.adaptive = () => ({ stagger: true });
+    host.adaptive = () => ({ stagger: true, staggered: (n) => counted.push(n) });
     runtime.wait = async () => true;
     await runtime.play(recipe, context, { preview });
     return calls.filter((c) => c[0] === "delay").map((c) => c[1]);
   };
+  const counted = [];
   assert.deepEqual(await delaysOf(false), [16, 32, 48, 50]);
+  assert.deepEqual(counted, [4]);
   assert.deepEqual(await delaysOf(true), []);
+  assert.deepEqual(counted, [4]);
   const { runtime, calls } = fixture();
   runtime.wait = async () => true;
   await runtime.play(recipe, context);
@@ -940,8 +943,15 @@ test("every effect is tagged with its tier and whether it lasts", async () => {
     const data = await fn(null, { keep: 1 });
     assert.ok([0, 1, 2].includes(data.animaterTier));
     assert.equal(data.animaterLasting, false);
+    assert.equal(data.animaterPreview, undefined);
     assert.equal(data.keep, 1);
   }
+  const preview = fixture();
+  preview.runtime.wait = async () => true;
+  await preview.runtime.play(recipe, context, { preview: true });
+  const tagged = preview.calls.filter((c) => c[0] === "addOverride");
+  assert.ok(tagged.length);
+  for (const [, fn] of tagged) assert.equal((await fn(null, {})).animaterPreview, true);
 });
 test("played visual assets are remembered for the source actor", async () => {
   const { recipe, context } = manyTargets();

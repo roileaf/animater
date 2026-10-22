@@ -55,6 +55,13 @@ test('adaptEffect keeps untagged and foreign effects', () => {
   assert.equal(adaptEffect({ moduleName: 'animater', animaterTier: 2, animaterLasting: true, name: 's3' }, { tight: true, zoom: 1, gridSize: 100, decisions }), 'keep');
 });
 
+test('adaptEffect keeps the Recipe Studio preview', () => {
+  const decisions = createSessionDecisions();
+  const tiny = { moduleName: 'animater', animaterTier: 2, animaterPreview: true, name: 'p', size: { width: 0.2, height: 0.2, gridUnits: true } };
+  assert.equal(adaptEffect(tiny, { tight: true, zoom: 1, gridSize: 100, decisions }), 'keep');
+  assert.equal(adaptEffect({ ...tiny, animaterTier: 0, name: 'p0' }, { tight: true, zoom: 1, gridSize: 100, decisions }), 'keep');
+});
+
 test('tier 0 is never dropped; tiny tier 0-1 lose blur and glow; tiny or tight tier 2 drops', () => {
   const tiny = { moduleName: 'animater', size: { width: 0.2, height: 0.2, gridUnits: true } };
   const decisions = createSessionDecisions();

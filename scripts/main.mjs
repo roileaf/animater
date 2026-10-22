@@ -16,7 +16,8 @@ import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
-import { registerSequencerSpeedups, sequencerSpeedupsApi } from "./integrations/sequencer-turbo/index.mjs";
+import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
+import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -104,8 +105,32 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
+// Adaptive playback on this client (engines/playback/adaptive-host.mjs): Foundry is read only when it runs.
+const adaptiveHost = createAdaptiveHost({
+  state: turboState,
+  quality: localQuality,
+  catalog: () => runtime?.getCatalog() ?? [],
+  weaponRecipes: (actor) => (actor?.items?.contents ?? []).filter((item) => ["weapon", "melee"].includes(item.type)).slice(0, 6)
+    .map((item) => { try { return resolveEvent({ type: "attack", item, actor }); } catch { return null; } }).filter(Boolean),
+  preload: (files) => Sequencer.Preloader.preload(files, false),
+  endLocally: (effect) => queueMicrotask(() => void Sequencer.EffectManager.endEffects({ effects: [effect] }, false)),
+  sceneId: () => canvas?.scene?.id,
+  view: () => ({
+    zoom: canvas?.stage?.scale?.x ?? 1, gridSize: canvas?.grid?.size ?? 100, targetMs: 1000 / (canvas?.app?.ticker?.maxFPS || 60),
+    tokenSize: (uuid) => { try { const t = fromUuidSync(uuid)?.object; return t ? { width: t.w, height: t.h } : null; } catch { return null; } },
+  }),
+});
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
-Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); });
+Hooks.on("createSequencerEffect", (effect) => { lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); });
+// canvas.app (and its ticker) survives scene changes; sample frame time once per ticker.
+let adaptiveTicker = null;
+Hooks.on("canvasReady", () => {
+  adaptiveHost.onCanvasReady(performance.now());
+  const ticker = canvas?.app?.ticker;
+  if (ticker && adaptiveTicker !== ticker) { adaptiveTicker = ticker; ticker.add(() => adaptiveHost.onTick(ticker.deltaMS, performance.now())); }
+});
+// The next combatant's likely files load ahead on every client, one turn early.
+Hooks.on("updateCombat", (combat, changed) => { if ("turn" in (changed ?? {}) || "round" in (changed ?? {})) adaptiveHost.onTurn(combat); });
 tokenFx.custom = () => { try { return game.settings.get(ID, 'tokenFxPresets') ?? []; } catch { return []; } };
 const fxCatalog = () => installedFxCatalog({
   modules:game.modules, tokenFx, fxmaster:globalThis.FXMASTER?.api,
@@ -1576,6 +1601,8 @@ Hooks.once("ready", () => {
     // Sequencer synchronizes playback and loads media on each receiving client.
     // Waiting for every client here can stall the rolling user's animation.
     preloadSounds: files => Sequencer.Preloader.preload(files,false),
+    adaptive: () => adaptiveHost.adaptive(),
+    rememberAssets: (id, assets) => adaptiveHost.rememberAssets(id, assets),
     // Where a loaded sound is loudest (ms in), measured once per file.
     soundPeak: (file) => { if (!soundPeaks.has(file)) { const b = game.audio?.buffers?.getBuffer?.(file); if (!b) return null; soundPeaks.set(file, peakOf(b)); } return soundPeaks.get(file); },
     motion: async (stage, context, { preview, session }) => {
