@@ -136,12 +136,52 @@ test("a pull acted out for a teleported target plays only on those who are not t
 
 test("a preview vanishes in place: no pick, no real teleport", async () => {
   const { runtime, calls } = fixture({ spot: { mover: ally, x: 0, y: 0 } });
-  await runtime.play(friendfetch(), { source, targets: [ally] }, { preview: true });
+  // A target teleport that is not a fetch (Friendfetch's preview acts its pull out instead).
+  await runtime.play(friendfetch(undefined, { name: "Swap", match: "Swap", teleport: "target" }), { source, targets: [ally] }, { preview: true });
   assert.ok(!calls.some((c) => c[0] === "pick" || c[0] === "teleport"));
   const shown = teleportCall(calls, "previewTeleport");
   assert.equal(shown.call[1], ally, "the one who would move");
   assert.deepEqual(shown.call[2], { outAt: 0, goneMs: 500 });
   assert.equal(shown.waitedFirst.includes(1200), true);
+});
+
+// Friendfetch moves every target, each on its own hit's timing.
+test("a fetch moves each target on its own copy of the stage, and drops the pull on both", async () => {
+  const hit = { stageId: "hit", kind: "impact", assets: ["jb2a.impact.001.orange"], afterStage: "ray", timingAnchor: "arrival", duration: 400, targetStagger: 300 };
+  const pull = { stageId: "pull", kind: "motion", motion: "rush", subject: "targets", afterStage: "hit", timingAnchor: "end", duration: 1000, skipOnTeleport: true };
+  const stage = { stageId: "t", kind: "teleport", afterStage: "hit", timingAnchor: "start", startOffset: 0, duration: 500 };
+  const recipe = friendfetch([cast, ray, hit, pull, stage]);
+  const spots = [{ mover: ally, x: 100, y: 0 }, { mover: other, x: 0, y: 100 }];
+  const { runtime, host, calls } = fixture();
+  host.pickTeleport = async () => spots;
+  // Waits pass in (scaled) real time, so each group's wait comes just before what it starts.
+  runtime.wait = (ms) => new Promise((resolve) => setTimeout(() => { calls.push(["wait", ms]); resolve(true); }, ms / 20));
+  await runtime.play(recipe, { source, targets: [ally, other] });
+  const moved = calls.filter((c) => c[0] === "teleport");
+  assert.deepEqual(moved.map((c) => c[1]), spots, "both targets move");
+  assert.equal(calls.filter((c) => c[0] === "motion" && c[1] === "rush").length, 0, "no acted-out pull on either");
+  // Each waits for its own hit: the second target's comes 300 ms later.
+  const waited = (c) => calls.slice(0, calls.indexOf(c)).filter((x) => x[0] === "wait").at(-1)[1];
+  assert.equal(waited(moved[1]) - waited(moved[0]), 300);
+});
+
+test("a fetch's preview plays the pull and moves nobody", async () => {
+  const pull = { stageId: "pull", kind: "motion", motion: "rush", subject: "targets", afterStage: "ray", timingAnchor: "end", duration: 1000, skipOnTeleport: true };
+  const { runtime, calls } = fixture();
+  await runtime.play(friendfetch([cast, ray, pull]), { source, targets: [ally, other] }, { preview: true });
+  assert.ok(!calls.some((c) => c[0] === "previewTeleport" || c[0] === "teleport"));
+  assert.equal(calls.filter((c) => c[0] === "motion" && c[1] === "rush").length, 2);
+});
+
+test("a fetch stopped before its stages still lands every target", async () => {
+  const spots = [{ mover: ally, x: 100, y: 0 }, { mover: other, x: 0, y: 100 }];
+  const { runtime, host, calls } = fixture();
+  host.pickTeleport = async () => spots;
+  host.place = async (spot) => calls.push(["place", spot.mover.id]);
+  runtime.wait = async (ms) => ms < 1200;
+  await runtime.play(friendfetch(), { source, targets: [ally, other] });
+  await settle();
+  assert.deepEqual(calls.filter((c) => c[0] === "place").map((c) => c[1]), ["ally", "other"]);
 });
 
 test("playTeleport: out effect and vanish at outAt, the move and in effect after goneMs", async () => {

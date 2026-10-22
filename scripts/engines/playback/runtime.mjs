@@ -367,28 +367,34 @@ export class AnimaterRuntime {
     // or one placed where the animation reaches the mover (engines/motion/teleport.mjs).
     // Cancelling the pick still plays the animation, without moving anyone. A preview vanishes and reappears in place.
     // A picked spot is a move in the game: it happens even when the animation fails or is stopped first (landTeleport).
-    let jump = null;
-    const who = teleportPlan(recipe)?.who;
+    // A fetch (Friendfetch) moves every target, each to its own spot (a list from the host); each jumps on its
+    // own copy of the teleport stage. Its preview acts the pull out instead.
+    let moves = [];
+    const teleporting = teleportPlan(recipe), who = teleporting?.who;
     if (!preview && this.host.pickTeleport) {
-      const before = this.epoch, spot = await this.host.pickTeleport(recipe, context)?.catch?.(() => null);
-      if (spot) jump = { spot, mover: spot.mover };
-      if (this.epoch !== before) { this.landTeleport(jump); return null; }
-    } else if (preview && who && this.host.previewTeleport) {
+      const before = this.epoch, picked = await this.host.pickTeleport(recipe, context)?.catch?.(() => null);
+      moves = (Array.isArray(picked) ? picked : [picked]).filter(Boolean).map((spot) => ({ spot, mover: spot.mover }));
+      if (this.epoch !== before) { this.landTeleports(moves); return null; }
+    } else if (preview && who && !teleporting.fetch && this.host.previewTeleport) {
       const mover = who === "target" ? context.targets?.[0] : context.source;
-      if (mover) jump = { mover };
+      if (mover) moves = [{ mover }];
     }
     let jumps = [], session;
     // A stage planned once per target keeps the tier of its first copy.
     const tiers = new Map();
     try {
-      jumps = jump ? withTeleportStage(plan, { who, mover: jump.mover }).filter((s) => s.kind === "teleport").slice(0, 1) : [];
-      // A stage that only stands in for the move (Friendfetch's pull) gives way on the token that really moves.
-      const standIn = (s) => s.skipOnTeleport && jumps.length && (s.subject === "targets" ? tokenIdOf(s.destination) === tokenIdOf(jump.mover) : who === "source");
+      jumps = moves.map((move) => {
+        const stage = withTeleportStage(plan, { who, mover: move.mover }).find((s) => s.kind === "teleport");
+        return stage && { ...stage, move };
+      }).filter(Boolean);
+      // A stage that only stands in for the move (Friendfetch's pull) gives way on the tokens that really move.
+      const moved = (token) => jumps.some((j) => tokenIdOf(j.move.mover) === tokenIdOf(token));
+      const standIn = (s) => s.skipOnTeleport && jumps.length && (s.subject === "targets" ? moved(s.destination) : who === "source");
       plan = plan.filter((s) => s.kind !== "teleport" && !standIn(s));
       session = `${ID}-${this.host.userId()}-${uuid()}`;
       for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
     } catch (error) {
-      this.landTeleport(jump);
+      this.landTeleports(moves);
       throw error;
     }
     const epoch = this.epoch;
@@ -711,7 +717,7 @@ export class AnimaterRuntime {
               this.host.motion(withTrail(s, trail), context, { preview, session }),
             ),
             ...optionalFx.map(s=>this.host.optionalFx?.(s,context,{preview,session})),
-            ...teleports.map((s) => this.playTeleportStage(jump, s, recipe, context, preview)),
+            ...teleports.map((s) => this.playTeleportStage(s.move, s, recipe, context, preview)),
           ]);
           return this.epoch===epoch && !failed;
         }),
@@ -783,8 +789,11 @@ export class AnimaterRuntime {
       if (failed || preview || !plan.some((s) => s.persist))
         this.sessions.delete(session);
       // Stopped or failed before its teleport stage started: the token still goes to its spot.
-      this.landTeleport(jump);
+      this.landTeleports(moves);
     }
+  }
+  landTeleports(moves) {
+    for (const move of moves) this.landTeleport(move);
   }
   // A picked teleport whose stage never started: the move at once, without its effects.
   landTeleport(jump) {

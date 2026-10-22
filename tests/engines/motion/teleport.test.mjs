@@ -5,11 +5,11 @@ import { HEX } from "../../../scripts/engines/playback/color-parity.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 
 test("known teleport spells teleport by default; a recipe can turn it off or change it", () => {
-  assert.deepEqual(teleportPlan({ match: "Misty Step,misty-step" }), { who: "source", range: 30, adjacent: false });
-  assert.deepEqual(teleportPlan({ match: "Friendfetch" }), { who: "target", range: 0, adjacent: true });
+  assert.deepEqual(teleportPlan({ match: "Misty Step,misty-step" }), { who: "source", range: 30, adjacent: false, fetch: false });
+  assert.deepEqual(teleportPlan({ match: "Friendfetch" }), { who: "target", range: 0, adjacent: false, fetch: true });
   assert.equal(teleportPlan({ match: "Fireball,fireball" }), null);
   assert.equal(teleportPlan({ match: "Translocate", teleport: "none" }), null, "off wins");
-  assert.deepEqual(teleportPlan({ match: "Fireball", teleport: "source", teleportRange: 60 }), { who: "source", range: 60, adjacent: false });
+  assert.deepEqual(teleportPlan({ match: "Fireball", teleport: "source", teleportRange: 60 }), { who: "source", range: 60, adjacent: false, fetch: false });
 });
 
 test("ranges come from the spell: PF2e text, D&D value and units", () => {

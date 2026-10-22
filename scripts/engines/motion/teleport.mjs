@@ -9,12 +9,14 @@ import { nextFrame, cancelFrame } from './canvas-frame.mjs';
 // move a token for real, so it is off unless a recipe turns it on (known teleport spells do by default).
 
 // Known teleport spells (by slug). range: feet when the item itself says "self"; adjacent:
-// the spot must be next to the caster (Friendfetch brings an ally to you). gone: how long its catalog
-// recipe's Teleport stage keeps the mover gone (ms): a short blink under half a second, a long jump longer.
+// the spot must be next to the caster. fetch: every target (up to 2) is dragged toward the caster, its square
+// worked out by the rules, not picked (engines/motion/fetch-path.mjs), and slides there rather than vanishing
+// (Friendfetch). gone: how long its catalog recipe's Teleport stage keeps the mover gone (ms): a short blink
+// under half a second, a long jump longer; for a fetch, how long the slide takes.
 export const TELEPORT_DEFAULTS = {
   translocate: { who: "source", gone: 700 },
   "dimension-door": { who: "source", gone: 700 },
-  friendfetch: { who: "target", adjacent: true, gone: 500 },
+  friendfetch: { who: "target", fetch: true, gone: 500 },
   "misty-step": { who: "source", range: 30, gone: 400 },
   "thunder-step": { who: "source", range: 90, gone: 400 },
   "far-step": { who: "source", range: 60, gone: 400 },
@@ -43,7 +45,8 @@ export function teleportPlan(recipe) {
   const known = knownTeleport(recipe);
   const who = TELEPORT_WHO[recipe.teleport] && recipe.teleport !== "none" ? recipe.teleport : known?.who;
   if (!who) return null;
-  return { who, range: Number(recipe.teleportRange) > 0 ? Number(recipe.teleportRange) : known?.range ?? 0, adjacent: recipe.teleportAdjacent ?? known?.adjacent ?? false };
+  return { who, range: Number(recipe.teleportRange) > 0 ? Number(recipe.teleportRange) : known?.range ?? 0, adjacent: recipe.teleportAdjacent ?? known?.adjacent ?? false,
+    fetch: who === "target" && known?.fetch === true };
 }
 
 // Extra departure/arrival cues belong to this recipe, rather than fixed blue puffs.
@@ -79,7 +82,15 @@ export function withTeleportStage(plan, { who, mover } = {}) {
   const own = plan.find((s) => s.kind === 'teleport');
   if (own) {
     const linked = own.timingAnchor === 'arrival' && own.afterStage ? plan.filter((s) => ['travel', 'projectile'].includes(s.kind) && s.stageId === own.afterStage) : [];
-    if (!linked.length) return plan;
+    if (!linked.length) {
+      // Linked to a stage played once per target (Friendfetch's hit on each ally): planned from the latest copy,
+      // it takes this mover's copy instead.
+      const copies = own.afterStage ? plan.filter((s) => s.stageId === own.afterStage) : [];
+      const mine = copies.filter((s) => sameToken(s.endpoint ?? s.destination, mover));
+      if (copies.length < 2 || !mine.length) return plan;
+      const shift = Math.min(...mine.map((s) => s.delay ?? 0)) - Math.max(...copies.map((s) => s.delay ?? 0));
+      return shift ? plan.map((s) => (s === own ? { ...own, delay: Math.max(0, Math.round((own.delay ?? 0) + shift)) } : s)) : plan;
+    }
     const flights = linked.some((s) => sameToken(s.endpoint, mover)) ? linked.filter((s) => sameToken(s.endpoint, mover)) : linked;
     const delay = Math.max(0, Math.round(Math.min(...flights.map((s) => (s.delay ?? 0) + arrivalOf(s))) + (Number(own.startOffset) || 0)));
     return plan.map((s) => (s === own ? { ...own, delay } : s));
