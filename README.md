@@ -93,6 +93,9 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Hit-stop on critical hits | World | A critical hit freezes its animation for a split second at contact, on every screen (on by default; needs *Faster animations*, skipped at Low and Off quality) |
 | Slow motion on notable kills | World | The last enemy of a fight, a boss-level foe or a critical kill plays its finisher at half speed (on by default) |
 | Hit-stop on my screen | Each player | Turn off to never freeze animations on your screen; they still keep the short beat after a critical hit (on by default) |
+| Effect lighting | World | Fire, lightning, radiant and other glowing effects light the scene around them for a moment, blocked by walls like any light (on by default) |
+| Effect lighting in daylight | World | Also adds a soft coloured glow around effects in fully lit scenes (on by default) |
+| Flickering and flashing effect lights | Each player | Turn off to see effect lights as a steady glow, without flicker or strobe (on by default) |
 
 ### Faster animations
 
