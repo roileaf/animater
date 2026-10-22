@@ -1429,6 +1429,37 @@ test("a thrown bomb stopped by a wall bursts there as the wall's variant lands; 
   assert.equal(plan.find((s) => s.kind === "impact" && s.landing?.x === WALL_X).delay, lands);
   assert.equal(plan.find((s) => s.stageId === "beat").delay, lands);
 });
+// A D&D 5e thrown or launched weapon, as the catalog builds it: its contact is timed to the flight's arrival,
+// and lands as the range variant played for the distance lands (its stage lasts the 90 ft variant + 150).
+async function dndThrow(name, variantId, x, type) {
+  const entry = dndEntries().find((e) => e.name === name);
+  const recipe = dndRecipe(entry, variantId);
+  const flight = recipe.stages.find((s) => s.kind === "travel");
+  const contact = recipe.stages.find((s) => s.kind === "impact" && s.afterStage === flight.stageId);
+  assert.equal(contact.timingAnchor, "arrival", name);
+  const context = { id: "dnd1", type, outcome: "success", source: { id: "s", center: { x: 0, y: 0 }, w: 100, h: 100 }, targets: [{ id: "t1", center: { x, y: 0 }, w: 100, h: 100 }] };
+  const setup = (f) => f.runtime.catalog.push(...[...new Set(recipe.stages.flatMap((s) => s.assets ?? []))].map((key) => ({ key })));
+  const { plan } = await playWall(recipe, context, { collides: () => null, setup });
+  const at = (id) => plan.find((s) => s.stageId === id);
+  return { flight: at(flight.stageId), contact: at(contact.stageId) };
+}
+test("a D&D thrown flask splashes as its vial lands, for the distance it is thrown", async () => {
+  for (const [x, ft] of [[100, "05ft"], [600, "30ft"], [1600, "90ft"]]) {
+    const { flight, contact } = await dndThrow("Alchemist's Fire", undefined, x, "save");
+    assert.equal(flight.asset, "jb2a.throwable.throw.flask.01.orange", ft);
+    assert.equal(contact.delay, flight.delay + MEDIA_LANDINGS[`jb2a.throwable.throw.flask.01.orange.${ft}`], ft);
+    // Not as the 3.7 s flight stage ends.
+    assert.ok(contact.delay < flight.delay + flight.duration - 150, ft);
+  }
+});
+test("a D&D arrow hits as its range variant's arrow lands", async () => {
+  const entry = dndEntries("weapon").find((e) => e.name === "Longbow");
+  const variant = entry.variants.find((v) => v.weaponMode === "ranged") ?? entry.variants[0];
+  const { flight, contact } = await dndThrow("Longbow", variant.id, 600, "attack");
+  const base = flight.asset.replace(/\.(\d\dft)(\.\d+)?$/, "");
+  const landing = Object.entries(MEDIA_LANDINGS).find(([k]) => k.startsWith(base) && k.endsWith(".30ft"))[1];
+  assert.equal(contact.delay, flight.delay + landing);
+});
 test("preview never drops on-target stages", async () => {
   const { recipe, context } = boltAttack();
   const { calls } = await playWall(recipe, context, { options: { preview: true } });
