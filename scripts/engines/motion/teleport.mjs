@@ -9,14 +9,15 @@ import { nextFrame, cancelFrame } from './canvas-frame.mjs';
 // move a token for real, so it is off unless a recipe turns it on (known teleport spells do by default).
 
 // Known teleport spells (by slug). range: feet when the item itself says "self"; adjacent:
-// the spot must be next to the caster (Friendfetch brings an ally to you).
+// the spot must be next to the caster (Friendfetch brings an ally to you). gone: how long its catalog
+// recipe's Teleport stage keeps the mover gone (ms): a short blink under half a second, a long jump longer.
 export const TELEPORT_DEFAULTS = {
-  translocate: { who: "source" },
-  "dimension-door": { who: "source" },
-  friendfetch: { who: "target", adjacent: true },
-  "misty-step": { who: "source", range: 30 },
-  "thunder-step": { who: "source", range: 90 },
-  "far-step": { who: "source", range: 60 },
+  translocate: { who: "source", gone: 700 },
+  "dimension-door": { who: "source", gone: 700 },
+  friendfetch: { who: "target", adjacent: true, gone: 500 },
+  "misty-step": { who: "source", range: 30, gone: 400 },
+  "thunder-step": { who: "source", range: 90, gone: 400 },
+  "far-step": { who: "source", range: 60, gone: 400 },
 };
 export const TELEPORT_WHO = { none: "Off", source: "The caster", target: "The first target" };
 export const TELEPORT_STYLES = {
@@ -34,9 +35,12 @@ export function teleportStyle(recipe) {
 const slug = (v) => String(v ?? "").toLowerCase().trim().replace(/['’]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // What a recipe teleports, or null. A recipe's own choice wins ("none" turns a known spell's off).
+const knownTeleport = (recipe) => String(recipe?.match ?? "").split(",").map(slug).map((s) => TELEPORT_DEFAULTS[s]).find(Boolean) ?? null;
+// How long a recipe's new Teleport stage keeps the mover gone: its known spell's, else the default.
+export const teleportGoneMs = (recipe) => knownTeleport(recipe)?.gone ?? TELEPORT_GONE_MS;
 export function teleportPlan(recipe) {
   if (!recipe || recipe.teleport === "none") return null;
-  const known = String(recipe.match ?? "").split(",").map(slug).map((s) => TELEPORT_DEFAULTS[s]).find(Boolean) ?? null;
+  const known = knownTeleport(recipe);
   const who = TELEPORT_WHO[recipe.teleport] && recipe.teleport !== "none" ? recipe.teleport : known?.who;
   if (!who) return null;
   return { who, range: Number(recipe.teleportRange) > 0 ? Number(recipe.teleportRange) : known?.range ?? 0, adjacent: recipe.teleportAdjacent ?? known?.adjacent ?? false };

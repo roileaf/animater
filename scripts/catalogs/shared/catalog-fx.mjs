@@ -8,6 +8,7 @@ import {BESPOKE} from '../bespoke/index.mjs';
 import {CATALOG_FX_EVIDENCE} from '../../../data/catalog-fx-evidence.mjs';
 import {fxSemantics} from './catalog-fx-semantics.mjs';
 import {fitCastClips} from '../../engines/playback/cast-clip.mjs';
+import {withCatalogTeleport} from './catalog-teleport.mjs';
 
 export function catalogFxSettings(game = globalThis.game) {
   const enabled = key => { try { return game?.settings?.get('animater',key) !== false; } catch { return true; } };
@@ -163,6 +164,8 @@ export function withCatalogFx(recipe, entry, options={}) {
   // (lead-in skipped, visible length kept) before FX layers time off them.
   const fitted=fitCastClips(recipe);
   if(fitted!==recipe)recipe=validateRecipe(fitted);
+  // A teleport spell's own Teleport stage, timed to its art (catalog-teleport.mjs).
+  recipe=withCatalogTeleport(recipe);
   if (options.fx===false||BESPOKE[recipe.bespoke]?.fx===false)return recipe;
   const catalog=options.fxCatalog??liveCatalogFx();
   if (!catalog.tokenReady&&!catalog.sceneReady)return recipe;
