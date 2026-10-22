@@ -363,6 +363,20 @@ test("cached pre-socket server manifest explains blocked PF2e attacks while priv
   assert.equal(f.calls.find((c) => c[0] === "socket")[2].type, "motion");
   assert.equal(f.source.mesh.position.y, 100);
 });
+test("clearGroundMarks: a GM clears every screen, a player only their own", async () => {
+  const f = await boot("pf2e");
+  const sent = () => f.calls.filter((c) => c[0] === "socket" && c[2]?.type === "clear-marks");
+  assert.deepEqual(f.api.clearGroundMarks(), { here: true, everyone: true });
+  assert.equal(sent().length, 1);
+  assert.equal(sent()[0][1], "module.animater");
+  assert.deepEqual(f.api.clearGroundMarks({ everyone: false }), { here: true, everyone: false });
+  game.user.isGM = false;
+  assert.deepEqual(f.api.clearGroundMarks({ everyone: true }), { here: true, everyone: false });
+  assert.equal(sent().length, 1);
+  // Another client's GM clear arrives through the socket and is obeyed without throwing.
+  f.sockets.get("module.animater")({ type: "clear-marks", sender: "other", userId: "u" }, "u");
+});
+
 test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks", async () => {
   const f = await boot("pf2e");
   assert.equal(f.settings.get("automatic"), false);
@@ -371,6 +385,8 @@ test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks
   assert.equal(f.menus.find((m) => m.name === "Hit sounds").restricted, false);
   // Players open their own Studio (recipes pending GM approval); configuration stays GM-only.
   assert.equal(f.bindings[0].restricted, false);
+  // Clearing everyone's ground marks is the GM's.
+  assert.equal(f.bindings.find((b) => b.name === "Clear ground marks").restricted, true);
   const controls = { tokens: { tools: {} } };
   await f.fire("getSceneControlButtons", controls);
   assert.equal(controls.tokens.tools.animater.visible, true);

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Clear ground marks at once.** A GM can now wipe every ground mark from the floor on all connected screens: run the macro `game.modules.get("animater").api.clearGroundMarks()`, or bind **Clear ground marks** under Configure Controls (no key by default). A player running the macro clears only their own screen. Marks under a lasting area that is still on the board go too, and come back only if the area plays again. Thanks to y_deda_povis for the request.
+
 ## 2.0.0 (2026-10-22)
 
 Animater's biggest update: effects now light the scene, leave marks on the floor, bend the map, ring like the room they are in and stop at walls, fast moves leave afterimages, teleports land on their own timing, and Sequencer itself runs lighter for every module. Each new look has its own world setting and, where it is a matter of taste or comfort, a setting for each player.

@@ -27,6 +27,7 @@ import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./
 import { sceneWarpFilter } from "./engines/tokenshade/filters/scene-warp.mjs";
 import { createSummonsLights } from "./integrations/summons-walls.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
+import { clearGroundMarks, receiveClearMarks } from "./engines/marks/clear-marks.mjs";
 import { markTiming } from "./engines/marks/ground-marks.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
@@ -253,6 +254,11 @@ const clearMarks = () => {
   try { markRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
   markRoot = null;
 };
+// Clear on demand (api.clearGroundMarks, the GM keybinding): a GM clears every screen, a player their own.
+const clearGroundMarksApi = (options) => clearGroundMarks(options, {
+  isGM: () => game.user.isGM, clear: clearMarks, emit: (data) => game.socket.emit(`module.${ID}`, data), sender: clientId, userId: game.user.id,
+});
+const receiveMarksClear = (data, senderId) => receiveClearMarks(data, senderId, { clear: clearMarks, isGMUser: (id) => game.users.get(id)?.isGM === true });
 const markLayer = createMarkLayer({
   makeSprite: (tag, blotches, mask) => markSprite(PIXI, markTex ??= markTextures(PIXI, canvas.app.renderer), tag, blotches, mask),
   addToScene: (sprite) => {
@@ -1672,6 +1678,16 @@ Hooks.once("init", () => {
       return true;
     },
   });
+  game.keybindings.register(ID, "clearGroundMarks", {
+    name: "Clear ground marks",
+    hint: "Wipe every ground mark from the floor on all connected screens.",
+    editable: [],
+    restricted: true,
+    onDown: () => {
+      clearGroundMarksApi();
+      return true;
+    },
+  });
 });
 const SURFACE_SETTING = "surfaceSounds";
 // A built-in weapon animation, in any system, also sounds like what each target is (surface sounds).
@@ -1872,7 +1888,7 @@ Hooks.once("ready", () => {
     trace:(status,detail)=>runtime?.trace(status,detail)});
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
-    if (data?.sender !== clientId) { void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
+    if (data?.sender !== clientId) { void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
     void persistentStates?.clear();
@@ -2184,6 +2200,8 @@ Hooks.once("ready", () => {
     conditions: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), conditions: clone(game.system.id==='daggerheart'?dhEntries('condition'):game.system.id==='sf2e'?sfEntries('condition'):game.system.id==='dnd5e'?dndEntries('condition'):game.system.id==='pf2e'?PF2E_CONDITIONS:[]) }),
     effects: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), effects: clone(game.system.id==='sf2e'?sfEntries('effect'):game.system.id==='dnd5e'?dndEntries('effect'):game.system.id==='pf2e'?PF2E_EFFECTS:[]) }),
     refreshPersistent: () => persistentStates?.reconcile(),
+    // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
+    clearGroundMarks: (options) => clearGroundMarksApi(options),
     finishers: finishersApi,
     sequencerSpeedups: sequencerSpeedupsApi,
     // id, saved recipe name, or a recipe object (e.g. from resolve()).

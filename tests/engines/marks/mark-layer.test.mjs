@@ -110,6 +110,23 @@ test('lasting marks hold until the anchor ends', () => {
   assert.equal(s.removed, true);
 });
 
+test('a cleared lasting mark stays gone until its area plays again', () => {
+  const { layer, out, at } = make();
+  const e = effect(spot({ lasting: true, delayMs: 0 }));
+  layer.onEffect(e);
+  at(0);
+  const [s] = out.sprites;
+  layer.clear();
+  assert.equal(s.removed, true);
+  // The same effect announced again or ending later paints nothing.
+  layer.onEffect(e); layer.onEnded(e); at(1000);
+  assert.equal(out.sprites.length, 1);
+  assert.equal(layer.count(), 0);
+  // The area replaying is a new effect, which marks the floor again.
+  layer.onEffect(effect(spot({ lasting: true, delayMs: 0 }))); at(2000);
+  assert.equal(out.sprites.length, 2);
+});
+
 test('anchor gone before landing still paints', () => {
   const { layer, out, at } = make();
   const once = effect(spot({ delayMs: 1000 }));

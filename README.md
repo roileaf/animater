@@ -152,7 +152,10 @@ await animater.preview("Fireball"); // local only
 animater.resolve(message);          // the recipe automatic playback would use, or null
 animater.handles(item);             // true when Animater would animate this item or message
 await animater.stop();
+animater.clearGroundMarks();      // wipe ground marks: a GM clears every screen ({ everyone: false } for only yours), a player their own
 ```
+
+Macro to clear the floor at once: `game.modules.get("animater").api.clearGroundMarks()`. GMs can also bind **Clear ground marks** under Configure Controls (no key by default). Marks of lasting areas still on the board are cleared too and come back only if the area plays again.
 
 Hooks: `animater.preDispatch(event, recipe)` runs before automatic playback (return `false` to claim the event); `animater.played(event, recipe)` runs afterwards.
 
