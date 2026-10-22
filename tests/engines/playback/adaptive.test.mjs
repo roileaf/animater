@@ -59,6 +59,13 @@ test('effectScreenSize scales size, grid units and token-scaled effects by zoom'
   assert.equal(effectScreenSize({ scaleToObject: { scale: 1.5 }, source: 'Scene.a.Token.t' }, { gridSize: 100, zoom: 0.2, tokenSize: () => ({ width: 100, height: 100 }) }), 30);
 });
 
+test('effectScreenSize multiplies a token-scaled effect by its scale, as Sequencer does', () => {
+  const opts = { gridSize: 100, zoom: 1, tokenSize: () => ({ width: 100, height: 50 }) };
+  assert.equal(effectScreenSize({ scaleToObject: { scale: 1 }, source: 't', scale: { x: 0.25, y: 0.25 } }, opts), 25);
+  assert.equal(effectScreenSize({ scaleToObject: { scale: 2 }, source: 't', scale: { x: 0.1, y: 4 } }, opts), 400);
+  assert.equal(effectScreenSize({ scaleToObject: { scale: 1 }, source: 't', scale: { x: 0.3 } }, opts), 50);
+});
+
 test('effectScreenSize returns null when unknown', () => {
   for (const data of [{ stretchTo: {} }, { copySprite: true }, { screenSpace: true }, { moves: {} }, {}])
     assert.equal(effectScreenSize(data, { gridSize: 100, zoom: 1 }), null);

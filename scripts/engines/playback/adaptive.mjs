@@ -52,7 +52,9 @@ export function effectScreenSize(data, { gridSize, zoom, tokenSize } = {}) {
     const token = data.source && tokenSize ? tokenSize(data.source) : null;
     if (!token) return null;
     const factor = Number(data.scaleToObject.scale) || 1;
-    return Math.max(token.width, token.height) * factor * zoom;
+    // Sequencer multiplies the effect's own scale in (SequencerEffect._applyScaleToObject).
+    const sx = Math.abs(scale.x ?? 1), sy = Math.abs(scale.y ?? 1);
+    return Math.max(token.width * sx, token.height * sy) * factor * zoom;
   }
   if (data.size) {
     const unit = data.size.gridUnits ? gridSize : 1;
