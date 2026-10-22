@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createMarkLayer, markTextures } from '../../../scripts/engines/marks/mark-paint.mjs';
+import { areaMaskFor, createMarkLayer, markTextures } from '../../../scripts/engines/marks/mark-paint.mjs';
 import { layoutBlotches } from '../../../scripts/engines/marks/ground-marks.mjs';
 
 const spot = (extra = {}) => ({ mark: 'rime', shape: 'spot', at: { x: 500, y: 500 }, radius: 50, seed: 7, delayMs: 400, lasting: false, level: 'L1', sceneId: 's1', ...extra });
@@ -238,4 +238,65 @@ test('mark textures are drawn once per mark and variant, the same every time', (
   assert.ok(ta.rim('scorch', 0), 'scorch has an ember rim');
   assert.equal(ta.rim('rime', 0), null);
   assert.equal(ta.get('nothing', 0), null);
+});
+
+// A strict point-in-polygon, like PIXI's: a point on the outline is outside.
+const poly = (...pts) => ({ pts, contains(x, y) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[j];
+    if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
+  }
+  return inside;
+} });
+const region = (id, shapes, polygons) => ({ id, shapes, polygons });
+const opts = (regions) => ({ regions, grid: 100, polygonsOf: (r) => r.polygons });
+
+test('an area mask is found by its Region id', () => {
+  const own = region('rg1', [{ type: 'circle', x: 0, y: 0, radius: 200 }], [poly([0, 0], [1, 0], [1, 1])]);
+  const other = region('rg2', [{ type: 'circle', x: 900, y: 900, radius: 200 }], [poly([800, 800], [1000, 800], [900, 1000])]);
+  assert.equal(areaMaskFor(circle({ regionId: 'rg1' }), opts([other, own]))[0], own.polygons[0]);
+  assert.equal(areaMaskFor(circle({ regionId: 'gone' }), opts([other, own])), null, 'a deleted Region leaves it unclipped');
+});
+
+test('without an id, a cone finds its Region facing either way', () => {
+  // Origin (500, 500) sits on the outline; the middle of the cone is well inside.
+  const left = region('L', [{ type: 'cone', x: 500, y: 500, radius: 400, angle: 53 }], [poly([500, 500], [100, 300], [100, 700])]);
+  const right = region('R', [{ type: 'cone', x: 500, y: 500, radius: 400, angle: 53 }], [poly([500, 500], [900, 300], [900, 700])]);
+  // A big terrain area under everything, of another type and starting elsewhere.
+  const terrain = region('T', [{ type: 'rectangle', x: 0, y: 0, width: 2000, height: 2000 }], [poly([0, 0], [2000, 0], [2000, 2000], [0, 2000])]);
+  const cone = (x) => ({ mark: 'scorch', shape: 'cone', at: { x: 500, y: 500 }, endpoint: { x, y: 500 }, angle: 53, length: 400, seed: 1, delayMs: 0 });
+  assert.equal(areaMaskFor(cone(100), opts([terrain, right, left]))[0], left.polygons[0]);
+  assert.equal(areaMaskFor(cone(900), opts([terrain, left, right]))[0], right.polygons[0]);
+  // A cone of the wrong size loses to the matching one.
+  const small = region('S', [{ type: 'cone', x: 500, y: 500, radius: 150, angle: 53 }], [poly([500, 500], [80, 280], [80, 720])]);
+  assert.equal(areaMaskFor(cone(100), opts([small, left]))[0], left.polygons[0]);
+  assert.equal(areaMaskFor(cone(100), opts([terrain])), null, 'never the terrain');
+});
+
+test('a Region that arrives late still clips the mark', () => {
+  let found = null;
+  const { layer, out, at } = make({ mask: () => found });
+  layer.onEffect(effect(circle({ delayMs: 500 })));
+  at(0);
+  found = [poly([0, 0], [1, 0], [1, 1])];
+  at(500);
+  assert.equal(out.sprites[0].mask, found);
+});
+
+test('settings changes: off wipes the floor, a smaller cap fades the oldest', () => {
+  let on = true, most = 60;
+  const { layer, out, at } = make({ enabled: () => on, cap: () => most });
+  const first = spot({ delayMs: 0 }), second = spot({ delayMs: 0, seed: 99, at: { x: 1500, y: 500 } });
+  layer.onEffect(effect(first)); at(0);
+  layer.onEffect(effect(second)); at(100);
+  most = Math.max(layoutBlotches(first, 100).length, layoutBlotches(second, 100).length);
+  layer.refresh();
+  at(1100);
+  close(out.sprites[0].alpha, 0.5);
+  assert.equal(out.sprites[1].alpha, 1);
+  on = false;
+  layer.refresh();
+  assert.equal(layer.count(), 0);
+  assert.ok(out.sprites.every((s) => s.removed));
 });

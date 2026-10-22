@@ -90,6 +90,8 @@ export function createMarkLayer({
   };
 
   const paint = (mark, t, viewed) => {
+    // A Region that was not on this client yet when the effect arrived may be by now.
+    if (!mark.mask && AREAS.has(mark.tag.shape) && mask) { try { mark.mask = mask(mark.tag) ?? null; } catch { mark.mask = null; } }
     const blotches = layoutBlotches(mark.tag, gridSize()).filter(finiteBlotch);
     if (!blotches.length) return remove(mark);
     mark.sprite = makeSprite(mark.tag, blotches, mark.mask);
@@ -166,6 +168,14 @@ export function createMarkLayer({
       if (painted) { try { enforceCap(t); } catch { /* keep the frame */ } }
     },
 
+    // A setting changed: switched off (or quality Off) wipes the floor; a smaller cap fades the oldest down to it.
+    refresh() {
+      let on;
+      try { on = enabled(); } catch { on = false; }
+      if (!on) return this.clear();
+      try { enforceCap(now()); } catch { /* keep what is there */ }
+    },
+
     clear() {
       for (const mark of marks) {
         if (!mark.sprite) continue;
@@ -181,6 +191,48 @@ export function createMarkLayer({
       return marks.length;
     },
   };
+}
+
+const SHAPE_TYPES = { circle: ['circle', 'emanation'], line: ['line'], cone: ['cone'] };
+
+/**
+ * The placed area an area mark covers, as polygons (`polygonsOf(region)`, the runtime's areaMask), or null to leave
+ * it unclipped. A tag naming its Region (`regionId`) uses that one. Otherwise, among the `regions` whose shape is of
+ * the tag's type or starts at its origin, the best match by type, origin and size that holds a point well inside
+ * the area: the centre of a circle, the middle of a line or cone (their origin lies on the outline itself).
+ */
+export function areaMaskFor(tag, { regions, grid = 100, polygonsOf }) {
+  const list = Array.from(regions ?? []);
+  const masks = (region) => { const p = [polygonsOf(region)].flat().filter(Boolean); return p.length ? p : null; };
+  if (tag.regionId) { const region = list.find((r) => r?.id === tag.regionId); return region ? masks(region) : null; }
+  const types = SHAPE_TYPES[tag.shape];
+  if (!types) return null;
+  const { at } = tag, end = tag.endpoint;
+  const inner = tag.shape === 'circle' ? at : { x: (at.x + end.x) / 2, y: (at.y + end.y) / 2 };
+  const size = tag.shape === 'circle' ? tag.radius : tag.length > 0 ? tag.length : Math.hypot(end.x - at.x, end.y - at.y);
+  const near = (p) => finitePoint(p) && Math.hypot(p.x - at.x, p.y - at.y) <= grid / 2;
+  // An emanation grows from its base: a token's footprint (top-left corner and size in squares) is centred on it.
+  const centre = (b) => (b?.type === 'token' && b.width > 0 && b.height > 0 ? { x: b.x + b.width * grid / 2, y: b.y + b.height * grid / 2 } : null);
+  // Shapes may hold their size in pixels or in squares.
+  const sizeGap = (s) => {
+    const own = s.type === 'line' ? s.length : s.radius;
+    if (!(own > 0) || !(size > 0)) return 1;
+    return Math.min(1, Math.abs(own - size) / size, Math.abs(own * grid - size) / size);
+  };
+  const scored = [];
+  for (const region of list) {
+    let best = Infinity;
+    for (const s of Array.from(region?.shapes ?? [])) {
+      const typed = types.includes(s?.type), starts = near(s) || near(s?.base) || near(centre(s?.base));
+      if (typed || starts) best = Math.min(best, (typed ? 0 : 2) + (starts ? 0 : 1) + sizeGap(s));
+    }
+    if (best < Infinity) scored.push({ region, best });
+  }
+  for (const { region } of scored.sort((a, b) => a.best - b.best)) {
+    const polygons = masks(region);
+    if (polygons?.some((p) => p.contains(inner.x, inner.y))) return polygons;
+  }
+  return null;
 }
 
 // A deterministic seed per mark and variant, so every client and every session draws the same textures.

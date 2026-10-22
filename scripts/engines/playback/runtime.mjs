@@ -609,6 +609,9 @@ export class AnimaterRuntime {
         // Without the source token's level, the level this client views.
         const viewed = typeof token?.level === "string" && token.level ? null : this.host.viewedLevel?.();
         if (viewed?.level) for (const tag of groundMarks.values()) Object.assign(tag, { level: viewed.level, ...(Number.isFinite(viewed.elevation) && !Number.isFinite(tag.elevation) ? { elevation: viewed.elevation } : {}) });
+        // An area mark names its placed Region, so every client clips it to that shape (mark-paint.mjs areaMaskFor).
+        const region = templateDocument(context.template);
+        if (region?.documentName === "Region") for (const tag of groundMarks.values()) if (tag.shape !== "spot") tag.regionId = region.id;
       }
       const groups = new Map();
       for (const s of plan) {

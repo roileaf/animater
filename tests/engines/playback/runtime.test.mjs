@@ -1437,6 +1437,16 @@ test("fire spell impact is tagged with a scorch", async () => {
   await again.runtime.play(fireball().recipe, fireAttack());
   assert.equal((await marksOf(again.calls))[0][1].seed, tag.seed);
 });
+test("an area mark names its placed Region", async () => {
+  const { runtime, calls } = markFixture();
+  await runtime.play(fireball().recipe, fireAttack({ template: { documentName: "Region", id: "rg1" } }));
+  const [[, tag]] = await marksOf(calls);
+  assert.equal(tag.shape, "circle");
+  assert.equal(tag.regionId, "rg1");
+  const plain = markFixture();
+  await plain.runtime.play(fireball().recipe, fireAttack());
+  assert.equal((await marksOf(plain.calls))[0][1].regionId, undefined, "no placed Region, no id");
+});
 test("setting off: no tags", async () => {
   const { runtime, calls } = markFixture({ on: false });
   await runtime.play(fireball().recipe, fireAttack());

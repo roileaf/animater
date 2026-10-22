@@ -19,7 +19,7 @@ import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
-import { createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
+import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
@@ -190,7 +190,8 @@ const markLayer = createMarkLayer({
   // Off draws none; Low keeps half as many.
   enabled: () => game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
   cap: () => (localQuality() === "low" ? 30 : 60),
-  mask: (tag) => markAreaMask(tag),
+  // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
+  mask: (tag) => areaMaskFor(tag, { regions: canvas?.scene?.regions, grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask }),
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
@@ -917,20 +918,6 @@ function areaMask(template) {
   const points = template?.shape?.points;
   return points?.length ? new PIXI.Polygon(Array.from(points, (n, i) => n + (i % 2 ? doc.y : doc.x))) : null;
 }
-// The placed area a ground mark covers, on this client: the scene's Region (v14 templates are Regions) whose shape
-// starts at the mark's centre (within half a square) and holds it. Its shape clips the mark; none leaves it unclipped.
-function markAreaMask(tag) {
-  const grid = canvas?.grid?.size ?? 100, { x, y } = tag.at;
-  const near = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y) && Math.hypot(p.x - x, p.y - y) <= grid / 2;
-  // An emanation grows from its base: a token's footprint (top-left corner and size in squares) is centred on it.
-  const centre = (b) => (b?.type === "token" && b.width > 0 && b.height > 0 ? { x: b.x + b.width * grid / 2, y: b.y + b.height * grid / 2 } : null);
-  for (const region of canvas?.scene?.regions ?? []) {
-    if (!Array.from(region.shapes ?? []).some((s) => near(s) || near(s?.base) || near(centre(s?.base)))) continue;
-    const polygons = [areaMask(region)].flat().filter(Boolean);
-    if (polygons.some((p) => p.contains(x, y))) return polygons;
-  }
-  return null;
-}
 function localParticles(stage, effect, template) {
   const Effect = CONFIG.fxmaster?.particleEffects?.[stage.fxType], PIXI = globalThis.PIXI;
   // Foundry 14's weather layer draws only its own containers; the interface layer
@@ -1306,7 +1293,7 @@ Hooks.once("init", () => {
   game.settings.register(ID,'quality',{name:'Animation quality (this device)',
     hint:'Lower this on slower computers. Applies only to what you see; other players keep their own setting.',
     scope:'client',config:true,type:String,choices:{...QUALITY_CHOICES},default:'full',
-    onChange:()=>{syncQuality();persistentStates?.schedule();}});
+    onChange:()=>{syncQuality();persistentStates?.schedule();markLayer.refresh();}});
   game.settings.register(ID,'lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
@@ -1432,7 +1419,7 @@ Hooks.once("init", () => {
     hint: "Turn off to never draw ground marks on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     // Turning it off wipes the marks already on the floor.
-    onChange: (value) => { if (value === false) clearMarks(); },
+    onChange: () => markLayer.refresh(),
   });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
