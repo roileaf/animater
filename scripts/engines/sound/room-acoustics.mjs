@@ -27,24 +27,28 @@ export function measurePolygon(points, { origin, radius, tolerance = 2, gridPx =
   return { openness: far / n, area: Math.abs(twice / 2) / (gridPx * gridPx) };
 }
 // Remembers each grid square's room class, so a square is swept once. bump() forgets them all (walls changed).
-export function createRoomCache({ sweep, limit = 500 }) {
+// A failed sweep (or one with no real shape) is remembered too, but only for a few seconds, so a canvas that
+// was not ready yet recovers without every sound re-sweeping a square that keeps failing.
+const FAIL_MS = 5000;
+export function createRoomCache({ sweep, limit = 500, now = () => Date.now() }) {
   const known = new Map();
   let epoch = 0;
   return {
     classAt(sceneId, levelId, at, gridPx) {
       const gx = Math.floor(at.x / gridPx), gy = Math.floor(at.y / gridPx);
       const key = `${sceneId}|${levelId}|${gx},${gy}|${epoch}`;
-      if (known.has(key)) return known.get(key);
+      const hit = known.get(key);
+      if (hit && !(hit.until <= now())) return hit.room;
       const centre = { x: (gx + 0.5) * gridPx, y: (gy + 0.5) * gridPx };
       let room = null;
       try {
         const points = sweep(centre, levelId);
-        if (!points) return null;
-        room = classifyRoom(measurePolygon(points, { origin: centre, radius: 30 * gridPx, gridPx }));
+        if (points && points.length >= 6) room = classifyRoom(measurePolygon(points, { origin: centre, radius: 30 * gridPx, gridPx }));
       } catch {
-        return null;
+        room = null;
       }
-      known.set(key, room);
+      known.delete(key);
+      known.set(key, { room, until: room ? Infinity : now() + FAIL_MS });
       if (known.size > limit) known.delete(known.keys().next().value);
       return room;
     },

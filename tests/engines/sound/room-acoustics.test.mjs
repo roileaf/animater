@@ -68,6 +68,37 @@ test('sweep failure classes as unknown', () => {
   assert.equal(createRoomCache({ sweep: () => { throw new Error('no canvas'); } }).classAt('s', 'l', { x: 0, y: 0 }, 100), null);
 });
 
+test('a failing sweep runs once per square and epoch within the expiry, then retries', () => {
+  let sweeps = 0, t = 0;
+  const cache = createRoomCache({ sweep: () => { sweeps++; throw new Error('canvas not ready'); }, now: () => t });
+  const at = { x: 10, y: 10 };
+  assert.equal(cache.classAt('s', 'l', at, 100), null);
+  assert.equal(cache.classAt('s', 'l', at, 100), null);
+  assert.equal(sweeps, 1);
+  t = 4999;
+  cache.classAt('s', 'l', at, 100);
+  assert.equal(sweeps, 1);
+  t = 5000;
+  cache.classAt('s', 'l', at, 100);
+  assert.equal(sweeps, 2);
+  cache.bump();
+  cache.classAt('s', 'l', at, 100);
+  assert.equal(sweeps, 3);
+});
+
+test('a transient failure recovers after the expiry', () => {
+  let t = 0, ready = false;
+  const cache = createRoomCache({ sweep: () => (ready ? square(200) : null), now: () => t });
+  assert.equal(cache.classAt('s', 'l', { x: 0, y: 0 }, 100), null);
+  ready = true; t = 6000;
+  assert.equal(cache.classAt('s', 'l', { x: 0, y: 0 }, 100), 'small');
+});
+
+test('a polygon with fewer than 3 vertices is a sweep failure', () => {
+  assert.equal(createRoomCache({ sweep: () => [] }).classAt('s', 'l', { x: 0, y: 0 }, 100), null);
+  assert.equal(createRoomCache({ sweep: () => [0, 0, 10, 10] }).classAt('s', 'l', { x: 0, y: 0 }, 100), null);
+});
+
 test('GM choice wins; other scene is dry', () => {
   assert.equal(roomFor({ animaterScene: 's', animaterAt: { x: 0, y: 0 } }, { sceneAcoustics: 'cave', viewedScene: 's', enabled: true }).kind, 'gm');
   assert.equal(roomFor({ animaterScene: 'other', animaterAt: { x: 0, y: 0 } }, { sceneAcoustics: null, viewedScene: 's', enabled: true, cache: fakeCache('room') }).kind, 'dry');
