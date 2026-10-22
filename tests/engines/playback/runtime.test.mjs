@@ -1179,3 +1179,71 @@ test("tempo cap keeps a long play under 6 s", async () => {
   assert.ok(Math.abs(end - 6000) < 1e-6, `slowed end ${end}`);
   assert.ok(Math.abs(plan.find((s) => s.stageId === "fling").playbackRate - 5 / 6) < 1e-9);
 });
+
+// Effect lighting: the starting client tags each light's anchor effect (engines/lighting/effect-lights.mjs).
+function fireball() {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [
+      { stageId: "fly", kind: "travel", assets: ["jb2a.fireball.beam.orange"], delay: 0, duration: 1000 },
+      { stageId: "boom", kind: "template", assets: ["jb2a.fireball.explosion.orange"], delay: 900, duration: 1500 },
+    ],
+  });
+  const context = {
+    source: { id: "s", center: { x: 0, y: 0 } },
+    targets: [{ id: "t1", center: { x: 600, y: 0 } }],
+    template: {},
+    area: { type: "circle", center: { x: 600, y: 0 }, diameter: 400 },
+  };
+  return { recipe, context };
+}
+function lightFixture(on = true) {
+  const f = fixture();
+  f.runtime.catalog = ["jb2a.fireball.beam.orange", "jb2a.fireball.explosion.orange", "jb2a.arrow.physical.white"].map((key) => ({ key }));
+  f.runtime.wait = async () => true;
+  f.host.effectLights = () => on;
+  return f;
+}
+test("fireball tags its explosion with a flash light", async () => {
+  const { recipe, context } = fireball();
+  const { runtime, calls } = lightFixture();
+  await runtime.play(recipe, context);
+  const lights = Object.fromEntries((await overridesByAsset(calls)).map(([asset, data]) => [asset, data.animaterLight]));
+  assert.equal(lights["jb2a.fireball.explosion.orange"]?.shape, "flash");
+  assert.equal(lights["jb2a.fireball.explosion.orange"].color, "#ff9a4d");
+  assert.equal(lights["jb2a.fireball.beam.orange"]?.shape, "glow");
+});
+test("physical arrow gets no light", async () => {
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "arrow", kind: "projectile", assets: ["jb2a.arrow.physical.white"], delay: 0, duration: 800 }],
+  });
+  const { runtime, calls } = lightFixture();
+  await runtime.play(recipe, fireball().context);
+  const data = await overridesByAsset(calls);
+  assert.ok(data.length);
+  for (const [, d] of data) assert.equal("animaterLight" in d, false);
+});
+test("setting off: no tags", async () => {
+  const { recipe, context } = fireball();
+  const { runtime, calls } = lightFixture(false);
+  await runtime.play(recipe, context);
+  const data = await overridesByAsset(calls);
+  assert.ok(data.length);
+  for (const [, d] of data) assert.equal("animaterLight" in d, false);
+  // A preview always shows its lights.
+  const preview = lightFixture(false);
+  await preview.runtime.play(recipe, context, { preview: true });
+  assert.ok((await overridesByAsset(preview.calls)).some(([, d]) => d.animaterLight));
+});
+test("slowed play tags slowed timings", async () => {
+  const { recipe, context } = fireball();
+  const glow = async (ctx) => {
+    const { runtime, calls } = lightFixture();
+    await runtime.play(recipe, ctx);
+    return (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.fireball.beam.orange")[1].animaterLight;
+  };
+  const plain = await glow(context), slowed = await glow({ ...context, tempo: 0.5 });
+  assert.ok(plain.lengthMs > 0);
+  assert.equal(slowed.lengthMs, 2 * plain.lengthMs);
+});

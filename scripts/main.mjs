@@ -1547,6 +1547,11 @@ Hooks.once("ready", () => {
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
     // Crits freeze at contact (world setting); on while the setting is not registered.
     hitStop: () => game.settings.get(ID, "hitStop") !== false,
+    // Effects light the scene (world setting); in daylight only when allowed. On while the settings are not registered.
+    effectLights: () => {
+      const setting = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
+      return setting("effectLighting") && (setting("effectLightingDaylight") || (canvas?.environment?.darknessLevel ?? 0) > 0);
+    },
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,

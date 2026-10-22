@@ -23,6 +23,7 @@ import { pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
 import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
+import { planLights } from '../lighting/effect-lights.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
 // ...and, when its attack starts beside it (a check's action), this long for that play to begin.
@@ -321,6 +322,8 @@ export class AnimaterRuntime {
     const animaterActor = context.source?.actor?.id;
     // Hit-stop marks (stage -> { afterMs, holdMs }): what plays across a crit's contact.
     let marks = null;
+    // Effect lights (anchor stage -> light), planned from the final timings.
+    let lights = null;
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -370,7 +373,9 @@ export class AnimaterRuntime {
         // Freezes on every client at contact; a staggered copy starts later, so contact comes sooner into it.
         const mark = marks?.get(s), afterMs = mark ? mark.afterMs - (spread?.get(s) ?? 0) : -1;
         const animaterHitStop = afterMs >= 0 ? { afterMs, holdMs: mark.holdMs } : null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}) }));
+        // Every client lights the scene from this one description (engines/lighting/effect-lights.mjs).
+        const animaterLight = lights?.get(s) ?? null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterHitStop ? { animaterHitStop } : {}), ...(animaterLight ? { animaterLight } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -520,6 +525,25 @@ export class AnimaterRuntime {
           // ends (finisher waits, the stall watchdog) count the freeze.
           for (const [s, mark] of marks) s.hitStop = { ...mark };
         }
+      }
+      // Effect lighting: planned once here from the final plan (slowed and held already); previews always show it.
+      if (preview || this.host.effectLights?.() === true) {
+        const grid = this.host.gridSize?.() ?? 100, gridDistance = this.host.gridDistance?.() ?? 5;
+        const half = (n) => (Number(n) > 0 ? Number(n) / 2 : null);
+        lights = planLights(plan, {
+          tiers,
+          grid,
+          pointOf: (s) => soundPlace(s.landing) ?? s.areaTile?.center ?? (s.kind === "template" ? context.area?.center : null) ?? soundPlace(s.destination),
+          // The footprint the effect is sized to, as a radius in pixels.
+          radiusOf: (s) => {
+            if (s.kind === "template") return half(s.areaTile ? s.areaTile.width * s.scale : context.area?.diameter);
+            if (s.kind === "travel" || s.kind === "projectile") return half(tokenFootprint(s.origin, grid) * s.scale);
+            return half(effectFootprint(s, s.destination, grid, gridDistance) * s.scale);
+          },
+          originOf: (s) => soundPlace(s.origin),
+          element: context.element ?? recipe.chosenElement,
+          recipeColor: recipe.color,
+        });
       }
       const groups = new Map();
       for (const s of plan) {
