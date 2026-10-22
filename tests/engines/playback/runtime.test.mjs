@@ -1034,9 +1034,11 @@ test("a crit attack plays on its own timing", async () => {
     return { plan };
   };
   const crit = await planOf("criticalSuccess"), plain = await planOf("success");
-  // The recipe's own stages keep their times (a crit only adds its own accents).
+  // The recipe's own stages keep their times (a crit only adds its own accents). The hit lands with the bolt:
+  // 3 squares out, the 15 ft clip's bolt lands at its measured time, not at the recipe's 550 ms.
   const delays = ({ plan }) => Object.fromEntries(plan.filter((s) => recipe.stages.some((r) => r.stageId === s.stageId)).map((s) => [s.stageId, s.delay]));
-  assert.deepEqual(delays(crit), { fly: 0, windup: 300, hit: 600, after: 1200 });
+  const moved = MEDIA_LANDINGS["jb2a.fire_bolt.orange.15ft"] - 550;
+  assert.deepEqual(delays(crit), { fly: 0, windup: 300, hit: 600 + moved, after: 1200 + moved });
   assert.deepEqual(delays(crit), delays(plain));
 });
 
@@ -1371,6 +1373,46 @@ test("a thrown projectile keeps its whole clip; at a wall its impact comes as it
   assert.equal(durationOf(walled.calls), wall.delay);
   // What followed the hit moves with the strike (400 ms after the recipe's 600 ms arrival).
   assert.equal(walled.plan.find((s) => s.stageId === "recoil").delay, 1000);
+});
+// PF2e Alchemist's Fire, as the weapon choreography builds it: the bomb's flight, its explosion timed by the
+// recipe's one contact (1080 ms) for every range variant, residue and a shooter beat chained to the explosion.
+function bombThrow(x) {
+  const BOMB = "jb2a.throwable.throw.bomb.01.red";
+  const recipe = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [
+      { stageId: "fly", kind: "travel", assets: [BOMB], delay: 342, duration: 3683, contact: 1080 },
+      { stageId: "boom", kind: "impact", assets: ["jb2a.impact.001.orange"], afterStage: "fly", timingAnchor: "start", startOffset: 1080, duration: 1000 },
+      { stageId: "residue", kind: "aura", subject: "targets", assets: ["jb2a.impact.002.blue"], afterStage: "boom", timingAnchor: "start", startOffset: 300, duration: 2400 },
+      { stageId: "beat", kind: "motion", motion: "stagger", subject: "source", assets: [], afterStage: "boom", timingAnchor: "start", startOffset: 0, duration: 300 },
+      { stageId: "after-flight", kind: "impact", assets: ["jb2a.impact.002.blue"], afterStage: "fly", timingAnchor: "end", startOffset: 0, duration: 500 },
+    ],
+  });
+  const context = { id: "bomb1", type: "attack", outcome: "success", source: { id: "s", center: { x: 0, y: 0 }, w: 100, h: 100 }, targets: [{ id: "t1", center: { x, y: 0 }, w: 100, h: 100 }] };
+  return { recipe, context, setup: (f) => f.runtime.catalog.push({ key: BOMB }, { key: "jb2a.impact.002.blue" }) };
+}
+test("a thrown bomb explodes as its vial lands, for the distance it is thrown", async () => {
+  for (const [x, ft] of [[300, "15ft"], [600, "30ft"], [1600, "90ft"]]) {
+    const { recipe, context, setup } = bombThrow(x);
+    const { plan } = await playWall(recipe, context, { collides: () => null, setup });
+    const at = (id) => plan.find((s) => s.stageId === id).delay;
+    const lands = 342 + MEDIA_LANDINGS[`jb2a.throwable.throw.bomb.01.red.${ft}`];
+    assert.equal(at("boom"), lands, ft);
+    // What the explosion leaves, and what follows it, comes after it.
+    assert.equal(at("residue"), lands + 300, ft);
+    assert.equal(at("beat"), lands, ft);
+    // A stage timed to the flight's end keeps that time.
+    assert.equal(at("after-flight"), 342 + 3683, ft);
+  }
+});
+test("a thrown bomb stopped by a wall bursts there as the wall's variant lands; its target's effects are gone", async () => {
+  const { recipe, context, setup } = bombThrow(1600);
+  const { plan } = await playWall(recipe, context, { setup });
+  // 3 squares to the wall: the 15 ft clip, not the 90 ft one its target needs.
+  const lands = 342 + MEDIA_LANDINGS["jb2a.throwable.throw.bomb.01.red.15ft"];
+  assert.ok(!plan.some((s) => ["boom", "residue"].includes(s.stageId)));
+  assert.equal(plan.find((s) => s.kind === "impact" && s.landing?.x === WALL_X).delay, lands);
+  assert.equal(plan.find((s) => s.stageId === "beat").delay, lands);
 });
 test("preview never drops on-target stages", async () => {
   const { recipe, context } = boltAttack();

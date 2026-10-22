@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
-import { MEDIA_LANDINGS } from '../../../data/media-landings.mjs';
+import { MEDIA_LANDINGS, RANGE_UNMEASURED } from '../../../data/media-landings.mjs';
 
 // A full-height wall at x (blocks every line that crosses it, of any type).
 const wallAtX = (x) => (a, b, type) => (a.x < x) !== (b.x < x) ? { x, y: a.y + (b.y - a.y) * (x - a.x) / (b.x - a.x), type } : null;
@@ -121,6 +121,8 @@ const token = (id, cx, cy, size = 100) => ({ id, center: { x: cx, y: cy }, w: si
 const shooter = token('src', 0, 0), far = token('t1', 1000, 0);
 const flight = (extra = {}) => ({ stageId: 'shot', kind: 'travel', origin: shooter, endpoint: far, destination: far, delay: 0, duration: 1000, contact: 600, assets: ['jb2a.arrow.physical.white.01'], asset: 'jb2a.arrow.physical.white.01', ...extra });
 const ctx = (extra = {}) => ({ source: shooter, targets: [far], type: 'attack', outcome: 'success', messageId: seedA, ...extra });
+// A travel clip without range variants: Sequencer stretches its one file, so its recipe contact stands.
+const PLAIN = 'jb2a.plain.stretch';
 const opts = (extra = {}) => ({ context: ctx(), gridPx: 100, collides: wallAtX(500), walls: true, preview: false, ...extra });
 
 test('a projectile stopped by a wall strikes it as its move ends', () => {
@@ -218,7 +220,7 @@ test('a miss into a wall strikes it as its variant lands too', () => {
 });
 
 test('a clear hit keeps its timing and blocks nothing', () => {
-  const { plan, blocked, missed } = withFlightPaths([flight()], opts({ collides: () => null }));
+  const { plan, blocked, missed } = withFlightPaths([flight({ asset: PLAIN })], opts({ collides: () => null }));
   assert.equal(plan[0].flightOutcome, 'target');
   assert.deepEqual(plan[0].flightTo, { x: 1000, y: 0 });
   assert.equal(plan[0].contact, 600);
@@ -250,7 +252,7 @@ test('a miss with no planned path (walls off, no backend, a shield block) is not
 
 test('flights with no attack outcome never stop at walls', () => {
   for (const context of [ctx({ outcome: undefined }), ctx({ type: 'save', outcome: 'failure' })]) {
-    const { plan, blocked } = withFlightPaths([flight()], opts({ context }));
+    const { plan, blocked } = withFlightPaths([flight({ asset: PLAIN })], opts({ context }));
     assert.deepEqual([plan[0].flightOutcome, plan[0].flightTo, plan[0].contact], ['target', { x: 1000, y: 0 }, 600]);
     assert.equal(blocked.size, 0);
   }
@@ -269,7 +271,7 @@ test('reverse, chain, fan and area flights keep their path', () => {
 });
 
 test('walls off: flights play as planned', () => {
-  const off = withFlightPaths([flight()], opts({ walls: false }));
+  const off = withFlightPaths([flight({ asset: PLAIN })], opts({ walls: false }));
   assert.equal(off.plan[0].flightTo, undefined); assert.equal(off.plan[0].contact, 600);
   assert.equal(off.blocked.size, 0);
 });
@@ -286,7 +288,7 @@ test('preview never blocks', () => {
 });
 
 test('a shield block flies into the shield', () => {
-  const { plan, blocked } = withFlightPaths([flight({ shieldBlock: true })], opts({ context: ctx({ outcome: 'failure' }) }));
+  const { plan, blocked } = withFlightPaths([flight({ shieldBlock: true, asset: PLAIN })], opts({ context: ctx({ outcome: 'failure' }) }));
   assert.deepEqual([plan[0].flightOutcome, plan[0].flightTo, plan[0].contact], ['target', { x: 1000, y: 0 }, 600]);
   assert.equal(blocked.size, 0);
 });
@@ -309,4 +311,48 @@ test('wallHit: a plain door knocks on wood; a secret door stays stone', () => {
   assert.deepEqual(wallHit(vertex(2)), { x: 12, y: 34 });
   assert.deepEqual(wallHit(vertex(0)), { x: 12, y: 34 });
   assert.equal(wallHit(null), null);
+});
+
+// A thrown bomb (PF2e Alchemist's Fire): its recipe gives every range variant's vial one contact, 1080 ms; its
+// stage lasts the longest variant (3533 ms) + 150.
+const BOMB = 'jb2a.throwable.throw.bomb.01.red';
+const bomb = (x, extra = {}) => flight({ asset: BOMB, assets: [BOMB], duration: 3683, contact: 1080, endpoint: token('t1', x, 0), destination: token('t1', x, 0), ...extra });
+
+test('a thrown bomb that hits its target lands as the variant played for that distance', () => {
+  // 1 square: the 05 ft clip; 3: 15 ft; 6: 30 ft; 10: 60 ft; 16: 90 ft.
+  for (const [x, ft] of [[100, '05ft'], [300, '15ft'], [600, '30ft'], [1000, '60ft'], [1600, '90ft']]) {
+    const landing = MEDIA_LANDINGS[`${BOMB}.${ft}`];
+    assert.ok(landing > 1080 && landing < 3683, `${ft}: ${landing} ms`);
+    // Clear of walls, and with the wall test off (or no backend).
+    for (const extra of [{ collides: () => null }, { walls: false }, { collides: null }]) {
+      const { plan, blocked } = withFlightPaths([bomb(x)], opts(extra));
+      assert.equal(plan[0].contact, landing, ft);
+      assert.equal(plan[0].flightArrivalShift, landing - 1080, ft);
+      assert.equal(blocked.size, 0);
+    }
+  }
+  assert.ok(MEDIA_LANDINGS[`${BOMB}.90ft`] > MEDIA_LANDINGS[`${BOMB}.05ft`]);
+});
+
+test('a thrown bomb stopped by a wall lands as the variant for the wall, not its target', () => {
+  const { plan, blocked } = withFlightPaths([bomb(1600)], opts({ collides: wallAtX(300) }));
+  assert.deepEqual([plan[0].flightOutcome, plan[0].flightTo.x, plan[0].contact], ['wall', 300, MEDIA_LANDINGS[`${BOMB}.15ft`]]);
+  assert.equal(plan[0].flightArrivalShift, MEDIA_LANDINGS[`${BOMB}.15ft`] - 1080);
+  assert.deepEqual([...blocked], ['t1']);
+});
+
+test('a hit lands with the variant from the skipped opening at the stage media speed', () => {
+  const [s] = withFlightPaths([bomb(600, { clipStart: 200, playbackRate: 2 })], opts({ collides: () => null })).plan;
+  assert.equal(s.contact, Math.round((MEDIA_LANDINGS[`${BOMB}.30ft`] - 200) / 2));
+});
+
+test('a hit with no landing measured for its variant keeps the recipe contact', () => {
+  // A range clip whose 30 ft variant was not measured, played at 6 squares.
+  const unmeasured = RANGE_UNMEASURED.find((k) => k.endsWith('.30ft')).slice(0, -'.30ft'.length);
+  const [s] = withFlightPaths([flight({ asset: unmeasured, endpoint: token('t1', 600, 0), destination: token('t1', 600, 0) })], opts({ collides: () => null })).plan;
+  assert.deepEqual([s.flightOutcome, s.contact, s.flightArrivalShift], ['target', 600, undefined]);
+  // A thrown projectile (moved, not stretched) and a miss flying past keep theirs too.
+  assert.equal(withFlightPaths([bomb(600, { kind: 'projectile' })], opts({ collides: () => null })).plan[0].contact, 1080);
+  const past = withFlightPaths([bomb(600)], opts({ context: ctx({ outcome: 'failure' }), collides: () => null })).plan[0];
+  assert.deepEqual([past.flightOutcome, past.contact], ['past', 1080]);
 });

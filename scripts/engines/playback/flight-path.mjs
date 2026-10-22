@@ -100,13 +100,34 @@ export function wallArrivalOf(s, { gridPx = 100, tables } = {}) {
   const { range, landing } = rangeLanding(s.asset, reach, gridPx, tables);
   if (!range) return arrivalOf(s);
   if (landing === null) return Math.min(s.duration, Math.max(arrivalOf(s), 400, s.duration - 200));
-  const elapsed = Math.max(0, landing - (Number(s.clipStart) || 0)) / (Number(s.playbackRate) || 1);
-  return Math.min(s.duration, elapsed);
+  return playedAt(s, landing);
+}
+// A media time (ms from the clip's start) in elapsed ms into the stage: played from the skipped opening at the
+// stage's media speed, never past the stage's end.
+const playedAt = (s, ms) => Math.min(s.duration, Math.max(0, ms - (Number(s.clipStart) || 0)) / (Number(s.playbackRate) || 1));
+
+// When a travel clip that reaches its target over a line `reach` px long lands there, in elapsed ms into the
+// stage: the measured landing of the range variant Sequencer plays for that line (as wallArrivalOf). Null when
+// that is not known (a projectile, a clip without range variants, an unmeasured variant): the recipe's own
+// arrival stands. A thrown bomb's recipe contact is one guess for every variant; its vial lands at 1250 ms at
+// 05 ft and 3250 ms at 90 ft.
+export function targetArrivalOf(s, reach, { gridPx = 100, tables } = {}) {
+  if (s.kind !== 'travel') return null;
+  const { landing } = rangeLanding(s.asset, reach, gridPx, tables);
+  return Number.isFinite(landing) ? playedAt(s, landing) : null;
+}
+
+// The flight with `arrival` as its contact and flightArrivalShift: how much later (earlier when negative) that
+// is than the recipe's own arrival, which its target's impacts and what followed them move with.
+function arriving(s, next, arrival) {
+  if (!(s.duration > 0) || arrival === null) return next;
+  const contact = Math.max(1, Math.round(arrival)), shift = contact - Math.round(arrivalOf(s));
+  return Object.assign(next, { contact, ...(shift ? { flightArrivalShift: shift } : {}) });
 }
 
 // Plans every flight stage: flightFrom/flightTo/flightOutcome (when walls apply). A flight stopped by a wall
-// gets its wall arrival as its contact (wallArrivalOf) and flightArrivalShift: how much later (earlier when
-// negative) that is than the recipe's own arrival, which what followed its target's impacts moves with.
+// gets its wall arrival as its contact (wallArrivalOf), and one that reaches its target its measured landing
+// there (targetArrivalOf), walls or not; with flightArrivalShift when that moves its arrival (arriving).
 // blocked: target ids whose attack hit ended at a wall; missed: target ids whose own shot was planned to miss
 // (flying past or into a wall). The target effects of both must not play.
 export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = null, walls = true, preview = false } = {}) {
@@ -115,14 +136,17 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
   const out = plan.map((s) => {
     if (!FLIGHTS.includes(s.kind)) return s;
     const from = point(centerOf(s.origin)), aim = point(s.landing ?? centerOf(s.endpoint));
-    const role = walls && collides ? roleOf(s, context, preview) : 'fixed';
+    const role = roleOf(s, context, preview);
     if (role === 'fixed') return s;
+    // No wall test: the flight flies as it always did (a miss bent wide by Sequencer), a hit landing on time.
+    if (!walls || !collides) {
+      const arrival = role === 'attack-miss' ? null : targetArrivalOf(s, distance(from, aim), { gridPx });
+      return arrival === null ? s : arriving(s, { ...s }, arrival);
+    }
     const path = planFlight({ from, targetRect: footprintOf(s.endpoint, gridPx), to: aim, role, seed, gridPx, collides, shieldBlock: s.shieldBlock });
     const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}) };
-    if (path.outcome === 'wall' && s.duration > 0) {
-      const contact = Math.max(1, Math.round(wallArrivalOf(next, { gridPx }))), shift = contact - Math.round(arrivalOf(s));
-      Object.assign(next, { contact, ...(shift ? { flightArrivalShift: shift } : {}) });
-    }
+    if (path.outcome === 'wall') arriving(s, next, wallArrivalOf(next, { gridPx }));
+    if (path.outcome === 'target') arriving(s, next, targetArrivalOf(next, distance(path.from, path.to), { gridPx }));
     if (path.outcome === 'wall' && role === 'attack-hit') blocked.add(tokenId(s.endpoint));
     if (role === 'attack-miss' && path.outcome !== 'target') missed.add(tokenId(s.endpoint));
     return next;

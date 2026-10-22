@@ -83,32 +83,28 @@ export function withoutMissedTargets(plan, missed) {
   const keeps = (s) => s.kind === 'motion' && s.motion === 'dodge' || s.kind === 'impact' && s.subject !== 'targets' && s.assets?.some(meleeClip);
   return plan.filter((s) => !(missed.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets') && !keeps(s)));
 }
-// Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
-// effects (its impacts, reactions and surface sounds) do not play, nor does the dodge of a target a miss never
-// reached; what followed its impacts moves with the moment the shot reaches the wall (flightArrivalShift); a small
-// impact and a knock on stone (wood for a door) play at the wall point as the shot arrives there (its contact,
-// flight-path.mjs wallArrivalOf). asset: the wall impact, or null;
-// cueOf(material) -> { file, volume, duration } | null.
-export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf = () => null } = {}) {
-  const walls = plan.filter((s) => s.flightOutcome === 'wall');
-  if (!walls.length) return plan;
+// Flights whose arrival moved (flightArrivalShift, engines/playback/flight-path.mjs: a shot stopped by a wall, or
+// landing on its target when its range variant's shot lands). Its target's impacts from the flight on, and
+// stages tied to the flight or those impacts (by afterStage, through any chain), move by that much. A stage of
+// another target stays, and so does one not on a target while those impacts also land on a target whose flight
+// kept its time. A stage tied to several moved flights moves with the first that reaches its target. A stage
+// timed to the flight's end (D&D 5e's contact) keeps that time: the flight's length does not change.
+export function withFlightArrivals(plan) {
+  const moved = plan.filter((f) => f.flightArrivalShift).sort((a, b) => (a.flightOutcome === 'wall') - (b.flightOutcome === 'wall'));
+  if (!moved.length) return plan;
   const targets = new Set(plan.filter((s) => s.kind === 'impact' || s.subject === 'targets').map((s) => tokenIdOf(s.destination)).filter(Boolean));
-  const moved = walls.filter((f) => f.flightArrivalShift), shifted = new Set(moved.map((f) => tokenIdOf(f.endpoint)));
-  const reach = (f, p) => Math.hypot(p.x - f.flightFrom.x, p.y - f.flightFrom.y);
-  const unreached = new Set(walls.filter((f) => !blocked.has(tokenIdOf(f.endpoint)) && reach(f, f.flightTo) < reach(f, centerOf(f.endpoint))).map((f) => tokenIdOf(f.endpoint)));
-  const dropped = (s) => blocked.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets')
-    || s.stageId === 'miss-dodge' && unreached.has(tokenIdOf(s.destination));
-  // Stages tied (by afterStage, through any chain) to the target's impacts move by that much. A stage of
-  // another target stays, and so does one not on a target while those impacts also land on a target not stopped.
+  const shifted = new Set(moved.map((f) => tokenIdOf(f.endpoint)));
   const shift = new Map();
   for (const f of moved) {
-    const id = tokenIdOf(f.endpoint);
-    const anchors = new Set(plan.filter((s) => s.kind === 'impact' && tokenIdOf(s.destination) === id && (s.delay ?? 0) >= (f.delay ?? 0)).map((s) => s.stageId));
+    const id = tokenIdOf(f.endpoint), atEnd = (s) => s.afterStage === f.stageId && s.timingAnchor === 'end';
+    const hits = plan.filter((s) => s.kind === 'impact' && tokenIdOf(s.destination) === id && (s.delay ?? 0) >= (f.delay ?? 0) && !atEnd(s));
+    for (const s of hits) if (!shift.has(s)) shift.set(s, f.flightArrivalShift);
+    const anchors = new Set([f.stageId, ...hits.map((s) => s.stageId)]);
     const elsewhere = () => plan.some((s) => anchors.has(s.stageId) && targets.has(tokenIdOf(s.destination)) && !shifted.has(tokenIdOf(s.destination)));
     for (let grew = true; grew;) {
       grew = false;
       for (const s of plan) {
-        if (!s.afterStage || !anchors.has(s.afterStage) || shift.has(s)) continue;
+        if (!s.afterStage || !anchors.has(s.afterStage) || shift.has(s) || atEnd(s)) continue;
         const on = tokenIdOf(s.destination);
         if (targets.has(on) ? on !== id : elsewhere()) continue;
         shift.set(s, f.flightArrivalShift);
@@ -116,10 +112,24 @@ export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf
       }
     }
   }
+  return plan.map((s) => (shift.has(s) ? { ...s, delay: Math.max(0, (s.delay ?? 0) + shift.get(s)) } : s));
+}
+// Shots that end at a wall (flightOutcome 'wall', engines/playback/flight-path.mjs). A blocked target's own
+// effects (its impacts, reactions and surface sounds) do not play, nor does the dodge of a target a miss never
+// reached; a small impact and a knock on stone (wood for a door) play at the wall point as the shot arrives there
+// (its contact, flight-path.mjs wallArrivalOf). What followed the hit moves first (withFlightArrivals).
+// asset: the wall impact, or null; cueOf(material) -> { file, volume, duration } | null.
+export function withWallStrikes(plan, blocked, { asset = null, grid = 100, cueOf = () => null } = {}) {
+  const walls = plan.filter((s) => s.flightOutcome === 'wall');
+  if (!walls.length) return plan;
+  const reach = (f, p) => Math.hypot(p.x - f.flightFrom.x, p.y - f.flightFrom.y);
+  const unreached = new Set(walls.filter((f) => !blocked.has(tokenIdOf(f.endpoint)) && reach(f, f.flightTo) < reach(f, centerOf(f.endpoint))).map((f) => tokenIdOf(f.endpoint)));
+  const dropped = (s) => blocked.has(tokenIdOf(s.destination)) && (s.kind === 'impact' || s.subject === 'targets')
+    || s.stageId === 'miss-dodge' && unreached.has(tokenIdOf(s.destination));
   const out = [], struck = new Set();
   for (const s of plan) {
     if (dropped(s)) continue;
-    out.push(shift.has(s) ? { ...s, delay: Math.max(0, (s.delay ?? 0) + shift.get(s)) } : s);
+    out.push(s);
     if (s.flightOutcome !== 'wall') continue;
     // Right after its flight, so the moment of contact (outcome.mjs strikeTime) finds it.
     const at = Math.round((s.delay ?? 0) + arrivalOf(s)), landing = { x: s.flightTo.x, y: s.flightTo.y };
@@ -855,7 +865,7 @@ export class AnimaterRuntime {
       return set?.length ? set[Math.floor(random() * set.length)] : null;
     };
     const asset = resolveAsset({ kind: 'impact', assets: WALL_IMPACTS }, this.catalog);
-    return withWallStrikes(withoutMissedTargets(paths.plan, paths.missed), paths.blocked, { asset, grid, cueOf });
+    return withWallStrikes(withFlightArrivals(withoutMissedTargets(paths.plan, paths.missed)), paths.blocked, { asset, grid, cueOf });
   }
   wait(delay, session) {
     return new Promise((resolve) => {
