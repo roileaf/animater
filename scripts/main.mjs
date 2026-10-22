@@ -6,7 +6,7 @@ import { SLOW_TEMPO } from "./engines/playback/impact-moments.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
-import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent } from "./engines/finishers/finisher-model.mjs";
+import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent, finisherHitStop } from "./engines/finishers/finisher-model.mjs";
 import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
@@ -1869,7 +1869,7 @@ Hooks.once("ready", () => {
       started.add(mover.id);
       announceFinished(keyOf(mover), true);
       // It freezes with the attack's hit-stop, if the event is playing one (runtime.mjs: contactOf).
-      const extra = event.id ? { hitStopOf: event.id } : {};
+      const extra = finisherHitStop(event);
       // A play that never started (blocked) takes its mark back, so the kill plays it in full.
       void runFinisher(recipe, { mover, attacker: event.source, extra }).then((played) => { if (played === null) announceFinished(keyOf(mover), false); });
     }

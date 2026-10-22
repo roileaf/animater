@@ -77,7 +77,15 @@ export function checkFinisherEvent(message, systemId, userId) {
   if (hidden(privacy) || rerollChangesNothing(message, systemId)) return null;
   const action = (context.options ?? []).map(String).find((o) => o.startsWith("action:"))?.slice(7);
   if (!action) return null;
-  return { type: "check", systemId, id: `finisher-check:${message.id}`, messageId: message.id, itemName: action, tokenId: message.speaker?.token, sceneId: message.speaker?.scene, targetUuid: context.target?.token, outcome: privacy === "gm" ? undefined : context.outcome };
+  // hitStopOf: the action's own play (twoeEvent's chat:<id>), whose crit freeze the finisher shares.
+  return { type: "check", systemId, id: `finisher-check:${message.id}`, hitStopOf: `chat:${message.id}`, messageId: message.id, itemName: action, tokenId: message.speaker?.token, sceneId: message.speaker?.scene, targetUuid: context.target?.token, outcome: privacy === "gm" ? undefined : context.outcome };
+}
+
+// The play context a crit finisher freezes with: its event's own contact (runtime.mjs: contactOf). A check
+// names its action's play instead, which starts beside it, so the finisher may wait for it to begin (late).
+export function finisherHitStop(event) {
+  if (event?.hitStopOf) return { hitStopOf: event.hitStopOf, hitStopLate: true };
+  return event?.id ? { hitStopOf: event.id } : {};
 }
 
 // PF2e/SF2e: a creature's saving throw against a spell or effect. The saver (the speaker, also

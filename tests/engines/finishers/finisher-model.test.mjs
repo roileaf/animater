@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { validateRecipe, normalizeFinisher } from "../../../scripts/core/model.mjs";
-import { matchFinishers, killFinisher, passesSuccess, usePasses, finisherMoment, checkFinisherEvent, linkFinisher, linkedFinisher, mayDisplace, finisherTravelPath, finisherChipText, addFinisherName, removeFinisherName, linkFinisherItem, unlinkFinisherItem, finisherItemLink, finisherAvailableTo, playerFinisherChoices, pickedFinisher, finisherFires, pickPlays, createFinishedMemory, critFinishers, finishedKey, finishedMessage, critTargets, saveFinisherEvent } from "../../../scripts/engines/finishers/finisher-model.mjs";
+import { matchFinishers, killFinisher, passesSuccess, usePasses, finisherMoment, checkFinisherEvent, linkFinisher, linkedFinisher, mayDisplace, finisherTravelPath, finisherChipText, addFinisherName, removeFinisherName, linkFinisherItem, unlinkFinisherItem, finisherItemLink, finisherAvailableTo, playerFinisherChoices, pickedFinisher, finisherFires, pickPlays, createFinishedMemory, critFinishers, finishedKey, finishedMessage, critTargets, saveFinisherEvent, finisherHitStop } from "../../../scripts/engines/finishers/finisher-model.mjs";
+import { twoeEvent } from "../../../scripts/systems/adapters.mjs";
 
 const fin = (id, match, finisher = {}, extra = {}) => ({ id, name: id, trigger: "manual", match, finisher: normalizeFinisher(finisher), stages: [{ kind: "motion", motion: "shake", assets: [] }], ...extra });
 
@@ -94,7 +95,7 @@ test("a use finisher rides the roll when there is one, else the use", () => {
 test("a PF2e Shove check becomes a finisher event with its outcome and target", () => {
   const message = (author, options) => ({ id: "m1", author: { id: author }, speaker: { token: "t", scene: "s" }, flags: { pf2e: { context: { type: "skill-check", outcome: "criticalSuccess", options, target: { token: "Scene.s.Token.x" } } } } });
   const e = checkFinisherEvent(message("u", ["action:shove", "self:x"]), "pf2e", "u");
-  assert.deepEqual(e, { type: "check", systemId: "pf2e", id: "finisher-check:m1", messageId: "m1", itemName: "shove", tokenId: "t", sceneId: "s", targetUuid: "Scene.s.Token.x", outcome: "criticalSuccess" });
+  assert.deepEqual(e, { type: "check", systemId: "pf2e", id: "finisher-check:m1", hitStopOf: "chat:m1", messageId: "m1", itemName: "shove", tokenId: "t", sceneId: "s", targetUuid: "Scene.s.Token.x", outcome: "criticalSuccess" });
   assert.equal(checkFinisherEvent(message("other", ["action:shove"]), "pf2e", "u"), null, "only the roller's client");
   assert.equal(checkFinisherEvent(message("u", ["self:x"]), "pf2e", "u"), null, "a check that names no action");
   assert.equal(checkFinisherEvent({ ...message("u", ["action:shove"]), blind: true }, "pf2e", "u"), null, "blind");
@@ -105,6 +106,18 @@ test("a PF2e Shove check becomes a finisher event with its outcome and target", 
   assert.notEqual(checkFinisherEvent(reroll, "pf2e", "u"), null, "a reroll that kept its new roll plays");
   reroll.content = '<div class="">old</div><div class="reroll-second reroll-discard">new</div>';
   assert.equal(checkFinisherEvent(reroll, "pf2e", "u"), null, "a reroll that kept the old roll changed nothing");
+});
+
+test("a Shove check's crit finisher freezes with the Shove's own dispatched play", () => {
+  const message = { id: "m1", author: { id: "u" }, isRoll: true, speaker: { token: "t", scene: "s" }, actor: { items: [] },
+    flags: { pf2e: { context: { type: "skill-check", outcome: "criticalSuccess", options: ["action:shove"], target: { token: "Scene.s.Token.x" } } } } };
+  const check = checkFinisherEvent(message, "pf2e", "u");
+  const action = twoeEvent(message, "u", "pf2e");
+  assert.equal(check.hitStopOf, action.id, "the check names the action's dispatch id");
+  assert.deepEqual(finisherHitStop(check), { hitStopOf: "chat:m1", hitStopLate: true });
+  // An attack's finisher rides its own event, which is already dispatching.
+  assert.deepEqual(finisherHitStop({ id: "chat:a1" }), { hitStopOf: "chat:a1" });
+  assert.deepEqual(finisherHitStop({}), {});
 });
 
 // PF2e/SF2e saving-throw messages (checked against the PF2e system's Check.roll): flags.pf2e.context

@@ -25,6 +25,8 @@ import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { plannedCrit, critTargetIds, contactTime, withHitStop, withTempo, tempoFor } from './impact-moments.mjs';
 // A crit finisher waits this long for its attack's moment of contact.
 const CONTACT_WAIT_MS = 1000;
+// ...and, when its attack starts beside it (a check's action), this long for that play to begin.
+const CONTACT_GRACE_MS = 300;
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 const SOUND_PRELOAD_TIMEOUT = 2000;
@@ -89,10 +91,12 @@ export class AnimaterRuntime {
     this.dispatching = new Set();
   }
   // A crit event's moment of contact, once its attack starts; null when the event is not
-  // playing or names none within CONTACT_WAIT_MS.
-  async contactOf(eventId) {
-    const until = performance.now() + CONTACT_WAIT_MS;
-    while (!this.contacts.has(eventId) && this.dispatching.has(eventId) && performance.now() < until) await new Promise((resolve) => setTimeout(resolve, 16));
+  // playing or names none within CONTACT_WAIT_MS. `late`: the event's play starts beside the
+  // caller (a check's action), so it may not be dispatching yet; wait up to CONTACT_GRACE_MS for it.
+  async contactOf(eventId, { late = false } = {}) {
+    const now = performance.now(), until = now + CONTACT_WAIT_MS, expected = late ? now + CONTACT_GRACE_MS : now;
+    const pending = () => this.dispatching.has(eventId) || performance.now() < expected;
+    while (!this.contacts.has(eventId) && pending() && performance.now() < until) await new Promise((resolve) => setTimeout(resolve, 16));
     return this.contacts.get(eventId) ?? null;
   }
   // null: this crit names no contact, so its finisher need not wait (a later real contact still wins).
@@ -501,7 +505,7 @@ export class AnimaterRuntime {
       if (this.host.hitStop?.() !== false) {
         let at = null;
         if (context.hitStopOf != null) {
-          const shared = await this.contactOf(context.hitStopOf);
+          const shared = await this.contactOf(context.hitStopOf, { late: context.hitStopLate === true });
           if (this.epoch !== epoch) return null;
           const ahead = shared === null ? 0 : shared - performance.now();
           if (ahead > 0) at = ahead;

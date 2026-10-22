@@ -1077,6 +1077,43 @@ test("a finisher whose event plays nothing does not wait for a contact", async (
   assert.ok(performance.now() - started < 100);
   for (const [, data] of await overridesByAsset(calls)) assert.equal("animaterHitStop" in data, false);
 });
+test("a check finisher that starts before its action's play still freezes with it", async () => {
+  const { recipe, context } = critAttack();
+  const { runtime, host, calls } = critFixture();
+  const sequence = host.sequence;
+  host.sequence = () => ({ ...sequence(), play: async (options) => calls.push(["play", options, performance.now()]) });
+  const finisher = validateRecipe({
+    ...starterRecipes()[0],
+    stages: [{ stageId: "fling", kind: "impact", assets: ["jb2a.finisher.test"], delay: 0, duration: 3000 }],
+  });
+  host.resolveRecipe = () => recipe;
+  host.pickTeleport = (_, ctx) => (ctx.hitStopOf ? null : new Promise((resolve) => setTimeout(() => resolve(null), 50)));
+  // The check chain reaches the finisher first; the Shove's own dispatch starts a little later.
+  const finishing = runtime.play(finisher, { source: context.source, targets: context.targets, hitStopOf: "chat:m1", hitStopLate: true });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const attacking = runtime.dispatch({ ...context, id: "chat:m1" });
+  await Promise.all([attacking, finishing]);
+  const contact = runtime.contacts.get("chat:m1");
+  assert.equal(typeof contact, "number");
+  const finisherStart = calls.filter((c) => c[0] === "play").at(-1)[2];
+  const mark = (await overridesByAsset(calls)).find(([asset]) => asset === "jb2a.finisher.test")[1].animaterHitStop;
+  assert.equal(mark?.holdMs, 100);
+  assert.ok(Math.abs(finisherStart + mark.afterMs - contact) <= 16, `${finisherStart + mark.afterMs} vs ${contact}`);
+});
+test("a late contact wait gives up after its grace when the action never plays", async () => {
+  const { runtime } = critFixture();
+  const started = performance.now();
+  assert.equal(await runtime.contactOf("chat:none", { late: true }), null);
+  const waited = performance.now() - started;
+  assert.ok(waited >= 250 && waited < 600, `${waited}`);
+});
+test("a crit damage roll never hit-stops", async () => {
+  const { recipe, context } = critAttack();
+  const { runtime, calls } = critFixture();
+  await runtime.play(recipe, { ...context, type: "damage" });
+  for (const [, data] of await overridesByAsset(calls)) assert.equal("animaterHitStop" in data, false);
+  assert.equal(runtime.contacts.has("ev1"), false);
+});
 test("every stage frozen across contact carries its hold in the started plan", async () => {
   const { recipe, context } = critAttack();
   const { runtime } = critFixture();
