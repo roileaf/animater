@@ -468,8 +468,9 @@ export class RecipePreview {
   }
   // Is this token gone in a teleport now (its teleport stage playing)? It moves nowhere here.
   teleportGone(subject, targetIndex, frame) {
-    const who = teleportPlan(this.recipe)?.who;
-    if (!who || subject !== (who === "target" ? "targets" : "source") || (subject === "targets" && targetIndex !== 0)) return false;
+    const plan = teleportPlan(this.recipe), who = plan?.who;
+    // A fetch slides rather than vanishing.
+    if (!who || plan.fetch || subject !== (who === "target" ? "targets" : "source") || (subject === "targets" && targetIndex !== 0)) return false;
     const playing = (s, state) => s.kind === "teleport" && !this.muted?.has(s.index) && state?.state === "playing";
     return this.chain
       ? this.recipe.playbackPlan.some((s) => playing(s, stageFrame({ ...s, repeats: 1, targetStagger: 0 }, frame.time)))

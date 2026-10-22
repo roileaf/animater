@@ -96,7 +96,7 @@ export function withCatalogTeleport(recipe, entry = {}) {
   const who = plan.who;
   const stageId = recipe.stages.some((s) => s.stageId === 'teleport') ? `${recipe.id}-teleport` : 'teleport';
   const gone = own?.gone ?? teleportGoneMs(recipe);
-  const teleport = { kind: 'teleport', stageId, label: 'Vanish and reappear', assets: [], duration: gone, ...vanishLink(recipe.stages, who) };
+  const teleport = { kind: 'teleport', stageId, label: plan.fetch ? 'Dragged to the caster' : 'Vanish and reappear', assets: [], duration: gone, ...vanishLink(recipe.stages, who) };
   const timed = timedStages({ stages: [...recipe.stages, teleport] }), at = new Map(timed.map((s) => [s.stageId, s.delay]));
   const start = at.get(stageId), moved = start + gone;
   // The stages the vanish is timed from stay as they are (no loop).

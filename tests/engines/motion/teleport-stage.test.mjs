@@ -257,7 +257,7 @@ test("the Studio shows a Teleport track only on recipes that teleport, and adds 
 });
 
 test("the inspector shows a teleport stage's start and how long it is gone, nothing else", () => {
-  const r = friendfetch([cast, ray, { stageId: "t", kind: "teleport", delay: 900, duration: 0 }]);
+  const r = friendfetch([cast, ray, { stageId: "t", kind: "teleport", delay: 900, duration: 0 }], { name: "Swap", match: "Swap", teleport: "target" });
   const w = Object.create(Workspace.prototype);
   w.host = { catalog: () => [], soundCatalog: () => null };
   w.stageLabel = Workspace.prototype.stageLabel;
@@ -265,6 +265,8 @@ test("the inspector shows a teleport stage's start and how long it is gone, noth
   assert.match(html, /<label>Gone for<span class="an-unit"><input type="number" data-field="duration" data-index="2" data-scale="1000" min="0"/);
   assert.doesNotMatch(html, /Fade in|data-action="browse"|data-field="scale"/);
   assert.match(html, /vanishes as this stage starts/);
+  const ff = friendfetch([cast, ray, { stageId: "t", kind: "teleport", delay: 900, duration: 500 }]);
+  assert.match(w.stageTypeHTML(ff, ff.stages[2], 2, false, ff.stages[2]), /slides to the caster/, "Friendfetch drags");
   for (const tab of ["look", "motion", "place", "time"]) assert.equal(w.inspectorTabHTML(tab, r, r.stages[2], 2, false), "", tab);
 });
 
@@ -273,7 +275,9 @@ test("the Studio monitor hides the mover while its teleport stage plays", async 
   const p = Object.create(RecipePreview.prototype);
   p.recipe = friendfetch([cast, { stageId: "t", kind: "teleport", delay: 0, duration: 500 }]);
   const frame = (state) => ({ time: 100, stages: [{ state: "done" }, { state }] });
-  assert.equal(p.teleportGone("targets", 0, frame("playing")), true, "Friendfetch moves the ally");
+  assert.equal(p.teleportGone("targets", 0, frame("playing")), false, "Friendfetch slides: never hidden");
+  p.recipe = friendfetch([cast, { stageId: "t", kind: "teleport", delay: 0, duration: 500 }], { name: "Swap", match: "Swap", teleport: "target" });
+  assert.equal(p.teleportGone("targets", 0, frame("playing")), true, "a target teleport hides the target");
   assert.equal(p.teleportGone("source", 0, frame("playing")), false);
   assert.equal(p.teleportGone("targets", 1, frame("playing")), false, "only the first target");
   assert.equal(p.teleportGone("targets", 0, frame("done")), false, "back after its length");

@@ -1,7 +1,7 @@
 // Friendfetch: each target is dragged straight toward the caster and stops in the closest unoccupied space
 // to the caster on that path (forced movement). A wall that blocks movement ends the path. A target with no
 // free space closer than where it stands stays put.
-// Tokens are { id, x, y, w, h } in px (top-left and size). `snap` turns a top-left into the grid's (none:
+// Tokens are { id, x, y, w, h } in px (top-left and size). `snap(topLeft, target)` turns a top-left into the grid's (none:
 // gridless, as it is); `blocked(from, to)` says a wall stops a move between two centres.
 // Nearest target first: one behind another on the same line lands behind it, never on the same square.
 // Returns [{ id, x, y }] (the new top-left) for each target that moves, in the order given.
@@ -24,7 +24,7 @@ export function fetchLandings({ caster, targets = [], tokens = [], snap = (p) =>
     let best = null, bestFar = far(from, goal) - EDGE, seen = new Set();
     for (let d = 0; d <= length; d += step) {
       const k = d / (length || 1), p = { x: from.x + (goal.x - from.x) * k, y: from.y + (goal.y - from.y) * k };
-      const top = snap({ x: p.x - t.w / 2, y: p.y - t.h / 2 }), key = `${top.x},${top.y}`;
+      const top = snap({ x: p.x - t.w / 2, y: p.y - t.h / 2 }, t), key = `${top.x},${top.y}`;
       if (seen.has(key)) continue;
       seen.add(key);
       const box = { x: top.x, y: top.y, w: t.w, h: t.h }, at = centre(box);

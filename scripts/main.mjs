@@ -78,6 +78,7 @@ import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes 
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
 import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden } from "./engines/motion/teleport.mjs";
+import { fetchLandings } from "./engines/motion/fetch-path.mjs";
 import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
 import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
@@ -764,15 +765,35 @@ async function pickTeleport(recipe, context) {
   if (!plan) return null;
   const caster = placeable(context.source), mover = plan.who === "target" ? placeable(context.targets?.[0]) : caster;
   if (!caster?.center) return null;
+  if (plan.fetch) return fetchSpots(recipe, context, caster);
   if (!mover?.center) { ui.notifications.warn("Teleport: target the creature to move first."); return null; }
   const feet = plan.adjacent ? 5 : plan.range || itemRangeFeet(context.item) || Infinity;
   ui.notifications.info(`Teleport ${mover.name}: click a spot${Number.isFinite(feet) ? ` within ${feet} feet` : ""} (Esc to cancel).`);
   const spot = await pickTeleportSpot({ caster, mover, feet, notify: (text) => ui.notifications.warn(text) });
   return spot ? { mover, caster, ...spot, visuals: teleportVisuals(recipe, runtime.getCatalog()), element: context.element ?? recipe.chosenElement } : null;
 }
+// Friendfetch: no pick. Each target (up to 2) is dragged straight toward the caster, to the closest free space on
+// that line short of any wall (engines/motion/fetch-path.mjs), and slides there. One with no closer free space stays.
+const FETCH_LIMIT = 2;
+function fetchSpots(recipe, context, caster) {
+  const targets = (context.targets ?? []).map(placeable).filter((t) => t?.document && t !== caster).slice(0, FETCH_LIMIT);
+  if (!targets.length) { ui.notifications.warn("Friendfetch: target the creatures to bring to you first."); return null; }
+  const box = (t) => ({ id: t.document.id, x: t.document.x, y: t.document.y, w: t.w, h: t.h });
+  const level = caster.document?.level;
+  const tokens = canvas.tokens.placeables.filter((t) => t.document && (level === undefined || t.document.level === undefined || t.document.level === level)).map(box);
+  const blocked = (from, to) => Boolean(CONFIG.Canvas.polygonBackends?.move?.testCollision?.(from, to, { type: "move", mode: "any" }));
+  const snap = (point, target) => targets.find((t) => t.document.id === target.id)?.getSnappedPosition?.(point) ?? point;
+  const landings = fetchLandings({ caster: box(caster), targets: targets.map(box), tokens, snap, blocked, gridSize: canvas.grid.size });
+  const visuals = teleportVisuals(recipe, runtime.getCatalog()), element = context.element ?? recipe.chosenElement;
+  return landings.map((spot) => ({ mover: targets.find((t) => t.document.id === spot.id), caster, x: spot.x, y: spot.y, slide: true, visuals, element }));
+}
 // Big magic bends the scene (world setting); on while the setting is not registered.
 function mapDistortion() { try { return game.settings.get(ID, "mapDistortion") !== false; } catch { return true; } }
-async function moveToken(doc, x, y) { await doc.update({ x, y }, { animate: false, animater: { teleport: true } }); }
+// `slide` (ms): Foundry's own move animation over that long (a fetch dragged along its line), else a jump.
+const SLIDE_MS = 500, SLIDE_MAX_MS = 3000;
+async function moveToken(doc, x, y, slide = 0) {
+  await doc.update({ x, y }, slide > 0 ? { animation: { duration: slide }, animater: { teleport: true } } : { animate: false, animater: { teleport: true } });
+}
 // What a teleport's effects play through. `local`: a preview, on this screen only, with no streak.
 function teleportHost({ local = false } = {}) {
   return {
@@ -806,10 +827,13 @@ function previewTeleport(mover, recipe, context, timing) {
 async function placeTeleport(spot) {
   const doc = spot?.mover?.document;
   if (!doc) return;
-  if (doc.isOwner) await moveToken(doc, spot.x, spot.y);
-  else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x: spot.x, y: spot.y });
+  const slide = spot.slide ? (Number(spot.slide) > 1 ? Number(spot.slide) : SLIDE_MS) : 0;
+  if (doc.isOwner) await moveToken(doc, spot.x, spot.y, slide);
+  else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x: spot.x, y: spot.y, slide });
 }
+// A fetch slides over its stage's length, with no departure or arrival effects.
 async function teleport(spot, timing) {
+  if (spot.slide) return placeTeleport({ ...spot, slide: Math.max(1, timing?.goneMs || SLIDE_MS) });
   return playTeleport(spot, { ...teleportHost(), move: (mover, x, y) => placeTeleport({ ...spot, mover, x, y }) }, timing);
 }
 // The active GM moves a teleported token for the player who cast the spell: only when that
@@ -821,7 +845,7 @@ async function receiveTeleport(data, senderId) {
   const caster = await fromUuid(String(data.casterUuid ?? ""));
   if (!user || !doc || doc.documentName !== "Token" || !Number.isFinite(data.x) || !Number.isFinite(data.y)) return;
   if (caster?.documentName !== "Token" || caster.parent !== doc.parent || !caster.testUserPermission(user, "OWNER")) return;
-  await moveToken(doc, data.x, data.y);
+  await moveToken(doc, data.x, data.y, Math.min(SLIDE_MAX_MS, Math.max(0, Number(data.slide) || 0)));
 }
 // Push and Pull stages where someone picks the square. "actor": the one playing the recipe (this client).
 // "target": the target's side, its connected owning player (their character), else the GM, on their own screen.
@@ -1592,7 +1616,7 @@ Hooks.once("init", () => {
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
   game.settings.register(ID, TELEPORT_TOKENS, {
     name: "Teleport tokens",
-    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Blink Out" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
+    hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Blink Out" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there${game.system.id === "pf2e" ? " (Friendfetch drags its targets to the caster on its own)" : ""}. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
     scope: "world", config: true, type: Boolean, default: true,
   });
   game.settings.register(ID, "welcomed", { scope: "world", config: false, type: Boolean, default: false });
