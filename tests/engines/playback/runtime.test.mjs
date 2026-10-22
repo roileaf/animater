@@ -5,6 +5,7 @@ import { starterRecipes } from "../../../scripts/core/presets.mjs";
 import { validateRecipe } from "../../../scripts/core/model.mjs";
 import { orbRecipe } from "../../../scripts/catalogs/shared/orb-builder.mjs";
 import { PF2E_SPELLS, spellRecipe } from "../../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
+import { PF2E_WEAPONS, weaponRecipe } from "../../../scripts/catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { MEDIA_LANDINGS } from "../../../data/media-landings.mjs";
 import { SURFACE_SOUND_PROFILES } from "../../../scripts/engines/sound/surface-sounds.mjs";
 import { dndEntries, dndRecipe } from "../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs";
@@ -1404,6 +1405,20 @@ test("a thrown bomb explodes as its vial lands, for the distance it is thrown", 
     // A stage timed to the flight's end keeps that time.
     assert.equal(at("after-flight"), 342 + 3683, ft);
   }
+});
+test("PF2e Alchemist's Fire, as the catalog builds it, explodes as its vial lands", async () => {
+  // The real recipe (its explosion timed by the clip's one measured contact, the flight carrying no contact of
+  // its own until the choreography gives it one), thrown at a goblin about 6 squares off, as placeables.
+  const weapon = PF2E_WEAPONS.find((w) => w.name === "Alchemist's Fire (Moderate)");
+  const recipe = validateRecipe(weaponRecipe(weapon, "thrown"));
+  const token = (id, x, y) => ({ id, document: { id, width: 1, height: 1 }, center: { x, y }, w: 100, h: 100 });
+  const context = { id: "bomb2", type: "attack", automatic: true, outcome: "success", source: token("s", 750, 1250), targets: [token("g", 950, 650)] };
+  const { plan } = await playWall(recipe, context, { collides: () => null, setup: (f) => { f.runtime.catalog = [...new Set(recipe.stages.flatMap((s) => s.assets))].map((key) => ({ key })); } });
+  const at = (slot) => plan.find((s) => s.stageId.endsWith(`-thrown-${slot}`));
+  const lands = at("flight").delay + MEDIA_LANDINGS[`${at("flight").asset}.30ft`];
+  assert.equal(at("flight").contact, MEDIA_LANDINGS["jb2a.throwable.throw.bomb.01.red.30ft"]);
+  assert.equal(at("accent").delay, lands);
+  assert.equal(at("residue").delay, lands + 300);
 });
 test("a thrown bomb stopped by a wall bursts there as the wall's variant lands; its target's effects are gone", async () => {
   const { recipe, context, setup } = bombThrow(1600);

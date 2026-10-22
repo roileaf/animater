@@ -38,6 +38,9 @@ export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}
   stages.push(flight);
   const contacts=mode.assets.flight.map(k=>mode.mediaTiming?.[k]?.contact).filter(Number.isFinite);
   const offset=contacts.length?Math.max(...contacts):Math.max(400,flight.duration-200);
+  // The flight arrives when its contact lands: playback moves that contact (and what is timed to it) to the
+  // landing of the range variant it plays (engines/playback/flight-path.mjs).
+  flight.contact=offset;
   const payload=mode.payload;
   contactStage=stage('impact','accent',payload?`${BOMB_PAYLOADS[payload.style]?.label??'Contents splash'} · ${payload.element}`:mode.element!=='physical'?`${mode.element} contact finish`:'Contact finish',start+offset,{afterStage:flight.stageId,timingAnchor:'start',startOffset:offset,scale:payload?1.25:.65,...payloadAppearance(payload?.element??mode.element,mode.assets.accent)});
   stages.push(contactStage);
