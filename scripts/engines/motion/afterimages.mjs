@@ -42,7 +42,8 @@ export function createTrailGate({ spacingSq = 0.4, minSpeedSq = 4 } = {}) {
       if (!outbound || speed < minSpeedSq) return false;
       carried += moved;
       if (carried < spacingSq - 1e-9) return false;
-      carried -= spacingSq;
+      // One long frame banks at most one more spacing, so later frames keep the pitch.
+      carried = Math.min(carried - spacingSq, spacingSq);
       return true;
     },
   };

@@ -54,7 +54,9 @@ function footprint(token, grid) {
 export function shoveRecipe(stage, squares) {
   const pull = stage.motion === "pull";
   return { id: `animater-${pull ? "pull" : "push"}-${stage.stageId ?? "stage"}`, name: stage.label || (pull ? "Pull" : "Push"), trigger: "manual",
-    finisher: { knockback: squares, ending: "stay", ...(pull ? { pull: true } : {}), ...afterimagesChoice(stage) }, stages: [] };
+    finisher: { knockback: squares, ending: "stay", ...(pull ? { pull: true } : {}), ...afterimagesChoice(stage),
+      // The play's ghost tint: the shove replays as a colourless recipe, so it keeps this one.
+      ...(stage.trailTint ? { trailTint: stage.trailTint } : {}) }, stages: [] };
 }
 
 // What the one picking is told.

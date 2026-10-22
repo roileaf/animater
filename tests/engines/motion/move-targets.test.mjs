@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { moveOptions, hitsTarget, pullReach, shoveRecipe, playMoveStage, previewMotion, isMoveStage, allowedSpot, movePrompt, moveCone } from "../../../scripts/engines/motion/move-targets.mjs";
 import { planFinisher } from "../../../scripts/engines/finishers/finisher-play.mjs";
 import { validateRecipe, planRecipe } from "../../../scripts/core/model.mjs";
+import { withTrail } from "../../../scripts/engines/playback/runtime.mjs";
 
 const token = (id, x, y, size = 1) => ({ id, name: id, center: { x: x * 100 + size * 50, y: y * 100 + size * 50 }, w: size * 100, h: size * 100, document: { x: x * 100, y: y * 100, width: size, height: size } });
 const stage = (motion, extra = {}) => ({ kind: "motion", motion, stageId: motion, subject: "targets", ...extra });
@@ -113,4 +114,15 @@ test("a push or pull's Afterimages choice rides on its shove", () => {
   assert.equal(shoveOf(stage("pull", { afterimages: "always" })).afterimages, "always");
   assert.equal(shoveOf(stage("push")).afterimages, undefined, "Auto");
   assert.equal(shoveRecipe(stage("push"), 2).finisher.afterimages, undefined);
+});
+
+test("a push or pull's trail tint rides on its shove and survives the replay", () => {
+  const me = token("me", 0, 0), t = token("t", 5, 0), host = { gridSize: () => 100, trace: () => {}, landing: (mover) => ({ x: mover.document.x + 200, y: mover.document.y }) };
+  const shoveOf = (s) => planFinisher({ recipe: shoveRecipe(s, 2), mover: t, attacker: me }, host).composed.stages.find((x) => x.kind === "motion");
+  const shove = shoveOf(stage("push", { trailTint: "#ff9a4d" }));
+  assert.equal(shove.trailTint, "#ff9a4d");
+  // The shove is played again as its own recipe: no element and no colour, so the tint must be kept, not recomputed.
+  assert.equal(withTrail(shove).trailTint, "#ff9a4d");
+  assert.equal(validateRecipe({ id: "s", name: "S", trigger: "manual", stages: [shove] }).stages[0].trailTint, "#ff9a4d");
+  assert.equal(shoveOf(stage("pull")).trailTint, undefined, "no tint: each client's soft white");
 });

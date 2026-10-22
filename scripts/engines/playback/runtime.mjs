@@ -56,7 +56,8 @@ export function withWeaponScale(recipe, factor) {
 // else the play's element, else the recipe colour ("" leaves each client's soft white). The world setting off
 // keeps any motion from trailing.
 export function withTrail(stage, { element, recipeColor, allowed = true } = {}) {
-  return { ...stage, trailTint: lightColor(stage, { element, recipeColor, fallback: "" }), ...(allowed ? {} : { afterimages: "never" }) };
+  // A tint already set (a push's shove, replayed without the play's element) is kept.
+  return { ...stage, trailTint: stage.trailTint || lightColor(stage, { element, recipeColor, fallback: "" }), ...(allowed ? {} : { afterimages: "never" }) };
 }
 // A shot that ends at a wall bursts there in a small generic impact (the first installed), 0.6 of the shot's size.
 export const WALL_IMPACTS = ['jb2a.impact.001.white', 'jb2a.impact.002.white', 'jb2a.impact.010.white', 'jb2a.impact.005.white', 'jb2a.impact.009.white'];

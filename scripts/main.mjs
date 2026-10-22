@@ -1470,6 +1470,8 @@ Hooks.once("init", () => {
     name: "Afterimages on my screen",
     hint: "Turn off to never draw afterimage trails on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
+    // Off: the ghosts already drawn go at once.
+    onChange: (on) => { if (on === false) motions?.afterimages?.clear(); },
   });
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",

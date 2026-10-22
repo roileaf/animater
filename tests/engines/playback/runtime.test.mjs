@@ -1630,6 +1630,18 @@ test("motion stages carry the play's tint", async () => {
   assert.equal(sent.afterimages, "always", "the stage's own choice rides along");
   assert.equal(sent.destination.id, "source", "still the placeable the host resolves");
 });
+test("the tint survives the socket: receivers re-validate the stage", async () => {
+  // receiveMotion (and the starting client) re-run validateRecipe on the stage host.motion sends.
+  const received = async (recipe, context) => {
+    const { destination, ...sent } = await sentMotion(recipe, context);
+    return validateRecipe({ id: "socket-motion", name: "Motion", trigger: "manual", stages: [{ ...sent, kind: "motion" }] }).stages[0];
+  };
+  assert.equal((await received(trailRecipe(), { element: "fire" })).trailTint, "#ff9a4d");
+  assert.equal((await received(trailRecipe({ afterimages: "always" }), { element: "fire" })).afterimages, "always");
+  assert.equal((await received(trailRecipe())).trailTint, undefined, "no tint: soft white");
+  const bad = validateRecipe({ id: "s", name: "S", trigger: "manual", stages: [{ kind: "motion", motion: "rush", trailTint: "red;x" }] }).stages[0];
+  assert.equal(bad.trailTint, undefined, "only a hex colour");
+});
 test("world setting off sends never", async () => {
   assert.equal((await sentMotion(trailRecipe({ afterimages: "always" }), {}, (host) => { host.afterimages = () => false; })).afterimages, "never");
   assert.equal((await sentMotion(trailRecipe(), {}, (host) => { host.afterimages = () => true; })).afterimages, undefined, "on: Auto stays the default");

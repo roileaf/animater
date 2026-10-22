@@ -72,6 +72,13 @@ test("remainder carries so fast motion keeps a 0.4 square pitch", () => {
   assert.equal(run(createTrailGate(), poses), 3);
 });
 
+test("one long frame banks at most one spacing", () => {
+  const g = createTrailGate();
+  assert.equal(g.step({ x: 200, y: 0 }, { x: 0, y: 0 }, 16, G), true); // 2 squares in one frame
+  const after = Array.from({ length: 4 }, (_, i) => ({ x: 210 + i * 10, y: 0 })); // 0.4 squares, fast
+  assert.equal(run(g, after), 2, "the 0.4 square pitch holds after the jump");
+});
+
 test("a zero motionOffset is zero travel", () => {
   assert.equal(trails({ motion: "rush", distance: 8, motionOffset: { x: 0, y: 0 } }, G), false);
 });

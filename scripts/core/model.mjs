@@ -297,6 +297,8 @@ export function validateRecipe(input) {
                 subject: s.subject === "targets" || MOVE_MOTIONS.has(s.motion) ? "targets" : "source",
                 ...(MOVE_MOTIONS.has(s.motion) ? moveOptions(s) : {}),
                 ...afterimagesChoice({ ...s, motion: MOTIONS[s.motion] ? s.motion : "lunge" }),
+                // The play's ghost tint (withTrail) must cross the socket; anything but a hex colour is soft white.
+                ...(/^#[\da-f]{6}$/i.test(s.trailTint ?? "") ? { trailTint: s.trailTint } : {}),
                 intensity: number(s.intensity, 0.1, 3, 1),
                 distance: number(
                   s.distance,
