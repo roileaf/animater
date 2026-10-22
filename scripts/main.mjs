@@ -48,7 +48,7 @@ import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
 import { libraryPreferences } from './ui/media-library.mjs';
 import {TokenFxPreview} from './engines/preview/token-fx-preview.mjs';
 import {tokenFx} from './engines/tokenshade/api.mjs';
-import {warmShaders} from './engines/tokenshade/warmup.mjs';
+import {warmShaders,buildSceneWarpNow} from './engines/tokenshade/warmup.mjs';
 import {normalizeLayers} from './engines/tokenshade/layers.mjs';
 import { SceneFxPreview } from "./engines/preview/scene-fx-preview.mjs";
 import {
@@ -159,6 +159,9 @@ const distortsHere = () => {
   try { local = game.settings.get(ID, "mapDistortionLocal"); } catch { /* not registered yet */ }
   return canDistort(localQuality(), local);
 };
+// Builds or warms the shaders this client now needs (set once the canvas is up, in "ready"); the quality and
+// "Map distortion on my screen" settings call it when they change.
+let rewarmShaders = () => {};
 const distortionHost = createDistortionHost({
   makeFilter: () => {
     const renderer = canvas.app.renderer, gl = renderer.gl, filter = sceneWarpFilter(globalThis.PIXI);
@@ -175,12 +178,27 @@ const distortionHost = createDistortionHost({
   allowed: distortsHere,
   tight: () => adaptiveHost.tight(),
   sceneId: () => canvas?.scene?.id,
-  // The stage maps world to screen pixels (no rotation); the view is the screen's world rectangle.
+  // The stage maps world to screen pixels (no rotation); the view is the screen's world rectangle. This tick runs
+  // before the render updates transforms, so this frame's pan and zoom are read from the stage's own transform
+  // (the stage is the root: local is world).
   view: () => {
-    const wt = canvas.stage.worldTransform, screen = canvas.app.renderer.screen;
+    const t = canvas.stage.transform, screen = canvas.app.renderer.screen;
+    t.updateLocalTransform();
+    const wt = t.localTransform;
     return { x: -wt.tx / wt.a, y: -wt.ty / wt.d, w: screen.width / wt.a, h: screen.height / wt.d, zoom: Math.hypot(wt.a, wt.b) || 1, worldToScreen: wt };
   },
   now: () => performance.now(),
+  // The level this client views, as ground marks use; and whether it can see any of an area (its centre and
+  // points around it), as Foundry tests a point.
+  viewedLevel: () => canvas?.level?.id ?? null,
+  seen: (point, radius) => {
+    try {
+      const v = canvas?.visibility;
+      if (!v?.tokenVision) return true;
+      const r = radius / Math.SQRT2;
+      return v.testVisibility({ x: point.x, y: point.y }, { tolerance: Math.max(2, r) });
+    } catch { return true; }
+  },
 });
 // PF2e Summons Assistant's glowing walls and summons (integrations/summons-walls.mjs): lit on every client
 // from their own effect or token data, on the same light host. Only its creatures' tokens qualify.
@@ -1372,7 +1390,7 @@ Hooks.once("init", () => {
   game.settings.register(ID,'quality',{name:'Animation quality (this device)',
     hint:'Lower this on slower computers. Applies only to what you see; other players keep their own setting.',
     scope:'client',config:true,type:String,choices:{...QUALITY_CHOICES},default:'full',
-    onChange:()=>{syncQuality();persistentStates?.schedule();markLayer.refresh();}});
+    onChange:()=>{syncQuality();persistentStates?.schedule();markLayer.refresh();rewarmShaders();}});
   game.settings.register(ID,'lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
@@ -1523,12 +1541,17 @@ Hooks.once("init", () => {
     hint: "Big blasts ripple across the map, lasting fire shimmers with heat and teleports warp the air. Drawn only on screens at Full animation quality.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  game.settings.register(ID, "shockwaveReach", {
+    name: "Shockwave reach (× blast size)",
+    hint: "How far a blast's shockwave ripples, as a multiple of the blast's size. Larger values reach further across the map.",
+    scope: "world", config: true, type: Number, range: { min: 0.5, max: 4, step: 0.25 }, default: 1.5,
+  });
   game.settings.register(ID, "mapDistortionLocal", {
     name: "Map distortion on my screen",
     hint: "Turn off to never bend the map on this screen (for example if it is uncomfortable to watch).",
     scope: "client", config: true, type: Boolean, default: true,
-    // Off: whatever is bending stops at once.
-    onChange: (on) => { if (on === false) distortionHost.clear(); },
+    // Off: whatever is bending stops at once. On: its shader is readied before the next blast.
+    onChange: (on) => { if (on === false) distortionHost.clear(); else rewarmShaders(); },
   });
   game.settings.register(ID, "roomAcoustics", {
     name: "Room acoustics from walls",
@@ -1797,11 +1820,24 @@ Hooks.once("ready", () => {
   let warming=null;
   const warmTokenFx=()=>void setTimeout(()=>{
     const renderer=canvas?.ready?canvas.app?.renderer:null;
-    if(warming||!renderer||!globalThis.PIXI?.Program||!allowsTokenFx(localQuality()))return;
-    warming=warmShaders(globalThis.PIXI,renderer,{sceneWarp:distortsHere()}).catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{warming=null;});
+    if(!renderer||!globalThis.PIXI?.Program||!allowsTokenFx(localQuality()))return;
+    const sceneWarp=distortsHere();
+    // A warm-up already running is kept, unless this client has just started drawing map distortion.
+    if(warming){if(!sceneWarp||warming.sceneWarp)return;warming.stop();}
+    const run=warmShaders(globalThis.PIXI,renderer,{sceneWarp});
+    run.sceneWarp=sceneWarp;warming=run;
+    run.catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{if(warming===run)warming=null;});
   },3000).unref?.();
-  Hooks.on('canvasReady',warmTokenFx);
-  if(canvas?.ready)warmTokenFx();
+  // Without background compiling, map distortion's scene filter is built now, while the scene loads, rather than
+  // at the first blast; with it, the warm-up above does it.
+  const prepareShaders=()=>{
+    try{const renderer=canvas?.ready?canvas.app?.renderer:null;if(renderer&&globalThis.PIXI?.Program&&distortsHere())buildSceneWarpNow(globalThis.PIXI,renderer);}
+    catch(error){console.warn('Animater map distortion warm-up:',error.message);}
+    warmTokenFx();
+  };
+  rewarmShaders=prepareShaders;
+  Hooks.on('canvasReady',prepareShaders);
+  if(canvas?.ready)prepareShaders();
   runtime = new AnimaterRuntime({
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),
@@ -1821,6 +1857,8 @@ Hooks.once("ready", () => {
     afterimages: () => game.settings.get(ID, "afterimages") !== false,
     // Big blasts, lasting fire and teleports bend the scene (world setting).
     mapDistortion,
+    // How far a blast's shockwave ripples, as a multiple of its radius (world setting).
+    shockwaveReach: () => { try { return Number(game.settings.get(ID, "shockwaveReach")); } catch { return undefined; } },
     // A two-handed heavy weapon: its critical hit sends a shockwave.
     heavyItem: (item) => heavyItem(item, game.system.id),
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).

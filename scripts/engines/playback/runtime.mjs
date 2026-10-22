@@ -644,6 +644,9 @@ export class AnimaterRuntime {
           pointOf,
           radiusOf,
           follows,
+          // The source token's level: a client viewing another level is not distorted.
+          level: token?.level,
+          shockReach: this.host.shockwaveReach?.(),
           // A placed area has no damage roll to name its element: the item's own damage does.
           element: context.element ?? recipe.chosenElement ?? this.host.itemElement?.(context.item, context) ?? undefined,
           // A critical hit with a heavy weapon ripples too (only a critical play asks).

@@ -119,6 +119,11 @@ test('teleport tags out and in with a warp; style none tags nothing', async () =
   assert.deepEqual(arrival[1].animaterWarp, { kind: 'warp', at: { x: 450, y: 50 }, radius: 200, startMs: 0, lengthMs: 500, strength: 1, follow: false });
   assert.ok(arrival[1].animaterTrail, 'the arrival still carries its streak');
   assert.deepEqual(await run({ out: null, in: null }), [], 'no extra effects: no warp');
+  // A token on a level warps on that level only.
+  mover.document.level = 'L2';
+  const leveled = await run({ out: 'custom.out', in: 'custom.in' });
+  assert.deepEqual(leveled.map(([, d]) => d.animaterWarp.level), ['L2', 'L2']);
+  delete mover.document.level;
   const off = await run({ out: 'custom.out', in: 'custom.in' }, { mapDistortion: () => false });
   assert.deepEqual(off.map(([, d]) => !!d?.animaterWarp), [false, false], 'the world setting turns it off');
 });

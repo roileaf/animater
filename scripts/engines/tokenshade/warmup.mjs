@@ -5,7 +5,8 @@
 // program is compiled and linked exactly as PIXI will (same sources, same attribute
 // binding); once it is ready, PIXI builds its own from them, which the browser's shader
 // cache answers in a few milliseconds. Without the extension nothing is warmed:
-// compiling up front would freeze the canvas just the same.
+// compiling up front would freeze the canvas just the same (except map distortion's single
+// scene program, built at once while the scene loads: buildSceneWarpNow).
 import { shaderSource, fieldSource } from './filter-factory.mjs';
 import { SPECS } from './filters/index.mjs';
 import { sceneWarpProgram } from './filters/scene-warp.mjs';
@@ -26,6 +27,18 @@ export function tokenshadePrograms(PIXI, types = Object.keys(SPECS)) {
     for (const source of [shaderSource(spec), fieldSource(spec)]) if (source) out.push(PIXI.Program.from(vertex, source));
   }
   return out;
+}
+
+// Without KHR_parallel_shader_compile, map distortion's one scene program is built at once, on the main thread:
+// called while the scene loads, so the first blast does not freeze the canvas compiling it. Returns whether
+// it built it (false with the extension: warmShaders does it in the background).
+export function buildSceneWarpNow(PIXI, renderer) {
+  const gl = renderer?.gl, uid = renderer?.CONTEXT_UID;
+  if (!gl || gl.getExtension?.('KHR_parallel_shader_compile') || gl.isContextLost?.()) return false;
+  const program = sceneWarpProgram(PIXI);
+  if (program.glPrograms[uid]) return false;
+  renderer.shader.generateProgram({ program });
+  return true;
 }
 
 // Warms every program PIXI has not built yet (`sceneWarp`: map distortion's scene filter too,

@@ -20,7 +20,7 @@ const FLIGHTS = new Set(['travel', 'projectile']);
 const KINDS = { shock: 0, haze: 1, warp: 2 };
 
 const BLAST = /explosion|thunderwave|shatter|ground_crack|impact\.earth|boulder|shockwave/;
-const HEAVY = /great(axe|sword|club)|maul|warhammer|glaive|halberd|earthbreaker|greatpick|lucern/;
+const HEAVY = /great(axe|sword|club)|maul|glaive|halberd|earthbreaker|greatpick|lucern/;
 const FIRE = /(?:^|[._])(?:fire\w*|flame\w*|flaming)(?=$|[._\d])/;
 const ROUND_AREAS = new Set(['circle', 'emanation', 'burst']);
 
@@ -69,10 +69,14 @@ export function distortionKind(stage, { context, heavyItem = false, element, rad
  * one-shot anchor would end it early). `tiers` maps stageId to tier (a missing one
  * cannot anchor); `radiusOf` gives pixels; `follows` (optional) says an anchor
  * moves with a token, so its haze follows it. At most `perAnimation` are kept,
- * earliest first.
+ * earliest first. `shockReach` (the world's "Shockwave reach") is how far a ring
+ * grows as a multiple of its blast's radius; its cap scales with it (1.5: 3..12
+ * squares). `level` (the source token's level) goes on every tag.
  */
-export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusOf, heavyItem, element, follows, spotSquares = 2, perAnimation = 4 } = {}) {
+export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusOf, heavyItem, element, follows, level, shockReach, spotSquares = 2, perAnimation = 4 } = {}) {
   const tags = new Map();
+  const ringPer = Number.isFinite(shockReach) && shockReach > 0 ? shockReach : RING_PER_BLAST;
+  const maxRing = MAX_RING_SQUARES * ringPer / RING_PER_BLAST;
   const isTier0 = stage => tiers?.get(stage.stageId) === 0;
   const reach = spotSquares * gridPx;
   const placed = (plan ?? []).filter(s => !NOT_VISUAL.has(s.kind)).map(stage => ({ stage, at: pointOf(stage) })).filter(p => p.at);
@@ -95,13 +99,15 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
       const anchor = near.find(p => p.stage === lead.stage && fits(p)) ?? near.find(p => spot.members.includes(p) && fits(p)) ?? near.find(fits);
       if (!anchor) continue;
       taken.add(anchor.stage);
-      tags.set(anchor.stage, kind === 'shock' ? shockTag(lead, anchor.stage) : hazeTag(lead, anchor.stage));
+      const tag = kind === 'shock' ? shockTag(lead, anchor.stage) : hazeTag(lead, anchor.stage);
+      if (typeof level === 'string' && level) tag.level = level;
+      tags.set(anchor.stage, tag);
     }
   }
   return tags;
 
   function shockTag({ stage, at }, anchor) {
-    const squares = clamp(RING_PER_BLAST * (radiusOf(stage) ?? 0) / gridPx, MIN_RING_SQUARES, MAX_RING_SQUARES);
+    const squares = clamp(ringPer * (radiusOf(stage) ?? 0) / gridPx, MIN_RING_SQUARES, maxRing);
     // The ring starts at the blast's contact; the anchor's own start is the clock.
     const startMs = Math.max(0, startOf(stage) + (stage.contact > 0 ? stage.contact : 0) - startOf(anchor));
     return { kind: 'shock', at: { x: at.x, y: at.y }, radius: squares * gridPx, startMs, lengthMs: SHOCK_MS, strength: 1, follow: false };
@@ -113,10 +119,11 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
       startMs: Math.max(0, startOf(stage) - startOf(anchor)), lengthMs: null, strength: 1, follow: !!follows?.(anchor),
     };
     const area = context?.area;
-    // A line or cone is covered by the capsule along its length.
+    // A line or cone is covered by the capsule along its length, as wide as the line or the cone's far end.
     if (stage.kind === 'template' && !stage.areaTile && ['line', 'cone'].includes(area?.type) && area.center && area.endpoint) {
       const length = distance(area.center, area.endpoint);
-      const width = area.width > 0 ? area.width : area.type === 'cone' ? length / 2 : gridPx;
+      const coneWidth = area.type === 'cone' && area.angle > 0 && area.angle < 180 ? Math.min(2 * length, 2 * length * Math.tan(area.angle * Math.PI / 360)) : 0;
+      const width = coneWidth > 0 ? coneWidth : area.width > 0 ? area.width : area.type === 'cone' ? length / 2 : gridPx;
       tag.area = { type: 'capsule', a: { x: area.center.x, y: area.center.y }, b: { x: area.endpoint.x, y: area.endpoint.y }, width };
       tag.at = { x: (area.center.x + area.endpoint.x) / 2, y: (area.center.y + area.endpoint.y) / 2 };
       tag.radius = length / 2 + width / 2;
@@ -127,9 +134,9 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
   }
 }
 
-/** A teleport's warp at `at`, `radius` pixels: starts as its effect arrives, ~500 ms. */
-export function warpTag(at, radius) {
-  return { kind: 'warp', at: { x: at.x, y: at.y }, radius, startMs: 0, lengthMs: WARM_MS, strength: 1, follow: false };
+/** A teleport's warp at `at`, `radius` pixels: starts as its effect arrives, ~500 ms. `level`: the token's level. */
+export function warpTag(at, radius, level) {
+  return { kind: 'warp', at: { x: at.x, y: at.y }, radius, startMs: 0, lengthMs: WARM_MS, strength: 1, follow: false, ...(typeof level === 'string' && level ? { level } : {}) };
 }
 
 const easeOutCubic = x => 1 - (1 - x) ** 3;

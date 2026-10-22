@@ -60,7 +60,7 @@ export async function playTeleport({ mover, x, y, visuals, element }, host) {
   const size = mover.w * visuals.scale, from = { ...mover.center };
   const to = { x: x + mover.w / 2, y: y + mover.h / 2 };
   const warps = host.mapDistortion?.() === true, radius = Math.max(mover.w, mover.h) + (host.gridSize?.() ?? mover.w);
-  const warp = (at) => (warps ? { animaterWarp: warpTag(at, radius) } : null);
+  const warp = (at) => (warps ? { animaterWarp: warpTag(at, radius, mover.document?.level) } : null);
   await host.wait(450);
   if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, warp(from));
   await host.wait(700);

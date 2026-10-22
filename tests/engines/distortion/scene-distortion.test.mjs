@@ -25,7 +25,9 @@ test('critical means a critical attack or check, from the outcome or any target'
   assert.equal(distortionKind(hit, { context: { type: 'save', outcome: 'criticalSuccess' }, heavyItem: true }), null);
   assert.equal(distortionKind(hit, { context: { type: 'attack', outcome: 'criticalSuccess' }, heavyItem: false }), null);
   // The weapon can also be known from the asset family.
-  assert.equal(distortionKind({ kind: 'impact', assets: ['jb2a.melee_attack.03.warhammer'] }, { context: { type: 'attack', outcome: 'criticalSuccess' } }), 'shock');
+  assert.equal(distortionKind({ kind: 'impact', assets: ['jb2a.melee_attack.03.greataxe'] }, { context: { type: 'attack', outcome: 'criticalSuccess' } }), 'shock');
+  // A warhammer is one-handed (not on the heavy item list), so its asset does not count either.
+  assert.equal(distortionKind({ kind: 'impact', assets: ['jb2a.melee_attack.03.warhammer'] }, { context: { type: 'attack', outcome: 'criticalSuccess' } }), null);
 });
 
 test('a circle one-shot of 2+ squares shocks; a small or line one does not', () => {
@@ -80,6 +82,28 @@ test('plan: a fireball makes one ring on its tier 0 stage; radius clamps to 3..1
   assert.equal([...mk(null).values()][0].radius, sq(3));
 });
 
+test('plan: shockwave reach scales the ring and its cap', () => {
+  const mk = (r, shockReach) => [...planDistortions([st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 500, y: 500 }, r })], opts({ a: 0 }, { shockReach })).values()][0].radius;
+  // 1.5 (the default) is today's ring: 1.5x the blast, 3..12 squares.
+  for (const r of [sq(1), sq(4), sq(20)]) assert.equal(mk(r, 1.5), mk(r, undefined));
+  assert.equal(mk(sq(4), 1.5), sq(6));
+  // 3 doubles it, and the cap with it.
+  assert.equal(mk(sq(4), 3), sq(12));
+  assert.equal(mk(sq(20), 3), sq(24));
+  assert.equal(mk(sq(1), 3), sq(3), 'the floor stays 3 squares');
+  // Small reach still keeps the 3-square floor; the cap shrinks below it to nothing smaller.
+  assert.equal(mk(sq(4), 0.5), sq(3));
+  // A missing or broken value is the default.
+  assert.equal(mk(sq(4), NaN), sq(6));
+  assert.equal(mk(sq(4), -2), sq(6));
+});
+
+test('plan: tags carry the source token\'s level', () => {
+  const plan = [st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 0, y: 0 }, r: sq(4) })];
+  assert.equal([...planDistortions(plan, opts({ a: 0 }, { level: 'L2' })).values()][0].level, 'L2');
+  assert.equal('level' in [...planDistortions(plan, opts({ a: 0 })).values()][0], false);
+});
+
 test('plan: two stages at one spot share one ring; a missing tier cannot anchor', () => {
   const plan = [
     st('a', 'template', 'jb2a.template_circle.out_pulse.01.burst.orange', { at: { x: 0, y: 0 }, r: sq(3) }),
@@ -101,6 +125,14 @@ test('plan: a lasting fire area hazes on a lasting anchor; capsule for a line', 
   assert.deepEqual(tag.area, { type: 'capsule', a: { x: 0, y: 0 }, b: { x: 600, y: 0 }, width: GRID });
   assert.deepEqual(tag.at, { x: 300, y: 0 });
   assert.equal(tag.radius, 300 + GRID / 2);
+  // A cone's capsule is as wide as the cone at its far end.
+  const cone = st('c', 'template', 'jb2a.fire_jet.orange', { at: { x: 300, y: 0 }, r: sq(3), persist: true });
+  const coneArea = angle => ({ area: { type: 'cone', center: { x: 0, y: 0 }, endpoint: { x: 600, y: 0 }, length: 600, angle } });
+  const coneTag = angle => [...planDistortions([cone], opts({ c: 0 }, { context: coneArea(angle) })).values()][0];
+  assert.ok(Math.abs(coneTag(90).area.width - 1200) < 1e-6);
+  assert.ok(Math.abs(coneTag(53).area.width - 2 * 600 * Math.tan(53 * Math.PI / 360)) < 1e-6);
+  assert.ok(Math.abs(coneTag(90).radius - (300 + 600)) < 1e-6);
+  assert.equal(coneTag(undefined).area.width, 300, 'no angle: half its length, as before');
   const ring = st('r', 'template', 'jb2a.wall_of_fire.ring.yellow', { at: { x: 0, y: 0 }, r: sq(2), persist: true });
   assert.deepEqual([...planDistortions([ring], opts({ r: 0 }))].map(([, t]) => t.area), [{ type: 'circle' }]);
 });

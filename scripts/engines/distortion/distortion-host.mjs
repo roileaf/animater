@@ -8,6 +8,7 @@ import { writeSceneWarp, SCENE_WARP_SLOTS } from '../tokenshade/filters/scene-wa
 import { qualityRank } from '../../core/quality.mjs';
 
 const HAZE_END_MS = 300;
+const SIGHT_MS = 250;
 const KINDS = new Set(['shock', 'haze', 'warp']);
 
 /** Whether this client draws distortions: Full quality (not Light) and its own setting on. */
@@ -43,8 +44,17 @@ const capsuleOf = (tag) => {
   return a && b && area.width > 0 && finite(area.width) ? { a, b, width: area.width } : null;
 };
 
+// The level a distortion happens on: its tag's (the source token's), else its effect's own; none for any level.
+const levelOf = (tag, data) => (typeof tag.level === 'string' && tag.level ? tag.level : typeof data.level === 'string' && data.level ? data.level : null);
+
+/**
+ * `viewedLevel()`: the level this client views (null: any). `seen(point, radius)`: whether this client can see
+ * any of that area; a one-shot is tested as it arrives, a lasting haze every SIGHT_MS (kept, but not drawn,
+ * while unseen).
+ */
 export function createDistortionHost({
   makeFilter, attach, detach, allowed, tight = () => false, sceneId = () => undefined, view, now = () => performance.now(),
+  viewedLevel = () => null, seen = () => true,
 }) {
   const entries = new Map(); // anchor effect -> distortion, in arrival order
   let filter = null, attached = false, broken = false;
@@ -90,6 +100,11 @@ export function createDistortionHost({
       return null;
     }
     const { centre, a, b } = placeOf(entry);
+    if (entry.lasting) {
+      // Out of sight (walls, a moved viewer): kept, not drawn.
+      if (entry.sightAt === null || t0 - entry.sightAt >= SIGHT_MS) { entry.sightAt = t0; entry.inSight = seen(centre, tag.radius) !== false; }
+      if (!entry.inSight) return null;
+    }
     const slot = { ...params, centre, amp: params.amp * fade };
     if (entry.capsule) Object.assign(slot, { a, b, radius: entry.capsule.width / 2 });
     // The off-screen test uses the whole area around its centre.
@@ -115,10 +130,14 @@ export function createDistortionHost({
         const data = effect?.data, tag = data?.animaterWarp;
         if (broken || !validTag(tag) || data.moduleName !== 'animater' || entries.has(effect)) return;
         if (data.sceneId !== sceneId() || !allowed()) return;
+        // Another level than the one this client views (viewing another redraws the canvas, which clears us).
+        const level = levelOf(tag, data), viewed = viewedLevel();
+        if (level && viewed && level !== viewed) return;
         const lasting = tag.lengthMs == null;
-        // A busy frame budget skips new one-shots; a lasting haze still shows.
-        if (!lasting && tight()) return;
-        entries.set(effect, { effect, tag, lasting, capsule: capsuleOf(tag), receivedAt: now(), endedAt: null });
+        // A busy frame budget skips new one-shots; a lasting haze still shows. A one-shot this client cannot see
+        // does not ripple the part of the map it can.
+        if (!lasting && (tight() || seen(tag.at, tag.radius) === false)) return;
+        entries.set(effect, { effect, tag, lasting, capsule: capsuleOf(tag), receivedAt: now(), endedAt: null, sightAt: null, inSight: true });
       } catch (err) {
         console.warn('Animater | map distortion skipped an effect', err);
       }

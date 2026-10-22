@@ -1688,6 +1688,16 @@ test("fireball explosion is tagged with a shock at its contact", async () => {
   const boom = plan.find((s) => s.stageId === "boom");
   assert.equal(tag.startMs, boom.contact > 0 ? boom.contact : 0, "the ring starts at the blast's contact");
   assert.equal(tag.radius, 1.5 * 200, "about 1.5 times the blast radius");
+  assert.equal("level" in tag, false, "a source token without a level: every level");
+});
+test("shockwave reach setting scales the ring; the source token's level rides along", async () => {
+  const { recipe, context } = fireball();
+  const f = warpFixture();
+  f.host.shockwaveReach = () => 3;
+  await f.runtime.play(recipe, { ...context, source: { ...context.source, document: { level: "L2" } } });
+  const [[, tag]] = await warpsOf(f.calls);
+  assert.equal(tag.radius, 3 * 200, "three times the blast radius");
+  assert.equal(tag.level, "L2");
 });
 test("wall of fire is tagged with a haze along the wall for as long as it stands", async () => {
   const item = { type: "spell", name: "Wall of Fire", system: { duration: { value: "1 minute", sustained: false }, area: null, traits: { value: ["concentrate", "fire", "manipulate"] }, description: { value: "<p>You raise a blazing wall.</p>" } } };

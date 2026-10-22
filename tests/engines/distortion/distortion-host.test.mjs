@@ -11,8 +11,8 @@ function effect(tag, { x, y, sceneId = 's1', moduleName = 'animater' } = {}) {
   return { data: { moduleName, sceneId, ...(tag ? { animaterWarp: tag } : {}) }, worldPosition: { x: x ?? tag?.at?.x ?? 0, y: y ?? tag?.at?.y ?? 0 } };
 }
 
-function make({ allowed = true, tight = false, failFilter = false } = {}) {
-  const out = { t: 0, allowed, tight, made: 0, attached: [], detached: [], filters: [], destroyed: 0 };
+function make({ allowed = true, tight = false, failFilter = false, viewed = null, seen = () => true } = {}) {
+  const out = { t: 0, allowed, tight, viewed, seen, sightTests: 0, made: 0, attached: [], detached: [], filters: [], destroyed: 0 };
   const host = createDistortionHost({
     makeFilter: () => {
       out.made++;
@@ -26,6 +26,8 @@ function make({ allowed = true, tight = false, failFilter = false } = {}) {
     allowed: () => out.allowed,
     tight: () => out.tight,
     sceneId: () => 's1',
+    viewedLevel: () => out.viewed,
+    seen: (p, r) => { out.sightTests++; return out.seen(p, r); },
     // A 2000 x 1000 world view at zoom 1, screen = world.
     view: () => ({ x: 0, y: 0, w: 2000, h: 1000, zoom: 1, worldToScreen: { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 } }),
     now: () => out.t,
@@ -231,6 +233,62 @@ test('only Animater effects on this scene with a valid tag distort', () => {
   out.t = 100;
   host.tick();
   assert.equal(out.made, 0);
+});
+
+test('a distortion on another level than the viewed one does not distort', () => {
+  const { host, out } = make({ viewed: 'L1' });
+  host.onEffect(effect(shock(500, 500, { level: 'L2' })));
+  const other = effect(warp());
+  other.data.level = 'L2';
+  host.onEffect(other);
+  out.t = 100;
+  host.tick();
+  assert.equal(out.made, 0, 'from the tag, or the effect\'s own level');
+  host.onEffect(effect(shock(500, 500, { level: 'L1' })));
+  host.onEffect(effect(warp(900, 500)));
+  out.t = 120;
+  host.tick();
+  assert.equal(u(out).uSlots, 2, 'the viewed level, and one that names none');
+  // A scene without levels views none: every level shows.
+  const flat = make({ viewed: null });
+  flat.host.onEffect(effect(shock(500, 500, { level: 'L2' })));
+  flat.out.t = 100;
+  flat.host.tick();
+  assert.equal(flat.out.attached.length, 1);
+});
+
+test('a one-shot out of this screen\'s sight does not distort', () => {
+  const { host, out } = make({ seen: (p) => p.x < 1000 });
+  host.onEffect(effect(shock(1500, 500)));
+  out.t = 100;
+  host.tick();
+  assert.equal(out.made, 0);
+  host.onEffect(effect(shock(500, 500)));
+  out.t = 120;
+  host.tick();
+  assert.equal(u(out).uSlots, 1);
+});
+
+test('a lasting haze shows only while in sight, checked a few times a second', () => {
+  let visible = false;
+  const { host, out } = make({ seen: () => visible });
+  host.onEffect(effect(haze()));
+  out.t = 100;
+  host.tick();
+  assert.equal(out.attached.length, 1, 'kept while unseen');
+  assert.equal(out.filters[0].enabled, false, 'but not drawn');
+  visible = true;
+  out.t = 150;
+  host.tick();
+  assert.equal(out.filters[0].enabled, false, 'not tested again yet');
+  out.t = 400;
+  host.tick();
+  assert.equal(out.filters[0].enabled, true, 'back in sight');
+  assert.equal(u(out).uSlots, 1);
+  const tests = out.sightTests;
+  out.t = 420;
+  host.tick();
+  assert.equal(out.sightTests, tests, 'no test every frame');
 });
 
 test('other filters keep their order', () => {
