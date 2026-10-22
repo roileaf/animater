@@ -596,8 +596,10 @@ export class AnimaterRuntime {
       if (!preview && this.host.groundMarks?.() === true && isHarmful(context, { itemDamages: this.host.itemDamages })) {
         // A weapon's mark is its payload's (recipe.markElement): rune or rider damage leaves none.
         const strike = ["weapon", "melee"].includes(context.item?.type);
+        // A placed area has no damage roll to name its element: the item's own damage does.
+        const element = strike ? undefined : context.element ?? this.host.itemElement?.(context.item, context) ?? undefined;
         groundMarks = planMarks(plan, {
-          context: strike ? { ...context, element: undefined } : context,
+          context: { ...context, element },
           recipe,
           tiers,
           gridPx: grid,

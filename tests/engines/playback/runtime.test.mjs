@@ -8,6 +8,7 @@ import { PF2E_SPELLS, spellRecipe } from "../../../scripts/catalogs/pf2e/spells/
 import { MEDIA_LANDINGS } from "../../../data/media-landings.mjs";
 import { SURFACE_SOUND_PROFILES } from "../../../scripts/engines/sound/surface-sounds.mjs";
 import { dndEntries, dndRecipe } from "../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs";
+import { usedItemDamages, usedItemElement } from "../../../scripts/systems/item-damages.mjs";
 
 test("native line effects use exact area endpoints, stationary cues are sized rather than stretched", async () => {
   const source = { center: { x: 0, y: 0 } },
@@ -1495,6 +1496,44 @@ test("a weapon's mark comes only from its recipe, never from rune damage", async
   assert.equal(marks.length, 1);
   assert.equal(marks[0][1].mark, "residue");
   assert.equal(marks[0][1].shape, "spot");
+});
+// A placed area spell plays from its template event (main.mjs createRegion): type "template", no damage roll,
+// so no element on the event. Its mark comes from the spell's own damage.
+async function placedArea(recipe, item, { systemId = "pf2e", activity } = {}) {
+  const f = markFixture();
+  f.host.itemDamages = (i) => usedItemDamages(i, systemId);
+  f.host.itemElement = (i, context) => usedItemElement(i, systemId, context.activity);
+  f.host.resolveRecipe = () => recipe;
+  f.runtime.catalog = [...new Set(recipe.stages.flatMap((s) => s.assets))].map((key) => ({ key }));
+  const { source, targets, area } = fireball().context;
+  await f.runtime.dispatch({
+    id: "area:Scene.s1.Region.rg1", type: "template", systemId, item, activity, source, targets, area,
+    template: { documentName: "Region", id: "rg1" }, sceneId: "s1",
+  });
+  return marksOf(f.calls);
+}
+const pf2eSpell = (damage, traits = []) => ({ type: "spell", name: "Spell", system: { damage, traits: { value: traits } } });
+test("a placed PF2e Fireball scorches its area", async () => {
+  const recipe = spellRecipe(PF2E_SPELLS.find((s) => s.name === "Fireball"));
+  const fireballItem = pf2eSpell({ k1: { formula: "6d6", type: "fire", kinds: ["damage"], category: null } }, ["concentrate", "fire", "manipulate"]);
+  const marks = await placedArea(recipe, fireballItem);
+  assert.equal(marks.length, 1);
+  const [asset, tag] = marks[0];
+  assert.equal(asset, "jb2a.fireball.explosion.orange");
+  assert.equal(tag.mark, "scorch");
+  assert.equal(tag.shape, "circle");
+  assert.equal(tag.regionId, "rg1");
+  // A buff placed the same way leaves the floor clean.
+  assert.equal((await placedArea(recipe, pf2eSpell({}, ["fire"]))).length, 0);
+});
+test("a placed D&D Fireball scorches its area", async () => {
+  const entry = dndEntries("spell").find((e) => e.name === "Fireball");
+  const activity = { id: "a1", type: "save", damage: { parts: [{ number: 8, denomination: 6, types: new Set(["fire"]) }] } };
+  const item = { type: "spell", name: "Fireball", system: { activities: new Map([["a1", activity]]) } };
+  const marks = await placedArea(dndRecipe(entry), item, { systemId: "dnd5e", activity });
+  assert.equal(marks.length, 1);
+  assert.equal(marks[0][1].mark, "scorch");
+  assert.equal(marks[0][1].shape, "circle");
 });
 
 // Sequencer's moveTowards merges its defaults with our options, so an explicit undefined

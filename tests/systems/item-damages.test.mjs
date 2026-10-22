@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { usedItemDamages } from '../../scripts/systems/item-damages.mjs';
+import { usedItemDamages, usedItemElement } from '../../scripts/systems/item-damages.mjs';
 
 const cases = [
   // PF2e / SF2e spells: system.damage is a record of entries with a formula and kinds.
@@ -33,6 +33,26 @@ const cases = [
 for (const [name, systemId, item, expected] of cases) {
   test(`usedItemDamages: ${name}`, () => {
     assert.equal(usedItemDamages(item, systemId), expected);
+  });
+}
+
+const elements = [
+  ['pf2e fireball', 'pf2e', { type: 'spell', system: { damage: { k: { formula: '6d6', type: 'fire', kinds: ['damage'] } }, traits: { value: ['concentrate', 'fire', 'manipulate'] } } }, undefined, 'fire'],
+  ['pf2e spell, physical and fire', 'pf2e', { type: 'spell', system: { damage: { a: { formula: '2d6', type: 'bludgeoning' }, b: { formula: '2d6', type: 'fire' } } } }, undefined, 'fire'],
+  ['pf2e spell, no damage type: its element trait', 'pf2e', { type: 'spell', system: { damage: { a: { formula: '2d6' } }, traits: { value: ['cold'] } } }, undefined, 'cold'],
+  ['pf2e spell, physical damage: not its trait', 'pf2e', { type: 'spell', system: { damage: { a: { formula: '2d6', type: 'piercing' } }, traits: { value: ['fire'] } } }, undefined, null],
+  ['pf2e buff with a fire trait', 'pf2e', { type: 'spell', system: { damage: {}, traits: { value: ['fire'] } } }, undefined, null],
+  ['pf2e healing spell', 'pf2e', { type: 'spell', system: { damage: { a: { formula: '1d8', type: 'vitality', kinds: ['healing'] } } } }, undefined, null],
+  ['sf2e acid spell', 'sf2e', { type: 'spell', system: { damage: { a: { formula: '3d6', type: 'acid', kinds: ['damage'] } } } }, undefined, 'acid'],
+  ['pf2e acid flask', 'pf2e', { type: 'consumable', system: { damage: { formula: '1d6', type: 'acid', kind: 'damage' } } }, undefined, 'acid'],
+  ['dnd5e fireball, its activity', 'dnd5e', { type: 'spell', system: { activities: new Map() } }, { damage: { parts: [{ types: new Set(['fire']) }] } }, 'fire'],
+  ['dnd5e ice storm, across activities', 'dnd5e', { type: 'spell', system: { activities: { a: { damage: { parts: [{ types: ['cold'] }, { types: ['bludgeoning'] }] } } } } }, undefined, 'cold'],
+  ['dnd5e chromatic orb, a choice', 'dnd5e', { type: 'spell', system: { activities: { a: { damage: { parts: [{ types: ['fire', 'cold', 'acid'] }] } } } } }, undefined, null],
+  ['no item', 'pf2e', null, undefined, null],
+];
+for (const [name, systemId, item, activity, expected] of elements) {
+  test(`usedItemElement: ${name}`, () => {
+    assert.equal(usedItemElement(item, systemId, activity), expected);
   });
 }
 

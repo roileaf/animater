@@ -27,6 +27,9 @@ test('harmful: damage and save rolls, damaging spells, actions and uses; not che
   // D&D 5e activities and Daggerheart actions arrive as a 'use'.
   assert.equal(isHarmful({ automatic: true, type: 'use', item }, { itemDamages: i => i === item }), true);
   assert.equal(isHarmful({ automatic: true, type: 'use', item }, { itemDamages: () => false }), false);
+  // A placed area spell (PF2e Fireball, D&D Fireball) plays from its template event.
+  assert.equal(isHarmful({ automatic: true, type: 'template', item }, { itemDamages: i => i === item }), true);
+  assert.equal(isHarmful({ automatic: true, type: 'template', item }, { itemDamages: () => false }), false);
   assert.equal(isHarmful({ automatic: false, type: 'spell', item }, { itemDamages: () => true }), false);
   assert.equal(isHarmful(null, { itemDamages: () => true }), false);
 });

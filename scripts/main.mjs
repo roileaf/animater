@@ -10,7 +10,7 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { starterRecipes } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
-import { usedItemDamages } from "./systems/item-damages.mjs";
+import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
@@ -1624,6 +1624,8 @@ Hooks.once("ready", () => {
     groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
     itemDamages: (item) => usedItemDamages(item, game.system.id),
+    // The element of that damage, for a placed area no damage roll names one for.
+    itemElement: (item, context) => usedItemElement(item, game.system.id, context?.activity),
     // The level this client views and its floor, for a mark whose source token names none.
     viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.base } : null; },
     // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
