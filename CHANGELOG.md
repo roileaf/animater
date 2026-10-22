@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.1 (2026-10-22)
 
 - **Clear ground marks at once.** A GM can now wipe every ground mark from the floor on all connected screens: run the macro `game.modules.get("animater").api.clearGroundMarks()`, or bind **Clear ground marks** under Configure Controls (no key by default). A player running the macro clears only their own screen. Marks under a lasting area that is still on the board go too, and come back only if the area plays again. Thanks to y_deda_povis for the request.
 
