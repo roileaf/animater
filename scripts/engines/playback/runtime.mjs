@@ -377,14 +377,20 @@ export class AnimaterRuntime {
       const mover = who === "target" ? context.targets?.[0] : context.source;
       if (mover) jump = { mover };
     }
-    const jumps = jump ? withTeleportStage(plan, { who, mover: jump.mover }).filter((s) => s.kind === "teleport").slice(0, 1) : [];
-    plan = plan.filter((s) => s.kind !== "teleport");
-    const session = `${ID}-${this.host.userId()}-${uuid()}`;
-    const epoch = this.epoch;
-    let failed = false;
+    let jumps = [], session;
     // A stage planned once per target keeps the tier of its first copy.
     const tiers = new Map();
-    for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
+    try {
+      jumps = jump ? withTeleportStage(plan, { who, mover: jump.mover }).filter((s) => s.kind === "teleport").slice(0, 1) : [];
+      plan = plan.filter((s) => s.kind !== "teleport");
+      session = `${ID}-${this.host.userId()}-${uuid()}`;
+      for (const [s, tier] of stageTiers(plan)) tiers.set(s.stageId, Math.min(tier, tiers.get(s.stageId) ?? tier));
+    } catch (error) {
+      this.landTeleport(jump);
+      throw error;
+    }
+    const epoch = this.epoch;
+    let failed = false;
     // Every client remembers what this actor played, so it can warm those files on their next turn.
     const animaterActor = context.source?.actor?.id;
     // Effect lights (anchor stage -> light), planned from the final timings.
@@ -782,8 +788,14 @@ export class AnimaterRuntime {
   landTeleport(jump) {
     if (!jump?.spot || jump.started) return;
     jump.started = true;
-    const plain = { ...jump.spot, visuals: { ...(jump.spot.visuals ?? {}), out: null, in: null } };
-    Promise.resolve().then(() => this.host.teleport?.(plain, { outAt: 0, goneMs: 0 })).catch((error) => this.trace("Blocked", `Teleport: ${error.message}`));
+    this.placeTeleport(jump.spot);
+  }
+  // Only the move (host.place: the token's document, no canvas reads), never its effects; a host without it
+  // plays a teleport with no effects and no time gone.
+  placeTeleport(spot) {
+    const plain = { ...spot, visuals: { ...(spot.visuals ?? {}), out: null, in: null } };
+    Promise.resolve().then(() => this.host.place ? this.host.place(spot) : this.host.teleport?.(plain, { outAt: 0, goneMs: 0 }))
+      .catch((error) => this.trace("Blocked", `Teleport: ${error.message}`));
   }
   // The teleport stage has started (its group waited for it): the token vanishes now and reappears after the
   // stage's length. The timing is decided here, on the client that played; a mover this user does not own is
@@ -797,6 +809,8 @@ export class AnimaterRuntime {
       else await this.host.teleport?.(jump.spot, timing);
     } catch (error) {
       this.trace("Blocked", `Teleport: ${error.message}`);
+      // The effects failed (a token torn down mid-way): the move still happens, once.
+      if (!preview) this.placeTeleport(jump.spot);
     }
   }
   // The plan with its flights' paths (engines/playback/flight-path.mjs) and their wall strikes. Without a wall

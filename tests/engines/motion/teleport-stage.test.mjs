@@ -325,3 +325,43 @@ test("a vanish that arrives after the move never hides the token at its destinat
   assert.equal(shown.mesh.alpha, 1);
   assert.equal(VANISH_GRACE_MS, 1500);
 });
+
+// Fix round 2: the fallback move reads only the token's document.
+test("a stopped play lands through host.place, even when the token's canvas getters throw", async () => {
+  const gone = { id: "ally", document: { id: "ally" } };
+  for (const key of ["w", "h", "center"]) Object.defineProperty(gone, key, { get: () => { throw Error("destroyed"); } });
+  const spot = { mover: gone, x: 0, y: 100, visuals: { out: "o", in: "i", scale: 1, tint: "" } };
+  const { runtime, host, calls } = fixture({ spot });
+  host.place = async (picked) => calls.push(["place", picked.mover.document.id, picked.x, picked.y]);
+  runtime.wait = async (ms) => ms < 1200;
+  await runtime.play(friendfetch(), { source, targets: [ally] });
+  await settle();
+  assert.deepEqual(calls.filter((c) => c[0] === "place" || c[0] === "teleport"), [["place", "ally", 0, 100]]);
+});
+
+test("a throw between the pick and playback still lands the picked move", async () => {
+  const spot = { mover: ally, x: 0, y: 100 };
+  const { runtime, host, calls } = fixture({ spot });
+  host.place = async () => calls.push(["place"]);
+  host.userId = () => { throw Error("no user"); };
+  await assert.rejects(runtime.play(friendfetch(), { source, targets: [ally] }), /no user/);
+  await settle();
+  assert.equal(calls.filter((c) => c[0] === "place").length, 1);
+});
+
+test("a teleport that throws mid-stage falls back to the plain move once", async () => {
+  const spot = { mover: ally, x: 0, y: 100 };
+  const { runtime, host, calls } = fixture({ spot });
+  host.place = async () => calls.push(["place"]);
+  host.teleport = async () => { throw Error("token torn down"); };
+  await runtime.play(friendfetch(), { source, targets: [ally] });
+  await settle();
+  assert.equal(calls.filter((c) => c[0] === "place").length, 1);
+});
+
+test("a spot where the token already stands waits for no move", async () => {
+  const tags = [], mover = { id: "tok", document: { id: "tok", x: 0, y: 100 }, w: 100, h: 100, center: { x: 50, y: 150 } };
+  await playTeleport({ mover, x: 0, y: 100, visuals: { out: "o", in: null, scale: 1, tint: "" } },
+    { wait: async () => {}, move: async () => {}, effect: (a, p, s, t, data) => tags.push(data) }, { outAt: 0, goneMs: 500 });
+  assert.equal(tags[0].animaterVanish.grace, 0);
+});

@@ -801,16 +801,16 @@ function previewTeleport(mover, recipe, context, timing) {
   const visuals = teleportVisuals(recipe, runtime.getCatalog());
   return playTeleport({ mover: token, x: token.document.x, y: token.document.y, visuals, element: context.element ?? recipe.chosenElement }, teleportHost({ local: true }), timing);
 }
+// Only the move: from the token's document alone, so it works after the canvas is gone (a stopped play).
+// A creature this player does not own (an ally fetched to them) is moved by the active GM.
+async function placeTeleport(spot) {
+  const doc = spot?.mover?.document;
+  if (!doc) return;
+  if (doc.isOwner) await moveToken(doc, spot.x, spot.y);
+  else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x: spot.x, y: spot.y });
+}
 async function teleport(spot, timing) {
-  return playTeleport(spot, {
-    ...teleportHost(),
-    move: async (mover, x, y) => {
-      const doc = mover.document;
-      // A creature this player does not own (an ally fetched to them) is moved by the active GM.
-      if (doc.isOwner) await moveToken(doc, x, y);
-      else game.socket.emit(`module.${ID}`, { type: "teleport", sender: clientId, userId: game.user.id, uuid: doc.uuid, casterUuid: spot.caster?.document?.uuid, x, y });
-    },
-  }, timing);
+  return playTeleport(spot, { ...teleportHost(), move: (mover, x, y) => placeTeleport({ ...spot, mover, x, y }) }, timing);
 }
 // The active GM moves a teleported token for the player who cast the spell: only when that
 // player owns the caster, and only a token on the caster's scene.
@@ -1915,6 +1915,7 @@ Hooks.once("ready", () => {
     flashBefore: (recipe, context) => flash?.before(recipe, context),
     pickTeleport,
     teleport,
+    place: placeTeleport,
     previewTeleport,
     // Does the token still carry an effect from this item ("Effect: Shield")?
     hasItemEffect: (actor, item) => {

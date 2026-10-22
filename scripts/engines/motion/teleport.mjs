@@ -110,7 +110,9 @@ export async function playTeleport({ mover, x, y, visuals, element }, host, { ou
   const warp = (at) => (warps ? { animaterWarp: warpTag(at, radius, mover.document?.level) } : null);
   const id = mover.document?.id ?? mover.id, doc = mover.document;
   const origin = Number.isFinite(doc?.x) && Number.isFinite(doc?.y) ? { from: { x: doc.x, y: doc.y } } : {};
-  const grace = Number.isFinite(host.vanishGrace) ? { grace: host.vanishGrace } : {};
+  // A spot where it already stands (a preview, a pick on its own square) waits for no move.
+  const stays = origin.from && origin.from.x === x && origin.from.y === y;
+  const grace = stays ? { grace: 0 } : Number.isFinite(host.vanishGrace) ? { grace: host.vanishGrace } : {};
   if (outAt > 0) await host.wait(outAt);
   if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: goneMs, ...origin, ...grace }, ...warp(from) } : warp(from));
   else await host.move(mover, x, y);
