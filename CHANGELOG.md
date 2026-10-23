@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.2 (2026-10-23)
+
+- **D&D 5e with Midi-QOL: attacks play their real hit or miss.** With Midi-QOL's activities, the attack roll goes into Midi's own card instead of a chat message of its own, so Animater never learned whether it hit: every arrow flew straight into its target, a miss never flew wide, and nothing thunked into a wall. Animater now waits for Midi to finish the attack and plays Midi's own verdict for each target (cover, reactions and Automated Conditions 5e's changes included); with Midi's **Auto check hits** off, the roll is compared with each target's AC. A miss flies wide again, or into the wall on its line. Each Midi attack also plays once, not twice. Thanks to y_deda_povis for the report.
+
 ## 2.0.1 (2026-10-22)
 
 - **A GM's private attack no longer shows a miss as a hit.** Attacks and saves rolled as a Private GM Roll used to hide their result, and the hidden result played as a hit: the arrow flew into the target with its impact, even straight through a wall. Private GM rolls now animate their real result, like public ones (a miss flies wide or into the wall), while the numbers stay private. To keep players guessing, turn on **Hide the result of private GM rolls** (world): the shot then flies at the visible part of the target (or into the wall if it is out of sight) and nothing lands, no impact, flinch, dodge or ground mark. PF2e, SF2e, D&D 5e and Daggerheart. Thanks to y_deda_povis for the video.
