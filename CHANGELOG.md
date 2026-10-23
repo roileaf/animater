@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.3 (2026-10-23)
 
 - **Spell light can reveal creatures in PF2e Visioner (homebrew).** For PF2e Visioner only: a new world setting, **Effect light reveals creatures (PF2e Visioner, homebrew)**, off by default, decides whether Visioner's auto-visibility counts a spell's light (a Fireball lighting a dark room) as lighting the creatures in it, so anyone with line of sight sees them for that moment. It is not in the rules, so it is off by default. Needs PF2e Visioner 8.14.11 or later; without Visioner it does nothing. Thanks to camrun91 for the idea.
 
