@@ -136,10 +136,16 @@ const adaptiveHost = createAdaptiveHost({
     tokenSize: (uuid) => { try { const t = fromUuidSync(uuid)?.object; return t ? { width: t.w, height: t.h } : null; } catch { return null; } },
   }),
 });
+// Whether effect lights reveal the creatures they light, for PF2e Visioner (a homebrew option): each light says so
+// in `revealsCreatures`, and Visioner's auto-visibility skips the ones that reveal nothing.
+const LIGHT_REVEALS = "effectLightsReveal";
+const lightReveals = () => { try { return game.settings.get(ID, LIGHT_REVEALS) === true; } catch { return false; } };
 // Effect lights on this client (engines/lighting/light-host.mjs): local Foundry light sources, never documents.
 const lightHost = createLightHost({
   makeSource: (id) => {
     const source = new CONFIG.Canvas.lightSourceClass({ sourceId: `${ID}.light.${id}`, object: null });
+    // Whether this light lets anyone see the creatures it lights (the homebrew setting); PF2e Visioner reads it too.
+    Object.defineProperty(source, "revealsCreatures", { get: lightReveals, configurable: true });
     return {
       initialize: (data) => source.initialize(data),
       add: () => source.add(),
@@ -1567,6 +1573,12 @@ Hooks.once("init", () => {
     name: "Effect lighting in daylight",
     hint: "Also add a soft coloured glow around effects in fully lit scenes.",
     scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, LIGHT_REVEALS, {
+    name: "Effect light reveals creatures (PF2e Visioner, homebrew)",
+    hint: "For PF2e Visioner's auto-visibility only. When on, a creature lit by a spell's light (a Fireball in a dark room) counts as lit, so anyone with line of sight can see it for that moment. Not the rules: most spells don't shed light. Off, Visioner ignores effect lights. Needs PF2e Visioner 8.14.11 or later; without Visioner this does nothing.",
+    // Listed only where PF2e Visioner runs: elsewhere it would do nothing.
+    scope: "world", config: Boolean(game.modules.get("pf2e-visioner")?.active), type: Boolean, default: false,
   });
   game.settings.register(ID, "effectLightAnimation", {
     name: "Flickering and flashing effect lights",

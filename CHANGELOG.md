@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Spell light can reveal creatures in PF2e Visioner (homebrew).** For PF2e Visioner only: a new world setting, **Effect light reveals creatures (PF2e Visioner, homebrew)**, off by default, decides whether Visioner's auto-visibility counts a spell's light (a Fireball lighting a dark room) as lighting the creatures in it, so anyone with line of sight sees them for that moment. It is not in the rules, so it is off by default. Needs PF2e Visioner 8.14.11 or later; without Visioner it does nothing. Thanks to camrun91 for the idea.
+
 ## 2.0.2 (2026-10-23)
 
 - **D&D 5e with Midi-QOL: attacks play their real hit or miss.** With Midi-QOL's activities, the attack roll goes into Midi's own card instead of a chat message of its own, so Animater never learned whether it hit: every arrow flew straight into its target, a miss never flew wide, and nothing thunked into a wall. Animater now waits for Midi to finish the attack and plays Midi's own verdict for each target (cover, reactions and Automated Conditions 5e's changes included); with Midi's **Auto check hits** off, the roll is compared with each target's AC. A miss flies wide again, or into the wall on its line. Each Midi attack also plays once, not twice. Thanks to y_deda_povis for the report.
