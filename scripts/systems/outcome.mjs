@@ -134,3 +134,11 @@ export function dnd5eAttackOutcome(rolls = [], targets = []) {
   if (!Number.isFinite(ac)) return typeof targets[0] === "object" && targets[0] ? HIDDEN : null;
   return Number(roll.total) >= ac ? "success" : "failure";
 }
+// Midi-QOL's verdict, per target token id: its workflow decides the hits after the roll (cover, reactions,
+// forced misses), so a target it did not hit missed, even on a natural 20.
+export function midiTargetOutcomes(roll, targetIds = [], hitIds = []) {
+  if (!roll) return {};
+  const hits = new Set(hitIds);
+  return Object.fromEntries(targetIds.map((id) => [id, roll.isFumble ? "criticalFailure"
+    : !hits.has(id) ? "failure" : roll.isCritical ? "criticalSuccess" : "success"]));
+}

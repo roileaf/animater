@@ -2462,8 +2462,34 @@ Hooks.once("ready", () => {
     });
   }
   if (game.system.id === "dnd5e") {
+    // Midi-QOL fast-forwards an attack into its own card: the roll has no chat message, so no targets or
+    // ACs, and Midi decides the hits after this hook. That attack plays on Midi's verdict instead.
+    // Midi keys its workflows by their card (ChatMessage.<id>), so look for one running this activity.
+    const midiWorkflow = (subject) => {
+      const workflows = globalThis.MidiQOL?.Workflow?.workflows;
+      if (!subject?.uuid || !workflows?.values) return false;
+      return Array.from(workflows.values()).some((w) => w?.activity === subject || w?.activity?.uuid === subject.uuid);
+    };
     Hooks.on("dnd5e.rollAttackV2", (rolls, data) => {
+      if (!rolls?.some((r) => r?.parent) && midiWorkflow(data?.subject)) return;
       void dispatch(dnd5eEvent("attack", data?.subject, { rolls }));
+    });
+    Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
+      const roll = workflow?.attackRoll;
+      if (!roll || roll.parent || !workflow.activity) return;
+      // Each target's AC as Midi recorded it (cover and AC5e's changes in), else its actor's. With
+      // "Auto check hits" off Midi leaves its hit list empty, so those ACs decide.
+      const descriptors = Array.from(workflow.targetDescriptors ?? []);
+      const targets = Array.from(workflow.targets ?? [], (t) => {
+        const doc = t?.document ?? t, own = descriptors.find((d) => d?.token === doc?.uuid);
+        return doc?.uuid ? { token: doc.uuid, ac: own ? own.ac : doc.actor?.system?.attributes?.ac?.value } : null;
+      }).filter(Boolean);
+      const checked = game.settings.get("midi-qol", "ConfigSettings")?.autoCheckHit !== "none";
+      void dispatch(dnd5eEvent("attack", workflow.activity, { rolls: [roll], verdict: {
+        messageId: workflow.itemCardId,
+        targets,
+        hits: checked ? Array.from(workflow.hitTargets ?? [], (t) => (t?.document ?? t)?.id).filter(Boolean) : null,
+      } }));
     });
     // A saving throw against a known DC: the saving creature reacts to passing or failing.
     const onSave = (rolls, data) => {

@@ -1,4 +1,4 @@
-import { dnd5eAttackOutcome, dnd5eTargetOutcomes, HIDDEN } from './outcome.mjs';
+import { dnd5eAttackOutcome, dnd5eTargetOutcomes, midiTargetOutcomes, HIDDEN } from './outcome.mjs';
 import { twoeEventElement, dnd5eEventElement } from "../catalogs/shared/element-choice.mjs";
 import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason, hidesResult } from "../core/privacy.mjs";
 import { strikeItemOf } from "../engines/finishers/strike-finishers.mjs";
@@ -101,9 +101,13 @@ function maneuverItem(message, context) {
   const name = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   return own ?? { type: "action", name, slug, system: { slug, traits: { value: [] } }, actor: message.actor };
 }
-export function dnd5eEvent(type, subject, { rolls = [], results = {} } = {}) {
+// verdict: an attack Midi-QOL rolled without a chat message (into its own card), { messageId: its card,
+// targets: [{ token: uuid, ac }], hits: token ids, or null when Midi checks no hits (then the ACs decide) }.
+export function dnd5eEvent(type, subject, { rolls = [], results = {}, verdict = null } = {}) {
   const message=results.message??rolls.find(r=>r.parent?.system?.targets)?.parent??rolls[0]?.parent;
   if (!subject?.item) return null;
+  const targets = verdict ? verdict.targets : Array.from(message?.system?.targets ?? []);
+  const midi = verdict?.hits && type === "attack" ? midiTargetOutcomes(rolls[0], targets.map((t) => String(t.token).split(".").at(-1)), verdict.hits) : null;
   // The message's whisper and every roll's mode, the most hidden wins (privacy.mjs). The hooks run on
   // the roller's own client, so without a message author the roller is this user.
   const isGM = (message?.author ?? message?.user)?.isGM ?? globalThis.game?.user?.isGM;
@@ -113,8 +117,8 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {} } = {}) {
   return {
     type,
     systemId: 'dnd5e',
-    id: message?.id ? `activity:${message.id}:${type}` : null,
-    messageId: message?.id,
+    id: message?.id ? `activity:${message.id}:${type}` : verdict?.messageId ? `activity:${verdict.messageId}:${type}` : null,
+    messageId: message?.id ?? verdict?.messageId,
     item: subject.item,
     actor: subject.actor ?? subject.item.actor,
     activityId: subject.id ?? subject._id,
@@ -123,13 +127,14 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {} } = {}) {
     ...(dnd5eEventElement(subject, rolls) ? { element: dnd5eEventElement(subject, rolls) } : {}),
     tokenId: subject.getUsageToken?.()?.id,
     sceneId: subject.getUsageToken?.()?.parent?.id,
-    targetUuids: Array.from(message?.system?.targets ?? message?.data?.system?.targets ?? rolls[0]?.options?.targets ?? []).map(t=>typeof t==='string'?t:t.token).filter(Boolean),
+    targetUuids: verdict ? targets.map((t) => t.token) : Array.from(message?.system?.targets ?? message?.data?.system?.targets ?? rolls[0]?.options?.targets ?? []).map(t=>typeof t==='string'?t:t.token).filter(Boolean),
     ...(subject.item.type==='weapon'?{weaponMode:String(rolls[0]?.options?.attackMode??'').startsWith('thrown')?'thrown':rolls[0]?.options?.attackMode==='ranged'||subject.attack?.type?.value==='ranged'?'ranged':'melee'}:{}),
     spellLevel: subject.item.type==='spell' ? Number(message?.system?.level??message?.data?.system?.level??subject.getRollData?.()?.item?.level??rolls[0]?.data?.item?.level??subject.item.getRollData?.()?.item?.level??subject.item.system?.level) : undefined,
     // Attack rolls: natural 20/1, or the total against a single target's AC.
-    outcome: hidesResult(privacy) ? (type === "attack" ? HIDDEN : undefined) : type === "attack" ? dnd5eAttackOutcome(rolls, Array.from(message?.system?.targets ?? [])) : null,
+    outcome: hidesResult(privacy) ? (type === "attack" ? HIDDEN : undefined) : midi ? (rolls[0]?.isFumble ? "criticalFailure" : Object.keys(midi).length === 1 ? Object.values(midi)[0] : rolls[0]?.isCritical ? "criticalSuccess" : null)
+      : type === "attack" ? dnd5eAttackOutcome(rolls, targets) : null,
     // Each target's own hit or miss, for sounds that differ per target (what each blow lands on).
-    ...(!hidesResult(privacy) && type === "attack" ? { targetOutcomes: dnd5eTargetOutcomes(rolls, Array.from(message?.system?.targets ?? [])) } : {}),
+    ...(!hidesResult(privacy) && type === "attack" ? { targetOutcomes: midi ?? dnd5eTargetOutcomes(rolls, targets) } : {}),
     ...(gmPrivate ? { private: true } : {}),
     rolls,
   };
