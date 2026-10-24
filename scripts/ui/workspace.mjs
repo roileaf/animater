@@ -1,7 +1,8 @@
 import { tokenFxEditorHTML, applyTokenFxEdit, tokenFxAction } from "./token-fx-editor.mjs";
 import { layersOf } from "../engines/tokenshade/layers.mjs";
 import { uuid } from "../core/uuid.mjs";
-import { recipesToExport, importableRecipes } from "../core/presets.mjs";
+import { recipesToExport, planRecipeImport } from "../core/presets.mjs";
+import { encodeShareCode, shareMacro, mergeImported, copyPlainText } from "../core/recipe-share.mjs";
 import { strikeFromDrag } from "../engines/finishers/strike-finishers.mjs";
 import { OPTIONAL_FX_KINDS, fxAvailability } from '../engines/playback/optional-fx.mjs';
 import {
@@ -10,7 +11,6 @@ import {
   KINDS,
   clone,
   validateRecipe,
-  parseImport,
   resolveAsset,
   catalogIndex,
   MOTIONS,
@@ -187,6 +187,11 @@ function moveConeHTML(chain) {
     : `<line x1="${mid}" y1="${mid}" x2="${at(c.angle).split(" ")[0]}" y2="${at(c.angle).split(" ")[1]}" marker-end="url(#an-move-arrow)" />`;
   return `<svg class="an-move-cone ${c.half > 0 ? "is-wedge" : "is-line"}" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="left:${c.left - mid}px;top:calc(50% - ${mid}px)" aria-hidden="true"><defs><marker id="an-move-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" /></marker></defs>${shape}</svg>`;
 }
+const REROLL_TAGS = {
+  "hero-point": { label: "Hero Point", icon: "fa-circle-h", tip: "A reroll paid with a Hero Point: it played with the new result." },
+  "mythic-point": { label: "Mythic Point", icon: "fa-circle-m", tip: "A reroll paid with a Mythic Point: it played with the new result." },
+  reroll: { label: "Reroll", icon: "fa-dice", tip: "A rerolled check (a fortune effect or the reroll menu): it played with the new result." },
+};
 export class Workspace {
   // Open the animation for something: a saved recipe in the Studio, or a catalog page
   // searched to a name (its first match is shown). Returns false for an unknown page.
@@ -1958,19 +1963,21 @@ export class Workspace {
     // Only automatic plays that played can be excluded; previews, skips and blocks get no buttons.
     const actionable = (l) => l?.automatic === true && !l.preview && ["Played", "Persistent"].includes(l.status);
     const filter = ACTIVITY_FILTERS[this.activityFilter] ? this.activityFilter : "all";
+    // A rerolled check: what paid for it (a Hero Point, a Mythic Point, or a plain reroll).
+    const rerollTag = (kind) => { const tag = REROLL_TAGS[kind]; return tag ? `<span class="an-log-tag is-${kind}" data-tooltip="${esc(tag.tip)}"><i class="fa-solid ${tag.icon}"></i> ${esc(tag.label)}</span>` : ""; };
     const fixButton = (f) => (f ? `<button type="button" class="an-activity-fix" data-action="activity-fix"${f.page ? ` data-page="${esc(f.page)}"` : ""}${f.catalog ? ` data-catalog="${esc(f.catalog)}"` : ""}${f.action ? ` data-fix-action="${esc(f.action)}"` : ""}>${esc(f.label)}</button>` : "");
     const history = logs.map((l, i) => [l, i]).filter(([l]) => activityShown(l, filter)).map(([l, i]) => {
       const actions = actionable(l) ? this.activityExcludeHTML(l.origin, l.recipe, `data-index="${i}"`) : "";
       const e = explainEntry(l), fixes = fixButton(e.fix) + fixButton(e.also);
       const badge = l.status === "Blocked" ? "is-missing" : l.status === "Skipped" ? "is-skipped" : "";
-      return `<div class="an-log"><time>${esc(l.time)}</time><span class="an-badge ${badge}" data-tooltip="${esc(ACTIVITY_STATUSES[l.status] ?? "")}">${esc(l.status)}</span><div><b>${esc(e.title)}</b><p>${esc(e.text)}</p>${fixes ? `<div class="an-activity-fixes">${fixes}</div>` : ""}</div>${actions ? `<div class="an-activity-actions">${actions}</div>` : ""}</div>`;
+      return `<div class="an-log"><time>${esc(l.time)}</time><span class="an-badge ${badge}" data-tooltip="${esc(ACTIVITY_STATUSES[l.status] ?? "")}">${esc(l.status)}</span><div><b>${esc(e.title)}</b>${rerollTag(l.reroll)}<p>${esc(e.text)}</p>${fixes ? `<div class="an-activity-fixes">${fixes}</div>` : ""}</div>${actions ? `<div class="an-activity-actions">${actions}</div>` : ""}</div>`;
     }).join("") || (logs.length ? `<div class="an-empty">Nothing ${esc(ACTIVITY_FILTERS[filter].label.toLowerCase())} yet.</div>` : `<div class="an-empty">No activity yet.<small>Cast a spell or use an item on the canvas, or preview a recipe.</small></div>`);
     const chip = ([id, f]) => `<button type="button" data-action="activity-filter" data-filter="${id}" aria-pressed="${id === filter}" class="${id === filter ? "is-active" : ""}">${f.label}${id === "all" ? "" : ` <small>${logs.filter((l) => activityShown(l, id)).length}</small>`}</button>`;
     const chips = `<div class="an-activity-filters" role="group" aria-label="Show">${Object.entries(ACTIVITY_FILTERS).map(chip).join("")}</div>`;
     // Nothing plays automatically: the page says so, instead of just staying empty.
     // (GM only: a player's catalog animations are played by the GM's client.)
     const off = !this.host.playerMode && this.host.acceptsEvents && !this.host.acceptsEvents() ? `<div class="an-activity-banner" role="status"><b>Nothing plays automatically right now.</b><span>Turn on a catalog's Plug &amp; play, or turn on Play my own recipes automatically in Setup.</span><button type="button" data-action="page" data-page="setup">Open Setup</button></div>` : "";
-    return `<div class="an-activity">${off}<div class="an-info">Why did it play, or not?<p>Every automatic event on this screen is listed here as it happens: what played, or why nothing did and what to do about it. Each player sees their own casts on their own Activity page. The list keeps the last 40 events, even after a reload.</p></div><section class="an-activity-section" data-activity="now"><h3>Now playing</h3>${nowRows}</section><section class="an-activity-section" data-activity="history"><div class="an-activity-head"><h3>History</h3>${chips}</div>${history}</section></div>`;
+    return `<div class="an-activity">${off}<div class="an-info">Why did it play, or not?<p>Every automatic event on this screen is listed here as it happens: what played, or why nothing did and what to do about it. Each player sees their own casts on their own Activity page. The list keeps the last 40 events, even after a reload.</p></div><section class="an-activity-section" data-activity="now"><div class="an-activity-head"><h3>Now playing</h3>${this.host.playRecap ? `<button type="button" class="an-activity-recap" data-action="play-recap" data-tooltip="Replay the last combat's recap reel on your screen"><i class="fa-solid fa-trophy"></i> Play recap</button>` : ""}</div>${nowRows}</section><section class="an-activity-section" data-activity="history"><div class="an-activity-head"><h3>History</h3>${chips}</div>${history}</section></div>`;
   }
   // The Activity row a button acts on: a Now playing entry (data-entry) or a History entry (data-index).
   activityRow(b) {
@@ -1979,6 +1986,10 @@ export class Workspace {
     return l ? { ...l, name: l.recipe } : null;
   }
   async activityAction(action, b) {
+    if (action === "play-recap") {
+      if ((await this.host.playRecap?.()) === false) { this.message = "No combat recap yet."; this.render(); }
+      return true;
+    }
     if (action === "activity-stop-group") {
       const rows = String(b.dataset.entries ?? "").split(" ").map((id) => this.nowPlaying().find((r) => r.id === id)).filter(Boolean);
       for (const row of rows) await this.host.stopAnimation?.(row);
@@ -2554,11 +2565,11 @@ export class Workspace {
       if (this.selected !== b.dataset.id) { this.stageIndex = 0; this.studioTime = 0; }
       this.selected = b.dataset.id;
       if (action === "recipe-menu-open") { this.studio = true; this.render(); return; }
-      action = action === "recipe-menu-duplicate" ? "duplicate" : "delete";
+      action = { "recipe-menu-duplicate": "duplicate", "recipe-menu-share": "copy-share-code", "recipe-menu-macro": "copy-macro" }[action] ?? "delete";
     }
     try {
       // The guided tour's practice finisher is never saved, copied or deleted (Ctrl+S clicks Save too).
-      if (["save", "duplicate", "delete"].includes(action) && this.recipe()?.id === TOUR_PRACTICE_ID) return;
+      if (["save", "duplicate", "delete", "copy-share-code", "copy-macro"].includes(action) && this.recipe()?.id === TOUR_PRACTICE_ID) return;
       if (action === "finisher-tours") { this.showFinisherTours = !this.showFinisherTours; this.render(); return; }
       if (action === "finisher-tour") {
         this.showFinisherTours = false;
@@ -3327,6 +3338,16 @@ export class Workspace {
         await this.host.setCatalogFxSetting?.(b.dataset.setting,!state[b.dataset.fxKind]);
         this.render();return;
       }
+      // Right-click a recipe: its saved version (a never-saved draft as it stands) as a share code or a macro.
+      if (action === "copy-share-code" || action === "copy-macro") {
+        const r = this.host.recipes().find((old) => old.id === this.selected) ?? validateRecipe(this.recipe());
+        const text = action === "copy-macro" ? shareMacro([r]) : encodeShareCode([r]);
+        await (this.host.copyText ? this.host.copyText(text) : copyPlainText(text));
+        this.message = action === "copy-macro"
+          ? `Macro for “${r.name}” copied. Paste it into a script macro in another world and run it as a GM.`
+          : `Share code for “${r.name}” copied. Paste it into Import in another world.`;
+        globalThis.ui?.notifications?.info(`Animater: ${action === "copy-macro" ? "macro" : "share code"} copied.`);
+      }
       if (action === "export") {
         await this.host.export(
           JSON.stringify({ schema: 1, recipes: recipesToExport(this.host.recipes(), { finishers: this.page === "finishers" }) }, null, 2),
@@ -3345,13 +3366,10 @@ export class Workspace {
       }
       if (action === "review-import") {
         // Untouched starters in an older export are skipped: they would undo a starter you changed.
-        const parsed = parseImport(
-          this.root.querySelector("[data-import]").value,
-        );
-        this.pendingImport = importableRecipes(parsed);
-        const replaced = this.pendingImport.filter((r) =>
-          this.host.recipes().some((old) => old.id === r.id),
-        ).length, skipped = parsed.length - this.pendingImport.length, finishers = this.pendingImport.filter((r) => r.finisher).length;
+        // The box takes export JSON or share codes (one or several).
+        const plan = planRecipeImport(this.root.querySelector("[data-import]").value, this.host.recipes());
+        this.pendingImport = plan.incoming;
+        const { replaced, skipped } = plan, finishers = this.pendingImport.filter((r) => r.finisher).length;
         // Either page takes either file; the review says what is in it.
         const kinds = finishers ? ` (${finishers} finisher${finishers === 1 ? "" : "s"})` : "";
         this.root.querySelector("[data-import-review]").textContent =
@@ -3361,16 +3379,7 @@ export class Workspace {
         return;
       }
       if (action === "confirm-import") {
-        const replacements = new Map(this.pendingImport.map((r) => [r.id, r]));
-        const merged = this.host
-          .recipes()
-          .map((r) => replacements.get(r.id) ?? r)
-          .concat(
-            this.pendingImport.filter(
-              (r) => !this.host.recipes().some((old) => old.id === r.id),
-            ),
-          );
-        if (merged.length > 200) throw Error("Maximum 200 recipes.");
+        const merged = mergeImported(this.host.recipes(), this.pendingImport).recipes;
         await this.host.save(merged);
         this.pendingImport = null;
         this.drafts.clear();

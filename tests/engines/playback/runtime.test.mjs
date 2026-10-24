@@ -994,6 +994,25 @@ test("effects carry the source actor so every client can remember what it played
   await anonymous.runtime.play(recipe, { ...context, source: { ...context.source, actor: undefined } });
   for (const [, fn] of anonymous.calls.filter((c) => c[0] === "addOverride")) assert.equal("animaterActor" in (await fn(null, {})), false);
 });
+test("effects carry the recipe's name, origin and player so every client can explain them on hover", async () => {
+  const { recipe, context } = manyTargets();
+  const { runtime, host, calls } = fixture();
+  host.recipeOrigin = () => ({ type: "catalog", system: "pf2e", kind: "spell", id: "fireball" });
+  runtime.wait = async () => true;
+  await runtime.play(recipe, { ...context, automatic: true });
+  const overrides = calls.filter((c) => c[0] === "addOverride");
+  assert.ok(overrides.length);
+  for (const [, fn] of overrides) {
+    const { animaterRecipe } = await fn(null, {});
+    assert.equal(animaterRecipe.name, recipe.name);
+    assert.deepEqual(animaterRecipe.origin, { type: "catalog", system: "pf2e", kind: "spell", id: "fireball" });
+    assert.equal(animaterRecipe.by, host.userId());
+  }
+  const preview = fixture();
+  preview.runtime.wait = async () => true;
+  await preview.runtime.play(recipe, context, { preview: true });
+  for (const [, fn] of preview.calls.filter((c) => c[0] === "addOverride")) assert.equal("animaterRecipe" in (await fn(null, {})), false);
+});
 
 // A critical attack: a flight lands at 600 ms (its own impact); the attacker's wind-up spans it; one more hit follows.
 function critAttack() {
@@ -1844,4 +1863,31 @@ test("map distortion setting off: no tags", async () => {
     assert.ok(data.length);
     for (const [, d] of data) assert.equal("animaterWarp" in d, false);
   }
+});
+// Camera shake reads the same shock tags; with map distortion off they ride as `animaterShake` (no warp drawn).
+test("camera shake with map distortion off: shocks ride as animaterShake, no warp", async () => {
+  const { recipe, context } = fireball();
+  const f = warpFixture(false);
+  f.host.cameraShake = () => true;
+  await f.runtime.play(recipe, context);
+  const data = await overridesByAsset(f.calls);
+  for (const [, d] of data) assert.equal("animaterWarp" in d, false);
+  const shakes = data.filter(([, d]) => d.animaterShake);
+  assert.equal(shakes.length, 1);
+  assert.equal(shakes[0][0], "jb2a.fireball.explosion.orange");
+  assert.equal(shakes[0][1].animaterShake.kind, "shock");
+  assert.equal(shakes[0][1].animaterShake.radius, 1.5 * 200);
+});
+test("camera shake: with map distortion on the warp tag serves it; off plans nothing", async () => {
+  const { recipe, context } = fireball();
+  const both = warpFixture(true);
+  both.host.cameraShake = () => true;
+  await both.runtime.play(recipe, context);
+  const data = await overridesByAsset(both.calls);
+  assert.equal(data.filter(([, d]) => d.animaterWarp).length, 1);
+  for (const [, d] of data) assert.equal("animaterShake" in d, false);
+  const none = warpFixture(false);
+  none.host.cameraShake = () => false;
+  await none.runtime.play(recipe, context);
+  for (const [, d] of await overridesByAsset(none.calls)) assert.equal("animaterShake" in d, false);
 });

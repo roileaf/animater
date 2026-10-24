@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ConditionBody, bodyTreatment, bodyPose, shownTreatment } from "../../../scripts/engines/motion/condition-body.mjs";
+import { ConditionBody, bodyTreatment, bodyPose, shownTreatment, BODY_PRIORITY } from "../../../scripts/engines/motion/condition-body.mjs";
 
 const token = () => ({ w: 100, mesh: { position: { x: 500, y: 300 }, rotation: 0, scale: { x: 1, y: 1 }, filters: null } });
 function runner(extra = {}) {
@@ -138,4 +138,71 @@ test("a body treatment that moves the token says so; stone and stillness do not"
   assert.equal(body.moves(free), false);
   body.remove("Frightened");
   assert.equal(body.moves(frightened), false);
+});
+
+test("idle life: breathing pulses about 2.5% and hovering bobs about 5% of the token height (visible at table zoom)", () => {
+  let lo = 1, hi = 0, top = 0, bottom = 0;
+  for (let t = 0; t < 6; t += 0.05) {
+    const b = bodyPose("idle-breathe", t, 1, { period: 4 }).sy;
+    lo = Math.min(lo, b); hi = Math.max(hi, b);
+    const h = bodyPose("idle-hover", t).yh;
+    top = Math.min(top, h); bottom = Math.max(bottom, h);
+  }
+  assert.ok(hi <= 1 && lo >= 0.97 && lo < 0.98, `breath ${lo}..${hi}`);
+  assert.ok(top <= -0.049 && bottom >= 0.049 && bottom <= 0.051, `hover ${top}..${bottom}`);
+  // A stronger setting scales it.
+  assert.ok(bodyPose("idle-breathe", 2, 2, { period: 4 }).sy < bodyPose("idle-breathe", 2, 1, { period: 4 }).sy);
+  assert.ok(Math.abs(bodyPose("idle-hover", 0.3).yh - bodyPose("idle-hover", 2.7).yh) < 1e-9, "bobs over 2.4 s");
+});
+
+test("idle life kinds are the lowest priority: any condition treatment wins", () => {
+  assert.equal(shownTreatment(["idle-breathe", "sag"]), "sag");
+  assert.equal(shownTreatment(["idle-hover", "tremble"]), "tremble");
+  assert.equal(shownTreatment(["idle-breathe", "stone"]), null, "stone holds an idle token still");
+  assert.equal(shownTreatment(["idle-breathe", "idle-hover"]), "idle-hover");
+  assert.ok(BODY_PRIORITY.indexOf("idle-hover") > BODY_PRIORITY.indexOf("sag"));
+});
+
+test("idle tokens breathe out of step (phase), hover by their height, and do not claim the token from other motions", () => {
+  const { body, step } = runner(), a = token(), b = token(), c = { ...token(), h: 200 };
+  body.add("idle:a", a, "idle-breathe", { phase: 0, period: 4 });
+  body.add("idle:b", b, "idle-breathe", { phase: 0.5, period: 4 });
+  body.add("idle:c", c, "idle-hover", { phase: 0.6 });
+  step(16);
+  assert.notEqual(a.mesh.scale.y, b.mesh.scale.y, "a different phase is at a different point of its breath");
+  assert.ok(Math.abs(c.mesh.position.y - 300) > 5, "hover moves by height");
+  assert.equal(body.moves(a), false, "idle does not count as a moving treatment");
+  body.remove("idle:a"); body.remove("idle:b"); body.remove("idle:c");
+  assert.equal(a.mesh.scale.y, 1); assert.equal(b.mesh.scale.y, 1); assert.equal(c.mesh.position.y, 300);
+});
+
+test("wounded: a limp bobs unevenly and tilts on a stride cadence; a hunch leans and squashes a little", () => {
+  const dips = [];
+  for (let t = 0; t < 1.2; t += 0.01) dips.push(bodyPose("limp", t));
+  const ys = dips.map((p) => p.y ?? 0), rs = dips.map((p) => p.r ?? 0);
+  const firstStep = Math.max(...ys.slice(0, 55)), secondStep = Math.max(...ys.slice(55, 110));
+  assert.ok(firstStep > 0 && secondStep > 0, "bobs on both steps");
+  assert.ok(Math.abs(firstStep - secondStep) > 0.005, "the bad leg dips deeper: uneven");
+  assert.ok(Math.max(...rs) > 2, "tilts toward the bad side");
+  assert.ok(Math.max(...ys) < 0.06, "subtle");
+  const h = bodyPose("hunch", 1);
+  assert.ok(h.r > 0 && h.r < 6, "leans slightly");
+  assert.ok(h.sy < 1 && h.sy > 0.94, "squashes slightly");
+});
+
+test("wounded kinds rank above idle life and below every condition treatment; a hunch does not claim the token", () => {
+  assert.ok(BODY_PRIORITY.indexOf("limp") > BODY_PRIORITY.indexOf("sag"));
+  assert.ok(BODY_PRIORITY.indexOf("hunch") > BODY_PRIORITY.indexOf("sag"));
+  assert.ok(BODY_PRIORITY.indexOf("hunch") < BODY_PRIORITY.indexOf("idle-hover"));
+  assert.ok(BODY_PRIORITY.indexOf("limp") < BODY_PRIORITY.indexOf("idle-hover"));
+  assert.equal(shownTreatment(["idle-breathe", "hunch"]), "hunch");
+  assert.equal(shownTreatment(["limp", "tremble"]), "tremble");
+  assert.equal(shownTreatment(["hunch", "limp"]), "limp", "moving: the limp wins");
+  const { body, step } = runner(), t = token();
+  body.add("w", t, "hunch");
+  step(500);
+  assert.notEqual(t.mesh.rotation, 0, "hunched");
+  assert.equal(body.moves(t), false, "a hunch is a pose, not a motion");
+  body.remove("w");
+  assert.deepEqual([t.mesh.rotation, t.mesh.scale.y], [0, 1]);
 });

@@ -2,6 +2,7 @@ import { uuid } from "./core/uuid.mjs";
 import { setHidePrivateResults } from "./core/privacy.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
 import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
+import { registerRecapSettings, combatRecaps, recapHere } from "./engines/flash/recap-table.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
@@ -11,7 +12,13 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { starterRecipes } from "./core/presets.mjs";
+import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive } from "./engines/motion/movement-feel.mjs";
+import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
+import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
+import { creatureGait, creatureBulk, creatureBody } from "./engines/motion/creature-gait.mjs";
+import { createGroundTrails, bleedsBlood, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
+import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
+import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { heavyItem } from "./systems/heavy-item.mjs";
@@ -26,23 +33,34 @@ import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./i
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
+import { createCameraShake, canShake } from "./engines/camera/camera-shake.mjs";
+import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
 import { sceneWarpFilter } from "./engines/tokenshade/filters/scene-warp.mjs";
 import { createSummonsLights } from "./integrations/summons-walls.mjs";
+import { createReactionHost } from "./engines/marks/reactions.mjs";
+import { reactionVisual } from "./engines/marks/reaction-fx.mjs";
+import { twoeCounteract, dnd5eDispelSpell, createDnd5eDispels, createDispelWindow, createFlickerHost, dispelMessage, receiveDispel as receiveDispelData, lastingAnimaterEffect, effectTokenIds, idsOfTokens, spotHolds } from "./engines/playback/dispel.mjs";
+import { shatterVisual, createShatterHost, shatterSeed, spotFromBounds } from "./engines/playback/shatter-fx.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { clearGroundMarks, receiveClearMarks } from "./engines/marks/clear-marks.mjs";
 import { markTiming } from "./engines/marks/ground-marks.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
+import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
 import { wallHit } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
+import { createHoverExplain, tokenRows, hoverView, hoverExplainDefault } from "./ui/hover-explain.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
 import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
 import { weaponFamily } from "./systems/daggerheart.mjs";
 import { installSoundPitch, muffleEar } from "./engines/sound/sound-pitch.mjs";
+import { isSneaking, sneakStep, darker } from "./engines/motion/quiet-steps.mjs";
+import { voicesThisTurn, parseCreatureSoundDb, pickSoundSet, idleSoundFile, idleShape, IDLE_FROM_WEIGHT } from "./engines/sound/creature-idle.mjs";
 import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acoustics.mjs";
 import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
+import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
 import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
@@ -105,7 +123,12 @@ import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingT
 import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./catalogs/daggerheart/daggerheart-catalog.mjs";
 import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
+import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
+import { WoundedLooks, tokenMoving, woundTier } from "./engines/playback/wounded-looks.mjs";
+import { builtinPreset } from "./engines/tokenshade/presets.mjs";
 let conditionBody;
+let idleLife;
+let woundedLooks;
 const localQuality=()=>{try{return game.settings.get('animater','quality');}catch{return 'full';}};
 // Mirror this client's choice so the client that starts an animation can route optional layers.
 const syncQuality=()=>{const value=localQuality(),user=game.user;if(typeof user?.getFlag==='function'&&typeof user.setFlag==='function'&&user.getFlag('animater','quality')!==value)void Promise.resolve(user.setFlag('animater','quality',value)).catch(()=>{});};
@@ -119,6 +142,9 @@ let motions;
 let optionalFx;
 let persistentStates;
 let flash;
+// Combat recap (recap-table.mjs), set up at ready. Replays the last combat's Highlights.
+let recap = null;
+const playRecapApi = ({ everyone = false } = {}) => recap?.play({ everyone }) ?? false;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
@@ -162,6 +188,8 @@ const lightHost = createLightHost({
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
 });
+// "Effect lighting on my screen": off, this client draws no effect lights (the effects still carry them for others).
+const lightsHere = () => { try { return game.settings.get(ID, "effectLightingLocal") !== false; } catch { return true; } };
 // Map distortion on this client (engines/distortion/distortion-host.mjs): one screen filter on the primary group,
 // after Foundry's own, only while something distorts. Full quality only, unless this client turned it off.
 const distortsHere = () => {
@@ -210,12 +238,92 @@ const distortionHost = createDistortionHost({
     } catch { return true; }
   },
 });
+// Camera shake on this client (engines/camera/camera-shake.mjs): big blasts' shock tags jolt the stage's position
+// (Foundry pans by its pivot) for a moment. World and client settings, Full or Light quality only.
+const shakeSetting = (key, fallback) => { try { return game.settings.get(ID, key); } catch { return fallback; } };
+const cameraShake = createCameraShake({
+  getPosition: () => canvas.stage.position,
+  setPosition: (x, y) => canvas.stage.position.set(x, y),
+  // The screen's world rectangle, read from the stage's own transform (pan and zoom; no rotation).
+  view: () => {
+    const t = canvas.stage.transform, screen = canvas.app.renderer.screen;
+    t.updateLocalTransform();
+    const wt = t.localTransform;
+    return { x: -wt.tx / wt.a, y: -wt.ty / wt.d, w: screen.width / wt.a, h: screen.height / wt.d };
+  },
+  gridPx: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+  enabled: () => shakeSetting("cameraShake", true) !== false && canShake(localQuality(), shakeSetting("cameraShakeLocal", true)),
+  strength: () => Number(shakeSetting("cameraShakeStrength", 1)) || 1,
+  sceneId: () => canvas?.scene?.id,
+  viewedLevel: () => canvas?.level?.id ?? null,
+  // A blast this client cannot see any of does not shake it.
+  seen: (point, radius) => {
+    try {
+      const v = canvas?.visibility;
+      if (!v?.tokenVision) return true;
+      return v.testVisibility({ x: point.x, y: point.y }, { tolerance: Math.max(2, radius / Math.SQRT2) });
+    } catch { return true; }
+  },
+});
+// Slow-motion kill-cam on this client (engines/camera/kill-cam.mjs): an NPC's killing blow eases the view to it, slows
+// Animater's effects on it and shows a soft desaturated vignette, then pans back. World and client settings, Full or Light.
+const killCamOn = () => shakeSetting("killCam", false) === true;
+// How long the finisher, Finish Him! and a kill's blood wait for it: the table uses it, the creature is an NPC and has
+// a token in view that is not hidden (the client that saw the drop plays it).
+const killCamWait = (actor) => killCamLength({
+  worldOn: killCamOn() && acceptsEvents(),
+  npc: isNpcActor(actor, game.system.id, { playerOwned: ownerUsers(actor).length > 0 })
+    && (actor?.getActiveTokens?.() ?? []).some((t) => t.document?.parent?.id === canvas?.scene?.id && !t.document.hidden),
+});
+const killCamVignette = (() => {
+  let el = null;
+  const node = () => {
+    if (el?.isConnected) return el;
+    el = document.createElement("div");
+    el.id = "animater-kill-cam";
+    el.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity 200ms ease;"
+      + "background:radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.55) 100%);"
+      + "backdrop-filter:saturate(0.4);-webkit-backdrop-filter:saturate(0.4);";
+    // Right over the canvas, under Foundry's interface.
+    const board = document.getElementById("board");
+    if (board) board.after(el); else document.body.append(el);
+    return el;
+  };
+  return {
+    show: (ms) => { const n = node(); n.style.transitionDuration = `${ms}ms`; void n.offsetWidth; n.style.opacity = "1"; },
+    hide: (ms) => { if (!el) return; el.style.transitionDuration = `${ms}ms`; el.style.opacity = "0"; },
+  };
+})();
+const killCam = createKillCam({
+  // A token on the viewed scene that this screen sees, with both settings on and Full or Light quality.
+  target: (tokenId, sceneId) => {
+    const token = canvas?.ready ? canvas.tokens?.get(tokenId) : null;
+    if (!token || !canKillCam({ worldOn: killCamOn(), localOn: shakeSetting("killCamLocal", true), quality: localQuality(),
+      sameScene: sceneId === canvas.scene?.id, visible: token.visible === true, hidden: token.document?.hidden === true })) return null;
+    return { center: token.center, uuid: token.document.uuid, radius: Math.max(token.w ?? 0, token.h ?? 0) };
+  },
+  view: () => ({ x: canvas.stage.pivot.x, y: canvas.stage.pivot.y, scale: canvas.stage.scale.x }),
+  maxZoom: () => canvas.dimensions?.scale?.max ?? CONFIG.Canvas?.maxZoom,
+  pan: (to) => void Promise.resolve(canvas.animatePan(to)).catch(() => {}),
+  dragging: () => canvas?.mouseInteractionManager?.isDragging === true,
+  effects: () => globalThis.Sequencer?.EffectManager?.effects ?? [],
+  vignette: killCamVignette,
+  schedule: (fn, ms) => setTimeout(fn, ms),
+  cancel: (h) => clearTimeout(h),
+  trace: (status, detail) => runtime?.trace(status, detail),
+});
+// Another screen saw an NPC's killing blow.
+const receiveKillCam = (data, senderId) => {
+  if (data?.type !== "kill-cam" || (senderId && data.userId !== senderId)) return;
+  killCam.play({ tokenId: data.tokenId, sceneId: data.sceneId, ms: Number(data.ms) });
+};
 // PF2e Summons Assistant's glowing walls and summons (integrations/summons-walls.mjs): lit on every client
 // from their own effect or token data, on the same light host. Only its creatures' tokens qualify.
 const finitePoint = (p) => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x, y: p.y } : null);
 const summonsLights = createSummonsLights({
   host: lightHost,
-  enabled: () => game.settings.get(ID, "effectLighting") !== false
+  enabled: () => game.settings.get(ID, "effectLighting") !== false && lightsHere()
     && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
   grid: () => canvas?.grid?.size ?? 100,
   // The token an effect is tied to (or drawn on), on the viewed scene; a stretched line's two ends.
@@ -256,8 +364,11 @@ Hooks.on("deleteToken", (doc) => summonsLights.onTokenDelete(doc));
 // Ground marks on this client (engines/marks/mark-paint.mjs): local sprites on the floor, never documents. One
 // container per scene in the primary group at the viewed level's floor, between drawings (600) and tokens (700).
 // Viewing another level redraws the whole canvas (Scene#view -> Canvas#draw), so its tear-down clears them too.
-let markTex = null, markRoot = null;
+let markTex = null, markRoot = null, reactRoot = null;
 const clearMarks = () => {
+  markReactions.clear();
+  try { reactRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  reactRoot = null;
   markLayer.clear();
   try { markRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
   markRoot = null;
@@ -290,16 +401,778 @@ const markLayer = createMarkLayer({
   timing: () => markTiming(game.settings.get(ID, "groundMarkMinutes")),
   // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
   mask: (tag) => areaMaskFor(tag, { regions: canvas?.scene?.regions, grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask }),
+  onLand: (record) => markReactions.onLand(record),
+});
+// Element reactions (engines/marks/reactions.mjs): a new mark landing on an older one can react (fire on frost puffs
+// steam and melts it). Each client works it out from the marks it holds; the visuals sit just above the tokens.
+const markReactions = createReactionHost({
+  near: (point, radius) => markLayer.near(point, radius),
+  remove: (record) => markLayer.remove(record),
+  spawn: (reaction) => {
+    if (!canvas?.primary) return null;
+    if (!reactRoot || reactRoot.destroyed) {
+      reactRoot = new PIXI.Container();
+      reactRoot.eventMode = "none";
+      reactRoot.elevation = canvas.level?.elevation?.base ?? 0;
+      reactRoot.sortLayer = 800;
+      canvas.primary.addChild(reactRoot);
+    }
+    const fx = reactionVisual(PIXI, reaction, performance.now());
+    reactRoot.addChild(fx.display);
+    return fx;
+  },
+  enabled: () => game.settings.get(ID, "elementReactions") !== false && game.settings.get(ID, "elementReactionsLocal") !== false
+    && game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
+  now: () => performance.now(),
+  gridSize: () => canvas?.grid?.size ?? 100,
+  // Arcs reach only the tokens this viewer can see.
+  tokensOn: (point, radius) => (canvas?.tokens?.placeables ?? [])
+    .filter((t) => t?.center && !t.document?.hidden && t.visible !== false && Math.hypot(t.center.x - point.x, t.center.y - point.y) <= radius + (t.w ?? 0) / 2)
+    .map((t) => ({ x: t.center.x, y: t.center.y })),
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
-  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); lightHost.onEffect(effect); markLayer.onEffect(effect);
-  summonsLights.onEffect(effect); distortionHost.onEffect(effect);
+  lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); if (lightsHere()) lightHost.onEffect(effect); markLayer.onEffect(effect);
+  summonsLights.onEffect(effect); distortionHost.onEffect(effect); cameraShake.onEffect(effect);
 });
 Hooks.on("endedSequencerEffect", (effect) => {
   lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); distortionHost.onEnded(effect);
 });
-Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); });
+// The effect lights here go out at once, or the summons' glows come back (effects already playing stay unlit).
+const effectLightsHere = (on) => {
+  if (on === false) { summonsLights.clear(); lightHost.clear(); }
+  else for (const doc of canvas?.scene?.tokens ?? []) summonsLights.onToken(doc);
+  canvas?.perception?.update({ refreshLighting: true, refreshVision: true });
+};
+Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); cameraShake.clear(); killCam.clear(); });
+// Movement feel on this client (engines/motion/movement-feel.mjs): each floor's own marks at a moving token's feet,
+// a drop shadow under a flier. Every move from any source is read from the drawn token each frame (v14 writes the
+// animated x/y into the TokenDocument while it animates), so drags, ruler moves and macros all show. Animater's own
+// teleports and motions already leave afterimages and are skipped. Local sprites on the viewed level's floor, under
+// the tokens, like the ground marks.
+let feelRoot = null, feelTicker = null;
+const feelSkip = new Map();
+// Each creature's tracks (engines/motion/creature-gait.mjs), worked out once per actor and token name and forgotten
+// when an actor or a token's name or actor changes.
+const feelGaits = new Map();
+const movementFeelGait = (d) => {
+  const key = `${d.actorId ?? ""}|${d.name ?? ""}`;
+  let gait = feelGaits.get(key);
+  if (gait === undefined) {
+    try { gait = creatureGait({ system: game.system.id, actor: d.actor, name: d.name }); } catch { gait = "unknown"; }
+    feelGaits.set(key, gait);
+  }
+  return gait;
+};
+// What this screen may see and hear of each moving token (engines/motion/movement-feel.mjs perceive): a GM-hidden
+// token nothing; for a player, PF2e Visioner's state from each of their own tokens on the scene (undetected or
+// unnoticed: silent and unseen; hidden: heard only), else the creature's conditions and whether it is drawn here.
+// Visioner's answers are kept for a quarter second per token.
+const AWARE_MS = 250;
+const awareness = new Map(), conditionCache = new Map();
+const visionerStates = (target) => {
+  const api = game.modules.get("pf2e-visioner")?.active ? game.modules.get("pf2e-visioner").api : null;
+  if (!api?.getVisibility) return [];
+  const cached = awareness.get(target.id), time = performance.now();
+  if (cached && time - cached.at < AWARE_MS) return cached.states;
+  const mine = canvas.tokens?.controlled?.length ? canvas.tokens.controlled : (canvas.tokens?.placeables ?? []).filter((o) => o.isOwner && o.actor);
+  const states = [];
+  for (const observer of mine) {
+    if (observer === target) continue;
+    try { const s = api.getVisibility(observer.document.id, target.document.id); if (typeof s === "string") states.push(s); } catch { /* skip */ }
+  }
+  awareness.set(target.id, { at: time, states });
+  return states;
+};
+// Tokens a burrow sink hid on this screen (see "Burrowed creatures sink out of sight" below), each with whether
+// Foundry itself drew it: perception goes by that, so a creature this screen could see still churns and digs audibly.
+const sunkHidden = new Map();
+const movementPerception = (t, d, level) => {
+  const onLevel = level === undefined || d.level === undefined || d.level === level;
+  if (!onLevel || t.isPreview) return { visible: false, audible: false };
+  // A GM may perceive as their selected token does ("GM perceives movement"); with nothing selected, everything.
+  let gm = game.user.isGM;
+  if (gm && canvas.tokens?.controlled?.length) { try { gm = game.settings.get(ID, "movementGmPerception") !== "token"; } catch { /* everything */ } }
+  // A player's own creature (or the GM's selected one) is always perceived.
+  if (!gm && (game.user.isGM ? t.controlled : t.isOwner)) return { visible: drawnBeforeSink(t, sunkHidden) && !d.hidden, audible: !d.hidden };
+  // Stealth off: what is drawn on this screen is what it perceives (GM-hidden tokens still give nothing away).
+  let stealth = true;
+  try { stealth = game.settings.get(ID, "movementStealth") !== false; } catch { /* on */ }
+  if (!stealth && !gm) { const shown = drawnBeforeSink(t, sunkHidden) && !d.hidden; return { visible: shown, audible: shown }; }
+  const time = performance.now(), cached = conditionCache.get(d.id);
+  let conditions = cached && time - cached.at < AWARE_MS ? cached.conditions : null;
+  if (!conditions) {
+    conditions = [...Array.from(d.actor?.statuses ?? []), ...(d.actor?.itemTypes?.condition?.map((c) => c.slug) ?? [])];
+    conditionCache.set(d.id, { at: time, conditions });
+  }
+  const { see, hear } = perceive({ isGM: gm, docHidden: d.hidden === true, tokenVisible: drawnBeforeSink(t, sunkHidden),
+    states: gm ? [] : visionerStates(t), conditions });
+  return { visible: see, audible: hear };
+};
+Hooks.on("canvasTearDown", () => { awareness.clear(); conditionCache.clear(); });
+// Whether a token moves stealthily (engines/motion/quiet-steps.mjs isSneaking; world setting "Sneaking is quiet"):
+// PF2e/SF2e's Avoid Notice exploration activity or a Sneak/Avoid Notice effect, PF2e Visioner's 'sneak-active' token
+// flag, D&D 5e's Hiding status. Read for a second at a time per token.
+const sneakCache = new Map();
+const movementSneaking = (id) => {
+  try { if (game.settings.get(ID, "quietSneaking") === false) return false; } catch { return false; }
+  const time = performance.now(), cached = sneakCache.get(id);
+  if (cached && time - cached.at < 1000) return cached.on;
+  let on = false;
+  try {
+    const t = canvas.tokens?.get?.(id), d = t?.document, actor = d?.actor;
+    const slugs = [...(actor?.itemTypes?.effect ?? []), ...(actor?.itemTypes?.condition ?? [])].map((i) => i?.slug).filter(Boolean);
+    const chosen = Array.isArray(actor?.system?.exploration) ? actor.system.exploration : [];
+    const exploration = chosen.map((itemId) => actor.items?.get?.(itemId)?.slug).filter(Boolean);
+    on = isSneaking({ system: game.system.id, statuses: actor?.statuses, slugs, exploration,
+      visionerSneak: !!d?.flags?.["pf2e-visioner"]?.["sneak-active"], inCombat: d?.inCombat === true });
+  } catch { on = false; }
+  sneakCache.set(id, { at: time, on });
+  return on;
+};
+Hooks.on("canvasTearDown", () => sneakCache.clear());
+// Each token's footstep beat (engines/motion/movement-feel.mjs createStepPacer).
+const stepPacer = createStepPacer();
+// How late (ms) a step, wing beat or thud may start after it was due before it is dropped instead.
+const LATE_BEAT_MS = 150;
+// How heavy its steps are (size category, a heavy body), cached the same way.
+const movementFeelBulk = (d) => {
+  const key = `bulk|${d.actorId ?? ""}|${d.name ?? ""}`;
+  let bulk = feelGaits.get(key);
+  if (bulk === undefined) {
+    try { bulk = creatureBulk({ system: game.system.id, actor: d.actor, name: d.name }); } catch { bulk = { size: undefined, heavy: false }; }
+    feelGaits.set(key, bulk);
+  }
+  return bulk;
+};
+// What its body adds to each stride (a skeleton's rattle, a golem's clank, a fire elemental's flame), cached the same way.
+const movementFeelBody = (d) => {
+  const key = `body|${d.actorId ?? ""}|${d.name ?? ""}`;
+  let body = feelGaits.get(key);
+  if (body === undefined) {
+    try { body = creatureBody({ system: game.system.id, actor: d.actor, name: d.name }); } catch { body = null; }
+    feelGaits.set(key, body);
+  }
+  return body;
+};
+Hooks.on("updateActor", () => feelGaits.clear());
+// An ancestry, a race or an Incorporeal Movement feature can change the feet.
+for (const hook of ["createItem", "deleteItem"]) Hooks.on(hook, (item) => { if (item?.parent?.documentName === "Actor") feelGaits.clear(); });
+Hooks.on("updateToken", (doc, changes) => { if ("name" in changes || "actorId" in changes || "delta" in changes) feelGaits.clear(); });
+const movementFeelRoot = () => {
+  if (!feelRoot || feelRoot.destroyed) {
+    feelRoot = new PIXI.Container();
+    feelRoot.eventMode = "none";
+    feelRoot.elevation = canvas.level?.elevation?.base ?? 0;
+    feelRoot.sortLayer = 650;
+    canvas.primary.addChild(feelRoot);
+  }
+  return feelRoot;
+};
+const movementFeelSettingOn = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return false; } };
+const movementFeelFloor = (point, token) => {
+  const scene = canvas?.scene;
+  const base = sceneFloor({
+    flag: scene?.flags?.[ID]?.floor, globalLight: scene?.environment?.globalLight?.enabled === true, name: scene?.name,
+    // v14 keeps the backdrop on the level (Scene#background is deprecated and warns).
+    background: canvas.level?.background?.src ?? "",
+  });
+  const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: doc.flags?.[ID]?.floor, doc }));
+  return floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation: token?.elevation ?? 0 }) });
+};
+// The scene's weather (engines/motion/ground-trails.mjs sceneWeather): Foundry's own scene weather, else FXMaster's
+// rain or snow; none inside a region with a Suppress Weather behavior (a roof, a cave).
+const sceneWeatherNow = () => {
+  const scene = canvas?.scene;
+  try { return sceneWeather({ weather: scene?.weather, fxmaster: scene?.flags?.fxmaster?.effects }); } catch { return null; }
+};
+const shelteredAt = (point, elevation = 0) => {
+  for (const region of canvas?.scene?.regions ?? []) {
+    try {
+      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
+      if (region.testPoint({ x: point.x, y: point.y, elevation })) return true;
+    } catch { /* a broken region never breaks the weather */ }
+  }
+  return false;
+};
+const weatherAt = (point, elevation) => { const sky = sceneWeatherNow(); return sky && !shelteredAt(point, elevation) ? sky : null; };
+// Ground trails (engines/motion/ground-trails.mjs): feet that walked through water, mud or snow print the next floor
+// ("Feet carry mud, water and snow"), a badly hurt creature drips blood ("Wounded creatures leave blood drops"; Splatter
+// paints it instead when Animater feeds it), and rain splashes or snow dusts each step ("Weather on the ground").
+const groundTrails = createGroundTrails({
+  tracked: () => movementFeelSettingOn("trackedPrints"),
+  blood: () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC)),
+  weather: (feet, token) => (movementFeelSettingOn("weatherOnGround") ? weatherAt(feet, token?.elevation ?? 0) : null),
+});
+// Whether a token is badly hurt (a quarter of its HP or less, engines/playback/wounded-looks.mjs woundTier) with blood
+// to lose, and its Splatter blood colour; cached per token with the gaits (forgotten as an actor or a token changes).
+const movementFeelBlood = (d) => {
+  const key = `blood|${d.id}`;
+  let blood = feelGaits.get(key);
+  if (blood === undefined) {
+    try {
+      const actor = d.actor;
+      blood = { bleeding: bleedsBlood(actor) && woundTier(hpState(actor, game.system.id)) === 2, bloodColor: bloodColor(d.flags?.splatter?.bloodColor) };
+    } catch { blood = { bleeding: false }; }
+    feelGaits.set(key, blood);
+  }
+  return blood;
+};
+const movementFeel = createMovementFeel({
+  trails: groundTrails,
+  enabled: () => movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal"),
+  // Burrowers' entrance and exit holes (world setting "Burrow holes").
+  holes: () => movementFeelSettingOn("burrowHoles"),
+  // Balanced and up draw it all, Low half, Off none.
+  density: () => movementDensity(qualityRank(localQuality())),
+  cap: () => (localQuality() === "low" ? 60 : 120),
+  // Footprints last long and have their own budget, so a trail never holds back the dust.
+  printCap: () => (localQuality() === "low" ? 40 : 80),
+  grid: () => canvas?.grid?.size ?? 100,
+  distance: () => canvas?.dimensions?.distance ?? 5,
+  now: () => performance.now(),
+  floorAt: movementFeelFloor,
+  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot }),
+  tokens: () => {
+    const placeables = canvas?.tokens?.placeables;
+    if (!placeables?.length) return [];
+    const base = canvas.level?.elevation?.base ?? 0, level = canvas.level?.id, time = performance.now();
+    return placeables.map((t) => {
+      const d = t.document, c = d.getCenterPoint();
+      const until = feelSkip.get(d.id);
+      if (until !== undefined && until <= time) feelSkip.delete(d.id);
+      return {
+        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action: d.movementAction,
+        statuses: d.actor?.statuses, gait: movementFeelGait(d), bulk: movementFeelBulk(d), body: movementFeelBody(d),
+        ...movementFeelBlood(d),
+        ...movementPerception(t, d, level),
+        skip: (until ?? 0) > time || motions?.active?.has?.(t) === true,
+      };
+    });
+  },
+  // Quiet positional steps on every floor: Animater's bundled steps, or PSFX's outdoor steps on soft ground when it is
+  // active. Scaled by this device's surface sounds volume (Hit sounds menu); 0 there silences them.
+  // How it moves picks the sound (engines/motion/movement-feel.mjs movementSound): footsteps for a walk, a wing beat for
+  // a flier, a churn for a burrower, a stroke for a swimmer, a grip for a climber, a shuffle for a crawl, a whoosh as a
+  // jump leaves the ground and a heavier footstep where it lands.
+  footstep: (floor, at, token, kind = "step") => {
+    let level = 1;
+    try { level = Number(game.settings.get(ID, "surfaceVolume") ?? 1); } catch { /* not registered yet */ }
+    if (!(level > 0)) return;
+    const seed = token.id ?? "";
+    // How heavy the creature is: its size category (else its token width) and whether its body is heavy.
+    const squares = (token.width ?? 100) / (canvas.grid?.size || 100);
+    const body = stepWeight({ size: token.bulk?.size, squares, heavy: token.bulk?.heavy === true });
+    // A landing comes down a size heavier.
+    const weight = kind === "land" ? body + 1 : body;
+    // Sneaking ("Sneaking is quiet"): softer, a slower beat, duller, and no thud below Huge.
+    const sneak = movementSneaking(seed) ? sneakStep(body) : null;
+    // Its own beat: a giant's THUMP ... THUMP, a dragon's slow wing beat, however fast Foundry slides the token.
+    const step = stepPacer.take(seed, body, performance.now(), Math.round(moveSoundGap(kind, body) * (sneak?.gap ?? 1)));
+    if (step === null) return;
+    // Its own feet (engines/motion/movement-feel.mjs gaitStep): paws, hooves, talons, a dragon's claws, an ooze's
+    // squelch, or a person's steps for boots; on mud, water, snow and sand the floor's own step plays quietly under it.
+    const walking = kind === "step" || kind === "land";
+    const pick = walking ? gaitStep(token.gait, floor, step, { psfx: game.modules.get("psfx")?.active === true, seed }) : null;
+    // Its body (engines/motion/movement-feel.mjs bodyStep): a skeleton's rattle, a golem's clank, stone grinding or
+    // leaves layered on the step; a water, fire or air body's slosh, flame or gust in place of it (they do not step).
+    const layer = walking && token.body ? bodyStep(token.body, step, { seed }) : null;
+    const replaced = layer?.replaces === true;
+    if (walking && !pick?.file && !replaced) return;
+    const vary = footstepVariation({ seed, n: step, weight });
+    const where = { x: at.x, y: at.y, elevation: token.elevation }, reach = 6 * (canvas.dimensions?.distance ?? 5) * (weight >= 4 ? 1.5 : 1);
+    const volume = Math.min(1, footstepVolume(floor, { weight }) * vary.gain * Math.min(1, level) * (kind === "land" ? 1.25 : 1) * (sneak?.gain ?? 1));
+    // Where it happens ("Footsteps ring in the room"): it rings in the room and is muffled behind walls as Animater's
+    // hits are (engines/sound/sound-pitch.mjs), at 0.6 of a hit's room. Foundry's own wall occlusion stays off.
+    const room = movementFeelSettingOn("footstepAcoustics")
+      ? { at: { x: at.x, y: at.y, elevation: token.elevation, sceneId: canvas.scene?.id, level: canvas.level?.id }, roomShare: 0.6 } : {};
+    // Its own pitch, lower for heavier creatures (a giant's tread deep and slow, a pixie's light and quick). Asked for
+    // just before it plays, so it is set as Foundry builds the sound (engines/sound/sound-pitch.mjs) and the very first
+    // millisecond is already at that pitch; set again once it plays in case that hook is missing.
+    const play = (file, rate, level, shape = {}) => {
+      Hooks.callAll("animater.shapeSound", { file, rate, ...room, ...shape });
+      const asked = performance.now();
+      const playing = canvas.sounds?.playAtPosition?.(file, where, reach, { volume: level, walls: false, gmAlways: false });
+      // Resolves to the playing sound, or null when it was dropped (then nothing is layered on it).
+      return Promise.resolve(playing).then((sound) => {
+        // A beat that only starts long after it was due (its file was still loading) is dropped, not played late:
+        // several late beats would otherwise pile up and sound together.
+        if (performance.now() - asked > LATE_BEAT_MS) { try { sound?.stop?.(); } catch { /* already gone */ } return null; }
+        const node = sound?.sourceNode?.playbackRate;
+        if (node && node.value !== rate) node.value = rate;
+        else if (!node && sound?.element) { sound.element.preservesPitch = false; sound.element.playbackRate = rate; }
+        return sound ?? null;
+      }).catch(() => null);
+    };
+    // Any other way of moving plays its own family, pitched, darkened and levelled by the creature's weight.
+    if (kind !== "step" && kind !== "land") {
+      const file = moveSoundFile(kind, step, { seed });
+      if (!file) return;
+      const shape = moveSoundShape(kind, { weight, seed, n: step });
+      const lowpass = darker(shape.lowpass, sneak?.lowpass);
+      play(file, shape.rate, Math.min(1, shape.volume * Math.min(1, level) * (sneak?.gain ?? 1)),
+        lowpass ? { lowpass, ...(shape.lowpass ? { bass: shape.bass } : {}) } : {});
+      return;
+    }
+    if (replaced) {
+      // No foot touches the floor: no floor layer, no thud, no tremor; the body's own sound at the step's pitch and level.
+      play(layer.file, vary.rate, Math.min(1, volume * layer.gain), sneak ? { lowpass: sneak.lowpass } : {});
+      return;
+    }
+    const muffle = darker(pick.lowpass, sneak?.lowpass);
+    const stepping = play(pick.file, vary.rate, volume, muffle ? { lowpass: muffle } : {});
+    // The floor under the creature's own foot (a hoof in mud, a paw in snow), quieter, at the same pitch and shape.
+    if (pick.under) play(pick.under, vary.rate, Math.min(1, volume * pick.underGain), sneak ? { lowpass: sneak.lowpass } : {});
+    // The body's layer lands with the foot: started once the step plays, timed to the step's loudest moment (as the thud),
+    // quieter, at the same pitch.
+    if (layer) stepping.then((sound) => {
+      if (!sound) return;
+      const delay = thudDelayMs({ stepPeakMs: audioPeakMs(sound.buffer), stepRate: vary.rate, thudPeakMs: layer.peakMs, thudRate: vary.rate });
+      const shape = sneak ? { lowpass: sneak.lowpass } : {};
+      setTimeout(() => play(layer.file, vary.rate, Math.min(1, volume * layer.gain), shape), delay);
+    }).catch(() => {});
+    // Large and heavier: a low thud lands under the step, deeper, louder and longer the bigger the creature, always at
+    // its size's own pitch (never varied: a giant's thud is always the same deep thud). It waits for the footfall:
+    // started once the step is playing, timed to the step's loudest moment at its playback rate.
+    const thud = thudFile(weight, step, seed), boom = thudLevel(weight);
+    if (thud && boom && (!sneak || sneak.thud)) {
+      // Darkened and given body (a low-pass and a bass shelf); Huge and up also rumble an octave lower still.
+      // The bass boost is paid for in level (its headroom), so the boosted thud stays under full scale; a limiter on
+      // each layer catches the rest when they stack.
+      const shape = { lowpass: boom.lowpass, bass: boom.bass }, level = Math.min(1, volume * boom.gain * 2.5 * (boom.headroom ?? 1));
+      stepping.then((sound) => {
+        if (!sound) return;
+        const stepPeakMs = audioPeakMs(sound.buffer);
+        // Every Huge or Gargantuan footfall also trembles this screen a little as it lands (heavier, more) ("Giant footfalls shake
+        // the view", with camera shake on; engines/camera/camera-shake.mjs tremor). Never for a sneaking one.
+        const tremble = () => {
+          if (sneak || !movementFeelSettingOn("footfallTremor")) return;
+          cameraShake.tremor({ at: { x: at.x, y: at.y }, weight, sceneId: canvas.scene?.id, seed: `${seed}:${step}` });
+        };
+        setTimeout(() => { play(thud, boom.rate, level, shape); tremble(); }, thudDelayMs({ stepPeakMs, stepRate: vary.rate, thudRate: boom.rate }));
+        if (boom.sub) setTimeout(() => play(thud, boom.sub.rate, Math.min(1, level * boom.sub.gain), { lowpass: Math.round(boom.lowpass * 0.6), bass: boom.bass }),
+          thudDelayMs({ stepPeakMs, stepRate: vary.rate, thudRate: boom.sub.rate }));
+      }).catch(() => {});
+    }
+  },
+});
+const clearMovementFeel = () => {
+  movementFeel.clear();
+  stepPacer.clear();
+  feelSkip.clear();
+  try { feelRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  feelRoot = null;
+};
+// Animater's own teleports carry animater.teleport on the update: no dust along the slide.
+Hooks.on("updateToken", (doc, changed, options) => {
+  if (options?.animater?.teleport && ("x" in (changed ?? {}) || "y" in (changed ?? {})))
+    feelSkip.set(doc.id, performance.now() + (options.animation?.duration ?? 1500) + 400);
+});
+Hooks.on("canvasTearDown", clearMovementFeel);
+// Burrowed creatures sink out of sight (engines/motion/burrow-sink.mjs; world setting "Burrowed creatures sink out of
+// sight"): a token whose elevation is below its level's floor shrinks and fades into its hole. Once it is down, a
+// viewer who does not own it no longer sees it at all (nor its nameplate, bars or effects, nor can hover, click or
+// target it: Foundry's TokenLayer only picks visible, interactive tokens), while its owner and the GM see a faint
+// ghost. It rises back out where it surfaces. Foundry rewrites the mesh's alpha and scale and the token's visibility
+// on each refresh (Token#_refreshState, #_refreshMesh, PlaceableObject#_refreshVisibility), and the refreshToken hook
+// runs right after those, so the pose is laid on there and, while it moves, every frame after Foundry's own updates.
+const burrowSink = createBurrowSink({ now: () => performance.now(), duration: 350 });
+const sinkPoses = new Map(); // token -> poseMesh record
+const sinkSeen = new Set(); // token ids already judged on this canvas (one already under on load starts down)
+const sinkMoving = new Set(); // token ids part-way down or up last frame
+let sinkTicker = null;
+const burrowSinkOn = () => movementFeelSettingOn("burrowSink");
+const sinkViewer = (token) => ({ owner: token.isOwner === true, gm: game.user?.isGM === true });
+const unhideSunk = (token) => {
+  if (!sunkHidden.has(token)) return;
+  sunkHidden.delete(token);
+  // Foundry decides its visibility and interactivity afresh.
+  try { token.renderFlags?.set?.({ refreshVisibility: true, refreshState: true }); } catch { /* destroyed */ }
+};
+const applyBurrowSink = (token, flags) => {
+  const d = token?.document, mesh = token?.mesh;
+  if (!d || token.destroyed || !mesh || mesh.destroyed) return;
+  const viewer = sinkViewer(token);
+  if (burrowSink.hiddenFor(d.id, viewer)) {
+    // What Foundry decided: read now unless it is still our own false from before (no visibility refresh since).
+    const foundry = sunkHidden.has(token) && !flags?.refreshVisibility ? sunkHidden.get(token) : token.visible === true;
+    sunkHidden.set(token, foundry);
+    token.visible = false;
+    mesh.visible = false;
+    token.eventMode = "none";
+    return;
+  }
+  unhideSunk(token);
+  // Another animation (an Animater motion, a prone or idle body) owning the scale keeps it; the fade still applies.
+  const busy = motions?.active?.has?.(token) === true || conditionBody?.moves?.(token) === true;
+  const record = poseMesh(mesh, burrowSink.pose(d.id, viewer), sinkPoses.get(token), { scale: !busy });
+  if (record) sinkPoses.set(token, record); else sinkPoses.delete(token);
+};
+const restoreBurrowSink = (token) => {
+  unhideSunk(token);
+  const record = sinkPoses.get(token);
+  sinkPoses.delete(token);
+  if (record && token?.mesh && !token.mesh.destroyed) poseMesh(token.mesh, { alpha: 1, scale: 1 }, record);
+};
+const clearBurrowSink = () => {
+  for (const token of new Set([...sunkHidden.keys(), ...sinkPoses.keys()])) restoreBurrowSink(token);
+  sunkHidden.clear();
+  sinkPoses.clear();
+  sinkSeen.clear();
+  sinkMoving.clear();
+  burrowSink.clear();
+};
+// Each frame: who is under the floor of the level on view, and the pose of any token part-way down or up.
+const tickBurrowSink = () => {
+  if (!burrowSinkOn()) return;
+  const placeables = canvas?.tokens?.placeables;
+  if (!placeables?.length) return;
+  const base = canvas.level?.elevation?.base ?? 0, level = canvas.level?.id;
+  for (const t of placeables) {
+    const d = t.document;
+    if (!d || t.isPreview) continue;
+    const onLevel = level === undefined || d.level === undefined || d.level === level;
+    const under = onLevel && (d.elevation ?? 0) < base;
+    const first = !sinkSeen.has(d.id);
+    if (first) sinkSeen.add(d.id);
+    const turned = burrowSink.update(d.id, under, { instant: first });
+    const moving = burrowSink.moving(d.id), was = sinkMoving.has(d.id);
+    if (moving) sinkMoving.add(d.id); else sinkMoving.delete(d.id);
+    // Part-way, or just finished (the last frame's pose, and the hiding once it is all the way down).
+    if (turned || moving || was || (first && under)) applyBurrowSink(t);
+  }
+};
+Hooks.on("refreshToken", (token, flags) => {
+  try {
+    if (!burrowSinkOn()) return;
+    if (burrowSink.has(token.document?.id) || sunkHidden.has(token) || sinkPoses.has(token)) applyBurrowSink(token, flags);
+  } catch { /* never break a token refresh */ }
+});
+Hooks.on("destroyToken", (token) => { sunkHidden.delete(token); sinkPoses.delete(token); });
+Hooks.on("canvasReady", () => {
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  if (!ticker || !P || sinkTicker === ticker) return;
+  sinkTicker = ticker;
+  // After Foundry's object refresh (OBJECTS) and perception (PERCEPTION) for the frame, before the render (LOW).
+  ticker.add(() => { try { tickBurrowSink(); } catch { /* never stop the canvas */ } }, undefined, P.NORMAL);
+});
+Hooks.on("canvasTearDown", clearBurrowSink);
+// Creature idle sounds (engines/sound/creature-idle.mjs; world setting "Creatures growl on their turn"): with PF2e
+// Creature Sounds active, a Large or bigger NPC sometimes growls as its own combat turn starts. Every client sees the
+// same combat update and the same seeded chance, so no broadcast; each plays it only if this screen hears the creature.
+// The sound sets are read once from that module's bundle (it has no API), and its own on/off and volume apply.
+let creatureSoundDb = null;
+const creatureSoundSets = () => creatureSoundDb ??= (async () => {
+  const path = "modules/pf2e-creature-sounds/dist/pf2e-creature-sounds.js";
+  let url = path;
+  try { url = foundry.utils.getRoute(path); } catch { /* relative */ }
+  const res = await fetch(url);
+  return res.ok ? parseCreatureSoundDb(await res.text()) : {};
+})().catch(() => ({}));
+const idleVoiced = new Set();
+Hooks.on("updateCombat", (combat, changes) => {
+  if (!changes || !("turn" in changes || "round" in changes)) return;
+  try {
+    if (game.settings.get(ID, "creatureIdleSounds") === false) return;
+    if (game.modules.get("pf2e-creature-sounds")?.active !== true) return;
+    try { if (game.settings.get("pf2e-creature-sounds", "creatureSounds_enable") === false) return; } catch { /* its default: on */ }
+    if (!combat?.started || !canvas?.ready) return;
+    const key = `${combat.id}:${combat.round}:${combat.turn}`;
+    if (idleVoiced.has(key) || !voicesThisTurn({ combatId: combat.id, round: combat.round, turn: combat.turn })) return;
+    const combatant = combat.combatant, t = combatant?.token?.object, d = t?.document, actor = d?.actor;
+    if (!t || !actor || actor.type !== "npc" || d.parent?.id !== canvas.scene?.id) return;
+    if (actor.system?.attributes?.emitsSound === false || actor.isDead || combatant.defeated) return;
+    const bulk = movementFeelBulk(d);
+    const weight = stepWeight({ size: bulk?.size, squares: (t.w ?? 100) / (canvas.grid?.size || 100), heavy: bulk?.heavy === true });
+    if (!(weight >= IDLE_FROM_WEIGHT)) return;
+    idleVoiced.add(key);
+    if (idleVoiced.size > 200) idleVoiced.delete(idleVoiced.values().next().value);
+    // Only screens that hear it (stealth, levels, GM perception as for its footsteps).
+    if (!movementPerception(t, d, canvas.level?.id ?? undefined).audible) return;
+    void creatureSoundSets().then((db) => {
+      let custom = {};
+      try { custom = game.settings.get("pf2e-creature-sounds", "custom_sound_sets") ?? {}; } catch { /* none */ }
+      const traits = Array.from(actor.system?.traits?.value ?? []);
+      const sizes = { tiny: 0, sm: 1, med: 2, lg: 3, huge: 4, grg: 5 };
+      const set = pickSoundSet({ name: actor.flags?.babele?.originalName ?? actor.name, chosen: actor.flags?.["pf2e-creature-sounds"]?.soundset ?? null,
+        traits, size: sizes[actor.system?.traits?.size?.value] ?? -1, seed: actor.id }, db, custom);
+      const file = idleSoundFile(set, key);
+      if (!file) return;
+      let volume = 0.5;
+      try { volume = Number(game.settings.get("pf2e-creature-sounds", "creatureSounds_volume") ?? 0.5); } catch { /* its default */ }
+      const shape = idleShape(weight, key), level = Math.min(1, volume * shape.volume);
+      if (!(level > 0)) return;
+      const c = d.getCenterPoint?.() ?? t.center, where = { x: c.x, y: c.y, elevation: d.elevation ?? 0 };
+      const room = movementFeelSettingOn("footstepAcoustics") ? { at: { ...where, sceneId: canvas.scene?.id, level: canvas.level?.id }, roomShare: 0.8 } : {};
+      // A breath after the turn's own sounds settle.
+      setTimeout(() => {
+        if (!canvas?.ready || canvas.scene?.id !== d.parent?.id) return;
+        Hooks.callAll("animater.shapeSound", { file, rate: shape.rate, ...room });
+        void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 12 * (canvas.dimensions?.distance ?? 5), { volume: level, walls: false, gmAlways: false }))
+          .then((sound) => {
+            const node = sound?.sourceNode?.playbackRate;
+            if (node && node.value !== shape.rate) node.value = shape.rate;
+          }).catch(() => {});
+      }, 700);
+    });
+  } catch (err) { console.warn("Animater | creature idle sound skipped", err); }
+});
+Hooks.on("canvasReady", () => {
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  // Every footstep (people's and creatures') and footfall thud loads now (about 750 KB in all), so no step waits on a download: a late step
+  // would fall out of its creature's beat and land after its thud.
+  if (movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal")) {
+    const psfx = game.modules.get("psfx")?.active === true;
+    const files = new Set([...Object.values(FOOTSTEP_FILES).flat(), ...gaitStepFiles(), ...bodyStepFiles(), ...THUD_FILES, ...Object.values(MOVE_SOUND_FILES).flat(),
+      ...(psfx ? Array.from({ length: 16 }, (_, n) => footstepFile("dirt", n, { psfx: true, seed: "preload" })) : [])]);
+    for (const file of files) { try { void Promise.resolve(game.audio?.preload?.(file)).catch(() => {}); } catch { /* optional */ } }
+  }
+  if (!ticker || !P || feelTicker === ticker) return;
+  feelTicker = ticker;
+  // After token animations write this frame's position (they run above NORMAL), before the render.
+  ticker.add(() => { try { movementFeel.tick(); } catch { /* never stop the canvas */ } }, undefined, P.NORMAL);
+});
+// Breath vapor on this client (engines/motion/breath-vapor.mjs): in the cold (snow falling, a snow or ice floor
+// underfoot, or the scene flag animater.cold), breathing creatures in view puff a faint white cloud with each breath out.
+// Above the tokens, at Balanced quality or better, and off wherever idle life is off on this screen.
+let vaporRoot = null, vaporTicker = null, vaporList = [], vaporListAt = -Infinity;
+const VAPOR_REFRESH_MS = 500;
+const vaporOn = () => {
+  try {
+    return game.settings.get(ID, "breathVapor") !== false && game.settings.get(ID, "idleLifeLocal") !== false
+      && qualityRank(localQuality()) >= 2 && !!canvas?.ready;
+  } catch { return false; }
+};
+const vaporRootOf = () => {
+  if (!vaporRoot || vaporRoot.destroyed) {
+    vaporRoot = new PIXI.Container();
+    vaporRoot.eventMode = "none";
+    vaporRoot.elevation = canvas.level?.elevation?.base ?? 0;
+    // Over the tokens (700), under the weather (1000).
+    vaporRoot.sortLayer = 900;
+    canvas.primary.addChild(vaporRoot);
+  }
+  return vaporRoot;
+};
+// The breathing creatures in view, nearest the middle first, and whether each stands in the cold; refreshed twice a second.
+const listVaporTokens = () => {
+  const stage = canvas.stage, s = stage?.scale?.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight];
+  const view = stage ? { x: stage.pivot.x - sw / 2 / s, y: stage.pivot.y - sh / 2 / s, width: sw / s, height: sh / s } : null;
+  const scene = canvas.scene, level = canvas.level?.id, raw = scene?.flags?.[ID]?.cold;
+  // Scene configuration's Animater climate: "cold" or "warm" decides; unset, the weather and floor do.
+  const flag = raw === true || raw === "cold" ? true : raw === false || raw === "warm" ? false : undefined;
+  const placed = [];
+  for (const t of canvas.tokens?.placeables ?? []) {
+    try {
+      const d = t.document;
+      if (!t.visible || d.hidden || t.isPreview || (level !== undefined && d.level !== undefined && d.level !== level)) continue;
+      if (!breathes(t.actor) || !idleKind({ actor: t.actor, statuses: [...Array.from(t.actor?.statuses ?? []), ...(t.actor?.itemTypes?.condition?.map((c) => c.slug) ?? [])], movementAction: d.movementAction })) continue;
+      placed.push({ t, x: t.x ?? 0, y: t.y ?? 0, w: t.w ?? 0, h: t.h ?? 0 });
+    } catch { /* a token mid-teardown: skip it */ }
+  }
+  return pickIdle(placed, view, VAPOR_CAP).map(({ t }) => {
+    let cold = false;
+    try {
+      const d = t.document, c = d.getCenterPoint(), feet = { x: c.x, y: c.y + (t.w ?? 100) * 0.25 };
+      cold = isCold({ flag, weather: weatherAt(feet, d.elevation ?? 0), floor: movementFeelFloor(feet, { elevation: d.elevation ?? 0 }) });
+    } catch { /* warm */ }
+    return { t, cold };
+  });
+};
+const breathVapor = createBreathVapor({
+  enabled: vaporOn,
+  grid: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: vaporRootOf }),
+  tokens: () => {
+    const time = performance.now();
+    if (time - vaporListAt >= VAPOR_REFRESH_MS) { vaporListAt = time; vaporList = listVaporTokens(); }
+    const out = [];
+    for (const { t, cold } of vaporList) {
+      if (!t || t.destroyed || !t.document) continue;
+      const d = t.document, c = d.getCenterPoint();
+      out.push({ id: d.id, x: c.x, y: c.y, width: t.w ?? 100, rotation: d.rotation ?? 0, visible: t.visible === true && !d.hidden, breathes: true, cold,
+        // Portrait or top-down art decides where the mouth is.
+        art: vaporArt({ ring: d.ring?.enabled === true, lockRotation: d.lockRotation === true, rotation: d.rotation ?? 0 }),
+        // Token configuration's Breath from: where this token's art has its mouth.
+        mouth: d.flags?.[ID]?.breathFrom || "auto" });
+    }
+    return out;
+  },
+});
+Hooks.on("canvasTearDown", () => {
+  breathVapor.clear();
+  vaporList = []; vaporListAt = -Infinity;
+  try { vaporRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  vaporRoot = null;
+});
+Hooks.on("canvasReady", () => {
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  if (!ticker || !P || vaporTicker === ticker) return;
+  vaporTicker = ticker;
+  ticker.add(() => { try { breathVapor.tick(); } catch { /* never stop the canvas */ } }, undefined, P.NORMAL);
+});
+// Hover explanation (ui/hover-explain.mjs): hovering a token lists what Animater plays on it here.
+// Lasting plays started on this client, lasting condition/effect layers (drawn on every client), and
+// every Animater effect Sequencer shows on this screen (tagged animaterRecipe by whichever client started it).
+const hoverEffects = () => {
+  const manager = globalThis.Sequencer?.EffectManager;
+  try { return [...(manager?.effects ?? manager?.getEffects?.({}) ?? [])]; } catch { return []; }
+};
+const hoverToScreen = (point) => {
+  if (typeof canvas?.clientCoordinatesFromCanvas === "function") return canvas.clientCoordinatesFromCanvas(point);
+  const p = canvas?.stage?.worldTransform?.apply?.(point), box = canvas?.app?.view?.getBoundingClientRect?.();
+  return p && box ? { x: p.x + box.left, y: p.y + box.top } : null;
+};
+const hoverExplain = createHoverExplain({
+  document: globalThis.document,
+  enabled: () => { try { const on = game.settings.get(ID, "hoverExplain"); return on ?? game.user?.isGM === true; } catch { return false; } },
+  isGM: () => game.user?.isGM === true,
+  rowsFor: (token) => tokenRows({
+    sessions: runtime?.runningAnimations() ?? [], states: persistentStates?.running() ?? [], effects: hoverEffects(),
+    tokenId: token.id ?? token.document?.id, tokenUuid: token.document?.uuid, userId: game.user?.id,
+  }),
+  view: (rows) => hoverView(rows, { userId: game.user?.id, isGM: game.user?.isGM === true, userName: (id) => game.users?.get(id)?.name ?? "", userIsGM: (id) => game.users?.get(id)?.isGM === true }),
+  toScreen: hoverToScreen,
+});
+let hoverCanvasView = null;
+Hooks.on("hoverToken", (token, hovered) => {
+  // A token being dragged (its preview clone) explains nothing.
+  if (token?.isPreview) return hoverExplain.hide();
+  hoverExplain.hover(token, hovered);
+});
+Hooks.on("canvasPan", () => hoverExplain.refresh());
+Hooks.on("canvasTearDown", () => hoverExplain.hide());
+Hooks.on("deleteToken", () => hoverExplain.hide());
+Hooks.on("canvasReady", () => {
+  // Pressing on the canvas (to drag a token, or select) hides it until the next hover.
+  const view = canvas?.app?.view;
+  if (!view || hoverCanvasView === view) return;
+  hoverCanvasView = view;
+  view.addEventListener?.("pointerdown", () => hoverExplain.hide());
+});
+// Counteract and dispel (engines/playback/dispel.mjs, shatter-fx.mjs): the client that rolled a counteract check, or
+// cast Dispel Magic or Counterspell, tells every screen. A success opens a 4 s window there: Animater's lasting areas
+// and auras that end inside it break into glass shards as they go. A failure makes the lasting animations on its
+// targets flicker for a moment, then hold. Local visuals only, above the tokens like the element reactions.
+const dispelOn = () => { try { return game.settings.get(ID, "dispelShatter") !== false && game.settings.get(ID, "dispelShatterLocal") !== false && qualityRank(localQuality()) > 0; } catch { return false; } };
+const dispelWindow = createDispelWindow({ now: () => performance.now() });
+const dispelFlicker = createFlickerHost({ now: () => performance.now() });
+const dispelLasting = new Set();
+let dispelShattered = new WeakSet(), shatterRoot = null, dispelTicker = null;
+const shatterHost = createShatterHost({
+  now: () => performance.now(),
+  enabled: dispelOn,
+  spawn: (spec) => {
+    if (!canvas?.primary) return null;
+    if (!shatterRoot || shatterRoot.destroyed) {
+      shatterRoot = new PIXI.Container();
+      shatterRoot.eventMode = "none";
+      shatterRoot.elevation = canvas.level?.elevation?.base ?? 0;
+      shatterRoot.sortLayer = 800;
+      canvas.primary.addChild(shatterRoot);
+    }
+    const fx = shatterVisual(PIXI, spec, performance.now());
+    shatterRoot.addChild(fx.display);
+    return fx;
+  },
+});
+// Where an effect is drawn: its sprite's bounds in canvas space, else its position at a square's size.
+const dispelSpot = (effect) => {
+  try {
+    const t = canvas.stage.worldTransform;
+    const spot = spotFromBounds(effect.sprite?.getBounds?.(), { tx: t.tx, ty: t.ty, scale: canvas.stage.scale.x });
+    if (spot) return spot;
+  } catch { /* sprite gone */ }
+  try {
+    const p = finitePoint(effect.worldPosition) ?? finitePoint(effect.position);
+    if (p) return { x: p.x, y: p.y, radius: (canvas?.grid?.size ?? 100) / 2 };
+  } catch { /* effect gone */ }
+  return null;
+};
+// Never on an effect this viewer does not see, nor on a token hidden from them.
+const dispelSeen = (effect) => {
+  if (effect.worldVisible === false || effect.sprite?.worldVisible === false) return false;
+  return effectTokenIds(effect.data).every((id) => {
+    const token = canvas?.tokens?.get(id);
+    return !token || ((game.user.isGM || !token.document?.hidden) && token.visible !== false);
+  });
+};
+const shatterEffect = (effect) => {
+  if (dispelShattered.has(effect)) return;
+  dispelShattered.add(effect);
+  if (!dispelSeen(effect)) return;
+  const spot = dispelSpot(effect);
+  if (!spot) return;
+  if (shatterHost.play({ at: { x: spot.x, y: spot.y }, radius: spot.radius, tint: effect.data?.tint, seed: shatterSeed(effect.data?.id ?? effect.id) })) {
+    // The shards replace Sequencer's own fade.
+    try { effect.alpha = 0; } catch { /* effect gone */ }
+  }
+};
+const dispelCandidate = (effect) => !effect.destroyed && effect.data?.sceneId === canvas?.scene?.id;
+const flickerDispelTargets = (tokenIds) => {
+  if (!tokenIds?.length) return;
+  const ids = new Set(tokenIds);
+  const centres = tokenIds.map((id) => canvas?.tokens?.get(id)?.center).filter(Boolean);
+  for (const effect of dispelLasting) {
+    if (!dispelCandidate(effect)) continue;
+    const on = effectTokenIds(effect.data);
+    if (on.some((id) => ids.has(id)) || (!on.length && centres.some((c) => spotHolds(dispelSpot(effect), c)))) dispelFlicker.start(effect);
+  }
+};
+const handleDispel = ({ outcome, tokenIds }) => {
+  try {
+    if (!dispelOn()) return;
+    if (outcome === "failure") flickerDispelTargets(tokenIds);
+    else dispelWindow.add({ outcome, tokenIds });
+  } catch (error) { console.warn("Animater | dispel skipped", error); }
+};
+const announceDispel = (found) => {
+  if (!found) return;
+  const data = dispelMessage(found, { sender: clientId, userId: game.user.id, sceneId: canvas?.scene?.id ?? null, at: Date.now() });
+  try { game.socket.emit(`module.${ID}`, data); } catch (error) { console.warn("Animater | dispel not sent", error); }
+  handleDispel(found);
+};
+const receiveDispel = (data, senderId) => receiveDispelData(data, senderId, { sceneId: canvas?.scene?.id ?? null, handle: handleDispel });
+Hooks.on("createSequencerEffect", (effect) => { try { if (lastingAnimaterEffect(effect)) dispelLasting.add(effect); } catch { /* not ours */ } });
+Hooks.on("endedSequencerEffect", (effect) => {
+  try {
+    if (!dispelLasting.delete(effect) && !lastingAnimaterEffect(effect)) return;
+    if (dispelCandidate(effect) && dispelOn() && dispelWindow.shatters(effect.data)) shatterEffect(effect);
+  } catch (error) { console.warn("Animater | dispel shatter skipped", error); }
+});
+Hooks.on("canvasTearDown", () => { shatterHost.clear(); dispelFlicker.clear(); dispelWindow.clear(); dispelLasting.clear(); dispelShattered = new WeakSet(); try { shatterRoot?.destroy({ children: true }); } catch { /* canvas gone */ } shatterRoot = null; });
+Hooks.on("canvasReady", () => {
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  if (!ticker || !P || dispelTicker === ticker) return;
+  dispelTicker = ticker;
+  ticker.add(() => {
+    try {
+      // A lasting effect that starts its fade while a dispel is open shatters now, not after the fade.
+      if (dispelLasting.size && dispelWindow.isOpen() && dispelOn())
+        for (const effect of dispelLasting) if (effect._isEnding && !dispelShattered.has(effect) && dispelCandidate(effect) && dispelWindow.shatters(effect.data)) shatterEffect(effect);
+      shatterHost.tick(); dispelFlicker.tick();
+    } catch { /* never stop the canvas */ }
+  }, undefined, P.NORMAL);
+});
+// PF2e/SF2e: the author's client reads its own counteract check (every client sees the message; one speaks).
+Hooks.on("createChatMessage", (message) => {
+  const system = game.system?.id;
+  if (!["pf2e", "sf2e"].includes(system) || (message?.author?.id ?? message?.user?.id) !== game.user.id) return;
+  try { announceDispel(twoeCounteract(message, system, { targets: idsOfTokens(game.user.targets) })); } catch (error) { console.warn("Animater | counteract skipped", error); }
+});
+// D&D 5e: casting Dispel Magic or Counterspell succeeds; the caster's ability check against a DC soon after (higher
+// level magic) succeeds again or fails.
+const dnd5eDispels = createDnd5eDispels();
+Hooks.on("dnd5e.postUseActivity", (activity) => {
+  try {
+    if (!dnd5eDispelSpell(activity)) return;
+    announceDispel(dnd5eDispels.cast((activity.actor ?? activity.item?.actor)?.id, idsOfTokens(game.user.targets)));
+  } catch (error) { console.warn("Animater | dispel skipped", error); }
+});
+Hooks.on("dnd5e.rollAbilityCheck", (rolls, data) => {
+  try { announceDispel(dnd5eDispels.check(data?.subject?.id, rolls)); } catch (error) { console.warn("Animater | dispel check skipped", error); }
+});
 // canvas.app (and its ticker) survives scene changes; time each frame's work once per ticker: from before
 // every other listener to after the canvas render (PIXI's Application renders at UPDATE_PRIORITY.LOW).
 let adaptiveTicker = null;
@@ -311,7 +1184,9 @@ Hooks.on("canvasReady", () => {
     adaptiveTicker = ticker;
     ticker.add(() => adaptiveHost.onFrameStart(performance.now()), undefined, P.HIGH + 2);
     ticker.add(() => { try { summonsLights.tick(); } catch { /* never stop the canvas */ } lightHost.tick(); }, undefined, P.NORMAL);
-    ticker.add(() => markLayer.tick(), undefined, P.NORMAL);
+    ticker.add(() => { markLayer.tick(); markReactions.tick(); }, undefined, P.NORMAL);
+    // The shake moves the stage first, so the distortion reads the view this frame renders.
+    ticker.add(() => cameraShake.tick(), undefined, P.NORMAL);
     ticker.add(() => distortionHost.tick(), undefined, P.NORMAL);
     ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
   }
@@ -1169,6 +2044,8 @@ function workspaceHost() {
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),
     weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
+    // The Activity page's Play recap: the last combat's Highlights, on this screen.
+    playRecap: () => playRecapApi({ everyone: false }),
     // Flash screens (GM): the library, defaults and playback for the editor page.
     ...(game.user.isGM ? {
       flashScreens: () => flash?.screens() ?? [],
@@ -1461,6 +2338,14 @@ Hooks.once("init", () => {
   game.settings.register(ID,'showControlButton',{name:'Show Animater scene control button',
     hint:'Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater.',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
+  // On for GMs, off for players: game.user does not exist yet at init, the world's user data does.
+  game.settings.register(ID,'hoverExplain',{name:'Explain animations on hover',
+    hint:'Hovering a token shows what Animater is playing on it right now: each animation\'s name, whether it comes from a catalog or a recipe, and whether it lasts.',
+    scope:'client',config:true,type:Boolean,default:hoverExplainDefault(game),onChange:()=>hoverExplain.refresh()});
+  // Every Animater setting but the animation quality, by topic, in one window (ui/settings-window.mjs).
+  game.settings.registerMenu(ID,'settingsWindow',{name:'Animater settings',label:'Animater settings',icon:'fa-solid fa-sliders',
+    hint:'All of Animater\'s settings by topic, with a search. Each feature\'s switch for everyone (GM) sits beside its own switch for your screen.',
+    type:settingsWindow(ApplicationV2,{id:ID}),restricted:false});
   // The hit sounds engine: one menu (Hit sounds) holds its world switch and each device's mix (ui/hit-sounds-settings.mjs).
   game.settings.registerMenu(ID,'hitSoundsMenu',{name:'Hit sounds',label:'Hit sounds',icon:'fa-solid fa-volume-high',
     hint:'Weapon hits that sound like what they land on, and how you hear them: on or off, volume, blood, echo, and hearing hits where they happen.',
@@ -1568,6 +2453,7 @@ Hooks.once("init", () => {
     onChange: () => persistentStates?.schedule(),
   });
   registerFlashSettings(ID);
+  registerRecapSettings(ID);
   game.settings.register(ID, DUALITY_ACCENT, {
     name: "Hope/Fear accent",
     hint: "Daggerheart: a duality roll with Hope adds a short gold glint on the roller's token, one with Fear a dark purple wisp, beside the item's own animation. Critical successes keep their own crit visuals.",
@@ -1585,7 +2471,7 @@ Hooks.once("init", () => {
   });
   game.settings.register(ID, LIGHT_REVEALS, {
     name: "Effect light reveals creatures (PF2e Visioner, homebrew)",
-    hint: "For PF2e Visioner's auto-visibility only. When on, a creature lit by a spell's light (a Fireball in a dark room) counts as lit, so anyone with line of sight can see it for that moment. Not the rules: most spells don't shed light. Off, Visioner ignores effect lights. Needs PF2e Visioner 8.14.11 or later; without Visioner this does nothing.",
+    hint: "For PF2e Visioner's auto-visibility only. When on, a creature lit by a spell's light (a Fireball in a dark room) counts as lit, so anyone with line of sight can see it for that moment. Not the rules: most spells don't shed light. Off, Visioner ignores effect lights. Needs PF2e Visioner 8.14.12 or later; without Visioner this does nothing.",
     // Listed only where PF2e Visioner runs: elsewhere it would do nothing.
     scope: "world", config: Boolean(game.modules.get("pf2e-visioner")?.active), type: Boolean, default: false,
   });
@@ -1593,6 +2479,14 @@ Hooks.once("init", () => {
     name: "Flickering and flashing effect lights",
     hint: "Turn off to see effect lights as a steady glow, without flicker or strobe.",
     scope: "client", config: true, type: Boolean, default: true,
+  });
+  // Lights are planned by the client that plays the effect (the world switches) and drawn by each client: this one
+  // stops only the drawing here.
+  game.settings.register(ID, "effectLightingLocal", {
+    name: "Effect lighting on my screen",
+    hint: "Turn off to never light the scene from Animater's effects on this screen.",
+    scope: "client", config: false, type: Boolean, default: true,
+    onChange: (on) => effectLightsHere(on),
   });
   game.settings.register(ID, "projectileWalls", {
     name: "Projectiles stop at walls",
@@ -1624,6 +2518,18 @@ Hooks.once("init", () => {
     // Turning it off wipes the marks already on the floor.
     onChange: () => markLayer.refresh(),
   });
+  game.settings.register(ID, "elementReactions", {
+    name: "Element reactions",
+    hint: "A new ground mark that lands on an older one can react: fire on frost puffs steam and melts it, frost on a scorch hisses out in smoke, fire on poison flares, lightning on acid arcs to the creatures standing in it, and acid on frost sizzles. Drawn on each screen that shows ground marks.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (!on) markReactions.clear(); },
+  });
+  game.settings.register(ID, "elementReactionsLocal", {
+    name: "Element reactions on my screen",
+    hint: "Turn off to never draw element reactions (steam, smoke, flares, arcs) on this screen.",
+    scope: "client", config: false, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) markReactions.clear(); },
+  });
   game.settings.register(ID, "afterimages", {
     name: "Afterimage trails",
     hint: "Charges, leaps, knockbacks and teleports that Animater plays leave a brief trail of ghost copies behind the token.",
@@ -1635,6 +2541,123 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true,
     // Off: the ghosts already drawn go at once.
     onChange: (on) => { if (on === false) motions?.afterimages?.clear(); },
+  });
+  game.settings.register(ID, "movementFeel", {
+    name: "Movement effects",
+    hint: "Moving tokens kick up dust on dirt, grass, sand and snow, ripple water and faintly scuff stone and wood; fliers cast a soft shadow on the ground. Set each scene's floor in its configuration. Drawn on each screen and never saved.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) movementFeel.clear(); },
+  });
+  game.settings.register(ID, "movementFeelLocal", {
+    name: "Movement effects on my screen",
+    hint: "Turn off to never draw movement dust, ripples or flier shadows on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) movementFeel.clear(); },
+  });
+  game.settings.register(ID, "walkedPathHighlight", {
+    name: "Walked path highlight",
+    hint: "Foundry highlights every square a token moves through, which hides the dust, prints and splashes it leaves. Faded: the squares already walked show at a quarter strength (the way ahead stays as it is). Hidden: walked squares are not highlighted. As Foundry draws it: unchanged.",
+    scope: "client", config: true, type: String, default: "fade",
+    choices: { fade: "Faded", hide: "Hidden", off: "As Foundry draws it" },
+  });
+  game.settings.register(ID, "movementStealth", {
+    name: "Movement respects stealth",
+    hint: "Players only see and hear what their characters could: an undetected or unnoticed creature moves in silence and leaves no tracks, and a hidden one is heard but leaves nothing to see (PF2e Visioner, judged from each player's own tokens, else the creature's conditions). Off: everyone sees and hears every movement drawn on their screen. Tokens the GM hid never give anything away either way.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => awareness.clear(),
+  });
+  game.settings.register(ID, "movementGmPerception", {
+    name: "GM perceives movement",
+    hint: "Everything: you see and hear every creature move (except tokens hidden in Foundry). As my selected token: with a token selected, you see and hear only what it could, as its player would; with none selected, everything.",
+    scope: "client", config: true, type: String, default: "all",
+    choices: { all: "Everything", token: "As my selected token" },
+    onChange: () => awareness.clear(),
+  });
+  game.settings.register(ID, "burrowHoles", {
+    name: "Burrow holes",
+    hint: "A burrowing creature leaves a hole where it goes under and a wider one where it comes up, with earth thrown out, lingering about 20 seconds.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "burrowSink", {
+    name: "Burrowed creatures sink out of sight",
+    hint: "A creature below the floor sinks into its hole and vanishes for players who don't own it (they still see the ground churn and hear it dig); its owner and the GM see a faint ghost. It rises back out where it surfaces.",
+    scope: "world", config: true, type: Boolean, default: true,
+    // Off: every token comes straight back as Foundry draws it. On: tokens already under go down at once.
+    onChange: () => clearBurrowSink(),
+  });
+  game.settings.register(ID, "footstepAcoustics", {
+    name: "Footsteps ring in the room",
+    hint: "Footsteps, wing beats and footfall thuds echo softly in the room they happen in and sound muffled from behind a wall, as Animater's hit sounds do (with Room acoustics and Muffle sounds behind walls on).",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "quietSneaking", {
+    name: "Sneaking is quiet",
+    hint: "A creature moving stealthily steps softer, slower and duller, and only a Huge or bigger one still thuds: PF2e's Avoid Notice exploration activity or a Sneak effect, PF2e Visioner's sneaking, D&D 5e's Hiding status.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => sneakCache.clear(),
+  });
+  game.settings.register(ID, "footfallTremor", {
+    name: "Giant footfalls shake the view",
+    hint: "Every footfall of a Huge or Gargantuan creature gives a small tremor to screens that hear it nearby, stronger the heavier it is (a stone golem or a dragon more than a giant). Needs Camera shake on.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "creatureIdleSounds", {
+    name: "Creatures growl on their turn",
+    hint: "With PF2e Creature Sounds active, a Large or bigger NPC sometimes growls from where it stands as its combat turn starts, heard only by those who could hear it. Uses that module's sound sets and volume.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "trackedPrints", {
+    name: "Feet carry mud, water and snow",
+    hint: "A creature that walked through water, mud or snow leaves wet, muddy or snowy prints in its own tracks on the next floor for a few strides, fainter each stride. Creatures that slither, ooze or leave no prints carry nothing.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "bloodTrail", {
+    name: "Wounded creatures leave blood drops",
+    hint: "A badly hurt creature (a quarter of its HP or less) now and then drips blood as it moves, lasting about 20 seconds. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "weatherOnGround", {
+    name: "Weather on the ground",
+    hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "idleLife", {
+    name: "Idle life",
+    hint: "Creatures on screen idle subtly: living creatures breathe and fliers bob in the air. Constructs, undead, objects and creatures that are down or defeated stay still, and any condition's movement takes over. Drawn on each screen at Balanced quality or better.",
+    scope: "world", config: true, type: Boolean, default: true,
+    // Takes effect at once: the breathing starts or stops on every screen.
+    onChange: () => idleLife?.sync(),
+  });
+  game.settings.register(ID, "idleLifeLocal", {
+    name: "Idle life on my screen",
+    hint: "Turn off to never draw idle breathing or hovering on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: () => idleLife?.sync(),
+  });
+  game.settings.register(ID, "idleLifeStrength", {
+    name: "Idle life strength",
+    hint: "How much creatures breathe and fliers bob on this screen: 1 is a visible but calm breath, 2 twice as much, 0.5 half.",
+    scope: "client", config: true, type: Number, range: { min: 0.5, max: 2, step: 0.25 }, default: 1,
+    onChange: () => idleLife?.sync(),
+  });
+  game.settings.register(ID, "breathVapor", {
+    name: "Breath shows in the cold",
+    hint: "In the cold (snow falling, a snow or ice floor underfoot, or a scene flagged cold), breathing creatures on screen puff a faint white cloud with each breath out. Constructs and undead do not. Drawn on each screen at Balanced quality or better, and not where idle life is off on that screen.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) breathVapor.clear(); },
+  });
+  game.settings.register(ID, "woundedLooks", {
+    name: "Wounded looks",
+    hint: "Creatures show how hurt they are. At half their HP or less they look wounded; at a quarter or less the look is stronger, they stand hunched and limp as they move. Healing takes it away, and a defeated creature shows the defeated look instead. Choose whether every creature shows it or only player characters.",
+    scope: "world", config: true, type: String, default: "all",
+    choices: { all: "All creatures", pcs: "Player characters only", off: "Off" },
+    onChange: () => woundedLooks?.sync(),
+  });
+  game.settings.register(ID, "woundedLooksLocal", {
+    name: "Wounded looks on my screen",
+    hint: "Turn off to never draw wounded looks, hunches or limps on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: () => woundedLooks?.sync(),
   });
   game.settings.register(ID, "mapDistortion", {
     name: "Map distortion",
@@ -1652,6 +2675,36 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true,
     // Off: whatever is bending stops at once. On: its shader is readied before the next blast.
     onChange: (on) => { if (on === false) distortionHost.clear(); else rewarmShaders(); },
+  });
+  game.settings.register(ID, "cameraShake", {
+    name: "Camera shake",
+    hint: "Big blasts jolt the view for a moment on each screen, more for bigger blasts and less the further away they land. Drawn only on screens at Full or Light animation quality.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) cameraShake.clear(); },
+  });
+  game.settings.register(ID, "cameraShakeLocal", {
+    name: "Camera shake on my screen",
+    hint: "Turn off to never shake the view on this screen. Off at first when this browser asks for reduced motion.",
+    scope: "client", config: true, type: Boolean,
+    default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
+    onChange: (on) => { if (on === false) cameraShake.clear(); },
+  });
+  game.settings.register(ID, "cameraShakeStrength", {
+    name: "Camera shake strength",
+    hint: "How hard blasts shake the view on this screen, as a multiple of the usual jolt.",
+    scope: "client", config: true, type: Number, range: { min: 0.25, max: 2, step: 0.25 }, default: 1,
+  });
+  game.settings.register(ID, "killCam", {
+    name: "Slow-motion kill-cam",
+    hint: "When a killing blow lands on an NPC, every screen that can see it eases the view towards it with a gentle zoom, slows Animater's effects on it and fades the colour for a moment, then pans back. The finisher and Finish Him! wait for it. Drawn only on screens at Full or Light animation quality.",
+    scope: "world", config: true, type: Boolean, default: false,
+    onChange: (on) => { if (on === false) killCam.clear(); },
+  });
+  game.settings.register(ID, "killCamLocal", {
+    name: "Kill-cam on my screen",
+    hint: "Turn off to never move the view or slow effects for a kill-cam on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) killCam.clear(); },
   });
   game.settings.register(ID, "roomAcoustics", {
     name: "Room acoustics from walls",
@@ -1671,6 +2724,23 @@ Hooks.once("init", () => {
   game.settings.register(ID, DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  game.settings.register(ID, "dispelShatter", {
+    name: "Dispels shatter lasting effects",
+    hint: "After a successful counteract check (PF2e, SF2e) or Dispel Magic or Counterspell (D&D 5e), Animater's lasting areas and auras that end in the next few seconds break apart like glass. A failed one makes the lasting animations on its targets flicker, then hold.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) { shatterHost.clear(); dispelFlicker.clear(); dispelWindow.clear(); } },
+  });
+  game.settings.register(ID, "dispelShatterLocal", {
+    name: "Dispel shatter on my screen",
+    hint: "Turn off to never draw dispels shattering or flickering lasting effects on this screen.",
+    scope: "client", config: false, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) { shatterHost.clear(); dispelFlicker.clear(); dispelWindow.clear(); } },
+  });
+  game.settings.register(ID, "momentum", {
+    name: "Momentum",
+    hint: "Hits in a row by the same attacker on the same target, in one turn (or within 12 seconds out of combat), land harder: bigger, louder and with stronger ripples. A miss starts the streak over. In PF2e and SF2e, a third Strike in a turn that misses looks strained.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
@@ -1714,6 +2784,12 @@ Hooks.once("init", () => {
   game.settings.register(ID, DEFAULT_FINISHER_ENDING, { scope: "world", config: false, type: String, default: "" });
   registerDefeatedLook(game.settings, ID, { onChange: () => persistentStates?.schedule() });
   installDefeatedLook(Hooks, { mode: () => game.settings.get(ID, DEFEATED_LOOK), statuses: () => (game.system.id === "daggerheart" ? DH_DEFEATED_STATUSES : [defeatedStatusId()]) });
+  // The Animater settings window edits these; Configure Settings keeps only the animation quality. Each
+  // registration's own `config` above still says where it applies, as the window's rows do (ui/settings-window.mjs).
+  for (const key of WINDOW_SETTING_KEYS) {
+    const setting = key === "quality" ? null : game.settings.settings?.get?.(`${ID}.${key}`);
+    if (setting) try { setting.config = false; } catch (error) { console.warn(`Animater | ${key} stays in Configure Settings`, error); }
+  }
   game.settings.registerMenu(ID, "workspace", {
     name: "Animater workspace",
     label: "Open Animater",
@@ -1729,6 +2805,16 @@ Hooks.once("init", () => {
     restricted: false,
     onDown: () => {
       open();
+      return true;
+    },
+  });
+  game.keybindings.register(ID, "playRecap", {
+    name: "Play combat recap",
+    hint: "Replay the last combat's recap reel. A GM shows it on every screen when Combat recap is set to Everyone; anyone else sees it on their own. Esc skips it.",
+    editable: [],
+    restricted: false,
+    onDown: () => {
+      playRecapApi({ everyone: game.user.isGM && game.settings.get(ID, "combatRecap") === "everyone" });
       return true;
     },
   });
@@ -1825,6 +2911,49 @@ Hooks.on("renderSceneConfig", (app, html) => {
   group.className = "form-group";
   group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);
+});
+// Scene and Region configuration: the floor Animater's movement effects read (dust, ripples or a scuff).
+const floorSelect = (value, first, hint) => {
+  const group = document.createElement("div");
+  group.className = "form-group";
+  const options = FLOOR_CHOICES.map(([v, l]) => [v, v ? l : first]);
+  group.innerHTML = `<label>Animater floor</label><div class="form-fields"><select name="flags.${ID}.floor">${options.map(([v, l]) => `<option value="${v}"${v === (value ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">${hint}</p>`;
+  return group;
+};
+Hooks.on("renderSceneConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.floor"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="environment"]') ?? root.querySelector('.tab[data-tab="ambience"]') ?? root.querySelector('.tab[data-tab="basics"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  // Whether the scene is cold enough for breath to show (Breath shows in the cold).
+  if (!root.querySelector(`[name="flags.${ID}.cold"]`)) {
+    const raw = app.document?.flags?.[ID]?.cold, value = raw === true || raw === "cold" ? "cold" : raw === false || raw === "warm" ? "warm" : "";
+    const climate = document.createElement("div");
+    climate.className = "form-group";
+    climate.innerHTML = `<label>Animater climate</label><div class="form-fields"><select name="flags.${ID}.cold">${[["", "From the weather and floor"], ["cold", "Cold: breath shows"], ["warm", "Warm: no breath"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Whether creatures' breath shows as vapor here (Breath shows in the cold). From the weather and floor: cold in snow or a blizzard, or standing on snow or ice.</p>`;
+    tab.append(climate);
+  }
+  tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the scene (auto)", "What moving tokens walk on here: dust on dirt, grass, sand and snow, ripples on water, a faint scuff on stone and wood. From the scene: dirt when the scene has global illumination or its name or background sounds outdoors, else stone. Regions named for water (river, lake, pond, sea, stream, swamp) are water inside."));
+});
+// Token configuration: where breath vapor leaves this token's art (portrait art, top-down art turned to face, or an
+// edge where the head is drawn).
+Hooks.on("renderTokenConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.breathFrom"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  const doc = app.document ?? app.token ?? app.object, value = doc?.flags?.[ID]?.breathFrom ?? "";
+  const group = document.createElement("div");
+  group.className = "form-group";
+  group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
+  tab.append(group);
+});
+Hooks.on("renderRegionConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.floor"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's."));
 });
 Hooks.once("ready", () => {
   // Room-aware sound: each grid square's room, swept once on the sound's level, forgotten when walls, doors, the
@@ -1930,6 +3059,48 @@ Hooks.once("ready", () => {
   motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
+  // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
+  idleLife = new IdleLife({ body: conditionBody,
+    strength: () => { try { return game.settings.get(ID, "idleLifeStrength"); } catch { return 1; } },
+    enabled: () => game.settings.get(ID, "idleLife") !== false && game.settings.get(ID, "idleLifeLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.ready,
+    tokens: () => canvas.tokens?.placeables ?? [],
+    view: () => {
+      const stage = canvas.stage, s = stage?.scale?.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight];
+      return stage ? { x: stage.pivot.x - sw / 2 / s, y: stage.pivot.y - sh / 2 / s, width: sw / s, height: sh / s } : null;
+    },
+    statuses: (token) => [...Array.from(token.actor?.statuses ?? []), ...(token.actor?.itemTypes?.condition?.map((c) => c.slug) ?? [])],
+    defeated: (token) => isDefeated(token.actor, game.system.id === "daggerheart" ? DH_DEFEATED_STATUSES : [defeatedStatusId()]),
+    levelBase: () => canvas.level?.elevation?.base ?? 0 });
+  let idlePending = null;
+  const scheduleIdle = () => { idlePending ??= setTimeout(() => { idlePending = null; try { idleLife.sync(); } catch (error) { console.warn("Animater idle life:", error?.message ?? error); } }, 150); };
+  for (const hook of ["canvasReady", "canvasPan", "createToken", "updateToken", "deleteToken", "updateActor", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem", "sightRefresh", "clientSettingChanged", "updateSetting"])
+    Hooks.on(hook, scheduleIdle);
+  Hooks.on("canvasTearDown", () => { clearTimeout(idlePending); idlePending = null; idleLife.clear(); });
+  // Wounded looks: every client reads the same HP and draws the look locally (a Tokenshade
+  // look under its own key, beside any condition looks, and a hunch or limp through ConditionBody).
+  woundedLooks = new WoundedLooks({ body: conditionBody, fx: () => tokenFx, preset: () => builtinPreset("Wounded"),
+    enabled: () => game.settings.get(ID, "woundedLooks") !== "off" && game.settings.get(ID, "woundedLooksLocal") !== false && !!canvas?.ready,
+    mode: () => game.settings.get(ID, "woundedLooks"),
+    fxAllowed: () => allowsTokenFx(localQuality()) && tokenFx.ready(),
+    motionAllowed: () => allowsMotion(localQuality()),
+    tokens: () => canvas.tokens?.placeables ?? [],
+    hp: (actor) => hpState(actor, game.system.id),
+    defeated: (token) => isDefeated(token.actor, game.system.id === "daggerheart" ? DH_DEFEATED_STATUSES : [defeatedStatusId()]),
+    moving: tokenMoving });
+  let woundPending = null;
+  const scheduleWounds = () => { woundPending ??= setTimeout(() => { woundPending = null; try { woundedLooks.sync(); } catch (error) { console.warn("Animater wounded looks:", error?.message ?? error); } }, 120); };
+  for (const hook of ["canvasReady", "createToken", "deleteToken", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem", "sightRefresh", "clientSettingChanged", "updateSetting"])
+    Hooks.on(hook, scheduleWounds);
+  Hooks.on("updateActor", (actor, changes) => {
+    const track = hpPath(actor, game.system.id).replace(/\.value$/, "");
+    if (foundry.utils.hasProperty(changes, track)) scheduleWounds();
+  });
+  Hooks.on("updateToken", (doc, changes) => {
+    scheduleWounds();
+    // A move: a badly hurt creature limps for as long as it is under way.
+    if ("x" in changes || "y" in changes) { try { woundedLooks.poke(); } catch (error) { console.warn("Animater wounded looks:", error?.message ?? error); } }
+  });
+  Hooks.on("canvasTearDown", () => { clearTimeout(woundPending); woundPending = null; woundedLooks.clear(); });
   guardSequencerMotions(globalThis.Sequencer?.MotionManager, { claims: (data) => {
     if (!game.settings.get(ID, MOTION_PRIORITY)) return false;
     const token = fromUuidSync(data?.uuid, { strict: false })?.object;
@@ -1942,7 +3113,7 @@ Hooks.once("ready", () => {
     trace:(status,detail)=>runtime?.trace(status,detail)});
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
-    if (data?.sender !== clientId) { void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
+    if (data?.sender !== clientId) { receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); recap?.receive(data, senderId); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
     void persistentStates?.clear();
@@ -2006,8 +3177,13 @@ Hooks.once("ready", () => {
     groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
     // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
     afterimages: () => game.settings.get(ID, "afterimages") !== false,
+    // Hit streaks land harder (world setting); a streak lasts one combat turn, else 12 s.
+    momentum: () => { try { return game.settings.get(ID, "momentum") !== false; } catch { return true; } },
+    turnKey: () => { const c = game.combat; return c?.started ? `${c.id}:${c.round}:${c.turn}` : null; },
     // Big blasts, lasting fire and teleports bend the scene (world setting).
     mapDistortion,
+    // Big blasts shake each screen's view (world setting): their shocks are planned even with map distortion off.
+    cameraShake: () => shakeSetting("cameraShake", true) !== false,
     // How far a blast's shockwave ripples, as a multiple of its radius (world setting).
     shockwaveReach: () => { try { return Number(game.settings.get(ID, "shockwaveReach")); } catch { return undefined; } },
     // A two-handed heavy weapon: its critical hit sends a shockwave.
@@ -2256,6 +3432,27 @@ Hooks.once("ready", () => {
     refreshPersistent: () => persistentStates?.reconcile(),
     // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
     clearGroundMarks: (options) => clearGroundMarksApi(options),
+    // Replays the last combat's Highlights: on this screen, or (GM, everyone: true) on every screen. False when there is none.
+    recap: ({ everyone = false } = {}) => playRecapApi({ everyone }),
+    // GM only: share codes (one or several, or a list of them), export JSON, an export object or a recipe array,
+    // checked and merged by id like the Import box. Returns { added, replaced, skipped }.
+    importRecipes: async (data) => {
+      try {
+        if (!game.user.isGM) throw Error("Only a GM can import recipes.");
+        const plan = planRecipeImport(data, recipes());
+        if (plan.incoming.length) {
+          await game.settings.set(ID, "recipes", { schema: 1, recipes: plan.recipes });
+          persistentStates?.schedule();
+          app?.workspace?.render();
+        }
+        const { added, replaced, skipped } = plan;
+        ui.notifications.info(`Animater: ${added} recipe${added === 1 ? "" : "s"} added, ${replaced} replaced${skipped ? `, ${skipped} unchanged starter${skipped === 1 ? "" : "s"} skipped` : ""}.`);
+        return { added, replaced, skipped };
+      } catch (error) {
+        ui.notifications.error(`Animater: ${error.message}`);
+        throw error;
+      }
+    },
     finishers: finishersApi,
     sequencerSpeedups: sequencerSpeedupsApi,
     // id, saved recipe name, or a recipe object (e.g. from resolve()).
@@ -2294,6 +3491,8 @@ Hooks.once("ready", () => {
   flash = flashScreens({
     ID, clientId,
     quietHere: () => qualityRank(localQuality()) === 0,
+    showsHere: (screen) => recapHere(ID, screen),
+    killCamLength: (actor) => killCamWait(actor),
     resolveMedia: (src) => (!src || /\.(webm|mp4|png|jpe?g|webp|gif|svg)$/i.test(src) ? src : runtime.getCatalog().find((i) => i.key === src || i.key.startsWith(`${src}.`))?.file ?? ""),
     trace: (status, detail) => runtime.trace(status, detail),
   });
@@ -2309,6 +3508,25 @@ Hooks.once("ready", () => {
   // D&D applies damage without naming its attacker; its roll message does (finishers).
   if (game.system.id === "dnd5e") Hooks.on("dnd5e.calculateDamage", (actor, damages) => remember(damageFromParts(damages, actor?.id)));
   Hooks.on("createChatMessage", (message) => remember(damageFromMessage(message, game.system.id)));
+  // Combat recap: the active GM records highlights (with the attacker from damageLog) and plays them at combat end.
+  // Each screen replays the reel's moments as local previews (nothing written): the moment's own roll message
+  // re-resolves its recipe, else its item does.
+  recap = combatRecaps({
+    ID, clientId, flash, damageLog, quality: localQuality, trace: (status, detail) => runtime.trace(status, detail),
+    replay: async (moment, { source, targets }) => {
+      const message = game.messages?.get(moment.attackMessageId) ?? game.messages?.get(moment.damageMessageId) ?? null;
+      let event = null;
+      try { event = message ? eventFrom(message) : null; } catch { event = null; }
+      if (event && !event.item && event.itemUuid) event.item = await fromUuid(event.itemUuid).catch(() => null);
+      let recipe = event ? resolveEvent(event) : null;
+      if (!recipe && moment.itemUuid) {
+        const item = await fromUuid(moment.itemUuid).catch(() => null);
+        if (item) { event = { type: moment.eventType || "attack", systemId: game.system.id, item, actor: item.actor }; recipe = resolveEvent(event); }
+      }
+      if (!recipe) throw Error(`nothing to replay for ${moment.item || "this moment"}`);
+      return playTest(recipe, { ...event, source, targets, outcome: moment.outcome || event.outcome, automatic: false }, { preview: true });
+    },
+  });
   // Stages whose artwork is not installed (Free vs Patreon) are left out rather than blocking the rest.
   // Token filter layers play only while Tokenshade is on.
   const installedStages = (recipe) => ({ ...recipe, stages: recipe.stages.filter((s) => ["motion", "sound"].includes(s.kind) || (s.kind === "tokenfx" ? fxCatalog().tokenReady : resolveAsset(s, runtime.getCatalog()))) });
@@ -2459,7 +3677,8 @@ Hooks.once("ready", () => {
   };
   const playKill = async (actor, token, kill) => {
     // The last enemy falling: its screen (Finish Him!) plays first, then the finisher.
-    const finale = flash?.finaleLength?.(actor) ?? 0;
+    // The slow-motion kill-cam plays before both (Finish Him! waits for it too).
+    const finale = (flash?.finaleLength?.(actor) ?? 0) + killCamWait(actor);
     await Promise.all([motionSettled(token), finale ? new Promise((resolve) => setTimeout(resolve, finale + 150)) : null]);
     if (kill.endingOnly) return void await finishOnly(kill.recipe, token, kill.attacker);
     // Nothing played and nothing was written: the old collapse stands in.
@@ -2472,7 +3691,14 @@ Hooks.once("ready", () => {
     const tokens = (actor.getActiveTokens?.() ?? []).filter((token) => token.document?.parent?.id === canvas.scene?.id);
     if (options.animaterBlood) for (const token of tokens) splatBlood(actor, token, options.animaterHpBefore);
     if (!dropped && !game.settings.get(ID, DAMAGE_REACTIONS)) return;
+    // An NPC's killing blow: the slow-motion kill-cam here and on every screen that sees it, finisher or not.
+    const camMs = dropped ? killCamWait(actor) : 0;
     for (const token of tokens) {
+      if (camMs && !token.document?.hidden) {
+        const cam = { type: "kill-cam", sender: clientId, userId: game.user.id, sceneId: token.document.parent?.id, tokenId: token.id, ms: camMs };
+        try { game.socket.emit(`module.${ID}`, cam); } catch (error) { runtime.trace("Blocked", `Kill-cam: ${error.message}`); }
+        killCam.play(cam);
+      }
       const kill = dropped ? killFinisherFor(actor, token) : null;
       if (kill) void playKill(actor, token, kill).catch((error) => runtime.trace("Blocked", error.message));
       else playDamageMoment(actor, token, dropped);
@@ -2762,4 +3988,11 @@ Hooks.on("updateUser", (user, changes) => {
     void app?.close();
     ui.controls?.render();
   }
+});
+
+// Foundry's movement ruler: fade (or hide) the squares a token has already walked, so its dust, prints and splashes show
+// (integrations/walked-path.mjs; client setting "Walked path highlight").
+Hooks.once("ready", () => {
+  try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return game.settings.get(ID, "walkedPathHighlight"); } catch { return "fade"; } }); }
+  catch (error) { console.warn("Animater walked path:", error?.message ?? error); }
 });

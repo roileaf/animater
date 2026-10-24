@@ -1,5 +1,6 @@
 Surface hit sounds bundled with Animater. All CC0 (public domain), by Kenney (www.kenney.nl):
 - Impact Sounds 1.0: impact*.ogg
+- Impact Sounds 1.0 (footstep_snow_000-004, trimmed, faded and loudness-matched): snowstep_000-004.ogg
 - RPG Audio: chop, knifeSlice, dropLeather, handleSmallLeather
 The original license texts follow.
 
@@ -15,7 +16,7 @@ The original license texts follow.
 	License: (Creative Commons Zero, CC0)
 	http://creativecommons.org/publicdomain/zero/1.0/
 
-	This content is free to use in personal, educational and commercial projects.
+	This content is free to use in personal, educational and commercial projects.
 	Support us by crediting Kenney or www.kenney.nl (this is not mandatory)
 
 			------------------------------

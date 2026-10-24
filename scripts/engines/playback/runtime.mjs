@@ -28,6 +28,7 @@ import { isCritical, planDistortions } from '../distortion/scene-distortion.mjs'
 import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
+import { createMomentum, applyMomentum, applyStrain } from './momentum.mjs';
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 // A token's scene and level, else the scene and level this client views.
@@ -181,6 +182,8 @@ export class AnimaterRuntime {
     this.lasting = [];
     // Lasting plays still on the table, for the Activity page's Now playing: session -> row.
     this.running = new Map();
+    // Hit streaks and strained Strikes (engines/playback/momentum.mjs), on the combat turn the host names.
+    this.momentum = createMomentum({ now: () => this.host.now?.() ?? Date.now(), turnKey: () => this.host.turnKey?.() ?? null });
   }
   // The caster stopped concentrating: end the lasting areas of that spell (or, when
   // the spell is unknown, every concentration area that caster still holds).
@@ -286,7 +289,7 @@ export class AnimaterRuntime {
         "Skipped",
         `${event.item?.name ?? "Unknown item"}: ${event.skipReason ?? `no enabled ${event.type} recipe`}.`,
         null,
-        event.skipReason ? { item: event.item?.name } : { item: event.item?.name, reason: "no-recipe", itemType: event.item?.type },
+        event.skipReason ? { item: event.item?.name, reroll: event.reroll } : { item: event.item?.name, reason: "no-recipe", itemType: event.item?.type, reroll: event.reroll },
       );
     }
     // Other modules may claim the event (return false) before anything plays.
@@ -336,6 +339,11 @@ export class AnimaterRuntime {
     recipe = pickVariants(recipe);
     // A miss never lands on the target; a critical hit lands harder.
     if (context.outcome) recipe = validateRecipe(withOutcome(recipe, context));
+    // Momentum (world setting): a hit streak lands harder; a strained PF2e Strike's miss looks laboured.
+    const streak = !preview && context.automatic && this.host.momentum?.() === true ? this.momentum.observe(context) : null;
+    const surge = streak?.factor > 1 ? streak.factor : 1;
+    if (surge > 1) recipe = applyMomentum(recipe, surge);
+    if (streak?.strained) recipe = validateRecipe(applyStrain(recipe));
     recipe = prepareRecipeSounds(recipe, this.host.soundCatalog?.());
     recipe = withWeaponScale(recipe, this.host.weaponScale?.() ?? 1);
     if (!this.host.ready())
@@ -411,12 +419,17 @@ export class AnimaterRuntime {
     let failed = false;
     // Every client remembers what this actor played, so it can warm those files on their next turn.
     const animaterActor = context.source?.actor?.id;
+    // ...and what played, from where, started by whom, so any client can explain it on hover (ui/hover-explain.mjs).
+    const playedOrigin = !preview && context.automatic ? this.originOf(recipe, context) : null;
+    const animaterRecipe = preview ? null : { name: String(recipe.name ?? ""), ...(playedOrigin ? { origin: playedOrigin } : {}), by: String(this.host.userId?.() ?? "") };
     // Effect lights (anchor stage -> light), planned from the final timings.
     let lights = null;
     // Ground marks (anchor stage -> mark), planned from the same timings.
     let groundMarks = null;
     // Map distortions (anchor stage -> warp), planned from the same timings.
     let distortions = null;
+    // Camera shakes (anchor stage -> shock) while map distortion is off; on, its warp tags serve the shake.
+    let shakes = null;
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -472,7 +485,9 @@ export class AnimaterRuntime {
         const animaterMark = groundMarks?.get(s) ?? null;
         // ...and bends the scene from this one (engines/distortion/scene-distortion.mjs).
         const animaterWarp = distortions?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}) }));
+        // ...and shakes the view from this one (engines/camera/camera-shake.mjs).
+        const animaterShake = shakes?.get(s) ?? null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -670,8 +685,10 @@ export class AnimaterRuntime {
         if (region?.documentName === "Region") for (const tag of groundMarks.values()) if (tag.shape !== "spot") tag.regionId = region.id;
       }
       // Map distortion (world setting): described once here on the same final plan.
-      if (this.host.mapDistortion?.() === true) {
-        distortions = planDistortions(plan, {
+      // Camera shake (world setting) needs the shocks alone when map distortion is off.
+      const warps = this.host.mapDistortion?.() === true;
+      if (warps || this.host.cameraShake?.() === true) {
+        const planned = planDistortions(plan, {
           context,
           tiers,
           gridPx: grid,
@@ -686,6 +703,9 @@ export class AnimaterRuntime {
           // A critical hit with a heavy weapon ripples too (only a critical play asks).
           heavyItem: context.item && isCritical(context) ? this.host.heavyItem?.(context.item) === true : false,
         });
+        if (surge > 1) for (const tag of planned.values()) tag.strength = (tag.strength ?? 1) * surge;
+        if (warps) distortions = planned;
+        else shakes = new Map([...planned].filter(([, tag]) => tag.kind === "shock"));
       }
       // Afterimage trails (world setting; on while the host has none).
       // An unpicked recipe colour (the default card accent) leaves plain motions their soft white.
@@ -783,7 +803,7 @@ export class AnimaterRuntime {
         preview ? "Previewed" : "Played",
         `${plan.length} effects · ${context.targets?.length ?? 0} targets`,
         recipe,
-        { origin, preview, automatic: !preview && context.automatic, session: persists ? session : null },
+        { origin, preview, automatic: !preview && context.automatic, session: persists ? session : null, reroll: context.reroll },
       );
       return session;
     } catch (error) {

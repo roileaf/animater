@@ -322,7 +322,7 @@ function recipeCardMenu(w, e, card) {
   e.preventDefault();
   const id = card.dataset.id, r = w.listedRecipes?.().find((x) => x.id === id) ?? w.host.recipes().find((x) => x.id === id);
   if (!r) return;
-  cardMenu(w, e, `<b>${esc(r.name)}</b><button role="menuitem" data-action="recipe-menu-open" data-id="${esc(id)}">Open in Studio</button><button role="menuitem" data-action="recipe-menu-duplicate" data-id="${esc(id)}">Duplicate</button><button role="menuitem" class="is-danger" data-action="recipe-menu-delete" data-id="${esc(id)}">Delete…</button>`);
+  cardMenu(w, e, `<b>${esc(r.name)}</b><button role="menuitem" data-action="recipe-menu-open" data-id="${esc(id)}">Open in Studio</button><button role="menuitem" data-action="recipe-menu-duplicate" data-id="${esc(id)}">Duplicate</button><button role="menuitem" data-action="recipe-menu-share" data-id="${esc(id)}">Copy share code</button><button role="menuitem" data-action="recipe-menu-macro" data-id="${esc(id)}">Copy as macro</button><button role="menuitem" class="is-danger" data-action="recipe-menu-delete" data-id="${esc(id)}">Delete…</button>`);
 }
 // Right-click a flash screen tile: open or delete it.
 function flashTileMenu(w, e, tile) {

@@ -1,4 +1,5 @@
-import { validateRecipe } from "./model.mjs";
+import { validateRecipe, parseImport } from "./model.mjs";
+import { mergeImported } from "./recipe-share.mjs";
 import { paceGeneratedMotion } from "../engines/motion/motion-pacing.mjs";
 import { STARTER_MEDIA_TIMING } from "../../data/starter-media-timing.mjs";
 const stage = (kind, assets, delay = 0, duration = 1500, scale = 1) => ({
@@ -293,3 +294,19 @@ export function untouchedStarterRecipe(r) {
 // Each page exports its own kind: the Recipes page plain recipes, the Finishers page finishers.
 export const recipesToExport = (list, { finishers = false } = {}) => (list ?? []).filter((r) => !!r.finisher === finishers && !untouchedStarterRecipe(r));
 export const importableRecipes = (list) => (list ?? []).filter((r) => !untouchedStarterRecipe(r));
+// One import, as the Import box and api.importRecipes run it: share codes or export JSON (text), an export
+// object, a recipe array, or a list of texts. Validated, untouched starters skipped, merged by id, at most 200.
+export function planRecipeImport(data, existing) {
+  let parsed;
+  if (Array.isArray(data) && data.length && data.every((d) => typeof d === "string")) {
+    // Several pieces, each codes or an export: the later one wins an id.
+    const byId = new Map();
+    for (const piece of data) for (const r of parseImport(piece)) { byId.delete(r.id); byId.set(r.id, r); }
+    parsed = [...byId.values()];
+  } else if (typeof data === "string") parsed = parseImport(data);
+  else if (Array.isArray(data)) parsed = parseImport(JSON.stringify({ schema: 1, recipes: data }));
+  else if (data && typeof data === "object") parsed = parseImport(JSON.stringify(data));
+  else throw Error("Expected Animater recipe export (schema 1, up to 200 recipes).");
+  const incoming = importableRecipes(parsed);
+  return { incoming, ...mergeImported(existing, incoming), skipped: parsed.length - incoming.length };
+}
