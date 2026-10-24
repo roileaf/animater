@@ -29,7 +29,7 @@ const HUMAN = 'shoe shoes boot boots heel heels sneaker sneakers human person ma
 const NOISE = 'music loop loops song beat synth synthesized 8bit 8-bit chiptune cartoon voice talking speech ambience ambiance atmosphere drone';
 const FAMILIES = {
   paws: {
-    label: 'Paws (wolves, dogs, cats, bears)', max: 380,
+    label: 'Paws (wolves, dogs, cats, bears)', max: 700,
     avoid: `${HUMAN} ${NOISE} bark barking barks growl whine howl meow purr collar leash tags jingle`,
     variants: {
       hard: { label: 'stone, wood, ice: claws ticking', want: 'paw paws claw claws nails dog cat', queries: ['dog nails floor', 'dog claws wooden floor', 'dog paws tile', 'dog walking hardwood', 'dog footsteps floor', 'cat walking wood floor'] },
@@ -38,7 +38,7 @@ const FAMILIES = {
     },
   },
   hooves: {
-    label: 'Hooves (horses, deer, goats, centaurs, minotaurs)', max: 480,
+    label: 'Hooves (horses, deer, goats, centaurs, minotaurs)', max: 1400,
     avoid: `${HUMAN} ${NOISE} neigh neighing whinny snort snorting carriage cart wagon coconut bell bells saddle`,
     variants: {
       hard: { label: 'stone, wood, ice: a ringing clop', want: 'hoof hooves horse donkey pony goat', queries: ['horse hooves cobblestone', 'horse walking concrete', 'horse hooves stone', 'horse hoof asphalt', 'horse walking wooden bridge', 'goat hooves'] },
@@ -54,7 +54,7 @@ const FAMILIES = {
     },
   },
   slither: {
-    label: 'Slither (snakes, nagas, worms)', max: 1400,
+    label: 'Slither (snakes, nagas, worms)', max: 2400,
     avoid: `${HUMAN} ${NOISE} hiss hissing rattle rattlesnake rope zipper plastic bag`,
     variants: {
       any: { label: 'everywhere: scales sliding', want: 'snake serpent slither slithering scales slide sliding reptile', queries: ['snake slither', 'snake slithering', 'snake moving', 'serpent slither', 'scales sliding', 'snake crawl sand'] },
@@ -98,17 +98,33 @@ export function footfalls(x, max) {
     if (env[i] < rise || env[i - 1] >= rise) { i++; continue; }
     let start = i; while (start > 0 && env[start - 1] > floor + 6 && i - start < 6) start--;
     let peak = i; for (let k = i; k < Math.min(env.length, i + 20); k++) if (env[k] > env[peak]) peak = k;
-    const quiet = Math.max(env[peak] - 32, floor + 5);
-    let end = peak, below = 0;
-    while (end < env.length - 1 && (end - start) * 5 < max) { end++; if (env[end] < quiet) { if (++below >= 8) break; } else below = 0; if (env[end] > env[peak] - 3 && end - peak > 24) break; }
-    const ms = (end - start) * 5;
+    // It rings until it has sunk into the recording's own hush (or 45 dB down) and stayed there 60 ms; it stops early only
+    // where the next footfall rises out of its decay.
+    const quiet = Math.max(env[peak] - 45, floor + 2);
+    let end = peak, below = 0, low = peak, next = false;
+    while (end < env.length - 1 && (end - start) * 5 < max) {
+      end++;
+      if (env[end] < env[low]) low = end;
+      if (end - peak >= 24 && env[end] >= rise && env[peak] - env[low] >= 20 && env[low] < floor + 12) { end = low; next = true; break; }
+      if (env[end] < quiet) { if (++below >= 12) break; } else below = 0;
+    }
+    // A little of the room after it, unless the next footfall is already there.
+    const ms = (end - start) * 5 + (next ? 0 : 40);
     const tail = env.slice(Math.min(end, env.length - 1), Math.min(env.length, end + 12));
     const clean = !tail.some((v) => v > env[peak] - 10);
     let clip = 0; for (let k = start * 220; k < Math.min(x.length, end * 220); k++) if (Math.abs(x[k]) > 0.995) clip++;
-    if (ms >= 60) out.push({ startMs: Math.max(0, start * 5 - 10), ms: ms + 10, snr: env[peak] - floor, attackMs: (peak - start) * 5, clean, clip, score: (env[peak] - floor) + (clean ? 6 : -8) - (clip > 3 ? 20 : 0) - Math.max(0, (peak - start) * 5 - 40) / 4 });
-    i = end + 20; // the next footfall starts at least 100 ms later
+    if (ms >= 80) out.push({ startMs: Math.max(0, start * 5 - 15), ms: ms + 15, snr: env[peak] - floor, attackMs: (peak - start) * 5, clean, clip, score: (env[peak] - floor) + (clean ? 6 : -8) - (clip > 3 ? 20 : 0) - Math.max(0, (peak - start) * 5 - 40) / 4 });
+    i = Math.max(end, peak + 20); // the next footfall starts at least 100 ms after this one's peak
   }
-  return out;
+  // A scuff then a thump, or a claw then the pad, is one footfall: pieces less than 120 ms apart join (within `max`).
+  const merged = [];
+  for (const f of out) {
+    const last = merged[merged.length - 1];
+    if (last && f.startMs - (last.startMs + last.ms) < 120 && f.startMs + f.ms - last.startMs <= max) {
+      Object.assign(last, { ms: f.startMs + f.ms - last.startMs, snr: Math.max(last.snr, f.snr), clean: f.clean, clip: last.clip + f.clip, score: Math.max(last.score, f.score) });
+    } else merged.push({ ...f });
+  }
+  return merged;
 }
 
 const words = (text) => new Set(String(text).toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean));
@@ -152,10 +168,10 @@ export async function targetLevel() {
   return { level: percentile(levels, 0.5), from: levels.length };
 }
 
-// One footfall: trimmed, a 3 ms fade in and a fade over its last third, rumble below 40 Hz removed, matched to `level`
+// One footfall: trimmed, a 3 ms fade in and a short fade (a fifth of it, 30–120 ms) over its already quiet tail, rumble below 40 Hz removed, matched to `level`
 // and kept 1 dB under full scale; mono 44.1 kHz Vorbis like the bundled steps.
 export async function cut(raw, fall, level, out) {
-  const start = fall.startMs / 1000, len = fall.ms / 1000, fade = Math.max(0.02, len / 3);
+  const start = fall.startMs / 1000, len = fall.ms / 1000, fade = Math.min(0.12, Math.max(0.03, len * 0.2));
   const tmp = `${out}.wav`;
   await run('ffmpeg', ['-v', 'error', '-y', '-ss', String(start), '-t', String(len), '-i', raw, '-ac', '1', '-ar', String(RATE),
     '-af', `highpass=f=40,afade=t=in:d=0.003,afade=t=out:st=${(len - fade).toFixed(3)}:d=${fade.toFixed(3)}`, tmp]);
