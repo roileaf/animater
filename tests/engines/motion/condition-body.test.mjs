@@ -38,6 +38,24 @@ test("Foundry refreshing the token mid-treatment is respected, not undone", () =
   assert.equal(Math.round(t.mesh.position.x), 800);
 });
 
+test('prone does not adopt a temporary action rotation as its upright baseline',()=>{
+ const {body,step}=runner(),t=token();t.document={rotation:0};
+ body.add('prone',t,'prone');step(500);
+ t.mesh.rotation=Math.PI/2; // Another action animation writes a quarter turn while prone.
+ step(16);
+ assert.ok(Math.abs(t.mesh.rotation-80*Math.PI/180)<1e-9,'one prone turn, not 170 degrees');
+ body.remove('prone');step(500);
+ assert.equal(t.mesh.rotation,0,'stands upright after the condition is removed');
+});
+
+test('a genuine document rotation while prone becomes the new upright direction',()=>{
+ const {body,step}=runner(),t=token();t.document={rotation:0};
+ body.add('prone',t,'prone');step(500);
+ t.document.rotation=45;t.mesh.rotation=Math.PI/4;step(16);
+ body.remove('prone');step(500);
+ assert.equal(t.mesh.rotation,Math.PI/4);
+});
+
 test("one-off motions take priority and petrified drains colour without moving", () => {
   let busy = false;
   const { body, step } = runner({ busy: () => busy }), t = token();

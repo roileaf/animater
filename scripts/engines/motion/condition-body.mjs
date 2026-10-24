@@ -130,7 +130,7 @@ export class ConditionBody {
     if (!a || !mesh || mesh.destroyed) return;
     if (mesh.position.x === a.setX) mesh.position.x = a.baseX;
     if (mesh.position.y === a.setY) mesh.position.y = a.baseY;
-    if (mesh.rotation === a.setR) mesh.rotation = a.baseR;
+    if (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) mesh.rotation = a.baseR;
     if (mesh.scale.y === a.setSY) mesh.scale.y = a.baseSY;
   }
   tick() {
@@ -157,7 +157,10 @@ export class ConditionBody {
       // Natural pose: what Foundry last set, minus our own delta if still in place.
       const baseX = a && mesh.position.x === a.setX ? a.baseX : mesh.position.x;
       const baseY = a && mesh.position.y === a.setY ? a.baseY : mesh.position.y;
-      const baseR = a && mesh.rotation === a.setR ? a.baseR : mesh.rotation;
+      // A temporary Trip/action animation can also write this mesh. While prone,
+      // it must not become the new upright direction and gain a second quarter
+      // turn. Native document rotation changes still establish a new baseline.
+      const baseR = a && (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) ? a.baseR : mesh.rotation;
       const baseSY = a && mesh.scale.y === a.setSY ? a.baseSY : mesh.scale.y;
       const full = bodyPose(r.kind, (time - r.start) / 1000, r.strength, { period: r.period }), w = token.w ?? 100;
       if (full.yh) full.y = (full.y ?? 0) + (full.yh * (token.h ?? w)) / w;
@@ -168,7 +171,7 @@ export class ConditionBody {
       mesh.position.y = baseY + (pose.y ?? 0) * w;
       mesh.rotation = baseR + ((pose.r ?? 0) * Math.PI) / 180;
       mesh.scale.y = baseSY * (pose.sy ?? 1);
-      this.poses.set(token, { baseX, baseY, baseR, baseSY, setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y });
+      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone',docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y });
     }
     if (this.records.size) this.handle = this.frame(() => this.tick());
   }

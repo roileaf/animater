@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.4 (2026-10-24)
+
+- **Prone rotation compatibility.** Fixed a temporary action animation's rotation being adopted as a prone token's upright direction, producing a near-upside-down pose and leaving a sideways token after removing Prone. The prone pose now keeps its original direction while respecting deliberate document rotation changes.
+
 ## 2.1.3 (2026-10-24)
 
 - **Revived token shape.** Fixed death collapses capturing an idle breath, wounded hunch or condition pose as the token's normal size and rotation. Reviving after combat now restores the original artwork geometry without reloading. The same handoff fix protects other one-off token motions.
