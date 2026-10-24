@@ -77,16 +77,28 @@ export function withoutHexDome(recipe){
  }
  return recipe;
 }
+// Older copies record their source without the document type ("Compendium.dnd5e.monsterfeatures.<id>").
+const canonicalUuid=uuid=>typeof uuid==='string'?uuid.replace(/^(Compendium\.[^.]+\.[^.]+)\.([^.]+)$/,'$1.Item.$2'):uuid;
 export function findDndEntry(event){
  const item=event.item;if(!item)return null;
- for(const uuid of [event.itemUuid,item._stats?.compendiumSource,item.flags?.core?.sourceId,item.original?.uuid,item.uuid]){const entry=byUuid.get(uuid);if(entry)return entry;}
  const kind=item.type==='spell'?'spell':item.type==='feat'?'feat':item.type==='weapon'?'weapon':'item';
+ let legacy=null;
+ for(const uuid of [event.itemUuid,item._stats?.compendiumSource,item.flags?.core?.sourceId,item.original?.uuid,item.uuid]){
+  const entry=byUuid.get(uuid);if(entry)return entry;
+  // A 2014 statblock's Hooves is a weapon attack copied from a utility feature: a legacy
+  // source of another kind yields to a same-kind entry by name.
+  const old=byUuid.get(canonicalUuid(uuid));if(old&&old.kind===kind)return old;legacy??=old;
+ }
  const edition=item.system?.source?.rules==='2014'?'2014':item.system?.source?.rules==='2024'?'2024':null;
- const byName=name=>dndEntries(kind).filter(e=>normalize(e.name)===normalize(name)||item.system?.identifier&&e.identifier===item.system.identifier);
+ const byName=(name,k=kind)=>dndEntries(k).filter(e=>normalize(e.name)===normalize(name)||item.system?.identifier&&e.identifier===item.system.identifier);
  let matches=byName(item.name);
  // Official books keep the wizard's name the SRD drops ("Evard's Black Tentacles",
  // "Bigby's Hand" → Black Tentacles, Arcane Hand).
  if(!matches.length&&kind==='spell')matches=byName(srdSpellName(item.name));
+ // Statblocks disagree on whether a natural attack is a feature or a weapon (2014 Bite and
+ // Claw are features, the catalog's are weapons; Constrict and Stomp the other way round).
+ if(!matches.length&&legacy)return legacy;
+ if(!matches.length&&(kind==='feat'||kind==='weapon'))matches=byName(item.name,kind==='feat'?'weapon':'feat');
  return matches.find(e=>e.edition===edition)??matches.find(e=>e.edition==='2024')??matches[0]??null;
 }
 const BOOK_SPELL_NAMES={"bigby's hand":'Arcane Hand',"mordenkainen's sword":'Arcane Sword',"nystul's magic aura":"Arcanist's Magic Aura"};
@@ -101,8 +113,15 @@ export function dndVariantForEvent(entry,event){
  if(!event.activityId&&!event.activityName)return candidates.length===1?candidates[0]:null;
  // An official-book copy of an SRD item has its own activity ids and sometimes
  // names ("Consume" for an unnamed potion activity): match the same kind of activity.
- const type=event.activity?.type,same=type?candidates.filter(v=>v.activityType===type):[];
- return same.length===1?same[0]:same.find(v=>!v.activityName)??null;
+ const type=event.activity?.type;if(!type)return null;
+ const same=candidates.filter(v=>v.activityType===type);
+ // Several of that kind ("Attack", "Moving Attack"): the unnamed default, else the first.
+ if(same.length)return same.length===1?same[0]:same.find(v=>!v.activityName)??same[0];
+ // A statblock that uses another kind of activity (a 2014 Breath Weapon saves, the entry's is a
+ // utility) plays the entry's one automatic design. Manual designs stay manual (a summon, Mage Hand's conjuring).
+ const automatic=entry.variants.filter(v=>v.recipe.trigger!=='manual');
+ if(!['use','template','damage'].includes(event.type)||entry.variants.some(v=>v.activityType===type))return null;
+ return automatic.length===1&&candidates.includes(automatic[0])?automatic[0]:null;
 }
 const awaitingTargets=new Map();
 // Creature-bound stages with nothing optional about them cannot play without a target.
