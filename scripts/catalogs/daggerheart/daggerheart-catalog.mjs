@@ -7,7 +7,7 @@ import { DAGGERHEART_SOURCE, DAGGERHEART_CARDS, DAGGERHEART_WEAPONS } from "../.
 import { CARD_DESIGNS } from "../../../data/daggerheart-card-designs/index.mjs";
 import { designStages } from "./daggerheart-card-design.mjs";
 import { clone, normalize, validateRecipe, matchRecipe, ownRecipe, matchStrikeOverride } from "../../core/model.mjs";
-import { DH_ROLL_TYPES, MELEE_RANGES, dhDamageKind, weaponFamily } from "../../systems/daggerheart.mjs";
+import { DH_ROLL_TYPES, MELEE_RANGES, dhDamageKind, weaponFamily, featureElement } from "../../systems/daggerheart.mjs";
 import { DEFEATED_RECIPE } from "../../engines/playback/defeated-look.mjs";
 import { weaponSoundDesign, cardSoundDesign, featureSoundDesign, utilitySoundDesign, withDhSounds, weaponMotion, featureMotion, utilityMotion } from "./daggerheart-polish.mjs";
 import { withConditionLook } from "../shared/catalog-fx.mjs";
@@ -109,8 +109,8 @@ const BLUNT_HIT = ["jb2a.impact.010.orange", "jb2a.impact.003.blue"];
 const CLAWS = ["jb2a.claws.400px.red", "jb2a.claws.200px.red"], BITE = ["jb2a.bite.400px.red", "jb2a.bite.200px.red"];
 const UNARMED = ["jb2a.unarmed_strike.physical.01.blue"], GENERIC_SLASH = ["jb2a.melee_generic.slashing.one_handed", "jb2a.unarmed_strike.physical.01.blue"];
 const ON_TARGET = new Set([CLAWS[0], BITE[0]]);
-export const NATURAL_ATTACK = Object.freeze({ claws: /claw|talon|rake|scratch/i, bite: /bite|fang|jaw|maw|teeth|mandible|gnaw/i,
-  unarmed: /fist|punch|slam|tail|horn|ram\b|tentacle|unarmed|kick|headbutt|hoof|stomp|tusk|gore/i });
+export const NATURAL_ATTACK = Object.freeze({ claws: /claw|talon|rake|scratch|pincer|nails?\b|tear\b/i, bite: /bite|fang|jaw|maw|teeth|mandible|gnaw|gnash|chomp|nibble|beak|peck|proboscis|sucker/i,
+  unarmed: /fist|punch|slam|tail|horn|ram\b|tentacle|unarmed|kick|headbutt|hoo(?:f|ves)|stomp|tusk|gore|antler|bash|\bhands?\b|\barms?\b/i });
 const MAGICAL_HIT = ["jb2a.impact.004.dark_purple", "jb2a.impact.005.purple", "jb2a.particle_burst.01.rune.bluepurple"];
 const ARROW = ["jb2a.arrow.physical.white.01", "jb2a.arrow.physical.blue"];
 const BOLT = ["jb2a.bolt.physical.white", "jb2a.bolt.physical.orange"];
@@ -136,9 +136,10 @@ export const WEAPON_STYLES = Object.freeze({
   generic: { label: "Other", melee: [[NATURAL_ATTACK.claws, CLAWS], [NATURAL_ATTACK.bite, BITE], [NATURAL_ATTACK.unarmed, UNARMED], [/./, GENERIC_SLASH]], ranged: [[/./, ARROW]] },
 });
 const pick = (rules, name) => rules.find(([pattern]) => pattern.test(String(name ?? "")))?.[1] ?? null;
-export function weaponStyle({ name, range, damageTypes, generic = false } = {}) {
-  // A fallback ("Any claw attack") is not a compendium weapon: its name picks the strike, not a family.
-  const family = generic ? null : weaponFamily(name, damageTypes), magical = dhDamageKind(damageTypes) === "magical";
+export function weaponStyle({ name, range, damageTypes, generic = false, family: given = null } = {}) {
+  // A fallback ("Any claw attack") is not a compendium weapon: its name picks the strike, inside the
+  // family it is a fallback for ("Any mace attack") or none.
+  const family = given ?? (generic ? null : weaponFamily(name, damageTypes)), magical = dhDamageKind(damageTypes) === "magical";
   const style = WEAPON_STYLES[family] ?? WEAPON_STYLES.generic, melee = MELEE_RANGES.has(range);
   const strike = pick(melee ? style.melee : style.ranged, name) ?? (magical ? MISSILE.magical : MISSILE.physical);
   const blunt = ["hammer", "shield"].includes(family) || [UNARMED[0]].includes(strike[0]);
@@ -162,22 +163,39 @@ export function weaponStages(weapon) {
 // Adversary features used without an attack roll (daggerheart.mjs featureFields): one fallback per
 // element, a variant per shape. A breath fills a cone or line to each target, a burst erupts around
 // the adversary, a strike lands on the targets. An element with no breath asset bursts instead.
+// A `bolt` is the element's attack roll at range (Spit Acid, Fire Bolt): elements without one have no
+// attack variant, their rolls take the weapon fallbacks.
 export const AREA_LOOKS = Object.freeze({
   cold: { label: "Cold", color: "#9fd8ff", cast: ["jb2a.cast_generic.ice.01.blue", "jb2a.cast_generic.water.02.blue"],
     breath: ["jb2a.breath_weapons02.burst.cone.ice.01", "jb2a.breath_weapons.cold.cone.blue"], burst: ["jb2a.ice_spikes.radial.burst.white"],
-    hit: ["jb2a.impact.ground_crack.frost.01.white", "jb2a.impact.frost.white.01"] },
+    hit: ["jb2a.impact.ground_crack.frost.01.white", "jb2a.impact.frost.white.01"], bolt: ["jb2a.ray_of_frost.blue", "jb2a.magic_missile.blue"] },
   fire: { label: "Fire", color: "#ff7a2f", cast: ["jb2a.cast_generic.fire.01.orange"], breath: ["jb2a.breath_weapons.fire.cone.orange.01"],
-    burst: ["jb2a.fire_ring.500px.red", "jb2a.explosion.01.orange"], hit: ["jb2a.impact.fire.01.orange"] },
+    burst: ["jb2a.fire_ring.500px.red", "jb2a.explosion.01.orange"], hit: ["jb2a.impact.fire.01.orange"], bolt: ["jb2a.fire_bolt.orange", "jb2a.magic_missile.orange"] },
   lightning: { label: "Lightning", color: "#7fb8ff", cast: ["jb2a.static_electricity.02.blue"], breath: ["jb2a.breath_weapons.lightning.line.blue"],
-    burst: ["jb2a.thunderwave.center.blue"], hit: ["jb2a.static_electricity.01.blue"] },
+    burst: ["jb2a.thunderwave.center.blue"], hit: ["jb2a.static_electricity.01.blue"], bolt: ["jb2a.lightning_bolt.narrow.blue", "jb2a.witch_bolt.blue", "jb2a.magic_missile.blue"] },
   acid: { label: "Acid", color: "#9be060", cast: ["jb2a.smoke.puff.side.green", "jb2a.smoke.puff.side.grey"], breath: ["jb2a.breath_weapons.acid.line.green"],
-    burst: ["jb2a.explosion.04.green", "jb2a.explosion.top_fracture.flask.01"], hit: ["jb2a.liquid.splash.green", "jb2a.liquid.splash.blue"] },
+    burst: ["jb2a.explosion.04.green", "jb2a.explosion.top_fracture.flask.01"], hit: ["jb2a.liquid.splash.green", "jb2a.liquid.splash.blue"],
+    bolt: ["jb2a.magic_missile.green", "jb2a.magic_missile.purple"] },
   poison: { label: "Poison", color: "#7fbf5a", cast: ["jb2a.smoke.puff.side.dark_green", "jb2a.smoke.puff.side.grey"], breath: ["jb2a.breath_weapons.poison.cone.green"],
-    burst: ["jb2a.fumes.04.complete.green", "jb2a.fumes.04.complete.grey"], hit: ["jb2a.smoke.puff.centered.green", "jb2a.smoke.puff.centered.grey"] },
+    burst: ["jb2a.fumes.04.complete.green", "jb2a.fumes.04.complete.grey"], hit: ["jb2a.smoke.puff.centered.green", "jb2a.smoke.puff.centered.grey"],
+    bolt: ["jb2a.eldritch_blast.green", "jb2a.magic_missile.green", "jb2a.magic_missile.purple"] },
   arcane: { label: "Magic", color: "#a070ff", cast: ["jb2a.cast_generic.01.dark_purple", "jb2a.cast_generic.02.blue"],
-    breath: ["jb2a.breath_weapons02.burst.cone.arcana.purple.01", "jb2a.magic_missile.purple"], burst: ["jb2a.explosion.04.dark_purple", "jb2a.explosion.04.blue"], hit: MAGICAL_HIT },
-  physical: { label: "Physical", color: "#c9a36b", cast: ["jb2a.smoke.puff.side.grey"], breath: null, burst: ["jb2a.impact.ground_crack.01.orange"], hit: PHYSICAL_HIT },
+    breath: ["jb2a.breath_weapons02.burst.cone.arcana.purple.01", "jb2a.magic_missile.purple"], burst: ["jb2a.explosion.04.dark_purple", "jb2a.explosion.04.blue"], hit: MAGICAL_HIT,
+    bolt: ["jb2a.eldritch_blast.purple", "jb2a.magic_missile.purple"] },
+  physical: { label: "Physical", color: "#c9a36b", cast: ["jb2a.smoke.puff.side.grey"], breath: null, burst: ["jb2a.impact.ground_crack.01.orange"], hit: PHYSICAL_HIT, bolt: null },
 });
+// An element's attack roll: a bolt from the adversary at range, a charged touch in melee (Chill Touch).
+export const ATTACK_MODES = Object.freeze(["ranged", "melee"]);
+export function elementAttackStages(element, mode) {
+  const look = AREA_LOOKS[element] ?? AREA_LOOKS.arcane;
+  if (mode === "melee") return [
+    { stageId: "charge", kind: "cast", assets: [...look.cast], duration: 700, scale: 0.5, opacity: 0.85 },
+    { stageId: "hit-contact", kind: "impact", assets: [...look.hit], delay: 300, duration: 1000, scale: 0.9 }];
+  return [
+    { stageId: "cast", kind: "cast", assets: [...look.cast], duration: 800, scale: 0.6 },
+    { stageId: "bolt", kind: "travel", assets: [...(look.bolt ?? AREA_LOOKS.arcane.bolt)], delay: 300, duration: 1000, scale: 1 },
+    { stageId: "hit-accent", kind: "impact", assets: [...look.hit], delay: 1100, duration: 1000, scale: 0.9 }];
+}
 export const FEATURE_SHAPES = Object.freeze(["breath", "burst", "strike"]);
 export function featureStages(element, shape) {
   const look = AREA_LOOKS[element] ?? AREA_LOOKS.physical;
@@ -226,6 +244,25 @@ const GENERIC_WEAPONS = [
   { id: "generic-unarmed", name: "Any unarmed attack", img: "icons/svg/fist.svg", tier: 0, range: "melee", trait: null, damageTypes: ["physical"], burden: "", generic: true },
   { id: "generic-ranged", name: "Any ranged attack", img: "icons/svg/target.svg", tier: 0, range: "far", trait: null, damageTypes: ["physical"], burden: "", generic: true },
 ];
+// Fallbacks by family, for an attack the library does not know whose name names its weapon (an
+// adversary's Greataxe, Daggers, Warclub, Recurved Bow): [id, name, family, range, damage]. The name
+// picks the strike inside the family (WEAPON_STYLES); FAMILY_FALLBACKS picks the fallback by name.
+const FAMILY_WEAPONS = [
+  ["sword", "Any sword attack", "blade", "melee"], ["dagger", "Any dagger attack", "blade", "melee"], ["axe", "Any axe attack", "blade", "melee"],
+  ["scythe", "Any scythe attack", "blade", "melee"], ["thrown-blade", "Any thrown blade attack", "blade", "far"],
+  ["hammer", "Any hammer attack", "hammer", "melee"], ["mace", "Any mace attack", "hammer", "melee"], ["maul", "Any maul attack", "hammer", "melee"],
+  ["club", "Any club attack", "hammer", "melee"], ["spear", "Any spear attack", "spear", "melee"], ["polearm", "Any halberd attack", "spear", "melee"],
+  ["javelin", "Any javelin attack", "spear", "far"], ["bow", "Any bow attack", "bow", "far"], ["firearm", "Any firearm attack", "firearm", "far"],
+  ["shield", "Any shield attack", "shield", "melee"], ["staff", "Any staff attack", "magic", "melee", "magical"], ["staff-ranged", "Any staff or wand attack", "magic", "far", "magical"],
+].map(([id, name, family, range, damage = "physical"]) => ({ id: `generic-${id}`, name, img: "icons/svg/sword.svg", tier: 0, range, trait: null, damageTypes: [damage], burden: "", generic: true, family }));
+const FAMILY_FALLBACKS = {
+  blade: { melee: [[/dagger|knife|knives|razor|scalpel|anlace|shears/i, "dagger"], [/axe|hatchet|labrys|cleaver/i, "axe"], [/scythe|sickle|scimitar|cutlass|falchion|saber|katana/i, "scythe"], [/./, "sword"]],
+    ranged: [[/./, "thrown-blade"]] },
+  hammer: { melee: [[/mace/i, "mace"], [/maul|pestle|mallet/i, "maul"], [/club|baton|shillelagh|knuckle|gauntlet/i, "club"], [/./, "hammer"]], ranged: [] },
+  spear: { melee: [[/halberd|polearm|glaive|pike|corbin/i, "polearm"], [/./, "spear"]], ranged: [[/./, "javelin"]] },
+  bow: { melee: [], ranged: [[/./, "bow"]] }, firearm: { melee: [], ranged: [[/./, "firearm"]] }, shield: { melee: [[/./, "shield"]], ranged: [] },
+  magic: { melee: [[/./, "staff"]], ranged: [[/./, "staff-ranged"]] },
+};
 const recipeFor = (entry, variantId, trigger, stages, extra = {}) => validateRecipe({
   id: `animater-${variantId}`, name: entry.name, description: "", category: "Daggerheart", color: entry.color, trigger,
   systemId: "daggerheart", itemUuid: entry.uuid ?? "", catalogEntry: entry.id, stages, ...extra,
@@ -271,19 +308,33 @@ export const UTILITY_LOOKS = Object.freeze({
   hope: { label: "Hope", color: "#f2c94c", self: ["jb2a.divine_smite.caster.yellowwhite", "jb2a.particle_burst.01.star.yellow", "jb2a.twinkling_stars.points07.orange"], target: ["jb2a.bless.200px.intro.yellow", "jb2a.particle_burst.01.star.yellow"] },
   fear: { label: "Fear", color: "#7a3fc9", self: ["jb2a.markers.fear.dark_purple.03", "jb2a.energy_strands.overlay.dark_purple.01", "jb2a.smoke.puff.centered.dark_purple"], target: ["jb2a.condition.curse.01.019.purple", "jb2a.smoke.puff.centered.dark_purple", "jb2a.condition.curse.01.019.red"] },
   boon: { label: "Effect", color: "#8fb8ff", self: ["jb2a.condition.boon.01.007.yellow", "jb2a.bless.200px.intro.yellow", "jb2a.particle_burst.01.star.yellow"], target: ["jb2a.condition.boon.01.007.green", "jb2a.particle_burst.01.star.yellow"] },
+  // What changes the adversary or the scene (daggerheart.mjs CHANGE_LOOKS): a summoning circle and portal,
+  // a tolling countdown, a transformation burst. `under` lies beneath the token.
+  summon: { label: "Summon", color: "#9a6bff", under: ["jb2a.magic_signs.circle.02.conjuration.loop.purple", "jb2a.magic_signs.circle.02.conjuration", "jb2a.magic_signs.circle.01.conjuration"],
+    self: ["jb2a.portals.vertical.vortex.purple", "jb2a.misty_step.01.purple", "jb2a.misty_step.01.blue"], target: ["jb2a.misty_step.01.purple", "jb2a.smoke.puff.centered.dark_purple", "jb2a.misty_step.01.blue"] },
+  countdown: { label: "Countdown", color: "#c9a0ff", under: ["jb2a.magic_signs.circle.02.divination.complete.blue", "jb2a.magic_signs.circle.02.divination", "jb2a.magic_signs.circle.01.divination"],
+    self: ["jb2a.toll_the_dead.purple.bell", "jb2a.toll_the_dead.grey.skull_smoke", "jb2a.toll_the_dead.green.bell"], target: ["jb2a.markers.fear.dark_purple.03", "jb2a.smoke.puff.centered.dark_purple"] },
+  transform: { label: "Transform", color: "#d0485a", under: ["jb2a.magic_signs.circle.02.transmutation.loop.purple", "jb2a.magic_signs.circle.02.necromancy", "jb2a.magic_signs.circle.01.necromancy"],
+    self: ["jb2a.explosion.04.dark_purple", "jb2a.explosion.04.blue"], target: ["jb2a.energy_strands.overlay.dark_red.01", "jb2a.smoke.puff.centered.dark_purple", "jb2a.energy_strands.overlay.blue.01"] },
+  // A Stress or Hope loss with no blow (Terrifying, Scare Tactic); an Armor-only loss cracks the target's guard.
+  dread: { label: "Dread", color: "#5b2a86", self: ["jb2a.markers.fear.dark_purple.03", "jb2a.smoke.puff.centered.dark_purple"], target: ["jb2a.condition.curse.01.019.purple", "jb2a.smoke.puff.centered.dark_purple", "jb2a.condition.curse.01.019.red"] },
+  sunder: { label: "Sunder", color: "#d0485a", self: ["jb2a.smoke.puff.side.grey"], target: ["jb2a.markers.shield_cracked.dark_red.01", "jb2a.markers.shield_cracked.purple.01", "jb2a.impact.003.blue"] },
 });
+const UTILITY_TEXT = { boon: "applies an effect", heal: "heals", summon: "summons or calls reinforcements", countdown: "starts a countdown",
+  transform: "transforms or evolves the adversary", dread: "makes targets mark Stress or lose Hope", sunder: "breaks the targets' Armor" };
 export function utilityStages(look) {
   const l = UTILITY_LOOKS[look] ?? UTILITY_LOOKS.boon;
   return [
-    { stageId: "self", kind: "cast", assets: [...l.self], duration: 1600, scale: 1.3 },
-    { stageId: "target", kind: "impact", assets: [...l.target], delay: 400, duration: 1400, scale: 1.2, optionalTargets: true }];
+    ...(l.under ? [{ stageId: "circle", kind: "cast", assets: [...l.under], duration: 2400, scale: 1.4, below: true, opacity: 0.85 }] : []),
+    { stageId: "self", kind: "cast", assets: [...l.self], ...(l.under ? { delay: 300 } : {}), duration: 1600, scale: 1.3 },
+    { stageId: "target", kind: "impact", assets: [...l.target], delay: l.under ? 900 : 400, duration: 1400, scale: 1.2, optionalTargets: true }];
 }
 function utilityEntry(look) {
   const l = UTILITY_LOOKS[look];
   const entry = { id: `daggerheart-weapon-utility-${look}`, systemId: "daggerheart", kind: "weapon", uuid: null, name: `Any ability · ${l.label}`, img: "icons/svg/aura.svg",
     level: 0, tier: 0, range: null, damageTypes: [], family: null, generic: true, edition: "Fallback", group: "Ability", theme: "Ability",
     quality: "themed", color: l.color, sourceURL: `${SOURCE_URL}/src/packs`,
-    descriptionText: `any feature, potion or item action that only ${look === "boon" ? "applies an effect" : look === "heal" ? "heals" : `gains or spends ${l.label}`}` };
+    descriptionText: `any feature, potion or item action that only ${UTILITY_TEXT[look] ?? `gains or spends ${l.label}`}` };
   const id = `${entry.id}-use`;
   entry.variants = [{ id, label: "use", recipe: recipeFor(entry, id, "use", utilityMotion(look, utilityStages(look))), sound: utilitySoundDesign(look) }];
   return entry;
@@ -298,6 +349,11 @@ function featureEntry(element) {
     const id = `${entry.id}-${shape}`;
     return { id, label: `use · ${shape}`, featureShape: shape, recipe: recipeFor(entry, id, "use", featureMotion(element, shape, featureStages(element, shape))), sound: featureSoundDesign(element, shape) };
   });
+  if (look.bolt) for (const mode of ATTACK_MODES) {
+    const id = `${entry.id}-attack-${mode}`, melee = mode === "melee";
+    entry.variants.push({ id, label: `attack · ${mode}`, weaponMode: mode,
+      recipe: recipeFor(entry, id, "attack", weaponMotion({ melee, family: "magic" }, elementAttackStages(element, mode))), sound: featureSoundDesign(element, melee ? "strike" : "bolt") });
+  }
   return entry;
 }
 function conditionEntry(c) {
@@ -312,7 +368,7 @@ function conditionEntry(c) {
   return entry;
 }
 
-const DH_ENTRIES = [...DAGGERHEART_CARDS.map(cardEntry), ...DAGGERHEART_WEAPONS.map(weaponEntry), ...GENERIC_WEAPONS.map(weaponEntry), ...Object.keys(AREA_LOOKS).map(featureEntry), ...Object.keys(UTILITY_LOOKS).map(utilityEntry), ...DH_CONDITIONS.map(conditionEntry)];
+const DH_ENTRIES = [...DAGGERHEART_CARDS.map(cardEntry), ...DAGGERHEART_WEAPONS.map(weaponEntry), ...GENERIC_WEAPONS.map(weaponEntry), ...FAMILY_WEAPONS.map(weaponEntry), ...Object.keys(AREA_LOOKS).map(featureEntry), ...Object.keys(UTILITY_LOOKS).map(utilityEntry), ...DH_CONDITIONS.map(conditionEntry)];
 const byId = new Map(DH_ENTRIES.map((e) => [e.id, e]));
 const byUuid = new Map(DH_ENTRIES.filter((e) => e.uuid).map((e) => [e.uuid, e]));
 export const dhEntries = (kind) => (kind ? DH_ENTRIES.filter((e) => e.kind === kind) : DH_ENTRIES);
@@ -346,23 +402,31 @@ export function dhRecipe(entry, variantId, { motion = true, actionId = null, sou
   // Lasting conditions (Hidden, Restrained) show a quiet Tokenshade look when it is available.
   return withConditionLook(withCatalogTeleport(validateRecipe(recipe), entry), entry);
 }
-// A feature fallback plays the variant of the event's shape.
+// A feature fallback plays the variant of the event's shape, its attack roll the variant of its range.
 export function dhVariantForEvent(entry, event) {
   const variants = entry?.variants?.filter((v) => v.recipe.trigger === event?.type) ?? [];
-  return variants.find((v) => v.featureShape && v.featureShape === event?.featureShape) ?? variants[0] ?? null;
+  return variants.find((v) => v.featureShape && v.featureShape === event?.featureShape)
+    ?? (variants.length > 1 ? variants.find((v) => v.weaponMode === (event?.weaponMode === "ranged" ? "ranged" : "melee")) : null) ?? variants[0] ?? null;
 }
 
 // The entry for an event's item: by name, then by the compendium it came from. A weapon attack the
 // library does not know (homebrew, or an adversary's standard attack with no Item) gets the melee or
 // ranged fallback; a condition effect is found by its status. An adversary feature's attack roll gets
 // the same fallback, its unrolled strike (a breath, a save, damage) the fallback of its element.
-// A melee attack the library does not know is told by its name: "Bite and Claws" rakes, "Bite" bites,
-// "Tail Swipe" or "Fists" strike unarmed, anything else slashes.
+// An attack the library does not know is told by its name: in melee "Bite and Claws" rakes, "Bite"
+// bites, "Tail Swipe" or "Fists" strike unarmed; a weapon it names strikes as its family (a Greataxe
+// cleaves, a Recurved Bow shoots, a Rune-Covered Rod casts). Without one, magic damage strikes as the
+// element the name names (Fire Bolt, Chill Touch) or as magic (Psychic Strike); anything else slashes
+// or flies as an arrow.
+const elementAttack = (element) => (AREA_LOOKS[element]?.bolt ? dhEntry(`daggerheart-weapon-feature-${element}`) : null);
 function genericWeapon(event) {
-  if (event?.weaponMode === "ranged") return dhEntry("daggerheart-weapon-generic-ranged");
-  const name = String(event?.itemName ?? event?.item?.name ?? "");
-  const natural = Object.entries(NATURAL_ATTACK).find(([, pattern]) => pattern.test(name))?.[0];
-  return dhEntry(`daggerheart-weapon-generic-${natural ?? "melee"}`);
+  const ranged = event?.weaponMode === "ranged", name = String(event?.itemName ?? event?.item?.name ?? "");
+  const natural = ranged ? null : Object.entries(NATURAL_ATTACK).find(([, pattern]) => pattern.test(name))?.[0];
+  if (natural) return dhEntry(`daggerheart-weapon-generic-${natural}`);
+  const family = pick(FAMILY_FALLBACKS[weaponFamily(name)]?.[ranged ? "ranged" : "melee"] ?? [], name);
+  if (family) return dhEntry(`daggerheart-weapon-generic-${family}`);
+  if (event?.damageKind === "magical") return elementAttack(featureElement([name], ["magical"]));
+  return dhEntry(`daggerheart-weapon-generic-${ranged ? "ranged" : "melee"}`);
 }
 const utilityEntryFor = (event) => (event?.type === "use" && event?.utilityLook ? dhEntry(`daggerheart-weapon-utility-${event.utilityLook}`) : null);
 export function findDhEntry(event) {
@@ -372,7 +436,8 @@ export function findDhEntry(event) {
     return dhEntries("condition").find((e) => statuses.has(e.statusId)) ?? null;
   }
   if (item?.type === "feature") {
-    if (event?.type === "attack" && DH_ROLL_TYPES.has(event?.rollType)) return genericWeapon(event);
+    // A feature's attack roll strikes as its element (Spit Acid, Venomous Bite), a physical one as a weapon.
+    if (event?.type === "attack" && DH_ROLL_TYPES.has(event?.rollType)) return (["physical", "arcane"].includes(event?.featureElement) ? null : elementAttack(event?.featureElement)) ?? genericWeapon(event);
     return event?.type === "use" && event?.featureElement ? dhEntry(`daggerheart-weapon-feature-${event.featureElement}`) : utilityEntryFor(event);
   }
   const kind = item?.type === "domainCard" ? "card" : item?.type === "weapon" || (!item && event?.type === "attack" && event?.rollType === "attack") ? "weapon" : null;

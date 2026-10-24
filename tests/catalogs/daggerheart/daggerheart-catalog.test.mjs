@@ -17,7 +17,7 @@ test("every Daggerheart entry has a valid recipe per variant, tied to its native
   assert.deepEqual([...DH_KINDS], ["card", "weapon", "condition"]);
   assert.equal(dhSettingKey("card"), "daggerheartCardCatalog");
   assert.equal(dhEntries("card").length, DAGGERHEART_SOURCE.counts.card);
-  assert.equal(dhEntries("weapon").length, DAGGERHEART_SOURCE.counts.weapon + 5 + 7 + 4, "plus the melee, claw, bite, unarmed and ranged, feature and ability fallbacks");
+  assert.equal(dhEntries("weapon").length, DAGGERHEART_SOURCE.counts.weapon + 5 + 17 + 7 + 9, "plus the melee, claw, bite, unarmed and ranged, weapon-family, feature and ability fallbacks");
   assert.equal(dhEntries("condition").length, 7);
   const ids = new Set();
   for (const entry of dhEntries()) {
@@ -117,7 +117,8 @@ test("events match entries by name, then compendium source; homebrew and adversa
   const sword = named("weapon", "Longsword");
   assert.equal(findDhEntry({ type: "attack", item: { type: "weapon", name: "longsword" } }), sword);
   assert.equal(findDhEntry({ type: "attack", item: { type: "weapon", name: "Grandpa's Blade", _stats: { compendiumSource: sword.uuid } } }), sword);
-  assert.equal(findDhEntry({ type: "attack", item: { type: "weapon", name: "Homebrew Lance" }, weaponMode: "melee" }).id, "daggerheart-weapon-generic-melee");
+  assert.equal(findDhEntry({ type: "attack", item: { type: "weapon", name: "Homebrew Lance" }, weaponMode: "melee" }).id, "daggerheart-weapon-generic-spear", "a lance thrusts as a spear");
+  assert.equal(findDhEntry({ type: "attack", item: { type: "weapon", name: "Homebrew Thing" }, weaponMode: "melee" }).id, "daggerheart-weapon-generic-melee");
   assert.equal(findDhEntry({ type: "attack", item: null, itemName: "Longbow", rollType: "attack", weaponMode: "ranged" }), named("weapon", "Longbow"));
   assert.equal(findDhEntry({ type: "attack", item: null, itemName: "Claws", rollType: "attack", weaponMode: "melee" }).id, "daggerheart-weapon-generic-claws", "an adversary's claws rake");
   assert.equal(findDhEntry({ type: "attack", item: null, itemName: "Spit", rollType: "attack", weaponMode: "ranged" }).id, "daggerheart-weapon-generic-ranged");

@@ -62,10 +62,10 @@ export function dhDamageKind(types) {
 const FAMILIES = [
   ["shield", /shield|buckler/i],
   ["firearm", /gun|pistol|rifle|revolver|musket|arquebus|blunderbuss|cannon|serpentine/i],
-  ["bow", /bow|arbalest|sling/i],
+  ["bow", /bow|arbalest|sling|arrows?\b/i],
   ["spear", /spear|\blance\b|halberd|\bpike\b|polearm|javelin|\bdarts?\b|needle|trident|glaive|corbin/i],
-  ["hammer", /hammer|mace|maul|flail|club|baton|knuckle|shillelagh|\bpick\b|gauntlet/i],
-  ["blade", /blade|sword|dagger|knife|knives|axe|hatchet|labrys|katana|rapier|scimitar|cutlass|falchion|saber|scythe|razor|scalpel|anlace|estoc|edge|claw|talon|chakram|zweih|\bfan\b|\bstar\b/i],
+  ["hammer", /hammer|mace|maul|flail|club|baton|knuckle|shillelagh|\bpick\b|gauntlet|mallet|pestle|stump|branch/i],
+  ["blade", /blade|sword|dagger|knife|knives|axe|hatchet|labrys|katana|rapier|scimitar|cutlass|falchion|saber|scythe|sickle|cleaver|shears|razor|scalpel|anlace|estoc|edge|claymore|claw|talon|chakram|zweih|\bfan\b|\bstar\b/i],
   ["magic", /staff|wand|\borb\b|\btome\b|runes?\b|scepter|\brings?\b|\bgem\b|shard|focus|pendant|bangle|\blute\b/i],
 ];
 export function weaponFamily(name, damageTypes = []) {
@@ -152,18 +152,34 @@ export function featureElement(texts, damageTypes) {
   }
   return dhDamageKind(damageTypes) === "magical" ? "arcane" : "physical";
 }
+// What an attack or damage action takes when it deals no hit points and has no save or attack roll
+// (Terrifying, Scare Tactic, Acidic Form): its resources (stress, hope, armor), else null.
+const valuesOf = (value) => (value instanceof Map ? [...value.values()] : Object.values(value ?? {}));
+export function resourceLoss(action) {
+  if (!["attack", "damage"].includes(action?.type) || action?.damage?.main || action?.save?.trait || DH_ROLL_TYPES.has(action?.roll?.type)) return null;
+  const to = valuesOf(action?.damage?.resources).map((r) => r?.applyTo).filter(Boolean);
+  return to.length && !to.includes("hitPoints") ? to : null;
+}
 export function featureFields(item, action) {
   if (item?.type !== "feature" || !action) return {};
   if (!["attack", "damage"].includes(action?.type) && !action?.save?.trait) return {};
+  const element = featureElement([item?.name, action?.name, plain(item?.system?.description)], list(action?.damage?.main?.type));
+  // A Stress, Hope or Armor loss is no blow: it plays the element it names (Frozen Scales), else utilityFields' look.
+  if (resourceLoss(action) && ["physical", "arcane"].includes(element)) return {};
   const area = list(action?.areas)[0]?.shape, range = action?.range || null;
   const featureShape = area ? (BREATH_SHAPES.has(area) ? "breath" : "burst") : range && !MELEE_RANGES.has(range) ? "breath" : "strike";
-  return { featureShape, featureElement: featureElement([item?.name, action?.name, plain(item?.system?.description)], list(action?.damage?.main?.type)) };
+  return { featureShape, featureElement: element };
 }
 // An action that only heals, gains a resource or applies an effect (a potion, Relentless, Momentum):
-// its look by what it restores or spends. Domain cards and weapons keep their own animations.
-const valuesOf = (value) => (value instanceof Map ? [...value.values()] : Object.values(value ?? {}));
+// its look by what it restores or spends. One that changes the adversary or the scene (Reinforcements,
+// a countdown, Final Transformation) by what it does; a Stress or Hope loss (resourceLoss) as dread,
+// an Armor-only loss as a sundering. Domain cards and weapons keep their own animations.
+const CHANGE_LOOKS = { summon: "summon", countdown: "countdown", transform: "transform", evolution: "transform" };
 export function utilityFields(item, action) {
   if (!item || !action || ["domainCard", "weapon"].includes(item.type)) return {};
+  if (CHANGE_LOOKS[action.type]) return { utilityLook: CHANGE_LOOKS[action.type] };
+  const lost = resourceLoss(action);
+  if (lost) return { utilityLook: lost.every((r) => r === "armor") ? "sunder" : "dread" };
   if (action.type === "healing") {
     const to = valuesOf(action.damage?.resources).map((r) => r?.applyTo);
     return { utilityLook: to.includes("fear") ? "fear" : to.includes("hope") ? "hope" : "heal" };
@@ -176,6 +192,8 @@ export function utilityFields(item, action) {
 const actionIdOf = (action) => action?.id || action?._id || null;
 const cardFields = (item) => (item?.type === "domainCard" ? { domain: domainOf(item), cardLevel: Number(item?.system?.level) || undefined } : {});
 const named = (item, name) => (item ? {} : { itemName: name, activityName: name });
+// The action's damage type: an unknown attack's fallback strikes by it (Fire Bolt, Psychic Strike).
+const damageKindFields = (action) => { const kind = dhDamageKind(list(action?.damage?.main?.type)); return kind ? { damageKind: kind } : {}; };
 
 export function daggerheartAttackKind(message) {
   const { item, action } = sourceOf(message);
@@ -200,7 +218,7 @@ export function daggerheartRollEvent(message, userId, { sceneId = null } = {}) {
     item, itemUuid: item?.uuid, ...named(item, name), actor, tokenId: message?.speaker?.token, sceneId: scene,
     targetUuids: tokenUuids(outcomes.map((o) => o.id), scene), outcome: undefined, private: true,
     rollType, duality: null, actionId: message?.system?.source?.action || actionIdOf(action),
-    ...weaponModeOf(item, action), ...cardFields(item), ...featureFields(item, action) };
+    ...weaponModeOf(item, action), ...damageKindFields(action), ...cardFields(item), ...featureFields(item, action) };
   return {
     type: "attack", systemId: "daggerheart", id: `chat:${message?.id}`, messageId: message?.id,
     item, itemUuid: item?.uuid, ...named(item, name), actor,
@@ -209,14 +227,15 @@ export function daggerheartRollEvent(message, userId, { sceneId = null } = {}) {
     ...(outcomes.length ? { targetOutcomes: Object.fromEntries(outcomes.map((o) => [o.id, o.outcome])) } : {}),
     outcome: outcomes.length ? bestOutcome(outcomes) : rollIsCritical(roll) ? "criticalSuccess" : null,
     rollType, duality: message?.type === "dualityRoll" ? dualityOf(roll) : null, actionId: message?.system?.source?.action || actionIdOf(action),
-    ...weaponModeOf(item, action), ...cardFields(item), ...featureFields(item, action),
+    ...weaponModeOf(item, action), ...damageKindFields(action), ...cardFields(item), ...featureFields(item, action),
   };
 }
 
 // daggerheart.postUseAction: an action used without an attack or spellcast roll (a buff, a heal, a
-// feature). A rolled one is skipped: its roll message is the event, so it never plays twice.
+// feature). A rolled one is skipped: its roll message is the event, so it never plays twice. So is a
+// grouped action (Elemental Breath): DHGroupedAction.execute uses the chosen action, which plays itself.
 export function daggerheartUseEvent(action, config, { sceneId = null, tokenId = null, isGM = globalThis.game?.user?.isGM } = {}) {
-  if (!action || (config?.hasRoll && DH_ROLL_TYPES.has(action?.roll?.type))) return null;
+  if (!action || action?.type === "grouped" || (config?.hasRoll && DH_ROLL_TYPES.has(action?.roll?.type))) return null;
   const item = action?.item?.documentName === "Item" ? action.item : null;
   const actor = action?.actor ?? item?.actor ?? null, name = item?.name ?? action?.name ?? null;
   // The hook runs on the user's own client: a GM's private action still plays.
