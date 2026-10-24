@@ -239,8 +239,17 @@ async function audition(key) {
 }
 
 // Copies the approved cuts into the module's Freesound folder and credits each in its License.txt (kept sorted).
+// The page's Save button puts approved.json in the browser's Downloads folder, so a bare name is looked for there too.
 export function apply(listFile) {
-  const picks = JSON.parse(fs.readFileSync(listFile, 'utf8'));
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const found = [listFile, path.join(home, 'Downloads', path.basename(listFile))].find((f) => fs.existsSync(f));
+  if (!found) {
+    console.error(`No ${listFile} here or in ${path.join(home, 'Downloads')}. Run the search first (--key <key>), open ${path.join(OUT, 'audition.html')}, tick the keepers and click Save approved.json.`);
+    process.exit(1);
+  }
+  if (!fs.existsSync(CUTS)) { console.error(`No audition cuts in ${CUTS}: run the search first (--key <key>).`); process.exit(1); }
+  console.log(`Using ${found}`);
+  const picks = JSON.parse(fs.readFileSync(found, 'utf8'));
   const license = path.join(ASSETS, 'License.txt');
   const [head, ...rest] = fs.readFileSync(license, 'utf8').split(/\n(?=\S+\.ogg: )/);
   const lines = new Map(rest.join('\n').split('\n').filter(Boolean).map((l) => [l.split(':')[0], l]));
