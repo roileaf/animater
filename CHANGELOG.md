@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.5 (2026-10-24)
+
+- **Wounded token positioning.** Wounded and condition body poses now anchor to the token's current drawn center instead of adopting temporary damage-shake or recoil offsets. This prevents displaced artwork remaining outside its occupied square after major damage, while following native movement and restoring the latest position when the pose ends.
+
 ## 2.1.4 (2026-10-24)
 
 - **Prone rotation compatibility.** Fixed a temporary action animation's rotation being adopted as a prone token's upright direction, producing a near-upside-down pose and leaving a sideways token after removing Prone. The prone pose now keeps its original direction while respecting deliberate document rotation changes.

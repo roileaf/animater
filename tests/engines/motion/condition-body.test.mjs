@@ -38,6 +38,26 @@ test("Foundry refreshing the token mid-treatment is respected, not undone", () =
   assert.equal(Math.round(t.mesh.position.x), 800);
 });
 
+test('a wounded pose cannot adopt a damage shake outside the token square',()=>{
+ const {body,step}=runner(),t=token();t.center={x:500,y:300};
+ body.add('wounded',t,'hunch');step(100);
+ t.mesh.position.x+=160;t.mesh.position.y-=80;
+ step(16);
+ assert.equal(t.mesh.position.x,500,'horizontal shake does not become the resting position');
+ assert.equal(t.mesh.position.y,301,'only the small wounded hunch remains');
+ body.remove('wounded',{immediate:true});
+ assert.deepEqual(t.mesh.position,{x:500,y:300});
+});
+
+test('body poses follow the drawn center during real movement and restore its latest location',()=>{
+ const {body,step}=runner(),t=token();t.center={x:500,y:300};
+ body.add('wounded',t,'hunch');step(100);
+ t.center={x:750,y:450};step(16);
+ assert.equal(t.mesh.position.x,750);assert.equal(t.mesh.position.y,451);
+ t.center={x:800,y:500};body.remove('wounded',{immediate:true});
+ assert.deepEqual(t.mesh.position,{x:800,y:500});
+});
+
 test('prone does not adopt a temporary action rotation as its upright baseline',()=>{
  const {body,step}=runner(),t=token();t.document={rotation:0};
  body.add('prone',t,'prone');step(500);

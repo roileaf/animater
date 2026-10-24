@@ -128,8 +128,13 @@ export class ConditionBody {
     const mesh = token?.mesh, a = this.poses.get(token);
     this.poses.delete(token);
     if (!a || !mesh || mesh.destroyed) return;
-    if (mesh.position.x === a.setX) mesh.position.x = a.baseX;
-    if (mesh.position.y === a.setY) mesh.position.y = a.baseY;
+    const center=token.center;
+    if(Number.isFinite(center?.x)&&Number.isFinite(center?.y)) {
+      mesh.position.x=center.x;mesh.position.y=center.y;
+    } else {
+      if (mesh.position.x === a.setX) mesh.position.x = a.baseX;
+      if (mesh.position.y === a.setY) mesh.position.y = a.baseY;
+    }
     if (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) mesh.rotation = a.baseR;
     if (mesh.scale.y === a.setSY) mesh.scale.y = a.baseSY;
   }
@@ -155,8 +160,11 @@ export class ConditionBody {
       if (!on || this.busy(token)) { this.restore(token); continue; }
       const a = this.poses.get(token);
       // Natural pose: what Foundry last set, minus our own delta if still in place.
-      const baseX = a && mesh.position.x === a.setX ? a.baseX : mesh.position.x;
-      const baseY = a && mesh.position.y === a.setY ? a.baseY : mesh.position.y;
+      // The drawn token center follows native movement. Never promote another
+      // animation's shake/recoil into the resting location of a wounded body.
+      const center=token.center,anchored=Number.isFinite(center?.x)&&Number.isFinite(center?.y);
+      const baseX = anchored?center.x:a && mesh.position.x === a.setX ? a.baseX : mesh.position.x;
+      const baseY = anchored?center.y:a && mesh.position.y === a.setY ? a.baseY : mesh.position.y;
       // A temporary Trip/action animation can also write this mesh. While prone,
       // it must not become the new upright direction and gain a second quarter
       // turn. Native document rotation changes still establish a new baseline.
