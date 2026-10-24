@@ -292,18 +292,6 @@ test('isFlying: the fly movement action or a flying status, never height alone',
   assert.equal(isFlying({ elevation: 0, base: 0, statuses: ['flying'] }), true);
   assert.equal(isFlying({ elevation: 0, base: 0, statuses: new Set(['prone']) }), false);
 });
-test('shadowGeometry: under the token, never round it; higher drifts down-right, smaller and fainter', () => {
-  const low = shadowGeometry({ x: 100, y: 100, width: 100, lift: 5, distance: 5, grid: 100 });
-  const high = shadowGeometry({ x: 100, y: 100, width: 100, lift: 60, distance: 5, grid: 100 });
-  assert.ok(low.rx < 50, 'narrower than the token, so it never rings it');
-  assert.ok(low.ry < low.rx * 0.7, 'flattened on the floor');
-  assert.ok(high.rx < low.rx && high.alpha < low.alpha);
-  assert.ok(high.x > low.x && high.y > low.y && low.x >= 100 && low.y > 100, 'drifts down-right with height');
-  // Never further than it can still sit mostly under a big token's art.
-  assert.ok(high.x - 100 + high.rx <= 100 * 0.7 && high.y - 100 + high.ry <= 100 * 0.7);
-  const sky = shadowGeometry({ x: 0, y: 0, width: 100, lift: 10000, distance: 5, grid: 100 });
-  assert.ok(sky.rx > 0 && sky.alpha > 0, 'never gone');
-});
 test('stride tracker: emits once per stride along the path, never on a first sighting or a jump', () => {
   const tracker = createStrideTracker({ stride: 60, maxJump: 300 });
   assert.deepEqual(tracker.step('a', { x: 0, y: 0 }), []);
@@ -782,8 +770,9 @@ test('shadowGeometry: a flier shadow always shows past its own token, big tokens
     // The token covers a circle of radius width/2 around (0, 0): part of the shadow must reach past it.
     const far = Math.hypot(s.x, s.y) + Math.min(s.rx, s.ry);
     assert.ok(far > width / 2 + 0.05 * width, `width ${width}, lift ${lift}: shadow reaches ${far.toFixed(0)}, token edge ${width / 2}`);
-    assert.ok(s.x > 0 && s.y > 0 && s.rx < width / 2, 'cast down-right and narrower than the token, never a ring round it');
+    assert.ok(Math.abs(s.x) < 1e-9 && Math.abs(s.y) < 1e-9, 'centred under the creature');
+    assert.ok(s.rx <= width * 0.62, 'only just past its edge, never a wide halo');
   }
   const low = shadowGeometry({ x: 0, y: 0, width: 400, lift: 10, distance: 5, grid: 100 }), high = shadowGeometry({ x: 0, y: 0, width: 400, lift: 120, distance: 5, grid: 100 });
-  assert.ok(high.rx < low.rx && high.alpha < low.alpha && Math.hypot(high.x, high.y) > Math.hypot(low.x, low.y), 'higher: further off, smaller, fainter');
+  assert.ok(high.rx > low.rx && high.alpha < low.alpha, 'higher: softer, a little wider, fainter');
 });
