@@ -1,4 +1,5 @@
-import {SF2E_ENTRIES,SF2E_SOURCE} from '../../../data/sf2e-catalog.mjs';
+import {catalogDataNeeded} from '../shared/catalog-data.mjs';
+const {SF2E_ENTRIES, SF2E_SOURCE} = catalogDataNeeded('sf2e') ? await import('../../../data/sf2e-catalog.mjs') : {SF2E_ENTRIES: [], SF2E_SOURCE: {}};
 import {withoutBespoke} from '../shared/bespoke.mjs';
 import {clone,normalize,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
 import {spellRecipe} from '../pf2e/spells/spell-choreography.mjs';

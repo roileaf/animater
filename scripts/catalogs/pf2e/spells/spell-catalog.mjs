@@ -1,4 +1,5 @@
-import { PF2E_SOURCE, PF2E_SPELLS } from "../../../../data/pf2e-spells.mjs";
+import {catalogDataNeeded} from '../../shared/catalog-data.mjs';
+const {PF2E_SOURCE, PF2E_SPELLS} = catalogDataNeeded('pf2e') ? await import('../../../../data/pf2e-spells.mjs') : {PF2E_SOURCE: {}, PF2E_SPELLS: []};
 import { normalize, matchRecipe, ownRecipe } from "../../../core/model.mjs";
 import {
   spellRecipe,

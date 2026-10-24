@@ -136,12 +136,12 @@ const BUILTIN_STATE=Object.freeze({opacity:1,motion:true});
 // Each client derives its own visible layers from native documents. Persistent
 // Sequencer media is temporary/local: no socket playback or stale scene flags.
 export class PersistentStates{
- constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();}
+ constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();this.dirtyTokens=new Set();this.fullScheduled=false;}
  // A lasting layer Sequencer no longer has: its scene re-initializing destroys every effect on the canvas
  // without an ended event. Played-once layers end on their own, so only lasting ones count.
  lost(r){return r.drawn===true&&!r.fade&&!r.cancelled&&this.host.alive?.(r.name)===false;}
  async end(record){this.host.body?.remove(record.name);await Promise.all([this.host.end(record.name),this.host.stopFx?.(record.name)]);}
- schedule(){if(this.closed)return;clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;void this.reconcile().catch(e=>this.host.trace?.('Blocked',`Persistent effects: ${e.message}`));},35);}
+ schedule(tokens){if(this.closed)return;if(tokens===undefined)this.fullScheduled=true;else for(const id of tokens)this.dirtyTokens.add(id);clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;const scope=this.fullScheduled?undefined:new Set(this.dirtyTokens);this.fullScheduled=false;this.dirtyTokens.clear();void this.reconcile(scope).catch(e=>this.host.trace?.('Blocked',`Persistent effects: ${e.message}`));},35);}
  // Would a lasting animation show for this condition or effect (its catalog on, or your own
  // version)? Taking over Automated Animations stops AA's animation for the same document.
  covers(item){
@@ -153,13 +153,17 @@ export class PersistentStates{
   }catch{return false;}
  }
  accepts(name){if(!String(name??'').startsWith(`animater-state-${this.host.clientId}-`))return true;return !this.closed&&[...this.active.values()].some(r=>r.name===name&&!r.cancelled);}
- async reconcile(){
+ async reconcile(scope){
   const revision=++this.revision,desired=new Map(),h=this.host;
   if(!this.closed&&h.ready()){
    const saved=h.recipes?.()??[],catalog=h.catalog(),visibility=h.visibility?.()??{},scene=h.sceneId();
+   const tokens=h.tokens(),affected=scope?tokens.filter(t=>scope.has(t.id??t.document?.id)):tokens;
+   const prefixes=scope?affected.map(t=>`${scene}:${t.document?.uuid??t.id}:`):null;
+   // Unchanged tokens retain their records without resolving/serializing recipes.
+   if(scope)for(const [key,r]of this.active)if(!scope.has(r.token.id??r.token.document?.id))desired.set(key,r);
    // The device quality setting caps how many states each token shows.
    const budget=h.budget?.()??{states:Infinity,layers:Infinity},present=new Set();
-   for(const token of h.tokens()){
+   for(const token of affected){
     if(!token.actor)continue;
     let shown=0;
     // Built-in states (Defeated, in the Animater effect look) carry their own recipe.
@@ -171,7 +175,7 @@ export class PersistentStates{
      // A state stopped from the Activity page stays off while it remains on the token.
      const key=`${scene}:${token.document?.uuid??token.id}:${(h.documentKey??stateDocumentKey)(item)}`;present.add(key);
      if(shown>=budget.states||this.stopped.has(key)||h.yields?.(item)||!(h.stateVisible??stateVisible)(item,token,visibility))continue;
-     const kind=h.stateKind?.(item)??item.type,state=item.animaterRecipe?BUILTIN_STATE:(h.normalizeState??normalizeStateCatalogState)(h.state(kind)),recipe=item.animaterRecipe??(h.resolveStateRecipe??resolveStateRecipe)(item,state,saved,h.catalog(),{customEnabled:h.customEnabled?.()??true});if(!recipe||!recipe.stages.some(s=>['aura','tokenfx'].includes(s.kind)&&s.persist))continue;
+     const kind=h.stateKind?.(item)??item.type,state=item.animaterRecipe?BUILTIN_STATE:(h.normalizeState??normalizeStateCatalogState)(h.state(kind)),recipe=item.animaterRecipe??(h.resolveStateRecipe??resolveStateRecipe)(item,state,saved,catalog,{customEnabled:h.customEnabled?.()??true});if(!recipe||!recipe.stages.some(s=>['aura','tokenfx'].includes(s.kind)&&s.persist))continue;
      const signature=JSON.stringify([recipe,state.opacity,tokenFootprint(token,h.gridSize()),token.mechanicalBounds?.width,token.mesh?.uid,token.document?.texture?.src,h.gridDistance?.()??5,(h.storedDocument??storedStateDocument)(item),item.uuid,item.system?.badge?.value,item.value??item.system?.value?.value,item.system?.persistent?.damageType,grantedByOtherAura(item,token)]);
      // A recipe with its own Lasting animation choice uses it in place of its catalog's.
      const lasting=recipe.lasting?{...state,fade:recipe.lasting!=='lasting',turn:recipe.lasting==='turn'}:state;
@@ -180,10 +184,10 @@ export class PersistentStates{
     }
    }
    // Removed, its next application animates again.
-   for(const key of this.stopped)if(!present.has(key))this.stopped.delete(key);
+   for(const key of this.stopped)if(!present.has(key)&&(!prefixes||prefixes.some(prefix=>key.startsWith(prefix))))this.stopped.delete(key);
    // A play-once state played on this client stays quiet while it lasts, even hidden from view or
    // redrawn (another observer selected, a new mesh); removed, its next application plays again.
-   for(const key of this.played)if(!present.has(key))this.played.delete(key);
+   for(const key of this.played)if(!present.has(key)&&(!prefixes||prefixes.some(prefix=>key.startsWith(prefix))))this.played.delete(key);
   }
   // A state that changed (Frightened 2 becoming 1 at the end of a turn) keeps showing until its
   // replacement is up, so it never blinks out; states that are gone end now.
@@ -300,6 +304,6 @@ export class PersistentStates{
   this.host.changed?.(this.active.size);
   return true;
  }
- async clear(){++this.revision;clearTimeout(this.timer);this.timer=null;const records=[...this.active.values()];this.active.clear();for(const r of records)r.cancelled=true;await Promise.all(records.map(r=>this.end(r)));}
+ async clear(){++this.revision;clearTimeout(this.timer);this.timer=null;this.dirtyTokens.clear();this.fullScheduled=false;const records=[...this.active.values()];this.active.clear();for(const r of records)r.cancelled=true;await Promise.all(records.map(r=>this.end(r)));}
  async destroy(){this.closed=true;await this.clear();}
 }

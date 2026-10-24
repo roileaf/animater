@@ -1,3 +1,4 @@
+import { frameSettings } from './core/frame-settings.mjs';
 import { uuid } from "./core/uuid.mjs";
 import { setHidePrivateResults } from "./core/privacy.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
@@ -66,7 +67,26 @@ import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
-import { Workspace, JB2A_MISSING } from "./ui/workspace.mjs";
+const hotSettings = frameSettings({
+  get: key => game.settings.get(ID, key),
+  frame: () => globalThis.canvas?.app?.ticker?.lastTime ?? performance.now(),
+});
+const hotSetting = key => hotSettings.get(key);
+// Invalidate before our own onChange callbacks (not only after Foundry's
+// update hook): quality routing and other synchronous readers need the new value.
+const registerSetting = (key, config) => game.settings.register(ID, key, {
+  ...config,
+  onChange: (...args) => {
+    if (args.length) hotSettings.changed(key, args[0]); else hotSettings.invalidate();
+    movementViews.clear();
+    sinkDirty = true;
+    return config.onChange?.(...args);
+  },
+});
+for (const hook of ['clientSettingChanged', 'updateSetting', 'canvasReady', 'canvasTearDown'])
+  Hooks.on(hook, () => hotSettings.invalidate());
+
+import { JB2A_MISSING } from "./ui/environment-message.mjs";
 import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
 import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
 import { libraryPreferences } from './ui/media-library.mjs';
@@ -132,14 +152,14 @@ import { builtinPreset } from "./engines/tokenshade/presets.mjs";
 let conditionBody;
 let idleLife;
 let woundedLooks;
-const localQuality=()=>{try{return game.settings.get('animater','quality');}catch{return 'full';}};
+const localQuality=()=>{try{return hotSetting('quality');}catch{return 'full';}};
 // Mirror this client's choice so the client that starts an animation can route optional layers.
 const syncQuality=()=>{const value=localQuality(),user=game.user;if(typeof user?.getFlag==='function'&&typeof user.setFlag==='function'&&user.getFlag('animater','quality')!==value)void Promise.resolve(user.setFlag('animater','quality',value)).catch(()=>{});};
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
 let runtime, app;
 registerTriggerEngine();
 const mediaLibraryLoader=new MediaLibraryLoader(()=>({modules:game.modules,database:globalThis.Sequencer?.Database,
-  folderSources:libraryPreferences(game.settings.get(ID,'mediaLibrary')).sources,
+  folderSources:libraryPreferences(hotSetting('mediaLibrary')).sources,
   browse:path=>foundry.applications.apps.FilePicker.implementation.browse('data',path)}),{store:mediaIndexStore()});
 let motions;
 let optionalFx;
@@ -169,7 +189,7 @@ const adaptiveHost = createAdaptiveHost({
 // Whether effect lights reveal the creatures they light, for PF2e Visioner (a homebrew option): each light says so
 // in `revealsCreatures`, and Visioner's auto-visibility skips the ones that reveal nothing.
 const LIGHT_REVEALS = "effectLightsReveal";
-const lightReveals = () => { try { return game.settings.get(ID, LIGHT_REVEALS) === true; } catch { return false; } };
+const lightReveals = () => { try { return hotSetting(LIGHT_REVEALS) === true; } catch { return false; } };
 // Effect lights on this client (engines/lighting/light-host.mjs): local Foundry light sources, never documents.
 const lightHost = createLightHost({
   makeSource: (id) => {
@@ -187,17 +207,17 @@ const lightHost = createLightHost({
   refreshLighting: () => canvas?.perception?.update({ refreshLighting: true, refreshVision: true }),
   sceneId: () => canvas?.scene?.id,
   levelOk: (level) => { try { return !!canvas?.scene?.levels?.get(level ?? canvas.level?.id); } catch { return false; } },
-  steady: () => { try { return game.settings.get(ID, "effectLightAnimation") === false; } catch { return false; } },
+  steady: () => { try { return hotSetting("effectLightAnimation") === false; } catch { return false; } },
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
 });
 // "Effect lighting on my screen": off, this client draws no effect lights (the effects still carry them for others).
-const lightsHere = () => { try { return game.settings.get(ID, "effectLightingLocal") !== false; } catch { return true; } };
+const lightsHere = () => { try { return hotSetting("effectLightingLocal") !== false; } catch { return true; } };
 // Map distortion on this client (engines/distortion/distortion-host.mjs): one screen filter on the primary group,
 // after Foundry's own, only while something distorts. Full quality only, unless this client turned it off.
 const distortsHere = () => {
   let local = true;
-  try { local = game.settings.get(ID, "mapDistortionLocal"); } catch { /* not registered yet */ }
+  try { local = hotSetting("mapDistortionLocal"); } catch { /* not registered yet */ }
   return canDistort(localQuality(), local);
 };
 // Builds or warms the shaders this client now needs (set once the canvas is up, in "ready"); the quality and
@@ -243,7 +263,7 @@ const distortionHost = createDistortionHost({
 });
 // Camera shake on this client (engines/camera/camera-shake.mjs): big blasts' shock tags jolt the stage's position
 // (Foundry pans by its pivot) for a moment. World and client settings, Full or Light quality only.
-const shakeSetting = (key, fallback) => { try { return game.settings.get(ID, key); } catch { return fallback; } };
+const shakeSetting = (key, fallback) => { try { return hotSetting(key); } catch { return fallback; } };
 const cameraShake = createCameraShake({
   getPosition: () => canvas.stage.position,
   setPosition: (x, y) => canvas.stage.position.set(x, y),
@@ -326,8 +346,8 @@ const receiveKillCam = (data, senderId) => {
 const finitePoint = (p) => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x, y: p.y } : null);
 const summonsLights = createSummonsLights({
   host: lightHost,
-  enabled: () => game.settings.get(ID, "effectLighting") !== false && lightsHere()
-    && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
+  enabled: () => hotSetting("effectLighting") !== false && lightsHere()
+    && (hotSetting("effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
   grid: () => canvas?.grid?.size ?? 100,
   // The token an effect is tied to (or drawn on), on the viewed scene; a stretched line's two ends.
   describeEffect: (effect) => {
@@ -399,9 +419,9 @@ const markLayer = createMarkLayer({
   gridSize: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
   // Off draws none; Low keeps half as many.
-  enabled: () => game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
+  enabled: () => hotSetting("groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
   cap: () => (localQuality() === "low" ? 30 : 60),
-  timing: () => markTiming(game.settings.get(ID, "groundMarkMinutes")),
+  timing: () => markTiming(hotSetting("groundMarkMinutes")),
   // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
   mask: (tag) => areaMaskFor(tag, { regions: canvas?.scene?.regions, grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask }),
   onLand: (record) => markReactions.onLand(record),
@@ -424,8 +444,8 @@ const markReactions = createReactionHost({
     reactRoot.addChild(fx.display);
     return fx;
   },
-  enabled: () => game.settings.get(ID, "elementReactions") !== false && game.settings.get(ID, "elementReactionsLocal") !== false
-    && game.settings.get(ID, "groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
+  enabled: () => hotSetting("elementReactions") !== false && hotSetting("elementReactionsLocal") !== false
+    && hotSetting("groundMarksLocal") !== false && qualityRank(localQuality()) > 0,
   now: () => performance.now(),
   gridSize: () => canvas?.grid?.size ?? 100,
   // Arcs reach only the tokens this viewer can see.
@@ -504,12 +524,12 @@ const movementPerception = (t, d, level) => {
   if (!onLevel || t.isPreview) return { visible: false, audible: false };
   // A GM may perceive as their selected token does ("GM perceives movement"); with nothing selected, everything.
   let gm = game.user.isGM;
-  if (gm && canvas.tokens?.controlled?.length) { try { gm = game.settings.get(ID, "movementGmPerception") !== "token"; } catch { /* everything */ } }
+  if (gm && canvas.tokens?.controlled?.length) { try { gm = hotSetting("movementGmPerception") !== "token"; } catch { /* everything */ } }
   // A player's own creature (or the GM's selected one) is always perceived.
   if (!gm && (game.user.isGM ? t.controlled : t.isOwner)) return { visible: drawnBeforeSink(t, sunkHidden) && !d.hidden, audible: !d.hidden };
   // Stealth off: what is drawn on this screen is what it perceives (GM-hidden tokens still give nothing away).
   let stealth = true;
-  try { stealth = game.settings.get(ID, "movementStealth") !== false; } catch { /* on */ }
+  try { stealth = hotSetting("movementStealth") !== false; } catch { /* on */ }
   if (!stealth && !gm) { const shown = drawnBeforeSink(t, sunkHidden) && !d.hidden; return { visible: shown, audible: shown }; }
   const time = performance.now(), cached = conditionCache.get(d.id);
   let conditions = cached && time - cached.at < AWARE_MS ? cached.conditions : null;
@@ -527,7 +547,7 @@ Hooks.on("canvasTearDown", () => { awareness.clear(); conditionCache.clear(); })
 // flag, D&D 5e's Hiding status. Read for a second at a time per token.
 const sneakCache = new Map();
 const movementSneaking = (id) => {
-  try { if (game.settings.get(ID, "quietSneaking") === false) return false; } catch { return false; }
+  try { if (hotSetting("quietSneaking") === false) return false; } catch { return false; }
   const time = performance.now(), cached = sneakCache.get(id);
   if (cached && time - cached.at < 1000) return cached.on;
   let on = false;
@@ -581,7 +601,7 @@ const movementFeelRoot = () => {
   }
   return feelRoot;
 };
-const movementFeelSettingOn = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return false; } };
+const movementFeelSettingOn = (key) => { try { return hotSetting(key) !== false; } catch { return false; } };
 const movementFeelFloor = (point, token) => {
   const scene = canvas?.scene;
   const base = sceneFloor({
@@ -630,6 +650,13 @@ const movementFeelBlood = (d) => {
   }
   return blood;
 };
+// Position/visibility are checked every frame; stationary metadata is reused.
+// Native document/perception hooks invalidate immediately, with a short fallback
+// lifetime for integrations that change actor data without emitting a hook.
+const movementViews = new Map();
+for (const hook of ['canvasReady', 'canvasTearDown', 'updateActor', 'createItem', 'updateItem', 'deleteItem', 'sightRefresh', 'controlToken', 'clientSettingChanged', 'updateSetting'])
+  Hooks.on(hook, () => movementViews.clear());
+for (const hook of ['updateToken', 'deleteToken']) Hooks.on(hook, doc => movementViews.delete(doc.id));
 const movementFeel = createMovementFeel({
   trails: groundTrails,
   enabled: () => movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal"),
@@ -653,16 +680,25 @@ const movementFeel = createMovementFeel({
       const d = t.document, c = d.getCenterPoint();
       const until = feelSkip.get(d.id);
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
+      const skip = (until ?? 0) > time || motions?.active?.has?.(t) === true;
+      const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview];
+      const cached = movementViews.get(d.id);
+      if (cached && cached.token === t && time - cached.at < 100 && signature.every((value, i) => value === cached.signature[i])) {
+        cached.view.skip = skip;
+        return cached.view;
+      }
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
-      return {
+      const view = {
         id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action: d.movementAction,
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
         ...movementFeelBlood(d),
         ...movementPerception(t, d, level),
-        skip: (until ?? 0) > time || motions?.active?.has?.(t) === true,
+        skip,
       };
+      movementViews.set(d.id, {token: t, signature, at: time, view});
+      return view;
     });
   },
   // Quiet positional steps on every floor: Animater's bundled steps, or PSFX's outdoor steps on soft ground when it is
@@ -674,7 +710,7 @@ const movementFeel = createMovementFeel({
     const mix = movementSoundMix(token.sound);
     if (mix.silent || token.gait === 'none' || (token.preview && !token.preview.active)) return;
     let level = 1;
-    try { level = Number(game.settings.get(ID, "surfaceVolume") ?? 1); } catch { /* not registered yet */ }
+    try { level = Number(hotSetting("surfaceVolume") ?? 1); } catch { /* not registered yet */ }
     if (!(level > 0) && !(mix.tremor > 0)) return;
     const seed = token.id ?? "";
     // How heavy the creature is: its size category (else its token width) and whether its body is heavy.
@@ -834,6 +870,11 @@ const burrowSink = createBurrowSink({ now: () => performance.now(), duration: 35
 const sinkPoses = new Map(); // token -> poseMesh record
 const sinkSeen = new Set(); // token ids already judged on this canvas (one already under on load starts down)
 const sinkMoving = new Set(); // token ids part-way down or up last frame
+let sinkDirty = true, sinkLevel;
+const sinkPending = new Set();
+const dirtySink = token => { if (token?.id) sinkPending.add(token.id); else sinkDirty = true; };
+for (const hook of ['createToken', 'updateToken']) Hooks.on(hook, dirtySink);
+for (const hook of ['canvasReady', 'controlToken', 'clientSettingChanged', 'updateSetting']) Hooks.on(hook, () => { sinkDirty = true; });
 let sinkTicker = null;
 const burrowSinkOn = () => movementFeelSettingOn("burrowSink");
 const sinkViewer = (token) => ({ owner: token.isOwner === true, gm: game.user?.isGM === true });
@@ -874,6 +915,8 @@ const clearBurrowSink = () => {
   sinkPoses.clear();
   sinkSeen.clear();
   sinkMoving.clear();
+  sinkPending.clear();
+  sinkDirty = true;
   burrowSink.clear();
 };
 // Each frame: who is under the floor of the level on view, and the pose of any token part-way down or up.
@@ -882,7 +925,12 @@ const tickBurrowSink = () => {
   const placeables = canvas?.tokens?.placeables;
   if (!placeables?.length) return;
   const base = canvas.level?.elevation?.base ?? 0, level = canvas.level?.id;
-  for (const t of placeables) {
+  const levelKey = `${level}:${base}`;
+  if (sinkLevel !== levelKey) { sinkLevel = levelKey; sinkDirty = true; }
+  const candidates = sinkDirty ? placeables : [...new Set([...sinkPending, ...sinkMoving])].map(id => canvas.tokens.get(id)).filter(Boolean);
+  sinkDirty = false;
+  sinkPending.clear();
+  for (const t of candidates) {
     const d = t.document;
     if (!d || t.isPreview) continue;
     const onLevel = level === undefined || d.level === undefined || d.level === level;
@@ -891,7 +939,9 @@ const tickBurrowSink = () => {
     if (first) sinkSeen.add(d.id);
     const turned = burrowSink.update(d.id, under, { instant: first });
     const moving = burrowSink.moving(d.id), was = sinkMoving.has(d.id);
-    if (moving) sinkMoving.add(d.id); else sinkMoving.delete(d.id);
+    // At the first instant depth can still be exactly zero. Keep a newly
+    // started transition scheduled until the following frame advances it.
+    if (moving || turned) sinkMoving.add(d.id); else sinkMoving.delete(d.id);
     // Part-way, or just finished (the last frame's pose, and the hiding once it is all the way down).
     if (turned || moving || was || (first && under)) applyBurrowSink(t);
   }
@@ -899,10 +949,11 @@ const tickBurrowSink = () => {
 Hooks.on("refreshToken", (token, flags) => {
   try {
     if (!burrowSinkOn()) return;
+    dirtySink(token.document);
     if (burrowSink.has(token.document?.id) || sunkHidden.has(token) || sinkPoses.has(token)) applyBurrowSink(token, flags);
   } catch { /* never break a token refresh */ }
 });
-Hooks.on("destroyToken", (token) => { sunkHidden.delete(token); sinkPoses.delete(token); });
+Hooks.on("destroyToken", (token) => { const id=token.document?.id;sunkHidden.delete(token);sinkPoses.delete(token);sinkSeen.delete(id);sinkMoving.delete(id);sinkPending.delete(id);burrowSink.delete(id); });
 Hooks.on("canvasReady", () => {
   const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
   if (!ticker || !P || sinkTicker === ticker) return;
@@ -927,7 +978,7 @@ const idleVoiced = new Set();
 Hooks.on("updateCombat", (combat, changes) => {
   if (!changes || !("turn" in changes || "round" in changes)) return;
   try {
-    if (game.settings.get(ID, "creatureIdleSounds") === false) return;
+    if (hotSetting("creatureIdleSounds") === false) return;
     if (game.modules.get("pf2e-creature-sounds")?.active !== true) return;
     try { if (game.settings.get("pf2e-creature-sounds", "creatureSounds_enable") === false) return; } catch { /* its default: on */ }
     if (!combat?.started || !canvas?.ready) return;
@@ -993,7 +1044,7 @@ let vaporRoot = null, vaporTicker = null, vaporList = [], vaporListAt = -Infinit
 const VAPOR_REFRESH_MS = 500;
 const vaporOn = () => {
   try {
-    return game.settings.get(ID, "breathVapor") !== false && game.settings.get(ID, "idleLifeLocal") !== false
+    return hotSetting("breathVapor") !== false && hotSetting("idleLifeLocal") !== false
       && qualityRank(localQuality()) >= 2 && !!canvas?.ready;
   } catch { return false; }
 };
@@ -1080,7 +1131,7 @@ const hoverToScreen = (point) => {
 };
 const hoverExplain = createHoverExplain({
   document: globalThis.document,
-  enabled: () => { try { const on = game.settings.get(ID, "hoverExplain"); return on ?? game.user?.isGM === true; } catch { return false; } },
+  enabled: () => { try { const on = hotSetting("hoverExplain"); return on ?? game.user?.isGM === true; } catch { return false; } },
   isGM: () => game.user?.isGM === true,
   rowsFor: (token) => tokenRows({
     sessions: runtime?.runningAnimations() ?? [], states: persistentStates?.running() ?? [], effects: hoverEffects(),
@@ -1109,7 +1160,7 @@ Hooks.on("canvasReady", () => {
 // cast Dispel Magic or Counterspell, tells every screen. A success opens a 4 s window there: Animater's lasting areas
 // and auras that end inside it break into glass shards as they go. A failure makes the lasting animations on its
 // targets flicker for a moment, then hold. Local visuals only, above the tokens like the element reactions.
-const dispelOn = () => { try { return game.settings.get(ID, "dispelShatter") !== false && game.settings.get(ID, "dispelShatterLocal") !== false && qualityRank(localQuality()) > 0; } catch { return false; } };
+const dispelOn = () => { try { return hotSetting("dispelShatter") !== false && hotSetting("dispelShatterLocal") !== false && qualityRank(localQuality()) > 0; } catch { return false; } };
 const dispelWindow = createDispelWindow({ now: () => performance.now() });
 const dispelFlicker = createFlickerHost({ now: () => performance.now() });
 const dispelLasting = new Set();
@@ -1247,7 +1298,7 @@ Hooks.on("canvasReady", () => {
 });
 // The next combatant's likely files load ahead on every client, one turn early.
 Hooks.on("updateCombat", (combat, changed) => { if ("turn" in (changed ?? {}) || "round" in (changed ?? {})) adaptiveHost.onTurn(combat); });
-tokenFx.custom = () => { try { return game.settings.get(ID, 'tokenFxPresets') ?? []; } catch { return []; } };
+tokenFx.custom = () => { try { return hotSetting('tokenFxPresets') ?? []; } catch { return []; } };
 const fxCatalog = () => installedFxCatalog({
   modules:game.modules, tokenFx, fxmaster:globalThis.FXMASTER?.api,
   config:globalThis.CONFIG?.fxmaster, localize:key=>game.i18n.localize(key), isGM:game.user.isGM,
@@ -1308,8 +1359,8 @@ async function receiveMotion(data, { strict = false } = {}) {
   }
 }
 const recipes = () =>
-  clone(game.settings.get(ID, "recipes")?.recipes ?? starterRecipes());
-const playerDecisions = () => game.settings.get(ID, "playerApprovals") ?? {};
+  clone(hotSetting("recipes")?.recipes ?? starterRecipes());
+const playerDecisions = () => hotSetting("playerApprovals") ?? {};
 // Players' finisher picks: the item's flag names it; it holds while the GM still gives it to an owner.
 const ownerUsers = (actor) => [...(game.users?.values?.() ?? [])].filter((u) => !u.isGM && actor?.testUserPermission?.(u, "OWNER")).map((u) => u.id);
 // A synthetic strike (PF2e's basic unarmed or a rule-element strike, or a { actor, name, slug }
@@ -1366,19 +1417,19 @@ const ownPlayerRecipes = () => clone(game.user?.getFlag?.(ID, "playerRecipes")?.
 // The player whose animations the GM has open in the Studio, if any.
 let reviewing = null;
 const reviewedUser = () => (game.user?.isGM && reviewing ? game.users?.get(reviewing) ?? null : null);
-const enabled = () => game.settings.get(ID, "automatic");
+const enabled = () => hotSetting("automatic");
 // Players' approved recipes play for their own characters even when the GM's
 // automatic playback is off.
 const ownApprovedRecipe = (event) => game.user?.isGM ? null : approvedPlayerRecipe(event, ownPlayerRecipes(), playerDecisions()[game.user.id], { owns: (actor) => Boolean(actor?.isOwner) });
 const hasOwnApproved = () => !game.user?.isGM && ownPlayerRecipes().some((r) => approvalState(r, playerDecisions()[game.user.id]) === "approved");
 const acceptsEvents = () =>
   enabled() ||
-  (game.system.id === "sf2e" && SF_KINDS.some(kind=>{const state=game.settings.get(ID,sfSettingKey(kind));return state?.enabled&&state.independent;})) ||
-  (game.system.id === 'dnd5e' && DND_KINDS.some(kind=>{const state=game.settings.get(ID,dndSettingKey(kind));return state?.enabled&&state.independent;})) ||
-  (game.system.id === 'daggerheart' && DH_KINDS.some(kind=>{const state=game.settings.get(ID,dhSettingKey(kind));return state?.enabled&&state.independent;})) ||
+  (game.system.id === "sf2e" && SF_KINDS.some(kind=>{const state=hotSetting(sfSettingKey(kind));return state?.enabled&&state.independent;})) ||
+  (game.system.id === 'dnd5e' && DND_KINDS.some(kind=>{const state=hotSetting(dndSettingKey(kind));return state?.enabled&&state.independent;})) ||
+  (game.system.id === 'daggerheart' && DH_KINDS.some(kind=>{const state=hotSetting(dhSettingKey(kind));return state?.enabled&&state.independent;})) ||
   (game.system.id === "pf2e" &&
     ["spellCatalog", "featCatalog", "actionCatalog", "featureCatalog", "weaponCatalog"].some((key) => {
-      const state = game.settings.get(ID, key);
+      const state = hotSetting(key);
       return state?.enabled && state.independent;
     }));
 function environment() {
@@ -1545,7 +1596,7 @@ const COLLAPSE = { id: "animater-collapse", name: "Dropped to 0 HP", trigger: "m
 async function afterDice(event) {
   const dice = globalThis.game?.dice3d;
   if (!event.messageId || !dice?.waitFor3DAnimationByMessageID || !(["attack", "damage", "save", "check"].includes(event.type) || event.skillCheck)) return;
-  if (game.settings.get(ID, WAIT_FOR_DICE) === false) return;
+  if (hotSetting(WAIT_FOR_DICE) === false) return;
   // Dice So Nice marks the message as animating from its own creation hook.
   await new Promise((resolve) => setTimeout(resolve, 60));
   await Promise.race([dice.waitFor3DAnimationByMessageID(event.messageId), new Promise((resolve) => setTimeout(resolve, DICE_WAIT_LIMIT))]);
@@ -1603,6 +1654,9 @@ export class AnimaterApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const root = this.element.querySelector(".an-root");
     if (this.workspace?.root !== root) {
       this.workspace?.destroy();
+      const { Workspace } = await import("./ui/workspace.mjs");
+      if (this.rendered === false || root !== this.element.querySelector(".an-root")) return;
+      if (this.workspace?.root === root) return;
       this.workspace = new Workspace(root, workspaceHost());
     }
   }
@@ -1703,7 +1757,7 @@ async function openForItem(item) {
 // Teleport (recipes that ask for it): pick the spot on the canvas, then vanish and reappear.
 const placeable = (t) => t?.object ?? t;
 async function pickTeleport(recipe, context) {
-  if (!game.settings.get(ID, TELEPORT_TOKENS)) return null;
+  if (!hotSetting(TELEPORT_TOKENS)) return null;
   const plan = teleportPlan(recipe);
   if (!plan) return null;
   const caster = placeable(context.source), mover = plan.who === "target" ? placeable(context.targets?.[0]) : caster;
@@ -1731,7 +1785,7 @@ function fetchSpots(recipe, context, caster) {
   return landings.map((spot) => ({ mover: targets.find((t) => t.document.id === spot.id), caster, x: spot.x, y: spot.y, slide: true, visuals, element }));
 }
 // Big magic bends the scene (world setting); on while the setting is not registered.
-function mapDistortion() { try { return game.settings.get(ID, "mapDistortion") !== false; } catch { return true; } }
+function mapDistortion() { try { return hotSetting("mapDistortion") !== false; } catch { return true; } }
 // `slide` (ms): Foundry's own move animation over that long (a fetch dragged along its line), else a jump.
 const SLIDE_MS = 500, SLIDE_MAX_MS = 3000;
 async function moveToken(doc, x, y, slide = 0) {
@@ -1749,7 +1803,7 @@ function teleportHost({ local = false } = {}) {
       const effect = new Sequence({ moduleName: ID }).effect().file(asset).atLocation(point).size(size);
       if (tint) effect.tint(tint);
       const { animaterTrail, ...rest } = data ?? {};
-      const tags = { ...rest, ...(animaterTrail && !local && game.settings.get(ID, "afterimages") !== false ? { animaterTrail } : {}) };
+      const tags = { ...rest, ...(animaterTrail && !local && hotSetting("afterimages") !== false ? { animaterTrail } : {}) };
       if (Object.keys(tags).length) effect.addOverride(async (_, effectData) => ({ ...effectData, ...tags }));
       void effect.play(local ? { local: true } : {}).catch(error => console.warn('Animater teleport effect:', error.message));
     },
@@ -1870,7 +1924,7 @@ async function applyDisplace(doc, { x, y, hidden, defeated, fromX, fromY, finish
   if (Number.isFinite(x) && Number.isFinite(y)) Object.assign(update, { x, y, [`flags.${ID}.displaced`]: { ...origin, finisher: (typeof finisher === "string" ? finisher : "").slice(0, 80) } });
   if (hidden === true) update.hidden = true;
   if (Object.keys(update).length) await doc.update(update, { animate: false, animater: { displace: true } });
-  if (defeated === true) await markDefeated(doc.actor, game.settings.get(ID, DEFEATED_LOOK));
+  if (defeated === true) await markDefeated(doc.actor, hotSetting(DEFEATED_LOOK));
 }
 async function commitDisplace(token, data, attacker = null) {
   if (game.user.isGM) return applyDisplace(token.document, data);
@@ -1899,7 +1953,7 @@ const CATALOG_KINDS = { pf2e: ["spellCatalog", "featCatalog", "actionCatalog", "
   sf2e: ["spell", "feat", "action", "feature", "weapon", "item", "condition", "effect"].map(sfSettingKey),
   dnd5e: ["spell", "feat", "weapon", "item", "condition", "effect"].map(dndSettingKey),
   daggerheart: DH_KINDS.map(dhSettingKey) };
-const crossoverOn = () => game.settings.get(ID, CROSSOVER_CATALOG) === true;
+const crossoverOn = () => hotSetting(CROSSOVER_CATALOG) === true;
 // A PF2e world shows (and so manages) the SF2e catalogs it borrows.
 const borrowsSfPages = () => game.system.id === "pf2e" && crossoverOn();
 // The other 2e system whose catalogs this world shows and plays (crossover on), or null.
@@ -1908,24 +1962,24 @@ async function seedBorrowedCatalogs() {
   const other = borrowedSystemId();
   if (!other || !game.user.isGM || !(game.users.activeGM?.isSelf ?? true)) return;
   for (const kind of TWOE_KINDS) {
-    const key = twoeSettingKey(other, kind), seeded = seedBorrowedState(game.settings.get(ID, twoeSettingKey(game.system.id, kind)), game.settings.get(ID, key));
+    const key = twoeSettingKey(other, kind), seeded = seedBorrowedState(hotSetting(twoeSettingKey(game.system.id, kind)), hotSetting(key));
     if (seeded) await game.settings.set(ID, key, other === "sf2e" ? normalizeSfCatalogState(seeded) : seeded);
   }
 }
 const catalogKeys = () => [...(CATALOG_KINDS[game.system.id] ?? []), ...(borrowedSystemId() ? TWOE_KINDS.map((kind) => twoeSettingKey(borrowedSystemId(), kind)) : [])].filter((key) => game.settings.settings.has(`${ID}.${key}`));
-const catalogOn = (key) => { const s = game.settings.get(ID, key) ?? {}; return s.enabled === true && (s.scope ?? "all") === "all"; };
+const catalogOn = (key) => { const s = hotSetting(key) ?? {}; return s.enabled === true && (s.scope ?? "all") === "all"; };
 function catalogsOn() { const keys = catalogKeys(); return { on: keys.filter(catalogOn).length, total: keys.length }; }
 async function useEveryCatalog() {
   if (!game.user.isGM) throw Error("Only a GM can turn catalogs on.");
-  for (const key of catalogKeys()) await game.settings.set(ID, key, { ...(game.settings.get(ID, key) ?? {}), enabled: true, scope: "all", independent: true, preferCatalog: true });
-  if (!game.settings.get(ID, "automatic")) await game.settings.set(ID, "automatic", true);
+  for (const key of catalogKeys()) await game.settings.set(ID, key, { ...(hotSetting(key) ?? {}), enabled: true, scope: "all", independent: true, preferCatalog: true });
+  if (!hotSetting("automatic")) await game.settings.set(ID, "automatic", true);
   persistentStates?.schedule();
   return catalogsOn();
 }
 // Once per world, on first load as the active GM: offer to turn every catalog on (only when
 // none is on yet, so a table that already chose its catalogs is never asked).
 async function welcome() {
-  if (!game.user.isGM || !(game.users.activeGM?.isSelf ?? true) || game.settings.get(ID, "welcomed")) return;
+  if (!game.user.isGM || !(game.users.activeGM?.isSelf ?? true) || hotSetting("welcomed")) return;
   await game.settings.set(ID, "welcomed", true);
   if (catalogsOn().on > 0) return;
   const yes = await foundry.applications.api.DialogV2.confirm({
@@ -1945,19 +1999,19 @@ function builtinRecipe(id) {
 function systemBuiltinRecipe(id,sys) {
  if(sys==='sf2e'){
   const entry=sfEntry(id);if(!entry)return null;
-  const state=normalizeSfCatalogState(game.settings.get(ID,sfSettingKey(entry.kind))),variant=entry.variants.find(v=>v.recipe.id===id);
+  const state=normalizeSfCatalogState(hotSetting(sfSettingKey(entry.kind))),variant=entry.variants.find(v=>v.recipe.id===id);
   return sfRecipe(entry,variant?.id,{motion:state.motion,sounds:state.sound?installedSoundCatalog(game.modules,globalThis.Sequencer?.Database):null,soundVolume:state.soundVolume,catalog:runtime.getCatalog()});
  }
  if(sys==='dnd5e') {
   const entry=dndEntry(id)??dndEntries().find(e=>e.variants.some(v=>v.recipe.id===id));
   if(!entry)return null;
-  const variant=entry.variants.find(v=>v.recipe.id===id),state=normalizeDndCatalogState(game.settings.get(ID,dndSettingKey(entry.kind)));
+  const variant=entry.variants.find(v=>v.recipe.id===id),state=normalizeDndCatalogState(hotSetting(dndSettingKey(entry.kind)));
   return dndRecipe(entry,variant?.id,{motion:state.motion,sounds:state.sound?installedSoundCatalog(game.modules,globalThis.Sequencer?.Database):null,soundVolume:state.soundVolume});
  }
  if(sys==='daggerheart'){
   const entry=dhEntry(id)??dhEntries().find(e=>e.variants.some(v=>v.recipe.id===id));
   if(!entry)return null;
-  const variant=entry.variants.find(v=>v.recipe.id===id),state=normalizeDhCatalogState(game.settings.get(ID,dhSettingKey(entry.kind)));
+  const variant=entry.variants.find(v=>v.recipe.id===id),state=normalizeDhCatalogState(hotSetting(dhSettingKey(entry.kind)));
   return dhRecipe(entry,variant?.id,{motion:state.motion,sounds:state.sound?installedSoundCatalog(game.modules,globalThis.Sequencer?.Database):null,soundVolume:state.soundVolume});
  }
  if(sys!=='pf2e')return null;
@@ -1968,13 +2022,13 @@ function systemBuiltinRecipe(id,sys) {
             undefined,
             catalogSoundOptions(workspaceHost()),
           )) ??
-        (catalogWeapon(id) && weaponRecipe(catalogWeapon(id), /-(melee|ranged|thrown)$/.exec(id)?.[1], { motion: game.settings.get(ID, "weaponCatalog")?.motion !== false, soundCatalog: game.settings.get(ID, "weaponCatalog")?.sound === false ? null : installedSoundCatalog(game.modules, globalThis.Sequencer?.Database), soundVolume: game.settings.get(ID, "weaponCatalog")?.soundVolume })) ??
-        Object.entries(ABILITY_CATALOGS).map(([key,catalog])=>catalog.entry(id)&&catalog.recipe(catalog.entry(id),game.settings.get(ID,key)??{},installedSoundCatalog(game.modules,globalThis.Sequencer?.Database))).find(Boolean) ??
+        (catalogWeapon(id) && weaponRecipe(catalogWeapon(id), /-(melee|ranged|thrown)$/.exec(id)?.[1], { motion: hotSetting("weaponCatalog")?.motion !== false, soundCatalog: hotSetting("weaponCatalog")?.sound === false ? null : installedSoundCatalog(game.modules, globalThis.Sequencer?.Database), soundVolume: hotSetting("weaponCatalog")?.soundVolume })) ??
+        Object.entries(ABILITY_CATALOGS).map(([key,catalog])=>catalog.entry(id)&&catalog.recipe(catalog.entry(id),hotSetting(key)??{},installedSoundCatalog(game.modules,globalThis.Sequencer?.Database))).find(Boolean) ??
         (catalogFeat(id) &&
           featRecipe(catalogFeat(id), {
-            motion: game.settings.get(ID, "featCatalog")?.motion !== false,
-            soundVolume: game.settings.get(ID, "featCatalog")?.soundVolume,
-            soundCatalog: game.settings.get(ID, "featCatalog")?.sound === false ? null : installedSoundCatalog(
+            motion: hotSetting("featCatalog")?.motion !== false,
+            soundVolume: hotSetting("featCatalog")?.soundVolume,
+            soundCatalog: hotSetting("featCatalog")?.sound === false ? null : installedSoundCatalog(
               game.modules,
               globalThis.Sequencer?.Database,
             ),
@@ -2065,39 +2119,39 @@ function workspaceHost() {
   return {
     // Tuck the window away while a canvas preview or table playback runs, then restore it.
     tuckWindow: async () => {
-      let on = true; try { on = game.settings.get(ID, 'tuckDuringPlayback') !== false; } catch {}
+      let on = true; try { on = hotSetting('tuckDuringPlayback') !== false; } catch {}
       if (!on || !app?.rendered || app.minimized) return null;
       await app.minimize();
       return async () => { if (app?.rendered && app.minimized) await app.maximize(); };
     },
-    mediaPreferences:()=>libraryPreferences(game.settings.get(ID,'mediaLibrary')),
+    mediaPreferences:()=>libraryPreferences(hotSetting('mediaLibrary')),
     setMediaPreferences:value=>game.settings.set(ID,'mediaLibrary',libraryPreferences(value)),
     mediaCatalog:()=>mediaLibraryLoader.peek(),
     loadMediaCatalog:(refresh,onProgress)=>mediaLibraryLoader.load(refresh,onProgress),
-    sfCatalogState:kind=>normalizeSfCatalogState(game.settings.get(ID,sfSettingKey(kind))),
+    sfCatalogState:kind=>normalizeSfCatalogState(hotSetting(sfSettingKey(kind))),
     setSfCatalogState:async(kind,change)=>{
       if(!game.user.isGM||!(game.system.id==="sf2e"||borrowsSfPages()&&TWOE_KINDS.includes(kind))||!SF_KINDS.includes(kind))throw Error("SF2e catalog configuration requires a GM in an SF2e world, or a PF2e world that uses the SF2e catalogs.");
       const key=sfSettingKey(kind);
-      await game.settings.set(ID,key,normalizeSfCatalogState({...game.settings.get(ID,key),...change}));
+      await game.settings.set(ID,key,normalizeSfCatalogState({...hotSetting(key),...change}));
       persistentStates?.schedule();
     },
-    dndCatalogState:kind=>normalizeDndCatalogState(game.settings.get(ID,dndSettingKey(kind))),
+    dndCatalogState:kind=>normalizeDndCatalogState(hotSetting(dndSettingKey(kind))),
     setDndCatalogState:async(kind,change)=>{
       if(!game.user.isGM||game.system.id!=='dnd5e'||!DND_KINDS.includes(kind))throw Error('D&D catalog configuration requires a GM in a D&D world.');
       const key=dndSettingKey(kind);
-      await game.settings.set(ID,key,normalizeDndCatalogState({...game.settings.get(ID,key),...change}));
+      await game.settings.set(ID,key,normalizeDndCatalogState({...hotSetting(key),...change}));
       persistentStates?.schedule();
     },
-    dhCatalogState:kind=>normalizeDhCatalogState(game.settings.get(ID,dhSettingKey(kind))),
+    dhCatalogState:kind=>normalizeDhCatalogState(hotSetting(dhSettingKey(kind))),
     setDhCatalogState:async(kind,change)=>{
       if(!game.user.isGM||game.system.id!=='daggerheart'||!DH_KINDS.includes(kind))throw Error('Daggerheart catalog configuration requires a GM in a Daggerheart world.');
       const key=dhSettingKey(kind);
-      await game.settings.set(ID,key,normalizeDhCatalogState({...game.settings.get(ID,key),...change}));
+      await game.settings.set(ID,key,normalizeDhCatalogState({...hotSetting(key),...change}));
       persistentStates?.schedule();
     },
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),
-    weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
+    weaponScale: () => Number(hotSetting("weaponScale")) || 1,
     // The Activity page's Play recap: the last combat's Highlights, on this screen.
     playRecap: () => playRecapApi({ everyone: false }),
     // Flash screens (GM): the library, defaults and playback for the editor page.
@@ -2142,8 +2196,8 @@ function workspaceHost() {
     // Whether anything plays automatically on this client (a catalog, custom recipes, or a player's approved ones).
     acceptsEvents: () => acceptsEvents() || hasOwnApproved(),
     // This device's "Lasting condition animations" choice ("world" follows each catalog).
-    lastingMode: () => game.settings.get(ID, "lastingMode"),
-    defaultFinisher: () => game.settings.get(ID, DEFAULT_FINISHER) ?? "",
+    lastingMode: () => hotSetting("lastingMode"),
+    defaultFinisher: () => hotSetting(DEFAULT_FINISHER) ?? "",
     players: () => game.users.filter((u) => !u.isGM).map((u) => ({ id: u.id, name: u.name, color: u.color?.css ?? u.color ?? "" })),
     // Players pick finishers only in pf2e-combater's item sheet: Available to shows only with it.
     playerPicks: () => game.modules.get("pf2e-combater")?.active === true,
@@ -2152,7 +2206,7 @@ function workspaceHost() {
       await game.settings.set(ID, DEFAULT_FINISHER, String(id ?? ""));
     },
     // How the default finisher ends: "" as each finisher is made, or a FINISHER_ENDINGS key.
-    defaultFinisherEnding: () => game.settings.get(ID, DEFAULT_FINISHER_ENDING) ?? "",
+    defaultFinisherEnding: () => hotSetting(DEFAULT_FINISHER_ENDING) ?? "",
     setDefaultFinisherEnding: async (ending) => {
       if (!game.user.isGM) throw Error("Only a GM can choose how the default finisher ends.");
       await game.settings.set(ID, DEFAULT_FINISHER_ENDING, Object.hasOwn(FINISHER_ENDINGS, ending) ? ending : "");
@@ -2201,12 +2255,12 @@ function workspaceHost() {
       const clean=normalizeLayers(layers),title=String(name??'').trim().slice(0,80);
       if(!title)throw Error('Name the preset first.');
       if(!clean)throw Error('This effect has no layers to save.');
-      const list=(game.settings.get(ID,'tokenFxPresets')??[]).filter(p=>p.name!==title);
+      const list=(hotSetting('tokenFxPresets')??[]).filter(p=>p.name!==title);
       await game.settings.set(ID,'tokenFxPresets',[...list,{name:title,params:clean}].slice(-200));
     },
     deleteTokenFxPreset:async name=>{
       if(!game.user.isGM)throw Error('Only a GM can delete Tokenshade presets.');
-      await game.settings.set(ID,'tokenFxPresets',(game.settings.get(ID,'tokenFxPresets')??[]).filter(p=>p.name!==name));
+      await game.settings.set(ID,'tokenFxPresets',(hotSetting('tokenFxPresets')??[]).filter(p=>p.name!==name));
     },
     logs: () => runtime.log,
     isGM: () => game.user.isGM,
@@ -2216,11 +2270,11 @@ function workspaceHost() {
     environment,
     enabled,
     catalogState: () =>
-      normalizeCatalogState(game.settings.get(ID, "spellCatalog")),
+      normalizeCatalogState(hotSetting("spellCatalog")),
     setCatalogState: async (change) => {
       if (!game.user.isGM)
         throw Error("Only a GM can configure the spell catalog.");
-      const current = game.settings.get(ID, "spellCatalog");
+      const current = hotSetting("spellCatalog");
       await game.settings.set(
         ID,
         "spellCatalog",
@@ -2228,45 +2282,45 @@ function workspaceHost() {
       );
     },
     featCatalogState: () =>
-      normalizeFeatCatalogState(game.settings.get(ID, "featCatalog")),
+      normalizeFeatCatalogState(hotSetting("featCatalog")),
     setFeatCatalogState: async (change) => {
       if (!game.user.isGM)
         throw Error("Only a GM can configure the feat catalog.");
-      const current = game.settings.get(ID, "featCatalog");
+      const current = hotSetting("featCatalog");
       await game.settings.set(
         ID,
         "featCatalog",
         normalizeFeatCatalogState({ ...current, ...change }),
       );
     },
-    actionCatalogState: () => PF2E_ACTION_CATALOG.normalizeState(game.settings.get(ID, "actionCatalog")),
+    actionCatalogState: () => PF2E_ACTION_CATALOG.normalizeState(hotSetting("actionCatalog")),
     setActionCatalogState: async (change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure the action catalog.");
-      return game.settings.set(ID, "actionCatalog", PF2E_ACTION_CATALOG.normalizeState({ ...game.settings.get(ID, "actionCatalog"), ...change }));
+      return game.settings.set(ID, "actionCatalog", PF2E_ACTION_CATALOG.normalizeState({ ...hotSetting("actionCatalog"), ...change }));
     },
-    featureCatalogState: () => PF2E_FEATURE_CATALOG.normalizeState(game.settings.get(ID, "featureCatalog")),
+    featureCatalogState: () => PF2E_FEATURE_CATALOG.normalizeState(hotSetting("featureCatalog")),
     setFeatureCatalogState: async (change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure the feature catalog.");
-      return game.settings.set(ID, "featureCatalog", PF2E_FEATURE_CATALOG.normalizeState({ ...game.settings.get(ID, "featureCatalog"), ...change }));
+      return game.settings.set(ID, "featureCatalog", PF2E_FEATURE_CATALOG.normalizeState({ ...hotSetting("featureCatalog"), ...change }));
     },
     // The NPC abilities page: its three switches and the abilities left out.
-    npcAbilityState: () => ({ abilities: game.settings.get(ID, "npcAbilities") !== false, guess: game.settings.get(ID, "npcAbilityGuess") !== false,
-      strikes: game.settings.get(ID, "npcStrikeGuess") !== false, excluded: [...(game.settings.get(ID, "npcAbilityExcluded") ?? [])] }),
+    npcAbilityState: () => ({ abilities: hotSetting("npcAbilities") !== false, guess: hotSetting("npcAbilityGuess") !== false,
+      strikes: hotSetting("npcStrikeGuess") !== false, excluded: [...(hotSetting("npcAbilityExcluded") ?? [])] }),
     setNpcAbilityState: async (change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure NPC abilities.");
       const keys = { abilities: "npcAbilities", guess: "npcAbilityGuess", strikes: "npcStrikeGuess", excluded: "npcAbilityExcluded" };
       for (const [field, value] of Object.entries(change)) if (keys[field]) await game.settings.set(ID, keys[field], field === "excluded" ? [...new Set(value)] : value === true);
     },
-    weaponCatalogState: () => normalizeWeaponCatalogState(game.settings.get(ID, "weaponCatalog")),
+    weaponCatalogState: () => normalizeWeaponCatalogState(hotSetting("weaponCatalog")),
     setWeaponCatalogState: async (change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure weapon animations.");
-      return game.settings.set(ID, "weaponCatalog", normalizeWeaponCatalogState({ ...game.settings.get(ID, "weaponCatalog"), ...change }));
+      return game.settings.set(ID, "weaponCatalog", normalizeWeaponCatalogState({ ...hotSetting("weaponCatalog"), ...change }));
     },
-    stateCatalogState: (kind) => normalizeStateCatalogState(game.settings.get(ID, kind === "condition" ? "conditionCatalog" : "effectCatalog")),
+    stateCatalogState: (kind) => normalizeStateCatalogState(hotSetting(kind === "condition" ? "conditionCatalog" : "effectCatalog")),
     setStateCatalogState: async (kind, change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure persistent animations.");
       const key = kind === "condition" ? "conditionCatalog" : "effectCatalog";
-      await game.settings.set(ID, key, normalizeStateCatalogState({ ...game.settings.get(ID, key), ...change }));
+      await game.settings.set(ID, key, normalizeStateCatalogState({ ...hotSetting(key), ...change }));
       persistentStates?.schedule();
     },
     async save(data) {
@@ -2374,26 +2428,26 @@ function workspaceHost() {
 }
 Hooks.once("init", () => {
   registerSequencerSpeedups(ID);
-  game.settings.register(ID,'mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
-  game.settings.register(ID,'tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
+  registerSetting('mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
+  registerSetting('tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
   for(const [key,name,hint] of [
     ['catalogTokenFx','Tokenshade filters in catalog animations','Catalog animations add matching shader effects on the token itself (flames, frost, glows, shimmer). Drawn by Animater on each screen; nothing is saved to the token.'],
     ['catalogSceneFx','FXMaster scene effects in catalog animations','When FXMaster is active, weather-like catalog spells add brief scene effects (rain, fog, embers). Skipped automatically when the module is missing.']])
-    game.settings.register(ID,key,{name,hint,scope:'world',config:true,type:Boolean,default:true,
+    registerSetting(key,{name,hint,scope:'world',config:true,type:Boolean,default:true,
       onChange:()=>{persistentStates?.schedule();app?.workspace?.render();}});
-  game.settings.register(ID,'conditionLooks',{name:'Condition looks',
+  registerSetting('conditionLooks',{name:'Condition looks',
     hint:'How catalog conditions show on a creature. Tokenshade: a quiet look on the creature itself. JB2A: the condition’s JB2A animation only, with no Tokenshade filters. Also set from each conditions catalog in Animater.',
     scope:'world',config:true,type:String,choices:{tokenshade:'Tokenshade',jb2a:'JB2A'},default:'tokenshade',
     onChange:()=>{persistentStates?.schedule();app?.workspace?.render();}});
-  game.settings.register(ID,'weaponScale',{name:'Weapon effect size',hint:'Multiplies the size of weapon hit and residue effects (1 = the target token\'s footprint).',
+  registerSetting('weaponScale',{name:'Weapon effect size',hint:'Multiplies the size of weapon hit and residue effects (1 = the target token\'s footprint).',
     scope:'world',config:true,type:Number,range:{min:0.5,max:3,step:0.1},default:1.5});
-  game.settings.register(ID,RUNE_SETTING,{name:'Weapon rune flourishes',hint:'Catalog weapon Strikes show each weapon’s runes: potency adds a glint, striking a bigger hit, and each property rune (flaming, frost, shock, holy…) its own accent on a hit. Saved recipes are never changed.',
+  registerSetting(RUNE_SETTING,{name:'Weapon rune flourishes',hint:'Catalog weapon Strikes show each weapon’s runes: potency adds a glint, striking a bigger hit, and each property rune (flaming, frost, shock, holy…) its own accent on a hit. Saved recipes are never changed.',
     scope:'world',config:game.system.id==='pf2e',type:Boolean,default:true});
-  game.settings.register(ID,'showControlButton',{name:'Show Animater scene control button',
+  registerSetting('showControlButton',{name:'Show Animater scene control button',
     hint:'Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater.',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
   // On for GMs, off for players: game.user does not exist yet at init, the world's user data does.
-  game.settings.register(ID,'hoverExplain',{name:'Explain animations on hover',
+  registerSetting('hoverExplain',{name:'Explain animations on hover',
     hint:'Hovering a token shows what Animater is playing on it right now: each animation\'s name, whether it comes from a catalog or a recipe, and whether it lasts.',
     scope:'client',config:true,type:Boolean,default:hoverExplainDefault(game),onChange:()=>hoverExplain.refresh()});
   // Every Animater setting but the animation quality, by topic, in one window (ui/settings-window.mjs).
@@ -2404,55 +2458,55 @@ Hooks.once("init", () => {
   game.settings.registerMenu(ID,'hitSoundsMenu',{name:'Hit sounds',label:'Hit sounds',icon:'fa-solid fa-volume-high',
     hint:'Weapon hits that sound like what they land on, and how you hear them: on or off, volume, blood, echo, and hearing hits where they happen.',
     type:hitSoundsMenu(ApplicationV2,{id:ID}),restricted:false});
-  game.settings.register(ID,SURFACE_SETTING,{name:'Weapon surface sounds',scope:'world',config:false,type:Boolean,default:true,onChange:()=>app?.workspace?.render()});
-  game.settings.register(ID,'hitSounds',{name:'Hit sounds on this device',scope:'client',config:false,type:Boolean,default:true});
-  game.settings.register(ID,'surfaceVolume',{name:'Surface sounds volume',scope:'client',config:false,type:Number,range:{min:0,max:1,step:0.05},default:1});
-  game.settings.register(ID,'surfaceGore',{name:'Blood sounds',scope:'client',config:false,type:String,choices:{full:'Full',subtle:'Subtle',off:'Off'},default:'full'});
-  game.settings.register(ID,'surfaceEcho',{name:'Surface echo',scope:'client',config:false,type:Number,range:{min:0,max:1.5,step:0.1},default:1});
-  game.settings.register(ID,'surfaceSpace',{name:'Hear hits where they happen',scope:'client',config:false,type:Boolean,default:true});
-  game.settings.register(ID,'tuckDuringPlayback',{name:'Minimize Animater during canvas playback',
+  registerSetting(SURFACE_SETTING,{name:'Weapon surface sounds',scope:'world',config:false,type:Boolean,default:true,onChange:()=>app?.workspace?.render()});
+  registerSetting('hitSounds',{name:'Hit sounds on this device',scope:'client',config:false,type:Boolean,default:true});
+  registerSetting('surfaceVolume',{name:'Surface sounds volume',scope:'client',config:false,type:Number,range:{min:0,max:1,step:0.05},default:1});
+  registerSetting('surfaceGore',{name:'Blood sounds',scope:'client',config:false,type:String,choices:{full:'Full',subtle:'Subtle',off:'Off'},default:'full'});
+  registerSetting('surfaceEcho',{name:'Surface echo',scope:'client',config:false,type:Number,range:{min:0,max:1.5,step:0.1},default:1});
+  registerSetting('surfaceSpace',{name:'Hear hits where they happen',scope:'client',config:false,type:Boolean,default:true});
+  registerSetting('tuckDuringPlayback',{name:'Minimize Animater during canvas playback',
     hint:'Local preview and Play at table minimize the Animater window while the animation runs, then restore it.',
     scope:'client',config:true,type:Boolean,default:true});
-  game.settings.register(ID,'quality',{name:'Animation quality (this device)',
+  registerSetting('quality',{name:'Animation quality (this device)',
     hint:'Lower this on slower computers. Applies only to what you see; other players keep their own setting.',
     scope:'client',config:true,type:String,choices:{...QUALITY_CHOICES},default:'full',
     onChange:()=>{syncQuality();persistentStates?.schedule();markLayer.refresh();rewarmShaders();}});
-  game.settings.register(ID,'lastingMode',{name:'Lasting condition animations (this device)',
+  registerSetting('lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
-  game.settings.register(ID,CROSSOVER_CATALOG,{...crossoverSettingText(game.system.id),scope:'world',
+  registerSetting(CROSSOVER_CATALOG,{...crossoverSettingText(game.system.id),scope:'world',
     // PF2e and SF2e only: the two systems share one rules engine.
     config:Boolean(crossoverSystem(game.system.id)),type:Boolean,default:false,
     onChange:()=>{void seedBorrowedCatalogs().finally(()=>{persistentStates?.schedule();app?.workspace?.render();});}});
-  for(const kind of SF_KINDS)game.settings.register(ID,sfSettingKey(kind),{scope:"world",config:false,type:Object,default:normalizeSfCatalogState(),onChange:()=>persistentStates?.schedule()});
-  for(const kind of DND_KINDS)game.settings.register(ID,dndSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDndCatalogState(),onChange:()=>persistentStates?.schedule()});
-  for(const kind of DH_KINDS)game.settings.register(ID,dhSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDhCatalogState(),onChange:()=>persistentStates?.schedule()});
+  for(const kind of SF_KINDS)registerSetting(sfSettingKey(kind),{scope:"world",config:false,type:Object,default:normalizeSfCatalogState(),onChange:()=>persistentStates?.schedule()});
+  for(const kind of DND_KINDS)registerSetting(dndSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDndCatalogState(),onChange:()=>persistentStates?.schedule()});
+  for(const kind of DH_KINDS)registerSetting(dhSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDhCatalogState(),onChange:()=>persistentStates?.schedule()});
   for (const key of ["conditionCatalog", "effectCatalog"])
-    game.settings.register(ID, key, { scope: "world", config: false, type: Object, default: normalizeStateCatalogState(), onChange: () => persistentStates?.schedule() });
-  game.settings.register(ID, "weaponCatalog", { scope: "world", config: false, type: Object, default: normalizeWeaponCatalogState() });
+    registerSetting(key, { scope: "world", config: false, type: Object, default: normalizeStateCatalogState(), onChange: () => persistentStates?.schedule() });
+  registerSetting("weaponCatalog", { scope: "world", config: false, type: Object, default: normalizeWeaponCatalogState() });
   for (const [key, catalog] of Object.entries(ABILITY_CATALOGS))
-    game.settings.register(ID, key, { scope: "world", config: false, type: Object, default: catalog.normalizeState() });
-  game.settings.register(ID, "featCatalog", {
+    registerSetting(key, { scope: "world", config: false, type: Object, default: catalog.normalizeState() });
+  registerSetting("featCatalog", {
     scope: "world",
     config: false,
     type: Object,
     default: normalizeFeatCatalogState(),
   });
-  game.settings.register(ID, "spellCatalog", {
+  registerSetting("spellCatalog", {
     scope: "world",
     config: false,
     type: Object,
     default: normalizeCatalogState(),
   });
   // The GM's decisions on player-made recipes (players cannot write world settings).
-  game.settings.register(ID, "playerApprovals", { scope: "world", config: false, type: Object, default: {}, onChange: () => app?.workspace?.render() });
-  game.settings.register(ID, "recipes", {
+  registerSetting("playerApprovals", { scope: "world", config: false, type: Object, default: {}, onChange: () => app?.workspace?.render() });
+  registerSetting("recipes", {
     scope: "world",
     config: false,
     type: Object,
     default: { schema: 1, recipes: starterRecipes() },
   });
-  game.settings.register(ID, WAIT_FOR_DICE, {
+  registerSetting(WAIT_FOR_DICE, {
     name: "Wait for Dice So Nice",
     hint: "Attack and damage animations start when the 3D dice for that roll have landed, so a hit or miss plays after you see the result.",
     scope: "client",
@@ -2461,7 +2515,7 @@ Hooks.once("init", () => {
     type: Boolean,
     default: true,
   });
-  game.settings.register(ID, AA_TAKEOVER, {
+  registerSetting(AA_TAKEOVER, {
     name: "Take over from Automated Animations when Animater has an animation",
     hint: "Automated Animations skips items Animater animates. Items customized in Automated Animations stay with it. If “Only animate what Automated Animations doesn't” is also on, that one wins.",
     scope: "world",
@@ -2470,7 +2524,7 @@ Hooks.once("init", () => {
     type: Boolean,
     default: true,
   });
-  game.settings.register(ID, AA_FILL_GAPS, {
+  registerSetting(AA_FILL_GAPS, {
     name: "Only animate what Automated Animations doesn't",
     hint: "Items Automated Animations animates (by its Automatic Recognition or a customized item) stay with it; Animater animates the rest. Items turned off in Automated Animations play Animater's animation.",
     scope: "world",
@@ -2479,7 +2533,7 @@ Hooks.once("init", () => {
     type: Boolean,
     default: false,
   });
-  game.settings.register(ID, TA_FILL_GAPS, {
+  registerSetting(TA_FILL_GAPS, {
     name: "Only animate what Trigger Animations doesn't",
     hint: "Items a Trigger Animations trigger names (attack:longsword, template:fireball, condition:frightened, or the item's UUID) stay with it; Animater animates the rest. Wildcard triggers such as damage:* don't count.",
     scope: "world",
@@ -2488,7 +2542,7 @@ Hooks.once("init", () => {
     type: Boolean,
     default: false,
   });
-  game.settings.register(ID, MOTION_PRIORITY, {
+  registerSetting(MOTION_PRIORITY, {
     name: "Animater's token motions come first",
     hint: "While Animater moves a token (a finisher or attack, a condition's trembling or swaying, a look that rocks it), other modules' passing Sequencer motions on that token don't play, such as PF2e RPG Numbers' damage shake. Off: both play, and the token can jitter between them.",
     scope: "world",
@@ -2496,7 +2550,7 @@ Hooks.once("init", () => {
     type: Boolean,
     default: true,
   });
-  game.settings.register(ID, "automatic", {
+  registerSetting("automatic", {
     name: "Play my own recipes automatically",
     hint: "Your saved recipes play when their spell, attack, damage or area happens. The catalogs have their own Plug & play switch and play whether or not this is on. Turn off overlapping animations in other modules to avoid playing twice.",
     scope: "world",
@@ -2508,336 +2562,336 @@ Hooks.once("init", () => {
   });
   registerFlashSettings(ID);
   registerRecapSettings(ID);
-  game.settings.register(ID, DUALITY_ACCENT, {
+  registerSetting(DUALITY_ACCENT, {
     name: "Hope/Fear accent",
     hint: "Daggerheart: a duality roll with Hope adds a short gold glint on the roller's token, one with Fear a dark purple wisp, beside the item's own animation. Critical successes keep their own crit visuals.",
     scope: "world", config: game.system.id === "daggerheart", type: Boolean, default: true,
   });
-  game.settings.register(ID, "effectLighting", {
+  registerSetting("effectLighting", {
     name: "Effect lighting",
     hint: "Fire, lightning and other glowing effects light up the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "effectLightingDaylight", {
+  registerSetting("effectLightingDaylight", {
     name: "Effect lighting in daylight",
     hint: "Also add a soft coloured glow around effects in fully lit scenes.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, LIGHT_REVEALS, {
+  registerSetting(LIGHT_REVEALS, {
     name: "Effect light reveals creatures (PF2e Visioner, homebrew)",
     hint: "For PF2e Visioner's auto-visibility only. When on, a creature lit by a spell's light (a Fireball in a dark room) counts as lit, so anyone with line of sight can see it for that moment. Not the rules: most spells don't shed light. Off, Visioner ignores effect lights. Needs PF2e Visioner 8.14.12 or later; without Visioner this does nothing.",
     // Listed only where PF2e Visioner runs: elsewhere it would do nothing.
     scope: "world", config: Boolean(game.modules.get("pf2e-visioner")?.active), type: Boolean, default: false,
   });
-  game.settings.register(ID, "effectLightAnimation", {
+  registerSetting("effectLightAnimation", {
     name: "Flickering and flashing effect lights",
     hint: "Turn off to see effect lights as a steady glow, without flicker or strobe.",
     scope: "client", config: true, type: Boolean, default: true,
   });
   // Lights are planned by the client that plays the effect (the world switches) and drawn by each client: this one
   // stops only the drawing here.
-  game.settings.register(ID, "effectLightingLocal", {
+  registerSetting("effectLightingLocal", {
     name: "Effect lighting on my screen",
     hint: "Turn off to never light the scene from Animater's effects on this screen.",
     scope: "client", config: false, type: Boolean, default: true,
     onChange: (on) => effectLightsHere(on),
   });
-  game.settings.register(ID, "projectileWalls", {
+  registerSetting("projectileWalls", {
     name: "Projectiles stop at walls",
     hint: "Arrows, bolts and thrown weapons strike walls instead of passing through; a hit aims at the part of the target the shooter can see.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "hidePrivateResults", {
+  registerSetting("hidePrivateResults", {
     name: "Hide the result of private GM rolls",
     hint: "A GM's private attack or save animates without showing whether it hit or missed: the shot flies at the target and nothing lands. Off: private rolls animate their real result, like public ones (the numbers stay private either way).",
     scope: "world", config: true, type: Boolean, default: false,
     onChange: (on) => setHidePrivateResults(on),
   });
-  setHidePrivateResults(game.settings.get(ID, "hidePrivateResults"));
-  game.settings.register(ID, "groundMarks", {
+  setHidePrivateResults(hotSetting("hidePrivateResults"));
+  registerSetting("groundMarks", {
     name: "Ground marks",
     hint: "Fire, frost, acid and other elemental hits leave a fading mark on the floor where they landed. Marks are drawn on each screen and never saved.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "groundMarkMinutes", {
+  registerSetting("groundMarkMinutes", {
     name: "Ground mark lifetime (minutes)",
     hint: "How long a ground mark stays before it is gone: fully visible for the first 40%, then fading. 0 keeps marks until the scene changes or the page reloads.",
     scope: "world", config: true, type: Number, range: { min: 0, max: 60, step: 1 }, default: 5,
     onChange: () => markLayer.refresh(),
   });
-  game.settings.register(ID, "groundMarksLocal", {
+  registerSetting("groundMarksLocal", {
     name: "Ground marks on my screen",
     hint: "Turn off to never draw ground marks on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     // Turning it off wipes the marks already on the floor.
     onChange: () => markLayer.refresh(),
   });
-  game.settings.register(ID, "elementReactions", {
+  registerSetting("elementReactions", {
     name: "Element reactions",
     hint: "A new ground mark that lands on an older one can react: fire on frost puffs steam and melts it, frost on a scorch hisses out in smoke, fire on poison flares, lightning on acid arcs to the creatures standing in it, and acid on frost sizzles. Drawn on each screen that shows ground marks.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (!on) markReactions.clear(); },
   });
-  game.settings.register(ID, "elementReactionsLocal", {
+  registerSetting("elementReactionsLocal", {
     name: "Element reactions on my screen",
     hint: "Turn off to never draw element reactions (steam, smoke, flares, arcs) on this screen.",
     scope: "client", config: false, type: Boolean, default: true,
     onChange: (on) => { if (on === false) markReactions.clear(); },
   });
-  game.settings.register(ID, "afterimages", {
+  registerSetting("afterimages", {
     name: "Afterimage trails",
     hint: "Charges, leaps, knockbacks and teleports that Animater plays leave a brief trail of ghost copies behind the token.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "afterimagesLocal", {
+  registerSetting("afterimagesLocal", {
     name: "Afterimages on my screen",
     hint: "Turn off to never draw afterimage trails on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     // Off: the ghosts already drawn go at once.
     onChange: (on) => { if (on === false) motions?.afterimages?.clear(); },
   });
-  game.settings.register(ID, "movementFeel", {
+  registerSetting("movementFeel", {
     name: "Movement effects",
     hint: "Moving tokens kick up dust on dirt, grass, sand and snow, ripple water and faintly scuff stone and wood; fliers cast a soft shadow on the ground. Set each scene's floor in its configuration. Drawn on each screen and never saved.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) movementFeel.clear(); },
   });
-  game.settings.register(ID, "movementFeelLocal", {
+  registerSetting("movementFeelLocal", {
     name: "Movement effects on my screen",
     hint: "Turn off to never draw movement dust, ripples or flier shadows on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) movementFeel.clear(); },
   });
-  game.settings.register(ID, "walkedPathHighlight", {
+  registerSetting("walkedPathHighlight", {
     name: "Walked path highlight",
     hint: "Foundry highlights every square a token moves through, which hides the dust, prints and splashes it leaves. Faded: the squares already walked show at a quarter strength (the way ahead stays as it is). Hidden: walked squares are not highlighted. As Foundry draws it: unchanged.",
     scope: "client", config: true, type: String, default: "fade",
     choices: { fade: "Faded", hide: "Hidden", off: "As Foundry draws it" },
   });
-  game.settings.register(ID, "movementStealth", {
+  registerSetting("movementStealth", {
     name: "Movement respects stealth",
     hint: "Players only see and hear what their characters could: an undetected or unnoticed creature moves in silence and leaves no tracks, and a hidden one is heard but leaves nothing to see (PF2e Visioner, judged from each player's own tokens, else the creature's conditions). Off: everyone sees and hears every movement drawn on their screen. Tokens the GM hid never give anything away either way.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: () => awareness.clear(),
   });
-  game.settings.register(ID, "movementGmPerception", {
+  registerSetting("movementGmPerception", {
     name: "GM perceives movement",
     hint: "Everything: you see and hear every creature move (except tokens hidden in Foundry). As my selected token: with a token selected, you see and hear only what it could, as its player would; with none selected, everything.",
     scope: "client", config: true, type: String, default: "all",
     choices: { all: "Everything", token: "As my selected token" },
     onChange: () => awareness.clear(),
   });
-  game.settings.register(ID, "burrowHoles", {
+  registerSetting("burrowHoles", {
     name: "Burrow holes",
     hint: "A burrowing creature leaves a hole where it goes under and a wider one where it comes up, with earth thrown out, lingering about 20 seconds.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "burrowSink", {
+  registerSetting("burrowSink", {
     name: "Burrowed creatures sink out of sight",
     hint: "A creature below the floor sinks into its hole and vanishes for players who don't own it (they still see the ground churn and hear it dig); its owner and the GM see a faint ghost. It rises back out where it surfaces.",
     scope: "world", config: true, type: Boolean, default: true,
     // Off: every token comes straight back as Foundry draws it. On: tokens already under go down at once.
     onChange: () => clearBurrowSink(),
   });
-  game.settings.register(ID, "footstepAcoustics", {
+  registerSetting("footstepAcoustics", {
     name: "Footsteps ring in the room",
     hint: "Footsteps, wing beats and footfall thuds echo softly in the room they happen in and sound muffled from behind a wall, as Animater's hit sounds do (with Room acoustics and Muffle sounds behind walls on).",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "quietSneaking", {
+  registerSetting("quietSneaking", {
     name: "Sneaking is quiet",
     hint: "A creature moving stealthily steps softer, slower and duller, and only a Huge or bigger one still thuds: PF2e's Avoid Notice exploration activity or a Sneak effect, PF2e Visioner's sneaking, D&D 5e's Hiding status.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: () => sneakCache.clear(),
   });
-  game.settings.register(ID, "footfallTremor", {
+  registerSetting("footfallTremor", {
     name: "Giant footfalls shake the view",
     hint: "Every footfall of a Huge or Gargantuan creature gives a small tremor to screens that hear it nearby, stronger the heavier it is (a stone golem or a dragon more than a giant). Needs Camera shake on.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "creatureIdleSounds", {
+  registerSetting("creatureIdleSounds", {
     name: "Creatures growl on their turn",
     hint: "With PF2e Creature Sounds active, a Large or bigger NPC sometimes growls from where it stands as its combat turn starts, heard only by those who could hear it. Uses that module's sound sets and volume.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "trackedPrints", {
+  registerSetting("trackedPrints", {
     name: "Feet carry mud, water and snow",
     hint: "A creature that walked through water, mud or snow leaves wet, muddy or snowy prints in its own tracks on the next floor for a few strides, fainter each stride. Creatures that slither, ooze or leave no prints carry nothing.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "bloodTrail", {
+  registerSetting("bloodTrail", {
     name: "Wounded creatures leave blood drops",
     hint: "A badly hurt creature (a quarter of its HP or less) now and then drips blood as it moves, lasting about 20 seconds. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "weatherOnGround", {
+  registerSetting("weatherOnGround", {
     name: "Weather on the ground",
     hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "idleLife", {
+  registerSetting("idleLife", {
     name: "Idle life",
     hint: "Creatures on screen idle subtly: living creatures breathe and fliers bob in the air. Constructs, undead, objects and creatures that are down or defeated stay still, and any condition's movement takes over. Drawn on each screen at Balanced quality or better.",
     scope: "world", config: true, type: Boolean, default: true,
     // Takes effect at once: the breathing starts or stops on every screen.
     onChange: () => idleLife?.sync(),
   });
-  game.settings.register(ID, "idleLifeLocal", {
+  registerSetting("idleLifeLocal", {
     name: "Idle life on my screen",
     hint: "Turn off to never draw idle breathing or hovering on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: () => idleLife?.sync(),
   });
-  game.settings.register(ID, "idleLifeStrength", {
+  registerSetting("idleLifeStrength", {
     name: "Idle life strength",
     hint: "How much creatures breathe and fliers bob on this screen: 1 is a visible but calm breath, 2 twice as much, 0.5 half.",
     scope: "client", config: true, type: Number, range: { min: 0.5, max: 2, step: 0.25 }, default: 1,
     onChange: () => idleLife?.sync(),
   });
-  game.settings.register(ID, "breathVapor", {
+  registerSetting("breathVapor", {
     name: "Breath shows in the cold",
     hint: "In the cold (snow falling, a snow or ice floor underfoot, or a scene flagged cold), breathing creatures on screen puff a faint white cloud with each breath out. Constructs and undead do not. Drawn on each screen at Balanced quality or better, and not where idle life is off on that screen.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) breathVapor.clear(); },
   });
-  game.settings.register(ID, "woundedLooks", {
+  registerSetting("woundedLooks", {
     name: "Wounded looks",
     hint: "Creatures show how hurt they are. At half their HP or less they look wounded; at a quarter or less the look is stronger, they stand hunched and limp as they move. Healing takes it away, and a defeated creature shows the defeated look instead. Choose whether every creature shows it or only player characters.",
     scope: "world", config: true, type: String, default: "all",
     choices: { all: "All creatures", pcs: "Player characters only", off: "Off" },
     onChange: () => woundedLooks?.sync(),
   });
-  game.settings.register(ID, "woundedLooksLocal", {
+  registerSetting("woundedLooksLocal", {
     name: "Wounded looks on my screen",
     hint: "Turn off to never draw wounded looks, hunches or limps on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: () => woundedLooks?.sync(),
   });
-  game.settings.register(ID, "mapDistortion", {
+  registerSetting("mapDistortion", {
     name: "Map distortion",
     hint: "Big blasts ripple across the map, lasting fire shimmers with heat and teleports warp the air. Drawn only on screens at Full animation quality.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "shockwaveReach", {
+  registerSetting("shockwaveReach", {
     name: "Shockwave reach (× blast size)",
     hint: "How far a blast's shockwave ripples, as a multiple of the blast's size. Larger values reach further across the map.",
     scope: "world", config: true, type: Number, range: { min: 0.5, max: 4, step: 0.25 }, default: 1.5,
   });
-  game.settings.register(ID, "mapDistortionLocal", {
+  registerSetting("mapDistortionLocal", {
     name: "Map distortion on my screen",
     hint: "Turn off to never bend the map on this screen (for example if it is uncomfortable to watch).",
     scope: "client", config: true, type: Boolean, default: true,
     // Off: whatever is bending stops at once. On: its shader is readied before the next blast.
     onChange: (on) => { if (on === false) distortionHost.clear(); else rewarmShaders(); },
   });
-  game.settings.register(ID, "cameraShake", {
+  registerSetting("cameraShake", {
     name: "Camera shake",
     hint: "Big blasts jolt the view for a moment on each screen, more for bigger blasts and less the further away they land. Drawn only on screens at Full or Light animation quality.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) cameraShake.clear(); },
   });
-  game.settings.register(ID, "cameraShakeLocal", {
+  registerSetting("cameraShakeLocal", {
     name: "Camera shake on my screen",
     hint: "Turn off to never shake the view on this screen. Off at first when this browser asks for reduced motion.",
     scope: "client", config: true, type: Boolean,
     default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
     onChange: (on) => { if (on === false) cameraShake.clear(); },
   });
-  game.settings.register(ID, "cameraShakeStrength", {
+  registerSetting("cameraShakeStrength", {
     name: "Camera shake strength",
     hint: "How hard blasts shake the view on this screen, as a multiple of the usual jolt.",
     scope: "client", config: true, type: Number, range: { min: 0.25, max: 2, step: 0.25 }, default: 1,
   });
-  game.settings.register(ID, "killCam", {
+  registerSetting("killCam", {
     name: "Slow-motion kill-cam",
     hint: "When a killing blow lands on an NPC, every screen that can see it eases the view towards it with a gentle zoom, slows Animater's effects on it and fades the colour for a moment, then pans back. The finisher and Finish Him! wait for it. Drawn only on screens at Full or Light animation quality.",
     scope: "world", config: true, type: Boolean, default: false,
     onChange: (on) => { if (on === false) killCam.clear(); },
   });
-  game.settings.register(ID, "killCamLocal", {
+  registerSetting("killCamLocal", {
     name: "Kill-cam on my screen",
     hint: "Turn off to never move the view or slow effects for a kill-cam on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) killCam.clear(); },
   });
-  game.settings.register(ID, "roomAcoustics", {
+  registerSetting("roomAcoustics", {
     name: "Room acoustics from walls",
     hint: "In scenes without an Acoustics choice, Animater's sounds echo to fit the space around them, worked out from the walls: dry outdoors, tight in small rooms, ringing in halls.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "roomReverbLocal", {
+  registerSetting("roomReverbLocal", {
     name: "Room reverb on my screen",
     hint: "Turn off to hear Animater's sounds without room reverb.",
     scope: "client", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "muffleWalls", {
+  registerSetting("muffleWalls", {
     name: "Muffle sounds behind walls",
     hint: "Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do.",
     scope: "client", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, DAMAGE_REACTIONS, {
+  registerSetting(DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "dispelShatter", {
+  registerSetting("dispelShatter", {
     name: "Dispels shatter lasting effects",
     hint: "After a successful counteract check (PF2e, SF2e) or Dispel Magic or Counterspell (D&D 5e), Animater's lasting areas and auras that end in the next few seconds break apart like glass. A failed one makes the lasting animations on its targets flicker, then hold.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) { shatterHost.clear(); dispelFlicker.clear(); dispelWindow.clear(); } },
   });
-  game.settings.register(ID, "dispelShatterLocal", {
+  registerSetting("dispelShatterLocal", {
     name: "Dispel shatter on my screen",
     hint: "Turn off to never draw dispels shattering or flickering lasting effects on this screen.",
     scope: "client", config: false, type: Boolean, default: true,
     onChange: (on) => { if (on === false) { shatterHost.clear(); dispelFlicker.clear(); dispelWindow.clear(); } },
   });
-  game.settings.register(ID, "momentum", {
+  registerSetting("momentum", {
     name: "Momentum",
     hint: "Hits in a row by the same attacker on the same target, in one turn (or within 12 seconds out of combat), land harder: bigger, louder and with stronger ripples. A miss starts the streak over. In PF2e and SF2e, a third Strike in a turn that misses looks strained.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
-  game.settings.register(ID, TELEPORT_TOKENS, {
+  registerSetting(TELEPORT_TOKENS, {
     name: "Teleport tokens",
     hint: `Teleport spells (${({ dnd5e: "Misty Step, Dimension Door", daggerheart: "Blink Out" })[game.system.id] ?? "Translocate, Friendfetch"}…) let whoever cast them click a spot, and the token jumps there${game.system.id === "pf2e" ? " (Friendfetch drags its targets to the caster on its own)" : ""}. Turn off if another module already moves tokens for these spells: they then only play their animation.`,
     scope: "world", config: true, type: Boolean, default: true,
   });
-  game.settings.register(ID, "welcomed", { scope: "world", config: false, type: Boolean, default: false });
-  game.settings.register(ID, DRAMATIC_DEATHS, {
+  registerSetting("welcomed", { scope: "world", config: false, type: Boolean, default: false });
+  registerSetting(DRAMATIC_DEATHS, {
     name: "Damage-typed knockouts",
     hint: "A creature dropping to 0 HP goes down in the look of the damage that dropped it: burned to ash, frozen and shattered, fried by lightning. Off: a plain collapse.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   // PF2e NPC monster abilities (catalogs/pf2e/npc-abilities.mjs). Registered in every world: an SF2e world
   // borrowing the PF2e catalogs reads it too.
-  game.settings.register(ID, "npcAbilities", {
+  registerSetting("npcAbilities", {
     name: "Animate NPC abilities",
     hint: "PF2e and SF2e NPCs' monster abilities animate when used: Grab, Constrict, Swallow Whole, Engulf, Breath Weapon (when its area is placed), Trample, Pounce, Rend, Knockdown, Throw Rock, Ferocity, Change Shape and more. Your own recipes for an ability still come first.",
     scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
-  game.settings.register(ID, "npcAbilityGuess", {
+  registerSetting("npcAbilityGuess", {
     name: "Animate other NPC abilities from what they do",
     hint: "With Animate NPC abilities on, an NPC ability that has no animation of its own gets one from what it does: an area it places plays in that shape (cone, line, burst, emanation) and its damage's colour, damage with no area strikes its target, else its traits decide (a teleport blinks, a fear ability cries out). Off: only the named monster abilities animate.",
     scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
-  game.settings.register(ID, "npcStrikeGuess", {
+  registerSetting("npcStrikeGuess", {
     name: "Guess NPC Strikes",
     hint: "An NPC Strike that no weapon or creature attack name places still animates: by its damage (a slashing one rakes like a claw, others land as a blow), and a ranged one by what it throws or spits. Off: those Strikes play nothing unless you make a recipe for them.",
     scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
   // Named NPC abilities the GM left out on the Studio's NPC abilities page (ability ids).
-  game.settings.register(ID, "npcAbilityExcluded", { scope: "world", config: false, type: Array, default: [] });
+  registerSetting("npcAbilityExcluded", { scope: "world", config: false, type: Array, default: [] });
   // Shown only where Splatter is on; off, Splatter bleeds on its own.
-  game.settings.register(ID, SPLATTER_SYNC, {
+  registerSetting(SPLATTER_SYNC, {
     name: "Splatter: blood follows the damage",
     hint: "Animater sets how much each wound bleeds in Splatter: slashing and piercing most, bludgeoning less, fire and lightning little, psychic not at all. Critical hits and killing blows bleed more, and a kill's blood waits for its Finish Him! screen. The creature keeps its own blood color. Off: Splatter bleeds on its own.",
     scope: "world", config: Boolean(game.modules.get(SPLATTER_ID)?.active), type: Boolean, default: true,
   });
-  game.settings.register(ID, DEFAULT_FINISHER, { scope: "world", config: false, type: String, default: "" });
-  game.settings.register(ID, DEFAULT_FINISHER_ENDING, { scope: "world", config: false, type: String, default: "" });
+  registerSetting(DEFAULT_FINISHER, { scope: "world", config: false, type: String, default: "" });
+  registerSetting(DEFAULT_FINISHER_ENDING, { scope: "world", config: false, type: String, default: "" });
   registerDefeatedLook(game.settings, ID, { onChange: () => persistentStates?.schedule() });
-  installDefeatedLook(Hooks, { mode: () => game.settings.get(ID, DEFEATED_LOOK), statuses: () => (game.system.id === "daggerheart" ? DH_DEFEATED_STATUSES : [defeatedStatusId()]) });
+  installDefeatedLook(Hooks, { mode: () => hotSetting(DEFEATED_LOOK), statuses: () => (game.system.id === "daggerheart" ? DH_DEFEATED_STATUSES : [defeatedStatusId()]) });
   // The Animater settings window edits these; Configure Settings keeps only the animation quality. Each
   // registration's own `config` above still says where it applies, as the window's rows do (ui/settings-window.mjs).
   for (const key of WINDOW_SETTING_KEYS) {
@@ -2868,7 +2922,7 @@ Hooks.once("init", () => {
     editable: [],
     restricted: false,
     onDown: () => {
-      playRecapApi({ everyone: game.user.isGM && game.settings.get(ID, "combatRecap") === "everyone" });
+      playRecapApi({ everyone: game.user.isGM && hotSetting("combatRecap") === "everyone" });
       return true;
     },
   });
@@ -2886,14 +2940,14 @@ Hooks.once("init", () => {
 const SURFACE_SETTING = "surfaceSounds";
 // A built-in weapon animation, in any system, also sounds like what each target is (surface sounds).
 function withWeaponSurface(recipe, event, saved, sounds) {
-  if (!recipe || event?.type !== "attack" || game.settings.get(ID, SURFACE_SETTING) === false) return recipe ? (game.settings.get(ID, SURFACE_SETTING) === false ? withoutSurfaces(recipe) : recipe) : recipe;
+  if (!recipe || event?.type !== "attack" || hotSetting(SURFACE_SETTING) === false) return recipe ? (hotSetting(SURFACE_SETTING) === false ? withoutSurfaces(recipe) : recipe) : recipe;
   if (saved.some((r) => r.id === recipe.id)) return recipe;
   const item = event.item, family = game.system.id === "daggerheart" ? weaponFamily(item?.name) : null;
   return withSurfaceSounds(recipe, { blow: blowOfItem(item, { family, element: event.element }), heft: heftOfItem(item), sounds, soundVolume: weaponSoundVolume() });
 }
 const withoutSurfaces = (recipe) => recipe.stages?.some((s) => s.surfaces) ? { ...recipe, stages: recipe.stages.filter((s) => !s.surfaces) } : recipe;
 const weaponSoundVolume = () => { const sys = game.system.id, key = sys === "dnd5e" ? dndSettingKey("weapon") : sys === "daggerheart" ? dhSettingKey("weapon") : sys === "sf2e" ? sfSettingKey("weapon") : "weaponCatalog";
-  try { return game.settings.get(ID, key)?.soundVolume ?? 0.35; } catch { return 0.35; } };
+  try { return hotSetting(key)?.soundVolume ?? 0.35; } catch { return 0.35; } };
 function systemRecipe(event, saved) {
   const sounds = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database);
   return withWeaponSurface(catalogSystemRecipe(event, saved, sounds), event, saved, sounds);
@@ -2902,9 +2956,9 @@ function catalogSystemRecipe(event, saved, sounds) {
   const sys = game.system.id;
   if (["pf2e", "sf2e"].includes(sys)) return crossoverResolve(event, { systemId: sys, on: crossoverOn(),
     // Borrowed catalogs are managed on their own pages, so each reads its own settings.
-    resolve: (from, e) => twoeCatalogRecipe(from, e, saved, { customEnabled: enabled(), sounds, stateFor: (kind) => game.settings.get(ID, twoeSettingKey(from, kind)) }),
+    resolve: (from, e) => twoeCatalogRecipe(from, e, saved, { customEnabled: enabled(), sounds, stateFor: (kind) => hotSetting(twoeSettingKey(from, kind)) }),
     knows: (e) => Boolean(catalogEntryFor(e.item) || saved.some((r) => matchRecipe([{ ...r, enabled: true }], e))) });
-  return sys==='dnd5e'?resolveDndAutomaticRecipe(event,kind=>game.settings.get(ID,dndSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,kind=>game.settings.get(ID,dhSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):matchRecipe(saved,event);
+  return sys==='dnd5e'?resolveDndAutomaticRecipe(event,kind=>hotSetting(dndSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,kind=>hotSetting(dhSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):matchRecipe(saved,event);
 }
 // The recipe dispatch would play, or null. AA-customized items stay with AA.
 function resolveEvent(event) {
@@ -2920,9 +2974,9 @@ function aaYield(event) {
   return null;
 }
 const yieldsToAA = event => Boolean(aaYield(event));
-const aaFillGaps = () => Boolean(game.modules.get(AA_ID)?.active && game.settings.get(ID, AA_FILL_GAPS));
-const taFillGaps = () => Boolean(game.modules.get(TA_ID)?.active && game.settings.get(ID, TA_FILL_GAPS));
-const aaTakeover = () => Boolean(game.modules.get(AA_ID)?.active && game.settings.get(ID, AA_TAKEOVER));
+const aaFillGaps = () => Boolean(game.modules.get(AA_ID)?.active && hotSetting(AA_FILL_GAPS));
+const taFillGaps = () => Boolean(game.modules.get(TA_ID)?.active && hotSetting(TA_FILL_GAPS));
+const aaTakeover = () => Boolean(game.modules.get(AA_ID)?.active && hotSetting(AA_TAKEOVER));
 function eventFrom(input) {
   if (input?.documentName === "ChatMessage") {
     if (["pf2e", "sf2e"].includes(game.system.id)) {
@@ -3070,12 +3124,12 @@ Hooks.once("ready", () => {
   });
   // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
   installSoundPitch({
-    enabled: () => game.settings.get(ID, "hitSounds") !== false,
-    mix: () => ({ volume: game.settings.get(ID, "surfaceVolume"), gore: game.settings.get(ID, "surfaceGore"), echo: game.settings.get(ID, "surfaceEcho") }),
+    enabled: () => hotSetting("hitSounds") !== false,
+    mix: () => ({ volume: hotSetting("surfaceVolume"), gore: hotSetting("surfaceGore"), echo: hotSetting("surfaceEcho") }),
     // Where this player hears from: their token, else the middle of their view.
     listener: () => {
       const stage = canvas?.stage;
-      if (!game.settings.get(ID, "surfaceSpace") || !canvas?.ready || !(stage?.scale?.x > 0)) return null;
+      if (!hotSetting("surfaceSpace") || !canvas?.ready || !(stage?.scale?.x > 0)) return null;
       const token = canvas.tokens?.controlled?.[0] ?? game.user.character?.getActiveTokens?.(true)?.find((t) => t.scene === canvas.scene || t.document?.parent === canvas.scene) ?? null;
       const view = { x: stage.pivot.x, y: stage.pivot.y, width: window.innerWidth / stage.scale.x };
       return { ear: token?.center ?? { x: view.x, y: view.y }, view, grid: canvas.grid?.size ?? 100 };
@@ -3087,19 +3141,19 @@ Hooks.once("ready", () => {
       const r = roomFor(data, {
         sceneAcoustics: canvas.scene?.getFlag(ID, "acoustics") || null,
         viewedScene: canvas.scene?.id,
-        enabled: canvas.ready && game.settings.get(ID, "roomAcoustics") && game.settings.get(ID, "roomReverbLocal"),
+        enabled: canvas.ready && hotSetting("roomAcoustics") && hotSetting("roomReverbLocal"),
         cache: rooms,
         gridPx: canvas.grid.size,
       });
       if (r.kind !== "reverb") return null;
       // This player's echo strength scales the room too.
-      const level = reverbSend(r.room, game.settings.get(ID, "surfaceEcho"));
+      const level = reverbSend(r.room, hotSetting("surfaceEcho"));
       return { node: (context) => reverb.send(context, r.room, level) };
     },
     // A wall between this player and the sound muffles it, in any scene.
     muffle: (data) => {
       const at = data.animaterAt;
-      if (!game.settings.get(ID, "muffleWalls") || !canvas.ready || (data.animaterScene && data.animaterScene !== canvas.scene?.id)) return false;
+      if (!hotSetting("muffleWalls") || !canvas.ready || (data.animaterScene && data.animaterScene !== canvas.scene?.id)) return false;
       const ear = soundEar();
       if (!ear) return false;
       const level = typeof data.animaterLevel === "string" ? canvas.scene?.levels?.get?.(data.animaterLevel) : undefined;
@@ -3126,7 +3180,7 @@ Hooks.once("ready", () => {
   if (game.user.isGM && env.ready && !env.jb2a) ui.notifications.warn(`Animater: ${JB2A_MISSING}`, { permanent: true });
   // Afterimages show at Full, Light and Balanced, unless this client turned them off.
   const afterimages = createAfterimages({ makeSprite: (texture) => new globalThis.PIXI.Sprite(texture), place: placeUnder,
-    enabled: () => game.settings.get(ID, "afterimagesLocal") !== false && qualityRank(localQuality()) >= 2 });
+    enabled: () => hotSetting("afterimagesLocal") !== false && qualityRank(localQuality()) >= 2 });
   // A teleport's arrival effect carries its streak (playTeleport): every client draws it as that effect arrives.
   // Its departure effect carries its vanish: every client hides the token until it has moved (holdHidden).
   Hooks.on("createSequencerEffect", (effect) => {
@@ -3149,8 +3203,8 @@ Hooks.once("ready", () => {
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
-    strength: () => { try { return game.settings.get(ID, "idleLifeStrength"); } catch { return 1; } },
-    enabled: () => game.settings.get(ID, "idleLife") !== false && game.settings.get(ID, "idleLifeLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.ready,
+    strength: () => { try { return hotSetting("idleLifeStrength"); } catch { return 1; } },
+    enabled: () => hotSetting("idleLife") !== false && hotSetting("idleLifeLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.ready,
     tokens: () => canvas.tokens?.placeables ?? [],
     view: () => {
       const stage = canvas.stage, s = stage?.scale?.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight];
@@ -3167,8 +3221,8 @@ Hooks.once("ready", () => {
   // Wounded looks: every client reads the same HP and draws the look locally (a Tokenshade
   // look under its own key, beside any condition looks, and a hunch or limp through ConditionBody).
   woundedLooks = new WoundedLooks({ body: conditionBody, fx: () => tokenFx, preset: () => builtinPreset("Wounded"),
-    enabled: () => game.settings.get(ID, "woundedLooks") !== "off" && game.settings.get(ID, "woundedLooksLocal") !== false && !!canvas?.ready,
-    mode: () => game.settings.get(ID, "woundedLooks"),
+    enabled: () => hotSetting("woundedLooks") !== "off" && hotSetting("woundedLooksLocal") !== false && !!canvas?.ready,
+    mode: () => hotSetting("woundedLooks"),
     fxAllowed: () => allowsTokenFx(localQuality()) && tokenFx.ready(),
     motionAllowed: () => allowsMotion(localQuality()),
     tokens: () => canvas.tokens?.placeables ?? [],
@@ -3190,7 +3244,7 @@ Hooks.once("ready", () => {
   });
   Hooks.on("canvasTearDown", () => { clearTimeout(woundPending); woundPending = null; woundedLooks.clear(); });
   guardSequencerMotions(globalThis.Sequencer?.MotionManager, { claims: (data) => {
-    if (!game.settings.get(ID, MOTION_PRIORITY)) return false;
+    if (!hotSetting(MOTION_PRIORITY)) return false;
     const token = fromUuidSync(data?.uuid, { strict: false })?.object;
     return Boolean(token) && (motions.active.has(token) || conditionBody.moves(token) || tokenFx.engine.moves(token));
   } });
@@ -3255,25 +3309,25 @@ Hooks.once("ready", () => {
       return globalThis.Sequencer?.Database;
     },
     enabled: () => acceptsEvents() || hasOwnApproved(),
-    weaponScale: () => Number(game.settings.get(ID, "weaponScale")) || 1,
+    weaponScale: () => Number(hotSetting("weaponScale")) || 1,
     // Effects light the scene (world setting); in daylight only when allowed.
-    effectLights: () => game.settings.get(ID, "effectLighting") !== false
-      && (game.settings.get(ID, "effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
+    effectLights: () => hotSetting("effectLighting") !== false
+      && (hotSetting("effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
     // Shots stop at walls (world setting); on while the setting is not registered.
-    projectileWalls: () => { try { return game.settings.get(ID, "projectileWalls") !== false; } catch { return true; } },
+    projectileWalls: () => { try { return hotSetting("projectileWalls") !== false; } catch { return true; } },
     // Harmful plays leave ground marks (world setting).
-    groundMarks: () => game.settings.get(ID, "groundMarks") !== false,
+    groundMarks: () => hotSetting("groundMarks") !== false,
     // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
-    afterimages: () => game.settings.get(ID, "afterimages") !== false,
+    afterimages: () => hotSetting("afterimages") !== false,
     // Hit streaks land harder (world setting); a streak lasts one combat turn, else 12 s.
-    momentum: () => { try { return game.settings.get(ID, "momentum") !== false; } catch { return true; } },
+    momentum: () => { try { return hotSetting("momentum") !== false; } catch { return true; } },
     turnKey: () => { const c = game.combat; return c?.started ? `${c.id}:${c.round}:${c.turn}` : null; },
     // Big blasts, lasting fire and teleports bend the scene (world setting).
     mapDistortion,
     // Big blasts shake each screen's view (world setting): their shocks are planned even with map distortion off.
     cameraShake: () => shakeSetting("cameraShake", true) !== false,
     // How far a blast's shockwave ripples, as a multiple of its radius (world setting).
-    shockwaveReach: () => { try { return Number(game.settings.get(ID, "shockwaveReach")); } catch { return undefined; } },
+    shockwaveReach: () => { try { return Number(hotSetting("shockwaveReach")); } catch { return undefined; } },
     // A two-handed heavy weapon: its critical hit sends a shockwave.
     heavyItem: (item) => heavyItem(item, game.system.id),
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
@@ -3294,7 +3348,7 @@ Hooks.once("ready", () => {
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,
-    riderRecipes: (event, saved) => game.system.id === "pf2e" ? riderRecipes(event, game.settings.get(ID, "featureCatalog"), saved, { customEnabled: enabled(), soundCatalog: installedSoundCatalog(game.modules, globalThis.Sequencer?.Database) }) : [],
+    riderRecipes: (event, saved) => game.system.id === "pf2e" ? riderRecipes(event, hotSetting("featureCatalog"), saved, { customEnabled: enabled(), soundCatalog: installedSoundCatalog(game.modules, globalThis.Sequencer?.Database) }) : [],
     flashBefore: (recipe, context) => flash?.before(recipe, context),
     pickTeleport,
     teleport,
@@ -3312,7 +3366,7 @@ Hooks.once("ready", () => {
     // What a Strike lands on (metal armour, a raised shield, chitin…), for its surface cue.
     surfaceOf: (token, outcome) => targetSurface(token?.actor ?? token?.document?.actor, outcome),
     sizeOf: (token) => sizeOf(token?.actor ?? token?.document?.actor, token),
-    surfaceSounds: () => game.settings.get(ID, SURFACE_SETTING) !== false,
+    surfaceSounds: () => hotSetting(SURFACE_SETTING) !== false,
     setSurfaceSounds: (on) => game.settings.set(ID, SURFACE_SETTING, on === true),
     recipeOrigin: (recipe, context) => recipeOrigin(recipe, context),
     ready: () => Boolean(canvas.ready && environment().ready),
@@ -3441,14 +3495,14 @@ Hooks.once("ready", () => {
       ready: () => Boolean(canvas.ready && environment().ready),
       sceneId: () => canvas.scene?.id,
       tokens: () => canvas.tokens?.placeables ?? [],
-      lastingMode: () => game.settings.get(ID, "lastingMode"),
+      lastingMode: () => hotSetting("lastingMode"),
       recipes,
       // Your own lasting recipes follow the same switch as every other custom recipe.
       customEnabled: () => enabled(),
       // Filling AA's gaps: a condition or effect AA animates stays with AA.
       yields: (item) => (aaFillGaps() || taFillGaps()) && yieldsToAA({ type: "effect", item }),
       catalog: () => runtime.getCatalog(),
-      state: (kind) => game.settings.get(ID, game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
+      state: (kind) => hotSetting(game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
       visibility: () => ({ isGM: game.user.isGM, secretConditions: ['pf2e','sf2e'].includes(game.system.id)&&game.settings.get(game.system.id, "metagame_secretCondition") === true }),
       gridSize: () => canvas.grid?.size ?? 100,
       gridDistance: () => canvas.scene?.grid?.distance ?? 5,
@@ -3470,7 +3524,7 @@ Hooks.once("ready", () => {
       // Daggerheart's defeated set (Defeated, Unconscious, Dead, Death move) follows the Defeated look, as one layer per actor.
       // Defeated (dead) creatures keep only their Defeated look; their conditions and effects stop showing.
       defeated:(token)=>isDefeated(token.actor,game.system.id==='daggerheart'?DH_DEFEATED_STATUSES:[defeatedStatusId()]),
-      builtinStates:(token)=>game.system.id==='daggerheart'?dhDefeatedStates(token.actor,game.settings.get(ID,DEFEATED_LOOK)):defeatedStates(token.actor,{mode:game.settings.get(ID,DEFEATED_LOOK),statusId:defeatedStatusId()}),
+      builtinStates:(token)=>game.system.id==='daggerheart'?dhDefeatedStates(token.actor,hotSetting(DEFEATED_LOOK)):defeatedStates(token.actor,{mode:hotSetting(DEFEATED_LOOK),statusId:defeatedStatusId()}),
       // A token deleted or left behind with its scene is not drawn on, and only existing documents are tied.
       tokenAlive:(token)=>!token?.destroyed&&(typeof fromUuidSync!=="function"||!token?.document?.uuid||!!fromUuidSync(token.document.uuid,{strict:false})),
       documentExists:(uuid)=>typeof fromUuidSync!=="function"||!!fromUuidSync(uuid,{strict:false}),
@@ -3478,11 +3532,19 @@ Hooks.once("ready", () => {
       origin: (item, recipe) => recipeOrigin(recipe, { item }),
       trace: (status, detail, recipe, meta) => runtime.trace(status, detail, recipe, meta),
     });
-    for (const hook of ["createActiveEffect","updateActiveEffect","deleteActiveEffect","createItem", "updateItem", "deleteItem", "updateActor", "createToken", "updateToken", "deleteToken", "canvasReady", "updateWorldTime", "updateCombat", "deleteCombat", "updateUser", "controlToken"])
+    for (const hook of ["createActiveEffect","updateActiveEffect","deleteActiveEffect","createItem", "updateItem", "deleteItem", "updateActor", "createToken", "deleteToken", "canvasReady", "updateWorldTime", "updateCombat", "deleteCombat", "updateUser", "controlToken"])
       Hooks.on(hook, () => persistentStates.schedule());
+    // Moving/resizing an ordinary token only changes its own attached looks.
+    // The controlled observer can change everybody's perceived conditions.
+    const scheduleTokenState = token => {
+      const object = token?.object ?? token;
+      if (object?.controlled || !token?.id) persistentStates.schedule();
+      else persistentStates.schedule([token.id]);
+    };
+    Hooks.on('updateToken', scheduleTokenState);
     // Hovering or selecting refreshes tokens many times a second; only a change a look depends on re-checks.
     const lookChanged = tokenLookChanged();
-    Hooks.on("refreshToken", (token) => { if (lookChanged(token)) persistentStates.schedule(); });
+    Hooks.on("refreshToken", (token) => { if (lookChanged(token)) scheduleTokenState(token); });
     // Sequencer re-initializes a drawn scene shortly after it is ready (450 ms after a scene switch), destroying
     // every effect on the canvas, ours included; check again once it has (token refreshes can delay it), and redraw what it dropped.
     Hooks.on("canvasReady", () => { for (const ms of [1000, 3000]) setTimeout(() => persistentStates?.schedule(), ms); });
@@ -3625,7 +3687,7 @@ Hooks.once("ready", () => {
   const hpOf = (actor) => hpState(actor, game.system.id);
   // Splatter's blood follows the damage (integrations/splatter.mjs): Splatter's own splat for this change is
   // called off (it reads the HP it left in options.oldHpVal, registered before this hook), and Animater splats instead.
-  const bloodSync = () => splatterReady() && acceptsEvents() && game.settings.get(ID, SPLATTER_SYNC);
+  const bloodSync = () => splatterReady() && acceptsEvents() && hotSetting(SPLATTER_SYNC);
   Hooks.on("preUpdateActor", (actor, changes, options) => {
     if (!foundry.utils.hasProperty(changes, hpPath(actor, game.system.id))) return;
     options.animaterHpBefore = hpOf(actor);
@@ -3719,7 +3781,7 @@ Hooks.once("ready", () => {
     const saveKey = critIds.map((recipeId) => finishedKey({ ...base, recipeId, save: true })).find((key) => finished.has(key));
     const crit = by?.crit === true || Boolean(saveKey);
     const recipe = pick ? pickPlays(pick, "kill", { outcome: crit ? "criticalSuccess" : "success" })
-      : killFinisher(recipes(), item, game.settings.get(ID, DEFAULT_FINISHER), { crit, damageType: recallDamage(damageLog, ids)?.type ?? by?.type, defaultEnding: game.settings.get(ID, DEFAULT_FINISHER_ENDING) });
+      : killFinisher(recipes(), item, hotSetting(DEFAULT_FINISHER), { crit, damageType: recallDamage(damageLog, ids)?.type ?? by?.type, defaultEnding: hotSetting(DEFAULT_FINISHER_ENDING) });
     if (!recipe) return null;
     // The crit already played a finisher's travel on this token: only an ending is left. A critical
     // killing blow is that crit's own damage (the same finisher's mark); after a save crit, whichever
@@ -3753,7 +3815,7 @@ Hooks.once("ready", () => {
   // The collapse (or dramatic death) on a drop to 0 HP, else the energy-damage flash.
   const playDamageMoment = (actor, token, dropped) => {
     const type = recallDamage(damageLog, { actorId: actor.id, tokenId: token.id })?.type;
-    const recipe = dropped ? (game.settings.get(ID, DRAMATIC_DEATHS) ? deathRecipe(type, COLLAPSE) : COLLAPSE) : hitRecipe(type);
+    const recipe = dropped ? (hotSetting(DRAMATIC_DEATHS) ? deathRecipe(type, COLLAPSE) : COLLAPSE) : hitRecipe(type);
     const playable = recipe && installedStages(recipe);
     if (!playable?.stages.length) return;
     void runtime.play(playable, { source: token, targets: [] }).catch((error) => runtime.trace("Blocked", error.message));
@@ -3778,7 +3840,7 @@ Hooks.once("ready", () => {
     const dropped = change.dropped;
     const tokens = (actor.getActiveTokens?.() ?? []).filter((token) => token.document?.parent?.id === canvas.scene?.id);
     if (options.animaterBlood) for (const token of tokens) splatBlood(actor, token, options.animaterHpBefore);
-    if (!dropped && !game.settings.get(ID, DAMAGE_REACTIONS)) return;
+    if (!dropped && !hotSetting(DAMAGE_REACTIONS)) return;
     // An NPC's killing blow: the slow-motion kill-cam here and on every screen that sees it, finisher or not.
     const camMs = dropped ? killCamWait(actor) : 0;
     for (const token of tokens) {
@@ -3928,7 +3990,7 @@ Hooks.once("ready", () => {
     });
     // Hope or Fear on this user's duality roll: a short accent on the roller's token, beside the item's own animation.
     const playDualityAccent = async (message) => {
-      if (!acceptsEvents() || game.settings.get(ID, DUALITY_ACCENT) === false) return;
+      if (!acceptsEvents() || hotSetting(DUALITY_ACCENT) === false) return;
       const accent = dualityAccent(message, game.user.id), token = accent && (!accent.sceneId || accent.sceneId === canvas.scene?.id) ? canvas.tokens?.get(accent.tokenId) : null;
       if (!token) return;
       await afterDice({ type: "check", messageId: message.id });
@@ -4063,7 +4125,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       icon: "fas fa-wand-magic-sparkles",
       button: true,
       // Players open their own Studio; the GM sees the full workspace.
-      visible: game.settings.get(ID, "showControlButton") !== false,
+      visible: hotSetting("showControlButton") !== false,
       onChange: () => open(),
     };
 });
@@ -4081,6 +4143,6 @@ Hooks.on("updateUser", (user, changes) => {
 // Foundry's movement ruler: fade (or hide) the squares a token has already walked, so its dust, prints and splashes show
 // (integrations/walked-path.mjs; client setting "Walked path highlight").
 Hooks.once("ready", () => {
-  try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return game.settings.get(ID, "walkedPathHighlight"); } catch { return "fade"; } }); }
+  try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return hotSetting("walkedPathHighlight"); } catch { return "fade"; } }); }
   catch (error) { console.warn("Animater walked path:", error?.message ?? error); }
 });

@@ -174,7 +174,8 @@ export function messageTone(message, error) {
 export function firstPage(host) {
   try { return !host.playerMode && host.acceptsEvents?.() === false ? "setup" : "recipes"; } catch { return "recipes"; }
 }
-export const JB2A_MISSING = "Neither JB2A module is active, so built-in animations have no artwork to play. Turn on JB2A Free (JB2A_DnD5e) or JB2A Patreon (jb2a_patreon) in Manage Modules, then reload the world (F5).";
+import { JB2A_MISSING } from "./environment-message.mjs";
+export { JB2A_MISSING };
 // A push or pull's reach in the composition preview: the wedge where the target may be placed (or, with nobody
 // picking, the straight line it slides along), drawn around the target in real pixels, the grid key's squares.
 function moveConeHTML(chain) {

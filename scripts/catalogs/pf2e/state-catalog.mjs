@@ -1,4 +1,5 @@
-import {PF2E_CONDITIONS,PF2E_EFFECTS,PF2E_STATE_SOURCE} from '../../../data/pf2e-state-catalog.mjs';
+import {catalogDataNeeded} from '../shared/catalog-data.mjs';
+const {PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-state-catalog.mjs') : {PF2E_CONDITIONS: [], PF2E_EFFECTS: [], PF2E_STATE_SOURCE: {}};
 import {normalize,validateRecipe,matchRecipe,resolveAsset} from '../../core/model.mjs';
 import {statePresentation} from '../shared/state-presentation.mjs';
 import {withCatalogFx} from '../shared/catalog-fx.mjs';

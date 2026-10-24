@@ -1,0 +1,1 @@
+export const JB2A_MISSING = "Neither JB2A module is active, so built-in animations have no artwork to play. Turn on JB2A Free (JB2A_DnD5e) or JB2A Patreon (jb2a_patreon) in Manage Modules, then reload the world (F5).";

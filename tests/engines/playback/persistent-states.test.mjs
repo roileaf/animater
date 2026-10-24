@@ -14,6 +14,27 @@ function fixture(items=[native(fear)]){
 }
 const flush=()=>new Promise(r=>setTimeout(r,0));
 const stateFxCatalog={tokenReady:true,sceneReady:false,presets:[{name:'blur',library:'tokenshade'}],effects:[]};
+test('targeted reconcile resolves only changed token, preserves other active and stopped states',async()=>{
+ const f=fixture(),second={...f.token,id:'other',document:{uuid:'Scene.s.Token.other'}};
+ f.setTokens([f.token,second]);await f.manager.reconcile();await flush();
+ const other=[...f.manager.active.values()].find(r=>r.token===second);
+ let resolved=0,catalogReads=0;
+ const catalog=f.manager.host.catalog;f.manager.host.catalog=()=>{catalogReads++;return catalog();};
+ f.manager.host.resolveStateRecipe=(...args)=>{resolved++;return stateRecipe(fear);};
+ f.manager.stopped.add('s:Scene.s.Token.other:unrelated');
+ await f.manager.reconcile(new Set(['t']));await flush();
+ assert.equal(resolved,1);assert.equal(f.manager.active.get(other.key),other);
+ assert.ok(f.manager.stopped.has('s:Scene.s.Token.other:unrelated'));
+ assert.ok(catalogReads<=2,'one snapshot plus changed record startup, never per-state snapshots');
+ await f.manager.destroy();
+});
+test('debounced targeted changes merge; a global refresh takes precedence',async()=>{
+ const f=fixture(),scopes=[];f.manager.reconcile=async scope=>scopes.push(scope);
+ f.manager.schedule(['one']);f.manager.schedule(['two']);await new Promise(r=>setTimeout(r,60));
+ assert.deepEqual([...scopes[0]],['one','two']);
+ f.manager.schedule();f.manager.schedule(['three']);await new Promise(r=>setTimeout(r,60));
+ assert.equal(scopes[1],undefined);await f.manager.destroy();
+});
 test('native expiry, visibility, mesh recreation and catalog FX changes clean document-linked filters',async()=>{
  const entry=PF2E_CONDITIONS.find(e=>e.slug==='concealed'),item=native(entry),f=fixture([item]),retained=new Set();let enabled=true;
  f.token.mesh={uid:1};f.manager.host.resolveStateRecipe=()=>stateRecipe(entry,{fx:enabled,fxCatalog:stateFxCatalog});

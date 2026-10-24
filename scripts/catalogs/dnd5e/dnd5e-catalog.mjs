@@ -1,4 +1,5 @@
-import {DND5E_ENTRIES,DND5E_SOURCE} from '../../../data/dnd5e-catalog.mjs';
+import {catalogDataNeeded} from '../shared/catalog-data.mjs';
+const {DND5E_ENTRIES, DND5E_SOURCE} = catalogDataNeeded('dnd5e') ? await import('../../../data/dnd5e-catalog.mjs') : {DND5E_ENTRIES: [], DND5E_SOURCE: {}};
 import {clone,normalize,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
 import {addSpellSounds} from '../../engines/sound/spell-sounds.mjs';
 import {addAbilitySounds} from '../../engines/sound/ability-sounds.mjs';

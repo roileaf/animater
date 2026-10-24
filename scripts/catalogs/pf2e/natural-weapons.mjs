@@ -1,8 +1,9 @@
+import {catalogDataNeeded} from '../shared/catalog-data.mjs';
 // Creature attacks (an NPC's Jaws, an ancestry Claw) the equipment catalog has no weapon for.
 // These names play as they are; an NPC Strike's longer name plays its last such word
 // ("Spiked Tail" a tail, "Storm-Beak Jab" a beak).
 import {normalize} from '../../core/model.mjs';
-import {PF2E_WEAPONS as EQUIPMENT} from '../../../data/pf2e-weapons.mjs';
+const {PF2E_WEAPONS: EQUIPMENT} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-weapons.mjs') : {PF2E_WEAPONS: []};
 
 const FAMILIES={
  bite:{names:['Jaws','Bite','Fangs','Beak','Mandibles','Teeth','Maw','Peck','Proboscis'],damage:'piercing',sound:'naturalPierce',scale:.9,label:'Bite',

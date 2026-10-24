@@ -1,4 +1,5 @@
-import { PF2E_FEATS, PF2E_FEAT_SOURCE } from "../../../../data/pf2e-feats.mjs";
+import {catalogDataNeeded} from '../../shared/catalog-data.mjs';
+const {PF2E_FEATS, PF2E_FEAT_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../../data/pf2e-feats.mjs') : {PF2E_FEATS: [], PF2E_FEAT_SOURCE: {}};
 import { normalize, matchRecipe, ownRecipe } from "../../../core/model.mjs";
 import { featRecipe, FEAT_THEMES, FEAT_MOTIFS } from "./feat-choreography.mjs";
 export { PF2E_FEATS, PF2E_FEAT_SOURCE, featRecipe, FEAT_THEMES, FEAT_MOTIFS };

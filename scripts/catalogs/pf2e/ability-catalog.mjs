@@ -1,8 +1,9 @@
+import {catalogDataNeeded} from '../shared/catalog-data.mjs';
 // PF2e ability catalogs that are not feats: basic/skill/class actions (packs/actions)
 // and class/ancestry features. Same entry shape and choreography as PF2e feats
 // (featRecipe), with their own native packs, settings and enable/exclude state.
-import { PF2E_ACTIONS, PF2E_ACTION_SOURCE } from "../../../data/pf2e-actions.mjs";
-import { PF2E_CLASS_FEATURES, PF2E_CLASS_FEATURE_SOURCE } from "../../../data/pf2e-class-features.mjs";
+const {PF2E_ACTIONS, PF2E_ACTION_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-actions.mjs') : {PF2E_ACTIONS: [], PF2E_ACTION_SOURCE: {}};
+const {PF2E_CLASS_FEATURES, PF2E_CLASS_FEATURE_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-class-features.mjs') : {PF2E_CLASS_FEATURES: [], PF2E_CLASS_FEATURE_SOURCE: {}};
 import { normalize, matchRecipe, ownRecipe } from "../../core/model.mjs";
 import { featRecipe } from "./feats/feat-choreography.mjs";
 import { withElementChoice } from "../shared/element-choice.mjs";

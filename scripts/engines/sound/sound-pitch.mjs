@@ -56,10 +56,52 @@ export function muffleEar({ controlled = null, owned = null, isGM = false, view 
 }
 // room(data): the room the sound rings in, as { node(context) } giving its reverb send's input, or null. muffle(data): a wall
 // stands between this player and the sound. Either one failing leaves the sound as it was.
+export function createSoundShapeQueue({now = () => Date.now(), max = 1024} = {}) {
+  const pending = new Map();
+  let count = 0, sweepAt = -Infinity;
+  const pathOf = src => { try { return decodeURIComponent(String(src ?? '')); } catch { return String(src ?? ''); } };
+  const sweep = time => {
+    if (time < sweepAt) return;
+    sweepAt = time + 1000;
+    for (const [file, list] of pending) {
+      const fresh = list.filter(p => p.until > time);
+      count -= list.length - fresh.length;
+      if (fresh.length) pending.set(file, fresh); else pending.delete(file);
+    }
+  };
+  return {
+    add(file, shape) {
+      const time = now(); sweep(time); file = pathOf(file);
+      while (count >= max && pending.size) {
+        const [key, list] = pending.entries().next().value;
+        list.shift(); count--;
+        if (!list.length) pending.delete(key);
+      }
+      const list = pending.get(file) ?? [];
+      list.push({...shape, until: time + MATCH_MS}); pending.set(file, list); count++;
+    },
+    take(src) {
+      const time = now(); sweep(time);
+      const path = pathOf(src);
+      for (const [file, list] of pending) {
+        if (!path.endsWith(file)) continue;
+        const fresh = list.filter(p => p.until > time), next = fresh.shift();
+        count -= list.length - fresh.length;
+        if (fresh.length) pending.set(file, fresh); else pending.delete(file);
+        if (next) return next;
+      }
+      return null;
+    },
+    clear() { pending.clear(); count = 0; sweepAt = -Infinity; },
+    get size() { return count; },
+  };
+}
+
 export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false } = {}) {
   if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch) return () => {};
   // Waiting shaping by file: Sequencer announces a sound just before Foundry loads and starts it.
-  const pending = new Map();
+  const pending = createSoundShapeQueue({now});
+  const teardown = hooks.on('canvasTearDown', () => pending.clear());
   const id = hooks.on("createSequencerSound", (data) => {
     if (!data || typeof data !== "object") return;
     // This player turned the engine off: no surface hits, and Animater's other sounds play plain.
@@ -74,7 +116,7 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
     const walled = (fn) => { try { return data.animaterAt ? fn(data) : null; } catch { return null; } };
     const space = walled(room) ?? null, muffled = walled(muffle) === true;
     if (!((rate > 0 && rate !== 1) || echo || place || space || muffled) || typeof data.file !== "string") return;
-    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate: rate > 0 ? rate : 1, echo, place, space, muffled, until: now() + MATCH_MS }]);
+    pending.add(data.file, { rate: rate > 0 ? rate : 1, echo, place, space, muffled });
   });
   // Animater's own positional sounds (footsteps, footfall thuds) ask for their pitch directly, just before they play,
   // so it is set as the sound's nodes are built: a short thud's whole impact is in its first milliseconds, and a rate
@@ -101,17 +143,10 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
       if (!(roomShare > 0)) { space = null; echo = null; }
     }
     if (rate === 1 && !lowpass && !bass && !place && !space && !muffled && !echo) return;
-    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate, lowpass, bass, echo, place, space, muffled, roomShare, until: now() + MATCH_MS }]);
+    pending.add(data.file, { rate, lowpass, bass, echo, place, space, muffled, roomShare });
   });
   const take = (src) => {
-    const path = decodeURIComponent(String(src ?? ""));
-    for (const [file, list] of pending) {
-      if (!path.endsWith(file)) continue;
-      const fresh = list.filter((p) => p.until > now()), next = fresh.shift();
-      if (fresh.length) pending.set(file, fresh); else pending.delete(file);
-      if (next) return next;
-    }
-    return null;
+    return pending.take(src);
   };
   const create = Sound.prototype._createNodes;
   function createNodes(...args) {
@@ -170,5 +205,5 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
   }
   createNodes.animaterPitch = true;
   Sound.prototype._createNodes = createNodes;
-  return () => { hooks.off("createSequencerSound", id); hooks.off("animater.shapeSound", direct); if (Sound.prototype._createNodes === createNodes) Sound.prototype._createNodes = create; };
+  return () => { pending.clear(); hooks.off('canvasTearDown', teardown); hooks.off("createSequencerSound", id); hooks.off("animater.shapeSound", direct); if (Sound.prototype._createNodes === createNodes) Sound.prototype._createNodes = create; };
 }

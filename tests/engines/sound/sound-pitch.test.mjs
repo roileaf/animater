@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {installSoundPitch,placeSound,sceneEcho,muffleEar} from '../../../scripts/engines/sound/sound-pitch.mjs';
+import {installSoundPitch,placeSound,sceneEcho,muffleEar,createSoundShapeQueue} from '../../../scripts/engines/sound/sound-pitch.mjs';
 import {createRoomCache,roomFor,reverbSend} from '../../../scripts/engines/sound/room-acoustics.mjs';
 import {createReverbBuses} from '../../../scripts/engines/sound/reverb-bus.mjs';
 
@@ -10,6 +10,25 @@ function fakes(){
  class Sound{constructor(src){this.src=src;}_createNodes(){this.sourceNode={playbackRate:{value:1}};}}
  return {hooks,Sound};
 }
+test('unplayed sound requests expire even when subsequent sounds use unrelated files',()=>{
+ let time=0;const queue=createSoundShapeQueue({now:()=>time});
+ for(let i=0;i<250;i++)queue.add(`unplayed/${i}.ogg`,{rate:1.1});
+ assert.equal(queue.size,250);time=6000;
+ assert.equal(queue.take('other.ogg'),null);assert.equal(queue.size,0);
+ queue.add('sound with space.ogg',{rate:1.2});
+ assert.equal(queue.take('https://localhost/sound%20with%20space.ogg').rate,1.2);
+ assert.doesNotThrow(()=>queue.take('bad%path.ogg'));
+});
+test('sound shaping queue bounds a burst, consumes FIFO and clears on canvas teardown',()=>{
+ const queue=createSoundShapeQueue({now:()=>0,max:3});
+ queue.add('a.ogg',{rate:1.1});queue.add('a.ogg',{rate:1.2});
+ queue.add('b.ogg',{rate:1.3});queue.add('c.ogg',{rate:1.4});
+ assert.equal(queue.size,3);assert.equal(queue.take('a.ogg').rate,1.2);
+ queue.clear();assert.equal(queue.size,0);
+ const {hooks,Sound}=fakes(),undo=installSoundPitch({hooks,Sound});
+ hooks.call('animater.shapeSound',{file:'a.ogg',rate:1.5});hooks.call('canvasTearDown');
+ const sound=new Sound('a.ogg');sound._createNodes();assert.equal(sound.sourceNode.playbackRate.value,1);undo();
+});
 test('a sound announced with a pitch plays shifted on this client; others keep their pitch',()=>{
  const {hooks,Sound}=fakes(),uninstall=installSoundPitch({hooks,Sound});
  hooks.call('createSequencerSound',{file:'modules/animater/assets/sounds/surfaces/kenney/impactPlate_heavy_000.ogg',animaterPitch:1.06});

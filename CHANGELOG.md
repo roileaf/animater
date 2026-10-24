@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.1 (2026-10-24)
+
+### Performance and reliability
+
+- **Faster creature movement.** Share primitive settings reads within each rendered frame and reuse stationary token metadata, while preserving immediate settings changes, perception, offscreen footsteps and moving-token updates. In a 100-token test scene, movement processing fell from about 7.3 to 0.3 ms per frame while stationary, and from 7.2 to 0.7 ms with 20 tokens moving; results depend on the device and other modules.
+- **Lighter startup.** Load catalog data only for the world's game-system family and load the workspace when first opened. PF2e and SF2e retain both catalogs for crossover support; headless catalog tools retain access to every system.
+- **Less background work.** Burrowing updates process changed tokens and active sink/rise transitions. Ordinary token changes refresh only that token's persistent condition layers; observer and global changes still refresh the whole scene. Batched changes merge without dropping unaffected layers or replaying stopped effects.
+- **Sound cleanup.** Expired sound-shaping requests are removed even when their sound never plays. Pending requests are bounded and cleared when leaving a scene, with FIFO playback matching and safe handling of encoded sound paths.
+- **Responsive quality changes.** Use the new setting value during change callbacks so animation quality and its routing flag remain synchronized. Deferred workspace loading also handles overlapping renders and closed windows safely.
+
 ## 2.1.0 (2026-10-24)
 
 Creature movement, living tokens, cinematic combat and expanded NPC animation coverage. This release includes all changes since 2.0.3.

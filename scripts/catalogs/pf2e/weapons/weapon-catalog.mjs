@@ -1,4 +1,5 @@
-import {PF2E_WEAPONS as EQUIPMENT,PF2E_WEAPON_SOURCE} from '../../../../data/pf2e-weapons.mjs';
+import {catalogDataNeeded} from '../../shared/catalog-data.mjs';
+const {PF2E_WEAPONS: EQUIPMENT, PF2E_WEAPON_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../../data/pf2e-weapons.mjs') : {PF2E_WEAPONS: [], PF2E_WEAPON_SOURCE: {}};
 import {weaponRecipe} from './weapon-choreography.mjs';
 import {normalize,matchRecipe, ownRecipe,matchStrikeOverride} from '../../../core/model.mjs';
 import {withRuneFlourishes,runeFlourishesEnabled} from './weapon-runes.mjs';
