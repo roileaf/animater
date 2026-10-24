@@ -11,7 +11,7 @@ import {ABILITY_SOUND_PROFILES} from '../../../data/ability-sounds.mjs';
 const find=(name,kind='spell',edition='2024')=>dndEntries(kind).find(e=>e.name===name&&e.edition===edition);
 const context={source:{id:'caster',center:{x:0,y:0},w:100,h:100},targets:Array.from({length:5},(_,i)=>({id:'target-'+i,center:{x:200+i*200,y:200},w:100,h:100})),gridSize:100,template:{id:'template'},area:{type:'cone',center:{x:0,y:0},endpoint:{x:400,y:0},length:400,angle:90,width:100,diameter:400}};
 test('catalog navigation shows only the native world system, including direct page guards',()=>{
- for(const systemId of ['pf2e','dnd5e']){const nav=catalogNavigation({systemId});assert.equal(nav.length,systemId==='pf2e'?7:6);assert.ok(nav.every(([, ,label])=>label.startsWith(systemId==='pf2e'?'PF2e':'D&D 5e')));}
+ for(const systemId of ['pf2e','dnd5e']){const nav=catalogNavigation({systemId});assert.equal(nav.length,systemId==='pf2e'?8:6);assert.ok(nav.every(([, ,label])=>label.startsWith(systemId==='pf2e'?'PF2e':'D&D 5e')));}
  assert.equal(catalogPageAllowed('items',{systemId:'pf2e'}),false);
  assert.deepEqual(catalogNavigation({systemId:'unsupported'}),[]);assert.equal(catalogPageAllowed('spells',{systemId:'unsupported'}),false);
  for(const edition of ['2014','2024'])assert.equal(filterDndEntries('condition',{edition}).length,44,'shared native conditions remain visible in either rules edition');

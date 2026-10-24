@@ -1318,6 +1318,14 @@ function workspaceHost() {
       if (!game.user.isGM) throw Error("Only a GM can configure the feature catalog.");
       return game.settings.set(ID, "featureCatalog", PF2E_FEATURE_CATALOG.normalizeState({ ...game.settings.get(ID, "featureCatalog"), ...change }));
     },
+    // The NPC abilities page: its three switches and the abilities left out.
+    npcAbilityState: () => ({ abilities: game.settings.get(ID, "npcAbilities") !== false, guess: game.settings.get(ID, "npcAbilityGuess") !== false,
+      strikes: game.settings.get(ID, "npcStrikeGuess") !== false, excluded: [...(game.settings.get(ID, "npcAbilityExcluded") ?? [])] }),
+    setNpcAbilityState: async (change) => {
+      if (!game.user.isGM) throw Error("Only a GM can configure NPC abilities.");
+      const keys = { abilities: "npcAbilities", guess: "npcAbilityGuess", strikes: "npcStrikeGuess", excluded: "npcAbilityExcluded" };
+      for (const [field, value] of Object.entries(change)) if (keys[field]) await game.settings.set(ID, keys[field], field === "excluded" ? [...new Set(value)] : value === true);
+    },
     weaponCatalogState: () => normalizeWeaponCatalogState(game.settings.get(ID, "weaponCatalog")),
     setWeaponCatalogState: async (change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure weapon animations.");
@@ -1694,6 +1702,8 @@ Hooks.once("init", () => {
     hint: "An NPC Strike that no weapon or creature attack name places still animates: by its damage (a slashing one rakes like a claw, others land as a blow), and a ranged one by what it throws or spits. Off: those Strikes play nothing unless you make a recipe for them.",
     scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
+  // Named NPC abilities the GM left out on the Studio's NPC abilities page (ability ids).
+  game.settings.register(ID, "npcAbilityExcluded", { scope: "world", config: false, type: Array, default: [] });
   // Shown only where Splatter is on; off, Splatter bleeds on its own.
   game.settings.register(ID, SPLATTER_SYNC, {
     name: "Splatter: blood follows the damage",

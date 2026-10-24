@@ -10,14 +10,14 @@ import { sfSettingKey } from "../catalogs/shared/catalog-system.mjs";
 
 export const CROSSOVER_CATALOG = "crossoverCatalog";
 export const TWOE_KINDS = ["spell", "feat", "action", "feature", "weapon"];
-const PF2E_KEYS = { spell: "spellCatalog", feat: "featCatalog", action: "actionCatalog", feature: "featureCatalog", weapon: "weaponCatalog", npcAbility: "npcAbilities", npcAbilityGuess: "npcAbilityGuess" };
+const PF2E_KEYS = { spell: "spellCatalog", feat: "featCatalog", action: "actionCatalog", feature: "featureCatalog", weapon: "weaponCatalog", npcAbility: "npcAbilities", npcAbilityGuess: "npcAbilityGuess", npcAbilityExcluded: "npcAbilityExcluded" };
 const PF2E_ABILITY = { action: PF2E_ACTION_CATALOG, feature: PF2E_FEATURE_CATALOG };
 const LABELS = { pf2e: "PF2e", sf2e: "SF2e" };
 
 export const crossoverSystem = (systemId) => ({ pf2e: "sf2e", sf2e: "pf2e" })[systemId] ?? null;
 // The world setting holding `kind`'s catalog state in a 2e world.
 // The NPC switches are one set of world settings in both systems.
-const NPC_KEYS = new Set(["npcAbility", "npcAbilityGuess"]);
+const NPC_KEYS = new Set(["npcAbility", "npcAbilityGuess", "npcAbilityExcluded"]);
 export const twoeSettingKey = (systemId, kind) => (systemId === "sf2e" && !NPC_KEYS.has(kind) ? sfSettingKey(kind) : PF2E_KEYS[kind] ?? null);
 export function crossoverSettingText(systemId) {
   const other = LABELS[crossoverSystem(systemId)] ?? "other 2e";
@@ -56,7 +56,7 @@ function sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds }) {
   }
   const actions = sf("action");
   if (actions.enabled !== true || sf("npcAbility") === false) return null;
-  return npcAbilityRecipe(event, own, { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: sf("npcAbilityGuess") !== false });
+  return npcAbilityRecipe(event, own, { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: sf("npcAbilityGuess") !== false, excluded: sf("npcAbilityExcluded") ?? [] });
 }
 // The PF2e or SF2e catalog recipe for an event (saved recipes first, as each catalog decides).
 export function twoeCatalogRecipe(systemId, event, saved = [], { stateFor, customEnabled = true, sounds } = {}) {
@@ -70,7 +70,7 @@ export function twoeCatalogRecipe(systemId, event, saved = [], { stateFor, custo
     // An NPC's monster ability no action entry covers (Grab, Breath Weapon): the NPC ability catalog,
     // with the action catalog's motion and volume.
     const actions = stateFor("action") ?? {};
-    return npcAbilityRecipe(event, customEnabled ? saved : [], { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: stateFor("npcAbilityGuess") !== false });
+    return npcAbilityRecipe(event, customEnabled ? saved : [], { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: stateFor("npcAbilityGuess") !== false, excluded: stateFor("npcAbilityExcluded") ?? [] });
   }
   if (item?.type === "weapon") return resolveAutomaticWeaponRecipe(event, stateFor("weapon"), saved, options) ?? null;
   // An NPC Strike the weapon catalog knows plays like that weapon; other NPC attacks keep their saved recipes.
