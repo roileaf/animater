@@ -192,6 +192,8 @@ export const TRACKS = Object.freeze({
   talons: { feet: 'biped', size: 1.05 },
   dragon: { feet: 'quad', size: 0.95, tail: true },
   paws: { feet: 'quad', size: 0.62 },
+  padded: { feet: 'quad', size: 0.8 },
+  webbed: { feet: 'quad', size: 0.7 },
   hooves: { feet: 'quad', size: 0.55 },
   claws: { feet: 'quad', size: 0.75, tail: true },
   legs: { feet: 'cluster', size: 1.5 },
@@ -365,21 +367,39 @@ export function footstepFile(floor, n, { psfx = false, seed = '' } = {}) {
   return files[stepIndex(files.length, i, `${seed}:${key}`)];
 }
 // Creature steps: each kind of creature (creature-gait.mjs creatureGait) steps with its own feet, not a person's shoes.
-// Bundled CC0 Freesound recordings, one footfall each, measured like the floors (docs/footstep-audit.md) and credited
-// in assets/sounds/surfaces/freesound/License.txt. Where the floor changes the foot's sound there are variants:
-// 'hard' for stone, wood and ice, 'soft' for dirt, grass, sand and snow, 'wet' for mud and water (else soft); 'any'
-// for feet that sound alike everywhere.
+// Bundled Freesound recordings, one contact each. Credits and licenses accompany the surface and reviewed-creature
+// asset folders. Where the floor changes the foot's sound there are variants:
+// Exact floor variants (such as wooden hoof contacts) take priority; otherwise 'hard' for stone, wood and ice,
+// 'soft' for dirt, grass, sand and snow, 'wet' for mud and water (else soft), or 'any'. Shared contacts on wood get
+// their own material response instead of sounding identical to stone.
 //   dragon  a monster's heavy padded tread on soft ground.
 //   talons  a pigeon's claws on parquet; a small bird's feet in sand; a duck's wet steps in mud and water.
 //   ooze    a slime's squelch (a gelatinous cube, slime slaps, a slime monster's footfall).
 //   legs    a spider's or an insect's quick tapping legs.
-// A family (or the floor's variant of it) with fewer than three recordings is not used: that creature steps as people
-// do (footstepFile) there. Paws and hooves have none now, and dragons none for hard floors (the user rejected those
-// recordings by ear). Lizards and crocodiles ('claws') step as dragons do. A snake ('slither') is silent: no CC0
-// recording of a snake moving passed the audit.
+// A family needs at least three distinct cuts. Paws use direct dog contacts; hooves distinguish stone contacts from
+// muted soft-pad foley. Reptile claws use the lighter paw contacts rather than a dragon's heavy tread. Forest-soil
+// slithers use soil on dirt/grass and separate hard, wet, sand and snow textures, never a shoe layer.
+const reviewed = (names) => names.map((name) => `modules/animater/assets/sounds/creatures/reviewed/${name}.ogg`);
+const completed = (family, variant, id) => [0, 1, 2].map((n) => `modules/animater/assets/sounds/creatures/completed/${family}-${variant}-${id}-${n}.ogg`);
 export const GAIT_STEP_FILES = Object.freeze({
+  paws: { hard: reviewed(['paws-hard-672734-0', 'paws-hard-672734-1', 'paws-hard-689178-0', 'paws-hard-689178-1', 'paws-hard-689178-2', 'paws-hard-689178-3']) },
+  padded: { any: completed('padded', 'any', 427973) },
+  webbed: { any: completed('webbed', 'any', 262588) },
+  hooves: {
+    hard: reviewed(['hooves-hard-843303-0', 'hooves-hard-843303-1', 'hooves-hard-843303-2', 'hooves-hard-843303-3']),
+    wood: [0, 1, 2, 3].map((n) => `modules/animater/assets/sounds/creatures/wood/hooves-wood-187610-${n}.ogg`),
+    soft: reviewed(['hooves-soft-581833-0', 'hooves-soft-581833-1', 'hooves-soft-581833-2', 'hooves-soft-581833-3']),
+  },
   dragon: {
+    hard: reviewed(['dragon-hard-192365-0', 'dragon-hard-192365-1', 'dragon-hard-192365-2', 'dragon-hard-192365-3']),
     soft: freesound(['dragon-step-712066-0', 'dragon-step-712066-1', 'dragon-step-712066-2', 'dragon-step-712066-3']),
+  },
+  slither: {
+    forest: reviewed(['slither-forest-774143-0', 'slither-forest-774143-1', 'slither-forest-774143-2']),
+    hard: completed('slither', 'hard', 82723),
+    wet: completed('slither', 'wet', 677289),
+    sand: completed('slither', 'sand', 389611),
+    snow: completed('slither', 'snow', 420634),
   },
   talons: {
     hard: freesound(['talons-step-611105-0', 'talons-step-611105-1', 'talons-step-611105-2', 'talons-step-611105-3', 'talons-step-611105-4']),
@@ -391,8 +411,9 @@ export const GAIT_STEP_FILES = Object.freeze({
 });
 // The fewest recordings a family (or variant) needs to be used: fewer would repeat audibly.
 export const MIN_FAMILY_FILES = 3;
-const GAIT_FAMILY = { dragon: 'dragon', claws: 'dragon', paws: 'paws', hooves: 'hooves', talons: 'talons', ooze: 'ooze', legs: 'legs' };
-const SILENT_GAITS = new Set(['none', 'slither']);
+const GAIT_FAMILY = { dragon: 'dragon', claws: 'paws', paws: 'paws', padded: 'padded', webbed: 'webbed', hooves: 'hooves', talons: 'talons', ooze: 'ooze', legs: 'legs', slither: 'slither' };
+const SILENT_GAITS = new Set(['none']);
+const FOREST_FLOORS = new Set(['dirt', 'grass']);
 const HARD_FLOORS = new Set(['stone', 'wood', 'ice']);
 const WET_FLOORS = new Set(['mud', 'water']);
 // Floors whose own sound is part of any footfall on them: a hoof in mud squelches, a paw in snow crunches. That floor's
@@ -409,15 +430,31 @@ export function gaitStep(gait, floor, n, { seed = '', psfx = false } = {}) {
   if (SILENT_GAITS.has(gait)) return null;
   const family = GAIT_STEP_FILES[GAIT_FAMILY[gait]] ?? {};
   const usable = (v) => (family[v]?.length ?? 0) >= MIN_FAMILY_FILES;
-  const i = Math.abs(Math.trunc(Number(n) || 0)), want = floorVariant(floor);
+  const i = Math.abs(Math.trunc(Number(n) || 0)), want = gait === 'slither'
+    ? FOREST_FLOORS.has(floor) ? 'forest' : ['sand', 'snow'].includes(floor) ? floor : floorVariant(floor)
+    : floorVariant(floor);
   // The floor's own variant; wet floors fall back to soft, soft floors to the hard recordings muffled; anything else
   // (no family, or too few recordings) steps as people do.
-  const variant = usable('any') ? 'any' : usable(want) ? want : want === 'wet' && usable('soft') ? 'soft' : want !== 'hard' && usable('hard') ? 'hard' : null;
-  if (!variant) return { file: footstepFile(floor, n, { psfx, seed }) };
+  const variant = usable(floor) ? floor : usable('any') ? 'any' : usable(want) ? want : want === 'wet' && usable('soft') ? 'soft' : want !== 'hard' && usable('hard') ? 'hard' : null;
+  if (!variant) return gait === 'slither' ? null : { file: footstepFile(floor, n, { psfx, seed }) };
   const files = family[variant];
   const out = { file: files[stepIndex(files.length, i, `${seed}:${GAIT_FAMILY[gait]}:${variant}`)] };
   if (variant === 'hard' && want !== 'hard') out.lowpass = MUFFLED_LOWPASS;
-  const underGain = UNDER_GAIN[floor];
+  // Exact material recordings win. Shared creature contacts still need a wooden floor's warmer, duller response;
+  // otherwise paws, claws and padded feet would sound byte-for-byte identical on wood and stone.
+  if (floor === 'wood' && variant !== 'wood') Object.assign(out, { lowpass: 2800, bass: 2.5, gain: 0.85 });
+  // The creature supplies its foot contact; soft ground supplies its own physical texture, never a shoe sample.
+  // Shared soft contacts alone made grass and dirt identical. Vegetation cushions and rustles; soil scrapes.
+  if (floor === 'grass' && variant !== 'grass') {
+    const brush = bodyStep('foliage', i, { seed: `${seed}:ground` });
+    out.texture = { file: brush.file, gain: 0.4, peakMs: brush.peakMs };
+    out.lowpass = Math.min(out.lowpass ?? Infinity, 1100);
+  } else if (floor === 'dirt' && variant !== 'dirt' && gait !== 'slither') {
+    const soil = GAIT_STEP_FILES.slither.forest, index = stepIndex(soil.length, i, `${seed}:ground:dirt`);
+    out.texture = { file: soil[index], gain: 0.3, peakMs: [85, 146, 93][index] };
+  }
+  // A sliding texture already includes the ground; adding a shoe step would turn a snake into a walker.
+  const underGain = gait === 'slither' ? null : UNDER_GAIN[floor];
   if (underGain) Object.assign(out, { under: footstepFile(floor, i, { psfx, seed }), underGain });
   return out;
 }
@@ -429,7 +466,7 @@ export const gaitStepFile = (gait, floor, n, opts) => gaitStep(gait, floor, n, o
 //   bone   dry bones clattering (claves and a hollow wooden flute, recorded as desiccated bones collapsing).
 //   metal  an armour helmet's clanks and metal clanks.
 //   stone  a cinder block dragged over another, a rock sliding on concrete.
-//   plant  wood creaking (no CC0 leaf rustle short enough passed the audit, so a plant creaks without leaves).
+//   plant  wood creaking for woody bodies.   foliage  short bush brushes for leafy bodies.
 //   water  water sloshing in a studio tank and a watering can.
 //   fire   a flame flaring, a burst of flame, a spray-can fire burst.
 //   air    a gust (a thin board flapped through the air) and a light air whoosh.
@@ -439,13 +476,14 @@ export const BODY_STEP_FILES = Object.freeze({
   metal: bodyFiles('metal', ['675817-0', '675817-1', '675817-2', '675817-3', '545547-0', '545547-1']),
   stone: bodyFiles('stone', ['530990-0', '530990-1', '530990-2', '530990-3', '799521-0']),
   plant: bodyFiles('plant', ['572645-0', '618085-0', '802576-0']),
+  foliage: reviewed(['foliage-any-106114-0', 'foliage-any-106114-1', 'foliage-any-106114-2']),
   water: bodyFiles('water', ['166313-0', '166313-1', '166313-2', '166313-3', '841151-0', '841151-1']),
   fire: bodyFiles('fire', ['530355-0', '539972-0', '166553-0']),
   air: bodyFiles('air', ['792292-0', '792292-1', '792292-2', '792292-3', '792292-4', '701104-0']),
 });
 // Each body's share of the step's level, and whether it replaces the step.
 const BODY_LAYER = Object.freeze({
-  bone: { gain: 0.6 }, metal: { gain: 0.55 }, stone: { gain: 0.55 }, plant: { gain: 0.5 },
+  bone: { gain: 0.6 }, metal: { gain: 0.55 }, stone: { gain: 0.55 }, plant: { gain: 0.5 }, foliage: { gain: 0.5 },
   water: { gain: 1, replaces: true }, fire: { gain: 1, replaces: true }, air: { gain: 0.9, replaces: true },
 });
 // Where each layered recording hits hardest (ms, measured): a layer lands its peak on the step's peak, as the thud does
@@ -456,6 +494,7 @@ const BODY_PEAKS = Object.freeze({
   'metal-545547-1': 22, 'metal-675817-0': 106, 'metal-675817-1': 64, 'metal-675817-2': 19, 'metal-675817-3': 78, 'plant-572645-0': 175,
   'plant-618085-0': 237, 'plant-802576-0': 82, 'stone-530990-0': 184, 'stone-530990-1': 71, 'stone-530990-2': 96, 'stone-530990-3': 169,
   'stone-799521-0': 118,
+  'foliage-any-106114-0': 240, 'foliage-any-106114-1': 182, 'foliage-any-106114-2': 213,
 });
 // The `n`th body sound of a creature with `body` by the token `seed`: { file, gain, replaces, peakMs }, or null for no body (or a
 // family with fewer than three recordings). The same seeded no-repeat order as the steps, in its own deck.
@@ -592,24 +631,26 @@ export function thudLevel(weight) {
 // Movement sounds: how a token moves picks what it sounds like. Foundry's movement actions (CONFIG.Token.movement.actions:
 // walk, fly, swim, burrow, crawl, climb, jump, blink, displace; a system may add more, which step like a walk):
 //   'step'   walk and anything else: the floor's footsteps (walking through water splashes with the water steps).
-//   'wing'   fly, or a flying status while walking: a wing beat.
+//   'wing'   positive wing anatomy: a wing beat. 'flight': wingless or unknown flight, a quiet air pass.
 //   'burrow' burrow: earth churned and thrown.   'swim' swim: a stroke through water.
 //   'climb'  climb: a hand or foot gripping rock. 'crawl' crawl: a body and clothes shuffling over the ground.
 //   'jump'   jump: one whoosh as it leaves the ground, then a heavier footstep where it lands.
 //   null     blink and displace (a teleport: silent here), and anything incorporeal (gait 'none').
-const ACTION_SOUND = { fly: 'wing', burrow: 'burrow', swim: 'swim', climb: 'climb', crawl: 'crawl', jump: 'jump', blink: null, displace: null };
-export const MOVE_SOUND_KINDS = Object.freeze(['step', 'wing', 'burrow', 'swim', 'climb', 'crawl', 'jump']);
-export function movementSound(action, { floor, gait, statuses } = {}) {
+const ACTION_SOUND = { burrow: 'burrow', swim: 'swim', climb: 'climb', crawl: 'crawl', jump: 'jump', blink: null, displace: null };
+export const MOVE_SOUND_KINDS = Object.freeze(['step', 'wing', 'flight', 'burrow', 'swim', 'climb', 'crawl', 'jump']);
+export function movementSound(action, { floor, gait, statuses, flight } = {}) {
   if (gait === 'none') return null;
   const key = String(action ?? '').toLowerCase();
+  if (key === 'fly') return flight === 'wing' ? 'wing' : 'flight';
   if (key in ACTION_SOUND) return ACTION_SOUND[key];
-  return isFlying({ statuses }) ? 'wing' : 'step';
+  return isFlying({ statuses }) ? flight === 'wing' ? 'wing' : 'flight' : 'step';
 }
-// Each kind's own bundled CC0 family (Freesound, credited in assets/sounds/surfaces/freesound/License.txt), cut to one
+// Each kind's own bundled CC0 family (Freesound, credited beside the assets in License.txt), cut to one
 // event and loudness-matched like the footsteps. PSFX's wing, landing and burrow recordings are long loops (5–8 s), not
 // single beats, so they are not used here.
 export const MOVE_SOUND_FILES = Object.freeze({
   wing: freesound(['wing-389634-0', 'wing-362405-0', 'wing-561364-0', 'wing-362405-1']),
+  flight: completed('flight', 'any', 862337),
   burrow: freesound(['burrow-849840-0', 'burrow-353907-0', 'burrow-353907-1']),
   swim: freesound(['swim-316598-0', 'swim-637957-0', 'swim-488507-0']),
   climb: freesound(['climb-816743-0', 'climb-816743-1', 'climb-816743-3', 'climb-816743-4']),
@@ -631,19 +672,25 @@ const lerpWeight = (table, weight, heavy = 0) => {
 // slow WHOOMP ... WHOOMP.
 const WING_GAP = [140, 260, 420, 650, 900, 1300];
 // Slower than walking, as each kind is: a burrower's churn, a swimmer's stroke, a climber's reach, a crawl.
-const GAP_SCALE = { burrow: 1.5, swim: 1.3, climb: 1.4, crawl: 1.6 };
+const GAP_SCALE = { flight: 2, burrow: 1.5, swim: 1.3, climb: 1.4, crawl: 1.6 };
 // Milliseconds between two sounds of `kind` for a creature of `weight` (stepWeight). A jump's whoosh and landing
 // always play (0).
-export function moveSoundGap(kind, weight) {
+export function moveSoundGap(kind, weight, { gait } = {}) {
   if (kind === 'wing') return Math.round(lerpWeight(WING_GAP, weight, 0.3));
   if (kind === 'jump' || kind === 'land') return 0;
+  if (kind === 'flight') return Math.max(700, Math.round(stepGap(weight) * GAP_SCALE.flight));
+  // Hard hoof clips preserve a paired clop. Even small hooved creatures leave room for that phrase to finish.
+  if (kind === 'step' && gait === 'hooves') return Math.max(stepGap(weight), Math.ceil(340 / weightRate(Math.max(0, weight - 1))));
+  // A sliding body makes one sweep, not a rapid series of overlapping 0.4s scrapes. Tiny creatures play faster;
+  // heavier ones pitch the recording down, so leave correspondingly more time for its decay.
+  if (kind === 'step' && gait === 'slither') return Math.max(stepGap(weight), Math.ceil(440 / weightRate(weight)));
   return Math.round(stepGap(weight) * (GAP_SCALE[kind] ?? 1));
 }
 // Wings by weight: a Tiny one's flutter high and light, a Medium bird's as recorded, a Gargantuan dragon's about an
 // octave down.
 const WING_RATE = [1.45, 1.2, 1, 0.82, 0.66, 0.52];
 // How loud each kind is (0-1, before the creature's size and the user's surface volume); a crawl is quiet.
-const MOVE_VOLUME = { wing: 0.17, burrow: 0.2, swim: 0.2, climb: 0.13, crawl: 0.09, jump: 0.15 };
+const MOVE_VOLUME = { wing: 0.17, flight: 0.08, burrow: 0.2, swim: 0.2, climb: 0.13, crawl: 0.09, jump: 0.15 };
 const weightGain = (weight) => {
   const w = Math.min(5, Math.max(0, Number(weight) || 0)), i = Math.floor(w);
   return WEIGHT_GAIN[i] + (WEIGHT_GAIN[Math.min(5, i + 1)] - WEIGHT_GAIN[i]) * (w - i);
@@ -849,7 +896,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
         // Below its level's floor it is underground: it burrows, whatever its movement action says.
         const under = Number(token.elevation) < Number(token.base ?? 0);
         const flying = !under && isFlying(token);
-        const kind = under ? (token.gait === 'none' ? null : 'burrow') : movementSound(token.action, { gait: token.gait, statuses: token.statuses });
+        const kind = under ? (token.gait === 'none' ? null : 'burrow') : movementSound(token.action, { gait: token.gait, statuses: token.statuses, flight: token.flight });
         // Seen or heard here (perceive): a creature only heard still steps, but leaves nothing to see.
         const present = token.visible || hears(token);
         if (!present || token.skip || kind === null) tracker.reset(id, point);
@@ -877,8 +924,8 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
           if (!handle) shadows.set(id, handle = layer.addShadow());
           layer.updateShadow(handle, shadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size }));
           }
-          // Off the ground: no marks, only its wings beating while it moves (silent while it hovers still).
-          if (kind !== null) for (const at of tracker.step(id, point)) { const feet = feetOf(token, at); sound(floorOf(feet, token), feet, token, 'wing'); }
+          // Off the ground: no marks. Keep the chosen winged/wingless sound; stationary hovering stays silent.
+          if (kind !== null) for (const at of tracker.step(id, point)) { const feet = feetOf(token, at); sound(floorOf(feet, token), feet, token, kind); }
           continue;
         }
         dropShadow(id);
@@ -898,5 +945,5 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       } catch { particles.delete(particle); prints.delete(particle); }
     }
   };
-  return { tick, clear, get size() { return particles.size; }, get prints() { return prints.size; } };
+  return { tick, clear, previewStep: (floor, at, token, kind) => footstep?.(floor, at, token, kind), get size() { return particles.size; }, get prints() { return prints.size; } };
 }

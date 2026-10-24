@@ -1,0 +1,6 @@
+Wooden hoof Foley, adapted for Animater.
+
+hooves-wood-187610-0.ogg: "Horse_Hooves_Hard_Floor_Interior.wav" by bewagne, https://freesound.org/people/bewagne/sounds/187610/ License: http://creativecommons.org/licenses/by/3.0/ Trimmed, filtered, faded and level-matched for Animater.
+hooves-wood-187610-1.ogg: "Horse_Hooves_Hard_Floor_Interior.wav" by bewagne, https://freesound.org/people/bewagne/sounds/187610/ License: http://creativecommons.org/licenses/by/3.0/ Trimmed, filtered, faded and level-matched for Animater.
+hooves-wood-187610-2.ogg: "Horse_Hooves_Hard_Floor_Interior.wav" by bewagne, https://freesound.org/people/bewagne/sounds/187610/ License: http://creativecommons.org/licenses/by/3.0/ Trimmed, filtered, faded and level-matched for Animater.
+hooves-wood-187610-3.ogg: "Horse_Hooves_Hard_Floor_Interior.wav" by bewagne, https://freesound.org/people/bewagne/sounds/187610/ License: http://creativecommons.org/licenses/by/3.0/ Trimmed, filtered, faded and level-matched for Animater.

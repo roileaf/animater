@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GAITS, creatureGait, creatureBulk } from '../../../scripts/engines/motion/creature-gait.mjs';
+import { GAITS, creatureGait, creatureBulk, creatureFlight } from '../../../scripts/engines/motion/creature-gait.mjs';
 
 const pf2 = (traits, name = '', type = 'npc') => ({ system: 'pf2e', actor: { type, name, system: { traits: { value: traits } } }, name });
 const dnd = (value, name = '', { subtype = '', swarm = '', items = [], type = 'npc' } = {}) =>
@@ -52,6 +52,8 @@ test('creatureGait: names refine and override the type', () => {
   const name = (n, traits = ['animal']) => creatureGait(pf2(traits, n));
   for (const n of ['Dire Wolf', 'Werewolf', 'Hellhound', 'Black Cat', 'Owlbear', 'Cave Bear', 'Giant Rat', 'Tiger']) assert.equal(name(n), 'paws', n);
   for (const n of ['Riding Horse', 'Warhorse', 'Elk', 'Mountain Goat', 'Wild Boar', 'Centaur Scout', 'Minotaur']) assert.equal(name(n), 'hooves', n);
+  for (const n of ['Elephant', 'Woolly Mammoth', 'Mastodon']) assert.equal(name(n), 'padded', n);
+  for (const n of ['Giant Frog', 'Giant Toad']) assert.equal(name(n), 'webbed', n);
   for (const n of ['Giant Eagle', 'Griffon', 'Roc', 'Velociraptor', 'Cockatrice']) assert.equal(name(n), 'talons', n);
   for (const n of ['Young Red Dragon', 'Wyvern', 'Fire Drake', 'Ancient Wyrm', 'Black Dragon Wyrmling', 'Sea Serpent Dragon']) assert.equal(name(n), 'dragon', n);
   assert.notEqual(name('Dragonborn Paladin'), 'dragon', 'a dragonborn is not a dragon');
@@ -70,6 +72,15 @@ test('creatureGait: names refine and override the type', () => {
   // The token's own name or the actor's: either can say what it is.
   assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'npc', name: 'Wolf', system: { traits: { value: [] } } }, name: 'Fang' }), 'paws');
   for (const n of ['Dire Wolf', 'Elk', 'Ghost']) assert.ok(GAITS.includes(name(n)));
+});
+
+test('creatureFlight: wings need anatomy evidence; magic and elemental flight have none', () => {
+  for (const name of ['Air Elemental', 'Fire Elemental', 'Water Elemental', 'Flying Sword', 'Beholder', 'Wingless Dragon', 'Levitating Wizard', 'Unknown Flier']) {
+    assert.equal(creatureFlight(pf2([], name)), 'flight', name);
+  }
+  for (const name of ['Giant Eagle', 'Young Red Dragon', 'Bat', 'Pixie', 'Winged Serpent', 'Gargoyle']) assert.equal(creatureFlight(pf2([], name)), 'wing', name);
+  assert.equal(creatureFlight(dnd('humanoid', 'Wizard', { items: ['Levitation'] })), 'flight');
+  assert.equal(creatureFlight(dnd('humanoid', 'Transformed Wizard', { items: ['Dragon Wings'] })), 'wing');
 });
 
 test('creatureBulk: size category and heavy bodies for footstep weight', () => {

@@ -15,7 +15,10 @@ import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive } from "./engines/motion/movement-feel.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
-import { creatureGait, creatureBulk, creatureBody } from "./engines/motion/creature-gait.mjs";
+import { creatureGait, creatureBulk, creatureBody, creatureFlight } from "./engines/motion/creature-gait.mjs";
+import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
+import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
+import { movementSound } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bleedsBlood, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
 import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
@@ -464,6 +467,15 @@ const movementFeelGait = (d) => {
   }
   return gait;
 };
+const movementFeelFlight = (d) => {
+  const key = `flight|${d.actorId ?? ""}|${d.name ?? ""}`;
+  if (!feelGaits.has(key)) {
+    let flight = 'flight';
+    try { flight = creatureFlight({ system: game.system.id, actor: d.actor, name: d.name }); } catch { /* unknown anatomy */ }
+    feelGaits.set(key, flight);
+  }
+  return feelGaits.get(key);
+};
 // What this screen may see and hear of each moving token (engines/motion/movement-feel.mjs perceive): a GM-hidden
 // token nothing; for a player, PF2e Visioner's state from each of their own tokens on the scene (undetected or
 // unnoticed: silent and unseen; hidden: heard only), else the creature's conditions and whether it is drawn here.
@@ -557,7 +569,7 @@ const movementFeelBody = (d) => {
 };
 Hooks.on("updateActor", () => feelGaits.clear());
 // An ancestry, a race or an Incorporeal Movement feature can change the feet.
-for (const hook of ["createItem", "deleteItem"]) Hooks.on(hook, (item) => { if (item?.parent?.documentName === "Actor") feelGaits.clear(); });
+for (const hook of ["createItem", "updateItem", "deleteItem"]) Hooks.on(hook, (item) => { if (item?.parent?.documentName === "Actor") feelGaits.clear(); });
 Hooks.on("updateToken", (doc, changes) => { if ("name" in changes || "actorId" in changes || "delta" in changes) feelGaits.clear(); });
 const movementFeelRoot = () => {
   if (!feelRoot || feelRoot.destroyed) {
@@ -641,9 +653,12 @@ const movementFeel = createMovementFeel({
       const d = t.document, c = d.getCenterPoint();
       const until = feelSkip.get(d.id);
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
+      const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
+      const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       return {
         id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action: d.movementAction,
-        statuses: d.actor?.statuses, gait: movementFeelGait(d), bulk: movementFeelBulk(d), body: movementFeelBody(d),
+        statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), bulk: movementFeelBulk(d),
+        body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
         ...movementFeelBlood(d),
         ...movementPerception(t, d, level),
         skip: (until ?? 0) > time || motions?.active?.has?.(t) === true,
@@ -656,9 +671,11 @@ const movementFeel = createMovementFeel({
   // a flier, a churn for a burrower, a stroke for a swimmer, a grip for a climber, a shuffle for a crawl, a whoosh as a
   // jump leaves the ground and a heavier footstep where it lands.
   footstep: (floor, at, token, kind = "step") => {
+    const mix = movementSoundMix(token.sound);
+    if (mix.silent || token.gait === 'none' || (token.preview && !token.preview.active)) return;
     let level = 1;
     try { level = Number(game.settings.get(ID, "surfaceVolume") ?? 1); } catch { /* not registered yet */ }
-    if (!(level > 0)) return;
+    if (!(level > 0) && !(mix.tremor > 0)) return;
     const seed = token.id ?? "";
     // How heavy the creature is: its size category (else its token width) and whether its body is heavy.
     const squares = (token.width ?? 100) / (canvas.grid?.size || 100);
@@ -668,7 +685,7 @@ const movementFeel = createMovementFeel({
     // Sneaking ("Sneaking is quiet"): softer, a slower beat, duller, and no thud below Huge.
     const sneak = movementSneaking(seed) ? sneakStep(body) : null;
     // Its own beat: a giant's THUMP ... THUMP, a dragon's slow wing beat, however fast Foundry slides the token.
-    const step = stepPacer.take(seed, body, performance.now(), Math.round(moveSoundGap(kind, body) * (sneak?.gap ?? 1)));
+    const step = token.preview ? token.preview.step++ : stepPacer.take(seed, body, performance.now(), Math.round(moveSoundGap(kind, body, { gait: token.gait }) * (sneak?.gap ?? 1)));
     if (step === null) return;
     // Its own feet (engines/motion/movement-feel.mjs gaitStep): paws, hooves, talons, a dragon's claws, an ooze's
     // squelch, or a person's steps for boots; on mud, water, snow and sand the floor's own step plays quietly under it.
@@ -676,12 +693,24 @@ const movementFeel = createMovementFeel({
     const pick = walking ? gaitStep(token.gait, floor, step, { psfx: game.modules.get("psfx")?.active === true, seed }) : null;
     // Its body (engines/motion/movement-feel.mjs bodyStep): a skeleton's rattle, a golem's clank, stone grinding or
     // leaves layered on the step; a water, fire or air body's slosh, flame or gust in place of it (they do not step).
-    const layer = walking && token.body ? bodyStep(token.body, step, { seed }) : null;
+    const layer = (walking || kind === "flight") && token.body ? bodyStep(token.body, step, { seed }) : null;
     const replaced = layer?.replaces === true;
     if (walking && !pick?.file && !replaced) return;
-    const vary = footstepVariation({ seed, n: step, weight });
+    // Hoof recordings depict a horse already: Large is their natural pitch reference. Treating that horse like an
+    // enlarged humanoid darkens the clop into a knock. Keep size-based volume/pacing and lower pitch for larger hooves.
+    const vary = footstepVariation({ seed, n: step, weight: movementContactWeight(token.gait, weight) });
+    vary.rate = Math.min(2, Math.max(0.35, vary.rate * mix.pitch));
     const where = { x: at.x, y: at.y, elevation: token.elevation }, reach = 6 * (canvas.dimensions?.distance ?? 5) * (weight >= 4 ? 1.5 : 1);
     const volume = Math.min(1, footstepVolume(floor, { weight }) * vary.gain * Math.min(1, level) * (kind === "land" ? 1.25 : 1) * (sneak?.gain ?? 1));
+    const contactVolume = Math.min(1, volume * mix.contact);
+    const sceneId = canvas.scene?.id, sceneLevel = canvas.level?.id;
+    const later = (fn, delay) => {
+      const timer = setTimeout(() => {
+        token.preview?.timers.delete(timer);
+        if (!token.preview || token.preview.active) fn();
+      }, delay);
+      token.preview?.timers.add(timer);
+    };
     // Where it happens ("Footsteps ring in the room"): it rings in the room and is muffled behind walls as Animater's
     // hits are (engines/sound/sound-pitch.mjs), at 0.6 of a hit's room. Foundry's own wall occlusion stays off.
     const room = movementFeelSettingOn("footstepAcoustics")
@@ -690,14 +719,17 @@ const movementFeel = createMovementFeel({
     // just before it plays, so it is set as Foundry builds the sound (engines/sound/sound-pitch.mjs) and the very first
     // millisecond is already at that pitch; set again once it plays in case that hook is missing.
     const play = (file, rate, level, shape = {}) => {
+      if (!(level > 0) || (token.preview && !token.preview.active)) return Promise.resolve(null);
       Hooks.callAll("animater.shapeSound", { file, rate, ...room, ...shape });
       const asked = performance.now();
-      const playing = canvas.sounds?.playAtPosition?.(file, where, reach, { volume: level, walls: false, gmAlways: false });
+      const playing = token.preview ? game.audio.play(file, { volume: level, context: game.audio.interface })
+        : canvas.sounds?.playAtPosition?.(file, where, reach, { volume: level, walls: false, gmAlways: false });
       // Resolves to the playing sound, or null when it was dropped (then nothing is layered on it).
       return Promise.resolve(playing).then((sound) => {
         // A beat that only starts long after it was due (its file was still loading) is dropped, not played late:
         // several late beats would otherwise pile up and sound together.
-        if (performance.now() - asked > LATE_BEAT_MS) { try { sound?.stop?.(); } catch { /* already gone */ } return null; }
+        if (performance.now() - asked > LATE_BEAT_MS || (token.preview && !token.preview.active)) { try { sound?.stop?.(); } catch { /* already gone */ } return null; }
+        if (sound && token.preview) token.preview.sounds.add(sound);
         const node = sound?.sourceNode?.playbackRate;
         if (node && node.value !== rate) node.value = rate;
         else if (!node && sound?.element) { sound.element.preservesPitch = false; sound.element.playbackRate = rate; }
@@ -705,52 +737,74 @@ const movementFeel = createMovementFeel({
       }).catch(() => null);
     };
     // Any other way of moving plays its own family, pitched, darkened and levelled by the creature's weight.
+    if (kind === "flight" && replaced) {
+      const shape = moveSoundShape(kind, { weight, seed, n: step });
+      play(layer.file, shape.rate * mix.pitch, Math.min(1, shape.volume * Math.min(1, level) * layer.gain * mix.contact * (sneak?.gain ?? 1)), sneak ? { lowpass: sneak.lowpass } : {});
+      return;
+    }
     if (kind !== "step" && kind !== "land") {
       const file = moveSoundFile(kind, step, { seed });
       if (!file) return;
       const shape = moveSoundShape(kind, { weight, seed, n: step });
       const lowpass = darker(shape.lowpass, sneak?.lowpass);
-      play(file, shape.rate, Math.min(1, shape.volume * Math.min(1, level) * (sneak?.gain ?? 1)),
+      play(file, shape.rate * mix.pitch, Math.min(1, shape.volume * Math.min(1, level) * mix.contact * (sneak?.gain ?? 1)),
         lowpass ? { lowpass, ...(shape.lowpass ? { bass: shape.bass } : {}) } : {});
       return;
     }
     if (replaced) {
       // No foot touches the floor: no floor layer, no thud, no tremor; the body's own sound at the step's pitch and level.
-      play(layer.file, vary.rate, Math.min(1, volume * layer.gain), sneak ? { lowpass: sneak.lowpass } : {});
+      play(layer.file, vary.rate, Math.min(1, contactVolume * layer.gain), sneak ? { lowpass: sneak.lowpass } : {});
       return;
     }
     const muffle = darker(pick.lowpass, sneak?.lowpass);
-    const stepping = play(pick.file, vary.rate, volume, muffle ? { lowpass: muffle } : {});
+    // A muted contact still provides its impact timing. Load locally without playing or broadcasting a preload.
+    const silentAnchor = async () => {
+      const asked = performance.now();
+      const sound = game.audio?.create?.({ src: pick.file, singleton: true });
+      if (sound && !sound.loaded) await sound.load();
+      if (performance.now() - asked > LATE_BEAT_MS) return null;
+      return sound ?? { buffer: null };
+    };
+    const stepping = contactVolume > 0 ? play(pick.file, vary.rate, Math.min(1, contactVolume * (pick.gain ?? 1)),
+      muffle ? { lowpass: muffle, ...(pick.bass ? { bass: pick.bass } : {}) } : {}) : silentAnchor().catch(() => null);
     // The floor under the creature's own foot (a hoof in mud, a paw in snow), quieter, at the same pitch and shape.
-    if (pick.under) play(pick.under, vary.rate, Math.min(1, volume * pick.underGain), sneak ? { lowpass: sneak.lowpass } : {});
+    if (pick.under) play(pick.under, vary.rate, Math.min(1, contactVolume * pick.underGain), sneak ? { lowpass: sneak.lowpass } : {});
+    if (pick.texture && contactVolume > 0 && pick.texture.file !== layer?.file) stepping.then((sound) => {
+      if (!sound) return;
+      const texture = pick.texture;
+      const delay = thudDelayMs({ stepPeakMs: audioPeakMs(sound.buffer), stepRate: vary.rate, thudPeakMs: texture.peakMs, thudRate: vary.rate });
+      later(() => play(texture.file, vary.rate, Math.min(1, contactVolume * texture.gain), sneak ? { lowpass: sneak.lowpass } : {}), delay);
+    }).catch(() => {});
     // The body's layer lands with the foot: started once the step plays, timed to the step's loudest moment (as the thud),
     // quieter, at the same pitch.
-    if (layer) stepping.then((sound) => {
+    if (layer && contactVolume > 0) stepping.then((sound) => {
       if (!sound) return;
       const delay = thudDelayMs({ stepPeakMs: audioPeakMs(sound.buffer), stepRate: vary.rate, thudPeakMs: layer.peakMs, thudRate: vary.rate });
       const shape = sneak ? { lowpass: sneak.lowpass } : {};
-      setTimeout(() => play(layer.file, vary.rate, Math.min(1, volume * layer.gain), shape), delay);
+      later(() => play(layer.file, vary.rate, Math.min(1, contactVolume * layer.gain), shape), delay);
     }).catch(() => {});
     // Large and heavier: a low thud lands under the step, deeper, louder and longer the bigger the creature, always at
     // its size's own pitch (never varied: a giant's thud is always the same deep thud). It waits for the footfall:
     // started once the step is playing, timed to the step's loudest moment at its playback rate.
-    const thud = thudFile(weight, step, seed), boom = thudLevel(weight);
-    if (thud && boom && (!sneak || sneak.thud)) {
+    // An ordinary Large horse already has weight in its hoof contact; a giant's bass layer masks its clip-clop.
+    const thudWeight = token.gait === "hooves" && !token.bulk?.heavy && weight < 4 ? 2 : weight;
+    const thud = thudFile(thudWeight, step, seed), boom = thudLevel(thudWeight);
+    // Tremor is a separate layer of the footfall, independent of bass volume or bass-file playback.
+    if (weight >= 4 && mix.tremor > 0 && !sneak && movementFeelSettingOn("footfallTremor")) stepping.then((sound) => {
+      if (!sound) return;
+      later(() => cameraShake.tremor({ at: { x: at.x, y: at.y }, weight, sceneId, level: sceneLevel,
+        seed: `${seed}:${step}`, scale: mix.tremor, previewId: token.preview?.id }), thudDelayMs({ stepPeakMs: audioPeakMs(sound.buffer), stepRate: vary.rate, thudPeakMs: 0 }));
+    }).catch(() => {});
+    if (thud && boom && mix.weight > 0 && (!sneak || sneak.thud)) {
       // Darkened and given body (a low-pass and a bass shelf); Huge and up also rumble an octave lower still.
       // The bass boost is paid for in level (its headroom), so the boosted thud stays under full scale; a limiter on
       // each layer catches the rest when they stack.
-      const shape = { lowpass: boom.lowpass, bass: boom.bass }, level = Math.min(1, volume * boom.gain * 2.5 * (boom.headroom ?? 1));
+      const shape = { lowpass: boom.lowpass, bass: boom.bass }, level = Math.min(1, volume * mix.weight * boom.gain * 2.5 * (boom.headroom ?? 1));
       stepping.then((sound) => {
         if (!sound) return;
         const stepPeakMs = audioPeakMs(sound.buffer);
-        // Every Huge or Gargantuan footfall also trembles this screen a little as it lands (heavier, more) ("Giant footfalls shake
-        // the view", with camera shake on; engines/camera/camera-shake.mjs tremor). Never for a sneaking one.
-        const tremble = () => {
-          if (sneak || !movementFeelSettingOn("footfallTremor")) return;
-          cameraShake.tremor({ at: { x: at.x, y: at.y }, weight, sceneId: canvas.scene?.id, seed: `${seed}:${step}` });
-        };
-        setTimeout(() => { play(thud, boom.rate, level, shape); tremble(); }, thudDelayMs({ stepPeakMs, stepRate: vary.rate, thudRate: boom.rate }));
-        if (boom.sub) setTimeout(() => play(thud, boom.sub.rate, Math.min(1, level * boom.sub.gain), { lowpass: Math.round(boom.lowpass * 0.6), bass: boom.bass }),
+        later(() => play(thud, boom.rate, level, shape), thudDelayMs({ stepPeakMs, stepRate: vary.rate, thudRate: boom.rate }));
+        if (boom.sub) later(() => play(thud, boom.sub.rate, Math.min(1, level * boom.sub.gain), { lowpass: Math.round(boom.lowpass * 0.6), bass: boom.bass }),
           thudDelayMs({ stepPeakMs, stepRate: vary.rate, thudRate: boom.sub.rate }));
       }).catch(() => {});
     }
@@ -2948,6 +3002,40 @@ Hooks.on("renderTokenConfig", (app, html) => {
   group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
   tab.append(group);
 });
+const movementConfigCleanup = new WeakMap(), movementConfigStops = new Set();
+Hooks.on("renderTokenConfig", (app, html) => {
+  movementConfigCleanup.get(app)?.();
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  const doc = app.document ?? app.token ?? app.object;
+  if (!root || (!doc?.isOwner && !game.user?.isGM)) return;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector('.tab');
+  if (!tab) return;
+  if (!root.querySelector('.animater-movement-sounds')) tab.insertAdjacentHTML('beforeend', movementSoundsForm(doc?.flags?.[ID]?.movementSound));
+  const engine = createMovementPreview({
+    playStep: ({ floor, at, token, kind, preview }) => movementFeel.previewStep(floor, at, { ...token, preview }, kind),
+    stopTremor: (id) => cameraShake.stopPreview(id),
+  });
+  const stop = () => engine.stop();
+  movementConfigStops.add(stop);
+  const preview = { stop, start: ({ raw, floor, action }) => {
+    if (!canvas?.ready) { ui.notifications.warn('Open a scene to preview movement sounds.'); return; }
+    const profile = resolveMovementSound({ system: game.system.id, actor: doc?.actor, name: doc?.name }, raw);
+    const bulk = creatureBulk({ system: game.system.id, actor: doc?.actor, name: doc?.name });
+    const kind = action === 'land' ? 'land' : movementSound(action, profile);
+    if (!kind || profile.sound.silent) { stop(); return; }
+    const width = Number(doc?.width ?? 1) * canvas.grid.size;
+    const weight = stepWeight({ size: bulk.size, squares: width / canvas.grid.size, heavy: bulk.heavy });
+    // Preview is local and centred in the view; neither the real token nor its live movement pacer is touched.
+    engine.start({ floor, kind, gap: Math.max(400, moveSoundGap(kind, weight, { gait: profile.gait })),
+      at: { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y },
+      token: { id: `preview:${doc?.id ?? 'prototype'}`, width, elevation: doc?.elevation ?? 0, bulk, ...profile } });
+  } };
+  const initialFloor = canvas?.ready ? movementFeelFloor(doc?.getCenterPoint?.() ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, doc) : 'stone';
+  const unmount = mountMovementSounds(root, { document: doc, system: game.system.id, preview, floor: initialFloor });
+  movementConfigCleanup.set(app, () => { unmount(); movementConfigStops.delete(stop); movementConfigCleanup.delete(app); });
+});
+Hooks.on('closeTokenConfig', (app) => movementConfigCleanup.get(app)?.());
+Hooks.on('canvasTearDown', () => { for (const stop of movementConfigStops) stop(); });
 Hooks.on("renderRegionConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.floor"]`)) return;

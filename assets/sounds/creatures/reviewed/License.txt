@@ -1,0 +1,28 @@
+Independently sourced creature movement sounds for Animater.
+Each file retains the source license listed below. CC BY files are not CC0.
+Modifications: isolated excerpts, mono conversion, filtering, light noise reduction where noted, fades and level matching.
+
+paws-hard-672734-0.ogg: "Dog Footstep" by DaniloSFX, https://freesound.org/people/DaniloSFX/sounds/672734/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+paws-hard-672734-1.ogg: "Dog Footstep" by DaniloSFX, https://freesound.org/people/DaniloSFX/sounds/672734/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+paws-hard-689178-0.ogg: "Dog_Paws.wav" by Nitromonkey101, https://freesound.org/people/Nitromonkey101/sounds/689178/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+paws-hard-689178-1.ogg: "Dog_Paws.wav" by Nitromonkey101, https://freesound.org/people/Nitromonkey101/sounds/689178/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+paws-hard-689178-2.ogg: "Dog_Paws.wav" by Nitromonkey101, https://freesound.org/people/Nitromonkey101/sounds/689178/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+paws-hard-689178-3.ogg: "Dog_Paws.wav" by Nitromonkey101, https://freesound.org/people/Nitromonkey101/sounds/689178/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-hard-843303-0.ogg: "Coconut Horse Walking Sound Effects (Slow Gallop, Faster Gallop)" by BorzSounds, https://freesound.org/people/BorzSounds/sounds/843303/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-hard-843303-1.ogg: "Coconut Horse Walking Sound Effects (Slow Gallop, Faster Gallop)" by BorzSounds, https://freesound.org/people/BorzSounds/sounds/843303/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-hard-843303-2.ogg: "Coconut Horse Walking Sound Effects (Slow Gallop, Faster Gallop)" by BorzSounds, https://freesound.org/people/BorzSounds/sounds/843303/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-hard-843303-3.ogg: "Coconut Horse Walking Sound Effects (Slow Gallop, Faster Gallop)" by BorzSounds, https://freesound.org/people/BorzSounds/sounds/843303/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-soft-581833-0.ogg: "SFX - Horse - Walk.wav" by MrFizzywig, https://freesound.org/people/MrFizzywig/sounds/581833/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-soft-581833-1.ogg: "SFX - Horse - Walk.wav" by MrFizzywig, https://freesound.org/people/MrFizzywig/sounds/581833/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-soft-581833-2.ogg: "SFX - Horse - Walk.wav" by MrFizzywig, https://freesound.org/people/MrFizzywig/sounds/581833/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+hooves-soft-581833-3.ogg: "SFX - Horse - Walk.wav" by MrFizzywig, https://freesound.org/people/MrFizzywig/sounds/581833/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+dragon-hard-192365-0.ogg: "Dinosaur Footsteps-01.wav" by jamesrodavidson, https://freesound.org/people/jamesrodavidson/sounds/192365/ License: http://creativecommons.org/licenses/by/3.0/ Adapted for Animater.
+dragon-hard-192365-1.ogg: "Dinosaur Footsteps-01.wav" by jamesrodavidson, https://freesound.org/people/jamesrodavidson/sounds/192365/ License: http://creativecommons.org/licenses/by/3.0/ Adapted for Animater.
+dragon-hard-192365-2.ogg: "Dinosaur Footsteps-01.wav" by jamesrodavidson, https://freesound.org/people/jamesrodavidson/sounds/192365/ License: http://creativecommons.org/licenses/by/3.0/ Adapted for Animater.
+dragon-hard-192365-3.ogg: "Dinosaur Footsteps-01.wav" by jamesrodavidson, https://freesound.org/people/jamesrodavidson/sounds/192365/ License: http://creativecommons.org/licenses/by/3.0/ Adapted for Animater.
+foliage-any-106114-0.ogg: "bushmovement.wav" by j1987, https://freesound.org/people/j1987/sounds/106114/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+foliage-any-106114-1.ogg: "bushmovement.wav" by j1987, https://freesound.org/people/j1987/sounds/106114/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+foliage-any-106114-2.ogg: "bushmovement.wav" by j1987, https://freesound.org/people/j1987/sounds/106114/ License: http://creativecommons.org/publicdomain/zero/1.0/ Adapted for Animater.
+slither-forest-774143-0.ogg: "Scraping and Sliding On Forest Soil" by Sabacky, https://freesound.org/people/Sabacky/sounds/774143/ License: https://creativecommons.org/licenses/by/4.0/ Adapted for Animater.
+slither-forest-774143-1.ogg: "Scraping and Sliding On Forest Soil" by Sabacky, https://freesound.org/people/Sabacky/sounds/774143/ License: https://creativecommons.org/licenses/by/4.0/ Adapted for Animater.
+slither-forest-774143-2.ogg: "Scraping and Sliding On Forest Soil" by Sabacky, https://freesound.org/people/Sabacky/sounds/774143/ License: https://creativecommons.org/licenses/by/4.0/ Adapted for Animater.

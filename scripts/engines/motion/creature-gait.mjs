@@ -5,6 +5,7 @@
 //
 //   boots    shoe or boot soles, left and right in turn (humanoids, giants, fey, fiends, celestials, undead, constructs...)
 //   paws     a pad and four toe dots, a quadruped's staggered pairs (wolves, cats, bears, rats, beasts in general)
+//   padded   broad rounded pads (elephants, mammoths, mastodons); webbed: soft splayed amphibian feet (frogs, toads)
 //   talons   three forward toes and a back spur with long claw tips, left and right (birds, griffons, raptors)
 //   dragon   a broad heavy pad, four thick toes ending in hooked claw gouges, four-legged, tail drag (dragons, wyverns, drakes)
 //   hooves   crescents, a quadruped's staggered pairs (horses, deer, cattle, goats, centaurs, minotaurs)
@@ -14,7 +15,7 @@
 //   legs     clusters of tiny dots (spiders, insects, centipedes, crabs, swarms)
 //   unknown  dust and footsteps but no prints: anything Animater cannot place, and wheeled things
 //   none     nothing at all, not even dust or footsteps: incorporeal creatures (ghosts, wraiths, wisps)
-export const GAITS = Object.freeze(['boots', 'paws', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'unknown', 'none']);
+export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'unknown', 'none']);
 
 // Short stems only match a whole word (plural allowed): "cat" never matches "catapult", "ant" never "giant".
 const words = (list) => new RegExp(`\\b(?:${list.split(/\s+/).filter(Boolean).join('|')})(?:s|es)?\\b`, 'i');
@@ -37,11 +38,13 @@ const NAME_GAITS = [
   ['slither', tails('snake serpent worm')],
   ['legs', words('spider scorpion centipede millipede beetle ant insect crab tick mite roach cockroach mantis locust swarm vermin ankheg crawler chuul drider isopod')],
   ['legs', tails('spider scorpion centipede beetle')],
+  ['padded', words('elephant mammoth mastodon')],
+  ['webbed', words('frog toad')],
   ['talons', words('bird eagle hawk falcon owl roc griffon griffin gryphon hippogriff raptor vulture crow raven chicken cockatrice ostrich emu harpy velociraptor deinonychus tyrannosaurus allosaurus')],
   ['talons', tails('bird hawk')],
-  ['hooves', words('horse pony steed mare stallion mule donkey nightmare unicorn pegasus elk deer stag moose reindeer caribou antelope gazelle goat ram sheep bull cow cattle ox oxen bison buffalo aurochs boar pig hog swine camel rhinoceros rhino centaur minotaur satyr faun elephant mammoth mastodon')],
+  ['hooves', words('horse pony steed mare stallion mule donkey nightmare unicorn pegasus elk deer stag moose reindeer caribou antelope gazelle goat ram sheep bull cow cattle ox oxen bison buffalo aurochs boar pig hog swine camel rhinoceros rhino centaur minotaur satyr faun')],
   ['hooves', tails('horse')],
-  ['claws', words('lizard crocodile alligator gator croc iguana komodo basilisk turtle tortoise frog toad triceratops ankylosaurus')],
+  ['claws', words('lizard crocodile alligator gator croc iguana komodo basilisk turtle tortoise triceratops ankylosaurus')],
   ['paws', words('wolf wolves dog hound jackal coyote fox cat kitten panther tiger lion lioness leopard jaguar cheetah lynx bobcat cougar puma sabertooth smilodon bear rat mouse mice rodent weasel badger wolverine otter ferret raccoon hyena worg warg displacer barghest ape gorilla monkey baboon rabbit hare squirrel mastiff manticore sphinx chimera')],
   ['paws', tails('wolf hound dog cat bear')],
   // Clear humanoid names: boots.
@@ -91,6 +94,20 @@ export function creatureGait({ system = '', actor = null, name = '' } = {}) {
   return 'unknown';
 }
 
+// Flight speed or a flying condition says nothing about wings. Only positive anatomy evidence earns wingbeats;
+// magic, levitation and unknown fliers use a soft air pass. Elemental bodies retain their own texture in main.mjs.
+export function creatureFlight(input = {}) {
+  const actor = input.actor, sys = actor?.system ?? {};
+  const items = Array.from(actor?.items ?? [], (i) => `${i?.name ?? ''}`);
+  const text = `${input.name ?? ''} ${actor?.name ?? ''} ${items.join(' ')}`;
+  if (/\b(?:wingless|levitat\w*|beholder|beholderkin|spectator|gazer|flying (?:sword|carpet)|dancing (?:sword|weapon))\b/i.test(text)) return 'flight';
+  if (['air', 'fire', 'water'].includes(creatureBody(input))) return 'flight';
+  if (/\b(?:wings?|winged|bat|bats|eagle|hawk|owl|bird|raven|crow|roc|griffon|griffin|hippogriff|harpy|pegasus|pixie|sprite|angel|deva|imp|succubus|erinyes|phoenix|gargoyle|gargoyles|bee|wasp|butterfly|moth|mosquito|dragonfly)\b/i.test(text)) return 'wing';
+  const traits = input.system === 'daggerheart' ? [] : list(sys.traits?.value);
+  if (traits.some((t) => ['winged', 'azata', 'angel'].includes(t))) return 'wing';
+  return ['dragon', 'talons'].includes(creatureGait(input)) ? 'wing' : 'flight';
+}
+
 // How a creature's steps weigh (see movement-feel's stepWeight): its size category where the system has one (PF2e/SF2e
 // system.traits.size.value, D&D system.traits.size), and whether its body is heavy for its size: constructs, giants,
 // dragons and earth elementals, or a stone, iron or metal body by name (golems, statues, colossi).
@@ -118,7 +135,7 @@ export function creatureBulk({ system = '', actor = null, name = '' } = {}) {
 //   air    a gust per stride (air elementals, whirlwinds), instead of steps.
 // null when nothing fits. Checked in this order, the first match wins, so an earth elemental is stone, a bone golem
 // bone and an iron golem metal.
-export const BODIES = Object.freeze(['bone', 'metal', 'stone', 'plant', 'water', 'fire', 'air']);
+export const BODIES = Object.freeze(['bone', 'metal', 'stone', 'plant', 'foliage', 'water', 'fire', 'air']);
 const ELEMENT_NAMES = {
   water: /\b(?:water|tide|tidal|wave) (?:elemental|weird|spirit|mephit)s?\b|\b(?:water weird|undine elemental|living waterfall|tidal surge)s?\b/i,
   fire: /\b(?:fire|flame|magma|lava|ember) (?:elemental|spirit|mephit|sprite)s?\b|\b(?:salamander|living bonfire|firewisp|living wildfire)s?\b/i,
@@ -133,6 +150,7 @@ const STONE_SURE = /\b(?:gargoyle|statue|caryatid|galeb duhr|xorn|living boulder
 const STONE_WORDS = /\b(?:stone|rock|granite|marble|obsidian|basalt|boulder|crystal|earthen)\b/i;
 const PLANT_NAMES = /\b(?:treant|treants|leshy|leshies|shambling mound|awakened (?:tree|shrub)|(?:twig|vine|needle) blight|dryad tree|wood golem|tree|shrub|vine horror)s?\b/i;
 const FUNGUS = /\b(?:fungus|fungi|fungal|mushroom|myconid|mold|mould|shrieker|spore)s?\b/i;
+const FOLIAGE_NAMES = /\b(?:leaf|leaves|leafy|vine|ivy|fern|grass|moss|flower|sunflower|lotus|shrub|shambling mound)\b/i;
 export function creatureBody({ system = '', actor = null, name = '' } = {}) {
   const sys = actor?.system ?? {};
   const dh = system === 'daggerheart';
@@ -154,6 +172,6 @@ export function creatureBody({ system = '', actor = null, name = '' } = {}) {
   if (traits.includes('clockwork') || traits.includes('robot') || METAL_SURE.test(text) || (construct && METAL_WORDS.test(text))) return 'metal';
   if (STONE_SURE.test(text) || (construct && STONE_WORDS.test(text))) return 'stone';
   if (FUNGUS.test(text) || traits.includes('fungus')) return null;
-  if (has('plant') || traits.includes('leshy') || PLANT_NAMES.test(text)) return 'plant';
+  if (has('plant') || traits.includes('leshy') || PLANT_NAMES.test(text)) return FOLIAGE_NAMES.test(text) ? 'foliage' : 'plant';
   return null;
 }

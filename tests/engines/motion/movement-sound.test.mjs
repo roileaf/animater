@@ -11,8 +11,8 @@ import { createMovementFeelLayer } from '../../../scripts/engines/motion/movemen
 test('movementSound: each Foundry movement action has its own sound', () => {
   assert.equal(movementSound('walk'), 'step');
   assert.equal(movementSound(undefined), 'step');
-  assert.equal(movementSound('fly'), 'wing');
-  assert.equal(movementSound('FLY'), 'wing');
+  assert.equal(movementSound('fly'), 'flight');
+  assert.equal(movementSound('FLY', { flight: 'wing' }), 'wing');
   assert.equal(movementSound('burrow'), 'burrow');
   assert.equal(movementSound('swim'), 'swim');
   assert.equal(movementSound('climb'), 'climb');
@@ -26,29 +26,29 @@ test('movementSound: each Foundry movement action has its own sound', () => {
 });
 
 test('movementSound: a flying status beats wings on a walk; water stays a footstep; incorporeal is silent', () => {
-  assert.equal(movementSound('walk', { statuses: new Set(['flying']) }), 'wing');
-  assert.equal(movementSound(undefined, { statuses: ['hover'] }), 'wing');
+  assert.equal(movementSound('walk', { statuses: new Set(['flying']), flight: 'wing' }), 'wing');
+  assert.equal(movementSound(undefined, { statuses: ['hover'] }), 'flight');
   // An explicit action wins over the status.
   assert.equal(movementSound('swim', { statuses: ['flying'] }), 'swim');
   // Walking through water splashes with the water footsteps; only the swim action strokes.
   assert.equal(movementSound('walk', { floor: 'water' }), 'step');
   assert.equal(movementSound('swim', { floor: 'water' }), 'swim');
   for (const action of ['walk', 'fly', 'burrow', 'swim', 'jump']) assert.equal(movementSound(action, { gait: 'none' }), null, action);
-  assert.equal(movementSound('fly', { gait: 'unknown' }), 'wing');
+  assert.equal(movementSound('fly', { gait: 'unknown' }), 'flight');
 });
 
 test('movement sound families: three or more bundled files each, on disk, credited, none shared with footsteps', () => {
   const root = new URL('../../../assets/sounds/surfaces/', import.meta.url);
-  const credits = readFileSync(new URL('freesound/License.txt', root), 'utf8');
+  const credits = readFileSync(new URL('freesound/License.txt', root), 'utf8') + '\n' + readFileSync(new URL('../creatures/completed/License.txt', root), 'utf8');
   const steps = new Set(Object.values(FOOTSTEP_FILES).flat()), seen = new Set();
   for (const kind of MOVE_SOUND_KINDS.filter((k) => k !== 'step')) {
     const files = MOVE_SOUND_FILES[kind];
     assert.ok(files?.length >= 3, `${kind} has a family`);
     for (const file of files) {
-      assert.match(file, new RegExp(`^modules/animater/assets/sounds/surfaces/freesound/${kind}-\\d+-\\d+\\.ogg$`), file);
+      assert.match(file, kind === 'flight' ? /\/creatures\/completed\/flight-any-\d+-\d+\.ogg$/ : new RegExp(`^modules/animater/assets/sounds/surfaces/freesound/${kind}-\\d+-\\d+\\.ogg$`), file);
       assert.ok(existsSync(fileURLToPath(new URL(`../../../${file.replace('modules/animater/', '')}`, import.meta.url))), file);
       const name = file.split('/').pop(), id = name.match(/-(\d+)-\d+\.ogg$/)[1];
-      assert.match(credits, new RegExp(`^${name}: ".+" by \\S+, https://freesound\\.org/people/\\S+/sounds/${id}/\\r?$`, 'm'), name);
+      assert.match(credits, new RegExp(`^${name}: ".+" by \\S+, https://freesound\\.org/people/\\S+/sounds/${id}/(?: License: [^\\r\\n]+)?\\r?$`, 'm'), name);
       assert.ok(!steps.has(file) && !seen.has(file), `${file} is its own`);
       seen.add(file);
     }
@@ -198,7 +198,7 @@ function harness({ tokens, floor = 'dirt', holes } = {}) {
 }
 
 test('controller: a flier beats its wings while it moves, never while it hovers still, and marks nothing', () => {
-  const tok = { id: 'f', x: 0, y: 0, width: 100, elevation: 30, base: 0, action: 'fly', visible: true };
+  const tok = { id: 'f', x: 0, y: 0, width: 100, elevation: 30, base: 0, action: 'fly', flight: 'wing', visible: true };
   const h = harness({ tokens: [tok] });
   h.feel.tick();
   h.walk(tok, 20);
@@ -210,10 +210,22 @@ test('controller: a flier beats its wings while it moves, never while it hovers 
   h.wait(2000);
   assert.equal(h.sounds.length, before, 'hovering still: silent');
   // A flying status on a walk beats wings too.
-  const bird = { id: 'b', x: 0, y: 0, width: 100, elevation: 0, base: 0, action: 'walk', statuses: new Set(['flying']), visible: true };
+  const bird = { id: 'b', x: 0, y: 0, width: 100, elevation: 0, base: 0, action: 'walk', flight: 'wing', statuses: new Set(['flying']), visible: true };
   const hb = harness({ tokens: [bird] });
   hb.feel.tick(); hb.walk(bird, 10);
   assert.ok(hb.sounds.length > 0 && hb.sounds.every(([, kind]) => kind === 'wing'));
+});
+
+test('controller: wingless flight survives the airborne branch and stays silent while stationary', () => {
+  for (const extra of [{ action: 'fly' }, { action: 'walk', statuses: ['levitating'] }]) {
+    const tok = { id: 'magic', x: 0, y: 0, width: 100, elevation: 20, base: 0, visible: true, flight: 'flight', ...extra };
+    const h = harness({ tokens: [tok] });
+    h.feel.tick(); h.walk(tok, 12);
+    assert.ok(h.sounds.length > 0);
+    assert.ok(h.sounds.every(([, kind]) => kind === 'flight'), 'airborne branch must not force wingbeats');
+    assert.equal(h.log.added, 0, 'no floor marks');
+    const before = h.sounds.length; h.wait(2000); assert.equal(h.sounds.length, before);
+  }
 });
 
 test('controller: a burrower churns a lasting earth trail and no dust or prints', () => {

@@ -163,7 +163,7 @@ test('host: the same effect twice shakes once; a throwing stage never throws', (
   assert.doesNotThrow(() => run(bad.state, bad.host, 100));
 });
 
-test('every Huge and Gargantuan footfall trembles the view: heavier more, fading out within eight squares', () => {
+test('every Huge and Gargantuan footfall trembles the visible view: heavier more, fading beyond its edge', () => {
   const centre = { x: 1000, y: 500 };
   assert.equal(tremorProfile({ weight: 3.75, at: centre, view: VIEW, gridPx: GRID }), null, 'a heavy Large creature does not');
   const huge = tremorProfile({ weight: 4, at: centre, view: VIEW, gridPx: GRID });
@@ -174,10 +174,42 @@ test('every Huge and Gargantuan footfall trembles the view: heavier more, fading
   assert.ok(huge.amplitude < heavyHuge.amplitude && heavyHuge.amplitude < gargantuan.amplitude && gargantuan.amplitude < grg.amplitude, 'heavier, more');
   assert.ok(Math.abs(grg.amplitude - 3) < 1e-9, 'up to 3 px');
   assert.ok(huge.durationMs >= 150 && huge.durationMs <= 220, 'about 180 ms');
-  const near = tremorProfile({ weight: 5.75, at: { x: 1300, y: 500 }, view: VIEW, gridPx: GRID });
+  const near = tremorProfile({ weight: 5.75, at: { x: VIEW.x + VIEW.w + 300, y: 500 }, view: VIEW, gridPx: GRID });
   assert.ok(near.amplitude < grg.amplitude && near.amplitude > 0);
-  assert.equal(tremorProfile({ weight: 5.75, at: { x: 1900, y: 500 }, view: VIEW, gridPx: GRID }), null, 'nine squares off: nothing');
+  assert.equal(tremorProfile({ weight: 5.75, at: { x: VIEW.x + VIEW.w + 900, y: 500 }, view: VIEW, gridPx: GRID }), null, 'nine squares beyond the view: nothing');
   assert.ok(grg.amplitude < MAX_SHAKE_PX / 2, 'far under a blast');
+});
+
+test('zoomed-out live scene: each on-screen Huge/Gargantuan step gets a tremor, including far from view centre', () => {
+  const view = { x: 652, y: 782.1, w: 4096, h: 2036.8 };
+  for (const weight of [4, 4.75, 5, 5.75]) {
+    for (const at of [{ x: 4100, y: 1000 }, { x: 700, y: 800 }, { x: 4600, y: 2700 }]) {
+      assert.ok(tremorProfile({ weight, at, view, gridPx: 100 }), `${weight} at ${at.x}/${at.y}`);
+    }
+  }
+});
+
+test('expired tremors cannot consume slots before the next renderer tick', () => {
+  const { state, host } = fixture();
+  const step = { at: { x: 1000, y: 500 }, weight: 5, sceneId: 's1' };
+  assert.equal(host.tremor(step), true);
+  assert.equal(host.tremor(step), true);
+  state.t += 750;
+  assert.equal(host.tremor(step), true, 'a later audible step must not lose its shake to expired entries');
+  assert.equal(host.size, 1);
+});
+
+test('per-token tremor gain is independent; stopping a preview preserves live tremors', () => {
+  const { host, state } = fixture();
+  const step = { at: { x: 1000, y: 500 }, weight: 5, sceneId: 's1' };
+  assert.equal(host.tremor({ ...step, scale: 0 }), false);
+  assert.equal(host.tremor({ ...step, scale: 0.5 }), true);
+  const previewId = Symbol('test-preview');
+  assert.equal(host.tremor({ ...step, scale: 2, previewId }), true);
+  state.t += 16; host.tick();
+  host.stopPreview(previewId); assert.equal(host.size, 1);
+  host.stopPreview(undefined); assert.equal(host.size, 1);
+  host.clear(); assert.deepEqual(state.pos, { x: 500, y: 400 });
 });
 test('footfall tremors go through the host: on its scene and level, enabled, two at most, then gone', () => {
   const { state, host } = fixture();

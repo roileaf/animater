@@ -29,6 +29,8 @@ Install and activate **either** JB2A edition; Patreon users do not need JB2A Fre
 
 ## What it animates
 
+Token Configuration → Appearance → **Animater movement sounds** offers per-token gait, body and flight overrides, or silent movement. Contact/body volume and pitch, weight/bass volume and camera tremor strength are independent (1 = default, 0 = off, up to 2). **Play four steps** previews unsaved choices on any floor with Walk, Fly or Land; it plays only on your device and moves no token. Stop or close the window to end the preview. Save Token Configuration to apply overrides; **Reset to automatic** restores defaults in the form.
+
 - **Spells.** Casting, flight, impact and area footage that follows the native template: bursts, cones, lines, emanations and walls. Spells that let you choose a damage type animate in the chosen element.
 - **Feats, actions and class features.** Each has its own catalog page: Demoralize, Grapple, Raise a Shield, Rage, Sneak Attack, Flurry of Blows, Glimpse of Redemption and many more. Damage riders such as Sneak Attack play alongside the Strike.
 - **Weapons.** Melee, ranged and thrown uses, chosen from the actual Strike. Elemental runes, bombs and firearms included.

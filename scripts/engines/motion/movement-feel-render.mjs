@@ -149,6 +149,15 @@ function toes(g, color, x, y, angles, length, width, tip = 0) {
 const dot = (g, color, x, y, r, alpha = 1) => { g.beginFill(color, alpha); g.drawCircle(x, y, r); g.endFill(); };
 // One footprint per gait (creature-gait.mjs), each drawn once into the DRAW box.
 const PRINTS = {
+  padded(g, color) {
+    drawSoftEllipse(g, color, 0.68 * R, 0.62 * R, 3);
+  },
+  webbed(g, color) {
+    g.beginFill(color, 0.65);
+    g.drawPolygon([-0.45 * R, 0, 0.5 * R, -0.7 * R, 0.36 * R, -0.22 * R, 0.8 * R, 0, 0.36 * R, 0.22 * R, 0.5 * R, 0.7 * R]);
+    g.endFill();
+    toes(g, color, -0.3 * R, 0, [-0.65, 0, 0.65], 0.95 * R, 0.1 * R, 0);
+  },
   // A boot: sole and heel.
   boots(g, color) {
     drawSoftEllipse(g, color, 0.62 * R, 0.4 * R, 2, 0.3 * R);

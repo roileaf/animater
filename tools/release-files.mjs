@@ -2,7 +2,7 @@
 // everything they reach through static or dynamic imports, CSS url()s and
 // literal module paths. Audits, docs, tests, tools and previews never ship.
 // Usage: node tools/release-files.mjs | zip -@ module.zip
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -26,6 +26,18 @@ export function releaseFiles(root = ROOT) {
     for (const m of source.matchAll(/modules\/animater\/((?:scripts|styles|templates|data|lang|assets|sounds)\/[\w./-]+\.\w+)/g)) queue.push(m[1]);
   }
   if (missing.length) throw Error(`Runtime references missing files: ${missing.join(', ')}`);
+  // Sound registries assemble paths from family names and recording IDs. Those
+  // paths cannot be discovered by the literal-import scan above. Ship finished
+  // bundled recordings and their attribution, leaving review/source data local.
+  const bundledSounds = rel => {
+    if (!existsSync(path.join(root, rel))) return;
+    for (const entry of readdirSync(path.join(root, rel), { withFileTypes: true })) {
+      const file = path.posix.join(rel, entry.name);
+      if (entry.isDirectory()) bundledSounds(file);
+      else if (entry.isFile() && (/\.(ogg|mp3|wav)$/i.test(entry.name) || /^license\.txt$/i.test(entry.name))) seen.add(file);
+    }
+  };
+  bundledSounds('assets/sounds');
   return [...EXTRA.filter(f => existsSync(path.join(root, f))), ...[...seen].filter(f => f !== 'module.json').sort()];
 }
 
