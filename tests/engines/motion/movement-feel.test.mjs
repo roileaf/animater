@@ -771,7 +771,7 @@ test('shadowGeometry: a flier shadow always shows past its own token, big tokens
     const far = Math.hypot(s.x, s.y) + Math.min(s.rx, s.ry);
     assert.ok(far > width / 2 + 0.05 * width, `width ${width}, lift ${lift}: shadow reaches ${far.toFixed(0)}, token edge ${width / 2}`);
     assert.ok(Math.abs(s.x) < 1e-9 && Math.abs(s.y) < 1e-9, 'centred under the creature');
-    assert.ok(s.rx <= width * 0.62, 'only just past its edge, never a wide halo');
+    assert.ok(s.rx <= width * 0.66, 'only just past its edge, never a wide halo');
   }
   const low = shadowGeometry({ x: 0, y: 0, width: 400, lift: 10, distance: 5, grid: 100 }), high = shadowGeometry({ x: 0, y: 0, width: 400, lift: 120, distance: 5, grid: 100 });
   assert.ok(high.rx > low.rx && high.alpha < low.alpha, 'higher: softer, a little wider, fainter');

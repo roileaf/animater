@@ -127,8 +127,8 @@ export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100
   // rim of it all round, never a wide halo. The higher it flies, the softer, slightly wider and fainter it gets.
   const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5));
   const w = Number(width) || grid;
-  const rx = w * (0.58 + 0.003 * h);
-  return { x, y, rx, ry: rx, alpha: Math.max(0.22, 0.5 - 0.022 * h) };
+  const rx = w * (0.6 + 0.004 * h);
+  return { x, y, rx, ry: rx, alpha: Math.max(0.3, 0.6 - 0.025 * h) };
 }
 
 // Where along each token's drawn path a stride falls. The first stride after a stop or a jump is half long, so a short
