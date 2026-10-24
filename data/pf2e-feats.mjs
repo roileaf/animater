@@ -323018,7 +323018,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "innovation electric reservoir bleeds into short damaging line bolt; centered bloom, sweeping entrance",
-    "compositionHash": "27b0cd21e7e17e6877f22b75970bff0c8e06ce166a99721b1eb7bb377ea051bc",
+    "compositionHash": "e5b72f869e99ec0371e576585dc7323f6f5ab258a174f36f600350c4bea44557",
     "sharedCount": 1
   },
   {

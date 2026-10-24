@@ -129,7 +129,8 @@ export function creatureBulk({ system = '', actor = null, name = '' } = {}) {
 //   bone   a skeleton's dry clatter (skeletons, skeletal undead: the PF2e skeleton trait, "skeleton", "bone ...").
 //   metal  a metal body's clank (iron, steel or bronze golems, animated armor, clockwork, robots).
 //   stone  stone grinding on stone (stone golems, gargoyles, statues, earth elementals).
-//   plant  leaves rustling and wood creaking (treants, leshies, shambling mounds, any plant).
+//   plant  wood creaking, only for explicitly woody bodies (treants, arboreals, animated trees).
+//   foliage  soft leaf/bush rustling for other plants, vegetables, leshies and shambling mounds.
 //   water  a slosh per stride (water elementals, water weirds), instead of steps.
 //   fire   a flame's whoosh per stride (fire elementals, salamanders), instead of steps.
 //   air    a gust per stride (air elementals, whirlwinds), instead of steps.
@@ -150,7 +151,7 @@ const STONE_SURE = /\b(?:gargoyle|statue|caryatid|galeb duhr|xorn|living boulder
 const STONE_WORDS = /\b(?:stone|rock|granite|marble|obsidian|basalt|boulder|crystal|earthen)\b/i;
 const PLANT_NAMES = /\b(?:treant|treants|leshy|leshies|shambling mound|awakened (?:tree|shrub)|(?:twig|vine|needle) blight|dryad tree|wood golem|tree|shrub|vine horror)s?\b/i;
 const FUNGUS = /\b(?:fungus|fungi|fungal|mushroom|myconid|mold|mould|shrieker|spore)s?\b/i;
-const FOLIAGE_NAMES = /\b(?:leaf|leaves|leafy|vine|ivy|fern|grass|moss|flower|sunflower|lotus|shrub|shambling mound)\b/i;
+const WOODY_NAMES = /\b(?:treants?|trees?|arboreal|(?:wood|wooden|timber|driftwood) (?:golem|construct|guardian|colossus)|(?:twig|needle) blights?)\b/i;
 export function creatureBody({ system = '', actor = null, name = '' } = {}) {
   const sys = actor?.system ?? {};
   const dh = system === 'daggerheart';
@@ -172,6 +173,6 @@ export function creatureBody({ system = '', actor = null, name = '' } = {}) {
   if (traits.includes('clockwork') || traits.includes('robot') || METAL_SURE.test(text) || (construct && METAL_WORDS.test(text))) return 'metal';
   if (STONE_SURE.test(text) || (construct && STONE_WORDS.test(text))) return 'stone';
   if (FUNGUS.test(text) || traits.includes('fungus')) return null;
-  if (has('plant') || traits.includes('leshy') || PLANT_NAMES.test(text)) return FOLIAGE_NAMES.test(text) ? 'foliage' : 'plant';
+  if (has('plant') || traits.includes('leshy') || PLANT_NAMES.test(text)) return WOODY_NAMES.test(text) ? 'plant' : 'foliage';
   return null;
 }

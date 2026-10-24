@@ -176,8 +176,8 @@ for (const [element, b] of Object.entries(BREATH)) for (const shape of ['cone', 
   out[`pf2e:npc-breath:${element}-${shape}`] = design(`Breath Weapon: the creature rears back and exhales ${element === 'other' ? 'its breath' : element} in a ${shape}.`, () => [
     motion('brace', 'source', { stageId: 'inhale', duration: 700, intensity: 0.6 }),
     cast('Breath gathers at the maw', b.puff, { stageId: 'maw', scale: 0.55, duration: 900, faceTarget: true, ...(b.puffTint ? tint(b.puffTint) : {}) }),
-    area('Exhalation', b[shape], { stageId: 'exhale', after: 'inhale', anchor: 'end', offset: -100, duration: 2200, ...(b.tint ? tint(b.tint) : {}) }),
-    motion('lunge', 'source', { after: 'inhale', anchor: 'end', duration: 900, intensity: 0.45 }),
+    area('Exhalation', b[shape], { stageId: 'exhale', after: 'inhale', anchor: 'end', offset: -100, duration: 2200, oneShot: true, ...(b.tint ? tint(b.tint) : {}) }),
+    motion('pulse', 'source', { after: 'inhale', anchor: 'end', duration: 900, intensity: 0.45 }),
     motion('recoil', 'targets', { after: 'exhale', anchor: 'start', offset: 600, duration: 800, intensity: 0.6, optionalTargets: true }),
   ], { sound: b.sound });
 }
@@ -203,7 +203,7 @@ for (const element of ABILITY_ELEMENTS) {
     out[`pf2e:npc-generic:${shape}-${element}`] = design(`The creature unleashes ${element === 'physical' ? 'a blast' : `${element}`} across the ${shape} it aims.`, () => [
       motion('brace', 'source', { stageId: 'brace', duration: 600, intensity: 0.5 }),
       puff({ faceTarget: true }),
-      area('Blast', blast.assets, { stageId: 'blast', after: 'brace', anchor: 'end', offset: -100, duration: 2000, ...(blast.tint ? tint(blast.tint) : {}) }),
+      area('Blast', blast.assets, { stageId: 'blast', after: 'brace', anchor: 'end', offset: -100, duration: 2000, oneShot: true, ...(blast.tint ? tint(blast.tint) : {}) }),
       motion('recoil', 'targets', { after: 'blast', anchor: 'start', offset: 500, duration: 800, intensity: 0.6, optionalTargets: true }),
     ], { sound });
   }
@@ -235,6 +235,36 @@ put('magic', design('Magic gathers around the creature as it calls on its power.
   aura('Power stirs', ['shimmer.01.blue', 'shimmer.01.purple'], { stageId: 'stir', duration: 1300, scale: 0.8, opacity: 0.8 }),
   motion('pulse', 'source', { after: 'stir', anchor: 'start', duration: 800, intensity: 0.3 }),
 ], { sound: null }));
+put('magnetism', design('A magnetic field tugs at metal on the target, unsettling its balance without moving its token or applying a condition.', () => [
+  aura('Magnetic field gathers', ['static_electricity.01.blue'], {stageId:'field',duration:1200,scale:0.65,opacity:0.6,...tint('#a9c5df')}),
+  aura('Metal pulled inward', ['aura_themed.01.inward.complete.metal.01.grey'], {subject:'targets',stageId:'pull',after:'field',anchor:'start',offset:250,duration:1600,scale:0.7,opacity:0.8}),
+  motion('shake','targets',{after:'pull',anchor:'start',offset:150,duration:900,intensity:0.22}),
+], {sound:null}));
+put('disarm', design('The creature wrenches at a held weapon; the animation does not remove equipment or decide the check.', () => [
+  motion('brace','source',{stageId:'wrench',duration:650,intensity:0.4}),
+  aura('Equipment wrenched', ['aura_themed.01.inward.complete.metal.01.grey'], {subject:'targets',after:'wrench',anchor:'start',offset:200,duration:1100,scale:0.45,opacity:0.7}),
+  motion('shake','targets',{after:'wrench',anchor:'start',offset:250,duration:650,intensity:0.18}),
+], ab('unarmed')));
+put('bind', design('Binding strands gather around the target; the native rules determine restraint and escape.', () => [
+  aura('Binding strands', ['energy_strands.complete.dark_red.01'], {subject:'targets',stageId:'bind',duration:1700,scale:0.75,opacity:0.7,...tint('#c6c9bb')}),
+  motion('press','targets',{after:'bind',anchor:'start',offset:250,duration:1000,intensity:0.25}),
+], {sound:null}));
+put('confuse', design('A disorienting influence shimmers around the target without inventing damage or a forced move.', () => [
+  aura('Disorienting shimmer',['shimmer.01.purple'],{subject:'targets',stageId:'daze',duration:1500,scale:0.65,opacity:0.6}),
+  motion('stagger','targets',{after:'daze',anchor:'start',offset:300,duration:900,intensity:0.2}),
+], {sound:'psychic'}));
+put('blind', design('The target is briefly obscured by the blinding action; its real condition controls lasting effects.', () => [
+  aura('Vision obscured',['smoke.puff.centered.grey'],{subject:'targets',stageId:'obscure',duration:1200,scale:0.6,opacity:0.6}),
+  motion('recoil','targets',{after:'obscure',anchor:'start',offset:200,duration:600,intensity:0.2}),
+], {sound:null}));
+put('veil', design('The creature blends into concealment; native visibility remains authoritative.', () => [
+  aura('Camouflage shimmers',['shimmer.01.blue'],{stageId:'veil',duration:1500,scale:0.7,opacity:0.45,...tint('#a1b7a0')}),
+  motion('brace','source',{after:'veil',anchor:'start',duration:800,intensity:0.2}),
+], {sound:null}));
+put('rally', design('The creature rallies nearby allies, signaled by an encouraging pulse around the speaker.', () => [
+  aura('Rallying pulse',['soundwave.02.blue','soundwave.01.blue'],{stageId:'rally',duration:1500,scale:1.2,opacity:0.6,...tint('#edcf84')}),
+  motion('pulse','source',{after:'rally',anchor:'start',duration:900,intensity:0.25}),
+], {sound:null}));
 put('sound', design('A piercing cry rolls out from the creature.', () => [
   motion('brace', 'source', { stageId: 'cry', duration: 600, intensity: 0.4 }),
   aura('Sound rolls out', ['soundwave.02.blue', 'soundwave.01.blue'], { after: 'cry', anchor: 'start', offset: 100, duration: 1500, scale: 1.4, opacity: 0.85 }),

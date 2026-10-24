@@ -8,6 +8,7 @@ import {
 } from '../../../scripts/engines/motion/movement-feel.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {carriedPrints,bloodDrop} from '../../../scripts/engines/motion/ground-trails.mjs';
 
 test('floors: every choice has a look, and the select starts with From the scene', () => {
   assert.deepEqual(FLOORS, ['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud']);
@@ -246,6 +247,43 @@ test('controller: prints have their own cap, drop the oldest, and never starve d
   assert.equal(h.feel.prints, 0);
 });
 
+test('controller: footprint lifetime follows the ground and expires independently of dust', () => {
+  const token={id:'life',x:0,y:0,width:100,elevation:0,base:0,visible:true};
+  const reads=[];
+  const h=harness({tokens:[token],floor:at=>at.x<100?'sand':'snow',printLifetime:floor=>{reads.push(floor);return floor==='sand'?2000:10000;}});
+  h.feel.tick();token.x=80;h.advance(16);h.feel.tick();token.x=160;h.advance(16);h.feel.tick();
+  assert.ok([...h.live].some(p=>p.spec.kind==='print'&&p.spec.life===2000));
+  assert.ok([...h.live].some(p=>p.spec.kind==='print'&&p.spec.life===10000));
+  assert.ok([...h.live].filter(p=>p.spec.kind!=='print').every(p=>p.spec.life!==10000),'dust retains native timing');
+  h.advance(2100);h.feel.tick();assert.ok(h.feel.prints>0);assert.ok([...h.live].filter(p=>p.spec.kind==='print').every(p=>p.spec.life===10000));
+  const snow=[...h.live].find(p=>p.spec.kind==='print');h.advance(6000);h.feel.tick();assert.ok(snow.state.alpha>0&&snow.state.alpha<snow.spec.alpha,'fades before expiring');
+  h.advance(2000);h.feel.tick();assert.equal(h.feel.prints,0);
+});
+test('controller: changing a ground lifetime retimes existing prints; zero restores native life and reads are shared per ground',()=>{
+ const token={id:'life',x:0,y:0,width:100,elevation:0,base:0,visible:true};let life=30000,reads=0;
+ const h=harness({tokens:[token],floor:'snow',printLifetime:()=>{reads++;return life;}});
+ h.feel.tick();token.x=150;h.advance(16);h.feel.tick();assert.equal(reads,1);assert.ok(h.feel.prints>1);
+ life=0;h.advance(1000);h.feel.tick();const print=[...h.live].find(p=>p.spec.kind==='print');assert.equal(reads,2);assert.ok(print.state.alpha>0);
+ life=1000;h.advance(20);h.feel.tick();assert.equal(h.feel.prints,0,'shorter lifetime removes older existing tracks');
+});
+test('controller: grooves use their ground lifetime and long-lived tracks keep the print budget',()=>{
+ const token={id:'snake-life',x:0,y:0,width:100,elevation:0,base:0,visible:true,gait:'slither'};
+ const h=harness({tokens:[token],floor:'mud',printLifetime:3600000,printCap:2});h.feel.tick();
+ for(let i=1;i<=5;i++){token.x=i*STRIDE*100;h.advance(16);h.feel.tick();}
+ assert.equal(h.feel.prints,2);assert.ok([...h.live].filter(p=>p.spec.kind==='groove').every(p=>p.spec.life===3600000));
+ h.advance(3600001);h.feel.tick();assert.equal(h.feel.prints,0);
+});
+test('controller: carried prints and flattened grass use their ground lifetime, while blood keeps native timing',()=>{
+ const token={id:'carry-life',x:0,y:0,width:100,elevation:0,base:0,visible:true};
+ const trails={marks:(_token,at,_floor,opts)=>[...carriedPrints({floor:'mud',strength:1},at,opts),...bloodDrop(at,opts)]};
+ const h=harness({tokens:[token],floor:'stone',printLifetime:floor=>floor==='stone'?3000:60000,trails});h.feel.tick();token.x=80;h.advance(16);h.feel.tick();
+ assert.ok([...h.live].some(p=>p.spec.carried==='mud'&&p.spec.life===3000));
+ assert.ok([...h.live].some(p=>p.spec.lasting&&p.spec.life===20000),'blood keeps native lifetime');
+ h.advance(3100);h.feel.tick();assert.ok(![...h.live].some(p=>p.spec.kind==='print'));assert.ok([...h.live].some(p=>p.spec.lasting));
+ const grassToken={...token,x:0},grass=harness({tokens:[grassToken],floor:'grass',printLifetime:60000});grass.feel.tick();grassToken.x=80;grass.advance(16);grass.feel.tick();
+ assert.ok([...grass.live].some(p=>p.spec.kind==='trample'&&p.spec.life===60000));
+});
+
 test('autoFloor: global light, an outdoor name or background picks dirt; else stone', () => {
   assert.equal(autoFloor({ globalLight: true }), 'dirt');
   assert.equal(autoFloor({ name: 'Forest Road Ambush' }), 'dirt');
@@ -464,7 +502,7 @@ test('footstepVolume: quiet, wet floors louder, bigger creatures heavier', () =>
   assert.ok(footstepVolume('stone', { squares: 100 }) <= 0.17 * 2.2, 'a Gargantuan tread tops out at 2.2×');
 });
 
-function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 200, printCap, steps = [] } = {}) {
+function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 200, printCap, printLifetime, trails, steps = [] } = {}) {
   let time = 0;
   const live = new Set(), shadows = new Map(), log = { added: 0, removed: 0, shadowsAdded: 0, shadowsRemoved: 0, cleared: 0 };
   const layer = {
@@ -477,8 +515,8 @@ function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 20
     clear() { log.cleared++; live.clear(); },
   };
   const feel = createMovementFeel({
-    tokens: () => tokens, floorAt: () => floor, enabled: () => enabled, density: () => density, grid: () => 100, distance: () => 5,
-    now: () => time, layer, cap, printCap, footstep: (f, at, t) => steps.push([f, t.id]),
+    tokens: () => tokens, floorAt: typeof floor === 'function' ? floor : () => floor, enabled: () => enabled, density: () => density, grid: () => 100, distance: () => 5,
+    now: () => time, layer, cap, printCap, printLifetime, trails, footstep: (f, at, t) => steps.push([f, t.id]),
   });
   return { feel, live, shadows, log, steps, advance: (ms) => { time += ms; }, layer };
 }

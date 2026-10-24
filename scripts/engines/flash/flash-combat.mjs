@@ -114,8 +114,7 @@ export function flashScreens(host) {
   }
   // Draw it full screen on this client.
   async function show(screen, v = vars()) {
-    // showsHere(screen): false when this screen turned that one off for itself (the combat recap's own switch).
-    if (host.quietHere() || host.showsHere?.(screen) === false) return;
+    if (host.quietHere()) return;
     showing?.stop();
     const layer = document.createElement("div");
     layer.className = "an-flash-overlay";
@@ -176,12 +175,6 @@ export function flashScreens(host) {
     if (!combat?.started || downMoment(combat, actor) !== "finalEnemy") return 0;
     const screen = forCombat(combat, "finalEnemy");
     return screen ? validateFlash(screen).duration : 0;
-  }
-  // How long a combat's ending screen shows (the longest it could be, when random): the combat recap waits for it.
-  function endLength(combat) {
-    const pick = combat?.getFlag?.(ID, flagKey("end")), choice = pick || defaults().end;
-    const fits = choice === "random" ? screens().filter((s) => s.event === "end" || s.event === "any") : [forCombat(combat, "end")].filter(Boolean);
-    return Math.max(0, ...fits.map((s) => validateFlash(s).duration));
   }
   function receive(data) {
     if (data?.type === "flash" && data.screen) void show(data.screen, data.vars ?? {}).catch(() => {});
@@ -351,7 +344,7 @@ export function flashScreens(host) {
     return removed.size;
   }
   return {
-    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength, tidy, endLength,
+    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength, tidy,
     // A screen is showing on this screen right now.
     busy: () => Boolean(showing),
     save: (list) => game.settings.set(ID, FLASH_SETTING, { schema: 1, screens: validateFlashes(list) }),

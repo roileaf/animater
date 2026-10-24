@@ -17,11 +17,9 @@ const registry = new Map([
   reg("splatterSync", "world", Boolean, { name: "Splatter: blood follows the damage" }),
   reg("waitForDice", "client", Boolean, { name: "Wait for Dice So Nice" }),
   reg("flashTrackerMenus", "client", Boolean, { name: "Show flash screen menus in the Combat Tracker" }),
-  reg("combatRecap", "world", String, { name: "Combat recap", choices: { everyone: "Everyone", gm: "GM only", off: "Off" } }),
-  reg("combatRecapLocal", "client", Boolean, { name: "Combat recap on my screen" }),
 ]);
 const values = { quality: "full", groundMarks: false, groundMarksLocal: true, groundMarkMinutes: 5, cameraShake: true, cameraShakeLocal: true, cameraShakeStrength: 1,
-  projectileWalls: true, weaponRuneFlourishes: true, splatterSync: true, waitForDice: true, flashTrackerMenus: true, combatRecap: "everyone", combatRecapLocal: true };
+  projectileWalls: true, weaponRuneFlourishes: true, splatterSync: true, waitForDice: true, flashTrackerMenus: true };
 const menus = new Map([["animater.hitSoundsMenu", { name: "Hit sounds", label: "Hit sounds", hint: "Hits hint", icon: "fa-solid fa-volume-high", restricted: false }]]);
 const model = (options = {}) => settingsModel({ registry, get: (k) => values[k], menus, systemId: "pf2e", modules: [], ...options });
 const rowsOf = (m) => Object.fromEntries(m.tabs.flatMap((t) => t.rows.map((r) => [r.id, { ...r, tab: t.id }])));
@@ -34,8 +32,6 @@ test("the GM sees each feature's world switch beside its on-my-screen switch, wi
   assert.deepEqual(rows.groundMarks.extras.map((e) => e.key), ["groundMarkMinutes"]);
   assert.equal(rows.groundMarks.extras[0].kind, "range");
   assert.equal(rows.cameraShake.tab, "motion");
-  assert.equal(rows.combatRecap.world.kind, "select");
-  assert.equal(rows.combatRecap.local.kind, "boolean");
   assert.ok(rows.projectileWalls.world && !rows.projectileWalls.local);
   assert.ok(rows.flashTrackerMenus, "a GM's own tracker menus");
   assert.equal(rows.groundMarks.worldOff, false, "the GM sees the switch itself");
@@ -75,13 +71,20 @@ test("the search finds rows in every tab by name, hint and extras", () => {
   assert.deepEqual(searchRows(m, "ground hint").map((h) => h.row), ["groundMarks"]);
   assert.equal(searchRows(m, "").length, m.tabs.reduce((n, t) => n + t.rows.length, 0));
 });
+test('legacy Combat recap registrations no longer appear in either settings view',()=>{
+ const records=new Map([...registry,reg('combatRecap','world',String),reg('combatRecapLocal','client',Boolean)]);
+ for(const isGM of [true,false]){
+  const m=settingsModel({registry:records,get:()=>true,isGM});assert.equal(searchRows(m,'recap').length,0);
+  assert.doesNotMatch(settingsWindowHTML(m),/combatRecap/);
+ }
+});
 
 test("the window's controls carry their setting key; the active tab shows first", () => {
   const html = settingsWindowHTML(model({ isGM: true }), { active: "motion" });
   assert.match(html, /data-setting="groundMarks"/);
   assert.match(html, /data-setting="groundMarksLocal" aria-label="[^"]*" checked/);
   assert.match(html, /<range-picker data-setting="groundMarkMinutes"[^>]*value="5"/);
-  assert.match(html, /<option value="everyone" selected>/);
+  assert.match(html, /<option value="full" selected>/);
   assert.match(html, /class="an-set-tab active" data-tab-button="motion"/);
   assert.match(html, /data-menu="hitSoundsMenu"/);
   assert.match(html, /Everyone/);
@@ -100,9 +103,23 @@ test("values are saved as each setting stores them", () => {
   assert.equal(parseSettingValue(select, "b"), "b");
   assert.equal(parseSettingValue(select, "z"), undefined);
 });
+test('all nine ground footprint lifetimes are editable world-only controls under Movement effects',()=>{
+ const keys=['Sand','Mud','Snow','Dirt','Grass','Stone','Wood','Water','Ice'].map(f=>`movementFootprint${f}Seconds`);
+ const records=new Map([reg('movementFeel','world',Boolean),reg('movementFeelLocal','client',Boolean),...keys.map(key=>reg(key,'world',Number,{range:{min:0,max:3600,step:1}}))]);
+ const gm=settingsModel({registry:records,get:()=>0,isGM:true}),row=gm.tabs.find(t=>t.id==='floor').rows.find(r=>r.id==='movementFeel');
+ assert.deepEqual(row.extras.map(c=>c.key),keys);
+ const html=settingsWindowHTML(gm);for(const key of keys)assert.ok(html.includes(`data-setting="${key}"`),key);
+ const player=settingsModel({registry:records,get:()=>0,isGM:false});assert.ok(player.tabs.flatMap(t=>t.rows).every(r=>r.extras.length===0));
+});
+test('swimming and burrow path controls accept independent lifetimes and a negative relative cutoff',()=>{
+ const records=new Map([reg('movementFeel','world',Boolean),...['swimWakeSeconds','underwaterBubbleSeconds','burrowTrailSeconds'].map(key=>reg(key,'world',Number,{range:{min:0,max:3600,step:.1}})),reg('burrowTrailDepth','world',Number,{range:{min:-1000,max:0,step:1}})]);
+ const m=settingsModel({registry:records,get:k=>k==='burrowTrailDepth'?-10:0,isGM:true}),extras=m.tabs[0].rows[0].extras;
+ assert.equal(extras.length,4);const depth=extras.find(e=>e.key==='burrowTrailDepth');assert.equal(depth.value,-10);
+ assert.equal(parseSettingValue(depth,'-20'),-20);assert.equal(parseSettingValue(depth,'0'),0);assert.equal(parseSettingValue(depth,'5'),0);
+});
 
 test("every setting the window lists is registered by Animater, and Configure Settings keeps only the quality", () => {
-  const sources = ["scripts/main.mjs", "scripts/engines/flash/flash-combat.mjs", "scripts/engines/flash/recap-table.mjs",
+  const sources = ["scripts/main.mjs", "scripts/engines/flash/flash-combat.mjs",
     "scripts/engines/playback/defeated-look.mjs", "scripts/integrations/sequencer-turbo/index.mjs", "scripts/systems/twoe-crossover.mjs",
     "scripts/catalogs/pf2e/weapons/weapon-runes.mjs", "scripts/integrations/automated-animations.mjs", "scripts/integrations/trigger-animations.mjs",
     "scripts/integrations/sequencer-motions.mjs", "scripts/integrations/splatter.mjs"]
@@ -114,18 +131,4 @@ test("every setting the window lists is registered by Animater, and Configure Se
   // Each row's lead setting is one key, in one tab.
   const leads = SETTINGS_TABS.flatMap((t) => t.rows.map((r) => r.world ?? r.local ?? r.menu));
   assert.equal(new Set(leads).size, leads.length);
-});
-
-test("the combat recap's own switch skips only its Highlights screen, only on this screen", async () => {
-  const { recapHere } = await import("../../scripts/engines/flash/recap-table.mjs");
-  const { RECAP_SCREEN_ID } = await import("../../scripts/engines/flash/recap.mjs");
-  const saved = globalThis.game;
-  try {
-    let local = false;
-    globalThis.game = { settings: { get: (_, key) => (key === "combatRecapLocal" ? local : undefined) } };
-    assert.equal(recapHere("animater", { id: RECAP_SCREEN_ID }), false);
-    assert.equal(recapHere("animater", { id: "go" }), true, "other flash screens still play");
-    local = true;
-    assert.equal(recapHere("animater", { id: RECAP_SCREEN_ID }), true);
-  } finally { globalThis.game = saved; }
 });

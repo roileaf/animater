@@ -6,6 +6,7 @@ import { resolveAutomaticWeaponRecipe } from "../catalogs/pf2e/weapons/weapon-ca
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem } from "../catalogs/pf2e/ability-catalog.mjs";
 import { resolveSfAutomaticRecipe } from "../catalogs/sf2e/sf2e-catalog.mjs";
 import { npcAbilityRecipe } from "../catalogs/pf2e/npc-abilities.mjs";
+import { findSfNpcAction, resolveSfNpcAction } from "../catalogs/sf2e/sf2e-npc-actions.mjs";
 import { sfSettingKey } from "../catalogs/shared/catalog-system.mjs";
 
 export const CROSSOVER_CATALOG = "crossoverCatalog";
@@ -55,12 +56,16 @@ function sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds }) {
     return resolveAutomaticWeaponRecipe(event, { ...weapons, scope: "all", selected: [], excluded: [], customized: [] }, own, { customEnabled, soundCatalog: weapons.sound === false ? null : sounds }) ?? null;
   }
   const actions = sf("action");
+  if (findSfNpcAction(event)) return resolveSfNpcAction(event, own, { stateFor, customEnabled, sounds: actions.sound === false ? null : sounds, soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, enabled: actions.enabled === true && sf("npcAbility") !== false, excluded: sf("npcAbilityExcluded") ?? [] });
   if (actions.enabled !== true || sf("npcAbility") === false) return null;
   return npcAbilityRecipe(event, own, { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: sf("npcAbilityGuess") !== false, excluded: sf("npcAbilityExcluded") ?? [] });
 }
 // The PF2e or SF2e catalog recipe for an event (saved recipes first, as each catalog decides).
 export function twoeCatalogRecipe(systemId, event, saved = [], { stateFor, customEnabled = true, sounds } = {}) {
-  if (systemId === "sf2e") return resolveSfAutomaticRecipe(event, stateFor, saved, { customEnabled, sounds }) ?? sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds });
+  if (systemId === "sf2e") {
+    if (findSfNpcAction(event)) return sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds });
+    return resolveSfAutomaticRecipe(event, stateFor, saved, { customEnabled, sounds }) ?? sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds });
+  }
   if (systemId !== "pf2e") return null;
   const item = event.item, ability = item?.type === "action" ? "action" : isFeatureItem(item) ? "feature" : null;
   const options = { customEnabled, soundCatalog: sounds };

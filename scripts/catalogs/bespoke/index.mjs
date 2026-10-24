@@ -28,6 +28,9 @@ import pf2eActionsA from './pf2e-actions-a.mjs';
 import pf2eActionsB from './pf2e-actions-b.mjs';
 import pf2eFeatures from './pf2e-features.mjs';
 import pf2eNpcAbilities from './pf2e-npc-abilities.mjs';
+import pf2eNpcReviewedA from './pf2e-npc-reviewed-a.mjs';
+import pf2eNpcReviewedB from './pf2e-npc-reviewed-b.mjs';
+import pf2eNpcReviewedC from './pf2e-npc-reviewed-c.mjs';
 // Registered last: the condition debuff pass overrides earlier condition looks.
 import conditions from './conditions.mjs';
-export const BESPOKE = Object.freeze(Object.assign({}, pf2eSpellsA, pf2eSpellsB, pf2eSpellsC, pf2eSpellsD, pf2eFeatsA, pf2eFeatsB, pf2eFeatsC, pf2eFeatsD, pf2eFeatsE, pf2eWeaponsA, pf2eWeaponsB, pf2eStatesA, pf2eStatesB, pf2eStatesC, pf2eStatesD, sf2eA, sf2eB, sf2eC, dnd5eSpellsA, dnd5eSpellsB, dnd5eFeaturesA, dnd5eFeaturesB, dnd5eItemsWeaponsA, dnd5eItemsWeaponsB, dnd5eItemsWeaponsC, pf2eNpcAbilities, pf2eActionsA, pf2eActionsB, pf2eFeatures, conditions));
+export const BESPOKE = Object.freeze(Object.assign({}, pf2eSpellsA, pf2eSpellsB, pf2eSpellsC, pf2eSpellsD, pf2eFeatsA, pf2eFeatsB, pf2eFeatsC, pf2eFeatsD, pf2eFeatsE, pf2eWeaponsA, pf2eWeaponsB, pf2eStatesA, pf2eStatesB, pf2eStatesC, pf2eStatesD, sf2eA, sf2eB, sf2eC, dnd5eSpellsA, dnd5eSpellsB, dnd5eFeaturesA, dnd5eFeaturesB, dnd5eItemsWeaponsA, dnd5eItemsWeaponsB, dnd5eItemsWeaponsC, pf2eNpcAbilities, pf2eNpcReviewedA, pf2eNpcReviewedB, pf2eNpcReviewedC, pf2eActionsA, pf2eActionsB, pf2eFeatures, conditions));

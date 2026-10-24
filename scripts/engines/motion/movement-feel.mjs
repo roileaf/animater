@@ -306,7 +306,8 @@ export function particleState(p, age) {
   if (age < p.delay) return { x: p.x, y: p.y, scale: 1, alpha: 0, rotation: turn };
   const t = (age - p.delay) / p.life, ease = 1 - (1 - t) * (1 - t);
   // A hopper travels (and tumbles) only until it lands; everything else slows to a stop over its life.
-  const u = p.hop ? Math.min(1, t / LAND) : t, travel = 1 - (1 - u) * (1 - u), seconds = (p.life * travel) / 1000;
+    const motionLife=p.motionLife??p.life,motionT=Math.min(1,(age-p.delay)/motionLife);
+    const u = p.hop ? Math.min(1, motionT / LAND) : motionT, travel = 1 - (1 - u) * (1 - u), seconds = (motionLife * travel) / 1000;
   const lift = p.hop ? p.hop * 4 * u * (1 - u) : 0;
   const fade = p.hold ? Math.max(0, (t - p.hold) / (1 - p.hold)) : t;
   let alpha = p.alpha * Math.pow(1 - fade, 1.5);
@@ -483,7 +484,7 @@ export const BODY_STEP_FILES = Object.freeze({
 });
 // Each body's share of the step's level, and whether it replaces the step.
 const BODY_LAYER = Object.freeze({
-  bone: { gain: 0.6 }, metal: { gain: 0.55 }, stone: { gain: 0.55 }, plant: { gain: 0.5 }, foliage: { gain: 0.5 },
+  bone: { gain: 0.6 }, metal: { gain: 0.55 }, stone: { gain: 0.55 }, plant: { gain: 0.5 }, foliage: { gain: 0.32 },
   water: { gain: 1, replaces: true }, fire: { gain: 1, replaces: true }, air: { gain: 0.9, replaces: true },
 });
 // Where each layered recording hits hardest (ms, measured): a layer lands its peak on the step's peak, as the thud does
@@ -773,6 +774,32 @@ export function swimWake(at, { grid = 100, width = grid } = {}) {
       radius: Math.max(grid * 0.25, width * 0.35), rotation: arm, alpha: L.alpha, delay: 0, life: L.life, spin: 0, grow: 0.6, side };
   });
 }
+// Depth is relative to the viewed level, not absolute world elevation. Swimming
+// below water (or explicit Swim on an underwater map) is never burrowing.
+export function movementEnvironment(token, floor) {
+  const relative = Number(token.elevation ?? 0) - Number(token.base ?? 0);
+  const below = Number.isFinite(relative) && relative < 0;
+  const action = String(token.action ?? '').toLowerCase();
+  const swimming = action === 'swim' || (below && floor === 'water' && action !== 'burrow');
+  return { relative, swimming, submerged: swimming && below, underground: below && !swimming };
+}
+export function surfaceSplash(at, {seed='',grid=100,width=grid}={}) {
+  const random=rng(`${seed}:surface`),size=grid*Math.sqrt(clamp(width/grid,.5,6));
+  const common={x:at.x,y:at.y,rotation:0,spin:0,surfaceSplash:true};
+  const rings=Array.from({length:3},(_,i)=>({...common,kind:'ring',color:0xe1f8ff,vx:0,vy:0,radius:width*.45+size*.1,alpha:.85-i*.12,life:1400,delay:i*100,grow:1.8+i*.35}));
+  const drops=Array.from({length:24},(_,i)=>{const angle=i*Math.PI*2/24+random()*.12,speed=size*(.4+random()*.5);return {...common,kind:'drop',color:0xe1f8ff,x:at.x+Math.cos(angle)*width*.4,y:at.y+Math.sin(angle)*width*.3,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed*.65,radius:size*(.035+random()*.035),alpha:.9,life:850+random()*350,delay:random()*70,grow:-.4,hop:size*(.25+random()*.3)};});
+  return [...rings,...drops];
+}
+
+export function underwaterBubbles(at, { seed = '', grid = 100, width = grid } = {}) {
+  const random = rng(`${seed}:${at.index ?? 0}:bubbles`), heading = at.heading ?? 0;
+  const size=grid*Math.sqrt(clamp(width/grid,.5,6));
+  return Array.from({length:5},()=>({kind:'ring',color:0xe1f8ff,
+    x:at.x+(random()-.5)*width*.3,y:at.y+(random()-.5)*width*.3,
+    vx:-Math.cos(heading)*grid*.05,vy:-Math.sin(heading)*grid*.05-grid*.07,
+    radius:size*(.065+random()*.045),alpha:.8,life:1800,delay:Math.round(random()*160),
+    rotation:0,spin:0,grow:.8,underwater:true}));
+}
 
 // A token that has not moved for this long has stopped (a jump lands).
 export const STOP_MS = 150;
@@ -807,10 +834,29 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, holes = () => true, trails = null }) {
+export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null }) {
   // `trails` (ground-trails.mjs createGroundTrails): what each stride also leaves (carried prints, blood, weather).
   const capOf = typeof cap === 'function' ? cap : () => cap;
   const printCapOf = typeof printCap === 'function' ? printCap : () => printCap;
+  // Milliseconds until fully faded, by the ground the track was left on.
+  // Zero keeps its native lifetime. Cache each ground once per rendered frame.
+  const printLifetimeOf = typeof printLifetime === 'function' ? printLifetime : () => printLifetime;
+  const footprintLives = new Map();
+  const trailLives = new Map();
+  const trailLife = kind => {
+    if (!trailLives.has(kind)) {
+      const n = Number(trailLifetime(kind));
+      trailLives.set(kind,Number.isFinite(n)&&n>0?clamp(n,100,3600000):0);
+    }
+    return trailLives.get(kind);
+  };
+  const footprintLife = floor => {
+    if (!footprintLives.has(floor)) {
+      const requested = Number(printLifetimeOf(floor));
+      footprintLives.set(floor, Number.isFinite(requested) && requested > 0 ? clamp(requested, 1000, 3600000) : 0);
+    }
+    return footprintLives.get(floor);
+  };
   let tracker = null, trackerGrid = 0, known = new Set();
   const particles = new Set(), prints = new Set(), shadows = new Map();
   const drop = (particle) => {
@@ -837,17 +883,21 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
   // Each token's movement: where it was, when it last moved, whether it is moving and how (a jump whooshes once as it
   // leaves the ground and lands when it stops).
   const moves = new Map();
-  const lay = (specs, time) => {
+  const lay = (specs, time, floor, trailKind = null) => {
     const limit = capOf(), printLimit = printCapOf();
-    for (const spec of specs) {
+    for (let spec of specs) {
       // Grooves, smears and a burrower's churned earth last as long as prints and share their budget.
       const print = spec.kind === 'print' || spec.kind === 'groove' || spec.lasting === true;
       if (print) {
         if (!(printLimit > 0)) continue;
         while (prints.size >= printLimit) drop(prints.values().next().value);
       } else if (particles.size - prints.size >= limit) continue;
+      const footprint = ['print','groove','trample'].includes(spec.kind);
+      const nativeLife = footprint || trailKind ? spec.life : null;
+      const life = trailKind ? trailLife(trailKind) : footprint ? footprintLife(floor) : 0;
+      if (life) spec = { ...spec, life, motionLife:nativeLife };
       const handle = layer.addParticle(spec);
-      const particle = { spec, handle, born: time };
+      const particle = { spec, handle, born: time, nativeLife, floor, trailKind };
       particles.add(particle);
       if (print) prints.add(particle);
     }
@@ -864,12 +914,21 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
     // A burrower churns the earth instead of stepping on it; a swimmer leaves a wake on water; a jumper marks nothing
     // until it lands; everything else (walk, climb, crawl) marks its floor as a walker does.
     let specs;
-    if (kind === 'burrow') specs = burrowTrail(feet, opts);
-    else if (kind === 'swim' && floor === 'water') specs = swimWake(at, opts);
+    const medium=movementEnvironment(token,floor);
+    let trailKind=null;
+    if (kind === 'burrow') {
+      const raw = Number(burrowDepth()), cutoff=Number.isFinite(raw)?Math.min(0,raw):-10;
+      specs = medium.underground && medium.relative <= cutoff ? [] : burrowTrail(feet, opts);
+      trailKind='burrow';
+    }
+    else if (kind === 'swim') { trailKind=medium.submerged?'underwater':'swim';specs=medium.submerged?underwaterBubbles(at,opts):swimWake(at,opts); }
     else if (kind === 'jump') specs = [];
     else specs = puffsFor(floor, feet, opts);
-    if (trails) { try { specs = [...specs, ...(trails.marks(token, feet, floor, opts, kind) ?? [])]; } catch { /* optional */ } }
-    if (token.visible) lay(specs, time);
+    if (trails) { try {
+      if(trailKind)trails.forget?.(token.id);
+      else specs = [...specs, ...(trails.marks(token, feet, floor, opts, kind) ?? [])];
+    } catch { /* optional */ } }
+    if (token.visible) lay(specs, time, floor, trailKind);
     move.index = at.index ?? 0; move.heading = at.heading ?? 0;
     if (kind !== 'jump') sound(floor, feet, token, kind);
     else if (!move.whoosh) { move.whoosh = true; sound(floor, feet, token, 'jump'); }
@@ -878,13 +937,15 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
   const land = (token, point, time, size, rate, move) => {
     const at = { x: point.x, y: point.y, heading: move.heading ?? 0, index: (move.index ?? 0) + 1 }, feet = feetOf(token, at);
     const floor = floorOf(feet, token);
-    if (token.visible) lay(puffsFor(floor, feet, { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots' }), time);
+    if (token.visible) lay(puffsFor(floor, feet, { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots' }), time, floor);
     sound(floor, feet, token, 'land');
   };
   const tick = () => {
     const rate = enabled() ? density() : 0;
     if (!(rate > 0)) { if (particles.size || shadows.size || known.size) clear(); return; }
     const size = grid() || 100, time = now();
+    footprintLives.clear();
+    trailLives.clear();
     if (!tracker || trackerGrid !== size) { tracker = createStrideTracker({ stride: STRIDE * size, maxJump: 3 * size }); trackerGrid = size; }
     const seen = new Set();
     for (const token of tokens() ?? []) {
@@ -893,10 +954,11 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
         id = token.id;
         const point = { x: token.x, y: token.y };
         seen.add(id);
-        // Below its level's floor it is underground: it burrows, whatever its movement action says.
-        const under = Number(token.elevation) < Number(token.base ?? 0);
-        const flying = !under && isFlying(token);
-        const kind = under ? (token.gait === 'none' ? null : 'burrow') : movementSound(token.action, { gait: token.gait, statuses: token.statuses, flight: token.flight });
+        const below=Number(token.elevation)<Number(token.base??0);
+        const medium=movementEnvironment(token,token.floor??(below?floorOf(point,token):null));
+        const under = medium.underground;
+        const flying = !under && !medium.swimming && isFlying(token);
+        const kind = token.gait === 'none' ? null : under ? 'burrow' : medium.swimming ? 'swim' : movementSound(token.action, { gait: token.gait, statuses: token.statuses, flight: token.flight });
         // Seen or heard here (perceive): a creature only heard still steps, but leaves nothing to see.
         const present = token.visible || hears(token);
         if (!present || token.skip || kind === null) tracker.reset(id, point);
@@ -909,6 +971,10 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
           const heading = move.heading ?? Math.atan2(point.y - move.y, point.x - move.x);
           lay(burrowHole({ x: point.x, y: point.y, heading }, { seed: token.id, grid: size, width: token.width || size, exit: !under }), time);
         }
+        if(move.submerged===true&&!medium.submerged&&medium.relative>=0&&token.visible) {
+          lay(surfaceSplash(point,{seed:id,grid:size,width:token.width||size}),time,'water');
+        }
+        move.submerged=medium.submerged;
         move.under = under;
         if (Math.hypot(point.x - move.x, point.y - move.y) > 0.5) { move.last = time; move.moving = true; move.kind = kind; }
         else if (move.moving && time - move.last >= STOP_MS) {
@@ -938,6 +1004,10 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
     known = seen;
     for (const particle of [...particles]) {
       let state = null;
+      if (particle.nativeLife !== null) {
+        const life = (particle.trailKind ? trailLife(particle.trailKind) : footprintLife(particle.floor)) || particle.nativeLife;
+        if (particle.spec.life !== life) particle.spec = { ...particle.spec, life, motionLife:particle.nativeLife };
+      }
       try { state = particleState(particle.spec, time - particle.born); } catch { /* drop it */ }
       try {
         if (state) layer.updateParticle(particle.handle, state);

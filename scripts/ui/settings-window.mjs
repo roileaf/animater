@@ -36,7 +36,7 @@ export const SETTINGS_TABS = Object.freeze([
   { id: "floor", label: "Floor & world", icon: "fa-solid fa-mountain-sun", rows: [
     { world: "groundMarks", local: "groundMarksLocal", extras: ["groundMarkMinutes"] },
     { world: "elementReactions", local: "elementReactionsLocal" },
-    { world: "movementFeel", local: "movementFeelLocal", extras: ["movementStealth", "burrowHoles", "burrowSink", "trackedPrints", "bloodTrail", "weatherOnGround", "walkedPathHighlight"] },
+    { world: "movementFeel", local: "movementFeelLocal", extras: ["movementFootprintSandSeconds", "movementFootprintMudSeconds", "movementFootprintSnowSeconds", "movementFootprintDirtSeconds", "movementFootprintGrassSeconds", "movementFootprintStoneSeconds", "movementFootprintWoodSeconds", "movementFootprintWaterSeconds", "movementFootprintIceSeconds", "swimWakeSeconds", "underwaterBubbleSeconds", "underwaterLooks", "underwaterOpacity", "burrowTrailSeconds", "burrowTrailDepth", "movementStealth", "burrowHoles", "burrowSink", "trackedPrints", "bloodTrail", "weatherOnGround", "walkedPathHighlight"] },
     { local: "movementGmPerception", gmOnly: true },
     { world: "quietSneaking" },
     { world: "projectileWalls" },
@@ -51,7 +51,6 @@ export const SETTINGS_TABS = Object.freeze([
   ] },
   { id: "drama", label: "Combat drama", icon: "fa-solid fa-bolt", rows: [
     { world: "momentum" },
-    { world: "combatRecap", local: "combatRecapLocal" },
     { local: "flashTrackerMenus", gmOnly: true },
     { world: "hidePrivateResults" },
     { local: "waitForDice", when: MODULE("dice-so-nice") },

@@ -22,7 +22,7 @@ test('creatureBody: PF2e traits', () => {
   assert.equal(creatureBody(pf2(['construct'], 'Animated Armor')), 'metal');
   assert.equal(creatureBody(pf2(['construct'], 'Animated Broom')), null, 'a construct of no stated material');
   assert.equal(creatureBody(pf2(['plant'], 'Arboreal Warden')), 'plant');
-  assert.equal(creatureBody(pf2(['leshy', 'plant'], 'Gourd Leshy')), 'plant');
+  assert.equal(creatureBody(pf2(['leshy', 'plant'], 'Gourd Leshy')), 'foliage');
   assert.equal(creatureBody(pf2(['fungus', 'plant'], 'Myconid Sovereign')), null, 'fungi do not rustle');
   assert.equal(creatureBody(pf2(['humanoid', 'human'], 'Guard')), null);
   assert.equal(creatureBody(pf2(['undead', 'zombie'], 'Zombie Shambler')), null, 'flesh undead have no bone body');
@@ -52,6 +52,16 @@ test('creatureBody: D&D 5e types and names', () => {
   assert.equal(creatureBody(dnd('giant', 'Stone Giant')), null, 'a stone giant is flesh');
   assert.equal(creatureBody(dnd('fiend', 'Bone Devil')), null, 'a bone devil is not a skeleton');
   assert.equal(creatureBody(dnd('humanoid', 'Bandit')), null);
+});
+
+test('plants and vegetables use soft rustling; creaks require an explicitly woody body',()=>{
+ const soft=['Gourd Leshy','Root Leshy','Cabbage Leshy','Carrot Leshy','Pumpkin Leshy','Fruit Leshy','Cactus Leshy','Leaf Leshy','Vine Leshy','Leshy','Awakened Shrub','Shambling Mound'];
+ for(const name of soft){
+  for(const system of ['pf2e','sf2e']){const body=creatureBody({system,name,actor:{name,system:{traits:{value:['plant','leshy']}}}});assert.equal(body,'foliage',`${system} ${name}`);assert.ok(bodyStep(body,0).file.includes('foliage-'));}
+  assert.equal(creatureBody(dnd('plant',name)),'foliage',name);
+ }
+ for(const name of ['Treant','Arboreal Warden','Arboreal Regent','Awakened Tree','Wood Golem','Twig Blight','Needle Blight'])assert.equal(creatureBody(pf2(['plant'],name)),'plant',name);
+ assert.equal(creatureBody(pf2(['plant'],'Unknown')),'foliage','unnamed plant defaults to soft movement');
 });
 
 test('creatureBody: names alone (Daggerheart, unknown systems), first match wins', () => {

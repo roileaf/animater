@@ -50,6 +50,7 @@ import {
 } from "../catalogs/pf2e/feats/feat-catalog.mjs";
 import { featCatalogHTML, ABILITY_PAGE_PROFILES, abilityProfileForPage, abilityProfileForKey, defaultAbilityFilters } from "./feat-catalog-ui.mjs";
 import { NPC_PAGE, npcAbilityCatalogHTML, npcAbilityPageRecipe, npcAbilityAction, npcAbilitySearch } from "./npc-ability-ui.mjs";
+import {CreatureShowcaseUI,SHOWCASE_PAGE} from './creature-showcase-ui.mjs';
 import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel, groupNowPlaying } from "./activity-actions.mjs";
 import { PF2E_WEAPONS, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState, useCatalogWeapon, weaponCustomizationKey } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { weaponCatalogHTML } from "./weapon-catalog-ui.mjs";
@@ -199,9 +200,10 @@ export class Workspace {
   reveal({ recipeId, page, name = "", id } = {}) {
     const fresh = (filters) => ({ ...Object.fromEntries(Object.keys(filters ?? {}).map((k) => [k, "all"])), search: name });
     if (recipeId) { this.page = this.host?.recipes?.().find((r) => r.id === recipeId)?.finisher ? "finishers" : "recipes"; this.selected = recipeId; this.studio = true; this.studioTime = 0; this.stageIndex = 0; this.search = ""; this.category = "All"; return true; }
-    const pages = ["spells", "feats", "actions", "features", "weapons", "items", "conditions", "effects"];
+    const pages = ["spells", "feats", "actions", "features", "weapons", "items", "conditions", "effects", NPC_PAGE];
     if (!pages.includes(page)) return false;
     this.page = page; this.studio = false; this.message = "";
+    if (page === NPC_PAGE) { this.npcFilters = {search:name,offset:0}; this.selectedNpcAbility = id; this.stageIndex = 0; return true; }
     if (this.dndCatalog?.isCatalogPage()) {
       const kind = this.dndCatalog.kind;
       this.dndCatalog.filters[kind] = { search: name, edition: "all", level: "all", theme: "all" };
@@ -479,6 +481,7 @@ export class Workspace {
     this.render();
   }
   destroy() {
+    this.creatureShowcase?.destroy();
     clearInterval(this.activityTimer);
     void this.mediaLibrary?.stopTokenPreview();
     this.stopEditorPreview();
@@ -670,7 +673,7 @@ export class Workspace {
       // The caption names the system, so the items need not repeat it ("Spells", not "PF2e spells").
       group(`LIBRARY${systemCaption(env)}`, [...catalogNavigation(env).map(shortNav), ["assets", "▦", "Assets"]]),
       ...(borrowedNavigation(env).length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowedNavigation(env).map(shortNav))] : []),
-      group("TOOLS", [["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
+      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
     ].join("");
   }
   // The PF2e catalog page on screen: the page itself in a PF2e world, a borrowed pf2e-* page in an SF2e one.
@@ -690,6 +693,8 @@ export class Workspace {
     this.messageFade?.unref?.();
   }
   renderPage() {
+    this.creatureShowcase?.suspend();
+    if(this.page===SHOWCASE_PAGE&&(!this.host.creatureShowcase||this.host.playerMode))this.page='recipes';
     if(this.page!=='assets'||this.mediaLibrary?.fxScene)void this.mediaLibrary?.stopTokenPreview();
     if(!catalogPageAllowed(this.page,this.host.environment()))this.page='recipes';
     if (abilityProfileForPage(this.pf2ePage())&&!this.dndCatalog?.isCatalogPage()) {
@@ -750,7 +755,7 @@ export class Workspace {
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
-        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
+        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
       </main>${this.pendingImport !== null ? this.importHTML() : ""}${this.newChooser ? this.newChooserHTML() : ""}</div>`,
     );
     this.root.querySelectorAll("details[data-options-group]").forEach((e) => {
@@ -1978,7 +1983,7 @@ export class Workspace {
     // Nothing plays automatically: the page says so, instead of just staying empty.
     // (GM only: a player's catalog animations are played by the GM's client.)
     const off = !this.host.playerMode && this.host.acceptsEvents && !this.host.acceptsEvents() ? `<div class="an-activity-banner" role="status"><b>Nothing plays automatically right now.</b><span>Turn on a catalog's Plug &amp; play, or turn on Play my own recipes automatically in Setup.</span><button type="button" data-action="page" data-page="setup">Open Setup</button></div>` : "";
-    return `<div class="an-activity">${off}<div class="an-info">Why did it play, or not?<p>Every automatic event on this screen is listed here as it happens: what played, or why nothing did and what to do about it. Each player sees their own casts on their own Activity page. The list keeps the last 40 events, even after a reload.</p></div><section class="an-activity-section" data-activity="now"><div class="an-activity-head"><h3>Now playing</h3>${this.host.playRecap ? `<button type="button" class="an-activity-recap" data-action="play-recap" data-tooltip="Replay the last combat's recap reel on your screen"><i class="fa-solid fa-trophy"></i> Play recap</button>` : ""}</div>${nowRows}</section><section class="an-activity-section" data-activity="history"><div class="an-activity-head"><h3>History</h3>${chips}</div>${history}</section></div>`;
+    return `<div class="an-activity">${off}<div class="an-info">Why did it play, or not?<p>Every automatic event on this screen is listed here as it happens: what played, or why nothing did and what to do about it. Each player sees their own casts on their own Activity page. The list keeps the last 40 events, even after a reload.</p></div><section class="an-activity-section" data-activity="now"><div class="an-activity-head"><h3>Now playing</h3></div>${nowRows}</section><section class="an-activity-section" data-activity="history"><div class="an-activity-head"><h3>History</h3>${chips}</div>${history}</section></div>`;
   }
   // The Activity row a button acts on: a Now playing entry (data-entry) or a History entry (data-index).
   activityRow(b) {
@@ -1987,10 +1992,6 @@ export class Workspace {
     return l ? { ...l, name: l.recipe } : null;
   }
   async activityAction(action, b) {
-    if (action === "play-recap") {
-      if ((await this.host.playRecap?.()) === false) { this.message = "No combat recap yet."; this.render(); }
-      return true;
-    }
     if (action === "activity-stop-group") {
       const rows = String(b.dataset.entries ?? "").split(" ").map((id) => this.nowPlaying().find((r) => r.id === id)).filter(Boolean);
       for (const row of rows) await this.host.stopAnimation?.(row);
@@ -2100,6 +2101,7 @@ export class Workspace {
     if (t.dataset.field) this.updateField(t);
   }
   onChange(e) {
+    if(this.creatureShowcase?.change(e.target))return;
     if(this.mediaLibrary?.change(e.target))return;
     if(this.flashEditor?.change(e.target))return;
     // The guided tour's practice finisher (listed while a tour runs) is never stored as the default
@@ -2620,6 +2622,7 @@ export class Workspace {
         this.render(); return;
       }
       if (await this.abilityAction(action, b)) return;
+      if (this.page===SHOWCASE_PAGE && await this.creatureShowcase?.action(action,b)) return;
       if (await npcAbilityAction(this, action, b)) return;
       if (action === "select-spell") {
         if (this.selectedSpell === b.dataset.id) return;

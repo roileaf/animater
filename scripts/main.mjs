@@ -1,9 +1,12 @@
 import { frameSettings } from './core/frame-settings.mjs';
 import { uuid } from "./core/uuid.mjs";
+import * as npcAbilities from './catalogs/pf2e/npc-abilities.mjs';
+import * as sfNpcAbilities from './catalogs/sf2e/sf2e-npc-actions.mjs';
+import * as dndNpcAbilities from './catalogs/dnd5e/dnd5e-npc-actions.mjs';
+import {createCreatureShowcaseTools} from './integrations/creature-showcase.mjs';
 import { setHidePrivateResults } from "./core/privacy.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
 import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
-import { registerRecapSettings, combatRecaps, recapHere } from "./engines/flash/recap-table.mjs";
 import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
@@ -16,10 +19,11 @@ import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive } from "./engines/motion/movement-feel.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
+import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
 import { creatureGait, creatureBulk, creatureBody, creatureFlight } from "./engines/motion/creature-gait.mjs";
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
-import { movementSound } from "./engines/motion/movement-feel.mjs";
+import { movementSound, movementEnvironment } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bleedsBlood, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
 import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
@@ -156,7 +160,7 @@ const localQuality=()=>{try{return hotSetting('quality');}catch{return 'full';}}
 // Mirror this client's choice so the client that starts an animation can route optional layers.
 const syncQuality=()=>{const value=localQuality(),user=game.user;if(typeof user?.getFlag==='function'&&typeof user.setFlag==='function'&&user.getFlag('animater','quality')!==value)void Promise.resolve(user.setFlag('animater','quality',value)).catch(()=>{});};
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
-let runtime, app;
+let runtime, app, showcaseTools;
 registerTriggerEngine();
 const mediaLibraryLoader=new MediaLibraryLoader(()=>({modules:game.modules,database:globalThis.Sequencer?.Database,
   folderSources:libraryPreferences(hotSetting('mediaLibrary')).sources,
@@ -165,9 +169,6 @@ let motions;
 let optionalFx;
 let persistentStates;
 let flash;
-// Combat recap (recap-table.mjs), set up at ready. Replays the last combat's Highlights.
-let recap = null;
-const playRecapApi = ({ everyone = false } = {}) => recap?.play({ everyone }) ?? false;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
@@ -610,7 +611,8 @@ const movementFeelFloor = (point, token) => {
     background: canvas.level?.background?.src ?? "",
   });
   const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: doc.flags?.[ID]?.floor, doc }));
-  return floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation: token?.elevation ?? 0 }) });
+  const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
+  return floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
 };
 // The scene's weather (engines/motion/ground-trails.mjs sceneWeather): Foundry's own scene weather, else FXMaster's
 // rain or snow; none inside a region with a Suppress Weather behavior (a roof, a cave).
@@ -654,9 +656,14 @@ const movementFeelBlood = (d) => {
 // Native document/perception hooks invalidate immediately, with a short fallback
 // lifetime for integrations that change actor data without emitting a hook.
 const movementViews = new Map();
-for (const hook of ['canvasReady', 'canvasTearDown', 'updateActor', 'createItem', 'updateItem', 'deleteItem', 'sightRefresh', 'controlToken', 'clientSettingChanged', 'updateSetting'])
+for (const hook of ['canvasReady', 'canvasTearDown', 'updateActor', 'createItem', 'updateItem', 'deleteItem', 'sightRefresh', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel'])
   Hooks.on(hook, () => movementViews.clear());
 for (const hook of ['updateToken', 'deleteToken']) Hooks.on(hook, doc => movementViews.delete(doc.id));
+const FOOTPRINT_LIFETIME_KEYS = {
+  sand:'movementFootprintSandSeconds',mud:'movementFootprintMudSeconds',snow:'movementFootprintSnowSeconds',
+  dirt:'movementFootprintDirtSeconds',grass:'movementFootprintGrassSeconds',stone:'movementFootprintStoneSeconds',
+  wood:'movementFootprintWoodSeconds',water:'movementFootprintWaterSeconds',ice:'movementFootprintIceSeconds',
+};
 const movementFeel = createMovementFeel({
   trails: groundTrails,
   enabled: () => movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal"),
@@ -667,6 +674,9 @@ const movementFeel = createMovementFeel({
   cap: () => (localQuality() === "low" ? 60 : 120),
   // Footprints last long and have their own budget, so a trail never holds back the dust.
   printCap: () => (localQuality() === "low" ? 40 : 80),
+  printLifetime: floor => Number(hotSetting(FOOTPRINT_LIFETIME_KEYS[floor]) ?? 0) * 1000,
+  trailLifetime: kind => Number(hotSetting({swim:'swimWakeSeconds',underwater:'underwaterBubbleSeconds',burrow:'burrowTrailSeconds'}[kind])??0)*1000,
+  burrowDepth: () => Number(hotSetting('burrowTrailDepth')??-10),
   grid: () => canvas?.grid?.size ?? 100,
   distance: () => canvas?.dimensions?.distance ?? 5,
   now: () => performance.now(),
@@ -691,6 +701,7 @@ const movementFeel = createMovementFeel({
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       const view = {
         id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action: d.movementAction,
+        ...((d.elevation??0)<base?{floor:movementFeelFloor(c,d)}:{}),
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
         ...movementFeelBlood(d),
@@ -867,6 +878,8 @@ Hooks.on("canvasTearDown", clearMovementFeel);
 // on each refresh (Token#_refreshState, #_refreshMesh, PlaceableObject#_refreshVisibility), and the refreshToken hook
 // runs right after those, so the pose is laid on there and, while it moves, every frame after Foundry's own updates.
 const burrowSink = createBurrowSink({ now: () => performance.now(), duration: 350 });
+const waterSink = createBurrowSink({now:()=>performance.now(),duration:450});
+const waterTints=new Map();
 const sinkPoses = new Map(); // token -> poseMesh record
 const sinkSeen = new Set(); // token ids already judged on this canvas (one already under on load starts down)
 const sinkMoving = new Set(); // token ids part-way down or up last frame
@@ -874,9 +887,10 @@ let sinkDirty = true, sinkLevel;
 const sinkPending = new Set();
 const dirtySink = token => { if (token?.id) sinkPending.add(token.id); else sinkDirty = true; };
 for (const hook of ['createToken', 'updateToken']) Hooks.on(hook, dirtySink);
-for (const hook of ['canvasReady', 'controlToken', 'clientSettingChanged', 'updateSetting']) Hooks.on(hook, () => { sinkDirty = true; });
+for (const hook of ['canvasReady', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel']) Hooks.on(hook, () => { sinkDirty = true; });
 let sinkTicker = null;
 const burrowSinkOn = () => movementFeelSettingOn("burrowSink");
+const underwaterLooksOn=()=>movementFeelSettingOn('underwaterLooks')&&movementFeelSettingOn('movementFeel')&&movementFeelSettingOn('movementFeelLocal');
 const sinkViewer = (token) => ({ owner: token.isOwner === true, gm: game.user?.isGM === true });
 const unhideSunk = (token) => {
   if (!sunkHidden.has(token)) return;
@@ -900,17 +914,21 @@ const applyBurrowSink = (token, flags) => {
   unhideSunk(token);
   // Another animation (an Animater motion, a prone or idle body) owning the scale keeps it; the fade still applies.
   const busy = motions?.active?.has?.(token) === true || conditionBody?.moves?.(token) === true;
-  const record = poseMesh(mesh, burrowSink.pose(d.id, viewer), sinkPoses.get(token), { scale: !busy });
+  const waterDepth=waterSink.depth(d.id),water=underwaterPose(waterDepth,hotSetting('underwaterOpacity')??.35);
+  const pose=burrowSink.pose(d.id,viewer);pose.alpha*=water.alpha;
+  const tint=underwaterTint(mesh,waterDepth,waterTints.get(token));if(tint)waterTints.set(token,tint);else waterTints.delete(token);
+  const record = poseMesh(mesh, pose, sinkPoses.get(token), { scale: !busy });
   if (record) sinkPoses.set(token, record); else sinkPoses.delete(token);
 };
 const restoreBurrowSink = (token) => {
   unhideSunk(token);
   const record = sinkPoses.get(token);
+  underwaterTint(token?.mesh,0,waterTints.get(token));waterTints.delete(token);
   sinkPoses.delete(token);
   if (record && token?.mesh && !token.mesh.destroyed) poseMesh(token.mesh, { alpha: 1, scale: 1 }, record);
 };
 const clearBurrowSink = () => {
-  for (const token of new Set([...sunkHidden.keys(), ...sinkPoses.keys()])) restoreBurrowSink(token);
+  for (const token of new Set([...sunkHidden.keys(), ...sinkPoses.keys(),...waterTints.keys()])) restoreBurrowSink(token);
   sunkHidden.clear();
   sinkPoses.clear();
   sinkSeen.clear();
@@ -918,10 +936,12 @@ const clearBurrowSink = () => {
   sinkPending.clear();
   sinkDirty = true;
   burrowSink.clear();
+  waterSink.clear();
 };
 // Each frame: who is under the floor of the level on view, and the pose of any token part-way down or up.
 const tickBurrowSink = () => {
-  if (!burrowSinkOn()) return;
+  const burrowsOn=burrowSinkOn(),waterOn=underwaterLooksOn();
+  if (!burrowsOn&&!waterOn) {if(sinkPoses.size||waterTints.size)clearBurrowSink();return;}
   const placeables = canvas?.tokens?.placeables;
   if (!placeables?.length) return;
   const base = canvas.level?.elevation?.base ?? 0, level = canvas.level?.id;
@@ -934,26 +954,29 @@ const tickBurrowSink = () => {
     const d = t.document;
     if (!d || t.isPreview) continue;
     const onLevel = level === undefined || d.level === undefined || d.level === level;
-    const under = onLevel && (d.elevation ?? 0) < base;
+    const below = onLevel && (d.elevation ?? 0) < base;
+    const medium=below?movementEnvironment({elevation:d.elevation,base,action:d.movementAction},movementFeelFloor(t.center??d.getCenterPoint?.(),d)):null;
+    const under = burrowsOn&&medium?.underground===true;
     const first = !sinkSeen.has(d.id);
     if (first) sinkSeen.add(d.id);
     const turned = burrowSink.update(d.id, under, { instant: first });
-    const moving = burrowSink.moving(d.id), was = sinkMoving.has(d.id);
+    const waterTurned=waterSink.update(d.id,waterOn&&medium?.submerged===true,{instant:first});
+    const moving = burrowSink.moving(d.id)||waterSink.moving(d.id), was = sinkMoving.has(d.id);
     // At the first instant depth can still be exactly zero. Keep a newly
     // started transition scheduled until the following frame advances it.
-    if (moving || turned) sinkMoving.add(d.id); else sinkMoving.delete(d.id);
+    if (moving || turned||waterTurned) sinkMoving.add(d.id); else sinkMoving.delete(d.id);
     // Part-way, or just finished (the last frame's pose, and the hiding once it is all the way down).
-    if (turned || moving || was || (first && under)) applyBurrowSink(t);
+    if (turned ||waterTurned|| moving || was ||waterSink.has(d.id)||waterTints.has(t)|| (first && under)) applyBurrowSink(t);
   }
 };
 Hooks.on("refreshToken", (token, flags) => {
   try {
-    if (!burrowSinkOn()) return;
+    if (!burrowSinkOn()&&!underwaterLooksOn()) return;
     dirtySink(token.document);
-    if (burrowSink.has(token.document?.id) || sunkHidden.has(token) || sinkPoses.has(token)) applyBurrowSink(token, flags);
+    if (burrowSink.has(token.document?.id)||waterSink.has(token.document?.id) || sunkHidden.has(token) || sinkPoses.has(token)) applyBurrowSink(token, flags);
   } catch { /* never break a token refresh */ }
 });
-Hooks.on("destroyToken", (token) => { const id=token.document?.id;sunkHidden.delete(token);sinkPoses.delete(token);sinkSeen.delete(id);sinkMoving.delete(id);sinkPending.delete(id);burrowSink.delete(id); });
+Hooks.on("destroyToken", (token) => { const id=token.document?.id;sunkHidden.delete(token);sinkPoses.delete(token);waterTints.delete(token);sinkSeen.delete(id);sinkMoving.delete(id);sinkPending.delete(id);burrowSink.delete(id);waterSink.delete(id); });
 Hooks.on("canvasReady", () => {
   const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
   if (!ticker || !P || sinkTicker === ticker) return;
@@ -1740,18 +1763,27 @@ function receiveActivityStop(data, senderId) {
   if (!game.users.get(senderId ?? data.userId)?.isGM) return;
   void persistentStates?.stop(data.key);
 }
-// An item sheet's Animater button: your own recipe for it in the Studio, else its catalog entry.
+// Action sheets open the owner's catalog; other items keep their direct custom
+// recipe shortcut, or their normal spell/weapon/effect catalog.
 async function openForItem(item) {
   if (!game.user.isGM || !item) return;
+  const action = ['pf2e','sf2e'].includes(game.system.id) && item.type === 'action';
+  const npcAction = item.actor?.type === 'npc' && (action || game.system.id==='dnd5e' && item.type==='feat');
   let recipe = null;
-  try { recipe = resolveEvent({ type: "use", item, actor: item.actor, systemId: game.system.id }); } catch {}
+  if (!action && !npcAction) try { recipe = resolveEvent({ type: "use", item, actor: item.actor, systemId: game.system.id }); } catch {}
   const saved = recipe && recipes().find((r) => r.id === recipe.id);
   await open();
   const w = app?.workspace;
   if (!w) return;
   // An NPC's "Slow (2/day)" is the catalog's "Slow".
-  const entry = saved ? null : catalogEntryFor(item);
-  if (!w.reveal(saved ? { recipeId: saved.id } : { page: itemPage(item), name: entry?.name ?? item.name.replace(/\s*\([^)]*\)\s*$/, ""), id: entry?.id })) w.message = `No Animater catalog covers ${item.name}; make a recipe for it with + New recipe.`;
+  let entry = saved ? null : catalogEntryFor(item);
+  if (npcAction) {
+    const event = {type:'use',item,actor:item.actor,systemId:game.system.id};
+    entry = game.system.id==='dnd5e'?dndNpcAbilities.findDndNpcAction(event):game.system.id==='sf2e'?sfNpcAbilities.findSfNpcAction(event):npcAbilities.findNpcCatalogAction?.(event);
+    if (!entry && game.system.id!=='dnd5e') { const shared = npcAbilities.findNpcAbility?.(event); if (shared) entry = {id:shared.id,name:shared.names[0]}; }
+  }
+  const page = npcAction ? 'npc-abilities' : itemPage(item);
+  if (!w.reveal(saved ? { recipeId: saved.id } : { page, name: entry?.name ?? item.name.replace(/\s*\([^)]*\)\s*$/, ""), id: entry?.id })) w.message = `No Animater catalog covers ${item.name}; make a recipe for it with + New recipe.`;
   w.render();
 }
 // Teleport (recipes that ask for it): pick the spot on the canvas, then vanish and reappear.
@@ -2152,10 +2184,12 @@ function workspaceHost() {
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),
     weaponScale: () => Number(hotSetting("weaponScale")) || 1,
-    // The Activity page's Play recap: the last combat's Highlights, on this screen.
-    playRecap: () => playRecapApi({ everyone: false }),
     // Flash screens (GM): the library, defaults and playback for the editor page.
     ...(game.user.isGM ? {
+      creatureShowcase: tokenId=>showcaseTools.snapshot(tokenId),
+      previewCreatureMovement: tokenId=>showcaseTools.movement(tokenId),
+      playBossEntrance: (tokenId,options)=>showcaseTools.playBoss(tokenId,options),
+      stopBossEntrance: options=>{ app?.workspace?.creatureShowcase?.restoreBossWindow();return showcaseTools.stopBoss(options); },
       flashScreens: () => flash?.screens() ?? [],
       saveFlashScreens: (list) => flash.save(list),
       useEveryCatalog,
@@ -2387,7 +2421,7 @@ function workspaceHost() {
         gridDistance: canvas.scene?.grid?.distance ?? 5,
       };
     },
-    stop: () => runtime.stop(),
+    stop: () => { app?.workspace?.creatureShowcase?.stop();if(game.user.isGM)showcaseTools?.stopBoss();return runtime.stop(); },
     pickSound: (current, callback) =>
       new foundry.applications.apps.FilePicker.implementation({
         type: "audio",
@@ -2561,7 +2595,6 @@ Hooks.once("init", () => {
     onChange: () => persistentStates?.schedule(),
   });
   registerFlashSettings(ID);
-  registerRecapSettings(ID);
   registerSetting(DUALITY_ACCENT, {
     name: "Hope/Fear accent",
     hint: "Daggerheart: a duality roll with Hope adds a short gold glint on the roller's token, one with Fear a dark purple wisp, beside the item's own animation. Critical successes keep their own crit visuals.",
@@ -2652,7 +2685,7 @@ Hooks.once("init", () => {
   });
   registerSetting("movementFeel", {
     name: "Movement effects",
-    hint: "Moving tokens kick up dust on dirt, grass, sand and snow, ripple water and faintly scuff stone and wood; fliers cast a soft shadow on the ground. Set each scene's floor in its configuration. Drawn on each screen and never saved.",
+    hint: "Moving tokens kick up dust on dirt, grass, sand and snow, ripple water and faintly scuff stone and wood; fliers cast a soft shadow on the ground. Set each scene's floor in its configuration. Footprint lifetimes below are separate for each ground (0 = natural fading). Drawn on each screen and never saved.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) movementFeel.clear(); },
   });
@@ -2661,6 +2694,12 @@ Hooks.once("init", () => {
     hint: "Turn off to never draw movement dust, ripples or flier shadows on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) movementFeel.clear(); },
+  });
+  for (const [floor,key] of Object.entries(FOOTPRINT_LIFETIME_KEYS)) registerSetting(key, {
+    name: `${floor[0].toUpperCase()+floor.slice(1)} footprint lifetime (seconds)`,
+    hint: `Total time until footprints, creature grooves and flattened grass left on ${floor} fully fade, including carried wet/muddy/snowy prints on that ground. 0 keeps their natural lifetime (sand 6 seconds, mud 12, snow 20). Applies to existing and new tracks on every screen. Does not create tracks where none would normally appear. Dust, blood, water ripples and burrow holes keep their own timing; track limits still remove the oldest marks when full.`,
+    scope: 'world', config: true, type: Number, default: 0,
+    range: { min: 0, max: 3600, step: 1 },
   });
   registerSetting("walkedPathHighlight", {
     name: "Walked path highlight",
@@ -2685,6 +2724,17 @@ Hooks.once("init", () => {
     name: "Burrow holes",
     hint: "A burrowing creature leaves a hole where it goes under and a wider one where it comes up, with earth thrown out, lingering about 20 seconds.",
     scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting('burrowTrailDepth',{
+    name:'Hide burrow paths at relative elevation',
+    hint:'Burrowing at or below this elevation relative to the viewed level’s floor leaves no visible path. -10 hides paths 10 scene units below that floor; 0 hides every underground path. Entrance and exit holes still appear when the creature crosses the surface. Existing shallow trails fade normally.',
+    scope:'world',config:true,type:Number,default:-10,range:{min:-1000,max:0,step:1},
+  });
+  registerSetting('underwaterLooks',{name:'Submerged token appearance',hint:'Below the water surface, visible swimmers fade to a blue, translucent silhouette. Surfacing restores their original appearance. This changes artwork only, not Foundry visibility or detection.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>clearBurrowSink()});
+  registerSetting('underwaterOpacity',{name:'Submerged token opacity',hint:'How clearly a submerged creature’s artwork is drawn (0.35 = 35%). Applies equally to GM and player artwork, while Foundry still decides who can see the creature.',scope:'world',config:true,type:Number,default:.35,range:{min:.1,max:1,step:.05}});
+  for(const [key,name,natural] of [['swimWakeSeconds','Swimming wake lifetime',1.6],['underwaterBubbleSeconds','Underwater bubble lifetime',1.8],['burrowTrailSeconds','Burrow path lifetime',8]])registerSetting(key,{
+    name:`${name} (seconds)`,hint:`Time until fully faded. 0 keeps natural fading (${natural} seconds). Applies to existing and new effects. Burrow holes keep their own lifetime.`,
+    scope:'world',config:true,type:Number,default:0,range:{min:0,max:3600,step:.1},
   });
   registerSetting("burrowSink", {
     name: "Burrowed creatures sink out of sight",
@@ -2916,16 +2966,6 @@ Hooks.once("init", () => {
       return true;
     },
   });
-  game.keybindings.register(ID, "playRecap", {
-    name: "Play combat recap",
-    hint: "Replay the last combat's recap reel. A GM shows it on every screen when Combat recap is set to Everyone; anyone else sees it on their own. Esc skips it.",
-    editable: [],
-    restricted: false,
-    onDown: () => {
-      playRecapApi({ everyone: game.user.isGM && hotSetting("combatRecap") === "everyone" });
-      return true;
-    },
-  });
   game.keybindings.register(ID, "clearGroundMarks", {
     name: "Clear ground marks",
     hint: "Wipe every ground mark from the floor on all connected screens.",
@@ -2958,7 +2998,33 @@ function catalogSystemRecipe(event, saved, sounds) {
     // Borrowed catalogs are managed on their own pages, so each reads its own settings.
     resolve: (from, e) => twoeCatalogRecipe(from, e, saved, { customEnabled: enabled(), sounds, stateFor: (kind) => hotSetting(twoeSettingKey(from, kind)) }),
     knows: (e) => Boolean(catalogEntryFor(e.item) || saved.some((r) => matchRecipe([{ ...r, enabled: true }], e))) });
-  return sys==='dnd5e'?resolveDndAutomaticRecipe(event,kind=>hotSetting(dndSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,kind=>hotSetting(dhSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):matchRecipe(saved,event);
+  return sys==='dnd5e'?resolveDndAutomaticRecipe(event,kind=>hotSetting(dndSettingKey(kind)),saved,{customEnabled:enabled(),sounds,npcEnabled:hotSetting('npcAbilities')!==false,npcExcluded:hotSetting('npcAbilityExcluded')??[]}):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,kind=>hotSetting(dhSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):matchRecipe(saved,event);
+}
+// Read-only designs for the GM's choreography. Catalog on/off choices are not
+// changed; custom recipes (including paused ones) keep their native priority.
+function showcaseRecipe(event){
+  const sys=game.system.id,sounds=installedSoundCatalog(game.modules,globalThis.Sequencer?.Database);
+  const stateFor=kind=>{
+    if(kind==='npcAbility'||kind==='npcAbilityGuess')return true;
+    if(kind==='npcAbilityExcluded')return [];
+    const key=sys==='dnd5e'?dndSettingKey(kind):sys==='daggerheart'?dhSettingKey(kind):twoeSettingKey(sys,kind);
+    const state=key?hotSetting(key):{};
+    return {...state,enabled:true,scope:'all',selected:[],excluded:[],independent:true,preferCatalog:false};
+  };
+  const options={customEnabled:true,sounds};
+  return ['pf2e','sf2e'].includes(sys)?twoeCatalogRecipe(sys,event,recipes(),{...options,stateFor}):sys==='dnd5e'?resolveDndAutomaticRecipe(event,stateFor,recipes(),options):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,stateFor,recipes(),options):null;
+}
+function previewShowcaseMovement(tokenId){
+  if(!game.user.isGM)throw Error('Only a GM can preview NPC movement.');
+  const token=canvas?.ready?canvas.tokens.get(tokenId):null;if(!token)return ()=>{};
+  const doc=token.document,profile=resolveMovementSound({system:game.system.id,actor:token.actor,name:token.name},doc?.flags?.[ID]?.movementSound);
+  const bulk=creatureBulk({system:game.system.id,actor:token.actor,name:token.name}),kind=movementSound('walk',profile);
+  if(!kind||profile.sound.silent)return ()=>{};
+  const weight=stepWeight({size:bulk.size,squares:(token.w??100)/(canvas.grid.size||100),heavy:bulk.heavy});
+  const engine=createMovementPreview({playStep:({floor,at,token,kind,preview})=>movementFeel.previewStep(floor,at,{...token,preview},kind),stopTremor:id=>cameraShake.stopPreview(id)});
+  engine.start({count:4,gap:Math.min(700,Math.max(400,moveSoundGap(kind,weight,{gait:profile.gait}))),floor:movementFeelFloor(token.center,doc),kind,at:token.center,
+    token:{id:`showcase:${tokenId}`,width:token.w,elevation:doc?.elevation??0,bulk,...profile}});
+  return ()=>engine.stop();
 }
 // The recipe dispatch would play, or null. AA-customized items stay with AA.
 function resolveEvent(event) {
@@ -3255,7 +3321,7 @@ Hooks.once("ready", () => {
     trace:(status,detail)=>runtime?.trace(status,detail)});
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
-    if (data?.sender !== clientId) { receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); recap?.receive(data, senderId); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
+    if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
     void persistentStates?.clear();
@@ -3265,6 +3331,9 @@ Hooks.once("ready", () => {
     void optionalFx.stop();
     tokenFx.clear();
     void runtime?.stop();
+    showcaseTools?.clear();
+    app?.workspace?.creatureShowcase?.stop();
+    app?.workspace?.creatureShowcase?.restoreBossWindow();
     app?.workspace?.syncPreviewTokens({ clear: true });
   });
   const syncPreviewTokens = () => app?.workspace?.syncPreviewTokens();
@@ -3566,7 +3635,18 @@ Hooks.once("ready", () => {
     });
     persistentStates.schedule();
   }
+  showcaseTools=createCreatureShowcaseTools({
+    resolve:showcaseRecipe,
+    sounds:()=>installedSoundCatalog(game.modules,globalThis.Sequencer?.Database),
+    catalog:()=>runtime.getCatalog(),
+    trace:(status,detail)=>runtime.trace(status,detail),
+    quality:localQuality,canFocus:()=>!killCam.playing,clientId,
+    movement:previewShowcaseMovement,
+  });
   game.modules.get(ID).api = {
+    creatureShowcase:tokenId=>clone(showcaseTools.snapshot(tokenId)),
+    bossEntrance:(tokenId,options)=>showcaseTools.playBoss(tokenId,options),
+    stopBossEntrance:options=>{ app?.workspace?.creatureShowcase?.restoreBossWindow();return showcaseTools.stopBoss(options); },
     open,
     recipes,
     catalog: () => clone(runtime.getCatalog()),
@@ -3582,8 +3662,6 @@ Hooks.once("ready", () => {
     refreshPersistent: () => persistentStates?.reconcile(),
     // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
     clearGroundMarks: (options) => clearGroundMarksApi(options),
-    // Replays the last combat's Highlights: on this screen, or (GM, everyone: true) on every screen. False when there is none.
-    recap: ({ everyone = false } = {}) => playRecapApi({ everyone }),
     // GM only: share codes (one or several, or a list of them), export JSON, an export object or a recipe array,
     // checked and merged by id like the Import box. Returns { added, replaced, skipped }.
     importRecipes: async (data) => {
@@ -3627,7 +3705,7 @@ Hooks.once("ready", () => {
       if (!r) throw Error("Unknown recipe.");
       return playTest(r, manualContext(), { preview: true });
     },
-    stop: () => runtime.stop(),
+    stop: () => { app?.workspace?.creatureShowcase?.stop();if(game.user.isGM)showcaseTools?.stopBoss();return runtime.stop(); },
   };
   registerAATakeover({
     // Filling gaps, AA keeps whatever it animates: Animater only stops AA for items AA has nothing for.
@@ -3641,7 +3719,6 @@ Hooks.once("ready", () => {
   flash = flashScreens({
     ID, clientId,
     quietHere: () => qualityRank(localQuality()) === 0,
-    showsHere: (screen) => recapHere(ID, screen),
     killCamLength: (actor) => killCamWait(actor),
     resolveMedia: (src) => (!src || /\.(webm|mp4|png|jpe?g|webp|gif|svg)$/i.test(src) ? src : runtime.getCatalog().find((i) => i.key === src || i.key.startsWith(`${src}.`))?.file ?? ""),
     trace: (status, detail) => runtime.trace(status, detail),
@@ -3658,25 +3735,6 @@ Hooks.once("ready", () => {
   // D&D applies damage without naming its attacker; its roll message does (finishers).
   if (game.system.id === "dnd5e") Hooks.on("dnd5e.calculateDamage", (actor, damages) => remember(damageFromParts(damages, actor?.id)));
   Hooks.on("createChatMessage", (message) => remember(damageFromMessage(message, game.system.id)));
-  // Combat recap: the active GM records highlights (with the attacker from damageLog) and plays them at combat end.
-  // Each screen replays the reel's moments as local previews (nothing written): the moment's own roll message
-  // re-resolves its recipe, else its item does.
-  recap = combatRecaps({
-    ID, clientId, flash, damageLog, quality: localQuality, trace: (status, detail) => runtime.trace(status, detail),
-    replay: async (moment, { source, targets }) => {
-      const message = game.messages?.get(moment.attackMessageId) ?? game.messages?.get(moment.damageMessageId) ?? null;
-      let event = null;
-      try { event = message ? eventFrom(message) : null; } catch { event = null; }
-      if (event && !event.item && event.itemUuid) event.item = await fromUuid(event.itemUuid).catch(() => null);
-      let recipe = event ? resolveEvent(event) : null;
-      if (!recipe && moment.itemUuid) {
-        const item = await fromUuid(moment.itemUuid).catch(() => null);
-        if (item) { event = { type: moment.eventType || "attack", systemId: game.system.id, item, actor: item.actor }; recipe = resolveEvent(event); }
-      }
-      if (!recipe) throw Error(`nothing to replay for ${moment.item || "this moment"}`);
-      return playTest(recipe, { ...event, source, targets, outcome: moment.outcome || event.outcome, automatic: false }, { preview: true });
-    },
-  });
   // Stages whose artwork is not installed (Free vs Patreon) are left out rather than blocking the rest.
   // Token filter layers play only while Tokenshade is on.
   const installedStages = (recipe) => ({ ...recipe, stages: recipe.stages.filter((s) => ["motion", "sound"].includes(s.kind) || (s.kind === "tokenfx" ? fxCatalog().tokenReady : resolveAsset(s, runtime.getCatalog()))) });

@@ -6,6 +6,36 @@
 import { matchRecipe, validateRecipe } from "../../core/model.mjs";
 import { applyBespoke } from "../shared/bespoke.mjs";
 import { BREATH_ELEMENTS, ABILITY_ELEMENTS } from "../bespoke/pf2e-npc-abilities.mjs";
+import { npcActionSemantics } from './npc-action-semantics.mjs';
+import { catalogDataNeeded } from '../shared/catalog-data.mjs';
+const {PF2E_NPC_ACTIONS,PF2E_NPC_ACTION_SOURCE}=catalogDataNeeded('pf2e')?await import('../../../data/pf2e-npc-actions.mjs'):{PF2E_NPC_ACTIONS:[],PF2E_NPC_ACTION_SOURCE:{}};
+export {PF2E_NPC_ACTION_SOURCE};
+export const NPC_ACTIONS=PF2E_NPC_ACTIONS;
+const actionsById=new Map(NPC_ACTIONS.map(a=>[a.id,a]));
+const actionsBySource=new Map(NPC_ACTIONS.flatMap(a=>a.sources.map(source=>[source,a])));
+const actionsByName=new Map();
+for(const a of NPC_ACTIONS){const key=a.name.toLowerCase();if(!actionsByName.has(key))actionsByName.set(key,[]);actionsByName.get(key).push(a);}
+export function findNpcCatalogAction(event){
+  if(event?.item?.type!=='action'||(event.actor??event.item.actor)?.type!=='npc')return null;
+  const item=event.item,actor=event.actor??item.actor;
+  const source=item.sourceId??item._stats?.compendiumSource??item.flags?.core?.sourceId;
+  if(source&&actionsBySource.has(source))return actionsBySource.get(source);
+  const actorSource=actor?.sourceId??actor?._stats?.compendiumSource;
+  // A same-named action from another system/module is not this native source.
+  // Shared name families and conservative live-data inference still run below.
+  if(/^Compendium\.(?!pf2e\.)/.test(source??actorSource??''))return null;
+  if(actorSource&&item.id){const embedded=`${actorSource}.Item.${item.id}`;if(actionsBySource.has(embedded))return actionsBySource.get(embedded);}
+  const matches=actionsByName.get(String(item.name??'').toLowerCase())??[];
+  const inferred=findNpcAbility(event)??abilityForm(event);
+  const variant=inferred?.id==='breath'?`${breathElement(item)}-${breathShape(item)}`:inferred?.variant;
+  const semantic=matches.find(a=>a.creatures.includes(actor?.name)&&a.form?.id===inferred?.id&&a.form?.variant===variant);
+  if(semantic)return semantic;
+  // Source links are strongest. For imported copies missing them, only an
+  // unambiguous native creature/name/action-shape match may select a review.
+  const traits=[...(item.system?.traits?.value??[])].sort().join('|');
+  const native=matches.filter(a=>a.creatures.includes(actor?.name)&&[...a.traits].sort().join('|')===traits&&a.actionType===(item.system?.actionType?.value??'action')&&a.actions===(item.system?.actions?.value??null));
+  return native.length===1?native[0]:(matches.length===1&&matches[0].coverage!=='reviewed'?matches[0]:null);
+}
 
 // design id → { names, trigger, aim }. aim: "target" (one creature), "area" (the placed template),
 // "self" (no creature needed).
@@ -108,6 +138,8 @@ export function abilityForm(event) {
   if (!shape && /(^|[^a-z])strike([^a-z]|$)|attack of opportunity|spellstrike/i.test(item.name ?? "")) return null;
   if (shape) return { id: "generic", aim: "area", trigger: "template", variant: `${shape}-${abilityElement(item)}` };
   if (dealsDamage(item)) return { id: "generic", aim: "target", trigger: "use", variant: `hit-${abilityElement(item)}` };
+  const semantic=npcActionSemantics(item);
+  if(semantic)return semantic;
   const look = TRAIT_LOOKS.find(([wanted]) => wanted.some((t) => traits.includes(t)));
   return look ? { id: look[1], aim: look[2], trigger: "use" } : null;
 }
@@ -118,21 +150,33 @@ const BASE = {
   area: { kind: "template", label: "Area", assets: ["jb2a.impact.009.orange"] },
   self: { kind: "aura", label: "Self", assets: ["jb2a.impact.009.orange"], subject: "source" },
 };
+const abilityBase = form => ({...BASE[form.aim], ...(['all','first','secondary'].includes(form.targetSelection)?{targetSelection:form.targetSelection}:{})});
 // The recipe for an NPC's ability, or null. A saved recipe for it plays instead (a paused one silences it).
 // A named monster ability (findNpcAbility) plays its own design, any other its one-of-a-kind look (abilityForm).
 // `excluded` names abilities left out (their ids): those play only a saved recipe.
 export function npcAbilityRecipe(event, saved = [], { soundCatalog, soundVolume, motion = true, generic = true, excluded = [] } = {}) {
-  const found = findNpcAbility(event) ?? (generic ? abilityForm(event) : null);
+  const catalogAction=findNpcCatalogAction(event);
+  const reviewed=catalogAction?.coverage==='reviewed'?catalogAction.form:null;
+  const found = findNpcAbility(event) ?? reviewed ?? (generic ? abilityForm(event) : null);
   if (!found || found.trigger !== event.type) return null;
   const own = matchRecipe(saved, event);
   if (own) return own;
-  if (Array.isArray(excluded) && excluded.includes(found.id)) return null;
+  if (Array.isArray(excluded) && (excluded.includes(found.id)||excluded.includes(catalogAction?.id))) return null;
   if (saved.some((r) => !r.enabled && matchRecipe([{ ...r, enabled: true }], event))) return null;
   const variant = found.id === "breath" ? `${breathElement(event.item)}-${breathShape(event.item, event.area ?? event.template)}` : found.variant;
   const recipe = validateRecipe({ id: `pf2e-npc-${found.id}`, name: event.item.name, trigger: found.trigger, systemId: "pf2e", catalogEntry: `npc-${found.id}`,
-    stages: [{ stageId: `pf2e-npc-${found.id}-base`, duration: 1200, ...BASE[found.aim] }] });
+    stages: [{ stageId: `pf2e-npc-${found.id}-base`, duration: 1200, ...abilityBase(found) }] });
   const played = applyBespoke(recipe, { id: `npc-${found.id}`, systemId: "pf2e" }, { soundCatalog, soundVolume, motion, ...(variant ? { variant: { id: variant } } : {}) });
   return played.bespoke ? played : null;
+}
+// Factual catalog entries store compact resolved semantics, not bestiary prose.
+// Preview them through the same design builder without fabricating damage or traits.
+export function npcActionPreview(id,options={}){
+  const a=actionsById.get(id);if(!a?.form)return null;
+  const found=a.form,recipe=validateRecipe({id:`pf2e-npc-${a.id}`,name:a.name,trigger:found.trigger,systemId:'pf2e',catalogEntry:`npc-${found.id}`,
+    stages:[{stageId:`pf2e-npc-${a.id}-base`,duration:1200,...abilityBase(found)}]});
+  const played=applyBespoke(recipe,{id:`npc-${found.id}`,systemId:'pf2e'},{...options,...(found.variant?{variant:{id:found.variant}}:{})});
+  return played.bespoke?played:null;
 }
 // A named ability's look as the Studio previews it, on a stand-in NPC action (a breath as a fire cone).
 export function npcAbilityPreview(id, options = {}) {

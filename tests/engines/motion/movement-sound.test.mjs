@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   movementSound, MOVE_SOUND_KINDS, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, stepGap, createStepPacer,
-  FOOTSTEP_FILES, burrowTrail, burrowHole, swimWake, createMovementFeel, STRIDE, STOP_MS, PARTICLE_KINDS, particleState,
+  FOOTSTEP_FILES, burrowTrail, burrowHole, swimWake, underwaterBubbles, movementEnvironment, createMovementFeel, STRIDE, STOP_MS, PARTICLE_KINDS, particleState,
 } from '../../../scripts/engines/motion/movement-feel.mjs';
 import { createMovementFeelLayer } from '../../../scripts/engines/motion/movement-feel-render.mjs';
 
@@ -179,7 +179,7 @@ test('render: mounds and wake arms draw', () => {
 });
 
 // A controller over plain token views; `sounds` records [floor, kind] per host call.
-function harness({ tokens, floor = 'dirt', holes } = {}) {
+function harness({ tokens, floor = 'dirt', holes, burrowDepth, trailLifetime } = {}) {
   let time = 0;
   const live = new Set(), sounds = [], log = { added: 0, shadows: 0 };
   const layer = {
@@ -191,11 +191,55 @@ function harness({ tokens, floor = 'dirt', holes } = {}) {
     tokens: () => tokens, floorAt: () => (typeof floor === 'function' ? floor() : floor), enabled: () => true, density: () => 1,
     grid: () => 100, distance: () => 5, now: () => time, layer, footstep: (f, at, t, kind) => sounds.push([f, kind ?? 'step']),
     ...(holes ? { holes } : {}),
+    ...(burrowDepth?{burrowDepth}:{}),...(trailLifetime?{trailLifetime}:{}),
   });
   const walk = (tok, frames, dx = 20) => { for (let i = 0; i < frames; i++) { tok.x += dx; time += 16; feel.tick(); } };
   const wait = (ms) => { for (let t = 0; t < ms; t += 16) { time += 16; feel.tick(); } };
   return { feel, live, sounds, log, walk, wait, kinds: () => [...live].map((h) => h.spec.kind) };
 }
+
+test('movement medium distinguishes swimmers from soil, including raised levels and explicit seabed burrowing',()=>{
+ assert.deepEqual(movementEnvironment({elevation:10,base:20,action:'swim'},'stone'),{relative:-10,swimming:true,submerged:true,underground:false});
+ assert.equal(movementEnvironment({elevation:-5,base:0},'water').submerged,true);
+ assert.equal(movementEnvironment({elevation:-5,base:0,action:'burrow'},'water').underground,true);
+ assert.equal(movementEnvironment({elevation:-5,base:0},'dirt').underground,true);
+ assert.equal(movementEnvironment({elevation:0,base:0,action:'swim'},'water').submerged,false);
+});
+test('deep burrow paths stop at the exact cutoff, while entrance/exit holes remain at the surface crossings',()=>{
+ for(const base of [0,20]){
+  const tok={id:`deep-${base}`,x:0,y:0,width:100,elevation:base,base,visible:true},h=harness({tokens:[tok],burrowDepth:()=>-10});h.feel.tick();
+  tok.elevation=base-10;h.feel.tick();assert.equal(h.kinds().filter(k=>k==='hole').length,1);
+  h.walk(tok,12);assert.equal(h.kinds().filter(k=>k==='hole').length,1);assert.ok(!h.kinds().includes('mound'));assert.ok(h.sounds.some(([,k])=>k==='burrow'));
+  tok.elevation=base-5;h.feel.tick();h.walk(tok,6);assert.ok(h.kinds().includes('mound'),'shallow paths still appear');
+  const exitX=tok.x;tok.elevation=base;h.feel.tick();const holes=[...h.live].filter(p=>p.spec.kind==='hole');assert.equal(holes.length,2);assert.ok(holes.some(p=>p.spec.x===exitX));
+ }
+});
+test('the burrow cutoff is configurable; a deeper cutoff preserves the same path and holes switch remains independent',()=>{
+ const tok={id:'custom-depth',x:0,y:0,width:100,elevation:-15,base:0,visible:true};let cutoff=-20;
+ const h=harness({tokens:[tok],burrowDepth:()=>cutoff,holes:()=>false});h.feel.tick();h.walk(tok,8);assert.ok(h.kinds().includes('mound'));
+ h.wait(10000);const before=h.log.added;cutoff=-10;h.walk(tok,8);assert.equal(h.log.added,before,'no new deep path');
+ tok.elevation=0;h.feel.tick();assert.ok(!h.kinds().includes('hole'));
+});
+test('underwater movement makes bubbles and swim sounds, never burrow trails/holes, wakes, footprints or flying shadows',()=>{
+ for(const [floor,action] of [['water','walk'],['water','swim'],['stone','swim']]){
+  const tok={id:`swimmer-${floor}-${action}`,x:0,y:0,width:100,elevation:0,base:0,action,visible:true,statuses:['flying']},h=harness({tokens:[tok],floor});h.feel.tick();
+  tok.elevation=-15;h.feel.tick();h.walk(tok,12);
+  assert.ok([...h.live].some(p=>p.spec.underwater));assert.ok(h.sounds.every(([,k])=>k==='swim'));assert.ok(!h.kinds().some(k=>['hole','mound','print','groove','wake'].includes(k)));
+  tok.elevation=0;h.feel.tick();assert.ok(!h.kinds().includes('hole'),'surfacing creates no soil hole');
+  const before=h.sounds.length;h.wait(2500);assert.equal(h.sounds.length,before,'stationary swimmers stay silent');
+ }
+ const hidden={id:'unseen-water',x:0,y:0,width:100,elevation:-10,base:0,action:'swim',visible:false,audible:true};
+ const h=harness({tokens:[hidden],floor:'water'});h.feel.tick();h.walk(hidden,10);assert.equal(h.log.added,0);assert.ok(h.sounds.every(([,k])=>k==='swim'));
+});
+test('wake, bubble and burrow lifetimes are independent; longer fading does not extend particle travel',()=>{
+ for(const [kind,action,elevation,floor] of [['swim','swim',0,'water'],['underwater','swim',-5,'water'],['burrow','burrow',0,'dirt']]){
+  const tok={id:kind,x:0,y:0,width:100,elevation,base:0,action,visible:true},h=harness({tokens:[tok],floor,trailLifetime:k=>k===kind?10000:0});h.feel.tick();h.walk(tok,6);
+  assert.ok(h.live.size>0);assert.ok([...h.live].every(p=>p.spec.life===10000));h.wait(11000);assert.equal(h.live.size,0);
+ }
+ const native=swimWake({x:0,y:0})[0],long={...native,life:10000,motionLife:native.life};
+ const a=particleState(long,5000),b=particleState(native,native.life);assert.equal(a.x,b.x);assert.equal(a.y,b.y);
+ assert.deepEqual(underwaterBubbles({x:0,y:0},{seed:'s'}),underwaterBubbles({x:0,y:0},{seed:'s'}));
+});
 
 test('controller: a flier beats its wings while it moves, never while it hovers still, and marks nothing', () => {
   const tok = { id: 'f', x: 0, y: 0, width: 100, elevation: 30, base: 0, action: 'fly', flight: 'wing', visible: true };
@@ -240,7 +284,7 @@ test('controller: a burrower churns a lasting earth trail and no dust or prints'
   assert.ok(h.sounds.length > 0 && h.sounds.every(([, kind]) => kind === 'burrow'));
 });
 
-test('controller: a swimmer leaves a wake on water, its floor marks elsewhere; strokes either way', () => {
+test('controller: explicit swimming leaves wakes, never ground footprints, and retains swim sounds', () => {
   const tok = { id: 's', x: 0, y: 0, width: 100, elevation: 0, base: 0, action: 'swim', visible: true };
   const h = harness({ tokens: [tok], floor: 'water' });
   h.feel.tick(); h.walk(tok, 12);
@@ -249,7 +293,7 @@ test('controller: a swimmer leaves a wake on water, its floor marks elsewhere; s
   const dry = { ...tok, id: 's2', x: 0 };
   const hd = harness({ tokens: [dry], floor: 'dirt' });
   hd.feel.tick(); hd.walk(dry, 12);
-  assert.deepEqual([...new Set(hd.kinds())], ['puff']);
+  assert.deepEqual([...new Set(hd.kinds())], ['wake']);
   // Climbing and crawling mark the floor as a walk does, with their own sounds.
   for (const action of ['climb', 'crawl']) {
     const c = { ...tok, id: action, x: 0, action };
@@ -330,7 +374,7 @@ test('controller: a burrower leaves an entrance where its elevation drops below 
   h.walk(tok, 5);
   assert.equal(holes().length, 0, 'walking on the surface: no hole');
   // Goes under at x = 100.
-  tok.elevation = -10; h.feel.tick();
+  tok.elevation = -5; h.feel.tick();
   assert.equal(holes().length, 1, 'an entrance as its elevation drops below the floor');
   assert.ok(Math.abs(holeAt()[0] - tok.x) <= 1, 'where it went under');
   h.walk(tok, 12);
@@ -371,7 +415,7 @@ test('controller: a burrower leaves an entrance where its elevation drops below 
 test('controller: the Burrow holes setting off leaves the trail but no holes', () => {
   const tok = { id: 'm', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true };
   const h = harness({ tokens: [tok], holes: () => false });
-  h.feel.tick(); tok.elevation = -10; h.feel.tick(); h.walk(tok, 12); tok.elevation = 0; h.feel.tick();
+  h.feel.tick(); tok.elevation = -5; h.feel.tick(); h.walk(tok, 12); tok.elevation = 0; h.feel.tick();
   assert.equal(h.kinds().filter((k) => k === 'hole').length, 0);
   assert.ok(h.kinds().includes('mound'), 'the churned trail stays');
 });

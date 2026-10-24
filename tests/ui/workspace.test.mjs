@@ -657,6 +657,8 @@ test('reveal opens a catalog page searched to an item, or a saved recipe in the 
  assert.equal(f.w.reveal({page:'conditions',name:'Frightened'}),true);
  assert.equal(f.w.stateFilters.condition.search,'Frightened');assert.equal(f.w.page,'conditions');
  assert.equal(f.w.reveal({page:'actions',name:'Demoralize'}),true);assert.equal(f.w.actionFilters.search,'Demoralize');
+ assert.equal(f.w.reveal({page:'npc-abilities',name:'Unsteadying Magnetism',id:'native-npc-action'}),true);
+ assert.equal(f.w.page,'npc-abilities');assert.equal(f.w.selectedNpcAbility,'native-npc-action');assert.deepEqual(f.w.npcFilters,{search:'Unsteadying Magnetism',offset:0});
  assert.equal(f.w.reveal({page:'nowhere',name:'x'}),false);
  const id='r1';
  assert.equal(f.w.reveal({recipeId:id}),true);assert.equal(f.w.page,'recipes');assert.equal(f.w.studio,true);assert.equal(f.w.selected,id);

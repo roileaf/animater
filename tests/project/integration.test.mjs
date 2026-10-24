@@ -17,6 +17,9 @@ import { PF2E_CONDITIONS, PF2E_EFFECTS, useStateEntry, stateRecipe } from "../..
 import {dndEntries,dndRecipe,useDndEntry} from '../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
 import {sfEntries,sfRecipe,useSfEntry} from '../../scripts/catalogs/sf2e/sf2e-catalog.mjs';
 import {Workspace} from '../../scripts/ui/workspace.mjs';
+import {NPC_ACTIONS} from '../../scripts/catalogs/pf2e/npc-abilities.mjs';
+import {SF_NPC_ACTIONS} from '../../scripts/catalogs/sf2e/sf2e-npc-actions.mjs';
+import {DND_NPC_ACTIONS} from '../../scripts/catalogs/dnd5e/dnd5e-npc-actions.mjs';
 import {previewFilters} from '../../scripts/engines/preview/token-fx-preview.mjs';
 import {tokenFx} from '../../scripts/engines/tokenshade/api.mjs';
 import {MediaLibrary} from '../../scripts/ui/media-library.mjs';
@@ -243,6 +246,36 @@ async function boot(system, extraKeys = [], { version } = {}) {
     app: () => renderedApp,
   };
 }
+
+test('Combat recap is removed from settings, keybindings and API',async()=>{
+ const f=await boot('pf2e');
+ for(const key of ['combatRecap','combatRecapLocal','lastRecap'])assert.equal(f.settings.has(key),false,key);
+ assert.equal(f.api.recap,undefined);assert.ok(!f.bindings.some(b=>b.name==='Play combat recap'));
+});
+
+test('item Animation button routes NPC actions to their exact NPC entry and PC actions to Actions',async()=>{
+ const f=await boot('pf2e'),routes=[];
+ f.api.open();f.app().workspace={reveal:route=>{routes.push(route);return true;},render(){}};
+ const skink=NPC_ACTIONS.find(a=>a.name==='Unsteadying Magnetism');
+ for(const item of [
+  {type:'action',name:skink.name,sourceId:skink.sources[0],actor:{type:'npc',name:'Renamed Skink'},system:{traits:{value:[]}}},
+  {type:'action',name:'Demoralize',actor:{type:'character'},system:{traits:{value:[]}}},
+ ]){
+  const buttons=[];await f.fire('getItemSheetHeaderButtons',{item},buttons);
+  buttons.find(b=>b.class==='animater-open').onclick();await settle();
+ }
+ assert.equal(routes[0].page,'npc-abilities');assert.equal(routes[0].id,skink.id);assert.equal(routes[0].name,skink.name);
+ assert.equal(routes[1].page,'actions');assert.equal(routes[1].name,'Demoralize');
+});
+
+for(const [systemId,actions,type] of [['sf2e',SF_NPC_ACTIONS,'action'],['dnd5e',DND_NPC_ACTIONS,'feat']])test(`${systemId} NPC item button selects its native NPC entry`,async()=>{
+ const f=await boot(systemId),routes=[];f.api.open();f.app().workspace={reveal:r=>{routes.push(r);return true;},render(){}};
+ const a=actions.find(a=>systemId!=='dnd5e'||a.matches.length&&actions.filter(b=>b.matches.some(m=>m.source===a.matches[0].source)).length===1);
+ const source=systemId==='dnd5e'?a.matches[0].source:a.sources[0];
+ const item={type,name:a.name,sourceId:source,_stats:{compendiumSource:source},actor:{type:'npc',name:a.creatures[0]},system:{traits:{value:[]}}};
+ const buttons=[];await f.fire('getItemSheetHeaderButtons',{item},buttons);buttons.find(b=>b.class==='animater-open').onclick();await settle();
+ assert.equal(routes[0].page,'npc-abilities');assert.equal(routes[0].id,a.id);
+});
 
 test('workspace token FX preview uses the built-in engine with its own clock',async t=>{
  const f=await boot('pf2e');

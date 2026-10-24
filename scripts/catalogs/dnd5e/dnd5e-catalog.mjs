@@ -7,6 +7,7 @@ import {applyCatalogMotion,dndMotionReview,withoutCatalogMotion} from '../shared
 import {withCatalogFx} from '../shared/catalog-fx.mjs';
 import {normalizeElement} from '../shared/element-choice.mjs';
 import {MARKS} from '../../engines/marks/ground-marks.mjs';
+import {resolveDndNpcAction,findDndNpcAction} from './dnd5e-npc-actions.mjs';
 export {DND5E_ENTRIES,DND5E_SOURCE};
 export const DND_KINDS=['spell','feat','weapon','item','condition','effect'];
 const byId=new Map(DND5E_ENTRIES.map(e=>[e.id,e]));
@@ -127,12 +128,16 @@ export function dndVariantForEvent(entry,event){
 const awaitingTargets=new Map();
 // Creature-bound stages with nothing optional about them cannot play without a target.
 const needsTargets=recipe=>recipe.trigger!=='template'&&recipe.stages.some(s=>(['travel','projectile','impact'].includes(s.kind)||s.subject==='targets')&&!s.optionalTargets&&s.travelDestination!=='area');
-export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds}={}){
- const entry=findDndEntry(event),state=normalizeDndCatalogState(entry&&stateFor(entry.kind));
+export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds,npcEnabled=true,npcExcluded=[]}={}){
+ const entry=findDndEntry(event),state=normalizeDndCatalogState(stateFor(entry?.kind??'feat'));
  const custom=customEnabled||entry&&dndEntryEnabled(entry.id,state)&&state.customized.includes(entry.id)?saved:[];
  const selected=entry&&dndEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id)&&!ownRecipe(custom,event));
  const override=matchStrikeOverride(custom,event);if(override)return override;
  if(!prefer){const match=matchRecipe(custom,event);if(match)return match;}
+ const indexedNpc=findDndNpcAction(event);
+ if(indexedNpc&&(npcEnabled===false||npcExcluded.includes(indexedNpc.id)||indexedNpc.delegated))return null;
+ const npcFallback=()=>resolveDndNpcAction(event,custom,{npcEnabled,npcExcluded,motion:state.motion,sounds:state.sound?sounds:null,soundVolume:state.soundVolume});
+ if(!entry){if(!state.enabled||state.scope==='selected')return null;return npcFallback();}
  if(!selected||['condition','effect'].includes(entry.kind))return null;
  if(!prefer&&custom.some(r=>!r.enabled&&matchRecipe([{...r,enabled:true}],event)))return null;
  let variant=dndVariantForEvent(entry,event);
@@ -141,7 +146,7 @@ export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled
  const key=event.item?.uuid??event.item?.id;
  if(!variant&&event.type==='damage'&&key&&awaitingTargets.has(key)){variant=entry.variants.find(v=>v.id===awaitingTargets.get(key));awaitingTargets.delete(key);}
  else if(variant&&event.type==='use'&&key&&!event.targets?.length&&needsTargets(variant.recipe)){awaitingTargets.set(key,variant.id);event.skipReason='no target yet; plays on its damage roll';if(awaitingTargets.size>50)awaitingTargets.delete(awaitingTargets.keys().next().value);return null;}
- if(!variant)return null;
+ if(!variant)return npcFallback();
  const recipe=dndRecipe(entry,variant.id,{motion:state.motion,sounds:state.sound?sounds:null,soundVolume:state.soundVolume});
  // Native cast level supplies the dart count; separate attack-roll beams stay one.
  if(entry.slug==='magic-missile'){

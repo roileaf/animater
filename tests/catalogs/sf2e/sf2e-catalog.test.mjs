@@ -21,7 +21,7 @@ test('SF2e catalog is native, complete for active sources, and isolated from PF2
  assert.ok(sfEntries().every(e=>e.uuid.startsWith(`Compendium.sf2e.${e.pack}.Item.`)&&e.systemId==='sf2e'));
  assert.ok(!sfEntries('feat').some(e=>e.name==='Hologram Skeptic'||e.name==='Suppressing Fire'));
  assert.equal(new Set(sfEntries().map(e=>e.uuid)).size,sfEntries().length);
- const nav=catalogNavigation({systemId:'sf2e'});assert.equal(nav.length,7);assert.ok(nav.every(e=>e[2].startsWith('SF2e')));assert.equal(catalogPageAllowed('items',{systemId:'sf2e'}),false);
+ const nav=catalogNavigation({systemId:'sf2e'});assert.equal(nav.length,8);assert.ok(nav.every(e=>e[2].startsWith('SF2e')));assert.equal(catalogPageAllowed('items',{systemId:'sf2e'}),false);
  assert.equal(sfSettingKey('spell'),'sf2eSpellCatalog');
  const entry=find('Supercharge Weapon'),recipe=sfRecipe(entry);assert.equal(findSfEntry({systemId:'pf2e',item:native(entry)}),null);assert.equal(matchRecipe([recipe],{type:recipe.trigger,systemId:'pf2e',item:native(entry)}),null);
 });
