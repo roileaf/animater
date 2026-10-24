@@ -16,7 +16,9 @@ const LABELS = { pf2e: "PF2e", sf2e: "SF2e" };
 
 export const crossoverSystem = (systemId) => ({ pf2e: "sf2e", sf2e: "pf2e" })[systemId] ?? null;
 // The world setting holding `kind`'s catalog state in a 2e world.
-export const twoeSettingKey = (systemId, kind) => (systemId === "sf2e" ? sfSettingKey(kind) : PF2E_KEYS[kind] ?? null);
+// The NPC switches are one set of world settings in both systems.
+const NPC_KEYS = new Set(["npcAbility", "npcAbilityGuess"]);
+export const twoeSettingKey = (systemId, kind) => (systemId === "sf2e" && !NPC_KEYS.has(kind) ? sfSettingKey(kind) : PF2E_KEYS[kind] ?? null);
 export function crossoverSettingText(systemId) {
   const other = LABELS[crossoverSystem(systemId)] ?? "other 2e";
   return {
@@ -40,9 +42,25 @@ export function crossoverState(own) {
   return { enabled: own.enabled === true && own.scope !== "selected", independent: true, scope: "all", selected: [], excluded: [], customized: [],
     preferCatalog: false, motion: own.motion !== false, sound: own.sound !== false, soundVolume: Number.isFinite(Number(own.soundVolume)) ? Number(own.soundVolume) : 0.35 };
 }
+// An SF2e NPC's Strike or monster ability the SF2e catalog has no entry for: the PF2e NPC fallbacks
+// (natural attacks, Strike guesses, the NPC ability catalog), which need no crossover. They play with the
+// SF2e weapon and action catalogs' switches, motion and volume.
+function sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds }) {
+  const item = event.item, own = customEnabled ? saved : [];
+  if ((event.actor ?? item?.actor)?.type !== "npc" || !["melee", "action"].includes(item?.type)) return null;
+  const sf = (kind) => { try { return stateFor(kind) ?? {}; } catch { return {}; } };
+  if (item.type === "melee") {
+    const weapons = sf("weapon");
+    if (weapons.enabled !== true) return null;
+    return resolveAutomaticWeaponRecipe(event, { ...weapons, scope: "all", selected: [], excluded: [], customized: [] }, own, { customEnabled, soundCatalog: weapons.sound === false ? null : sounds }) ?? null;
+  }
+  const actions = sf("action");
+  if (actions.enabled !== true || sf("npcAbility") === false) return null;
+  return npcAbilityRecipe(event, own, { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: sf("npcAbilityGuess") !== false });
+}
 // The PF2e or SF2e catalog recipe for an event (saved recipes first, as each catalog decides).
 export function twoeCatalogRecipe(systemId, event, saved = [], { stateFor, customEnabled = true, sounds } = {}) {
-  if (systemId === "sf2e") return resolveSfAutomaticRecipe(event, stateFor, saved, { customEnabled, sounds }) ?? null;
+  if (systemId === "sf2e") return resolveSfAutomaticRecipe(event, stateFor, saved, { customEnabled, sounds }) ?? sfNpcRecipe(event, saved, { stateFor, customEnabled, sounds });
   if (systemId !== "pf2e") return null;
   const item = event.item, ability = item?.type === "action" ? "action" : isFeatureItem(item) ? "feature" : null;
   const options = { customEnabled, soundCatalog: sounds };

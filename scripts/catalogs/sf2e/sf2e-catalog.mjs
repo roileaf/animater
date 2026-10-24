@@ -52,18 +52,27 @@ function grenadeMark(entry){
 }
 export function findSfEntry(event){
  if(event.systemId&&event.systemId!=='sf2e')return null;
- const item=event.item;if(!item)return null;
+ let item=event.item;if(!item)return null;
+ // An NPC Strike is a melee item: the weapon it was made from, else the catalog weapon of its name (Laser Rifle).
+ if(item.type==='melee'){const linked=item.linkedWeapon;if(linked?.type==='weapon'){const own=findSfEntry({...event,item:linked});if(own)return own;}item={type:'weapon',name:item.name,slug:item.slug??item.system?.slug,system:item.system,sourceId:item.sourceId,_stats:item._stats,flags:item.flags,original:item.original,uuid:item.uuid};}
  if(item.animaterAura?.entryId)return sfEntry(item.animaterAura.entryId);
  for(const uuid of [event.itemUuid,item.sourceId,item._stats?.compendiumSource,item.flags?.core?.sourceId,item.original?.uuid,item.uuid]){const entry=byUuid.get(uuid);if(entry)return entry;}
  const kind=item.type==='spell'?'spell':item.type==='action'?'action':item.type==='feat'?(['classfeature','ancestryfeature'].includes(item.system?.category)?'feature':'feat'):item.type==='weapon'?'weapon':item.type==='condition'?'condition':item.type==='effect'?null:undefined;
  if(kind===undefined)return null;
  const slug=normalize(item.slug??item.system?.slug),name=normalize(item.name);
  const candidates=sfEntries(kind).filter(e=>(kind||e.state)&&(slug&&normalize(e.slug)===slug||normalize(e.name)===name));
- return candidates.length===1?candidates[0]:null;
+ if(candidates.length===1)return candidates[0];
+ // An NPC's "Frag Grenade" is the catalog's graded Frag Grenade: its lowest grade.
+ if(kind==='weapon'&&!candidates.length&&name){const base=e=>normalize(String(e.name).replace(/\s*\([^)]*\)\s*$/,''));const graded=sfEntries('weapon').filter(e=>base(e)===name).sort((a,b)=>(a.level??0)-(b.level??0));if(graded.length)return graded[0];}
+ return null;
 }
 export function sfVariantForEvent(entry,event){
  const candidates=entry.variants.filter(v=>v.recipe.trigger===event.type&&(!v.weaponMode||v.weaponMode===event.weaponMode||event.type==='template'||!event.weaponMode));
- return candidates.length===1?candidates[0]:null;
+ if(candidates.length===1)return candidates[0];
+ // An NPC throws a grenade as a "ranged" Strike: its thrown variant (and the reverse).
+ const far=['ranged','thrown'];
+ const swapped=!candidates.length&&far.includes(event.weaponMode)?entry.variants.filter(v=>v.recipe.trigger===event.type&&far.includes(v.weaponMode)):[];
+ return swapped.length===1?swapped[0]:null;
 }
 export function resolveSfAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds,runes=runeFlourishesEnabled()}={}){
  if(event.systemId&&event.systemId!=='sf2e')return null;

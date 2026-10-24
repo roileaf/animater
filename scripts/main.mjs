@@ -1681,18 +1681,18 @@ Hooks.once("init", () => {
   // borrowing the PF2e catalogs reads it too.
   game.settings.register(ID, "npcAbilities", {
     name: "Animate NPC abilities",
-    hint: "PF2e NPCs' monster abilities animate when used: Grab, Constrict, Swallow Whole, Engulf, Breath Weapon (when its area is placed), Trample, Pounce, Rend, Knockdown, Throw Rock, Ferocity, Change Shape and more. Your own recipes for an ability still come first.",
-    scope: "world", config: game.system.id === "pf2e", type: Boolean, default: true,
+    hint: "PF2e and SF2e NPCs' monster abilities animate when used: Grab, Constrict, Swallow Whole, Engulf, Breath Weapon (when its area is placed), Trample, Pounce, Rend, Knockdown, Throw Rock, Ferocity, Change Shape and more. Your own recipes for an ability still come first.",
+    scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
   game.settings.register(ID, "npcAbilityGuess", {
     name: "Animate other NPC abilities from what they do",
     hint: "With Animate NPC abilities on, an NPC ability that has no animation of its own gets one from what it does: an area it places plays in that shape (cone, line, burst, emanation) and its damage's colour, damage with no area strikes its target, else its traits decide (a teleport blinks, a fear ability cries out). Off: only the named monster abilities animate.",
-    scope: "world", config: game.system.id === "pf2e", type: Boolean, default: true,
+    scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
   game.settings.register(ID, "npcStrikeGuess", {
     name: "Guess NPC Strikes",
     hint: "An NPC Strike that no weapon or creature attack name places still animates: by its damage (a slashing one rakes like a claw, others land as a blow), and a ranged one by what it throws or spits. Off: those Strikes play nothing unless you make a recipe for them.",
-    scope: "world", config: game.system.id === "pf2e", type: Boolean, default: true,
+    scope: "world", config: ["pf2e", "sf2e"].includes(game.system.id), type: Boolean, default: true,
   });
   // Shown only where Splatter is on; off, Splatter bleeds on its own.
   game.settings.register(ID, SPLATTER_SYNC, {

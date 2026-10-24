@@ -64,7 +64,7 @@ function bombFor(item){
 const RANGED_WORDS={rock:'sling',boulder:'sling',stone:'sling',pebble:'sling',object:'sling',meat:'sling',corpse:'sling',coal:'sling',plate:'sling',
  quill:'dart',spike:'dart',spine:'dart',thorn:'dart',splinter:'dart',flechette:'dart',needle:'dart',barb:'dart',scalpel:'dart',cutlery:'dart',
  web:'bola',net:'bola',
- spit:'spit',squirt:'spit',spittle:'spit',mucus:'spit',slime:'spit',spore:'spit',glob:'spit',bile:'spit',
+ spit:'spit',squirt:'spit',spittle:'spit',mucus:'spit',slime:'spit',spore:'spit',glob:'spit',bile:'spit',vomit:'spit',
  beam:'beam',eye:'beam',ray:'beam',bolt:'beam',thunderbolt:'beam',note:'beam',blast:'beam'};
 // Energy shots, by damage type; others (void, mental, force, spirit) a violet comet.
 const ENERGY_SHOT={fire:'drake-rifle-fire',cold:'drake-rifle-cold',electricity:'drake-rifle-electricity',acid:'drake-rifle-acid',poison:'drake-rifle-poison',
