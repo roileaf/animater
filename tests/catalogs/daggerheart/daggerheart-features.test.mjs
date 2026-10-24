@@ -42,7 +42,8 @@ test("Close attacks: natural weapons, limbs and lashes in melee; thrown, shot an
 });
 
 test("the Ice Dragon's feature attacks each play: breath, avalanche burst, and cold strikes", () => {
-  const expect = { "Blizzard Breath": ["breath", "cold"], Avalanche: ["burst", "cold"], "Frozen Scales": ["strike", "cold"], "Rend and Crush": ["strike", "physical"] };
+  // Frozen Scales only makes its attacker mark Stress, but names its element: a cold strike.
+  const expect = { "Blizzard Breath": ["breath", "cold"], Avalanche: ["burst", "cold"], "Frozen Scales": ["strike", "cold"] };
   for (const [name, [shape, element]] of Object.entries(expect)) {
     const feature = iceDragon.features[name], e = used(feature);
     assert.equal(e.type, "use", name);
@@ -115,14 +116,112 @@ test("feature elements: the feature's own words first, then its damage type", ()
     "ranged with no area breathes at its targets");
 });
 
-test("every feature fallback has a use variant per shape, each a valid recipe", () => {
+test("every feature fallback has a use variant per shape and, with a bolt, an attack variant per range", () => {
   const entries = dhEntries("weapon").filter((e) => e.id.startsWith("daggerheart-weapon-feature-"));
   assert.deepEqual(entries.map((e) => e.element).sort(), Object.keys(AREA_LOOKS).sort());
   for (const entry of entries) {
     assert.equal(entry.generic, true);
-    assert.deepEqual(entry.variants.map((v) => v.featureShape), [...FEATURE_SHAPES]);
-    for (const v of entry.variants) { assert.equal(v.recipe.trigger, "use"); validateRecipe(v.recipe); }
+    const uses = entry.variants.filter((v) => v.recipe.trigger === "use"), attacks = entry.variants.filter((v) => v.recipe.trigger === "attack");
+    assert.deepEqual(uses.map((v) => v.featureShape), [...FEATURE_SHAPES]);
+    assert.deepEqual(attacks.map((v) => v.weaponMode), AREA_LOOKS[entry.element].bolt ? ["ranged", "melee"] : [], entry.element);
+    for (const v of entry.variants) validateRecipe(v.recipe);
   }
+  const fire = dhEntries("weapon").find((e) => e.id === "daggerheart-weapon-feature-fire");
+  const bolt = fire.variants.find((v) => v.weaponMode === "ranged").recipe;
+  assert.ok(bolt.stages.some((s) => s.kind === "travel" && s.assets[0] === "jb2a.fire_bolt.orange"), "a fire bolt flies to the target");
+});
+
+test("a feature's attack roll strikes as its element; a physical one keeps the weapon fallback", () => {
+  const actor = { id: "adv", uuid: "Actor.adv", documentName: "Actor", name: "Adversary", type: "adversary" };
+  const roll = (name, description, range, damage) => {
+    const action = { _id: `${name}-a`, type: "attack", name: "Attack", range, roll: { type: "attack" }, save: { trait: null }, areas: [], damage: { main: { type: new Set(damage) }, resources: {} } };
+    const item = { id: name, uuid: `Actor.adv.Item.${name}`, documentName: "Item", type: "feature", name, actor, system: { description, actions: new Map([[action._id, action]]) } };
+    return daggerheartRollEvent(rollMessage({ type: "adversaryRoll", roll: adversaryRoll(), actor, item, action }), "u");
+  };
+  const cases = [
+    ["Spit Acid", "<p>spits a glob of acid</p>", "far", ["physical"], "acid", "ranged"],
+    ["Tentacle Rays", "<p>corrosive beams</p>", "far", ["magical"], "acid", "ranged"],
+    ["Lightning Strike", "", "far", ["magical"], "lightning", "ranged"],
+    ["Chill Touch", "", "melee", ["magical"], "cold", "melee"],
+    ["Venomous Bite", "<p>its venom burns</p>", "melee", ["physical"], "poison", "melee"],
+  ];
+  for (const [name, text, range, damage, element, mode] of cases) {
+    const e = roll(name, text, range, damage);
+    assert.equal(findDhEntry(e)?.id, `daggerheart-weapon-feature-${element}`, name);
+    const r = resolveDaggerheartAutomaticRecipe(e, weaponsOn, []);
+    assert.equal(r.id, `animater-daggerheart-weapon-feature-${element}-attack-${mode}`, name);
+    assert.equal(r.trigger, "attack", name);
+  }
+  assert.equal(findDhEntry(roll("Arcane Lash", "", "far", ["magical"])).id, "daggerheart-weapon-feature-arcane", "magic with no element: a magic bolt");
+  assert.equal(findDhEntry(roll("Gore", "", "melee", ["physical"])).id, "daggerheart-weapon-generic-unarmed", "physical keeps the weapon fallback");
+});
+
+test("an adversary's standard attack the library does not know strikes as the weapon it names, or by its damage", () => {
+  const attack = (name, range, damage) => {
+    const action = { _id: "std", type: "attack", name, range, roll: { type: "attack" }, save: { trait: null }, damage: { main: { type: new Set([damage]) }, resources: {} } };
+    const msg = rollMessage({ type: "adversaryRoll", roll: adversaryRoll(), actor: iceDragon, action });
+    msg.system.item = undefined;
+    return daggerheartRollEvent(msg, "u");
+  };
+  const cases = [
+    ["Greataxe", "veryClose", "physical", "axe"], ["Daggers", "melee", "physical", "dagger"], ["Claymore", "veryClose", "physical", "sword"],
+    ["Warclub", "melee", "physical", "club"], ["Spiked Mace", "veryClose", "physical", "mace"], ["Maul", "veryClose", "physical", "maul"],
+    ["Spears", "veryClose", "physical", "spear"], ["Javelin", "close", "physical", "javelin"], ["Recurved Bow", "far", "physical", "bow"],
+    ["Needle-Sharp Arrows", "close", "physical", "bow"], ["Magitech Cannon", "far", "magical", "firearm"], ["Corrupted Staff", "far", "magical", "staff-ranged"],
+    ["Great Scythe", "close", "physical", "scythe"], ["Chomp", "melee", "physical", "bite"], ["Hooves", "veryClose", "physical", "unarmed"],
+    ["Swipe", "melee", "physical", "melee"], ["Thrown Object", "far", "physical", "ranged"],
+  ];
+  for (const [name, range, damage, fallback] of cases) {
+    const e = attack(name, range, damage);
+    assert.equal(e.damageKind, damage, name);
+    assert.equal(findDhEntry(e)?.id, `daggerheart-weapon-generic-${fallback}`, name);
+    assert.ok(resolveDaggerheartAutomaticRecipe(e, weaponsOn, []), `${name} plays`);
+  }
+  const magic = { "Fire Bolt": ["veryFar", "fire"], "Spirit Flame": ["close", "fire"], "Lightning Bolt": ["far", "lightning"], "Chill Touch": ["melee", "cold"],
+    "Psychic Strike": ["far", "arcane"], "Necrotic Blast": ["far", "arcane"] };
+  for (const [name, [range, element]] of Object.entries(magic)) {
+    const e = attack(name, range, "magical"), r = resolveDaggerheartAutomaticRecipe(e, weaponsOn, []);
+    assert.equal(r.catalogEntry, `daggerheart-weapon-feature-${element}`, name);
+    assert.ok(!r.stages.some((s) => s.assets?.some((a) => /^jb2a\.arrow\.|melee_generic/.test(a))), `${name}: no arrow or plain slash`);
+  }
+  const greataxe = resolveDaggerheartAutomaticRecipe(attack("Greataxe", "veryClose", "physical"), weaponsOn, []);
+  assert.ok(greataxe.stages.some((s) => s.assets?.[0] === "jb2a.greataxe.melee.standard.white"), "a greataxe cleaves");
+  const mine = validateRecipe({ id: "mine", name: "Mine", trigger: "attack", match: "Greataxe", stages: [{ kind: "cast", assets: ["jb2a.impact.001.orange"] }] });
+  assert.equal(resolveDaggerheartAutomaticRecipe(attack("Greataxe", "veryClose", "physical"), weaponsOn, [mine]).id, "mine", "your recipe still wins");
+});
+
+test("summon, countdown, transform and evolution actions play their look; a grouped action leaves it to the action it picks", () => {
+  const actor = { id: "adv", uuid: "Actor.adv", documentName: "Actor", name: "Adversary", type: "adversary" };
+  const looks = { Reinforcements: ["summon", "summon"], "Accursed Caress": ["countdown", "countdown"], "Final Transformation": ["transform", "transform"], "Hellwing": ["evolution", "transform"] };
+  for (const [name, [type, look]] of Object.entries(looks)) {
+    const item = utilityItem("feature", name, { _id: name, type, name: "Use", cost: [{ key: "fear", value: 1 }] });
+    item.actor = actor;
+    const e = useOf(item);
+    assert.equal(e.utilityLook, look, name);
+    const r = resolveDaggerheartAutomaticRecipe(e, weaponsOn, []);
+    assert.equal(r?.catalogEntry, `daggerheart-weapon-utility-${look}`, name);
+    assert.equal(r.trigger, "use", name);
+  }
+  const summon = resolveDaggerheartAutomaticRecipe(useOf(utilityItem("feature", "Reinforcements", { _id: "s", type: "summon", name: "Spend Fear" })), weaponsOn, []);
+  assert.ok(summon.stages.some((s) => s.below && s.assets[0].includes("conjuration")), "a summoning circle under the adversary");
+  const breath = { _id: "b", type: "attack", name: "Fire", range: "close", roll: { type: null }, save: { trait: "agility" }, areas: [], damage: { main: { type: new Set(["magical"]) }, resources: {} } };
+  const grouped = { _id: "g", type: "grouped", name: "Mark Stress", grouped: { selectionType: "selected", groupedActions: ["b"] } };
+  const item = { ...utilityItem("feature", "Elemental Breath", grouped), system: { actions: new Map([["g", grouped], ["b", breath]]) } };
+  assert.equal(useOf(item), null, "the chosen breath plays on its own use");
+});
+
+test("a Stress, Hope or Armor loss with no blow plays dread or a sundering, not a physical strike", async () => {
+  const { resourceLoss } = await import("../../../scripts/systems/daggerheart.mjs");
+  const loss = (name, resources, extra = {}) => utilityItem("feature", name, { _id: name, type: "damage", name: "Damage", range: "", damage: { main: null, resources: Object.fromEntries(resources.map((r) => [r, { applyTo: r }])) }, ...extra });
+  const cases = [[loss("Terrifying", ["hope"]), "dread"], [loss("Scare Tactic", ["stress"]), "dread"], [loss("Armor-Shredding Shards", ["armor"]), "sunder"], [iceDragon.features["Rend and Crush"], "dread"]];
+  for (const [item, look] of cases) {
+    const e = useOf(item);
+    assert.equal(e.featureShape, undefined, item.name);
+    assert.equal(findDhEntry(e)?.id, `daggerheart-weapon-utility-${look}`, item.name);
+  }
+  assert.equal(findDhEntry(useOf(loss("Acidic Form", ["armor"]))).id, "daggerheart-weapon-feature-acid", "an element it names still plays");
+  assert.equal(resourceLoss({ type: "damage", damage: { main: null, resources: { hitPoints: { applyTo: "hitPoints" } } } }), null, "hit points are a blow");
+  assert.equal(resourceLoss({ type: "damage", save: { trait: "agility" }, damage: { main: null, resources: { stress: { applyTo: "stress" } } } }), null, "a save keeps its shape");
 });
 
 // Actions that only heal, gain a resource or apply an effect: no attack, no damage type.
@@ -152,7 +251,7 @@ test("heal, Hope, Fear and effect actions play a look by what they restore or sp
   }
   // Domain cards and weapons keep their own animations; attacks and damage are not utilities.
   assert.deepEqual(utilityFields(utilityItem("domainCard", "Whirlwind", { _id: "w", type: "effect", cost: [{ key: "hope" }] }), { _id: "w", type: "effect" }), {});
-  assert.deepEqual(utilityFields(iceDragon.features["Rend and Crush"], firstAction(iceDragon.features["Rend and Crush"])), {});
+  assert.deepEqual(utilityFields(utilityItem("feature", "Claws", { _id: "c", type: "attack", roll: { type: "attack" }, damage: { main: { type: new Set(["physical"]) } } }), { _id: "c", type: "attack", roll: { type: "attack" }, damage: { main: { type: new Set(["physical"]) } } }), {});
   // A feature's own element look still wins over a utility look.
   assert.equal(findDhEntry(used(iceDragon.features["Blizzard Breath"])).id, "daggerheart-weapon-feature-cold");
 });

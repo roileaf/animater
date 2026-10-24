@@ -55,7 +55,7 @@ test("the domain card page: Daggerheart labels, levels 1-10, domain chips that f
 test("the weapon and condition pages", () => {
   const weapons = workspace("weapons").ui.html();
   assert.ok(weapons.includes("Weapon family"));
-  assert.ok(weapons.includes("340 weapons"), "324 compendium weapons, 5 attack, 7 feature and 4 ability fallbacks");
+  assert.ok(weapons.includes("362 weapons"), "324 compendium weapons, 5 attack, 17 weapon-family, 7 feature and 9 ability fallbacks");
   const conditions = workspace("conditions").ui.html();
   assert.ok(conditions.includes("Lasting animation"), "persistent controls");
   assert.ok(conditions.includes("Death move"));

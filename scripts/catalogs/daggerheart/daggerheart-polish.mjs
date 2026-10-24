@@ -17,8 +17,8 @@ const MELEE_SOUNDS = {
   hammer: [[/mace|club|baton|shillelagh/i, "club"], [/knuckle|gauntlet|fist/i, "unarmed"], [/flail/i, "flail"], [/whip|lash/i, "whip"], [/./, "hammer"]],
   spear: [[/halberd|glaive|polearm|corbin|pike|scythe/i, "polearmBlade"], [/./, "spear"]],
   shield: [[/./, "shieldStrike"]],
-  generic: [[/claw|talon|rake|scratch/i, "claw"], [/bite|fang|jaw|maw|teeth|mandible|gnaw/i, "naturalPierce"],
-    [/fist|punch|slam|tail|horn|ram\b|tentacle|unarmed|kick|headbutt|hoof|stomp|tusk|gore/i, "unarmed"], [/./, "sword"]],
+  generic: [[/claw|talon|rake|scratch|pincer|nails?\b|tear\b/i, "claw"], [/bite|fang|jaw|maw|teeth|mandible|gnaw|gnash|chomp|nibble|beak|peck|proboscis|sucker/i, "naturalPierce"],
+    [/fist|punch|slam|tail|horn|ram\b|tentacle|unarmed|kick|headbutt|hoo(?:f|ves)|stomp|tusk|gore|antler|bash|\bhands?\b|\barms?\b/i, "unarmed"], [/./, "sword"]],
 };
 const RANGED_SOUNDS = {
   blade: [[/axe|hatchet/i, "thrownAxe"], [/./, "thrownDagger"]],
@@ -56,13 +56,13 @@ export function cardSoundDesign(card, design, motif = "") {
 
 // Feature fallbacks by element and shape; ability fallbacks by look.
 const FEATURE_SOUNDS = {
-  cold: { breath: "coldCone", burst: "cold", strike: "cold" }, fire: { breath: "fireCone", burst: "explosion", strike: "fire" },
-  lightning: { breath: "lightningBolt", burst: "electric", strike: "electricTouch" }, acid: { breath: "acid", burst: "acid", strike: "acidSplash" },
-  poison: { breath: "poison", burst: "poison", strike: "poison" }, arcane: { breath: "force", burst: "force", strike: "force" },
+  cold: { breath: "coldCone", burst: "cold", strike: "cold", bolt: "cold" }, fire: { breath: "fireCone", burst: "explosion", strike: "fire", bolt: "fire" },
+  lightning: { breath: "lightningBolt", burst: "electric", strike: "electricTouch", bolt: "lightningBolt" }, acid: { breath: "acid", burst: "acid", strike: "acidSplash", bolt: "acidSplash" },
+  poison: { breath: "poison", burst: "poison", strike: "poison", bolt: "poison" }, arcane: { breath: "force", burst: "force", strike: "force", bolt: "force" },
   physical: { breath: "earthquake", burst: "earthquake", strike: "bludgeon" },
 };
 export const featureSoundDesign = (element, shape) => ({ namespace: "spell", profile: (FEATURE_SOUNDS[element] ?? FEATURE_SOUNDS.physical)[shape] ?? "force" });
-const UTILITY_SOUNDS = { heal: "healing", hope: "bless", fear: "fear", boon: "shield" };
+const UTILITY_SOUNDS = { heal: "healing", hope: "bless", fear: "fear", boon: "shield", summon: "summon", countdown: "time", transform: "shadow", dread: "fear", sunder: "bludgeon" };
 export const utilitySoundDesign = (look) => ({ namespace: "spell", profile: UTILITY_SOUNDS[look] ?? "shield" });
 
 // The variant's sounds on its stages (dhRecipe). Without an audio pack or a design, the stages as they are.
@@ -103,7 +103,10 @@ export function featureMotion(element, shape, stages) {
     : shape === "strike" ? null : move("adversary-pulse", shape === "breath" ? "Rears back to breathe" : "Gathers power", "pulse", "source", 0, 900, 1, 0.06);
   return [...(source ? [source] : []), ...stages, { ...shake((hit?.delay ?? 700) + 80), requiresHit: false }];
 }
+const UTILITY_GESTURES = { heal: "Rises with renewed strength", fear: "Darkens with menace", dread: "Darkens with menace", sunder: "Darkens with menace",
+  summon: "Calls its allies", countdown: "Sets the clock ticking", transform: "Swells into a new form" };
 export function utilityMotion(look, stages) {
-  return [move("user-pulse", look === "heal" ? "Rises with renewed strength" : look === "fear" ? "Darkens with menace" : "Draws on resolve",
-    look === "heal" ? "levitate" : "pulse", "source", 0, 1100, look === "fear" ? 1 : 0.6, 0.05), ...stages];
+  const menacing = ["fear", "dread", "sunder", "transform"].includes(look);
+  return [move("user-pulse", UTILITY_GESTURES[look] ?? "Draws on resolve",
+    look === "heal" ? "levitate" : "pulse", "source", 0, 1100, menacing ? 1 : 0.6, 0.05), ...stages];
 }
