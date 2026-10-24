@@ -209,3 +209,48 @@ test('D&D thrown flasks carry their markElement',()=>{
  assert.equal(dndRecipe(item('Flask of Holy Water','2014')).markElement,undefined);
  assert.equal(dndRecipe(item('Oil Flask','2014')).markElement,undefined);
 });
+
+test('NPC natural attacks match across feature and weapon kinds',()=>{
+ const bite=findDndEntry({item:{type:'feat',name:'Bite',system:{source:{rules:'2024'}}}});
+ assert.equal(bite?.kind,'weapon');assert.equal(bite.edition,'2024');
+ assert.equal(findDndEntry({item:{type:'weapon',name:'Constrict',system:{source:{rules:'2024'}}}})?.kind,'feat');
+ // An entry of the item's own kind still wins.
+ const hooves=findDndEntry({item:{type:'weapon',name:'Hooves',system:{source:{rules:'2024'}}}});
+ assert.equal(hooves?.kind,'weapon');
+ assert.equal(findDndEntry({item:{type:'feat',name:'Cunning Action',system:{source:{rules:'2024'}}}})?.kind,'feat');
+ assert.equal(findDndEntry({item:{type:'spell',name:'Bite'}}),null,'spells never borrow a weapon entry');
+});
+test('legacy compendium sources without .Item. match their entry by id',()=>{
+ const bite=dndEntries('weapon').find(e=>e.uuid==='Compendium.dnd5e.monsterfeatures.Item.WdpSeGqhZpptz37y');
+ assert.equal(findDndEntry({item:{type:'weapon',name:'Renamed',_stats:{compendiumSource:'Compendium.dnd5e.monsterfeatures.WdpSeGqhZpptz37y'}}}),bite);
+ assert.equal(findDndEntry({item:{type:'feat',name:'Renamed',flags:{core:{sourceId:'Compendium.dnd5e.monsterfeatures.WdpSeGqhZpptz37y'}}}}),bite,'the source names its entry whatever the kind');
+ // The 2014 Hooves source is a utility feature; the statblock's weapon attack keeps the weapon entry.
+ const hooves=findDndEntry({item:{type:'weapon',name:'Hooves',system:{source:{rules:'2014'}},_stats:{compendiumSource:'Compendium.dnd5e.monsterfeatures.re3oXQ3Xg4Z3Fr6O'}}});
+ assert.equal(hooves?.kind,'weapon');
+ assert.equal(findDndEntry({item:{type:'weapon',name:'Unknown thing',_stats:{compendiumSource:'Compendium.dnd5e.monsterfeatures.re3oXQ3Xg4Z3Fr6O'}}})?.id,'dnd5e-monsterfeatures-re3oXQ3Xg4Z3Fr6O','with no same-kind name, the source entry');
+ assert.equal(findDndEntry({item:{type:'feat',name:'x',_stats:{compendiumSource:'Compendium.dnd5e.monsterfeatures.Item.re3oXQ3Xg4Z3Fr6O'}}})?.id,'dnd5e-monsterfeatures-re3oXQ3Xg4Z3Fr6O');
+});
+test('NPC activities with their own ids pick a design leniently, never a manual one',()=>{
+ const unknown=(type,activityType,extra={})=>({type,activityId:'npcActivity00001',activityName:'Bite',activity:{type:activityType},...extra});
+ const gore=find('Gore','weapon');
+ assert.equal(dndVariantForEvent(gore,unknown('attack','attack',{weaponMode:'melee'}))?.id,gore.variants[0].id,'several of the same kind: the first');
+ const moving=gore.variants.find(v=>v.activityName==='Moving Attack');
+ assert.equal(dndVariantForEvent(gore,{type:'attack',activityId:moving.activityId,activity:{type:'attack'}})?.id,moving.id,'an exact activity still wins');
+ const cunning=dndEntries('feat').find(e=>e.id==='dnd5e-classes24-phbrgeCunningAct');
+ assert.equal(dndVariantForEvent(cunning,unknown('use','utility'))?.id,cunning.variants[0].id);
+ // 2014 Breath Weapons save; the entry's design is a utility.
+ const breath=find('Breath Weapons','feat','2014');
+ assert.equal(dndVariantForEvent(breath,unknown('use','save'))?.id,breath.variants[0].id);
+ assert.equal(dndVariantForEvent(breath,unknown('attack','save')),null,'no attack design to borrow');
+ const sleep=find('Sleep','spell','2014');
+ assert.equal(dndVariantForEvent(sleep,unknown('template','damage'))?.id,sleep.variants[0].id);
+ assert.equal(dndVariantForEvent(sleep,unknown('damage','damage')),null,'plays once, on its template');
+ // Manual designs stay manual: Mage Hand's conjuring never borrows the control design.
+ const hand14=find('Mage Hand','spell','2014'),hand24=find('Mage Hand','spell','2024');
+ assert.equal(dndVariantForEvent(hand14,unknown('use','summon')),null);
+ assert.equal(dndVariantForEvent(hand24,unknown('use','summon')),null);
+ assert.equal(dndVariantForEvent(hand24,unknown('use','utility')),null,'a manual-only entry stays manual');
+ const constrict=find('Constrict','feat');
+ assert.equal(dndVariantForEvent(constrict,unknown('use','check')),null,'its escape check is a manual design');
+ assert.equal(dndVariantForEvent(constrict,unknown('use','attack'))?.recipe.trigger,'use');
+});
