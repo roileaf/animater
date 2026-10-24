@@ -5,11 +5,12 @@ import { resolveAutomaticFeatRecipe } from "../catalogs/pf2e/feats/feat-catalog.
 import { resolveAutomaticWeaponRecipe } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem } from "../catalogs/pf2e/ability-catalog.mjs";
 import { resolveSfAutomaticRecipe } from "../catalogs/sf2e/sf2e-catalog.mjs";
+import { npcAbilityRecipe } from "../catalogs/pf2e/npc-abilities.mjs";
 import { sfSettingKey } from "../catalogs/shared/catalog-system.mjs";
 
 export const CROSSOVER_CATALOG = "crossoverCatalog";
 export const TWOE_KINDS = ["spell", "feat", "action", "feature", "weapon"];
-const PF2E_KEYS = { spell: "spellCatalog", feat: "featCatalog", action: "actionCatalog", feature: "featureCatalog", weapon: "weaponCatalog" };
+const PF2E_KEYS = { spell: "spellCatalog", feat: "featCatalog", action: "actionCatalog", feature: "featureCatalog", weapon: "weaponCatalog", npcAbility: "npcAbilities", npcAbilityGuess: "npcAbilityGuess" };
 const PF2E_ABILITY = { action: PF2E_ACTION_CATALOG, feature: PF2E_FEATURE_CATALOG };
 const LABELS = { pf2e: "PF2e", sf2e: "SF2e" };
 
@@ -45,7 +46,14 @@ export function twoeCatalogRecipe(systemId, event, saved = [], { stateFor, custo
   if (systemId !== "pf2e") return null;
   const item = event.item, ability = item?.type === "action" ? "action" : isFeatureItem(item) ? "feature" : null;
   const options = { customEnabled, soundCatalog: sounds };
-  if (ability) return PF2E_ABILITY[ability].resolveAutomaticRecipe(event, stateFor(ability), saved, options) ?? null;
+  if (ability) {
+    const own = PF2E_ABILITY[ability].resolveAutomaticRecipe(event, stateFor(ability), saved, options);
+    if (own || ability !== "action" || stateFor("npcAbility") === false) return own ?? null;
+    // An NPC's monster ability no action entry covers (Grab, Breath Weapon): the NPC ability catalog,
+    // with the action catalog's motion and volume.
+    const actions = stateFor("action") ?? {};
+    return npcAbilityRecipe(event, customEnabled ? saved : [], { soundCatalog: actions.sound === false ? null : sounds, soundVolume: actions.soundVolume, motion: actions.motion !== false, generic: stateFor("npcAbilityGuess") !== false });
+  }
   if (item?.type === "weapon") return resolveAutomaticWeaponRecipe(event, stateFor("weapon"), saved, options) ?? null;
   // An NPC Strike the weapon catalog knows plays like that weapon; other NPC attacks keep their saved recipes.
   if (item?.type === "melee") { const strike = resolveAutomaticWeaponRecipe(event, stateFor("weapon"), saved, options); if (strike) return strike; }

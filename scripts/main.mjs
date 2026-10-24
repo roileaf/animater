@@ -20,6 +20,7 @@ import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
+import { SPLATTER_ID, SPLATTER_SYNC, splatterReady, splatterOn, splatScale, tokenSize } from "./integrations/splatter.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
 import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
@@ -1676,6 +1677,29 @@ Hooks.once("init", () => {
     hint: "A creature dropping to 0 HP goes down in the look of the damage that dropped it: burned to ash, frozen and shattered, fried by lightning. Off: a plain collapse.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  // PF2e NPC monster abilities (catalogs/pf2e/npc-abilities.mjs). Registered in every world: an SF2e world
+  // borrowing the PF2e catalogs reads it too.
+  game.settings.register(ID, "npcAbilities", {
+    name: "Animate NPC abilities",
+    hint: "PF2e NPCs' monster abilities animate when used: Grab, Constrict, Swallow Whole, Engulf, Breath Weapon (when its area is placed), Trample, Pounce, Rend, Knockdown, Throw Rock, Ferocity, Change Shape and more. Your own recipes for an ability still come first.",
+    scope: "world", config: game.system.id === "pf2e", type: Boolean, default: true,
+  });
+  game.settings.register(ID, "npcAbilityGuess", {
+    name: "Animate other NPC abilities from what they do",
+    hint: "With Animate NPC abilities on, an NPC ability that has no animation of its own gets one from what it does: an area it places plays in that shape (cone, line, burst, emanation) and its damage's colour, damage with no area strikes its target, else its traits decide (a teleport blinks, a fear ability cries out). Off: only the named monster abilities animate.",
+    scope: "world", config: game.system.id === "pf2e", type: Boolean, default: true,
+  });
+  game.settings.register(ID, "npcStrikeGuess", {
+    name: "Guess NPC Strikes",
+    hint: "An NPC Strike that no weapon or creature attack name places still animates: by its damage (a slashing one rakes like a claw, others land as a blow), and a ranged one by what it throws or spits. Off: those Strikes play nothing unless you make a recipe for them.",
+    scope: "world", config: game.system.id === "pf2e", type: Boolean, default: true,
+  });
+  // Shown only where Splatter is on; off, Splatter bleeds on its own.
+  game.settings.register(ID, SPLATTER_SYNC, {
+    name: "Splatter: blood follows the damage",
+    hint: "Animater sets how much each wound bleeds in Splatter: slashing and piercing most, bludgeoning less, fire and lightning little, psychic not at all. Critical hits and killing blows bleed more, and a kill's blood waits for its Finish Him! screen. The creature keeps its own blood color. Off: Splatter bleeds on its own.",
+    scope: "world", config: Boolean(game.modules.get(SPLATTER_ID)?.active), type: Boolean, default: true,
+  });
   game.settings.register(ID, DEFAULT_FINISHER, { scope: "world", config: false, type: String, default: "" });
   game.settings.register(ID, DEFAULT_FINISHER_ENDING, { scope: "world", config: false, type: String, default: "" });
   registerDefeatedLook(game.settings, ID, { onChange: () => persistentStates?.schedule() });
@@ -2283,9 +2307,26 @@ Hooks.once("ready", () => {
   // look; its Unconscious or Dying body treatment takes over afterwards. Energy damage short of
   // that flashes on the token. hp-state.mjs reads each system's track.
   const hpOf = (actor) => hpState(actor, game.system.id);
+  // Splatter's blood follows the damage (integrations/splatter.mjs): Splatter's own splat for this change is
+  // called off (it reads the HP it left in options.oldHpVal, registered before this hook), and Animater splats instead.
+  const bloodSync = () => splatterReady() && acceptsEvents() && game.settings.get(ID, SPLATTER_SYNC);
   Hooks.on("preUpdateActor", (actor, changes, options) => {
-    if (foundry.utils.hasProperty(changes, hpPath(actor, game.system.id))) options.animaterHpBefore = hpOf(actor);
+    if (!foundry.utils.hasProperty(changes, hpPath(actor, game.system.id))) return;
+    options.animaterHpBefore = hpOf(actor);
+    if (bloodSync()) { delete options.oldHpVal; options.animaterBlood = true; }
   });
+  const splatterSetting = (key, fallback) => { try { return game.settings.get(SPLATTER_ID, key); } catch { return fallback; } };
+  // Hidden tokens leave no blood, so none gives them away.
+  const splatBlood = (actor, token, before) => {
+    if (token.document?.hidden || !splatterOn(splatterSetting, game.combat)) return;
+    const after = hpOf(actor), ids = { actorId: actor.id, tokenId: token.id };
+    const damage = recallDamage(damageLog, ids), crit = damage?.crit === true || recallAttribution(damageLog, ids)?.crit === true;
+    const scale = splatScale({ before, after, type: damage?.type, crit, size: tokenSize(token.document), threshold: Number(splatterSetting("bloodsplatterThreshold", 100)) });
+    if (!scale) return;
+    // A kill's blood waits for the last enemy's screen (Finish Him!).
+    const wait = (Number(splatterSetting("bloodsplatterDelay", 0)) || 0) + (after?.down ? (flash?.finaleLength?.(actor) ?? 0) + killCamWait(actor) : 0);
+    setTimeout(() => { try { CONFIG.Splatter.splat(token, { scale }); } catch (error) { runtime.trace("Blocked", `Splatter: ${error.message}`); } }, Math.max(0, wait));
+  };
   // Finishers play on the real token (finisher-play.mjs): travel lands, the token is moved
   // there, then it vanishes, stays as a body, or stays.
   const finisherHost = (attacker) => ({
@@ -2418,9 +2459,10 @@ Hooks.once("ready", () => {
     const change = hpChange(options.animaterHpBefore, hpOf(actor));
     if (userId !== game.user.id || !acceptsEvents() || !change) return;
     const dropped = change.dropped;
+    const tokens = (actor.getActiveTokens?.() ?? []).filter((token) => token.document?.parent?.id === canvas.scene?.id);
+    if (options.animaterBlood) for (const token of tokens) splatBlood(actor, token, options.animaterHpBefore);
     if (!dropped && !game.settings.get(ID, DAMAGE_REACTIONS)) return;
-    for (const token of actor.getActiveTokens?.() ?? []) {
-      if (token.document?.parent?.id !== canvas.scene?.id) continue;
+    for (const token of tokens) {
       const kill = dropped ? killFinisherFor(actor, token) : null;
       if (kill) void playKill(actor, token, kill).catch((error) => runtime.trace("Blocked", error.message));
       else playDamageMoment(actor, token, dropped);

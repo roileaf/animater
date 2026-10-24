@@ -21,9 +21,44 @@ test("an NPC Strike linked to a carried weapon plays that weapon", () => {
   assert.equal(findCatalogWeapon({ type: "attack", item: strike })?.slug, "longsword");
 });
 
-test("an NPC attack no catalog knows is not guessed", () => {
-  assert.equal(findCatalogWeapon({ type: "attack", item: { type: "melee", name: "Crushing Grip", system: { traits: { value: ["unarmed"] } } } }), null);
-  assert.equal(findCatalogWeapon({ type: "attack", item: { type: "melee", name: "Spiked Tail", system: { traits: { value: [] } } } }), null, "only exact names");
+test("an NPC Strike's longer name plays its last natural word", () => {
+  const find = (name, weaponMode) => findCatalogWeapon({ type: "attack", weaponMode, item: { type: "melee", name, system: { traits: { value: [] } } } })?.name;
+  assert.equal(find("Spiked Tail"), "Tail");
+  assert.equal(find("Storm-Beak Jab"), "Beak");
+  assert.equal(find("Thunderbird Guard Talon"), "Talon");
+  assert.equal(find("Claws"), "Claw");
+  assert.equal(find("Tusks"), "Tusk");
+  assert.equal(find("Crushing Grip"), undefined, "no natural word");
+  assert.equal(find("Tail Spike", "ranged"), undefined, "natural attacks are melee only");
+});
+
+test("a PC's unarmed attack plays only its own name", () => {
+  const item = { type: "weapon", name: "Spiked Tail", system: { category: "unarmed", group: "brawling" } };
+  assert.notEqual(findCatalogWeapon({ type: "attack", item })?.name, "Tail");
+});
+
+test("an NPC Strike no name places plays by its damage, in its colour", () => {
+  const grip = resolve(npc("Crushing Grip", "bludgeoning"));
+  assert.equal(grip.name, "Crushing Grip · melee");
+  assert.match(contact(grip).assets[0], /^jb2a\.unarmed_strike\./);
+  assert.match(contact(resolve(npc("Paper-Cutout Slasher", "slashing"))).assets[0], /^jb2a\.claws\./);
+  assert.match(contact(resolve(npc("Shock", "electricity"))).assets[0], /\.yellow$/);
+});
+
+const flight = (r) => r.stages.find((s) => s.kind === "travel")?.assets[0] ?? "";
+test("a ranged NPC Strike throws or spits what its name says, else by its damage", () => {
+  assert.equal(flight(resolve(npc("Rock", "bludgeoning"), "ranged")), "jb2a.slingshot");
+  assert.match(flight(resolve(npc("Hurled Thorn", "piercing"), "ranged")), /^jb2a\.dart\./);
+  assert.match(flight(resolve(npc("Acid Spit", "acid"), "ranged")), /poison/);
+  assert.match(flight(resolve(npc("Eyes of Flame", "fire"), "ranged")), /fire_bolt/);
+  assert.match(flight(resolve(npc("Ranged Strike", "piercing"), "ranged")), /^jb2a\.dart\./);
+  assert.ok(resolve(npc("Tail Spike", "piercing"), "ranged"), "a ranged natural word throws instead");
+});
+
+test("an NPC's alchemical bomb is the catalog's bomb", () => {
+  const find = (name) => findCatalogWeapon({ type: "attack", weaponMode: "ranged", item: { type: "melee", name, system: { traits: { value: [] } } } })?.slug;
+  assert.equal(find("Alchemical Bomb — Frost Vial"), "frost-vial-moderate");
+  assert.equal(find("Greater Acid Flask"), "acid-flask-greater");
 });
 
 test("an NPC Fist punches like a PC's fist, named as itself", () => {
@@ -68,6 +103,16 @@ test("a PC's unarmed Jaws (an ancestry attack) bites too", () => {
 
 test("natural attacks are listed on the weapons page", () => {
   const natural = PF2E_WEAPONS.filter((w) => w.group === "natural");
-  assert.equal(natural.length, 15);
+  assert.equal(natural.length, 52);
   assert.ok(filterWeapons({ group: "natural", search: "jaws" }).length === 1);
+});
+
+test("with Guess NPC Strikes off, only Strikes a name places animate", () => {
+  const before = globalThis.game;
+  globalThis.game = { settings: { get: (module, key) => (key === "npcStrikeGuess" ? false : undefined) } };
+  try {
+    assert.equal(resolve(npc("Crushing Grip", "bludgeoning")), null);
+    assert.equal(resolve(npc("Rock", "bludgeoning"), "ranged"), null);
+    assert.ok(resolve(npc("Spiked Tail", "piercing")), "a creature word still plays");
+  } finally { globalThis.game = before; }
 });

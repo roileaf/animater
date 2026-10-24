@@ -80,12 +80,38 @@ export function findCatalogSpell(event) {
     const spell = byId.get(uuid.split(".").at(-1));
     if (spell) return spell;
   }
+  // A name with notes ("Dragon Breath (Gold)", "Detect Alignment (At Will) (Evil Only)") is the spell of that name;
+  // a pre-Remaster name on an older NPC is the spell it became.
+  const bare = String(item.name ?? "").replace(/\s*\([^)]*\)/g, "").trim();
   return (
     byName.get(normalize(item.system?.slug ?? item.slug)) ??
     byName.get(normalize(item.name)) ??
+    byName.get(normalize(bare)) ??
+    byName.get(normalize(LEGACY_SPELLS[normalize(bare).replace(/[^a-z ]/g, "")])) ??
     null
   );
 }
+// Pre-Remaster spell names NPCs still carry, and the Remaster spell each became (or the nearest one
+// when the old spell is gone, like the alignment spells).
+export const LEGACY_SPELLS = {
+  "dancing lights": "Light", "produce flame": "Ignition", "detect alignment": "Detect Magic", "detect good": "Detect Magic", "detect evil": "Detect Magic",
+  "undetectable alignment": "Disguise Magic", "misdirection": "Disguise Magic", "remove curse": "Cleanse Affliction", "remove disease": "Cleanse Affliction",
+  "neutralize poison": "Cleanse Affliction", "veil": "Illusory Disguise", "sound burst": "Noise Blast", "meteor swarm": "Falling Stars",
+  "commune with nature": "Commune", "deep slumber": "Sleep", "magic missile": "Force Barrage", "burning hands": "Breathe Fire",
+  "color spray": "Dizzying Colors", "true strike": "Sure Strike", "ray of frost": "Frostbite", "acid splash": "Caustic Blast",
+  "magic weapon": "Runic Weapon", "magic fang": "Runic Body", "mage armor": "Mystic Armor", "mage hand": "Telekinetic Hand",
+  "chill touch": "Void Warp", "disrupt undead": "Vitality Lash", "finger of death": "Execute", "flesh to stone": "Petrify",
+  "glitterdust": "Revealing Light", "faerie fire": "Revealing Light", "obscuring mist": "Mist", "hideous laughter": "Laughing Fit",
+  "horrid wilting": "Desiccate", "tanglefoot": "Tangle Vine", "calm emotions": "Calm", "comprehend language": "Translate",
+  "animate dead": "Summon Undead", "gentle repose": "Peaceful Rest", "tongues": "Truespeech", "plane shift": "Interplanar Teleport",
+  // Renames the pf2e system's own compendium links record (an old NPC's spell links to its Remaster entry).
+  "dimension door": "Translocate", "ray of enfeeblement": "Enfeeble", "vampiric touch": "Vampiric Feast", "see invisibility": "See the Unseen",
+  "true seeing": "Truesight", "freedom of movement": "Unfettered Movement", "know direction": "Know the Way", "feeblemind": "Never Mind",
+  "cloudkill": "Toxic Cloud", "abyssal pact": "Demonic Pact", "crushing despair": "Wave of Despair", "inspire courage": "Courageous Anthem",
+  "baleful polymorph": "Cursed Metamorphosis", "false life": "False Vitality", "entangle": "Entangling Flora", "touch of idiocy": "Stupefy",
+  "feather fall": "Gentle Landing", "prying eye": "Scouting Eye", "unseen servant": "Phantasmal Minion", "hallucinatory terrain": "Mirage",
+  "modify memory": "Rewrite Memory", "discern location": "Pinpoint", "maze": "Quandary", "dimensional anchor": "Planar Tether", "stoneskin": "Mountain Resilience",
+};
 export function automaticCatalogRecipe(
   event,
   state,

@@ -2,7 +2,7 @@ import {PF2E_WEAPONS as EQUIPMENT,PF2E_WEAPON_SOURCE} from '../../../../data/pf2
 import {weaponRecipe} from './weapon-choreography.mjs';
 import {normalize,matchRecipe, ownRecipe,matchStrikeOverride} from '../../../core/model.mjs';
 import {withRuneFlourishes,runeFlourishesEnabled} from './weapon-runes.mjs';
-import {NATURAL_WEAPONS,naturalWeaponFor,naturalVariant} from '../natural-weapons.mjs';
+import {NATURAL_WEAPONS,naturalWeaponFor,naturalVariant,naturalByDamage,naturalElement} from '../natural-weapons.mjs';
 // Equipment weapons, then creature attacks (Jaws, Claw) the equipment has no entry for.
 const PF2E_WEAPONS=[...EQUIPMENT,...NATURAL_WEAPONS];
 export {PF2E_WEAPONS,PF2E_WEAPON_SOURCE,weaponRecipe};
@@ -26,7 +26,9 @@ function catalogForItem(item,itemUuid){
 export function findCatalogWeapon(event){
  const item=event?.item;
  // An NPC Strike is a melee item: it plays the weapon it was made from, else the catalog weapon of its name.
- if(item?.type==='melee'){const linked=item.linkedWeapon;return (linked?.type==='weapon'&&catalogForItem(linked))||catalogForItem(item)||naturalWeaponFor(item);}
+ // Natural attacks are melee only, as is a melee-only weapon of the same name: a ranged NPC Strike ("Tail Spike",
+ // "Icicle" thrown) finds its stand-in instead.
+ if(item?.type==='melee'){const linked=item.linkedWeapon;const named=catalogForItem(item);return (linked?.type==='weapon'&&catalogForItem(linked))||(named&&(!isRanged(event.weaponMode)||named.modes.some(m=>isRanged(m.mode)))?named:null)||bombFor(item)||(isRanged(event.weaponMode)?null:naturalWeaponFor(item));}
  if(item?.type!=='weapon')return null;
  const direct=catalogForItem(item,event.itemUuid);if(direct)return direct;
  if((item.category??item.system?.category)!=='unarmed')return null;
@@ -47,11 +49,50 @@ export function standardWeapon(item,mode){
  const fits=w=>w&&(!mode||w.modes.some(m=>m.mode===mode)),standard=byName.get(normalize(GROUP_STANDARD[group]));
  return fits(standard)?standard:PF2E_WEAPONS.find(w=>w.group===group&&w.edition!=='legacy'&&fits(w))??(standard?.group===group?standard:null);
 }
-// An NPC Strike has no weapon group: its linked weapon's group, or a Fist's, else no guess (Jaws, Claw).
-function npcStandardWeapon(item,mode){
+const isRanged=mode=>mode==='ranged'||mode==='thrown';
+// An NPC's alchemical bomb: "Alchemical Bomb — Frost Vial" and "Greater Acid Flask" are the catalog's
+// Frost Vial (Moderate, else another grade) and Acid Flask (Greater).
+const GRADES=['moderate','lesser','greater','major'];
+function bombFor(item){
+ let name=String(item?.name??'').split(/\s+[—–-]\s+/).at(-1).trim();
+ const grade=name.match(/^(lesser|moderate|greater|major)\s+/i);
+ if(grade)name=`${name.slice(grade[0].length)} (${grade[1]})`;
+ const found=byName.get(normalize(name))??(grade?null:GRADES.map(g=>byName.get(normalize(`${name} (${g})`))).find(Boolean));
+ return found?.modes.some(m=>m.mode==='thrown')?found:null;
+}
+// A ranged NPC Strike no weapon names: what it throws or spits, by the words of its name, else by its damage.
+const RANGED_WORDS={rock:'sling',boulder:'sling',stone:'sling',pebble:'sling',object:'sling',meat:'sling',corpse:'sling',coal:'sling',plate:'sling',
+ quill:'dart',spike:'dart',spine:'dart',thorn:'dart',splinter:'dart',flechette:'dart',needle:'dart',barb:'dart',scalpel:'dart',cutlery:'dart',
+ web:'bola',net:'bola',
+ spit:'spit',squirt:'spit',spittle:'spit',mucus:'spit',slime:'spit',spore:'spit',glob:'spit',bile:'spit',
+ beam:'beam',eye:'beam',ray:'beam',bolt:'beam',thunderbolt:'beam',note:'beam',blast:'beam'};
+// Energy shots, by damage type; others (void, mental, force, spirit) a violet comet.
+const ENERGY_SHOT={fire:'drake-rifle-fire',cold:'drake-rifle-cold',electricity:'drake-rifle-electricity',acid:'drake-rifle-acid',poison:'drake-rifle-poison',
+ sonic:'blade-of-fallen-stars',vitality:'blade-of-fallen-stars',positive:'blade-of-fallen-stars'};
+const energyShot=element=>ENERGY_SHOT[element]??'ghosthands-comet';
+function npcRangedStandIn(item,mode){
+ const words=String(item?.name??'').toLowerCase().split(/[^a-z]+/).filter(Boolean).map(w=>w.replace(/(?<=..)s$/,''));
+ const word=[...words].reverse().map(w=>RANGED_WORDS[w]).find(Boolean),element=naturalElement(item);
+ const types=Object.values(item?.system?.damageRolls??{}).map(r=>r?.damageType);
+ const slug=word==='spit'?(element==='physical'?'drake-rifle-acid':energyShot(element)):word==='beam'?energyShot(element==='physical'?'force':element)
+  :word??(element!=='physical'?energyShot(element):types.includes('bludgeoning')?'sling':types.includes('slashing')?'dagger':'dart');
+ const weapon=byName.get(normalize(slug));
+ return weapon?.modes.some(m=>isRanged(m.mode))?weapon:null;
+}
+// An NPC Strike has no weapon group: its linked weapon's group, or a Fist's. Ranged, its stand-in; else
+// a natural attack by its damage, in that damage's colour. No NPC Strike goes unanimated.
+// The "Guess NPC Strikes" world setting (on unless turned off): off, an NPC Strike no name places stays unanimated.
+export function npcStrikeGuessEnabled(game=globalThis.game){
+ try{return game?.settings?.get('animater','npcStrikeGuess')!==false;}catch{return true;}
+}
+function npcStandardWeapon(item,mode,guess=npcStrikeGuessEnabled()){
  if(item?.type!=='melee')return null;
  if(item.linkedWeapon?.type==='weapon')return standardWeapon(item.linkedWeapon,mode);
- return [item.system?.slug,item.name].some(n=>normalize(n)==='fist')?standardWeapon({system:{group:'brawling'}},mode):null;
+ if([item.system?.slug,item.name].some(n=>normalize(n)==='fist'))return standardWeapon({system:{group:'brawling'}},mode);
+ if(!guess)return null;
+ if(isRanged(mode))return npcRangedStandIn(item,mode);
+ const natural=naturalByDamage(item);
+ return natural?naturalVariant(natural,item):null;
 }
 // PF2e calls some throws "ranged"; the catalog keeps them as thrown (and the reverse).
 const modeOf=(weapon,mode)=>!weapon||weapon.modes.some(m=>m.mode===mode)?mode:mode==='ranged'&&weapon.modes.some(m=>m.mode==='thrown')?'thrown':mode==='thrown'&&weapon.modes.some(m=>m.mode==='ranged')?'ranged':mode;
