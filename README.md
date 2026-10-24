@@ -83,6 +83,8 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 
 ## Settings
 
+Open **Configure Settings → Animater → Animater settings**. The window has a tab per topic (Look & light, Motion, Floor & world, Sound, Combat drama, Automation & catalogs, Interface & performance, Integrations) and a search box that finds a setting in any tab. Each feature is one row: the GM's **Everyone** switch for the whole world beside each player's own **My screen** switch, with its extra choices (lifetime, strength, reach) under it. Players see only the switches for their own screen. Changes apply as soon as you make them. **Animation quality (this device)** also stays in Configure Settings, beside the **Animater workspace** and **Hit sounds** menus. Settings that only apply to a system or a module (PF2e, Daggerheart, Dice So Nice, PF2e Visioner, Splatter, Automated Animations, Trigger Animations) show only where it is active.
+
 | Setting | Scope | What it does |
 |---|---|---|
 | Animation quality (this device) | Each player | Full / Balanced / Low / Off. Lower it on slower computers; other players are unaffected |
@@ -93,10 +95,14 @@ Tokenshade is Animater's built-in shader engine for effects on the token's own a
 | Faster animations (this device) | Each player | Makes animations cheaper to draw on your computer, for every module that uses Sequencer, with no change in how they look (on by default; see below) |
 | Effect lighting | World | Fire, lightning, radiant and other glowing effects light the scene around them while they play (lasting areas and auras until they end), blocked by walls like any light (on by default) |
 | Effect lighting in daylight | World | Also adds a soft coloured glow around effects in fully lit scenes (on by default) |
+| Effect lighting on my screen | Each player | Turn off to never light the scene from Animater's effects on this screen; other players still see them lit (on by default) |
 | Flickering and flashing effect lights | Each player | Turn off to see effect lights as a steady glow, without flicker or strobe (on by default) |
 | Ground marks | World | Elemental spells, areas and alchemical bombs/flasks leave a painted mark on the floor where they landed (ordinary weapon strikes and rune damage do not): scorch, rime, acid, streaks, stains or cracks by element. Full for 2 minutes, then fading over the next 3; areas get a cluster clipped to the template, and a lasting area's mark stays until the area ends. PF2e impulses and NPC actions mark only when their animation plays on the damage roll (on by default) |
 | Ground mark lifetime (minutes) | World | How long a ground mark stays: full for the first 40%, then fading over the rest. 0 keeps marks until the scene changes or the page reloads. Changing it applies to marks already on the floor (default 5: full for 2 minutes, fading over the next 3) |
 | Ground marks on my screen | Each player | Turn off to never draw ground marks on this screen. Marks are drawn locally, never saved, cleared on reload or on a scene or level change, not drawn at Off quality, and Low quality draws half as many (on by default) |
+| Element reactions on my screen | Each player | Turn off to never draw element reactions (steam, smoke, flares, arcs where ground marks meet) on this screen (on by default) |
+| Dispel shatter on my screen | Each player | Turn off to never draw dispels shattering or flickering lasting effects on this screen (on by default) |
+| Combat recap on my screen | Each player | Turn off to never show the combat recap's Highlights screen on this screen; it is still recorded and shown to everyone else (on by default) |
 | Afterimage trails | World | Charges, leaps, knockbacks and teleports that Animater plays leave a brief trail of ghost copies behind the token, tinted by the action. Each ground-covering motion stage has an **Afterimages** choice in the Studio (Auto, Always, Never); off here, nothing trails (on by default) |
 | Afterimages on my screen | Each player | Turn off to never draw afterimage trails on this screen. Ghosts are drawn locally and show at Full, Light and Balanced quality, not at Low or Off (on by default) |
 | Map distortion | World | Big blasts ripple across the map, lasting fire shimmers with heat and teleports warp the air. Explosions, area bursts of 2 squares or more and critical hits with heavy two-handed weapons send a shockwave ring; lasting fire areas and auras shimmer until they end (an aura's shimmer moves with its token); a teleport pinches space at both ends. Drawn only on screens at Full animation quality (on by default) |
@@ -153,7 +159,10 @@ animater.resolve(message);          // the recipe automatic playback would use, 
 animater.handles(item);             // true when Animater would animate this item or message
 await animater.stop();
 animater.clearGroundMarks();      // wipe ground marks: a GM clears every screen ({ everyone: false } for only yours), a player their own
+await animater.importRecipes(code); // GM only: share codes, export JSON or { schema: 1, recipes }; merged by id like Import → { added, replaced, skipped }
 ```
+
+Share a recipe: right-click it on the Recipes (or Finishers) page and choose **Copy share code** (one line starting `animater-recipe:1:`, paste it into **Import** in another world; several codes at once work too) or **Copy as macro** (a script macro that imports it when a GM runs it).
 
 Macro to clear the floor at once: `game.modules.get("animater").api.clearGroundMarks()`. GMs can also bind **Clear ground marks** under Configure Controls (no key by default). Marks of lasting areas still on the board are cleared too and come back only if the area plays again.
 

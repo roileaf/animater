@@ -10,6 +10,7 @@ import { normalizePreviewArea } from "../engines/preview/canvas-preview-area.mjs
 import { repeatStride } from "./stage-options.mjs";
 import { completeMediaStage } from "../engines/media/media-lifetime.mjs";
 import { normalizePlaybackRoles } from "./playback-roles.mjs";
+import { hasShareCode, combineShareCodes } from "./recipe-share.mjs";
 import { isPathMotion, PATH_MOTIONS, HOLDING_MOTIONS } from "../engines/motion/motion-path.mjs";
 import { meleeClip } from "../systems/outcome.mjs";
 import {
@@ -364,7 +365,8 @@ export function validateRecipe(input) {
 }
 export function parseImport(text) {
   if (text.length > 1_000_000) throw Error("Import too large. Limit: 1 MB.");
-  const data = JSON.parse(text);
+  // Share codes (core/recipe-share.mjs), one or several, or an export file's JSON.
+  const data = hasShareCode(text) ? combineShareCodes(text) : JSON.parse(text);
   if (
     data.schema !== 1 ||
     !Array.isArray(data.recipes) ||

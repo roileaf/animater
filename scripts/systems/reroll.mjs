@@ -6,3 +6,11 @@ export function rerollChangesNothing(message, systemId = "pf2e") {
   if (!message?.flags?.[systemId]?.context?.isReroll) return false;
   return /reroll-second[^"]*\breroll-discard\b/.test(String(message.content ?? ""));
 }
+// What paid for a reroll, for the Activity page: a Hero Point, a Mythic Point, or a plain reroll (a fortune effect,
+// the GM's reroll menu). null when the message is no reroll.
+export function rerollKind(message, systemId = "pf2e") {
+  const context = message?.flags?.[systemId]?.context;
+  if (!context?.isReroll) return null;
+  const options = Array.isArray(context.options) ? context.options : [];
+  return options.includes("check:reroll:hero-points") ? "hero-point" : options.includes("check:reroll:mythic-points") ? "mythic-point" : "reroll";
+}

@@ -76,6 +76,33 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
     if (!((rate > 0 && rate !== 1) || echo || place || space || muffled) || typeof data.file !== "string") return;
     pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate: rate > 0 ? rate : 1, echo, place, space, muffled, until: now() + MATCH_MS }]);
   });
+  // Animater's own positional sounds (footsteps, footfall thuds) ask for their pitch directly, just before they play,
+  // so it is set as the sound's nodes are built: a short thud's whole impact is in its first milliseconds, and a rate
+  // set after it starts would let that impact through at the recorded pitch.
+  const direct = hooks.on("animater.shapeSound", (data) => {
+    const rate = Number(data?.rate) > 0 ? Number(data.rate) : 1;
+    // A heavy footfall may also ask to be darkened (`lowpass` Hz) and given body (`bass` dB, a low shelf).
+    const lowpass = Number(data?.lowpass) > 0 ? Number(data.lowpass) : null, bass = Number(data?.bass) > 0 ? Math.min(15, Number(data.bass)) : null;
+    if (typeof data?.file !== "string") return;
+    // Where it happens (`at`: x, y, elevation, sceneId, level): it rings in the room and is muffled behind a wall
+    // exactly as a hit is, at `roomShare` of a hit's room (a footstep is a small sound). Foundry's playAtPosition
+    // already makes it quieter with distance, so distance only dulls and pans it here.
+    const at = data.at && Number.isFinite(data.at.x) && Number.isFinite(data.at.y) ? data.at : null;
+    let place = null, space = null, muffled = false, echo = null, roomShare = 1;
+    if (at) {
+      const where = { file: data.file, animaterAt: { x: at.x, y: at.y, elevation: at.elevation }, animaterScene: at.sceneId, animaterLevel: at.level };
+      const share = Number(data.roomShare);
+      roomShare = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 1;
+      try { place = placeSound(where.animaterAt, listener() ?? {}); } catch { place = null; }
+      try { echo = sceneEcho(null, acoustics()); } catch { echo = null; }
+      if (echo) echo = { ...echo, wet: (echo.wet ?? 0) * roomShare };
+      try { space = room(where) ?? null; } catch { space = null; }
+      try { muffled = muffle(where) === true; } catch { muffled = false; }
+      if (!(roomShare > 0)) { space = null; echo = null; }
+    }
+    if (rate === 1 && !lowpass && !bass && !place && !space && !muffled && !echo) return;
+    pending.set(data.file, [...(pending.get(data.file) ?? []).filter((p) => p.until > now()), { rate, lowpass, bass, echo, place, space, muffled, roomShare, until: now() + MATCH_MS }]);
+  });
   const take = (src) => {
     const path = decodeURIComponent(String(src ?? ""));
     for (const [file, list] of pending) {
@@ -101,21 +128,40 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
         const added = [], c = source.context;
         if (shape.place?.cutoff < 18000 && c.createBiquadFilter) { const dull = c.createBiquadFilter(); dull.type = "lowpass"; dull.frequency.value = shape.place.cutoff; added.push(dull); }
         if (shape.muffled && c.createBiquadFilter) { const wall = c.createBiquadFilter(); wall.type = "lowpass"; wall.frequency.value = MUFFLED_HZ; added.push(wall); }
+        // Weight: the slap on top filtered off, the low end lifted.
+        if (shape.lowpass && c.createBiquadFilter) { const dark = c.createBiquadFilter(); dark.type = "lowpass"; dark.frequency.value = shape.lowpass; added.push(dark); }
+        if (shape.bass && c.createBiquadFilter) { const body = c.createBiquadFilter(); body.type = "lowshelf"; body.frequency.value = 110; body.gain.value = shape.bass; added.push(body); }
+        // A boosted low end can run past full scale (a thud is nearly all bass): a fast, hard limiter last, just
+        // under 0 dBFS, so a giant's footfall never clips.
+        if (shape.bass && c.createDynamicsCompressor) {
+          const limit = c.createDynamicsCompressor();
+          limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.1;
+          added.push(limit);
+        }
         if (shape.place?.pan && c.createStereoPanner) { const side = c.createStereoPanner(); side.pan.value = shape.place.pan; added.push(side); }
         if (shape.echo) added.push(echoNode(c, shape.echo));
         // A share of it all, taken after the sound's own volume, goes to the room's reverb: a muffled sound's room
         // is muffled too, and the sound's level, fades and mutes (Blood off) carry to its reverb. Foundry cuts every
         // output of the volume node when the sound stops.
-        let send = null;
+        // A smaller sound (a footstep) sends only its share, through a gain of its own in front of the room.
+        let send = null, share = null;
         if (shape.space && this.gainNode?.connect) {
-          try { send = shape.space.node?.(c) ?? null; if (send) this.gainNode.connect(send); } catch { try { send?.disconnect?.(); } catch { /* gone */ } send = null; /* plays dry */ }
+          try {
+            send = shape.space.node?.(c) ?? null;
+            if (send && shape.roomShare < 1 && c.createGain) { share = c.createGain(); share.gain.value = shape.roomShare; share.connect(send); }
+            if (send) this.gainNode.connect(share ?? send);
+          } catch { try { share?.disconnect?.(); send?.disconnect?.(); } catch { /* gone */ } send = null; share = null; /* plays dry */ }
         }
         if (added.length) this.effects.push(...added);
         if (added.length || send) {
           const gain = this.gainNode;
           source.addEventListener?.("ended", () => {
             for (const n of added) { const i = this.effects.indexOf(n); if (i >= 0) this.effects.splice(i, 1); }
-            if (send) { try { gain.disconnect(send); } catch { /* already cut at stop */ } try { send.disconnect(); } catch { /* gone */ } }
+            if (send) {
+              try { gain.disconnect(share ?? send); } catch { /* already cut at stop */ }
+              if (share) { try { share.disconnect(); } catch { /* gone */ } }
+              try { send.disconnect(); } catch { /* gone */ }
+            }
           }, { once: true });
         }
       }
@@ -124,5 +170,5 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
   }
   createNodes.animaterPitch = true;
   Sound.prototype._createNodes = createNodes;
-  return () => { hooks.off("createSequencerSound", id); if (Sound.prototype._createNodes === createNodes) Sound.prototype._createNodes = create; };
+  return () => { hooks.off("createSequencerSound", id); hooks.off("animater.shapeSound", direct); if (Sound.prototype._createNodes === createNodes) Sound.prototype._createNodes = create; };
 }

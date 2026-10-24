@@ -2,10 +2,15 @@ import { dnd5eAttackOutcome, dnd5eTargetOutcomes, midiTargetOutcomes, HIDDEN } f
 import { twoeEventElement, dnd5eEventElement } from "../catalogs/shared/element-choice.mjs";
 import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason, hidesResult } from "../core/privacy.mjs";
 import { strikeItemOf } from "../engines/finishers/strike-finishers.mjs";
-import { rerollChangesNothing } from "./reroll.mjs";
+import { rerollChangesNothing, rerollKind } from "./reroll.mjs";
 // Normalize system events without changing rolls, items, HP, or system state.
 export const pf2eEvent=(message,userId)=>twoeEvent(message,userId,'pf2e');
 export const sf2eEvent=(message,userId)=>twoeEvent(message,userId,'sf2e');
+// PF2e/SF2e roll option map:increases:N (0 the 1st Strike of a turn, 2 the 3rd and later), or null.
+export function mapIncreasesOf(options = []) {
+  const found = (Array.isArray(options) ? options : []).map(String).find((o) => /^map:increases:\d+$/.test(o));
+  return found ? Number(found.slice(14)) : null;
+}
 export function twoeEvent(message, userId, systemId='pf2e') {
   const flags=message.flags?.[systemId], author=message.author ?? message.user, context = flags?.context;
   // A reroll plays with its new result, unless it kept the old roll (reroll.mjs).
@@ -61,9 +66,12 @@ export function twoeEvent(message, userId, systemId='pf2e') {
     targetUuid: context?.target?.token ?? flags?.target?.token,
     ...(twoeEventElement(message, systemId) ? { element: twoeEventElement(message, systemId) } : {}),
     ...(maneuver ? { skillCheck: true } : {}),
+    // The Strike's multiple attack penalty step (map:increases:2 is the 3rd Strike of a turn), for a strained miss.
+    ...(type === "attack" && mapIncreasesOf(options) !== null ? { mapIncreases: mapIncreasesOf(options) } : {}),
     // A GM's private roll shows its result unless the world hides it: then an attack plays neutrally (hidden).
     outcome: hidesResult(privacy) ? (type === "attack" ? HIDDEN : undefined) : context?.outcome,
     ...(gmPrivate ? { private: true } : {}),
+    ...(rerollKind(message, systemId) ? { reroll: rerollKind(message, systemId) } : {}),
   };
 }
 // A spell cast from a staff (PF2e Dailies), wand or scroll is no item on the actor, and its attack and

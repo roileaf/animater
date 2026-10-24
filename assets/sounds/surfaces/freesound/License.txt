@@ -99,3 +99,122 @@ ward-chime-570853-0.ogg: "magicShield_block.wav" by rafaelzimrp, https://freesou
 ward-chime-707618-4.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
 ward-chime-707618-5.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
 ward-chime-707618-9.ogg: "Xylophone crystal chimes" by lori.mortimer, https://freesound.org/people/lori.mortimer/sounds/707618/
+stone-step-197778-0.ogg: "Footstep on Stone" by sgossner, https://freesound.org/people/sgossner/sounds/197778/
+stone-step-197779-0.ogg: "Footstep on Stone 2" by sgossner, https://freesound.org/people/sgossner/sounds/197779/
+stone-step-197780-0.ogg: "Footstep on Stone 3" by sgossner, https://freesound.org/people/sgossner/sounds/197780/
+stone-step-637555-0.ogg: "footsteps shoes walk hard floor stone patio nice.flac" by kyles, https://freesound.org/people/kyles/sounds/637555/
+stone-step-637555-1.ogg: "footsteps shoes walk hard floor stone patio nice.flac" by kyles, https://freesound.org/people/kyles/sounds/637555/
+wood-step-485421-0.ogg: "Footsteps on wood floor" by IENBA, https://freesound.org/people/IENBA/sounds/485421/
+wood-step-485421-1.ogg: "Footsteps on wood floor" by IENBA, https://freesound.org/people/IENBA/sounds/485421/
+wood-step-485421-2.ogg: "Footsteps on wood floor" by IENBA, https://freesound.org/people/IENBA/sounds/485421/
+wood-step-405115-0.ogg: "WoodType_1_Footstep_MensDressShoe_.wav" by monte32, https://freesound.org/people/monte32/sounds/405115/
+wood-step-405115-1.ogg: "WoodType_1_Footstep_MensDressShoe_.wav" by monte32, https://freesound.org/people/monte32/sounds/405115/
+grass-step-852212-0.ogg: "Walking on grass" by thesynesthiser, https://freesound.org/people/thesynesthiser/sounds/852212/
+grass-step-852212-1.ogg: "Walking on grass" by thesynesthiser, https://freesound.org/people/thesynesthiser/sounds/852212/
+grass-step-488074-0.ogg: "Footsteps_Grass_Single_03.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/488074/
+grass-step-390760-0.ogg: "FX_001_footstep_grass_l.wav" by d00121058, https://freesound.org/people/d00121058/sounds/390760/
+dirt-step-487862-0.ogg: "Footsteps_Dirt_Single_05.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/487862/
+dirt-step-487864-0.ogg: "Footsteps_Dirt_Single_07.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/487864/
+dirt-step-487869-0.ogg: "Footsteps_Dirt_Single_04.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/487869/
+dirt-step-353799-1.ogg: "Footsteps_6_Dirt_shoe.wav" by monte32, https://freesound.org/people/monte32/sounds/353799/
+dirt-step-353799-2.ogg: "Footsteps_6_Dirt_shoe.wav" by monte32, https://freesound.org/people/monte32/sounds/353799/
+sand-step-164459-1.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
+sand-step-164459-2.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
+sand-step-164459-3.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
+sand-step-164459-4.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
+water-step-861369-0.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
+water-step-861369-1.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
+water-step-861369-2.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
+water-step-861369-3.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
+mud-step-488068-0.ogg: "Footsteps_Mud_01.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/488068/
+mud-step-349082-0.ogg: "Hiking on Soft Ground 1 - Through Mud Then Slipping" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/349082/
+mud-step-349082-1.ogg: "Hiking on Soft Ground 1 - Through Mud Then Slipping" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/349082/
+mud-step-349082-2.ogg: "Hiking on Soft Ground 1 - Through Mud Then Slipping" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/349082/
+ice-step-732880-0.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
+ice-step-732880-1.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
+ice-step-732880-2.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
+ice-step-732880-3.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
+ice-step-416939-0.ogg: "Footsteps on crunchy ice on sidewalk - MP3" by OBXJohn, https://freesound.org/people/OBXJohn/sounds/416939/
+wing-561364-0.ogg: "Wing Flap Heavy (prototype).mp3" by GearArcanaNo37, https://freesound.org/people/GearArcanaNo37/sounds/561364/
+wing-389634-0.ogg: "Wing Flap 1.wav" by _stubb, https://freesound.org/people/_stubb/sounds/389634/
+wing-362405-0.ogg: "Dragon Wing Flap.wav" by domBanks, https://freesound.org/people/domBanks/sounds/362405/
+wing-362405-1.ogg: "Dragon Wing Flap.wav" by domBanks, https://freesound.org/people/domBanks/sounds/362405/
+burrow-849840-0.ogg: "shoveling-dirt" by JeffPearson, https://freesound.org/people/JeffPearson/sounds/849840/
+burrow-353907-0.ogg: "Shovel_dirt.wav" by dr19, https://freesound.org/people/dr19/sounds/353907/
+burrow-353907-1.ogg: "Shovel_dirt.wav" by dr19, https://freesound.org/people/dr19/sounds/353907/
+swim-316598-0.ogg: "Water_Paddle_soft_023.wav" by EpicWizard, https://freesound.org/people/EpicWizard/sounds/316598/
+swim-637957-0.ogg: "water movements swimming around small splashes random.flac" by kyles, https://freesound.org/people/kyles/sounds/637957/
+swim-488507-0.ogg: "splash.wav" by 03Thib, https://freesound.org/people/03Thib/sounds/488507/
+climb-816743-0.ogg: "Climbing a rock, shoes and hands" by YannSauvin, https://freesound.org/people/YannSauvin/sounds/816743/
+climb-816743-1.ogg: "Climbing a rock, shoes and hands" by YannSauvin, https://freesound.org/people/YannSauvin/sounds/816743/
+climb-816743-3.ogg: "Climbing a rock, shoes and hands" by YannSauvin, https://freesound.org/people/YannSauvin/sounds/816743/
+climb-816743-4.ogg: "Climbing a rock, shoes and hands" by YannSauvin, https://freesound.org/people/YannSauvin/sounds/816743/
+crawl-872226-0.ogg: "Person Rolling on Floor Clothing Rustle" by KoimeMatsuchiya, https://freesound.org/people/KoimeMatsuchiya/sounds/872226/
+crawl-19291-0.ogg: "foley cloth rustle.wav" by martian, https://freesound.org/people/martian/sounds/19291/
+crawl-389794-0.ogg: "Crawling on a Wooden Floor.wav" by krnash, https://freesound.org/people/krnash/sounds/389794/
+crawl-389794-1.ogg: "Crawling on a Wooden Floor.wav" by krnash, https://freesound.org/people/krnash/sounds/389794/
+crawl-389794-2.ogg: "Crawling on a Wooden Floor.wav" by krnash, https://freesound.org/people/krnash/sounds/389794/
+jump-496188-0.ogg: "Whoosh (Clothing Drag)" by JonasTisell, https://freesound.org/people/JonasTisell/sounds/496188/
+jump-494797-0.ogg: "Jacket/Cloth Rustle 9" by brandondelehoy, https://freesound.org/people/brandondelehoy/sounds/494797/
+jump-391448-1.ogg: "Shirt Whoosh 1.wav" by saturdaysoundguy, https://freesound.org/people/saturdaysoundguy/sounds/391448/
+jump-495390-1.ogg: "Foley_Whoosh_Clothes.wav" by Nox_Sound, https://freesound.org/people/Nox_Sound/sounds/495390/
+dragon-step-712066-0.ogg: "Monster footsteps on gravel" by AudioPapkin, https://freesound.org/people/AudioPapkin/sounds/712066/
+dragon-step-712066-1.ogg: "Monster footsteps on gravel" by AudioPapkin, https://freesound.org/people/AudioPapkin/sounds/712066/
+dragon-step-712066-2.ogg: "Monster footsteps on gravel" by AudioPapkin, https://freesound.org/people/AudioPapkin/sounds/712066/
+dragon-step-712066-3.ogg: "Monster footsteps on gravel" by AudioPapkin, https://freesound.org/people/AudioPapkin/sounds/712066/
+talons-step-409371-0.ogg: "pasos de patos" by danielp27, https://freesound.org/people/danielp27/sounds/409371/
+talons-step-409371-1.ogg: "pasos de patos" by danielp27, https://freesound.org/people/danielp27/sounds/409371/
+talons-step-409371-2.ogg: "pasos de patos" by danielp27, https://freesound.org/people/danielp27/sounds/409371/
+talons-step-409371-3.ogg: "pasos de patos" by danielp27, https://freesound.org/people/danielp27/sounds/409371/
+talons-step-611105-0.ogg: "pigeon footsteps on parquet floor.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/611105/
+talons-step-611105-1.ogg: "pigeon footsteps on parquet floor.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/611105/
+talons-step-611105-2.ogg: "pigeon footsteps on parquet floor.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/611105/
+talons-step-611105-3.ogg: "pigeon footsteps on parquet floor.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/611105/
+talons-step-611105-4.ogg: "pigeon footsteps on parquet floor.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/611105/
+talons-step-851733-0.ogg: "Thick Sand Movements" by IENBA, https://freesound.org/people/IENBA/sounds/851733/
+talons-step-851733-1.ogg: "Thick Sand Movements" by IENBA, https://freesound.org/people/IENBA/sounds/851733/
+talons-step-851733-2.ogg: "Thick Sand Movements" by IENBA, https://freesound.org/people/IENBA/sounds/851733/
+talons-step-851733-3.ogg: "Thick Sand Movements" by IENBA, https://freesound.org/people/IENBA/sounds/851733/
+talons-step-851733-4.ogg: "Thick Sand Movements" by IENBA, https://freesound.org/people/IENBA/sounds/851733/
+ooze-step-528263-0.ogg: "Pound of Flesh 2" by magnuswaker, https://freesound.org/people/magnuswaker/sounds/528263/
+ooze-step-794272-0.ogg: "Slime slapping" by greenlinker, https://freesound.org/people/greenlinker/sounds/794272/
+ooze-step-794272-1.ogg: "Slime slapping" by greenlinker, https://freesound.org/people/greenlinker/sounds/794272/
+ooze-step-837146-0.ogg: "Gelatinous Cube Approach" by e_r_r_1012, https://freesound.org/people/e_r_r_1012/sounds/837146/
+ooze-step-837146-1.ogg: "Gelatinous Cube Approach" by e_r_r_1012, https://freesound.org/people/e_r_r_1012/sounds/837146/
+legs-step-828623-0.ogg: "bug legs tapping" by c64cosmin, https://freesound.org/people/c64cosmin/sounds/828623/
+legs-step-828623-1.ogg: "bug legs tapping" by c64cosmin, https://freesound.org/people/c64cosmin/sounds/828623/
+legs-step-828623-2.ogg: "bug legs tapping" by c64cosmin, https://freesound.org/people/c64cosmin/sounds/828623/
+body-air-701104-0.ogg: "Whoosh stereo light (transition)" by xkeril, https://freesound.org/people/xkeril/sounds/701104/
+body-air-792292-0.ogg: "Gust of wind" by Rae_chuuu, https://freesound.org/people/Rae_chuuu/sounds/792292/
+body-air-792292-1.ogg: "Gust of wind" by Rae_chuuu, https://freesound.org/people/Rae_chuuu/sounds/792292/
+body-air-792292-2.ogg: "Gust of wind" by Rae_chuuu, https://freesound.org/people/Rae_chuuu/sounds/792292/
+body-air-792292-3.ogg: "Gust of wind" by Rae_chuuu, https://freesound.org/people/Rae_chuuu/sounds/792292/
+body-air-792292-4.ogg: "Gust of wind" by Rae_chuuu, https://freesound.org/people/Rae_chuuu/sounds/792292/
+body-bone-837032-0.ogg: "Clatter of sticks on sticks or bones on bones" by Wigglesworth, https://freesound.org/people/Wigglesworth/sounds/837032/
+body-bone-837032-1.ogg: "Clatter of sticks on sticks or bones on bones" by Wigglesworth, https://freesound.org/people/Wigglesworth/sounds/837032/
+body-bone-837032-2.ogg: "Clatter of sticks on sticks or bones on bones" by Wigglesworth, https://freesound.org/people/Wigglesworth/sounds/837032/
+body-bone-837032-3.ogg: "Clatter of sticks on sticks or bones on bones" by Wigglesworth, https://freesound.org/people/Wigglesworth/sounds/837032/
+body-bone-837032-4.ogg: "Clatter of sticks on sticks or bones on bones" by Wigglesworth, https://freesound.org/people/Wigglesworth/sounds/837032/
+body-fire-166553-0.ogg: "spray fire bursts 1.wav" by Nic3_one, https://freesound.org/people/Nic3_one/sounds/166553/
+body-fire-530355-0.ogg: "Fire.wav" by danielpodlovics, https://freesound.org/people/danielpodlovics/sounds/530355/
+body-fire-539972-0.ogg: "Fire Burst Flash" by Za-Games, https://freesound.org/people/Za-Games/sounds/539972/
+body-metal-545547-0.ogg: "metal clanks.wav" by rsellick, https://freesound.org/people/rsellick/sounds/545547/
+body-metal-545547-1.ogg: "metal clanks.wav" by rsellick, https://freesound.org/people/rsellick/sounds/545547/
+body-metal-675817-0.ogg: "S09-02 metal armor helmet open & close; hinges and clanks.wav" by craigsmith, https://freesound.org/people/craigsmith/sounds/675817/
+body-metal-675817-1.ogg: "S09-02 metal armor helmet open & close; hinges and clanks.wav" by craigsmith, https://freesound.org/people/craigsmith/sounds/675817/
+body-metal-675817-2.ogg: "S09-02 metal armor helmet open & close; hinges and clanks.wav" by craigsmith, https://freesound.org/people/craigsmith/sounds/675817/
+body-metal-675817-3.ogg: "S09-02 metal armor helmet open & close; hinges and clanks.wav" by craigsmith, https://freesound.org/people/craigsmith/sounds/675817/
+body-plant-572645-0.ogg: "Wood Floor Creak" by sthran, https://freesound.org/people/sthran/sounds/572645/
+body-plant-618085-0.ogg: "2022-02-06 wood creak 1.wav" by sit_walk, https://freesound.org/people/sit_walk/sounds/618085/
+body-plant-802576-0.ogg: "Creaking Floorboards 04" by qubodup, https://freesound.org/people/qubodup/sounds/802576/
+body-stone-530990-0.ogg: "cinderblock scrape 5.wav" by patchytherat, https://freesound.org/people/patchytherat/sounds/530990/
+body-stone-530990-1.ogg: "cinderblock scrape 5.wav" by patchytherat, https://freesound.org/people/patchytherat/sounds/530990/
+body-stone-530990-2.ogg: "cinderblock scrape 5.wav" by patchytherat, https://freesound.org/people/patchytherat/sounds/530990/
+body-stone-530990-3.ogg: "cinderblock scrape 5.wav" by patchytherat, https://freesound.org/people/patchytherat/sounds/530990/
+body-stone-799521-0.ogg: "Rock sliding" by Throndronis, https://freesound.org/people/Throndronis/sounds/799521/
+body-water-166313-0.ogg: "Sloshing.wav" by deleted_user_2104797, https://freesound.org/people/deleted_user_2104797/sounds/166313/
+body-water-166313-1.ogg: "Sloshing.wav" by deleted_user_2104797, https://freesound.org/people/deleted_user_2104797/sounds/166313/
+body-water-166313-2.ogg: "Sloshing.wav" by deleted_user_2104797, https://freesound.org/people/deleted_user_2104797/sounds/166313/
+body-water-166313-3.ogg: "Sloshing.wav" by deleted_user_2104797, https://freesound.org/people/deleted_user_2104797/sounds/166313/
+body-water-841151-0.ogg: "Watering_Can_Slosh" by SonicOddities, https://freesound.org/people/SonicOddities/sounds/841151/
+body-water-841151-1.ogg: "Watering_Can_Slosh" by SonicOddities, https://freesound.org/people/SonicOddities/sounds/841151/

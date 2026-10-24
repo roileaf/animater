@@ -114,7 +114,8 @@ export function flashScreens(host) {
   }
   // Draw it full screen on this client.
   async function show(screen, v = vars()) {
-    if (host.quietHere()) return;
+    // showsHere(screen): false when this screen turned that one off for itself (the combat recap's own switch).
+    if (host.quietHere() || host.showsHere?.(screen) === false) return;
     showing?.stop();
     const layer = document.createElement("div");
     layer.className = "an-flash-overlay";
@@ -176,6 +177,12 @@ export function flashScreens(host) {
     const screen = forCombat(combat, "finalEnemy");
     return screen ? validateFlash(screen).duration : 0;
   }
+  // How long a combat's ending screen shows (the longest it could be, when random): the combat recap waits for it.
+  function endLength(combat) {
+    const pick = combat?.getFlag?.(ID, flagKey("end")), choice = pick || defaults().end;
+    const fits = choice === "random" ? screens().filter((s) => s.event === "end" || s.event === "any") : [forCombat(combat, "end")].filter(Boolean);
+    return Math.max(0, ...fits.map((s) => validateFlash(s).duration));
+  }
   function receive(data) {
     if (data?.type === "flash" && data.screen) void show(data.screen, data.vars ?? {}).catch(() => {});
     if (data?.type === "flash-moment" && MOMENT_EVENTS.includes(data.event) && data.event !== "initiated" && activeGM()) moment(data.event, { name: String(data.extra?.name ?? "").slice(0, 80) }, game.combats?.get(data.combatId) ?? runningCombat());
@@ -232,7 +239,10 @@ export function flashScreens(host) {
   Hooks.on("updateActor", (actor, changes, options, userId) => {
     if (userId !== game.user.id || !isKillTransition(options.animaterHpBefore, hpState(actor, game.system.id))) return;
     const combat = runningCombat(actor), event = downMoment(combat, actor);
-    if (event) moment(event, { name: actor.name }, combat);
+    // Finish Him! waits for the slow-motion kill-cam on this kill (main.mjs's killCamWait).
+    const wait = event === "finalEnemy" ? Number(host.killCamLength?.(actor)) || 0 : 0;
+    if (event && wait > 0) setTimeout(() => moment(event, { name: actor.name }, combat), wait);
+    else if (event) moment(event, { name: actor.name }, combat);
   });
   // A creature marked defeated (dead) without dropping to 0 HP first: told by the client that marked it.
   Hooks.on("updateCombatant", (combatant, changes, options, userId) => {
@@ -341,7 +351,9 @@ export function flashScreens(host) {
     return removed.size;
   }
   return {
-    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength, tidy,
+    screens, defaults, vars, play, receive, sound, playSound, before, finaleLength, tidy, endLength,
+    // A screen is showing on this screen right now.
+    busy: () => Boolean(showing),
     save: (list) => game.settings.set(ID, FLASH_SETTING, { schema: 1, screens: validateFlashes(list) }),
     setDefault: (event, id) => game.settings.set(ID, FLASH_DEFAULTS, { ...defaults(), [event]: id }),
     events: FLASH_EVENTS,

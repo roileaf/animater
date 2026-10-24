@@ -105,7 +105,9 @@ async function roomRig({muffle=()=>false}={}){
  const uninstall=installSoundPitch({hooks,Sound,room,muffle,acoustics:()=>world.acoustics});
  const play=(at,extra={})=>{hooks.call('createSequencerSound',{file:'boom.ogg',volume:1,animaterAt:at,animaterScene:'S1',animaterLevel:'L1',...extra});const s=new Sound('boom.ogg');s._createNodes();s._connectPipeline();return s;};
  const convolvers=()=>context.made.filter((n)=>n.kind==='convolver');
- return {play,context,world,convolvers,uninstall};
+ // A footstep (or wing beat, or thud) asks directly, with where it happens.
+ const step=(at,extra={})=>{hooks.call('animater.shapeSound',{file:'step.ogg',rate:1,at:at&&{sceneId:'S1',level:'L1',...at},...extra});const s=new Sound('step.ogg');s._createNodes();s._connectPipeline();return s;};
+ return {play,step,context,world,convolvers,uninstall};
 }
 // The reverb send a sound got: a tap off its volume node into a convolver.
 const sendOf=(s)=>s.gainNode?.outs.find((n)=>n.outs?.some((o)=>o.kind==='convolver'));
@@ -187,4 +189,88 @@ test('walls are heard from the selected token, else a player\'s own, else a play
  assert.deepEqual(muffleEar({view}),view,'a player with no token: the middle of the view');
  assert.deepEqual(muffleEar({controlled:picked,isGM:true,view}),{x:1,y:1},'a GM with a token selected hears from it');
  assert.equal(muffleEar({owned:mine,isGM:true,view}),null,'a GM with none selected: no ear, as in Foundry');
+});
+
+test('a footstep or thud asked for its pitch directly plays at that pitch from its first sample, even with hit sounds off', () => {
+ const {hooks,Sound}=fakes(),uninstall=installSoundPitch({hooks,Sound,enabled:()=>false});
+ hooks.call('animater.shapeSound',{file:'modules/animater/assets/sounds/surfaces/kenney/impactSoft_heavy_001.ogg',rate:0.62});
+ const thud=new Sound('modules/animater/assets/sounds/surfaces/kenney/impactSoft_heavy_001.ogg');thud._createNodes();
+ assert.equal(thud.sourceNode.playbackRate.value,0.62,'set as the nodes are built, before it starts');
+ const next=new Sound('modules/animater/assets/sounds/surfaces/kenney/impactSoft_heavy_001.ogg');next._createNodes();
+ assert.equal(next.sourceNode.playbackRate.value,1,'one shape per ask');
+ hooks.call('animater.shapeSound',{file:'x.ogg',rate:0});
+ const bad=new Sound('x.ogg');bad._createNodes();assert.equal(bad.sourceNode.playbackRate.value,1,'nonsense rates are ignored');
+ uninstall();
+});
+
+test('a heavy footfall can ask to be darkened and given body: a low-pass and a bass shelf join that play only', () => {
+ const made=[];
+ const node=(type)=>()=>{const n={kind:type,type:'',connect(){},gain:{value:0},frequency:{value:0}};made.push(n);return n;};
+ const context={createBiquadFilter:node('biquad'),createGain:node('gain'),createDelay:node('delay')};
+ const handlers=new Map();let next=0;
+ const hooks={on:(name,fn)=>{const id=++next;handlers.set(id,{name,fn});return id;},off:id=>handlers.delete(id),call:(name,data)=>{for(const h of handlers.values())if(h.name===name)h.fn(data);}};
+ class Sound{constructor(src){this.src=src;this.effects=[];}_createNodes(){const ended=[];this.sourceNode={context,playbackRate:{value:1},addEventListener:(e,fn)=>ended.push(fn)};this.end=()=>ended.forEach(fn=>fn());}}
+ const uninstall=installSoundPitch({hooks,Sound});
+ hooks.call('animater.shapeSound',{file:'thud.ogg',rate:0.5,lowpass:900,bass:7});
+ const thud=new Sound('thud.ogg');thud._createNodes();
+ assert.equal(thud.sourceNode.playbackRate.value,0.5);
+ const types=thud.effects.map(n=>n.type).sort();
+ assert.deepEqual(types,['lowpass','lowshelf']);
+ assert.equal(thud.effects.find(n=>n.type==='lowpass').frequency.value,900);
+ const shelf=thud.effects.find(n=>n.type==='lowshelf');assert.equal(shelf.gain.value,7);assert.ok(shelf.frequency.value<=150);
+ thud.end();assert.equal(thud.effects.length,0,'removed after it plays');
+ uninstall();
+});
+
+test('a bass-boosted footfall gets a limiter last in its chain, so it can never clip', () => {
+ const node=(type)=>()=>({kind:type,type:'',connect(){},gain:{value:0},frequency:{value:0},threshold:{value:0},ratio:{value:0},knee:{value:0},attack:{value:0},release:{value:0}});
+ const context={createBiquadFilter:node('biquad'),createGain:node('gain'),createDelay:node('delay'),createDynamicsCompressor:node('limiter')};
+ const handlers=new Map();let next=0;
+ const hooks={on:(name,fn)=>{const id=++next;handlers.set(id,{name,fn});return id;},off:id=>handlers.delete(id),call:(name,data)=>{for(const h of handlers.values())if(h.name===name)h.fn(data);}};
+ class Sound{constructor(src){this.src=src;this.effects=[];}_createNodes(){this.sourceNode={context,playbackRate:{value:1},addEventListener(){}};}}
+ const uninstall=installSoundPitch({hooks,Sound});
+ hooks.call('animater.shapeSound',{file:'thud.ogg',rate:0.4,lowpass:600,bass:9});
+ const thud=new Sound('thud.ogg');thud._createNodes();
+ const last=thud.effects.at(-1);
+ assert.equal(last.kind,'limiter','the limiter comes last');
+ assert.ok(last.threshold.value<=-2&&last.threshold.value>=-6,'just under full scale');
+ assert.ok(last.ratio.value>=12,'hard ratio');
+ hooks.call('animater.shapeSound',{file:'step.ogg',rate:0.9});
+ const step=new Sound('step.ogg');step._createNodes();
+ assert.equal(step.effects.length,0,'a plain pitched step gets no limiter');
+ uninstall();
+});
+
+test('a footstep with a place rings in the room like a hit, at its smaller share of the room',async()=>{
+ const {step,convolvers,uninstall}=await roomRig();
+ const s=step({x:1500,y:500},{roomShare:.6});
+ assert.equal(s.effects.length,0,'nothing in its dry chain');
+ assert.ok(Math.abs(wet(s,convolvers,800)-.22*.6)<1e-9,'0.6 of a hit\'s send');
+ assert.equal(levelAt(s.sourceNode,s.gainNode),1,'dry untouched');
+ s.end();assert.equal(wet(s,convolvers,800),0,'the send lets go when it ends');
+ const full=step({x:1500,y:500});assert.ok(Math.abs(wet(full,convolvers,800)-.22)<1e-9,'no share asked: a hit\'s send');
+ const plain=step(null);assert.equal(plain.effects.length,0);assert.equal(wet(plain,convolvers,800),0,'no place: dry, as before');
+ uninstall();
+});
+test('a footstep behind a wall is muffled; one in another scene plays dry',async()=>{
+ const asked=[];
+ const {step,convolvers,uninstall}=await roomRig({muffle:(data)=>{asked.push(data);return data.animaterAt.y>1000;}});
+ const behind=step({x:500,y:1500},{roomShare:.6});
+ assert.deepEqual(behind.effects.filter((n)=>n.kind==='filter').map((n)=>n.frequency.value),[600]);
+ assert.equal(asked[0].animaterScene,'S1');assert.equal(asked[0].animaterLevel,'L1');
+ assert.equal(step({x:500,y:500}).effects.length,0,'in the open: not muffled');
+ const away=step({x:1500,y:500,sceneId:'S2'});assert.equal(wet(away,convolvers,800),0,'another scene: no room');
+ uninstall();
+});
+test('a footstep is dulled and panned by distance but never made quieter (Foundry already is)',()=>{
+ const node=()=>({connect(){},gain:{value:1},delayTime:{value:0},frequency:{value:0},pan:{value:0}});
+ const context={createGain:node,createDelay:node,createBiquadFilter:node,createStereoPanner:node};
+ const {hooks}=fakes();
+ class Sound{constructor(src){this.src=src;this.effects=[];}_createNodes(){this.sourceNode={context,playbackRate:{value:1},addEventListener(){}};}}
+ const uninstall=installSoundPitch({hooks,Sound,listener:()=>({ear:{x:0,y:0},view:{x:0,y:0,width:2000},grid:100}),acoustics:()=>'hall'});
+ const data={file:'far.ogg',rate:1,at:{x:3000,y:0,sceneId:'S1'},roomShare:.6};hooks.call('animater.shapeSound',data);
+ assert.equal(data.volume,undefined,'its volume is left alone');
+ const s=new Sound('far.ogg');s._createNodes();
+ assert.equal(s.effects.length,3,'dull, pan and the hall\'s echo');
+ uninstall();
 });

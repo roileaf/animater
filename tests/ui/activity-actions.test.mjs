@@ -90,6 +90,8 @@ test("entry metadata stays small and tolerates missing fields", () => {
   assert.deepEqual(activityEntryMeta({ id: "r" }, { origin: { type: "catalog", kind: "spell", id: "x", extra: 1 }, automatic: true, key: "k" }),
     { recipeId: "r", origin: { type: "catalog", kind: "spell", id: "x" }, automatic: true, key: "k" });
   assert.deepEqual(activityEntryMeta({ id: "r" }, { origin: { type: "bogus" } }), { recipeId: "r" });
+  assert.equal(activityEntryMeta(null, { reroll: "hero-point" }).reroll, "hero-point", "a Hero Point reroll is tagged");
+  assert.equal(activityEntryMeta(null, { reroll: "<b>" }).reroll, undefined, "only known kinds");
   assert.equal(originKey({ type: "catalog", system: "dnd5e", kind: "spell", id: "x" }), "catalog:dnd5e:spell:x");
   assert.equal(originKey(null), "");
   assert.equal(elapsedLabel(4200), "4s");

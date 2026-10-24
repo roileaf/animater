@@ -139,6 +139,13 @@ test("PF2e adapter separates events and suppresses private, remote, reroll messa
   const rerolled = (content) => ({ ...msg, content, flags: { ...msg.flags, pf2e: { ...msg.flags.pf2e, context: { ...msg.flags.pf2e.context, isReroll: true } } } });
   assert.equal(pf2eEvent(rerolled('<div class="reroll-discard">old</div><div class="reroll-second ">new</div>'), "u").type, pf2eEvent(msg, "u").type);
   assert.equal(pf2eEvent(rerolled('<div class="">old</div><div class="reroll-second reroll-discard">new</div>'), "u"), null);
+  // The Activity page tags a reroll with what paid for it.
+  const kept = '<div class="reroll-discard">old</div><div class="reroll-second ">new</div>';
+  const paid = (options) => { const m = rerolled(kept); m.flags.pf2e.context = { ...m.flags.pf2e.context, options }; return m; };
+  assert.equal(pf2eEvent(paid(["check:reroll", "check:reroll:hero-points"]), "u").reroll, "hero-point");
+  assert.equal(pf2eEvent(paid(["check:reroll", "check:reroll:mythic-points"]), "u").reroll, "mythic-point");
+  assert.equal(pf2eEvent(paid(["check:reroll"]), "u").reroll, "reroll");
+  assert.equal(pf2eEvent(msg, "u").reroll, undefined, "a first roll is no reroll");
   assert.equal(
     pf2eEvent({ ...msg, isDamageRoll: true, flags: {} }, "u").type,
     "damage",

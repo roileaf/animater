@@ -26,6 +26,8 @@ export function activityEntryMeta(recipe, meta) {
   if (meta?.automatic) out.automatic = true;
   // Why nothing played, in words the Activity page can explain (activity-explain.mjs).
   for (const key of ["item", "reason", "itemType", "why"]) if (meta?.[key]) out[key] = String(meta[key]).slice(0, 120);
+  // A rerolled check (PF2e, SF2e): what paid for it, shown as a tag on the row.
+  if (["hero-point", "mythic-point", "reroll"].includes(meta?.reroll)) out.reroll = meta.reroll;
   return out;
 }
 // Running runtime sessions and lasting condition/effect layers, newest first.

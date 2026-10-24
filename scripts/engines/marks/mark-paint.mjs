@@ -4,9 +4,12 @@
 // the canvas are reached only through the options (main.mjs).
 import { MARKS, layoutBlotches, markAlpha, markTiming } from './ground-marks.mjs';
 import { seededRandom } from '../fragments/fragments.mjs';
+import { markCircle, overlaps } from './reactions.mjs';
 
 const IN_MS = 300;
 const CAP_FADE_MS = 2000;
+// A mark taken off by a reaction (fire melting frost) fades this quickly instead of vanishing.
+const REMOVE_FADE_MS = 300;
 const RIM_MS = 10000;
 // Longest a mark waits for its anchor's clip to load before it lands anyway.
 const READY_MS = 5000;
@@ -39,10 +42,11 @@ const finiteBlotch = (b) => ['x', 'y', 'r', 'rotation'].every((k) => finite(b[k]
  * floor and take it off (and destroy it). `viewedLevel()` is the level this client views; `cap()` the most blotches
  * kept; `mask(tag)` an area's template shape; `enabled()` whether this client paints marks at all;
  * `timing()` gives `{ holdMs, fadeMs }` (read each look, so a changed setting reaches marks already down).
+ * `onLand(record)` hears of each mark as it lands on the floor (element reactions).
  */
 export function createMarkLayer({
   makeSprite, addToScene, removeFromScene, viewedLevel, now = () => performance.now(), cap = () => 60,
-  mask, enabled = () => true, sceneId, gridSize = () => 100, timing = () => markTiming(5),
+  mask, enabled = () => true, sceneId, gridSize = () => 100, timing = () => markTiming(5), onLand = () => {},
 }) {
   let marks = []; // in arrival order
   const waiting = new Map(); // lasting anchor effect -> its mark, until the effect ends
@@ -82,6 +86,12 @@ export function createMarkLayer({
       if (life >= holdMs) { alpha *= markAlpha(life, { holdMs, fadeMs, inMs: 0 }); next = t; }
       else next = Math.min(next, clock + holdMs);
     }
+    if (mark.fadeAt !== null) {
+      const k = (t - mark.fadeAt) / REMOVE_FADE_MS;
+      if (k >= 1) return remove(mark);
+      alpha *= 1 - k;
+      next = t;
+    }
     if (mark.capAt !== null) {
       const k = (t - mark.capAt) / CAP_FADE_MS;
       if (k >= 1) return remove(mark);
@@ -108,12 +118,13 @@ export function createMarkLayer({
     mark.sprite.visible = shows(mark.tag, viewed);
     addToScene(mark.sprite, mark.tag);
     update(mark, t);
+    if (mark.sprite) { try { onLand(mark); } catch (err) { console.warn('Animater | a ground mark reaction failed', err); } }
   };
 
   // Over the cap, the oldest painted marks fade out quickly; a lasting mark is kept while its area lives, even
   // when that leaves more than the cap.
   const enforceCap = (t) => {
-    const live = marks.filter((m) => m.sprite && m.capAt === null);
+    const live = marks.filter((m) => m.sprite && m.capAt === null && m.fadeAt === null);
     let total = live.reduce((n, m) => n + m.size, 0);
     const most = cap();
     for (const mark of live.filter((m) => !holding(m)).sort((a, b) => a.landAt - b.landAt)) {
@@ -137,7 +148,7 @@ export function createMarkLayer({
       const t = now();
       // Not landed until the anchor's clip shows (landAt null): its delay counts from then.
       const mark = {
-        tag, mask: shape, landAt: null, anchor: effect, heldAt: t, endedAt: null, capAt: null,
+        tag, mask: shape, landAt: null, anchor: effect, heldAt: t, endedAt: null, capAt: null, fadeAt: null,
         sprite: null, size: 0, nextAt: 0, rimDone: false, effect: tag.lasting ? effect : null,
       };
       if (anchorShows(mark, t)) { mark.landAt = t + tag.delayMs; mark.anchor = null; }
@@ -203,6 +214,21 @@ export function createMarkLayer({
       marks = [];
       waiting.clear();
       lastViewed = undefined;
+    },
+
+    // The marks on the floor (landed, not fading out) whose circle overlaps this one.
+    near(point, radius) {
+      const grid = gridSize(), circle = { x: point.x, y: point.y, r: radius };
+      return marks.filter((m) => m.sprite && m.capAt === null && m.fadeAt === null && overlaps(markCircle(m.tag, grid), circle));
+    },
+
+    // Takes one mark off the floor with a quick fade (a reaction melted it).
+    remove(record) {
+      if (!record || !marks.includes(record)) return;
+      if (!record.sprite) return remove(record);
+      if (record.fadeAt !== null) return;
+      record.fadeAt = now();
+      record.nextAt = 0;
     },
 
     // Marks waiting to land or on the floor.

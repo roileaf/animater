@@ -6,7 +6,7 @@ export const HIT_SOUND_FIELDS = [
   { key: "hitSounds", scope: "client", type: "boolean", name: "Hit sounds on this device",
     hint: "Turn off to hear no surface hits, and no pitch, echo or placement on Animater’s sounds, on this device only. Other players keep theirs." },
   { key: "surfaceVolume", scope: "client", type: "range", min: 0, max: 1, step: 0.05, name: "Volume",
-    hint: "How loud surface hits are for you: what a blow lands on, blood, ice, shards." },
+    hint: "How loud surface hits are for you: what a blow lands on, blood, ice, shards. Also scales token footsteps." },
   { key: "surfaceGore", scope: "client", type: "select", choices: { full: "Full", subtle: "Subtle", off: "Off" }, name: "Blood",
     hint: "The splatter of blood on hits to flesh. Subtle keeps it faint; Off removes it for you only." },
   { key: "surfaceEcho", scope: "client", type: "range", min: 0, max: 1.5, step: 0.1, name: "Echo",

@@ -23,7 +23,12 @@ const BY_NAME = {
 // With several conditions, the token shows the most telling one: a body turned to
 // stone or held still does not move at all, a body knocked down lies on its side, a body on the ground only breathes, and
 // a grapple outweighs fear, sickness or weariness. Equal ranks: the latest applied.
-export const BODY_PRIORITY = ['stone', 'still', 'prone', 'breathe', 'struggle', 'wobble', 'tremble', 'sway', 'search', 'sag'];
+export const BODY_PRIORITY = ['stone', 'still', 'prone', 'breathe', 'struggle', 'wobble', 'tremble', 'sway', 'search', 'sag', 'limp', 'hunch', 'idle-hover', 'idle-breathe'];
+// Idle life (engines/motion/idle-life.mjs): the lowest ranks, so any condition wins. It
+// does not claim the token from other modules' motions (see moves()). Wounded looks
+// (engines/playback/wounded-looks.mjs) rank just above it: a limp while moving, a hunch
+// while still. A hunch is a held pose, so it does not claim the token either.
+const IDLE_KINDS = new Set(['idle-hover', 'idle-breathe', 'hunch']);
 const rank = (kind) => { const i = BODY_PRIORITY.indexOf(kind); return i < 0 ? BODY_PRIORITY.length : i; };
 // The treatment a token shows for its active treatments (null: none, or no motion).
 export function shownTreatment(kinds) {
@@ -38,7 +43,7 @@ export function bodyTreatment(name = '') {
 const RISE = 400;
 const TAU = Math.PI * 2, wave = (t, period) => Math.sin((TAU * t) / period);
 // Pose deltas: x/y in token widths, rotation in degrees, sy as a scale factor.
-export function bodyPose(kind, t, strength = 1) {
+export function bodyPose(kind, t, strength = 1, { period } = {}) {
   const k = strength;
   switch (kind) {
     case 'tremble': return { x: 0.012 * k * wave(t, 0.11), y: 0.006 * k * wave(t, 0.17), r: 0.8 * k * wave(t, 0.13) };
@@ -50,6 +55,17 @@ export function bodyPose(kind, t, strength = 1) {
     case 'breathe': return { sy: 1 - 0.025 * k * (0.5 + 0.5 * wave(t, 4)) };
     // Knocked down: the token lies on its side, a little lower, still breathing.
     case 'prone': { const f = Math.min(1, t / 0.4), fall = 1 - (1 - f) ** 3; return { r: 80 * fall, y: 0.06 * fall, sy: 1 - 0.02 * (0.5 + 0.5 * wave(t, 4)) }; }
+    // Idle life: a ~1% breath; a flier bobs ±3% of its height (yh: in token heights).
+    case 'idle-breathe': return { sy: 1 - 0.025 * k * (0.5 + 0.5 * wave(t, period ?? 4)) };
+    case 'idle-hover': return { yh: 0.05 * k * wave(t, period ?? 2.4) };
+    // Badly hurt and moving: every other step (`period` s each) favours the bad leg, a
+    // deeper dip and a tilt toward it; the good step is a shallow bob, leaning back.
+    case 'limp': {
+      const step = t / (period ?? 0.55), bad = Math.floor(step) % 2 === 1, s = Math.sin(Math.PI * (step - Math.floor(step)));
+      return bad ? { y: 0.035 * k * s, r: 5 * k * s } : { y: 0.01 * k * s, r: -1.5 * k * s };
+    }
+    // Badly hurt and still: a slight lean and squash, breathing a little heavily.
+    case 'hunch': return { r: 3 * k, y: 0.01 * k, sy: 1 - 0.03 * k - 0.008 * k * (0.5 + 0.5 * wave(t, period ?? 3.2)) };
     default: return {};
   }
 }
@@ -65,10 +81,11 @@ export class ConditionBody {
     this.poses = new Map();
     this.handle = null;
   }
-  add(name, token, kind, { strength = 1 } = {}) {
+  add(name, token, kind, { strength = 1, phase = 0, period } = {}) {
     if (!kind || !token?.mesh) return;
     this.remove(name, { immediate: true });
-    const record = { token, kind, strength, start: this.now() };
+    // phase: seconds into the cycle at the start (idle life seeds it by token id).
+    const record = { token, kind, strength, start: this.now() - phase * 1000, period };
     if (kind === 'stone') {
       // Turned to stone: drain the colour, no overlay at all, with animater's own
       // adjustment filter (this screen only, nothing saved). Without the FX engine
@@ -104,7 +121,7 @@ export class ConditionBody {
   }
   clear() { for (const name of [...this.records.keys()]) this.remove(name, { immediate: true }); }
   // Is a treatment moving this token's sprite right now (stone and stillness hold it still)?
-  moves(token) { return shownTreatment([...this.records.values()].filter(r => r.token === token).map(r => r.kind)) !== null; }
+  moves(token) { return shownTreatment([...this.records.values()].filter(r => r.token === token && !IDLE_KINDS.has(r.kind)).map(r => r.kind)) !== null; }
   // Undo only what this treatment set; if the token refreshed in between, its
   // pose is already natural and there is nothing to undo.
   restore(token) {
@@ -142,7 +159,8 @@ export class ConditionBody {
       const baseY = a && mesh.position.y === a.setY ? a.baseY : mesh.position.y;
       const baseR = a && mesh.rotation === a.setR ? a.baseR : mesh.rotation;
       const baseSY = a && mesh.scale.y === a.setSY ? a.baseSY : mesh.scale.y;
-      const full = bodyPose(r.kind, (time - r.start) / 1000, r.strength), w = token.w ?? 100;
+      const full = bodyPose(r.kind, (time - r.start) / 1000, r.strength, { period: r.period }), w = token.w ?? 100;
+      if (full.yh) full.y = (full.y ?? 0) + (full.yh * (token.h ?? w)) / w;
       // Standing back up: the pose eases away.
       const f = r.leaving === undefined ? 1 : (1 - Math.min(1, (time - r.leaving) / RISE)) ** 2;
       const pose = { x: (full.x ?? 0) * f, y: (full.y ?? 0) * f, r: (full.r ?? 0) * f, sy: 1 - (1 - (full.sy ?? 1)) * f };
