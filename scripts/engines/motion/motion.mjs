@@ -320,6 +320,7 @@ export class TokenMotionPlayer {
     grid = () => 100,
     fragments = null,
     afterimages = null,
+    beforeStart = () => {},
   } = {}) {
     // Steps take the clock when they run: a ticker pass hands its listeners a delta, not a time.
     this.frame = frame ?? ((callback) => nextFrame(() => callback(this.now())));
@@ -328,6 +329,7 @@ export class TokenMotionPlayer {
     this.grid = grid;
     this.fragments = fragments;
     this.afterimages = afterimages;
+    this.beforeStart = beforeStart;
     this.active = new Map();
   }
   play(token, stage, direction, owner, { target } = {}) {
@@ -341,6 +343,9 @@ export class TokenMotionPlayer {
     const current = this.active.get(token);
     if (current && (current.owner !== owner || current.mesh !== token.mesh)) this.end(token);
     const existing = this.active.get(token);
+    // Body treatments yield before we capture the resting geometry. Otherwise an
+    // idle breath or wounded hunch becomes the permanent scale after this motion.
+    if (!existing) this.beforeStart(token);
     const mesh = token.mesh;
     // Foundry draws the mesh at the token's center; another module's shake (or a condition
     // tremble) may have it swung aside right now, which must not become the resting spot.

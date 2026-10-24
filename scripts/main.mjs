@@ -3264,7 +3264,7 @@ Hooks.once("ready", () => {
       if (token) afterimages.streak(token.mesh, trail.tint, streakLayout(trail.from, trail.to));
     } catch (error) { console.warn("Animater afterimages:", error?.message ?? error); }
   });
-  motions = new TokenMotionPlayer({ grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
+  motions = new TokenMotionPlayer({ beforeStart: (token) => conditionBody?.restore(token), grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.

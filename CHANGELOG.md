@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.3 (2026-10-24)
+
+- **Revived token shape.** Fixed death collapses capturing an idle breath, wounded hunch or condition pose as the token's normal size and rotation. Reviving after combat now restores the original artwork geometry without reloading. The same handoff fix protects other one-off token motions.
+
 ## 2.1.2 (2026-10-24)
 
 - **Visible underwater treatment.** Submerged swimmers now fade to a water-blue, translucent silhouette (35% opacity by default), including for the GM and owner, and return to their original alpha and tint on surfacing. The treatment and opacity are configurable under Movement effects; native visibility/detection remains authoritative. Bubbles are larger, brighter, more numerous and sized to the creature. Breaking the surface creates a large, creature-sized splash with expanding ripples and arcing spray, including stationary elevation changes.
