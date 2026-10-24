@@ -123,12 +123,13 @@ export function isFlying({ action, statuses } = {}) {
 // A flier's shadow: an ellipse under its feet, pushed down-right (light from the top left) and shrunk and faded by
 // height. `lift` is height above the floor in scene distance units; `width` the token's width in pixels.
 export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100 }) {
-  // Centred under the creature and only just wider than its token, so even opaque full-frame art shows a soft dark
-  // rim of it all round, never a wide halo. The higher it flies, the softer, slightly wider and fainter it gets.
+  // At its feet: a flat ellipse straight below the creature (centred left to right), mostly under its token with its
+  // lower half showing past the bottom edge, so even opaque full-frame art shows it. The higher it flies, the further
+  // down it falls and the smaller and fainter it gets.
   const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5));
   const w = Number(width) || grid;
-  const rx = w * (0.6 + 0.004 * h);
-  return { x, y, rx, ry: rx, alpha: Math.max(0.3, 0.6 - 0.025 * h) };
+  const rx = w * Math.max(0.3, 0.42 - 0.01 * h);
+  return { x, y: y + w * Math.min(0.6, 0.45 + 0.015 * h), rx, ry: rx * 0.4, alpha: Math.max(0.25, 0.55 - 0.025 * h) };
 }
 
 // Where along each token's drawn path a stride falls. The first stride after a stop or a jump is half long, so a short

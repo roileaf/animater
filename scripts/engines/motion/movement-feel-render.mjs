@@ -233,9 +233,8 @@ export function createMovementFeelLayer({ PIXI, root }) {
       const g = new PIXI.Graphics();
       // Many faint rings stack into a smooth falloff (dense heart, feathered rim) with no visible bands.
       for (let i = SHADOW_RINGS; i >= 1; i--) {
-        // Most rings sit near the rim, the only part a token's art leaves showing: dark at its edge, feathered out.
-        const r = (DRAW / 2) * (0.5 + 0.5 * Math.pow(i / SHADOW_RINGS, 1.5));
-        g.beginFill(0x000000, 0.12);
+        const r = (DRAW / 2) * (0.2 + 0.8 * Math.sqrt(i / SHADOW_RINGS));
+        g.beginFill(0x000000, 0.1);
         g.drawEllipse(0, 0, r, r);
         g.endFill();
       }
