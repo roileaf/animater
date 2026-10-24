@@ -49,6 +49,7 @@ import {
   PF2E_FEATS,
 } from "../catalogs/pf2e/feats/feat-catalog.mjs";
 import { featCatalogHTML, ABILITY_PAGE_PROFILES, abilityProfileForPage, abilityProfileForKey, defaultAbilityFilters } from "./feat-catalog-ui.mjs";
+import { NPC_PAGE, npcAbilityCatalogHTML, npcAbilityPageRecipe, npcAbilityAction, npcAbilitySearch } from "./npc-ability-ui.mjs";
 import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel, groupNowPlaying } from "./activity-actions.mjs";
 import { PF2E_WEAPONS, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState, useCatalogWeapon, weaponCustomizationKey } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { weaponCatalogHTML } from "./weapon-catalog-ui.mjs";
@@ -437,7 +438,7 @@ export class Workspace {
       "dragstart",
       (e) => {
         const stage = e.target.closest("[data-stage-drag]");
-        if (!stage || this.busy || ["builder", "spells", "feats", "actions", "features", "weapons", "items", "conditions", "effects"].includes(this.page))
+        if (!stage || this.busy || ["builder", "spells", "feats", "actions", "features", "weapons", "items", "conditions", "effects", NPC_PAGE].includes(this.page))
           return;
         this.stopEditorPreview();
         this.stageDrag = Number(stage.dataset.stageDrag);
@@ -489,6 +490,7 @@ export class Workspace {
   }
   recipe() {
     if(this.dndCatalog?.isCatalogPage())return this.dndCatalog.recipe();
+    if (this.page === NPC_PAGE) return npcAbilityPageRecipe(this);
     if (["conditions", "effects"].includes(this.page)) {
       const entry = catalogStateEntry(this.selectedState[this.page === "conditions" ? "condition" : "effect"]);
       return entry && stateRecipe(entry, {damageType:this.stateDamageType,auraVariant:this.stateAuraVariant,catalog:this.host.catalog?.()});
@@ -742,7 +744,7 @@ export class Workspace {
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
-        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === "builder" ? this.builderHTML() : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
+        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
       </main>${this.pendingImport !== null ? this.importHTML() : ""}${this.newChooser ? this.newChooserHTML() : ""}</div>`,
     );
     this.root.querySelectorAll("details[data-options-group]").forEach((e) => {
@@ -1013,7 +1015,7 @@ export class Workspace {
     return `↳ ${resolved.delay}ms`;
   }
   syncPreviewTokens({ clear = false } = {}) {
-    if (this.busy || !["recipes", "finishers", "builder", "spells", "feats", "actions", "features", "weapons", "items", "conditions", "effects"].includes(this.page))
+    if (this.busy || !["recipes", "finishers", "builder", "spells", "feats", "actions", "features", "weapons", "items", "conditions", "effects", NPC_PAGE].includes(this.page))
       return;
     const scene = this.root.querySelector("[data-recipe-scene]");
     if (!scene) return;
@@ -2058,6 +2060,7 @@ export class Workspace {
     }
     if (t.dataset.search) {
       if (t.dataset.search === "recipes") this.search = t.value;
+      else if (t.dataset.search === NPC_PAGE) npcAbilitySearch(this, t.value);
       else if (t.dataset.search === "spells") {
         this.spellFilters.search = t.value;
         this.spellPage = 0;
@@ -2605,6 +2608,7 @@ export class Workspace {
         this.render(); return;
       }
       if (await this.abilityAction(action, b)) return;
+      if (await npcAbilityAction(this, action, b)) return;
       if (action === "select-spell") {
         if (this.selectedSpell === b.dataset.id) return;
         this.selectedSpell = b.dataset.id;

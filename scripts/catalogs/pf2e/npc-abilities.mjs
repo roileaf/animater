@@ -41,6 +41,8 @@ const ABILITIES = {
 export const abilityName = (name) => String(name ?? "").replace(/\s*\([^)]*\)/g, "").replace(/\s+\d+\s*(?:feet|foot|ft\.?)$/i, "").replace(/\s+/g, " ").trim().toLowerCase();
 const byName = new Map(Object.entries(ABILITIES).flatMap(([id, a]) => a.names.map((n) => [abilityName(n), id])));
 export const NPC_ABILITY_IDS = Object.keys(ABILITIES);
+// The named abilities as the Studio lists them: the first name is the one shown.
+export const NPC_ABILITIES = Object.entries(ABILITIES).map(([id, a]) => ({ id, name: a.names[0], names: a.names, aim: a.aim, trigger: a.trigger ?? "use" }));
 // A longer name's last word that names an ability ("Boar Charge", "Angle-Cutting Rush", "Squirming Embrace").
 const WORDS = { charge: "charge", rush: "charge", stampede: "trample", pounce: "pounce", leap: "pounce", swoop: "pounce", dive: "pounce", lunge: "charge",
   retreat: "dash", scuttle: "dash", scamper: "dash", dash: "dash", grab: "grab", grip: "grab", embrace: "grab", seize: "grab", constrict: "constrict", squeeze: "constrict",
@@ -118,15 +120,24 @@ const BASE = {
 };
 // The recipe for an NPC's ability, or null. A saved recipe for it plays instead (a paused one silences it).
 // A named monster ability (findNpcAbility) plays its own design, any other its one-of-a-kind look (abilityForm).
-export function npcAbilityRecipe(event, saved = [], { soundCatalog, soundVolume, motion = true, generic = true } = {}) {
+// `excluded` names abilities left out (their ids): those play only a saved recipe.
+export function npcAbilityRecipe(event, saved = [], { soundCatalog, soundVolume, motion = true, generic = true, excluded = [] } = {}) {
   const found = findNpcAbility(event) ?? (generic ? abilityForm(event) : null);
   if (!found || found.trigger !== event.type) return null;
   const own = matchRecipe(saved, event);
   if (own) return own;
+  if (Array.isArray(excluded) && excluded.includes(found.id)) return null;
   if (saved.some((r) => !r.enabled && matchRecipe([{ ...r, enabled: true }], event))) return null;
   const variant = found.id === "breath" ? `${breathElement(event.item)}-${breathShape(event.item, event.area ?? event.template)}` : found.variant;
   const recipe = validateRecipe({ id: `pf2e-npc-${found.id}`, name: event.item.name, trigger: found.trigger, systemId: "pf2e", catalogEntry: `npc-${found.id}`,
     stages: [{ stageId: `pf2e-npc-${found.id}-base`, duration: 1200, ...BASE[found.aim] }] });
   const played = applyBespoke(recipe, { id: `npc-${found.id}`, systemId: "pf2e" }, { soundCatalog, soundVolume, motion, ...(variant ? { variant: { id: variant } } : {}) });
   return played.bespoke ? played : null;
+}
+// A named ability's look as the Studio previews it, on a stand-in NPC action (a breath as a fire cone).
+export function npcAbilityPreview(id, options = {}) {
+  const a = ABILITIES[id];
+  if (!a) return null;
+  const actor = { type: "npc" }, item = { type: "action", name: a.names[0], actor, system: { traits: { value: id === "breath" ? ["fire"] : [] }, description: { value: "" } } };
+  return npcAbilityRecipe({ type: a.trigger ?? "use", systemId: "pf2e", item, actor, ...(a.aim === "area" ? { area: { type: "cone" } } : {}) }, [], { ...options, excluded: [] });
 }
