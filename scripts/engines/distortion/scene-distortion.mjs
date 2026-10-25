@@ -5,9 +5,13 @@
 // nothing here touches Foundry.
 import { normalizeElement } from '../../catalogs/shared/element-choice.mjs';
 
-const SHOCK_MS = 700;
+// A blast's flash hides its middle for most of a second: the ring runs long and strong enough to still bend the
+// map clearly once it has passed the flash's edge, and never weaker than at 0.75 zoom on a zoomed-out view.
+const SHOCK_MS = 1400;
 const WARM_MS = 500;
-const SHOCK_PX = 12;
+const SHOCK_PX = 24;
+const SHOCK_FADE = 1.5;
+const SHOCK_MIN_ZOOM = 0.75;
 const HAZE_PX = 2.5;
 const WARP_PX = 10;
 const MIN_RING_SQUARES = 3;
@@ -168,7 +172,10 @@ export function slotParams(tag, tMs, { zoom = 1 } = {}) {
   const length = tag.lengthMs ?? (tag.kind === 'shock' ? SHOCK_MS : WARM_MS);
   if (t >= length) return null;
   const u = t / length;
-  if (tag.kind === 'shock') return { kind: KINDS.shock, centre, radius: tag.radius, ring: tag.radius * easeOutCubic(u), amp: SHOCK_PX * (1 - u) ** 2 * gain };
+  if (tag.kind === 'shock') {
+    const amp = SHOCK_PX * (1 - u) ** SHOCK_FADE * (tag.strength ?? 1) * Math.max(zoom, SHOCK_MIN_ZOOM);
+    return { kind: KINDS.shock, centre, radius: tag.radius, ring: tag.radius * easeOutCubic(u), amp };
+  }
   return { kind: KINDS.warp, centre, radius: tag.radius, ring: 0, amp: WARP_PX * Math.sin(Math.PI * u) * gain };
 }
 

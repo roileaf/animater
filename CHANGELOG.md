@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.3 (2026-10-25)
+
+- **Shockwaves you can see.** A big blast's ripple across the map (Map distortion) was drawn, but so faint and short that the explosion's own flash hid it, worst with D&D's Fireball. It now runs twice as long and bends the map clearly past the edge of the flash, stays visible on zoomed-out views, and plays even on a busy scene whose frames are running slow.
+
 ## 2.2.2 (2026-10-25)
 
 - **Tidier settings window.** Dropdowns keep one width everywhere (the Damage lens amount and Walked path highlight ones no longer stretch across their row), a row's only dropdown has room for its longest choice (Animation quality shows in full), two sliders side by side no longer squeeze their setting's text, slider value boxes fit values like 0.35 and -10, and **Wounded view on my screen** is now **Wounded view** (this screen).

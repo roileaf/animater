@@ -48,14 +48,24 @@ test('lasting fire hazes, one-shot fire does not', () => {
   assert.equal(distortionKind({ kind: 'projectile', assets: ['jb2a.fire_bolt.orange'], persist: true }, { context: {} }), null);
 });
 
-test('shock ring grows and fades; nothing after 700 ms', () => {
-  const tag = { kind: 'shock', at: { x: 0, y: 0 }, radius: 600, startMs: 0, lengthMs: 700 };
-  assert.equal(slotParams(tag, 0, { zoom: 1 }).amp, 12);
-  assert.ok(slotParams(tag, 350, { zoom: 1 }).ring > 300);
-  assert.equal(slotParams(tag, 800, { zoom: 1 }), null);
+test('shock ring grows and fades; nothing after 1400 ms', () => {
+  const tag = { kind: 'shock', at: { x: 0, y: 0 }, radius: 600, startMs: 0, lengthMs: 1400 };
+  assert.equal(slotParams(tag, 0, { zoom: 1 }).amp, 24);
+  assert.ok(slotParams(tag, 700, { zoom: 1 }).ring > 300);
+  assert.equal(slotParams(tag, 1500, { zoom: 1 }), null);
   assert.equal(slotParams(tag, -1, { zoom: 1 }), null);
-  assert.equal(slotParams(tag, 0, { zoom: 2 }).amp, 24);
+  assert.equal(slotParams(tag, 0, { zoom: 2 }).amp, 48);
   assert.equal(slotParams(tag, 0, { zoom: 1 }).kind, 0);
+});
+
+// A big blast throws a bright flash over its middle: the ring must still bend the map past the flash's edge, and
+// a zoomed-out view must still see it.
+test('the ring is still clearly bending past the edge of a blast flash, even zoomed out', () => {
+  const tag = { kind: 'shock', at: { x: 0, y: 0 }, radius: 600, startMs: 0, lengthMs: 1400 };
+  // Two thirds of the way out (where a Fireball's flash ends), at least 6 screen pixels.
+  const past = slotParams(tag, 470, { zoom: 1 });
+  assert.ok(past.ring > 0.65 * 600 && past.amp >= 6, JSON.stringify(past));
+  assert.equal(slotParams(tag, 0, { zoom: 0.3 }).amp, slotParams(tag, 0, { zoom: 0.75 }).amp, 'never weaker than at 0.75 zoom');
 });
 
 test('haze is steady for as long as its anchor lasts; warp swells and ends', () => {
@@ -76,7 +86,7 @@ test('plan: a fireball makes one ring on its tier 0 stage; radius clamps to 3..1
   const mk = r => planDistortions([st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 500, y: 500 }, r, delay: 200, contact: 300 })], opts({ a: 0 }));
   const [[stage, tag]] = [...mk(sq(4))];
   assert.equal(stage.stageId, 'a');
-  assert.deepEqual({ kind: tag.kind, radius: tag.radius, startMs: tag.startMs, lengthMs: tag.lengthMs, follow: tag.follow }, { kind: 'shock', radius: sq(6), startMs: 300, lengthMs: 700, follow: false });
+  assert.deepEqual({ kind: tag.kind, radius: tag.radius, startMs: tag.startMs, lengthMs: tag.lengthMs, follow: tag.follow }, { kind: 'shock', radius: sq(6), startMs: 300, lengthMs: 1400, follow: false });
   assert.equal([...mk(sq(1)).values()][0].radius, sq(3));
   assert.equal([...mk(sq(20)).values()][0].radius, sq(12));
   assert.equal([...mk(null).values()][0].radius, sq(3));

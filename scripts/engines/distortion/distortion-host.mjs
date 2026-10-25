@@ -134,9 +134,9 @@ export function createDistortionHost({
         const level = levelOf(tag, data), viewed = viewedLevel();
         if (level && viewed && level !== viewed) return;
         const lasting = tag.lengthMs == null;
-        // A busy frame budget skips new one-shots; a lasting haze still shows. A one-shot this client cannot see
-        // does not ripple the part of the map it can.
-        if (!lasting && (tight() || seen(tag.at, tag.radius) === false)) return;
+        // A busy frame budget skips a new teleport warp; a blast's shockwave (its fight's busiest frame) and a
+        // lasting haze still show. A one-shot this client cannot see does not ripple the part of the map it can.
+        if (!lasting && ((tag.kind !== 'shock' && tight()) || seen(tag.at, tag.radius) === false)) return;
         entries.set(effect, { effect, tag, lasting, capsule: capsuleOf(tag), receivedAt: now(), endedAt: null, sightAt: null, inSight: true });
       } catch (err) {
         console.warn('Animater | map distortion skipped an effect', err);

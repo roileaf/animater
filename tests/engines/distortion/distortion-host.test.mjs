@@ -169,7 +169,7 @@ test('a shock waits for its contact moment on the anchor\'s clock', () => {
   assert.equal(u(out).uSlots, 1);
   out.t = 1050;
   host.tick();
-  assert.equal(u(out).uSlots, 1, 'the ring runs 700 ms from its start');
+  assert.equal(u(out).uSlots, 1, 'the ring runs its 700 ms from its start');
   out.t = 1101;
   host.tick();
   assert.equal(out.detached.length, 1);
@@ -205,19 +205,28 @@ test('a haze whose anchor was destroyed without an end hook still goes', () => {
   assert.equal(out.detached.length, 1);
 });
 
-test('tight skips new one-shots but keeps haze', () => {
+test('tight skips new warps but keeps haze', () => {
   const { host, out } = make({ tight: true });
-  host.onEffect(effect(shock()));
   host.onEffect(effect(warp()));
   out.t = 100;
   host.tick();
-  assert.equal(out.attached.length, 0, 'no one-shot while the frame budget is tight');
+  assert.equal(out.attached.length, 0, 'no warp while the frame budget is tight');
   host.onEffect(effect(haze()));
   out.t = 120;
   host.tick();
   assert.equal(out.attached.length, 1);
   assert.equal(u(out).uSlots, 1);
   assert.equal(u(out).uKind[0], 1);
+});
+
+// A big blast is the busiest frame of a fight: skipping its ring then meant it never showed on a busy scene.
+test('a shockwave plays even while the frame budget is tight', () => {
+  const { host, out } = make({ tight: true });
+  host.onEffect(effect(shock()));
+  out.t = 100;
+  host.tick();
+  assert.equal(out.attached.length, 1);
+  assert.equal(u(out).uKind[0], 0);
 });
 
 test('only Animater effects on this scene with a valid tag distort', () => {
