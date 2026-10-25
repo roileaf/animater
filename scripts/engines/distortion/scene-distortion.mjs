@@ -22,7 +22,7 @@ const KINDS = { shock: 0, haze: 1, warp: 2 };
 const BLAST = /explosion|thunderwave|shatter|ground_crack|impact\.earth|boulder|shockwave/;
 const HEAVY = /great(axe|sword|club)|maul|glaive|halberd|earthbreaker|greatpick|lucern/;
 const FIRE = /(?:^|[._])(?:fire\w*|flame\w*|flaming)(?=$|[._\d])/;
-const ROUND_AREAS = new Set(['circle', 'emanation', 'burst']);
+const ROUND_AREAS = new Set(['circle', 'emanation', 'burst', 'sphere', 'cylinder', 'radius']);
 
 const assetsOf = stage => [stage?.asset, ...(stage?.assets ?? [])].filter(Boolean).map(a => String(a).toLowerCase());
 const matches = (stage, pattern) => assetsOf(stage).some(a => pattern.test(a));
@@ -45,21 +45,31 @@ function isLasting(stage) {
 }
 
 /**
- * What a stage does to the map: 'shock' for a big blast (a blast asset, a circle
- * or emanation one-shot of radius >= 2 squares, or a critical heavy-weapon hit),
- * 'haze' for a lasting fire aura or area, otherwise null. `radius` (pixels) and
- * `gridPx` size the area test; `element` is the play's element (fire).
+ * What a stage does to the map: 'shock' for a big blast (a blast asset, a round
+ * one-shot area of radius >= 2 squares, or a critical heavy-weapon hit) that does
+ * not persist, whatever its clip's length; 'haze' for a lasting fire aura or area
+ * (persisting, or a long one that is no blast), otherwise null. `radius` (pixels) and
+ * `gridPx` size the area test; `element` is the play's element (fire); `harmful`
+ * false (an item that deals no damage: a healing sphere, Detect Magic) keeps a
+ * plain round area from shocking.
  */
-export function distortionKind(stage, { context, heavyItem = false, element, radius, gridPx } = {}) {
+export function distortionKind(stage, { context, heavyItem = false, harmful = true, element, radius, gridPx } = {}) {
   if (!stage || NOT_VISUAL.has(stage.kind) || FLIGHTS.has(stage.kind)) return null;
-  if (isLasting(stage)) {
-    if (!['aura', 'template'].includes(stage.kind)) return null;
-    return matches(stage, FIRE) || normalizeElement(element ?? context?.element) === 'fire' ? 'haze' : null;
-  }
+  const haze = () => (['aura', 'template'].includes(stage.kind) && (matches(stage, FIRE) || normalizeElement(element ?? context?.element) === 'fire') ? 'haze' : null);
+  // Looping until its anchor ends: never a blast.
+  if (stage.persist) return haze();
+  // A one-shot blast shocks however long its clip runs (a D&D Fireball's explosion plays over four seconds).
   if (matches(stage, BLAST)) return 'shock';
-  if (stage.kind === 'template' && ROUND_AREAS.has(context?.area?.type) && gridPx > 0 && radius / gridPx >= BIG_BURST_SQUARES) return 'shock';
+  if (harmful !== false && stage.kind === 'template' && isRoundArea(context?.area) && gridPx > 0 && radius / gridPx >= BIG_BURST_SQUARES) return 'shock';
   if (stage.kind === 'impact' && isCritical(context) && (heavyItem || matches(stage, HEAVY))) return 'shock';
-  return null;
+  return isLasting(stage) ? haze() : null;
+}
+
+// A round area: one named circle, emanation or burst, or a placed circle, which carries only its centre and
+// diameter (canvas-preview-area.mjs templateArea: a D&D sphere, cylinder or radius, a PF2e burst).
+function isRoundArea(area) {
+  if (!area) return false;
+  return area.type == null ? Number(area.diameter) > 0 && !!area.center : ROUND_AREAS.has(area.type);
 }
 
 /**
@@ -73,7 +83,7 @@ export function distortionKind(stage, { context, heavyItem = false, element, rad
  * grows as a multiple of its blast's radius; its cap scales with it (1.5: 3..12
  * squares). `level` (the source token's level) goes on every tag.
  */
-export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusOf, heavyItem, element, follows, level, shockReach, spotSquares = 2, perAnimation = 4 } = {}) {
+export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusOf, heavyItem, harmful, element, follows, level, shockReach, spotSquares = 2, perAnimation = 4 } = {}) {
   const tags = new Map();
   const ringPer = Number.isFinite(shockReach) && shockReach > 0 ? shockReach : RING_PER_BLAST;
   const maxRing = MAX_RING_SQUARES * ringPer / RING_PER_BLAST;
@@ -84,7 +94,7 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
   const taken = new Set();
 
   for (const kind of ['shock', 'haze']) {
-    const entries = placed.filter(p => distortionKind(p.stage, { context, heavyItem, element, radius: radiusOf(p.stage), gridPx }) === kind).sort(byStart);
+    const entries = placed.filter(p => distortionKind(p.stage, { context, heavyItem, harmful, element, radius: radiusOf(p.stage), gridPx }) === kind).sort(byStart);
     const spots = [];
     for (const entry of entries) {
       const spot = spots.find(s => distance(s.at, entry.at) <= reach);

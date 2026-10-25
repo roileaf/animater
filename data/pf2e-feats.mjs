@@ -220952,7 +220952,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "mouth-water jet sweeps low straight line; low wide sweep, sweeping entrance",
-    "compositionHash": "55dc5c1358b6a1398ba6bddd7541cc92b61d5e3c39109ae279f3eb644041e1b7",
+    "compositionHash": "d9630f45222cb48c8634c03592d8f09ca979e87a11ca9f182db178da75ed87db",
     "sharedCount": 1
   },
   {
@@ -297242,7 +297242,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "benefactor-scaled mouth torrent opens small cone or thin line; centered bloom, sweeping entrance",
-    "compositionHash": "6426e7600b8b50947ab54d44bd69a5a11f7a41ff8706827e4b956e086cef4a21",
+    "compositionHash": "08410b90913f6292b583330d514d44915b3cee51a190010d228f6a771e19b420",
     "sharedCount": 1
   },
   {
@@ -414102,7 +414102,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Mouth-height acid stream travels directly to foe then spatters locally; centered bloom, expanding entrance",
-    "compositionHash": "8b24f91420f4d305ae2256c0a5c53a19436a1ecada1e3e783398aeb9ca3fa826",
+    "compositionHash": "d1ec6a445f8e801aed8afe6bcad933e08d2a399ce93445b4ef8af6e4664d3ff9",
     "sharedCount": 1
   },
   {
@@ -510066,7 +510066,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Third eye opens with charged glint, directed storm cone spreads from forehead; centered bloom, expanding entrance",
-    "compositionHash": "b972c51999fe535ddf516fcfe355a7f5d874140bed3f7947d820470edf931fc9",
+    "compositionHash": "8a42ef66a64c66539470fedde523733dba10db420cf13d782771696fcc47a7d7",
     "sharedCount": 1
   },
   {

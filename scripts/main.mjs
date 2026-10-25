@@ -27,7 +27,7 @@ import { movementSound, movementEnvironment } from "./engines/motion/movement-fe
 import { createGroundTrails, bleedsBlood, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
 import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
-import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets } from "./systems/adapters.mjs";
+import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets, midiRunsActivity } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { heavyItem } from "./systems/heavy-item.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
@@ -2792,6 +2792,18 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true,
     onChange: () => idleLife?.sync(),
   });
+  registerSetting("idleBreathing", {
+    name: "Idle breathing",
+    hint: "Living creatures on screen breathe, a slow rise and fall. Off: they stand still (fliers can still hover).",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => idleLife?.sync(),
+  });
+  registerSetting("idleHover", {
+    name: "Fliers hover",
+    hint: "Flying creatures bob gently in the air, so they stand out from those on the ground. Off: they hold still (others can still breathe).",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => idleLife?.sync(),
+  });
   registerSetting("idleLifeStrength", {
     name: "Idle life strength",
     hint: "How much creatures breathe and fliers bob on this screen: 1 is a visible but calm breath, 2 twice as much, 0.5 half.",
@@ -3270,6 +3282,7 @@ Hooks.once("ready", () => {
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
     strength: () => { try { return hotSetting("idleLifeStrength"); } catch { return 1; } },
+    kinds: () => ({ breathe: hotSetting("idleBreathing") !== false, hover: hotSetting("idleHover") !== false }),
     enabled: () => hotSetting("idleLife") !== false && hotSetting("idleLifeLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.ready,
     tokens: () => canvas.tokens?.placeables ?? [],
     view: () => {
@@ -3962,12 +3975,8 @@ Hooks.once("ready", () => {
   if (game.system.id === "dnd5e") {
     // Midi-QOL fast-forwards an attack into its own card: the roll has no chat message, so no targets or
     // ACs, and Midi decides the hits after this hook. That attack plays on Midi's verdict instead.
-    // Midi keys its workflows by their card (ChatMessage.<id>), so look for one running this activity.
-    const midiWorkflow = (subject) => {
-      const workflows = globalThis.MidiQOL?.Workflow?.workflows;
-      if (!subject?.uuid || !workflows?.values) return false;
-      return Array.from(workflows.values()).some((w) => w?.activity === subject || w?.activity?.uuid === subject.uuid);
-    };
+    // Look for a workflow running this activity (weak workflow references or not).
+    const midiWorkflow = (subject) => midiRunsActivity(globalThis.MidiQOL?.Workflow?.workflows, subject);
     Hooks.on("dnd5e.rollAttackV2", (rolls, data) => {
       if (!rolls?.some((r) => r?.parent) && midiWorkflow(data?.subject)) return;
       void dispatch(dnd5eEvent("attack", data?.subject, { rolls }));

@@ -201,7 +201,7 @@ export function featureStages(element, shape) {
   const look = AREA_LOOKS[element] ?? AREA_LOOKS.physical;
   if (shape === "breath" && look.breath) return [
     { stageId: "maw", kind: "cast", assets: [...look.cast], duration: 900, scale: 0.55 },
-    { stageId: "breath", kind: "travel", assets: [...look.breath], delay: 400, duration: 2000, scale: 1, optionalTargets: true },
+    { stageId: "breath", kind: "travel", assets: [...look.breath], delay: 400, duration: 2000, scale: 1, optionalTargets: true, oneShot: true },
     { stageId: "hit", kind: "impact", assets: [...look.hit], delay: 1300, duration: 1000, scale: 0.8, optionalTargets: true }];
   if (shape === "strike") return [
     { stageId: "cast", kind: "cast", assets: [...look.cast], duration: 700, scale: 0.5, opacity: 0.85 },

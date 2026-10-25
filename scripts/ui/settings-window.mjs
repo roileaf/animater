@@ -3,13 +3,20 @@
 // extra choices (lifetime, strength, a second switch) under it. Players see only what they can set themselves.
 // Names and hints are read from the registered settings, so the registration stays the one place they are written.
 
+import { canDistort } from "../engines/distortion/distortion-host.mjs";
+import { canShake } from "../engines/camera/camera-shake.mjs";
+
 const PF2E = (env) => env.systemId === "pf2e";
 const TWOE = (env) => ["pf2e", "sf2e"].includes(env.systemId);
 const MODULE = (id) => (env) => env.modules.has(id);
+// Features this screen draws only at some animation qualities (the "quality" setting): `quality` on a row is
+// [whether this screen's quality draws it, the note shown when it does not].
+const FULL_ONLY = [(q) => canDistort(q, true), "Needs Full animation quality on this screen"];
+const FULL_OR_LIGHT = [(q) => canShake(q, true), "Needs Full or Light animation quality on this screen"];
 
 // Each row: `world` (the GM's setting), `local` (this screen's), `extras` (more settings under it), `when` (only
 // where it applies: a system or an active module, as its registration listed it), `gmOnly` (a client setting only
-// a GM has a use for), `menu` (a button opening another settings menu).
+// a GM has a use for), `menu` (a button opening another settings menu), `quality` (see FULL_ONLY).
 export const SETTINGS_TABS = Object.freeze([
   { id: "look", label: "Look & light", icon: "fa-solid fa-palette", rows: [
     { local: "quality" },
@@ -27,11 +34,11 @@ export const SETTINGS_TABS = Object.freeze([
   { id: "motion", label: "Motion", icon: "fa-solid fa-person-running", rows: [
     { world: "motionPriority" },
     { world: "afterimages", local: "afterimagesLocal" },
-    { world: "idleLife", local: "idleLifeLocal", extras: ["idleLifeStrength", "breathVapor"] },
+    { world: "idleLife", local: "idleLifeLocal", extras: ["idleBreathing", "idleHover", "idleLifeStrength", "breathVapor"] },
     { world: "teleportTokens" },
-    { world: "cameraShake", local: "cameraShakeLocal", extras: ["cameraShakeStrength", "footfallTremor"] },
+    { world: "cameraShake", local: "cameraShakeLocal", extras: ["cameraShakeStrength", "footfallTremor"], quality: FULL_OR_LIGHT },
     { world: "killCam", local: "killCamLocal" },
-    { world: "mapDistortion", local: "mapDistortionLocal", extras: ["shockwaveReach"] },
+    { world: "mapDistortion", local: "mapDistortionLocal", extras: ["shockwaveReach"], quality: FULL_ONLY },
   ] },
   { id: "floor", label: "Floor & world", icon: "fa-solid fa-mountain-sun", rows: [
     { world: "groundMarks", local: "groundMarksLocal", extras: ["groundMarkMinutes"] },
@@ -103,6 +110,7 @@ export function settingsModel({ id = "animater", registry, get, menus = new Map(
   const read = (key) => { try { return get(key); } catch { return undefined; } };
   const control = (key) => { const c = config(key); return c ? controlOf({ ...c, key }, read(key)) : null; };
   const mine = (c) => c && (isGM || c.scope === "client");
+  const quality = config("quality") ? read("quality") : undefined;
   const tabs = [];
   for (const tab of SETTINGS_TABS) {
     const rows = [];
@@ -125,6 +133,8 @@ export function settingsModel({ id = "animater", registry, get, menus = new Map(
         id: row.world ?? row.local, name: lead.name, hint: lead.hint, world, local, extras,
         // A player whose GM turned the feature off for everyone: their own switch changes nothing for now.
         worldOff: !isGM && !!local && (worldC?.value === false || (worldC?.kind === "select" && worldC.value === "off")),
+        // This screen's animation quality never draws it, whatever the switches say.
+        qualityNote: row.quality && typeof quality === "string" && !row.quality[0](quality) ? row.quality[1] : null,
       });
     }
     if (rows.length) tabs.push({ id: tab.id, label: tab.label, icon: tab.icon, rows });
@@ -166,7 +176,7 @@ function input(c, label) {
 }
 const cell = (c, caption, cls) => `<label class="an-set-switch ${cls}" title="${esc(c.hint)}"><span>${esc(caption)}</span>${input(c, `${c.name}: ${caption}`)}</label>`;
 function rowHTML(row, tab) {
-  const head = `<div class="an-set-text"><strong>${esc(row.name)}</strong>${row.worldOff ? ` <em class="an-set-off">Off in this world</em>` : ""}<p>${esc(row.hint)}</p></div>`;
+  const head = `<div class="an-set-text"><strong>${esc(row.name)}</strong>${row.worldOff ? ` <em class="an-set-off">Off in this world</em>` : ""}${row.qualityNote ? ` <em class="an-set-off">${esc(row.qualityNote)}</em>` : ""}<p>${esc(row.hint)}</p></div>`;
   if (row.menu) return `<div class="an-set-row" data-row="${esc(row.id)}" data-tab="${esc(tab)}">${head}<div class="an-set-controls"><button type="button" data-menu="${esc(row.menu)}">${row.icon ? `<i class="${esc(row.icon)}"></i> ` : ""}${esc(row.label)}</button></div></div>`;
   // A feature with a world switch and its own screen's: "Everyone" and "My screen"; a lone setting needs no caption.
   const both = row.world && row.local;
@@ -249,6 +259,8 @@ export function settingsWindow(ApplicationV2, {
       try {
         await settings().set(id, key, value);
         control.value = value;
+        // The quality decides which features this screen draws: their notes are redrawn.
+        if (key === "quality") this.render?.();
         if (control.reload) await reloadConfirm({ world: control.scope === "world" });
       } catch (error) {
         globalThis.ui?.notifications?.error(`Animater: could not save ${control.name}: ${error.message}`);

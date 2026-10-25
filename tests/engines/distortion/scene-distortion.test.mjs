@@ -175,3 +175,36 @@ test('off-screen distortions take no slot', () => {
   assert.deepEqual(chooseSlots([], VIEW), []);
   assert.equal(chooseSlots([on, edge], VIEW, 1).length, 1);
 });
+
+// Reported on D&D 5e: map distortion and camera shake never showed. Its catalog's areas play their whole clip
+// (a Fireball's explosion runs 4.2 s), which read as a lasting area, and a placed circle carries no area type.
+test('D&D: a long one-shot blast still shocks; a placed circle (no type) counts as round', () => {
+  const placed = { center: { x: 0, y: 0 }, diameter: sq(8) };
+  const fireball = { kind: 'template', assets: ['jb2a.fireball.explosion.orange'], duration: 4222 };
+  assert.equal(distortionKind(fireball, { context: { area: placed }, element: 'fire', radius: sq(4), gridPx: GRID }), 'shock');
+  assert.equal(distortionKind({ kind: 'template', assets: ['jb2a.shatter.blue'], duration: 3213 }, { context: { area: { center: { x: 0, y: 0 }, diameter: sq(4) } }, radius: sq(2), gridPx: GRID }), 'shock');
+  const iceStorm = { kind: 'template', assets: ['jb2a.sleet_storm.02.blue'], duration: 4347 };
+  assert.equal(distortionKind(iceStorm, { context: { area: placed }, radius: sq(4), gridPx: GRID }), 'shock');
+  assert.equal(distortionKind(iceStorm, { context: { area: { type: 'sphere', center: { x: 0, y: 0 } } }, radius: sq(4), gridPx: GRID }), 'shock');
+  assert.equal(distortionKind(iceStorm, { context: { area: { center: { x: 0, y: 0 } } }, radius: sq(4), gridPx: GRID }), null, 'no diameter: not a placed circle');
+  // A healing or detecting sphere is no blast.
+  assert.equal(distortionKind(iceStorm, { context: { area: placed }, harmful: false, radius: sq(4), gridPx: GRID }), null);
+  assert.equal(distortionKind(fireball, { context: { area: placed }, harmful: false, radius: sq(4), gridPx: GRID }), 'shock', 'a blast asset shocks regardless');
+  // A persisting blast clip is a burning area, never a ring; a long fire cone still hazes.
+  assert.equal(distortionKind({ ...fireball, persist: true }, { context: {} }), 'haze');
+  assert.equal(distortionKind({ kind: 'template', assets: ['jb2a.burning_hands.01.orange'], duration: 4186 }, { context: { area: { type: 'cone' } }, element: 'fire', radius: sq(3), gridPx: GRID }), 'haze');
+});
+
+test('D&D: a Fireball plans one shock on its explosion, which camera shake reads', () => {
+  const plan = [
+    st('cast', 'cast', 'jb2a.cast_generic.fire.01.orange', { at: { x: 0, y: 0 }, r: sq(1), duration: 2247 }),
+    st('fly', 'travel', 'jb2a.fire_bolt.orange', { at: { x: 1200, y: 0 }, r: sq(0.5), duration: 1980 }),
+    st('boom', 'template', 'jb2a.fireball.explosion.orange', { at: { x: 1200, y: 0 }, r: sq(4), delay: 1500, duration: 4222 }),
+  ];
+  const tags = planDistortions(plan, opts({ cast: 1, fly: 0, boom: 0 }, { context: { type: 'template', area: { center: { x: 1200, y: 0 }, diameter: sq(8) } }, element: 'fire' }));
+  assert.equal(tags.size, 1);
+  const [[stage, tag]] = [...tags];
+  assert.equal(stage.stageId, 'boom');
+  assert.equal(tag.kind, 'shock');
+  assert.equal(tag.radius, 1.5 * sq(4));
+});

@@ -119,3 +119,20 @@ test("a token that throws while being read is skipped, not fatal", () => {
   life.sync();
   assert.deepEqual(calls.map((c) => c[1]), ["animater-idle:ok"]);
 });
+
+test('idle kinds can be switched separately: fliers keep hovering with breathing off, and the other way round', () => {
+  const calls = [];
+  const body = { add: (name, token, kind) => calls.push(['add', name, kind]), remove: (name) => calls.push(['remove', name]) };
+  const actor = { type: 'npc', system: { traits: { value: ['humanoid'] } } };
+  const walker = { id: 'w', x: 100, y: 100, w: 100, h: 100, visible: true, actor, document: { id: 'w', hidden: false, elevation: 0, width: 1 } };
+  const flier = { id: 'f', x: 300, y: 100, w: 100, h: 100, visible: true, actor, document: { id: 'f', hidden: false, elevation: 30, width: 1, movementAction: 'fly' } };
+  let kinds = { breathe: false, hover: true };
+  const life = new IdleLife({ body, tokens: () => [walker, flier], view: () => ({ x: 0, y: 0, width: 1000, height: 1000 }), kinds: () => kinds });
+  life.sync();
+  assert.deepEqual(calls.filter((c) => c[0] === 'add').map((c) => c[2]), ['idle-hover'], 'only the flier bobs');
+  calls.length = 0;
+  kinds = { breathe: true, hover: false };
+  life.sync();
+  assert.deepEqual(calls.filter((c) => c[0] === 'add').map((c) => c[2]), ['idle-breathe'], 'only the walker breathes now');
+  assert.deepEqual(calls.filter((c) => c[0] === 'remove').map((c) => c[1]), ['animater-idle:f'], 'the flier stops bobbing');
+});

@@ -109,6 +109,16 @@ function maneuverItem(message, context) {
   const name = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   return own ?? { type: "action", name, slug, system: { slug, traits: { value: [] } }, actor: message.actor };
 }
+// Whether a Midi-QOL workflow runs this activity. Midi keys its workflows by their card (ChatMessage.<id>)
+// and, with "Use Weak References for Workflows" on, stores a WeakRef to each instead of the workflow.
+export function midiRunsActivity(workflows, subject) {
+  if (!subject?.uuid || typeof workflows?.values !== "function") return false;
+  for (const entry of workflows.values()) {
+    const w = typeof entry?.deref === "function" ? entry.deref() : entry;
+    if (w && (w.activity === subject || w.activity?.uuid === subject.uuid)) return true;
+  }
+  return false;
+}
 // verdict: an attack Midi-QOL rolled without a chat message (into its own card), { messageId: its card,
 // targets: [{ token: uuid, ac }], hits: token ids, or null when Midi checks no hits (then the ACs decide) }.
 export function dnd5eEvent(type, subject, { rolls = [], results = {}, verdict = null } = {}) {

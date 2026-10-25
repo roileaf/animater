@@ -79,13 +79,16 @@ export function pickIdle(tokens, view, cap = IDLE_CAP) {
 // is injected: tokens() the placeables, view() the visible world rectangle, statuses(token),
 // defeated(token), levelBase(token) the floor elevation of the token's level.
 export class IdleLife {
-  constructor({ body, tokens = () => [], view = () => null, enabled = () => true, statuses = () => [], defeated = () => false, levelBase = () => 0, cap = IDLE_CAP, strength = () => 1 } = {}) {
-    Object.assign(this, { body, tokens, view, enabled, statuses, defeated, levelBase, cap, strength });
+  constructor({ body, tokens = () => [], view = () => null, enabled = () => true, statuses = () => [], defeated = () => false, levelBase = () => 0, cap = IDLE_CAP, strength = () => 1, kinds = () => ({ breathe: true, hover: true }) } = {}) {
+    Object.assign(this, { body, tokens, view, enabled, statuses, defeated, levelBase, cap, strength, kinds });
     this.shown = new Map(); // record name → kind
   }
   wanted() {
     const want = new Map();
     if (!this.enabled()) return want;
+    // Breathing and hovering switch separately (world settings Idle breathing, Fliers hover).
+    let allowed = { breathe: true, hover: true };
+    try { allowed = { breathe: true, hover: true, ...(this.kinds() ?? {}) }; } catch { /* both */ }
     const placed = [];
     for (const token of this.tokens() ?? []) {
       try {
@@ -93,6 +96,8 @@ export class IdleLife {
         const doc = token.document ?? {};
         const kind = idleKind({ actor: token.actor, statuses: this.statuses(token), defeated: this.defeated(token),
           elevation: doc.elevation, base: this.levelBase(token), movementAction: doc.movementAction });
+        if (kind === 'idle-breathe' && allowed.breathe === false) continue;
+        if (kind === 'idle-hover' && allowed.hover === false) continue;
         if (kind) placed.push({ token, kind, squares: Number(doc.width) || 1, id: doc.id ?? token.id, x: token.x ?? 0, y: token.y ?? 0, w: token.w ?? 0, h: token.h ?? 0 });
       } catch { /* a token mid-teardown: skip it */ }
     }

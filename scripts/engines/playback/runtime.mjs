@@ -15,6 +15,7 @@ function scaleMask(mask, at, k) {
 import { prepareRecipeSounds } from "../sound/spell-sounds.mjs";
 import { previewFields } from '../../ui/activity-actions.mjs';
 import { registeredMedia, mediaForReference } from '../media/media-library-model.mjs';
+import { mediaSpan } from '../media/media-lifetime.mjs';
 import { staggerDelays } from './adaptive.mjs';
 import { stageTiers } from '../../core/quality.mjs';
 import { withLastingArea } from './lasting-area.mjs';
@@ -475,7 +476,8 @@ export class AnimaterRuntime {
         // A lasting layer loops its whole clip: a stage duration would make Sequencer loop
         // only that much of it and jump back (a lasting Darkness looped 2.3s of its 5s clip).
         const lasts = s.persist && !preview && (s.kind !== "template" || templateDocument(context.template));
-        if (!lasts) e.duration(s.duration * s.playbackRate + (s.clipEnd ? 0 : s.clipStart));
+        // ...but never past the end of a clip that plays once: it would hold its last frame (media-lifetime.mjs).
+        if (!lasts) e.duration(mediaSpan(s));
         if (users) e.forUsers(users);
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tier, animaterLasting = Boolean(lasts);
@@ -702,6 +704,8 @@ export class AnimaterRuntime {
           element: context.element ?? recipe.chosenElement ?? this.host.itemElement?.(context.item, context) ?? undefined,
           // A critical hit with a heavy weapon ripples too (only a critical play asks).
           heavyItem: context.item && isCritical(context) ? this.host.heavyItem?.(context.item) === true : false,
+          // A plain round area ripples only when its item deals damage (no healing or detecting sphere).
+          harmful: context.item && this.host.itemDamages ? this.host.itemDamages(context.item) === true : true,
         });
         if (surge > 1) for (const tag of planned.values()) tag.strength = (tag.strength ?? 1) * surge;
         if (warps) distortions = planned;

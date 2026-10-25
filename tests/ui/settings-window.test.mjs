@@ -132,3 +132,22 @@ test("every setting the window lists is registered by Animater, and Configure Se
   const leads = SETTINGS_TABS.flatMap((t) => t.rows.map((r) => r.world ?? r.local ?? r.menu));
   assert.equal(new Set(leads).size, leads.length);
 });
+
+// Reported on D&D 5e: map distortion and camera shake seemed to do nothing. A screen whose animation quality never
+// draws a feature says so on its row, whatever its switches say.
+test("a feature this screen's quality never draws says which quality it needs", () => {
+  const extra = new Map([...registry,
+    reg("mapDistortion", "world", Boolean, { name: "Map distortion" }),
+    reg("mapDistortionLocal", "client", Boolean, { name: "Map distortion on my screen" })]);
+  const at = (quality) => rowsOf(settingsModel({ registry: extra, get: (k) => (k === "quality" ? quality : values[k] ?? true), menus, systemId: "dnd5e", isGM: true }));
+  assert.equal(at("full").mapDistortion.qualityNote, null);
+  assert.equal(at("full").cameraShake.qualityNote, null);
+  assert.match(at("light").mapDistortion.qualityNote, /Full animation quality/);
+  assert.equal(at("light").cameraShake.qualityNote, null, "Light still shakes");
+  assert.match(at("balanced").cameraShake.qualityNote, /Full or Light/);
+  assert.match(at("low").mapDistortion.qualityNote, /Full/);
+  assert.equal(at("low").groundMarks.qualityNote, null, "rows without a quality need show nothing");
+  const html = settingsWindowHTML(settingsModel({ registry: extra, get: (k) => (k === "quality" ? "balanced" : values[k] ?? true), menus, isGM: true }), { active: "motion" });
+  assert.match(html, /Needs Full or Light animation quality on this screen/);
+  assert.match(html, /Needs Full animation quality on this screen/);
+});

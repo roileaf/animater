@@ -31,3 +31,22 @@ test("a Midi attack whose hits Midi does not check plays the total against each 
   assert.equal(event.outcome, "success");
   assert.deepEqual(event.targetOutcomes, { t1: "success" });
 });
+
+// Midi stores each running workflow under its card's uuid: the workflow itself, or with "Use Weak
+// References for Workflows" on, a WeakRef to it. Either way that attack is Midi's, and plays once.
+test("a Midi attack is found as Midi's with or without weak workflow references", async () => {
+  const { midiRunsActivity } = await import("../../scripts/systems/adapters.mjs");
+  const activity = { uuid: "Actor.a.Item.bow.Activity.act1" };
+  const workflow = { id: "ChatMessage.card1", activity };
+  for (const weak of [false, true]) {
+    const workflows = new Map([["ChatMessage.card1", weak ? new WeakRef(workflow) : workflow]]);
+    assert.equal(midiRunsActivity(workflows, activity), true, `weak references ${weak}`);
+    // The same activity from a fresh document (another object, the same uuid).
+    assert.equal(midiRunsActivity(workflows, { uuid: activity.uuid }), true, `weak references ${weak}, by uuid`);
+    assert.equal(midiRunsActivity(workflows, { uuid: "Actor.a.Item.sword.Activity.act2" }), false, `weak references ${weak}, another activity`);
+  }
+  // A collected workflow, Midi's map missing, or no subject: not Midi's.
+  assert.equal(midiRunsActivity(new Map([["ChatMessage.card1", { deref: () => undefined }]]), activity), false);
+  assert.equal(midiRunsActivity(undefined, activity), false);
+  assert.equal(midiRunsActivity(new Map([["ChatMessage.card1", workflow]]), null), false);
+});

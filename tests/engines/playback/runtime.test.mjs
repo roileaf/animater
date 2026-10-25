@@ -232,7 +232,8 @@ test("old Force Barrage one-shot clips compile a complete native lifetime and cl
     );
     const lifetime = sequencerEffectLifetime(calls);
     assert.ok(lifetime >= 2200 / playbackRate + 100);
-    assert.equal(lifetime, compiled.playbackPlan[0].duration);
+    // The whole movie and its fade, never its last frame held for the rest of a longer stage.
+    assert.equal(lifetime, Math.min(compiled.playbackPlan[0].duration, Math.ceil(2200 / playbackRate + 100)));
     assert.ok(
       Math.max(...waits) >= lifetime,
       "cleanup must wait through the movie and exit",
@@ -1890,4 +1891,41 @@ test("camera shake: with map distortion on the warp tag serves it; off plans not
   none.host.cameraShake = () => false;
   await none.runtime.play(recipe, context);
   for (const [, d] of await overridesByAsset(none.calls)) assert.equal("animaterShake" in d, false);
+});
+
+// Reported on D&D 5e (2.1.5): map distortion and camera shake never showed. A D&D Fireball's explosion plays its
+// whole 4.2 s clip, which read as a lasting area (a haze, no shock), and a placed circle carries no area type.
+async function dndPlacedTags(name, item, { warp = false } = {}) {
+  const entry = dndEntries("spell").find((e) => e.name === name && e.edition === "2024");
+  const recipe = dndRecipe(entry);
+  const f = warpFixture(warp);
+  f.host.cameraShake = () => true;
+  f.host.itemDamages = (i) => usedItemDamages(i, "dnd5e");
+  f.host.itemElement = (i, context) => usedItemElement(i, "dnd5e", context.activity);
+  f.host.resolveRecipe = () => recipe;
+  f.runtime.catalog = [...new Set(recipe.stages.flatMap((s) => s.assets ?? []))].map((key) => ({ key }));
+  await f.runtime.dispatch({
+    id: "area:Scene.s1.Region.rg1", type: "template", systemId: "dnd5e", item, activity: [...item.system.activities.values()][0],
+    source: { id: "s", center: { x: 0, y: 0 } }, targets: [], sceneId: "s1",
+    template: { documentName: "Region", id: "rg1" }, area: { center: { x: 1200, y: 0 }, diameter: 800 },
+  });
+  return (await overridesByAsset(f.calls)).filter(([, d]) => d.animaterShake || d.animaterWarp);
+}
+const dndSpellItem = (name, parts) => ({ type: "spell", name, system: { activities: new Map([["a1", { id: "a1", type: parts ? "save" : "heal", damage: { parts: parts ?? [] } }]]) } });
+test("a placed D&D Fireball shakes the view and ripples a shockwave", async () => {
+  const item = dndSpellItem("Fireball", [{ number: 8, denomination: 6, types: new Set(["fire"]) }]);
+  const shakes = await dndPlacedTags("Fireball", item);
+  assert.equal(shakes.length, 1);
+  assert.equal(shakes[0][0], "jb2a.fireball.explosion.orange");
+  assert.equal(shakes[0][1].animaterShake.kind, "shock");
+  assert.deepEqual(shakes[0][1].animaterShake.at, { x: 1200, y: 0 });
+  const warps = await dndPlacedTags("Fireball", item, { warp: true });
+  assert.equal(warps.length, 1);
+  assert.equal(warps[0][1].animaterWarp.kind, "shock", "a ring, not a haze");
+});
+test("a placed D&D round area ripples only when its item deals damage", async () => {
+  const storm = await dndPlacedTags("Ice Storm", dndSpellItem("Ice Storm", [{ number: 2, denomination: 10, types: new Set(["bludgeoning"]) }]));
+  assert.equal(storm.length, 1);
+  assert.equal(storm[0][1].animaterShake.kind, "shock");
+  assert.equal((await dndPlacedTags("Ice Storm", dndSpellItem("Ice Storm"))).length, 0, "the same area without damage");
 });
