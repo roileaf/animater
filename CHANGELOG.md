@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.7 (2026-10-25)
+
+- **Tracks follow who is looking.** A creature's footprints, dust, splashes, trails and burrow holes now show only while the current point of view can perceive it. Select a token that PF2e Visioner says has not detected (or not noticed) a creature, and that creature's tracks vanish from your screen; select one that can see it and they come back. Before, tracks laid while you had the creature itself selected (to move it) stayed in view for everyone. A GM now perceives movement as the selected token by default (**GM perceives movement**: As my selected token); with nothing selected a GM still sees everything, and Everything remains a choice.
+
 ## 2.1.6 (2026-10-25)
 
 - **Big D&D blasts shake and ripple.** Camera shake and map distortion barely ever fired in D&D 5e. A Fireball, Shatter or Meteor Swarm plays its whole explosion clip (four seconds and more), which Animater took for a lasting area, so it got at most a faint heat haze and no shockwave or shake. A placed circle also never counted as a round area. Now a one-shot blast sends its shockwave however long its clip runs, and a big round area (a sphere, cylinder or radius) ripples when its spell deals damage; a healing or detecting sphere stays calm. The settings window also says when this screen's animation quality never draws one of them: map distortion needs Full, camera shake Full or Light. Thanks to y_deda_povis for the report.

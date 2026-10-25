@@ -883,6 +883,8 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
   // Each token's movement: where it was, when it last moved, whether it is moving and how (a jump whooshes once as it
   // leaves the ground and lands when it stops).
   const moves = new Map();
+  // Whose marks are being laid (the token being stepped), so each mark can follow whether this view perceives its maker.
+  let layOwner = null;
   const lay = (specs, time, floor, trailKind = null) => {
     const limit = capOf(), printLimit = printCapOf();
     for (let spec of specs) {
@@ -897,7 +899,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       const life = trailKind ? trailLife(trailKind) : footprint ? footprintLife(floor) : 0;
       if (life) spec = { ...spec, life, motionLife:nativeLife };
       const handle = layer.addParticle(spec);
-      const particle = { spec, handle, born: time, nativeLife, floor, trailKind };
+      const particle = { spec, handle, born: time, nativeLife, floor, trailKind, owner: layOwner };
       particles.add(particle);
       if (print) prints.add(particle);
     }
@@ -947,11 +949,14 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
     footprintLives.clear();
     trailLives.clear();
     if (!tracker || trackerGrid !== size) { tracker = createStrideTracker({ stride: STRIDE * size, maxJump: 3 * size }); trackerGrid = size; }
-    const seen = new Set();
+    const seen = new Set(), unseen = new Set();
     for (const token of tokens() ?? []) {
       let id;
       try {
         id = token.id;
+        layOwner = id;
+        // Not seen from this view now (another token's eyes, PF2e Visioner): its marks hide until it is seen again.
+        if (!token.visible) unseen.add(id);
         const point = { x: token.x, y: token.y };
         seen.add(id);
         const below=Number(token.elevation)<Number(token.base??0);
@@ -1001,6 +1006,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       }
     }
     for (const id of known) if (!seen.has(id)) { tracker.forget(id); dropShadow(id); moves.delete(id); trails?.forget?.(id); }
+    layOwner = null;
     known = seen;
     for (const particle of [...particles]) {
       let state = null;
@@ -1010,6 +1016,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       }
       try { state = particleState(particle.spec, time - particle.born); } catch { /* drop it */ }
       try {
+        if (state && particle.owner && unseen.has(particle.owner)) state = { ...state, alpha: 0 };
         if (state) layer.updateParticle(particle.handle, state);
         else drop(particle);
       } catch { particles.delete(particle); prints.delete(particle); }

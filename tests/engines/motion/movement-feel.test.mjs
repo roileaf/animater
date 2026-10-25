@@ -814,3 +814,22 @@ test('shadowGeometry: a flier shadow always shows past its own token, big tokens
   const low = shadowGeometry({ x: 0, y: 0, width: 400, lift: 10, distance: 5, grid: 100 }), high = shadowGeometry({ x: 0, y: 0, width: 400, lift: 120, distance: 5, grid: 100 });
   assert.ok(high.rx < low.rx && high.alpha < low.alpha && high.y > low.y, 'higher: further down, smaller, fainter');
 });
+
+test('controller: marks follow who is looking now: a creature this view stops perceiving has its tracks hidden, not lost', () => {
+  const ed = { id: 'ed', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true, audible: true };
+  const h = harness({ tokens: [ed], floor: 'snow' });
+  h.feel.tick();
+  for (let x = 30; x <= 600; x += 30) { ed.x = x; h.advance(16); h.feel.tick(); }
+  const prints = () => [...h.live].filter((p) => p.spec.kind === 'print');
+  assert.ok(prints().length > 0, 'Ed left prints while seen');
+  assert.ok(prints().every((p) => p.state && p.state.alpha > 0));
+  // Now the view is the spider's, which has not detected Ed: his prints vanish from this screen.
+  ed.visible = false; ed.audible = false;
+  h.advance(16); h.feel.tick();
+  assert.ok(prints().length > 0, 'kept, not removed');
+  assert.ok(prints().every((p) => p.state.alpha === 0), 'hidden');
+  // Ed's own view again: they come back.
+  ed.visible = true; ed.audible = true;
+  h.advance(16); h.feel.tick();
+  assert.ok(prints().every((p) => p.state.alpha > 0), 'shown again');
+});

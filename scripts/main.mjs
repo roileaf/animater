@@ -543,6 +543,8 @@ const movementPerception = (t, d, level) => {
   return { visible: see, audible: hear };
 };
 Hooks.on("canvasTearDown", () => { awareness.clear(); conditionCache.clear(); });
+// Selecting another token changes whose eyes and ears this screen uses: judge again at once.
+Hooks.on("controlToken", () => awareness.clear());
 // Whether a token moves stealthily (engines/motion/quiet-steps.mjs isSneaking; world setting "Sneaking is quiet"):
 // PF2e/SF2e's Avoid Notice exploration activity or a Sneak/Avoid Notice effect, PF2e Visioner's 'sneak-active' token
 // flag, D&D 5e's Hiding status. Read for a second at a time per token.
@@ -2715,8 +2717,8 @@ Hooks.once("init", () => {
   });
   registerSetting("movementGmPerception", {
     name: "GM perceives movement",
-    hint: "Everything: you see and hear every creature move (except tokens hidden in Foundry). As my selected token: with a token selected, you see and hear only what it could, as its player would; with none selected, everything.",
-    scope: "client", config: true, type: String, default: "all",
+    hint: "As my selected token: with a token selected, you see and hear only what it could, as its player would (a creature PF2e Visioner says it has not detected leaves no tracks and makes no sound); with none selected, everything. Everything: you always see and hear every creature move (except tokens hidden in Foundry).",
+    scope: "client", config: true, type: String, default: "token",
     choices: { all: "Everything", token: "As my selected token" },
     onChange: () => awareness.clear(),
   });
