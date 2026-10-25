@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.4 (2026-10-25)
+
+- **Shockwave reach that behaves.** Raising **Shockwave reach** widened the ripple along with its distance, so at 3× the whole map slid and smeared instead of rippling; lowering it kept the ring inside the explosion, where the flash hid it. The ripple now keeps the same width at any reach (reach only sets how far it travels) and always runs at least a square past the blast. The setting now starts at 1×.
+
 ## 2.2.3 (2026-10-25)
 
 - **Shockwaves you can see.** A big blast's ripple across the map (Map distortion) was drawn, but so faint and short that the explosion's own flash hid it, worst with D&D's Fireball. It now runs twice as long and bends the map clearly past the edge of the flash, stays visible on zoomed-out views, and plays even on a busy scene whose frames are running slow.

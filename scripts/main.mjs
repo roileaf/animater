@@ -2921,8 +2921,8 @@ Hooks.once("init", () => {
   });
   registerSetting("shockwaveReach", {
     name: "Shockwave reach (× blast size)",
-    hint: "How far a blast's shockwave ripples, as a multiple of the blast's size. Larger values reach further across the map.",
-    scope: "world", config: true, type: Number, range: { min: 0.5, max: 4, step: 0.25 }, default: 1.5,
+    hint: "How far a blast's shockwave ripples across the map, as a multiple of the blast's size. It always clears the blast by at least a square, and its ripple keeps the same width at any reach.",
+    scope: "world", config: true, type: Number, range: { min: 1, max: 4, step: 0.25 }, default: 1.5,
   });
   registerSetting("mapDistortionLocal", {
     name: "Map distortion on my screen",

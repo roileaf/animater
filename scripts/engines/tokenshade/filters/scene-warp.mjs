@@ -25,6 +25,7 @@ uniform vec2 uCentre[4];
 uniform float uRadius[4];
 uniform float uRing[4];
 uniform float uAmp[4];
+uniform float uBand[4];
 uniform vec4 uSeg[4];
 uniform mat3 uWorldToScreen;
 
@@ -44,7 +45,8 @@ void main() {
     vec2 dir = dist > 0.0 ? d / dist : vec2(0.0);
     if (uKind[i] < 0.5) {
       // Shockwave: a refracting band on the growing ring.
-      float band = max(r * 0.16, 12.0);
+      // Its own band width (world pixels) when the plan gave one, else a sixth of the ring.
+      float band = max(uBand[i] > 0.0 ? uBand[i] * zoom : r * 0.16, 12.0);
       float x = (dist - uRing[i] * zoom) / (band * 0.5);
       off -= dir * sin(x * 2.2) * amp * exp(-x * x * 2.0);
     } else if (uKind[i] < 1.5) {
@@ -76,7 +78,7 @@ export function sceneWarpUniforms() {
   return {
     uTime: 0, uSlots: 0,
     uKind: new Float32Array(n), uCentre: new Float32Array(n * 2), uRadius: new Float32Array(n),
-    uRing: new Float32Array(n), uAmp: new Float32Array(n), uSeg: new Float32Array(n * 4),
+    uRing: new Float32Array(n), uAmp: new Float32Array(n), uBand: new Float32Array(n), uSeg: new Float32Array(n * 4),
     uWorldToScreen: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
   };
 }
@@ -98,6 +100,7 @@ export function writeSceneWarp(u, slots, m, timeMs) {
     u.uRadius[i] = slot.radius;
     u.uRing[i] = slot.ring;
     u.uAmp[i] = slot.amp;
+    u.uBand[i] = slot.band > 0 ? slot.band : 0;
     u.uSeg.set([a.x, a.y, b.x, b.y], i * 4);
   }
   for (let i = n; i < SCENE_WARP_SLOTS; i++) u.uAmp[i] = 0;

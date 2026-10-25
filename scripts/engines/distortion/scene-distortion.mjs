@@ -17,6 +17,7 @@ const WARP_PX = 10;
 const MIN_RING_SQUARES = 3;
 const MAX_RING_SQUARES = 12;
 const RING_PER_BLAST = 1.5;
+const BAND_PER_RING = 0.16;
 const BIG_BURST_SQUARES = 2;
 const LASTING_AREA_MS = 2000;
 const NOT_VISUAL = new Set(['sound', 'motion', 'tokenfx', 'scenefx']);
@@ -121,10 +122,14 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
   return tags;
 
   function shockTag({ stage, at }, anchor) {
-    const squares = clamp(ringPer * (radiusOf(stage) ?? 0) / gridPx, MIN_RING_SQUARES, maxRing);
+    const blast = (radiusOf(stage) ?? 0) / gridPx;
+    // A ring that stays inside its blast is hidden by it: a small reach still carries it a square past the edge.
+    const squares = Math.max(clamp(ringPer * blast, MIN_RING_SQUARES, maxRing), Math.min(blast + 1, MAX_RING_SQUARES));
+    // The band is the default ring's whatever the reach, so a long reach ripples instead of sliding the view.
+    const band = BAND_PER_RING * clamp(RING_PER_BLAST * blast, MIN_RING_SQUARES, MAX_RING_SQUARES) * gridPx;
     // The ring starts at the blast's contact; the anchor's own start is the clock.
     const startMs = Math.max(0, startOf(stage) + (stage.contact > 0 ? stage.contact : 0) - startOf(anchor));
-    return { kind: 'shock', at: { x: at.x, y: at.y }, radius: squares * gridPx, startMs, lengthMs: SHOCK_MS, strength: 1, follow: false };
+    return { kind: 'shock', at: { x: at.x, y: at.y }, radius: squares * gridPx, band, startMs, lengthMs: SHOCK_MS, strength: 1, follow: false };
   }
 
   function hazeTag({ stage, at }, anchor) {
@@ -174,7 +179,7 @@ export function slotParams(tag, tMs, { zoom = 1 } = {}) {
   const u = t / length;
   if (tag.kind === 'shock') {
     const amp = SHOCK_PX * (1 - u) ** SHOCK_FADE * (tag.strength ?? 1) * Math.max(zoom, SHOCK_MIN_ZOOM);
-    return { kind: KINDS.shock, centre, radius: tag.radius, ring: tag.radius * easeOutCubic(u), amp };
+    return { kind: KINDS.shock, centre, radius: tag.radius, ring: tag.radius * easeOutCubic(u), amp, ...(tag.band > 0 ? { band: tag.band } : {}) };
   }
   return { kind: KINDS.warp, centre, radius: tag.radius, ring: 0, amp: WARP_PX * Math.sin(Math.PI * u) * gain };
 }

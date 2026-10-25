@@ -92,6 +92,19 @@ test('plan: a fireball makes one ring on its tier 0 stage; radius clamps to 3..1
   assert.equal([...mk(null).values()][0].radius, sq(3));
 });
 
+// Reach only moves how far the ring travels: its band stays as wide as the default ring's, so a long reach still
+// ripples instead of sliding the whole view.
+test('plan: the ring band is the blast’s, whatever the reach', () => {
+  const tag = (r, shockReach) => [...planDistortions([st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 500, y: 500 }, r })], opts({ a: 0 }, { shockReach })).values()][0];
+  assert.equal(tag(sq(4), 3).band, tag(sq(4), 1.5).band);
+  assert.equal(tag(sq(4), 0.5).band, tag(sq(4), 1.5).band);
+  assert.ok(Math.abs(tag(sq(4), 1.5).band - 0.16 * sq(6)) < 1e-9, 'the default ring keeps its band');
+  assert.equal(tag(null, 1.5).band, 0.16 * sq(3));
+  assert.equal(tag(sq(40), 1.5).band, 0.16 * sq(12));
+  const t = tag(sq(4), 3);
+  assert.equal(slotParams(t, 100, { zoom: 1 }).band, t.band);
+});
+
 test('plan: shockwave reach scales the ring and its cap', () => {
   const mk = (r, shockReach) => [...planDistortions([st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 500, y: 500 }, r })], opts({ a: 0 }, { shockReach })).values()][0].radius;
   // 1.5 (the default) is today's ring: 1.5x the blast, 3..12 squares.
@@ -101,8 +114,9 @@ test('plan: shockwave reach scales the ring and its cap', () => {
   assert.equal(mk(sq(4), 3), sq(12));
   assert.equal(mk(sq(20), 3), sq(24));
   assert.equal(mk(sq(1), 3), sq(3), 'the floor stays 3 squares');
-  // Small reach still keeps the 3-square floor; the cap shrinks below it to nothing smaller.
-  assert.equal(mk(sq(4), 0.5), sq(3));
+  // A small reach still carries the ring a square past the blast's edge (a ring inside the blast is hidden by it).
+  assert.equal(mk(sq(4), 0.5), sq(5));
+  assert.equal(mk(sq(1), 0.5), sq(3), 'and never under the 3-square floor');
   // A missing or broken value is the default.
   assert.equal(mk(sq(4), NaN), sq(6));
   assert.equal(mk(sq(4), -2), sq(6));
