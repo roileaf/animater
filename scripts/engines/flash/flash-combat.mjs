@@ -232,10 +232,20 @@ export function flashScreens(host) {
   Hooks.on("updateActor", (actor, changes, options, userId) => {
     if (userId !== game.user.id || !isKillTransition(options.animaterHpBefore, hpState(actor, game.system.id))) return;
     const combat = runningCombat(actor), event = downMoment(combat, actor);
-    // Finish Him! waits for the slow-motion kill-cam on this kill (main.mjs's killCamWait).
-    const wait = event === "finalEnemy" ? Number(host.killCamLength?.(actor)) || 0 : 0;
-    if (event && wait > 0) setTimeout(() => moment(event, { name: actor.name }, combat), wait);
-    else if (event) moment(event, { name: actor.name }, combat);
+    if (!event) return;
+    const play = () => moment(event, { name: actor.name }, combat);
+    // Finish Him! waits for the slow-motion kill-cam on this kill (main.mjs's killCamWait) and plays before its finisher.
+    if (event === "finalEnemy") {
+      const wait = Number(host.killCamLength?.(actor)) || 0;
+      return void (wait > 0 ? setTimeout(play, wait) : play());
+    }
+    // Any other drop's screen (Last One Standing) plays once the kill's finisher on it ends, never over it. The
+    // finisher starts from this same hook, so it is looked for on the next tick.
+    setTimeout(() => {
+      const finishing = host.killFinishing?.(actor);
+      if (finishing) void Promise.resolve(finishing).catch(() => {}).then(play);
+      else play();
+    }, 0);
   });
   // A creature marked defeated (dead) without dropping to 0 HP first: told by the client that marked it.
   Hooks.on("updateCombatant", (combatant, changes, options, userId) => {

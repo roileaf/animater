@@ -302,6 +302,8 @@ const cameraShake = createCameraShake({
 // Slow-motion kill-cam on this client (engines/camera/kill-cam.mjs): an NPC's killing blow eases the view to it, slows
 // Animater's effects on it and shows a soft desaturated vignette, then pans back. World and client settings, Full or Light.
 const killCamOn = () => shakeSetting("killCam", false) === true;
+// The kill finisher playing on each actor (by uuid) on this client, until it ends.
+const killsPlaying = new Map();
 // How long the finisher, Finish Him! and a kill's blood wait for it: the table uses it, the creature is an NPC and has
 // a token in view that is not hidden (the client that saw the drop plays it).
 const killCamWait = (actor) => killCamLength({
@@ -3908,6 +3910,7 @@ Hooks.once("ready", () => {
     ID, clientId,
     quietHere: () => qualityRank(localQuality()) === 0,
     killCamLength: (actor) => killCamWait(actor),
+    killFinishing: (actor) => killsPlaying.get(actor?.uuid) ?? null,
     resolveMedia: (src) => (!src || /\.(webm|mp4|png|jpe?g|webp|gif|svg)$/i.test(src) ? src : runtime.getCatalog().find((i) => i.key === src || i.key.startsWith(`${src}.`))?.file ?? ""),
     trace: (status, detail) => runtime.trace(status, detail),
   });
@@ -4096,7 +4099,12 @@ Hooks.once("ready", () => {
         killCam.play(cam);
       }
       const kill = dropped ? killFinisherFor(actor, token) : null;
-      if (kill) void playKill(actor, token, kill).catch((error) => runtime.trace("Blocked", error.message));
+      if (kill) {
+        // Kept while it plays: the drop's flash screen (Last One Standing) waits for it.
+        const run = playKill(actor, token, kill).catch((error) => runtime.trace("Blocked", error.message));
+        killsPlaying.set(actor.uuid, run);
+        void run.then(() => { if (killsPlaying.get(actor.uuid) === run) killsPlaying.delete(actor.uuid); });
+      }
       else playDamageMoment(actor, token, dropped);
     }
   });

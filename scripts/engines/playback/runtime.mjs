@@ -30,6 +30,10 @@ import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
 import { createMomentum, applyMomentum, applyStrain } from './momentum.mjs';
+
+// Two places (tokens, token documents or points) less than a pixel apart; unknown places never are.
+const spotOf = (p) => { const c = p?.center ?? p?.object?.center ?? p; return Number.isFinite(c?.x) && Number.isFinite(c?.y) ? c : null; };
+export const sameSpot = (a, b) => { const p = spotOf(a), q = spotOf(b); return !!p && !!q && Math.hypot(p.x - q.x, p.y - q.y) < 1; };
 // A token's middle, in scene pixels.
 const soundPlace = (t) => { const c = t?.center ?? (Number.isFinite(t?.x) ? { x: t.x + (t.w ?? 0) / 2, y: t.y + (t.h ?? 0) / 2 } : null); return c && Number.isFinite(c.x) && Number.isFinite(c.y) ? { x: Math.round(c.x), y: Math.round(c.y) } : null; };
 // A token's scene and level, else the scene and level this client views.
@@ -466,6 +470,9 @@ export class AnimaterRuntime {
         const tier = tiers.get(s.stageId) ?? 0;
         const users = preview ? null : this.host.usersFor?.(tier) ?? null;
         if (users && !users.length) continue;
+        // A flight from a spot to itself (the attacker on its target, a finisher's mover struck by itself) has no
+        // length: Sequencer refuses to stretch it, so it is left out.
+        if (s.kind === "travel" && sameSpot(s.flightTo ? s.flightFrom : s.origin, s.flightTo ?? s.endpoint)) continue;
         const e = sequence
           .effect()
           .name(session)
@@ -574,7 +581,7 @@ export class AnimaterRuntime {
             })
             .scale(s.scale);
           if (s.overlayFit) e.screenSpaceScale({ fitX: true, fitY: true });
-        } else if (s.meleeFrom) {
+        } else if (s.meleeFrom && !sameSpot(s.meleeFrom, s.facing)) {
           // A JB2A melee clip is stretched like a flight: its template's start point on the
           // wielder, its end point on the target, so the swing reaches exactly that far.
           e.atLocation(s.meleeFrom, location)
@@ -582,7 +589,7 @@ export class AnimaterRuntime {
             .scale({ x: 1, y: s.scale });
         } else {
           e.atLocation(s.landing ?? s.destination, location);
-          if (s.facing) e.rotateTowards(s.facing, { cacheLocation: true });
+          if (s.facing && !sameSpot(s.landing ?? s.destination, s.facing)) e.rotateTowards(s.facing, { cacheLocation: true });
           // copySprite already captures mesh dimensions, texture scale and
           // mirroring. Sizing it to the footprint loses those properties.
           if (s.kind === "sprite") e.scale(s.scale);

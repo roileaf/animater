@@ -7,7 +7,7 @@ const ID = "animater";
 const wait = (ms = 350) => new Promise((r) => setTimeout(r, ms));
 
 // A world with one GM client: hooks are captured, flash screens go out over the socket.
-function world({ defaults = {}, gm = true, pick } = {}) {
+function world({ defaults = {}, gm = true, pick, host = {} } = {}) {
   const hooks = {}, sent = [];
   const screens = [validateFlash({ id: "roll", name: "Roll for Initiative", event: "initiated" }), validateFlash({ id: "ambush", name: "Ambush!", event: "initiated" }), validateFlash({ id: "go", name: "Combat Started", event: "start" }), validateFlash({ id: "boss", name: "Boss Battle", event: "start" }), validateFlash({ id: "duel", name: "Face Off", event: "any" })];
   const settings = { flashScreens: { schema: 1, screens }, flashDefaults: { start: "none", end: "none", ...defaults } };
@@ -22,7 +22,7 @@ function world({ defaults = {}, gm = true, pick } = {}) {
     settings: { get: (_, key) => settings[key], set: async (_, key, value) => { settings[key] = value; } },
     socket: { emit: (_, data) => sent.push(data) },
   };
-  const api = flashScreens({ ID, clientId: "gm", quietHere: () => true, resolveMedia: (s) => s, trace: () => {}, ...(pick ? { pickFlash: pick } : {}) });
+  const api = flashScreens({ ID, clientId: "gm", quietHere: () => true, resolveMedia: (s) => s, trace: () => {}, ...(pick ? { pickFlash: pick } : {}), ...host });
   const fire = (name, ...args) => (hooks[name] ?? []).forEach((fn) => fn(...args));
   return { fire, api, played: () => sent.filter((d) => d.type === "flash").map((d) => d.screen.id) };
 }
@@ -207,6 +207,29 @@ test("a kill finisher on the last enemy waits for Finish Him!: as long as the sc
   assert.equal(w.api.finaleLength(hero.actor), 0, "a hero falling is not the finale");
   game.settings.set(ID, "flashDefaults", { start: "none", end: "none", finalEnemy: "none" });
   assert.equal(w.api.finaleLength(orc.actor), 0, "screen off: no wait");
+});
+
+// Last One Standing (and any other drop's screen) comes after the kill's finisher, never over it.
+test("a drop's screen waits for the kill finisher playing on that creature", async () => {
+  let finished;
+  const playing = new Map([["goblin", new Promise((r) => { finished = r; })]]);
+  const w = world({ defaults: { lastEnemy: "duel", enemyDown: "duel" }, host: { killFinishing: (actor) => playing.get(actor.id) ?? null } });
+  const who = (id, hp) => ({ actor: { id, name: id, hasPlayerOwner: false, system: { attributes: { hp: { value: hp, max: 10 } } } }, token: { disposition: -1 }, defeated: false });
+  const goblin = who("goblin", 0), ogre = who("ogre", 9);
+  game.combats = [{ id: "f", started: true, combatants: [goblin, ogre], scene: { id: "s" } }];
+  const before = { animaterHpBefore: { value: 4, max: 10, down: false, dead: false } };
+  w.fire("updateActor", goblin.actor, {}, before, "gm");
+  await wait(50);
+  assert.deepEqual(w.played(), [], "not over the finisher");
+  finished();
+  await wait(10);
+  assert.deepEqual(w.played(), ["duel"], "right after it");
+  // No finisher on this kill: the screen plays at once.
+  const orc = who("orc", 0);
+  game.combats = [{ id: "g", started: true, combatants: [orc, ogre], scene: { id: "s" } }];
+  w.fire("updateActor", orc.actor, {}, before, "gm");
+  await wait(10);
+  assert.deepEqual(w.played(), ["duel", "duel"]);
 });
 
 test("on load the active GM drops copies a 1.6.3 import made and keeps defaults pointing at the kept screen", async () => {

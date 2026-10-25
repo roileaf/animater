@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.6 (2026-10-25)
+
+- **Flash screens after the finisher.** **Last One Standing**, **Enemy Defeated** and **Party Member Down** played the moment a creature dropped, on top of its kill finisher. They now wait for the finisher to end (Finish Him! still plays before the last enemy's finisher).
+- **No more "stretching over a distance of 0" errors.** A flying effect with nowhere to go (its start and end on the same spot, such as during a finisher) is left out instead of raising a Sequencer error, and a melee swing on the same spot plays without stretching.
+
 ## 2.2.5 (2026-10-25)
 
 - **Shockwaves that start where they should.** Raising **Shockwave reach** also made the ring rush outward faster, so by the time a blast's flash faded it was already far past where it started at 1.5×. The ring now leaves the blast at the same pace whatever the reach; a longer reach simply carries it further, for longer.

@@ -1357,6 +1357,15 @@ test("collides failure falls back to today", async (t) => {
   await playWall(recipe, context, { collides: () => { throw Error("no backend"); } });
   assert.equal(warn.mock.callCount(), 1);
 });
+// Sequencer refuses to stretch over a distance of 0 (a finisher's mover on its target): the flight is left out.
+test("a flight from a spot to itself is left out; the rest still plays", async () => {
+  const { recipe, context } = boltAttack({ targets: [{ id: "t1", center: { x: 0, y: 0 }, w: 100, h: 100 }] });
+  const { calls } = await playWall(recipe, context, { setup: (f) => { f.host.projectileWalls = () => false; } });
+  assert.equal(calls.filter((c) => c[0] === "stretchTo").length, 0);
+  assert.ok(!filesOf(calls).includes("jb2a.fire_bolt.orange"));
+  assert.ok(filesOf(calls).includes("jb2a.impact.001.orange"));
+});
+
 test("setting off keeps today's flights", async () => {
   const { recipe, context } = boltAttack();
   const { calls, plan } = await playWall(recipe, context, { setup: (f) => { f.host.projectileWalls = () => false; } });

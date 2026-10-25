@@ -1690,6 +1690,8 @@ test("flash moments: a creature dropping, or marked defeated, asks for its momen
     await f.fire("preUpdateActor", orc, track.changes, options);
     orc.system = track.down();
     await f.fire("updateActor", orc, track.changes, options, "u");
+    // Asked on the next tick, once any kill finisher on it has started (and after it ends).
+    await new Promise((r) => setTimeout(r, 10));
     assert.deepEqual(asked(), ["lastEnemy"], `${system}: dropping to its last hit point`);
     await f.fire("updateCombatant", { actor: ogre, name: "Ogre", combat }, { defeated: true }, {}, "u");
     assert.deepEqual(asked(), ["lastEnemy", "lastEnemy"], `${system}: marked defeated while standing`);
