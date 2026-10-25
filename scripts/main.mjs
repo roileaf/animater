@@ -3016,7 +3016,7 @@ Hooks.once("init", () => {
     onChange: (on) => { if (on === false) { if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; } try { stopHeartbeat?.(); } catch { /* gone */ } stopHeartbeat = null; } },
   });
   registerSetting("lensWounded", {
-    name: "Wounded view on my screen",
+    name: "Wounded view",
     hint: "With the damage lens on, your own creature's state stays on your screen: from half its HP the edges darken red, deeper as it falls (beating with the heartbeat at a quarter HP in combat, much fainter out of combat), each hit taken leaves a stain or two on the edges that stay until it is healed, and under a quarter HP in combat the music and ambience close in. At 0 HP, dying or unconscious, the view closes to a dim blurred window, the world goes nearly silent and a faint heartbeat goes on; waking up gasps back to the light. Damage lens amount Subtle halves it; Low animation quality keeps only the edges.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) { woundReset?.(); worldMuffle.restore(); lensBlood.clearWounds(); } else woundRefresh?.(); },

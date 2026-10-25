@@ -3279,6 +3279,14 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-settings .an-set-extra > span { color: var(--an-text); }
 .animater-settings .an-set-extra small { color: var(--an-muted); }
 .animater-settings .an-set-extra range-picker { width: 240px; }
+/* Dropdowns keep one width everywhere (a sub-row's no longer stretches across the row); a row's only dropdown gets more
+   room for long choices. Two sliders side by side get narrower so the row's text keeps its width. */
+.animater-settings .an-set-extra select { flex: none; width: 220px; }
+.animater-settings .an-set-switch select { width: 220px; }
+.animater-settings .an-set-controls > .an-set-switch:only-child select { width: 280px; max-width: 280px; }
+.animater-settings .an-set-controls:has(> .an-set-switch + .an-set-switch range-picker) range-picker { width: 160px; }
+.animater-settings range-picker { display: flex; align-items: center; gap: 6px; }
+.animater-settings range-picker input[type="number"] { flex: none; width: 56px; min-width: 56px; text-align: center; }
 .animater-settings .an-set-empty { margin: 24px 0; color: var(--an-muted); text-align: center; }
 .animater-settings .an-set-empty[hidden] { display: none; }
 @container (max-width: 620px) {

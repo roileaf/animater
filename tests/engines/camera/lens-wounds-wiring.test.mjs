@@ -8,7 +8,7 @@ const registration = (key) => main.match(new RegExp(`registerSetting\\("${key}",
 
 test('the wounded view has its own client switch, on by default, right after the heartbeat', () => {
   const reg = registration('lensWounded');
-  assert.match(reg, /name: "Wounded view on my screen"/);
+  assert.match(reg, /name: "Wounded view"/);
   assert.match(reg, /scope: "client", config: true, type: Boolean, default: true/);
   // Off: its state, the muffle and the overlay's wound layers all go at once; on again: refreshed.
   assert.match(reg, /if \(on === false\) \{ woundReset\?\.\(\); worldMuffle\.restore\(\); lensBlood\.clearWounds\(\); \} else woundRefresh\?\.\(\);/);

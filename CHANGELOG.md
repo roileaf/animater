@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.2 (2026-10-25)
+
+- **Tidier settings window.** Dropdowns keep one width everywhere (the Damage lens amount and Walked path highlight ones no longer stretch across their row), a row's only dropdown has room for its longest choice (Animation quality shows in full), two sliders side by side no longer squeeze their setting's text, slider value boxes fit values like 0.35 and -10, and **Wounded view on my screen** is now **Wounded view** (this screen).
+
 ## 2.2.1 (2026-10-25)
 
 - **Damage lens duration.** Choose how long a big hit's blood stays on players' screens, in seconds: the GM sets **Damage lens duration (seconds)** for the world (4.5 by default, as before, from 2 to 20), and each player can set their own **Damage lens duration on my screen** (0 uses the GM's). Smaller hits stay proportionally shorter, drying, fading and each damage type's reaction stretch with it, damage type effects hold longer or shorter to match, and the tunnel vision eases out up to twice as slowly. The Damage showcase previews it.
