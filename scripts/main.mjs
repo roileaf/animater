@@ -3677,6 +3677,15 @@ Hooks.once("ready", () => {
     refreshPersistent: () => persistentStates?.reconcile(),
     // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
     clearGroundMarks: (options) => clearGroundMarksApi(options),
+    // Read-only views for live checks (tools/live/*.mjs): what this screen perceives of a moving token (seen: its
+    // tracks show; heard: its steps play), and how many marks it has laid and this view shows.
+    debug: {
+      movementPerception: (token) => {
+        const t = typeof token === "string" ? canvas.tokens?.get(token) : token;
+        return t ? movementPerception(t, t.document, canvas.level?.id) : null;
+      },
+      movementMarks: (id) => movementFeel.marksOf?.(id) ?? null,
+    },
     // GM only: share codes (one or several, or a list of them), export JSON, an export object or a recipe array,
     // checked and merged by id like the Import box. Returns { added, replaced, skipped }.
     importRecipes: async (data) => {

@@ -833,3 +833,18 @@ test('controller: marks follow who is looking now: a creature this view stops pe
   h.advance(16); h.feel.tick();
   assert.ok(prints().every((p) => p.state.alpha > 0), 'shown again');
 });
+
+test('controller: marksOf(id) counts a creature\'s marks and how many this view shows', () => {
+  const ed = { id: 'ed', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true, audible: true };
+  const h = harness({ tokens: [ed], floor: 'snow' });
+  h.feel.tick();
+  for (let x = 30; x <= 600; x += 30) { ed.x = x; h.advance(16); h.feel.tick(); }
+  const seen = h.feel.marksOf('ed');
+  assert.ok(seen.laid > 0 && seen.shown === seen.laid, JSON.stringify(seen));
+  ed.visible = false; h.advance(16); h.feel.tick();
+  const hidden = h.feel.marksOf('ed');
+  assert.equal(hidden.laid, seen.laid);
+  assert.equal(hidden.shown, 0);
+  assert.deepEqual(h.feel.marksOf('nobody'), { laid: 0, shown: 0, total: 0 });
+  assert.ok(h.feel.marksOf('ed').total >= seen.laid, 'total counts every mark laid, even ones already faded');
+});

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.8 (2026-10-25)
+
+- **A live check for stealthy movement.** For testing in a world: select the observing token and run `await (await import('/modules/animater/tools/live/hidden-footsteps.mjs')).run({ target: 'Ed' })` in the browser console. Animater walks the target past the observer at several distances (on that screen only, then puts it back) and reports, against the observer's PF2e Visioner state or the target's conditions, whether its tracks showed and its footsteps were heard where they should be. The module API gains read-only `debug.movementPerception(token)` and `debug.movementMarks(id)` for such checks.
+
 ## 2.1.7 (2026-10-25)
 
 - **Tracks follow who is looking.** A creature's footprints, dust, splashes, trails and burrow holes now show only while the current point of view can perceive it. Select a token that PF2e Visioner says has not detected (or not noticed) a creature, and that creature's tracks vanish from your screen; select one that can see it and they come back. Before, tracks laid while you had the creature itself selected (to move it) stayed in view for everyone. A GM now perceives movement as the selected token by default (**GM perceives movement**: As my selected token); with nothing selected a GM still sees everything, and Everything remains a choice.

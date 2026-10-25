@@ -884,7 +884,9 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
   // leaves the ground and lands when it stops).
   const moves = new Map();
   // Whose marks are being laid (the token being stepped), so each mark can follow whether this view perceives its maker.
-  let layOwner = null;
+  let layOwner = null, lastUnseen = new Set();
+  // Marks each creature has laid since the scene loaded (a live check compares before and after a walk).
+  const laidTotals = new Map();
   const lay = (specs, time, floor, trailKind = null) => {
     const limit = capOf(), printLimit = printCapOf();
     for (let spec of specs) {
@@ -900,6 +902,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       if (life) spec = { ...spec, life, motionLife:nativeLife };
       const handle = layer.addParticle(spec);
       const particle = { spec, handle, born: time, nativeLife, floor, trailKind, owner: layOwner };
+      if (layOwner) laidTotals.set(layOwner, (laidTotals.get(layOwner) ?? 0) + 1);
       particles.add(particle);
       if (print) prints.add(particle);
     }
@@ -950,6 +953,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
     trailLives.clear();
     if (!tracker || trackerGrid !== size) { tracker = createStrideTracker({ stride: STRIDE * size, maxJump: 3 * size }); trackerGrid = size; }
     const seen = new Set(), unseen = new Set();
+    lastUnseen = unseen;
     for (const token of tokens() ?? []) {
       let id;
       try {
@@ -1022,5 +1026,11 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       } catch { particles.delete(particle); prints.delete(particle); }
     }
   };
-  return { tick, clear, previewStep: (floor, at, token, kind) => footstep?.(floor, at, token, kind), get size() { return particles.size; }, get prints() { return prints.size; } };
+  // How many marks a creature has on the floor, and how many this view shows now (a live check reads this).
+  const marksOf = (id) => {
+    let laid = 0;
+    for (const particle of particles) if (particle.owner === id) laid++;
+    return { laid, shown: lastUnseen.has(id) ? 0 : laid, total: laidTotals.get(id) ?? 0 };
+  };
+  return { tick, clear, marksOf, previewStep: (floor, at, token, kind) => footstep?.(floor, at, token, kind), get size() { return particles.size; }, get prints() { return prints.size; } };
 }
