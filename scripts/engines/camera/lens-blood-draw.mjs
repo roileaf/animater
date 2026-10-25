@@ -706,12 +706,12 @@ export function createLensBloodOverlay({ doc = globalThis.document, win = global
   };
   const kick = () => { if (frame === null) frame = win.requestAnimationFrame(render); };
   return {
-    splash(splash, { seed, color } = {}) {
+    splash(splash, { seed, color, duration = 1 } = {}) {
       node();
       // Splats are laid out on the drawing area; a blow's window point is moved into it.
       at = area();
       const from = splash?.fromScreen, inside = from && Number.isFinite(from.x) ? { x: Math.min(at.w, Math.max(0, from.x - at.x)), y: Math.min(at.h, Math.max(0, from.y - at.y)) } : from;
-      const r = admitSplash(state, from ? { ...splash, fromScreen: inside } : splash, { now: now(), seed, width: at.w, height: at.h, color });
+      const r = admitSplash(state, from ? { ...splash, fromScreen: inside } : splash, { now: now(), seed, width: at.w, height: at.h, color, duration });
       if (r.state === state) return 0;
       state = r.state;
       kick();
@@ -719,13 +719,13 @@ export function createLensBloodOverlay({ doc = globalThis.document, win = global
     },
     // A hit's damage-type effects (lens-effects.mjs lensEffectHit's answer): planned on the drawing area, the blow's
     // window point moved into it. The same type again within a moment is not doubled. Answers how many started.
-    effects(hit, { seed } = {}) {
+    effects(hit, { seed, duration = 1 } = {}) {
       if (!hit?.types?.length) return 0;
       node();
       at = area();
       const p = hit.impact, inside = p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: Math.min(at.w, Math.max(0, p.x - at.x)), y: Math.min(at.h, Math.max(0, p.y - at.y)) } : null;
       const t = now();
-      const plans = lensEffectsFor({ ...hit, view: { width: at.w, height: at.h }, impact: inside, seed: seed ?? `lens:${t}` })
+      const plans = lensEffectsFor({ ...hit, view: { width: at.w, height: at.h }, impact: inside, seed: seed ?? `lens:${t}`, duration })
         .filter((plan) => !fx.some((q) => q.type === plan.type && t - q.bornAt < 350));
       if (!plans.length) return 0;
       fx = [...fx, ...plans.map((plan) => ({ ...plan, bornAt: t }))];

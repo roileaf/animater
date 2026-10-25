@@ -177,3 +177,11 @@ test('timelines and the board look ease in and back out to nothing', () => {
   assert.equal(look.split, 6);
   assert.deepEqual(boardStyle({}), { filter: '', transform: '', split: 0 });
 });
+
+test('Damage lens duration stretches how long damage type effects hold', async () => {
+  const { lensEffectsFor } = await import('../../../scripts/engines/camera/lens-effects.mjs');
+  const plan = (duration) => lensEffectsFor({ types: ['fire'], strength: 0.8, view: { width: 1600, height: 900 }, seed: 'x', duration })[0];
+  const base = plan(1), long = plan(3);
+  assert.ok(long.lifeMs > base.lifeMs * 1.4, `${long.lifeMs} vs ${base.lifeMs}`);
+  assert.equal(plan(undefined).lifeMs, base.lifeMs);
+});

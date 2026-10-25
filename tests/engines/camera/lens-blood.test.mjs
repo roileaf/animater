@@ -446,3 +446,14 @@ test('damage type shapes the wound: blades scratch, points spray, blunt blows bu
   const { state } = admitSplash({ lastAt: -Infinity, splats: [], pulses: [] }, fire, { now: 0, seed: 'f', width: 1600, height: 900, color: 0x7a0d0d });
   assert.ok(state.splats.every((s) => s.color !== 0x7a0d0d), 'burned blood is darker');
 });
+
+test('Damage lens duration stretches how long the blood stays (and the tunnel, up to twice), clamped to 0.5–6', () => {
+  const splash = { kind: 'self', strength: 0.9, tunnel: 0.8, amount: 'heavy', crit: false };
+  const at = (duration) => admitSplash({ lastAt: -Infinity, splats: [], pulses: [] }, splash, { now: 0, seed: 'd', width: 1600, height: 900, duration }).state;
+  const base = at(1), long = at(3), short = at(0.5), huge = at(99);
+  assert.equal(long.splats[0].lifeMs, Math.round(base.splats[0].lifeMs * 3));
+  assert.equal(short.splats[0].lifeMs, Math.round(base.splats[0].lifeMs * 0.5));
+  assert.equal(huge.splats[0].lifeMs, Math.round(base.splats[0].lifeMs * 6), 'clamped');
+  assert.equal(long.pulses[0].lifeMs, Math.round(base.pulses[0].lifeMs * 2), 'the tunnel at most twice as long');
+  assert.equal(at(undefined).splats[0].lifeMs, base.splats[0].lifeMs, 'default 1');
+});

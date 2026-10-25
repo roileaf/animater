@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.1 (2026-10-25)
+
+- **Damage lens duration.** Choose how long a big hit's blood stays on players' screens, in seconds: the GM sets **Damage lens duration (seconds)** for the world (4.5 by default, as before, from 2 to 20), and each player can set their own **Damage lens duration on my screen** (0 uses the GM's). Smaller hits stay proportionally shorter, drying, fading and each damage type's reaction stretch with it, damage type effects hold longer or shorter to match, and the tunnel vision eases out up to twice as slowly. The Damage showcase previews it.
+
 ## 2.2.0 (2026-10-25)
 
 - **Damage lens: what a hit feels like, on players' screens.** When a player's creature hits an enemy, the enemy's blood splats across that player's screen; when the player's own creature is hit, its blood splashes the screen, the view closes in (tunnel vision) and a heartbeat thumps. The blood lands around the middle of the screen and grows with the damage: a scratch leaves a few flecks, a third of a creature's HP a solid splash, and about 60% of it (or any critical hit) a big, gory splatter of organic splats, thrown streaks, spray and drips that shine wet, dry and fade. It runs from the left edge of the screen to the sidebar, behind Foundry's interface, and is painted off the main thread so a big hit never stalls the game. Creatures a player cannot see, hidden tokens and bloodless creatures never bleed on their screen. The GM turns it on or off for the world with **Damage lens**; each player has **Damage lens on my screen**, **Damage lens amount** (Heavy or Subtle), **Tunnel vision when hurt** and **Heartbeat when hurt** in the Combat drama tab. It starts off where the browser asks for reduced motion, and a Blood sounds choice of Off turns it all off.

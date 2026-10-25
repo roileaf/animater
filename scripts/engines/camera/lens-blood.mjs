@@ -17,6 +17,9 @@ export const LENS_BLOOD = Object.freeze({
   maxDroplets: 1100,
 });
 export const BLOOD_RED = 0x7a0d0d;
+// How long a big hit's blood stays at the usual length (heavy, full strength: 2000 + 2500 ms); "Damage lens duration" is set
+// in seconds against it.
+export const LENS_BASE_SECONDS = 4.5;
 
 const clamp01 = (v) => Math.min(1, Math.max(0, Number(v) || 0));
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -848,16 +851,19 @@ export function tunnelState(pulse, ageMs) {
  * player's own creature pulses the tunnel even inside the cooldown. Answers { state, added } (state is unchanged,
  * the same object, when nothing was added).
  */
-export function admitSplash(state, splash, { now, seed, width, height, color = BLOOD_RED }) {
+// duration: how much longer (or shorter) the blood stays than usual ("Damage lens duration"); its drying, fading and
+// reactions stretch with it (they follow each splat's life), and the tunnel eases out up to twice as slowly.
+export function admitSplash(state, splash, { now, seed, width, height, color = BLOOD_RED, duration = 1 }) {
   if (!splash) return { state, added: 0 };
-  const pulse = splash.tunnel > 0 ? [{ bornAt: now, level: splash.tunnel, lifeMs: LENS_BLOOD.tunnelMs(splash.tunnel) }] : [];
+  const k = Math.min(6, Math.max(0.4, Number(duration) || 1));
+  const pulse = splash.tunnel > 0 ? [{ bornAt: now, level: splash.tunnel, lifeMs: Math.round(LENS_BLOOD.tunnelMs(splash.tunnel) * Math.min(2, k)) }] : [];
   const cooling = now - state.lastAt < LENS_BLOOD.cooldownMs;
   if ((cooling || !(splash.strength > 0)) && !pulse.length) return { state, added: 0 };
   const live = liveSplats(state, now);
   const fresh = cooling ? [] : lensSplats(seed, { amount: splash.amount, width, height, origin: splash.fromScreen, edge: splash.edge,
     strength: splash.strength, kind: splash.kind, crit: splash.crit === true, wound: splash.wound ?? null, still: splash.still === true,
     // Energy shifts the blood's colour (burned darker, frozen paler, sickened green, blackened).
-    color: DAMAGE_WOUNDS[splash.wound]?.tint != null ? mix(color ?? BLOOD_RED, DAMAGE_WOUNDS[splash.wound].tint, DAMAGE_WOUNDS[splash.wound].k) : color }).map((s) => ({ ...s, bornAt: now }));
+    color: DAMAGE_WOUNDS[splash.wound]?.tint != null ? mix(color ?? BLOOD_RED, DAMAGE_WOUNDS[splash.wound].tint, DAMAGE_WOUNDS[splash.wound].k) : color }).map((s) => ({ ...s, bornAt: now, lifeMs: Math.round(s.lifeMs * k) }));
   return {
     state: { lastAt: fresh.length ? now : state.lastAt, splats: [...live.splats, ...fresh].slice(-LENS_BLOOD.maxAlive), pulses: [...live.pulses, ...pulse] },
     added: fresh.length,

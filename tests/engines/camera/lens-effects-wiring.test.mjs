@@ -40,7 +40,7 @@ test('the settings window lists them in Combat drama right under lens blood: wor
 test('main plays the effects with the blood: the hit\'s types into the lens decision, previews by the picked type', () => {
   assert.match(main, /import \{ lensEffectHit, lensEffectTypes \} from "\.\/engines\/camera\/lens-effects\.mjs"/);
   // lensShow: the same args, the effects' own switches (the showcase past the world one), drawn on the overlay.
-  assert.match(main, /const fx = lensEffectHit\(\{ \.\.\.args, worldOn: args\.preview === true \|\| effectsWorldOn\(\), localOn: effectsLocalOn\(\), types: args\.effectTypes \?\? \[\] \}\);\s*if \(fx\) lensBlood\.effects\(fx, \{ seed \}\);/);
+  assert.match(main, /const fx = lensEffectHit\(\{ \.\.\.args, worldOn: args\.preview === true \|\| effectsWorldOn\(\), localOn: effectsLocalOn\(\), types: args\.effectTypes \?\? \[\] \}\);\s*if \(fx\) lensBlood\.effects\(fx, \{ seed, duration \}\);/);
   // The live hit: its damage record's types (crit included), with blood off but effects on still deciding.
   assert.match(main, /effectTypes: lensEffectTypes\(\{ \.\.\.\(damage \?\? by \?\? \{\}\), crit \}\)/);
   assert.match(main, /\(!lensWorldOn\(\) && !effectsWorldOn\(\)\)\) return;/);

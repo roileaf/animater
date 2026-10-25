@@ -63,6 +63,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "momentum" },
     { world: "lensBlood", local: "lensBloodLocal", extras: ["lensBloodAmount", "lensTunnel", "lensHeartbeat", "lensWounded"] },
     { world: "lensEffects", local: "lensEffectsLocal" },
+    { world: "lensDuration", local: "lensDurationLocal" },
     { menu: "bloodColorsMenu" },
     { local: "flashTrackerMenus", gmOnly: true },
     { world: "hidePrivateResults" },

@@ -45,7 +45,7 @@ import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
 import { createCameraShake, canShake } from "./engines/camera/camera-shake.mjs";
 import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
-import { lensSplashFor, lingerLevel, lensAmount, woundOf, LENS_BLOOD } from "./engines/camera/lens-blood.mjs";
+import { lensSplashFor, lingerLevel, lensAmount, woundOf, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
 import { lifeOf, isDown, woundedView, woundedWanted, muffleFor, heartbeatDown, nextBeatMs, heartbeatDeath, transitionSteps, stainsAfterHit, settleStains, stainCap, downLook, downPreviews, WAKE } from "./engines/camera/lens-wounds.mjs";
@@ -2989,8 +2989,18 @@ Hooks.once("init", () => {
   });
   registerSetting("lensBloodAmount", {
     name: "Damage lens amount",
-    hint: "Heavy: bigger splats that drip and linger about six seconds. Subtle: a few small splats near the edges for about three seconds, and a lighter tunnel vision. Low animation quality always draws Subtle.",
+    hint: "Heavy: bigger splats that drip and stay about four and a half seconds for a big hit. Subtle: a few small splats near the edges for about three seconds, and a lighter tunnel vision. Low animation quality always draws Subtle. How long it stays is set with Damage lens duration.",
     scope: "client", config: true, type: String, choices: { heavy: "Heavy", subtle: "Subtle" }, default: "heavy",
+  });
+  registerSetting("lensDuration", {
+    name: "Damage lens duration (seconds)",
+    hint: "How long a big hit's blood stays on players' screens, in seconds (4.5 by default). Smaller hits stay proportionally shorter, drying and fading stretch with it, and damage type effects hold longer or shorter to match.",
+    scope: "world", config: true, type: Number, range: { min: 2, max: 20, step: 0.5 }, default: 4.5,
+  });
+  registerSetting("lensDurationLocal", {
+    name: "Damage lens duration on my screen (seconds)",
+    hint: "Your own length for a big hit's blood on this screen, in seconds. 0 uses the GM's Damage lens duration.",
+    scope: "client", config: true, type: Number, range: { min: 0, max: 20, step: 0.5 }, default: 0,
   });
   registerSetting("lensTunnel", {
     name: "Tunnel vision when hurt",
@@ -4130,10 +4140,14 @@ Hooks.once("ready", () => {
   const hasHeart = (token) => { try { return !token?.actor || creatureHasHeart(creatureBloodType({ system: game.system.id, actor: token.actor, name: token.name })); } catch { return true; } };
   const lensShow = (splash, { args, color, seed, variant, heart = true }) => {
     const look = lensLook(variant);
-    if (splash) lensBlood.splash(tunnelOn() ? splash : { ...splash, tunnel: 0 }, { seed, color });
+    // "Damage lens duration": how long a big hit's blood stays, in seconds (this player's own when set, else the GM's),
+    // against the usual 4.5.
+    const own = Number(shakeSetting("lensDurationLocal", 0)) || 0, seconds = own > 0 ? own : Number(shakeSetting("lensDuration", LENS_BASE_SECONDS)) || LENS_BASE_SECONDS;
+    const duration = Math.min(6, Math.max(0.4, seconds / LENS_BASE_SECONDS));
+    if (splash) lensBlood.splash(tunnelOn() ? splash : { ...splash, tunnel: 0 }, { seed, color, duration });
     // The hit's damage-type effects, by the same rule as the blood (the showcase past the world switch).
     const fx = lensEffectHit({ ...args, worldOn: args.preview === true || effectsWorldOn(), localOn: effectsLocalOn(), types: args.effectTypes ?? [] });
-    if (fx) lensBlood.effects(fx, { seed });
+    if (fx) lensBlood.effects(fx, { seed, duration });
     if (args.role === "victim" && heart !== false && heartbeatWanted({ isGM: false, on: heartbeatOn(), ...look })) {
       const hit = splash ?? lensSplashFor({ ...args, localOn: true });
       if (hit?.tunnel > 0) beat(heartbeatPlan(hit.tunnel, { amount: hit.amount }));

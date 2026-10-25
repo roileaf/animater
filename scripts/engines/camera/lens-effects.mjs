@@ -462,8 +462,8 @@ function crackLayers(random, at, c, { alpha = 1 } = {}) {
  * particles, flicker or board filters; Off none. view: the drawing area ({ width, height }); impact: the blow's point
  * in it (null: none). Each plan: { type, strength, crit, lifeMs, time, at, layers, live, board }.
  */
-export function lensEffectsFor({ types = [], strength = 0.5, crit = false, amount = 'heavy', kind = 'self', view = { width: 1, height: 1 }, impact = null, quality = 'full', seed = 'lens' } = {}) {
-  const rank = qualityRank(quality);
+export function lensEffectsFor({ types = [], strength = 0.5, crit = false, amount = 'heavy', kind = 'self', view = { width: 1, height: 1 }, impact = null, quality = 'full', seed = 'lens', duration = 1 } = {}) {
+  const rank = qualityRank(quality), stay = Math.min(6, Math.max(0.4, Number(duration) || 1));
   if (rank === 0 || !types?.length) return [];
   const W = Math.max(1, view?.width || 1), H = Math.max(1, view?.height || 1), m = Math.min(W, H), subtle = amount === 'subtle', lite = rank < 2;
   const at = impact && Number.isFinite(impact.x) && Number.isFinite(impact.y) ? { x: Math.min(W, Math.max(0, impact.x)), y: Math.min(H, Math.max(0, impact.y)) } : null;
@@ -481,7 +481,8 @@ export function lensEffectsFor({ types = [], strength = 0.5, crit = false, amoun
     if (second) e *= 0.75;
     if (subtle) e *= 0.55;
     e = r3(e);
-    const hold = Math.round(Math.min(1000, 420 + 580 * e) * (crit ? 1.5 : 1));
+    // "Damage lens duration" stretches how long it holds before fading.
+    const hold = Math.round(Math.min(1000, 420 + 580 * e) * (crit ? 1.5 : 1) * stay);
     const time = { in: 140, hold, out: crit ? 1000 : 700 };
     const random = rng(`${seed}:${type}`);
     const n = (v) => Math.max(1, Math.round(v * (subtle ? 0.5 : 1)));
