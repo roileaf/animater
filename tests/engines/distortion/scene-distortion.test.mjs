@@ -105,6 +105,20 @@ test('plan: the ring band is the blast’s, whatever the reach', () => {
   assert.equal(slotParams(t, 100, { zoom: 1 }).band, t.band);
 });
 
+// A longer reach travels further for longer: the ring leaves the blast at the same spot and pace whatever the reach.
+test('plan: the ring leaves its blast at the same pace, whatever the reach', () => {
+  const tag = shockReach => [...planDistortions([st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 500, y: 500 }, r: sq(4) })], opts({ a: 0 }, { shockReach })).values()][0];
+  assert.equal(tag(1.5).lengthMs, 1400);
+  for (const reach of [1, 3, 4]) {
+    const t = tag(reach);
+    assert.equal(t.lengthMs, Math.round(1400 * t.radius / sq(6)), `reach ${reach}`);
+    for (const ms of [50, 150, 300]) {
+      const ring = slotParams(t, ms, { zoom: 1 }).ring, usual = slotParams(tag(1.5), ms, { zoom: 1 }).ring;
+      assert.ok(Math.abs(ring - usual) < 0.2 * usual, `reach ${reach} at ${ms}ms: ${ring} vs ${usual}`);
+    }
+  }
+});
+
 test('plan: shockwave reach scales the ring and its cap', () => {
   const mk = (r, shockReach) => [...planDistortions([st('a', 'impact', 'jb2a.fireball.explosion.orange', { at: { x: 500, y: 500 }, r })], opts({ a: 0 }, { shockReach })).values()][0].radius;
   // 1.5 (the default) is today's ring: 1.5x the blast, 3..12 squares.

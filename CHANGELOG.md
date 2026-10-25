@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.5 (2026-10-25)
+
+- **Shockwaves that start where they should.** Raising **Shockwave reach** also made the ring rush outward faster, so by the time a blast's flash faded it was already far past where it started at 1.5×. The ring now leaves the blast at the same pace whatever the reach; a longer reach simply carries it further, for longer.
+
 ## 2.2.4 (2026-10-25)
 
 - **Shockwave reach that behaves.** Raising **Shockwave reach** widened the ripple along with its distance, so at 3× the whole map slid and smeared instead of rippling; lowering it kept the ring inside the explosion, where the flash hid it. The ripple now keeps the same width at any reach (reach only sets how far it travels) and always runs at least a square past the blast. The setting now starts at 1×.

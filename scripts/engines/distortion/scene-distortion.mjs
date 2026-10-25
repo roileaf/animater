@@ -125,11 +125,15 @@ export function planDistortions(plan, { context, tiers, gridPx, pointOf, radiusO
     const blast = (radiusOf(stage) ?? 0) / gridPx;
     // A ring that stays inside its blast is hidden by it: a small reach still carries it a square past the edge.
     const squares = Math.max(clamp(ringPer * blast, MIN_RING_SQUARES, maxRing), Math.min(blast + 1, MAX_RING_SQUARES));
+    const usual = clamp(RING_PER_BLAST * blast, MIN_RING_SQUARES, MAX_RING_SQUARES);
     // The band is the default ring's whatever the reach, so a long reach ripples instead of sliding the view.
-    const band = BAND_PER_RING * clamp(RING_PER_BLAST * blast, MIN_RING_SQUARES, MAX_RING_SQUARES) * gridPx;
+    const band = BAND_PER_RING * usual * gridPx;
+    // And it runs at the default ring's pace: a longer reach travels further for longer, never faster, so the
+    // ring leaves the blast at the same spot and speed whatever the reach.
+    const lengthMs = Math.round(SHOCK_MS * squares / usual);
     // The ring starts at the blast's contact; the anchor's own start is the clock.
     const startMs = Math.max(0, startOf(stage) + (stage.contact > 0 ? stage.contact : 0) - startOf(anchor));
-    return { kind: 'shock', at: { x: at.x, y: at.y }, radius: squares * gridPx, band, startMs, lengthMs: SHOCK_MS, strength: 1, follow: false };
+    return { kind: 'shock', at: { x: at.x, y: at.y }, radius: squares * gridPx, band, startMs, lengthMs, strength: 1, follow: false };
   }
 
   function hazeTag({ stage, at }, anchor) {
