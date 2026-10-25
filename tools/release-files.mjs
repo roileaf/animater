@@ -1,5 +1,5 @@
 // Lists the files Foundry actually loads: module.json, its esmodules/styles and
-// everything they reach through static or dynamic imports, CSS url()s and
+// everything they reach through static or dynamic imports, new URL(..., import.meta.url), CSS url()s and
 // literal module paths. Audits, docs, tests, tools and previews never ship.
 // Usage: node tools/release-files.mjs | zip -@ module.zip
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -23,6 +23,8 @@ export function releaseFiles(root = ROOT) {
     const source = read(rel), dir = path.posix.dirname(rel);
     for (const m of source.matchAll(/(?:from\s*|import\s*\(\s*|import\s+)['"](\.{1,2}\/[^'"]+)['"]/g)) queue.push(path.posix.join(dir, m[1]));
     for (const m of source.matchAll(/url\(\s*['"]?(\.{1,2}\/[^'")]+)/g)) queue.push(path.posix.join(dir, m[1]));
+    // Workers and other files a module reaches as new URL('./file.mjs', import.meta.url).
+    for (const m of source.matchAll(/new\s+URL\(\s*['"](\.{1,2}\/[^'"]+)['"]\s*,\s*import\.meta\.url/g)) queue.push(path.posix.join(dir, m[1]));
     for (const m of source.matchAll(/modules\/animater\/((?:scripts|styles|templates|data|lang|assets|sounds)\/[\w./-]+\.\w+)/g)) queue.push(m[1]);
   }
   if (missing.length) throw Error(`Runtime references missing files: ${missing.join(', ')}`);

@@ -420,6 +420,24 @@ const WET_FLOORS = new Set(['mud', 'water']);
 // Floors whose own sound is part of any footfall on them: a hoof in mud squelches, a paw in snow crunches. That floor's
 // step plays under the creature's, at this share of its level and the same pitch.
 const UNDER_GAIN = { mud: 0.5, water: 0.55, snow: 0.4, sand: 0.35 };
+// How far footsteps carry, in squares, by the world setting "Footstep hearing range"; Huge and bigger creatures
+// (weight 4+) carry half as far again.
+export const FOOTSTEP_RANGES = Object.freeze({ close: 3, normal: 6, far: 10, veryFar: 15 });
+export function footstepReach(range, weight = 2) {
+  const squares = FOOTSTEP_RANGES[range] ?? FOOTSTEP_RANGES.normal;
+  return weight >= 4 ? squares * 1.5 : squares;
+}
+// Rain on a floor: soil turns to mud (its sound and its prints), and a hard or open floor (stone, wood, grass, sand)
+// gets puddles, a quiet splash under every step. { floor, splash }. Water, mud, snow and ice stay as they are.
+const RAIN_TURNS = { dirt: 'mud' };
+const RAIN_SPLASHES = new Set(['stone', 'wood', 'grass', 'sand']);
+export function rainFloor(floor, weather) {
+  if (weather !== 'rain') return { floor, splash: false };
+  const wet = RAIN_TURNS[floor] ?? floor;
+  return { floor: wet, splash: RAIN_SPLASHES.has(wet) };
+}
+// The puddle under a step on a rained-on hard floor, at this share of the step's level.
+export const RAIN_SPLASH_GAIN = 0.3;
 // A hard-floor family stepping on soft or wet ground (paws have no soft recordings): its click muffled into the ground.
 const MUFFLED_LOWPASS = 1400;
 const floorVariant = (floor) => (HARD_FLOORS.has(floor) ? 'hard' : WET_FLOORS.has(floor) ? 'wet' : 'soft');

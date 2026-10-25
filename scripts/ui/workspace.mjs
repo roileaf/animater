@@ -51,6 +51,7 @@ import {
 import { featCatalogHTML, ABILITY_PAGE_PROFILES, abilityProfileForPage, abilityProfileForKey, defaultAbilityFilters } from "./feat-catalog-ui.mjs";
 import { NPC_PAGE, npcAbilityCatalogHTML, npcAbilityPageRecipe, npcAbilityAction, npcAbilitySearch } from "./npc-ability-ui.mjs";
 import {CreatureShowcaseUI,SHOWCASE_PAGE} from './creature-showcase-ui.mjs';
+import {DamageShowcaseUI,DAMAGE_SHOWCASE_PAGE} from './damage-showcase-ui.mjs';
 import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel, groupNowPlaying } from "./activity-actions.mjs";
 import { PF2E_WEAPONS, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState, useCatalogWeapon, weaponCustomizationKey } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { weaponCatalogHTML } from "./weapon-catalog-ui.mjs";
@@ -482,6 +483,7 @@ export class Workspace {
   }
   destroy() {
     this.creatureShowcase?.destroy();
+    this.damageShowcase?.destroy();
     clearInterval(this.activityTimer);
     void this.mediaLibrary?.stopTokenPreview();
     this.stopEditorPreview();
@@ -673,7 +675,7 @@ export class Workspace {
       // The caption names the system, so the items need not repeat it ("Spells", not "PF2e spells").
       group(`LIBRARY${systemCaption(env)}`, [...catalogNavigation(env).map(shortNav), ["assets", "▦", "Assets"]]),
       ...(borrowedNavigation(env).length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowedNavigation(env).map(shortNav))] : []),
-      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
+      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),...(this.host.damageShowcase&&!this.host.playerMode?[[DAMAGE_SHOWCASE_PAGE,'♥','Damage showcase']]:[]),["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
     ].join("");
   }
   // The PF2e catalog page on screen: the page itself in a PF2e world, a borrowed pf2e-* page in an SF2e one.
@@ -695,6 +697,8 @@ export class Workspace {
   renderPage() {
     this.creatureShowcase?.suspend();
     if(this.page===SHOWCASE_PAGE&&(!this.host.creatureShowcase||this.host.playerMode))this.page='recipes';
+    this.damageShowcase?.suspend();
+    if(this.page===DAMAGE_SHOWCASE_PAGE&&(!this.host.damageShowcase||this.host.playerMode))this.page='recipes';
     if(this.page!=='assets'||this.mediaLibrary?.fxScene)void this.mediaLibrary?.stopTokenPreview();
     if(!catalogPageAllowed(this.page,this.host.environment()))this.page='recipes';
     if (abilityProfileForPage(this.pf2ePage())&&!this.dndCatalog?.isCatalogPage()) {
@@ -755,7 +759,7 @@ export class Workspace {
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
-        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
+        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
       </main>${this.pendingImport !== null ? this.importHTML() : ""}${this.newChooser ? this.newChooserHTML() : ""}</div>`,
     );
     this.root.querySelectorAll("details[data-options-group]").forEach((e) => {
@@ -2102,6 +2106,7 @@ export class Workspace {
   }
   onChange(e) {
     if(this.creatureShowcase?.change(e.target))return;
+    if(this.damageShowcase?.change(e.target))return;
     if(this.mediaLibrary?.change(e.target))return;
     if(this.flashEditor?.change(e.target))return;
     // The guided tour's practice finisher (listed while a tour runs) is never stored as the default
@@ -2623,6 +2628,7 @@ export class Workspace {
       }
       if (await this.abilityAction(action, b)) return;
       if (this.page===SHOWCASE_PAGE && await this.creatureShowcase?.action(action,b)) return;
+      if (this.page===DAMAGE_SHOWCASE_PAGE && await (this.damageShowcase ??= new DamageShowcaseUI(this)).action(action,b)) return;
       if (await npcAbilityAction(this, action, b)) return;
       if (action === "select-spell") {
         if (this.selectedSpell === b.dataset.id) return;

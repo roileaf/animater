@@ -5,6 +5,7 @@
 // budgets and are drawn only where the creature is seen. Seeded by the token id and stride, the same on every screen.
 
 import { tracksFor } from './movement-feel.mjs';
+import { DEFAULT_BLOOD, creatureBloodType } from './blood-colors.mjs';
 
 // What each floor leaves on the feet: how many strides it lasts on another floor, and the prints it makes there.
 export const CARRY = Object.freeze({
@@ -57,16 +58,12 @@ function rng(text) {
   };
 }
 
-// Blood. Creatures without it (PF2e/SF2e traits, D&D creature types) and things that are not creatures never bleed.
-const BLOODLESS = new Set(['construct', 'elemental', 'ooze', 'incorporeal', 'skeleton', 'spirit', 'object']);
-const NOT_CREATURES = new Set(['hazard', 'loot', 'party', 'army', 'group', 'encounter', 'environment', 'vehicle']);
+// Blood. Creatures without it (PF2e/SF2e traits, D&D creature types, names) and things that are not creatures never
+// bleed: the default table of blood-colors.mjs (the GM's own table and token overrides are read with bloodFor there).
 const lower = (v) => String(v ?? '').toLowerCase();
 export function bleedsBlood(actor) {
-  if (!actor || NOT_CREATURES.has(lower(actor.type))) return false;
-  const sys = actor.system ?? {};
-  const traits = sys.traits?.value;
-  for (const t of (Array.isArray(traits) || traits instanceof Set ? [...traits] : [])) if (BLOODLESS.has(lower(t))) return false;
-  return !BLOODLESS.has(lower(sys.details?.type?.value ?? sys.details?.type));
+  if (!actor) return false;
+  return DEFAULT_BLOOD[creatureBloodType({ actor })]?.bleeds !== false;
 }
 export const BLOOD_COLOR = 0x7a0d0d;
 // A Splatter blood colour flag ("#rrggbb" or "#rrggbbaa") as a number, else the default dark red.

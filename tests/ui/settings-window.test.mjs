@@ -151,3 +151,12 @@ test("a feature this screen's quality never draws says which quality it needs", 
   assert.match(html, /Needs Full or Light animation quality on this screen/);
   assert.match(html, /Needs Full animation quality on this screen/);
 });
+
+test("the Blood colours menu sits beside lens blood in Combat drama, for the GM only", () => {
+  const withBlood = new Map([...menus, ["animater.bloodColorsMenu", { name: "Blood colours", label: "Blood colours", hint: "Blood hint", icon: "fa-solid fa-droplet", restricted: true }]]);
+  const gm = model({ isGM: true, menus: withBlood });
+  const drama = gm.tabs.find((t) => t.id === "drama");
+  assert.ok(drama, "the Combat drama tab");
+  assert.equal(drama.rows.find((r) => r.id === "bloodColorsMenu")?.menu, "bloodColorsMenu");
+  assert.equal(rowsOf(model({ isGM: false, menus: withBlood })).bloodColorsMenu, undefined, "restricted to the GM");
+});

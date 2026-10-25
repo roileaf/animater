@@ -36,3 +36,9 @@ test('bundled sound packaging excludes local catalogs, audit reports and source 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('release includes workers a module reaches through new URL(..., import.meta.url)', () => {
+  const files = new Set(releaseFiles());
+  assert.ok(files.has('scripts/engines/camera/lens-blood-paint-worker.mjs'), 'the lens blood paint worker ships');
+  assert.ok(files.has('scripts/engines/camera/lens-blood-paint.mjs'), 'and what it imports');
+});

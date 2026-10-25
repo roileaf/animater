@@ -848,3 +848,22 @@ test('controller: marksOf(id) counts a creature\'s marks and how many this view 
   assert.deepEqual(h.feel.marksOf('nobody'), { laid: 0, shown: 0, total: 0 });
   assert.ok(h.feel.marksOf('ed').total >= seen.laid, 'total counts every mark laid, even ones already faded');
 });
+
+test('footstep hearing range: close, normal, far, very far; Huge and bigger carry half as far again', async () => {
+  const { footstepReach, FOOTSTEP_RANGES } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.deepEqual({ ...FOOTSTEP_RANGES }, { close: 3, normal: 6, far: 10, veryFar: 15 });
+  assert.equal(footstepReach('normal', 2), 6);
+  assert.equal(footstepReach('normal', 4), 9, 'as before for Huge');
+  assert.equal(footstepReach('close', 1), 3);
+  assert.equal(footstepReach('veryFar', 5), 22.5);
+  assert.equal(footstepReach('nonsense', 2), 6, 'unknown means normal');
+});
+
+test('rain wets the floor: dirt turns to mud, stone, wood, grass and sand get puddles, wet floors stay', async () => {
+  const { rainFloor } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.deepEqual(rainFloor('dirt', 'rain'), { floor: 'mud', splash: false });
+  for (const f of ['stone', 'wood', 'grass', 'sand']) assert.deepEqual(rainFloor(f, 'rain'), { floor: f, splash: true });
+  for (const f of ['water', 'mud', 'snow', 'ice']) assert.deepEqual(rainFloor(f, 'rain'), { floor: f, splash: false });
+  assert.deepEqual(rainFloor('dirt', 'snow'), { floor: 'dirt', splash: false });
+  assert.deepEqual(rainFloor('stone', null), { floor: 'stone', splash: false });
+});

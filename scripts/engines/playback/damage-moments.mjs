@@ -87,15 +87,18 @@ export function damageFromMessage(message, systemId) {
   // A rule-element strike (Tiger Claw) is one too: its message.item is the feat that grants it.
   const origin = message?.flags?.[systemId]?.origin, item = strikeItemOf(message, systemId);
   const itemUuid = origin?.uuid ?? dnd?.item?.uuid ?? null;
-  return { type: normalizeDamageType(best.type), tokenIds, actorIds, sourceTokenId: message?.speaker?.token ?? null, attackKind: attackKindOf(message, systemId), crit,
+  // types: every damage type in the roll, the largest share first (lens blood asks whether any of it was physical;
+  // the lens effects show the first two energy types).
+  const types = [...new Set(parts.filter((p) => p.type).sort((a, b) => b.total - a.total).map((p) => normalizeDamageType(p.type)))];
+  return { type: normalizeDamageType(best.type), types, tokenIds, actorIds, sourceTokenId: message?.speaker?.token ?? null, attackKind: attackKindOf(message, systemId), crit,
     itemUuid, itemName: item?.name ?? null, itemSlug: item?.slug ?? item?.system?.slug ?? strikeSlugFromOptions(pf?.options) ?? null,
     actorUuid: origin?.actor ?? null, synthetic: isSyntheticItem(item) || syntheticUuid(itemUuid) || strikeLostItem(message, systemId) };
 }
 
 // D&D 5e: the damage parts it is about to apply to this actor (dnd5e.calculateDamage).
 export function damageFromParts(parts, actorId) {
-  const best = Array.from(parts ?? []).filter((p) => p?.type && Number(p.value) > 0).sort((a, b) => Number(b.value) - Number(a.value))[0];
-  return best ? { type: normalizeDamageType(best.type), tokenIds: new Set(), actorIds: new Set([actorId]) } : null;
+  const sorted = Array.from(parts ?? []).filter((p) => p?.type && Number(p.value) > 0).sort((a, b) => Number(b.value) - Number(a.value)), best = sorted[0];
+  return best ? { type: normalizeDamageType(best.type), types: [...new Set(sorted.map((p) => normalizeDamageType(p.type)))], tokenIds: new Set(), actorIds: new Set([actorId]) } : null;
 }
 // The damage a creature most likely just took: the newest roll aimed at it, else
 // the newest roll aimed at nobody in particular, within the last half minute.

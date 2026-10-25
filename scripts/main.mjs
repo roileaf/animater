@@ -16,7 +16,7 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive } from "./engines/motion/movement-feel.mjs";
+import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN } from "./engines/motion/movement-feel.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
 import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
@@ -24,7 +24,9 @@ import { creatureGait, creatureBulk, creatureBody, creatureFlight } from "./engi
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
 import { movementSound, movementEnvironment } from "./engines/motion/movement-feel.mjs";
-import { createGroundTrails, bleedsBlood, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
+import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
+import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
+import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
 import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
 import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets, midiRunsActivity } from "./systems/adapters.mjs";
@@ -43,6 +45,13 @@ import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
 import { createCameraShake, canShake } from "./engines/camera/camera-shake.mjs";
 import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
+import { lensSplashFor, lingerLevel, lensAmount, woundOf, LENS_BLOOD } from "./engines/camera/lens-blood.mjs";
+import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
+import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
+import { lifeOf, isDown, woundedView, woundedWanted, muffleFor, heartbeatDown, nextBeatMs, heartbeatDeath, transitionSteps, stainsAfterHit, settleStains, stainCap, downLook, downPreviews, WAKE } from "./engines/camera/lens-wounds.mjs";
+import { createWorldMuffle } from "./engines/sound/world-muffle.mjs";
+import { heartbeatPlan, heartbeatLinger, heartbeatWanted, playHeartbeat } from "./engines/sound/heartbeat.mjs";
+import { creatureBlood } from "./integrations/splatter.mjs";
 import { sceneWarpFilter } from "./engines/tokenshade/filters/scene-warp.mjs";
 import { createSummonsLights } from "./integrations/summons-walls.mjs";
 import { createReactionHost } from "./engines/marks/reactions.mjs";
@@ -342,6 +351,25 @@ const receiveKillCam = (data, senderId) => {
   if (data?.type !== "kill-cam" || (senderId && data.userId !== senderId)) return;
   killCam.play({ tokenId: data.tokenId, sceneId: data.sceneId, ms: Number(data.ms) });
 };
+// Blood on the camera lens and tunnel vision (engines/camera/lens-blood.mjs), on players' screens only; wired to HP
+// changes in the ready hook (see "Blood on the lens" there). The heartbeat under the tunnel (engines/sound/heartbeat.mjs).
+const lensBlood = createLensBloodOverlay();
+let stopHeartbeat = null, heartbeatUntil = 0, lingerTimer = null;
+// The Damage immersion showcase's player (set in the ready hook): hit, deal, linger, snapshot, stop.
+let lensPreview = null;
+// The wounded view's muffle on music and ambience (engines/sound/world-muffle.mjs), and its state's reset (set in the
+// ready hook): both always put back with the lens.
+const worldMuffle = createWorldMuffle({ contexts: () => [game.audio?.music, game.audio?.environment] });
+let woundReset = null, woundRefresh = null;
+const stopLensBlood = () => {
+  try { woundReset?.(); } catch { /* nothing kept */ }
+  worldMuffle.restore();
+  lensBlood.clear();
+  if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; }
+  try { stopHeartbeat?.(); } catch { /* gone */ }
+  stopHeartbeat = null;
+};
+Hooks.on("canvasTearDown", stopLensBlood);
 // PF2e Summons Assistant's glowing walls and summons (integrations/summons-walls.mjs): lit on every client
 // from their own effect or token data, on the same light host. Only its creatures' tokens qualify.
 const finitePoint = (p) => (Number.isFinite(p?.x) && Number.isFinite(p?.y) ? { x: p.x, y: p.y } : null);
@@ -594,6 +622,8 @@ Hooks.on("updateActor", () => feelGaits.clear());
 // An ancestry, a race or an Incorporeal Movement feature can change the feet.
 for (const hook of ["createItem", "updateItem", "deleteItem"]) Hooks.on(hook, (item) => { if (item?.parent?.documentName === "Actor") feelGaits.clear(); });
 Hooks.on("updateToken", (doc, changes) => { if ("name" in changes || "actorId" in changes || "delta" in changes) feelGaits.clear(); });
+// A token's own blood colour (Animater's or Splatter's flag) changes only its blood.
+Hooks.on("updateToken", (doc, changes) => { if (changes?.flags?.[ID]?.bloodColor !== undefined || changes?.flags?.splatter !== undefined || Object.keys(changes?.flags ?? {}).some((k) => k.startsWith("-="))) feelGaits.delete(`blood|${doc.id}`); });
 const movementFeelRoot = () => {
   if (!feelRoot || feelRoot.destroyed) {
     feelRoot = new PIXI.Container();
@@ -614,7 +644,9 @@ const movementFeelFloor = (point, token) => {
   });
   const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: doc.flags?.[ID]?.floor, doc }));
   const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
-  return floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
+  const floor = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
+  // Rain ("Weather on the ground"): soil out in the rain turns to mud, in its sound and its prints.
+  return movementFeelSettingOn("weatherOnGround") && weatherAt(point, elevation) === "rain" ? rainFloor(floor, "rain").floor : floor;
 };
 // The scene's weather (engines/motion/ground-trails.mjs sceneWeather): Foundry's own scene weather, else FXMaster's
 // rain or snow; none inside a region with a Suppress Weather behavior (a roof, a cave).
@@ -640,15 +672,24 @@ const groundTrails = createGroundTrails({
   blood: () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC)),
   weather: (feet, token) => (movementFeelSettingOn("weatherOnGround") ? weatherAt(feet, token?.elevation ?? 0) : null),
 });
+// A token's blood (placeable or TokenDocument): Splatter's rules while it is active, else Animater's own Blood colours
+// (the token's override, then the GM's table by creature type; integrations/splatter.mjs creatureBlood).
+const bloodTable = () => { try { return game.settings.get(ID, BLOOD_SETTING) ?? {}; } catch { return {}; } };
+const tokenBlood = (token) => creatureBlood(token, {
+  active: game.modules.get(SPLATTER_ID)?.active === true, setting: (key) => game.settings.get(SPLATTER_ID, key),
+  getProperty: (obj, path) => foundry.utils.getProperty(obj, path), system: game.system.id, table: bloodTable(),
+});
 // Whether a token is badly hurt (a quarter of its HP or less, engines/playback/wounded-looks.mjs woundTier) with blood
-// to lose, and its Splatter blood colour; cached per token with the gaits (forgotten as an actor or a token changes).
+// to lose, and its blood colour (tokenBlood); cached per token with the gaits (forgotten as an actor or a token
+// changes, a token's blood flags change or the Blood colours are saved).
 const movementFeelBlood = (d) => {
   const key = `blood|${d.id}`;
   let blood = feelGaits.get(key);
   if (blood === undefined) {
     try {
       const actor = d.actor;
-      blood = { bleeding: bleedsBlood(actor) && woundTier(hpState(actor, game.system.id)) === 2, bloodColor: bloodColor(d.flags?.splatter?.bloodColor) };
+      const own = tokenBlood(d);
+      blood = { bleeding: own.bleeds && woundTier(hpState(actor, game.system.id)) === 2, bloodColor: own.color };
     } catch { blood = { bleeding: false }; }
     feelGaits.set(key, blood);
   }
@@ -749,7 +790,12 @@ const movementFeel = createMovementFeel({
     // enlarged humanoid darkens the clop into a knock. Keep size-based volume/pacing and lower pitch for larger hooves.
     const vary = footstepVariation({ seed, n: step, weight: movementContactWeight(token.gait, weight) });
     vary.rate = Math.min(2, Math.max(0.35, vary.rate * mix.pitch));
-    const where = { x: at.x, y: at.y, elevation: token.elevation }, reach = 6 * (canvas.dimensions?.distance ?? 5) * (weight >= 4 ? 1.5 : 1);
+    // How far it carries ("Footstep hearing range"), half as far again for Huge and bigger.
+    let range = "normal";
+    try { range = hotSetting("footstepRange") ?? "normal"; } catch { /* not registered yet */ }
+    const where = { x: at.x, y: at.y, elevation: token.elevation }, reach = footstepReach(range, weight) * (canvas.dimensions?.distance ?? 5);
+    // A rained-on hard or open floor has puddles: a quiet splash under the step.
+    const puddle = walking && movementFeelSettingOn("weatherOnGround") && weatherAt(at, token.elevation ?? 0) === "rain" && rainFloor(floor, "rain").splash;
     const volume = Math.min(1, footstepVolume(floor, { weight }) * vary.gain * Math.min(1, level) * (kind === "land" ? 1.25 : 1) * (sneak?.gain ?? 1));
     const contactVolume = Math.min(1, volume * mix.contact);
     const sceneId = canvas.scene?.id, sceneLevel = canvas.level?.id;
@@ -818,6 +864,7 @@ const movementFeel = createMovementFeel({
       muffle ? { lowpass: muffle, ...(pick.bass ? { bass: pick.bass } : {}) } : {}) : silentAnchor().catch(() => null);
     // The floor under the creature's own foot (a hoof in mud, a paw in snow), quieter, at the same pitch and shape.
     if (pick.under) play(pick.under, vary.rate, Math.min(1, contactVolume * pick.underGain), sneak ? { lowpass: sneak.lowpass } : {});
+    if (puddle && contactVolume > 0) play(footstepFile("water", step, { psfx: game.modules.get("psfx")?.active === true, seed: `${seed}:rain` }), vary.rate, Math.min(1, contactVolume * RAIN_SPLASH_GAIN), sneak ? { lowpass: sneak.lowpass } : {});
     if (pick.texture && contactVolume > 0 && pick.texture.file !== layer?.file) stepping.then((sound) => {
       if (!sound) return;
       const texture = pick.texture;
@@ -2189,6 +2236,17 @@ function workspaceHost() {
     // Flash screens (GM): the library, defaults and playback for the editor page.
     ...(game.user.isGM ? {
       creatureShowcase: tokenId=>showcaseTools.snapshot(tokenId),
+      // Damage immersion showcase: lens blood, tunnel vision and the heartbeat on the GM's own screen.
+      damageShowcase: () => lensPreview?.snapshot() ?? { tokens: [], presets: {}, settings: {} },
+      previewLensHit: (o) => lensPreview?.hit(o),
+      previewLensDeal: (o) => lensPreview?.deal(o),
+      previewLensLinger: (o) => lensPreview?.linger(o),
+      previewLensDuel: (o) => lensPreview?.duel(o),
+      previewLensWounded: (o) => lensPreview?.wounded(o),
+      previewLensDown: (o) => lensPreview?.down(o),
+      previewLensWake: (o) => lensPreview?.wake(o),
+      stopLensPreview: () => lensPreview?.stop(),
+      lensPreviewBusy: () => lensPreview?.busy() ?? false,
       previewCreatureMovement: tokenId=>showcaseTools.movement(tokenId),
       playBossEntrance: (tokenId,options)=>showcaseTools.playBoss(tokenId,options),
       stopBossEntrance: options=>{ app?.workspace?.creatureShowcase?.restoreBossWindow();return showcaseTools.stopBoss(options); },
@@ -2494,6 +2552,12 @@ Hooks.once("init", () => {
   game.settings.registerMenu(ID,'hitSoundsMenu',{name:'Hit sounds',label:'Hit sounds',icon:'fa-solid fa-volume-high',
     hint:'Weapon hits that sound like what they land on, and how you hear them: on or off, volume, blood, echo, and hearing hits where they happen.',
     type:hitSoundsMenu(ApplicationV2,{id:ID}),restricted:false});
+  // Blood colours by creature type when Splatter is not deciding (ui/blood-colors-settings.mjs; engines/motion/blood-colors.mjs).
+  game.settings.registerMenu(ID,'bloodColorsMenu',{name:'Blood colours',label:'Blood colours',icon:'fa-solid fa-droplet',
+    hint:'What each creature type bleeds on the lens, on the ground and in the damage showcase: its colour, or no blood at all. A token can have its own (Token configuration). With Splatter active, its Blood Sheet decides instead.',
+    type:bloodColorsMenu(ApplicationV2,{id:ID}),restricted:true});
+  registerSetting(BLOOD_SETTING,{name:'Blood colours',scope:'world',config:false,type:Object,default:{},
+    onChange:()=>{ for (const key of [...feelGaits.keys()]) if (key.startsWith('blood|')) feelGaits.delete(key); }});
   registerSetting(SURFACE_SETTING,{name:'Weapon surface sounds',scope:'world',config:false,type:Boolean,default:true,onChange:()=>app?.workspace?.render()});
   registerSetting('hitSounds',{name:'Hit sounds on this device',scope:'client',config:false,type:Boolean,default:true});
   registerSetting('surfaceVolume',{name:'Surface sounds volume',scope:'client',config:false,type:Number,range:{min:0,max:1,step:0.05},default:1});
@@ -2750,6 +2814,12 @@ Hooks.once("init", () => {
     hint: "Footsteps, wing beats and footfall thuds echo softly in the room they happen in and sound muffled from behind a wall, as Animater's hit sounds do (with Room acoustics and Muffle sounds behind walls on).",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  registerSetting("footstepRange", {
+    name: "Footstep hearing range",
+    hint: "How far away footsteps, wing beats and other movement sounds can be heard (Foundry plays them only to tokens within this range). Huge and bigger creatures carry half as far again. Close 3 squares, Normal 6, Far 10, Very far 15.",
+    scope: "world", config: true, type: String, default: "normal",
+    choices: { close: "Close (3 squares)", normal: "Normal (6 squares)", far: "Far (10 squares)", veryFar: "Very far (15 squares)" },
+  });
   registerSetting("quietSneaking", {
     name: "Sneaking is quiet",
     hint: "A creature moving stealthily steps softer, slower and duller, and only a Huge or bigger one still thuds: PF2e's Avoid Notice exploration activity or a Sneak effect, PF2e Visioner's sneaking, D&D 5e's Hiding status.",
@@ -2778,7 +2848,7 @@ Hooks.once("init", () => {
   });
   registerSetting("weatherOnGround", {
     name: "Weather on the ground",
-    hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
+    hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes, dirt turns to mud (its sound and prints), stone, wood, grass and sand get puddles under each step, and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting("idleLife", {
@@ -2804,6 +2874,19 @@ Hooks.once("init", () => {
     name: "Fliers hover",
     hint: "Flying creatures bob gently in the air, so they stand out from those on the ground. Off: they hold still (others can still breathe).",
     scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => idleLife?.sync(),
+  });
+  // Each player chooses for their own screen too (the world switches above are the GM's).
+  registerSetting("idleBreathingLocal", {
+    name: "Idle breathing on my screen",
+    hint: "Turn off to never draw idle breathing on this screen (fliers can still hover).",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: () => idleLife?.sync(),
+  });
+  registerSetting("idleHoverLocal", {
+    name: "Fliers hover on my screen",
+    hint: "Turn off to never draw fliers bobbing on this screen (others can still breathe).",
+    scope: "client", config: true, type: Boolean, default: true,
     onChange: () => idleLife?.sync(),
   });
   registerSetting("idleLifeStrength", {
@@ -2863,8 +2946,8 @@ Hooks.once("init", () => {
   });
   registerSetting("cameraShakeStrength", {
     name: "Camera shake strength",
-    hint: "How hard blasts shake the view on this screen, as a multiple of the usual jolt.",
-    scope: "client", config: true, type: Number, range: { min: 0.25, max: 2, step: 0.25 }, default: 1,
+    hint: "How hard blasts shake the view on this screen, as a multiple of the usual jolt. Above 1 it also lasts longer (4 shakes about twice as long).",
+    scope: "client", config: true, type: Number, range: { min: 0.25, max: 4, step: 0.25 }, default: 1,
   });
   registerSetting("killCam", {
     name: "Slow-motion kill-cam",
@@ -2877,6 +2960,56 @@ Hooks.once("init", () => {
     hint: "Turn off to never move the view or slow effects for a kill-cam on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) killCam.clear(); },
+  });
+  registerSetting("lensBlood", {
+    name: "Damage lens",
+    hint: "Blood on the lens, on players' screens only. When a player's creature hits an enemy, that enemy's blood splats on the player's screen, more for more damage, on the side the enemy is. When the player's own creature is hit, the view closes in (tunnel vision) and its own blood splashes the screen; a badly hurt creature keeps a faint tunnel in combat. Uses Splatter's blood colours and bloodless creatures when Splatter is active. Bloodless creatures, creatures that screen cannot see and hidden tokens never bleed on it. Players' Blood sounds choice (Hit sounds) Off turns it off, Subtle makes it subtle.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) stopLensBlood(); },
+  });
+  registerSetting("lensBloodLocal", {
+    name: "Damage lens on my screen",
+    hint: "Turn off to never see the damage lens (blood on the screen) or tunnel vision on this screen. Off at first when this browser asks for reduced motion.",
+    scope: "client", config: true, type: Boolean,
+    default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
+    onChange: (on) => { if (on === false) { lensBlood.clear(); worldMuffle.restore(); woundReset?.(); } },
+  });
+  registerSetting("lensEffects", {
+    name: "Damage type effects",
+    hint: "On players' screens only, with the same rule as the damage lens: each energy damage type their creature takes or deals leaves its own short mark on the screen beside the blood. Fire scorches the edges and throws embers, cold frosts them over, lightning arcs across, acid drops and bubbles, poison sways the view, sonic ripples it, force cracks the lens, void drains its colour, vitality flares, mental damage doubles the view, spirit sends pale wisps; Daggerheart's magic shimmers. Stronger for more damage, clearly stronger for critical hits. Damage lens amount Subtle and Subtle gore tone it down; Low animation quality keeps only the marks.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) lensBlood.clearEffects(); },
+  });
+  registerSetting("lensEffectsLocal", {
+    name: "Damage type effects on my screen",
+    hint: "Turn off to never see the damage type effects (scorch, frost, arcs, cracks, double vision...) on this screen. Off at first when this browser asks for reduced motion.",
+    scope: "client", config: true, type: Boolean,
+    default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
+    onChange: (on) => { if (on === false) lensBlood.clearEffects(); },
+  });
+  registerSetting("lensBloodAmount", {
+    name: "Damage lens amount",
+    hint: "Heavy: bigger splats that drip and linger about six seconds. Subtle: a few small splats near the edges for about three seconds, and a lighter tunnel vision. Low animation quality always draws Subtle.",
+    scope: "client", config: true, type: String, choices: { heavy: "Heavy", subtle: "Subtle" }, default: "heavy",
+  });
+  registerSetting("lensTunnel", {
+    name: "Tunnel vision when hurt",
+    hint: "When your creature is hit, the view closes in from the edges for a few seconds, harder hits closer. Off at first when this browser asks for reduced motion.",
+    scope: "client", config: true, type: Boolean,
+    default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
+    onChange: (on) => { if (on === false) lensBlood.linger(0); },
+  });
+  registerSetting("lensHeartbeat", {
+    name: "Heartbeat when hurt",
+    hint: "When your creature is hit, a few heavy heartbeats under the tunnel vision, harder hits louder and faster; while it stays at or under a quarter of its HP in combat, a quiet heartbeat that quickens the lower it gets. Played at the Hit sounds volume.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) { if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; } try { stopHeartbeat?.(); } catch { /* gone */ } stopHeartbeat = null; } },
+  });
+  registerSetting("lensWounded", {
+    name: "Wounded view on my screen",
+    hint: "With the damage lens on, your own creature's state stays on your screen: from half its HP the edges darken red, deeper as it falls (beating with the heartbeat at a quarter HP in combat, much fainter out of combat), each hit taken leaves a stain or two on the edges that stay until it is healed, and under a quarter HP in combat the music and ambience close in. At 0 HP, dying or unconscious, the view closes to a dim blurred window, the world goes nearly silent and a faint heartbeat goes on; waking up gasps back to the light. Damage lens amount Subtle halves it; Low animation quality keeps only the edges.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) { woundReset?.(); worldMuffle.restore(); lensBlood.clearWounds(); } else woundRefresh?.(); },
   });
   registerSetting("roomAcoustics", {
     name: "Room acoustics from walls",
@@ -3136,6 +3269,27 @@ Hooks.on("renderTokenConfig", (app, html) => {
   group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
   tab.append(group);
 });
+// Token configuration: this token's own blood colour (flags.animater.bloodColor: '' by creature type, 'none' no blood,
+// '#rrggbb'), used when Splatter is not deciding.
+Hooks.on("renderTokenConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.bloodColor"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  const doc = app.document ?? app.token ?? app.object, raw = String(doc?.flags?.[ID]?.bloodColor ?? "").trim().toLowerCase();
+  const mode = raw === "none" ? "none" : /^#[0-9a-f]{6}$/.test(raw) ? "color" : "";
+  let typeColor = "#7a0d0d";
+  try { if (doc) typeColor = `#${(tokenBlood({ actor: doc.actor, document: { name: doc.name, flags: {} } }).color >>> 0).toString(16).padStart(6, "0")}`; } catch { /* the default */ }
+  const group = document.createElement("div");
+  group.className = "form-group";
+  group.innerHTML = `<label>Animater blood colour</label><div class="form-fields"><select data-animater-blood-mode>${[["", "Use creature type"], ["none", "No blood"], ["color", "This colour"]].map(([v, l]) => `<option value="${v}"${v === mode ? " selected" : ""}>${l}</option>`).join("")}</select><input type="color" data-animater-blood-color value="${mode === "color" ? raw : typeColor}"${mode === "color" ? "" : " disabled"}><input type="hidden" name="flags.${ID}.bloodColor" value="${mode === "color" ? raw : mode}"></div><p class="hint">What this creature bleeds on the lens and the ground, over its creature type's colour (Animater settings, Blood colours). With Splatter active, Splatter's own blood colour decides instead.</p>`;
+  const select = group.querySelector("[data-animater-blood-mode]"), color = group.querySelector("[data-animater-blood-color]"), hidden = group.querySelector(`[name="flags.${ID}.bloodColor"]`);
+  const sync = () => { color.disabled = select.value !== "color"; hidden.value = select.value === "color" ? color.value : select.value; };
+  select.addEventListener("change", sync);
+  color.addEventListener("input", sync);
+  color.addEventListener("change", sync);
+  tab.append(group);
+});
 const movementConfigCleanup = new WeakMap(), movementConfigStops = new Set();
 Hooks.on("renderTokenConfig", (app, html) => {
   movementConfigCleanup.get(app)?.();
@@ -3284,7 +3438,7 @@ Hooks.once("ready", () => {
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
     strength: () => { try { return hotSetting("idleLifeStrength"); } catch { return 1; } },
-    kinds: () => ({ breathe: hotSetting("idleBreathing") !== false, hover: hotSetting("idleHover") !== false }),
+    kinds: () => ({ breathe: hotSetting("idleBreathing") !== false && hotSetting("idleBreathingLocal") !== false, hover: hotSetting("idleHover") !== false && hotSetting("idleHoverLocal") !== false }),
     enabled: () => hotSetting("idleLife") !== false && hotSetting("idleLifeLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.ready,
     tokens: () => canvas.tokens?.placeables ?? [],
     view: () => {
@@ -3936,6 +4090,360 @@ Hooks.once("ready", () => {
       else playDamageMoment(actor, token, dropped);
     }
   });
+  // Blood on the lens (engines/camera/lens-blood.mjs), decided on each player's screen from the damage it heard
+  // about (damageLog) and the HP it last saw: preUpdateActor's animaterHpBefore exists only on the updating screen,
+  // so the HP before each change is kept here, filled when the canvas is drawn and when tokens are made.
+  const lensHp = new Map();
+  const lensKeep = (actor) => { const s = actor?.uuid ? hpOf(actor) : null; if (s) lensHp.set(actor.uuid, s); };
+  const lensFill = () => { lensHp.clear(); for (const t of canvas.tokens?.placeables ?? []) lensKeep(t.actor); };
+  Hooks.on("canvasReady", lensFill);
+  if (canvas?.ready) lensFill();
+  Hooks.on("createToken", (doc) => lensKeep(doc.actor));
+  // Splatter's blood (its colour, and whether it bleeds at all) when it is active, else Animater's own rules.
+  const splatterActive = () => game.modules.get(SPLATTER_ID)?.active === true;
+  const splatterSettingOf = (key) => game.settings.get(SPLATTER_ID, key);
+  const lensBloodOf = (token) => tokenBlood(token);
+  const lensScreen = (p) => {
+    try { const s = canvas.clientCoordinatesFromCanvas?.(p) ?? canvas.stage.worldTransform.apply(p); return { x: s.x, y: s.y }; } catch { return null; }
+  };
+  const lensView = () => ({ width: window.innerWidth, height: window.innerHeight });
+  // This screen's look; the showcase may preview another amount or gore without saving it.
+  const lensLook = (variant = {}) => ({ amount: variant.amount ?? shakeSetting("lensBloodAmount", "heavy"), gore: variant.gore ?? shakeSetting("surfaceGore", "full"), quality: localQuality() });
+  const lensWorldOn = () => shakeSetting("lensBlood", true) !== false;
+  const lensLocalOn = () => shakeSetting("lensBloodLocal", true) !== false;
+  // The damage-type effects beside the blood (engines/camera/lens-effects.mjs), switched on their own.
+  const effectsWorldOn = () => shakeSetting("lensEffects", true) !== false;
+  const effectsLocalOn = () => shakeSetting("lensEffectsLocal", true) !== false;
+  const tunnelOn = () => shakeSetting("lensTunnel", true) !== false;
+  const heartbeatOn = () => shakeSetting("lensHeartbeat", true) !== false;
+  const beat = (plan) => {
+    const ctx = game.audio?.interface;
+    if (!ctx || !plan?.length) return;
+    if (ctx.state === "suspended") void Promise.resolve(ctx.resume?.()).catch(() => {});
+    try { stopHeartbeat?.(); } catch { /* gone */ }
+    stopHeartbeat = playHeartbeat(ctx, ctx.gainNode ?? ctx.destination, plan, { volume: Number(shakeSetting("surfaceVolume", 1)) });
+    heartbeatUntil = Date.now() + (plan.at(-1)?.at ?? 0) + 600;
+  };
+  // Paints a splash (tunnel vision only with its switch on) and plays a victim's heartbeat (its own switch, so it
+  // plays with the lens off on this screen too).
+  // A heartbeat only for a creature with a heart (engines/motion/blood-colors.mjs HEARTLESS: undead, constructs, oozes...).
+  const hasHeart = (token) => { try { return !token?.actor || creatureHasHeart(creatureBloodType({ system: game.system.id, actor: token.actor, name: token.name })); } catch { return true; } };
+  const lensShow = (splash, { args, color, seed, variant, heart = true }) => {
+    const look = lensLook(variant);
+    if (splash) lensBlood.splash(tunnelOn() ? splash : { ...splash, tunnel: 0 }, { seed, color });
+    // The hit's damage-type effects, by the same rule as the blood (the showcase past the world switch).
+    const fx = lensEffectHit({ ...args, worldOn: args.preview === true || effectsWorldOn(), localOn: effectsLocalOn(), types: args.effectTypes ?? [] });
+    if (fx) lensBlood.effects(fx, { seed });
+    if (args.role === "victim" && heart !== false && heartbeatWanted({ isGM: false, on: heartbeatOn(), ...look })) {
+      const hit = splash ?? lensSplashFor({ ...args, localOn: true });
+      if (hit?.tunnel > 0) beat(heartbeatPlan(hit.tunnel, { amount: hit.amount }));
+    }
+  };
+  // The lingering tunnel and heartbeat while the player's own creature (their character on this scene, else a
+  // controlled token they own) is at or under a quarter of its HP in combat. The showcase stands in a state.
+  let lingerPreview = null;
+  const lensMine = () => {
+    const onScene = (t) => t?.document?.parent?.id === canvas.scene?.id;
+    return game.user.character?.getActiveTokens?.().find(onScene) ?? canvas.tokens?.controlled?.find((t) => t.actor?.isOwner) ?? null;
+  };
+  const lingerNow = () => {
+    if (lingerPreview) return { state: lingerPreview.state, inCombat: true, shown: true, heart: lingerPreview.heart !== false, look: lensLook(lingerPreview.variant) };
+    if (game.user.isGM || !canvas?.ready) return null;
+    const token = lensMine(), actor = token?.actor, raw = actor ? hpOf(actor) : null;
+    const state = raw ? { ...raw, unconscious: ["unconscious", "dead", "dying"].some((s) => actor.statuses?.has?.(s)) } : null;
+    return { state, inCombat: game.combat?.started === true, shown: Boolean(token) && !token.document.hidden, heart: hasHeart(token), look: lensLook() };
+  };
+  const lingerBeat = (now) => (now && now.heart !== false && lensWorldOn()
+    ? heartbeatLinger(now.state, { isGM: false, on: heartbeatOn(), inCombat: now.inCombat, ...now.look, amount: lensAmount(now.look) ?? "subtle" }) : null);
+  // The wounded view (engines/camera/lens-wounds.mjs) of the same creature: red edges from half its HP, stains that
+  // stay, the world muffled; down (0 HP, dying, unconscious) the dark window, a faint uneven heartbeat, waking and death.
+  // Its own switch under the Damage lens world switch; the showcase stands in a state (woundPreview).
+  const woundOn = () => shakeSetting("lensWounded", true) !== false;
+  let woundPreview = null, woundPhase = null, woundActor = null, woundStains = [], woundSteps = [], woundUntil = 0, woundPulse = 0, lastBeat = null;
+  // What the system says of the creature: its HP, statuses (PF2e's conditions too), dying value, death saves.
+  const lifeFacts = (actor) => {
+    const statuses = new Set(actor?.statuses ?? []);
+    for (const c of actor?.itemTypes?.condition ?? []) if (c?.slug) statuses.add(c.slug);
+    const attr = actor?.system?.attributes ?? {}, dyingItem = (actor?.itemTypes?.condition ?? []).find((c) => c?.slug === "dying");
+    return { systemId: game.system.id, hp: hpOf(actor), statuses: [...statuses],
+      dying: { value: Number(attr.dying?.value ?? dyingItem?.value ?? 0) || 0, max: Number(attr.dying?.max) || 4 },
+      death: { success: Number(attr.death?.success) || 0, failure: Number(attr.death?.failure) || 0 } };
+  };
+  const woundNow = () => {
+    if (woundPreview) return { ...woundPreview, shown: true, look: lensLook(woundPreview.variant), key: "preview", preview: true };
+    if (game.user.isGM || !canvas?.ready) return null;
+    const token = lensMine(), actor = token?.actor;
+    if (!actor) return null;
+    const blood = lensBloodOf(token);
+    return { life: lifeOf(lifeFacts(actor)), inCombat: game.combat?.started === true, shown: !token.document.hidden, heart: hasHeart(token),
+      color: blood.color, bleeds: blood.bleeds, look: lensLook(), key: actor.uuid };
+  };
+  const woundGate = (now) => ({ isGM: false, worldOn: now?.preview === true || lensWorldOn(), localOn: lensLocalOn(), on: woundOn() });
+  const woundClearSteps = () => { for (const h of woundSteps) clearTimeout(h); woundSteps = []; woundUntil = 0; };
+  woundReset = () => { woundClearSteps(); woundPhase = null; woundActor = null; woundStains = []; woundPulse = 0; };
+  // The steps of a death or a waking (transitionSteps): the look eased, a flash, the muffle held or let go.
+  const woundPlay = (steps, now, quality) => {
+    woundClearSteps();
+    const last = steps.at(-1);
+    woundUntil = Date.now() + last.at + last.ms;
+    for (const step of steps) woundSteps.push(setTimeout(() => {
+      lensBlood.wound(step.look, { ms: step.ms });
+      if (step.flash) lensBlood.flash(step.flash.peak, step.flash.ms);
+      if (step.muffle === "hold" && qualityRank(quality) > 1) worldMuffle.set(muffleFor({ phase: "dead", weak: 1 }, { amount: lensAmount(now.look) ?? "subtle" }), { ms: step.ms });
+      if (step.muffle === "release") worldMuffle.release({ ms: WAKE.releaseMs });
+    }, step.at));
+    // Settled again once it has played.
+    woundSteps.push(setTimeout(() => { woundUntil = 0; try { lensWound(); } catch { /* next change */ } }, last.at + last.ms + 50));
+  };
+  const lensWound = () => {
+    const now = woundNow(), amount = now ? lensAmount(now.look) : null, quality = now?.look.quality ?? localQuality();
+    // Another creature (picked up, a new scene): nothing carried over from the last one.
+    if ((now?.key ?? null) !== woundActor) { woundClearSteps(); woundActor = now?.key ?? null; woundPhase = null; woundStains = []; }
+    const view = woundedView(now ? { ...now, ...woundGate(now) } : null, { amount, quality });
+    const wanted = Boolean(now && amount && now.shown && woundedWanted({ ...woundGate(now), quality }));
+    const phase = wanted ? now.life?.phase ?? null : null, prev = woundPhase;
+    woundPhase = phase;
+    woundPulse = view.pulse;
+    // Stains stay while HP stays low (down counts as none left); healed past their threshold they fade.
+    const left = !view.stains || !now?.bleeds ? null : isDown(now.life) ? 0 : now.life.left;
+    woundStains = settleStains(woundStains, { left, now: performance.now(), amount: amount ?? "heavy" });
+    lensBlood.stains(woundStains);
+    const steps = wanted ? transitionSteps(prev, phase, { look: view.look, quality }) : null;
+    if (steps) {
+      // Death: the heartbeat lets go, a few fainter beats and none.
+      if (phase === "dead" && now.heart !== false && heartbeatWanted({ isGM: false, on: heartbeatOn(), ...now.look })) {
+        if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; }
+        beat(heartbeatDeath(lastBeat));
+      }
+      woundPlay(steps, now, quality);
+      return;
+    }
+    if (Date.now() < woundUntil) return;
+    lensBlood.wound(view.look, { ms: 900 });
+    if (view.muffle) worldMuffle.set(view.muffle, { ms: 1400 }); else worldMuffle.release();
+  };
+  // A hit taken while hurt leaves a stain or two on the lens edges, in the creature's own blood.
+  const woundHit = (splash) => {
+    const now = woundNow(), amount = now ? lensAmount(now.look) : null;
+    if (!now?.bleeds || !now.life) return;
+    const view = woundedView({ ...now, ...woundGate(now) }, { amount, quality: now.look.quality });
+    if (!view.stains) return;
+    woundStains = stainsAfterHit(woundStains, { left: isDown(now.life) ? 0 : now.life.left, seed: `wound:${Date.now()}:${woundStains.length}`, now: performance.now(),
+      ...lensBlood.view(), edge: splash?.edge ?? null, color: now.color, amount });
+    lensBlood.stains(woundStains);
+  };
+  // The heartbeat while down (dying slower and fainter, uneven), on the same loop as the lingering one.
+  const woundBeat = () => {
+    const now = woundNow();
+    if (!now || !isDown(now.life) || woundPhase === null || !heartbeatWanted({ isGM: false, on: heartbeatOn(), ...now.look })) return null;
+    return heartbeatDown(now.life, { heart: now.heart, amount: lensAmount(now.look) ?? "subtle" });
+  };
+  const lingerTick = () => {
+    lingerTimer = null;
+    const down = woundBeat(), plan = down ?? lingerBeat(lingerNow());
+    if (!plan) return void lensLinger();
+    // A hit's own heartbeat still playing: the lingering one waits for it.
+    if (Date.now() >= heartbeatUntil) {
+      lastBeat = { gain: plan.gain };
+      beat([{ at: 0, gain: plan.gain, dubAt: plan.dubAt ?? 280, dubGain: plan.dubGain ?? Math.round(plan.gain * 600) / 1000 }]);
+      // The red edges beat with it.
+      if (!down && woundPulse > 0) lensBlood.pulse(woundPulse);
+    }
+    lingerTimer = setTimeout(lingerTick, down ? nextBeatMs(down) : plan.intervalMs);
+  };
+  const lensLinger = () => {
+    const now = lingerNow(), amount = now ? lensAmount(now.look) : null;
+    const tunnel = now && amount && lensWorldOn() && lensLocalOn() && tunnelOn() && now.inCombat && now.shown && !now.state?.unconscious;
+    lensBlood.linger(tunnel ? lingerLevel(now.state, amount) : 0);
+    const plan = woundBeat() ?? lingerBeat(now);
+    if (!plan) { if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; } return; }
+    if (!lingerTimer) lingerTimer = setTimeout(lingerTick, plan.intervalMs);
+  };
+  const lensRefresh = () => { try { lensWound(); } catch (error) { runtime.trace("Blocked", `Wounded view: ${error.message}`); } try { lensLinger(); } catch { /* next change */ } };
+  woundRefresh = lensRefresh;
+  for (const hook of ["combatStart", "updateCombat", "deleteCombat", "controlToken", "canvasReady"]) Hooks.on(hook, lensRefresh);
+  // Conditions and statuses (dying, unconscious, stable, dead) come as effects, or items in PF2e: a change to the
+  // player's own creature refreshes the view (once, a moment later, for a batch of them).
+  let woundSoon = null;
+  const woundChanged = (doc) => {
+    if (game.user.isGM) return;
+    const actor = doc?.parent?.documentName === "Actor" ? doc.parent : doc?.actor ?? null;
+    if (!actor?.isOwner) return;
+    clearTimeout(woundSoon);
+    woundSoon = setTimeout(lensRefresh, 60);
+  };
+  for (const hook of ["createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "updateItem", "deleteItem"]) Hooks.on(hook, woundChanged);
+  const lensBloodFor = (actor, before) => {
+    if (game.user.isGM || !canvas?.ready || (!lensWorldOn() && !effectsWorldOn())) return;
+    const after = hpOf(actor);
+    if (!hpChange(before, after)) return;
+    const tokens = (actor.getActiveTokens?.() ?? []).filter((t) => t.document?.parent?.id === canvas.scene?.id);
+    const since = Date.now() - 15000, log = damageLog.filter((d) => d.at >= since), look = lensLook(), level = canvas.level?.id ?? undefined;
+    for (const token of tokens) {
+      const ids = { actorId: actor.id, tokenId: token.id };
+      const damage = recallDamage(log, ids), by = recallAttribution(log, ids);
+      const attacker = by?.sourceTokenId && by.sourceTokenId !== token.id ? canvas.tokens.get(by.sourceTokenId) ?? null : null;
+      // The player owns the creature hit (victim) or the creature that hit it (attacker); anyone else sees nothing.
+      const role = actor.isOwner ? "victim" : attacker?.actor?.isOwner ? "attacker" : null;
+      if (!role) continue;
+      const blood = lensBloodOf(token), crit = damage?.crit === true || by?.crit === true;
+      const args = { isGM: false, worldOn: lensWorldOn(), localOn: lensLocalOn(), ...look, role, before, after,
+        crit, bleeds: blood.bleeds,
+        // Its damage type shapes the splats and shifts the blood (engines/camera/lens-blood.mjs DAMAGE_WOUNDS), and
+        // its energy types play their own effects (lens-effects.mjs; Daggerheart's magic as the arcane shimmer).
+        damageType: woundOf(damage ?? by ?? {}), effectTypes: lensEffectTypes({ ...(damage ?? by ?? {}), crit }),
+        visible: movementPerception(token, token.document, level).visible === true, hidden: token.document.hidden === true,
+        screen: lensScreen(token.center), attackerScreen: attacker ? lensScreen(attacker.center) : null, view: lensView() };
+      const splash = lensSplashFor(args);
+      lensShow(splash, { args, color: blood.color, seed: `${token.id}:${Date.now()}`, heart: hasHeart(token) });
+      // The player's own creature hurt: a stain or two that stay (the wounded view).
+      if (role === "victim" && splash && lensMine()?.actor === actor) woundHit(splash);
+      return;
+    }
+  };
+  Hooks.on("updateActor", (actor, changes, options) => {
+    const before = (actor?.uuid && lensHp.get(actor.uuid)) ?? options?.animaterHpBefore ?? null;
+    lensKeep(actor);
+    if (game.user.isGM) return;
+    try { lensBloodFor(actor, before); } catch (error) { runtime.trace("Blocked", `Lens blood: ${error.message}`); }
+    lensRefresh();
+  });
+  // Damage immersion showcase (ui/damage-showcase-ui.mjs): the same decisions and drawing on the GM's own screen,
+  // past the players-only rule, with the GM's own switches for the lens, tunnel and heartbeat.
+  const colorNumber = (c) => (typeof c === "number" ? c : parseInt(String(c ?? "").replace(/^#/, "").slice(0, 6), 16) || bloodColor());
+  const colorText = (n) => `#${(Number(n) >>> 0).toString(16).padStart(6, "0")}`;
+  const previewArgs = (role, hit, variant, extra) => {
+    const max = Math.max(1, Number(hit.max) || 100), lost = Math.max(0, Number(hit.lost) || 0);
+    return { isGM: false, worldOn: true, localOn: lensLocalOn(), ...lensLook(variant), role, crit: hit.crit === true, bleeds: hit.bleeds !== false,
+      before: { value: max, max, down: false, marked: false }, after: { value: max - lost, max, down: max - lost <= 0, marked: false },
+      visible: true, hidden: false, view: lensView(), preview: true,
+      // The picked damage type's lens effects ('arcane': Daggerheart's magic).
+      effectTypes: lensEffectTypes({ type: extra?.damageType ?? null, crit: hit.crit === true }), ...extra };
+  };
+  const edgePoint = (side, view) => ({ left: { x: view.width * 0.12, y: view.height * 0.5 }, right: { x: view.width * 0.88, y: view.height * 0.45 },
+    top: { x: view.width * 0.5, y: view.height * 0.1 }, bottom: { x: view.width * 0.55, y: view.height * 0.9 } }[side] ?? { x: view.width * 0.2, y: view.height * 0.5 });
+  lensPreview = {
+    snapshot: () => {
+      const tokens = (canvas?.ready ? canvas.tokens?.placeables ?? [] : []).filter((t) => t.actor).map((t) => {
+        const b = lensBloodOf(t);
+        const hp = hpOf(t.actor), pc = t.actor.hasPlayerOwner === true || t.actor.type === "character";
+        return { id: t.id, name: t.name, img: t.document?.texture?.src, color: colorText(b.color), bleeds: b.bleeds, pc,
+          hp: hp ? { value: hp.value, max: hp.max } : null, heart: hasHeart(t), selected: t.controlled === true, targeted: t.isTargeted === true };
+      });
+      let presets = {};
+      try {
+        if (splatterActive()) for (const [type, c] of Object.entries(splatterSettingOf("BloodSheetData") ?? {})) presets[type] = String(c).slice(0, 7);
+      } catch { presets = {}; }
+      // Without Splatter: the GM's Blood colours table, by type with its current colours.
+      if (!splatterActive()) {
+        const table = bloodTable();
+        for (const { key, label } of BLOOD_TYPES) presets[key] = { ...tableBlood(key, table), label };
+      }
+      tokens.sort((x, y) => (y.pc - x.pc) || x.name.localeCompare(y.name));
+      return { scene: canvas?.scene?.name ?? "", tokens, presets, systemId: game.system.id,
+        // The down states this system has, by its own names (PF2e Dying N, D&D 5e death saves, Daggerheart's death move).
+        downStates: downPreviews(game.system.id).map(({ id, label }) => ({ id, label })),
+        settings: { amount: shakeSetting("lensBloodAmount", "heavy"), gore: shakeSetting("surfaceGore", "full"), heartbeat: heartbeatOn(), tunnel: tunnelOn(), local: lensLocalOn(), effects: effectsLocalOn(), effectsWorld: effectsWorldOn(), wounded: woundOn() } };
+    },
+    hit: ({ share = 0.15, crit = false, color, bleeds = true, amount = null, gore = null, damageType = null } = {}) => {
+      const variant = { amount, gore }, view = lensView();
+      const args = previewArgs("victim", { lost: share * 100, max: 100, crit, bleeds }, variant,
+        { screen: { x: view.width / 2, y: view.height / 2 }, attackerScreen: edgePoint(["left", "right", "top"][Math.floor(Math.random() * 3)], view), damageType });
+      lensBlood.clear();
+      lensShow(lensSplashFor(args), { args, color: colorNumber(color), seed: `preview:${Date.now()}`, variant });
+    },
+    deal: ({ damage = 8, max = 40, crit = false, color, bleeds = true, side = "left", amount = null, gore = null, damageType = null } = {}) => {
+      const variant = { amount, gore }, view = lensView();
+      const args = previewArgs("attacker", { lost: damage, max, crit, bleeds }, variant, { screen: edgePoint(side, view), attackerScreen: { x: view.width / 2, y: view.height / 2 }, damageType });
+      lensBlood.clear();
+      lensShow(lensSplashFor(args), { args, color: colorNumber(color), seed: `preview:${Date.now()}`, variant });
+    },
+    // Two real tokens on this scene: "mine" (the player whose screen this is) and "other". Selects mine, targets
+    // other, centres the view on mine, then plays the hit either way with their own blood, HP and screen positions.
+    duel: async ({ mineId, otherId, role = "victim", share = 0.15, crit = false, amount = null, gore = null, damageType = null } = {}) => {
+      const mine = canvas.tokens?.get(mineId), other = canvas.tokens?.get(otherId);
+      if (!mine || !other || mine === other) return false;
+      mine.control({ releaseOthers: true });
+      try { other.setTarget(true, { releaseOthers: true }); } catch { /* targeting is only a cue */ }
+      try { await canvas.animatePan({ x: mine.center.x, y: mine.center.y, duration: 350 }); } catch { /* stays put */ }
+      const victim = role === "victim" ? mine : other, attacker = role === "victim" ? other : mine;
+      const blood = lensBloodOf(victim), hp = hpOf(victim.actor), max = Math.max(1, Number(hp?.max) || 100);
+      const variant = { amount, gore };
+      const args = previewArgs(role, { lost: Math.max(1, Math.round(share * max)), max, crit, bleeds: blood.bleeds }, variant,
+        { screen: lensScreen(victim.center), attackerScreen: lensScreen(attacker.center), damageType });
+      lensBlood.clear();
+      lensShow(lensSplashFor(args), { args, color: colorNumber(blood.color), seed: `preview:${Date.now()}`, variant, heart: hasHeart(mine) });
+      return true;
+    },
+    linger: ({ hp = 0.15, amount = null, gore = null, heart = true } = {}) => {
+      lingerPreview = { state: { value: Math.round(100 * hp), max: 100, down: false, marked: false }, variant: { amount, gore }, heart };
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; }
+      lensLinger();
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; lingerTick(); }
+    },
+    // The wounded view at an HP share (0..1), in combat or not, as the picked creature (mineId: its blood and heart):
+    // its edges, a few hits' worth of lasting stains, the muffle, and at a quarter or under in combat the lingering
+    // heartbeat and tunnel. 0 HP is down (unconscious).
+    wounded: ({ hp = 0.3, inCombat = true, mineId = null, amount = null, gore = null } = {}) => {
+      const token = mineId ? canvas.tokens?.get(mineId) ?? null : null, blood = token ? lensBloodOf(token) : { color: bloodColor(), bleeds: true };
+      const left = Math.min(1, Math.max(0, Number(hp) || 0)), variant = { amount, gore }, heart = token ? hasHeart(token) : true;
+      const life = left <= 0 ? lifeOf({ systemId: "", hp: { value: 0, max: 100, down: true, marked: false }, statuses: ["unconscious"] }) : { phase: "up", weak: 0, left };
+      const was = woundPreview;
+      woundPreview = { life, inCombat: inCombat !== false, heart, color: blood.color, bleeds: blood.bleeds, variant };
+      // A new preview (or another creature) starts clean; then hits until the stains this HP keeps are there.
+      if (!was || was.color !== blood.color) { woundStains = []; woundActor = "preview"; }
+      lensWound();
+      const look = lensLook(variant), amt = lensAmount(look) ?? "subtle", cap = stainCap(isDown(life) ? 0 : left, { amount: amt });
+      const keeping = () => woundStains.filter((s) => s.fadeAt == null).length;
+      for (let i = 0; blood.bleeds && woundedView({ ...woundPreview, shown: true, ...woundGate({ preview: true }) }, { amount: amt, quality: look.quality }).stains && keeping() < Math.min(cap, 6) && i < 6; i++)
+        woundHit({ edge: ["left", "right", "top", "bottom"][i % 4] });
+      lingerPreview = inCombat !== false && left > 0 && left <= LENS_BLOOD.lowHp ? { state: { value: Math.round(100 * left), max: 100, down: false, marked: false }, variant, heart } : null;
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; }
+      lensLinger();
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; lingerTick(); }
+    },
+    // A down state by its showcase id (lens-wounds.mjs downPreviews: dying1-3, unconscious, stable, dead), as the picked
+    // creature; Dead plays the death from whatever came before (dying, when nothing did).
+    down: ({ state = "dying1", mineId = null, amount = null, gore = null } = {}) => {
+      const entry = downPreviews(game.system.id).find((e) => e.id === state);
+      if (!entry) return false;
+      const token = mineId ? canvas.tokens?.get(mineId) ?? null : null, blood = token ? lensBloodOf(token) : { color: bloodColor(), bleeds: true };
+      const life = lifeOf(entry.facts), variant = { amount, gore };
+      if (!woundPreview) { woundStains = []; woundActor = "preview"; }
+      if (life.phase === "dead" && !isDown(woundPreview?.life)) woundPhase = "dying";
+      woundPreview = { life, inCombat: true, heart: token ? hasHeart(token) : true, color: blood.color, bleeds: blood.bleeds, variant };
+      lingerPreview = null;
+      lensWound();
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; }
+      lensLinger();
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; lingerTick(); }
+      return true;
+    },
+    // Waking up from a down state (from dying, when not down): the gasp back to the light, at a tenth of its HP.
+    wake: ({ mineId = null, amount = null, gore = null } = {}) => {
+      if (!isDown(woundPreview?.life) || woundPreview.life.phase === "dead") {
+        lensPreview.down({ state: "dying1", mineId, amount, gore });
+        lensBlood.wound(downLook(woundPreview?.life, lensLook({ amount, gore })), { ms: 0 });
+      }
+      const p = woundPreview;
+      if (!p) return false;
+      woundPreview = { ...p, life: { phase: "up", weak: 0, left: 0.1 } };
+      lingerPreview = { state: { value: 10, max: 100, down: false, marked: false }, variant: p.variant, heart: p.heart };
+      lensWound();
+      if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; }
+      lingerTimer = setTimeout(lingerTick, WAKE.liftMs + 400);
+      return true;
+    },
+    // Still on screen or in the ears: a splash, a tunnel pulse, a heartbeat, the low-HP loop or a wounded state.
+    busy: () => Boolean(lingerPreview) || Boolean(woundPreview) || Date.now() < woundUntil || lensBlood.alive > 0 || Date.now() < heartbeatUntil,
+    stop: () => {
+      if (!lingerPreview && !woundPreview && !lensBlood.alive && !worldMuffle.wired) return;
+      lingerPreview = null;
+      woundPreview = null;
+      stopLensBlood();
+      lensRefresh();
+    },
+  };
   if (["pf2e","sf2e"].includes(game.system.id)) {
     Hooks.on("createChatMessage", (message) => {
       // Actions such as Shove roll a skill check; dispatch plays the action, finishers ride the check.

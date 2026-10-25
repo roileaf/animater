@@ -74,8 +74,9 @@ export async function run({ target: targetRef, distances = [2, 4, 6, 8, 12], wal
 
   const grid = canvas.grid.size, distanceUnit = canvas.dimensions.distance || 5;
   const squares = (target.document.width ?? 1);
-  // Steps carry 6 squares (9 for Huge and bigger), as the footstep player sets them.
-  const reach = squares >= 3 ? 9 : 6;
+  // Steps carry the "Footstep hearing range" (Normal 6 squares), half as far again for Huge and bigger.
+  const range = game.settings.get('animater', 'footstepRange') ?? 'normal';
+  const reach = ({ close: 3, normal: 6, far: 10, veryFar: 15 }[range] ?? 6) * (squares >= 3 ? 1.5 : 1);
   const visioner = game.modules.get('pf2e-visioner')?.active ? game.modules.get('pf2e-visioner').api : null;
   const state = visioner?.getVisibility?.(observer.document.id, target.document.id) ?? null;
   const conditions = [...Array.from(target.actor?.statuses ?? []), ...(target.actor?.itemTypes?.condition?.map((c) => c.slug) ?? [])];

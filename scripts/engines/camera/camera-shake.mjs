@@ -48,7 +48,8 @@ export function shakeProfile(tag, { view, gridPx, strength = 1, seed = 0 } = {})
   return {
     amplitude,
     startMs: finite(tag.startMs) && tag.startMs > 0 ? tag.startMs : 0,
-    durationMs: MIN_MS + (MAX_MS - MIN_MS) * size,
+    // A stronger setting also shakes longer: 2x lasts 1.4 times as long, 4x 2.2 times.
+    durationMs: (MIN_MS + (MAX_MS - MIN_MS) * size) * (strength > 1 ? 1 + 0.4 * (strength - 1) : 1),
     seed,
   };
 }
@@ -179,7 +180,7 @@ export function createCameraShake({ getPosition, setPosition, view, gridPx, now,
           x += o.x; y += o.y;
         }
         if (!shakes.size) return restore();
-        const cap = STACK * MAX_SHAKE_PX;
+        const cap = STACK * MAX_SHAKE_PX * Math.max(1, Number(strength()) || 1);
         x = clamp(x, -cap, cap); y = clamp(y, -cap, cap);
         const pos = getPosition();
         // The offset written last frame comes off first, unless something else has set the position since.
