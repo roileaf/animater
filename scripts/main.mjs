@@ -36,7 +36,7 @@ import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dual
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
-import { TA_ID, TA_FILL_GAPS, taAnimates } from "./integrations/trigger-animations.mjs";
+import { TA_ID, TA_FILL_GAPS, TA_TAKEOVER, taAnimates, registerTATakeover } from "./integrations/trigger-animations.mjs";
 import { SPLATTER_ID, SPLATTER_SYNC, splatterReady, splatterOn, splatScale, tokenSize } from "./integrations/splatter.mjs";
 import { MOTION_PRIORITY, guardSequencerMotions } from "./integrations/sequencer-motions.mjs";
 import { registerSequencerSpeedups, sequencerSpeedupsApi, turboState } from "./integrations/sequencer-turbo/index.mjs";
@@ -45,7 +45,7 @@ import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
 import { createCameraShake, canShake } from "./engines/camera/camera-shake.mjs";
 import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
-import { lensSplashFor, lingerLevel, lensAmount, woundOf, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
+import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
 import { lifeOf, isDown, woundedView, woundedWanted, muffleFor, heartbeatDown, nextBeatMs, heartbeatDeath, transitionSteps, stainsAfterHit, settleStains, stainCap, downLook, downPreviews, WAKE } from "./engines/camera/lens-wounds.mjs";
@@ -767,6 +767,10 @@ const movementFeel = createMovementFeel({
     if (mix.silent || token.gait === 'none' || (token.preview && !token.preview.active)) return;
     let level = 1;
     try { level = Number(hotSetting("surfaceVolume") ?? 1); } catch { /* not registered yet */ }
+    // "Footstep sounds" (the GM's, past it in the creature showcase) and this screen's own: off keeps the step's
+    // timing and tremor, silent.
+    const soundOn = (key) => { try { return hotSetting(key) !== false; } catch { return true; } };
+    if (!((token.preview || soundOn("footstepSounds")) && soundOn("footstepSoundsLocal"))) level = 0;
     if (!(level > 0) && !(mix.tremor > 0)) return;
     const seed = token.id ?? "";
     // How heavy the creature is: its size category (else its token width) and whether its body is heavy.
@@ -1537,7 +1541,7 @@ function environment() {
     pack,
     system,
     conflicts: ["autoanimations", "trigger-animations"]
-      .filter((id) => game.modules.get(id)?.active && !(id === AA_ID && (aaTakeover() || aaFillGaps())) && !(id === TA_ID && taFillGaps()))
+      .filter((id) => game.modules.get(id)?.active && !(id === AA_ID && (aaTakeover() || aaFillGaps())) && !(id === TA_ID && (taTakeover() || taFillGaps())))
       .map((id) => game.modules.get(id).title),
     problem: !seq?.active
       ? "Turn on Sequencer in Manage Modules, then reload the world (F5)."
@@ -2635,6 +2639,15 @@ Hooks.once("init", () => {
     type: Boolean,
     default: false,
   });
+  registerSetting(TA_TAKEOVER, {
+    name: "Take over from Trigger Animations when Animater has an animation",
+    hint: "Trigger Animations skips attacks, actions, areas, effects and conditions Animater animates, its wildcard triggers and Trove's included. A trigger made for that very item (naming its UUID) stays with it. If “Only animate what Trigger Animations doesn't” is also on, that one wins.",
+    scope: "world",
+    // Listed only where Trigger Animations is active.
+    config: Boolean(game.modules.get(TA_ID)?.active),
+    type: Boolean,
+    default: false,
+  });
   registerSetting(TA_FILL_GAPS, {
     name: "Only animate what Trigger Animations doesn't",
     hint: "Items a Trigger Animations trigger names (attack:longsword, template:fireball, condition:frightened, or the item's UUID) stay with it; Animater animates the rest. Wildcard triggers such as damage:* don't count.",
@@ -2810,6 +2823,16 @@ Hooks.once("init", () => {
     scope: "world", config: true, type: Boolean, default: true,
     // Off: every token comes straight back as Foundry draws it. On: tokens already under go down at once.
     onChange: () => clearBurrowSink(),
+  });
+  registerSetting("footstepSounds", {
+    name: "Footstep sounds",
+    hint: "Moving tokens make their sounds: footsteps by floor and feet, wing beats, a burrower's churn, a swimmer's stroke, the thud of a landing. Off: tokens move silently; the view still shakes under giant footfalls (Giant footfalls shake the view).",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("footstepSoundsLocal", {
+    name: "Footstep sounds on my screen",
+    hint: "Turn off to hear no footsteps, wing beats or other movement sounds on this device. Other players keep theirs.",
+    scope: "client", config: true, type: Boolean, default: true,
   });
   registerSetting("footstepAcoustics", {
     name: "Footsteps ring in the room",
@@ -2988,6 +3011,16 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean,
     default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
     onChange: (on) => { if (on === false) lensBlood.clearEffects(); },
+  });
+  registerSetting("lensWho", {
+    name: "Damage lens shows",
+    hint: "Which of a player's blows reach their screen: hits their creature takes and hits it deals, only hits it takes, or only hits it deals. Covers the blood, tunnel vision, the heartbeat on a hit and the damage type effects. The wounded view of a hurt creature stays with its own switch.",
+    scope: "world", config: true, type: String, choices: { both: "Hits taken and dealt", hurt: "Only hits taken", dealt: "Only hits dealt" }, default: "both",
+  });
+  registerSetting("lensWhoLocal", {
+    name: "Damage lens shows on my screen",
+    hint: "Your own choice of which blows reach this screen: hits your creature takes, hits it deals, or both. As the GM set uses the GM's Damage lens shows.",
+    scope: "client", config: true, type: String, choices: { "": "As the GM set", both: "Hits taken and dealt", hurt: "Only hits taken", dealt: "Only hits dealt" }, default: "",
   });
   registerSetting("lensBloodAmount", {
     name: "Damage lens amount",
@@ -3202,6 +3235,7 @@ const yieldsToAA = event => Boolean(aaYield(event));
 const aaFillGaps = () => Boolean(game.modules.get(AA_ID)?.active && hotSetting(AA_FILL_GAPS));
 const taFillGaps = () => Boolean(game.modules.get(TA_ID)?.active && hotSetting(TA_FILL_GAPS));
 const aaTakeover = () => Boolean(game.modules.get(AA_ID)?.active && hotSetting(AA_TAKEOVER));
+const taTakeover = () => Boolean(game.modules.get(TA_ID)?.active && hotSetting(TA_TAKEOVER));
 function eventFrom(input) {
   if (input?.documentName === "ChatMessage") {
     if (["pf2e", "sf2e"].includes(game.system.id)) {
@@ -3904,6 +3938,13 @@ Hooks.once("ready", () => {
     resolve: (event) => resolveEvent(event) ?? (event.type === "effect" && persistentStates?.covers(event.item) ? true : null),
     context: () => ({ systemId: game.system.id, userId: game.user.id, twoe: ["pf2e", "sf2e"].includes(game.system.id) ? twoeEvent : null }),
   });
+  // The same in front of Trigger Animations, once its API is up (now, or when it says it is ready).
+  const taTakeoverOptions = {
+    enabled: () => acceptsEvents() && taTakeover() && !taFillGaps(),
+    resolve: (event) => resolveEvent(event) ?? (event.type === "effect" && persistentStates?.covers(event.item) ? true : null),
+    systemId: () => game.system.id,
+  };
+  if (game.modules.get(TA_ID)?.active && !registerTATakeover(taTakeoverOptions)) Hooks.once("triggerAnimations.ready", () => registerTATakeover(taTakeoverOptions));
   registerSpellArsenal();
   // Combat flash screens: the active GM plays one to everyone when combat starts or ends.
   flash = flashScreens({
@@ -4307,7 +4348,8 @@ Hooks.once("ready", () => {
       const attacker = by?.sourceTokenId && by.sourceTokenId !== token.id ? canvas.tokens.get(by.sourceTokenId) ?? null : null;
       // The player owns the creature hit (victim) or the creature that hit it (attacker); anyone else sees nothing.
       const role = actor.isOwner ? "victim" : attacker?.actor?.isOwner ? "attacker" : null;
-      if (!role) continue;
+      // "Damage lens shows": only the hits taken, only those dealt, or both.
+      if (!lensRoleWanted(role, lensWho(shakeSetting("lensWho", "both"), shakeSetting("lensWhoLocal", "")))) continue;
       const blood = lensBloodOf(token), crit = damage?.crit === true || by?.crit === true;
       const args = { isGM: false, worldOn: lensWorldOn(), localOn: lensLocalOn(), ...look, role, before, after,
         crit, bleeds: blood.bleeds,

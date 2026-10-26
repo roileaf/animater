@@ -54,6 +54,7 @@ export const SETTINGS_TABS = Object.freeze([
   { id: "sound", label: "Sound", icon: "fa-solid fa-volume-high", rows: [
     { world: "roomAcoustics", local: "roomReverbLocal" },
     { local: "muffleWalls" },
+    { world: "footstepSounds", local: "footstepSoundsLocal" },
     { world: "footstepAcoustics" },
     { world: "footstepRange" },
     { world: "creatureIdleSounds" },
@@ -63,6 +64,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "momentum" },
     { world: "lensBlood", local: "lensBloodLocal", extras: ["lensBloodAmount", "lensTunnel", "lensHeartbeat", "lensWounded"] },
     { world: "lensEffects", local: "lensEffectsLocal" },
+    { world: "lensWho", local: "lensWhoLocal" },
     { world: "lensDuration", local: "lensDurationLocal" },
     { menu: "bloodColorsMenu" },
     { local: "flashTrackerMenus", gmOnly: true },
@@ -89,6 +91,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "splatterSync", when: MODULE("splatter") },
     { world: "aaTakeover", when: MODULE("autoanimations") },
     { world: "aaFillGaps", when: MODULE("autoanimations") },
+    { world: "taTakeover", when: MODULE("trigger-animations") },
     { world: "taFillGaps", when: MODULE("trigger-animations") },
   ] },
 ]);

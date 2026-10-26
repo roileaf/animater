@@ -62,3 +62,11 @@ test('the showcase offers every effect type (Daggerheart\'s arcane too) and says
   ui.w.host.damageShowcase = () => ({ tokens: [], presets: {}, settings: { effectsWorld: false } });
   assert.match(ui.html(), /damage type effects on \(off for players\)/);
 });
+
+test('Damage lens shows: a world choice and an on-my-screen one, gating the live hit before blood and effects', () => {
+  assert.match(registration('lensWho'), /scope: "world", config: true, type: String, choices: \{ both: [^}]+, hurt: [^}]+, dealt: [^}]+ \}, default: "both"/);
+  assert.match(registration('lensWhoLocal'), /scope: "client", config: true, type: String, choices: \{ "": "As the GM set", [^}]+ \}, default: ""/);
+  assert.match(main, /if \(!lensRoleWanted\(role, lensWho\(shakeSetting\("lensWho", "both"\), shakeSetting\("lensWhoLocal", ""\)\)\)\) continue;\s*const blood = lensBloodOf\(token\)/);
+  const drama = SETTINGS_TABS.find((t) => t.id === 'drama');
+  assert.ok(drama.rows.some((r) => r.world === 'lensWho' && r.local === 'lensWhoLocal'));
+});

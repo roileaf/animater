@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.7 (2026-10-26)
+
+- **Damage lens shows.** A new choice in Combat drama: the damage lens and damage type effects for hits a player's creature takes and deals, only the hits it takes, or only the hits it deals. The GM sets it for the world; each player can pick their own with **Damage lens shows on my screen**.
+- **Footstep sounds switch.** **Footstep sounds** (Sound tab) turns off footsteps, wing beats and other movement sounds for everyone, and **Footstep sounds on my screen** for one player. Giant footfalls still shake the view.
+- **Take over from Trigger Animations.** With **Take over from Trigger Animations when Animater has an animation** on (Integrations, off by default), Trigger Animations skips the attacks, actions, areas, effects and conditions Animater animates, its wildcard and Trove triggers included. A trigger made for that very item (naming its UUID) still plays.
+
 ## 2.2.6 (2026-10-25)
 
 - **Flash screens after the finisher.** **Last One Standing**, **Enemy Defeated** and **Party Member Down** played the moment a creature dropped, on top of its kill finisher. They now wait for the finisher to end (Finish Him! still plays before the last enemy's finisher).

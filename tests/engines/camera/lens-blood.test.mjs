@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LENS_BLOOD, lensAmount, lensSplashFor, hitStrength, dealtStrength, lensSplats, LENS_SHAPES, splatState, tunnelState, admitSplash, liveSplats, lingerLevel, cssColor } from '../../../scripts/engines/camera/lens-blood.mjs';
+import { LENS_BLOOD, lensAmount, lensSplashFor, hitStrength, dealtStrength, lensSplats, LENS_SHAPES, splatState, tunnelState, admitSplash, liveSplats, lingerLevel, cssColor, lensWho, lensRoleWanted } from '../../../scripts/engines/camera/lens-blood.mjs';
 
 const VIEW = { width: 1600, height: 900 };
 const SEEDS = Array.from({ length: 24 }, (_, i) => `seed-${i}`);
@@ -456,4 +456,15 @@ test('Damage lens duration stretches how long the blood stays (and the tunnel, u
   assert.equal(huge.splats[0].lifeMs, Math.round(base.splats[0].lifeMs * 6), 'clamped');
   assert.equal(long.pulses[0].lifeMs, Math.round(base.pulses[0].lifeMs * 2), 'the tunnel at most twice as long');
   assert.equal(at(undefined).splats[0].lifeMs, base.splats[0].lifeMs, 'default 1');
+});
+
+test('Damage lens shows: hits taken, dealt or both, this screen over the GM', () => {
+  assert.equal(lensWho('both', ''), 'both');
+  assert.equal(lensWho('hurt', ''), 'hurt', "the GM's choice when this screen has none");
+  assert.equal(lensWho('hurt', 'dealt'), 'dealt', "this screen's own over the GM's");
+  assert.equal(lensWho('nonsense', 'other'), 'both', 'unknown counts as both');
+  assert.ok(lensRoleWanted('victim', 'both') && lensRoleWanted('attacker', 'both'));
+  assert.ok(lensRoleWanted('victim', 'hurt') && !lensRoleWanted('attacker', 'hurt'));
+  assert.ok(!lensRoleWanted('victim', 'dealt') && lensRoleWanted('attacker', 'dealt'));
+  assert.ok(!lensRoleWanted(null, 'both'), 'a blow the player has no part in');
 });

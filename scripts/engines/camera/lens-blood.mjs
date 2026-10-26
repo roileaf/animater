@@ -68,6 +68,17 @@ export function lingerLevel(state, amount = 'heavy') {
   return Math.round((amount === 'subtle' ? level * 0.5 : level) * 1000) / 1000;
 }
 
+// "Damage lens shows": which of a player's blows reach their screen, hits taken ('hurt'), hits dealt ('dealt') or both.
+// This screen's own choice when set, else the GM's; anything unknown counts as both.
+export const LENS_WHO = Object.freeze(['both', 'hurt', 'dealt']);
+export function lensWho(world, local = '') {
+  return LENS_WHO.includes(local) ? local : LENS_WHO.includes(world) ? world : 'both';
+}
+export function lensRoleWanted(role, who = 'both') {
+  if (role !== 'victim' && role !== 'attacker') return false;
+  return who === 'hurt' ? role === 'victim' : who === 'dealt' ? role === 'attacker' : true;
+}
+
 // The edge a point lies towards, seen from `from` (the view's middle when not given), or null without a point.
 export function edgeToward(point, view, from = null) {
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
