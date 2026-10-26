@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {PF2E_CONDITIONS,PF2E_EFFECTS,PF2E_STATE_SOURCE,stateRecipe,findStateEntry,normalizeStateCatalogState,useStateEntry,resolveStateRecipe} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
+import {PF2E_CONDITIONS,PF2E_EFFECTS as ALL_EFFECTS,PF2E_STATE_SOURCE,stateRecipe,findStateEntry,normalizeStateCatalogState,useStateEntry,resolveStateRecipe} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
+// PF2e's own effects; the module auras (module-auras.mjs) have tests of their own.
+const PF2E_EFFECTS=ALL_EFFECTS.filter(e=>!e.modules);
 import {validateRecipe,planRecipe} from '../../../scripts/core/model.mjs';
 import {assetGeometry} from '../../../tools/spell-asset-selection.mjs';
 import {MEDIA_FOOTPRINTS} from '../../../data/media-footprints.mjs';

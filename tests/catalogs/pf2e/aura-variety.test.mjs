@@ -36,7 +36,7 @@ test('prepared aura effect parent takes precedence over a shared base kinetic au
  assert.deepEqual(nativeAuraStates(actor).map(i=>i.animaterAura.entryId),[specific.id]);
 });
 test('every reviewed field has distinct resolved artwork beyond labels, timing, size or opacity; only same-ability aliases share',()=>{
- const fields=PF2E_EFFECTS.filter(e=>e.auras||e.auraSources);assert.equal(fields.length,117);
+ const fields=PF2E_EFFECTS.filter(e=>!e.modules&&(e.auras||e.auraSources));assert.equal(fields.length,117);
  for(const edition of ['free','patreon']){
   const groups=new Map(),structures=new Map();
   for(const e of fields){
@@ -79,4 +79,14 @@ test('aura provider references use actual native compendium pack IDs',()=>{
 test('holy and leadership auras never use the screaming-spirit or heart ring motifs (Aura003 styles 002 and 001)',()=>{
  for(const name of ['Spell Effect: Bless','Spell Effect: Benediction','Aura: Angelic Halo','Aura: Righteous Call',"Effect: Marshal's Aura","Effect: Commander's Banner",'Effect: Inspiring Marshal Stance'])
   for(const edition of ['free','patreon'])assert.doesNotMatch(keys(name,edition).join(' '),/aura\.03\.(?:in|out)ward\.00[12]\./,`${name} ${edition}`);
+});
+test('an aura known only by the effect it grants gets a field of its own; allies keep the plain effect',()=>{
+ // A homebrew "Aura: Courageous Anthem" emits the spell's own effect: no aura design of its own.
+ const e=entry('Spell Effect: Courageous Anthem'),item={type:'effect',name:'Aura: Courageous Anthem',system:{}};
+ const emitter=stateRecipe(e,{catalog:libraries.free,aura:{slug:'courageous-anthem',radius:30,source:item}});
+ const ally=stateRecipe(e,{catalog:libraries.free});
+ assert.equal(emitter.stages[0].label,'Aura field');assert.equal(emitter.stages[0].auraRadius,30);
+ assert.ok(emitter.stages.slice(1).length&&emitter.stages.slice(1).every(s=>s.auraRadius===undefined),'its own look stays token-sized');
+ assert.deepEqual(emitter.stages.slice(1).map(s=>s.assets),ally.stages.map(s=>s.assets));
+ assert.ok(ally.stages.every(s=>s.label!=='Aura field'&&s.auraRadius===undefined));
 });

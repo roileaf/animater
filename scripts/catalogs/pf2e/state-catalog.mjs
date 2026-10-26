@@ -1,10 +1,13 @@
 import {catalogDataNeeded} from '../shared/catalog-data.mjs';
-const {PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-state-catalog.mjs') : {PF2E_CONDITIONS: [], PF2E_EFFECTS: [], PF2E_STATE_SOURCE: {}};
+const {PF2E_CONDITIONS, PF2E_EFFECTS: NATIVE_EFFECTS, PF2E_STATE_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-state-catalog.mjs') : {PF2E_CONDITIONS: [], PF2E_EFFECTS: [], PF2E_STATE_SOURCE: {}};
+import {moduleAuraEntries,moduleActive} from './module-auras.mjs';
+// PF2e's own effects, then the auras PF2e Workbench and patreon-v3 add (module-auras.mjs).
+const PF2E_EFFECTS=NATIVE_EFFECTS.length?[...NATIVE_EFFECTS,...moduleAuraEntries(NATIVE_EFFECTS)]:NATIVE_EFFECTS;
 import {normalize,validateRecipe,matchRecipe,resolveAsset} from '../../core/model.mjs';
 import {statePresentation} from '../shared/state-presentation.mjs';
 import {withCatalogFx} from '../shared/catalog-fx.mjs';
 export {PF2E_CONDITIONS,PF2E_EFFECTS,PF2E_STATE_SOURCE};
-const entries=[...PF2E_CONDITIONS,...PF2E_EFFECTS],byId=new Map(entries.map(e=>[e.id,e])),byUuid=new Map(entries.map(e=>[e.uuid,e]));
+const entries=[...PF2E_CONDITIONS,...PF2E_EFFECTS],byId=new Map(entries.map(e=>[e.id,e])),byUuid=new Map(entries.flatMap(e=>[e.uuid,...(e.aliases??[])].map(uuid=>[uuid,e]))); // aliases: another module's copy (module-auras.mjs)
 const byCondition=new Map(PF2E_CONDITIONS.map(e=>[e.slug,e]));
 const byName=new Map();
 for(const e of entries){const key=`${e.kind}:${normalize(e.name)}`;if(!byName.has(key))byName.set(key,[]);byName.get(key).push(e);}
@@ -40,6 +43,7 @@ export function stateElement(entry,item){
  const value=ref.origin?ref.origin.split('.').reduce((v,k)=>v?.[k],item.origin?.flags?.system):selections[ref.flag];
  return entry.elementVariants[value]?value:Object.values(selections).find(v=>typeof v==='string'&&entry.elementVariants[v])??null;
 }
+const BORROWED_RING=['jb2a.template_circle.aura.03.outward.005.loop.combined.greenyellow','jb2a.template_circle.aura.03.outward.005.loop.combined.blue'];
 export function stateRecipe(entry,{damageType,element,catalog,auraVariant,aura=entry?.auras?.[0]??entry?.auraSources?.[0],fx=true,fxCatalog}={}){
  if(!entry)throw Error('Choose a condition or effect first.');
  const variantBase=entry.damageVariants?.[damageType]??(entry.elementVariants?.[element]?{...entry,...entry.elementVariants[element]}:entry);
@@ -58,11 +62,22 @@ export function stateRecipe(entry,{damageType,element,catalog,auraVariant,aura=e
  const lifetime={kind:'aura',subject:'source',persist:true,duration:6000,fadeIn:400,fadeOut:400,bindAlpha:true,bindRotation:false};
  const area=aura?{auraSlug:aura.slug,auraRadius:aura.radius??5,scale:1,offsetX:0,offsetY:0,offsetUnits:'grid'}:{};
  const layers=field?.layers??base.conditionDesign?.layers;
- const stages=layers?layers.map(l=>{
+ // An aura known only by the effect it hands out (a homebrew "Aura: Courageous Anthem" granting the spell's effect)
+ // has no field of its own: it gets a ring at its radius in the effect's colour, and the effect's own look stays
+ // token-sized on its owner, so the aura no longer looks just like the allies inside it.
+ const borrowed=Boolean(aura)&&!field&&!entry.auraAssets&&!entry.auras&&!entry.auraSources;
+ const ring=borrowed?[{stageId:'aura-field',label:'Aura field',...lifetime,...area,assets:BORROWED_RING,opacity:.55,below:true,...(/^#[0-9a-f]{6}$/i.test(design.color??entry.color??'')?{tintEnabled:true,colorize:true,tint:design.color??entry.color}:{})}]:[];
+ const spread=borrowed?{}:area;
+ const own=layers?layers.map(l=>{
   const selected=catalog?.length?resolveAsset(l,catalog):null,edition=selected?Object.values(l.editions??{}).find(e=>e.key===selected):null;
-  return {...l,...lifetime,...area,...(edition?{tintEnabled:edition.colorSubstitution,colorize:edition.colorSubstitution}:{}),...(edition?.anchor?{customAnchor:true,anchorX:edition.anchor.x,anchorY:edition.anchor.y}:{})};
- }):[{stageId:'sustained',label:'Sustained visual',...lifetime,assets:design.assets,scale:design.scale??entry.scale,opacity:design.opacity??entry.opacity,below:design.below??entry.below,offsetX:design.offsetX??entry.offsetX,offsetY:design.offsetY??entry.offsetY,offsetUnits:design.offsetUnits??entry.offsetUnits,...area,...(aura?{below:true}:{}),...markerTint,...wardTint}];
- return withCatalogFx(validateRecipe({id:`${entry.systemId??'pf2e'}-state-${entry.id}${variant?`-${variant}`:''}`,name:variant?`${entry.name} (${variant[0].toUpperCase()+variant.slice(1)})`:entry.name,description:field?.rationale??design.rationale??entry.rationale,category:entry.group,color:design.color??entry.color,trigger:'effect',itemUuid:entry.uuid,match:entry.name,lifecycle:'document',stateEntry:entry.id,...(variant?{stateDamageType:variant}:{}),stages}),entry,{damageType,fx,fxCatalog});
+  return {...l,...lifetime,...spread,...(edition?{tintEnabled:edition.colorSubstitution,colorize:edition.colorSubstitution}:{}),...(edition?.anchor?{customAnchor:true,anchorX:edition.anchor.x,anchorY:edition.anchor.y}:{})};
+ }):[{stageId:'sustained',label:'Sustained visual',...lifetime,assets:design.assets,scale:design.scale??entry.scale,opacity:design.opacity??entry.opacity,below:design.below??entry.below,offsetX:design.offsetX??entry.offsetX,offsetY:design.offsetY??entry.offsetY,offsetUnits:design.offsetUnits??entry.offsetUnits,...spread,...(aura&&!borrowed?{below:true}:{}),...markerTint,...wardTint}];
+ const stages=own;
+ const built=withCatalogFx(validateRecipe({id:`${entry.systemId??'pf2e'}-state-${entry.id}${variant?`-${variant}`:''}`,name:variant?`${entry.name} (${variant[0].toUpperCase()+variant.slice(1)})`:entry.name,description:field?.rationale??design.rationale??entry.rationale,category:entry.group,color:design.color??entry.color,trigger:'effect',itemUuid:entry.uuid,match:entry.name,lifecycle:'document',stateEntry:entry.id,...(variant?{stateDamageType:variant}:{}),stages}),entry,{damageType,fx,fxCatalog});
+ // The ring goes on after any reviewed design, which replaces the stages it is given.
+ // It takes the colour of the design's first tinted layer (the anthem's warm gold), else the entry's.
+ const hue=built.stages.find(s=>s.tintEnabled&&/^#[0-9a-f]{6}$/i.test(s.tint??''))?.tint;
+ return ring.length?validateRecipe({...built,stages:[...ring.map(s=>hue?{...s,tintEnabled:true,colorize:true,tint:hue}:s),...built.stages]}):built;
 }
 export function resolveStateRecipe(item,state,saved=[],catalog,{customEnabled=true}={}){
  const entry=findStateEntry(item);
@@ -83,5 +98,5 @@ export function resolveStateRecipe(item,state,saved=[],catalog,{customEnabled=tr
  return entry?stateRecipe(entry,{damageType:item.system?.persistent?.damageType,element:stateElement(entry,item),catalog,aura}):null;
 }
 export function filterStateCatalog(kind,{search='',group='all',theme='all',quality='all'}={}){
- const query=normalize(search);return (kind==='condition'?PF2E_CONDITIONS:PF2E_EFFECTS).filter(e=>(group==='all'||e.group===group)&&(theme==='all'||e.theme===theme)&&(quality==='all'||e.quality===quality)&&(!query||normalize(`${e.name} ${e.slug} ${e.group} ${e.theme}`).includes(query)));
+ const query=normalize(search);return (kind==='condition'?PF2E_CONDITIONS:PF2E_EFFECTS).filter(e=>moduleActive(e)&&(group==='all'||e.group===group)&&(theme==='all'||e.theme===theme)&&(quality==='all'||e.quality===quality)&&(!query||normalize(`${e.name} ${e.slug} ${e.group} ${e.theme}`).includes(query)));
 }

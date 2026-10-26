@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.8 (2026-10-26)
+
+- **Module auras in the Effects catalog.** The auras PF2e Workbench and patreon-v3 put on a performer (Aura: Courageous Anthem, Rallying Anthem, Dirge of Doom, Bane, Malediction, Song of Strength, Triple Time, Protector's Sphere, Desert Wind and more) are now Effects catalog entries under **Module auras**, listed while their module is active. An aura both modules ship is one entry, so leaving out Courageous Anthem leaves out both versions. Each has its own field at the aura's radius (a gold field of song for Courageous Anthem, a dark inward field for Dirge of Doom), and can be customised or left out like any built-in aura.
+- **Auras that hand out an effect look like auras.** A PF2e aura with no animation of its own (a homebrew "Aura: Courageous Anthem" that gives allies Spell Effect: Courageous Anthem) used to borrow that effect's look, so the aura's owner and every ally in it looked the same. Its owner now shows a ring at the aura's radius in the effect's colour, around the effect's own look, and the allies inside keep the plain effect.
+
 ## 2.2.7 (2026-10-26)
 
 - **Damage lens shows.** A new choice in Combat drama: the damage lens and damage type effects for hits a player's creature takes and deals, only the hits it takes, or only the hits it deals. The GM sets it for the world; each player can pick their own with **Damage lens shows on my screen**.

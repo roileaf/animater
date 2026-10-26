@@ -1,6 +1,7 @@
 import { qualityBadgeHTML, plugModeHTML, leftOutOnly, showingLeftOut, catalogStatusHTML, previewRowHTML, entryDetailsHTML } from "../catalogs/shared/catalog-terms.mjs";
 import { lastingChoiceHTML } from "../catalogs/shared/lasting-choice.mjs";
 import { conditionLookSwitchHTML } from "../catalogs/shared/condition-look-choice.mjs";
+import {moduleActive} from '../catalogs/pf2e/module-auras.mjs';
 import {PF2E_CONDITIONS,PF2E_EFFECTS,catalogStateEntry,filterStateCatalog,normalizeStateCatalogState,stateEntryEnabled,stateRecipe} from '../catalogs/pf2e/state-catalog.mjs';
 import {catalogNameHTML, cardToggleHTML, cardSlotClass } from '../catalogs/shared/catalog-details.mjs';
 import {recipeDuration} from '../engines/playback/choreography.mjs';
@@ -8,7 +9,7 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const title=v=>String(v??'').replaceAll('-',' ').replace(/\b\w/g,c=>c.toUpperCase());
 const select=(field,label,values,current)=>`<label>${label}<select data-state-filter="${field}"><option value="all">All ${label.toLowerCase()}</option>${values.map(v=>`<option value="${esc(v)}" ${v===current?'selected':''}>${esc(title(v))}</option>`).join('')}</select></label>`;
 export function stateCatalogHTML(w){
- const kind=w.page==='conditions'?'condition':'effect',rows=kind==='condition'?PF2E_CONDITIONS:PF2E_EFFECTS,filter=w.stateFilters[kind],matches=leftOutOnly(w,normalizeStateCatalogState(w.host.stateCatalogState?.(kind)),filterStateCatalog(kind,filter)),pages=Math.max(1,Math.ceil(matches.length/36));
+ const kind=w.page==='conditions'?'condition':'effect',rows=kind==='condition'?PF2E_CONDITIONS:PF2E_EFFECTS.filter(moduleActive),filter=w.stateFilters[kind],matches=leftOutOnly(w,normalizeStateCatalogState(w.host.stateCatalogState?.(kind)),filterStateCatalog(kind,filter)),pages=Math.max(1,Math.ceil(matches.length/36));
  w.statePages[kind]=Math.max(0,Math.min(w.statePages[kind],pages-1));
  if(!matches.some(e=>e.id===w.selectedState[kind]))w.selectedState[kind]=matches[0]?.id;
  const chosen=catalogStateEntry(w.selectedState[kind]),state=normalizeStateCatalogState(w.host.stateCatalogState?.(kind)),env=w.host.environment(),canConfigure=!env.demo&&env.systemId==='pf2e'&&env.ready&&!w.busy,all=state.enabled&&state.scope==='all';

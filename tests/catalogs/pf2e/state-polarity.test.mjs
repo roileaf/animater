@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PF2E_EFFECTS,PF2E_CONDITIONS,stateRecipe,resolveStateRecipe,useStateEntry} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
+import {PF2E_EFFECTS as ALL_EFFECTS,PF2E_CONDITIONS,stateRecipe,resolveStateRecipe,useStateEntry} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
+// PF2e's own effects; the module auras (module-auras.mjs) have tests of their own.
+const PF2E_EFFECTS=ALL_EFFECTS.filter(e=>!e.modules);
 const entry=name=>{const row=PF2E_EFFECTS.find(e=>e.name===name);assert.ok(row,name);return row;};
 test('speed penalties and penalties that end on healing are not enhancements',()=>{
  for(const name of ['Spell Effect: Equal Footing (Success)','Effect: Glue Bomb','Effect: Hamstring','Effect: Sight Prey (Speed Penalty)','Effect: Chthonic Mucus'])assert.equal(entry(name).theme,'slow',name);
