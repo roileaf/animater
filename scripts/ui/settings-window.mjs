@@ -58,6 +58,8 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "footstepAcoustics" },
     { world: "footstepRange" },
     { world: "creatureIdleSounds" },
+    { world: "creatureVoices", local: "creatureVoicesLocal" },
+    { world: "creatureVoiceFolder" },
     { menu: "hitSoundsMenu" },
   ] },
   { id: "drama", label: "Combat drama", icon: "fa-solid fa-bolt", rows: [

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.11 (2026-10-27)
+
+- **Creatures cry out.** An attacking creature now and then grunts, snarls or roars, a hurt one now and then cries out, and one that falls always does, in a voice for its creature: a man or a woman, a goblin, an orc, a wolf, a bear, a dragon, a zombie, a ghost, a spider and many more. Each cry is a little different in pitch and level, and only those who could hear the creature hear it. Turn it off for the world or just your screen in Animater settings (Creatures cry out when they attack and are hurt).
+- **123 voices ship with Animater.** Each has its own attack, hurt and death cries, grouped by creature (people, monstrous folk, animals, dragons and reptiles, insects, monsters, undead and spirits...). A group with no voice of its own borrows a related one. This makes the module about 280 MB.
+- **Pick a token's voice.** Token Configuration → Appearance → Animater creature voice: its creature's own voice, Silent, or any group, then one voice of that group by name. Attack, Hurt and Death buttons preview it on your screen.
+- **Works with PF2e Creature Sounds.** On PF2e with that module active, tokens keep its sounds unless you give them an Animater voice; then it is muted for that actor, and choosing Use PF2e Creature Sounds again brings its sound set back.
+- **Your own voice folder.** Creature voices from my own folder adds a folder of your sounds (one sub-folder per voice, with `attack`, `hurt` and `death` inside). Folders missing a cry, and folders whose sounds Animater already ships, are skipped.
+
 ## 2.2.10 (2026-10-27)
 
 - **Settings rows keep their text readable.** A row with two dropdowns (Damage lens shows) squeezed its description into a narrow column. When a row's controls leave the text too little room they now sit under it, and in a narrow window they wrap instead of running off the side.

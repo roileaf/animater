@@ -73,6 +73,10 @@ import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from
 import { weaponFamily } from "./systems/daggerheart.mjs";
 import { installSoundPitch, muffleEar } from "./engines/sound/sound-pitch.mjs";
 import { isSneaking, sneakStep, darker } from "./engines/motion/quiet-steps.mjs";
+import { libraryBank, mergeBanks } from "./engines/sound/voice-library.mjs";
+import { CREATURE_VOICES } from "../data/creature-voices.mjs";
+import { LIBRARY_VOICES, LIBRARY_FOLDERS } from "../data/library-voices.mjs";
+import { attackSpeaker, tokenVoice, creatureOf, voiceOf, voiceEvent, voiceFile, voiceShape, voiceDeferred, ownsVoice, voiceBorrows, voiceGroups, familyGroups, voiceLineage, VOICE_FAMILIES, VOICE_COOLDOWN_MS } from "./engines/sound/creature-voice.mjs";
 import { voicesThisTurn, parseCreatureSoundDb, pickSoundSet, idleSoundFile, idleShape, IDLE_FROM_WEIGHT } from "./engines/sound/creature-idle.mjs";
 import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acoustics.mjs";
 import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
@@ -1044,6 +1048,64 @@ Hooks.on("canvasTearDown", clearBurrowSink);
 // Creature Sounds active, a Large or bigger NPC sometimes growls as its own combat turn starts. Every client sees the
 // same combat update and the same seeded chance, so no broadcast; each plays it only if this screen hears the creature.
 // The sound sets are read once from that module's bundle (it has no API), and its own on/off and volume apply.
+// Creature voices from the GM's own folder (engines/sound/voice-library.mjs): the GM's screen browses it once (when the
+// setting is set, or at ready if it was never scanned) and shares what it found as a world setting; every screen
+// builds its voice bank from that, Animater's own voices (data/creature-voices.mjs and the library voices it ships,
+// data/library-voices.mjs) and the folder's together.
+let voiceLibrary = null;
+const voiceBank = () => voiceLibrary ??= (() => {
+  let index = {};
+  try { index = game.settings.get(ID, "creatureVoiceIndex") ?? {}; } catch { /* not registered yet */ }
+  return mergeBanks([...CREATURE_VOICES, ...LIBRARY_VOICES], libraryBank(index.base ?? "", index.entries ?? [], index.verdicts ?? {}), LIBRARY_FOLDERS);
+})();
+const VOICE_AUDIO = /\.(ogg|oga|mp3|wav|flac|m4a|webm)$/i;
+async function scanVoiceFolder({ quiet = false } = {}) {
+  let base = "";
+  try { base = String(game.settings.get(ID, "creatureVoiceFolder") ?? "").trim().replace(/\/+$/, ""); } catch { return; }
+  if (!base) return void game.settings.set(ID, "creatureVoiceIndex", {});
+  const browse = (path) => foundry.applications.apps.FilePicker.implementation.browse("data", path).catch(() => null);
+  const name = (p) => decodeURIComponent(String(p).split("/").filter(Boolean).pop() ?? "");
+  const top = await browse(base);
+  if (!top) return void ui.notifications?.warn(`Animater | Could not open the creature voice folder "${base}".`);
+  const entries = [], folders = (top.dirs ?? []).map(name);
+  // A few folders at a time: a big library has hundreds.
+  for (let i = 0; i < folders.length; i += 8) {
+    await Promise.all(folders.slice(i, i + 8).map(async (folder) => {
+      const inner = await browse(`${base}/${folder}`);
+      for (const use of (inner?.dirs ?? []).map(name).filter((u) => ["attack", "hurt", "death"].includes(u.toLowerCase()))) {
+        const files = (await browse(`${base}/${folder}/${use}`))?.files?.map(name).filter((f) => VOICE_AUDIO.test(f)) ?? [];
+        if (files.length) entries.push({ folder, use: use.toLowerCase(), files });
+      }
+    }));
+  }
+  // The GM's audition of the folder (animater-voices.json beside its voices: keep, reject, family), if there is one.
+  let verdicts = {};
+  if ((top.files ?? []).some((f) => name(f) === "animater-voices.json")) {
+    try {
+      let url = `${base}/animater-voices.json`;
+      try { url = foundry.utils.getRoute(url); } catch { /* relative */ }
+      const res = await fetch(url, { cache: "no-store" });
+      const raw = res.ok ? await res.json() : {};
+      verdicts = { keep: Array.isArray(raw.keep) ? raw.keep : [], reject: Array.isArray(raw.reject) ? raw.reject : [], family: raw.family && typeof raw.family === "object" ? raw.family : {}, prefer: Array.isArray(raw.prefer) ? raw.prefer : [] };
+    } catch (error) { ui.notifications?.warn(`Animater | animater-voices.json in "${base}" could not be read: ${error.message}`); }
+  }
+  await game.settings.set(ID, "creatureVoiceIndex", { base, entries, verdicts, scanned: Date.now() });
+  const voices = Object.values(libraryBank(base, entries, verdicts)).reduce((n, v) => n + v.length, 0);
+  if (!quiet) ui.notifications?.info(`Animater | ${voices} creature voices found in "${base}".`);
+}
+Hooks.once("ready", () => {
+  if (!game.user?.isGM) return;
+  try {
+    // Every start, in the background: new voices and a new animater-voices.json take effect on the next reload.
+    if (String(game.settings.get(ID, "creatureVoiceFolder") ?? "").trim()) void scanVoiceFolder({ quiet: true });
+  } catch { /* not registered */ }
+});
+// Whether PF2e Creature Sounds voices this world's creatures (voiceDeferred's world half).
+function pf2eSoundsState() {
+  let moduleEnabled = true;
+  try { moduleEnabled = game.settings.get("pf2e-creature-sounds", "creatureSounds_enable") !== false; } catch { /* its default: on */ }
+  return { systemId: game.system?.id, moduleActive: game.modules?.get("pf2e-creature-sounds")?.active, moduleEnabled };
+}
 let creatureSoundDb = null;
 const creatureSoundSets = () => creatureSoundDb ??= (async () => {
   const path = "modules/pf2e-creature-sounds/dist/pf2e-creature-sounds.js";
@@ -2865,6 +2927,24 @@ Hooks.once("init", () => {
     hint: "With PF2e Creature Sounds active, a Large or bigger NPC sometimes growls from where it stands as its combat turn starts, heard only by those who could hear it. Uses that module's sound sets and volume.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  registerSetting("creatureVoices", {
+    name: "Creatures cry out when they attack and are hurt",
+    hint: "An attacking creature now and then grunts, snarls or roars as it attacks, a hurt one now and then cries out, in a voice for its creature and its creature type (a man or a woman, small folk, a wolf, a bear, a bird, a dragon, a zombie, a spider, a fiend and more), and one that falls always does, from where it stands, heard only by those who could hear it. Ghosts wail, skeletons rattle, oozes gurgle; animated objects and elementals stay silent. On PF2e, PF2e Creature Sounds voices them instead when it is active.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("creatureVoiceFolder", {
+    name: "Creature voices from my own folder",
+    hint: "A folder of your own creature sounds (in your Data folder) to use besides Animater's: each sub-folder is one voice, filed by its name (Huge Dragon, orc, banshee, Crow…), its attack, hurt and death folders holding the takes. The files stay yours and are played from your server, never bundled. Empty: Animater's own voices only.",
+    scope: "world", config: true, type: String, default: "", filePicker: "folder",
+    onChange: () => { if (game.user?.isGM) void scanVoiceFolder(); },
+  });
+  // What the GM's screen found in that folder, for every screen (players may not browse files).
+  registerSetting("creatureVoiceIndex", { scope: "world", config: false, type: Object, default: {}, onChange: () => { voiceLibrary = null; } });
+  registerSetting("creatureVoicesLocal", {
+    name: "Creature cries on my screen",
+    hint: "Turn off to hear no hurt or dying creature cries on this device. Other players keep theirs.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   registerSetting("trackedPrints", {
     name: "Feet carry mud, water and snow",
     hint: "A creature that walked through water, mud or snow leaves wet, muddy or snowy prints in its own tracks on the next floor for a few strides, fainter each stride. Creatures that slither, ooze or leave no prints carry nothing.",
@@ -3339,6 +3419,97 @@ Hooks.on("renderTokenConfig", (app, html) => {
   color.addEventListener("input", sync);
   color.addEventListener("change", sync);
   tab.append(group);
+});
+// Token configuration: this token's own cry (flags.animater.voice: '' its creature's, 'auto' Animater's pick for its
+// creature, 'none' silent, a voice family) and one voice by name (flags.animater.voiceSpeaker: '' the best fit). On
+// PF2e with PF2e Creature Sounds on, '' leaves the token to that module, and any other choice is Animater's (and
+// silences that module for its actor, below). Attack, Hurt and Death preview a take of the choice on this screen.
+Hooks.on("renderTokenConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.voice"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  const doc = app.document ?? app.token ?? app.object, actor = doc?.actor ?? null;
+  const value = String(doc?.flags?.[ID]?.voice ?? ""), speaker = String(doc?.flags?.[ID]?.voiceSpeaker ?? "");
+  const pf2eSounds = voiceDeferred(pf2eSoundsState());
+  // What its creature gets on its own: the voice that fits it best, as playback picks it.
+  let auto = "", bank = [];
+  try {
+    bank = voiceBank();
+    const picked = actor ? voiceOf(creatureOf(actor), { voiceSeed: actor.uuid, bank }) : null;
+    auto = picked ? ` (${picked.label ?? picked.id})` : " (silent)";
+  } catch { /* no hint */ }
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const options = (list, chosen) => list.map(([v, l]) => `<option value="${esc(v)}"${v === chosen ? " selected" : ""}>${esc(l)}</option>`).join("");
+  // The kinds of creature by category, and female, male and other creatures' voices apart, so one is easy to find.
+  const firstOptions = pf2eSounds ? [["", "Use PF2e Creature Sounds"], ["auto", `Animater: its creature's${auto}`]] : [["", `Its creature's${auto}`]];
+  const familyOptions = options([...firstOptions, ["none", "Silent"]], value) + familyGroups().map((g) => `<optgroup label="${esc(g.label)}">${options(g.families, value)}</optgroup>`).join("");
+  // The voices to pick from are those of the kind chosen on the left (its creature's own, or a family and its
+  // fallbacks), the one already chosen kept.
+  const own = (() => { try { return actor ? creatureOf(actor).kinds : []; } catch { return []; } })();
+  const kindsOf = (family) => (family === "none" ? [] : VOICE_FAMILIES[family] ? voiceLineage(family) : own);
+  const voiceOptions = (family, chosen) => options([["", "Best fit"]], chosen) + voiceGroups(bank, { kinds: kindsOf(family), chosen }).map((g) => `<optgroup label="${esc(g.label)}">${options(g.voices, chosen)}</optgroup>`).join("");
+  const group = document.createElement("div");
+  group.className = "form-group";
+  const buttons = ["attack", "hurt", "death"].map((u) => `<button type="button" data-animater-voice-preview="${u}" title="Play a ${u} cry">${u[0].toUpperCase()}${u.slice(1)}</button>`).join("");
+  group.innerHTML = `<label>Animater creature voice</label><div class="form-fields"><select name="flags.${ID}.voice">${familyOptions}</select><select name="flags.${ID}.voiceSpeaker">${voiceOptions(value, speaker)}</select></div><div class="form-fields animater-voice-preview" style="flex: 0 0 100%; justify-content: flex-end;">${buttons}</div><p class="hint">How this token cries out when it attacks, is hurt or falls (Animater settings, Creatures cry out when they attack and are hurt): the voice that best fits its creature, silence, the best voice for another kind of creature, or one voice by name${pf2eSounds ? ", or PF2e Creature Sounds' own" : ""}. Attack, Hurt and Death play a cry of the choice here, for you only.</p>`;
+  const [familySelect, speakerSelect] = group.querySelectorAll("select");
+  // No voice to name when the token is silent or left to PF2e Creature Sounds: hidden, and cleared so none is saved.
+  const voiceless = (family) => family === "none" || (pf2eSounds && family === "");
+  const showSpeaker = () => {
+    if (voiceless(familySelect.value)) speakerSelect.value = "";
+    speakerSelect.hidden = voiceless(familySelect.value);
+    group.querySelectorAll("[data-animater-voice-preview]").forEach((b) => { b.disabled = familySelect.value === "none"; });
+  };
+  // A new kind lists its own voices; a voice picked for the old kind goes back to the best fit.
+  familySelect.addEventListener("change", () => {
+    const keep = voiceGroups(bank, { kinds: kindsOf(familySelect.value) }).some((g) => g.voices.some(([id]) => id === speakerSelect.value)) ? speakerSelect.value : "";
+    speakerSelect.innerHTML = voiceOptions(familySelect.value, keep);
+    speakerSelect.value = keep;
+    showSpeaker();
+  });
+  showSpeaker();
+  group.querySelectorAll("[data-animater-voice-preview]").forEach((button) => button.addEventListener("click", async () => {
+    const use = button.dataset.animaterVoicePreview, family = familySelect.value;
+    try {
+      let file = null;
+      if (pf2eSounds && family === "") {
+        // PF2e Creature Sounds' own set for this actor, as that module picks it.
+        let custom = {};
+        try { custom = game.settings.get("pf2e-creature-sounds", "custom_sound_sets") ?? {}; } catch { /* none */ }
+        const sizes = { tiny: 0, sm: 1, med: 2, lg: 3, huge: 4, grg: 5 };
+        const set = actor ? pickSoundSet({ name: actor.flags?.babele?.originalName ?? actor.name, chosen: actor.flags?.["pf2e-creature-sounds"]?.soundset ?? null,
+          traits: Array.from(actor.system?.traits?.value ?? []), size: sizes[actor.system?.traits?.size?.value] ?? -1, seed: actor.id }, await creatureSoundSets(), custom) : null;
+        const takes = set?.[`${use}_sounds`] ?? [];
+        file = takes[Math.floor(Math.random() * takes.length)] ?? null;
+      } else {
+        const choice = tokenVoice(actor, { voice: family, speaker: speakerSelect.value });
+        // A family chosen with no actor to match: the family itself.
+        const creature = choice.creature;
+        if (creature && !creature.kinds.length && VOICE_FAMILIES[family]) creature.kinds = voiceLineage(family);
+        file = creature ? voiceFile(creature, use, { seed: `${Date.now()}`, voiceSeed: actor?.uuid ?? doc?.uuid ?? "", voiceId: choice.voiceId, bank }) : null;
+      }
+      if (!file) { ui.notifications?.info(`No ${use} cry for this voice.`); return; }
+      foundry.audio.AudioHelper.play({ src: file, volume: 0.8, loop: false }, false);
+    } catch (error) { runtime.trace("Blocked", `Voice preview: ${error.message}`); }
+  }));
+  tab.append(group);
+});
+// A token given its own Animater voice on PF2e: PF2e Creature Sounds is silenced for its actor (its soundset 'none'),
+// so the two never cry at once; the actor's own soundset comes back when the token is left to that module again.
+// Run by the user who changed the token only.
+Hooks.on("updateToken", (doc, changes, _options, userId) => {
+  try {
+    if (userId !== game.user?.id || !changes?.flags?.[ID] || !voiceDeferred(pf2eSoundsState())) return;
+    const actor = doc.actor, flags = { voice: doc.flags?.[ID]?.voice, speaker: doc.flags?.[ID]?.voiceSpeaker };
+    if (!actor?.isOwner) return;
+    const soundset = actor.flags?.["pf2e-creature-sounds"]?.soundset, saved = actor.flags?.[ID]?.pf2eSoundsetBefore;
+    if (ownsVoice(flags) && soundset !== "none") {
+      void actor.update({ [`flags.${ID}.pf2eSoundsetBefore`]: soundset ?? "", "flags.pf2e-creature-sounds.soundset": "none" });
+    } else if (!ownsVoice(flags) && soundset === "none" && saved !== undefined) {
+      void actor.update({ [`flags.${ID}.-=pf2eSoundsetBefore`]: null, ...(saved ? { "flags.pf2e-creature-sounds.soundset": saved } : { "flags.pf2e-creature-sounds.-=soundset": null }) });
+    }
+  } catch (error) { runtime.trace("Blocked", `PF2e Creature Sounds handoff: ${error.message}`); }
 });
 const movementConfigCleanup = new WeakMap(), movementConfigStops = new Set();
 Hooks.on("renderTokenConfig", (app, html) => {
@@ -4369,8 +4540,67 @@ Hooks.once("ready", () => {
       return;
     }
   };
+  // Creature voices (engines/sound/creature-voice.mjs; world setting "Creatures cry out when hurt"): every screen sees
+  // the same HP change and the same seeded chance, so no broadcast; each plays it only if this screen hears the creature.
+  // The take each token cried last, so the next is another (every screen hears the same cries, so they agree).
+  const voiceQuietUntil = new Map(), voiceLast = new Map();
+  const voicesOn = () => canvas?.ready && movementFeelSettingOn("creatureVoices") && movementFeelSettingOn("creatureVoicesLocal");
+  // One creature's cry (attack, hurt or death) from each of its tokens on this scene this screen can hear.
+  const voiceFrom = (actor, tokens, event, seed) => {
+    const level = canvas.level?.id ?? undefined;
+    for (const token of tokens) {
+      const d = token.document;
+      if (d?.parent?.id !== canvas.scene?.id || !movementPerception(token, d, level).audible) continue;
+      // The token's own voice (Token configuration, Animater creature voice), else its creature's; on PF2e, PF2e
+      // Creature Sounds voices the tokens not given one.
+      const flags = { voice: d.flags?.[ID]?.voice, speaker: d.flags?.[ID]?.voiceSpeaker };
+      if (voiceDeferred({ ...pf2eSoundsState(), ...flags })) continue;
+      const own = tokenVoice(actor, flags);
+      if (!own.creature) continue;
+      const file = voiceFile(own.creature, event, { seed, voiceSeed: actor.uuid, voiceId: own.voiceId, avoid: voiceLast.get(token.id), bank: voiceBank() });
+      if (!file) continue;
+      voiceLast.set(token.id, file);
+      const borrowed = voiceBorrows(voiceOf(own.creature, { voiceSeed: actor.uuid, voiceId: own.voiceId, bank: voiceBank() }), event);
+      const shape = voiceShape(sizeOf(actor, token), actor.id, { hitSeed: `${seed}:${token.id}`, event, borrowed }), c = d.getCenterPoint?.() ?? token.center, where = { x: c.x, y: c.y, elevation: d.elevation ?? 0 };
+      const room = movementFeelSettingOn("footstepAcoustics") ? { at: { ...where, sceneId: canvas.scene?.id, level: canvas.level?.id }, roomShare: 0.8 } : {};
+      setTimeout(() => {
+        try {
+          if (!canvas?.ready || canvas.scene?.id !== d.parent?.id) return;
+          Hooks.callAll("animater.shapeSound", { file, rate: shape.rate, ...room });
+          void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 15 * (canvas.dimensions?.distance ?? 5), { volume: shape.volume, walls: false, gmAlways: false }))
+            .then((sound) => {
+              const node = sound?.sourceNode?.playbackRate;
+              if (node && node.value !== shape.rate) node.value = shape.rate;
+            }).catch(() => {});
+        } catch { /* the scene went away while it waited */ }
+      }, shape.delay);
+    }
+  };
+  const creatureVoiceFor = (actor, before) => {
+    if (!voicesOn()) return;
+    const after = hpOf(actor), change = hpChange(before, after);
+    if (!change || actor.system?.attributes?.emitsSound === false) return;
+    if ((voiceQuietUntil.get(actor.uuid) ?? 0) > Date.now() && !change.dropped) return;
+    const seed = `${actor.uuid}:${before.value}:${after.value}`, event = voiceEvent({ dropped: change.dropped, seed });
+    if (!event) return;
+    voiceQuietUntil.set(actor.uuid, Date.now() + VOICE_COOLDOWN_MS);
+    voiceFrom(actor, actor.getActiveTokens?.() ?? [], event, seed);
+  };
+  // An attacker voices its effort as it attacks (a grunt, a snarl, a roar), from its attack roll's chat message, which
+  // every screen receives: the same seeded chance everywhere, no broadcast.
+  Hooks.on("createChatMessage", (message) => {
+    try {
+      const who = attackSpeaker(message, game.system.id);
+      if (!who || who.sceneId !== canvas.scene?.id || !voicesOn()) return;
+      const token = canvas.tokens?.get(who.tokenId), actor = token?.actor;
+      if (!actor || actor.system?.attributes?.emitsSound === false) return;
+      const event = voiceEvent({ attack: true, seed: message.id });
+      if (event) voiceFrom(actor, [token], event, message.id);
+    } catch (error) { runtime.trace("Blocked", `Attack voice: ${error.message}`); }
+  });
   Hooks.on("updateActor", (actor, changes, options) => {
     const before = (actor?.uuid && lensHp.get(actor.uuid)) ?? options?.animaterHpBefore ?? null;
+    try { creatureVoiceFor(actor, before); } catch (error) { runtime.trace("Blocked", `Creature voice: ${error.message}`); }
     lensKeep(actor);
     if (game.user.isGM) return;
     try { lensBloodFor(actor, before); } catch (error) { runtime.trace("Blocked", `Lens blood: ${error.message}`); }
