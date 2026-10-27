@@ -1,5 +1,5 @@
-// Blood on the camera lens, for players only: when a player's creature hits an enemy, that enemy's blood splats on
-// the player's screen (more for more damage); when the player's own creature is hit, the view closes in (tunnel
+// Blood on the camera lens, for players only: when a creature is hurt, its blood splats on the screens of players
+// whose creature stands next to it, whoever struck it (more for more damage); when the player's own creature is hit, the view closes in (tunnel
 // vision) and its own blood splashes the lens, the bloodiest of all. Splats come in from the side the blow came from
 // (strong hits fling them across the view), in mixed shapes, run in drips, dry and fade. Every screen decides for itself; nothing here touches Foundry (the host wires it).
 
@@ -68,7 +68,33 @@ export function lingerLevel(state, amount = 'heavy') {
   return Math.round((amount === 'subtle' ? level * 0.5 : level) * 1000) / 1000;
 }
 
-// "Damage lens shows": which of a player's blows reach their screen, hits taken ('hurt'), hits dealt ('dealt') or both.
+// The player's creature close enough to be splashed by a hurt creature's blood: the nearest of `mine` whose edge is
+// within `squares` of the hurt one's (0 adjacent; 1 also with a square between, as a reach weapon strikes), else
+// null. Rectangles in pixels ({ x, y, w, h }); grid: a square's size.
+export function nearestNear(hurt, mine, { grid = 100, squares = 0 } = {}) {
+  if (!hurt || !(grid > 0)) return null;
+  const gapOf = (a) => {
+    const gx = Math.max(0, Math.max(a.x, hurt.x) - Math.min(a.x + a.w, hurt.x + hurt.w));
+    const gy = Math.max(0, Math.max(a.y, hurt.y) - Math.min(a.y + a.h, hurt.y + hurt.h));
+    return Math.max(gx, gy) / grid;
+  };
+  let best = null, bestGap = Infinity;
+  for (const one of mine ?? []) {
+    const rect = one?.rect;
+    if (!rect || ![rect.x, rect.y, rect.w, rect.h].every(Number.isFinite)) continue;
+    const gap = gapOf(rect);
+    if (gap <= squares + 0.01 && gap < bestGap) { best = one; bestGap = gap; }
+  }
+  return best;
+}
+
+// "Enemy blood reaches": players with a creature adjacent to the hurt one, also one square away, or (as before) the
+// player whose creature struck it, wherever it stands. Anything unknown counts as adjacent.
+export const LENS_REACH = Object.freeze({ adjacent: 0, reach: 1 });
+export const lensReach = (setting) => (setting === 'attacker' ? 'attacker' : Object.hasOwn(LENS_REACH, setting ?? '') ? setting : 'adjacent');
+
+// "Damage lens shows": which blows reach a player's screen, hits their creature takes ('hurt'), blood from creatures
+// hurt next to it ('dealt', the 'attacker' role) or both.
 // This screen's own choice when set, else the GM's; anything unknown counts as both.
 export const LENS_WHO = Object.freeze(['both', 'hurt', 'dealt']);
 export function lensWho(world, local = '') {
@@ -91,7 +117,8 @@ export function edgeToward(point, view, from = null) {
 
 /**
  * Whether this blow paints this screen's lens.
- * role: 'victim' (the player owns the creature hit), 'attacker' (the player owns the creature that hit it), else none.
+ * role: 'victim' (the player owns the creature hit), 'attacker' (the player's creature stands next to the creature
+ * hit, nearestNear, whoever hit it; attackerScreen is then that creature's screen point), else none.
  * before/after: hp-state.mjs states. bleeds: the creature hit bleeds (Splatter's rules when active, else
  * bleedsBlood). visible: this screen perceives it. screen / attackerScreen: their screen points; view: the window.
  * damageType: the hit's damage type (woundOf), which shapes its splats, scales its blood and shifts its colour.
@@ -864,11 +891,14 @@ export function tunnelState(pulse, ageMs) {
  */
 // duration: how much longer (or shorter) the blood stays than usual ("Damage lens duration"); its drying, fading and
 // reactions stretch with it (they follow each splat's life), and the tunnel eases out up to twice as slowly.
-export function admitSplash(state, splash, { now, seed, width, height, color = BLOOD_RED, duration = 1 }) {
+// The cooldown is kept for each creature bleeding (source: its token id), so several hurt at once (a blast, enemies
+// all around) each splash; without a source, one for the whole lens.
+export function admitSplash(state, splash, { now, seed, width, height, color = BLOOD_RED, duration = 1, source = null }) {
   if (!splash) return { state, added: 0 };
   const k = Math.min(6, Math.max(0.4, Number(duration) || 1));
   const pulse = splash.tunnel > 0 ? [{ bornAt: now, level: splash.tunnel, lifeMs: Math.round(LENS_BLOOD.tunnelMs(splash.tunnel) * Math.min(2, k)) }] : [];
-  const cooling = now - state.lastAt < LENS_BLOOD.cooldownMs;
+  const last = source == null ? state.lastAt : state.lastBy?.[source] ?? -Infinity;
+  const cooling = now - last < LENS_BLOOD.cooldownMs;
   if ((cooling || !(splash.strength > 0)) && !pulse.length) return { state, added: 0 };
   const live = liveSplats(state, now);
   const fresh = cooling ? [] : lensSplats(seed, { amount: splash.amount, width, height, origin: splash.fromScreen, edge: splash.edge,
@@ -876,10 +906,15 @@ export function admitSplash(state, splash, { now, seed, width, height, color = B
     // Energy shifts the blood's colour (burned darker, frozen paler, sickened green, blackened).
     color: DAMAGE_WOUNDS[splash.wound]?.tint != null ? mix(color ?? BLOOD_RED, DAMAGE_WOUNDS[splash.wound].tint, DAMAGE_WOUNDS[splash.wound].k) : color }).map((s) => ({ ...s, bornAt: now, lifeMs: Math.round(s.lifeMs * k) }));
   return {
-    state: { lastAt: fresh.length ? now : state.lastAt, splats: [...live.splats, ...fresh].slice(-LENS_BLOOD.maxAlive), pulses: [...live.pulses, ...pulse] },
+    state: { lastAt: fresh.length ? now : state.lastAt, lastBy: fresh.length && source != null ? lastByAfter(state.lastBy, source, now) : state.lastBy, splats: [...live.splats, ...fresh].slice(-LENS_BLOOD.maxAlive), pulses: [...live.pulses, ...pulse] },
     added: fresh.length,
   };
 }
+// Each source's last splash, those past the cooldown let go.
+const lastByAfter = (lastBy, source, now) => {
+  const kept = Object.fromEntries(Object.entries(lastBy ?? {}).filter(([, at]) => now - at < LENS_BLOOD.cooldownMs));
+  return { ...kept, [source]: now };
+};
 /** The lens without splats and pulses that have run out. */
 export function liveSplats(state, now) {
   return { ...state, splats: state.splats.filter((s) => now - s.bornAt < s.lifeMs), pulses: (state.pulses ?? []).filter((p) => now - p.bornAt < p.lifeMs) };

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.14 (2026-10-27)
+
+- **Enemy blood reaches whoever stands next to it.** A creature hurt in a fight now splashes its blood on the screens of the players whose creatures stand next to it, whoever struck it; a ranged attacker far off sees none. The new world setting Enemy blood reaches picks who gets it: adjacent creatures (the default), creatures within one square (reach), or only the attacker wherever it stands, as before.
+- **Damage lens shows** now offers hits taken, creatures hurt nearby, or both, on the world and on each player's screen.
+- **Every creature hurt at once splashes.** Several creatures hurt by one attack each leave their own blood, instead of the first one hiding the rest.
+- The workspace's Damage showcase plays "An enemy hurt next to you" in place of "Your creature hits an enemy".
+
 ## 2.2.13 (2026-10-27)
 
 - **15 more creature voices.** A wailing banshee, a moaning ghost, a snarling ghoul, a shrieking goblin, a stone golem, a bellowing ogre, raider orcs (female and male), a reptiloid, a roaring cyclops, a mutant and four more zombies (two female, two male), each with its own attack, hurt and death cries. Lizardfolk, iruxi and troglodytes now take the reptiloid's voice, and cyclopes, golems and mutants their own. Animater ships 150 voices.

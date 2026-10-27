@@ -45,7 +45,7 @@ import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
 import { createCameraShake, canShake } from "./engines/camera/camera-shake.mjs";
 import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
-import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
+import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
 import { lifeOf, isDown, woundedView, woundedWanted, muffleFor, heartbeatDown, nextBeatMs, heartbeatDeath, transitionSteps, stainsAfterHit, settleStains, stainCap, downLook, downPreviews, WAKE } from "./engines/camera/lens-wounds.mjs";
@@ -3072,7 +3072,7 @@ Hooks.once("init", () => {
   });
   registerSetting("lensBlood", {
     name: "Damage lens",
-    hint: "Blood on the lens, on players' screens only. When a player's creature hits an enemy, that enemy's blood splats on the player's screen, more for more damage, on the side the enemy is. When the player's own creature is hit, the view closes in (tunnel vision) and its own blood splashes the screen; a badly hurt creature keeps a faint tunnel in combat. Uses Splatter's blood colours and bloodless creatures when Splatter is active. Bloodless creatures, creatures that screen cannot see and hidden tokens never bleed on it. Players' Blood sounds choice (Hit sounds) Off turns it off, Subtle makes it subtle.",
+    hint: "Blood on the lens, on players' screens only. When a creature is hurt, its blood splats on the screens of players whose creature stands next to it, whoever struck it (Enemy blood reaches), more for more damage, on the side it is; a ranged attacker far off sees none. When the player's own creature is hit, the view closes in (tunnel vision) and its own blood splashes the screen; a badly hurt creature keeps a faint tunnel in combat. Uses Splatter's blood colours and bloodless creatures when Splatter is active. Bloodless creatures, creatures that screen cannot see and hidden tokens never bleed on it. Players' Blood sounds choice (Hit sounds) Off turns it off, Subtle makes it subtle.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) stopLensBlood(); },
   });
@@ -3085,7 +3085,7 @@ Hooks.once("init", () => {
   });
   registerSetting("lensEffects", {
     name: "Damage type effects",
-    hint: "On players' screens only, with the same rule as the damage lens: each energy damage type their creature takes or deals leaves its own short mark on the screen beside the blood. Fire scorches the edges and throws embers, cold frosts them over, lightning arcs across, acid drops and bubbles, poison sways the view, sonic ripples it, force cracks the lens, void drains its colour, vitality flares, mental damage doubles the view, spirit sends pale wisps; Daggerheart's magic shimmers. Stronger for more damage, clearly stronger for critical hits. Damage lens amount Subtle and Subtle gore tone it down; Low animation quality keeps only the marks.",
+    hint: "On players' screens only, with the same rule as the damage lens: each energy damage type their creature takes, or a creature next to it takes, leaves its own short mark on the screen beside the blood. Fire scorches the edges and throws embers, cold frosts them over, lightning arcs across, acid drops and bubbles, poison sways the view, sonic ripples it, force cracks the lens, void drains its colour, vitality flares, mental damage doubles the view, spirit sends pale wisps; Daggerheart's magic shimmers. Stronger for more damage, clearly stronger for critical hits. Damage lens amount Subtle and Subtle gore tone it down; Low animation quality keeps only the marks.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) lensBlood.clearEffects(); },
   });
@@ -3096,15 +3096,20 @@ Hooks.once("init", () => {
     default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
     onChange: (on) => { if (on === false) lensBlood.clearEffects(); },
   });
+  registerSetting("lensReach", {
+    name: "Enemy blood reaches",
+    hint: "Whose screens a hurt creature's blood splashes: players whose creature is adjacent to it, also those one square away (reach), whoever struck it; or only the player whose creature struck it, wherever it stands (a ranged shot too). With adjacent or reach, a ranged attacker far off sees none.",
+    scope: "world", config: true, type: String, choices: { adjacent: "Adjacent creatures", reach: "Within one square (reach)", attacker: "The attacker, wherever it is" }, default: "adjacent",
+  });
   registerSetting("lensWho", {
     name: "Damage lens shows",
-    hint: "Which of a player's blows reach their screen: hits their creature takes and hits it deals, only hits it takes, or only hits it deals. Covers the blood, tunnel vision, the heartbeat on a hit and the damage type effects. The wounded view of a hurt creature stays with its own switch.",
-    scope: "world", config: true, type: String, choices: { both: "Hits taken and dealt", hurt: "Only hits taken", dealt: "Only hits dealt" }, default: "both",
+    hint: "Which blows reach a player's screen: hits their creature takes and blood from creatures hurt next to it, only hits it takes, or only creatures hurt next to it. Covers the blood, tunnel vision, the heartbeat on a hit and the damage type effects. The wounded view of a hurt creature stays with its own switch.",
+    scope: "world", config: true, type: String, choices: { both: "Hits taken and creatures hurt nearby", hurt: "Only hits taken", dealt: "Only creatures hurt nearby" }, default: "both",
   });
   registerSetting("lensWhoLocal", {
     name: "Damage lens shows on my screen",
-    hint: "Your own choice of which blows reach this screen: hits your creature takes, hits it deals, or both. As the GM set uses the GM's Damage lens shows.",
-    scope: "client", config: true, type: String, choices: { "": "As the GM set", both: "Hits taken and dealt", hurt: "Only hits taken", dealt: "Only hits dealt" }, default: "",
+    hint: "Your own choice of which blows reach this screen: hits your creature takes, creatures hurt next to it, or both. As the GM set uses the GM's Damage lens shows.",
+    scope: "client", config: true, type: String, choices: { "": "As the GM set", both: "Hits taken and creatures hurt nearby", hurt: "Only hits taken", dealt: "Only creatures hurt nearby" }, default: "",
   });
   registerSetting("lensBloodAmount", {
     name: "Damage lens amount",
@@ -4362,13 +4367,13 @@ Hooks.once("ready", () => {
   // plays with the lens off on this screen too).
   // A heartbeat only for a creature with a heart (engines/motion/blood-colors.mjs HEARTLESS: undead, constructs, oozes...).
   const hasHeart = (token) => { try { return !token?.actor || creatureHasHeart(creatureBloodType({ system: game.system.id, actor: token.actor, name: token.name })); } catch { return true; } };
-  const lensShow = (splash, { args, color, seed, variant, heart = true }) => {
+  const lensShow = (splash, { args, color, seed, variant, heart = true, source = null }) => {
     const look = lensLook(variant);
     // "Damage lens duration": how long a big hit's blood stays, in seconds (this player's own when set, else the GM's),
     // against the usual 4.5.
     const own = Number(shakeSetting("lensDurationLocal", 0)) || 0, seconds = own > 0 ? own : Number(shakeSetting("lensDuration", LENS_BASE_SECONDS)) || LENS_BASE_SECONDS;
     const duration = Math.min(6, Math.max(0.4, seconds / LENS_BASE_SECONDS));
-    if (splash) lensBlood.splash(tunnelOn() ? splash : { ...splash, tunnel: 0 }, { seed, color, duration });
+    if (splash) lensBlood.splash(tunnelOn() ? splash : { ...splash, tunnel: 0 }, { seed, color, duration, source });
     // The hit's damage-type effects, by the same rule as the blood (the showcase past the world switch).
     const fx = lensEffectHit({ ...args, worldOn: args.preview === true || effectsWorldOn(), localOn: effectsLocalOn(), types: args.effectTypes ?? [] });
     if (fx) lensBlood.effects(fx, { seed, duration });
@@ -4521,8 +4526,14 @@ Hooks.once("ready", () => {
       const ids = { actorId: actor.id, tokenId: token.id };
       const damage = recallDamage(log, ids), by = recallAttribution(log, ids);
       const attacker = by?.sourceTokenId && by.sourceTokenId !== token.id ? canvas.tokens.get(by.sourceTokenId) ?? null : null;
-      // The player owns the creature hit (victim) or the creature that hit it (attacker); anyone else sees nothing.
-      const role = actor.isOwner ? "victim" : attacker?.actor?.isOwner ? "attacker" : null;
+      // The player owns the creature hit (victim), or catches its blood ("Enemy blood reaches"): one of theirs stands
+      // next to it, whoever struck it (a ranged shooter far off sees none), or, set so, theirs struck it; anyone else
+      // sees nothing.
+      const rectOf = (t) => ({ x: t.document.x, y: t.document.y, w: t.w, h: t.h }), reach = lensReach(shakeSetting("lensReach", "adjacent"));
+      const near = actor.isOwner ? null : reach === "attacker" ? (attacker?.actor?.isOwner ? { token: attacker } : null)
+        : nearestNear(rectOf(token), (canvas.tokens?.placeables ?? []).filter((t) => t !== token && t.actor?.isOwner && !t.document.hidden)
+          .map((t) => ({ token: t, rect: rectOf(t) })), { grid: canvas.grid?.size || 100, squares: LENS_REACH[reach] });
+      const role = actor.isOwner ? "victim" : near ? "attacker" : null;
       // "Damage lens shows": only the hits taken, only those dealt, or both.
       if (!lensRoleWanted(role, lensWho(shakeSetting("lensWho", "both"), shakeSetting("lensWhoLocal", "")))) continue;
       const blood = lensBloodOf(token), crit = damage?.crit === true || by?.crit === true;
@@ -4532,9 +4543,11 @@ Hooks.once("ready", () => {
         // its energy types play their own effects (lens-effects.mjs; Daggerheart's magic as the arcane shimmer).
         damageType: woundOf(damage ?? by ?? {}), effectTypes: lensEffectTypes({ ...(damage ?? by ?? {}), crit }),
         visible: movementPerception(token, token.document, level).visible === true, hidden: token.document.hidden === true,
-        screen: lensScreen(token.center), attackerScreen: attacker ? lensScreen(attacker.center) : null, view: lensView() };
+        screen: lensScreen(token.center), view: lensView(),
+        attackerScreen: role === "attacker" ? lensScreen(near.token.center) : attacker ? lensScreen(attacker.center) : null };
       const splash = lensSplashFor(args);
-      lensShow(splash, { args, color: blood.color, seed: `${token.id}:${Date.now()}`, heart: hasHeart(token) });
+      // Its own cooldown: every creature hurt at once splashes.
+      lensShow(splash, { args, color: blood.color, seed: `${token.id}:${Date.now()}`, heart: hasHeart(token), source: token.id });
       // The player's own creature hurt: a stain or two that stay (the wounded view).
       if (role === "victim" && splash && lensMine()?.actor === actor) woundHit(splash);
       return;

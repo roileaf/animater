@@ -70,3 +70,17 @@ test('Damage lens shows: a world choice and an on-my-screen one, gating the live
   const drama = SETTINGS_TABS.find((t) => t.id === 'drama');
   assert.ok(drama.rows.some((r) => r.world === 'lensWho' && r.local === 'lensWhoLocal'));
 });
+
+test('main: the dealt role goes to players with a creature next to the hurt one, its screen point as the splash origin', () => {
+  assert.match(main, /const role = actor\.isOwner \? "victim" : near \? "attacker" : null;/);
+  assert.match(main, /attackerScreen: role === "attacker" \? lensScreen\(near\.token\.center\) : attacker \? lensScreen\(attacker\.center\) : null/);
+  assert.match(main, /\.filter\(\(t\) => t !== token && t\.actor\?\.isOwner && !t\.document\.hidden\)/);
+});
+
+test('Enemy blood reaches: a world choice, adjacent by default; the attacker only when set so', () => {
+  assert.match(registration('lensReach'), /scope: "world", config: true, type: String, choices: \{ adjacent: [^}]+, reach: [^}]+, attacker: [^}]+ \}, default: "adjacent"/);
+  assert.match(main, /reach === "attacker" \? \(attacker\?\.actor\?\.isOwner \? \{ token: attacker \} : null\)/);
+  assert.match(main, /squares: LENS_REACH\[reach\]/);
+  const drama = SETTINGS_TABS.find((t) => t.id === 'drama');
+  assert.ok(drama.rows.some((r) => r.world === 'lensReach'));
+});

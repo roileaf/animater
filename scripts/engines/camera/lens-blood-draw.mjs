@@ -706,12 +706,12 @@ export function createLensBloodOverlay({ doc = globalThis.document, win = global
   };
   const kick = () => { if (frame === null) frame = win.requestAnimationFrame(render); };
   return {
-    splash(splash, { seed, color, duration = 1 } = {}) {
+    splash(splash, { seed, color, duration = 1, source = null } = {}) {
       node();
       // Splats are laid out on the drawing area; a blow's window point is moved into it.
       at = area();
       const from = splash?.fromScreen, inside = from && Number.isFinite(from.x) ? { x: Math.min(at.w, Math.max(0, from.x - at.x)), y: Math.min(at.h, Math.max(0, from.y - at.y)) } : from;
-      const r = admitSplash(state, from ? { ...splash, fromScreen: inside } : splash, { now: now(), seed, width: at.w, height: at.h, color, duration });
+      const r = admitSplash(state, from ? { ...splash, fromScreen: inside } : splash, { now: now(), seed, width: at.w, height: at.h, color, duration, source });
       if (r.state === state) return 0;
       state = r.state;
       kick();

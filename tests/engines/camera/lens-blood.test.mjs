@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LENS_BLOOD, lensAmount, lensSplashFor, hitStrength, dealtStrength, lensSplats, LENS_SHAPES, splatState, tunnelState, admitSplash, liveSplats, lingerLevel, cssColor, lensWho, lensRoleWanted } from '../../../scripts/engines/camera/lens-blood.mjs';
+import { LENS_BLOOD, lensAmount, lensSplashFor, hitStrength, dealtStrength, lensSplats, LENS_SHAPES, splatState, tunnelState, admitSplash, liveSplats, lingerLevel, cssColor, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH } from '../../../scripts/engines/camera/lens-blood.mjs';
 
 const VIEW = { width: 1600, height: 900 };
 const SEEDS = Array.from({ length: 24 }, (_, i) => `seed-${i}`);
@@ -244,6 +244,19 @@ test('cooldown: one splash per 600 ms, at most eight splats alive, oldest go fir
   assert.equal(liveSplats(state, 1e9).splats.length, 0);
 });
 
+test('cooldown by creature: several hurt at once each splash, the same one twice does not', () => {
+  const splash = { kind: 'dealt', strength: 1, tunnel: 0, fromScreen: { x: 100, y: 100 }, edge: 'left', amount: 'heavy' };
+  let state = { lastAt: -Infinity, splats: [], pulses: [] };
+  let r = admitSplash(state, splash, { now: 1000, seed: 'a', ...VIEW, source: 'goblin-a' });
+  assert.ok(r.added > 0);
+  r = admitSplash(state = r.state, splash, { now: 1010, seed: 'b', ...VIEW, source: 'goblin-b' });
+  assert.ok(r.added > 0, 'another creature in the same blast');
+  r = admitSplash(state = r.state, splash, { now: 1020, seed: 'c', ...VIEW, source: 'goblin-a' });
+  assert.equal(r.added, 0, 'the same creature inside its cooldown');
+  r = admitSplash(state, splash, { now: 1000 + LENS_BLOOD.cooldownMs + 50, seed: 'd', ...VIEW, source: 'goblin-c' });
+  assert.deepEqual(Object.keys(r.state.lastBy), ['goblin-c'], 'past ones let go');
+});
+
 test('a hit on the player\'s creature pulses the tunnel even inside the cooldown', () => {
   const hit = { kind: 'self', strength: 0.8, tunnel: 0.7, fromScreen: null, edge: null, amount: 'heavy' };
   let { state } = admitSplash({ lastAt: -Infinity, splats: [], pulses: [] }, hit, { now: 0, seed: 'p', ...VIEW });
@@ -467,4 +480,29 @@ test('Damage lens shows: hits taken, dealt or both, this screen over the GM', ()
   assert.ok(lensRoleWanted('victim', 'hurt') && !lensRoleWanted('attacker', 'hurt'));
   assert.ok(!lensRoleWanted('victim', 'dealt') && lensRoleWanted('attacker', 'dealt'));
   assert.ok(!lensRoleWanted(null, 'both'), 'a blow the player has no part in');
+});
+
+test('nearestNear: the player creature next to the hurt one (adjacent, or a square between with reach), the closest; far off none', () => {
+  const sq = (x, y, size = 1) => ({ x: x * 100, y: y * 100, w: size * 100, h: size * 100 });
+  const hurt = sq(5, 5);
+  const adjacent = { id: 'adjacent', rect: sq(6, 6) }, reach = { id: 'reach', rect: sq(3, 5) }, far = { id: 'far', rect: sq(9, 5) };
+  assert.equal(nearestNear(hurt, [far, reach, adjacent])?.id, 'adjacent', 'adjacent by default, diagonals too');
+  assert.equal(nearestNear(hurt, [far, reach]), null, 'a square between is not adjacent');
+  assert.equal(nearestNear(hurt, [far, reach, adjacent], { squares: 1 })?.id, 'adjacent', 'closest first');
+  assert.equal(nearestNear(hurt, [far, reach], { squares: 1 })?.id, 'reach', 'reach: one square between still splashes');
+  assert.equal(nearestNear(hurt, [far], { squares: 1 }), null, 'a ranged shooter far off sees none');
+  assert.equal(nearestNear(hurt, [far], { squares: 3 })?.id, 'far');
+  assert.equal(nearestNear(sq(5, 5, 3), [{ id: 'big', rect: sq(8, 6) }])?.id, 'big', 'measured edge to edge');
+  assert.equal(nearestNear(sq(5, 5, 3), [{ id: 'big', rect: sq(9, 6) }]), null);
+  assert.equal(nearestNear(hurt, [{ id: 'broken', rect: { x: NaN } }]), null);
+  assert.equal(nearestNear(null, [adjacent]), null);
+});
+
+test('Enemy blood reaches: adjacent by default, reach one square further, or the attacker as before', () => {
+  assert.equal(lensReach(undefined), 'adjacent');
+  assert.equal(lensReach('nonsense'), 'adjacent');
+  assert.equal(lensReach('toString'), 'adjacent');
+  assert.equal(lensReach('reach'), 'reach');
+  assert.equal(lensReach('attacker'), 'attacker');
+  assert.deepEqual({ ...LENS_REACH }, { adjacent: 0, reach: 1 });
 });

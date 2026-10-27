@@ -87,7 +87,7 @@ export class DamageShowcaseUI {
     return `<div class="an-showcase an-damage-showcase">
      <div class="an-dmg-body"><div class="an-dmg-main">
      <header class="an-dmg-head"><div><div class="an-eyebrow">DAMAGE IMMERSION · LOCAL PREVIEW${this.snapshot.scene ? ` · ${esc(this.snapshot.scene)}` : ''}</div>
-      <p>Only players see these, each on their own screen: the enemy's blood on the lens when their creature lands a hit; tunnel vision, their own blood and a heartbeat when their creature is hit. Colours come from Splatter when it is active, else from Animater's Blood colours (by creature type, or a token's own colour). Energy damage also leaves its own effect on the lens (Damage type effects: scorch and embers, frost, arcs, cracks, double vision...), bloodless creatures included. Bloodless creatures never bleed, and nothing shows for creatures a player cannot see. This plays on your screen only; Animater minimizes while it plays.</p></div>
+      <p>Only players see these, each on their own screen: a creature's blood on the lens when it is hurt next to their creature, whoever struck it; tunnel vision, their own blood and a heartbeat when their creature is hit. Colours come from Splatter when it is active, else from Animater's Blood colours (by creature type, or a token's own colour). Energy damage also leaves its own effect on the lens (Damage type effects: scorch and embers, frost, arcs, cracks, double vision...), bloodless creatures included. Bloodless creatures never bleed, and nothing shows for creatures a player cannot see. This plays on your screen only; Animater minimizes while it plays.</p></div>
       <p class="an-hint">Your screen: damage lens ${saved.local === false ? 'off' : 'on'} · damage type effects ${saved.effects === false ? 'off' : 'on'}${saved.effectsWorld === false ? ' (off for players)' : ''} · tunnel vision ${saved.tunnel === false ? 'off' : 'on'} · heartbeat ${saved.heartbeat === false ? 'off' : 'on'}</p></header>
      <div class="an-dmg-cast">
       <div class="an-dmg-cast-bar"><p><b>Select</b> the player's creature (whose screen you see; the view centres on it) and <b>Target</b> the other creature. Any PC or NPC, either way round.</p>
@@ -99,7 +99,7 @@ export class DamageShowcaseUI {
       <section><div class="an-eyebrow">YOUR CREATURE IS HIT</div>
        <label>Blood<select data-damage="victimColor">${this.bloodOptions(o.victimColor)}</select></label>
        <button type="button" data-action="damage-hit">Play</button></section>
-      <section><div class="an-eyebrow">YOUR CREATURE HITS AN ENEMY</div>
+      <section><div class="an-eyebrow">AN ENEMY HURT NEXT TO YOU</div>
        <label>Enemy<select data-damage="enemy">${this.bloodOptions(o.enemy)}</select></label>
        <div class="an-dmg-row"><label>Damage dealt<input type="number" min="1" max="500" data-damage="damage" value="${o.damage}"></label>
        <label>Enemy max HP<input type="number" min="1" max="2000" data-damage="enemyMax" value="${o.enemyMax}"></label>
