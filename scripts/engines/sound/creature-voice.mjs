@@ -209,8 +209,13 @@ export const VOICE_CATEGORIES = [
   ['Constructs, oozes and plants', ['construct', 'golem', 'ooze', 'plant', 'treant']],
   ['Undead and spirits', ['undead', 'zombie', 'wraith', 'skeleton']],
 ];
-/** The families for a picker: [{ label, families: [[family, its label]] }], by category, in VOICE_CATEGORIES order. */
-export const familyGroups = () => VOICE_CATEGORIES.map(([label, keys]) => ({ label, families: keys.map((k) => [k, VOICE_FAMILIES[k].label]) }));
+/**
+ * The families for a picker: [{ label, families: [[family, its label]] }], by category, in VOICE_CATEGORIES order.
+ * Given a `bank`, only the families with a voice to play (their own, or a broader family's) and the one `chosen`.
+ */
+export const familyGroups = ({ bank, chosen = '' } = {}) => VOICE_CATEGORIES.map(([label, keys]) => ({ label, families: keys
+  .filter((k) => !bank || k === chosen || voiceLineage(k).some((f) => bank.some((v) => v.suits?.[0] === f && fullness(v))))
+  .map((k) => [k, VOICE_FAMILIES[k].label]) })).filter((g) => g.families.length);
 
 /** A family with the broader ones it falls back to (a wolf: canine, beast). */
 export const voiceLineage = (family) => {
@@ -316,8 +321,10 @@ export function voiceGroups(bank = CREATURE_VOICES, { kinds, chosen = '' } = {})
   const groups = [['woman', 'Female'], ['man', 'Male'], [null, 'Creature']].map(([gender, label]) => ({ gender, label, voices: [] }));
   let voices = (Array.isArray(bank) ? bank : []).filter((x) => fullness(x));
   if (Array.isArray(kinds)) {
-    const kind = kinds.find((k) => voices.some((v) => v.suits?.includes(k)));
-    voices = voices.filter((v) => (kind && v.suits?.includes(kind)) || (chosen && v.id === chosen));
+    // A group's own voices (those it is first in): an orc that can stand in for a man is not listed as one. The
+    // nearest broader group with voices of its own when this one has none.
+    const kind = kinds.find((k) => voices.some((v) => v.suits?.[0] === k));
+    voices = voices.filter((v) => (kind && v.suits?.[0] === kind) || (chosen && v.id === chosen));
   }
   for (const v of voices) {
     (groups.find((g) => g.gender === (v.gender ?? null)) ?? groups[2]).voices.push([v.id, v.label ?? v.id]);

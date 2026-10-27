@@ -405,9 +405,16 @@ test("the voice picker offers only the voices of the chosen kind, else of the ne
   ];
   const ids = (kinds, chosen) => voiceGroups(bank, { kinds, chosen }).flatMap((g) => g.voices.map(([id]) => id));
   assert.deepEqual(ids(["fiend", "monster"]), ["imp"]);
-  assert.deepEqual(ids(["monster"]), ["imp", "ogre"]);
+  // A group's own voices only: an imp can stand in for a monster, but it is a fiend.
+  assert.deepEqual(ids(["monster"]), ["ogre"]);
   // A horse has no voice of its own: the beasts it falls back to.
-  assert.deepEqual(ids(["equine", "beast"]), ["elk", "wolf"]);
+  assert.deepEqual(ids(["equine", "beast"]), ["elk"]);
+  // An orc (female or not) can stand in for a man, but Man lists men.
+  const people = [
+    { id: "man", label: "Man", suits: ["man"], gender: "man", hurt: ["x"] },
+    { id: "orc-f", label: "Orc", suits: ["brute", "man"], gender: "woman", hurt: ["x"] },
+  ];
+  assert.deepEqual(voiceGroups(people, { kinds: ["man"] }).map((g) => g.label), ["Male"]);
   // Nothing fits (a silent token, a kind with no voices at all): no voices to pick.
   assert.deepEqual(ids([]), []);
   assert.deepEqual(ids(["elemental"]), []);
@@ -425,6 +432,14 @@ test("every voice family sits in exactly one picker category", () => {
   assert.equal(groups[0].label, "People");
   assert.deepEqual(groups.find((g) => /oozes/.test(g.label)).families.map(([k]) => k), ["construct", "golem", "ooze", "plant", "treant"]);
   assert.equal(groups.find((g) => /Undead/.test(g.label)).families.find(([k]) => k === "zombie")[1], "Zombie or ghoul");
+  // Given a bank, a family with nothing to play is left out (unless it is the token's choice), and so is an empty category.
+  const full = { attack: ["a"], hurt: ["h"], death: ["d"] };
+  const bank = [{ id: "golem", suits: ["golem", "construct"], ...full }, { id: "elk", suits: ["beast"], ...full }];
+  const offered = (chosen) => familyGroups({ bank, chosen }).flatMap((g) => g.families.map(([k]) => k));
+  assert.ok(offered().includes("golem") && offered().includes("bat"), "its own voice, or a broader family's (a bat: beasts)");
+  assert.ok(!offered().includes("elemental") && !offered().includes("construct"), "an elemental has none; a golem's voice is not a construct's own");
+  assert.ok(!familyGroups({ bank }).some((g) => /Elementals/.test(g.label)));
+  assert.ok(offered("elemental").includes("elemental"));
 });
 
 test("every bundled voice has its own attack, hurt and death cries", async () => {

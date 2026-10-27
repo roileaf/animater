@@ -3443,7 +3443,7 @@ Hooks.on("renderTokenConfig", (app, html) => {
   const options = (list, chosen) => list.map(([v, l]) => `<option value="${esc(v)}"${v === chosen ? " selected" : ""}>${esc(l)}</option>`).join("");
   // The kinds of creature by category, and female, male and other creatures' voices apart, so one is easy to find.
   const firstOptions = pf2eSounds ? [["", "Use PF2e Creature Sounds"], ["auto", `Animater: its creature's${auto}`]] : [["", `Its creature's${auto}`]];
-  const familyOptions = options([...firstOptions, ["none", "Silent"]], value) + familyGroups().map((g) => `<optgroup label="${esc(g.label)}">${options(g.families, value)}</optgroup>`).join("");
+  const familyOptions = options([...firstOptions, ["none", "Silent"]], value) + familyGroups({ bank, chosen: value }).map((g) => `<optgroup label="${esc(g.label)}">${options(g.families, value)}</optgroup>`).join("");
   // The voices to pick from are those of the kind chosen on the left (its creature's own, or a family and its
   // fallbacks), the one already chosen kept.
   const own = (() => { try { return actor ? creatureOf(actor).kinds : []; } catch { return []; } })();

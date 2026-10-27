@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.12 (2026-10-27)
+
+- **12 more creature voices.** Bats, swarms (a hornet), monitors (an alien pest), a witch, a cackling skeleton, a moaning zombie, a slime, a small spider, a ghost, a brute orc, a colossus and a young dragon now have voices of their own, each with its own attack, hurt and death cries. Animater ships 135 voices.
+- **A voice group lists its own voices.** Choosing Man in Token Configuration → Animater creature voice listed orcs, ogres and trolls (female ones too), since they can stand in for a man. Each group now lists only its own voices, and borrows a related group's only when it has none.
+- **Groups with nothing to play are hidden.** Elemental, construct, plant, treant, fey, celestial and small folk have no voices yet, so they no longer appear in the voice list (a token already set to one keeps it).
+
 ## 2.2.11 (2026-10-27)
 
 - **Creatures cry out.** An attacking creature now and then grunts, snarls or roars, a hurt one now and then cries out, and one that falls always does, in a voice for its creature: a man or a woman, a goblin, an orc, a wolf, a bear, a dragon, a zombie, a ghost, a spider and many more. Each cry is a little different in pitch and level, and only those who could hear the creature hear it. Turn it off for the world or just your screen in Animater settings (Creatures cry out when they attack and are hurt).
