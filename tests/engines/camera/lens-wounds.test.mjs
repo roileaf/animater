@@ -87,6 +87,8 @@ test('the wounded view by HP: edges and stains from half, pulse and muffle at a 
   assert.deepEqual(at(0.1, { shown: false }).look, NO_WOUND, 'a hidden token');
   // Dead: nothing lasting (the death plays as a transition).
   assert.deepEqual(woundedView({ life: { phase: 'dead', weak: 1, left: 0 }, inCombat: true, shown: true, ...gate }, { amount: 'heavy', quality: 'full' }).look, NO_WOUND);
+  // No creature of one's own (the GM's screen): none, not a throw.
+  assert.deepEqual(woundedView(null, { amount: 'heavy', quality: 'full' }).look, NO_WOUND);
 });
 
 test('down: a near-black window, the board dimmed, blurred and greyed; deeper as the creature weakens; Subtle halved, Low no board filter', () => {

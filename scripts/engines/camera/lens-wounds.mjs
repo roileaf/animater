@@ -122,7 +122,9 @@ const halve = (l) => ({ edge: r3(l.edge / 2), dark: r3(l.dark / 2), window: r3(l
  * ({ cutoff, gain } or null), stains (whether hits leave stains and they stay) }. view: { life, inCombat, shown }; switches as
  * woundedWanted; look: { amount, quality } (lensAmount's amount, null: gore off or quality Off).
  */
-export function woundedView({ life = null, inCombat = false, shown = true, ...gate } = {}, { amount = 'heavy', quality = 'full' } = {}) {
+export function woundedView(view, { amount = 'heavy', quality = 'full' } = {}) {
+  // null: no creature of this screen's own (the GM's).
+  const { life = null, inCombat = false, shown = true, ...gate } = view ?? {};
   const none = { look: { ...NO_WOUND }, pulse: 0, muffle: null, stains: false };
   // Dead: nothing lasting (the death itself plays as a transition: transitionSteps).
   if (!life || life.phase === 'dead' || !shown || !amount || !woundedWanted({ ...gate, quality })) return none;

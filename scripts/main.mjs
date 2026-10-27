@@ -1874,9 +1874,13 @@ function fetchSpots(recipe, context, caster) {
 // Big magic bends the scene (world setting); on while the setting is not registered.
 function mapDistortion() { try { return hotSetting("mapDistortion") !== false; } catch { return true; } }
 // `slide` (ms): Foundry's own move animation over that long (a fetch dragged along its line), else a jump.
+// The spot is already chosen clear: no walls, terrain cost or tokens in between stop it (D&D 5e's full movement
+// automation otherwise halts it beside the first hostile token on the line).
 const SLIDE_MS = 500, SLIDE_MAX_MS = 3000;
+const TELEPORT_CONSTRAIN = { ignoreWalls: true, ignoreCost: true, ignoreTokens: true };
 async function moveToken(doc, x, y, slide = 0) {
-  await doc.update({ x, y }, slide > 0 ? { animation: { duration: slide }, animater: { teleport: true } } : { animate: false, animater: { teleport: true } });
+  const options = { animater: { teleport: true }, constrainOptions: TELEPORT_CONSTRAIN, showRuler: false };
+  await doc.update({ x, y }, slide > 0 ? { ...options, animation: { duration: slide } } : { ...options, animate: false });
 }
 // What a teleport's effects play through. `local`: a preview, on this screen only, with no streak.
 function teleportHost({ local = false } = {}) {

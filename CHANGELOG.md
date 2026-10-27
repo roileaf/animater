@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.9 (2026-10-27)
+
+- **Teleports reach their spot in D&D 5e.** With D&D 5e's full movement automation, a teleport Animater moved stopped beside the first hostile token on the straight line to its destination. Teleports and fetches now ignore tokens, walls and terrain on the way, as a teleport should.
+- **No "Wounded view" error on the GM's screen.** Selecting a token as GM logged a Blocked "Wounded view: Cannot read properties of null (reading 'life')" in the Activity panel. The GM has no wounded view, and now nothing is logged.
+
 ## 2.2.8 (2026-10-26)
 
 - **Module auras in the Effects catalog.** The auras PF2e Workbench and patreon-v3 put on a performer (Aura: Courageous Anthem, Rallying Anthem, Dirge of Doom, Bane, Malediction, Song of Strength, Triple Time, Protector's Sphere, Desert Wind and more) are now Effects catalog entries under **Module auras**, listed while their module is active. An aura both modules ship is one entry, so leaving out Courageous Anthem leaves out both versions. Each has its own field at the aura's radius (a gold field of song for Courageous Anthem, a dark inward field for Dirge of Doom), and can be customised or left out like any built-in aura.
