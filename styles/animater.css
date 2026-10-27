@@ -3263,18 +3263,20 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-settings .an-set-searching .an-set-panel { display: none; }
 .animater-settings .an-set-searching .an-set-panel.an-set-has-hits { display: block; }
 .animater-settings .an-set-panel h3 { margin: 12px 0 6px; padding: 0; border: none; color: var(--an-accent); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
-.animater-settings .an-set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 10px 0; border-bottom: 1px solid var(--an-line); }
+/* The text keeps a readable width: controls that leave it less than 280px drop under it, at the right. */
+.animater-settings .an-set-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 16px; padding: 10px 0; border-bottom: 1px solid var(--an-line); }
+.animater-settings .an-set-text { flex: 1 1 280px; min-width: 0; }
 .animater-settings .an-set-row[hidden] { display: none; }
 .animater-settings .an-set-text strong { color: var(--an-text); font-weight: 600; }
 .animater-settings .an-set-text p { margin: 3px 0 0; color: var(--an-muted); font-size: 12px; line-height: 1.4; }
 .animater-settings .an-set-off { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: var(--an-surface); color: var(--an-muted); font-size: 11px; font-style: normal; }
-.animater-settings .an-set-controls { display: flex; align-items: flex-start; gap: 14px; }
+.animater-settings .an-set-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 6px 14px; max-width: 100%; margin-left: auto; }
 .animater-settings .an-set-switch { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 64px; cursor: pointer; }
 .animater-settings .an-set-switch > span { color: var(--an-muted); font-size: 11px; white-space: nowrap; }
 .animater-settings .an-set-switch > span:empty { display: none; }
 .animater-settings .an-set-switch select { max-width: 220px; }
 .animater-settings .an-set-switch range-picker { width: 220px; }
-.animater-settings .an-set-extras { grid-column: 1 / -1; display: grid; gap: 6px; margin-left: 14px; padding-left: 10px; border-left: 2px solid var(--an-line); }
+.animater-settings .an-set-extras { flex: 1 1 100%; display: grid; gap: 6px; margin-left: 14px; padding-left: 10px; border-left: 2px solid var(--an-line); }
 .animater-settings .an-set-extra { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
 .animater-settings .an-set-extra > span { color: var(--an-text); }
 .animater-settings .an-set-extra small { color: var(--an-muted); }
@@ -3291,7 +3293,6 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-settings .an-set-empty[hidden] { display: none; }
 @container (max-width: 620px) {
   .animater-settings .an-set-nav { width: 150px; }
-  .animater-settings .an-set-row { grid-template-columns: minmax(0, 1fr); }
 }
 /* Creature showcase stays inside the workspace; entrance titles sit over the canvas. */
 .animater .an-showcase{padding:20px;overflow:auto;min-height:0;height:100%}

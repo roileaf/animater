@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.10 (2026-10-27)
+
+- **Settings rows keep their text readable.** A row with two dropdowns (Damage lens shows) squeezed its description into a narrow column. When a row's controls leave the text too little room they now sit under it, and in a narrow window they wrap instead of running off the side.
+
 ## 2.2.9 (2026-10-27)
 
 - **Teleports reach their spot in D&D 5e.** With D&D 5e's full movement automation, a teleport Animater moved stopped beside the first hostile token on the straight line to its destination. Teleports and fetches now ignore tokens, walls and terrain on the way, as a teleport should.
