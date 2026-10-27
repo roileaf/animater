@@ -32,6 +32,7 @@ import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets, midiRunsActivity } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { heavyItem } from "./systems/heavy-item.mjs";
+import { HERO_POINT_SYSTEMS, HERO_GLOW, HERO_GLOW_MS, heroPointWatch } from "./systems/hero-points.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
@@ -3182,6 +3183,16 @@ Hooks.once("init", () => {
     hint: "Hits in a row by the same attacker on the same target, in one turn (or within 12 seconds out of combat), land harder: bigger, louder and with stronger ripples. A miss starts the streak over. In PF2e and SF2e, a third Strike in a turn that misses looks strained.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  registerSetting("heroPointGlow", {
+    name: "Hero Point glow",
+    hint: "A character awarded a Hero Point glows gold for a moment, on every screen that can see their token.",
+    scope: "world", config: HERO_POINT_SYSTEMS.has(game.system.id), type: Boolean, default: true,
+  });
+  registerSetting("heroPointGlowLocal", {
+    name: "Hero Point glow on my screen",
+    hint: "Turn off to never draw the Hero Point glow on this screen.",
+    scope: "client", config: HERO_POINT_SYSTEMS.has(game.system.id), type: Boolean, default: true,
+  });
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
   registerSetting(TELEPORT_TOKENS, {
     name: "Teleport tokens",
@@ -4619,6 +4630,22 @@ Hooks.once("ready", () => {
     try { lensBloodFor(actor, before); } catch (error) { runtime.trace("Blocked", `Lens blood: ${error.message}`); }
     lensRefresh();
   });
+  // A character awarded a Hero Point glows gold on its tokens here (systems/hero-points.mjs). Every screen sees the
+  // update, so nothing is broadcast.
+  if (HERO_POINT_SYSTEMS.has(game.system.id)) {
+    const heroPoints = heroPointWatch();
+    for (const actor of game.actors ?? []) heroPoints.seen(actor);
+    Hooks.on("createActor", (actor) => heroPoints.seen(actor));
+    Hooks.on("updateActor", (actor, changes) => {
+      try {
+        if (!heroPoints.changed(actor, changes) || !canvas?.ready || hotSetting("heroPointGlow") === false || hotSetting("heroPointGlowLocal") === false || !tokenFx.ready()) return;
+        for (const token of actor.getActiveTokens?.() ?? []) {
+          const remove = tokenFx.apply(token, HERO_GLOW, { key: `hero:${token.id}` });
+          setTimeout(remove, HERO_GLOW_MS + 100);
+        }
+      } catch (error) { runtime.trace("Blocked", `Hero Point glow: ${error.message}`); }
+    });
+  }
   // Damage immersion showcase (ui/damage-showcase-ui.mjs): the same decisions and drawing on the GM's own screen,
   // past the players-only rule, with the GM's own switches for the lens, tunnel and heartbeat.
   const colorNumber = (c) => (typeof c === "number" ? c : parseInt(String(c ?? "").replace(/^#/, "").slice(0, 6), 16) || bloodColor());

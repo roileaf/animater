@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.15 (2026-10-27)
+
+- **Hero Points glow.** In PF2e and SF2e, a character awarded a Hero Point (from the sheet, the party sheet or a macro) glows gold for a moment on its tokens. The world setting Hero Point glow and each player's "on my screen" switch, under Combat drama, turn it off.
+- **Effects stay inside the token.** Animater fits each animation's art to the token it plays on. It now counts an effect's faint glow and haze as part of its art, so the whole effect, glow included, stays within the token (and its ring) instead of spilling past it. Most effects are a few percent smaller; soft, hazy ones up to half.
+
 ## 2.2.14 (2026-10-27)
 
 - **Enemy blood reaches whoever stands next to it.** A creature hurt in a fight now splashes its blood on the screens of the players whose creatures stand next to it, whoever struck it; a ranged attacker far off sees none. The new world setting Enemy blood reaches picks who gets it: adjacent creatures (the default), creatures within one square (reach), or only the attacker wherever it stands, as before.

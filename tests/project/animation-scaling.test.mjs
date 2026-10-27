@@ -76,8 +76,8 @@ test("padded melee artwork fills the requested visible footprint in editor and c
     file: "modules/jb2a_patreon/Library/Generic/Weapon_Attacks/Melee/GenericSlash01_01_Regular_BluePurple_800x600.webm",
     width: 800, height: 600,
   };
-  // Measured alpha bounds occupy 33/128 of the frame's longest dimension.
-  const factor = 128 / 33;
+  // Measured alpha bounds occupy 40/128 of the frame's longest dimension.
+  const factor = 128 / 40;
   const editor = artworkGeometry(55, 800, 600, media);
   assert.ok(Math.abs(editor.width - 55 * factor) < 0.05);
   assert.ok(Math.abs(editor.height - 55 * factor * .75) < 0.05);
@@ -91,7 +91,7 @@ test("runtime and editor apply measured padding to local stages while keeping be
   for (const kind of ["cast", "impact", "aura", "projectile"]) {
     const { runtime, calls } = runtimeFixture(file);
     await runtime.play(recipe(kind, 1.2), { source: { w: 200, h: 100 }, targets: [{ w: 200, h: 100 }] }, { preview: true });
-    assert.ok(Math.abs(calls.find(c => c[0] === "size")[1].width - 240 * 128 / 33) < .05);
+    assert.ok(Math.abs(calls.find(c => c[0] === "size")[1].width - 240 * 128 / 40) < .05);
   }
   const { runtime, calls } = runtimeFixture(file);
   await runtime.play(recipe("travel"), { source: { w: 100, h: 100 }, targets: [{ w: 100, h: 100 }] }, { preview: true });
@@ -101,8 +101,8 @@ test("runtime and editor apply measured padding to local stages while keeping be
   const layer = { dataset: { layerStage: "0" }, style: { setProperty() {} }, querySelector: () => art };
   const player = new RecipePreview({ dataset: {}, querySelectorAll: s => s === "[data-layer-stage]" ? [layer] : [] }, r, () => {});
   player.draw(recipeFrame(player.recipe, 50));
-  assert.ok(Math.abs(parseFloat(layer.style.width) - 55 * 128 / 33) < .05);
-  assert.ok(Math.abs(parseFloat(layer.style.height) - 55 * 128 / 33 * .75) < .05);
+  assert.ok(Math.abs(parseFloat(layer.style.width) - 55 * 128 / 40) < .05);
+  assert.ok(Math.abs(parseFloat(layer.style.height) - 55 * 128 / 40 * .75) < .05);
 });
 test("beam scale changes thickness while distance and padding remain connected", async () => {
   for (const scale of [0.4, 1, 2]) {

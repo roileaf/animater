@@ -37,6 +37,9 @@ const cacheURL = new URL("../.cache/media-footprints.json", import.meta.url);
 let cache = {};
 try { cache = JSON.parse(await readFile(cacheURL, "utf8")); } catch {}
 const pending = new Map(), records = [], profiles = {};
+// Faint glow and haze count as artwork: an effect fitted to a token keeps all of it inside the token, as Automated
+// Animations does by playing the whole frame. Only near-invisible pixels (and video noise) are left out.
+const METHOD = "Union of alpha >= min(10, 15% of peak alpha), minimum 3, at 6fps, 128px sample width; preserves original aspect and center";
 async function locate(file) {
   const path = resolve(dataRoot, file);
   if (existsSync(path)) return { path, source: "installed" };
@@ -55,7 +58,7 @@ async function locate(file) {
 async function measure(path) {
   if (pending.has(path)) return pending.get(path);
   const run = (async () => {
-    const info = await stat(path), stamp = `${info.size}:${info.mtimeMs}`;
+    const info = await stat(path), stamp = `${info.size}:${info.mtimeMs}:${METHOD}`;
     if (cache[path]?.stamp === stamp) return cache[path].profile;
     const { stdout } = await exec("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name,width,height", "-of", "json", path]);
     const m = JSON.parse(stdout).streams[0], width = 128;
@@ -67,8 +70,8 @@ async function measure(path) {
     ], { encoding: "buffer", maxBuffer: 64 * 1024 * 1024 });
     let maxAlpha = 0;
     for (let i = 3; i < frames.length; i += 4) maxAlpha = Math.max(maxAlpha, frames[i]);
-    // Low-opacity footage (e.g. 20% wind) never reaches alpha 64.
-    const threshold = Math.max(8, Math.min(64, maxAlpha * .5));
+    // Low-opacity footage (e.g. 20% wind) keeps a threshold under its own peak.
+    const threshold = Math.max(3, Math.min(10, maxAlpha * .15));
     let left = width, top = height, right = -1, bottom = -1;
     for (let i = 3; i < frames.length; i += 4) if (frames[i] >= threshold) {
       const pixel = ((i - 3) / 4) % (width * height), x = pixel % width, y = Math.floor(pixel / width);
@@ -104,7 +107,7 @@ await mkdir(new URL("../.cache/", import.meta.url), { recursive: true });
 await writeFile(cacheURL, JSON.stringify(cache));
 const report = {
   scope:auditScope(),
-  method: "Union of alpha >= min(64, half peak alpha), minimum 8, at 6fps, 128px sample width; preserves original aspect and center",
+  method: METHOD,
   selectedFiles: work.length, measuredFiles: Object.keys(profiles).length,
   installedFiles: records.filter(r => r.exactInstalled).length,
   referenceFiles: records.filter(r => r.profile && !r.exactInstalled).length,
