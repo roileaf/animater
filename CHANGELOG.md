@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.13 (2026-10-27)
+
+- **15 more creature voices.** A wailing banshee, a moaning ghost, a snarling ghoul, a shrieking goblin, a stone golem, a bellowing ogre, raider orcs (female and male), a reptiloid, a roaring cyclops, a mutant and four more zombies (two female, two male), each with its own attack, hurt and death cries. Lizardfolk, iruxi and troglodytes now take the reptiloid's voice, and cyclopes, golems and mutants their own. Animater ships 150 voices.
+- **A smaller download.** Creature voices recorded in stereo or at high sample rates are now mono 44.1 kHz, which is all a cry on the map needs: about 35 MB less to download.
+- **Every voice credited.** The sound credits (assets/sounds/voices/License.txt) now list the bundled sound library's voices too.
+
 ## 2.2.12 (2026-10-27)
 
 - **12 more creature voices.** Bats, swarms (a hornet), monitors (an alien pest), a witch, a cackling skeleton, a moaning zombie, a slime, a small spider, a ghost, a brute orc, a colossus and a young dragon now have voices of their own, each with its own attack, hurt and death cries. Animater ships 135 voices.
