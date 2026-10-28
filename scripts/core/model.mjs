@@ -244,6 +244,11 @@ export function validateRecipe(input) {
           persist: input.lifecycle === 'document' && input.trigger === 'effect' ? ['aura', 'tokenfx'].includes(s.kind) : (s.kind === "aura" || s.kind === "template") && s.persist === true,
           ...(s.kind==='aura'&&Number(s.auraRadius)>0?{auraRadius:number(s.auraRadius,0.1,240,5),auraSlug:text(s.auraSlug,100)}:{}),
           ...(s.elementTint === true ? { elementTint: true } : {}),
+          // Shows the caster's own weapon as a spirit weapon (Spiritual Armament: catalogs/pf2e/spells/spirit-weapon.mjs).
+          ...(s.spiritWeapon === true && ["projectile", "travel", "impact", "aura"].includes(s.kind) ? { spiritWeapon: true } : {}),
+          // A lasting layer of a sustained spell: it stays until a caster's turn passes without the spell
+          // played again, a minute at most (runtime.mjs).
+          ...(s.sustain === true && s.kind === "aura" && s.persist === true ? { sustain: true } : {}),
           // When a flight's projectile reaches its target (ms into the clip): arrival timing uses it.
           ...(Number(s.contact) > 0 ? { contact: number(s.contact, 1, 60000, 0) } : {}),
           // A chosen element's own clip length and contact (applyEventElement).

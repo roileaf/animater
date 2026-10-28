@@ -64,7 +64,8 @@ export const SETTINGS_TABS = Object.freeze([
   ] },
   { id: "drama", label: "Combat drama", icon: "fa-solid fa-bolt", rows: [
     { world: "momentum" },
-    { world: "heroPointGlow", local: "heroPointGlowLocal", when: TWOE },
+    { world: "heroPointGlow", local: "heroPointGlowLocal", extras: ["mythicPointGlow"], when: TWOE },
+    { world: "inspirationGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "dnd5e" },
     { world: "lensBlood", local: "lensBloodLocal", extras: ["lensBloodAmount", "lensTunnel", "lensHeartbeat", "lensWounded"] },
     { world: "lensEffects", local: "lensEffectsLocal" },
     { world: "lensReach" },

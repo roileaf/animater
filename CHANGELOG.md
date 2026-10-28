@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.16 (2026-10-28)
+
+- **Heroic Inspiration glows (D&D 5e).** A character given Heroic Inspiration glows gold for a moment on its tokens, and flares bright when it spends it. The world setting Heroic Inspiration glow and each player's "on my screen" switch turn it off.
+- **Mythic Points glow (PF2e).** A character who gains a Mythic Point pulses violet and gold; one who spends one flares violet. The Mythic Point glow setting sits under Hero Point glow.
+- **Spiritual Armament summons your own weapon (PF2e).** The ghostly weapon takes the shape of the weapon the caster holds (an axe, a hammer, a spear, a sword and more; without one, their deity's favored weapon). After each strike it hovers at the caster's side and follows them, until a turn passes without sustaining the spell, a minute at most, or combat ends.
+- **A calmer Bless (PF2e).** Bless's lasting field is fainter, so it no longer buries the map and the tokens in it.
+- **A calmer Shield (PF2e).** Spell Effect: Shield now keeps the cast's force bubble up, in a faint blue on the token's ring, instead of a large, solid shield marker.
+
 ## 2.2.15 (2026-10-27)
 
 - **Hero Points glow.** In PF2e and SF2e, a character awarded a Hero Point (from the sheet, the party sheet or a macro) glows gold for a moment on its tokens. The world setting Hero Point glow and each player's "on my screen" switch, under Combat drama, turn it off.

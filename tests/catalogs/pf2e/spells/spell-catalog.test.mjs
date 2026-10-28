@@ -193,7 +193,8 @@ test("every catalog animation validates, stays bounded, and round-trips as an ed
       `Compendium.pf2e.spells-srd.Item.${record.id}`,
     );
     assert.ok(recipe.stages.length >= 1 && recipe.stages.length <= 8);
-    assert.ok(recipe.stages.every((s) => !s.persist));
+    // Lasting looks come from effects on tokens, except a sustained spell's own layer (it ends with the sustain).
+    assert.ok(recipe.stages.every((s) => !s.persist || s.sustain), record.name);
   }
 });
 test("source UUID survives localization and renaming; non-spell items cannot enter the PF2e catalog", () => {

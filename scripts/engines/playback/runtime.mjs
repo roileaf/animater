@@ -30,6 +30,7 @@ import { arrivalOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
 import { createMomentum, applyMomentum, applyStrain } from './momentum.mjs';
+import { withSpiritWeapon } from '../../catalogs/pf2e/spells/spirit-weapon.mjs';
 
 // Two places (tokens, token documents or points) less than a pixel apart; unknown places never are.
 const spotOf = (p) => { const c = p?.center ?? p?.object?.center ?? p; return Number.isFinite(c?.x) && Number.isFinite(c?.y) ? c : null; };
@@ -47,6 +48,9 @@ const hashSeed = (text) => { let h = 0x811c9dc5; for (const c of String(text)) h
 // "Stay until the effect ends": if no effect from the item shows up on the token
 // within this time (never applied), the layer ends instead of lingering.
 export const EFFECT_GRACE_MS = 60000;
+// A sustained spell lasts a minute at most: ten rounds in combat, a minute of play time out of it.
+export const SUSTAIN_ROUNDS = 10;
+export const SUSTAIN_MS = 60000;
 // A one-time animation still on screen this long after its planned end is stuck; it is ended.
 export const STALL_GRACE_MS = 5000;
 // "Spell Effect: Shield", "Effect: Shield" and "Shield" name the same effect.
@@ -201,6 +205,12 @@ export class AnimaterRuntime {
     const effectName = sameEffectName(name);
     return this.endLasting(this.lasting.filter((l) => l.effect && l.actorId === actorId && (itemId && l.itemId === itemId || effectName && sameEffectName(l.itemName) === effectName)), "its effect ended");
   }
+  // A combatant's turn ended (round: the round it was in): a sustained layer of theirs not played again during
+  // that turn ends, and so does one held for its full minute (ten rounds). No round: combat ended, all of them end.
+  async sustainTurnEnded(actorId, round = null) {
+    return this.endLasting(this.lasting.filter((l) => l.sustain && l.round !== null && (round === null ||
+      l.actorId === actorId && (l.round !== round || round - (l.firstRound ?? l.round) >= SUSTAIN_ROUNDS - 1))), round === null ? "combat ended" : "it was not sustained");
+  }
   async endLasting(ending, why) {
     if (!ending.length) return 0;
     this.lasting = this.lasting.filter((l) => !ending.includes(l));
@@ -342,6 +352,8 @@ export class AnimaterRuntime {
     if (recipe.lifecycle === "document" && preview) this.host.previewBody?.(recipe, context.source);
     // Random variants: each play keeps one stage of every variant group.
     recipe = pickVariants(recipe);
+    // Spiritual Armament's weapon takes the shape of the caster's own.
+    recipe = withSpiritWeapon(recipe, context.actor ?? context.source?.actor ?? context.source?.document?.actor, context.systemId ?? "pf2e");
     // A miss never lands on the target; a critical hit lands harder.
     if (context.outcome) recipe = validateRecipe(withOutcome(recipe, context));
     // Momentum (world setting): a hit streak lands harder; a strained PF2e Strike's miss looks laboured.
@@ -783,7 +795,24 @@ export class AnimaterRuntime {
       // "Stay until the effect ends" layers (Shield's ward) end when the item's effect
       // leaves the token; never applied within the grace time, they end anyway.
       const bearer = context.actor ?? context.source?.actor ?? context.source?.document?.actor;
-      if (!preview && recipe.lifecycle !== "document" && bearer && plan.some((s) => s.kind === "aura" && s.persist)) {
+      // A sustained spell's lasting layer (Spiritual Armament's hovering weapon): PF2e gives the caster no effect
+      // to watch, so it lasts while the caster keeps playing the spell (see sustainTurnEnded). Playing it again
+      // replaces the last one and keeps counting the minute from the first.
+      if (!preview && bearer && plan.some((s) => s.persist && s.sustain)) {
+        const before = this.lasting.filter((l) => l.sustain && l.actorId === bearer.id && l.itemName === (context.item?.name ?? recipe.name));
+        const round = this.host.combatRound?.() ?? null;
+        const entry = { session, actorId: bearer.id, itemId: context.item?.id, itemName: context.item?.name ?? recipe.name, sustain: true, round,
+          firstRound: before.find((l) => l.round !== null && round !== null)?.firstRound ?? round };
+        await this.endLasting(before, "played again");
+        // Out of combat there are no turns to sustain it on: it lasts its minute.
+        if (round === null) {
+          entry.grace = setTimeout(() => { if (this.lasting.includes(entry)) void this.endLasting([entry], "its minute is up"); }, SUSTAIN_MS);
+          entry.grace.unref?.();
+        }
+        this.lasting.push(entry);
+        if (this.lasting.length > 50) void this.endLasting([this.lasting[0]], "too many lasting animations");
+      }
+      if (!preview && recipe.lifecycle !== "document" && bearer && plan.some((s) => s.kind === "aura" && s.persist && !s.sustain)) {
         const entry = { session, actorId: bearer.id, itemId: context.item?.id, itemName: context.item?.name ?? recipe.name, effect: true };
         entry.grace = setTimeout(() => {
           if (this.lasting.includes(entry) && this.host.hasItemEffect && !this.host.hasItemEffect(bearer, context.item ?? { name: recipe.name })) void this.endLasting([entry], "no effect was applied");

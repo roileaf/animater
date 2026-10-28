@@ -1728,7 +1728,10 @@ export function applySpellDesign(spell, base, stage, { motion = true, castRank =
         ),
       ];
       break;
-    case "armament":
+    case "armament": {
+      // Spiritual Armament copies the caster's own weapon, which then hovers at their side for as long as the
+      // spell is sustained (the weapon "returns to your side" between attacks).
+      const spirit = d.motif === "spiritualArmament" ? { spiritWeapon: true } : {};
       layers = [
         cast("Ghostly weapon echo"),
         fx("projectile", "bolt", "Fling weapon", charge, 650, {
@@ -1737,6 +1740,7 @@ export function applySpellDesign(spell, base, stage, { motion = true, castRank =
           moveEase: "easeInQuad",
           fadeIn: 40,
           fadeOut: 70,
+          ...spirit,
         }),
         hit("Weapon strikes", charge + 600, 450, { scale: 0.9 }),
         fx("projectile", "bolt", "Weapon returns", charge + 850, 650, {
@@ -1745,7 +1749,21 @@ export function applySpellDesign(spell, base, stage, { motion = true, castRank =
           moveEase: "easeOutQuad",
           fadeIn: 40,
           fadeOut: 150,
+          ...spirit,
         }),
+        ...(d.motif === "spiritualArmament" ? [fx("aura", "bolt", "Weapon hovers at your side", charge + 1450, 5000, {
+          subject: "source",
+          persist: true,
+          sustain: true,
+          spiritWeapon: true,
+          offsetX: 0.6,
+          offsetY: -0.2,
+          offsetUnits: "token",
+          scale: 0.8,
+          opacity: 0.85,
+          fadeIn: 250,
+          fadeOut: 400,
+        })] : []),
         pose(
           "recoil",
           "Weapon response",
@@ -1757,6 +1775,7 @@ export function applySpellDesign(spell, base, stage, { motion = true, castRank =
         ),
       ];
       break;
+    }
     case "spiritWeapon":
       layers = [
         cast("Call ghostly weapon"),

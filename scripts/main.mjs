@@ -32,7 +32,7 @@ import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets, midiRunsActivity } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { heavyItem } from "./systems/heavy-item.mjs";
-import { HERO_POINT_SYSTEMS, HERO_GLOW, HERO_GLOW_MS, heroPointWatch } from "./systems/hero-points.mjs";
+import { glowResources, resourceWatch } from "./systems/hero-points.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
@@ -3183,15 +3183,27 @@ Hooks.once("init", () => {
     hint: "Hits in a row by the same attacker on the same target, in one turn (or within 12 seconds out of combat), land harder: bigger, louder and with stronger ripples. A miss starts the streak over. In PF2e and SF2e, a third Strike in a turn that misses looks strained.",
     scope: "world", config: true, type: Boolean, default: true,
   });
-  registerSetting("heroPointGlow", {
+  // Heroic resources glowing on their tokens (systems/hero-points.mjs): only the system's own are registered.
+  const glowIds = new Set(glowResources(game.system.id).map((r) => r.id));
+  if (glowIds.has("hero")) registerSetting("heroPointGlow", {
     name: "Hero Point glow",
     hint: "A character awarded a Hero Point glows gold for a moment, on every screen that can see their token.",
-    scope: "world", config: HERO_POINT_SYSTEMS.has(game.system.id), type: Boolean, default: true,
+    scope: "world", config: true, type: Boolean, default: true,
   });
-  registerSetting("heroPointGlowLocal", {
-    name: "Hero Point glow on my screen",
-    hint: "Turn off to never draw the Hero Point glow on this screen.",
-    scope: "client", config: HERO_POINT_SYSTEMS.has(game.system.id), type: Boolean, default: true,
+  if (glowIds.has("mythic")) registerSetting("mythicPointGlow", {
+    name: "Mythic Point glow",
+    hint: "A character who gains a Mythic Point pulses violet and gold; one who spends one flares violet.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  if (glowIds.has("inspiration")) registerSetting("inspirationGlow", {
+    name: "Heroic Inspiration glow",
+    hint: "A character given Heroic Inspiration glows gold for a moment; one who spends it flares bright. On every screen that can see their token.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  if (glowIds.size) registerSetting("heroPointGlowLocal", {
+    name: `${game.system.id === "dnd5e" ? "Heroic Inspiration" : glowIds.has("mythic") ? "Hero and Mythic Point" : "Hero Point"} glow on my screen`,
+    hint: "Turn off to never draw these glows on this screen.",
+    scope: "client", config: true, type: Boolean, default: true,
   });
   // A table with its own teleport automation (D&D premade modules, rule engines) turns this off.
   registerSetting(TELEPORT_TOKENS, {
@@ -3830,6 +3842,8 @@ Hooks.once("ready", () => {
     place: placeTeleport,
     previewTeleport,
     // Does the token still carry an effect from this item ("Effect: Shield")?
+    // The round of the combat in progress (null out of combat), for sustained spells' lasting layers.
+    combatRound: () => (game.combat?.started ? game.combat.round : null),
     hasItemEffect: (actor, item) => {
       const name = sameEffectName(item?.name), id = item?.id;
       const from = (origin) => Boolean(id && String(origin ?? "").includes(id));
@@ -4630,20 +4644,23 @@ Hooks.once("ready", () => {
     try { lensBloodFor(actor, before); } catch (error) { runtime.trace("Blocked", `Lens blood: ${error.message}`); }
     lensRefresh();
   });
-  // A character awarded a Hero Point glows gold on its tokens here (systems/hero-points.mjs). Every screen sees the
-  // update, so nothing is broadcast.
-  if (HERO_POINT_SYSTEMS.has(game.system.id)) {
-    const heroPoints = heroPointWatch();
-    for (const actor of game.actors ?? []) heroPoints.seen(actor);
-    Hooks.on("createActor", (actor) => heroPoints.seen(actor));
+  // A character's Hero Point, Mythic Point or Heroic Inspiration gained or spent glows on its tokens here
+  // (systems/hero-points.mjs). Every screen sees the update, so nothing is broadcast.
+  if (glowResources(game.system.id).length) {
+    const heroics = resourceWatch(game.system.id);
+    for (const actor of game.actors ?? []) heroics.seen(actor);
+    Hooks.on("createActor", (actor) => heroics.seen(actor));
     Hooks.on("updateActor", (actor, changes) => {
       try {
-        if (!heroPoints.changed(actor, changes) || !canvas?.ready || hotSetting("heroPointGlow") === false || hotSetting("heroPointGlowLocal") === false || !tokenFx.ready()) return;
+        const events = heroics.changed(actor, changes).filter((e) => hotSetting(e.resource.setting) !== false);
+        if (!events.length || !canvas?.ready || hotSetting("heroPointGlowLocal") === false || !tokenFx.ready()) return;
+        // One look per update: a spend over a gain when one update does both.
+        const { resource, look } = events.find((e) => e.look === "spent") ?? events[0], [preset, ms] = resource[look];
         for (const token of actor.getActiveTokens?.() ?? []) {
-          const remove = tokenFx.apply(token, HERO_GLOW, { key: `hero:${token.id}` });
-          setTimeout(remove, HERO_GLOW_MS + 100);
+          const remove = tokenFx.apply(token, preset, { key: `${resource.id}:${look}:${token.id}` });
+          setTimeout(remove, ms + 100);
         }
-      } catch (error) { runtime.trace("Blocked", `Hero Point glow: ${error.message}`); }
+      } catch (error) { runtime.trace("Blocked", `Heroic glow: ${error.message}`); }
     });
   }
   // Damage immersion showcase (ui/damage-showcase-ui.mjs): the same decisions and drawing on the GM's own screen,
@@ -4801,6 +4818,13 @@ Hooks.once("ready", () => {
       }
       void dispatch((game.system.id==="sf2e"?sf2eEvent:pf2eEvent)(message, game.user.id));
     });
+    // A turn ends: the sustained spells its combatant did not play again end (Spiritual Armament's hovering
+    // weapon). On the client that cast them, which is the one that recorded them.
+    Hooks.on("combatTurnChange", (combat, prior) => {
+      const actorId = prior?.combatantId ? combat.combatants?.get(prior.combatantId)?.actor?.id : null;
+      if (actorId && Number.isFinite(prior.round)) void runtime.sustainTurnEnded(actorId, prior.round);
+    });
+    Hooks.on("deleteCombat", () => void runtime.sustainTurnEnded(null, null));
     // A sustained spell's effect on its caster ends (expired, dismissed, not
     // sustained): its lasting area ends on the client that cast it.
     Hooks.on("deleteItem", (item) => {

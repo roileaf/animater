@@ -848,6 +848,37 @@ test("a stay-until-the-effect-ends layer ends with its item's effect", async () 
   assert.equal(await runtime.endWithEffect("wizard", { itemId: "sh" }), 1, "matched by item id");
 });
 
+test("a sustained layer lasts while its caster keeps playing the spell, a minute at most", async () => {
+  const recipe = validateRecipe({ id: "armament", name: "Spiritual Armament", trigger: "manual", stages: [{ kind: "aura", assets: ["jb2a.impact.001.orange"], persist: true, sustain: true }] });
+  const { runtime, host, calls } = fixture();
+  runtime.catalog = [{ key: "jb2a.impact.001.orange" }];
+  runtime.wait = async () => true;
+  let round = 1;
+  host.combatRound = () => round;
+  const source = { id: "tok", center: { x: 0, y: 0 }, actor: { id: "cleric" } };
+  const item = { id: "sa", name: "Spiritual Armament" };
+  const first = await runtime.play(recipe, { source, targets: [], item });
+  assert.equal(await runtime.sustainTurnEnded("someone-else", 1), 0);
+  assert.equal(await runtime.sustainTurnEnded("cleric", 1), 0, "the turn it was cast in");
+  round = 2;
+  const second = await runtime.play(recipe, { source, targets: [], item });
+  assert.ok(calls.some((c) => c[0] === "stop" && c[1]?.name === first), "playing it again replaces the last one");
+  assert.equal(await runtime.sustainTurnEnded("cleric", 2), 0, "sustained this turn");
+  assert.equal(await runtime.sustainTurnEnded("cleric", 3), 1, "a turn without sustaining ends it");
+  assert.ok(calls.some((c) => c[0] === "stop" && c[1]?.name === second));
+  // Sustained every round: still a minute (ten rounds) from the first cast.
+  round = 1;
+  await runtime.play(recipe, { source, targets: [], item });
+  for (round = 2; round <= 9; round++) { await runtime.play(recipe, { source, targets: [], item }); assert.equal(await runtime.sustainTurnEnded("cleric", round), 0, `round ${round}`); }
+  round = 10;
+  await runtime.play(recipe, { source, targets: [], item });
+  assert.equal(await runtime.sustainTurnEnded("cleric", 10), 1, "its minute is up");
+  // Combat ends: it ends too.
+  round = 1;
+  await runtime.play(recipe, { source, targets: [], item });
+  assert.equal(await runtime.sustainTurnEnded(null, null), 1);
+});
+
 test("a stay-until-the-effect-ends layer stops if no effect is ever applied", async () => {
   const recipe = validateRecipe({ id: "shield", name: "Shield", trigger: "manual", stages: [{ kind: "aura", assets: ["jb2a.impact.001.orange"], persist: true }] });
   for (const applied of [false, true]) {

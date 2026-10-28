@@ -46,5 +46,7 @@ test('resistance wards take the damage type look; effects of one theme are told 
  const lightning=PF2E_EFFECTS.filter(e=>/^Effect: Lightning (?:Armillary|Catcher|Powered|Rod)$/.test(e.name)).map(e=>e.editions.patreon.key.split('.').slice(0,-1).join('.'));
  assert.equal(lightning.length,4);
  assert.equal(new Set(lightning).size,4);
- assert.ok(!PF2E_EFFECTS.some(e=>/shield\.01\./.test(e.editions.patreon.key)),'no hex-dome wards on tokens');
+ // The one exception: Shield's lasting look is its own cast's force bubble staying up.
+ assert.ok(!PF2E_EFFECTS.some(e=>e.slug!=='spell-effect-shield'&&/shield\.01\./.test(e.editions.patreon.key)),'no hex-dome wards on tokens');
+ assert.equal(entry('Spell Effect: Shield').editions.patreon.key,'jb2a.shield.01.loop.blue');
 });
