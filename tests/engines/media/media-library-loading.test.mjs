@@ -65,7 +65,7 @@ test('pages reuse grouped search results; new search, collection or inventory in
 test('cached discovery opens a new browser without reading and normalizing native catalogs again',async()=>{
   const cached=await sources.installedMediaLibrary({modules:modules(),database:db()});
   const library=new MediaLibrary({host:{mediaCatalog:()=>cached,catalog:()=>{throw Error('No re-enumeration');},soundCatalog:()=>{throw Error('No sound re-enumeration');}},root:{querySelector:()=>null}});
-  assert.equal(library.loaded,true);assert.equal(library.items.length,cached.entries.length);
+  assert.equal(library.loaded,true);assert.equal(library.items.filter(i=>i.source!=='Animater').length,cached.entries.length);
   assert.equal(library.items[0],cached.entries[0]);
 });
 
@@ -77,10 +77,10 @@ test('progressive loading exposes sounds and repaints before the full scan; leav
   const w={page:'assets',host:{catalog:()=>[],loadMediaCatalog:(_refresh,onProgress)=>{progress=onProgress;return new Promise(resolve=>complete=resolve);}},root:{querySelector:()=>null},abort:new AbortController()};
   const library=new MediaLibrary(w);library.filters.type='audio';library.render=()=>renders++;
   const pending=library.load();progress({entries:[{file:'modules/soundfxlibrary/first.ogg',type:'audio'}]});
-  assert.equal(library.items.length,1);assert.equal(library.loading,true);
+  assert.equal(library.items.filter(i=>i.source!=='Animater').length,1);assert.equal(library.loading,true);
   const [id,paint]=[...frames.entries()][0];frames.delete(id);paint();assert.equal(renders,1);
   w.page='recipes';progress({entries:[{file:'modules/soundfxlibrary/last.ogg',type:'audio'}]});
-  assert.equal(frames.size,0);assert.equal(library.items.length,2);
+  assert.equal(frames.size,0);assert.equal(library.items.filter(i=>i.source!=='Animater').length,2);
   complete({entries:library.items,normalized:true});await pending;assert.equal(renders,1);assert.equal(library.loaded,true);
 });
 

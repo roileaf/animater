@@ -76,7 +76,7 @@ test('source controls persist folders, refresh named results and remove indexing
   assert.match(library.html(recipe),/Remove BossLoot folder source/);
   const reopened=new MediaLibrary(w);assert.deepEqual(reopened.prefs.sources,folders);
   await library.action('media-source-remove',{dataset:{path:root}});
-  assert.deepEqual(prefs.sources,[]);assert.equal(library.items.length,0);
+  assert.deepEqual(prefs.sources,[]);assert.equal(library.items.filter(i=>i.source!=='Animater').length,0,'only the bundled sounds remain');
   assert.deepEqual(recipe,before);
 });
 

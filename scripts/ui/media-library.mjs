@@ -2,6 +2,7 @@ import { uuid } from "../core/uuid.mjs";
 import { linkStartModes } from '../engines/playback/choreography.mjs';
 import {libraryItem, mergeMedia, appendMedia, mediaGroups, safeMediaFile, visualReference, title, mediaType, matchingMediaVariant, mediaVariantChoices, mediaVariantFacets, tokenFxAssets, mediaFolderSources} from '../engines/media/media-library-model.mjs';
 import {validateRecipe, MAX_STAGES} from '../core/model.mjs';
+import {bundledSounds} from '../engines/media/bundled-sounds.mjs';
 import {patchDOM, reconcileChildren} from './dom-patch.mjs';
 import {RecipePreview} from '../engines/preview/recipe-preview.mjs';
 import {TELEPORT_STYLES} from '../engines/motion/teleport.mjs';
@@ -49,9 +50,10 @@ export class MediaLibrary {
     this.filters = {type:'animation',search:'',source:'all',category:'all',color:'all',loop:'all',collection:'all',grouped:true,sort:'az'};
     this.prefs = libraryPreferences(workspace.host.mediaPreferences?.());
     const cached=workspace.host.mediaCatalog?.();
+    // Animater's own sounds (engines/media/bundled-sounds.mjs) sit beside every pack's.
     this.items = cached?.normalized
-      ?appendMedia(cached.entries,this.prefs.custom,tokenFxAssets(workspace.host.fxCatalog?.()))
-      :mergeMedia(workspace.host.catalog(), workspace.host.soundCatalog?.()?.entries ?? [], this.prefs.custom,tokenFxAssets(workspace.host.fxCatalog?.()));
+      ?appendMedia(cached.entries,bundledSounds(),this.prefs.custom,tokenFxAssets(workspace.host.fxCatalog?.()))
+      :mergeMedia(workspace.host.catalog(), workspace.host.soundCatalog?.()?.entries ?? [], bundledSounds(), this.prefs.custom,tokenFxAssets(workspace.host.fxCatalog?.()));
     this.loaded=!!cached?.normalized;
     this.page = 0;
     this.pageSize = 36;
@@ -181,8 +183,8 @@ export class MediaLibrary {
       });
       if (this.w.abort?.signal.aborted) return;
       this.items = result?.normalized
-        ?appendMedia(result.entries,this.prefs.custom,tokenFxAssets(this.w.host.fxCatalog?.()))
-        :mergeMedia(this.w.host.catalog(), result?.entries ?? result ?? [], this.w.host.soundCatalog?.()?.entries ?? [], this.prefs.custom,tokenFxAssets(this.w.host.fxCatalog?.()));
+        ?appendMedia(result.entries,bundledSounds(),this.prefs.custom,tokenFxAssets(this.w.host.fxCatalog?.()))
+        :mergeMedia(this.w.host.catalog(), result?.entries ?? result ?? [], this.w.host.soundCatalog?.()?.entries ?? [], bundledSounds(), this.prefs.custom,tokenFxAssets(this.w.host.fxCatalog?.()));
       if(this.fxHandle&&!this.items.some(v=>v.id===this.selectedId))void this.stopTokenPreview();
       this.error = result?.warning ?? '';
       this.loaded = true;

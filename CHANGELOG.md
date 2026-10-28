@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.20 (2026-10-28)
+
+- **Animater's own sounds in the media library.** Every sound Animater ships, 8,227 files, can now be found in the Assets library under the source Animater: creature voices, creature movement, and hits and surfaces, each sound one card with its takes as variants. Audition them and put them on a sound stage like any sound pack's.
+
 ## 2.2.19 (2026-10-28)
 
 - **Screen tint.** An elemental spell washes the view in its element's colour for a moment as it lands: a Fireball glows orange, lightning strobes electric blue, cold blinks icy blue, void dims the screen. Bigger areas tint more and a far-off blast less; Chain Lightning blinks again on each leap. Weapon Strikes never tint. Settings: Screen tint (world), on my screen, and strength, under Look & light. With reduced motion, lightning flashes once instead of strobing.
