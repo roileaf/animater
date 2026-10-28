@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.21 (2026-10-28)
+
+- **Sustaining with PF2e Combater keeps the spell's animation.** Combater's Sustain re-posts the spell card. Animater used to read that as a new cast and replay it; now Spiritual Armament's hovering weapon (and any sustained lasting animation) simply stays, counted as sustained this round. Needs PF2e Combater 2.6.7.
+
 ## 2.2.20 (2026-10-28)
 
 - **Animater's own sounds in the media library.** Every sound Animater ships, 8,227 files, can now be found in the Assets library under the source Animater: creature voices, creature movement, and hits and surfaces, each sound one card with its takes as variants. Audition them and put them on a sound stage like any sound pack's.

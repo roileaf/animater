@@ -207,6 +207,15 @@ export class AnimaterRuntime {
     const effectName = sameEffectName(name);
     return this.endLasting(this.lasting.filter((l) => l.effect && l.actorId === actorId && (itemId && l.itemId === itemId || effectName && sameEffectName(l.itemName) === effectName)), "its effect ended");
   }
+  // The caster Sustained the spell without playing it again (pf2e-combater's Sustain re-posts the spell card):
+  // its lasting layer stays on screen, counted as sustained this round. Returns how many it kept.
+  sustained(actorId, { itemId, name } = {}) {
+    const round = this.host.combatRound?.() ?? null;
+    const kept = this.lasting.filter((l) => l.sustain && l.actorId === actorId && (itemId && l.itemId === itemId || name && l.itemName === name));
+    for (const l of kept) if (round !== null) { l.firstRound ??= round; l.round = round; }
+    if (kept.length) this.trace("Sustained", `${kept[0].itemName} stays on screen.`);
+    return kept.length;
+  }
   // A combatant's turn ended (round: the round it was in): a sustained layer of theirs not played again during
   // that turn ends, and so does one held for its full minute (ten rounds). No round: combat ended, all of them end.
   async sustainTurnEnded(actorId, round = null) {

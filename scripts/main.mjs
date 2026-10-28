@@ -4863,6 +4863,13 @@ Hooks.once("ready", () => {
   };
   if (["pf2e","sf2e"].includes(game.system.id)) {
     Hooks.on("createChatMessage", (message) => {
+      // pf2e-combater's Sustain re-posts the spell card: the spell is sustained, not cast again. Its lasting
+      // layer (Spiritual Armament's weapon) stays, on whichever client holds it; the cast does not replay.
+      if (message.flags?.["pf2e-combater"]?.sustain) {
+        const actorId = message.actor?.id ?? message.speaker?.actor, item = message.item;
+        if (actorId) runtime.sustained(actorId, { itemId: item?.id, name: item?.name ?? message.flags["pf2e-combater"].sustain.name });
+        return;
+      }
       // Actions such as Shove roll a skill check; dispatch plays the action, finishers ride the check.
       // Gated and paced like dispatch: events accepted, AA-customized items left alone, dice landed.
       const check = acceptsEvents() ? checkFinisherEvent(message, game.system.id, game.user.id) : null;
