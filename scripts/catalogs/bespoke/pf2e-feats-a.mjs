@@ -201,7 +201,7 @@ export default {
     impact('Powder flash', ['muzzle_flash.burst.01.yellow', 'muzzle_flash.single.01.yellow'], { stageId: 'bpf-flash', after: 'bpf-lunge', anchor: 'start', offset: 300, scale: 1, duration: 800 }),
     aura('Smoke in the eyes', ['smoke.puff.centered.grey'], { subject: 'targets', after: 'bpf-flash', anchor: 'start', offset: 150, scale: 0.9, duration: 1500, fadeOut: 500 }),
     motion('recoil', 'targets', { after: 'bpf-flash', anchor: 'start', duration: 700, intensity: 0.5 }),
-  ], { sound: 'explosion' }),
+  ], { sound: 'fireIgnition' }),
 
   // Blast Tackle: grapple, then fire point-blank.
   'pf2e:r4ZVpDjX2X0yrmhw': design('You throw yourself at the foe, brace the weapon against it and fire a point-blank shot.', () => [
@@ -386,7 +386,7 @@ export default {
     motion('lunge', 'source', { stageId: 'btd-breathe', duration: 700, intensity: 0.4 }),
     travel('Draconic breath', ['breath_weapons02.burst.cone.fire.orange.01'], { stageId: 'btd-cone', after: 'btd-breathe', anchor: 'start', offset: 250, targetSelection: 'first', duration: 2200 }),
     impact('Energy washes over', ['impact.002.orange', 'impact.005.orange'], { after: 'btd-cone', anchor: 'start', offset: 700, scale: 0.8, duration: 1100, ...OPT }),
-  ], { sound: 'fireCone' }),
+  ], { sound: 'dragonRoar' }),
 
   // Crowned in Tempest's Fury: a crown of lightning and howling winds lift you.
   'pf2e:8iHpUB0bYaHh86Kk': design('Lightning crowns your brow, storm sparks crackle around you and howling winds lift you from the ground.', () => [

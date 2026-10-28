@@ -59,7 +59,10 @@ export function soundDirection(spell, source) {
       broadLaughter:['laughter','Involuntary laughter is explicitly described.'],
       broadApplause:['applause','Audible cheers and applause are explicitly described.'],
     };
-    const selected = reviewedProfiles[motif];
+    const selected = reviewedProfiles[motif]
+      ?? (/^broadSummon/.test(motif) ? ['summon','Summoning arrival; creature species remains player choice.']
+      : /Form$/.test(motif) && spell.traits.includes('polymorph') ? ['transform','Brief transformation cue; no assumed creature voice.']
+      : spell.traits.includes('teleportation') ? ['teleport','Spatial departure/arrival; short teleport cue.'] : null);
     return selected ? choose(...selected) : choose('', 'Reviewed private perception, prepared benefit, support, cleansing, object or casting-only illustration. No wound restoration, chosen voice/material, future impact or successful outcome is inferred; audio remains customizable.');
   }
   const reviewedQuiet = {
@@ -173,7 +176,7 @@ export function soundDirection(spell, source) {
       "chainLightning",
       "Short electric discharge follows each target-to-target hop.",
     );
-  if (/lightning bolt|lightning storm/.test(name))
+  if (/lightning bolt|lightning storm/.test(name) || ["fallingLightning","thunderFall","lightningCharge","stormSky","thunderArrows","rootedLightning"].includes(motif))
     return choose(
       "lightningBolt",
       "Lightning discharge, with a separate thunderous impact.",
@@ -231,9 +234,10 @@ export function soundDirection(spell, source) {
       "Small acid splash; no poison-labelled substitute.",
     );
   if (
+    (spell.traits.includes("healing") && !spell.traits.includes("void") &&
     /\bheal\b|\bhealing\b|\brestore hit points\b|\bregain.{0,30}hit points/.test(
       opening.toLowerCase(),
-    ) ||
+    )) ||
     ["healing", "healBurst", "regeneration"].includes(motif)
   )
     return choose(
@@ -268,7 +272,7 @@ export function soundDirection(spell, source) {
     spell.theme === "plant"
   )
     return choose("swarm", "Audible insects explicitly described.");
-  if (/earthquake|seismic/.test(name))
+  if (/earthquake|seismic|\bquake\b|upheaval|heaving earth/.test(name))
     return choose("earthquake", "Ground shaking uses a short seismic rumble.");
   if (/wall of stone|stone wall/.test(name))
     return choose("stoneWall", "Stone structure rises into place.");
@@ -279,7 +283,7 @@ export function soundDirection(spell, source) {
       "fireWall",
       "Rising flame, rather than a travelling fireball.",
     );
-  if (/\b(light|lights|illuminate)\b/.test(name) || spell.theme === "light")
+  if ((/\b(light|lights|illuminate)\b/.test(name) || spell.theme === "light") && !spell.traits.includes("darkness"))
     return choose("light", "Light appears with a brief shimmer.");
   if (/\bsleep\b|slumber/.test(name))
     return choose("sleep", "Sleep magic uses a soft dream cue.");
@@ -298,7 +302,9 @@ export function soundDirection(spell, source) {
       "song",
       "Description explicitly calls for music; short musical flourish.",
     );
-  if (["portal", "summon"].includes(spell.delivery) || /\bsummon/.test(name))
+  if (spell.delivery === "portal")
+    return choose("teleport", "Spatial departure/arrival; short teleport cue.");
+  if (spell.delivery === "summon" || /\bsummon\b/.test(name))
     return choose(
       "summon",
       "Summoning arrival; creature species remains player choice.",
@@ -333,6 +339,8 @@ export function soundDirection(spell, source) {
       "healing",
       "Restoration or cleansing uses a gentle restorative cue.",
     );
+  if (spell.traits.includes("auditory") && /\b(scream\w*|shriek\w*|wail\w*|howl\w*)\b/.test(opening.toLowerCase()))
+    return choose("scream", "Auditory spell whose opening is a scream, wail or howl.");
   if (motif === "mentalJolt" && /\b(damage|pain|jolt|psychic)\b/i.test(opening))
     return choose(
       "psychic",
@@ -363,6 +371,8 @@ export function soundDirection(spell, source) {
     );
   const audible = audibleFallback(spell, source, text, opening);
   if (audible) return choose(...audible);
+  if (spell.traits.includes("incarnate"))
+    return choose("summon", "Incarnate spell conjures a being; arrival cue.");
   return choose(
     "",
     "No unambiguous audible effect in description; quiet by default.",
@@ -370,6 +380,43 @@ export function soundDirection(spell, source) {
 }
 // Reviewed per-spell exceptions for the audible fallback ('' keeps the spell quiet).
 const AUDIBLE_OVERRIDES = {
+  'arcane-explosion': ['explosion', 'A meteor, eruption or arcane detonation of great size; a full explosion, not a small energy cue.'],
+  'detonate-magic': ['explosion', 'A meteor, eruption or arcane detonation of great size; a full explosion, not a small energy cue.'],
+  'falling-stars': ['explosion', 'A meteor, eruption or arcane detonation of great size; a full explosion, not a small energy cue.'],
+  'metallic-meteorite-glyph': ['explosion', 'A meteor, eruption or arcane detonation of great size; a full explosion, not a small energy cue.'],
+  'sunburst': ['explosion', 'A meteor, eruption or arcane detonation of great size; a full explosion, not a small energy cue.'],
+  'planar-collision': ['explosion', 'A meteor, eruption or arcane detonation of great size; a full explosion, not a small energy cue.'],
+  'divine-armageddon': ['divineWrath', 'A divine cataclysm of void and spirit; divine wrath, never a healing chime.'],
+  'blood-feasting-breath': ['drain', 'Life is drawn out of the target; an energy siphon.'],
+  'trade-death-for-life': ['drain', 'Life is drawn out of the target; an energy siphon.'],
+  'draw-blood': ['drain', 'Life is drawn out of the target; an energy siphon.'],
+  'consecrate-flesh': ['holy', 'Sanctified flesh; a holy cue, not healing.'],
+  'phantom-orchestra': ['song', 'An invisible orchestra plays.'],
+  'thunderburst': ['sonic', 'A peal, blast or ear-piercing sound is described.'],
+  'disorienting-flash': ['sonic', 'A peal, blast or ear-piercing sound is described.'],
+  'booming-blast': ['sonic', 'A peal, blast or ear-piercing sound is described.'],
+  'voice-on-the-breeze': ['', 'Nothing audible is described: a message, a reading, a sense or a stored memory.'],
+  'bee-mans-summons': ['', 'Nothing audible is described: a message, a reading, a sense or a stored memory.'],
+  'root-reading': ['', 'Nothing audible is described: a message, a reading, a sense or a stored memory.'],
+  'entangle-fate': ['', 'Nothing audible is described: a message, a reading, a sense or a stored memory.'],
+  'untwisting-iron-roots': ['earth', 'Earth or stone heaves; no plant involved.'],
+  'engrave-memory': ['', 'Nothing audible is described: a message, a reading, a sense or a stored memory.'],
+  'dim-the-light': ['shadow', 'Light is dimmed into darkness.'],
+  'blade-barrier': ['force', 'A churning wall of force blades, not a protective ward.'],
+  'patrons-protector': ['transform', 'The familiar changes form.'],
+  'living-thunderbolt': ['lightningBolt', 'The caster becomes a bolt of lightning.'],
+  'dancing-fountain': ['water', 'A fountain of water dances.'],
+  'frog-tongue': ['bludgeon', 'A blunt blow, not stone.'],
+  'dancing-blade': ['slash', 'Blades cut through the area.'],
+  'boneshaker': ['bludgeon', 'A blunt blow, not stone.'],
+  'arrow-salvo': ['pierce', 'A volley of giant arrows.'],
+  'weapon-storm': ['slash', 'Blades cut through the area.'],
+  'weapon-tide': ['slash', 'Blades cut through the area.'],
+  'blast-of-the-bellows': ['wind', 'A churning eddy of air.'],
+  'falling-sky': ['gravity', 'Crushing pressure slams down.'],
+  'undertaker': ['earth', 'Earth or stone heaves; no plant involved.'],
+  'rouse-skeletons': ['earth', 'Earth or stone heaves; no plant involved.'],
+  'dragon-turret': ['dragonRoar', 'A dragon-shaped turret breathes and roars.'],
   'implosion': ['gravity', 'The target collapses in on itself; a gravitic crush cue, not an explosion.'],
   'curse-of-lost-time': ['time', 'Rapid aging or erosion; temporal cue.'],
   'horde-of-underlings': ['summon', 'Underlings are summoned; arrival cue, creature species player chosen.'],

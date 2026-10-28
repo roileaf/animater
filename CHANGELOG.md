@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.2.19 (2026-10-28)
+
+- **Screen tint.** An elemental spell washes the view in its element's colour for a moment as it lands: a Fireball glows orange, lightning strobes electric blue, cold blinks icy blue, void dims the screen. Bigger areas tint more and a far-off blast less; Chain Lightning blinks again on each leap. Weapon Strikes never tint. Settings: Screen tint (world), on my screen, and strength, under Look & light. With reduced motion, lightning flashes once instead of strobing.
+- **Lightning convulses its targets.** A creature struck by electricity (Chain Lightning, Lightning Bolt, an electric breath, any catalog) convulses instead of a plain hit shake: it locks stiff, twitches in three weakening bursts and slumps as the current lets go. Taking electricity damage plays it too. The motion is also in the recipe editor as Electrocuted convulsion.
+- **A scarier Chain Lightning.** The air charges as it is cast, a thunderbolt cracks loose, thunder crashes on the first creature, and each leap lands as a full strike instead of a short tick.
+- **Catalog sounds audited.** Every catalog's sound choices were checked against what the ability does, and about 400 were fixed:
+  - PF2e spells (143): harmful void spells no longer play a healing chime, teleport spells no longer sound like summoning, summon, polymorph and teleport spells that were silent now have a cue, and meteors, quakes and storms got bigger sounds.
+  - PF2e feats and weapons (104): bites and horns pierce, picks swing like axes, crossbows, darts and harpoons keep their own sounds, regaining a Focus or Mythic Point is no longer a heal, and elemental wards no longer clang like metal shields.
+  - Daggerheart cards (about 75): card words no longer match inside other words (Voice is no ice, Flight no light), Bone domain cards strike instead of draining, and whips crack.
+  - D&D 5e, PF2e and SF2e bespoke designs (about 40): breath weapons roar, ropes and nets lash, big blasts sound big, and generic NPC breaths and bursts use their shape's sound.
+  - Sound files: hits that were whooshes, 10-20 second loops used as short hits, nearly silent takes and a dragon roar that was a whoosh were replaced.
+- **PF2e Creature Sounds stays its own.** Animater no longer plays any of that module's files in its catalog sounds.
+
 ## 2.2.18 (2026-10-28)
 
 - **Players' private rolls animate for the player and GM.** An attack, spell or action a player rolls in Private GM Roll mode (Spiritual Armament, a Strike) played nothing at all, not even for the GM. It now plays for those who can read its chat message: the roller and the GM, or the roller alone for a Self Roll, with its real result. Other players see and hear nothing, and finishers that would move tokens stay off. Blind rolls stay hidden. PF2e, SF2e and D&D 5e.

@@ -255,7 +255,7 @@ put(['classes24-phbbrbRage000000', 'classfeatures-VoR0SUrNX5EJVPIO'], design('Ra
   aura('Ground shudders', ['ground_cracks.01.dark_red', 'ground_cracks.01.orange'], { after: 'gather', anchor: 'end', duration: 1800, scale: 0.7, below: true, opacity: 0.65 }),
 ], ab('battleCry')));
 put(['classes24-phbbrbFrenzy0000', 'classfeatures-CkbbAckeCtyHXEnL'], { ...strike('Frenzy: a reckless, furious extra blow while raging.', { hit: ['melee_generic.slash.01.orange'], hitTint: '#d65a3a', src: 'lunge', srcI: 1, tgt: 'stagger', accent: ['impact.012.dark_red', 'impact.012.blue'], accentTint: '#c0392b' }), ...ab('greatsword') });
-put('classes24-phbbrbBrutalStri', { ...strike('Brutal Strike: the barbarian forgoes advantage for one crushing, weighty blow.', { hit: ['melee_generic.bludgeoning.two_handed', 'impact.009.orange'], scale: 1.1, src: 'lunge', srcI: 1.1, tgt: 'stagger', accent: ['impact.009.orange'] }), ...ab('greatsword') });
+put('classes24-phbbrbBrutalStri', { ...strike('Brutal Strike: the barbarian forgoes advantage for one crushing, weighty blow.', { hit: ['melee_generic.bludgeoning.two_handed', 'impact.009.orange'], scale: 1.1, src: 'lunge', srcI: 1.1, tgt: 'stagger', accent: ['impact.009.orange'] }), ...ab('hammer') });
 const reactionStrike = { ...strike('A swift reaction attack lashes out at the creature that just attacked.', { hit: ['melee_generic.slash.01.orange'], srcI: 0.8 }), ...ab('sword') };
 put(['classes24-phbbrbRetaliatio', 'classfeatures-xzD9zlRP6dUxCtCl', 'classfeatures-StfmqK1twVfukpa0'], reactionStrike);
 put(['classfeatures-5gx1O0sxK08awEO9', 'classfeatures-3CaP1vFHVR8LgHjx:dnd5eactivity000'], { ...strike('A precise follow-up cut exploits the wounded quarry for extra damage.', { hit: ['melee_generic.slash.01.orange'], scale: 0.8, src: 'lunge', srcI: 0.5 }), ...ab('sword') });
@@ -286,7 +286,7 @@ put('classes24-phbrgrSuperiorDe', design('Superior Hunter\'s Defense: the ranger
 const parry = design('Parry: the defender braces and turns the blade aside with a ringing spark.', () => [
   motion('brace', 'source', { stageId: 'guard', duration: 700, intensity: 0.7 }),
   aura('Blade meets blade', ['impact.007.yellow'], { after: 'guard', anchor: 'start', offset: 200, duration: 600, scale: 0.45 }),
-], ab('shield'));
+], ab('bladeParry'));
 put(['monsterfeatures-kfi26Jy0VLXv9TTm', 'monsterfeatures24-mmParry000000000', 'classfeatures-Xf763cJoDHPPWSGG'], parry);
 put('monsterfeatures24-mmRiposte0000000', design('Riposte: the blade turns the attack, then snaps back in a counter-thrust.', () => [
   motion('brace', 'source', { stageId: 'guard', duration: 600, intensity: 0.7 }),
@@ -368,7 +368,7 @@ put('classes24-phbrgeCunningStr:m2bRZ1YeD3yf9nV7', design('Cunning Strike: Withd
   impact('Sneak strike', ['sneak_attack.dark_purple', 'sneak_attack.dark_green'], { stageId: 'hit', after: 'stab', anchor: 'start', offset: 160, duration: 900 }),
   motion('rush', 'source', { after: 'stab', anchor: 'end', duration: 1200, intensity: 0.4, distance: 1.2, motionRange: 'distance', motionHeading: 'away', motionEndpoint: 'near' }),
 ], ab('dagger')));
-put('classes24-phbrgeDeviousStr:4TnBjQTJzt9UjUos', { ...strike('Devious Strike: Daze — a rattling blow to the head.', { hit: ['sneak_attack.dark_purple', 'sneak_attack.dark_green'], tgt: 'shake' }), ...ab('dagger') });
+put('classes24-phbrgeDeviousStr:4TnBjQTJzt9UjUos', { ...strike('Devious Strike: Daze — a rattling blow to the head.', { hit: ['sneak_attack.dark_purple', 'sneak_attack.dark_green'], tgt: 'shake' }), ...ab('club') });
 put('classes24-phbrgeDeviousStr:3eq7lcmpkJJBU2KO', { ...strike('Devious Strike: Knock Out — a heavy blow aimed to drop the target.', { hit: ['sneak_attack.dark_purple', 'sneak_attack.dark_green'], accent: ['impact.009.orange'], srcI: 1, tgt: 'stagger' }), ...ab('club') });
 put('classes24-phbrgeDeviousStr:ki4lIPVGNA0HjEzH', { ...strike('Devious Strike: Obscure — the strike flicks grit and shadow into the target\'s eyes.', { hit: ['sneak_attack.dark_purple', 'sneak_attack.dark_green'], accent: ['smoke.puff.centered.dark_black', 'smoke.puff.centered.grey'], accentTint: '#3d3a45', tgt: 'shake' }), ...ab('dagger') });
 put('classes24-phbrgeFastHands0:5pHgM0ZQStN6rIGE', design('Fast Hands: Use an Object — a deft flick of the wrist.', () => [
@@ -733,7 +733,7 @@ put(['classes24-phbwlkHurlThroug:vIY5Deb2vCh5POdP', 'classfeatures-aCUmlnHlUPHS0
   impact('Hellish rift opens', ['portals.horizontal.vortex.red', 'portals.horizontal.ring.bright_yellow'], { stageId: 'rift', duration: 2000, scale: 0.9, below: true }),
   impact('Hellfire', ['flames.01.orange', 'impact.fire.01.orange'], { after: 'rift', anchor: 'start', offset: 300, duration: 1400, scale: 0.6 }),
   motion('sink', 'targets', { after: 'rift', anchor: 'start', offset: 400, duration: 1500, intensity: 0.8 }),
-], { sound: 'fear' }));
+], { sound: 'void' }));
 put('classes24-phbinvRepellingB', design('Repelling Blast: the eldritch blast shoves the struck creature straight back.', () => [
   impact('Force shove', ['side_impact.part.shockwave.purple', 'side_impact.part.shockwave.blue'], { stageId: 'hit', duration: 900, scale: 0.7 }),
   motion('rush', 'targets', { after: 'hit', anchor: 'start', duration: 900, intensity: 0.5, distance: 1, motionRange: 'distance', motionHeading: 'away', motionEndpoint: 'near', requiresHit: true }),
@@ -941,7 +941,7 @@ put('monsterfeatures-Xwj2GPqTxngS0j2L', design('Blasphemous Word: an unholy word
   motion('brace', 'source', { stageId: 'utter', duration: 600, intensity: 0.5 }),
   area('Blasphemy ripples out', ['soundwave.02.purple', 'soundwave.02.blue'], { stageId: 'word', after: 'utter', anchor: 'start', offset: 200, duration: 1700, ...tint('#8a3a6a') }),
   motion('recoil', 'targets', { after: 'word', anchor: 'start', offset: 250, duration: 700, intensity: 0.5 }),
-], { sound: 'scream' }));
+], { sound: 'void' }));
 put(['monsterfeatures-ao6mxTJVYy7WaVgW'], design('Blinding Dust: magical dust and sand whirl around the creature.', () => [
   area('Swirling dust', ['whirlwind.bluewhite', 'whirlwind.bluegrey'], { stageId: 'dust', duration: 2200, opacity: 0.8, ...tint('#d9c49a') }),
   aura('Grit', ['smoke.puff.ring.01.white'], { duration: 1200, scale: 1, opacity: 0.6, below: true, ...tint('#d9c49a') }),

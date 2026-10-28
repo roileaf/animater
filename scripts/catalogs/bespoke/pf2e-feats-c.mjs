@@ -441,7 +441,7 @@ export default {
     travel('Breath torrent', ['breath_weapons.fire.line.orange', 'breath_weapons.fire.line.orange'], { stageId: 'kb-br', after: 'kb-in', anchor: 'start', offset: 600, duration: 2000, targetSelection: 'first' }),
     impact('Breath washes over', ['impact.001.orange', 'impact.005.orange'], { after: 'kb-br', anchor: 'start', offset: 700, duration: 1200, scale: 0.7 }),
     motion('lunge', 'source', { after: 'kb-in', anchor: 'start', offset: 500, duration: 900, distance: 0.15, intensity: 0.5 }),
-  ], { sound: 'fireCone' }),
+  ], { sound: 'dragonRoar' }),
 
   'pf2e:aa8Qbo9D9WVeOGN5': design("Kraken's Call: lightless watery portals open beneath your foes and kraken tentacles surge up to grab them.", () => [
     cast('Call the deep', ['cast_generic.water.02.blue'], { stageId: 'kc-c', scale: 0.8, duration: 1100 }),
@@ -576,7 +576,7 @@ export default {
     aura('Draconic majesty', ['energy_field.02.below.yellow', 'energy_field.02.below.blue'], { after: 'mp-c', anchor: 'start', offset: 300, duration: 2000, scale: 2.2, below: true, opacity: 0.7, fadeOut: 500, ...tint('#d4a017') }),
     impact('Cowed', ['markers.fear.dark_red', 'markers.fear.dark_purple'], { after: 'mp-c', anchor: 'start', offset: 700, duration: 1500, scale: 0.6, offsetY: -0.5, offsetUnits: 'token', fadeIn: 200, fadeOut: 400 }),
     motion('cower', 'targets', { after: 'mp-c', anchor: 'start', offset: 800, duration: 1100, intensity: 0.35 }),
-  ], ab('growl')),
+  ], { sound: 'fear' }),
 
   'pf2e:SWkeel82rdttxUD3': design('Majestic Proclamation: you announce your name and your constellation blazes, dazzling the enemies around you.', () => [
     cast('Constellation blazes', ['twinkling_stars.points08.white', 'twinkling_stars.points08.white'], { stageId: 'mpr-c', scale: 1.2, duration: 1500 }),
@@ -608,7 +608,7 @@ export default {
     impact('Interceding guard', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { stageId: 'mpa-s', delay: 200, duration: 1400, scale: 0.9 }),
     impact('Parry', ['impact.005.white', 'impact.005.orange'], { after: 'mpa-s', anchor: 'start', offset: 400, duration: 900, scale: 0.6 }),
     motion('brace', 'source', { delay: 100, duration: 1000, intensity: 0.5 }),
-  ], ab('shield')),
+  ], ab('bladeParry')),
 
   'pf2e:KboQgBhYXI2WdCt8': design('Mask of Fear: your warmask burns off your face in a flash of flame, taking your fear with it.', () => [
     cast('Warmask burns away', ['flames.01.orange', 'fumes.fire.orange'], { stageId: 'mof-b', scale: 0.4, offsetY: -0.25, offsetUnits: 'token', duration: 1300 }),

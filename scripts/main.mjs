@@ -45,6 +45,7 @@ import { createAdaptiveHost } from "./engines/playback/adaptive-host.mjs";
 import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
 import { createCameraShake, canShake } from "./engines/camera/camera-shake.mjs";
+import { createScreenTint, canTint } from "./engines/camera/screen-tint.mjs";
 import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
 import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
@@ -279,16 +280,17 @@ const distortionHost = createDistortionHost({
 // Camera shake on this client (engines/camera/camera-shake.mjs): big blasts' shock tags jolt the stage's position
 // (Foundry pans by its pivot) for a moment. World and client settings, Full or Light quality only.
 const shakeSetting = (key, fallback) => { try { return hotSetting(key); } catch { return fallback; } };
+// The screen's world rectangle, read from the stage's own transform (pan and zoom; no rotation).
+function cameraShakeView() {
+  const t = canvas.stage.transform, screen = canvas.app.renderer.screen;
+  t.updateLocalTransform();
+  const wt = t.localTransform;
+  return { x: -wt.tx / wt.a, y: -wt.ty / wt.d, w: screen.width / wt.a, h: screen.height / wt.d };
+}
 const cameraShake = createCameraShake({
   getPosition: () => canvas.stage.position,
   setPosition: (x, y) => canvas.stage.position.set(x, y),
-  // The screen's world rectangle, read from the stage's own transform (pan and zoom; no rotation).
-  view: () => {
-    const t = canvas.stage.transform, screen = canvas.app.renderer.screen;
-    t.updateLocalTransform();
-    const wt = t.localTransform;
-    return { x: -wt.tx / wt.a, y: -wt.ty / wt.d, w: screen.width / wt.a, h: screen.height / wt.d };
-  },
+  view: () => cameraShakeView(),
   gridPx: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
   enabled: () => shakeSetting("cameraShake", true) !== false && canShake(localQuality(), shakeSetting("cameraShakeLocal", true)),
@@ -489,10 +491,45 @@ const markReactions = createReactionHost({
     .filter((t) => t?.center && !t.document?.hidden && t.visible !== false && Math.hypot(t.center.x - point.x, t.center.y - point.y) <= radius + (t.w ?? 0) / 2)
     .map((t) => ({ x: t.center.x, y: t.center.y })),
 });
+// Screen tint on this client (engines/camera/screen-tint.mjs): an elemental hit washes the view in its colour. The
+// wash is a page element just above the map's canvas, so Foundry's interface stays untinted.
+const screenTint = createScreenTint({
+  mount: () => {
+    const board = canvas?.app?.view;
+    if (!board?.isConnected) return null;
+    const el = document.createElement("div");
+    el.className = "animater-screen-tint";
+    el.style.cssText = "position:fixed;inset:0;pointer-events:none;opacity:0;will-change:opacity";
+    const z = getComputedStyle(board).zIndex;
+    if (z && z !== "auto") el.style.zIndex = z;
+    board.after(el);
+    return el;
+  },
+  view: () => cameraShakeView(),
+  screenPoint: (at) => {
+    try {
+      const p = canvas.clientCoordinatesFromCanvas?.(at) ?? canvas.stage.worldTransform.apply(at);
+      return { x: Math.round((p.x / window.innerWidth) * 100), y: Math.round((p.y / window.innerHeight) * 100) };
+    } catch { return null; }
+  },
+  now: () => performance.now(),
+  enabled: () => shakeSetting("screenTint", true) !== false && canTint(localQuality(), shakeSetting("screenTintLocal", true)),
+  strength: () => Number(shakeSetting("screenTintStrength", 1)) || 1,
+  // Reduced motion: lightning's strobe becomes one soft flash.
+  calm: () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true,
+  sceneId: () => canvas?.scene?.id,
+  viewedLevel: () => canvas?.level?.id ?? null,
+  seen: (point) => {
+    try {
+      const v = canvas?.visibility;
+      return !v?.tokenVision || v.testVisibility({ x: point.x, y: point.y }, { tolerance: (canvas.grid?.size ?? 100) });
+    } catch { return true; }
+  },
+});
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
 Hooks.on("createSequencerEffect", (effect) => {
   lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); if (lightsHere()) lightHost.onEffect(effect); markLayer.onEffect(effect);
-  summonsLights.onEffect(effect); distortionHost.onEffect(effect); cameraShake.onEffect(effect);
+  summonsLights.onEffect(effect); distortionHost.onEffect(effect); cameraShake.onEffect(effect); screenTint.onEffect(effect);
 });
 Hooks.on("endedSequencerEffect", (effect) => {
   lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); distortionHost.onEnded(effect);
@@ -503,7 +540,7 @@ const effectLightsHere = (on) => {
   else for (const doc of canvas?.scene?.tokens ?? []) summonsLights.onToken(doc);
   canvas?.perception?.update({ refreshLighting: true, refreshVision: true });
 };
-Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); cameraShake.clear(); killCam.clear(); });
+Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); cameraShake.clear(); screenTint.clear(); killCam.clear(); });
 // Movement feel on this client (engines/motion/movement-feel.mjs): each floor's own marks at a moving token's feet,
 // a drop shadow under a flier. Every move from any source is read from the drawn token each frame (v14 writes the
 // animated x/y into the TokenDocument while it animates), so drags, ruler moves and macros all show. Animater's own
@@ -1433,6 +1470,7 @@ Hooks.on("canvasReady", () => {
     ticker.add(() => { markLayer.tick(); markReactions.tick(); }, undefined, P.NORMAL);
     // The shake moves the stage first, so the distortion reads the view this frame renders.
     ticker.add(() => cameraShake.tick(), undefined, P.NORMAL);
+    ticker.add(() => screenTint.tick(), undefined, P.NORMAL);
     ticker.add(() => distortionHost.tick(), undefined, P.NORMAL);
     ticker.add(() => adaptiveHost.onFrameEnd(performance.now()), undefined, P.UTILITY);
   }
@@ -3062,6 +3100,23 @@ Hooks.once("init", () => {
     hint: "How hard blasts shake the view on this screen, as a multiple of the usual jolt. Above 1 it also lasts longer (4 shakes about twice as long).",
     scope: "client", config: true, type: Number, range: { min: 0.25, max: 4, step: 0.25 }, default: 1,
   });
+  registerSetting("screenTint", {
+    name: "Screen tint",
+    hint: "An elemental spell washes the view in its element's colour for a moment as it lands: a Fireball glows orange, lightning strobes blue-white, cold blinks icy blue, void dims the screen. Bigger areas tint more, and a far-off blast less. Weapon Strikes never tint.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) screenTint.clear(); },
+  });
+  registerSetting("screenTintLocal", {
+    name: "Screen tint on my screen",
+    hint: "Turn off to never tint the view on this screen. When this browser asks for reduced motion, lightning flashes once instead of strobing.",
+    scope: "client", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) screenTint.clear(); },
+  });
+  registerSetting("screenTintStrength", {
+    name: "Screen tint strength",
+    hint: "How strongly the colour washes over this screen, as a multiple of the usual tint.",
+    scope: "client", config: true, type: Number, range: { min: 0.25, max: 2, step: 0.25 }, default: 1,
+  });
   registerSetting("killCam", {
     name: "Slow-motion kill-cam",
     hint: "When a killing blow lands on an NPC, every screen that can see it eases the view towards it with a gentle zoom, slows Animater's effects on it and fades the colour for a moment, then pans back. The finisher and Finish Him! wait for it. Drawn only on screens at Full or Light animation quality.",
@@ -3818,6 +3873,7 @@ Hooks.once("ready", () => {
     mapDistortion,
     // Big blasts shake each screen's view (world setting): their shocks are planned even with map distortion off.
     cameraShake: () => shakeSetting("cameraShake", true) !== false,
+    screenTint: () => shakeSetting("screenTint", true) !== false,
     // How far a blast's shockwave ripples, as a multiple of its radius (world setting).
     shockwaveReach: () => { try { return Number(hotSetting("shockwaveReach")); } catch { return undefined; } },
     // A two-handed heavy weapon: its critical hit sends a shockwave.

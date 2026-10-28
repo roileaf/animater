@@ -189,6 +189,13 @@ for (const [element, b] of Object.entries(BREATH)) for (const shape of ['cone', 
 const PHYSICAL = { color: '#d9cbb0', hit: ['impact.009.orange'], death: ['ground_cracks.02.orange', 'impact.009.orange'] };
 export const ABILITY_ELEMENTS = ['physical', 'fire', 'cold', 'electricity', 'acid', 'poison', 'void', 'vitality', 'force', 'mental', 'sonic', 'spirit'];
 const SOUND = { physical: 'bludgeon', fire: 'fire', cold: 'cold', electricity: 'electric', acid: 'acid', poison: 'poison', void: 'void', vitality: 'holy', force: 'force', mental: 'psychic', sonic: 'sonic', spirit: 'spirit' };
+// A breath, a bolt or a blast has its own sound, not the element's plain one: a fan of flame, a lightning
+// bolt with its thunder, a freezing rush, a fireball's roar.
+const SHAPED_SOUND = {
+  cone: { fire: 'fireCone', cold: 'coldCone', electricity: 'lightningBolt' },
+  line: { fire: 'fireCone', cold: 'coldCone', electricity: 'lightningBolt' },
+  burst: { fire: 'fireball' },
+};
 const lookOf = element => (element === 'physical' ? PHYSICAL : damageLook(element) ?? PHYSICAL);
 // A cone or line uses the breath art of its energy, else the grey gust tinted to the damage's colour.
 const blastOf = (element, shape) => {
@@ -205,13 +212,13 @@ for (const element of ABILITY_ELEMENTS) {
       puff({ faceTarget: true }),
       area('Blast', blast.assets, { stageId: 'blast', after: 'brace', anchor: 'end', offset: -100, duration: 2000, oneShot: true, ...(blast.tint ? tint(blast.tint) : {}) }),
       motion('recoil', 'targets', { after: 'blast', anchor: 'start', offset: 500, duration: 800, intensity: 0.6, optionalTargets: true }),
-    ], { sound });
+    ], { sound: SHAPED_SOUND[shape]?.[element] ?? sound });
   }
   out[`pf2e:npc-generic:burst-${element}`] = design(`A burst of ${element === 'physical' ? 'force' : element} erupts where the creature aims it.`, () => [
     puff(),
     area('Burst', look.death ?? look.hit, { stageId: 'burst', after: 'gather', anchor: 'start', offset: 400, duration: 1800 }),
     motion('recoil', 'targets', { after: 'burst', anchor: 'start', offset: 300, duration: 800, intensity: 0.6, optionalTargets: true }),
-  ], { sound });
+  ], { sound: SHAPED_SOUND.burst[element] ?? sound });
   out[`pf2e:npc-generic:emanation-${element}`] = design(`A wave of ${element === 'physical' ? 'force' : element} rolls out from the creature.`, () => [
     motion('pulse', 'source', { stageId: 'pulse', duration: 800, intensity: 0.5 }),
     area('Wave', look.death ?? look.hit, { stageId: 'wave', after: 'pulse', anchor: 'start', offset: 200, duration: 1800, opacity: 0.9 }),

@@ -740,7 +740,7 @@ const ropeEntangle = design('The rope lashes out and coils tightly around the ta
   travel('Rope lashes out', ['vine.complete.nature.single.01.green'], { stageId: 're-t', duration: 1200, ...OPT, ...tint('#b08a5a') }),
   aura('Rope binds', ['entangle.brown'], { subject: 'targets', after: 're-t', anchor: 'arrival', duration: 2200, scale: 0.8, ...OPT, ...tint('#b08a5a') }),
   motion('press', 'targets', { after: 're-t', anchor: 'arrival', duration: 900, intensity: 0.5, ...OPT }),
-], { sound: 'chainBinding' });
+], { sound: 'whip', ...ABILITY });
 const scarab = design('The golden scarab flares, warding its bearer against death magic.', () => [
   aura('Scarab ward', ['shield.01.complete.01.yellow', 'shield.01.complete.01.blue'], { duration: 1800, scale: 1 }),
   aura('Holy sigil', ['ward.star.yellow.01'], { duration: 1600, delay: 300, scale: 0.7, below: true }),
@@ -756,7 +756,7 @@ const shieldBash = design('The cavalier\'s shield slams into the foe with a burs
 ], { sound: 'shieldStrike', ...ABILITY });
 const whistle = design('A shrill whistle blast carries far.', () => [
   aura('Shrill blast', ['soundwave.01.blue'], { duration: 1000, scale: 0.5, offsetX: 0.3, offsetUnits: 'token' }),
-], { sound: null, fx: false });
+], { sound: 'whistle', fx: false });
 const slaying = design('The bullet\'s slaying magic surges through a creature of its bane type.', () => [
   impact('Death magic surges', ['toll_the_dead.red.skull_smoke', 'toll_the_dead.green.skull_smoke'], { stageId: 'sl-i', duration: 1600, scale: 0.7, ...OPT }),
   motion('stagger', 'targets', { after: 'sl-i', anchor: 'start', offset: 200, duration: 800, ...OPT }),
@@ -1095,7 +1095,7 @@ export default {
   'dnd5e:dnd5e-equipment24-dmgRingOfShootin:sZwpvVE0OpUNXe2B': lightningSpheres, // Ring of Shooting Stars [Create Lightning Spheres] (2024)
   'dnd5e:dnd5e-equipment24-dmgRingOfShootin:GLyk6XaqTk5JOVQ8': sphereZap, // Ring of Shooting Stars [Lightning Sphere Save] (2024)
   'dnd5e:dnd5e-equipment24-dmgRingOfShootin:4ZI0cvhpjWiYg9i4': shootingStars('A mote of light streaks down from the ring and bursts in a shower of radiant sparks.', ['explosion.03.yellow', 'explosion.03.blueyellow'], 'radiantRay'), // Ring of Shooting Stars [Shooting Stars] (2024)
-  'dnd5e:dnd5e-items-etA2SBgWwduCLgLT:dnd5eactivity000': shootingStars('A fiery mote streaks down from the ring and bursts into flame.', ['explosion.01.orange'], 'fire'), // Ring of Shooting Stars [Shooting Star] (2014)
+  'dnd5e:dnd5e-items-etA2SBgWwduCLgLT:dnd5eactivity000': shootingStars('A fiery mote streaks down from the ring and bursts into flame.', ['explosion.01.orange'], 'fireball'), // Ring of Shooting Stars [Shooting Star] (2014)
   'dnd5e:dnd5e-items-etA2SBgWwduCLgLT:BmdTWkjcU0ZkyCLr': dancingLights, // Ring of Shooting Stars [cast] (2014)
   'dnd5e:dnd5e-items-etA2SBgWwduCLgLT:vbdZ39RG4LdxLH0a': lightCantrip, // Ring of Shooting Stars [cast] (2014)
   'dnd5e:dnd5e-items-etA2SBgWwduCLgLT:TkKZyzTSjdDD6a8i': faerieFire, // Ring of Shooting Stars [cast] (2014)

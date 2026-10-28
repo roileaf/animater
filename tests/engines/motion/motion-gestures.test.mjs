@@ -5,7 +5,7 @@ import { motionPose, motionDirection, combineMotionPoses, poseTransform, TokenMo
 import * as motionModule from '../../../scripts/engines/motion/motion.mjs';
 import { GENERATED_MOTION_DURATION } from '../../../scripts/engines/motion/motion-pacing.mjs';
 
-const NEW = ['press', 'sink', 'flicker', 'throw', 'brace', 'stagger', 'cower', 'slam', 'drift'];
+const NEW = ['press', 'sink', 'flicker', 'throw', 'brace', 'stagger', 'cower', 'slam', 'drift', 'electrocute'];
 const stage = motion => ({ kind: 'motion', motion, duration: 1000, distance: 0.35, intensity: 1 });
 
 test('new gestures are registered, paced and settle exactly at rest', () => {
@@ -28,6 +28,20 @@ test('gesture semantics: press squashes down, sink fades, brace and stagger move
   assert.ok(motionPose(stage('throw'), 0.15, { x: 1, y: 0 }, 100).x < 0);
   assert.ok(motionPose(stage('throw'), 0.7, { x: 1, y: 0 }, 100).x > 0);
   assert.ok(motionPose(stage('slam'), 0.5, { x: 1, y: 0 }, 100).y < 0, 'slam rises before falling');
+});
+test('electrocute: stiff, jittering bursts that weaken, a still gap between them, a slump at the end, alike everywhere', () => {
+  const s = { ...stage('electrocute'), duration: 1300 };
+  const at = (p) => motionPose(s, p, { x: 1, y: 0 }, 100);
+  const jitter = (from, to) => { let most = 0; for (let p = from; p < to; p += 0.005) { const q = at(p); most = Math.max(most, Math.hypot(q.x, q.y)); } return most; };
+  const first = jitter(0.06, 0.33), second = jitter(0.45, 0.6), third = jitter(0.72, 0.81);
+  assert.ok(first > 2 && first < 8, `a few pixels of twitch, not a wobble across the square (${first})`);
+  assert.ok(first > second && second > third && third > 0.5, 'each burst weaker than the last');
+  assert.equal(Math.hypot(at(0.39).x, at(0.39).y), 0, 'a still beat between bursts');
+  assert.ok(at(0.2).scaleY > 1, 'the body locks stiff while the current runs');
+  assert.ok(at(0.92).y > 0 && at(0.92).scaleY < 1, 'then slumps as it lets go');
+  const steps = new Set(); for (let p = 0.1; p < 0.3; p += 0.004) steps.add(at(p).x.toFixed(4));
+  assert.ok(steps.size >= 7, 'a new twitch every 30 ms (about 9 in this window)');
+  assert.deepEqual(at(0.2), at(0.2), 'deterministic: every client draws the same twitch');
 });
 test('optional channels combine multiplicatively and legacy poses keep their shape', () => {
   assert.deepEqual(combineMotionPoses([{ x: 1, y: 0, rotation: 0, scale: 1 }]), { x: 1, y: 0, rotation: 0, scale: 1 });

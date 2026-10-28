@@ -141,10 +141,10 @@ const berserk = why => design(why, () => [
 const netThrow = why => design(why, () => [
   motion('throw', 'source', { stageId: 'tw', duration: 900, intensity: 0.6 }),
   impact('Net drops over the target', ['web.complete.002.white'], { stageId: 'hit', delay: 400, duration: 2400, scale: 0.9, ...tint('#c8b48a') }),
-], { sound: 'chainBinding' });
+], { sound: 'whip', ...A });
 const netSave = why => design(why, () => [
   impact('Net tangles the target', ['web.complete.002.white'], { duration: 2400, scale: 0.9, ...tint('#c8b48a') }),
-], { sound: 'chainBinding' });
+], { sound: 'whip', ...A });
 
 // --- javelin melee -----------------------------------------------------------
 const javelinStab = why => design(why, () => swing('Javelin thrust', ['spear.melee.01.white'], { duration: 1600 }), { sound: 'spear', ...A });
@@ -411,11 +411,11 @@ export default {
   'dnd5e:dnd5e-equipment24-dmgHammerOfThund:ArjEe6ID0twOfNfA-ranged': hammerHurl('On a hit the hammer unleashes a thunderclap; creatures within 30 feet save or are Stunned. Then it returns.', [
     impact('Thunderclap', ['shatter.blue'], { after: 'hit', anchor: 'start', duration: 1800, scale: 2.2 }),
     motion('shake', 'targets', { after: 'hit', anchor: 'start', offset: 200, duration: 700, intensity: 0.6 }),
-  ], 'lightningBolt'),
+  ], 'sonic'),
   'dnd5e:dnd5e-items-wGDDt17DpBcXPuUD:HUaufCvw2ISsEtbL-ranged': hammerHurl('On a hit the hammer unleashes a thunderclap audible 300 feet away, then returns.', [
     impact('Thunderclap', ['shatter.blue'], { after: 'hit', anchor: 'start', duration: 1800, scale: 2.2 }),
     motion('shake', 'targets', { after: 'hit', anchor: 'start', offset: 200, duration: 700, intensity: 0.6 }),
-  ], 'lightningBolt'),
+  ], 'sonic'),
   'dnd5e:dnd5e-items-wGDDt17DpBcXPuUD:raoOPd1C5wdDhOed': design('Thunderclap: every creature within 30 feet saves or is Stunned.', () => [
     area('Thunderclap rolls outward', ['shatter.blue'], { stageId: 't', duration: 1800 }),
     motion('shake', 'targets', { after: 't', anchor: 'start', offset: 250, duration: 700, intensity: 0.6 }),

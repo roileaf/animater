@@ -940,7 +940,7 @@ export default {
     motion('throw', 'source', { duration: 700, intensity: 0.4 }),
     projectile('Silk flung', ['web.02'], { stageId: 'ws', delay: 250, duration: 700, scale: 0.4 }),
     impact('Web splays', ['web.complete.002.white', 'web.01'], { after: 'ws', anchor: 'end', duration: 2000, scale: 1.4, ...ALL }),
-  ], { sound: 'chainBinding' }),
+  ], { sound: 'vines' }),
 
   // Weft and Warp: Stride, Strike, swap places, Strike again.
   'pf2e:iqAN2AqnQ6UqpQX6': design('A graceful dance: stride in and strike, swap places with the foe in one step, and strike it again while it is off guard.', () => [
@@ -1057,7 +1057,7 @@ export default {
     hit('Wolf jaw', BITE('grey'), { stageId: 'wd', duration: 1000, scale: 0.8 }),
     motion('slam', 'targets', { after: 'wd', anchor: 'start', offset: 350, duration: 700, intensity: 0.5 }),
     impact('Dragged down', DUST, { after: 'wd', anchor: 'start', offset: 600, duration: 900, scale: 0.6, below: true }),
-  ], { sound: 'claw', soundNamespace: 'ability' }),
+  ], { sound: 'naturalPierce', soundNamespace: 'ability' }),
 
   // Wood Ward: vines and roots burst up between you and the attacker.
   'pf2e:qW0E05GudC6bRA2Q': design('With a sweep of the hand, vines and roots burst from the ground at the edge of the space, forming a wooden lattice of cover.', () => [
@@ -1086,7 +1086,7 @@ export default {
   'pf2e:VPnkSL25EfrEpPSX': design('A quick, inefficient powder burn belches a hazy grey cloud around the innovation, concealing everything within 5 feet.', () => [
     cast('Powder flares', ['impact.fire.01.orange'], { scale: 0.4, duration: 600 }),
     aura('Smoke billows', ['smoke.plumes.01.grey', 'smoke.plumes.01.grey'], { delay: 200, scale: 2.4, duration: 2600, opacity: 0.85, fadeOut: 700 }),
-  ], { sound: 'explosion' }),
+  ], { sound: 'fireIgnition' }),
 
   // Wrath of the First Ghoul: maggots burst into the wound with psychic horror.
   'pf2e:csjkzb5dsyZPeOtY': design('The Strike lands and ravenous maggots burst into the wound, whispering Kabriri\'s horrors into the victim\'s mind.', () => [

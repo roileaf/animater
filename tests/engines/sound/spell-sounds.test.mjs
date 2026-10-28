@@ -98,7 +98,6 @@ test("every supported audio pack contributes fitting cues without requiring anot
     ["ggg", "Heal"],
     ["psfx", "Ray of Frost"],
     ["soundfxlibrary", "Chain Lightning"],
-    ["pf2e-creature-sounds", "Roar of the Dragon"],
   ]) {
     const r = spellRecipe(spell(name), undefined, {
       sounds: fixture([pack]).catalog,
@@ -108,6 +107,9 @@ test("every supported audio pack contributes fitting cues without requiring anot
       sounds(r).every((s) => s.optionalSound.candidates[0].module === pack),
     );
   }
+  // PF2e Creature Sounds is that module's own library: Animater never plays its files.
+  const r = spellRecipe(spell("Roar of the Dragon"), undefined, { sounds: fixture(["pf2e-creature-sounds"]).catalog });
+  assert.equal(sounds(r).length, 0);
 });
 test("manager-only modules cannot invent an audio library", () => {
   const { catalog } = fixture([
@@ -334,16 +336,16 @@ test("chain cue plays once per actual hop; normal multi-target sounds play once"
   });
   const plan = previewPlan(r, context);
   const hops = plan.filter((s) => s.kind === "travel"),
-    audio = plan.filter((s) => s.kind === "sound");
-  assert.equal(audio.length, 3);
-  assert.deepEqual(
-    audio.map((s) => s.delay),
-    hops.map((s) => s.delay),
-  );
-  assert.ok(audio[1].delay > audio[0].delay);
+    audio = plan.filter((s) => s.kind === "sound"),
+    leaps = audio.filter((s) => s.label === "Lightning leaps");
+  // A storm, not a spark: the air charges, a thunderbolt cracks loose and thunder crashes, besides each leap.
+  assert.deepEqual([...new Set(audio.map((s) => s.label))].sort(), ["Lightning leaps", "Storm gathers", "Thunder crash", "Thunderbolt release"]);
+  assert.equal(leaps.length, hops.length, "one strike per actual hop");
+  assert.deepEqual(leaps.map((s) => s.delay), hops.map((s) => s.delay));
+  assert.ok(leaps[1].delay > leaps[0].delay);
   assert.ok(audio.every((s) => s.volume < 0.35));
-  assert.ok(audio.every((s) => s.duration <= 550));
-  assert.ok(audio.every((s) => s.optionalSound.candidates[0].module === "ggg"));
+  assert.ok(leaps.every((s) => s.duration > 550 && s.duration <= 1100), "each leap rings out, not a tick");
+  assert.ok(leaps.every((s) => s.optionalSound.candidates[0].module === "ggg"));
   const fire = previewPlan(
     spellRecipe(spell("Fireball"), undefined, { sounds: fixture().catalog }),
     {

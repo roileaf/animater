@@ -113,11 +113,14 @@ export const recallAttribution = (log, ids, now = Date.now()) => recallDamage(lo
 
 // Cast stages play on the source token: here, the creature that took the damage.
 const stage = (stageId, assets, extra) => ({ stageId, kind: "cast", assets, ...extra });
+// How the body takes the hit: a creature struck by lightning convulses as the current runs through it.
+const BODY = { electricity: { motion: "electrocute", duration: 1300, distance: 0.35, intensity: 1 } };
 // A short flash on the damaged token.
 export function hitRecipe(type) {
-  const look = damageLook(type);
+  const look = damageLook(type), body = BODY[normalizeDamageType(type)];
   if (!look) return null;
-  return { id: `animater-hit-${normalizeDamageType(type)}`, name: `Took ${normalizeDamageType(type)} damage`, trigger: "manual", color: look.color, stages: [stage("hit", look.hit, { duration: 1200, scale: 0.9, opacity: 0.9 }), ...filterStage("hit-filter", type, { duration: 1400 })] };
+  return { id: `animater-hit-${normalizeDamageType(type)}`, name: `Took ${normalizeDamageType(type)} damage`, trigger: "manual", color: look.color, stages: [stage("hit", look.hit, { duration: 1200, scale: 0.9, opacity: 0.9 }), ...filterStage("hit-filter", type, { duration: 1400 }),
+    ...(body ? [{ stageId: "hit-body", kind: "motion", subject: "source", assets: [], ...body }] : [])] };
 }
 // The 0 HP collapse, finished in the damage's look (or plain for physical damage).
 export function deathRecipe(type, collapse) {

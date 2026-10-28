@@ -126,7 +126,7 @@ export default {
     cast('Grenade detonates mid-air', ['explosion.01.orange'], { stageId: 'boom', after: 'flash', anchor: 'start', offset: 250, duration: 1300, scale: 0.7, offsetX: 1.1, offsetUnits: 'token' }),
     motion('recoil', 'source', { after: 'flash', anchor: 'start', duration: 450, intensity: 0.5 }),
     motion('brace', 'source', { after: 'boom', anchor: 'start', duration: 800, intensity: 0.45 }),
-  ], { sound: 'firearm', ...ABILITY }),
+  ], { sound: 'explosion' }),
   [F('feats-BUt7LSUaHTmjtKIx')]: design('Extend Directive repeats last turn\'s order with a single word: a quick holo command ping.', () => directive('orangeyellow', 'Order repeated')),
   [F('feats-vO9uljpsyAyjDe5h')]: design('Fan the Hammer holds the trigger down for a second Area Fire/Auto-Fire burst: muzzle burst and a spray of rounds at every target.', () => autoFire({ repeats: 4 })),
   [F('feats-IoPJIOFRBFM2sSQ4')]: design('Fatal Error wields the Gap to muddle a creature\'s existence: glitch static gathers, then corrupted sci-fi markers and static flicker the target in and out.', () => [
@@ -308,7 +308,7 @@ export default {
     impact('Jaws bite', ['bite.200px.orange', 'bite.200px.red'], { stageId: 'bite', duration: 1100 }),
     motion('lunge', 'source', { duration: 500, intensity: 0.5 }),
     motion('shake', 'targets', { after: 'bite', anchor: 'start', offset: 250, duration: 700, intensity: 0.4 }),
-  ], { sound: 'claw', ...ABILITY }),
+  ], { sound: 'naturalPierce', ...ABILITY }),
   [F('feats-jFoJmmNMtllYamak')]: design('Let\'s Jam: an android drops the bass with built-in instruments and allies move to the beat.', () => [
     cast('Bass drops', ['soundwave.01.purple', 'soundwave.01.blue'], { stageId: 'bass', duration: 1200 }),
     aura('Music swirls', ['music_notations.beamed_quavers.purple', 'music_notations.beamed_quavers.blue'], { after: 'bass', anchor: 'start', offset: 300, duration: 1800, scale: 0.6, offsetY: -0.5, offsetUnits: 'token', fadeOut: 500 }),
@@ -440,7 +440,7 @@ export default {
     impact('Dazzling glare', ['impact.006.yellow'], { after: 'flame', anchor: 'start', offset: 400, duration: 900, scale: 0.7, optionalTargets: true }),
     motion('cower', 'targets', { after: 'flame', anchor: 'start', offset: 500, duration: 800, intensity: 0.35 }),
   ]),
-  [F('actions-ZVzoIaWpXs62QVcu')]: design('Piercing Spikes: grabbed, you thrash so your spikes pierce the grabber.', () => spines({ extra: [motion('shake', 'source', { duration: 700, intensity: 0.5 })] }), { sound: 'claw', ...ABILITY }),
+  [F('actions-ZVzoIaWpXs62QVcu')]: design('Piercing Spikes: grabbed, you thrash so your spikes pierce the grabber.', () => spines({ extra: [motion('shake', 'source', { duration: 700, intensity: 0.5 })] }), { sound: 'naturalPierce', ...ABILITY }),
   [F('feats-Ts9l3J6pH1GPsL2W')]: design('Pin Down focuses your weapons fire on a resilient target to suppress it: a concentrated stream of rounds at one foe.', () => autoFire({ extra: [motion('cower', 'targets', { after: 'hits', anchor: 'start', duration: 800, intensity: 0.4 })] }), { sound: 'firearm', ...ABILITY }),
   [F('feats-gT70L4yEjpklDkxZ')]: design('Pirate\'s Parry: you parry an incoming melee Strike with your agile blade, not a gunshot.', () => [
     motion('brace', 'source', { stageId: 'brace', duration: 700, intensity: 0.45 }),
@@ -477,13 +477,13 @@ export default {
     cast('Spores vent', ['smoke.puff.ring.01.multicolored', 'smoke.puff.ring.01.white'], { stageId: 'vent', duration: 900, ...tint('#a6c94a') }),
     area('Spore cloud', ['fog_cloud.02.green', 'fog_cloud.01.white'], { after: 'vent', anchor: 'start', offset: 300, duration: 2600, opacity: 0.8, fadeIn: 300, fadeOut: 700 }),
   ]),
-  [F('actions-6fsMvO0jXtK8gYkH')]: design('Puff Up: you rapidly puff up, jabbing spurred scales into your attacker.', () => spines({ puff: true }), { sound: 'claw', ...ABILITY }),
+  [F('actions-6fsMvO0jXtK8gYkH')]: design('Puff Up: you rapidly puff up, jabbing spurred scales into your attacker.', () => spines({ puff: true }), { sound: 'naturalPierce', ...ABILITY }),
   [F('feats-3MFMVtHgpTvX3dlu')]: design('Pull Into Orbit: your gravity pulls debris and stellar ejecta into orbit around you.', () => [
     cast('Gravity pulls', ['energy_strands.in.purple', 'energy_strands.in.green.01'], { stageId: 'pull', duration: 1000 }),
     aura('Satellites orbit', ['aura_themed.01.orbit.complete.metal.01.grey'], { after: 'pull', anchor: 'start', offset: 400, duration: 2400, scale: 1.2, ...spin(3000, 1) }),
   ]),
   [F('feats-staCd7NUtYoa6Fnk')]: design('Punishing Salvo: a follow-up Strike with the same area weapon after Area Fire; a heavy shot, not a melee slash.', () => gun({ aim: false, round: ['bullet.03.orange', 'bullet.02.orange'], kick: 0.7 }), { sound: 'firearm', ...ABILITY }),
-  [F('feats-bRMjKwwLTcQLk13U')]: design('Punishing Spines: you reflexively Strike your attacker with your spines.', () => spines(), { sound: 'claw', ...ABILITY }),
+  [F('feats-bRMjKwwLTcQLk13U')]: design('Punishing Spines: you reflexively Strike your attacker with your spines.', () => spines(), { sound: 'naturalPierce', ...ABILITY }),
   [F('feats-GmRJYFPtVIiSViF8')]: design('Puzzling Outburst: a shouted mind-bending brainteaser rattles one creature.', () => mindJolt({ label: 'Brain teased', hit: ['icon.stun.purple', 'toll_the_dead.green.shockwave'] })),
   [F('actions-30Nw5q4vWKCQIBIZ')]: design('Quantum Pulse: as combat begins you instinctively release a pulse of quantum energy and Warp Reality.', () => [
     cast('Quantum pulse', ['impact.013.001.bluepurple', 'impact.013.001.orangeyellow'], { stageId: 'pulse', duration: 1100, scale: 1.4 }),
@@ -659,7 +659,7 @@ export default {
     cast('Shield shatters', ['shield.01.outro_explode.blue'], { stageId: 'break', duration: 900, ...tint('#ffd36b') }),
     cast('Shield collapses', ['explosion.04.dark_purple', 'explosion.04.blue'], { after: 'break', anchor: 'start', offset: 450, duration: 1500, scale: 1.2 }),
     motion('stagger', 'source', { after: 'break', anchor: 'start', duration: 700, intensity: 0.4 }),
-  ], { sound: 'force' }),
+  ], { sound: 'explosion' }),
   [F('feats-GgOtKobXSkAnnWQJ')]: design('Strobe Light: you strobe your brilliant light erratically to throw off the attacker\'s aim.', () => [
     cast('Strobe', ['impact.006.yellow'], { stageId: 'strobe', duration: 500, scale: 1.2, repeats: 3, repeatInterval: 250 }),
     motion('flicker', 'source', { duration: 1000, intensity: 0.5 }),
@@ -804,7 +804,7 @@ export default {
     aura('Glitching circuits', ['static_electricity.02.red', 'static_electricity.02.blue'], { after: 'od', anchor: 'start', offset: 400, duration: 1600, fadeOut: 500 }),
     motion('shake', 'source', { after: 'od', anchor: 'start', offset: 300, duration: 900, intensity: 0.35 }),
   ], { sound: 'electric' }),
-  [F('feats-ruiw4DcY40C58F8f')]: design('Urchin: you flex the spines on your head and neck into the attacker.', () => spines(), { sound: 'claw', ...ABILITY }),
+  [F('feats-ruiw4DcY40C58F8f')]: design('Urchin: you flex the spines on your head and neck into the attacker.', () => spines(), { sound: 'naturalPierce', ...ABILITY }),
   [F('feats-SGcndFbKQDfHiwWr')]: design('Vapor Form: your body becomes an amorphous gaseous vapor.', () => [
     cast('Body evaporates', ['fumes.steam.white'], { stageId: 'steam', duration: 1500 }),
     sprite('Vaporous form', { after: 'steam', anchor: 'start', offset: 200, duration: 1500, opacity: 0.35, fadeOut: 600 }),

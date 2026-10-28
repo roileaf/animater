@@ -64,7 +64,7 @@ const W = {
     motion('recoil', 'source', { delay: 520, duration: 900, distance: 0.08 }),
     cast('Rotating barrels flare', ['muzzle_flash.burst.01.yellow', 'muzzle_flash.single.01.yellow'], { stageId: 'rl-muzzle', delay: 430, duration: 700, scale: 0.6, ...tint('#ff9a3d') }),
     travel('Plasma beam spray', ['lasershot.orange', 'lasershot.red'], { stageId: 'rl-fan', travelDestination: 'area', areaLayout: 'fan', fanCount: 7, delay: 500, duration: 1450, opacity: 0.9, fadeOut: 120, oneShot: true }),
-  ], { sound: 'fireRay' }),
+  ], { sound: 'laserDischarge', soundNamespace: 'ability' }),
   plasmaCannonRanged: rationale => re(rationale, stages => stages.map(s => s.kind === 'impact' ? swap(s, ['explosion.01.orange', 'impact.fire.01.orange'], { scale: 0.8 }) : s)),
   plasmaCannonArea: rationale => design(rationale, () => [
     motion('recoil', 'source', { delay: 520, duration: 900, distance: 0.1 }),

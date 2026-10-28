@@ -8,7 +8,8 @@ import {validateSoundFile} from '../scripts/core/stage-options.mjs';
 const {entries,packs}=await soundInventory();
 // Cross-pack fallbacks: each cue lists every optional pack with a fitting
 // recording so any single installed pack stays audible; GGG still plays first.
-const cue=(label,role,ggg,psfx='',files='',creature='')=>({label,role,selectors:{ggg,psfx,soundfxlibrary:files,...(creature?{'pf2e-creature-sounds':creature}:{})}});
+// PF2e Creature Sounds is another module's own library: Animater never plays its files (a sixth argument is ignored).
+const cue=(label,role,ggg,psfx='',files='')=>({label,role,selectors:{ggg,psfx,soundfxlibrary:files}});
 const profiles={
  allyHeave:[cue('Physical ally lift and heave','cast','^ggg-sfx\\.ranged\\.thrown\\.general','^psfx\\.weapon-swooshes\\.heavy\\.v1\\.group01')],
  naturalPierce:[cue('Natural piercing contact','contact','^ggg-sfx\\.melee\\.claws\\.strike\\.stab\\.01','','Combat/Single/Melee Hit/')],
@@ -22,13 +23,14 @@ const profiles={
  staff:[cue('Staff contact','contact','^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.one-hand','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
  ironStaff:[cue('Metal staff contact','contact','^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.staff\\.iron','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
  katana:[cue('Katana contact','contact','^ggg-sfx\\.melee\\.blade\\.strike\\.katana\\.general','^psfx\\.weapon-attacks\\.sword','Combat/Single/Melee Hit/')],
- axe:[cue('Axe contact','contact','^ggg-sfx\\.melee\\.axe\\.strike','^psfx\\.impacts\\.slashing','Combat/Single/Melee Hit/')],
+ // Axe, flail and claw contacts are blows landing; the packs' plain strike keys are swings through the air.
+ axe:[cue('Axe contact','contact','^ggg-sfx\\.melee\\.axe\\.strike\\.heavy\\.blood','^psfx\\.impacts\\.slashing','Combat/Single/Melee Hit/')],
  club:[cue('Blunt contact','contact','^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.one-hand','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
  hammer:[cue('Hammer contact','contact','^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.two-hand','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
- flail:[cue('Flail contact','contact','^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.flail','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
+ flail:[cue('Flail contact','contact','^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.(flail\\.0[12]|two-hand)','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
  whip:[cue('Whip crack','contact','^ggg-sfx\\.melee\\.whip\\.strike\\.01')],
  unarmed:[cue('Unarmed contact','contact','^ggg-sfx\\.melee\\.unarmed\\.fist\\.strike\\.01\\.medium','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
- claw:[cue('Claw contact','contact','^ggg-sfx\\.melee\\.claws\\.strike\\.slash','^psfx\\.impacts\\.slashing','Combat/Single/Melee Hit/')],
+ claw:[cue('Claw contact','contact','^ggg-sfx\\.(impact\\.flesh\\.01|melee\\.claws\\.strike\\.stab)','^psfx\\.impacts\\.slashing','Combat/Single/Melee Hit/')],
  kick:[cue('Kick contact','contact','^ggg-sfx\\.melee\\.unarmed\\.kick\\.strike\\.01\\.medium','^psfx\\.impacts\\.bludgeoning','Misc/Single/Impact/')],
  shield:[cue('Shield intercept','effect','^ggg-sfx\\.equipment\\.armor\\.shield\\.impact','', 'Combat/Single/Shield Hit')],
  shieldStrike:[cue('Shield strike','contact','^ggg-sfx\\.equipment\\.armor\\.shield\\.impact','', 'Combat/Single/Shield Hit')],
@@ -75,7 +77,8 @@ const profiles={
  gunshotAir:[cue('Shot fired into the air','cast','^ggg-sfx\\.ranged\\.firearm\\.old_timey\\.strike','^psfx\\.ranged-weapons\\.guns\\.single-fire')],
  // Reviewer-requested profiles for bespoke designs (sound:'<name>', soundNamespace:'ability').
  laserDischarge:[cue('Energy weapon discharge','release','^ggg-sfx\\.ranged\\.scifi\\.(laser\\.(pistol|rifle)\\.strike\\.single|plasma\\.gun\\.strike)')],
- scifiGun:[cue('Sci-fi gunfire','release','^ggg-sfx\\.ranged\\.scifi\\.(needler\\.strike\\.single|blaster\\.strike\\.02)','^psfx\\.ranged-weapons\\.guns\\.single-fire')],
+ // PSFX has no sci-fi guns (its single-fire is a modern revolver).
+ scifiGun:[cue('Sci-fi gunfire','release','^ggg-sfx\\.ranged\\.scifi\\.(needler\\.strike\\.single|blaster\\.strike\\.02)')],
  flashGrenade:[cue('Grenade toss','release','^ggg-sfx\\.ranged\\.thrown\\.general','^psfx\\.weapon-swooshes\\.light\\.v1\\.group01'),cue('Flash-bang burst','impact','^ggg-sfx\\.ranged\\.bomb\\.explosion','cantrips\\.thunderclap')],
  bladeParry:[cue('Blade parry','contact','^ggg-sfx\\.melee\\.blade\\.parry','','Combat/Single/Shield Hit/')],
 };
@@ -93,7 +96,11 @@ for(const [profile,cues]of Object.entries(profiles))for(const c of cues){
 }
 const durations=new Map();let next=0;const files=[...selected.keys()];
 await Promise.all(Array.from({length:8},async()=>{while(next<files.length){const file=files[next++];durations.set(file,await probeSoundFile(file));}}));
-for(const cues of Object.values(profiles))for(const c of cues)for(const cnd of c.candidates)Object.assign(cnd,durations.get(cnd.file),{duration:Math.min(4500,durations.get(cnd.file).nativeDuration)});
+for(const cues of Object.values(profiles))for(const c of cues){
+ for(const cnd of c.candidates)Object.assign(cnd,durations.get(cnd.file),{duration:Math.min(4500,durations.get(cnd.file).nativeDuration)});
+ // Balancing only turns files down: a take quieter than −34 dB mean (PSFX's soft swooshes) goes while a louder one is left.
+ if(c.candidates.some(x=>x.meanDb>=-34))c.candidates=c.candidates.filter(x=>x.meanDb>=-34);
+}
 const feats=Object.fromEntries(PF2E_FEATS.map(f=>[f.id,featSoundDirection(f)]));
 const weapons=Object.fromEntries(PF2E_WEAPONS.flatMap(w=>w.modes.map(m=>{
  const d=weaponSoundDirection(w,m);if(m.mode==='thrown'&&['dagger','spear'].includes(d.profile))d.profile=d.profile==='spear'?'thrownSpear':'thrownDagger';
@@ -119,7 +126,9 @@ for(const w of PF2E_WEAPONS)for(const m of w.modes){
 }
 // Restoration is a source spell followed by one physical blow. Use both phases
 // without making the optional ally restoration sound like another weapon hit.
-profiles.restorativeStrike=[...SOUND_PROFILES.healing.map(c=>({...c,role:'cast'})),...profiles.sword];
+// Its cast is a short cure (≤3 s), not a 7–12 s healing song before a single sword blow.
+const shortCure=c=>({...c,role:'cast',candidates:c.candidates.some(x=>x.nativeDuration<=3000)?c.candidates.filter(x=>x.nativeDuration<=3000):c.candidates});
+profiles.restorativeStrike=[...SOUND_PROFILES.healing.map(shortCure),...profiles.sword];
 // Elemental Strike feats: physical contact cues plus one elemental finish that
 // anchors on the first contact (feat stages carry no weapon accent slot).
 for(const d of Object.values(feats)){

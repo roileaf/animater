@@ -280,7 +280,7 @@ const SPELLS = {
     travel('Sheet of flame', ['burning_hands.01.orange'], { stageId: 'f', duration: 1800, ...T1 }),
     motion('recoil', 'targets', { after: 'f', anchor: 'start', offset: 500, duration: 700, ...OT }),
   ] },
-  'Fire Storm': { sound: 'fire', why: 'a storm of roaring flame fills several cubes', build: () => [
+  'Fire Storm': { sound: 'fireball', why: 'a storm of roaring flame fills several cubes', build: () => [
     cast('Fire gathers', ['cast_generic.fire.01.orange'], { stageId: 'c', duration: 800, scale: 0.8 }),
     impact('Firestorm', ['flames.orange.03.2x2'], { stageId: 'f', after: 'c', anchor: 'start', offset: 300, duration: 2600, scale: 1.2, targetStagger: 200, ...OT }),
     impact('Flame bursts', ['explosion.01.orange'], { after: 'c', anchor: 'start', offset: 400, duration: 1600, scale: 1, targetStagger: 200, ...OT }),
@@ -367,7 +367,7 @@ const lightningTarget = (why, withThunder) => design(why, () => [
   impact('Lightning strike', ['lightning_strike.blue'], { stageId: 'l', duration: 1200, scale: 1, ...OT }),
   ...(withThunder ? [impact('Thunder', ['shatter.blue'], { after: 'l', anchor: 'start', offset: 200, duration: 1400, scale: 0.8, ...OT })] : []),
   motion('stagger', 'targets', { after: 'l', anchor: 'start', offset: 150, duration: 800, ...OT }),
-], { sound: 'electric' });
+], { sound: withThunder ? 'lightningBolt' : 'electric' });
 
 const levitateSelf = why => design(why, () => [
   aura('Feather-light lift', ['swirling_feathers.outburst.01.textured'], { duration: 1800, scale: 0.8, opacity: 0.8 }),

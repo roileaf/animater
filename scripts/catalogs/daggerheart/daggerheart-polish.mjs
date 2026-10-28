@@ -15,6 +15,8 @@ const MELEE_SOUNDS = {
   firearm: [[/./, "sword"]],
   magic: [[/./, "staff"]],
   hammer: [[/mace|club|baton|shillelagh/i, "club"], [/knuckle|gauntlet|fist/i, "unarmed"], [/flail/i, "flail"], [/whip|lash/i, "whip"], [/./, "hammer"]],
+  // A whip is a Blade weapon in Daggerheart (Bladed Whip too): it cracks, it does not swing like a sword.
+  whipBlade: [[/whip|lash/i, "whip"]],
   spear: [[/halberd|glaive|polearm|corbin|pike|scythe/i, "polearmBlade"], [/./, "spear"]],
   shield: [[/./, "shieldStrike"]],
   generic: [[/claw|talon|rake|scratch|pincer|nails?\b|tear\b/i, "claw"], [/bite|fang|jaw|maw|teeth|mandible|gnaw|gnash|chomp|nibble|beak|peck|proboscis|sucker/i, "naturalPierce"],
@@ -32,25 +34,43 @@ const RANGED_SOUNDS = {
 export function weaponSoundDesign(style, name) {
   const family = style?.family ?? "generic";
   if (!style?.melee && family === "magic") return { namespace: "spell", profile: "force" };
-  const profile = first((style?.melee ? MELEE_SOUNDS : RANGED_SOUNDS)[family] ?? (style?.melee ? MELEE_SOUNDS.generic : RANGED_SOUNDS.generic), name);
+  const profile = (style?.melee && family === "blade" ? first(MELEE_SOUNDS.whipBlade, name) : null)
+    ?? first((style?.melee ? MELEE_SOUNDS : RANGED_SOUNDS)[family] ?? (style?.melee ? MELEE_SOUNDS.generic : RANGED_SOUNDS.generic), name);
   return profile ? { namespace: "ability", profile, mode: style?.melee ? "melee" : "ranged" } : null;
 }
 
-// Cards: what the card's name and design describe first (fire, frost, healing, a teleport…), then a
-// sound for its domain.
+// Cards: a reviewed sound for cards whose words mislead (CARD_SOUNDS), else what the card's name and design
+// describe (fire, frost, healing, a teleport…), else a sound for its domain. Words match whole words or their
+// starts, so "Voice" is no ice, "Flight" no light and "Blessing" no song.
+const CARD_SOUNDS = {
+  "earthquake": "earthquake", "chain lightning": "chainLightning", "battle cry": "battleCry", "resurrection": "revive",
+  "book of tyfar": "fireCone", "book of grynn": "fireWall", "book of yarrow": "time", "book of ronin": "transform",
+  "twilight toll": "metalResonance", "safe haven": "pocketTransition", "stunning sunlight": "holy", "siphon essence": "drain",
+  "chains of affliction": "chainBinding", "divination": "detect", "shape material": "earth",
+  "voice of dread": "fear", "voice of reason": "song", "inspirational words": "song", "encore": "song", "flight": "wind",
+  "confusing aura": "psychic", "bold presence": "bless", "transcendent union": "bless", "wall of hunger": "void",
+  "notorious": "applause", "conjure swarm": "swarm", "arcane reflection": "force", "rift walker": "teleport",
+  "glyph of nightfall": "shadow", "a soldier's bond": "bless", "armorer": "metal", "glancing blow": "slash",
+  "rapid riposte": "slash", "forceful push": "force", "preservation blast": "force", "ground pound": "earthquake",
+  "frenzy": "battleCry", "force of nature": "growth", "invoke torment": "fear", "endless charisma": "bless",
+  "eclipse": "shadow", "full surge": "battleCry", "disintegration wave": "force", "plant dominion": "growth",
+  "unleash chaos": "force", "codex-touched": "force", "fane of the wilds": "growth", "never upstaged": "shield",
+};
 const CARD_WORDS = [
-  [/heal|mend|restor|cure|regenerat|revive|renew/i, "healing"], [/fire|flame|burn|cinder|ember|inferno|blaze|scorch/i, "fire"],
-  [/ice|frost|cold|snow|freez|chill|winter|glacier/i, "cold"], [/lightning|thunder|storm|shock|spark|arc\b/i, "electric"],
-  [/acid|corro/i, "acid"], [/poison|venom|toxic|blight|rot\b/i, "poison"], [/earth|stone|quake|rock|tremor/i, "earth"],
-  [/wind|gust|whirl|gale|tempest/i, "wind"], [/water|wave|tide|flood/i, "water"], [/teleport|blink|portal|translocat|step\b/i, "teleport"],
-  [/summon|conjur|familiar|companion/i, "summon"], [/shadow|dark|night|umbra|eclipse/i, "shadow"], [/light|radian|sun|dawn|glow/i, "light"],
-  [/fear|terror|dread|horror|fright/i, "fear"], [/sleep|slumber|dream/i, "sleep"], [/vine|root|thorn|bramble|entangl|grow/i, "vines"],
-  [/shield|ward|barrier|protect|aegis|guard/i, "shield"], [/song|sing|melod|chorus|tune/i, "song"], [/mind|psych|thought|telepath|memory/i, "psychic"],
-  [/time|slow|haste|rewind/i, "time"], [/bless|inspir|hope|rally/i, "bless"],
+  [/\b(?:heal|mend|restor|cure|regenerat|revive|renew)/i, "healing"], [/\b(?:fire|flames?|blaze|inferno|scorch|cinder|ember)\b/i, "fire"],
+  [/\b(?:ice|frost|cold|snow|freez\w*|chill|winter|glacier)\b/i, "cold"], [/\b(?:lightning|thunder\w*|storm|arc)\b/i, "electric"],
+  [/\b(?:acid|corro\w*)/i, "acid"], [/\b(?:poison|venom|toxic|blight|rot)\b/i, "poison"], [/\b(?:earth|quake|tremor|boulder)/i, "earth"],
+  [/\b(?:wind|gust|whirlwind|gale|tempest)/i, "wind"], [/\b(?:water|tide)/i, "water"], [/\b(?:teleport|blink|portal|translocat)/i, "teleport"],
+  [/\b(?:summon|conjur|familiar|companion)/i, "summon"], [/\b(?:shadow|dark|night|umbra)/i, "shadow"], [/\b(?:light|radian|sun|dawn|glow)/i, "light"],
+  [/\b(?:fear|terror|dread|horror|fright)/i, "fear"], [/\b(?:sleep|slumber|dream)/i, "sleep"], [/\b(?:vines?|roots?|thorns?|bramble|entangl|grow)/i, "vines"],
+  [/\b(?:shield|ward|barrier|protect|aegis|guard)/i, "shield"], [/\b(?:song|sing|singing|melod|chorus|tune)\b/i, "song"], [/\b(?:mind|psych|thought|telepath|memory)/i, "psychic"],
+  [/\b(?:time|slow|haste|rewind)\b/i, "time"], [/\b(?:bless|inspir|hope|rally)/i, "bless"],
 ];
-const DOMAIN_SOUNDS = { arcana: "force", blade: "slash", bone: "drain", codex: "force", dread: "fear", grace: "whispers", midnight: "shadow", sage: "vines", splendor: "holy", valor: "shield" };
+// Bone is Daggerheart's domain of body and tactics, not necromancy: a struck blow, not a drained life.
+const DOMAIN_SOUNDS = { arcana: "force", blade: "slash", bone: "bludgeon", codex: "force", dread: "fear", grace: "whispers", midnight: "shadow", sage: "vines", splendor: "holy", valor: "shield" };
 export function cardSoundDesign(card, design, motif = "") {
-  const profile = design === "mend" ? "healing" : first(CARD_WORDS, `${card?.name ?? ""} ${motif}`) ?? DOMAIN_SOUNDS[String(card?.domain ?? "").toLowerCase()] ?? "force";
+  const named = CARD_SOUNDS[String(card?.name ?? "").trim().toLowerCase()];
+  const profile = named ?? (design === "mend" ? "healing" : first(CARD_WORDS, `${card?.name ?? ""} ${motif}`) ?? DOMAIN_SOUNDS[String(card?.domain ?? "").toLowerCase()] ?? "force");
   return { namespace: "spell", profile };
 }
 

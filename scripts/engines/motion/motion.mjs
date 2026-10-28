@@ -31,6 +31,10 @@ function pathPose(stage, p, direction, grid, holds) {
   if (local.stretch || keyframes.some((kf) => kf.stretch)) Object.assign(pose, stretchScale((local.stretch ?? 0) * settle, Math.atan2(sin, cos) - pose.rotation));
   return pose;
 }
+// Electrocute's convulsions ([start, end, strength] as shares of the stage) and where the slump begins.
+const ELECTROCUTE_BURSTS = [[0.03, 0.36, 1], [0.42, 0.63, 0.7], [0.69, 0.84, 0.4]], ELECTROCUTE_SLUMP = 0.84;
+// A fixed pseudo-random twitch in -1..1 for a frame step.
+const twitch = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return (v - Math.floor(v)) * 2 - 1; };
 // Pure pose function shared by canvas playback and the editor's motion preview.
 export function motionPose(
   stage,
@@ -205,6 +209,24 @@ export function motionPose(
       pose.x = Math.sin(p * Math.PI * 3) * distance * 0.25 * envelope;
       pose.rotation = Math.sin(p * Math.PI * 3) * 0.08 * amount * envelope;
       break;
+    case "electrocute": {
+      // Seized by a current: the body locks stiff and convulses in three bursts, each weaker, then slumps as it
+      // lets go. The twitches jump every 30 ms, not a smooth sway, and land alike on every client (no Math.random).
+      const seize = ELECTROCUTE_BURSTS.reduce((most, [from, to, strength]) => p < from || p >= to ? most
+        : Math.max(most, strength * Math.min(1, (p - from) / 0.03, (to - p) / 0.03)), 0);
+      const tick = Math.floor((p * (Number(stage.duration) || 1300)) / 30);
+      pose.x = twitch(tick) * distance * 0.14 * seize;
+      pose.y = twitch(tick + 71) * distance * 0.14 * seize;
+      pose.rotation = twitch(tick + 137) * 0.08 * amount * seize;
+      pose.scaleX = 1 + 0.03 * amount * seize;
+      pose.scaleY = 1 + 0.06 * amount * seize;
+      if (p > ELECTROCUTE_SLUMP) {
+        const slump = Math.sin((Math.PI * (p - ELECTROCUTE_SLUMP)) / (1 - ELECTROCUTE_SLUMP));
+        pose.y += distance * 0.1 * slump;
+        pose.scaleY -= 0.05 * amount * slump;
+      }
+      break;
+    }
   }
   return pose;
 }

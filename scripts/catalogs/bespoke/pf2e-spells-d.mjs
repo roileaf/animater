@@ -81,7 +81,7 @@ export default {
     area('Bony hands claw upward', ['arcane_hand.purple'], { stageId: 'sk-hands', after: 'sk-crack', anchor: 'start', offset: 300, duration: 2200, scale: 0.7, fadeIn: 200, fadeOut: 500, ...tint('#e8e0cc') }),
     area('Skulls of the march', ['toll_the_dead.grey.skull_smoke', 'toll_the_dead.green.skull_smoke'], { after: 'sk-hands', anchor: 'start', offset: 400, duration: 2000, scale: 0.6 }),
     motion('stagger', 'targets', { after: 'sk-hands', anchor: 'start', offset: 600, duration: 800, intensity: 0.5 }),
-  ], { sound: 'slash' }),
+  ], { sound: 'earthquake' }),
 
   // Slashing Gust: miniature air ripples slice one or two foes.
   'pf2e:1Yoipc5jNcMehtEW': design('You slash your hand through the air and blade-thin ripples of wind fly out to slice each target.', () => [
@@ -189,7 +189,7 @@ export default {
     cast('Portal opens', ['portals.vertical.vortex.purple', 'portals.vertical.ring.bright_yellow'], { stageId: 'sd-portal', after: 'sd-circle', anchor: 'start', offset: 500, duration: 2400, scale: 1.4, fadeIn: 300, fadeOut: 500 }),
     cast('Dragon jaws snap', ['bite.400px.orange', 'bite.400px.red'], { after: 'sd-portal', anchor: 'start', offset: 1000, duration: 1100, scale: 0.8 }),
     cast('Smoke billows', ['smoke.puff.ring.01.white'], { after: 'sd-portal', anchor: 'start', offset: 1300, duration: 1500, scale: 1.2, opacity: 0.8 }),
-  ], { sound: 'summon' }),
+  ], { sound: 'dragonRoar' }),
 
   // Stormburst: localized storm of lightning and wind, knocking foes prone.
   'pf2e:Ifc2b6bNVdjKV7Si': design('Your voice cracks like thunder and a localized storm of lightning and wind bursts over the area, knocking creatures off their feet.', () => [
@@ -216,7 +216,7 @@ export default {
     area('Searing wave', ['template_circle.out_pulse.01.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'su-boom', anchor: 'start', offset: 150, duration: 1500, ...tint('#ffd36b') }),
     impact('Burning light', ['sacred_flame.target.yellow'], { after: 'su-boom', anchor: 'start', offset: 400, duration: 1500, scale: 0.8 }),
     motion('recoil', 'targets', { after: 'su-boom', anchor: 'start', offset: 300, duration: 700, intensity: 0.5 }),
-  ], { sound: 'fireball' }),
+  ], { sound: 'explosion' }),
 
   // Swampcall: terrain turns to mud and creatures sink.
   'pf2e:lbrWMnS2pecKaSVB': design('The soil churns into sodden mud across the burst and creatures sink partly into the morass.', () => [

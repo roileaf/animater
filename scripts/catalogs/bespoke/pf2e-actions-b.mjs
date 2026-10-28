@@ -1078,7 +1078,7 @@ put('cx5tBTy6weK6YSw9', design('Thermal Eruption: stored heat explodes outward f
   aura('Scorched ring', ['impact.ground_crack.03.orange'], { after: 'boom', anchor: 'start', duration: 1500, scale: 2, below: true, opacity: 0.7 }),
   impact('Flames wash over', ['impact.fire.01.orange'], { after: 'boom', anchor: 'start', offset: 300, duration: 1000, scale: 0.7, ...ALL }),
   motion('recoil', 'targets', { after: 'boom', anchor: 'start', offset: 300, duration: 700, intensity: 0.5, ...ALL }),
-], sp('fire')));
+], sp('fireball')));
 put('9kIvFxA5V9rvNWiH', observe('Thoughtful Reload: in analytical calm the gunslinger studies the foe while their hands reload by instinct.', {
   c: 'bluegreen', eyeTint: '#9fd8e8',
   extra: [aura('Round chambered', GLINT, { after: 'look', anchor: 'end', duration: 700, scale: 0.4, ...side(0.4) })],
@@ -1089,13 +1089,13 @@ put('W4M8L9WepGLamlHs', design('Threatening Approach: the user stalks up to the 
   cast('Menacing glare', WAVE('red'), { stageId: 'loom', after: 'mv', anchor: 'arrival', scale: 0.8, duration: 1000, faceTarget: true }),
   impact('Frightened', FEAR('dark_red'), { stageId: 'fear', after: 'loom', anchor: 'start', offset: 350, duration: 1400, scale: 0.55, ...FIRST }),
   motion('cower', 'targets', { after: 'fear', anchor: 'start', offset: 100, duration: 900, intensity: 0.5, ...FIRST }),
-], ab('battleCry')));
+], sp('fear')));
 put('6SAdjml3OZw0BZnn', design('Thundering Roar: a powerful roar booms out 10 feet, battering enemies with sound and fear.', () => [
   motion('brace', 'source', { stageId: 'draw', duration: 500, intensity: 0.6 }),
   aura('Thundering roar', ['thunderwave.center.dark_red', 'thunderwave.center.blue'], { stageId: 'roar', after: 'draw', anchor: 'end', duration: 1300, scale: 1.4 }),
   impact('Fear', FEAR('dark_red'), { after: 'roar', anchor: 'start', offset: 450, duration: 1300, scale: 0.5, ...ALL }),
   motion('cower', 'targets', { after: 'roar', anchor: 'start', offset: 400, duration: 800, intensity: 0.5, ...ALL }),
-], ab('growl')));
+], sp('sonic')));
 put('gohBPHf4dxi4PkBk', design('Timely Dodge: the user darts aside from the incoming Strike, leaving an afterimage, then Steps away.', () => [
   motion('dodge', 'source', { stageId: 'dart', duration: 900, intensity: 0.6, distance: 0.4, motionRange: 'distance', motionHeading: 'toward', motionEndpoint: 'near' }),
   sprite('Afterimage', { after: 'dart', anchor: 'start', duration: 600, opacity: 0.35 }),

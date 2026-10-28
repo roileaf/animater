@@ -31,6 +31,8 @@ import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
 import { createMomentum, applyMomentum, applyStrain } from './momentum.mjs';
 import { withSpiritWeapon } from '../../catalogs/pf2e/spells/spirit-weapon.mjs';
+import { withElectrocution } from './electrocute.mjs';
+import { planTint } from '../camera/screen-tint.mjs';
 
 // Two places (tokens, token documents or points) less than a pixel apart; unknown places never are.
 const spotOf = (p) => { const c = p?.center ?? p?.object?.center ?? p; return Number.isFinite(c?.x) && Number.isFinite(c?.y) ? c : null; };
@@ -361,6 +363,9 @@ export class AnimaterRuntime {
     const surge = streak?.factor > 1 ? streak.factor : 1;
     if (surge > 1) recipe = applyMomentum(recipe, surge);
     if (streak?.strained) recipe = validateRecipe(applyStrain(recipe));
+    // Lightning's targets convulse (electrocute.mjs). A Strike's element is its rune or rider's, not the blow's.
+    if (!["weapon", "melee"].includes(context.item?.type))
+      recipe = withElectrocution(recipe, context.element ?? recipe.chosenElement ?? (context.item ? this.host.itemElement?.(context.item, context) : undefined));
     recipe = prepareRecipeSounds(recipe, this.host.soundCatalog?.());
     recipe = withWeaponScale(recipe, this.host.weaponScale?.() ?? 1);
     if (!this.host.ready())
@@ -447,6 +452,8 @@ export class AnimaterRuntime {
     let distortions = null;
     // Camera shakes (anchor stage -> shock) while map distortion is off; on, its warp tags serve the shake.
     let shakes = null;
+    // The screen's tint in the spell's element as it lands (anchor stage -> tint; engines/camera/screen-tint.mjs).
+    let tints = null;
     // A player's private roll plays only for its audience (core/privacy.mjs audienceOf); null: everyone.
     const audience = preview || !Array.isArray(context.audience) ? null : context.audience;
     const heard = (users) => (!audience ? users : (users ?? audience).filter((id) => audience.includes(id)));
@@ -511,7 +518,9 @@ export class AnimaterRuntime {
         const animaterWarp = distortions?.get(s) ?? null;
         // ...and shakes the view from this one (engines/camera/camera-shake.mjs).
         const animaterShake = shakes?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}) }));
+        // ...and tints the screen from this one (engines/camera/screen-tint.mjs).
+        const animaterTint = tints?.get(s) ?? null;
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}) }));
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -733,6 +742,23 @@ export class AnimaterRuntime {
         if (warps) distortions = planned;
         else shakes = new Map([...planned].filter(([, tag]) => tag.kind === "shock"));
       }
+      // Screen tint (world setting): an elemental hit washes each screen in its colour. A Strike's rune or rider never
+      // does; a hand-played or previewed recipe tints by its chosen element as designed.
+      if (this.host.screenTint?.() === true) {
+        const strike = ["weapon", "melee"].includes(context.item?.type);
+        tints = planTint(plan, {
+          element: strike ? undefined : context.element ?? recipe.chosenElement ?? (context.item ? this.host.itemElement?.(context.item, context) : undefined),
+          strike,
+          harmful: context.automatic ? isHarmful(context, { itemDamages: this.host.itemDamages }) : true,
+          critical: isCritical(context),
+          surge,
+          tiers,
+          gridPx: grid,
+          pointOf,
+          radiusOf,
+        });
+        if (typeof token?.level === "string" && token.level) for (const tag of tints.values()) tag.level = token.level;
+      }
       // Afterimage trails (world setting; on while the host has none).
       // An unpicked recipe colour (the default card accent) leaves plain motions their soft white.
       const trail = { element: context.element ?? recipe.chosenElement, recipeColor: recipe.color === DEFAULT_RECIPE_COLOR ? undefined : recipe.color,
@@ -844,7 +870,8 @@ export class AnimaterRuntime {
       });
       this.trace(
         preview ? "Previewed" : "Played",
-        `${plan.length} effects · ${context.targets?.length ?? 0} targets`,
+        // A planned screen tint is named, so Activity tells a tint that never drew from one never planned.
+        `${plan.length} effects · ${context.targets?.length ?? 0} targets${tints?.size ? ` · ${[...tints.values()][0].flicker ? "strobing" : "tinted"} screen` : ""}`,
         recipe,
         { origin, preview, automatic: !preview && context.automatic, session: persists ? session : null, reroll: context.reroll },
       );

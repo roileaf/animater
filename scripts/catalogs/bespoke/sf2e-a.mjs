@@ -242,7 +242,7 @@ export default {
     area('Solar detonation', ['fireball.explosion.yellow', 'fireball.explosion.orange'], { stageId: 'sb-x', after: 'sb-c', duration: 1800 }),
     area('Searing glare', ['glint.yellow.many'], { after: 'sb-x', anchor: 'start', offset: 500, duration: 2000, opacity: 0.9, fadeOut: 600 }),
     motion('stagger', 'targets', { after: 'sb-x', anchor: 'start', offset: 150, duration: 750, intensity: 0.8 }),
-  ], { sound: 'fireball' }),
+  ], { sound: 'explosion' }),
   // Telekinetic Strangulation: grasp a throat and lift the creature off the ground.
   'sf2e:OudLZtxmg6gI1UEL': design('An unseen hand closes on the target, lifting it a few inches off the ground as it struggles.', () => [
     cast('Telekinetic grip', ['cast_generic.03.purplered', 'cast_generic.03.blue'], { stageId: 'ts-c', scale: 0.8, duration: 600 }),

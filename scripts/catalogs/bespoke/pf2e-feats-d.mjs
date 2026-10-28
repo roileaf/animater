@@ -92,7 +92,7 @@ export default {
     aura('Shockwave', ['template_circle.out_pulse.02.burst.purplepink', 'template_circle.out_pulse.02.burst.bluewhite'], { after: 'blast', anchor: 'start', duration: 1600, scale: 4.2, opacity: 0.8, below: true, ...tint('#b06cff') }),
     impact('Force strikes', ['impact.007.purple', 'impact.004.blue'], { after: 'blast', anchor: 'start', offset: 300, duration: 1100, ...tint('#b06cff') }),
     motion('recoil', 'targets', { after: 'blast', anchor: 'start', offset: 300, duration: 800, intensity: 0.7 }),
-  ], { sound: 'psychic' }),
+  ], { sound: 'explosion' }),
   'pf2e:HoU7pgdW7KPO347H': design('Pummeling Whirlpool: water drawn from the surroundings swirls into a 10-foot torrent that batters and topples nearby foes.', () => [
     cast('Water drawn in', ['water_splash.circle.01.blue'], { stageId: 'draw', duration: 1000, scale: 1 }),
     aura('Swirling torrent', ['template_circle.vortex.loop.blue'], { stageId: 'vortex', after: 'draw', anchor: 'start', offset: 400, duration: 2600, scale: 2.6, opacity: 0.85, below: true, fadeIn: 300, fadeOut: 500, ...spin(2400, 1) }),

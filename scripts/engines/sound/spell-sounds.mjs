@@ -181,6 +181,8 @@ export function addSpellSounds(
     // identical recordings multiplies volume without adding audible identity.
     const repeated = cue.role !== "chain" && !ref.repeatSimultaneous && (ref.repeats ?? 1) > 1;
     const stride = repeated ? repeatStride(ref) : 0;
+    // A hop is a tick between targets, except Chain Lightning's, where each leap is a full strike that rings out.
+    const hop = design?.profile === "chainLightning" ? { ms: 1100, volume: 0.85 } : { ms: 550, volume: 0.55 };
     result.push({
       kind: "sound",
       stageId: `${spell.id}-sound-${i}`,
@@ -189,7 +191,7 @@ export function addSpellSounds(
       delay: ref.delay,
       duration:
         cue.role === "chain"
-          ? Math.min(550, chosen.active.duration)
+          ? Math.min(hop.ms, chosen.active.duration)
           : repeated ? Math.min(chosen.active.duration, Math.max(100, stride * .9)) : chosen.active.duration,
       afterStage: ref.stageId,
       timingAnchor: "start",
@@ -200,7 +202,7 @@ export function addSpellSounds(
       subject: cue.role === "chain" ? "targets" : "source",
       volume:
         automaticCueVolume(soundVolume, chosen.active) *
-        (cue.role === "chain" ? 0.55 : cue.role === "cast" ? 0.65 : 1),
+        (cue.role === "chain" ? hop.volume : cue.role === "cast" ? 0.65 : 1),
       soundFile: chosen.active.file,
       clipStart: cueOpening(design?.profile, chosen.active.file),
       fadeIn: repeated ? 10 : 30,

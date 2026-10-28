@@ -9,10 +9,13 @@ import { PF2E_SPELLS } from "../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
 import { validateSoundFile } from "../scripts/core/stage-options.mjs";
 // Cross-pack fallbacks: every cue lists each optional pack that has a fitting
 // recording, so a user with any one pack still hears it. Runtime order decides.
-const cue = (label, role, ggg = "", psfx = "", files = "", creature = "") => ({
+// PF2e Creature Sounds is another module's own library: Animater never plays its files, so a cue's sixth
+// argument (once its selector) is ignored.
+const QUIET_DB = -34;
+const cue = (label, role, ggg = "", psfx = "", files = "") => ({
   label,
   role,
-  selectors: { ggg, psfx, soundfxlibrary: files, ...(creature ? { "pf2e-creature-sounds": creature } : {}) },
+  selectors: { ggg, psfx, soundfxlibrary: files },
 });
 const profiles = {
   fireball: [
@@ -29,12 +32,33 @@ const profiles = {
       "^psfx\\.3rd-level-spells\\.fireball.*explosion",
     ),
   ],
+  // A storm called down, not a spark: the air charges, a thunderbolt cracks loose, thunder crashes on the first
+  // creature and each leap to the next lands as a heavy strike of its own.
   chainLightning: [
     cue(
-      "Electric hop",
+      "Storm gathers",
+      "cast",
+      "magic\\.electricity\\.cast\\.storm",
+      "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.cast$",
+    ),
+    cue(
+      "Thunderbolt release",
+      "release",
+      "magic\\.electricity\\.cast\\.charge",
+      "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.primary$",
+    ),
+    cue(
+      "Thunder crash",
+      "impact",
+      "magic\\.electricity\\.impact\\.crash",
+      "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.primary$",
+      "Nature/Single/Thunder/thunder-[1256]\\.",
+    ),
+    cue(
+      "Lightning leaps",
       "chain",
-      "magic\\.electricity\\.zap",
-      "^psfx\\.impacts\\.magicaleffects\\.lightning",
+      "magic\\.electricity\\.(?:impact\\.charge|lightning_bolt\\.[^.]+\\.impact)",
+      "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.secondary$",
       "Spell Impact Lightning",
     ),
   ],
@@ -43,14 +67,16 @@ const profiles = {
       "Lightning release",
       "release",
       "magic\\.electricity\\.lightning_bolt.*cast",
-      "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.cast$",
+      // Not call-lightning's cast: a 10 s storm build-up for a bolt's release.
+      "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.secondary$",
     ),
     cue(
       "Thunder strike",
       "impact",
-      "magic\\.electricity\\.thunder\\.strike",
+      "magic\\.electricity\\.(thunder\\.strike|impact\\.crackle)",
       "^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.primary$",
-      "Nature/Single/Thunder",
+      // The rolls that have died down by the cue's end (3 and 4 are still rumbling, then cut off).
+      "Nature/Single/Thunder/thunder-[1256]\\.",
     ),
   ],
   fireRay: [
@@ -83,7 +109,8 @@ const profiles = {
       "Moonlight release",
       "release",
       "magic\\.arcane\\.light",
-      "2nd-level-spells\\.moonbeam\\.intro",
+      // Not the moonbeam intros: 16 s sustained beams for a ray's release.
+      "ranged-magic\\.generic\\.beam",
     ),
   ],
   darkRay: [
@@ -91,7 +118,7 @@ const profiles = {
       "Dark ray release",
       "release",
       "magic\\.occult\\.bolt.*cast",
-      "ranged-magic\\.generic\\.energy-strands",
+      "^psfx\\.cantrips\\.eldritch-blast",
     ),
   ],
   poisonRay: [
@@ -134,7 +161,8 @@ const profiles = {
     cue(
       "Acid splash",
       "impact",
-      "magic\\.acid\\.debuff\\.virulent",
+      // Acid hitting, not the 5–7 s "Grotesque Acid" debuff swells.
+      "magic\\.acid\\.cast\\.toss\\.impact",
       "acid-splash",
     ),
   ],
@@ -143,17 +171,19 @@ const profiles = {
       "Flame release",
       "effect",
       "magic\\.fire\\.(impact\\.general|ignite)",
-      "(casting\\.fire|create-bonfire.*001$)",
+      // Not create-bonfire: a 20 s ambient loop, cut off still burning at the cue's end.
+      "^psfx\\.(casting\\.fire|weapon-swooshes\\.fire)",
     ),
   ],
   fireIgnition: [
-    cue("Flame ignites", "effect", "^ggg-sfx\\.magic\\.fire\\.ignite", "create-bonfire.*001$"),
+    cue("Flame ignites", "effect", "^ggg-sfx\\.magic\\.fire\\.ignite", "^psfx\\.cantrips\\.produce-flame\\.v1\\.001\\.intro$"),
   ],
   cold: [
     cue(
       "Ice forms",
       "effect",
-      "magic\\.ice\\.(freeze|impact\\.general)",
+      // Not "Ailments Freeze 002" (10 s): this cue is also every frost weapon's hit accent.
+      "magic\\.ice\\.(freeze\\.0[12]|impact\\.general\\.02)",
       "impacts\\.magicaleffects\\.cold",
     ),
   ],
@@ -161,7 +191,7 @@ const profiles = {
     cue(
       "Electric discharge",
       "effect",
-      "magic\\.electricity\\.(impact\\.general|zap)",
+      "magic\\.electricity\\.(impact\\.general|zap|lightning_bolt\\.[^.]+\\.impact)",
       "impacts\\.magicaleffects\\.lightning",
       "Spell Impact Lightning",
     ),
@@ -219,7 +249,7 @@ const profiles = {
     cue("Resonant metal note", "effect", "^ggg-sfx\\.magic\\.divine\\.cast\\.shimmer\\.03"),
   ],
   chainBinding: [
-    cue("Chains weave", "effect", "^ggg-sfx\\.melee\\.bludgeoning\\.throw\\.chain"),
+    cue("Chains weave", "effect", "^ggg-sfx\\.melee\\.bludgeoning\\.throw\\.chain|magic\\.arcane\\.surge\\.crystals\\.04"),
   ],
   sonic: [
     cue("Sonic shockwave", "effect", "magic\\.sonic\\.slam", "thunderclap"),
@@ -238,7 +268,8 @@ const profiles = {
       "Void pulse",
       "effect",
       "magic\\.occult\\.pulse.*abyss",
-      "impacts\\.magicaleffects\\.necrotic",
+      // The necrotic melee impacts sit near −32 dB: all but silent.
+      "arms-of-hadar",
     ),
   ],
   shadow: [cue("Shadow gathers", "effect", "magic\\.occult\\.bolt.*cast")],
@@ -313,10 +344,11 @@ const profiles = {
     ),
   ],
   swarm: [
-    cue("Insect swarm", "effect", "magic\\.primal\\.bugs\\.poisonous_swarm", "", "", "Animal_Monster/Fly/Attack/Insect_Fly_Close_Range_Buzz"),
+    cue("Insect swarm", "effect", "magic\\.primal\\.bugs\\.poisonous_swarm"),
   ],
+  // The ground heaving, not one seismic pulse.
   earthquake: [
-    cue("Seismic rumble", "effect", "magic\\.earth\\.pulse\\.seismic"),
+    cue("Seismic rumble", "effect", "magic\\.earth\\.(earthquake\\.(close\\.short|impact)|pulse\\.seismic)", "^psfx\\.casting\\.earth"),
   ],
   stoneWall: [
     cue(
@@ -339,7 +371,7 @@ const profiles = {
       "Flame rises",
       "effect",
       "magic\\.fire\\.structure\\.pillar",
-      "create-bonfire.*001$",
+      "^psfx\\.(casting\\.fire|1st-level-spells\\.burning-hands)",
     ),
   ],
   light: [
@@ -357,7 +389,7 @@ const profiles = {
       "Energy siphon",
       "effect",
       "magic\\.occult\\.siphon",
-      "ranged-magic\\.generic\\.energy-strands",
+      "arms-of-hadar",
     ),
   ],
   song: [
@@ -397,21 +429,23 @@ const profiles = {
     cue("Star-flight shimmer", "release", "^ggg-sfx\\.magic\\.arcane\\.light\\.revealing"),
   ],
   explosion: [
-    cue("Explosion", "impact", "^ggg-sfx\\.(impact\\.explosion\\.general|ranged\\.bomb\\.explosion)", "fireball.*explosion"),
+    cue("Explosion", "impact", "^ggg-sfx\\.(impact\\.explosion\\.general|ranged\\.bomb\\.explosion|ranged\\.siege_weapons\\.cannon\\.impact)", "fireball.*explosion"),
   ],
   // GGG's creatures.shriek.generic key points at "Rusty Tool" recordings; use the void screams only.
-  scream: [cue("Piercing shriek", "effect", "^ggg-sfx\\.creatures\\.shriek\\.void", "", "", "Animal_Monster/Monster/Monster_Scream")],
-  battleCry: [cue("Rallying cry", "cast", "", "", "Battle Cry", "Cyclops/Attack/cyclops_voice_battle_shout")],
+  scream: [cue("Piercing shriek", "effect", "^ggg-sfx\\.creatures\\.shriek\\.void")],
+  battleCry: [cue("Rallying cry", "cast", "", "", "Battle Cry")],
   whistle: [cue("Sharp whistle", "cast", "^ggg-sfx\\.abilities\\.gunslinger\\.whistle")],
   whispers: [
-    cue("Eerie whispers", "effect", "^ggg-sfx\\.magic\\.occult\\.cast\\.whispers", "dissonant-whispers"),
+    // Only the audible takes: dissonant-whispers 002 and 003 sit at −48 and −42 dB.
+    cue("Eerie whispers", "effect", "^ggg-sfx\\.magic\\.occult\\.cast\\.whispers", "dissonant-whispers\\.v1\\.00[14]"),
   ],
   spirit: [cue("Spirit surge", "effect", "^ggg-sfx\\.magic\\.occult\\.(cast|buff)\\.ghostly")],
   divineWrath: [
     cue("Divine wrath", "effect", "^ggg-sfx\\.magic\\.divine\\.(impact\\.wrath|cast\\.smite)", "sacred-flame.*caster"),
   ],
   slash: [
-    cue("Slashing hit", "impact", "^ggg-sfx\\.melee\\.blade\\.strike\\.general", "^psfx\\.impacts\\.slashing", "Melee Hit"),
+    // Blades striking, not swinging through the air (the general key is whooshes).
+    cue("Slashing hit", "impact", "^ggg-sfx\\.melee\\.blade\\.strike\\.(shortsword|greatsword)\\.01", "^psfx\\.impacts\\.slashing", "Melee Hit"),
   ],
   pierce: [
     cue("Piercing hit", "impact", "^ggg-sfx\\.impact\\.arrow\\.hit", "", "Arrow Impact"),
@@ -419,12 +453,13 @@ const profiles = {
   bludgeon: [
     cue("Bludgeoning hit", "impact", "^ggg-sfx\\.melee\\.bludgeoning\\.strike\\.one-hand", "^psfx\\.impacts\\.bludgeoning", "Misc/Single/Impact/"),
   ],
-  claws: [cue("Rending claws", "impact", "^ggg-sfx\\.melee\\.claws\\.strike\\.slash", "^psfx\\.impacts\\.slashing", "Combat/Single/Melee Hit/")],
+  claws: [cue("Rending claws", "impact", "^ggg-sfx\\.(impact\\.flesh\\.01|melee\\.claws\\.strike\\.stab)", "^psfx\\.impacts\\.slashing", "Combat/Single/Melee Hit/")],
   gravity: [cue("Gravity crush", "effect", "^ggg-sfx\\.magic\\.occult\\.movement\\.whoosh\\.gravity")],
   dispel: [cue("Magic unravels", "effect", "magic\\.counter\\.dispel", "magic-signs\\.circle\\.v1\\.abjuration\\.outro")],
   time: [cue("Time shifts", "effect", "magic\\.time\\.reverse")],
   slow: [cue("Time slows", "effect", "magic\\.time\\.slow")],
-  unlock: [cue("Lock opens", "effect", "magic\\.tech\\.lock\\.unlock", "^psfx\\.doors\\.clean\\.lock\\.unlock")],
+  // PSFX's door locks are −32 to −40 dB.
+  unlock: [cue("Lock opens", "effect", "magic\\.tech\\.lock\\.unlock|equipment\\.misc\\.lock\\.unlock\\.02")],
   mending: [
     cue(
       "Object repairs",
@@ -447,10 +482,11 @@ const profiles = {
   dragonRoar: [
     {
       ...cue("Dragon roar", "effect", "", "creature.*dragon.*roar"),
+      // GGG's "sonic roar" files are air whooshes and it has no dragon; a bear's rage roar and monster growls.
       selectors: {
-        ggg: "magic\\.sonic\\.roar\\.05",
+        ggg: "magic\\.primal\\.buff\\.bear_rage",
         psfx: "creature.*dragon.*roar",
-        "pf2e-creature-sounds": "Ancient_Dragon_Monster_Attack_1_",
+        soundfxlibrary: "Creatures/Monsters/Growl/",
       },
     },
   ],
@@ -520,9 +556,13 @@ await Promise.all(
   }),
 );
 for (const cues of Object.values(profiles))
-  for (const c of cues)
+  for (const c of cues) {
     for (const e of c.candidates)
       Object.assign(e, durations.get(e.file), { duration: Math.min(4500, durations.get(e.file).nativeDuration) });
+    // Automatic balancing only turns files down, so a take quieter than −34 dB mean stays all but inaudible:
+    // dropped while the cue has a louder one.
+    if (c.candidates.some((e) => e.meanDb >= QUIET_DB)) c.candidates = c.candidates.filter((e) => e.meanDb >= QUIET_DB);
+  }
 const sources = await spellSources();
 const byId = new Map(sources.spells.map((e) => [e.source._id, e.source]));
 const designs = {};

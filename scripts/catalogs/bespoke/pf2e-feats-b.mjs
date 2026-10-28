@@ -132,7 +132,7 @@ export default {
     pushAway(2, { duration: 1200 }),
     motion('rush', 'source', { stageId: 'charge2', after: 'push', anchor: 'start', offset: 600, duration: 1400, distance: 6, motionRange: 'target', intensity: 0.5 }),
     impact('Second ramming horn', PIERCE, { after: 'charge2', anchor: 'start', offset: 500, duration: 1100 }),
-  ], { sound: 'naturalPierce', soundNamespace: 'ability' }),
+  ], { sound: 'unarmed', soundNamespace: 'ability' }),
   'pf2e:gx9QawjDOZSfSBlN': design('A thundering charge ends in a goring horn Strike.', () => [
     sprite('Charge afterimage', { duration: 1200, copies: 2, opacity: 0.5 }),
     motion('rush', 'source', { stageId: 'charge', duration: 2400, distance: 6, motionRange: 'target', intensity: 0.5 }),

@@ -38,26 +38,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.heavy.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -36.2,
-          "peakDb": -11.3,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.heavy.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -42.1,
-          "peakDb": -16.1,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.heavy.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-02.ogg",
           "nativeDuration": 3000,
           "meanDb": -33,
@@ -240,36 +220,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -1859,36 +1809,6 @@ export const ABILITY_SOUND_PROFILES = {
       "candidates": [
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.axe.strike.heavy.general.01.01",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heave Axe Normal Whoosh 01.ogg",
-          "nativeDuration": 601,
-          "meanDb": -20.1,
-          "peakDb": -8.1,
-          "gain": 1,
-          "duration": 601
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.axe.strike.heavy.general.01.02",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heave Axe Normal Whoosh 02.ogg",
-          "nativeDuration": 621,
-          "meanDb": -20.2,
-          "peakDb": -7.5,
-          "gain": 1,
-          "duration": 621
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.axe.strike.heavy.general.01.03",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heave Axe Normal Whoosh 03.ogg",
-          "nativeDuration": 647,
-          "meanDb": -20.1,
-          "peakDb": -7.7,
-          "gain": 1,
-          "duration": 647
-        },
-        {
-          "module": "ggg",
           "key": "ggg-sfx.melee.axe.strike.heavy.blood.02.01",
           "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Hard Strike 01.ogg",
           "nativeDuration": 1251,
@@ -1916,6 +1836,36 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -7.4,
           "gain": 1,
           "duration": 1367
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.axe.strike.heavy.blood.02.04",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Hard Strike 04.ogg",
+          "nativeDuration": 1299,
+          "meanDb": -19.5,
+          "peakDb": -6.9,
+          "gain": 0.94406,
+          "duration": 1299
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.axe.strike.heavy.blood.01.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Strike 01.ogg",
+          "nativeDuration": 705,
+          "meanDb": -17.8,
+          "peakDb": -5.3,
+          "gain": 0.77625,
+          "duration": 705
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.axe.strike.heavy.blood.01.02",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Strike 02.ogg",
+          "nativeDuration": 799,
+          "meanDb": -18.8,
+          "peakDb": -6.1,
+          "gain": 0.87096,
+          "duration": 799
         },
         {
           "module": "psfx",
@@ -2343,63 +2293,63 @@ export const ABILITY_SOUND_PROFILES = {
       "candidates": [
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh A.ogg",
-          "nativeDuration": 1140,
-          "meanDb": -23.3,
-          "peakDb": -2.6,
-          "gain": 0.95499,
-          "duration": 1140
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 001.ogg",
+          "nativeDuration": 958,
+          "meanDb": -19.9,
+          "peakDb": -1.9,
+          "gain": 0.88105,
+          "duration": 958
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh B.ogg",
-          "nativeDuration": 1137,
-          "meanDb": -21.7,
-          "peakDb": -2.2,
-          "gain": 0.91201,
-          "duration": 1137
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.03",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh C.ogg",
-          "nativeDuration": 1323,
-          "meanDb": -22.7,
-          "peakDb": -0.7,
-          "gain": 0.76736,
-          "duration": 1323
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.04",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh D.ogg",
-          "nativeDuration": 853,
-          "meanDb": -22.7,
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 002.ogg",
+          "nativeDuration": 931,
+          "meanDb": -19.1,
           "peakDb": -1.8,
           "gain": 0.87096,
-          "duration": 853
+          "duration": 931
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.05",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh E.ogg",
-          "nativeDuration": 1048,
-          "meanDb": -23.1,
-          "peakDb": -2.7,
-          "gain": 0.96605,
-          "duration": 1048
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 003.ogg",
+          "nativeDuration": 923,
+          "meanDb": -20.5,
+          "peakDb": -1.9,
+          "gain": 0.88105,
+          "duration": 923
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.06",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh F.ogg",
-          "nativeDuration": 1140,
-          "meanDb": -21.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 1140
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 004.ogg",
+          "nativeDuration": 975,
+          "meanDb": -19.1,
+          "peakDb": -2,
+          "gain": 0.89125,
+          "duration": 975
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.05",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 005.ogg",
+          "nativeDuration": 981,
+          "meanDb": -20,
+          "peakDb": -1.8,
+          "gain": 0.87096,
+          "duration": 981
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.bludgeoning.strike.flail.01.01",
+          "file": "modules/ggg/assets/sounds/SoundFlakes/diablo-wrath/weapon/bludgeon-throwing.ogg",
+          "nativeDuration": 1614,
+          "meanDb": -21.2,
+          "peakDb": -1.7,
+          "gain": 0.86099,
+          "duration": 1614
         },
         {
           "module": "psfx",
@@ -2707,63 +2657,63 @@ export const ABILITY_SOUND_PROFILES = {
       "candidates": [
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.claws.strike.slash.01.01",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Whoosh Metal Claws 01.ogg",
-          "nativeDuration": 429,
-          "meanDb": -24.5,
-          "peakDb": -7.1,
+          "key": "ggg-sfx.melee.claws.strike.stab.01.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 01.ogg",
+          "nativeDuration": 600,
+          "meanDb": -21.6,
+          "peakDb": -7.3,
           "gain": 1,
-          "duration": 429
+          "duration": 600
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.claws.strike.slash.01.02",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Whoosh Metal Claws 02.ogg",
+          "key": "ggg-sfx.melee.claws.strike.stab.01.02",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 02.ogg",
           "nativeDuration": 639,
-          "meanDb": -26.1,
-          "peakDb": -8.1,
+          "meanDb": -22.5,
+          "peakDb": -7.7,
           "gain": 1,
           "duration": 639
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.claws.strike.slash.01.03",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Whoosh Metal Claws 03.ogg",
-          "nativeDuration": 572,
-          "meanDb": -25.3,
-          "peakDb": -8,
+          "key": "ggg-sfx.melee.claws.strike.stab.01.03",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 03.ogg",
+          "nativeDuration": 606,
+          "meanDb": -22,
+          "peakDb": -7.1,
           "gain": 1,
-          "duration": 572
+          "duration": 606
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.claws.strike.slash.01.04",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Whoosh Metal Claws 04.ogg",
-          "nativeDuration": 537,
-          "meanDb": -23.9,
+          "key": "ggg-sfx.melee.claws.strike.stab.01.04",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 04.ogg",
+          "nativeDuration": 699,
+          "meanDb": -22.1,
+          "peakDb": -7.6,
+          "gain": 1,
+          "duration": 699
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.claws.strike.stab.01.05",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 05.ogg",
+          "nativeDuration": 607,
+          "meanDb": -21.7,
           "peakDb": -7.9,
           "gain": 1,
-          "duration": 537
+          "duration": 607
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.claws.strike.slash.01.05",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Whoosh Metal Claws 05.ogg",
-          "nativeDuration": 640,
-          "meanDb": -23.1,
-          "peakDb": -8.6,
+          "key": "ggg-sfx.melee.claws.strike.stab.01.06",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 06.ogg",
+          "nativeDuration": 657,
+          "meanDb": -21.9,
+          "peakDb": -8,
           "gain": 1,
-          "duration": 640
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.claws.strike.slash.01.06",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Whoosh Metal Claws 06.ogg",
-          "nativeDuration": 684,
-          "meanDb": -26.3,
-          "peakDb": -9.3,
-          "gain": 1,
-          "duration": 684
+          "duration": 657
         },
         {
           "module": "psfx",
@@ -3994,36 +3944,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -4862,36 +4782,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -5006,36 +4896,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -5080,36 +4940,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -5278,36 +5108,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -5392,36 +5192,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -5466,36 +5236,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -5584,36 +5324,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -5688,36 +5398,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -5778,36 +5458,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -5916,36 +5566,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -6020,36 +5640,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -6110,36 +5700,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -6258,36 +5818,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -6358,36 +5888,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -6472,36 +5972,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -6660,36 +6130,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -6774,36 +6214,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -6868,36 +6278,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.5,
           "gain": 0.94406,
           "duration": 717
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -7032,26 +6412,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -1.1,
           "gain": 0.80353,
           "duration": 931
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.heavy.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -36.2,
-          "peakDb": -11.3,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.heavy.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -42.1,
-          "peakDb": -16.1,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -7200,36 +6560,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -7320,26 +6650,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -3.1,
           "gain": 1,
           "duration": 1175
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.heavy.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -36.2,
-          "peakDb": -11.3,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.heavy.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/heavy/v1/group01/meleeattack-swoosh-heavy-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -42.1,
-          "peakDb": -16.1,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -7454,26 +6764,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": 0,
           "gain": 0.56885,
           "duration": 1632
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Cyclops/Attack/cyclops_voice_battle_shout_03.m4a",
-          "nativeDuration": 1254,
-          "meanDb": -9.9,
-          "peakDb": 0,
-          "gain": 0.31261,
-          "duration": 1254
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Cyclops/Attack/cyclops_voice_battle_shout_05.m4a",
-          "nativeDuration": 1649,
-          "meanDb": -7.3,
-          "peakDb": 0,
-          "gain": 0.23174,
-          "duration": 1649
         }
       ]
     }
@@ -7570,36 +6860,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": 0,
           "gain": 0.4217,
           "duration": 4500
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Animal_Monster/Monster/Monster_Growl-001.m4a",
-          "nativeDuration": 3321,
-          "meanDb": -14,
-          "peakDb": 0,
-          "gain": 0.50119,
-          "duration": 3321
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Animal_Monster/Monster/Monster_Growl-002.m4a",
-          "nativeDuration": 4459,
-          "meanDb": -13.9,
-          "peakDb": 0,
-          "gain": 0.49545,
-          "duration": 4459
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Animal_Monster/Monster/Monster_Growl-003.m4a",
-          "nativeDuration": 4366,
-          "meanDb": -14.1,
-          "peakDb": 0,
-          "gain": 0.50699,
-          "duration": 4366
         }
       ]
     }
@@ -7658,46 +6918,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -4.2,
           "gain": 0.93325,
           "duration": 2632
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Evolved_Game_Creatures_2/Wraith/Wraith_Monster_Attack_1_Spirit_Fairy_Ghost_Creature.m4a",
-          "nativeDuration": 4180,
-          "meanDb": -20.4,
-          "peakDb": -0.1,
-          "gain": 0.71614,
-          "duration": 4180
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Evolved_Game_Creatures_2/Wraith/Wraith_Monster_Attack_2_Spirit_Fairy_Ghost_Creature.m4a",
-          "nativeDuration": 4343,
-          "meanDb": -26.5,
-          "peakDb": -0.2,
-          "gain": 0.72444,
-          "duration": 4343
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Evolved_Game_Creatures_2/Wraith/Wraith_Monster_Attack_3_Spirit_Fairy_Ghost_Creature.m4a",
-          "nativeDuration": 6502,
-          "meanDb": -18.9,
-          "peakDb": 0,
-          "gain": 0.70795,
-          "duration": 4500
-        },
-        {
-          "module": "pf2e-creature-sounds",
-          "key": "",
-          "file": "modules/pf2e-creature-sounds/sounds/GameDevMarket/Evolved_Game_Creatures_2/Wraith/Wraith_Monster_Attack_4_Spirit_Fairy_Ghost_Creature.m4a",
-          "nativeDuration": 5225,
-          "meanDb": -18.2,
-          "peakDb": 0,
-          "gain": 0.70795,
-          "duration": 4500
         }
       ]
     }
@@ -8018,56 +7238,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -1.6,
           "gain": 0.72444,
           "duration": 380
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.ranged-weapons.guns.single-fire.revolver",
-          "file": "modules/psfx/library/ranged-weapons/guns/revolver/single-fire/revolver-single-fire-001-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -27.2,
-          "peakDb": -6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.ranged-weapons.guns.single-fire.revolver",
-          "file": "modules/psfx/library/ranged-weapons/guns/revolver/single-fire/revolver-single-fire-001-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -27.1,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.ranged-weapons.guns.single-fire.revolver",
-          "file": "modules/psfx/library/ranged-weapons/guns/revolver/single-fire/revolver-single-fire-001-03.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -26.7,
-          "peakDb": -6.5,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.ranged-weapons.guns.single-fire.revolver",
-          "file": "modules/psfx/library/ranged-weapons/guns/revolver/single-fire/revolver-single-fire-001-04.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -27.1,
-          "peakDb": -3.4,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.ranged-weapons.guns.single-fire.revolver",
-          "file": "modules/psfx/library/ranged-weapons/guns/revolver/single-fire/revolver-single-fire-001-05.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -27.2,
-          "peakDb": -5.4,
-          "gain": 1,
-          "duration": 3000
         }
       ]
     }
@@ -8106,36 +7276,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -8332,36 +7472,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -8387,13 +7497,13 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.impacts.magicaleffects.necrotic",
-          "file": "modules/psfx/library/impacts/magicaleffects/necrotic/meleeattack-impacts-magicaleffects-necrotic-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -32.1,
-          "peakDb": -16,
-          "gain": 1,
-          "duration": 3000
+          "key": "psfx.1st-level-spells.arms-of-hadar.v1.001",
+          "file": "modules/psfx/library/1st-level-spells/arms-of-hadar/v1/arms-of-hadar-00.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -16.3,
+          "peakDb": -2.2,
+          "gain": 0.65313,
+          "duration": 4000
         }
       ]
     }
@@ -8432,36 +7542,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -8590,36 +7670,6 @@ export const ABILITY_SOUND_PROFILES = {
         {
           "module": "psfx",
           "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
           "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-03.ogg",
           "nativeDuration": 3000,
           "meanDb": -30.8,
@@ -8700,36 +7750,6 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2.1,
           "gain": 0.90157,
           "duration": 960
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-00.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -35,
-          "peakDb": -5.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-01.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -38.4,
-          "peakDb": -8.2,
-          "gain": 1,
-          "duration": 3000
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-swooshes.light.v1.group01",
-          "file": "modules/psfx/library/weapon-swooshes/light/v1/group01/meleeattack-swoosh-light-group01-02.ogg",
-          "nativeDuration": 3000,
-          "meanDb": -39.7,
-          "peakDb": -9.6,
-          "gain": 1,
-          "duration": 3000
         },
         {
           "module": "psfx",
@@ -9227,36 +8247,6 @@ export const ABILITY_SOUND_PROFILES = {
       "candidates": [
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.axe.strike.heavy.general.01.01",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heave Axe Normal Whoosh 01.ogg",
-          "nativeDuration": 601,
-          "meanDb": -20.1,
-          "peakDb": -8.1,
-          "gain": 1,
-          "duration": 601
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.axe.strike.heavy.general.01.02",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heave Axe Normal Whoosh 02.ogg",
-          "nativeDuration": 621,
-          "meanDb": -20.2,
-          "peakDb": -7.5,
-          "gain": 1,
-          "duration": 621
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.axe.strike.heavy.general.01.03",
-          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heave Axe Normal Whoosh 03.ogg",
-          "nativeDuration": 647,
-          "meanDb": -20.1,
-          "peakDb": -7.7,
-          "gain": 1,
-          "duration": 647
-        },
-        {
-          "module": "ggg",
           "key": "ggg-sfx.melee.axe.strike.heavy.blood.02.01",
           "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Hard Strike 01.ogg",
           "nativeDuration": 1251,
@@ -9284,6 +8274,36 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -7.4,
           "gain": 1,
           "duration": 1367
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.axe.strike.heavy.blood.02.04",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Hard Strike 04.ogg",
+          "nativeDuration": 1299,
+          "meanDb": -19.5,
+          "peakDb": -6.9,
+          "gain": 0.94406,
+          "duration": 1299
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.axe.strike.heavy.blood.01.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Strike 01.ogg",
+          "nativeDuration": 705,
+          "meanDb": -17.8,
+          "peakDb": -5.3,
+          "gain": 0.77625,
+          "duration": 705
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.axe.strike.heavy.blood.01.02",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Heavy Axe/Heavy Axe Strike 02.ogg",
+          "nativeDuration": 799,
+          "meanDb": -18.8,
+          "peakDb": -6.1,
+          "gain": 0.87096,
+          "duration": 799
         },
         {
           "module": "psfx",
@@ -9624,43 +8644,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -9879,43 +8889,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -10144,13 +9144,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.electricity.zap.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Electric/Electric Zap.ogg",
-          "nativeDuration": 778,
-          "meanDb": -24.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 778
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact A.ogg",
+          "nativeDuration": 1985,
+          "meanDb": -21.9,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 1985
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact B.ogg",
+          "nativeDuration": 1773,
+          "meanDb": -21.2,
+          "peakDb": -2.6,
+          "gain": 0.95499,
+          "duration": 1773
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact C.ogg",
+          "nativeDuration": 1968,
+          "meanDb": -21.5,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1968
         },
         {
           "module": "psfx",
@@ -10429,43 +9449,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -10680,43 +9690,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -11176,16 +10176,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -11203,6 +10193,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -11476,16 +10506,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -11503,6 +10523,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -11737,16 +10797,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -11764,6 +10814,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -11952,43 +11042,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -12482,16 +11562,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -12509,6 +11579,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -12747,16 +11857,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -12774,6 +11874,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -12962,16 +12102,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -12989,6 +12119,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -13464,16 +12634,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -13491,6 +12651,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -13699,43 +12899,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -14185,43 +13375,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -14480,16 +13660,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -14507,6 +13677,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -14705,13 +13915,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.electricity.zap.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Electric/Electric Zap.ogg",
-          "nativeDuration": 778,
-          "meanDb": -24.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 778
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact A.ogg",
+          "nativeDuration": 1985,
+          "meanDb": -21.9,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 1985
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact B.ogg",
+          "nativeDuration": 1773,
+          "meanDb": -21.2,
+          "peakDb": -2.6,
+          "gain": 0.95499,
+          "duration": 1773
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact C.ogg",
+          "nativeDuration": 1968,
+          "meanDb": -21.5,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1968
         },
         {
           "module": "psfx",
@@ -15225,43 +14455,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -15284,63 +14504,63 @@ export const ABILITY_SOUND_PROFILES = {
       "candidates": [
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh A.ogg",
-          "nativeDuration": 1140,
-          "meanDb": -23.3,
-          "peakDb": -2.6,
-          "gain": 0.95499,
-          "duration": 1140
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 001.ogg",
+          "nativeDuration": 958,
+          "meanDb": -19.9,
+          "peakDb": -1.9,
+          "gain": 0.88105,
+          "duration": 958
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh B.ogg",
-          "nativeDuration": 1137,
-          "meanDb": -21.7,
-          "peakDb": -2.2,
-          "gain": 0.91201,
-          "duration": 1137
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.03",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh C.ogg",
-          "nativeDuration": 1323,
-          "meanDb": -22.7,
-          "peakDb": -0.7,
-          "gain": 0.76736,
-          "duration": 1323
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.04",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh D.ogg",
-          "nativeDuration": 853,
-          "meanDb": -22.7,
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 002.ogg",
+          "nativeDuration": 931,
+          "meanDb": -19.1,
           "peakDb": -1.8,
           "gain": 0.87096,
-          "duration": 853
+          "duration": 931
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.05",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh E.ogg",
-          "nativeDuration": 1048,
-          "meanDb": -23.1,
-          "peakDb": -2.7,
-          "gain": 0.96605,
-          "duration": 1048
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 003.ogg",
+          "nativeDuration": 923,
+          "meanDb": -20.5,
+          "peakDb": -1.9,
+          "gain": 0.88105,
+          "duration": 923
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.bludgeoning.strike.flail.03.06",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Medieval Fantasy Sound FX Pack Vol. 2/Whooshes/Flail Whoosh F.ogg",
-          "nativeDuration": 1140,
-          "meanDb": -21.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 1140
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 004.ogg",
+          "nativeDuration": 975,
+          "meanDb": -19.1,
+          "peakDb": -2,
+          "gain": 0.89125,
+          "duration": 975
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.bludgeoning.strike.two-hand.01.05",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blunt/Strike Blunt Large 005.ogg",
+          "nativeDuration": 981,
+          "meanDb": -20,
+          "peakDb": -1.8,
+          "gain": 0.87096,
+          "duration": 981
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.bludgeoning.strike.flail.01.01",
+          "file": "modules/ggg/assets/sounds/SoundFlakes/diablo-wrath/weapon/bludgeon-throwing.ogg",
+          "nativeDuration": 1614,
+          "meanDb": -21.2,
+          "peakDb": -1.7,
+          "gain": 0.86099,
+          "duration": 1614
         },
         {
           "module": "psfx",
@@ -15715,16 +14935,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -15742,6 +14952,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -16231,16 +15481,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -16258,6 +15498,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -17227,16 +16507,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -17254,6 +16524,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ],
       "anchorSlot": "accent"
@@ -17713,13 +17023,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.electricity.zap.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Electric/Electric Zap.ogg",
-          "nativeDuration": 778,
-          "meanDb": -24.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 778
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact A.ogg",
+          "nativeDuration": 1985,
+          "meanDb": -21.9,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 1985
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact B.ogg",
+          "nativeDuration": 1773,
+          "meanDb": -21.2,
+          "peakDb": -2.6,
+          "gain": 0.95499,
+          "duration": 1773
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact C.ogg",
+          "nativeDuration": 1968,
+          "meanDb": -21.5,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1968
         },
         {
           "module": "psfx",
@@ -18008,13 +17338,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.electricity.zap.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Electric/Electric Zap.ogg",
-          "nativeDuration": 778,
-          "meanDb": -24.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 778
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact A.ogg",
+          "nativeDuration": 1985,
+          "meanDb": -21.9,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 1985
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact B.ogg",
+          "nativeDuration": 1773,
+          "meanDb": -21.2,
+          "peakDb": -2.6,
+          "gain": 0.95499,
+          "duration": 1773
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact C.ogg",
+          "nativeDuration": 1968,
+          "meanDb": -21.5,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1968
         },
         {
           "module": "psfx",
@@ -18303,13 +17653,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.electricity.zap.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Electric/Electric Zap.ogg",
-          "nativeDuration": 778,
-          "meanDb": -24.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 778
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact A.ogg",
+          "nativeDuration": 1985,
+          "meanDb": -21.9,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 1985
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact B.ogg",
+          "nativeDuration": 1773,
+          "meanDb": -21.2,
+          "peakDb": -2.6,
+          "gain": 0.95499,
+          "duration": 1773
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact C.ogg",
+          "nativeDuration": 1968,
+          "meanDb": -21.5,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1968
         },
         {
           "module": "psfx",
@@ -19294,120 +18664,110 @@ export const ABILITY_SOUND_PROFILES = {
       ]
     }
   ],
-  "feat-sword-fire": [
+  "feat-claw-fire": [
     {
-      "label": "Blade contact",
+      "label": "Claw contact",
       "role": "contact",
       "candidates": [
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.blade.strike.shortsword.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Strike Blade Medium 001.ogg",
-          "nativeDuration": 609,
-          "meanDb": -23.9,
-          "peakDb": -1.6,
-          "gain": 0.85114,
-          "duration": 609
+          "key": "ggg-sfx.melee.claws.strike.stab.01.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 01.ogg",
+          "nativeDuration": 600,
+          "meanDb": -21.6,
+          "peakDb": -7.3,
+          "gain": 1,
+          "duration": 600
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.blade.strike.shortsword.01.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Strike Blade Medium 002.ogg",
-          "nativeDuration": 609,
-          "meanDb": -21.2,
-          "peakDb": -1.8,
-          "gain": 0.87096,
-          "duration": 609
+          "key": "ggg-sfx.melee.claws.strike.stab.01.02",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 02.ogg",
+          "nativeDuration": 639,
+          "meanDb": -22.5,
+          "peakDb": -7.7,
+          "gain": 1,
+          "duration": 639
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.blade.strike.shortsword.01.03",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Strike Blade Medium 003.ogg",
-          "nativeDuration": 740,
-          "meanDb": -23.6,
-          "peakDb": -2.1,
-          "gain": 0.90157,
-          "duration": 740
+          "key": "ggg-sfx.melee.claws.strike.stab.01.03",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 03.ogg",
+          "nativeDuration": 606,
+          "meanDb": -22,
+          "peakDb": -7.1,
+          "gain": 1,
+          "duration": 606
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.melee.blade.strike.shortsword.01.04",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Strike Blade Medium 004.ogg",
-          "nativeDuration": 557,
+          "key": "ggg-sfx.melee.claws.strike.stab.01.04",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 04.ogg",
+          "nativeDuration": 699,
+          "meanDb": -22.1,
+          "peakDb": -7.6,
+          "gain": 1,
+          "duration": 699
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.claws.strike.stab.01.05",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 05.ogg",
+          "nativeDuration": 607,
+          "meanDb": -21.7,
+          "peakDb": -7.9,
+          "gain": 1,
+          "duration": 607
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.melee.claws.strike.stab.01.06",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Forged In Fury Vol 1/Metal Claws/Stab Metal Claws 06.ogg",
+          "nativeDuration": 657,
           "meanDb": -21.9,
-          "peakDb": -1.7,
-          "gain": 0.86099,
-          "duration": 557
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.melee.blade.strike.shortsword.01.05",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Weaponry Melee Sound FX Pack Vol. 1/Blade/Strike Blade Medium 005.ogg",
-          "nativeDuration": 720,
-          "meanDb": -23.9,
-          "peakDb": -2.2,
-          "gain": 0.91201,
-          "duration": 720
+          "peakDb": -8,
+          "gain": 1,
+          "duration": 657
         },
         {
           "module": "psfx",
-          "key": "psfx.weapon-attacks.sword.v1",
-          "file": "modules/psfx/library/weapon-attacks/sword/v1/sword-001-00.ogg",
-          "nativeDuration": 3500,
-          "meanDb": -29.2,
-          "peakDb": -2.1,
-          "gain": 0.90157,
-          "duration": 3500
+          "key": "psfx.impacts.slashing.v1",
+          "file": "modules/psfx/library/impacts/slashing/v1/meleeattack-impacts-slashing-00.ogg",
+          "nativeDuration": 1206,
+          "meanDb": -27.5,
+          "peakDb": -1.3,
+          "gain": 0.82224,
+          "duration": 1206
         },
         {
           "module": "psfx",
-          "key": "psfx.weapon-attacks.sword.v1",
-          "file": "modules/psfx/library/weapon-attacks/sword/v1/sword-001-01.ogg",
-          "nativeDuration": 3500,
-          "meanDb": -26.7,
-          "peakDb": -1.9,
-          "gain": 0.88105,
-          "duration": 3500
+          "key": "psfx.impacts.slashing.v1",
+          "file": "modules/psfx/library/impacts/slashing/v1/meleeattack-impacts-slashing-01.ogg",
+          "nativeDuration": 1225,
+          "meanDb": -28.6,
+          "peakDb": -3.6,
+          "gain": 1,
+          "duration": 1225
         },
         {
           "module": "psfx",
-          "key": "psfx.weapon-attacks.sword.v1",
-          "file": "modules/psfx/library/weapon-attacks/sword/v1/sword-001-02.ogg",
-          "nativeDuration": 3500,
-          "meanDb": -25.5,
-          "peakDb": -1.8,
-          "gain": 0.87096,
-          "duration": 3500
+          "key": "psfx.impacts.slashing.v1",
+          "file": "modules/psfx/library/impacts/slashing/v1/meleeattack-impacts-slashing-02.ogg",
+          "nativeDuration": 1230,
+          "meanDb": -24.8,
+          "peakDb": -3,
+          "gain": 1,
+          "duration": 1230
         },
         {
           "module": "psfx",
-          "key": "psfx.weapon-attacks.sword.v1",
-          "file": "modules/psfx/library/weapon-attacks/sword/v1/sword-001-03.ogg",
-          "nativeDuration": 3500,
-          "meanDb": -27.1,
-          "peakDb": -2,
-          "gain": 0.89125,
-          "duration": 3500
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-attacks.sword.v1",
-          "file": "modules/psfx/library/weapon-attacks/sword/v1/sword-001-04.ogg",
-          "nativeDuration": 3500,
+          "key": "psfx.impacts.slashing.v1",
+          "file": "modules/psfx/library/impacts/slashing/v1/meleeattack-impacts-slashing-03.ogg",
+          "nativeDuration": 1245,
           "meanDb": -27.6,
-          "peakDb": -2,
-          "gain": 0.89125,
-          "duration": 3500
-        },
-        {
-          "module": "psfx",
-          "key": "psfx.weapon-attacks.sword.v1",
-          "file": "modules/psfx/library/weapon-attacks/sword/v1/sword-001-05.ogg",
-          "nativeDuration": 3500,
-          "meanDb": -27.4,
-          "peakDb": -2,
-          "gain": 0.89125,
-          "duration": 3500
+          "peakDb": -5.1,
+          "gain": 1,
+          "duration": 1245
         },
         {
           "module": "soundfxlibrary",
@@ -19537,16 +18897,6 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "psfx",
-          "key": "psfx.cantrips.create-bonfire.v1.001",
-          "file": "modules/psfx/library/cantrips/create-bonfire/v1/create-bonfire-001.ogg",
-          "nativeDuration": 20000,
-          "meanDb": -29,
-          "peakDb": -7,
-          "gain": 1,
-          "duration": 4500
-        },
-        {
-          "module": "psfx",
           "key": "psfx.casting.fire-side.001",
           "file": "modules/psfx/library/casting/fire-side/cast-fire-side-03.ogg",
           "nativeDuration": 2009,
@@ -19564,6 +18914,46 @@ export const ABILITY_SOUND_PROFILES = {
           "peakDb": -2,
           "gain": 0.5559,
           "duration": 2500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-00.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.3,
+          "peakDb": -0.2,
+          "gain": 0.65313,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-01.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.1,
+          "peakDb": -0.1,
+          "gain": 0.63826,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-02.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.weapon-swooshes.fire.v1.group01",
+          "file": "modules/psfx/library/weapon-swooshes/fire/v1/group01/meleeattack-swoosh-magicaleffect-group01-fire-03.ogg",
+          "nativeDuration": 2000,
+          "meanDb": -16.2,
+          "peakDb": -0.2,
+          "gain": 0.64565,
+          "duration": 2000
         }
       ]
     }
@@ -19741,13 +19131,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.electricity.zap.01.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Electric/Electric Zap.ogg",
-          "nativeDuration": 778,
-          "meanDb": -24.3,
-          "peakDb": -3.7,
-          "gain": 1,
-          "duration": 778
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact A.ogg",
+          "nativeDuration": 1985,
+          "meanDb": -21.9,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 1985
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact B.ogg",
+          "nativeDuration": 1773,
+          "meanDb": -21.2,
+          "peakDb": -2.6,
+          "gain": 0.95499,
+          "duration": 1773
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.impact.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Impact C.ogg",
+          "nativeDuration": 1968,
+          "meanDb": -21.5,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1968
         },
         {
           "module": "psfx",
@@ -20259,43 +19669,33 @@ export const ABILITY_SOUND_PROFILES = {
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.01",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 1.ogg",
-          "nativeDuration": 831,
-          "meanDb": -24.4,
-          "peakDb": -4.3,
-          "gain": 1,
-          "duration": 831
+          "key": "ggg-sfx.magic.ice.impact.general.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits A.ogg",
+          "nativeDuration": 1158,
+          "meanDb": -22,
+          "peakDb": -0.4,
+          "gain": 0.74131,
+          "duration": 1158
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.03.02",
-          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Ice Freeze 2.ogg",
-          "nativeDuration": 811,
-          "meanDb": -27.4,
-          "peakDb": -6.1,
-          "gain": 1,
-          "duration": 811
+          "key": "ggg-sfx.magic.ice.impact.general.02.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits B.ogg",
+          "nativeDuration": 1117,
+          "meanDb": -21,
+          "peakDb": -0.8,
+          "gain": 0.77625,
+          "duration": 1117
         },
         {
           "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.01",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 001.ogg",
-          "nativeDuration": 2005,
-          "meanDb": -25.7,
-          "peakDb": -3,
-          "gain": 1,
-          "duration": 2005
-        },
-        {
-          "module": "ggg",
-          "key": "ggg-sfx.magic.ice.freeze.04.02",
-          "file": "modules/ggg/assets/sounds/ovani-sounds/Player Status SFX/Ailments/Ailments Freeze 002.ogg",
-          "nativeDuration": 10010,
-          "meanDb": -26.5,
-          "peakDb": -4.1,
-          "gain": 1,
-          "duration": 4500
+          "key": "ggg-sfx.magic.ice.impact.general.02.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Ice/Ice Hits C.ogg",
+          "nativeDuration": 1173,
+          "meanDb": -22.9,
+          "peakDb": -1,
+          "gain": 0.79433,
+          "duration": 1173
         },
         {
           "module": "psfx",
@@ -20921,7 +20321,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "74a3d1f473ae2ccc793c730d2f7a1f3e30e71e13a12843ab77b2f1c3ffe578ab"
   },
   "PncXj46fgSwTWRl6": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 495,
     "descriptionHash": "35f9bca7bbd7684faaf11e04eb936bcfc4d9eeec8ea23d7646449c22e81ef0cb"
@@ -20951,7 +20351,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "168473049898bf58c09c2db10a46b71d2c65fc912a7eec65217b43b8c2fd5bf5"
   },
   "L9pd3yyjVK0rgiDc": {
-    "profile": "sword",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 181,
     "descriptionHash": "39771782053d2601f54c34b15680be35edf43663dd3be4dc733a73e36dce50b8"
@@ -20987,8 +20387,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "1baa97f7f296eb57f7bfc5c444ba91c2418fd5c34d2e995305476567f710dc26"
   },
   "fMnF8K1o0ow217GP": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 551,
     "descriptionHash": "00d8c5034349a048a99138cac0a3550717595524499d5a63eb940fe75ef85a50"
   },
@@ -21341,7 +20741,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "5a86cc8b6fd7f9de0554036db49ae5bec3b98ed1c81ef2d1509b23d0619fe043"
   },
   "e1Dc8fxK8NoSvYdT": {
-    "profile": "sword",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 444,
     "descriptionHash": "da061bb045e850ba9b21d785902f9da9074364d44ca732bb1cf2993a6eebf9d2"
@@ -21449,13 +20849,13 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "41165d5a8e934e2e80fb15f3f5abe30f5aa0f350f396cf0f1084317b9a54fc63"
   },
   "tBfalnbUZLkG9gs1": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 404,
     "descriptionHash": "a8df369cc782f57c083b8f3b6b403c04c2a66eae8eeb0b9ebfdf8aea96962ab5"
   },
   "WO23FvCo8IYVB5RF": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 239,
     "descriptionHash": "dc598c4a403b14e37d4e8950042c201959fef0c5abf4141a43f6387c609018c6"
@@ -21515,7 +20915,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "5157670b2d6ad77544046a09c4c2705afc6e745ef34677312a2eaba7bb254428"
   },
   "XYaaj872JOO9CAws": {
-    "profile": "feat-sword-fire",
+    "profile": "feat-claw-fire",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon. Native fire trait adds one elemental finish at the first contact.",
     "descriptionChars": 388,
     "descriptionHash": "49bf61127170c007d3f971c7777173e296f21d96c403d84001730d5cb2e140f5"
@@ -21551,7 +20951,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "b6a76218cfe8fbae72977b7512bc2123126bd09944c4e1cbb3f28d352eb80b3d"
   },
   "nSDXAFQKjMROlc2l": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 437,
     "descriptionHash": "90811c30e8f9a35c85f9a661321ad21070df6cb31cee02b43474018fa8425ea6"
@@ -21563,7 +20963,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "685cc2d0ff44a38a64967758366fa1c78bf8ed48cfcd643d8ace181790f8172b"
   },
   "K2oSXGmqTUrcQYar": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 250,
     "descriptionHash": "def1d5ee1fadbec09e3be69cd8623bd51f2c38a95b9607276c32d6b5a41e0c2a"
@@ -21611,8 +21011,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "cbd3e6c8ee778ac5f60f7220265f81ef33c60d287cd7de32f2d31c58444e1764"
   },
   "oTEidzP2UmYowhud": {
-    "profile": "shieldRaise",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "drain",
+    "reason": "A shield drawn from your own blood.",
     "descriptionChars": 539,
     "descriptionHash": "bf919a2e20bdbeb90cf6eafb7903d6f50da6316fe813fba916204d988f37883a"
   },
@@ -21917,7 +21317,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "541502fac8fe5babfe27c32ecc3f60e5e4f6f9f7052aeb225f266282dfef8a88"
   },
   "G6aNxXTIJYIGeicK": {
-    "profile": "ranged",
+    "profile": "bomb-explosive",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 224,
     "descriptionHash": "61b91a7f85bd4cd9b675223891a951fb0aa1ed0df4444737d54aa1b617b915de"
@@ -22025,8 +21425,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "319fa7e42760fde60f526bca97c06d35fef81898cbb5f6c6275d0f8a53b8d992"
   },
   "XJfUj2o4HdL5waZL": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 502,
     "descriptionHash": "85f4fed59129a29892a0ae629899a53c3585d41b0e34993cbaa7ba02289b950f"
   },
@@ -22133,8 +21533,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "547d16e8277f98494df4abee7e150f394a0c39e31303b7cd20a3093983287f22"
   },
   "2i6sEZ4rQm1Pd5nD": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "force",
+    "reason": "A protective word; a ward, not a metal shield.",
     "descriptionChars": 366,
     "descriptionHash": "ec24611735c710bbab0092276c1007f09a3236553999a8d549d1e0758e3ca705"
   },
@@ -22283,8 +21683,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "4d7b0fab766ca16de09465230dcfa1a1aeeed45b4d673efa0d85a99f79be59b2"
   },
   "X7wFUWjYjYhzpejU": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "dagger",
+    "reason": "The clan dagger.",
     "descriptionChars": 342,
     "descriptionHash": "8f8c7058097fb454245958dcce3f72211f498b1d27f448980b7ff0477bc4208b"
   },
@@ -22403,7 +21803,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "f804c6ea7ad70856fc210130201d68fde817fc07d8185cb69a64b55aefd05d42"
   },
   "xQuNswWB3eg1UM28": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 521,
     "descriptionHash": "13ee549cb0c2ddb39ae2351e9328a3792a770f91384cf2abaefd9ecc649a7886"
@@ -22601,8 +22001,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "3a3ede1994925af6aa1a44aff42d083815e944c0cc49b89fb080339ebc4227d3"
   },
   "ABPDBNWvhJRWB86m": {
-    "profile": "battleCry",
-    "reason": "The source roars or shouts aloud; one battle-cry cue.",
+    "profile": "",
+    "reason": "Mimicked orders are a mental trick, not a war cry.",
     "descriptionChars": 411,
     "descriptionHash": "6cce22f4a38743a2532f664fdece71238b644ae182438c8e6fa82a94e47996a7"
   },
@@ -23207,7 +22607,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "625b471125c381906f8a093535d605126693e2a1adb5c5e18cd075e9749718dd"
   },
   "6RDMR41SGsBBVqcA": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 331,
     "descriptionHash": "4e6d7739f5f9d3eeb15b35de128c3dfb55dde29a4b03c8fe6388030b6d67a134"
@@ -23309,8 +22709,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "52f3ecf2a67a42a1c20228b73ff5b069a954892c7675a4c237b4014c2c2e2cba"
   },
   "pGjSh6qk9kQLznKn": {
-    "profile": "shieldRaise",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "vines",
+    "reason": "A grown defence.",
     "descriptionChars": 676,
     "descriptionHash": "e6f79895bb9dd8e390fdabd69da7f88baea5ba54811a4c83895c88aaa1734915"
   },
@@ -23435,8 +22835,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "36cfe04d89433f31b37a090ccde7e33044d21c2c5c7b92a50d187a901411e279"
   },
   "X5SZIwtYpx0r9MPx": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "hammer",
+    "reason": "A mythic blow that drives a foe through walls; a heavy crushing hit.",
     "descriptionChars": 877,
     "descriptionHash": "5cce7333c894cdc74619a99c684e2466732dd4dc01bae982fb5fa0fdd9d5d0c2"
   },
@@ -23489,8 +22889,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "f4a539d90d94fa27a28bdf47697ce1929fafb4e89672e86057047f184e810d8b"
   },
   "ZO37MZEQVNNtg46b": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "A Medicine check to bring someone round; no magical healing tone.",
     "descriptionChars": 653,
     "descriptionHash": "145a25e51d52b12602c0bf0dd1a82657ed94427610893c939d6f269c3b645a3a"
   },
@@ -23549,8 +22949,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "c664a4806d53d81b7997c46f38f8817d63a66f1133302310bc73fa8434248b0a"
   },
   "Cs0hRKBfWn2gOYzK": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "mixed",
+    "reason": "A volley of projectiles or flying weapons, not one blade cut.",
     "descriptionChars": 730,
     "descriptionHash": "653b45c91aa10e42842ca311082f7e2bc9b007929ba1e065a3c45c2f0e061a30"
   },
@@ -23747,7 +23147,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "0c48b382689de83cbee6474fca477b4b49501f59ef75a310056988eec7bb599a"
   },
   "XPTSCUoA8c4o9RgQ": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 852,
     "descriptionHash": "ff1141e9dc1ce809124afd057af8b4e4f1541defbe9c7bafbf9c62155efcf226"
@@ -23795,8 +23195,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "053889c5ca1a4a9053f1cbab5fb18b0a19c488c223d03dc0b6a36a8658f053bf"
   },
   "rljiwL00XW1RcnyL": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 488,
     "descriptionHash": "ac865a0f76fb737ab8318350bf3179baabeb54d2fd414e8cc5495f6f35762f37"
   },
@@ -24191,7 +23591,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "4335d43abe0c133518f45a894904a80958d08d53c881a55648d174a97a231383"
   },
   "5WMoaM7cH9aw3iAc": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 630,
     "descriptionHash": "3bd53684cc24fc1673888769f0dadac785b68a1a0816e95ef475437412bc575e"
@@ -24359,7 +23759,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "e542b2f69267493f8a835b8403906f9296482cea8c3c09805a484aacda90724a"
   },
   "E7j1e8R9FXaFUq0V": {
-    "profile": "ranged",
+    "profile": "crossbow",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 721,
     "descriptionHash": "651ce6cff7e0bb3de6c11d60eb2fe0170fd5aa25366f63f5ee55eb74576801c3"
@@ -24437,8 +23837,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "066ec0f632c397ea42b271b52577e7c234fb62ce6df4a808321d8628da5d3341"
   },
   "wlBDcATuqTwjOIY2": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 361,
     "descriptionHash": "fba8602bf43efcf698f31cb488e25f1d7f0fb614849c57d0676c262169aef5c5"
   },
@@ -24671,7 +24071,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "c4bbdf75c82f5b3ff082df58940da320562475208e416e421338a27868baf63a"
   },
   "3y459uK2qfWtS9q4": {
-    "profile": "sword",
+    "profile": "shieldStrike",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 218,
     "descriptionHash": "13397a8389ccaf79809cb368cd22373715aee564f02f66579a8646c5eeb146da"
@@ -25007,7 +24407,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "db6591cbaa71328af88c5e2d3a9ab38889bfffdba08ae8971501aeb76e9c594b"
   },
   "Rzr6VIRaPEomi9E4": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 357,
     "descriptionHash": "56676daaa6b6f88e299486b5bbee3df651d5d281434ff301a9f3011b2dc6326f"
@@ -25163,7 +24563,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "7426235eb4e55cdaec4dfc14381165c5f68176ae195d2063168bde8e7859a71b"
   },
   "gq1gGsJDLQuQDrhW": {
-    "profile": "sword",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 616,
     "descriptionHash": "bcea135c237c68c28c319e62f507fec1ad9f2cf2a2637a2579b1ba3c92282693"
@@ -25277,7 +24677,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "696c4b9f85d1dad581b7fe22c1424fb059f5115d52b807a096c02eb1a6d0eddd"
   },
   "7UwXNTmPXIXps2sM": {
-    "profile": "ranged",
+    "profile": "thrown",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 331,
     "descriptionHash": "c303caac70275519a7a9cf677a9a6a1bab6a0f5a62fc02f0ec450aedb31b3f83"
@@ -25367,7 +24767,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "c2cf17eeb4df6d6b3aaf95386dfd047a2076caeb08a1eada499ff073d579ea47"
   },
   "t4022d8ndt8YJPSe": {
-    "profile": "ranged",
+    "profile": "bomb-explosive",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 187,
     "descriptionHash": "435b3e8da21efdde0803e9ed6c4292f218b02ea4c6dc18419405225db365e020"
@@ -25907,7 +25307,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "2525cc378fd74745d2186d433a6d550289b83fe1e7a0364b52061de8e3307612"
   },
   "gx9QawjDOZSfSBlN": {
-    "profile": "sword",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 256,
     "descriptionHash": "61002499f76c6d54e6d78dfa3770795e7b53cbcc7beba20a74341f183ff4bf86"
@@ -26201,8 +25601,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "a269f2af662f71d847bb978fa3596e9f3ff19767da034d16fc9cc09095ec16fa"
   },
   "cZa6br5C3Iyzqqi9": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "vines",
+    "reason": "Grown hardwood, not a metal shield.",
     "descriptionChars": 912,
     "descriptionHash": "4e4e0486c8334059415cd63046d0174ec86b571982558f983df88e64f748e55f"
   },
@@ -26351,7 +25751,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "c1c1d813961013bc4948044c879a1529a931a99648abe5f776c164eea1f3dda0"
   },
   "P07YFQCp3hT3OgJE": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 905,
     "descriptionHash": "8c4efb5f321496250489bb4add41a5190e87ded73244c6b6d8afadb15f335cbb"
@@ -26519,7 +25919,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "79f888b6849771f001b59f30bd1c1874a66f674fef7731dffb28c4b3e6df68fe"
   },
   "9KvsO72JJ3pfkG4U": {
-    "profile": "ranged",
+    "profile": "thrown",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 321,
     "descriptionHash": "2a42da5224a7a7f8d98493eb548202614a0300aeae3cf3f5bee9f4cad10f0d96"
@@ -26645,8 +26045,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "0a40d76deaba6cad589e33ce89bc0dffec91ad50f17fc65c217746eed8cd2ccd"
   },
   "72qOqbwShnT2Apaw": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "mixed",
+    "reason": "The implement flies and strikes; neutral release plus contact.",
     "descriptionChars": 553,
     "descriptionHash": "1dccd0322091cb7649ab70458b704137de71d0ad3ab10380ea5d513b78419ebc"
   },
@@ -26849,8 +26249,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "2689115fac505fcd8b59395beb93a6860610d7c3d7cab7b45f8293a5ff971e75"
   },
   "m2A7S4BjZg94WPyr": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "force",
+    "reason": "Magical inked armour, not a metal shield.",
     "descriptionChars": 477,
     "descriptionHash": "e4e18df09776682df0167a2726581fff2b768ade79f29dbfd057a747786e2d72"
   },
@@ -27041,8 +26441,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "3c7a79e0a5bf6ee8fcf58a28550920051f6b5ac9277286d05f29b694c33850a5"
   },
   "23QgyEYjoslBvkra": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 337,
     "descriptionHash": "f2b28a27bc6545f18118d2c8c5fd2bbafc8301dbb9a264fb960c53b857409a2a"
   },
@@ -27287,7 +26687,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "0983f530886a1b09beceec19b98cdee8115c4fa6df8fb259c4d1e7a1491497e1"
   },
   "1muxLx8Vacn2SLHc": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 576,
     "descriptionHash": "f13d00da27c726254f494b145014837c09211e27b5b1d811a87a1f2a2df9c318"
@@ -27305,7 +26705,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "144d0e1020966389ec93ec31c7abdd22d227d3327a8f75f6e0d29c87c3236fe3"
   },
   "gVXefUaMzg7S1vpm": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 361,
     "descriptionHash": "41dcf64969d7df7c9fb6e355fb605d8dae935c61b360280b7ffcd22bad755706"
@@ -27407,7 +26807,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "53a8bcd1c3ab4e8f12cc3b9fd1356d897ba9bc7c385315161a8905f824e433b8"
   },
   "OZtoTusMmCJymObT": {
-    "profile": "sword",
+    "profile": "flail",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 475,
     "descriptionHash": "e01619ebed7dba8b8a122f197cfcff8db3def61c28ebae259ef1b426163afd11"
@@ -27623,7 +27023,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "9621b019bddc6784181679974d9ede5a3e6892bee3438a3ca50d3b7de3cca08b"
   },
   "XkmrLhyAoxQTLnza": {
-    "profile": "ranged",
+    "profile": "thrown",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 290,
     "descriptionHash": "f8222b61b2bc0a260f68b9fe712df90b4523d2c89e9b92a433b34b089878120a"
@@ -27719,7 +27119,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "c4efc572680b447cf275576dc7f5adffd605ebeca3c059d1548a4e1d4ace500a"
   },
   "P8P5PwLgxk84bRQw": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 470,
     "descriptionHash": "8602cf6e2d519764a1cbc9e0c01c618515c19f716d2762544397f608edc7a052"
@@ -27803,7 +27203,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "8280f9d001e1670653fae1171b6ea46da872fed9be4c467f37ce58a04505ab8c"
   },
   "UcIyf7bTDf6RwydU": {
-    "profile": "sword",
+    "profile": "club",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 223,
     "descriptionHash": "20082c1a1a164dcdac82fd01a8bdeb7c4aac614c72c40b1e55e2519a8c5fa2e5"
@@ -28007,8 +27407,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "3e19810937cab461ea30031d9a41fcf93f25df00076eb8151c45da765df64935"
   },
   "HbdOZ8YTtu8ykASc": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "metal",
+    "reason": "A metal carapace forms.",
     "descriptionChars": 1110,
     "descriptionHash": "d7064c576d8313b9fc18241dd71506ea8a9f2ce4b1f3214446df28f9d64bfc0e"
   },
@@ -28145,7 +27545,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "8a401fdb4f9c056ad837a423b883fdac61fc52d612d41c5e2f89eaaee0f6d734"
   },
   "QlBQEkFqiYsU2Y3x": {
-    "profile": "sword",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 302,
     "descriptionHash": "da4b7d4ee2178fda4f1e24323717c7bd7d639a045b354bc1267bbb12df48630d"
@@ -28301,7 +27701,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "9e4f934966d17362afe296d00aa595b368cc859f1e94b2db46b896dbfcf2292c"
   },
   "toGkX6UVPq1Z1NjB": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 403,
     "descriptionHash": "cf9a10c67ad1a39efab2570f61f9936ffe6113ecf3a51987dbae0702f0b0d1c3"
@@ -28559,7 +27959,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "f85d808150aa7c3bb9f3a9582071b5ed728a9480e90386fac5bd5c6ac3c528cb"
   },
   "2LdncNMDNJW5Oeyu": {
-    "profile": "ranged",
+    "profile": "thrown",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 514,
     "descriptionHash": "0aef461c8436be9109cb283bda919c3840babf2a78fee429c263dac600348c6a"
@@ -29615,8 +29015,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "87553bfa150e6edd1d2103a847256d1bc7d249cca479e0f1ec1f18a78dbc7501"
   },
   "koER7gKf6CnW5O0s": {
-    "profile": "shieldRaise",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "",
+    "reason": "A held religious symbol; no shield to clang.",
     "descriptionChars": 517,
     "descriptionHash": "5e0ff21bf07a095304acfe669f6d5cb1e715023c8cf7bab052e4662610840bf6"
   },
@@ -29717,7 +29117,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "10e361663fefbc1a02556b1c1612d26cfc4775231507aed436f180b2bafbbf9f"
   },
   "qpoE2KhsPbF1ZDsx": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 287,
     "descriptionHash": "b849d034edef17fca7770d5cca880be2781ae237ce24de67b0801f224236d0c1"
@@ -29969,7 +29369,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "222423e72fc6ab0c6f93e2d460bfe79afea23cf5d01c3d16e79e153d3fd40346"
   },
   "wUBodqhXq3n4XbvK": {
-    "profile": "sword",
+    "profile": "spear",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 400,
     "descriptionHash": "97b3860bdb7c79505edbb2d6390a37ef34d855760a9934071c28be673b92ee64"
@@ -30011,8 +29411,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "f039ffae87a561db17140bfbfd6e8446914c0794b0d13f2705ad908e04acf76d"
   },
   "74MnTnoqSveet8Sy": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "whip",
+    "reason": "A lash that seizes the foe.",
     "descriptionChars": 323,
     "descriptionHash": "aebe996cea3e8edee2adfb1c8c73ad68426fc2f353325badfda25d815f0b4916"
   },
@@ -30203,8 +29603,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "7c62ace716972708f9d11c7df00d1561bada3574bd5e2615053805bb146b01f1"
   },
   "lleedxE6fTDSK6og": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "A Medicine check to bring someone round; no magical healing tone.",
     "descriptionChars": 536,
     "descriptionHash": "42460167b58c9abc9de1bc84586e7e3dd8b798ab8887f78a4f10877447ec42f8"
   },
@@ -30233,8 +29633,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "bf60072813bb9976b751f20ac6840e9fc71a1a5d4b4200353c5cab784b589200"
   },
   "lT6yLoMfalzxGL8y": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 195,
     "descriptionHash": "89d2dedb5918daabfa05fa5fb543663999c592103d1101dc23cbe79d7dd6f850"
   },
@@ -30251,7 +29651,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "f909ac1b8df3cb4d0d233cacdaf9641f8d5bd7a8770b6d2605ba8a475abe1d02"
   },
   "HfebybiUNW8mXOfP": {
-    "profile": "ranged",
+    "profile": "thrown",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 404,
     "descriptionHash": "674589f9b2e24893502e84cce2fb384fd49570dde5531b51531c5cf347ecd50b"
@@ -30473,8 +29873,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "e5a4d6a4f90af42eaee09d638464fdd0e7ff880be383e01811f7339224965114"
   },
   "oQVp2UhXVBcELma5": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 744,
     "descriptionHash": "22dff9f15cf67f3fcbafdceb8e744047fece9258445d8ebc4cd086a9c2bd5852"
   },
@@ -30635,8 +30035,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "4c543fb026d3a130ae1fa394d3e818cb11591be0d077eef15cd7529dc6a714bf"
   },
   "jnXNqqRT5Qhw5Zau": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 275,
     "descriptionHash": "362f6c05367b9d3eab8d73758f15fc711b2f0cc05e520c9781989f3420f48493"
   },
@@ -30689,7 +30089,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "c4a7b66a5b5f9b9ecfd44b7890434e70661f91826579ee7b8de2fbbad502f659"
   },
   "ylDAxUpT0rXxilro": {
-    "profile": "sword",
+    "profile": "unarmed",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 513,
     "descriptionHash": "a8474cd28807f1846894d8f43998c5244bb376571869e868e4ddbf3e39d8299e"
@@ -30929,7 +30329,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "a0c27d6ea4ed0be8a2ad12c6acf0e5f506adfd237f016611a67033788ce902fb"
   },
   "1sD5Gu8jQL09Yz2j": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 749,
     "descriptionHash": "fa862d0d4ca53a8e299c415509a50eaa89d45674cda3e8557e27d0e387cb2b5d"
@@ -31253,8 +30653,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "633402153fe912fed6ada5de7ef06b2198cf9c2554b36ce57c8711c4176b3fa9"
   },
   "5d4AyZ0Y6Ht1OwIa": {
-    "profile": "dispel",
-    "reason": "Description and reviewed design counteract magic.",
+    "profile": "",
+    "reason": "A missed Strike is redirected by footwork; no magic to dispel.",
     "descriptionChars": 336,
     "descriptionHash": "48eefda8b346e176dbc4607682164b6afc3777e107969a8eded71bf0271f9e4a"
   },
@@ -31265,14 +30665,14 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "b02f54f3e38f0daf2be5eba217113b29ac0fce38ade877db64d9a6b3966c76b7"
   },
   "tPhhaCbaQqwenkzx": {
-    "profile": "",
-    "reason": "Quiet, player-chosen or uncertain activity; no public sound is inferred. Choose a sound in Customize.",
+    "profile": "sword",
+    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 576,
     "descriptionHash": "37b0047c8878e6678d0f5f1a3616abbcd0d9b6553724bddf96df6c565a84da90"
   },
   "BZU4aLXnlASKisr3": {
-    "profile": "",
-    "reason": "Quiet, player-chosen or uncertain activity; no public sound is inferred. Choose a sound in Customize.",
+    "profile": "sword",
+    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 784,
     "descriptionHash": "977380599b9a1cebc3123aebaa1e19c1e59ae603f2dd6c7a963e8bb275b8d505"
   },
@@ -31415,7 +30815,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "ae6920d0c5aac4516ba63b69ea89bebc2d5b9e9041a15c2baf7acbc03a01bfa5"
   },
   "jr2LYiMvjnTNhfMM": {
-    "profile": "unarmed",
+    "profile": "sword",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 788,
     "descriptionHash": "8eec317e6d17f8af22ea74565deec402e6b2396133089a12e916b42efdcedbd2"
@@ -31625,8 +31025,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "5c8af019726e655e56be1a614ceb9a61f02ac8124345d08e0532a873bedcae45"
   },
   "kcWdo5zzldDTqCBP": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "spear",
+    "reason": "A spear thrust.",
     "descriptionChars": 335,
     "descriptionHash": "22e4a8da46ddcb6d1d2ffd40a531e016f2bfb8edaddd5989c74ac9eea12e0304"
   },
@@ -31985,8 +31385,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "5745686d23bff6fd578fd5046a440450da8d16261defddf151a3d0dcc6fa3ead"
   },
   "jK0hjx4qsRyKnpBd": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "light",
+    "reason": "Armour of starlight.",
     "descriptionChars": 787,
     "descriptionHash": "9605b7c94a319062bb72ba3dd7e29746551591f3b6b2107e75ca9f367b891737"
   },
@@ -32087,8 +31487,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "ae7237d3e0e1414b6ab4293e5a184466186fa87c93c0b2f80f085d77316e520c"
   },
   "jFmdevE4nKevovzo": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Stamina restored from Resolve: steadying yourself, nothing audible.",
     "descriptionChars": 125,
     "descriptionHash": "90c120730f9fa0fbf2a0ac7942db58a7941a62c2d882033d071160d572ee5225"
   },
@@ -32363,8 +31763,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "cc0bd4c85f8350cdf8ec0f95865029f5aa070be6ab45b076dfdb52d71f6ee9db"
   },
   "31Z6tFfSKWMe3OdR": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 184,
     "descriptionHash": "48b920eac05c8df427a9552cda71e4d4bf1d8ad69c286bcbcf94c2b8f6f06147"
   },
@@ -32435,8 +31835,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "dc677373f2d6957cefcf066a906739843039567b51958eaf122c879e7e2b3b69"
   },
   "MRxQDZFNPpUKC0CL": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 246,
     "descriptionHash": "6728aebc7ffd2b4b3b130453b81522963e576dde15ae51c6f8663474369038f9"
   },
@@ -32837,8 +32237,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "28d5050c14056fbc6a1196ea14c28ecb02c1931e44042672d2d0ad76144bae68"
   },
   "TNRB8IY6Wtk9BoMp": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "earth",
+    "reason": "A shield of the terrain itself.",
     "descriptionChars": 601,
     "descriptionHash": "fbb8457d9377a4ec404ef014680e50acfece63053be338234d9eae15db093af1"
   },
@@ -33029,8 +32429,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "e39bf37fb7bb236b50a25fcec35d32d323bbc02e3956c5f7c34d3da1a61660f6"
   },
   "bPPcPUZMlJ7m5lYq": {
-    "profile": "shield",
-    "reason": "Physical shield is raised or intercepts a blow, following its reviewed action.",
+    "profile": "water",
+    "reason": "A shield of water.",
     "descriptionChars": 518,
     "descriptionHash": "cb763f334a72aa1791381cd75e5107ebcd85b5788ccf0a1cf511c6566958ef9a"
   },
@@ -33491,7 +32891,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "96247f83cd12cabadc24dbf884c322b2913373b01c522197120ab222cf27ab40"
   },
   "WGGLlrhV8cKFn1v0": {
-    "profile": "ranged",
+    "profile": "thrown",
     "reason": "Reviewed ranged attack; exact weapon boundaries preserve blowgun/crossbow identity. Player-choice alternatives use a neutral release cue.",
     "descriptionChars": 325,
     "descriptionHash": "5e6cfd650cb4f640bcd66564aaed1a0875276d20fd4901fc3839e5882c5b0328"
@@ -33677,7 +33077,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "00dbc7eeb593adec43ba8e8b75439e52f2fc26257b89fa6ee33ce5a7907cbd2a"
   },
   "39RJF47FLYr5gZ8p": {
-    "profile": "sword",
+    "profile": "spear",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 460,
     "descriptionHash": "33071c05a6bd9e038303fe7d1e9cae448dfd692425a6f949c46e0f64fb8aba1b"
@@ -33785,8 +33185,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "e332f7d6eaeb68f0210a4a092779e61f7b2635721dbd29220da120cdc31cb4ff"
   },
   "z8NUh2FayDa7Ctnp": {
-    "profile": "force",
-    "reason": "Reviewed elemental manifestation; optional finite elemental cue.",
+    "profile": "spirit",
+    "reason": "A ghostly harrow deck; spirit surge rather than plain force.",
     "descriptionChars": 1016,
     "descriptionHash": "f13d33ef13de997c5b231c179f24a216cc5969f992e9d2abb086b6b87177ae12"
   },
@@ -34199,8 +33599,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "64a636f6865a3886a4798ec3ff13299ba2c370208b72a4878f7904d5c6f8e505"
   },
   "KU488rIt9bOdTNMA": {
-    "profile": "healing",
-    "reason": "Description explicitly restores hit points or life through a magical effect.",
+    "profile": "",
+    "reason": "Removes or reduces a condition without restoring hit points; no healing chime is inferred.",
     "descriptionChars": 121,
     "descriptionHash": "661fb5b77ca9eb9f568a35a94f06c8975d82552b440206621fe5e91e96b81e7c"
   },
@@ -34229,8 +33629,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "9d1bced300781e726f2e06208c230e896dab75ce46384f1606394904c8b0c606"
   },
   "iqUYhZNcixYw0xUW": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "club",
+    "reason": "A held body swung as a club.",
     "descriptionChars": 699,
     "descriptionHash": "e87365e27471c29402a67a22b0fcfcd8bd34c6f633c28832ffeb823f60e9564b"
   },
@@ -34439,7 +33839,7 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "40a0b1fcb1cd233309947a0db499b0f986e47daff21c78e7c38ec2c84da7047f"
   },
   "uJpghjJtNbqKUxRd": {
-    "profile": "unarmed",
+    "profile": "naturalPierce",
     "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
     "descriptionChars": 207,
     "descriptionHash": "1d29b95a85374689fc21254fbd6d55e11099296cb6dc45942145aace3b19e307"
@@ -34493,8 +33893,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "f0d05a0d4faf7e97473ae1614a8c1a6a4a85a200326974d4c4eb9657b730258f"
   },
   "mctOx1S4JnqXkjAc": {
-    "profile": "earth",
-    "reason": "Reviewed elemental manifestation; optional finite elemental cue.",
+    "profile": "swarm",
+    "reason": "Cave worms swarm and feast; no stone involved.",
     "descriptionChars": 667,
     "descriptionHash": "3a1fe69247ec29fa567d9b1fe902b5a036d8da805ed37fc7cb5b8284bf4a4afc"
   },
@@ -34547,8 +33947,8 @@ export const FEAT_SOUND_DESIGNS = {
     "descriptionHash": "843573d4712f49f5064f1ccfcfab347aea69563be573ef1a942fb80ca6e45ead"
   },
   "aJBnBvbwqxQRhNZF": {
-    "profile": "sword",
-    "reason": "Full description and reviewed contact sequence indicate physical attacks. Each authored contact receives its own cue; generic melee follows the blade artwork and can be customized for the wielded weapon.",
+    "profile": "staff",
+    "reason": "An extending cudgel.",
     "descriptionChars": 314,
     "descriptionHash": "9d2f0573514abcc223c695bc5decc317eda40d3dd8fdeb9c06fdba111cab5589"
   },
@@ -35773,14 +35173,14 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "06ca65aee50de1b4"
   },
   "zmgF0sh9YicCngev:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 549,
     "descriptionHash": "161e1047a447d103"
   },
   "hgyktS6n2t5MztjW:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 550,
     "descriptionHash": "4e1bf830351999ea"
   },
@@ -36025,7 +35425,7 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "d8eec387a4dbd363"
   },
   "KaYvuSNXZaOammij:ranged": {
-    "profile": "bow",
+    "profile": "crossbow",
     "reason": "Native bow construction selects its matching draw/release; unspecified bows keep a neutral bow cue.",
     "descriptionChars": 123,
     "descriptionHash": "6677e3ece379e36f"
@@ -36187,7 +35587,7 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "10b5c96292098f81"
   },
   "F0DM6K3cGjE7aaSg:thrown": {
-    "profile": "thrown",
+    "profile": "thrownDagger",
     "reason": "thrown thrownDagger cue follows native usage and physical construction. dart throw across 20 ft increments. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 310,
     "descriptionHash": "60719c93c525fcf9"
@@ -36331,20 +35731,20 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "d72b9f573e4b2858"
   },
   "QwRTK0x9L04xKyU5:melee": {
-    "profile": "polearmBlade",
-    "reason": "melee polearmBlade cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "spear",
+    "reason": "melee spear cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 1086,
     "descriptionHash": "b6478940f2d30a3c"
   },
   "sq33MLggeM8D7Zz3:melee": {
-    "profile": "polearmBlade",
-    "reason": "melee polearmBlade cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "spear",
+    "reason": "melee spear cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 1095,
     "descriptionHash": "9f84aa5aa35d1a2e"
   },
   "fukrqsWzFeRbiLbi:melee": {
-    "profile": "polearmBlade",
-    "reason": "melee polearmBlade cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "spear",
+    "reason": "melee spear cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 1096,
     "descriptionHash": "07c8f0b73e5925cb"
   },
@@ -37237,8 +36637,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "8b147fe76e321b7f"
   },
   "3Zv5hSXXtlaDatUv:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 105,
     "descriptionHash": "17d5e8ee77867e11"
   },
@@ -37333,8 +36733,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "d8f8a3e79811b15f"
   },
   "u5VXHAmxYqp0H54F:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. Two-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. Two-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 964,
     "descriptionHash": "a3dcbedf2f209c85"
   },
@@ -37447,8 +36847,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "16de1ef902da39eb"
   },
   "WwmPP9IU81EKg3CU:thrown": {
-    "profile": "thrown",
-    "reason": "thrown thrownDagger cue follows native usage and physical construction. dart throw across 30 ft increments. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "thrownSpear",
+    "reason": "thrown thrownSpear cue follows native usage and physical construction. dart throw across 30 ft increments. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 407,
     "descriptionHash": "68c224d6f5aee241"
   },
@@ -37483,8 +36883,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "e26887822222c757"
   },
   "z9T4c1hXwOotsMCp:thrown": {
-    "profile": "thrown",
-    "reason": "thrown vial cue follows native usage and physical construction. vial throw across 20 ft increments. spirit native damage, permanent runes or always-on own-weapon damage rules supply the contact accents. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "bomb-vitality",
+    "reason": "thrown bomb-vitality cue follows native usage and physical construction. vial throw across 20 ft increments. spirit native damage, permanent runes or always-on own-weapon damage rules supply the contact accents. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 321,
     "descriptionHash": "a6a52d9f01881a27"
   },
@@ -37861,7 +37261,7 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "d9296901343f4596"
   },
   "cSGWhw4Wn6Z98tVK:ranged": {
-    "profile": "bow",
+    "profile": "crossbow",
     "reason": "Native bow construction selects its matching draw/release; unspecified bows keep a neutral bow cue.",
     "descriptionChars": 164,
     "descriptionHash": "147ad7a6e465541c"
@@ -37939,8 +37339,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "91a3ecd75b4c3785"
   },
   "RbM4HvPyrZ4YJxRc:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 141,
     "descriptionHash": "ab51454849b91321"
   },
@@ -38149,8 +37549,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "69f4c54c542fcba9"
   },
   "WCWdJmR5tYO7Aulb:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 1073,
     "descriptionHash": "ff8e2f67c2c157b8"
   },
@@ -38491,8 +37891,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "e62b1b6d06187245"
   },
   "Oiq3QgLrM4i3W5Hg:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 66,
     "descriptionHash": "6ff3c947bc788813"
   },
@@ -38659,14 +38059,14 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "58f8e71596ab7d63"
   },
   "6I4YJAQUbTAqbpsI:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 115,
     "descriptionHash": "37aa3e4436caed85"
   },
   "fOPWvucD6pY0dTbQ:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 491,
     "descriptionHash": "85c0a026f92e5084"
   },
@@ -39061,7 +38461,7 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "47207e6e454f05c7"
   },
   "djSCel13i1p8JeXv:thrown": {
-    "profile": "thrown",
+    "profile": "thrownDagger",
     "reason": "thrown thrownDagger cue follows native usage and physical construction. dart throw across 20 ft increments. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 215,
     "descriptionHash": "47207e6e454f05c7"
@@ -40543,7 +39943,7 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "4dc88bd7b7b327fe"
   },
   "Hh3F4DEP6aVulwQN:thrown": {
-    "profile": "thrown",
+    "profile": "thrownDagger",
     "reason": "thrown thrownDagger cue follows native usage and physical construction. dart throw across 10 ft increments. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 313,
     "descriptionHash": "4dc88bd7b7b327fe"
@@ -40621,8 +40021,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "8427460888dd82bc"
   },
   "yyZ3iD8IXMIrrWL1:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 307,
     "descriptionHash": "0e8f10b33a9eab14"
   },
@@ -40675,8 +40075,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "d0e8a5b6503f5344"
   },
   "kedgBVNDRAdmseRe:melee": {
-    "profile": "thrown",
-    "reason": "melee thrown cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "sword",
+    "reason": "melee sword cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 228,
     "descriptionHash": "994a8bb1cdf36cd7"
   },
@@ -40909,8 +40309,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "71720f32b8338c62"
   },
   "zO6Fvq7ghEXpJgJR:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. One-handed bludgeoning contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. One-handed bludgeoning contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 173,
     "descriptionHash": "c406a7a23cd2e2dc"
   },
@@ -40927,14 +40327,14 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "78d85d27081789ec"
   },
   "las0qvpBOfYp5yND:melee": {
-    "profile": "polearmBlade",
-    "reason": "melee polearmBlade cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "spear",
+    "reason": "melee spear cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 319,
     "descriptionHash": "0acff49a1f1bb61b"
   },
   "jpZWi0zkXM8rVYqW:melee": {
-    "profile": "polearmBlade",
-    "reason": "melee polearmBlade cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "spear",
+    "reason": "melee spear cue follows native usage and physical construction. One-handed slashing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 327,
     "descriptionHash": "f30b708f840f8b77"
   },
@@ -40951,8 +40351,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "804c62af227d0fed"
   },
   "r9vNDYH7CswAjoo0:melee": {
-    "profile": "spear",
-    "reason": "melee spear cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "axe",
+    "reason": "melee axe cue follows native usage and physical construction. Two-handed piercing contact. Physical weapon footage and restrained contact finish. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 910,
     "descriptionHash": "3e4b97903556bdb9"
   },
@@ -41035,8 +40435,8 @@ export const WEAPON_SOUND_DESIGNS = {
     "descriptionHash": "a451ce5e982250f8"
   },
   "EGhUorZhB7nV73Ev:thrown": {
-    "profile": "thrown",
-    "reason": "thrown vial cue follows native usage and physical construction. vial throw across 20 ft increments. unholy native damage, permanent runes or always-on own-weapon damage rules supply the contact accents. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
+    "profile": "bomb-void",
+    "reason": "thrown bomb-void cue follows native usage and physical construction. vial throw across 20 ft increments. unholy native damage, permanent runes or always-on own-weapon damage rules supply the contact accents. Native weapon data and full description inform the design; activated powers, target-dependent riders and critical-only effects are not inferred from a Strike.",
     "descriptionChars": 328,
     "descriptionHash": "b8ee83b102ce42c6"
   },

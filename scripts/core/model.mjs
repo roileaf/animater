@@ -102,6 +102,7 @@ export const MOTIONS = {
   slam: "Rise and slam down",
   drift: "Drift gently down",
   squash: "Squash on impact",
+  electrocute: "Electrocuted convulsion",
   collapse: "Collapse when dropped",
   fade: "Fade out",
   path: "Keyframed path",

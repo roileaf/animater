@@ -24,6 +24,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "catalogTokenFx" },
     { world: "catalogSceneFx" },
     { world: "effectLighting", local: "effectLightingLocal", extras: ["effectLightingDaylight", "effectLightAnimation"] },
+    { world: "screenTint", local: "screenTintLocal", extras: ["screenTintStrength"] },
     { world: "weaponScale" },
     { world: "weaponRuneFlourishes", when: PF2E },
     { world: "woundedLooks", local: "woundedLooksLocal" },

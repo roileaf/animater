@@ -60,6 +60,12 @@ test("energy damage flashes on the token; physical damage does not; knockouts fi
     assert.equal(hitRecipe(type).stages.find((s) => s.kind === "tokenfx").fxPreset, preset, type);
   assert.deepEqual(hit.stages.map((s) => s.kind), ["cast", "tokenfx"]);
   assert.match(death.name, /freezes and shatters/);
+  // Lightning (D&D) and electricity (PF2e) both jolt the body as the current runs through it.
+  for (const type of ["electricity", "lightning"]) {
+    const shock = validateRecipe(hitRecipe(type)).stages.find((s) => s.kind === "motion");
+    assert.equal(shock?.motion, "electrocute", type);
+    assert.equal(shock.subject, "source", "the damaged token itself");
+  }
 });
 
 test("a PF2e killing blow names its attacker, how it struck, and a critical", () => {

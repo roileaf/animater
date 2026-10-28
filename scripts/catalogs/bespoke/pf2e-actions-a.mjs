@@ -187,7 +187,7 @@ export default {
     cast('Amulet presented', ['ward.rune.yellow'], { stageId: 'amu', scale: 0.5, duration: 1100, offsetY: -0.3, offsetUnits: 'token' }),
     motion('brace', 'source', { delay: 0, duration: 900, intensity: 0.5 }),
     impact('Harm turned away', ['markers.shield_rampart.complete.03.yellow', 'markers.shield_rampart.complete.01.orange'], { after: 'amu', anchor: 'start', offset: 450, duration: 1700, scale: 0.9 }),
-  ], ab('shield')),
+  ], sp('shield')),
 
   'pf2e:8aIe57gXJ94mPpW4': design('Anadi Venom: you envenom your fangs for your next bite — a poison sign and a green drip (no Strike yet).', () => venom('Fangs envenomed'), sp('poison')),
 
@@ -429,7 +429,7 @@ export default {
     cast('Sparks off the chassis', ['impact.005.orange'], { stageId: 'cd', scale: 0.6, duration: 800 }),
     aura('Metal plating', ['aura_themed.01.outward.complete.metal.01.grey'], { after: 'cd', anchor: 'start', offset: 150, duration: 1500, scale: 0.9, opacity: 0.8 }),
     motion('brace', 'source', { delay: 0, duration: 800, intensity: 0.5 }),
-  ], ab('shield')),
+  ], ab('metal')),
 
   'pf2e:zs4ZMcH9oFSCgkBx': design('Claw Stance: you extend your claws and focus on single prey — claws flex and a feral red glow settles.', () =>
     buff('Claws extend', CLAW, 'Feral focus', ['on_token_buff.001.001.purplered'], { castO: { scale: 0.6 } })),
@@ -509,7 +509,7 @@ export default {
   ], SILENT),
 
   'pf2e:Cu7P7NB3XH67mi1N': design('Crash Against Me: your skin hardens to near-unbreakable metal-grey; you brace for the blow.', () =>
-    ward('Skin hardens', ['aura_themed.01.inward.complete.metal.01.grey'], ['aura_themed.01.orbit.complete.metal.01.grey'], { holdLabel: 'Unbreakable', holdO: { opacity: 0.6 } }), ab('shield')),
+    ward('Skin hardens', ['aura_themed.01.inward.complete.metal.01.grey'], ['aura_themed.01.orbit.complete.metal.01.grey'], { holdLabel: 'Unbreakable', holdO: { opacity: 0.6 } }), ab('metal')),
 
   'pf2e:Tj055UcNm6UEgtCg': design('Crawl: you drag yourself 5 feet along the ground while prone.', () => [
     motion('rush', 'source', { delay: 0, duration: 1800, distance: 0.7, motionRange: 'distance', intensity: 0.25 }),
