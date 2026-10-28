@@ -101,6 +101,8 @@ export const RIDER_SIGNALS = {
   "sneak-attack": ["dice:sneak-attack"],
   "precise-strike": ["modifier:precise-strike", "dice:finisher"],
   precision: ["dice:precision"],
+  // An investigator's Strike on a devised stratagem (DamageDice without a slug: the feature's own).
+  "strategic-strike": ["dice:strategic-strike"],
 };
 export function findRiders(event) {
   if (event?.type !== "damage" || !event.damageSlugs?.length) return [];

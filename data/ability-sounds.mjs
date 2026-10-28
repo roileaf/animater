@@ -58,6 +58,34 @@ export const ABILITY_SOUND_PROFILES = {
       ]
     }
   ],
+  "strategicStrike": [
+    {
+      "label": "Strategic strike",
+      "role": "contact",
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.abilities.investigator.strategic_strike.01.01",
+          "file": "modules/ggg/assets/sounds/Chasarooni/Design Combined Sounds/strategic-strike-a.ogg",
+          "nativeDuration": 4141,
+          "meanDb": -23.3,
+          "peakDb": -4.1,
+          "gain": 1,
+          "duration": 4141
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.abilities.investigator.strategic_strike.01.02",
+          "file": "modules/ggg/assets/sounds/Chasarooni/Design Combined Sounds/strategic-strike-b.ogg",
+          "nativeDuration": 4141,
+          "meanDb": -23.3,
+          "peakDb": -3.6,
+          "gain": 1,
+          "duration": 4141
+        }
+      ]
+    }
+  ],
   "naturalPierce": [
     {
       "label": "Natural piercing contact",

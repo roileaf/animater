@@ -8,30 +8,30 @@ export const PF2E_CLASS_FEATURE_SOURCE = {
   "catalog": "classfeatures",
   "selectionRevision": 9,
   "total": 935,
-  "count": 4,
-  "active": 4,
-  "excluded": 931,
-  "passive": 931,
+  "count": 5,
+  "active": 5,
+  "excluded": 930,
+  "passive": 930,
   "actionTypes": {
     "action": 1,
-    "passive": 3
+    "passive": 4
   },
   "actions": {
     "1": 1
   },
   "classifications": {
-    "damage-rider": 3,
+    "damage-rider": 4,
     "native-active": 1,
-    "native-passive": 651,
+    "native-passive": 650,
     "passive-embedded-activity-review": 58,
     "passive-grant": 222
   },
   "quality": {
-    "themed": 4
+    "themed": 5
   },
   "authored": 0,
   "motifs": 3,
-  "distinctCompositions": 4,
+  "distinctCompositions": 5,
   "reviewed": 0,
   "unreviewed": [
     {
@@ -49,20 +49,24 @@ export const PF2E_CLASS_FEATURE_SOURCE = {
     {
       "id": "j1JE61quDxdge4mg",
       "name": "Sneak Attack"
+    },
+    {
+      "id": "2Fe4YZCvAr9Yf6w7",
+      "name": "Strategic Strike"
     }
   ],
   "variety": {
     "distinctByEdition": {
-      "patreon": 4,
-      "free": 4
+      "patreon": 5,
+      "free": 5
     },
     "visiblyReframed": 0,
     "method": "Edition-specific effects-only comparison at 200ms / 0.1-square / 15-degree precision; IDs, names, labels and inactive tint ignored. Semantic activity cues get discrete visible framing when a shared basis collides."
   },
-  "descriptionChars": 1707,
+  "descriptionChars": 2093,
   "missingDescriptions": [],
   "mediaTiming": {
-    "probed": 22,
+    "probed": 26,
     "missing": []
   },
   "scope": "Native feat actionType action/reaction/free only. Passive grants and uncertain embedded exploration/downtime activities excluded.",
@@ -1093,6 +1097,242 @@ export const PF2E_CLASS_FEATURES = [
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
     "compositionHash": "1b75385389114d903394eb2f188e4b17eea943d132374bfc974bc613b8a31e92",
+    "sharedCount": 1
+  },
+  {
+    "id": "2Fe4YZCvAr9Yf6w7",
+    "name": "Strategic Strike",
+    "img": "systems/pf2e/icons/features/classes/strategic-strike.webp",
+    "slug": "strategic-strike",
+    "level": 1,
+    "actionType": "passive",
+    "actions": null,
+    "activation": "passive",
+    "category": "classfeature",
+    "classTraits": [
+      "investigator"
+    ],
+    "traits": [
+      "investigator"
+    ],
+    "rarity": "common",
+    "edition": "remaster",
+    "publication": "Pathfinder Player Core 2",
+    "path": "packs/pf2e/class-features/strategic-strike.json",
+    "sourceUrl": "https://github.com/foundryvtt/pf2e/blob/581c2bf2ca9734f4dd83f034fbcc93f8e4fd96eb/packs/pf2e/class-features/strategic-strike.json",
+    "sourceBlob": "cd668d9b42c76fb1748f7b5ebc88a07fd0bfb9ab",
+    "description": "<p>When you strike carefully and with forethought, you deal a telling blow. When making a Strike that adds your Intelligence modifier on your attack roll due to @UUID[Compendium.pf2e.classfeatures.Item.Devise a Stratagem]{Devising a Stratagem}, you deal an additional 1d6 precision damage.</p>\n<p>As your investigator level increases, so too does the deadliness of your strategic strike. Increase the number of dice by one at 5th, 9th, 13th, and 17th levels.</p>",
+    "plainDescription": "When you strike carefully and with forethought, you deal a telling blow. When making a Strike that adds your Intelligence modifier on your attack roll due to Devising a Stratagem, you deal an additional 1d6 precision damage. As your investigator level increases, so too does the deadliness of your strategic strike. Increase the number of dice by one at 5th, 9th, 13th, and 17th levels.",
+    "descriptionHash": "5ebb7cddfead1bafeee403d7e860bd80cc6c6b278047931ba21f40ff3660066b",
+    "classification": "damage-rider",
+    "classificationReason": "Passive class feature that adds damage to a Strike; plays as a rider on that damage roll.",
+    "trigger": "damage",
+    "rider": "strategic-strike",
+    "catalogKind": "classfeatures",
+    "itemType": "feat",
+    "recipeKind": "feature",
+    "uuid": "Compendium.pf2e.classfeatures.Item.2Fe4YZCvAr9Yf6w7",
+    "theme": "weapon",
+    "motif": "elementTarget",
+    "subject": "targets",
+    "quality": "themed",
+    "authored": false,
+    "rationale": "Description directly damages affected creatures; localized target effects, no invented projectile.",
+    "evidence": [
+      "Description directly damages affected creatures; localized target effects, no invented projectile."
+    ],
+    "descriptionChars": 386,
+    "notes": [
+      "Plays when this feat is sent to chat; generic Strike/skill rolls are not assumed to use it.",
+      "Target the affected creature(s) before sending the feat to chat.",
+      "Visual cue only; success, conditions, HP, resources and token positions remain PF2e/player decisions."
+    ],
+    "review": {
+      "method": "full-description semantic rules",
+      "fullDescriptionRead": false,
+      "descriptionHash": "5ebb7cddfead1bafeee403d7e860bd80cc6c6b278047931ba21f40ff3660066b"
+    },
+    "assets": {
+      "cast": [
+        "jb2a.glint.purple.few",
+        "jb2a.glint.yellow.few"
+      ],
+      "bolt": [
+        "jb2a.sword.throw.blue",
+        "jb2a.ranged.card.01.projectile.01.blue"
+      ],
+      "hit": [
+        "jb2a.impact.005.white",
+        "jb2a.impact.005.orange"
+      ],
+      "aura": [
+        "jb2a.glint.yellow.few"
+      ],
+      "area": [
+        "jb2a.lightning_strike.purple",
+        "jb2a.cloud_of_daggers.daggers.purple"
+      ]
+    },
+    "selections": [
+      {
+        "edition": "patreon",
+        "slot": "cast",
+        "key": "jb2a.glint.purple.few",
+        "geometry": "radial",
+        "score": 69,
+        "matchedHints": [
+          "glint"
+        ],
+        "nameMatches": [],
+        "colorMatch": true,
+        "reason": "geometry-compatible family hint"
+      },
+      {
+        "edition": "free",
+        "slot": "cast",
+        "key": "jb2a.glint.yellow.few",
+        "geometry": "radial",
+        "score": 60,
+        "matchedHints": [
+          "glint"
+        ],
+        "nameMatches": [],
+        "colorMatch": false,
+        "reason": "geometry-compatible family hint"
+      },
+      {
+        "edition": "patreon",
+        "slot": "bolt",
+        "key": "jb2a.sword.throw.blue",
+        "geometry": "missile",
+        "score": 22,
+        "matchedHints": [
+          "sword"
+        ],
+        "nameMatches": [],
+        "colorMatch": false,
+        "reason": "geometry-compatible family hint"
+      },
+      {
+        "edition": "free",
+        "slot": "bolt",
+        "key": "jb2a.ranged.card.01.projectile.01.blue",
+        "geometry": "missile",
+        "score": 10,
+        "matchedHints": [],
+        "nameMatches": [],
+        "colorMatch": false,
+        "reason": "geometry-compatible semantic inventory match"
+      },
+      {
+        "edition": "patreon",
+        "slot": "hit",
+        "key": "jb2a.impact.005.white",
+        "geometry": "radial",
+        "reason": "non-holy contact; holy smite art reserved for holy fiction"
+      },
+      {
+        "edition": "free",
+        "slot": "hit",
+        "key": "jb2a.impact.005.orange",
+        "geometry": "radial",
+        "reason": "non-holy contact; holy smite art reserved for holy fiction"
+      },
+      {
+        "edition": "patreon",
+        "slot": "aura",
+        "key": "jb2a.glint.yellow.few",
+        "geometry": "radial",
+        "reason": "no conjured spectral weapon in a mundane maneuver"
+      },
+      {
+        "edition": "free",
+        "slot": "aura",
+        "key": "jb2a.glint.yellow.few",
+        "geometry": "radial",
+        "reason": "no conjured spectral weapon in a mundane maneuver"
+      },
+      {
+        "edition": "patreon",
+        "slot": "area",
+        "key": "jb2a.lightning_strike.purple",
+        "geometry": "radial",
+        "score": 37,
+        "matchedHints": [],
+        "nameMatches": [
+          "strike"
+        ],
+        "colorMatch": true,
+        "reason": "geometry-compatible semantic inventory match"
+      },
+      {
+        "edition": "free",
+        "slot": "area",
+        "key": "jb2a.cloud_of_daggers.daggers.purple",
+        "geometry": "radial",
+        "score": 34,
+        "matchedHints": [
+          "cloud_of_daggers"
+        ],
+        "nameMatches": [],
+        "colorMatch": true,
+        "reason": "geometry-compatible family hint"
+      }
+    ],
+    "mediaTiming": {
+      "jb2a.glint.purple.few": {
+        "duration": 4625,
+        "baked": false,
+        "melee": false
+      },
+      "jb2a.glint.yellow.few": {
+        "duration": 4625,
+        "baked": false,
+        "melee": false
+      },
+      "jb2a.sword.throw.blue": {
+        "duration": 2367,
+        "baked": true,
+        "contact": 1100,
+        "contactMethod": "alpha-weighted-estimate",
+        "melee": false
+      },
+      "jb2a.ranged.card.01.projectile.01.blue": {
+        "duration": 3233,
+        "baked": true,
+        "contact": 450,
+        "contactMethod": "alpha-weighted-estimate",
+        "melee": false
+      },
+      "jb2a.impact.005.white": {
+        "duration": 833,
+        "baked": false,
+        "melee": false
+      },
+      "jb2a.impact.005.orange": {
+        "duration": 833,
+        "baked": false,
+        "melee": false
+      },
+      "jb2a.lightning_strike.purple": {
+        "duration": 2000,
+        "baked": false,
+        "melee": false
+      },
+      "jb2a.cloud_of_daggers.daggers.purple": {
+        "duration": 5000,
+        "baked": false,
+        "melee": false
+      }
+    },
+    "framing": {
+      "entrance": "expanding",
+      "frame": 0,
+      "size": 1,
+      "pause": 0
+    },
+    "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
+    "compositionHash": "e6a23f440ab9ac6a6dd94eb4084794a603520cd6adbc484bda7c383ec23a96b0",
     "sharedCount": 1
   }
 ];

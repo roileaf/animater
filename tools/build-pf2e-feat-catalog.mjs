@@ -29,7 +29,7 @@ const catalogName = process.argv.find(a => a.startsWith("--catalog="))?.split("=
 const CFG = CATALOGS[catalogName];
 if (!CFG) throw Error(`Unknown catalog ${catalogName}; use feats, classfeatures or actions.`);
 // Passive class features that add damage to a Strike play as damage-roll riders.
-const RIDERS = { "sneak-attack": "sneak-attack", "precise-strike": "precise-strike", "precision": "precision", "flurry-of-blows-precision": "precision", "vicious-swing": "vicious-swing" };
+const RIDERS = { "sneak-attack": "sneak-attack", "precise-strike": "precise-strike", "precision": "precision", "flurry-of-blows-precision": "precision", "vicious-swing": "vicious-swing", "strategic-strike": "strategic-strike" };
 // Native compendium ids from the PF2e system manifest (packs/actions → actionspf2e, etc.).
 const NATIVE_PACKS = { actions: "actionspf2e", "class-features": "classfeatures", "ancestry-features": "ancestryfeatures" };
 const nativeUuid = (path,id) => { const pack = NATIVE_PACKS[path.split("/").at(path.startsWith("packs/pf2e/") ? 2 : 1)]; if (!pack) throw Error(`No native pack for ${path}.`); return `Compendium.pf2e.${pack}.Item.${id}`; };

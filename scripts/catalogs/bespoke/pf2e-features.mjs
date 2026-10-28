@@ -23,6 +23,10 @@ export default {
   'pf2e:u6cBjqz2fiRBadBt': design("Precision: the hunter's eye finds the prey's weak point — a green precision flash on the target, layered on the weapon's own Strike.", () =>
     rider('Weak point', ['sneak_attack.dark_green', 'sneak_attack.dark_green'], { scale: 0.6 }), { sound: null }),
 
+  // GGG 0.2.3's own Strategic Strike sound: the one rider that has a sound made for it.
+  'pf2e:2Fe4YZCvAr9Yf6w7': design("Strategic Strike: the blow the investigator foresaw lands exactly where planned — a violet precision flash on the target, layered on the weapon's own Strike.", () =>
+    rider('Strategic strike', ['sneak_attack.dark_purple', 'sneak_attack.yellow'], { scale: 0.6 }), { sound: 'strategicStrike', soundNamespace: 'ability' }),
+
   'pf2e:j1JE61quDxdge4mg': design("Sneak Attack: the off-guard foe takes a vicious precision hit — a sharp sneak-attack flash on the target, layered on the weapon's own Strike.", () =>
     rider('Sneak attack', ['sneak_attack.dark_red', 'sneak_attack.dark_green'], { scale: 0.7 }), { sound: null }),
 };

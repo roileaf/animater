@@ -12,6 +12,8 @@ const {entries,packs}=await soundInventory();
 const cue=(label,role,ggg,psfx='',files='')=>({label,role,selectors:{ggg,psfx,soundfxlibrary:files}});
 const profiles={
  allyHeave:[cue('Physical ally lift and heave','cast','^ggg-sfx\\.ranged\\.thrown\\.general','^psfx\\.weapon-swooshes\\.heavy\\.v1\\.group01')],
+ // The investigator's Strike on a devised stratagem, GGG 0.2.3. Only GGG has one: no generic hit doubling the weapon's own.
+ strategicStrike:[cue('Strategic strike','contact','^ggg-sfx\\.abilities\\.investigator\\.strategic_strike')],
  naturalPierce:[cue('Natural piercing contact','contact','^ggg-sfx\\.melee\\.claws\\.strike\\.stab\\.01','','Combat/Single/Melee Hit/')],
  physicalToss:[cue('Thrown release','release','^ggg-sfx\\.ranged\\.thrown\\.general','^psfx\\.weapon-swooshes\\.light\\.v1\\.group01'),cue('Thrown-weapon contact','contact','^ggg-sfx\\.ranged\\.thrown\\.stone\\.impact','','Combat/Single/Throw Hit')],
  sword:[cue('Blade contact','contact','^ggg-sfx\\.melee\\.blade\\.strike\\.shortsword\\.01','^psfx\\.weapon-attacks\\.sword','Combat/Single/Melee Hit/')],

@@ -79,6 +79,12 @@ test("damage roll with Sneak Attack dice plays the rider beside the weapon recip
   assert.deepEqual(findRiders({ type: "damage", damageSlugs: ["modifier:precise-strike"] }).map((e) => e.slug), ["precise-strike"]);
   assert.deepEqual(findRiders({ type: "damage", damageSlugs: ["dice:precision"] }).map((e) => e.slug), ["precision"]);
   assert.deepEqual(findRiders({ type: "attack", damageSlugs: ["dice:sneak-attack"] }), []);
+  // Strategic Strike (the investigator's stratagem damage) plays with GGG's own Strategic Strike sound.
+  const strategic = findRiders({ type: "damage", damageSlugs: ["dice:strategic-strike"] });
+  assert.deepEqual(strategic.map((e) => e.slug), ["strategic-strike"]);
+  const sounds = { resolve: (c) => ({ ...c, duration: c.duration ?? 1000 }) };
+  const cue = PF2E_FEATURE_CATALOG.recipe(strategic[0], {}, sounds).stages.find((s) => s.kind === "sound");
+  assert.match(cue?.soundFile ?? "", /^modules\/ggg\/.*strategic-strike-[ab]\.ogg$/);
   assert.deepEqual(riderRecipes(event, {}), [], "rider needs its catalog enabled");
   const state = PF2E_FEATURE_CATALOG.use({}, sneak.id);
   assert.deepEqual(riderRecipes(event, state).map((r) => r.id), [`pf2e-feature-${sneak.id}`]);

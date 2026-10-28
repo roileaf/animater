@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.22 (2026-10-28)
+
+- **Strategic Strike has its own sound.** An investigator's Strike on a devised stratagem now plays a violet precision flash on the target with GGG's new Strategic Strike sound (GGG 0.2.3), on top of the weapon's own Strike. Turn it on in the Features catalog, like Sneak Attack.
+
 ## 2.2.21 (2026-10-28)
 
 - **Sustaining with PF2e Combater keeps the spell's animation.** Combater's Sustain re-posts the spell card. Animater used to read that as a new cast and replay it; now Spiritual Armament's hovering weapon (and any sustained lasting animation) simply stays, counted as sustained this round. Needs PF2e Combater 2.6.7.
