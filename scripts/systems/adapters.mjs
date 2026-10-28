@@ -1,6 +1,6 @@
 import { dnd5eAttackOutcome, dnd5eTargetOutcomes, midiTargetOutcomes, HIDDEN } from './outcome.mjs';
 import { twoeEventElement, dnd5eEventElement } from "../catalogs/shared/element-choice.mjs";
-import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason, hidesResult } from "../core/privacy.mjs";
+import { rollPrivacy, modePrivacy, stricter, hidden, hiddenReason, hidesResult, audienceOf } from "../core/privacy.mjs";
 import { strikeItemOf } from "../engines/finishers/strike-finishers.mjs";
 import { rerollChangesNothing, rerollKind } from "./reroll.mjs";
 // Normalize system events without changing rolls, items, HP, or system state.
@@ -32,8 +32,8 @@ export function twoeEvent(message, userId, systemId='pf2e') {
   // A rule-element strike's damage (Tiger Claw) names its strike, not the feat granting it.
   const item = maneuver ?? strikeItemOf(message, systemId) ?? originSpell(message.actor, flags?.origin);
   // See privacy.mjs: a GM's private roll plays without its outcome; hidden ones are a Skipped row.
-  const privacy = rollPrivacy(message), gmPrivate = privacy === "gm";
-  if (hidden(privacy)) return { skipped: hiddenReason(item?.name ?? flags?.origin?.name, privacy) };
+  const privacy = rollPrivacy(message), gmPrivate = privacy === "gm", audience = audienceOf(privacy, message, { userId });
+  if (hidden(privacy) && !audience) return { skipped: hiddenReason(item?.name ?? flags?.origin?.name, privacy) };
   const options = context?.options ?? [];
   // Enabled damage dice/modifiers identify riders such as Sneak Attack (flags.<system>.dice/.modifiers).
   const live = rows => (Array.isArray(rows) ? rows : []).filter(r => r?.slug && r.enabled !== false && r.ignored !== true);
@@ -71,6 +71,7 @@ export function twoeEvent(message, userId, systemId='pf2e') {
     // A GM's private roll shows its result unless the world hides it: then an attack plays neutrally (hidden).
     outcome: hidesResult(privacy) ? (type === "attack" ? HIDDEN : undefined) : context?.outcome,
     ...(gmPrivate ? { private: true } : {}),
+    ...(audience ? { audience } : {}),
     ...(rerollKind(message, systemId) ? { reroll: rerollKind(message, systemId) } : {}),
   };
 }
@@ -130,7 +131,8 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {}, verdict = 
   // the roller's own client, so without a message author the roller is this user.
   const isGM = (message?.author ?? message?.user)?.isGM ?? globalThis.game?.user?.isGM;
   const privacy = rolls.reduce((p, r) => stricter(p, modePrivacy(r.options?.rollMode, isGM)), rollPrivacy(message, { isGM }));
-  if (hidden(privacy)) return { skipped: hiddenReason(subject.item.name ?? subject.name, privacy) };
+  const audience = audienceOf(privacy, message);
+  if (hidden(privacy) && !audience) return { skipped: hiddenReason(subject.item.name ?? subject.name, privacy) };
   const gmPrivate = privacy === "gm";
   return {
     type,
@@ -154,6 +156,7 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {}, verdict = 
     // Each target's own hit or miss, for sounds that differ per target (what each blow lands on).
     ...(!hidesResult(privacy) && type === "attack" ? { targetOutcomes: midi ?? dnd5eTargetOutcomes(rolls, targets) } : {}),
     ...(gmPrivate ? { private: true } : {}),
+    ...(audience ? { audience } : {}),
     rolls,
   };
 }

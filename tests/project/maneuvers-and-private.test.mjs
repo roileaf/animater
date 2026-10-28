@@ -69,21 +69,25 @@ test("a skill check that names no action stays out of dispatch", () => {
   assert.equal(twoeEvent(check(["action:shove"], { flags: { pf2e: { context: { type: "flat-check", options: ["action:shove"] } } } }), "p"), null);
 });
 
-test("a GM's private maneuver plays without its outcome; a player's private one is a Skipped row", () => {
+test("a GM's private maneuver plays without its outcome; a player's private one plays for the player and GM", () => {
   const e = twoeEvent(check(["action:trip"], { author: gm, whisper: ["gm"] }), "gm");
   assert.equal(e.item.name, "Trip");
   assert.equal(e.outcome, undefined);
   assert.equal(e.private, true);
-  const hidden = twoeEvent(check(["action:trip"], { whisper: ["gm"] }), "p");
-  assert.match(hidden.skipped, /Trip: a private roll/);
+  assert.equal(e.audience, undefined, "a GM's private roll plays for everyone");
+  const mine = twoeEvent(check(["action:trip"], { whisper: ["gm"] }), "p");
+  assert.equal(mine.item.name, "Trip");
+  assert.deepEqual(mine.audience, ["p", "gm"]);
+  assert.equal(mine.outcome, "success", "those who see the roll see its result");
   assert.match(twoeEvent(check(["action:trip"], { blind: true, author: gm }), "gm").skipped, /blind roll/);
   assert.equal(twoeEvent(check(["action:trip"], { whisper: ["gm"] }), "someone-else"), null, "other clients stay silent");
 });
 
-test("PF2e strikes: player-private and blind rolls are Skipped rows, routine non-events stay silent", () => {
+test("PF2e strikes: player-private rolls play for player and GM, blind rolls are Skipped rows, routine non-events stay silent", () => {
   const strike = (over = {}) => ({ id: "m", author: player, isRoll: true, speaker: {}, actor: {}, item: { type: "weapon", name: "Shortsword", system: {} },
     flags: { pf2e: { context: { type: "attack-roll", outcome: "success", options: [] }, origin: { uuid: "x" } } }, ...over });
-  assert.match(twoeEvent(strike({ whisper: ["gm"] }), "p").skipped, /^Shortsword: a private roll/);
+  assert.deepEqual(twoeEvent(strike({ whisper: ["gm"] }), "p").audience, ["p", "gm"]);
+  assert.deepEqual(twoeEvent(strike({ whisper: ["p"] }), "p").audience, ["p"], "a Self Roll plays for the roller alone");
   assert.match(twoeEvent(strike({ blind: true }), "p").skipped, /blind roll/);
   const flat = strike({ whisper: ["gm"], flags: { pf2e: { context: { type: "flat-check", options: [] } } } });
   assert.equal(twoeEvent(flat, "p"), null, "a private flat check is not worth a row");
@@ -120,7 +124,7 @@ test("D&D 5e: a GM's private roll animates without its outcome", () => {
   assert.equal(e.private, true);
   assert.equal(dnd5eEvent("attack", subject, { rolls: rolls("publicroll") }).outcome, "criticalSuccess");
   const mine = [{ total: 25, options: { rollMode: "gmroll" }, parent: { id: "m", author: player, whisper: ["gm"] } }];
-  assert.match(dnd5eEvent("attack", subject, { rolls: mine }).skipped, /Scimitar: a private roll/);
+  assert.deepEqual(dnd5eEvent("attack", subject, { rolls: mine }).audience, ["p", "gm"], "a player's private roll plays for the player and GM");
   const blind = [{ total: 25, options: { rollMode: "blindroll" }, parent: { id: "m", author: gm, blind: true, whisper: ["gm"] } }];
   assert.match(dnd5eEvent("attack", subject, { rolls: blind }).skipped, /blind roll/);
 });

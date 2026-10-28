@@ -133,9 +133,10 @@ export function flashScreens(host) {
     return askManual(screen, options.combat ?? game.combat).then((manual) => send(screen, options, manual))
       .catch((error) => host.trace("Blocked", `Flash screen: ${error.message}`));
   }
-  function send(screen, { everyone = false, combat, extra } = {}, manual = null) {
+  function send(screen, { everyone = false, combat, extra, audience } = {}, manual = null) {
     const v = { ...vars(combat, extra), ...(manual ? { manual } : {}) };
-    if (everyone) game.socket.emit(`module.${ID}`, { type: "flash", sender: host.clientId, screen, vars: v });
+    // A player's private roll: only its audience (main.mjs drops the message elsewhere).
+    if (everyone) game.socket.emit(`module.${ID}`, { type: "flash", sender: host.clientId, screen, vars: v, ...(Array.isArray(audience) ? { audience } : {}) });
     void show(screen, v).catch((error) => host.trace("Blocked", `Flash screen: ${error.message}`));
   }
   const activeGM = () => game.user.isGM && (game.users.activeGM ? game.users.activeGM.isSelf : true);
@@ -339,7 +340,7 @@ export function flashScreens(host) {
     const token = context.source?.document ?? context.source;
     // Who is acting, for a cut-in portrait.
     const who = actor || token ? { name: context.source?.name ?? actor?.name ?? "", img: token?.texture?.src ?? actor?.prototypeToken?.texture?.src ?? "", portrait: actor?.img ?? "" } : null;
-    play(screen, { everyone: true, extra: { name: context.source?.name ?? actor?.name ?? "", action: context.item?.name ?? recipe.name, ...(who ? { actor: who } : {}) } });
+    play(screen, { everyone: true, audience: context.audience, extra: { name: context.source?.name ?? actor?.name ?? "", action: context.item?.name ?? recipe.name, ...(who ? { actor: who } : {}) } });
     await new Promise((r) => setTimeout(r, Math.max(0, screen.duration - 400)));
   }
   // Imports in 1.6.3 and earlier could add a second copy of a screen under a new id: the active GM drops the copies

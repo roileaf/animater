@@ -1754,6 +1754,8 @@ let playUseFinishers = async () => {};
 // Items whose event came while nothing plays automatically: logged once a minute each, so the
 // Activity page can say why instead of staying silent.
 const offNoted = new Map();
+// A private play's audience, for the socket messages that carry its motions and token filters.
+const audienceField = (context) => (Array.isArray(context?.audience) ? { audience: context.audience } : {});
 async function dispatch(event) {
   if (!event) return;
   if (!(acceptsEvents() || hasOwnApproved())) {
@@ -1770,8 +1772,9 @@ async function dispatch(event) {
   try {
     await afterDice(event);
     const enriched = await enrich(event);
-    // A maneuver's check carries its finishers on its own (checkFinisherEvent): never twice.
-    await Promise.all([runtime.dispatch(enriched), enriched?.skillCheck ? null : playUseFinishers(enriched)]);
+    // A maneuver's check carries its finishers on its own (checkFinisherEvent): never twice. A player's private
+    // roll plays for its audience only, and finishers move tokens the whole table sees: none.
+    await Promise.all([runtime.dispatch(enriched), enriched?.skillCheck || enriched?.audience ? null : playUseFinishers(enriched)]);
   } catch (error) {
     runtime.trace("Blocked", error.message);
   }
@@ -3739,6 +3742,8 @@ Hooks.once("ready", () => {
     trace:(status,detail)=>runtime?.trace(status,detail)});
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
+    // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
+    if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
     if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
@@ -3877,7 +3882,7 @@ Hooks.once("ready", () => {
         const portable={...stage,afterStage:''};
         for(const key of ['destination','origin','endpoint','motionTarget','landing'])delete portable[key];
         game.socket.emit(`module.${ID}`,{type:'tokenfx',sender:clientId,userId:game.user.id,
-          sceneId:canvas.scene?.id,sourceId:context.source.id,tokenId:stage.destination.id,session,stage:portable});
+          sceneId:canvas.scene?.id,sourceId:context.source.id,tokenId:stage.destination.id,session,stage:portable,...audienceField(context)});
       }
       return optionalFx.play(stage,{session,userId:game.user.id,preview,template:context.template??null});
     },
@@ -3952,6 +3957,7 @@ Hooks.once("ready", () => {
         tokenId: stage.destination.id,
         targetId: stage.motionTarget?.id ?? context.targets?.[0]?.id,
         stage,
+        ...audienceField(context),
       };
       // Send only portable stage settings; placeables contain cyclic references.
       data.stage = { ...stage };

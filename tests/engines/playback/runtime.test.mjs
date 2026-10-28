@@ -813,6 +813,22 @@ test("players who turned Animater off hear no sounds either", async () => {
   }
 });
 
+test("a player's private roll plays its layers and sounds only for its audience", async () => {
+  const recipe = validateRecipe({ id: "s", name: "S", trigger: "manual", stages: [{ stageId: "a", kind: "impact", assets: ["jb2a.impact.001.orange"] }, { stageId: "b", kind: "sound", soundFile: "hit.ogg", assets: [] }] });
+  const context = { source: { center: { x: 0, y: 0 } }, targets: [{ center: { x: 100, y: 0 } }], audience: ["p", "gm"] };
+  for (const [everyone, expected] of [[null, ["p", "gm"]], [["gm", "p2"], ["gm"]]]) {
+    const { runtime, host, calls } = fixture();
+    host.soundUsers = () => everyone;
+    host.usersFor = () => everyone;
+    runtime.catalog = [{ key: "jb2a.impact.001.orange" }];
+    runtime.wait = async () => true;
+    await runtime.play(recipe, context);
+    const sent = calls.filter((c) => c[0] === "forUsers").map((c) => c[1]);
+    assert.equal(sent.length, 2, "the layer and the sound");
+    for (const users of sent) assert.deepEqual(users, expected, "quality and Animater-off filters still apply");
+  }
+});
+
 test("sound data carries scene and level", async () => {
   const recipe = validateRecipe({ id: "s", name: "S", trigger: "manual", stages: [{ stageId: "b", kind: "sound", soundFile: "hit.ogg", subject: "source", assets: [] }] });
   const dataOf = async (source) => {

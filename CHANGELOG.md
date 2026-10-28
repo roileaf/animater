@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.18 (2026-10-28)
+
+- **Players' private rolls animate for the player and GM.** An attack, spell or action a player rolls in Private GM Roll mode (Spiritual Armament, a Strike) played nothing at all, not even for the GM. It now plays for those who can read its chat message: the roller and the GM, or the roller alone for a Self Roll, with its real result. Other players see and hear nothing, and finishers that would move tokens stay off. Blind rolls stay hidden. PF2e, SF2e and D&D 5e.
+
 ## 2.2.17 (2026-10-28)
 
 - **Shield's bubble sits over the token (PF2e).** The lasting Spell Effect: Shield bubble was drawn under round token art, so only a faint rim showed past the ring. It now encloses the creature, faint enough to keep the art readable.

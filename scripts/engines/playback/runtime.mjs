@@ -447,6 +447,9 @@ export class AnimaterRuntime {
     let distortions = null;
     // Camera shakes (anchor stage -> shock) while map distortion is off; on, its warp tags serve the shake.
     let shakes = null;
+    // A player's private roll plays only for its audience (core/privacy.mjs audienceOf); null: everyone.
+    const audience = preview || !Array.isArray(context.audience) ? null : context.audience;
+    const heard = (users) => (!audience ? users : (users ?? audience).filter((id) => audience.includes(id)));
     const build = (stages) => {
       const sequence = this.host.sequence();
       // Copies of one stage start a few ms apart on the table, never in the preview.
@@ -457,7 +460,7 @@ export class AnimaterRuntime {
         if (s.kind === "motion" || OPTIONAL_FX_KINDS.has(s.kind)) continue;
         if (s.kind === "sound") {
           // Players who turned Animater off hear nothing either.
-          const listeners = preview ? null : this.host.soundUsers?.() ?? null;
+          const listeners = preview ? null : heard(this.host.soundUsers?.() ?? null);
           if (listeners && !listeners.length) continue;
           const sound = sequence
             .sound()
@@ -480,7 +483,7 @@ export class AnimaterRuntime {
         }
         // Optional layers only reach viewers whose quality setting allows them.
         const tier = tiers.get(s.stageId) ?? 0;
-        const users = preview ? null : this.host.usersFor?.(tier) ?? null;
+        const users = preview ? null : heard(this.host.usersFor?.(tier) ?? null);
         if (users && !users.length) continue;
         // A flight from a spot to itself (the attacker on its target, a finisher's mover struck by itself) has no
         // length: Sequencer refuses to stretch it, so it is left out.

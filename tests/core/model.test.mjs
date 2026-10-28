@@ -134,7 +134,7 @@ test("PF2e adapter separates events and suppresses private, remote, reroll messa
   assert.equal(pf2eEvent(nativeTarget, "u").targetUuid, "Scene.s.Token.target");
   assert.equal(pf2eEvent(msg, "other"), null);
   assert.match(pf2eEvent({ ...msg, blind: true }, "u").skipped, /blind roll/);
-  assert.match(pf2eEvent({ ...msg, whisper: ["g"] }, "u").skipped, /private roll/);
+  assert.deepEqual(pf2eEvent({ ...msg, whisper: ["g"] }, "u").audience, ["u", "g"], "a private roll plays for those who can read it");
   // A reroll (a Hero Point) plays with its new result; one that kept the old roll changed nothing and stays quiet.
   const rerolled = (content) => ({ ...msg, content, flags: { ...msg.flags, pf2e: { ...msg.flags.pf2e, context: { ...msg.flags.pf2e.context, isReroll: true } } } });
   assert.equal(pf2eEvent(rerolled('<div class="reroll-discard">old</div><div class="reroll-second ">new</div>'), "u").type, pf2eEvent(msg, "u").type);
