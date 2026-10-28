@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.17 (2026-10-28)
+
+- **Shield's bubble sits over the token (PF2e).** The lasting Spell Effect: Shield bubble was drawn under round token art, so only a faint rim showed past the ring. It now encloses the creature, faint enough to keep the art readable.
+
 ## 2.2.16 (2026-10-28)
 
 - **Heroic Inspiration glows (D&D 5e).** A character given Heroic Inspiration glows gold for a moment on its tokens, and flares bright when it spends it. The world setting Heroic Inspiration glow and each player's "on my screen" switch turn it off.

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PF2E_EFFECTS as ALL_EFFECTS,PF2E_CONDITIONS,stateRecipe,resolveStateRecipe,useStateEntry} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
+import {coversToken} from '../../../scripts/catalogs/shared/state-presentation.mjs';
 // PF2e's own effects; the module auras (module-auras.mjs) have tests of their own.
 const PF2E_EFFECTS=ALL_EFFECTS.filter(e=>!e.modules);
 const entry=name=>{const row=PF2E_EFFECTS.find(e=>e.name===name);assert.ok(row,name);return row;};
@@ -49,4 +50,9 @@ test('resistance wards take the damage type look; effects of one theme are told 
  // The one exception: Shield's lasting look is its own cast's force bubble staying up.
  assert.ok(!PF2E_EFFECTS.some(e=>e.slug!=='spell-effect-shield'&&/shield\.01\./.test(e.editions.patreon.key)),'no hex-dome wards on tokens');
  assert.equal(entry('Spell Effect: Shield').editions.patreon.key,'jb2a.shield.01.loop.blue');
+ // It encloses the creature: drawn over the token art, never hidden under round art like other domes.
+ const shield=stateRecipe(entry('Spell Effect: Shield'),{}).stages[0];
+ assert.equal(shield.above,true);
+ assert.equal(coversToken(shield),false);
+ assert.equal(coversToken({...shield,above:false}),true,'without above, a dome goes under the token');
 });

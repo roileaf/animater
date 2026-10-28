@@ -33,9 +33,9 @@ export const EFFECT_PLANS={
  'spell-effect-entropic-wheel':plan('fire','curated',
   art('fire_ring.500px','fire',{scale:1.2,opacity:.75,below:true,playbackRate:.7,tracks:[track('rotation',0,360,7000,false)]}),
   art('aura_themed.01.orbit.loop.cold.01','frost',{scale:1.35,opacity:.85,playbackRate:.7,tracks:[track('rotation',0,-360,7000,false)]})),
- // The cast's force bubble stays up while the spell lasts: its loop in blue (the cast is purple), on the ring and
- // faint, so the token reads as inside a ward rather than behind a wall.
- 'spell-effect-shield':plan('shield','curated',art('shield.01.loop','blue',{scale:1.15,opacity:.55})),
+ // The cast's force bubble stays up while the spell lasts: its loop in blue (the cast is purple), on the ring,
+ // over the token and faint, so the token reads as inside a ward rather than behind a wall.
+ 'spell-effect-shield':plan('shield','curated',art('shield.01.loop','blue',{scale:1.15,opacity:.55,above:true})),
 };
 // Afflictions read as debuffs at a glance (Frightened is the reference): a compact,
 // dim orbit marker or a low, heavy overlay in desaturated colour, with drooping,
