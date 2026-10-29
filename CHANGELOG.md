@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.23 (2026-10-29)
+
+- **Rings hug Small and Tiny creatures.** Effects on a token with Foundry's dynamic ring are sized to the creature as drawn (texture scale ÷ ring subject scale), not its bare square. Shield's bubble and other lasting rings no longer stand off a Small or Tiny creature with a gap; Medium tokens are unchanged.
+
 ## 2.2.22 (2026-10-28)
 
 - **Strategic Strike has its own sound.** An investigator's Strike on a devised stratagem now plays a violet precision flash on the target with GGG's new Strategic Strike sound (GGG 0.2.3), on top of the weapon's own Strike. Turn it on in the Features catalog, like Sneak Attack.

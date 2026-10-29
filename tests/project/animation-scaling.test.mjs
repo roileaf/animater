@@ -326,6 +326,14 @@ test("portrait art and footprint fallbacks remain uniform and finite", () => {
   assert.equal(tokenFootprint({ document: { width: 2, height: 1 } }, 100), 200);
   assert.equal(tokenFootprint({ width: 2, height: 1 }, 55), 110);
   assert.equal(tokenFootprint({ w: NaN, h: -1 }, 55), 55);
+  // Dynamic-ring tokens (measured in Foundry): the creature is drawn at texture scale ÷ subject scale.
+  const ringed = (w, scale, subject = 2) => ({ w, h: w, document: { width: w / 100, texture: { scaleX: scale, scaleY: scale }, ring: { enabled: true, subject: { scale: subject } } } });
+  assert.equal(tokenFootprint(ringed(100, 2), 100), 100, "Medium fills its square");
+  assert.equal(tokenFootprint(ringed(100, 1.6), 100), 80, "Small is drawn at 0.8");
+  assert.equal(tokenFootprint(ringed(50, 1.6), 100), 40, "Tiny half square at 0.8");
+  assert.equal(tokenFootprint(ringed(100, -1.6), 100), 80, "mirrored");
+  // Without a ring, texture oversizing does not grow effects.
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { texture: { scaleX: 1.6 }, ring: { enabled: false, subject: { scale: 2 } } } }, 100), 100);
   assert.deepEqual(artworkGeometry(55, undefined, undefined), {
     width: 55,
     height: 55,

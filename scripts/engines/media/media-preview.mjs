@@ -19,15 +19,20 @@ export function beamGeometry(distance, width = 1000, height = 400, template) {
 
 // Art follows the token's occupied footprint. Texture mirroring/oversizing
 // belongs to copied token sprites, not rings or impacts placed around them.
+// A dynamic-ring token draws its creature at texture scale ÷ subject scale of the footprint: Medium 2 ÷ 2 fills
+// its square, Small 1.6 ÷ 2 is 0.8 of it, and a ring sized to the bare square stands off the creature with a gap.
 export function tokenFootprint(token, grid = 100) {
   const pixel = (value, squares) =>
     Number(value) > 0
       ? Number(value)
       : (Number(squares) > 0 ? Number(squares) : 1) * grid;
+  const doc = token?.document ?? token;
+  const texture = Math.abs(Number(doc?.texture?.scaleX)), subject = Number(doc?.ring?.subject?.scale);
+  const drawn = doc?.ring?.enabled && texture > 0 && subject > 0 ? Math.min(4, Math.max(0.25, texture / subject)) : 1;
   return Math.max(
     pixel(token?.w, token?.document?.width ?? token?.width),
     pixel(token?.h, token?.document?.height ?? token?.height),
-  );
+  ) * drawn;
 }
 
 export function auraRadius(stage,token){
