@@ -84,6 +84,7 @@ import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acous
 import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
+import { LOCK_TOOLS, listedClientSettings, organizeConfigCategory } from "./ui/settings-config-listing.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
 const hotSettings = frameSettings({
@@ -3309,6 +3310,16 @@ Hooks.once("init", () => {
   for (const key of WINDOW_SETTING_KEYS) {
     const setting = key === "quality" ? null : game.settings.settings?.get?.(`${ID}.${key}`);
     if (setting) try { setting.config = false; } catch (error) { console.warn(`Animater | ${key} stays in Configure Settings`, error); }
+  }
+  // With a settings-lock module (BBMM), each player's own settings are listed in Configure Settings as well,
+  // grouped by the window's tabs, so a GM can lock them there (ui/settings-config-listing.mjs).
+  if (LOCK_TOOLS.some((module) => game.modules.get(module)?.active)) {
+    const listed = listedClientSettings({ id: ID, registry: game.settings.settings, systemId: game.system.id, modules: [...game.modules].filter((m) => m.active).map((m) => m.id) });
+    for (const key of listed.flatMap((tab) => tab.keys)) game.settings.settings.get(`${ID}.${key}`).config = true;
+    Hooks.on("renderSettingsConfig", (_app, element) => {
+      const root = element instanceof HTMLElement ? element : element?.[0];
+      try { organizeConfigCategory(root?.querySelector(`section[data-category="${ID}"]`), listed, ID); } catch (error) { console.warn("Animater | Configure Settings grouping skipped", error); }
+    });
   }
   game.settings.registerMenu(ID, "workspace", {
     name: "Animater workspace",

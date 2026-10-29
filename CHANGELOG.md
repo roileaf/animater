@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.24 (2026-10-29)
+
+- **Lock players' Animater options with BBMM.** Where Big Bad Module Manager is active, each player's own Animater options (damage lens, tunnel vision, heartbeat, screen tint, camera shake and the rest) are also listed in Configure Settings, under the same tabs as the Animater settings window, so a GM can lock them or push a default to every player with BBMM's lock icons. Without BBMM nothing changes.
+
 ## 2.2.23 (2026-10-29)
 
 - **Rings hug Small and Tiny creatures.** Effects on a token with Foundry's dynamic ring are sized to the creature as drawn (texture scale ÷ ring subject scale), not its bare square. Shield's bubble and other lasting rings no longer stand off a Small or Tiny creature with a gap; Medium tokens are unchanged.
