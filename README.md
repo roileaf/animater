@@ -1,3 +1,10 @@
+[![Latest Version](https://img.shields.io/github/v/release/roi007leaf/animater?display_name=tag&sort=semver&label=Latest%20Version)](https://github.com/roi007leaf/animater/releases/latest)
+
+[![GitHub all releases](https://img.shields.io/github/downloads/roi007leaf/animater/total)](https://github.com/roi007leaf/animater/releases)
+
+[![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Fanimater)](https://forge-vtt.com/bazaar)
+
+
 # Animater
 
 Automatic animations for **Pathfinder 2e**, **Starfinder 2e**, **D&D 5e** and **Daggerheart** in **Foundry VTT 14**, powered by **Sequencer and JB2A**. Enable ready-made catalogs or choose individual animations, then cast spells, make attacks and use abilities through your system's normal workflow.
