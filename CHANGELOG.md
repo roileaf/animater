@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.26 (2026-10-31)
+
+- **Spell Arsenal ground marks wait for the spell.** A Spell Arsenal area's scorch used to appear right after the area was placed, before the fire had played. It now waits for Spell Arsenal's own tiles and lands as their burst ends.
+
 ## 2.2.25 (2026-10-31)
 
 - **Spell Arsenal spells leave ground marks.** A harmful area that Spell Arsenal animates (its tiles, with or without "Also play Animater recipe") now leaves Animater's ground mark too: Fireball scorches the floor in the placed area's shape on every screen. Follows the usual Ground marks settings.

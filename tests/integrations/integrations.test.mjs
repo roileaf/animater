@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { AnimaterRuntime } from "../../scripts/engines/playback/runtime.mjs";
 import { PF2E_FEATS, featRecipe, useCatalogFeat } from "../../scripts/catalogs/pf2e/feats/feat-catalog.mjs";
 import { aaCustomized, aaEvent } from "../../scripts/integrations/automated-animations.mjs";
-import { spellArsenalClaims, registerSpellArsenal } from "../../scripts/integrations/spell-arsenal.mjs";
+import { spellArsenalClaims, registerSpellArsenal, createAreaMarkQueue } from "../../scripts/integrations/spell-arsenal.mjs";
 import { createAnimaterPlayNode } from "../../scripts/integrations/trigger-engine.mjs";
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 function stubHooks() {
@@ -174,6 +174,43 @@ test("Spell Arsenal claims mapped areas and opted-in damage rules", () => {
     assert.equal(preDispatch({ type: "template", item: spell("Lightning Bolt") }), undefined);
     assert.deepEqual(marked, ["Fireball"]);
   } finally { globalThis.game = previous; }
+});
+
+test("a Spell Arsenal area mark waits for Spell Arsenal's tiles and lands as their burst ends", () => {
+  let now = 0;
+  const timers = [];
+  const setTimer = (fn, ms) => { const t = { at: now + ms, fn }; timers.push(t); return t; };
+  const clearTimer = (t) => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); };
+  const run = (to) => { now = to; for (const t of timers.filter((x) => x.at <= to).sort((a, b) => a.at - b.at)) { clearTimer(t); t.fn(); } };
+  const landed = [];
+  const queue = createAreaMarkQueue({ land: (tag) => landed.push(tag.id), burstMs: 1800, giveUpMs: 60000, setTimer, clearTimer });
+  const tile = (regionId) => ({ flags: { world: { spellArsenalArea: { regionId } } } });
+
+  queue.wait("r1", { id: "fireball" });
+  run(30000);
+  assert.deepEqual(landed, [], "nothing while Spell Arsenal targets and plays");
+  assert.equal(queue.waiting(tile("r1")), true);
+  queue.tileCreated(tile("r1"), 2500);
+  queue.tileCreated(tile("r1"), 2500);
+  assert.equal(queue.waiting(tile("r1")), false, "one burst per area, however many cells");
+  run(32499);
+  assert.deepEqual(landed, []);
+  run(32500);
+  assert.deepEqual(landed, ["fireball"], "as the clip ends");
+
+  queue.wait("r2", { id: "removed early" });
+  queue.tileCreated(tile("r2"));
+  queue.tileDeleted(tile("r2"));
+  assert.deepEqual(landed, ["fireball", "removed early"], "tiles removed before the burst ends");
+
+  queue.wait("r3", { id: "never drawn" });
+  run(200000);
+  queue.tileCreated(tile("r3"));
+  run(300000);
+  assert.deepEqual(landed, ["fireball", "removed early"], "no tiles in time: no mark");
+
+  queue.wait(undefined, { id: "no region" });
+  assert.equal(landed.at(-1), "no region");
 });
 
 test("Trigger Engine node plays the recipe with source and target tokens on the active GM", async () => {

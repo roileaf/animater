@@ -63,7 +63,7 @@ import { shatterVisual, createShatterHost, shatterSeed, spotFromBounds } from ".
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { clearGroundMarks, receiveClearMarks } from "./engines/marks/clear-marks.mjs";
 import { areaMark, isHarmful, markTiming } from "./engines/marks/ground-marks.mjs";
-import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
+import { createAreaMarkQueue, registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/playback/runtime.mjs";
@@ -441,8 +441,15 @@ const clearGroundMarksApi = (options) => clearGroundMarks(options, {
 });
 const receiveMarksClear = (data, senderId) => receiveClearMarks(data, senderId, { clear: clearMarks, isGMUser: (id) => game.users.get(id)?.isGM === true });
 // A harmful area another module animates (Spell Arsenal) still marks the floor: planned on the client that placed
-// it, then sent to every screen, as a play's marks reach every screen on its effects.
+// it, landed once Spell Arsenal's visual has played (integrations/spell-arsenal.mjs), and sent to every screen, as a
+// play's marks reach every screen on its effects.
 const AREA_MARK_MESSAGE = "area-mark";
+const areaMarks = createAreaMarkQueue({
+  land: (tag) => {
+    markLayer.land(tag);
+    game.socket?.emit(`module.${ID}`, { type: AREA_MARK_MESSAGE, tag, sender: clientId });
+  },
+});
 const markArea = (event) => {
   if (hotSetting("groundMarks") === false || !isHarmful({ ...event, automatic: true }, { itemDamages: (item) => usedItemDamages(item, game.system.id) })) return;
   const region = templateDocument(event.template);
@@ -450,12 +457,19 @@ const markArea = (event) => {
     element: event.element ?? usedItemElement(event.item, game.system.id, event.activity),
     // The level it was placed on is the one this client views.
     sceneId: event.sceneId ?? region?.parent?.id ?? canvas?.scene?.id, level: canvas?.level?.id,
-    regionId: region?.documentName === "Region" ? region.id : undefined, seed: Math.floor(Math.random() * 2 ** 32), delayMs: 600,
+    regionId: region?.documentName === "Region" ? region.id : undefined, seed: Math.floor(Math.random() * 2 ** 32), delayMs: 0,
   });
-  if (!tag) return;
-  markLayer.land(tag);
-  game.socket?.emit(`module.${ID}`, { type: AREA_MARK_MESSAGE, tag, sender: clientId });
+  if (tag) areaMarks.wait(tag.regionId, tag);
 };
+// The tile's clip length, once this client has loaded it: the burst the mark waits for.
+Hooks.on("createTile", (tile) => {
+  if (!areaMarks.waiting(tile)) return;
+  setTimeout(() => {
+    const video = tile.object?.sourceElement ?? tile.object?.mesh?.sourceElement;
+    areaMarks.tileCreated(tile, Number.isFinite(video?.duration) ? video.duration * 1000 : undefined);
+  }, 300);
+});
+Hooks.on("deleteTile", (tile) => areaMarks.tileDeleted(tile));
 const receiveAreaMark = (data) => { if (data?.type === AREA_MARK_MESSAGE) markLayer.land(data.tag); };
 const markLayer = createMarkLayer({
   makeSprite: (tag, blotches, mask) => markSprite(PIXI, markTex ??= markTextures(PIXI, canvas.app.renderer), tag, blotches, mask),
