@@ -7,6 +7,7 @@ import {mediaForReference} from '../media/media-library-model.mjs';
 import {previewFields} from '../../ui/activity-actions.mjs';
 import {bodyTreatment} from '../motion/condition-body.mjs';
 import {coversToken,hollowFootage,refractionFootage,risingFlames} from '../../catalogs/shared/state-presentation.mjs';
+import {onGroundBelow} from './ground-elevation.mjs';
 
 export function activeState(item){
  if(item?.animaterAura){const source=item.animaterAura.source;return source?.type==='effect'?activeState(source):Boolean(source);}
@@ -252,7 +253,8 @@ export class PersistentStates{
    const documents=[r.token.document?.uuid,r.item.animaterPerceived?null:(h.storedDocument??storedStateDocument)(r.item)].filter(uuid=>uuid&&(h.documentExists?.(uuid)??true));
    if(documents.length)e.tieToDocuments(documents);
    applyEffectOptions(e,{...s,oneShot:false,playbackRate:(s.playbackRate??1)*level.rate});
-   if(under&&!lifted)e.belowTokens();else if(s.above)e.elevation(1);if(s.maskToken)e.mask(r.token);
+   // Under the token, it stays on the ground when the token flies (ground-elevation.mjs).
+   if(under&&!lifted)onGroundBelow(e,r.token);else if(s.above)e.elevation(1);if(s.maskToken)e.mask(r.token);
   }
   if(r.cancelled||this.closed)return;
   // Token filters last with the state. A condition's own look (fxEssential) also plays when the state is

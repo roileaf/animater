@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.27 (2026-10-31)
+
+- **Auras of flying creatures stay on the ground.** A layer drawn below a token (a lasting stance or aura, a one-time aura) followed its token's elevation, so under a flying creature it covered every creature on the ground. It now sits on the floor under its token and still follows it across the map. Thanks to ythguanK for the report ([#13](https://github.com/roileaf/animater/issues/13)).
+
 ## 2.2.26 (2026-10-31)
 
 - **Spell Arsenal ground marks wait for the spell.** A Spell Arsenal area's scorch used to appear right after the area was placed, before the fire had played. It now waits for Spell Arsenal's own tiles and lands as their burst ends.

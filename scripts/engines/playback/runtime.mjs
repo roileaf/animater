@@ -33,6 +33,7 @@ import { createMomentum, applyMomentum, applyStrain } from './momentum.mjs';
 import { withSpiritWeapon } from '../../catalogs/pf2e/spells/spirit-weapon.mjs';
 import { withElectrocution } from './electrocute.mjs';
 import { planTint } from '../camera/screen-tint.mjs';
+import { onGroundBelow } from './ground-elevation.mjs';
 
 // Two places (tokens, token documents or points) less than a pixel apart; unknown places never are.
 const spotOf = (p) => { const c = p?.center ?? p?.object?.center ?? p; return Number.isFinite(c?.x) && Number.isFinite(c?.y) ? c : null; };
@@ -640,7 +641,8 @@ export class AnimaterRuntime {
         }
         applyEffectOptions(e, s);
         if (s.flightOutcome === "past" && !(s.fadeOut >= PAST_FADE_MS)) e.fadeOut(PAST_FADE_MS);
-        if (s.below) e.belowTokens();
+        // Attached to a token, it stays on the ground under it even when the token flies.
+        if (s.below) onGroundBelow(e, s.kind === "aura" || s.attach ? s.destination : null);
         if (s.persist && !preview) {
           // A lasting area loops until its template (a Region on Foundry 14) is
           // removed. Without a placed template there is nothing to end it, so it plays once.
