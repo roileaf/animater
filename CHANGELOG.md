@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.25 (2026-10-31)
+
+- **Spell Arsenal spells leave ground marks.** A harmful area that Spell Arsenal animates (its tiles, with or without "Also play Animater recipe") now leaves Animater's ground mark too: Fireball scorches the floor in the placed area's shape on every screen. Follows the usual Ground marks settings.
+
 ## 2.2.24 (2026-10-29)
 
 - **Lock players' Animater options with BBMM.** Where Big Bad Module Manager is active, each player's own Animater options (damage lens, tunnel vision, heartbeat, screen tint, camera shake and the rest) are also listed in Configure Settings, under the same tabs as the Animater settings window, so a GM can lock them or push a default to every player with BBMM's lock icons. Without BBMM nothing changes.

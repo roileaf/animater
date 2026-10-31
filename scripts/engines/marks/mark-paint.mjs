@@ -156,6 +156,20 @@ export function createMarkLayer({
       if (tag.lasting) waiting.set(effect, mark);
     },
 
+    // A mark with no effect to ride on (an area another module animated): it lands `delayMs` from now.
+    land(tag) {
+      if (!validTag(tag)) return false;
+      try { if (!enabled()) return false; } catch { return false; }
+      const here = sceneId?.();
+      if (here !== undefined && tag.sceneId !== here) return false;
+      let shape = null;
+      if (AREAS.has(tag.shape) && mask) { try { shape = mask(tag) ?? null; } catch { shape = null; } }
+      const t = now();
+      marks.push({ tag: { ...tag, lasting: false }, mask: shape, landAt: t + tag.delayMs, anchor: null, heldAt: t, endedAt: null, capAt: null, fadeAt: null,
+        sprite: null, size: 0, nextAt: 0, rimDone: false, effect: null });
+      return true;
+    },
+
     onEnded(effect) {
       const mark = waiting.get(effect);
       if (!mark) return;

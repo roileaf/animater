@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MARKS, isHarmful, markElement, planMarks, layoutBlotches, markAlpha, markTiming } from '../../../scripts/engines/marks/ground-marks.mjs';
+import { MARKS, areaMark, isHarmful, markElement, planMarks, layoutBlotches, markAlpha, markTiming } from '../../../scripts/engines/marks/ground-marks.mjs';
 
 const GRID = 100;
 const sq = n => n * GRID;
@@ -214,4 +214,15 @@ test('a hidden attack marks only a wall it strikes, never under its target', () 
   const wall = { x: sq(4), y: sq(1) };
   const atWall = st('bolt', 'projectile', wall, { flightTo: wall, flightOutcome: 'wall', size: sq(1) });
   assert.equal(planMarks([atWall], opts({ bolt: 0 }, { context })).size, 1);
+});
+
+test('a placed area another module animates is marked in its own shape by its element', () => {
+  const area = { type: 'circle', center: { x: 300, y: 400 }, diameter: 800 };
+  assert.deepEqual(areaMark(area, { element: 'fire', sceneId: 's1', level: 'L1', regionId: 'r1', seed: 9, delayMs: 600 }),
+    { mark: 'scorch', shape: 'circle', at: { x: 300, y: 400 }, radius: 400, sceneId: 's1', seed: 9, delayMs: 600, lasting: false, level: 'L1', regionId: 'r1' });
+  const cone = areaMark({ type: 'cone', center: { x: 0, y: 0 }, endpoint: { x: 300, y: 0 }, angle: 90 }, { element: 'cold' });
+  assert.equal(cone.mark, 'rime');
+  assert.equal(cone.shape, 'cone');
+  assert.equal(areaMark(area, { element: 'mental' }), null, 'mental leaves no mark');
+  assert.equal(areaMark(null, { element: 'fire' }), null, 'no area');
 });

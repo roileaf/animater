@@ -62,11 +62,11 @@ import { twoeCounteract, dnd5eDispelSpell, createDnd5eDispels, createDispelWindo
 import { shatterVisual, createShatterHost, shatterSeed, spotFromBounds } from "./engines/playback/shatter-fx.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
 import { clearGroundMarks, receiveClearMarks } from "./engines/marks/clear-marks.mjs";
-import { markTiming } from "./engines/marks/ground-marks.mjs";
+import { areaMark, isHarmful, markTiming } from "./engines/marks/ground-marks.mjs";
 import { registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
 import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
-import { AnimaterRuntime, sameEffectName } from "./engines/playback/runtime.mjs";
+import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/playback/runtime.mjs";
 import { wallHit } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { createHoverExplain, tokenRows, hoverView, hoverExplainDefault } from "./ui/hover-explain.mjs";
@@ -440,6 +440,23 @@ const clearGroundMarksApi = (options) => clearGroundMarks(options, {
   isGM: () => game.user.isGM, clear: clearMarks, emit: (data) => game.socket.emit(`module.${ID}`, data), sender: clientId, userId: game.user.id,
 });
 const receiveMarksClear = (data, senderId) => receiveClearMarks(data, senderId, { clear: clearMarks, isGMUser: (id) => game.users.get(id)?.isGM === true });
+// A harmful area another module animates (Spell Arsenal) still marks the floor: planned on the client that placed
+// it, then sent to every screen, as a play's marks reach every screen on its effects.
+const AREA_MARK_MESSAGE = "area-mark";
+const markArea = (event) => {
+  if (hotSetting("groundMarks") === false || !isHarmful({ ...event, automatic: true }, { itemDamages: (item) => usedItemDamages(item, game.system.id) })) return;
+  const region = templateDocument(event.template);
+  const tag = areaMark(event.area, {
+    element: event.element ?? usedItemElement(event.item, game.system.id, event.activity),
+    // The level it was placed on is the one this client views.
+    sceneId: event.sceneId ?? region?.parent?.id ?? canvas?.scene?.id, level: canvas?.level?.id,
+    regionId: region?.documentName === "Region" ? region.id : undefined, seed: Math.floor(Math.random() * 2 ** 32), delayMs: 600,
+  });
+  if (!tag) return;
+  markLayer.land(tag);
+  game.socket?.emit(`module.${ID}`, { type: AREA_MARK_MESSAGE, tag, sender: clientId });
+};
+const receiveAreaMark = (data) => { if (data?.type === AREA_MARK_MESSAGE) markLayer.land(data.tag); };
 const markLayer = createMarkLayer({
   makeSprite: (tag, blotches, mask) => markSprite(PIXI, markTex ??= markTextures(PIXI, canvas.app.renderer), tag, blotches, mask),
   addToScene: (sprite) => {
@@ -3810,7 +3827,7 @@ Hooks.once("ready", () => {
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
     if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
-    if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
+    if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveAreaMark(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
     void persistentStates?.clear();
@@ -4223,7 +4240,7 @@ Hooks.once("ready", () => {
     systemId: () => game.system.id,
   };
   if (game.modules.get(TA_ID)?.active && !registerTATakeover(taTakeoverOptions)) Hooks.once("triggerAnimations.ready", () => registerTATakeover(taTakeoverOptions));
-  registerSpellArsenal();
+  registerSpellArsenal(Hooks, { markArea });
   // Combat flash screens: the active GM plays one to everyone when combat starts or ends.
   flash = flashScreens({
     ID, clientId,

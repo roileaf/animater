@@ -69,6 +69,23 @@ function areaShape(area) {
 }
 
 /**
+ * The mark of a harmful placed area that Animater does not animate (another module claimed it): the area's own
+ * shape, burnt (or frosted...) by the item's element, landing `delayMs` after placement. Null when the element
+ * leaves no mark or the area has no shape.
+ */
+export function areaMark(area, { element, sceneId = null, level, elevation, regionId, seed = 0, delayMs = 0 } = {}) {
+  const kind = MARKS[normalizeElement(element)];
+  const shape = kind && area?.center ? areaShape(area) : null;
+  if (!shape) return null;
+  return {
+    mark: kind, ...shape, sceneId, seed: Number(seed) >>> 0, delayMs, lasting: false,
+    ...(typeof level === 'string' && level ? { level } : {}),
+    ...(Number.isFinite(elevation) ? { elevation } : {}),
+    ...(regionId ? { regionId } : {}),
+  };
+}
+
+/**
  * Decide the marks of one harmful play (the caller checks isHarmful). A stage lands where it strikes: an impact,
  * a flight's end (its wall point, its scattered landing, its target), or the area of a template. A flight that flew
  * on past (flightOutcome 'past') or a missed shot with no planned end never lands. The area, when a template

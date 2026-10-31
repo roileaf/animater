@@ -23,6 +23,12 @@ export const spellArsenalClaims = (event, g) => {
   const rule = spellArsenalRule(event, g);
   return Boolean(rule && (rule.kind === 'area' || rule.animater === true));
 };
-export function registerSpellArsenal(hooks = globalThis.Hooks) {
-  return hooks?.on?.('animater.preDispatch', event => spellArsenalClaims(event) ? false : undefined);
+// A claimed placed area still leaves Animater's ground mark (`markArea(event)`): Spell Arsenal draws the spell, the
+// floor keeps its scorch like any other Fireball's. Spell Arsenal's own Animater plays never mark.
+export function registerSpellArsenal(hooks = globalThis.Hooks, { markArea } = {}) {
+  return hooks?.on?.('animater.preDispatch', event => {
+    if (!spellArsenalClaims(event)) return undefined;
+    if (event.type === 'template') try { markArea?.(event); } catch (error) { console.warn('Animater | Spell Arsenal area mark skipped', error); }
+    return false;
+  });
 }

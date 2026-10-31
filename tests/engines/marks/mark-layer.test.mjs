@@ -405,3 +405,15 @@ test('lasting marks alone may go past the cap', () => {
   assert.equal(out.sprites.length, 2);
   assert.ok(out.sprites.every((s) => !s.removed && s.alpha === 1));
 });
+
+test('a mark with no effect to ride on lands after its delay, only on its scene and when marks are on', () => {
+  const { layer, out, at } = make();
+  assert.equal(layer.land(circle({ delayMs: 600 })), true);
+  at(599);
+  assert.equal(out.sprites.length, 0);
+  at(600);
+  assert.equal(out.sprites.length, 1);
+  assert.equal(layer.land(circle({ sceneId: 'other' })), false, 'another scene');
+  assert.equal(layer.land({ mark: 'scorch' }), false, 'not a mark');
+  assert.equal(make({ enabled: () => false }).layer.land(circle()), false, 'marks off on this screen');
+});

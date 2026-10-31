@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { AnimaterRuntime } from "../../scripts/engines/playback/runtime.mjs";
 import { PF2E_FEATS, featRecipe, useCatalogFeat } from "../../scripts/catalogs/pf2e/feats/feat-catalog.mjs";
 import { aaCustomized, aaEvent } from "../../scripts/integrations/automated-animations.mjs";
-import { spellArsenalClaims } from "../../scripts/integrations/spell-arsenal.mjs";
+import { spellArsenalClaims, registerSpellArsenal } from "../../scripts/integrations/spell-arsenal.mjs";
 import { createAnimaterPlayNode } from "../../scripts/integrations/trigger-engine.mjs";
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 function stubHooks() {
@@ -160,6 +160,20 @@ test("Spell Arsenal claims mapped areas and opted-in damage rules", () => {
   assert.equal(spellArsenalClaims({ type: "template", item: spell("Lightning Bolt") }, g), false);
   g.users.activeGM = null;
   assert.equal(spellArsenalClaims({ type: "template", item: spell("Fireball") }, g), false, "no GM to run Spell Arsenal");
+
+  // A claimed area still leaves Animater's ground mark; claimed rolls and unclaimed areas do not ask for one.
+  g.users.activeGM = { id: "gm" };
+  const previous = globalThis.game;
+  globalThis.game = g;
+  try {
+    let preDispatch;
+    const marked = [];
+    registerSpellArsenal({ on: (name, fn) => { if (name === "animater.preDispatch") preDispatch = fn; } }, { markArea: (event) => marked.push(event.item.name) });
+    assert.equal(preDispatch({ type: "template", item: spell("Fireball") }), false);
+    assert.equal(preDispatch({ type: "damage", item: spell("Ignition") }), false);
+    assert.equal(preDispatch({ type: "template", item: spell("Lightning Bolt") }), undefined);
+    assert.deepEqual(marked, ["Fireball"]);
+  } finally { globalThis.game = previous; }
 });
 
 test("Trigger Engine node plays the recipe with source and target tokens on the active GM", async () => {
