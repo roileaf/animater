@@ -520,3 +520,23 @@ test('a defeated creature drops its other lasting animations, and gets them back
  dead=false;await f.manager.reconcile();await flush();assert.equal(f.manager.active.size,2);
  await f.manager.destroy();
 });
+test('the Subtle switch draws each catalog look smaller, fainter and calmer; your own recipe keeps its look',async()=>{
+ const look=async(subtle,saved=[])=>{
+  const f=fixture([native(bless)]);f.manager.host.subtle=()=>subtle;f.setSaved(saved);
+  await f.manager.reconcile();await flush();
+  const width=f.calls.find(c=>c[0]==='size')[1].width,opacity=f.calls.find(c=>c[0]==='opacity')[1];
+  await f.manager.destroy();return {width,opacity};
+ };
+ const full=await look(false),soft=await look(true);
+ assert.ok(Math.abs(soft.width-full.width*.75)<1e-9,'smaller');
+ assert.ok(Math.abs(soft.opacity-full.opacity*.55)<1e-9,'fainter');
+});
+test('reuse timers (Treat Wounds, Battle Medicine immunity) show nothing unless the GM picks one',async()=>{
+ const timer=PF2E_EFFECTS.find(e=>e.slug==='effect-treat-wounds-immunity'),f=fixture([native(timer)]);
+ await f.manager.reconcile();await flush();
+ assert.equal(f.manager.active.size,0);
+ f.states.effect=useStateEntry(f.states.effect,timer.id);
+ await f.manager.reconcile();await flush();
+ assert.equal(f.manager.active.size,1,'picked in the effects catalog: it shows');
+ await f.manager.destroy();
+});

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.28 (2026-10-31)
+
+- **Subtle effects, conditions and auras.** A new world switch (Animater settings → Look & light) draws every catalog effect, condition and aura look on a creature smaller, fainter and calmer, for tables that want only light touches. An aura's ring keeps its size so its reach still shows. Attack and spell animations and your own recipes are unchanged.
+- **Reuse timers show nothing.** Treat Wounds, Battle Medicine, Guidance, Shield and Rage temporary HP immunities are bookkeeping, not magic: they no longer put a ring on the creature. Pick one in the effects catalog to bring it back.
+- **Gentler Bless and Courageous Anthem.** Bless is a small, faint warm glow at the feet; Courageous Anthem shows a few golden music notes instead of a red battle orbit.
+- **Act on a look from the token.** Hold Shift while a token's hover tooltip shows to get its lasting looks with buttons: Hide here (until the effect is applied again), Always off (left out of its catalog) and Flag (for a new look). Let go of Shift for the tooltip again.
+- **Flagged looks.** A new Flagged page (Tools) lists every flagged look: open it in its catalog, clear it, or copy the whole list to send Animater's author. Flagged entries carry a badge and a filter in the Conditions and Effects catalogs.
+- **Full names in Now playing.** Activity's Now playing shows "Bless" instead of "Spell Effect…": the shared prefix is dropped and long names wrap.
+
+Thanks to DoritoBob for the feedback.
+
 ## 2.2.27 (2026-10-31)
 
 - **Auras of flying creatures stay on the ground.** A layer drawn below a token (a lasting stance or aura, a one-time aura) followed its token's elevation, so under a flying creature it covered every creature on the ground. It now sits on the floor under its token and still follows it across the map. Thanks to ythguanK for the report ([#13](https://github.com/roileaf/animater/issues/13)).

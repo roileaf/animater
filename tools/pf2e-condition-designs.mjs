@@ -36,6 +36,11 @@ export const EFFECT_PLANS={
  // The cast's force bubble stays up while the spell lasts: its loop in blue (the cast is purple), on the ring,
  // over the token and faint, so the token reads as inside a ward rather than behind a wall.
  'spell-effect-shield':plan('shield','curated',art('shield.01.loop','blue',{scale:1.15,opacity:.55,above:true})),
+ // A whole party is often blessed at once: a small, faint warm glow at each creature's feet, not a beacon on every token.
+ 'spell-effect-bless':plan('light','curated',art('markers.light.loop','yellow',{scale:.9,opacity:.45,below:true})),
+ // A song, not a battle rage: a few soft golden notes beside each ally the anthem lifts.
+ 'spell-effect-courageous-anthem':plan('music','curated',art('markers.music_note','yellow',{scale:.6,opacity:.75,offsetX:.32,offsetY:-.32})),
+ 'spell-effect-courageous-anthem-kanya':plan('music','curated',art('markers.music_note','yellow',{scale:.6,opacity:.75,offsetX:.32,offsetY:-.32})),
 };
 // Afflictions read as debuffs at a glance (Frightened is the reference): a compact,
 // dim orbit marker or a low, heavy overlay in desaturated colour, with drooping,

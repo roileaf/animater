@@ -161,8 +161,10 @@ test("hovering a token with something playing shows the tooltip; unhovering hide
   t.tick();
   assert.equal(el.hidden, false);
   assert.match(el.innerHTML, /Haste/);
+  assert.equal(hover.shown(), token, "Shift can pin the token it shows");
   hover.hover(token, false);
   assert.equal(el.hidden, true);
+  assert.equal(hover.shown(), null);
   assert.equal(t.timers.size, 0);
 });
 

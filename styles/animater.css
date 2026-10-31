@@ -3177,7 +3177,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-now-chip { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 3px 4px; margin: 0; border: 0; border-radius: 6px; min-height: 0; }
 .animater .an-now-chip:hover, .animater .an-now-chip:focus-within { background: var(--an-bg); }
 .animater .an-now-chip .an-now-thumb { width: 26px; height: 26px; border-radius: 5px; margin: 0; }
-.animater .an-now-chip b { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.animater .an-now-chip b { font-size: 12px; font-weight: 600; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .animater .an-now-chip time { font-size: 10px; color: var(--an-muted); font-variant-numeric: tabular-nums; }
 .animater .an-now-chip-actions { display: flex; gap: 2px; }
 .animater .an-now-chip-actions .an-activity-btn, .animater .an-now-stopall { width: auto; min-width: 24px; height: 24px; padding: 0 6px; font-size: 11px; }
@@ -3435,3 +3435,25 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-blood-colors .an-blood-reset{width:28px;height:28px;min-height:0;margin:0;padding:0;display:grid;place-items:center;border-radius:6px;font-size:11px;line-height:1}
 .animater-blood-colors .an-blood-footer{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:0}
 @media(max-width:600px){.animater-blood-colors .an-blood-grid{grid-template-columns:1fr}}
+/* Token looks panel (ui/token-looks.mjs): Shift + right-click a token. */
+.animater-token-looks { position: fixed; z-index: var(--z-index-tooltip, 9999); margin-left: 8px; min-width: 240px; max-width: 340px; padding: 6px 8px 8px; border: 1px solid var(--color-border, rgba(255, 255, 255, 0.18)); border-radius: 6px; background: var(--color-tooltip-bg, rgba(11, 10, 19, 0.95)); color: var(--color-text-primary, #efe6d8); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55); font-family: var(--font-body, var(--font-primary, sans-serif)); font-size: var(--font-size-12, 12px); line-height: 1.35; }
+.animater-token-looks[hidden] { display: none; }
+.animater-token-looks header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: var(--font-size-10, 10px); letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
+.animater-token-looks header button { flex: none; width: 20px; height: 20px; padding: 0; line-height: 1; }
+.animater-token-looks ul { margin: 0; padding: 0; list-style: none; }
+.animater-token-looks li { display: grid; gap: 4px; padding: 4px 0; }
+.animater-token-looks li + li { border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.12)); }
+.animater-token-looks li b { font-weight: 600; overflow-wrap: anywhere; }
+.animater-token-looks .animater-looks-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+.animater-token-looks .animater-looks-buttons button { flex: none; width: auto; height: 22px; padding: 0 7px; font-size: var(--font-size-11, 11px); line-height: 1; }
+.animater-token-looks .animater-looks-buttons button[aria-pressed="true"] { border-color: #e0a53a; color: #f2c46b; }
+.animater-token-looks .animater-looks-empty { margin: 2px 0 0; opacity: 0.75; }
+.animater .an-flagged { color: #e0a53a; }
+/* Flagged page (ui/flagged-page.mjs): looks flagged for a new look. */
+.animater .an-flagged-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.animater .an-flagged-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--an-line, rgba(255, 255, 255, 0.1)); border-radius: 8px; }
+.animater .an-flagged-row img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+.animater .an-flagged-row b { display: block; overflow-wrap: anywhere; }
+.animater .an-flagged-row small { color: var(--an-muted); }
+.animater .an-flagged-actions { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+.animater .an-flagged-actions button { width: auto; }

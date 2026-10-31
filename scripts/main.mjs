@@ -70,6 +70,7 @@ import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/pla
 import { wallHit } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { createHoverExplain, tokenRows, hoverView, hoverExplainDefault } from "./ui/hover-explain.mjs";
+import { createTokenLooks, panelRows, toggleFlag, normalizeFlags, flaggedText } from "./ui/token-looks.mjs";
 import { installedSoundCatalog, catalogSoundOptions } from "./engines/sound/spell-sounds.mjs";
 import { targetSurface, withSurfaceSounds, blowOfItem, sizeOf, heftOfItem } from "./engines/sound/surface-sounds.mjs";
 import { weaponFamily } from "./systems/daggerheart.mjs";
@@ -1802,7 +1803,7 @@ function playTest(recipe, context, options = {}) {
 // Dice So Nice: an attack or damage animation waits until that roll's 3D dice land
 // (never longer than DICE_WAIT_LIMIT, and not at all when Dice So Nice shows none).
 const WAIT_FOR_DICE = "waitForDice", DICE_WAIT_LIMIT = 8000;
-const DAMAGE_REACTIONS = "damageReactions", DRAMATIC_DEATHS = "dramaticDeaths", TELEPORT_TOKENS = "teleportTokens", DEFAULT_FINISHER = "defaultFinisher", DEFAULT_FINISHER_ENDING = "defaultFinisherEnding", DUALITY_ACCENT = "daggerheartDualityAccent";
+const SUBTLE_LASTING = "subtleLasting", DAMAGE_REACTIONS = "damageReactions",DRAMATIC_DEATHS = "dramaticDeaths", TELEPORT_TOKENS = "teleportTokens", DEFAULT_FINISHER = "defaultFinisher", DEFAULT_FINISHER_ENDING = "defaultFinisherEnding", DUALITY_ACCENT = "daggerheartDualityAccent";
 const COLLAPSE = { id: "animater-collapse", name: "Dropped to 0 HP", trigger: "manual", stages: [{ stageId: "collapse", kind: "motion", motion: "collapse", subject: "source", duration: 1800, distance: 0.25, intensity: 0.8, assets: [] }] };
 async function afterDice(event) {
   const dice = globalThis.game?.dice3d;
@@ -1949,6 +1950,47 @@ async function stopActivityRow(row) {
   }
   if (row?.kind === "session" && row.session) await runtime.endSession(row.session, { everyone: game.user.isGM });
 }
+// Token looks panel (ui/token-looks.mjs): holding Shift over a token's hover tooltip shows its lasting looks with quick buttons.
+// Always off leaves the look out of its PF2e catalog (and unpicks it); Flag lists it in the catalog and in a list to send.
+const FLAGGED_LOOKS = "flaggedLooks";
+const lookEntry = (row) => (game.system.id === "pf2e" && row?.stateEntry ? catalogStateEntry(row.stateEntry) : null);
+async function actOnLook(action, row) {
+  if (action === "hide") return stopActivityRow({ kind: "state", key: row.key });
+  if (!game.user.isGM || !row.entry) return;
+  if (action === "always") {
+    const key = row.entry.kind === "condition" ? "conditionCatalog" : "effectCatalog", state = normalizeStateCatalogState(hotSetting(key));
+    await game.settings.set(ID, key, normalizeStateCatalogState({ ...state, excluded: [...new Set([...state.excluded, row.entry.id])], selected: state.selected.filter((id) => id !== row.entry.id) }));
+    persistentStates?.schedule();
+    return ui.notifications?.info?.(`Animater: ${row.entry.name} is left out of the ${row.entry.kind} catalog. Put it back from that catalog in Animater.`);
+  }
+  if (action === "flag") return game.settings.set(ID, FLAGGED_LOOKS, toggleFlag(hotSetting(FLAGGED_LOOKS), row.entry, { by: game.user.id }));
+}
+const tokenLooks = createTokenLooks({
+  document: globalThis.document,
+  isGM: () => game.user?.isGM === true,
+  rowsFor: (token) => panelRows(persistentStates?.onToken(token?.id ?? token?.document?.id) ?? [], { entryOf: lookEntry, flags: hotSetting(FLAGGED_LOOKS), isGM: game.user?.isGM === true }),
+  act: actOnLook,
+  toScreen: hoverToScreen,
+});
+// Holding Shift while a token's hover tooltip shows turns it into that token's looks panel, with its buttons;
+// letting go of Shift turns it back into the tooltip (if the token is still hovered).
+let lookToken = null;
+globalThis.document?.addEventListener?.("keydown", (event) => {
+  if (event.key !== "Shift" || event.repeat || event.target?.closest?.("input, textarea, select, [contenteditable]")) return;
+  const token = hoverExplain.shown();
+  if (!token) return;
+  lookToken = token;
+  hoverExplain.hide();
+  tokenLooks.open(token);
+});
+globalThis.document?.addEventListener?.("keyup", (event) => {
+  if (event.key !== "Shift" || !lookToken) return;
+  const token = lookToken;
+  lookToken = null;
+  tokenLooks.close();
+  if (token.hover && !token.destroyed) hoverExplain.hover(token, true);
+});
+Hooks.on("canvasTearDown", () => tokenLooks.close());
 function receiveActivityStop(data, senderId) {
   if (data?.type !== "activity-stop" || !data.key) return;
   if (!game.users.get(senderId ?? data.userId)?.isGM) return;
@@ -2557,6 +2599,18 @@ function workspaceHost() {
       return game.settings.set(ID, "weaponCatalog", normalizeWeaponCatalogState({ ...hotSetting("weaponCatalog"), ...change }));
     },
     stateCatalogState: (kind) => normalizeStateCatalogState(hotSetting(kind === "condition" ? "conditionCatalog" : "effectCatalog")),
+    // Looks flagged for a new look (a token's looks panel, or the catalog's Flag button), and their list to send.
+    flaggedLooks: () => normalizeFlags(hotSetting(FLAGGED_LOOKS)),
+    toggleFlaggedLook: async (entry) => {
+      if (!game.user.isGM) throw Error("Only a GM can flag looks.");
+      return game.settings.set(ID, FLAGGED_LOOKS, toggleFlag(hotSetting(FLAGGED_LOOKS), entry, { by: game.user.id }));
+    },
+    flaggedLooksText: () => flaggedText(hotSetting(FLAGGED_LOOKS), { system: game.system.id, version: game.modules.get(ID)?.version ?? "" }),
+    clearFlaggedLooks: async () => {
+      if (!game.user.isGM) throw Error("Only a GM can clear flagged looks.");
+      return game.settings.set(ID, FLAGGED_LOOKS, {});
+    },
+    userName: (id) => game.users?.get(id)?.name ?? "",
     setStateCatalogState: async (kind, change) => {
       if (!game.user.isGM) throw Error("Only a GM can configure persistent animations.");
       const key = kind === "condition" ? "conditionCatalog" : "effectCatalog";
@@ -2688,7 +2742,7 @@ Hooks.once("init", () => {
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
   // On for GMs, off for players: game.user does not exist yet at init, the world's user data does.
   registerSetting('hoverExplain',{name:'Explain animations on hover',
-    hint:'Hovering a token shows what Animater is playing on it right now: each animation\'s name, whether it comes from a catalog or a recipe, and whether it lasts.',
+    hint:'Hovering a token shows what Animater is playing on it right now: each animation\'s name, whether it comes from a catalog or a recipe, and whether it lasts. Hold Shift while it shows for buttons to hide a lasting look, leave it out of its catalog, or flag it for a new look.',
     scope:'client',config:true,type:Boolean,default:hoverExplainDefault(game),onChange:()=>hoverExplain.refresh()});
   // Every Animater setting but the animation quality, by topic, in one window (ui/settings-window.mjs).
   game.settings.registerMenu(ID,'settingsWindow',{name:'Animater settings',label:'Animater settings',icon:'fa-solid fa-sliders',
@@ -2720,6 +2774,11 @@ Hooks.once("init", () => {
   registerSetting('lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
+  // Looks a GM flagged for a new look from a token's looks panel (ui/token-looks.mjs): { entryId: { name, kind, ... } }.
+  registerSetting(FLAGGED_LOOKS,{scope:'world',config:false,type:Object,default:{},onChange:()=>{tokenLooks.refresh();app?.workspace?.render();}});
+  registerSetting(SUBTLE_LASTING,{name:'Subtle effects, conditions and auras',
+    hint:'For tables that want only light touches: every catalog effect, condition and aura look on a creature is drawn smaller, fainter and calmer. An aura\'s ring keeps its size so you still see its reach. Attack, spell and other one-time animations are unchanged, and so are recipes you made yourself. To show lasting looks only when they land, each player can also set "Lasting condition animations".',
+    scope:'world',config:true,type:Boolean,default:false,onChange:()=>persistentStates?.schedule()});
   registerSetting(CROSSOVER_CATALOG,{...crossoverSettingText(game.system.id),scope:'world',
     // PF2e and SF2e only: the two systems share one rules engine.
     config:Boolean(crossoverSystem(game.system.id)),type:Boolean,default:false,
@@ -4089,6 +4148,7 @@ Hooks.once("ready", () => {
       sceneId: () => canvas.scene?.id,
       tokens: () => canvas.tokens?.placeables ?? [],
       lastingMode: () => hotSetting("lastingMode"),
+      subtle: () => hotSetting(SUBTLE_LASTING) === true,
       recipes,
       // Your own lasting recipes follow the same switch as every other custom recipe.
       customEnabled: () => enabled(),

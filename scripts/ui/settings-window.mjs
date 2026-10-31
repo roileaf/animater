@@ -21,6 +21,7 @@ export const SETTINGS_TABS = Object.freeze([
   { id: "look", label: "Look & light", icon: "fa-solid fa-palette", rows: [
     { local: "quality" },
     { world: "conditionLooks" },
+    { world: "subtleLasting" },
     { world: "catalogTokenFx" },
     { world: "catalogSceneFx" },
     { world: "effectLighting", local: "effectLightingLocal", extras: ["effectLightingDaylight", "effectLightAnimation"] },

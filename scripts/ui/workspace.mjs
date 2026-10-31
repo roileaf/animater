@@ -1,6 +1,8 @@
 import { tokenFxEditorHTML, applyTokenFxEdit, tokenFxAction } from "./token-fx-editor.mjs";
 import { layersOf } from "../engines/tokenshade/layers.mjs";
 import { uuid } from "../core/uuid.mjs";
+import { lookName } from "./token-looks.mjs";
+import { FLAGGED_PAGE, flaggedPageHTML, handleFlaggedAction } from "./flagged-page.mjs";
 import { recipesToExport, planRecipeImport } from "../core/presets.mjs";
 import { encodeShareCode, shareMacro, mergeImported, copyPlainText } from "../core/recipe-share.mjs";
 import { strikeFromDrag } from "../engines/finishers/strike-finishers.mjs";
@@ -663,6 +665,7 @@ export class Workspace {
       finishers: listed.filter((r) => r.finisher).length,
       waiting: this.host.playerMode ? 0 : (this.host.playerSubmissions?.() ?? []).filter((row) => row.state === "pending").length,
       flash: typeof flash === "function" && Array.isArray(flash.call(this.host)) ? flash.call(this.host).length : 0,
+      [FLAGGED_PAGE]: Object.keys(this.host.flaggedLooks?.() ?? {}).length,
     };
     const item = ([page, icon, name]) =>
       `<button class="an-nav-item ${this.page === page ? "is-active" : ""}" data-action="page" data-page="${page}"><span>${icon}</span><b>${name}</b>${count(counts[page] || 0)}${page === "recipes" && counts.waiting ? `<small class="an-nav-waiting" data-tooltip="Player animations waiting for your approval (bottom of Recipes)">${counts.waiting} waiting</small>` : ""}</button>`;
@@ -675,7 +678,7 @@ export class Workspace {
       // The caption names the system, so the items need not repeat it ("Spells", not "PF2e spells").
       group(`LIBRARY${systemCaption(env)}`, [...catalogNavigation(env).map(shortNav), ["assets", "▦", "Assets"]]),
       ...(borrowedNavigation(env).length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowedNavigation(env).map(shortNav))] : []),
-      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),...(this.host.damageShowcase&&!this.host.playerMode?[[DAMAGE_SHOWCASE_PAGE,'♥','Damage showcase']]:[]),["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
+      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),...(this.host.damageShowcase&&!this.host.playerMode?[[DAMAGE_SHOWCASE_PAGE,'♥','Damage showcase']]:[]),...(this.host.flaggedLooks && pf2eCatalogsLive(env) ? [[FLAGGED_PAGE, "⚑", "Flagged"]] : []), ["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
     ].join("");
   }
   // The PF2e catalog page on screen: the page itself in a PF2e world, a borrowed pf2e-* page in an SF2e one.
@@ -759,7 +762,7 @@ export class Workspace {
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
-        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.setupHTML(env)}
+        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.page === FLAGGED_PAGE ? flaggedPageHTML(this) : this.setupHTML(env)}
       </main>${this.pendingImport !== null ? this.importHTML() : ""}${this.newChooser ? this.newChooserHTML() : ""}</div>`,
     );
     this.root.querySelectorAll("details[data-options-group]").forEach((e) => {
@@ -1961,7 +1964,7 @@ export class Workspace {
     const nowChip = (r) => {
       const attr = `data-entry="${esc(r.id)}"`, started = Number(r.startedAt) || now;
       const tip = r.kind === "state" ? "Stop: the condition or effect stays, and animates again when reapplied" : "Stop this animation";
-      return `<div class="an-now-row an-now-chip"${r.asset ? ` data-tooltip="${esc(assetLabel(r.asset))}"` : ""}>${this.nowThumbHTML(r)}<b>${esc(r.name)}</b><time data-started="${started}">${esc(elapsedLabel(now - started))}</time><span class="an-now-chip-actions"><button type="button" class="an-activity-btn" data-action="activity-stop" ${attr} aria-label="Stop ${esc(r.name)}" data-tooltip="${tip}">■</button>${this.activityExcludeHTML(r.origin, r.name, attr)}</span></div>`;
+      return `<div class="an-now-row an-now-chip"${r.asset ? ` data-tooltip="${esc(assetLabel(r.asset))}"` : ""}>${this.nowThumbHTML(r)}<b title="${esc(r.name)}">${esc(lookName(r.name))}</b><time data-started="${started}">${esc(elapsedLabel(now - started))}</time><span class="an-now-chip-actions"><button type="button" class="an-activity-btn" data-action="activity-stop" ${attr} aria-label="Stop ${esc(r.name)}" data-tooltip="${tip}">■</button>${this.activityExcludeHTML(r.origin, r.name, attr)}</span></div>`;
     };
     // A small card per token (portrait, name, stop all), side by side in a grid.
     const cards = groupNowPlaying(playing).map((g) => {
@@ -2589,6 +2592,7 @@ export class Workspace {
       if(await this.flashEditor?.action(action,b))return;
       if (await this.activityAction(action, b)) return;
       if (await handleStateCatalogAction(this, action, b)) return;
+      if (await handleFlaggedAction(this, action, b)) return;
       if (action === "item-details") {
         await openCatalogDetails(this, b.dataset.kind, b.dataset.id);
         return;

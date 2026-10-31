@@ -16,7 +16,10 @@ export function normalizeStateCatalogState(state={}){
  state??={};const ids=vs=>[...new Set((Array.isArray(vs)?vs:[]).filter(id=>byId.has(id)))];
  return {enabled:state.enabled===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:ids(state.customized),motion:state.motion!==false,fade:state.fade===true,turn:state.turn===true,opacity:Number.isFinite(Number(state.opacity))?Math.min(1,Math.max(.1,Number(state.opacity))):1};
 }
-export function stateEntryEnabled(id,state){return state?.enabled===true&&!state.excluded?.includes(id)&&(state.scope!=='selected'||state.selected?.includes(id)||state.customized?.includes(id));}
+// Reuse timers (Treat Wounds, Battle Medicine, Shield Immunity...) are bookkeeping, not magic on the creature: they
+// show nothing unless the GM picked or customized one.
+const timerOnly=id=>byId.get(id)?.theme==='cooldown';
+export function stateEntryEnabled(id,state){return state?.enabled===true&&!state.excluded?.includes(id)&&(state.selected?.includes(id)||state.customized?.includes(id)||state.scope!=='selected'&&!timerOnly(id));}
 export function useStateEntry(state,id){
  state=normalizeStateCatalogState(state);if(!byId.has(id))throw Error('Choose a condition or effect first.');
  return normalizeStateCatalogState({...state,enabled:true,scope:state.enabled?state.scope:'selected',selected:state.enabled?[...state.selected,id]:[id],excluded:state.excluded.filter(v=>v!==id),customized:state.customized.filter(v=>v!==id)});

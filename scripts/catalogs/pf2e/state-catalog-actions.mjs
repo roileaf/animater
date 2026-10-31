@@ -1,8 +1,12 @@
 import { nextLastingChange, lastingChange, lastingMessage } from "../shared/lasting-choice.mjs";
 import {normalizeStateCatalogState,useStateEntry,stateRecipe,catalogStateEntry} from './state-catalog.mjs';
 export async function handleStateCatalogAction(w,action,b){
- if(!['select-state','state-auto','state-pause','state-exclude','state-page','state-reset','use-state','copy-state','enable-state-custom','state-motion','state-fade'].includes(action))return false;
+ if(!['select-state','state-auto','state-pause','state-exclude','state-page','state-reset','use-state','copy-state','enable-state-custom','state-motion','state-fade','state-flag','state-flagged-only','state-copy-flags'].includes(action))return false;
  const kind=action==='enable-state-custom'?catalogStateEntry(w.recipe()?.stateEntry)?.kind:w.page==='conditions'?'condition':'effect';
+ // Flagged for a new look: flag or clear the chosen entry, show only flagged ones, or copy the list to send.
+ if(action==='state-flag'){const entry=catalogStateEntry(w.selectedState[kind]);if(entry){const was=Boolean(w.host.flaggedLooks?.()?.[entry.id]);await w.host.toggleFlaggedLook(entry);w.message=was?`${entry.name}: flag cleared.`:`${entry.name} flagged for a new look.`;}w.render();return true;}
+ if(action==='state-flagged-only'){w.stateFlaggedOnly={...w.stateFlaggedOnly,[kind]:!w.stateFlaggedOnly?.[kind]};w.statePages[kind]=0;w.render();return true;}
+ if(action==='state-copy-flags'){const text=w.host.flaggedLooksText?.()??'';if(text){await (globalThis.game?.clipboard?.copyPlainText?.(text)??globalThis.navigator?.clipboard?.writeText?.(text));w.message='Flagged looks copied: paste them to Animater’s author on Discord or in a GitHub issue.';}w.render();return true;}
  const id=action==='enable-state-custom'?w.recipe()?.stateEntry:action==='state-exclude'&&b.dataset.id?b.dataset.id:w.selectedState[kind],state=normalizeStateCatalogState(w.host.stateCatalogState?.(kind));
  if(action==='state-fade'){const change=lastingChange(b.dataset.choice)??nextLastingChange(state);await w.host.setStateCatalogState(kind,change);w.message=lastingMessage(change,kind==='condition'?'Conditions':'Effects');w.render();return true;}
   if(action==='state-motion'){await w.host.setStateCatalogState(kind,{motion:!state.motion});w.message=state.motion?'Token motion off: conditions and effects show their effects only.':'Token motion on: creatures react to their conditions.';w.render();return true;}

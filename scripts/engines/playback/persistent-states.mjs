@@ -90,6 +90,8 @@ export const lastingFade=(worldFade,mode)=>mode==='always'?false:mode==='turn'||
 export const lastingTurn=(state,mode)=>mode==='turn'||(!LASTING_MODES[mode]||mode==='world')&&state?.fade===true&&state?.turn===true;
 // Conditions replaying together at turn start start this far apart, so they read one by one.
 export const REPLAY_STAGGER=350;
+// The world's Subtle switch: each catalog layer of an effect, condition or aura at this size, strength and pace.
+export const SUBTLE_LOOK=Object.freeze({scale:.75,opacity:.55,rate:.75});
 export function justApplied(item,now=Date.now()){
  // D&D 5e and Daggerheart states wrap their document; an aura reads its source's.
  const created=(item?._stats??item?.document?._stats??item?.animaterAura?.source?._stats)?.createdTime;
@@ -181,7 +183,9 @@ export class PersistentStates{
      // A recipe with its own Lasting animation choice uses it in place of its catalog's.
      const lasting=recipe.lasting?{...state,fade:recipe.lasting!=='lasting',turn:recipe.lasting==='turn'}:state;
      const mode=h.lastingMode?.(),fade=item.animaterRecipe?state.fade===true:lastingFade(lasting.fade,mode),turn=!item.animaterRecipe&&fade&&lastingTurn(lasting,mode);
-     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
+     // The world's Subtle switch softens every catalog look (a recipe of your own keeps what you made).
+     const soft=!item.animaterRecipe&&h.subtle?.()===true;
+     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
     }
    }
    // Removed, its next application animates again.
@@ -244,15 +248,17 @@ export class PersistentStates{
    const hollow=hollowFootage(s.asset),under=s.below||(!authored&&coversToken(s,s.asset));
    const lifted=!authored&&under&&(granted||!s.auraRadius)&&!s.maskToken&&!refractionFootage(s.asset)&&(hollow||squareArt||risingFlames(s.asset));
    const overArt=lifted&&!hollow?.5:1;
+   // Subtle: smaller, fainter and calmer. An aura's ring keeps its size, since that shows how far it reaches.
+   const soft=r.soft&&!authored?SUBTLE_LOOK:null,softScale=soft&&!s.auraRadius?soft.scale:1;
    const e=sequence.effect().file(s.asset).name(r.name).origin(r.item.uuid??r.recipe.itemUuid)
     .attachTo(r.token,{offset:offsetInGridSquares(s,r.token,grid),gridUnits:true,bindRotation:s.bindRotation,bindAlpha:true,bindVisibility:true,bindElevation:true})
-    .size(artworkSize(effectFootprint(granted?{...s,auraRadius:0}:s,r.token,grid,h.gridDistance?.()??5)*(granted&&s.auraRadius?Math.min(s.scale,1):s.scale)*level.scale,media)).opacity(Math.min(1,s.opacity*r.opacity*level.opacity*(granted?.8:1)*overArt))
+    .size(artworkSize(effectFootprint(granted?{...s,auraRadius:0}:s,r.token,grid,h.gridDistance?.()??5)*(granted&&s.auraRadius?Math.min(s.scale,1):s.scale)*level.scale*softScale,media)).opacity(Math.min(1,s.opacity*r.opacity*level.opacity*(granted?.8:1)*overArt*(soft?.opacity??1)))
     .temporary().delay((s.delay??0)+offset).fadeIn(s.fadeIn);
    if(r.fade)e.duration(FADE_MS).fadeOut(Math.max(s.fadeOut??0,800));else e.persist().fadeOut(s.fadeOut);
    // A perceived Concealed/Hidden is a stand-in with no document of its own: tie it to the token only.
    const documents=[r.token.document?.uuid,r.item.animaterPerceived?null:(h.storedDocument??storedStateDocument)(r.item)].filter(uuid=>uuid&&(h.documentExists?.(uuid)??true));
    if(documents.length)e.tieToDocuments(documents);
-   applyEffectOptions(e,{...s,oneShot:false,playbackRate:(s.playbackRate??1)*level.rate});
+   applyEffectOptions(e,{...s,oneShot:false,playbackRate:(s.playbackRate??1)*level.rate*(soft?.rate??1)});
    // Under the token, it stays on the ground when the token flies (ground-elevation.mjs).
    if(under&&!lifted)onGroundBelow(e,r.token);else if(s.above)e.elevation(1);if(s.maskToken)e.mask(r.token);
   }
@@ -294,6 +300,12 @@ export class PersistentStates{
  // Lasting layers showing now, for the Activity page's Now playing (a faded one-time showing is over).
  running(now=Date.now()){
   return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>FADE_MS)).map(r=>({key:r.key,name:r.recipe?.name??r.item?.name??'',on:r.token?.name??'',startedAt:r.startedAt??now,recipeId:r.recipe?.id,origin:this.originOf(r),...previewFields(r.visualPlan,r.token,r.item)}));
+ }
+ // The lasting looks showing now on one token, for its looks panel (ui/token-looks.mjs): its key, name, the
+ // catalog entry its recipe comes from (stateEntry) and the kind of state it is.
+ onToken(tokenId,now=Date.now()){
+  return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>FADE_MS)&&(r.token?.id??r.token?.document?.id)===tokenId)
+   .map(r=>({key:r.key,name:r.item?.animaterAura?r.recipe?.name??r.item?.name??'':r.item?.name??r.recipe?.name??'',stateEntry:r.recipe?.stateEntry??null,kind:r.item?.type??null}));
  }
  // Ends one state's animation here; it stays off until the condition or effect is removed and applied again.
  async stop(key){

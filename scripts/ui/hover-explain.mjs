@@ -134,6 +134,8 @@ export function createHoverExplain({ document, enabled, isGM, rowsFor, view, toS
     },
     refresh,
     hide,
+    // The hovered token while its tooltip shows (Shift pins it as the token's looks panel, ui/token-looks.mjs).
+    shown: () => (token && el && !el.hidden ? token : null),
     destroy() { hide(); el?.remove(); el = null; },
   };
 }
