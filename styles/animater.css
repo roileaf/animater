@@ -3439,7 +3439,6 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-token-looks { position: fixed; z-index: var(--z-index-tooltip, 9999); margin-left: 8px; min-width: 240px; max-width: 340px; padding: 6px 8px 8px; border: 1px solid var(--color-border, rgba(255, 255, 255, 0.18)); border-radius: 6px; background: var(--color-tooltip-bg, rgba(11, 10, 19, 0.95)); color: var(--color-text-primary, #efe6d8); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55); font-family: var(--font-body, var(--font-primary, sans-serif)); font-size: var(--font-size-12, 12px); line-height: 1.35; }
 .animater-token-looks[hidden] { display: none; }
 .animater-token-looks header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: var(--font-size-10, 10px); letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.75; }
-.animater-token-looks header button { flex: none; width: 20px; height: 20px; padding: 0; line-height: 1; }
 .animater-token-looks ul { margin: 0; padding: 0; list-style: none; }
 .animater-token-looks li { display: grid; gap: 4px; padding: 4px 0; }
 .animater-token-looks li + li { border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.12)); }

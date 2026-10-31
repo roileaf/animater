@@ -43,7 +43,8 @@ export function panelRows(states, { entryOf = () => null, flags = {}, isGM = fal
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 export function panelHTML(rows, { tokenName = "", isGM = false } = {}) {
-  const head = `<header><span>Animater · ${esc(tokenName)}</span><button type="button" data-look-action="close" aria-label="Close">×</button></header>`;
+  // No close button: letting go of Shift closes it.
+  const head = `<header><span>Animater · ${esc(tokenName)}</span></header>`;
   if (!rows.length) return `${head}<p class="animater-looks-empty">No lasting looks on this token right now.</p>`;
   const row = (r) => `<li data-key="${esc(r.key)}"><b title="${esc(r.name)}">${esc(lookName(r.name))}</b><span class="animater-looks-buttons">`
     + `<button type="button" data-look-action="hide" data-key="${esc(r.key)}" title="${isGM ? "Hide it on this token on every screen" : "Hide it on this token on your screen"}, until it is applied again">Hide here</button>`

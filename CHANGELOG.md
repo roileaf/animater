@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.29 (2026-10-31)
+
+- **Cleaner token looks panel.** The panel you get by holding Shift over a token's tooltip no longer has a close button: letting go of Shift closes it.
+
 ## 2.2.28 (2026-10-31)
 
 - **Subtle effects, conditions and auras.** A new world switch (Animater settings → Look & light) draws every catalog effect, condition and aura look on a creature smaller, fainter and calmer, for tables that want only light touches. An aura's ring keeps its size so its reach still shows. Attack and spell animations and your own recipes are unchanged.
