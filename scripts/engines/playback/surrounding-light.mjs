@@ -8,9 +8,11 @@ const hex = ([r, g, b]) => (Math.round(r) << 16) | (Math.round(g) << 8) | Math.r
 export const PLAIN_LIGHT = 0xffd9a0;
 
 // The light reaching a point: { color, strength 0–1, angle (degrees, from the creature toward the light) }, or null.
-// `lights`: [{ x, y, radius, color, alpha }] that reach the point (walls already tested); `darkness` 0–1.
+// `lights`: [{ x, y, radius, color, alpha, elevation }] that reach the point (walls already tested); `darkness` 0–1.
+// Also `elevation` and `distance` (pixels): the lights' height and how far they are, weighted as the colour is, and
+// `brightness` 0–1: 1 inside a light's bright radius (`bright`, pixels), 0.5 fading to 0.2 across its dim light.
 export function lightAround(point, lights = [], darkness = 1) {
-  let total = 0, r = 0, g = 0, b = 0, dx = 0, dy = 0;
+  let total = 0, r = 0, g = 0, b = 0, dx = 0, dy = 0, up = 0, far = 0, lit = 0;
   for (const l of lights) {
     const d = Math.hypot(l.x - point.x, l.y - point.y), reach = Number(l.radius) || 0;
     if (!(reach > 0) || d >= reach) continue;
@@ -18,6 +20,9 @@ export function lightAround(point, lights = [], darkness = 1) {
     if (!(w > 0)) continue;
     const [cr, cg, cb] = rgb(Number.isFinite(l.color) ? l.color : PLAIN_LIGHT);
     r += cr * w; g += cg * w; b += cb * w; total += w;
+    up += (Number(l.elevation) || 0) * w; far += d * w;
+    const bright = Math.min(reach, Math.max(0, Number(l.bright) || 0));
+    lit += (d <= bright ? 1 : 0.5 - 0.3 * ((d - bright) / Math.max(1, reach - bright))) * w;
     if (d > 1) { dx += ((l.x - point.x) / d) * w; dy += ((l.y - point.y) / d) * w; }
   }
   const strength = Math.min(1, total) * Math.min(1, Math.max(0, darkness));
@@ -27,6 +32,7 @@ export function lightAround(point, lights = [], darkness = 1) {
     color: hex([r / total, g / total, b / total]), strength,
     // A creature between lights on all sides has no lit side (the rim fades with how one-sided the light is).
     angle: pull > 0.15 ? (Math.atan2(dy, dx) * 180) / Math.PI : null, side: Math.min(1, pull),
+    elevation: up / total, distance: far / total, brightness: lit / total,
   };
 }
 

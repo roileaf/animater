@@ -64,6 +64,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "elementReactions", local: "elementReactionsLocal" },
     { world: "marksChangeFloor" },
     { world: "movementFeel", local: "movementFeelLocal", extras: ["movementFootprintSandSeconds", "movementFootprintMudSeconds", "movementFootprintSnowSeconds", "movementFootprintDirtSeconds", "movementFootprintGrassSeconds", "movementFootprintStoneSeconds", "movementFootprintWoodSeconds", "movementFootprintWaterSeconds", "movementFootprintIceSeconds", "swimWakeSeconds", "underwaterBubbleSeconds", "underwaterLooks", "underwaterOpacity", "burrowTrailSeconds", "burrowTrailDepth", "movementStealth", "burrowHoles", "burrowSink", "trackedPrints", "bloodTrail", "weatherOnGround", "walkedPathHighlight", "groundShadows", "shadowsOverTokens", "flightDust", "dripAfterSwimming"] },
+    { menu: "sunMenu" },
     { local: "movementGmPerception", gmOnly: true },
     { world: "quietSneaking" },
     { world: "projectileWalls" },

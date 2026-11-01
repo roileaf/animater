@@ -974,3 +974,61 @@ test('wading through a water floor drips too, more lightly and for less time tha
   added = []; time += DRIP_MS / 2; walk(1500);
   assert.equal(wet(), 0, 'dry sooner than after a swim');
 });
+test('a flier’s shadow falls away from the light that outshines the day; none in the dark with no light',async()=>{
+  const { shadowFall } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const day = shadowFall({ width: 100, lift: 4, darkness: 0 });
+  assert.ok(day.dx > 0 && day.dy > 0 && day.alpha === 1, 'the sun: down and to the right');
+  // A light up high to the right at night: the shadow falls to the left, as far as it really would.
+  const above = shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.6, angle: 0, distance: 100 } });
+  assert.ok(Math.abs(above.dx - -100 * 4 / 6) < 1e-9 && Math.abs(above.dy) < 1e-9 && above.alpha > 0.4);
+  // Shorter the higher the light; longer and fainter as the creature climbs toward it.
+  const higher = shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 20, light: { strength: 0.6, angle: 0, distance: 100 } });
+  const near = shadowFall({ width: 100, lift: 9.5, darkness: 1, lightHeight: 10, light: { strength: 0.6, angle: 0, distance: 100 } });
+  assert.ok(Math.abs(higher.dx) < Math.abs(above.dx) && Math.abs(near.dx) > Math.abs(above.dx) && near.alpha < above.alpha);
+  // A light at or below the creature (most placed lights, a torch carried below it) throws none on the floor.
+  assert.equal(shadowFall({ width: 100, lift: 4, darkness: 1, light: { strength: 0.6, angle: 0 } }).alpha, 0);
+  assert.equal(shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 4, light: { strength: 0.6, angle: 0 } }).alpha, 0);
+  // Climbing higher past a low light never throws its shadow further out.
+  assert.ok(shadowFall({ width: 100, lift: 8, darkness: 1, light: { strength: 0.6, angle: 0 } }).alpha === 0);
+  // A torch in daylight: the sun still decides.
+  assert.deepEqual(shadowFall({ width: 100, lift: 4, darkness: 0, light: { strength: 0.6, angle: 0 } }), day);
+  assert.equal(shadowFall({ width: 100, lift: 4, darkness: 1 }).alpha, 0, 'dark, no light: no shadow');
+  const around = shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.8, angle: null } });
+  assert.ok(around.dx === 0 && around.dy > 0 && around.alpha > 0, 'lit all round: straight under');
+});
+test('the shadow eases round to a new light instead of jumping',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const seen = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => seen.push(g), removeShadow() {}, clear() {} };
+  let t = 0, angle = 0;
+  const flier = { id: 'f', x: 500, y: 500, width: 100, elevation: 20, base: 0, visible: true, gait: 'none', action: 'fly', light: () => ({ light: { strength: 0.8, angle, elevation: 50, distance: 100 }, darkness: 1 }) };
+  const feel = createMovementFeel({ tokens: () => [flier], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {} });
+  feel.tick();
+  assert.ok(seen.at(-1).fall.x < 500, 'away from a light on the right');
+  angle = 180; t = 50; feel.tick();
+  assert.ok(seen.at(-1).fall.x < 500, 'still mostly where it was after 50 ms');
+  t = 2000; feel.tick();
+  assert.ok(seen.at(-1).fall.x > 500, 'round to the other side');
+});
+test('a hovering flier’s shadow breathes with its bob: wider, softer and fainter as it rises',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const seen = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => seen.push(g), removeShadow() {}, clear() {} };
+  let up = 0;
+  const flier = { id: 'f', x: 500, y: 500, width: 100, elevation: 20, base: 0, visible: true, gait: 'none', action: 'fly', bob: () => up };
+  const feel = createMovementFeel({ tokens: () => [flier], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {} });
+  feel.tick(); const rest = seen.at(-1);
+  up = 5; feel.tick(); const high = seen.at(-1);
+  up = -5; feel.tick(); const low = seen.at(-1);
+  assert.ok(high.rx > rest.rx && high.alpha < rest.alpha && high.lift > rest.lift);
+  assert.ok(low.rx < rest.rx && low.alpha > rest.alpha);
+  assert.equal(high.x, rest.x, 'it stays on the floor');
+});
+test('in a light’s bright radius the shadow is dark and crisp; out in its dim light, faint and soft',async()=>{
+  const { shadowFall } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const at = (brightness) => shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.6, angle: 0, distance: 100, brightness } });
+  const bright = at(1), dim = at(0.3);
+  assert.ok(bright.alpha > dim.alpha && bright.soft < dim.soft);
+  assert.equal(bright.soft, 0);
+  assert.equal(shadowFall({ width: 100, lift: 4, darkness: 0 }).soft, 0, 'full day: crisp');
+});

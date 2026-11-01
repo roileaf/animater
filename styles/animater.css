@@ -3555,3 +3555,40 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-studio-editor .an-fx-layer > label:last-child { margin-top: 8px; }
 .animater .an-studio-editor .an-fx-editor > label:has(select) { grid-template-columns: 72px 1fr; }
 .animater .an-studio-editor .an-fx-stop { display: grid; grid-template-columns: auto 1fr 1fr 1fr; gap: 4px; align-items: center; font-size: 10px; color: var(--an-muted); }
+
+/* Scene configuration → Animater sun: mode buttons, a dial of the map from above, a day ruler. */
+.animater-sun { display: flex; flex-direction: column; gap: 10px; }
+.animater-sun .an-sun-modes { display: flex; gap: 4px; flex-wrap: wrap; }
+.animater-sun .an-sun-modes button { flex: 1 1 auto; margin: 0; padding: 4px 10px; line-height: 1.4; white-space: nowrap; }
+.animater-sun .an-sun-modes button[aria-checked="true"] { background: var(--color-warm-2, #c9593f); color: var(--color-light-1, #fff); border-color: transparent; }
+.animater-sun .an-sun-main { display: flex; gap: 14px; align-items: center; }
+.animater-sun .an-sun-dial { flex: 0 0 190px; width: 190px; height: 190px; touch-action: none; cursor: grab; user-select: none; }
+.animater-sun[data-mode="none"] .an-sun-dial { cursor: default; opacity: 0.55; }
+.animater-sun .an-sun-ring { stroke: var(--color-border, #6b6155); stroke-width: 1.5; }
+.animater-sun .an-sun-guide { fill: none; stroke: currentColor; stroke-opacity: 0.15; stroke-dasharray: 3 4; }
+.animater-sun .an-sun-compass { fill: currentColor; fill-opacity: 0.7; font-size: 11px; font-weight: 600; text-anchor: middle; dominant-baseline: central; }
+.animater-sun .an-sun-path { fill: none; stroke: #ffc341; stroke-opacity: 0.6; stroke-width: 2; stroke-dasharray: 4 4; }
+.animater-sun .an-sun-east circle { fill: #e8925a; stroke: #fff4; }
+.animater-sun .an-sun-east text { fill: #fff; font-size: 9px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.animater-sun:not([data-mode="time"]) .an-sun-east, .animater-sun:not([data-mode="time"]) .an-sun-day { display: none; }
+.animater-sun .an-sun-shadow { stroke: #000; stroke-width: 26; stroke-linecap: round; }
+.animater-sun .an-sun-token { fill: #8a7a62; stroke: #2a241d; stroke-width: 2; }
+.animater-sun .an-sun-core { fill: #fff8d6; }
+.animater-sun .an-sun-side { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.animater-sun .an-sun-readout { margin: 0; font-weight: 600; }
+.animater-sun .an-sun-strength { display: flex; flex-direction: column; gap: 4px; }
+.animater-sun .an-sun-range { display: flex; align-items: center; gap: 8px; }
+.animater-sun .an-sun-range input { flex: 1; }
+.animater-sun .an-sun-range output { min-width: 3em; text-align: right; }
+.animater-sun .an-sun-hint { margin: 0; }
+.animater-sun .an-sun-ruler { position: relative; height: 18px; border-radius: 9px; cursor: ew-resize; touch-action: none; box-shadow: inset 0 0 0 1px #0006; }
+.animater-sun .an-sun-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #ffd9a0; }
+.animater-sun .an-sun-now { position: absolute; top: -5px; width: 0; height: 0; margin-left: -5px; border: 5px solid transparent; border-top-color: #fff; }
+.animater-sun .an-sun-scrub { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: radial-gradient(#fff8d6, #ffc341 60%, #ff9a1f); box-shadow: 0 0 6px #ffc341; pointer-events: none; }
+.animater-sun .an-sun-hours { position: relative; height: 14px; font-size: 10px; opacity: 0.7; }
+.animater-sun .an-sun-hours span { position: absolute; transform: translateX(-50%); }
+.animater-sun .an-sun-hours span:first-child { transform: none; }
+.animater-sun .an-sun-hours span:last-child { transform: translateX(-100%); }
+.animater-sun.an-sun-inherits .an-sun-dial { cursor: default; opacity: 0.75; }
+.animater-sun .an-sun-clock { display: flex; align-items: center; gap: 10px; }
+.animater-sun .an-sun-clock select { flex: 1; }

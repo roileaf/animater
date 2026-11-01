@@ -1,7 +1,9 @@
 // Movement feel drawing: small PIXI Graphics (soft discs, chips, blades, glints, cracks, footprints) on the floor under
 // the tokens, never documents. Each particle is drawn once at a fixed size and then only moved, scaled, turned and
-// faded; a flier's shadow is a stack of faint ellipses, no blur.
+// faded; a flier's shadow is its art's soft silhouette laid on the floor (flier-silhouette.mjs), else a stack of faint
+// ellipses, no blur.
 // `root()` returns (and makes, when needed) the container on the viewed level's floor.
+import { createSilhouettes, silhouettePose, silhouetteScale } from './flier-silhouette.mjs';
 
 const DRAW = 100;
 const SHADOW_RINGS = 14;
@@ -224,7 +226,7 @@ const PRINTS = {
   },
 };
 
-export function createMovementFeelLayer({ PIXI, root, overRoot = null }) {
+export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouettes: given = null }) {
   const live = new Set();
   const add = (g, to = root) => { g.eventMode = 'none'; to().addChild(g); live.add(g); return g; };
   const shadowEllipse = () => {
@@ -239,6 +241,44 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null }) {
     return g;
   };
   const remove = (g) => { live.delete(g); try { g.destroy(); } catch { /* already gone */ } };
+  // Shadows in the flier's own shape: its art as a soft black silhouette, sharp low and soft high, laid flat.
+  // Made on first use: the module loads before PIXI is up (and in tests, without it).
+  let made = given;
+  const silhouettes = () => (made ??= typeof PIXI?.Sprite === 'function' && typeof document !== 'undefined' ? createSilhouettes({ PIXI }) : null);
+  const shapes = new WeakMap();
+  const silhouetteNode = () => {
+    const outer = new PIXI.Container(), inner = new PIXI.Container(), sharp = new PIXI.Sprite(), soft = new PIXI.Sprite();
+    outer.eventMode = 'none';
+    sharp.anchor.set(0.5); soft.anchor.set(0.5);
+    inner.addChild(sharp, soft); outer.addChild(inner);
+    return { outer, inner, sharp, soft, shape: null };
+  };
+  // Lays the art's silhouette as the shadow `geom` describes, in `parent`; false where the art has none to cast (no
+  // art, solid art, not loaded yet), and the round shadow shows instead.
+  const laySilhouette = (holder, parent, geom, cast) => {
+    let node = shapes.get(holder);
+    const art = typeof geom.art === 'function' ? geom.art() : geom.art;
+    const shape = art?.texture ? silhouettes()?.get(art.texture) ?? null : null;
+    if (!shape) { if (node && !node.outer.destroyed) node.outer.visible = false; return false; }
+    if (!node || node.outer.destroyed) { shapes.set(holder, node = silhouetteNode()); parent.addChild(node.outer); }
+    if (node.shape !== shape) { node.sharp.texture = shape.sharp.texture; node.soft.texture = shape.soft.texture; node.shape = shape; }
+    const pose = silhouettePose(geom, { cast }), k = silhouetteScale({ artWidth: art.width * (shape.fill?.w ?? 1), artHeight: art.height * (shape.fill?.h ?? 1), width: geom.width }) * pose.size;
+    node.outer.visible = true;
+    node.outer.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
+    // Flattened onto the floor after turning with the art, as a shadow lies.
+    node.outer.scale.set(1, pose.flat);
+    node.outer.alpha = geom.alpha * 0.85;
+    node.inner.rotation = art.rotation || 0;
+    const sx = ((art.width * k) / shape.width) * (art.flipX ? -1 : 1), sy = ((art.height * k) / shape.height) * (art.flipY ? -1 : 1);
+    node.sharp.scale.set(sx, sy); node.soft.scale.set(sx, sy);
+    node.sharp.alpha = 1 - pose.soft; node.soft.alpha = pose.soft;
+    return true;
+  };
+  const dropSilhouette = (holder) => {
+    const node = shapes.get(holder);
+    shapes.delete(holder);
+    try { if (node && !node.outer.destroyed) node.outer.destroy({ children: true }); } catch { /* already gone */ }
+  };
   // Smoke: one soft white disc drawn once into a texture, every puff a sprite of it tinted grey, so hundreds of puffs
   // batch into a single draw (each its own vector shape cost over a millisecond a frame at a busy table).
   let softDisc = null;
@@ -289,17 +329,18 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null }) {
       if (g.destroyed) return;
       g.position.set(geom.x, geom.y);
       g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
-      g.alpha = geom.alpha;
+      g.alpha = geom.art && laySilhouette(g, root(), geom, false) ? 0 : geom.alpha;
     },
-    removeShadow: remove,
+    removeShadow(g) { dropSilhouette(g); remove(g); },
     // A flier's shadow over the creatures below: the same ellipse above the tokens, cut to the creatures' squares
     // (rounded, as most token art is), so only their art darkens and the floor keeps its one shadow.
     ...(overRoot ? {
       addOverShadow() {
-        const box = new PIXI.Container(), g = shadowEllipse(), mask = new PIXI.Graphics();
-        box.addChild(g, mask);
-        g.mask = mask;
-        box.__animaterShadow = g; box.__animaterMask = mask;
+        const box = new PIXI.Container(), shade = new PIXI.Container(), g = shadowEllipse(), mask = new PIXI.Graphics();
+        shade.addChild(g);
+        box.addChild(shade, mask);
+        shade.mask = mask;
+        box.__animaterShadow = g; box.__animaterShade = shade; box.__animaterMask = mask;
         box.alpha = 0;
         return add(box, overRoot);
       },
@@ -308,14 +349,17 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null }) {
         const g = box.__animaterShadow, mask = box.__animaterMask;
         g.position.set(geom.x, geom.y);
         g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
-        box.alpha = geom.alpha;
+        // In the flier's shape where its art has one (the silhouette brings its own strength), else the ellipse.
+        const shaped = !!geom.art && laySilhouette(box, box.__animaterShade, geom, true);
+        g.visible = !shaped;
+        box.alpha = shaped ? 1 : geom.alpha;
         mask.clear();
         mask.beginFill(0xffffff, 1);
         for (const t of covers) { const w = t.width * 0.9; mask.drawRoundedRect(t.x - w / 2, t.y - w / 2, w, w, w * 0.3); }
         mask.endFill();
       },
-      removeOverShadow: remove,
+      removeOverShadow(box) { dropSilhouette(box); remove(box); },
     } : {}),
-    clear() { for (const g of [...live]) remove(g); },
+    clear() { for (const g of [...live]) { dropSilhouette(g); remove(g); } made?.clear(); },
   };
 }

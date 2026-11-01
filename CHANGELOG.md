@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Shadows in each creature's shape.** A flier's shadow is now its own outline (wings, tail and all) instead of a round blob, laid flat on the floor and softer the higher it flies. It breathes with its hover: a little larger and fainter as it rises. With "Shadows under every token", standing creatures cast their outline too. Art with no outline of its own (an opaque square portrait) keeps the round shadow. Dynamic-ring tokens cast the creature, not the ring.
+- **Shadows follow the light.** A shadow falls away from the strongest light reaching the creature, and as far as that light really throws it: short under a light high above, none from a light below a flier. It is dark and crisp in a light's bright radius, faint and soft in its dim light, and swings round smoothly as the creature passes from one light to another.
+- **The sun.** A new Sun and time of day window (Animater settings → Floor & world) sets the world's default sun: following the time of day (long shadows at dawn and dusk, short at noon, none at night), fixed where you put it, or none. The time, sunrise and sunset come from Calendaria, Simple Calendar Reborn or Foundry's own clock. Each scene can choose its own sun (Scene configuration → Environment → Animater sun), on a dial of the map with a day ruler to preview any hour.
+- **An unlit torch stays unlit.** A creature holding an unlit torch while it has some other light no longer shows the torch burning.
+
 ## 2.3.1 (2026-11-01)
 
 - **Lanterns look like lanterns.** The lantern a creature carries is now an iron hanging lantern: a wire handle, a vented cap, three glass panes between iron posts, and a candle inside whose flame lights the glass and flickers like the torch fire.

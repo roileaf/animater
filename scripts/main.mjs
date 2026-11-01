@@ -165,6 +165,9 @@ import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-sm
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
+import { sceneSun, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING } from "./engines/motion/sun.mjs";
+import { sunSettingsMenu, SUN_SETTING, CLOCK_SETTING } from "./ui/sun-settings.mjs";
+import { sunConfigElement } from "./ui/scene-sun-config.mjs";
 import { createSustainThreads, sustainLinks, concentrationLinks } from "./engines/motion/sustain-threads.mjs";
 import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId, isDefeated } from "./engines/playback/defeated-look.mjs";
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
@@ -600,7 +603,7 @@ const lightsReaching = (token) => {
       // Walls: only a light whose lit area holds the creature.
       if (source.shape?.contains && !source.shape.contains(c.x, c.y)) continue;
       const color = d.color === null || d.color === undefined ? null : Number(d.color);
-      out.push({ x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null, alpha: d.alpha ?? 0.5 });
+      out.push({ x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null, alpha: d.alpha ?? 0.5, elevation: Number(d.elevation) || 0, bright: Number(d.bright) || 0 });
     } catch { /* a broken light never breaks the rest */ }
   }
   return out;
@@ -1050,6 +1053,82 @@ const movementFeelBlood = (d) => {
 // Native document/perception hooks invalidate immediately, with a short fallback
 // lifetime for integrations that change actor data without emitting a hook.
 const movementViews = new Map();
+// The light a creature's shadow is cast by (engines/motion/movement-feel.mjs shadowFall): the strongest light reaching
+// it (engines/playback/surrounding-light.mjs, its own light left out) and the darkness where it is. Looked up at most
+// twice a second while it moves; a creature standing still keeps its answer until the lighting changes (or two seconds).
+const flierLights = new Map();
+let lightingAge = 0;
+for (const hook of ["lightingRefresh", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { lightingAge++; });
+// How far each creature's body is lifted from its place now, in pixels (ConditionBody's hover bob, through followBody).
+const bodyLift = new Map();
+const flierLight = (t) => {
+  const now = performance.now(), had = flierLights.get(t.id), c = t.center;
+  if (had && now - had.at < 500) return had.value;
+  if (had && had.age === lightingAge && had.x === c.x && had.y === c.y && now - had.at < 2000) return had.value;
+  let value = null;
+  try {
+    let darkness = canvas.environment?.darknessLevel ?? 0;
+    try { darkness = canvas.effects?.getDarknessLevel?.(t.center, t.document?.elevation ?? 0) ?? darkness; } catch { /* older Foundry */ }
+    value = { light: lightAround(t.center, lightsReaching(t), 1), darkness };
+  } catch { value = null; }
+  flierLights.set(t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
+  return value;
+};
+Hooks.on("canvasTearDown", () => { flierLights.clear(); bodyLift.clear(); });
+// The time of day for the sun (engines/motion/sun.mjs): { day 0–1, sunrise, sunset }, or null when there is no clock.
+// Simple Calendar Reborn's or Calendaria's own day (their sunrise and sunset) when one is active, else Foundry's clock
+// with the sun up from 6 to 18 (Animater settings → Sun picks which).
+const clockNow = () => {
+  try {
+    const time = game.time, c = time?.components, d = time?.calendar?.days ?? {};
+    if (!c) return null;
+    const hours = d.hoursPerDay || 24, minutes = d.minutesPerHour || 60, seconds = d.secondsPerMinute || 60;
+    const day = ((c.hour ?? 0) + ((c.minute ?? 0) + (c.second ?? 0) / seconds) / minutes) / hours;
+    let rise = 0.25, set = 0.75;
+    const okHours = (v) => Number.isFinite(v) && v >= 0 && v <= hours;
+    // The calendar chosen in Animater settings → Sun (automatic: Calendaria, else Simple Calendar Reborn, else Foundry).
+    let choice = "auto";
+    try { choice = hotSetting(CLOCK_SETTING) || "auto"; } catch { /* not registered yet */ }
+    const source = clockSource(choice, (id) => game.modules.get(id)?.active === true);
+    // Calendaria: sunrise and sunset in hours into the day, for the scene's climate zone.
+    const calendaria = source === "calendaria" ? globalThis.CALENDARIA?.api : null;
+    if (calendaria) {
+      const r = Number(calendaria.getSunrise?.()), s = Number(calendaria.getSunset?.());
+      if (okHours(r) && okHours(s) && s > r) { rise = r / hours; set = s / hours; }
+    } else if (source === "foundryvtt-simple-calendar-reborn" && globalThis.SimpleCalendar?.api) {
+      // Simple Calendar Reborn: today's sunrise and sunset as timestamps; into the day from today's start.
+      const sc = globalThis.SimpleCalendar.api, ts = sc.timestamp(), date = sc.timestampToDate(ts), cfg = sc.getTimeConfiguration?.() ?? {};
+      const spm = cfg.secondsInMinute || seconds, mph = cfg.minutesInHour || minutes, hpd = cfg.hoursInDay || hours;
+      const start = ts - ((date.hour * mph + date.minute) * spm + (date.second ?? 0)), perDay = hpd * mph * spm;
+      const r = (Number(date.sunrise) - start) / perDay, s = (Number(date.sunset) - start) / perDay;
+      if (r >= 0 && s <= 1 && s > r) { rise = r; set = s; }
+    }
+    return { day, sunrise: rise, sunset: set };
+  } catch { return null; }
+};
+// The scene's sun now, kept until the time, the scene or the setting changes (never worked out a frame).
+let sunNow = DEFAULT_SUN;
+// The world's default sun (Animater settings → Sun), for scenes left on "World default".
+const sunDefaults = () => { try { return { ...DEFAULT_SUN_SETTING, ...(hotSetting(SUN_SETTING) ?? {}) }; } catch { return DEFAULT_SUN_SETTING; } };
+const refreshSun = () => {
+  try {
+    const flags = canvas?.scene?.flags?.[ID]?.sun ?? {}, defaults = sunDefaults(), mode = flags.mode || defaults.mode;
+    sunNow = sceneSun(flags, { defaults, clock: mode === "time" ? clockNow() : null });
+  } catch { sunNow = DEFAULT_SUN; }
+};
+// The calendars' own changes too (a new day's sunrise, a climate zone), not only Foundry's clock.
+for (const hook of ["canvasReady", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { refreshSun(); });
+Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) refreshSun(); });
+// A token's art as drawn (engines/motion/flier-silhouette.mjs): the creature inside a dynamic ring, not the ring, with
+// its drawn size, mirroring and turn.
+const tokenArt = (t) => {
+  const mesh = t?.mesh;
+  if (!mesh || mesh.destroyed || !mesh.texture) return null;
+  let texture = mesh.texture;
+  const ring = t.document?.ring;
+  if (ring?.enabled && ring.subject?.texture) { try { texture = foundry.canvas.getTexture(ring.subject.texture) ?? texture; } catch { /* the mesh's own */ } }
+  return { texture, width: Math.abs(mesh.width), height: Math.abs(mesh.height), flipX: mesh.scale.x < 0, flipY: mesh.scale.y < 0, rotation: mesh.rotation ?? 0 };
+};
 for (const hook of ['canvasReady', 'canvasTearDown', 'updateActor', 'createItem', 'updateItem', 'deleteItem', 'sightRefresh', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel'])
   Hooks.on(hook, () => { movementViews.clear(); });
 for (const hook of ['updateToken', 'deleteToken']) Hooks.on(hook, doc => movementViews.delete(doc.id));
@@ -1080,6 +1159,8 @@ const movementFeel = createMovementFeel({
   layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot }),
   // "Flier shadows fall on creatures".
   shadowsOverTokens: () => movementFeelSettingOn("shadowsOverTokens"),
+  // The scene's sun (Scene configuration → Animater sun; "The sun follows the time of day").
+  sun: () => sunNow,
   // "Dust when fliers take off and land".
   flightDust: () => movementFeelSettingOn("flightDust"),
   // "Creatures drip out of the water".
@@ -1109,6 +1190,10 @@ const movementFeel = createMovementFeel({
         ...movementFeelBlood(d),
         ...movementPerception(t, d, level),
         skip,
+        // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
+        art: () => tokenArt(t),
+        light: () => flierLight(t),
+        bob: () => bodyLift.get(t.id) ?? 0,
       };
       movementViews.set(d.id, {token: t, signature, at: time, view});
       return view;
@@ -3583,6 +3668,12 @@ Hooks.once("init", () => {
     hint: "A soft shadow under every creature standing on the ground, not only under fliers, so tokens sit on the map instead of floating over it, and taking off reads at a glance. Needs Movement feel on.",
     scope: "world", config: true, type: Boolean, default: false,
   });
+  // The sun for creatures' shadows (Animater settings → Sun): the world's default, and which calendar tells the time.
+  registerSetting(SUN_SETTING, { name: "Default sun", scope: "world", config: false, type: Object, default: { ...DEFAULT_SUN_SETTING } });
+  registerSetting(CLOCK_SETTING, { name: "Time of day from", scope: "world", config: false, type: String, default: "auto" });
+  game.settings.registerMenu(ID, "sunMenu", { name: "Sun", label: "Sun and time of day", icon: "fa-solid fa-sun",
+    hint: "The sun creatures' shadows are cast by, for every scene left on \u201cWorld default\u201d: following the time of day (long shadows at dawn and dusk, short at noon, none at night), fixed where you put it, or none. And which calendar gives the time, sunrise and sunset: Calendaria, Simple Calendar Reborn or Foundry's own clock. Each scene can choose its own (Scene configuration \u2192 Environment \u2192 Animater sun).",
+    type: sunSettingsMenu(ApplicationV2, { id: ID, clock: () => clockNow() }), restricted: true });
   registerSetting("walkedPathHighlight", {
     name: "Walked path highlight",
     hint: "Foundry highlights every square a token moves through, which hides the dust, prints and splashes it leaves. Faded: the squares already walked show at a quarter strength (the way ahead stays as it is). Hidden: walked squares are not highlighted. As Foundry draws it: unchanged.",
@@ -4180,8 +4271,17 @@ Hooks.on("renderSceneConfig", (app, html) => {
   }
   tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the scene (auto)", "What moving tokens walk on here: dust on dirt, grass, sand and snow, ripples on water, a faint scuff on stone and wood. From the scene: dirt when the scene has global illumination or its name or background sounds outdoors, else stone. Regions named for water (river, lake, pond, sea, stream, swamp) are water inside."));
 });
+// Scene configuration: this scene's sun for creatures' shadows (engines/motion/sun.mjs sceneSun), set on a dial with a
+// day ruler (ui/scene-sun-config.mjs): following the time of day, fixed where the scene puts it, or none.
+Hooks.on("renderSceneConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.sun.mode"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="environment"]') ?? root.querySelector('.tab[data-tab="ambience"]') ?? root.querySelector('.tab[data-tab="basics"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  tab.append(sunConfigElement({ flags: app.document?.flags?.[ID]?.sun ?? {}, defaults: sunDefaults(), clock: clockNow(), id: ID }));
+});
 // Token configuration fields go on both a placed token's sheet and its actor's prototype token.
-const onTokenConfig = (fn) => { Hooks.on("renderTokenConfig", fn); Hooks.on("renderPrototypeTokenConfig", fn); };
+const onTokenConfig =(fn) => { Hooks.on("renderTokenConfig", fn); Hooks.on("renderPrototypeTokenConfig", fn); };
 // Token configuration: where breath vapor leaves this token's art (portrait art, top-down art turned to face, or an
 // edge where the head is drawn).
 onTokenConfig((app, html) => {
@@ -4502,6 +4602,8 @@ Hooks.once("ready", () => {
   // leaves alone as it follows the token.
   const riding = new WeakMap();
   const followBody = (token, dx, dy) => {
+    // How far its body is lifted now (a flier's hover bob), for its shadow.
+    if (dy) bodyLift.set(token.id, -dy); else bodyLift.delete(token.id);
     const sequencer = globalThis.Sequencer?.EffectManager;
     if (!sequencer) return;
     const time = performance.now();
@@ -4956,6 +5058,10 @@ Hooks.once("ready", () => {
       },
       // Flier shadows drawn over creatures, and the fire lights hazing the air now.
       overShadows: () => feelOverRoot?.destroyed ? 0 : feelOverRoot?.children?.length ?? 0,
+      // Shadows drawn in creatures' own shapes on the floor now (where, how strong, how flat), and the scene's sun.
+      shapedShadows: () => (feelRoot?.destroyed ? [] : feelRoot?.children ?? []).filter((c) => !c.destroyed && c.children?.[0]?.children?.length === 2)
+        .map((c) => ({ x: Math.round(c.position.x), y: Math.round(c.position.y), alpha: +c.alpha.toFixed(3), visible: c.visible, flat: c.scale.y })),
+      sun: () => sunNow,
       fireHazes: () => fireHazes.size,
       smokePuffs: () => fireSmoke.size,
       heldTorches: () => heldTorches.size,

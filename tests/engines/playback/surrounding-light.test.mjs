@@ -33,3 +33,17 @@ test('small changes keep the look; the look tints and rims and builds as Tokensh
   const PIXI = { Filter: class { constructor(v, f, u) { this.uniforms = u; this.enabled = true; } destroy() {} }, Texture: { EMPTY: {} } };
   assert.equal(presetFilters(PIXI, preset, { tokenSize: { width: 100, height: 100 } }).length, 2);
 });
+
+test('the light reaching a point says how high and how far it is, weighted by strength', () => {
+  const one = lightAround({ x: 0, y: 0 }, [{ x: 100, y: 0, radius: 400, alpha: 0.5, elevation: 30 }], 1);
+  assert.equal(one.elevation, 30);
+  assert.equal(one.distance, 100);
+  const two = lightAround({ x: 0, y: 0 }, [{ x: 100, y: 0, radius: 400, alpha: 0.5, elevation: 30 }, { x: -300, y: 0, radius: 400, alpha: 0.5 }], 1);
+  assert.ok(two.elevation > 15 && two.elevation < 30, 'nearer counts more');
+});
+
+test('brightness: full inside a light bright radius, fading across its dim light', () => {
+  const at = (x) => lightAround({ x: 0, y: 0 }, [{ x, y: 0, radius: 400, bright: 200, alpha: 0.5 }], 1)?.brightness;
+  assert.equal(at(100), 1);
+  assert.ok(at(250) < 0.5 && at(250) > at(300));
+});

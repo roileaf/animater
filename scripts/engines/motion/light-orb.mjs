@@ -21,7 +21,9 @@ export const isOrbEffect = (name) => ORB_SPELLS.test(String(name ?? '').trim());
 // it holds or has equipped, as names or { name, light } (`light` the light the item gives, { animation, bright, dim },
 // as PF2e's TokenLight rules say); `light` the token's light now, the same shape.
 const LANTERN = /\blantern\b/i, TORCH = /\b(?:torch|candle|candlecap)\b/i;
-const sameLight = (a, b) => !!a && !!b && ['animation', 'bright', 'dim'].every((k) => a[k] == null || b[k] == null || a[k] === b[k]) && (a.animation != null || a.bright != null);
+// An item's light is the token's when its animation is the token's (a plain light is no torch's, however wide) and its
+// reach matches where both give one.
+const sameLight = (a, b) => !!a && !!b && (a.animation ?? null) === (b.animation ?? null) && ['bright', 'dim'].every((k) => a[k] == null || b[k] == null || a[k] === b[k]) && (a.animation != null || a.bright != null);
 export function heldLightKind({ choice = '', fire = false, effects = [], held = [], light = null } = {}) {
   if (choice === 'none') return null;
   if (choice === 'torch' || choice === 'orb' || choice === 'lantern') return choice;
