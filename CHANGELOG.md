@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Reset to defaults.** The Animater settings window has a **Reset to defaults…** button in its footer and a **Reset this tab** button on each tab. It asks first (a GM picks the world settings, this screen's or both), downloads a backup of the values it changes, and leaves menus, catalogs and recipes alone.
+
 ## 3.8.6
 
 - **Outdoor life and Town life left Scene configuration.** The Animals panel now switches each scene's animals. **Outdoor life on this scene** is its On/Off, and the town's pigeons, hens, cats and dogs come when given a count under **Town**, without Outdoor life on. A scene that had Town life set turns it into those counts the first time the GM opens it, and any counts already set stay as they were.
