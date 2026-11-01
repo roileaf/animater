@@ -31,8 +31,8 @@ const [a, b, c] = PF2E_SPELLS;
 const copy = spellRecipe(c), feat = featRecipe(PF2E_FEATS[0]), starters = starterRecipes().slice(0, 2), world = [...starters, copy, feat];
 const used = { enabled: true, scope: "all", independent: true, preferCatalog: true, excluded: [a.id], selected: [b.id], customized: [c.id], motion: false, soundVolume: 0.9 };
 
-test("Reset catalogue… sits in a catalog page's header for a GM only", () => {
-  assert.match(workspace().catalogResetHTML(), /data-action="catalog-state-reset"[^>]*>↺ Reset catalogue…<\/button>/);
+test("Reset catalog… sits in a catalog page's header for a GM only", () => {
+  assert.match(workspace().catalogResetHTML(), /data-action="catalog-state-reset"[^>]*>↺ Reset catalog…<\/button>/);
   assert.equal(workspace({ isGM: false }).catalogResetHTML(), "");
   assert.equal(workspace({ page: "recipes" }).catalogResetHTML(), "");
   assert.equal(workspace({ page: "npc-abilities" }).catalogResetHTML(), "");
@@ -58,11 +58,11 @@ test("a reset asks first naming what it deletes, backs up, deletes this catalog'
   assert.equal(seen.asked[0].no.default, true);
   assert.match(seen.asked[0].content, new RegExp(`Deletes 1 customised recipe: ${c.name}\\.`));
   assert.equal(seen.saved.length, 1);
-  assert.match(seen.saved[0].name, /^animater-pf2e-spell-catalogue-backup-.+\.json$/);
+  assert.match(seen.saved[0].name, /^animater-pf2e-spell-catalog-backup-.+\.json$/);
   assert.deepEqual(seen.saved[0].data.catalogState, before);
   assert.deepEqual(seen.saved[0].data.recipes.map((r) => r.id), [copy.id]);
   assert.deepEqual(w.host.recipes().map((r) => r.id), [...starters.map((r) => r.id), feat.id]);
-  assert.deepEqual(w.host.catalogState(), { ...normalizeCatalogState(), enabled: true, scope: "all" });
+  assert.deepEqual(w.host.catalogState(), { ...normalizeCatalogState(), enabled: true, scope: "all", independent: true });
   assert.ok(!w.dirty.has(copy.id) && !w.drafts.has(copy.id));
   assert.equal(w.selected, starters[0].id);
   assert.equal(w.leftOutView, null);
@@ -112,5 +112,5 @@ test("a D&D catalog resets through its own setter and deletes only its own kind'
   assert.deepEqual(w.host.sets.map(([kind]) => kind), ["weapon"]);
   assert.deepEqual(w.host.dndCatalogState("weapon"), { ...normalizeDndCatalogState(), enabled: true });
   assert.deepEqual(w.host.recipes().map((r) => r.id), [...starters.map((r) => r.id), spell.id]);
-  assert.match(seen.saved[0].name, /^animater-dnd5e-weapon-catalogue-backup-/);
+  assert.match(seen.saved[0].name, /^animater-dnd5e-weapon-catalog-backup-/);
 });
