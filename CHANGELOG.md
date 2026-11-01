@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Reset to defaults.** The Animater settings window has a **Reset to defaults…** button in its footer and a **Reset this tab** button on each tab. It asks first (a GM picks the world settings, this screen's or both), downloads a backup of the values it changes, and leaves menus, catalogs and recipes alone.
+- **Reset to defaults.** The Animater settings window has a **Reset to defaults…** button in its footer and a **Reset this tab** button on each tab. It asks first (a GM picks the world settings, this screen's or both), downloads a backup of the values it changes, and leaves menus, catalogs, recipes and the switch that plays them alone.
 
 ## 3.8.6
 
