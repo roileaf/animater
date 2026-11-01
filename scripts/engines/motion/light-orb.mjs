@@ -15,16 +15,26 @@ const hash = (text) => {
 const ORB_SPELLS = /^(?:(?:spell\s+)?effect\s*:\s*)?(?:light|everlight|continual flame|dancing lights?|faerie light|light orb|glowing orb)$/i;
 export const isOrbEffect = (name) => ORB_SPELLS.test(String(name ?? '').trim());
 
-// What a creature's own light is drawn as: 'lantern' (it holds a lantern), 'torch' (a fire light), 'orb' (a light spell),
+// What a creature's own light is drawn as: 'orb' (a light spell), 'lantern' (it holds a lantern), 'torch' (a fire light),
 // or null (left as Foundry draws it). `choice` is the token's own (Token configuration → Animater light shown as): ''
-// decides from what it holds, its light and its effects; 'lantern', 'torch', 'orb' or 'none' force it. `held`: the names
-// of the items it holds or has equipped.
-export function heldLightKind({ choice = '', fire = false, effects = [], held = [] } = {}) {
+// decides from what it holds, its light and its effects; 'lantern', 'torch', 'orb' or 'none' force it. `held`: the items
+// it holds or has equipped, as names or { name, light } (`light` the light the item gives, { animation, bright, dim },
+// as PF2e's TokenLight rules say); `light` the token's light now, the same shape.
+const LANTERN = /\blantern\b/i, TORCH = /\b(?:torch|candle|candlecap)\b/i;
+const sameLight = (a, b) => !!a && !!b && ['animation', 'bright', 'dim'].every((k) => a[k] == null || b[k] == null || a[k] === b[k]) && (a.animation != null || a.bright != null);
+export function heldLightKind({ choice = '', fire = false, effects = [], held = [], light = null } = {}) {
   if (choice === 'none') return null;
   if (choice === 'torch' || choice === 'orb' || choice === 'lantern') return choice;
-  if ([...held].some((n) => /\blantern\b/i.test(String(n)))) return 'lantern';
-  if (fire) return 'torch';
-  return [...effects].some(isOrbEffect) ? 'orb' : null;
+  // A Light spell running is the light it gives, even with a lantern in hand.
+  if ([...effects].some(isOrbEffect)) return 'orb';
+  const items = [...held].map((h) => (typeof h === 'object' && h ? { name: String(h.name ?? ''), light: h.light ?? null } : { name: String(h), light: null }));
+  // The item whose light the token has now (a lit torch beside an unlit lantern, or the other way round).
+  const giver = items.find((i) => sameLight(i.light, light) && (LANTERN.test(i.name) || TORCH.test(i.name)));
+  if (giver) return LANTERN.test(giver.name) ? 'lantern' : 'torch';
+  // Else a torch in hand with a fire light is the torch; a lantern carried, the lantern.
+  if (fire && items.some((i) => TORCH.test(i.name) && !LANTERN.test(i.name))) return 'torch';
+  if (items.some((i) => LANTERN.test(i.name))) return 'lantern';
+  return fire ? 'torch' : null;
 }
 
 // How many lights a creature's light spell makes: Dancing Lights several wisps circling it, any other one orb.

@@ -15,6 +15,14 @@ test('a Light spell makes the light an orb; a fire light a torch; the token can 
   assert.equal(heldLightKind({ held: ['Lantern Archon Plushie?'] , fire: false }), 'lantern');
   assert.equal(heldLightKind({ fire: true, held: ['Longsword'] }), 'torch');
   assert.equal(heldLightKind({ choice: 'lantern' }), 'lantern');
+  assert.equal(heldLightKind({ effects: ['Spell Effect: Light'], held: ['Lantern (Hooded)'] }), 'orb', 'a Light spell wins over a lantern in hand');
+  assert.equal(heldLightKind({ effects: ['Spell Effect: Light'], fire: true }), 'orb');
+  // PF2e: a Torch gives a 'flame' light, a Hooded Lantern a 'torch' one; the lit one decides.
+  const torch = { name: 'Torch', light: { animation: 'flame', bright: 20, dim: 40 } }, lantern = { name: 'Lantern (Hooded)', light: { animation: 'torch', bright: 30, dim: 60 } };
+  assert.equal(heldLightKind({ fire: true, held: [torch, lantern], light: { animation: 'flame', bright: 20, dim: 40 } }), 'torch', 'a lit torch beside a lantern');
+  assert.equal(heldLightKind({ fire: true, held: [torch, lantern], light: { animation: 'torch', bright: 30, dim: 60 } }), 'lantern', 'a lit lantern beside a torch');
+  assert.equal(heldLightKind({ fire: true, held: ['Torch', 'Lantern (Hooded)'] }), 'torch', 'no light to match: the torch in hand');
+  assert.equal(heldLightKind({ fire: false, held: ['Torch', 'Lantern (Hooded)'] }), 'lantern');
 });
 
 test('the orb floats above the shoulder on its side, bobbing; its light hangs still', () => {

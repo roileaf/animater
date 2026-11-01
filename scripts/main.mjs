@@ -1633,8 +1633,11 @@ const lightKindOf = (token, data) => {
   const effects = items.filter((i) => i.type === "effect" || i.type === "condition").map((i) => i.name)
     .concat([...(actor?.effects ?? [])].map((e) => e.name));
   // What it carries in hand (PF2e: held; D&D and others: equipped).
-  const held = items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true).map((i) => i.name);
-  return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data, flags), effects, held });
+  // With the light each gives (PF2e's TokenLight rule), so the one lit now is told from one only carried.
+  const lightOf = (v) => (v ? { animation: v.animation?.type ?? null, bright: Number.isFinite(v.bright) ? v.bright : null, dim: Number.isFinite(v.dim) ? v.dim : null } : null);
+  const held = items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true)
+    .map((i) => ({ name: i.name, light: lightOf([...(i.system?.rules ?? [])].find((r) => r?.key === "TokenLight")?.value) }));
+  return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data, flags), effects, held, light: lightOf(token?.document?.light ?? data) });
 };
 // How many lights it is: Dancing Lights several wisps circling the creature (its light stays at its middle).
 const wispsOf = (token) => orbCount([...(token?.actor?.items ?? [])].map((i) => i.name).concat([...(token?.actor?.effects ?? [])].map((e) => e.name)));
@@ -4177,9 +4180,11 @@ Hooks.on("renderSceneConfig", (app, html) => {
   }
   tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the scene (auto)", "What moving tokens walk on here: dust on dirt, grass, sand and snow, ripples on water, a faint scuff on stone and wood. From the scene: dirt when the scene has global illumination or its name or background sounds outdoors, else stone. Regions named for water (river, lake, pond, sea, stream, swamp) are water inside."));
 });
+// Token configuration fields go on both a placed token's sheet and its actor's prototype token.
+const onTokenConfig = (fn) => { Hooks.on("renderTokenConfig", fn); Hooks.on("renderPrototypeTokenConfig", fn); };
 // Token configuration: where breath vapor leaves this token's art (portrait art, top-down art turned to face, or an
 // edge where the head is drawn).
-Hooks.on("renderTokenConfig", (app, html) => {
+onTokenConfig((app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.breathFrom"]`)) return;
   const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
@@ -4191,7 +4196,7 @@ Hooks.on("renderTokenConfig", (app, html) => {
   tab.append(group);
 });
 // Token configuration: which side of the token holds its torch (a light animated as a torch or flame), or none.
-Hooks.on("renderTokenConfig", (app, html) => {
+onTokenConfig((app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.torchHand"]`)) return;
   const tab = root.querySelector('.tab[data-tab="light"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab");
@@ -4208,7 +4213,7 @@ Hooks.on("renderTokenConfig", (app, html) => {
 });
 // Token configuration: this token's own blood colour (flags.animater.bloodColor: '' by creature type, 'none' no blood,
 // '#rrggbb'), used when Splatter is not deciding.
-Hooks.on("renderTokenConfig", (app, html) => {
+onTokenConfig((app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.bloodColor"]`)) return;
   const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
@@ -4231,7 +4236,7 @@ Hooks.on("renderTokenConfig", (app, html) => {
 // creature, 'none' silent, a voice family) and one voice by name (flags.animater.voiceSpeaker: '' the best fit). On
 // PF2e with PF2e Creature Sounds on, '' leaves the token to that module, and any other choice is Animater's (and
 // silences that module for its actor, below). Attack, Hurt and Death preview a take of the choice on this screen.
-Hooks.on("renderTokenConfig", (app, html) => {
+onTokenConfig((app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.voice"]`)) return;
   const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
@@ -4319,7 +4324,7 @@ Hooks.on("updateToken", (doc, changes, _options, userId) => {
   } catch (error) { runtime.trace("Blocked", `PF2e Creature Sounds handoff: ${error.message}`); }
 });
 const movementConfigCleanup = new WeakMap(), movementConfigStops = new Set();
-Hooks.on("renderTokenConfig", (app, html) => {
+onTokenConfig((app, html) => {
   movementConfigCleanup.get(app)?.();
   const root = html instanceof HTMLElement ? html : html?.[0];
   const doc = app.document ?? app.token ?? app.object;
@@ -4350,7 +4355,7 @@ Hooks.on("renderTokenConfig", (app, html) => {
   const unmount = mountMovementSounds(root, { document: doc, system: game.system.id, preview, floor: initialFloor });
   movementConfigCleanup.set(app, () => { unmount(); movementConfigStops.delete(stop); movementConfigCleanup.delete(app); });
 });
-Hooks.on('closeTokenConfig', (app) => movementConfigCleanup.get(app)?.());
+for (const hook of ['closeTokenConfig', 'closePrototypeTokenConfig']) Hooks.on(hook, (app) => movementConfigCleanup.get(app)?.());
 Hooks.on('canvasTearDown', () => { for (const stop of movementConfigStops) stop(); });
 Hooks.on("renderRegionConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];

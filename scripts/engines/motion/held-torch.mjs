@@ -109,8 +109,18 @@ const flameGeometry = (PIXI, w, h) => new PIXI.Geometry()
   .addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2)
   .addIndex([0, 1, 2, 0, 2, 3]);
 
+// A flame mesh of its own (for other fires: a lantern's candle), its base at (0, 0), `unit` tall as a torch's `flame`;
+// null where shaders are unavailable. Its shader's uniforms are `uTime`, `uLean` and `uAlpha`.
+export function flameMesh(PIXI, unit, seed = 0) {
+  if (typeof PIXI?.Mesh !== 'function' || typeof PIXI?.Shader?.from !== 'function') return null;
+  try {
+    const shader = PIXI.Shader.from(FLAME_VERT, FLAME_FRAG, { uTime: 0, uSeed: seed, uLean: 0, uAlpha: 1, uSpread: 2.6 / 1.3 });
+    return { shader, mesh: new PIXI.Mesh(flameGeometry(PIXI, unit * 2.6, unit * 1.45), shader) };
+  } catch { return null; }
+}
+
 // A teardrop flame shape (the fallback where shaders are unavailable), pointing up along -y from its base.
-const teardrop = (g, h, w) => {
+export const teardrop = (g, h, w) => {
   g.moveTo(0, 0);
   g.bezierCurveTo(w * 0.6, -h * 0.05, w * 0.55, -h * 0.55, 0, -h);
   g.bezierCurveTo(-w * 0.55, -h * 0.55, -w * 0.6, -h * 0.05, 0, 0);

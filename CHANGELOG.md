@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.3.1 (2026-11-01)
+
+- **Lanterns look like lanterns.** The lantern a creature carries is now an iron hanging lantern: a wire handle, a vented cap, three glass panes between iron posts, and a candle inside whose flame lights the glass and flickers like the torch fire.
+- **The right light in hand.** A creature carrying both a torch and a lantern shows the one that is lit. A running Light spell shows its orb even when the creature holds a lantern.
+- **Prototype tokens.** Animater's token settings (which side the light is held on, how it shows, where breath comes from, blood colour, creature voice and movement sounds) are now on an actor's prototype token too, so new tokens dropped from it get them.
+
 ## 2.3.0 (2026-11-01)
 
 - **Tokenshade page.** A new page in the Animater window (Tools → Tokenshade): every Tokenshade look in a list grouped by kind, a live preview on a map, light or dark background, the layer editor beside it, shuffle, share codes to copy and paste, and "Add to animation" to put the look you made into any recipe. Recipes get their own Tokenshade lane in the timeline.
