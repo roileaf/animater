@@ -223,7 +223,9 @@ export class PersistentStates{
    if(this.closed||this.active.has(key))continue;
    replacing.add(key);
    const record={...d,name:`animater-state-${h.clientId}-${++this.serial}`,cancelled:false,startedAt:replaced.get(key)?.startedAt??Date.now()};this.active.set(key,record);
-   const work=this.start(record).then(()=>retire(key),async error=>{await retire(key);if(this.active.get(key)===record)this.active.delete(key);await this.end(record);h.trace?.('Blocked',`${record.recipe.name}: ${error.message}`);});
+   // The old look goes once the new one has faded in (h.lookBlendMs), never mid-fade, so the plain token never shows.
+   const settled=()=>{const ms=replaced.has(key)?Number(h.lookBlendMs?.())||0:0;return ms>0?new Promise(res=>setTimeout(res,ms+100)):null;};
+   const work=this.start(record).then(()=>{const wait=settled();return wait?wait.then(()=>retire(key)):retire(key);},async error=>{await retire(key);if(this.active.get(key)===record)this.active.delete(key);await this.end(record);h.trace?.('Blocked',`${record.recipe.name}: ${error.message}`);});
    this.pending.add(work);void work.finally(()=>this.pending.delete(work));
   }
   // Anything changed but not restarted (the manager closed meanwhile) ends now.

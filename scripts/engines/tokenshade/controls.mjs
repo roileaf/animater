@@ -96,7 +96,7 @@ export const FILTER_LABELS = {
   twist: 'Twist', zoomblur: 'Zoom blur', blur: 'Blur', bulgepinch: 'Bulge / pinch', zapshadow: 'Remove baked shadow', ray: 'Light rays',
   fog: 'Fog', xfog: 'Thick fog', electric: 'Lightning', wave: 'Ripples', shockwave: 'Shockwave', fire: 'Fire', fumes: 'Fumes',
   smoke: 'Smoke', flood: 'Water', images: 'Mirror images', field: 'Force field', xray: 'Sun rays', liquid: 'Liquid', xglow: 'Living aura',
-  pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash',
+  pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash', stain: 'Stain (blood, mud)',
   polymorph: 'Polymorph', xfire: 'Magic fire', sprite: 'Image overlay', spriteMask: 'Image mask', replaceColor: 'Replace colour',
   ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', snooze: 'Sleep (Zzz)', orbit: 'Circling over the head (stars, hearts…)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins', dissolve: 'Dissolve (transition)', wash: 'Colour wash (transition)',
 };

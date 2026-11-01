@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.7 (2026-11-01)
+
+- **No plain token between looks.** A condition landing (stone creeping up, sickness spreading) now holds its transition until the lasting look has fully faded in, and a condition changing value (Frightened 2 to 1) keeps its old look until the new one is in, so the bare token never flashes between them.
+- **Condition looks, from the audition.** Sleeping and unconscious show only their Z's and the dimming, no breathing. Doomed lands with its own look growing in (rune ring, veins, dark halo) instead of a pink wash. Off-guard (and flat-footed, vulnerable, marked, surprised) is an amber caution ring, no longer red like dying. Wounded is drawn with a new realistic stain: blood soaked in with uneven edges, darker where it pooled, a dried rim and flung droplets, more at each value. Mud-caked uses the same stain in gritty brown.
+- **Hide light icons on tokens.** A new world setting, on by default: a creature drawn holding its torch or lantern, or with a Light spell orb at its shoulder, leaves that light's status icon off its token (the lit torch, Spell Effect: Light). Thanks, Sherp.
+- **Coloured flames.** A held torch's or lantern's flame, glow and sparks take its light's colour: an Everburning Torch with a blue light burns blue. Orange, yellow, white or no colour keep the natural fire. Thanks, Sherp.
+
 ## 2.4.6 (2026-11-01)
 
 - **Signs circling over the head.** A new Tokenshade filter, Circling over the head: little stars, sparkles, hearts, question marks or dizzy swirls going round on a tilted ring, passing behind the head and coming round in front. Stunned has stars, confused question marks, stupefied dizzy swirls (more at each level), fascinated golden sparkles and charmed hearts, so they read at a glance even zoomed out.

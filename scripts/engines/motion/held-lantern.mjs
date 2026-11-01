@@ -4,7 +4,7 @@
 // between iron posts, a stepped base, and inside a candle whose flame (the torch's flame shader, small) lights the
 // glass from within, catching a glint on the panes. Its light comes from the lantern. Drawn above the tokens on this
 // screen only; nothing is saved.
-import { torchPose, flicker, flameMesh, teardrop } from './held-torch.mjs';
+import { torchPose, flicker, flameMesh, teardrop, flameTint, tintFlame, mixHex } from './held-torch.mjs';
 
 // Where the lantern hangs on a token at (x, y), `width` wide, held on `side`: from the hand, its body below it.
 // `centre` is the glass (where the light comes from).
@@ -146,7 +146,9 @@ export function createHeldLanterns({ PIXI, root, grid = () => 100 }) {
           const swing = lanternSwing(key, seconds, spec.lean ?? 0);
           l.box.position.set(pose.hand.x, pose.hand.y);
           l.box.rotation = swing;
-          const f = flicker(key, seconds), heat = Math.max(0.75, Math.min(1.15, f.height));
+          const f = flicker(key, seconds), heat = Math.max(0.75, Math.min(1.15, f.height)), tint = flameTint(spec.color);
+          // Warm by default; a coloured light (flameTint) burns and lights the cage in its own colour.
+          const warm = (hex, k = 0) => (tint ? mixHex(tint.hex, k > 0 ? 0xffffff : 0x000000, Math.abs(k)) : hex);
           // The flame on the wick, burning upright as the lantern swings, its tip trailing the swing a little.
           l.flame.position.set(0.005 * s, CAGE.wick * s);
           l.flame.rotation = -swing;
@@ -155,23 +157,24 @@ export function createHeldLanterns({ PIXI, root, grid = () => 100 }) {
             l.mesh.scale.set(0.8 * f.width, 0.9 * f.height);
             const u = l.shader.uniforms;
             u.uTime = seconds * 0.8; u.uLean = f.sway * 1.5 + swing * 3; u.uAlpha = 1;
+            tintFlame(l.shader, tint);
           } else {
             const h = s * 0.16 * f.height, w = s * 0.07 * f.width;
-            l.drawn.beginFill(0xff8a1e, 0.9); teardrop(l.drawn, h, w); l.drawn.endFill();
+            l.drawn.beginFill(warm(0xff8a1e), 0.9); teardrop(l.drawn, h, w); l.drawn.endFill();
             l.drawn.beginFill(0xfff0b8, 1); teardrop(l.drawn, h * 0.55, w * 0.55); l.drawn.endFill();
           }
           // The inside of the cage: dark behind, lit warm round the flame, brightest at it, flickering with it.
           const g = l.inside, cy = (CAGE.wick - 0.06) * s;
           g.clear();
-          g.beginFill(0x3a1d0a, 1).drawPolygon(cageShape(s)).endFill();
-          g.beginFill(0xb0581a, 0.6 * heat).drawPolygon(cageShape(s)).endFill();
+          g.beginFill(warm(0x3a1d0a, -0.8), 1).drawPolygon(cageShape(s)).endFill();
+          g.beginFill(warm(0xb0581a, -0.3), 0.6 * heat).drawPolygon(cageShape(s)).endFill();
           for (let i = 6; i >= 1; i--) {
             const k = i / 6;
-            g.beginFill(k > 0.5 ? 0xf09030 : 0xffd27a, 0.22 * heat).drawEllipse(0, cy, s * 0.3 * k, s * 0.34 * k).endFill();
+            g.beginFill(k > 0.5 ? warm(0xf09030) : warm(0xffd27a, 0.5), 0.22 * heat).drawEllipse(0, cy, s * 0.3 * k, s * 0.34 * k).endFill();
           }
           // A soft warm halo around the glass.
           l.halo.clear();
-          for (let i = 12; i >= 1; i--) l.halo.beginFill(0xffa040, 0.016 * heat).drawCircle(0, s * 0.6, s * 1.5 * Math.sqrt(i / 12)).endFill();
+          for (let i = 12; i >= 1; i--) l.halo.beginFill(warm(0xffa040, 0.2), 0.016 * heat).drawCircle(0, s * 0.6, s * 1.5 * Math.sqrt(i / 12)).endFill();
         } catch { /* a lantern mid-teardown: the next sync drops it */ }
       }
     },

@@ -74,11 +74,14 @@ export function conditionLook(entry, { damageType } = {}) {
 }
 // How strong a valued condition (Frightened 1–4…) shows: quieter at 1, full at 4.
 export const conditionLookStrength = level => (level ? [0.55, 0.7, 0.85, 1][Math.min(4, level) - 1] : 1);
+// Each look's conditions, by look ("Trembling": ['frightened', 'fleeing']; persistent damage as "persistent fire").
+export const CONDITIONS_BY_LOOK = Object.entries(LOOKS).concat(Object.entries(DAMAGE).map(([type, look]) => [`persistent ${type}`, look]))
+  .reduce((by, [condition, look]) => ({ ...by, [look]: [...(by[look] ?? []), condition] }), {});
 export const CONDITION_LOOK_PRESETS = [...new Set([...Object.values(LOOKS), ...Object.values(DAMAGE)])];
 
 // The transition a condition plays as it lands, before its lasting look (Tokenshade presets): stone creeping up a
-// petrified creature, sickness spreading, a curse taking hold, life draining, poison spreading through the veins.
-const TRANSITIONS = { petrified: 'Turn to stone', sickened: 'Sickness spreads', doomed: 'Curse takes hold', drained: 'Life drains away' };
+// petrified creature, sickness spreading, doom taking hold, life draining, poison spreading through the veins.
+const TRANSITIONS = { petrified: 'Turn to stone', sickened: 'Sickness spreads', doomed: 'Doom takes hold', drained: 'Life drains away' };
 const PERSISTENT_TRANSITIONS = { poison: 'Poison spreads' };
 export function conditionTransition(item) {
   const slug = String(item?.slug ?? item?.system?.slug ?? '').toLowerCase();

@@ -44,6 +44,29 @@ export function flicker(key, t) {
   };
 }
 
+// The light's colour for its flame (an Everburning Torch's blue light burns blue): null keeps the natural fire, for
+// no colour, a warm one (reds, oranges, yellows: fire's own) or a near-grey one. Else { hex, rgb: [r, g, b] 0..1 }.
+// Takes '#rrggbb', a number or Foundry's Color (a number underneath).
+export function flameTint(color) {
+  const n = typeof color === 'string' ? (/^#?[0-9a-f]{6}$/i.test(color.trim()) ? parseInt(color.trim().replace('#', ''), 16) : NaN) : Number(color);
+  if (color == null || color === '' || !Number.isFinite(n) || n < 0) return null;
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), sat = max ? (max - min) / max : 0;
+  if (sat < 0.25) return null;
+  const d = max - min, h = (max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  if (h <= 60 || h >= 345) return null;
+  return { hex: n & 0xffffff, rgb: [r, g, b] };
+}
+// A colour `k` of the way from `a` to `b` (0xrrggbb).
+export const mixHex = (a, b, k) => [16, 8, 0].reduce((out, sh) => out | (Math.round(((a >> sh) & 255) * (1 - k) + ((b >> sh) & 255) * k) << sh), 0);
+// Sets a flame shader's colour: `tint` from flameTint, or null for natural fire.
+export const tintFlame = (shader, tint) => {
+  const u = shader?.uniforms;
+  if (!u) return;
+  u.uTinted = tint ? 1 : 0;
+  if (tint) u.uTint = tint.rgb;
+};
+
 // The flame: a quad from the torch head up, its fragments coloured by "heat" — rising fbm noise inside a tapering
 // tongue, broken up more the higher it goes. vUv.y is 0 at the top of the quad, 1 at the head.
 const FLAME_VERT = `
@@ -65,6 +88,8 @@ uniform float uSeed;
 uniform float uLean;
 uniform float uAlpha;
 uniform float uSpread;
+uniform vec3 uTint;
+uniform float uTinted;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -97,6 +122,11 @@ void main() {
   vec3 col = mix(vec3(0.45, 0.05, 0.0), vec3(0.95, 0.32, 0.02), smoothstep(0.08, 0.38, heat));
   col = mix(col, vec3(1.0, 0.7, 0.18), smoothstep(0.38, 0.68, heat));
   col = mix(col, vec3(1.0, 0.93, 0.72), smoothstep(0.78, 1.0, heat) * (1.0 - y) * smoothstep(0.35, 0.7, n));
+  // A coloured light's flame: the same heat, in its colour, still pale at the hottest root.
+  if (uTinted > 0.5) {
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(uTint * min(1.5, 0.35 + lum * 1.6), mix(uTint, vec3(1.0), 0.75), smoothstep(0.62, 0.95, lum));
+  }
   // Its edges thin out to nothing (no dark rim); its body is solid, so the art under it never shows through.
   float alpha = smoothstep(0.1, 0.42, heat) * uAlpha;
   gl_FragColor = vec4(col * alpha, alpha);
@@ -110,11 +140,11 @@ const flameGeometry = (PIXI, w, h) => new PIXI.Geometry()
   .addIndex([0, 1, 2, 0, 2, 3]);
 
 // A flame mesh of its own (for other fires: a lantern's candle), its base at (0, 0), `unit` tall as a torch's `flame`;
-// null where shaders are unavailable. Its shader's uniforms are `uTime`, `uLean` and `uAlpha`.
+// null where shaders are unavailable. Its shader's uniforms are `uTime`, `uLean` and `uAlpha` (colour: tintFlame).
 export function flameMesh(PIXI, unit, seed = 0) {
   if (typeof PIXI?.Mesh !== 'function' || typeof PIXI?.Shader?.from !== 'function') return null;
   try {
-    const shader = PIXI.Shader.from(FLAME_VERT, FLAME_FRAG, { uTime: 0, uSeed: seed, uLean: 0, uAlpha: 1, uSpread: 2.6 / 1.3 });
+    const shader = PIXI.Shader.from(FLAME_VERT, FLAME_FRAG, { uTime: 0, uSeed: seed, uLean: 0, uAlpha: 1, uSpread: 2.6 / 1.3, uTint: [1, 1, 1], uTinted: 0 });
     return { shader, mesh: new PIXI.Mesh(flameGeometry(PIXI, unit * 2.6, unit * 1.45), shader) };
   } catch { return null; }
 }
@@ -140,7 +170,7 @@ export function embers(key, t, { count = 5, period = 1.1 } = {}) {
 }
 
 // The drawing: one container per held torch, above the tokens. `sync(list)` keeps one per torch
-// [{ key, x, y, width, side, lean, visible }] and `tick(t)` animates them. The handle sits in `root` with the scene
+// [{ key, x, y, width, side, lean, visible, color }] (`color` its light's: the flame takes it, flameTint) and `tick(t)` animates them. The handle sits in `root` with the scene
 // (lit as the scene is); the flame, its sparks and its halo in `lightRoot` (above the lighting: fire gives light, it is
 // not lit), the same root when there is none.
 export function createHeldTorches({ PIXI, root, lightRoot = root, grid = () => 100 }) {
@@ -199,7 +229,7 @@ export function createHeldTorches({ PIXI, root, lightRoot = root, grid = () => 1
     try {
       // Twice as wide as the flame itself (uSpread maps it back), so a leaning, swaying tongue is never cut off.
       const w = pose.flame * 2.6, h = pose.flame * 1.45;
-      torch.shader = PIXI.Shader.from(FLAME_VERT, FLAME_FRAG, { uTime: 0, uSeed: torch.seed, uLean: 0, uAlpha: 1, uSpread: 2.6 / 1.3 });
+      torch.shader = PIXI.Shader.from(FLAME_VERT, FLAME_FRAG, { uTime: 0, uSeed: torch.seed, uLean: 0, uAlpha: 1, uSpread: 2.6 / 1.3, uTint: [1, 1, 1], uTinted: 0 });
       torch.mesh?.destroy();
       torch.mesh = new PIXI.Mesh(flameGeometry(PIXI, w, h), torch.shader);
       torch.fire.addChildAt(torch.mesh, torch.fire.children.indexOf(torch.drawn));
@@ -229,7 +259,7 @@ export function createHeldTorches({ PIXI, root, lightRoot = root, grid = () => 1
           const f = flicker(key, seconds), lean = (spec.lean ?? 0) + f.sway, head = { x: 0, y: -pose.length + pose.length * 0.04 };
           // The flame starts a little down the head, so it wraps it as it burns.
           const root = { x: head.x, y: headOf(pose).root };
-          const { drawn, glow, sparks } = torch;
+          const { drawn, glow, sparks } = torch, tint = flameTint(spec.color);
           drawn.clear(); glow.clear(); sparks.clear();
           if (torch.mesh && !torch.mesh.destroyed) {
             // Upright whatever the handle's tilt: flames burn up.
@@ -241,24 +271,25 @@ export function createHeldTorches({ PIXI, root, lightRoot = root, grid = () => 1
             torch.mesh.scale.set(1.1 * f.width, f.height);
             const u = torch.shader.uniforms;
             u.uTime = seconds; u.uLean = lean * 2.5 - 2.5 * tilt; u.uAlpha = 1;
+            tintFlame(torch.shader, tint);
           } else {
             const h = pose.flame * 1.4 * f.height, w = pose.flame * 0.6 * f.width;
             drawn.position.set(head.x, head.y);
             drawn.rotation = -tilt - lean;
-            drawn.beginFill(0xc8380a, 0.85); teardrop(drawn, h, w); drawn.endFill();
-            drawn.beginFill(0xff8a1e, 0.9); teardrop(drawn, h * 0.7, w * 0.7); drawn.endFill();
+            drawn.beginFill(tint ? mixHex(tint.hex, 0x000000, 0.3) : 0xc8380a, 0.85); teardrop(drawn, h, w); drawn.endFill();
+            drawn.beginFill(tint ? tint.hex : 0xff8a1e, 0.9); teardrop(drawn, h * 0.7, w * 0.7); drawn.endFill();
             drawn.beginFill(0xffe8a8, 1); teardrop(drawn, h * 0.4, w * 0.42); drawn.endFill();
           }
           // The head glowing where it burns, and a faint warm halo (never a disc in daylight).
           const r = pose.flame * (0.9 + 0.1 * (f.height - 1));
-          for (let i = 14; i >= 1; i--) { glow.beginFill(0xff8a30, 0.014); glow.drawCircle(head.x, head.y - r * 0.3, r * Math.sqrt(i / 14)); glow.endFill(); }
-          glow.beginFill(0xff5a10, 0.5 + 0.2 * (f.height - 1)).drawEllipse(head.x, head.y + pose.length * 0.02, pose.length * 0.09, pose.length * 0.035).endFill();
+          for (let i = 14; i >= 1; i--) { glow.beginFill(tint ? tint.hex : 0xff8a30, 0.014); glow.drawCircle(head.x, head.y - r * 0.3, r * Math.sqrt(i / 14)); glow.endFill(); }
+          glow.beginFill(tint ? mixHex(tint.hex, 0x000000, 0.2) : 0xff5a10, 0.5 + 0.2 * (f.height - 1)).drawEllipse(head.x, head.y + pose.length * 0.02, pose.length * 0.09, pose.length * 0.035).endFill();
           // Sparks, in the flame's upright frame.
           const cos = Math.cos(-tilt), sin = Math.sin(-tilt), unit = pose.flame * 2;
           for (const e of embers(key, seconds)) {
             const ex = e.x * unit * 0.5, ey = e.y * unit;
             const px = head.x + ex * cos - ey * sin, py = head.y - pose.flame * 0.4 + ex * sin + ey * cos;
-            sparks.beginFill(e.life > 0.6 ? 0xffd27a : e.life > 0.3 ? 0xff8a2a : 0xd2401a, Math.min(1, e.life * 1.6));
+            sparks.beginFill(tint ? mixHex(tint.hex, e.life > 0.6 ? 0xffffff : 0x000000, e.life > 0.6 ? 0.5 : e.life > 0.3 ? 0 : 0.3) : e.life > 0.6 ? 0xffd27a : e.life > 0.3 ? 0xff8a2a : 0xd2401a, Math.min(1, e.life * 1.6));
             sparks.drawCircle(px, py, Math.max(0.6, e.size * unit * 0.25));
             sparks.endFill();
           }

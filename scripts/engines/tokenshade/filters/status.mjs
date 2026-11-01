@@ -345,16 +345,18 @@ void main() {
 
 // Little things circling over the creature's head on a tilted ring: dimmer and smaller passing behind the head,
 // brighter in front. glyph: 1 stars (stunned), 2 sparkles, 3 hearts (charmed), 4 question marks (confused),
-// 5 dizzy swirls (stupefied).
-// count 2..6 on the ring; height lifts the ring (token radii above the middle); size scales them.
+// 5 dizzy swirls (stupefied), 6 sweat drops (fatigued), 7 down-arrows (enfeebled).
+// count 2..6 on the ring; height lifts the ring (token radii above the middle); size scales them. fall: instead of
+// circling, they slip down either side of the head and fade (sweat running, a strength draining away).
 const orbit = {
   type: 'orbit', order: 795,
-  defaults: { glyph: 1, color: 0xffe14a, count: 4, size: 1, height: 0.62, alpha: 0.95, time: 0 },
+  defaults: { glyph: 1, color: 0xffe14a, count: 4, size: 1, height: 0.62, alpha: 0.95, fall: false, time: 0 },
   timeScale: 1,
   uniforms: {
-    uGlyph: ['int', p => clamp(Math.round(f(p.glyph)), 1, 5)], uColor: ['vec3', p => rgb(p.color)],
+    uGlyph: ['int', p => clamp(Math.round(f(p.glyph)), 1, 7)], uColor: ['vec3', p => rgb(p.color)],
     uCount: ['float', p => clamp(Math.round(f(p.count)), 2, 6)], uSize: ['float', p => clamp(p.size, 0.3, 3)],
     uHeight: ['float', p => clamp(p.height, 0, 1.2)], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
+    uFall: ['bool', p => p.fall === true],
   },
   reach: (p, c) => c.size * Math.max(0.12, 0.5 * (clamp(p.height, 0, 1.2) + 0.25) - 0.5) * clamp(p.size, 0.3, 3) + c.size * 0.06,
   glsl: `
@@ -371,6 +373,14 @@ float glyph(vec2 q, int k) {
     float tip = max(abs(d.x), abs(d.y)) - 0.5;
     return min(lobe, max(tip, -q.y - 0.2));
   }
+  // A drop, round below and pointed on top.
+  if (k == 6) {
+    float body = length(q - vec2(0.0, 0.22)) - 0.5;
+    float cone = q.y < 0.22 && q.y > -0.8 ? (abs(q.x) - 0.5 * (q.y + 0.8) / 1.02) * 0.85 : 9.0;
+    return min(body, cone);
+  }
+  // An arrow pointing down.
+  if (k == 7) return min(seg(q, vec2(0.0, -0.75), vec2(0.0, 0.45)), min(seg(q, vec2(-0.5, 0.05), vec2(0.0, 0.6)), seg(q, vec2(0.5, 0.05), vec2(0.0, 0.6)))) - 0.17;
   // A spiral winding in two and a half turns.
   if (k == 5) return max(abs(fract(r * 2.4 - a / TAU) - 0.5) / 2.4 - 0.07, r - 0.95);
   // A question mark: a hook over a short stem and a dot (stroke distances, made solid by the caller's width).
@@ -392,15 +402,23 @@ void main() {
     float fi = float(i);
     if (fi >= uCount) break;
     float th = uTime * 2.2 + fi * TAU / uCount;
-    float depth = sin(th);
+    float depth = sin(th), fade = 1.0;
     vec2 at = vec2(cos(th) * 0.42, -uHeight + depth * 0.13);
+    if (uFall > 0.5) {
+      // Slipping down beside the head, left and right in turn, fading as it goes.
+      float life = fract(uTime * 0.45 + fi / uCount);
+      float side = mod(fi, 2.0) < 0.5 ? -1.0 : 1.0;
+      at = vec2(side * (0.32 + 0.08 * hash11(fi)), -uHeight + 0.05 + life * 0.42);
+      depth = 1.0;
+      fade = smoothstep(0.0, 0.15, life) * (1.0 - smoothstep(0.65, 1.0, life));
+    }
     float s = 0.1 * uSize * mix(0.72, 1.08, depth * 0.5 + 0.5);
     vec2 q = (p - at) / s;
-    // Each spins a little as it goes round (question marks only rock).
-    float spin = k == 4 ? sin(th * 1.5) * 0.35 : th * 0.8;
+    // Each spins a little as it goes round (question marks only rock; drops and arrows keep upright).
+    float spin = k >= 6 ? 0.0 : k == 4 ? sin(th * 1.5) * 0.35 : th * 0.8;
     q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
     float px = s * R * uZoom, d = glyph(q, k) * px;
-    float fill = smoothstep(0.8, -0.8, d), rim = smoothstep(px * 0.22 + 0.8, px * 0.22 - 0.8, d);
+    float fill = smoothstep(0.8, -0.8, d) * fade, rim = smoothstep(px * 0.22 + 0.8, px * 0.22 - 0.8, d) * fade;
     if (depth >= 0.0) { front = max(front, fill); rimF = max(rimF, rim); }
     else { float dim = 0.55 + 0.45 * (1.0 + depth); back = max(back, fill * dim); rimB = max(rimB, rim * dim); }
   }

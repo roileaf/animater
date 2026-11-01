@@ -233,7 +233,7 @@ export const PRESETS = [
   token('Crystallized', timed('material', 1, { materialType: 5, strength: 0.9, cracks: 0 }), F('glow', { outerStrength: 1.5, distance: 8, color: 0xb9a0ff })),
   token('Barkskin', timed('material', 1, { materialType: 6, strength: 0.75, cracks: 0 })),
   // Cold, drained, washed out
-  token('Frostbitten', timed('frost', 1, { amount: 0.45, snow: 0.2 })),
+  token('Frostbitten', timed('frost', 1, { amount: 0.65, snow: 0.25 }), F('adjustment', { saturation: 0.75, red: 0.9, blue: 1.12 })),
   token('Snowed Over', timed('frost', 1, { amount: 0.3, snow: 0.95 })),
   // Drained Colour: life seeping away, the colour gone grey from the feet up and slowly ebbing.
   token('Drained Colour', F('colorGradient', { type: 0, angle: 90, replace: true, stops: [{ offset: 0, color: 0x9a9a9a, alpha: 0 }, { offset: 0.45, color: 0x9a9a9a, alpha: 0.35 }, { offset: 1, color: 0x8c8c8c, alpha: 0.85 }] }),
@@ -244,9 +244,9 @@ export const PRESETS = [
   token('Netted', timed('bindings', 0.4, { bindType: 2, thickness: 0.8, density: 1 })),
   token('Chained', timed('bindings', 0.5, { bindType: 3, thickness: 1.2, density: 1, tightness: 0.4 })),
   token('Bound', timed('bindings', 0.3, { bindType: 4, thickness: 1.1, density: 1 })),
-  // Grime and wounds
-  token('Mud-Caked', F('splash', { color: 0x4a3622, seed: 0.23, splashFactor: 7, spread: 14, cut: true }), F('splash', { color: 0x3b2a1a, seed: 0.71, splashFactor: 4, spread: 8, cut: true }),
-    F('adjustment', { saturation: 0.8, brightness: 0.9 })),
+  // Mud-Caked (burrowing): clods of gritty mud caked on, drying at the edges.
+  token('Mud-Caked', F('stain', { color: 0x4a3622, seed: 0.23, count: 3, size: 0.5, edge: 0.5, wet: 0.2, grain: 1, spatter: 0.45 }),
+    F('adjustment', { saturation: 0.82, brightness: 0.92 })),
   token('Scorched', F('adjustment', { saturation: 0.5, brightness: 0.7, contrast: 1.15, red: 1.05, green: 0.9, blue: 0.82 }), timed('xfire', 0.3, { color: 0x2a0d04, blend: 11, amplitude: 0.6, inlay: true }),
     timed('globes', 0.6, { color: 0xff6a1a, distortion: 0.3, scale: 30, alphaDiscard: true })),
   // Blood-Soaked: darker and glossier than the Splash presets, with blood running down from the splats.
@@ -316,9 +316,10 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.5, brightness: 0.75 })),
   // Muffled (deafened, silenced): colour dulled, grey rings of sound dying away round it.
   token('Muffled', timed('ripples', 0.25, { color: 0x8a94a0, intensity: 0.7, alphaDiscard: false }), F('adjustment', { saturation: 0.6, contrast: 0.85, brightness: 0.93 })),
-  token('Cracked', timed('material', 1, { materialType: 1, strength: 0.6, cracks: 1, grain: 0.2 })),
+  // Cracked (broken): split with cracks, the colour gone dusty.
+  token('Cracked', timed('material', 1, { materialType: 1, strength: 0.85, cracks: 1, grain: 0.3 }), F('adjustment', { saturation: 0.8 })),
   // Unsteady (clumsy): lurching off balance from side to side.
-  token('Unsteady', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.014, 0.014, 1900, false), translationY: sin(-0.008, 0.008, 1300, false), rotation: sin(-1.5, 1.5, 1900, false) })),
+  token('Unsteady', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.035, 0.035, 1700, false), translationY: sin(-0.015, 0.015, 1150, false), rotation: sin(-3, 3, 1700, false) })),
   // Burdened: pressed down under the load, a heavy shadow under it.
   token('Burdened', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.92, 0.95, 2600, false), scaleY: cos(0.92, 0.95, 2600, false) }), F('shadow', { rotation: 90, distance: 7, blur: 9, alpha: 0.85, color: 0x080604 }),
     F('adjustment', { saturation: 0.85, brightness: 0.86 })),
@@ -326,11 +327,11 @@ export const PRESETS = [
   token('Fascinated', timed('orbit', 0.45, { glyph: 2, color: 0xffd36a, count: 5, size: 0.8 }),
     timed('wave', 0.35, { strength: 0.006, frequency: 70, color: 0xffe0a0, maxIntensity: 1.25, minIntensity: 0.95, anchorX: 0.5, anchorY: 0.35 })),
   // Held (grabbed, grappled): a hemp rope round it, squeezing tight now and then.
-  token('Held', timed('bindings', 0.3, { bindType: 4, color: 0x8a6a42, thickness: 0.8, density: 0.35 }, { tightness: cos(0.2, 0.6, 2400) }),
+  token('Held', timed('bindings', 0.3, { bindType: 4, color: 0x8a6a42, thickness: 1.2, density: 0.6 }, { tightness: cos(0.2, 0.6, 2400) }),
     F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.95, 0.99, 2400) })),
   token('Rooted', timed('bindings', 0.4, { bindType: 1, thickness: 0.9, density: 0.6, tightness: 0.3 }), F('shadow', { rotation: 90, distance: 4, blur: 3, alpha: 0.6, color: 0x0a0806 })),
-  // Exposed: a thin red edge that keeps catching the eye.
-  token('Exposed', F('outline', { thickness: 1.5, color: 0xd8342c }, { alpha: cos(0.35, 0.9, 1400) })),
+  // Exposed (off-guard, flat-footed, vulnerable, marked, surprised): its guard down, an amber caution ring blinking round it.
+  token('Exposed', timed('base', 1, { baseType: 6, color: 0xffb020, radius: 0.53, alpha: 0.9 }), F('outline', { thickness: 1.2, color: 0xffb020 }, { alpha: cos(0.25, 0.7, 1400) })),
   // Prone: flat on the ground, a wide shadow round it.
   token('Prone', F('transform', { pivotX: 0.5, pivotY: 1, scaleY: 0.8, scaleX: 1.05 }), F('shadow', { rotation: 90, distance: 2, blur: 6, alpha: 0.75, color: 0x0a0806 }), F('adjustment', { brightness: 0.86 })),
   // Dazed (stunned): stars circling its head, seeing double.
@@ -352,8 +353,8 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.85, brightness: 0.95 })),
   token('Lifeless', F('adjustment', { saturation: 0, brightness: 0.55, contrast: 0.9, blue: 1.04 })),
   token('Stable', F('adjustment', { saturation: 0.45, brightness: 0.78 }, { brightness: cos(0.74, 0.82, 4400) })),
-  // Sleeping (asleep, unconscious): dim, breathing slow and deep, Z's drifting up.
-  token('Sleeping', timed('snooze', 1, { count: 3 }), F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.98, 1.02, 4200, false), scaleY: cos(0.98, 1.02, 4200, false) }), F('adjustment', { saturation: 0.7, brightness: 0.78, blue: 1.06 })),
+  // Sleeping (asleep, unconscious): dim, Z's drifting up out of its head.
+  token('Sleeping', timed('snooze', 1, { count: 3 }), F('adjustment', { saturation: 0.7, brightness: 0.78, blue: 1.06 })),
   token('Ethereal', timed('liquid', 0.6, { color: 0xcfe2ff, blend: 8, intensity: 3, spectral: true, scale: 1.2 }), F('adjustment', { saturation: 0.5 }, { alpha: cos(0.45, 0.6, 3600) })),
   token('Focused', F('glow', { outerStrength: 1, distance: 8, color: 0x8fc8ff }, { outerStrength: cos(0.6, 1.6, 2600) })),
   token('Evasive', timed('images', 2, { nbImage: 2, alphaImg: 0.3, alphaChr: 0.35, ampX: 0.06, ampY: 0.015 })),
@@ -361,23 +362,25 @@ export const PRESETS = [
   token('Suffocating', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.975, 1, 800, false), scaleY: cos(0.975, 1, 800, false) }),
     F('adjustment', { saturation: 0.6, red: 0.82, green: 0.9, blue: 1.18 }, { brightness: cos(0.78, 0.92, 1400, false) })),
   token('Shifting', F('twist', { radiusPercent: 90 }, { angle: sin(-0.3, 0.3, 2800, false) }), F('glow', { outerStrength: 1.2, distance: 8 }, { color: hue(0x7ad08a, 0xa07cff, 3000) })),
-  // Weary (fatigued, exhaustion): slow heavy breaths, colour dulled, sinking into its shadow.
-  token('Weary', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.975, 1.005, 3800, false), scaleY: cos(0.975, 1.005, 3800, false) }), F('adjustment', { saturation: 0.6, brightness: 0.85 }),
+  // Weary (fatigued, exhaustion): sweat running down beside the head, slow heavy breaths, colour dulled, sinking into its shadow.
+  token('Weary', timed('orbit', 1, { glyph: 6, color: 0x9fd4ff, count: 2, size: 0.75, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.965, 1.005, 3800, false), scaleY: cos(0.965, 1.005, 3800, false) }), F('adjustment', { saturation: 0.62, brightness: 0.86 }),
     F('shadow', { rotation: 90, distance: 4, blur: 4, alpha: 0.6, color: 0x080604 })),
-  // Weakened (enfeebled): smaller, its strength draining from the edges.
-  token('Weakened', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.93, 0.95, 2600, false), scaleY: cos(0.93, 0.95, 2600, false) }),
+  // Weakened (enfeebled): red arrows slipping down beside it, its strength draining away, smaller.
+  token('Weakened', timed('orbit', 1, { glyph: 7, color: 0xe85050, count: 2, size: 0.8, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.93, 0.95, 2600, false), scaleY: cos(0.93, 0.95, 2600, false) }),
     F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.30, front: 0.5 }), F('adjustment', { saturation: 0.7, brightness: 0.92 })),
-  // Dying: a red dark closing in, a slow heartbeat glow.
+  // Dying: a red dark closing in, a heartbeat glow, faster and stronger at each level.
   token('Dying', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.55, color: 0x200000, alpha: 0.15 }, { offset: 1, color: 0x300000, alpha: 0.8 }] }),
-    F('adjustment', { saturation: 0.35, brightness: 0.72 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.2, 1.8, 1500) })),
+    F('adjustment', { saturation: 0.35, brightness: 0.72 }), F('glow', { distance: 14, color: 0xc01414 }, { outerStrength: cos(1, 3.4, 1500) })),
   // Nauseated (sickened): waves of nausea, a sickly flush welling up from the middle and ebbing, sour breath rising.
   token('Nauseated', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.2, 0.65, 3400, false) }),
     timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.14, rise: 0.7 }), F('adjustment', { saturation: 0.85 })),
   // Feverish (diseased): flushed, heat shimmering off the skin.
   token('Feverish', F('distortion', { amount: 2, maskSpriteScaleX: 2, maskSpriteScaleY: 2 }, { maskSpriteY: { animType: 'move', speed: -0.03 } }),
     F('adjustment', { saturation: 1.05, red: 1.14, green: 0.92, blue: 0.88 }), F('glow', { distance: 8, color: 0xe0602a }, { outerStrength: cos(0.6, 1.4, 2600) })),
-  // Trembling (frightened, fleeing): drained pale, shivering, the dark closing in round it.
-  token('Trembling', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.006, 0.006, 190, false) }),
+  // Trembling (frightened, fleeing): shaking hard enough to see from afar, drained pale, the dark closing in round it.
+  token('Trembling', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.018, 0.018, 170, false), translationY: sin(-0.006, 0.006, 230, false) }),
     F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.2 }, { offset: 1, color: 0x05030a, alpha: 0.75 }] }),
     F('adjustment', { saturation: 0.6, brightness: 1 })),
   // Smitten (charmed): little hearts circling its head, a rosy warmth.
@@ -385,26 +388,26 @@ export const PRESETS = [
     F('glow', { distance: 10, color: 0xff7fb4 }, { outerStrength: cos(0.8, 1.8, 2400) })),
   // Misted (concealed): a pale mist hanging round the creature.
   token('Misted', timed('xfog', 0.4, { color: 0xd8dee6, density: 0.55, alphaDiscard: true }), F('blur', { blur: 0.5 }), F('adjustment', { contrast: 0.85 })),
-  // Wounded: old wounds, dried stains, colour a little lower.
-  token('Wounded', F('splash', { color: 0x4a0606, seed: 0.33, splashFactor: 2, spread: 3, cut: true, edge: 0.6 }), F('splash', { color: 0x3a0404, seed: 0.79, splashFactor: 2, spread: 2, cut: true, edge: 0.75 }),
+  // Wounded: old wounds, blood soaked in and drying, the colour a little lower; more of it at each level.
+  token('Wounded', F('stain', { color: 0x5a0606, seed: 0.33, count: 1, size: 0.3, edge: 0.5, wet: 0.4, spatter: 0.6 }),
     F('adjustment', { saturation: 0.85, brightness: 0.93 })),
   token('Rune Circle',timed('base', 1, { baseType: 4, color: 0xb48cff, radius: 0.62, alpha: 0.85 })),
   // Valued conditions get worse step by step (persistent-states passes the value; optional-fx picks "<look> <value>").
-  token('Trembling 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.009, 0.009, 170, false) }),
+  token('Trembling 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.024, 0.024, 155, false), translationY: sin(-0.008, 0.008, 215, false) }),
     F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.28 }, { offset: 1, color: 0x05030a, alpha: 0.84 }] }),
     F('adjustment', { saturation: 0.5, brightness: 0.96 })),
-  token('Trembling 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.012, 0.012, 150, false) }),
+  token('Trembling 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.03, 0.03, 140, false), translationY: sin(-0.010, 0.010, 200, false) }),
     F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.36 }, { offset: 1, color: 0x05030a, alpha: 0.92 }] }),
     F('adjustment', { saturation: 0.4, brightness: 0.92 })),
-  token('Trembling 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.016, 0.016, 130, false) }),
+  token('Trembling 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.036, 0.036, 125, false), translationY: sin(-0.012, 0.012, 185, false) }),
     F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.44 }, { offset: 1, color: 0x05030a, alpha: 0.98 }] }),
     F('adjustment', { saturation: 0.3, brightness: 0.88 })),
   token('Dying 2', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.47, color: 0x200000, alpha: 0.23 }, { offset: 1, color: 0x300000, alpha: 0.86 }] }),
-    F('adjustment', { saturation: 0.25, brightness: 0.62 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.3, 2.3, 1200) })),
+    F('adjustment', { saturation: 0.25, brightness: 0.62 }), F('glow', { distance: 14, color: 0xc01414 }, { outerStrength: cos(1.2, 4, 1200) })),
   token('Dying 3', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.39, color: 0x200000, alpha: 0.31 }, { offset: 1, color: 0x300000, alpha: 0.92 }] }),
-    F('adjustment', { saturation: 0.17, brightness: 0.52 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.3, 2.8, 950) })),
+    F('adjustment', { saturation: 0.17, brightness: 0.52 }), F('glow', { distance: 14, color: 0xc01414 }, { outerStrength: cos(1.4, 4.6, 950) })),
   token('Dying 4', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.31, color: 0x200000, alpha: 0.39 }, { offset: 1, color: 0x300000, alpha: 0.97 }] }),
-    F('adjustment', { saturation: 0.1, brightness: 0.42 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.3, 3.4, 750) })),
+    F('adjustment', { saturation: 0.1, brightness: 0.42 }), F('glow', { distance: 14, color: 0xc01414 }, { outerStrength: cos(1.6, 5.2, 750) })),
   token('Doom 2', timed('base', 0.4, { baseType: 4, color: 0x5a1a7a, radius: 0.5, alpha: 0.8 }), timed('veins', 0.4, { color: 0x3a1650, amount: 0.75, thickness: 1.3, pulse: 0.5, glow: 0.4 }),
     F('glow', { distance: 12, color: 0x12061a }, { outerStrength: cos(2.8, 4.4, 3000) }), F('adjustment', { saturation: 0.55, brightness: 0.8 })),
   token('Doom 3', timed('base', 0.4, { baseType: 4, color: 0x5a1a7a, radius: 0.5, alpha: 0.9 }), timed('veins', 0.4, { color: 0x3a1650, amount: 0.9, thickness: 1.55, pulse: 0.5, glow: 0.4 }),
@@ -415,11 +418,14 @@ export const PRESETS = [
     F('adjustment', { brightness: 0.86 }, { saturation: cos(0.15, 0.4, 4200) })),
   token('Drained Colour 4', F('colorGradient', { type: 0, angle: 90, replace: true, stops: [{ offset: 0, color: 0x9a9a9a, alpha: 0.3 }, { offset: 0.45, color: 0x9a9a9a, alpha: 0.7 }, { offset: 1, color: 0x8c8c8c, alpha: 1 }] }),
     F('adjustment', { brightness: 0.82 }, { saturation: cos(0.05, 0.25, 4200) })),
-  token('Weakened 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.91, 0.93, 2600, false), scaleY: cos(0.91, 0.93, 2600, false) }),
+  token('Weakened 2', timed('orbit', 1, { glyph: 7, color: 0xe85050, count: 2, size: 0.8, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.91, 0.93, 2600, false), scaleY: cos(0.91, 0.93, 2600, false) }),
     F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.38, front: 0.5 }), F('adjustment', { saturation: 0.62, brightness: 0.89 })),
-  token('Weakened 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.89, 0.91, 2600, false), scaleY: cos(0.89, 0.91, 2600, false) }),
+  token('Weakened 3', timed('orbit', 1, { glyph: 7, color: 0xe85050, count: 3, size: 0.8, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.89, 0.91, 2600, false), scaleY: cos(0.89, 0.91, 2600, false) }),
     F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.46, front: 0.5 }), F('adjustment', { saturation: 0.55, brightness: 0.86 })),
-  token('Weakened 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.87, 0.89, 2600, false), scaleY: cos(0.87, 0.89, 2600, false) }),
+  token('Weakened 4', timed('orbit', 1, { glyph: 7, color: 0xe85050, count: 4, size: 0.8, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.87, 0.89, 2600, false), scaleY: cos(0.87, 0.89, 2600, false) }),
     F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.54, front: 0.5 }), F('adjustment', { saturation: 0.48, brightness: 0.83 })),
   token('Nauseated 2', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.3, 0.75, 3000, false) }),
     timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.18, rise: 0.7 }), F('adjustment', { saturation: 0.8 })),
@@ -433,15 +439,18 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.55, brightness: 0.86, contrast: 0.9 })),
   token('Muddled 4', timed('orbit', 0.35, { glyph: 5, color: 0xb8b0cc, count: 5, size: 0.9 }), timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.6 }), F('blur', { blur: 1.5 }),
     F('adjustment', { saturation: 0.48, brightness: 0.83, contrast: 0.9 })),
-  token('Unsteady 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.018, 0.018, 1900, false), translationY: sin(-0.01, 0.01, 1300, false), rotation: sin(-2, 2, 1900, false) })),
-  token('Unsteady 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.022, 0.022, 1900, false), translationY: sin(-0.012, 0.012, 1300, false), rotation: sin(-2.5, 2.5, 1900, false) })),
-  token('Unsteady 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.026, 0.026, 1900, false), translationY: sin(-0.014, 0.014, 1300, false), rotation: sin(-3, 3, 1900, false) })),
+  token('Unsteady 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.045, 0.045, 1700, false), translationY: sin(-0.02, 0.02, 1150, false), rotation: sin(-4, 4, 1700, false) })),
+  token('Unsteady 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.055, 0.055, 1700, false), translationY: sin(-0.025, 0.025, 1150, false), rotation: sin(-5, 5, 1700, false) })),
+  token('Unsteady 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.065, 0.065, 1700, false), translationY: sin(-0.03, 0.03, 1150, false), rotation: sin(-6, 6, 1700, false) })),
   // D&D's Exhaustion levels: wearier each step, the colour going, the shoulders lower, the breaths slower.
-  token('Weary 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.965, 1.005, 4400, false), scaleY: cos(0.965, 1.005, 4400, false) }), F('adjustment', { saturation: 0.48, brightness: 0.8 }),
+  token('Weary 2', timed('orbit', 1, { glyph: 6, color: 0x9fd4ff, count: 2, size: 0.75, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.955, 1.005, 4400, false), scaleY: cos(0.955, 1.005, 4400, false) }), F('adjustment', { saturation: 0.5, brightness: 0.8 }),
     F('shadow', { rotation: 90, distance: 5, blur: 5, alpha: 0.65, color: 0x080604 })),
-  token('Weary 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.955, 1.005, 5000, false), scaleY: cos(0.955, 1.005, 5000, false) }), F('adjustment', { saturation: 0.36, brightness: 0.74 }),
+  token('Weary 3', timed('orbit', 1, { glyph: 6, color: 0x9fd4ff, count: 3, size: 0.75, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.945, 1.005, 5000, false), scaleY: cos(0.945, 1.005, 5000, false) }), F('adjustment', { saturation: 0.38, brightness: 0.74 }),
     F('shadow', { rotation: 90, distance: 6, blur: 6, alpha: 0.7, color: 0x080604 })),
-  token('Weary 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.945, 1.005, 5800, false), scaleY: cos(0.945, 1.005, 5800, false) }), F('adjustment', { saturation: 0.24, brightness: 0.66 }),
+  token('Weary 4', timed('orbit', 1, { glyph: 6, color: 0x9fd4ff, count: 3, size: 0.75, height: 0.55, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.935, 1.005, 5800, false), scaleY: cos(0.935, 1.005, 5800, false) }), F('adjustment', { saturation: 0.26, brightness: 0.66 }),
     F('shadow', { rotation: 90, distance: 7, blur: 7, alpha: 0.75, color: 0x080604 })),
   // Places (a region's Animater look, the heat and cold around a creature): quiet, so a whole party can stand in them.
   token('Haunted ground', F('adjustment', { saturation: 0.45, brightness: 0.9, red: 0.9, green: 0.98, blue: 1.12 }), F('glow', { distance: 8, color: 0x9fc4ff }, { outerStrength: cos(0.4, 1.2, 3600) })),
@@ -451,11 +460,10 @@ export const PRESETS = [
   token('Heat shimmer', F('distortion', { amount: 1.6, maskSpriteScaleX: 2, maskSpriteScaleY: 3 }, { maskSpriteY: { animType: 'move', speed: -0.05 } }), F('adjustment', { red: 1.04, blue: 0.96 })),
   token('Cold mist', timed('fumes', 0.15, { color: 0xeef4fa, blend: 0, alpha: 0.3 }), F('adjustment', { saturation: 0.85, red: 0.95, blue: 1.06 })),
   // Wounded 2 and 3: more wounds, darker, the colour lower each time (Wounded 1 is 'Wounded').
-  token('Wounded 2', F('splash', { color: 0x4a0606, seed: 0.33, splashFactor: 2, spread: 3, cut: true, edge: 0.6 }), F('splash', { color: 0x3a0404, seed: 0.79, splashFactor: 2, spread: 2, cut: true, edge: 0.75 }),
-    F('splash', { color: 0x520707, seed: 0.12, splashFactor: 3, spread: 3, cut: true, edge: 0.55 }), F('adjustment', { saturation: 0.75, brightness: 0.88 })),
-  token('Wounded 3', F('splash', { color: 0x4a0606, seed: 0.33, splashFactor: 3, spread: 4, cut: true, edge: 0.55 }), F('splash', { color: 0x3a0404, seed: 0.79, splashFactor: 3, spread: 3, cut: true, edge: 0.7 }),
-    F('splash', { color: 0x520707, seed: 0.12, splashFactor: 3, spread: 4, cut: true, edge: 0.5 }), F('splash', { color: 0x300303, seed: 0.58, splashFactor: 2, spread: 3, cut: true, edge: 0.65, drip: 0.6 }),
-    F('adjustment', { saturation: 0.62, brightness: 0.8 })),
+  token('Wounded 2', F('stain', { color: 0x5a0606, seed: 0.33, count: 2, size: 0.34, edge: 0.5, wet: 0.35, spatter: 0.6 }),
+    F('adjustment', { saturation: 0.75, brightness: 0.87 })),
+  token('Wounded 3', F('stain', { color: 0x5a0606, seed: 0.33, count: 3, size: 0.38, edge: 0.5, wet: 0.3, spatter: 0.6 }),
+    F('adjustment', { saturation: 0.65, brightness: 0.81 })),
   // Transitions: each plays once as the effect lands (a 'once' animation), then holds. Becoming a material creeps
   // over the creature; leaving dissolves it away; arriving is the same played backwards; a wash sweeps a colour over.
   token('Turn to stone', F('material', { materialType: 1, cracks: 0.5, spreadFrom: 1, front: 0.7 }, { spread: once(0, 1, 2600) })),
@@ -480,6 +488,9 @@ export const PRESETS = [
   token('Step out of light', timed('dissolve', 1, { style: 9, from: 4, color: 0xfff1b0, edge: 0.9 }, { amount: once(1, 0, 2000) })),
   token('Rebuild from pixels', timed('dissolve', 1, { style: 5, from: 2, color: 0x40ffd0, edge: 0.4 }, { amount: once(1, 0, 1600) })),
   token('Rise from the ashes', timed('dissolve', 1, { style: 1, from: 2, color: 0xff7a1a, edge: 0.7 }, { amount: once(1, 0, 2600) })),
+  // Doom taking hold: the doomed look itself growing in, so it ends exactly as Doom shows.
+  token('Doom takes hold', timed('base', 0.4, { baseType: 4, color: 0x5a1a7a, radius: 0.5 }, { alpha: once(0, 0.7, 2400) }), timed('veins', 0.4, { color: 0x3a1650, thickness: 1.1, pulse: 0.5, glow: 0.4 }, { amount: once(0, 0.6, 2400) }),
+    F('glow', { distance: 12, color: 0x12061a }, { outerStrength: once(0, 2, 2400) }), F('adjustment', {}, { saturation: once(1, 0.65, 2400), brightness: once(1, 0.88, 2400) })),
   token('Curse takes hold', F('wash', { washType: 1, from: 2, color: 0x9a5cff, strength: 0.7, front: 0.8 }, { amount: once(0, 1, 2400) })),
   token('Life drains away', F('wash', { washType: 2, from: 5, color: 0x6a7a90, strength: 0.85, front: 0.5 }, { amount: once(0, 1, 3000) })),
   token('Blessing washes over', F('wash', { washType: 3, from: 3, color: 0xffd770, strength: 0.45, front: 0.9 }, { amount: once(0, 1, 2000) })),

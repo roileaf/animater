@@ -33,6 +33,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "fireSmoke", local: "fireSmokeLocal", extras: ["fireSmokeAmount"] },
     { world: "heldTorches", local: "heldTorchesLocal" },
     { world: "lightOrbs", local: "lightOrbsLocal" },
+    { world: "hideLightIcons" },
     { world: "sustainThreads", local: "sustainThreadsLocal" },
     { local: "tokenshadeBlend" },
     { world: "aurasOutsideCombat" },

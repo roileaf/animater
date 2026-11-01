@@ -162,7 +162,7 @@ import { lightAround, litKey, litPreset } from "./engines/playback/surrounding-l
 import { isFireLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
-import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount } from "./engines/motion/light-orb.mjs";
+import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
 import { sceneSun, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING } from "./engines/motion/sun.mjs";
 import { sunSettingsMenu, SUN_SETTING, CLOCK_SETTING } from "./ui/sun-settings.mjs";
@@ -1797,6 +1797,35 @@ const installTorchLight = () => {
   proto._getLightSourceData = fromTheFlame;
   return true;
 };
+// "Hide light icons on tokens": a token drawn holding its torch or lantern, or with a Light orb at its shoulder, leaves
+// that light's status icon off (the lit torch, Spell Effect: Light); the light it holds already says it. Foundry draws
+// each icon with Token#_drawEffect(src); the ones from those lights are skipped.
+const lightIconsOf = (token) => {
+  if (hotSetting("hideLightIcons") === false) return null;
+  const actor = token?.actor;
+  if (!actor) return null;
+  const kind = lightKindOf(token, token.document?.light);
+  const items = [...(actor.items ?? [])].map((i) => ({ name: i.name, type: i.type, img: i.img, rules: i.system?.rules ?? [] }))
+    .concat([...(actor.effects ?? [])].map((e) => ({ name: e.name, type: "effect", img: e.img, rules: [] })));
+  return drawnLightIcons({ kind, items, torches: holdsTorches(), orbs: orbsOn() });
+};
+const installLightIcons = () => {
+  const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
+  if (typeof proto?._drawEffect !== "function" || proto._drawEffect.animaterIcons) return false;
+  const original = proto._drawEffect;
+  const unlessDrawn = async function (src, tint) {
+    try { if (src && lightIconsOf(this)?.has(src)) return undefined; } catch { /* Foundry's own icons */ }
+    return original.call(this, src, tint);
+  };
+  unlessDrawn.animaterIcons = true;
+  proto._drawEffect = unlessDrawn;
+  return true;
+};
+const redrawTokenIcons = () => { for (const t of canvas?.tokens?.placeables ?? []) { try { t.renderFlags.set({ redrawEffects: true }); } catch { /* gone */ } } };
+Hooks.once("canvasInit", () => { installLightIcons(); });
+Hooks.once("ready", () => { if (installLightIcons() && canvas?.ready) redrawTokenIcons(); });
+// A light lit or put out changes which icons are a drawn light's.
+Hooks.on("updateToken", (doc, change) => { if (change?.light) { try { doc.object?.renderFlags.set({ redrawEffects: true }); } catch { /* not drawn */ } } });
 const relightTokens = () => { for (const t of canvas?.tokens?.placeables ?? []) { try { t.initializeLightSource(); } catch { /* gone */ } } };
 Hooks.once("canvasInit", () => { installTorchLight(); });
 // A token switching which side holds its torch moves its light with it.
@@ -1822,7 +1851,7 @@ const smokeFiresNow = () => {
       const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
       const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
       torchLean.set(key, { x, lean });
-      torch = { key, x, y, width: token.w ?? grid, side, lean, visible: token.visible === true && !token.document.hidden };
+      torch = { key, x, y, width: token.w ?? grid, side, lean, color: source.data.color, visible: token.visible === true && !token.document.hidden };
       at = torchPose(torch, grid).top;
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
@@ -3398,7 +3427,7 @@ Hooks.once("init", () => {
     scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(syncRegionLooksNow,0)});
   registerSetting("heldTorches",{name:'Creatures hold their torches and lanterns',
     hint:'A creature whose own light burns (a light animated as a torch or flame) holds a small burning torch in its square: a flickering flame that leans back as it walks, its smoke rising from the flame. One holding a lantern carries it hanging from its hand instead, swaying. Either way its light comes from what it holds, not its middle. Drawn at Balanced quality or better.',
-    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(relightTokens,0)});
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{relightTokens();redrawTokenIcons();},0)});
   registerSetting("regionLooksLocal",{name:'Region looks on my screen',
     hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
@@ -3432,9 +3461,12 @@ Hooks.once("init", () => {
   registerSetting("sustainThreads",{name:'Sustained spells show who holds them',
     hint:'While a creature sustains a spell on another (PF2e and SF2e sustained spells; D&D concentration, its summoned creatures included), a faint shimmering thread runs from the caster to it, motes flowing along it, so everyone sees who holds what. It goes when the spell ends. Drawn at Balanced quality or better.',
     scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("hideLightIcons",{name:'Hide light icons on tokens',
+    hint:'A creature drawn holding its torch or lantern, or with a Light spell orb at its shoulder, leaves that light\u2019s status icon off its token (the lit torch, Spell Effect: Light): what it holds already shows it. Off: the icons stay. Only while held lights or light orbs are drawn.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(redrawTokenIcons,0)});
   registerSetting("lightOrbs",{name:'Light spells float as orbs',
     hint:'A creature lit by a Light spell (PF2e\u2019s Light or Everlight, D&D\u2019s Light) has its light float at its shoulder as a small glowing orb, bobbing gently in the light\u2019s own colour, the light coming from the orb. Drawn at Balanced quality or better.',
-    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{relightTokens();persistentStates?.schedule();},0)});
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{relightTokens();redrawTokenIcons();persistentStates?.schedule();},0)});
   registerSetting("fireSmoke",{name:'Smoke above fires',
     hint:'Every fire light (a light animated as a torch or flame: braziers, campfires, a carried torch) sends up a thin trail of smoke that rises, sways and thins out. A bigger fire smokes more. Drawn at Balanced quality or better, only for fires you can see.',
     scope:'world',config:true,type:Boolean,default:true});
@@ -4975,8 +5007,11 @@ Hooks.once("ready", () => {
         const ms = Math.max(0, ...preset.params.flatMap((f) => Object.values(f.animated ?? {}).filter((a) => a.animType === "once").map((a) => (Number(a.loopDuration) || 0) + (Number(a.pauseBetweenDuration) || 0))));
         if (!(ms > 0)) return 0;
         const remove = tokenFx.apply(token, preset, { blend: false });
-        // Held a moment past its end while the lasting look fades in over it.
-        setTimeout(() => { try { remove(); } catch { /* gone with the canvas */ } }, ms + 500);
+        // Held past its end until the lasting look has faded in over it ("Tokenshade fades"), so the plain token
+        // never shows between the two.
+        let fade = 0;
+        try { fade = Math.max(0, Number(tokenFx.engine.blendMs()) || 0); } catch { /* at once */ }
+        setTimeout(() => { try { remove(); } catch { /* gone with the canvas */ } }, ms + fade + 600);
         return ms;
       },
       auraField: auraFields,
@@ -4998,6 +5033,8 @@ Hooks.once("ready", () => {
       end: (name) => Sequencer.EffectManager.endEffects({ name }, false),
       alive: (name) => Sequencer.EffectManager.getEffects({ name }).length > 0,
       // Condition looks are how the state shows at all, so they play down to Low quality; other filters need Full.
+      // How long a Tokenshade look takes to fade in ("Tokenshade fades"): a changed state's old look stays that long.
+      lookBlendMs:()=>{try{return Number(tokenFx.engine.blendMs())||0;}catch{return 0;}},
       retainFx:(stage,{session})=>(stage.fxEssential?allowsMotion(localQuality()):allowsTokenFx(localQuality()))?optionalFx.retain(stage,{session,userId:`state:${clientId}`}):undefined,
       budget:()=>stateBudget(localQuality()),
       stopFx:session=>optionalFx.stop({session}),

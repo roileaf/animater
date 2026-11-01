@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { torchPose, flicker, createHeldTorches, torchSide } from '../../../scripts/engines/motion/held-torch.mjs';
+import { torchPose, flicker, createHeldTorches, torchSide , flameTint, mixHex } from '../../../scripts/engines/motion/held-torch.mjs';
 
 test('the torch is held inside the token’s square, leaning out and up, its flame above the hand', () => {
   const p = torchPose({ x: 500, y: 500, width: 100 }, 100);
@@ -54,4 +54,16 @@ test('each token picks the side that holds its torch: right by default, left, or
   assert.equal(torchSide(''), 1);
   assert.equal(torchSide('left'), -1);
   assert.equal(torchSide('none'), 0);
+});
+
+test('a coloured light burns in its colour; a warm, grey or missing one keeps the natural fire', () => {
+  assert.equal(flameTint(null), null);
+  assert.equal(flameTint(''), null);
+  assert.equal(flameTint('#ff9329'), null, 'torch orange');
+  assert.equal(flameTint('#ffd27a'), null, 'candle yellow');
+  assert.equal(flameTint('#dddddd'), null, 'near white');
+  assert.deepEqual(flameTint('#2a6bff').hex, 0x2a6bff, 'everburning blue');
+  assert.equal(flameTint(0x40ff60).hex, 0x40ff60, 'a number (Foundry Color) works too');
+  assert.equal(flameTint({ valueOf: () => 0x9a40ff }).hex, 0x9a40ff, 'a Color object');
+  assert.equal(mixHex(0x000000, 0xffffff, 0.5), 0x808080);
 });

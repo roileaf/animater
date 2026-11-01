@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isOrbEffect, heldLightKind, orbPose, orbColor, orbMotes, orbCount } from '../../../scripts/engines/motion/light-orb.mjs';
+import { isOrbEffect, heldLightKind, orbPose, orbColor, orbMotes, orbCount, drawnLightIcons } from '../../../scripts/engines/motion/light-orb.mjs';
 
 test('a Light spell makes the light an orb; a fire light a torch; the token can choose', () => {
   for (const n of ['Spell Effect: Light', 'Spell Effect: Everlight', 'Light', 'Effect: Dancing Lights', 'Continual Flame']) assert.ok(isOrbEffect(n), n);
@@ -57,4 +57,16 @@ test('Dancing Lights: several smaller wisps circling the creature, each on its o
   assert.notDeepEqual(at(0, 1).at, at(0, 3).at, 'circling');
   assert.ok(at(0, 1).radius < orbPose({ x: 500, y: 500, width: 100 }, 100).radius, 'smaller than one orb');
   assert.deepEqual(at(0, 1).rest, { x: 500, y: 500 }, 'the light stays at the creature’s middle');
+});
+
+test('a drawn torch, lantern or orb leaves its status icon off the token, and only while it is drawn', () => {
+  const torch = { name: 'Torch', type: 'equipment', img: 'icons/torch.webp', rules: [{ key: 'TokenLight', value: { animation: { type: 'flame' } } }, { key: 'TokenEffectIcon', predicate: ['lit-torch'], value: 'icons/sundries/lights/torch-brown-lit.webp' }] };
+  const light = { name: 'Spell Effect: Light', type: 'effect', img: 'icons/light-spell.webp', rules: [{ key: 'TokenLight', value: { animation: { type: 'pulse' } } }] };
+  const bless = { name: 'Effect: Bless', type: 'effect', img: 'icons/bless.webp', rules: [] };
+  const items = [torch, light, bless];
+  assert.deepEqual([...drawnLightIcons({ kind: 'torch', items, torches: true, orbs: true })], ['icons/sundries/lights/torch-brown-lit.webp'], 'the lit torch icon');
+  assert.deepEqual([...drawnLightIcons({ kind: 'orb', items, torches: true, orbs: true })], ['icons/light-spell.webp'], 'the Light effect icon');
+  assert.equal(drawnLightIcons({ kind: 'torch', items, torches: false, orbs: true }).size, 0, 'held torches off: icons stay');
+  assert.equal(drawnLightIcons({ kind: 'orb', items, torches: true, orbs: false }).size, 0, 'orbs off: icons stay');
+  assert.equal(drawnLightIcons({ kind: null, items, torches: true, orbs: true }).size, 0, 'nothing drawn: icons stay');
 });

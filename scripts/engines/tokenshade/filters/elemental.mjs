@@ -485,6 +485,57 @@ void main() {
 }`,
 };
 
+// A soaked-in stain (blood, mud): organic outlines from warped noise, thin and see-through at the edges, dark where
+// it pooled thick, a darker dried rim, small droplets flung outward, a wet sheen. count 1..3 stains; size their size
+// (token radii); edge how far out from the middle they sit; wet 0 dried .. 1 fresh; grain grit (mud); spatter droplets.
+const stain = {
+  type: 'stain', order: 762,
+  defaults: { color: 0x5a0606, seed: 0.3, count: 2, size: 0.35, edge: 0.5, wet: 0.5, grain: 0, spatter: 0.6 },
+  timeScale: 1,
+  uniforms: {
+    uColor: ['vec3', p => rgb(p.color)], uSeedP: ['float', p => f(p.seed)], uCount: ['float', p => clamp(Math.round(f(p.count)), 1, 3)],
+    uSize: ['float', p => clamp(p.size, 0.1, 1.5)], uEdge: ['float', p => clamp(p.edge, 0, 1.2)], uWet: ['float', p => clamp(p.wet, 0, 1)],
+    uGrain: ['float', p => clamp(p.grain, 0, 1)], uSpatter: ['float', p => clamp(p.spatter, 0, 1)],
+  },
+  reach: () => 0,
+  glsl: `
+void main() {
+  vec4 base = fxSample(vTextureCoord);
+  float R = fxTokenRadius();
+  vec2 p = fxCanvas() / R;
+  float a = 0.0, thick = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    if (fi >= uCount) break;
+    float s = uSeedP * 97.0 + fi * 13.7;
+    float ang = hash11(s + 3.1) * TAU;
+    vec2 q = (p - vec2(cos(ang), sin(ang)) * uEdge * (0.6 + 0.4 * hash11(s + 5.0))) / (uSize * (0.75 + 0.5 * hash11(s + 8.0)));
+    // An organic outline: the plane warped by noise, then a ragged threshold.
+    vec2 w = q + 0.45 * vec2(fbm3(q * 1.6 + s), fbm3(q * 1.6 + s + 9.1));
+    float field = 1.0 - length(w * vec2(1.0, 0.75 + 0.5 * hash11(s + 2.0))) + fbm3(w * 3.0 + s) * 0.3;
+    float body = smoothstep(0.38, 0.46, field);
+    float t = smoothstep(0.4, 0.95, field);
+    // Droplets flung outward: cells stretched along the radius, a ring beyond the stain.
+    float rad = length(q);
+    vec2 dir = q / max(rad, 1e-4);
+    vec3 cl = cells(vec2(rad * 2.2, atan(q.y, q.x) * 3.2) + s, 0.0);
+    float drop = smoothstep(0.2, 0.1, cl.x) * step(0.72, cl.z) * smoothstep(1.9, 1.1, rad) * step(0.75, rad) * uSpatter;
+    a = max(a, max(body, drop));
+    thick = max(thick, max(t, drop * 0.6));
+  }
+  a *= base.a;
+  if (a <= 0.001) { gl_FragColor = base; return; }
+  // Thin edges show the art through and run lighter; pooled middles go dark; a dried rim rings each stain.
+  float rim = smoothstep(0.0, 0.12, thick) * (1.0 - smoothstep(0.12, 0.35, thick));
+  vec3 col = mix(uColor * 1.35, uColor * 0.5, thick) * (1.0 - rim * 0.35 * (1.0 - uWet * 0.5));
+  col *= 1.0 + uGrain * (gnoise(p * 38.0) * 0.5 + gnoise(p * 90.0) * 0.25);
+  float sheen = smoothstep(0.6, 0.95, gnoise(p * 7.0 + uSeedP * 31.0) + 0.45) * thick * uWet * 0.45;
+  float alpha = a * (0.45 + 0.55 * smoothstep(0.0, 0.5, thick));
+  vec4 o = fxLayer(base, col, alpha * 0.6, 4);
+  gl_FragColor = fxLayer(o, col + sheen, alpha * 0.55, 0);
+}`,
+};
+
 // A spider web strung across the token.
 const web = {
   type: 'web', order: 770,
@@ -554,4 +605,4 @@ void main() {
 }`,
 };
 
-export const ELEMENT_SPECS = [fire, xfire, electric, smoke, fumes, fog, xfog, flood, liquid, ripples, splash, web, globes];
+export const ELEMENT_SPECS = [fire, xfire, electric, smoke, fumes, fog, xfog, flood, liquid, ripples, splash, stain, web, globes];

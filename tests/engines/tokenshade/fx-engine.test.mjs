@@ -18,8 +18,8 @@ test('every Token Magic filter type and animation type has an animater implement
   for(const type of ANIM_TYPES)assert.ok(normalizeAnim({animType:type}).animType,type);
 });
 test('the built-in library has every Token Magic preset name we keep plus Tokenshade originals, every filter known',()=>{
-  assert.equal(PRESETS.length,291);
-  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,246);
+  assert.equal(PRESETS.length,292);
+  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,247);
   assert.ok(!PRESETS.some(p=>p.name==='DungeonDraft Tint'),'retired: a map-maker tint, not a token look');
   for(const name of ['Burning','Electrocuted','Corroding','Envenomed','Withering','Radiant Burn','Force Jolt','Psychic Warp','Resonance','Spirit Rend','Petrified','Frozen Solid','Entangled','Chained','Netted','Levitate','Marker: Foe','Rune Circle','Frostbitten','Submerged'])assert.ok(builtinPreset(name),name);
   assert.ok(!PRESETS.some(p=>/BW/.test(p.name)),'no Baileywiki names');
@@ -236,6 +236,15 @@ test('the live values include light and weather',async()=>{
 test('stunned, confused, charmed, fascinated and stupefied circle their own signs over the head',async()=>{
   const glyphOf=name=>builtinPreset(name).params.find(f=>f.filterType==='orbit')?.glyph;
   assert.deepEqual(['Dazed','Bewildered','Smitten','Fascinated','Muddled','Muddled 4'].map(glyphOf),[1,4,3,2,5,5]);
+  // Fatigued sweats and enfeebled drains: drops and down-arrows slipping down beside the head.
+  for(const [name,glyph] of [['Weary',6],['Weary 4',6],['Weakened',7],['Weakened 4',7]]){
+    const orbit=builtinPreset(name).params.find(f=>f.filterType==='orbit');
+    assert.equal(orbit?.glyph,glyph,name);assert.equal(orbit.fall,true,name);
+  }
+});
+test('motion looks move enough to see on the map: frightened and clumsy shift at least 1.5% of the token',async()=>{
+  const reach=name=>Math.max(...builtinPreset(name).params.filter(f=>f.filterType==='transform').map(f=>Math.abs(f.animated?.translationX?.val2??0)));
+  for(const name of ['Trembling','Trembling 4','Unsteady','Unsteady 4'])assert.ok(reach(name)>=0.015,name);
 });
 test('previews make up live values that keep changing and play transitions again and again',async()=>{
   const {simulatedDrive,transitionCycle}=await import('../../../scripts/engines/preview/token-fx-preview.mjs');
@@ -251,7 +260,8 @@ test('a valued condition uses its own look when there is one, and strength reach
   assert.equal(scaleFilterStrength({filterType:'glow',outerStrength:4},0.5).outerStrength,2,'a glow still scales its own strength');
   assert.equal(scaleFilterStrength({filterType:'glow',outerStrength:4},0.5).fxMix,undefined);
   for(const n of ['Wounded','Wounded 2','Wounded 3'])assert.ok(builtinPreset(n),n);
-  assert.ok(builtinPreset('Wounded 3').params.length>builtinPreset('Wounded').params.length,'more wounds');
+  const stains=n=>builtinPreset(n).params.find(f=>f.filterType==='stain')?.count;
+  assert.ok(stains('Wounded 3')>stains('Wounded'),'more wounds');
 });
 test('every valued condition grows worse step by step: a look of its own for each value',async()=>{
   const {conditionLook}=await import('../../../scripts/catalogs/shared/condition-looks.mjs');

@@ -39,6 +39,24 @@ export function heldLightKind({ choice = '', fire = false, effects = [], held = 
   return fire ? 'torch' : null;
 }
 
+// The status icons of the lights Animater draws on a creature, to leave off its token (the torch in its hand, the orb at
+// its shoulder already say it): `kind` what its light is drawn as (heldLightKind); `items` its items and effects as
+// { name, type, img, rules } (PF2e: a Torch's TokenEffectIcon rule shows the lit torch; Spell Effect: Light its own image).
+// `torches` / `orbs`: whether held lights and light orbs are drawn. Image paths.
+export function drawnLightIcons({ kind = null, items = [], torches = false, orbs = false } = {}) {
+  const out = new Set();
+  const held = (kind === 'torch' || kind === 'lantern') && torches, orb = kind === 'orb' && orbs;
+  if (!held && !orb) return out;
+  for (const item of items) {
+    const rules = [...(item?.rules ?? [])], spell = isOrbEffect(item?.name);
+    // An orb: the light spell's effect. A torch or lantern: an item giving light that is no light spell.
+    if (orb ? !spell : spell || !rules.some((r) => r?.key === 'TokenLight')) continue;
+    if (item.type === 'effect' && item.img) out.add(item.img);
+    for (const r of rules) if (r?.key === 'TokenEffectIcon' && typeof r.value === 'string' && r.value) out.add(r.value);
+  }
+  return out;
+}
+
 // How many lights a creature's light spell makes: Dancing Lights several wisps circling it, any other one orb.
 export const orbCount = (effects = []) => ([...effects].some((n) => /dancing lights?/i.test(String(n))) ? 4 : 1);
 

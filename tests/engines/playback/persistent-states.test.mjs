@@ -336,6 +336,17 @@ test('a condition whose value changes (Frightened 2 to 1 at turn end) keeps show
  assert.equal(f.manager.active.size,1);
  await f.manager.destroy();
 });
+test('the old look stays until the new one has faded in, so the plain token never shows between levels',async()=>{
+ const item=native(fear);item.system.value.value=2;const f=fixture([item]);f.manager.host.lookBlendMs=()=>60;
+ await f.manager.reconcile();await flush();
+ const first=[...f.manager.active.values()][0].name;
+ item.system.value.value=1;
+ const done=f.manager.reconcile();await flush();
+ assert.ok(!f.calls.some(c=>c[0]==='end'&&c[1]===first),'still up while the new look fades in');
+ await done;await new Promise(r=>setTimeout(r,250));
+ assert.ok(f.calls.some(c=>c[0]==='end'&&c[1]===first),'then it ends');
+ await f.manager.destroy();
+});
 
 test('the catalog Token motion switch decides whether creatures react to their conditions',async()=>{
  const f=fixture([native(fear)]),bodies=[];f.manager.host.body={add:(name,token,kind)=>bodies.push(kind),remove:()=>{}};
