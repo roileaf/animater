@@ -11,8 +11,9 @@ import { sfEntry } from "../sf2e/sf2e-catalog.mjs";
 import { dndEntry } from "../dnd5e/dnd5e-catalog.mjs";
 import { dhEntry } from "../daggerheart/daggerheart-catalog.mjs";
 
-// Kept unless the GM asks for the fresh-install state: the catalog's on switch and whether it plays every entry.
-export const CATALOG_SWITCH_FIELDS = Object.freeze(["enabled", "scope"]);
+// Kept unless the GM asks for the fresh-install state: the catalog's on switch, whether it plays every entry, and
+// `independent`, which lets it play while "Play my own recipes automatically" is off, so a catalog kept on plays on.
+export const CATALOG_SWITCH_FIELDS = Object.freeze(["enabled", "scope", "independent"]);
 
 const same = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
 // The catalog's state after a reset, or null when nothing would change. `keepEnabled: false` also puts the switch
@@ -64,7 +65,7 @@ export function catalogResetPlan({ state, defaults, recipes = [], catalog, keepE
 export function catalogBackup(state, deleted = [], { id = "animater", catalog = "", date = new Date() } = {}) {
   return { schema: 1, recipes: deleted, module: id, catalog, saved: date.toISOString(), catalogState: state };
 }
-export const catalogBackupFileName = (catalog, { id = "animater", date = new Date() } = {}) => `${id}-${catalog}-catalogue-backup-${date.toISOString().replace(/[:.]/g, "-")}.json`;
+export const catalogBackupFileName = (catalog, { id = "animater", date = new Date() } = {}) => `${id}-${catalog}-catalog-backup-${date.toISOString().replace(/[:.]/g, "-")}.json`;
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const NAMED = 10;
@@ -78,5 +79,5 @@ export function catalogResetDialogHTML(name, { deleted = [], pickedOnly = false 
     + `<li>${recipes} Your other recipes (your own, the starters, other catalogs' and players') are kept.</li>`
     + `<li>It stays on or paused as it is now, playing every entry or only picked ones.${pickedOnly ? " It plays only picked entries, so none play until you pick them again." : ""}</li></ul>`
     + `<p>A backup downloads first. To undo, import it with Import on the Recipes page, then Customize an entry to use its recipe again.</p>`
-    + `<label class="checkbox"><input type="checkbox" name="full"> Also switch this catalogue back to its fresh-install state (off)</label>`;
+    + `<label class="checkbox"><input type="checkbox" name="full"> Also switch this catalog back to its fresh-install state (off)</label>`;
 }

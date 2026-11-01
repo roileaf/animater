@@ -36,10 +36,16 @@ test("each catalog's real default: a reset clears picks, exclusions, customised 
     const kept = resetCatalogState(current, defaults);
     assert.deepEqual(kept, normalize(kept), `${name}: the reset state is already normal`);
     const expected = { ...defaults };
-    for (const key of CATALOG_SWITCH_FIELDS) expected[key] = current[key];
+    for (const key of CATALOG_SWITCH_FIELDS) if (key in defaults) expected[key] = current[key];
     assert.deepEqual(kept, expected, name);
     assert.equal(kept.enabled, true, name);
     assert.equal(kept.scope, "selected", name);
+    // Kept on, it plays on with Play my own recipes automatically off; the fresh-install state is not independent.
+    if ("independent" in defaults) {
+      assert.equal(kept.independent, true, name);
+      assert.equal(resetCatalogState(current, defaults, { keepEnabled: false }).independent, false, name);
+    }
+    if ("preferCatalog" in defaults) assert.equal(kept.preferCatalog, false, `${name}: preferCatalog goes back to its default`);
     assert.deepEqual([kept.selected, kept.excluded, kept.customized], [[], [], []], name);
     assert.deepEqual(resetCatalogState(current, defaults, { keepEnabled: false }), defaults, `${name}: fresh install`);
   }
@@ -50,7 +56,7 @@ test("a catalog already at its default is not reset; a switched-on one changes o
     const name = `${system} ${kind}`;
     assert.equal(resetCatalogState(normalize(), normalize()), null, name);
     assert.equal(resetCatalogState(normalize(), normalize(), { keepEnabled: false }), null, name);
-    const on = normalize({ ...normalize(), enabled: true });
+    const on = normalize({ ...normalize(), enabled: true, independent: true });
     assert.equal(resetCatalogState(on, normalize()), null, `${name}: only its switch differs`);
     assert.equal(resetCatalogState(on, normalize(), { keepEnabled: false }).enabled, false, name);
     const plan = catalogResetPlan({ state: normalize(), defaults: normalize(), recipes: starterRecipes(), catalog: { system, kind } });
@@ -127,7 +133,7 @@ test("the backup imports straight back: the deleted recipes return, the rest sta
   assert.deepEqual(restored.incoming.map((r) => r.id), [feat.id]);
   assert.deepEqual(restored.recipes.map((r) => r.id), [...starters.map((r) => r.id), feat.id]);
   assert.equal(restored.added, 1);
-  assert.equal(catalogBackupFileName("pf2e-feat", { date }), "animater-pf2e-feat-catalogue-backup-2026-11-01T10-20-30-400Z.json");
+  assert.equal(catalogBackupFileName("pf2e-feat", { date }), "animater-pf2e-feat-catalog-backup-2026-11-01T10-20-30-400Z.json");
 });
 
 test("the question says what a reset does, names the recipes it deletes, and offers the fresh-install state unticked", () => {
@@ -135,7 +141,7 @@ test("the question says what a reset does, names the recipes it deletes, and off
   assert.match(html, /Put the PF2e effect catalog back to the stock catalog\?/);
   assert.match(html, /Deletes 1 customised recipe: Stance: Inspiring Marshal Stance\./);
   assert.match(html, /import it with Import on the Recipes page/);
-  assert.match(html, /<input type="checkbox" name="full"> Also switch this catalogue back to its fresh-install state \(off\)/);
+  assert.match(html, /<input type="checkbox" name="full"> Also switch this catalog back to its fresh-install state \(off\)/);
   assert.doesNotMatch(html, /checked|none play until/);
   assert.match(catalogResetDialogHTML("x"), /No customised recipes to delete\./);
   assert.match(catalogResetDialogHTML("x", { pickedOnly: true }), /none play until you pick them again/);

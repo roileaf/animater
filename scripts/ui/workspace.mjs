@@ -666,7 +666,7 @@ export class Workspace {
   }
   catalogResetHTML() {
     if (this.host.isGM?.() !== true || !this.catalogResetTarget()) return "";
-    return `<button data-action="catalog-state-reset" class="an-quiet" data-tooltip="Back to the stock catalog: clears its picks, left-out entries and look choices and deletes its customised recipes (asks first)" ${this.host.environment().demo || this.busy ? "disabled" : ""}>↺ Reset catalogue…</button>`;
+    return `<button data-action="catalog-state-reset" class="an-quiet" data-tooltip="Back to the stock catalog: clears its picks, left-out entries and look choices and deletes its customised recipes (asks first)" ${this.host.environment().demo || this.busy ? "disabled" : ""}>↺ Reset catalog…</button>`;
   }
   // Reset catalog… (GM): asks first, naming the customised recipes it deletes, downloads one backup (the catalog's
   // state and those recipes), then saves the recipes and the state through the host, as the pages do.
