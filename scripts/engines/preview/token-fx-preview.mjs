@@ -10,9 +10,23 @@ export function previewFilters(preset, stage, {PIXI, tokenSize=null}) {
   return filters;
 }
 
+// A preview has no game behind it, so effects that follow the game get made-up values that keep changing: HP lost,
+// height and darkness swell and ebb, weather and the turn switch on and off. Pure, by time in ms.
+export function simulatedDrive(t) {
+  // Everything starts on and at full, so even a short preview shows the effect at once.
+  const swell = 0.5 + 0.5 * Math.cos((t / 3200) * 2 * Math.PI), on = (ms) => (Math.floor(t / ms) % 2 ? 0 : 1);
+  return { hpLost: swell, height: swell, darkness: swell, weather: on(2400), turn: on(2000) };
+}
+// How long a preset's one-time transitions take (0: none), so a preview can play them again and again.
+export function transitionCycle(preset) {
+  const once = (preset?.params ?? []).flatMap((p) => Object.values(p?.animated ?? {})).filter((a) => a?.animType === 'once')
+    .map((a) => (Number(a.loopDuration) || 0) + (Number(a.pauseBetweenDuration) || 0));
+  return once.length ? Math.max(...once) + 1500 : 0;
+}
 export class TokenFxPreview {
-  constructor({scene,recipe,PIXI,tokenFx,world=()=>Date.now()}) {
-    Object.assign(this,{scene,recipe,PIXI,tokenFx,world});
+  // `drive`: test live values for effects that follow the game (the Tokenshade page's sliders).
+  constructor({scene,recipe,PIXI,tokenFx,world=()=>Date.now(),drive=()=>null}) {
+    Object.assign(this,{scene,recipe,PIXI,tokenFx,world,drive});
     this.abort=new AbortController();this.records=[];this.stopped=false;
     this.info=JSON.parse(scene.dataset.previewTokens??'{}');
     // index: position in the plan (or stages); stageIndex: the recipe stage it plays.
@@ -81,10 +95,12 @@ export class TokenFxPreview {
           if(!group) {
             const preset=entry.preset;
             if(!preset?.params?.length&&!entry.stage.fxLayers?.length)throw Error('Token FX preset unavailable');
-            group={filters:previewFilters(preset,entry.stage,{PIXI:this.PIXI,tokenSize:{width:record.width,height:record.height}})};record.groups.set(key,group);
+            group={filters:previewFilters(preset,entry.stage,{PIXI:this.PIXI,tokenSize:{width:record.width,height:record.height}}),cycle:transitionCycle(entry.stage.fxLayers?.length?{params:entry.stage.fxLayers}:preset)};record.groups.set(key,group);
           }
           const speed=entry.stage.fxSpeed??1;
-          for(const filter of group.filters) {filter.update(Math.max(0,state.localTime)*speed,this.world()*speed);filters.push(filter);}
+          // A transition plays again after a pause; values that follow the game are made up when none are given.
+          const local=Math.max(0,state.localTime)*speed,at=group.cycle?local%group.cycle:local,drive=this.drive()??simulatedDrive(local);
+          for(const filter of group.filters) {filter.update(at,this.world()*speed,drive);filters.push(filter);}
         }
         record.art.filters=filters;
         for(const f of filters)f.measure?.(record.art);

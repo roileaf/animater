@@ -74,6 +74,12 @@ export function installedFxCatalog({modules, tokenFx, fxmaster, config, localize
 const ALPHA_KEY=/^(?:alpha|[a-z]+Alpha|alphaImg|alphaChr|strength|[a-z]+Strength|intensity|[a-z]+Intensity|density|bloomScale)$/;
 export function scaleFilterStrength(param, strength = 1) {
   if (!(Number(strength) < 1)) return param;
+  // A filter with no strength of its own (splashes, frost, stone, veins) is blended with the untouched art instead
+  // (filter-factory.mjs fxMix), so Wounded 1 never looks the same as Wounded 3.
+  if (!Object.keys(param).some((key) => ALPHA_KEY.test(key) && typeof param[key] === 'number') && !Object.keys(param.animated ?? {}).some((key) => ALPHA_KEY.test(key))) {
+    param.fxMix = Math.max(0, Math.min(1, Number(strength)));
+    return param;
+  }
   for (const [key, value] of Object.entries(param)) if (ALPHA_KEY.test(key) && typeof value === 'number') param[key] = value * strength;
   for (const [key, anim] of Object.entries(param.animated ?? {})) if (ALPHA_KEY.test(key) && anim && typeof anim === 'object')
     for (const end of ['val1', 'val2']) if (typeof anim[end] === 'number') anim[end] *= strength;
@@ -143,7 +149,12 @@ export class OptionalFxPlayer {
   constructor(host) { this.host=host; this.active=new Set(); }
   async addTokenFilter(stage) {
     const api=this.host.tokenFx();
-    const preset=api.getPresets(libraryId(stage.fxLibrary??LIBRARY.TOKEN)).find(p=>p.name===stage.fxPreset);
+    // A valued condition (Wounded 2) uses its own look when the library has one ("Wounded 2"), else the base look.
+    const presets=api.getPresets(libraryId(stage.fxLibrary??LIBRARY.TOKEN));
+    const valued=stage.fxLevel>1?presets.find(p=>p.name===`${stage.fxPreset} ${stage.fxLevel}`):null;
+    const preset=valued??presets.find(p=>p.name===stage.fxPreset);
+    // A look made for this value escalates by itself: it plays at the stage's own strength, not scaled down by value.
+    if(valued&&Number.isFinite(stage.fxBaseStrength))stage={...stage,fxStrength:stage.fxBaseStrength};
     const placeable=(stage.destination?.document??stage.destination)?.object;
     if(!(preset?.params?.length||stage.fxLayers?.length)||!placeable)return ()=>{};
     return api.apply(placeable,tintedPreset(preset??{name:stage.fxPreset},stage),{speed:stage.fxSpeed??1,always:stage.fxEssential===true});

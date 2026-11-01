@@ -131,7 +131,7 @@ export async function playTeleport({ mover, x, y, visuals, element }, host, { ou
   if (outAt > 0) await host.wait(outAt);
   // A preview holds its copy at the spot for host.holdMs: the token stays hidden until that is over.
   const hidden = goneMs + (host.holdMs > 0 ? host.holdMs : 0);
-  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: hidden, ...origin, ...grace }, ...warp(from) } : warp(from));
+  if (visuals.out) host.effect(visuals.out, from, size, visuals.tint, id && goneMs > 0 ? { animaterVanish: { tokenId: id, ms: hidden, ...origin, ...grace, ...(element ? { element } : {}) }, ...warp(from) } : warp(from));
   else await host.move(mover, x, y);
   if (goneMs > 0) await host.wait(goneMs);
   if (visuals.out) await host.move(mover, x, y);
@@ -154,6 +154,28 @@ export function previewSpot(mover, { gridSize = 100, bounds = null, toward = nul
   return inside(ahead) ? ahead : at(-1);
 }
 
+// How a teleporting creature leaves and arrives in Tokenshade ("Teleports dissolve"), by the spell's element: fire
+// burns away and rises from the ashes, void fades into shadow and rises from it, vitality ascends in light and steps
+// out of it; anything else sparkles away and forms from sparkles.
+const TELEPORT_DISSOLVES = {
+  fire: { out: 'Burn away', in: 'Rise from the ashes' },
+  void: { out: 'Fade into shadow', in: 'Rise from shadow' }, negative: { out: 'Fade into shadow', in: 'Rise from shadow' }, necrotic: { out: 'Fade into shadow', in: 'Rise from shadow' }, shadow: { out: 'Fade into shadow', in: 'Rise from shadow' },
+  vitality: { out: 'Ascend in light', in: 'Step out of light' }, positive: { out: 'Ascend in light', in: 'Step out of light' }, radiant: { out: 'Ascend in light', in: 'Step out of light' },
+};
+export const teleportDissolve = (element) => TELEPORT_DISSOLVES[String(element ?? '').toLowerCase()] ?? { out: 'Sparkle away', in: 'Form from sparkles' };
+
+// How a new creature forms where it appears ("New creatures appear"), by what it is: fiends and undead rise from
+// shadow, celestials step out of light, fire creatures rise from the ashes, the rest form from sparkles.
+export function arrivalDissolve(traits = []) {
+  const t = new Set((traits ?? []).map((x) => String(x).toLowerCase()));
+  if (['fiend', 'undead', 'demon', 'devil', 'daemon', 'shadow'].some((x) => t.has(x))) return 'Rise from shadow';
+  if (['celestial', 'angel', 'archon', 'azata', 'holy'].some((x) => t.has(x))) return 'Step out of light';
+  if (t.has('fire')) return 'Rise from the ashes';
+  return 'Form from sparkles';
+}
+// Which new tokens form in: 'summons' (a summoned creature), 'all', or 'off'.
+export const shouldFormIn = (mode, { summoned = false } = {}) => mode === 'all' || (mode === 'summons' && summoned);
+
 // One client's part of a vanish: the token's art held out of sight (a token refresh would show it again, so
 // every frame, as motions do) for `ms`, then up to `grace` longer while its move is still on the way (a creature
 // the GM moves for the caster takes two socket trips), and given back as soon as it has left `origin` (the arrival
@@ -161,7 +183,8 @@ export function previewSpot(mover, { gridSize = 100, bounds = null, toward = nul
 // Returns a function that gives it back early.
 export const VANISH_GRACE_MS = 1500;
 const FADE_MS = 120;
-export function holdHidden(token, ms, { origin = null, grace = VANISH_GRACE_MS, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame } = {}) {
+// `fadeMs`: how long the art takes to go (a dissolve plays meanwhile); `onBack`: called once the token shows again.
+export function holdHidden(token, ms, { origin = null, grace = VANISH_GRACE_MS, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, fadeMs = FADE_MS, onBack = null } = {}) {
   const mesh = token?.mesh;
   if (!mesh || !(ms > 0)) return () => {};
   const at = Number.isFinite(origin?.x) && Number.isFinite(origin?.y) ? origin : { x: token.document?.x, y: token.document?.y };
@@ -176,12 +199,13 @@ export function holdHidden(token, ms, { origin = null, grace = VANISH_GRACE_MS, 
     if (mesh.destroyed) return;
     mesh.alpha = alpha;
     token.renderFlags?.set?.({ refreshState: true });
+    try { onBack?.(); } catch { /* it is back regardless */ }
   };
   const step = () => {
     const elapsed = now() - start;
     if (mesh.destroyed || moved() || elapsed >= ms + grace) return finish();
     // A quick fade, then gone.
-    mesh.alpha = alpha * Math.max(0, 1 - elapsed / FADE_MS);
+    mesh.alpha = alpha * Math.max(0, 1 - elapsed / Math.max(1, fadeMs));
     handle = frame(step);
   };
   step();

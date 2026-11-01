@@ -55,7 +55,9 @@ test("energy damage flashes on the token; physical damage does not; knockouts fi
   assert.equal(deathRecipe("piercing", collapse), collapse, "physical keeps the plain collapse");
   const death = validateRecipe(deathRecipe("cold", collapse));
   assert.deepEqual(death.stages.map((s) => s.kind), ["motion", "tokenfx", "cast", "cast"]);
-  assert.equal(death.stages[1].fxPreset, "Frostbitten", "frost creeping over the token");
+  assert.equal(death.stages[1].fxPreset, "Knocked out: Cold", "a knockout shatters part of the creature away, then it fades back");
+  for (const type of ["fire", "acid", "poison", "necrotic", "radiant", "force", "psychic", "thunder", "spirit", "lightning"])
+    assert.match(validateRecipe(deathRecipe(type, collapse)).stages[1].fxPreset, /^Knocked out: /, type);
   for (const [type, preset] of [["acid", "Corroding"], ["poison", "Envenomed"], ["necrotic", "Withering"], ["radiant", "Radiant Burn"], ["force", "Force Jolt"], ["psychic", "Psychic Warp"], ["thunder", "Resonance"], ["spirit", "Spirit Rend"], ["lightning", "Electrocuted"], ["fire", "Burning"]])
     assert.equal(hitRecipe(type).stages.find((s) => s.kind === "tokenfx").fxPreset, preset, type);
   assert.deepEqual(hit.stages.map((s) => s.kind), ["cast", "tokenfx"]);

@@ -2,8 +2,10 @@
 // token's art is drawn, moved by fragmentPose, destroyed at the end. Halves and shards are
 // masked sprites; dust specks are cropped sub-textures (no masks, so dozens stay cheap).
 import { prepareFragments, fragmentPieces, fragmentFlight, fragmentPose, FRAGMENT_TINT_LOOKS } from "./fragments.mjs";
+import { presetFilters } from "../tokenshade/engine.mjs";
 
-export function createFragmentRenderer({ PIXI, grid }) {
+// `tokenshade(name)`: the Tokenshade token preset a stage's `fragmentFx` names (or null), drawn over all its pieces.
+export function createFragmentRenderer({ PIXI, grid, tokenshade = () => null }) {
   // Stone's greyscale: one filter shared by every piece this renderer draws, made on first use.
   // Each handle that uses it holds one reference; the last release destroys it. A filter that
   // cannot be made is cached as null, so the pieces go unfiltered and nothing retries.
@@ -58,6 +60,23 @@ export function createFragmentRenderer({ PIXI, grid }) {
       const place = (dx, dy) => { const r = rot(dx, dy); return { x: centre.x + r.x, y: centre.y + r.y }; };
       const sorting = { elevation: mesh.elevation ?? token.document?.elevation, sortLayer: mesh.sortLayer, sort: mesh.sort };
       const boxes = [], crops = [];
+      // A Tokenshade look on the pieces: they fly in one group the look is drawn over (one pass, however many pieces),
+      // sorted where the pieces would sit, its animations on their own clock from the cut.
+      let preset = null;
+      try { preset = stage.fragmentFx ? tokenshade(stage.fragmentFx) : null; } catch { preset = null; }
+      let looks = [], group = null;
+      if (preset) {
+        try { looks = presetFilters(PIXI, preset, { tokenSize: { width: w, height: h }, key: `fragments:${token.id ?? ""}` }); } catch { looks = []; }
+        if (looks.length) {
+          group = new PIXI.Container();
+          for (const [key, value] of Object.entries(sorting)) if (value !== undefined) group[key] = value;
+          if (mesh.zIndex !== undefined) group.zIndex = mesh.zIndex + 1;
+          group.filters = looks;
+          layer.addChild(group);
+        }
+      }
+      const born = (globalThis.performance ?? Date).now();
+      const into = group ?? layer;
       // This handle's hold on the shared stone filter, taken with its first stone piece.
       let holdsStone = false;
       const release = () => { if (holdsStone) { holdsStone = false; releaseStone(); } };
@@ -95,12 +114,14 @@ export function createFragmentRenderer({ PIXI, grid }) {
           // Foundry sorts by elevation, sortLayer, sort, then zIndex: match the token so pieces sit with it.
           for (const [key, value] of Object.entries(sorting)) if (value !== undefined) box[key] = value;
           if (mesh.zIndex !== undefined) box.zIndex = mesh.zIndex + 1;
-          layer.addChild(box);
+          into.addChild(box);
           return { box, spin, crop, piece, flight: fragmentFlight(stage, piece, i, cutAngle, turn, size), cx, cy };
         });
       } catch (error) {
         for (const box of boxes) { try { box.destroy({ children: true }); } catch { /* keep cleaning */ } }
         for (const crop of crops) { try { crop.destroy(false); } catch { /* keep cleaning */ } }
+        try { group?.destroy({ children: true }); } catch { /* keep cleaning */ }
+        for (const f of looks) { try { f.destroy(); } catch { /* keep cleaning */ } }
         release();
         throw error;
       }
@@ -118,6 +139,10 @@ export function createFragmentRenderer({ PIXI, grid }) {
             // The box's origin is the piece's centroid, so it scales and stretches about it, mask included, along screen axes.
             part.box.scale?.set(pose.scale * pose.stretchX, pose.scale * pose.stretchY);
           }
+          if (looks.length) {
+            const local = (globalThis.performance ?? Date).now() - born, world = Date.now();
+            for (const f of looks) { try { f.update(local, world); f.measure?.(group); } catch { /* the pieces still fly */ } }
+          }
         },
         // Each part on its own: one failure must not leak the rest.
         destroy() {
@@ -125,6 +150,8 @@ export function createFragmentRenderer({ PIXI, grid }) {
             try { part.box.destroy({ children: true }); } catch { /* keep cleaning */ }
             try { part.crop?.destroy(false); } catch { /* keep cleaning */ }
           }
+          try { group?.destroy({ children: false }); } catch { /* keep cleaning */ }
+          for (const f of looks) { try { f.destroy(); } catch { /* keep cleaning */ } }
           release();
         },
       };

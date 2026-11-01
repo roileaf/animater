@@ -121,15 +121,93 @@ export function isFlying({ action, statuses } = {}) {
 }
 
 // A flier's shadow: an ellipse under its feet, pushed down-right (light from the top left) and shrunk and faded by
-// height. `lift` is height above the floor in scene distance units; `width` the token's width in pixels.
-export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100 }) {
+// height. `lift` is height above the floor in scene distance units; `width` the token's width in pixels. `grounded`:
+// the softer contact shadow a standing creature gets with "Shadows under every token".
+export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100, grounded = false }) {
   // At its feet: a flat ellipse straight below the creature (centred left to right), mostly under its token with its
   // lower half showing past the bottom edge, so even opaque full-frame art shows it. The higher it flies, the further
   // down it falls and the smaller and fainter it gets.
   const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5));
   const w = Number(width) || grid;
   const rx = w * Math.max(0.3, 0.42 - 0.01 * h);
+  if (grounded) return { x, y: y + w * 0.4, rx: w * 0.4, ry: w * 0.16, alpha: 0.3 };
   return { x, y: y + w * Math.min(0.6, 0.45 + 0.015 * h), rx, ry: rx * 0.4, alpha: Math.max(0.25, 0.55 - 0.025 * h) };
+}
+
+// Taking off and landing: the downdraft of wings (or a spell's lift) throws the floor out to both sides of the
+// creature — dust off dirt, grit off stone, spray off water, a flurry off snow — and a landing also presses a ring of
+// it flat. Bigger creatures throw it further. `landing` makes it heavier.
+const DOWNDRAFT = Object.freeze({
+  stone: { kind: 'puff', colors: [0xb8b6b0, 0xc8c6c0, 0xa8a6a0], alpha: 0.6 },
+  wood: { kind: 'puff', colors: [0xdcc49a, 0xcdb48a], alpha: 0.55 },
+  dirt: { kind: 'puff', colors: [0xb59a72, 0xc4ab84, 0xa48a62], alpha: 0.7 },
+  grass: { kind: 'blade', colors: [0xb4dc58, 0xc6e86c, 0xa2cf45], edge: 0x2a4a14, alpha: 0.9, small: true },
+  sand: { kind: 'puff', colors: [0xf0deb4, 0xe8d29e, 0xfaeccc], alpha: 0.7 },
+  snow: { kind: 'puff', colors: [0xffffff, 0xf4f8fc, 0xdde8f2], alpha: 0.85 },
+  water: { kind: 'drop', colors: [0xcfe8ff, 0xb4d8f4, 0xeaf6ff], alpha: 0.7, small: true, ring: 0xd8ecff },
+  ice: { kind: 'puff', colors: [0xdff0ff, 0xc8e2f6], alpha: 0.55 },
+  mud: { kind: 'drop', colors: [0x5a4430, 0x4a3826, 0x6a5238], alpha: 0.75, small: true },
+});
+export function downdraft(floor, at, { seed = '', grid = 100, width = grid, landing = false } = {}) {
+  const look = DOWNDRAFT[floor] ?? DOWNDRAFT.stone;
+  const random = rng(`${seed}:downdraft:${landing ? 'land' : 'lift'}:${Math.round(at.x)}:${Math.round(at.y)}`);
+  const body = clamp((Number(width) || grid) / (grid || 100), 0.4, 8), reach = Math.sqrt(body), unit = grid * Math.pow(body, 0.85);
+  const out = [], perSide = landing ? 10 : 8;
+  for (const side of [0, Math.PI]) for (let i = 0; i < perSide; i++) {
+    // Mostly sideways, a little forward and back: two fans from under the creature's middle.
+    const angle = side + (random() - 0.5) * 1.1, speed = grid * reach * (landing ? 1.1 : 0.85) * (0.6 + random() * 0.6);
+    // From the token's edge, so the burst shows past its art from the first frame.
+    const startOut = width * (0.4 + random() * 0.15);
+    out.push({
+      kind: look.kind, color: look.colors[Math.floor(random() * look.colors.length) % look.colors.length], ...(look.edge ? { edge: look.edge } : {}),
+      x: at.x + Math.cos(angle) * startOut, y: at.y + width * 0.3 + Math.sin(angle) * startOut * 0.5,
+      vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed * 0.5,
+      radius: unit * (look.small ? 0.06 : 0.17) * (0.7 + random() * 0.6), alpha: look.alpha * (0.7 + random() * 0.3),
+      grow: look.small ? 0 : 1.6 + random() * 0.8, delay: Math.round(random() * 80), life: Math.round((landing ? 1000 : 850) * (0.8 + random() * 0.4)),
+      rotation: look.kind === 'blade' ? angle : random() * Math.PI * 2, spin: look.kind === 'blade' ? (random() - 0.5) * 16 : 0, hold: 0.2,
+      ...(look.small ? { hop: unit * 0.08 * (0.6 + random() * 0.8) } : {}),
+    });
+  }
+  if (landing) out.push({ kind: 'ring', color: look.ring ?? look.colors[0], x: at.x, y: at.y + width * 0.3, vx: 0, vy: 0, radius: width * 0.35,
+    alpha: look.alpha * 0.7, grow: 1.6, delay: 0, life: 700, rotation: 0, spin: 0 });
+  return out;
+}
+
+// The shadow a flier casts on the creatures below it: as wide as the flier, cast down and to the right (light from the
+// top left) further the higher it flies, and fainter. Drawn only on creatures; the floor keeps the small shadow at its
+// feet (shadowGeometry), which stays readable under any art.
+export function castShadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100 }) {
+  const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5)), w = Number(width) || grid;
+  return { x: x + w * 0.1 * h, y: y + w * (0.3 + 0.1 * h), rx: w * 0.65, ry: w * 0.55, alpha: Math.max(0.3, 0.65 - 0.025 * h) };
+}
+
+// Dripping out of the water (the "Creatures drip out of the water" setting): for DRIP_MS after it leaves deep water
+// (half that, more lightly, after wading through a water floor), each stride drops a few drops around the creature,
+// fewer as it dries. Wet footprints are the floor's own (ground trails);
+// these fall from its body.
+export const DRIP_MS = 8000;
+export function dripsFor(at, { seed = '', grid = 100, width = grid, wet = 1, n = 0 } = {}) {
+  if (!(wet > 0)) return [];
+  const random = rng(`${seed}:drip:${n}`), count = Math.round(1 + 3 * wet * Math.min(2, (Number(width) || grid) / (grid || 100)));
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const a = random() * Math.PI * 2, r = (Number(width) || grid) * (0.15 + random() * 0.3);
+    out.push({ kind: 'drop', color: random() < 0.5 ? 0x9cc8e8 : 0xbfe0f4, x: at.x + Math.cos(a) * r, y: at.y + Math.sin(a) * r * 0.8,
+      vx: 0, vy: 0, radius: grid * (0.02 + random() * 0.015), alpha: 0.6 + 0.3 * wet, delay: Math.round(random() * 200),
+      life: 900 + Math.round(random() * 500), rotation: 0, spin: 0, grow: 0.6, hold: 0.3 });
+  }
+  return out;
+}
+
+// A flier's shadow passing over creatures on the ground: the standing creatures (x, y their centre, width) it falls on.
+// Their art then shows the shadow too, not only the floor between them.
+export function shadowCovers(geom, grounded = []) {
+  if (!geom) return [];
+  return grounded.filter((t) => {
+    const half = (Number(t.width) || 0) / 2;
+    const dx = Math.max(0, Math.abs(t.x - geom.x) - half), dy = Math.max(0, Math.abs(t.y - geom.y) - half);
+    return (dx / geom.rx) ** 2 + (dy / geom.ry) ** 2 < 1;
+  }).map((t) => ({ x: t.x, y: t.y, width: t.width }));
 }
 
 // Where along each token's drawn path a stride falls. The first stride after a stop or a jump is half long, so a short
@@ -435,6 +513,22 @@ export function rainFloor(floor, weather) {
   if (weather !== 'rain') return { floor, splash: false };
   const wet = RAIN_TURNS[floor] ?? floor;
   return { floor: wet, splash: RAIN_SPLASHES.has(wet) };
+}
+// Spells change the floor (the ground marks, engines/marks/ground-marks.mjs): frost left by a cold spell is ice
+// underfoot, acid leaves the ground a sludge, a fire spell melts snow and ice to water and burns grass to bare earth,
+// and a force or sonic blast leaves cracked stone. The newest mark under the creature wins; others keep the floor.
+const MARK_FLOORS = Object.freeze({
+  rime: () => 'ice',
+  residue: () => 'mud',
+  scorch: (floor) => (floor === 'snow' || floor === 'ice' ? 'water' : floor === 'grass' || floor === 'wood' ? 'dirt' : floor),
+  cracks: (floor) => (floor === 'water' || floor === 'mud' ? floor : 'stone'),
+});
+export function markedFloor(floor, marks = []) {
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const turn = MARK_FLOORS[marks[i]];
+    if (turn) return turn(floor);
+  }
+  return floor;
 }
 // The puddle under a step on a rained-on hard floor, at this share of the step's level.
 export const RAIN_SPLASH_GAIN = 0.3;
@@ -852,7 +946,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null }) {
   // `trails` (ground-trails.mjs createGroundTrails): what each stride also leaves (carried prints, blood, weather).
   const capOf = typeof cap === 'function' ? cap : () => cap;
   const printCapOf = typeof printCap === 'function' ? printCap : () => printCap;
@@ -886,6 +980,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
     particles.clear();
     prints.clear();
     shadows.clear();
+    overs.clear();
     tracker?.clear();
     moves.clear();
     try { trails?.clear?.(); } catch { /* optional */ }
@@ -894,9 +989,19 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
   };
   const dropShadow = (id) => {
     const handle = shadows.get(id);
+    if (handle) {
+      shadows.delete(id);
+      try { layer.removeShadow(handle); } catch { /* keep going */ }
+    }
+    dropOver(id);
+  };
+  // The part of a flier's shadow drawn over the creatures below it (layer.addOverShadow, when the layer has one).
+  const overs = new Map();
+  const dropOver = (id) => {
+    const handle = overs.get(id);
     if (!handle) return;
-    shadows.delete(id);
-    try { layer.removeShadow(handle); } catch { /* keep going */ }
+    overs.delete(id);
+    try { layer.removeOverShadow(handle); } catch { /* keep going */ }
   };
   // Each token's movement: where it was, when it last moved, whether it is moving and how (a jump whooshes once as it
   // leaves the ground and lands when it stops).
@@ -951,6 +1056,14 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
       if(trailKind)trails.forget?.(token.id);
       else specs = [...specs, ...(trails.marks(token, feet, floor, opts, kind) ?? [])];
     } catch { /* optional */ } }
+    // Wading through water wets it to the knees (a shorter, lighter drip than a swim's soaking).
+    if (!trailKind && floor === 'water') { move.wetAt = time; move.wetFor = DRIP_MS / 2; move.wetBy = 0.6; }
+    // Just out of the water: it drips as it walks, less and less.
+    const wetFor = move.wetFor ?? DRIP_MS;
+    if (!trailKind && floor !== 'water' && move.wetAt !== undefined && time - move.wetAt < wetFor && drips()) {
+      move.drips = (move.drips ?? 0) + 1;
+      specs = [...specs, ...dripsFor(feet, { seed: token.id, grid: size, width: token.width || size, wet: (move.wetBy ?? 1) * (1 - (time - move.wetAt) / wetFor), n: move.drips })];
+    }
     if (token.visible) lay(specs, time, floor, trailKind);
     move.index = at.index ?? 0; move.heading = at.heading ?? 0;
     if (kind !== 'jump') sound(floor, feet, token, kind);
@@ -971,6 +1084,8 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
     trailLives.clear();
     if (!tracker || trackerGrid !== size) { tracker = createStrideTracker({ stride: STRIDE * size, maxJump: 3 * size }); trackerGrid = size; }
     const seen = new Set(), unseen = new Set();
+    // This frame's flier shadows and the creatures standing on the ground, for the shadows that pass over them.
+    const flierShadows = [], standing = [];
     lastUnseen = unseen;
     for (const token of tokens() ?? []) {
       let id;
@@ -992,6 +1107,13 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
         if (!present || token.skip) { dropShadow(id); moves.delete(id); continue; }
         let move = moves.get(id);
         if (!move) moves.set(id, move = { x: point.x, y: point.y, last: time, moving: false });
+        // "Dust when fliers take off and land": the floor blown out to both sides as it leaves or meets the ground.
+        if (move.flying !== undefined && move.flying !== flying && !under && !medium.swimming && token.visible && flightDust()) {
+          const floor = floorOf(point, token);
+          lay(downdraft(floor, point, { seed: id, grid: size, width: token.width || size, landing: !flying }), time, floor);
+          if (!flying) sound(floor, point, token, 'land');
+        }
+        move.flying = flying;
         // Where its elevation crosses its level's floor: going under leaves an entrance hole (earth thrown back), coming
         // back up an exit hole (earth thrown all around), each where it happened.
         if (move.under !== undefined && move.under !== under && token.visible && holes() !== false) {
@@ -1002,6 +1124,7 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
           lay(surfaceSplash(point,{seed:id,grid:size,width:token.width||size}),time,'water');
         }
         move.submerged=medium.submerged;
+        if (medium.swimming || medium.submerged) { move.wetAt = time; move.wetFor = DRIP_MS; move.wetBy = 1; }
         move.under = under;
         if (Math.hypot(point.x - move.x, point.y - move.y) > 0.5) { move.last = time; move.moving = true; move.kind = kind; }
         else if (move.moving && time - move.last >= STOP_MS) {
@@ -1015,18 +1138,38 @@ export function createMovementFeel({ tokens, floorAt: floorOf, enabled, density,
           if (!token.visible) dropShadow(id);
           else {
           if (!handle) shadows.set(id, handle = layer.addShadow());
-          layer.updateShadow(handle, shadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size }));
+          const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size });
+          layer.updateShadow(handle, geom);
+          flierShadows.push({ id, geom: castShadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size }), elevation: Number(token.elevation) || 0 });
           }
           // Off the ground: no marks. Keep the chosen winged/wingless sound; stationary hovering stays silent.
           if (kind !== null) for (const at of tracker.step(id, point)) { const feet = feetOf(token, at); sound(floorOf(feet, token), feet, token, kind); }
           continue;
         }
-        dropShadow(id);
+        if (token.visible && !under) standing.push({ id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0 });
+        // Standing on the ground: a soft contact shadow when "Shadows under every token" is on.
+        if (groundShadows() && token.visible) {
+          let handle = shadows.get(id);
+          if (!handle) shadows.set(id, handle = layer.addShadow());
+          layer.updateShadow(handle, shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true }));
+        } else dropShadow(id);
         for (const at of tracker.step(id, point)) emit(token, at, time, size, rate, kind, move);
       } catch (error) {
         if (id !== undefined) { tracker.forget(id); dropShadow(id); moves.delete(id); }
       }
     }
+    // "Flier shadows fall on creatures": each flier's shadow also darkens the art of the creatures below it.
+    const over = typeof layer.addOverShadow === 'function' && shadowsOverTokens();
+    const covering = new Set();
+    if (over) for (const f of flierShadows) {
+      const covers = shadowCovers(f.geom, standing.filter((t) => t.id !== f.id && t.elevation < f.elevation));
+      if (!covers.length) continue;
+      covering.add(f.id);
+      let handle = overs.get(f.id);
+      if (!handle) overs.set(f.id, handle = layer.addOverShadow());
+      layer.updateOverShadow(handle, f.geom, covers);
+    }
+    for (const id of [...overs.keys()]) if (!covering.has(id)) dropOver(id);
     for (const id of known) if (!seen.has(id)) { tracker.forget(id); dropShadow(id); moves.delete(id); trails?.forget?.(id); }
     layOwner = null;
     known = seen;

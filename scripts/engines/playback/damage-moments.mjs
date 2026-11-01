@@ -39,9 +39,16 @@ const FILTERS = {
   vitality: { preset: "Radiant Burn" }, force: { preset: "Force Jolt" }, mental: { preset: "Psychic Warp" },
   sonic: { preset: "Resonance" }, spirit: { preset: "Spirit Rend" },
 };
-const filterStage = (stageId, type, extra) => {
-  const f = FILTERS[normalizeDamageType(type)];
-  return f ? [{ stageId, kind: "tokenfx", assets: [], catalogFx: true, fxProfile: "damage", fxPreset: f.preset, fxLibrary: "tokenshade", fxTint: f.tint ?? "", ...extra }] : [];
+// A knockout's own look: the killing blow eats part of the creature away as it falls (a burning edge, shattering ice,
+// a fade into shadow), then it fades back, since the creature stays on the map (Tokenshade "Knocked out: …" presets).
+const KNOCKOUTS = new Set(Object.keys(FILTERS));
+// The Tokenshade looks damage shows in (the Tokenshade page lists them under Damage).
+export const DAMAGE_LOOK_PRESETS = Object.freeze([...new Set(Object.values(FILTERS).map((f) => f.preset))]);
+const filterStage = (stageId, type, extra, { knockout = false } = {}) => {
+  const t = normalizeDamageType(type), f = FILTERS[t];
+  if (!f) return [];
+  const preset = knockout && KNOCKOUTS.has(t) ? `Knocked out: ${t[0].toUpperCase()}${t.slice(1)}` : f.preset;
+  return [{ stageId, kind: "tokenfx", assets: [], catalogFx: true, fxProfile: "damage", fxPreset: preset, fxLibrary: "tokenshade", fxTint: knockout ? "" : f.tint ?? "", ...extra }];
 };
 
 // How the blow was struck. PF2e/SF2e strikes carry item:melee / item:ranged roll options
@@ -129,7 +136,7 @@ export function deathRecipe(type, collapse) {
   return {
     ...collapse, id: `animater-death-${normalizeDamageType(type)}`, name: `Dropped to 0 HP: ${look.label}`, color: look.color,
     stages: [...collapse.stages,
-      ...filterStage("death-filter", type, { duration: 2400 }),
+      ...filterStage("death-filter", type, { duration: 2400 }, { knockout: true }),
       stage("death", look.death, { delay: 150, duration: 2000, scale: 1.2 }),
       ...(look.after.length ? [stage("after", look.after, { delay: 1400, duration: 1800, scale: 1, opacity: 0.85 })] : [])],
   };

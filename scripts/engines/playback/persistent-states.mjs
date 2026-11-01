@@ -29,6 +29,11 @@ export function stateVisible(item,token,{isGM=false,secretConditions=false}={},l
 // Valued conditions (Frightened 1–4, Clumsy, Drained, Doomed…) grow with their
 // value: fainter and slower at 1, full strength, larger and faster at 3+.
 export function conditionLevel(item){
+ // D&D's Exhaustion: one status, its level on the actor (1–6, shown as up to 4 steps).
+ if(item?.statuses?.has?.('exhaustion')||/^exhaust(?:ion|ed)$/i.test(String(item?.name??'').trim())&&item?.documentName==='ActiveEffect'){
+  const level=Number(item.parent?.system?.attributes?.exhaustion??item.flags?.dnd5e?.exhaustionLevel);
+  return Number.isFinite(level)&&level>0?Math.min(Math.ceil(level*4/6),4):0;
+ }
  if(item?.type!=='condition'||item.system?.value?.isValued!==true)return 0;
  const value=Number(item.value??item.system.value.value);
  return Number.isFinite(value)&&value>0?Math.min(Math.round(value),4):1;
@@ -101,6 +106,11 @@ export function justApplied(item,now=Date.now()){
  // D&D 5e and Daggerheart states wrap their document; an aura reads its source's.
  const created=(item?._stats??item?.document?._stats??item?.animaterAura?.source?._stats)?.createdTime;
  return !Number.isFinite(created)||now-created<=APPLIED_WINDOW;
+}
+// Landed just now, by its own timestamp (a state with none never counts: it would replay on every reload).
+export function freshlyApplied(item,now=Date.now()){
+ const created=(item?._stats??item?.document?._stats)?.createdTime;
+ return Number.isFinite(created)&&now-created<=APPLIED_WINDOW;
 }
 export function shownStates(states){
  const on=new Set(states.filter(i=>i.type==='condition').map(stateKey));
@@ -182,7 +192,7 @@ export class PersistentStates{
      if(!(h.activeState??activeState)(item))continue;
      // A state stopped from the Activity page stays off while it remains on the token.
      const key=`${scene}:${token.document?.uuid??token.id}:${(h.documentKey??stateDocumentKey)(item)}`;present.add(key);
-     if(shown>=budget.states||this.stopped.has(key)||h.yields?.(item)||!(h.stateVisible??stateVisible)(item,token,visibility))continue;
+     if(shown>=budget.states||this.stopped.has(key)||h.yields?.(item)||h.drawnElsewhere?.(item,token)||!(h.stateVisible??stateVisible)(item,token,visibility))continue;
      const kind=h.stateKind?.(item)??item.type,state=item.animaterRecipe?BUILTIN_STATE:(h.normalizeState??normalizeStateCatalogState)(h.state(kind)),recipe=item.animaterRecipe??(h.resolveStateRecipe??resolveStateRecipe)(item,state,saved,catalog,{customEnabled:h.customEnabled?.()??true});if(!recipe||!recipe.stages.some(s=>['aura','tokenfx'].includes(s.kind)&&s.persist))continue;
      const signature=JSON.stringify([recipe,state.opacity,tokenFootprint(token,h.gridSize()),token.mechanicalBounds?.width,token.mesh?.uid,token.document?.texture?.src,h.gridDistance?.()??5,(h.storedDocument??storedStateDocument)(item),item.uuid,item.system?.badge?.value,item.value??item.system?.value?.value,item.system?.persistent?.damageType,grantedByOtherAura(item,token)]);
      // A recipe with its own Lasting animation choice uses it in place of its catalog's.
@@ -274,12 +284,16 @@ export class PersistentStates{
    if(under&&!lifted)onGroundBelow(e,r.token);else if(s.above)e.elevation(1);if(s.maskToken)e.mask(r.token);
   }
   if(r.cancelled||this.closed)return;
+  // A condition that has just landed plays its transition first (stone creeping up the creature, a curse washing
+  // over it), then its lasting look takes over. Not on a reload or a turn-start replay.
+  const intro=!r.replaying&&freshlyApplied(r.item)?Number(h.conditionTransition?.(r.item,r.token))||0:0;
+  if(intro>0){await new Promise(res=>setTimeout(res,intro));if(r.cancelled||this.closed||this.active.get(r.key)!==r)return;}
   // Token filters last with the state. A condition's own look (fxEssential) also plays when the state is
   // set to play once, briefly, and grows with the condition's value.
   const filters=plan.filter(s=>s.kind==='tokenfx'&&s.persist&&(!r.fade||s.fxEssential));
   const lookStrength=conditionLookStrength(conditionLevel(r.item));
   const releases=filters.length?await Promise.all(filters.map(async stage=>{
-   try { return await h.retainFx?.({...stage,...(stage.fxEssential?{fxStrength:(stage.fxStrength??1)*lookStrength}:{}),destination:r.token},{session:r.name}); }
+   try { return await h.retainFx?.({...stage,...(stage.fxEssential?{fxStrength:(stage.fxStrength??1)*lookStrength,fxBaseStrength:stage.fxStrength??1,fxLevel:this.host.valueLooks?.()===false?0:conditionLevel(r.item)}:{}),destination:r.token},{session:r.name}); }
    catch(error){h.trace?.('Skipped',`Tokenshade: ${error.message}`);}
   })):[];
   if(r.fade&&releases.length)setTimeout(()=>releases.forEach(release=>{try{void release?.();}catch{/* already ended */}}),FADE_MS+offset)?.unref?.();

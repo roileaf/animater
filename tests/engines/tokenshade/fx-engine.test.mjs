@@ -11,15 +11,15 @@ class Filter {constructor(vertex,fragment,uniforms){this.uniforms=uniforms;this.
 const PIXI={Filter,Texture:{EMPTY:{}}};
 
 test('every Token Magic filter type and animation type has an animater implementation',()=>{
-  assert.ok(['material','frost','bindings','base'].every(t=>specFor(t)),'Tokenshade originals');
+  assert.ok(['material','frost','bindings','base','dissolve','wash'].every(t=>specFor(t)),'Tokenshade originals');
   const tmfx=['adjustment','ascii','dot','distortion','crt','oldfilm','glow','outline','colorGradient','bevel','xbloom','shadow','twist','zoomblur','blur','bulgepinch','zapshadow','ray','fog','xfog','electric','wave','shockwave','fire','fumes','smoke','flood','images','field','xray','liquid','xglow','pixel','web','ripples','globes','transform','splash','polymorph','xfire','sprite','spriteMask','replaceColor','ddTint','rgbSplit'];
   assert.deepEqual(tmfx.filter(t=>!specFor(t)),[]);
-  assert.equal(ANIM_TYPES.length,18);
+  assert.equal(ANIM_TYPES.length,20);
   for(const type of ANIM_TYPES)assert.ok(normalizeAnim({animType:type}).animType,type);
 });
 test('the built-in library has every Token Magic preset name we keep plus Tokenshade originals, every filter known',()=>{
-  assert.equal(PRESETS.length,212);
-  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,167);
+  assert.equal(PRESETS.length,291);
+  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,246);
   assert.ok(!PRESETS.some(p=>p.name==='DungeonDraft Tint'),'retired: a map-maker tint, not a token look');
   for(const name of ['Burning','Electrocuted','Corroding','Envenomed','Withering','Radiant Burn','Force Jolt','Psychic Warp','Resonance','Spirit Rend','Petrified','Frozen Solid','Entangled','Chained','Netted','Levitate','Marker: Foe','Rune Circle','Frostbitten','Submerged'])assert.ok(builtinPreset(name),name);
   assert.ok(!PRESETS.some(p=>/BW/.test(p.name)),'no Baileywiki names');
@@ -182,4 +182,75 @@ test('the engine knows which tokens a look moves (a transform), not those it onl
   assert.equal(engine.moves(rocking),true);
   assert.equal(engine.moves(glowing),false);
   stop();assert.equal(engine.moves(rocking),false);
+});
+test('a Transition eases once from its start to its end, then holds there',async()=>{
+  const {animValue}=await import('../../../scripts/engines/tokenshade/animation.mjs');
+  const a=normalizeAnim({animType:'once',val1:0,val2:1,loopDuration:2000,pauseBetweenDuration:500});
+  const at=t=>animValue(a,0,{local:t,world:0});
+  assert.equal(at(0),0);assert.equal(at(500),0,'waits out its delay');assert.equal(at(1500),0.5);assert.equal(at(2500),1);assert.equal(at(60000),1,'holds');
+});
+test('the transition presets play once and hold: becoming a material, leaving, arriving, washing over',()=>{
+  const once=p=>p.params.some(f=>Object.values(f.animated??{}).some(a=>a.animType==='once'));
+  for(const name of ['Turn to stone','Freeze solid','Burn away','Crumble to ash','Sparkle away','Form from sparkles','Rise from the ashes','Curse takes hold','Poison spreads'])
+    assert.ok(once(builtinPreset(name)),name);
+  const arrive=builtinPreset('Form from sparkles').params[0].animated.amount;
+  assert.deepEqual([arrive.val1,arrive.val2],[1,0],'arriving is leaving played backwards');
+});
+test('an effect can follow the game: a live value from 0 to 1 sets it between its two ends',async()=>{
+  const {animValue}=await import('../../../scripts/engines/tokenshade/animation.mjs');
+  const a=normalizeAnim({animType:'driven',source:'hpLost',val1:1,val2:0.3});
+  assert.equal(animValue(a,1,{local:0,world:0,drive:{hpLost:0}}),1);
+  assert.ok(Math.abs(animValue(a,1,{local:0,world:0,drive:{hpLost:0.5}})-0.65)<1e-9);
+  assert.equal(animValue(a,1,{local:0,world:0,drive:null}),1,'no live value yet: the start');
+  assert.equal(normalizeAnim({animType:'driven',source:'nonsense'}).source,'hpLost');
+});
+test('the engine eases live values toward the game, so a hit shades in rather than snapping',async()=>{
+  const {TokenFxEngine}=await import('../../../scripts/engines/tokenshade/engine.mjs');
+  let hp=0,now=0;const engine=new TokenFxEngine({now:()=>now,drive:()=>({hpLost:hp})});
+  const entry={sources:['hpLost'],live:null,liveAt:0};
+  assert.equal(engine.liveValues(entry,0).hpLost,0);
+  hp=1;now=100;assert.ok(Math.abs(engine.liveValues(entry,100).hpLost-0.25)<1e-9,'a quarter of the way after 100 ms');
+  now=1000;assert.equal(engine.liveValues(entry,1000).hpLost,1);
+});
+test('effects fade in and out over the blend time, so a look that changes crossfades',async()=>{
+  const {blendMix,TokenFxEngine}=await import('../../../scripts/engines/tokenshade/engine.mjs');
+  assert.equal(blendMix({start:0,fadeMs:700},350),0.5,'half way in');
+  assert.equal(blendMix({start:0,fadeMs:700},5000),1);
+  assert.equal(blendMix({start:0,leavingAt:1000,fadeMs:700},1350),0.5,'half way out');
+  assert.equal(blendMix({start:0,fadeMs:0},0),1,'At once');
+  let now=0;const engine=new TokenFxEngine({now:()=>now});
+  const entry={token:{},filters:[],mesh:{},fadeMs:700,leavingAt:0};engine.entries.add(entry);engine.detach=()=>{};
+  engine.remove(entry);assert.ok(engine.entries.has(entry),'still fading out');assert.equal(entry.leavingAt,0+0||entry.leavingAt);
+  engine.drop(entry);assert.ok(!engine.entries.has(entry));
+});
+test('the live values include light and weather',async()=>{
+  const {DRIVE_SOURCES}=await import('../../../scripts/engines/tokenshade/animation.mjs');
+  assert.deepEqual(Object.keys(DRIVE_SOURCES),['hpLost','height','turn','darkness','weather']);
+  for(const name of ['Glows in the dark','Soaked in the rain','Dusted with snow'])assert.ok(builtinPreset(name),name);
+  for(const name of ['Soaked in the rain','Dusted with snow'])assert.ok(builtinPreset(name).params.some(f=>Object.values(f.animated??{}).some(a=>a.animType==='driven'&&a.source==='weather')),`${name} follows the weather (so it stays dry under a roof)`);
+  for(const name of ['Flares when targeted','Marked while targeted','Highlighted when selected'])assert.equal(builtinPreset(name),null,name);
+});
+test('previews make up live values that keep changing and play transitions again and again',async()=>{
+  const {simulatedDrive,transitionCycle}=await import('../../../scripts/engines/preview/token-fx-preview.mjs');
+  const a=simulatedDrive(0),b=simulatedDrive(1600);
+  assert.equal(a.hpLost,1,'starts at full, so even a short preview shows it');assert.equal(a.weather,1);assert.equal(a.turn,1);
+  assert.ok(Math.abs(b.hpLost)<1e-9,'then ebbs');assert.notEqual(simulatedDrive(0).turn,simulatedDrive(2100).turn,'switches');
+  assert.equal(transitionCycle(builtinPreset('Turn to stone')),2600+1500);
+  assert.equal(transitionCycle(builtinPreset('Burning')),0,'a lasting look just plays');
+});
+test('a valued condition uses its own look when there is one, and strength reaches filters without a strength setting',async()=>{
+  const {scaleFilterStrength}=await import('../../../scripts/engines/playback/optional-fx.mjs');
+  assert.equal(scaleFilterStrength({filterType:'splash',spread:3},0.55).fxMix,0.55,'a splash is blended with the art');
+  assert.equal(scaleFilterStrength({filterType:'glow',outerStrength:4},0.5).outerStrength,2,'a glow still scales its own strength');
+  assert.equal(scaleFilterStrength({filterType:'glow',outerStrength:4},0.5).fxMix,undefined);
+  for(const n of ['Wounded','Wounded 2','Wounded 3'])assert.ok(builtinPreset(n),n);
+  assert.ok(builtinPreset('Wounded 3').params.length>builtinPreset('Wounded').params.length,'more wounds');
+});
+test('every valued condition grows worse step by step: a look of its own for each value',async()=>{
+  const {conditionLook}=await import('../../../scripts/catalogs/shared/condition-looks.mjs');
+  const top={drained:4,enfeebled:4,dying:4,doomed:3,sickened:4,frightened:4,stupefied:4,clumsy:4,exhaustion:4};
+  for(const [slug,max] of Object.entries(top)){
+    const base=conditionLook({slug}).preset;
+    for(let v=2;v<=max;v++)assert.ok(builtinPreset(`${base} ${v}`),`${slug} ${v}: ${base} ${v}`);
+  }
 });

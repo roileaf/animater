@@ -127,7 +127,7 @@ export function registerSequencerSpeedups(ID) {
     installSoundPatch(turboState);
     Hooks.on('createSequencerEffect', onEffectCreated);
     for (const hook of ['createWall', 'updateWall', 'deleteWall', 'canvasReady', 'canvasInit', 'updateScene', 'createRegion', 'updateRegion', 'deleteRegion'])
-      Hooks.on(hook, bumpGeometryEpoch);
+      Hooks.on(hook, () => { bumpGeometryEpoch(); });
 
     // canvas.app (and its ticker) survives scene changes; count frames once per ticker.
     let counted = null;

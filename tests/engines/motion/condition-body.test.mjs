@@ -244,3 +244,16 @@ test("wounded kinds rank above idle life and below every condition treatment; a 
   body.remove("w");
   assert.deepEqual([t.mesh.rotation, t.mesh.scale.y], [0, 1]);
 });
+
+test("what rides on the body is told how far it moved, and that it is back in place when the pose ends", () => {
+  const moved = [];
+  const { body, step } = runner({ follow: (tok, dx, dy) => moved.push([dx, dy]) }), t = token();
+  body.add("h1", t, "idle-hover");
+  step(600);
+  const [dx, dy] = moved.at(-1);
+  assert.equal(dx, 0);
+  assert.ok(Math.abs(dy) > 0, "the bob is passed on");
+  assert.equal(Math.round(dy * 1000) / 1000, Math.round((t.mesh.position.y - 300) * 1000) / 1000);
+  body.remove("h1");
+  assert.deepEqual(moved.at(-1), [0, 0]);
+});

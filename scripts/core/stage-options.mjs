@@ -1,3 +1,4 @@
+import { AURA_MOTIFS } from '../engines/tokenshade/aura-field.mjs';
 // One configuration vocabulary for saved recipes, Sequencer and composition.
 export const EASES = {
   linear: "Linear",
@@ -70,6 +71,9 @@ export const OPTION_GROUPS = {
     // Unset: a cone crops to its shape, circles and lines do not (cropAreaArt).
     ["maskArea", "Crop to area shape", null],
     ["areaReach", "Reach past the area (%)", 0, 0, 200, 5],
+    // A round area (burst, emanation) drawn by Tokenshade on the ground instead of its footage (playback/aura-fields.mjs).
+    ["areaLook", "Area look", "jb2a", { jb2a: "JB2A animation", tokenshade: "Tokenshade ground (round areas)" }],
+    ["areaMotif", "Tokenshade motif", "auto", { auto: "Automatic (from the animation)", ...Object.fromEntries(Object.keys(AURA_MOTIFS).map((m) => [m, m[0].toUpperCase() + m.slice(1)])) }],
     ["zIndex", "Layer priority", 0, -100, 100, 1],
     ["overlayFit", "Fit overlay to screen", true],
   ],
@@ -147,6 +151,9 @@ export function normalizeOptions(stage) {
   if(result.maskArea === undefined || stage.kind !== 'template')delete result.maskArea;
   // Line and cone art ends at the area's far edge unless it reaches past it.
   if(!result.areaReach || stage.kind !== 'template')delete result.areaReach;
+  // The Tokenshade area look is for template stages only; JB2A (and its motif) is the unset default.
+  if(result.areaLook !== 'tokenshade' || stage.kind !== 'template'){delete result.areaLook;delete result.areaMotif;}
+  else if(result.areaMotif === 'auto')delete result.areaMotif;
   if (["travel", "projectile"].includes(stage.kind) && stage.travelDestination === "area") {
     result.areaLayout = stage.areaLayout === "fan" ? "fan" : "fit";
     result.fanCount = Math.round(number(stage.fanCount, 3, 9, 5));

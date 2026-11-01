@@ -46,7 +46,7 @@ test("vanishing presets shrink or fade in place and stay gone until hidden", () 
 test("every preset effect resolves in JB2A Patreon", async () => {
   const db = await assetDatabases();
   for (const id of IDS)
-    for (const s of presetFinisher(id, id).stages.filter((s) => !["motion", "sound"].includes(s.kind)))
+    for (const s of presetFinisher(id, id).stages.filter((s) => !["motion", "sound", "tokenfx"].includes(s.kind)))
       assert.ok(installedAssets(s, db.patreon).length, `${id}/${s.stageId}: ${s.assets.join(", ")}`);
 });
 

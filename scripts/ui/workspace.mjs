@@ -3,6 +3,7 @@ import { layersOf } from "../engines/tokenshade/layers.mjs";
 import { uuid } from "../core/uuid.mjs";
 import { lookName } from "./token-looks.mjs";
 import { FLAGGED_PAGE, flaggedPageHTML, handleFlaggedAction } from "./flagged-page.mjs";
+import { TOKENSHADE_PAGE, TokenshadeStudio } from "./tokenshade-studio.mjs";
 import { recipesToExport, planRecipeImport } from "../core/presets.mjs";
 import { encodeShareCode, shareMacro, mergeImported, copyPlainText } from "../core/recipe-share.mjs";
 import { strikeFromDrag } from "../engines/finishers/strike-finishers.mjs";
@@ -678,7 +679,7 @@ export class Workspace {
       // The caption names the system, so the items need not repeat it ("Spells", not "PF2e spells").
       group(`LIBRARY${systemCaption(env)}`, [...catalogNavigation(env).map(shortNav), ["assets", "▦", "Assets"]]),
       ...(borrowedNavigation(env).length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowedNavigation(env).map(shortNav))] : []),
-      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),...(this.host.damageShowcase&&!this.host.playerMode?[[DAMAGE_SHOWCASE_PAGE,'♥','Damage showcase']]:[]),...(this.host.flaggedLooks && pf2eCatalogsLive(env) ? [[FLAGGED_PAGE, "⚑", "Flagged"]] : []), ["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
+      group("TOOLS", [...(this.host.creatureShowcase?[[SHOWCASE_PAGE,'☠','Creature showcase']]:[]),...(this.host.damageShowcase&&!this.host.playerMode?[[DAMAGE_SHOWCASE_PAGE,'♥','Damage showcase']]:[]),...(this.host.flaggedLooks && pf2eCatalogsLive(env) ? [[FLAGGED_PAGE, "⚑", "Flagged"]] : []), ...(this.host.fxCatalog && !this.host.playerMode ? [[TOKENSHADE_PAGE, "✦", "Tokenshade"]] : []), ["activity", "◷", "Activity"], ["setup", "⚙", "Setup"]]),
     ].join("");
   }
   // The PF2e catalog page on screen: the page itself in a PF2e world, a borrowed pf2e-* page in an SF2e one.
@@ -762,7 +763,7 @@ export class Workspace {
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
-        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.page === FLAGGED_PAGE ? flaggedPageHTML(this) : this.setupHTML(env)}
+        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.page === FLAGGED_PAGE ? flaggedPageHTML(this) : this.page === TOKENSHADE_PAGE ? (this.tokenshadeStudio ??= new TokenshadeStudio(this)).html() : this.setupHTML(env)}
       </main>${this.pendingImport !== null ? this.importHTML() : ""}${this.newChooser ? this.newChooserHTML() : ""}</div>`,
     );
     this.root.querySelectorAll("details[data-options-group]").forEach((e) => {
@@ -770,6 +771,7 @@ export class Workspace {
     });
     // The flash stage is drawn after the page, at the editor's current time.
     this.watchActivity();
+    if (this.page === TOKENSHADE_PAGE) this.tokenshadeStudio?.mount(); else this.tokenshadeStudio?.stop();
     if (this.page === "flash") this.flashEditor?.mount(); else if (this.flashEditor?.preview) { this.flashEditor.preview.stop(); this.flashEditor.preview = null; }
     this.root.querySelectorAll("audio[data-cue-volume]").forEach((audio) => {
       audio.volume = Number(audio.dataset.cueVolume);
@@ -1729,7 +1731,7 @@ export class Workspace {
       ${trail}
       ${path ? `<details class="an-advanced an-options" data-options-group="motion-path"><summary>Path &amp; pacing</summary><div class="an-options-grid">${field("motionArrival", "Reach destination (% of duration)", 45, 15, 70)}${field("motionHold", "Hold at destination (%)", 25, 5, 90 - (s.motionArrival ?? 45))}${target ? field("perSquare", "Extra duration / square (ms)", 0, 0, 2000, 50) + field("stopGap", "Gap beside target (squares)", .1, 0, 2, .05) : ""}${s.motion === "leap" ? field("jumpHeight", "Arc height (squares)", .8, 0, 3, .05) + field("arrivalLift", "Height at Strike (squares)", 0, 0, 2, .05) : ""}</div>${["roll", "dodge"].includes(s.motion) ? select("motionSide", s.motion === "dodge" ? "Dodge direction" : "Roll direction", { 1: "Right / clockwise", "-1": "Left / counterclockwise" }, 1) : ""}<p class="an-hint">Approach → hold → return. Link a Strike or cue to “Destination reached” to keep contact synchronized. Total includes distance pacing; remaining time restores the pose.</p></details>` : ""}
       <p class="an-hint">${finisher ? "Moves token artwork, then restores its pose; a held travel lands, and the finisher moves the token there." : "Moves token artwork, then restores its pose. Game position and rotation stay unchanged."}</p>
-      ${s.motion === "path" ? keyframeInspectorHTML(s, index, this.selectedKeyframe(s)) : ""}${s.motion === "fragments" ? fragmentsControlsHTML(s, index, this.fragmentsPreviewAt ?? 0.6, { finisher }) : ""}`;
+      ${s.motion === "path" ? keyframeInspectorHTML(s, index, this.selectedKeyframe(s)) : ""}${s.motion === "fragments" ? fragmentsControlsHTML(s, index, this.fragmentsPreviewAt ?? 0.6, { finisher, looks: (this?.host?.fxCatalog?.()?.presets ?? []).filter((p) => ["tokenshade", "tokenshade-custom"].includes(p.library)).map((p) => p.name) }) : ""}`;
   }
   // The track decides what a stage is; only same-track variants are offered.
   stageVariantHTML(s, index, linked) {
@@ -1793,7 +1795,8 @@ export class Workspace {
           !(!s.customAnchor && ["anchorX", "anchorY"].includes(key)) &&
           !(!s.tintEnabled && ["tint", "colorize"].includes(key)) &&
           !(linked &&["repeats", "repeatGap", "repeatMode", "stagger", "oneShot", "targetPick", "attach", "bindAlpha"].includes(key)) &&
-          !(["areaLayout", "maskArea", "areaReach"].includes(key) && s.kind !== "template") &&
+          !(["areaLayout", "maskArea", "areaReach", "areaLook", "areaMotif"].includes(key) && s.kind !== "template") &&
+          !(key === "areaMotif" && s.areaLook !== "tokenshade") &&
           !(
             key === "playbackRate" &&
             ["motion", "sound", "sprite", "teleport"].includes(s.kind)
@@ -2063,6 +2066,7 @@ export class Workspace {
   onInput(e) {
     const t = e.target;
     if (studioInput(this, t)) return;
+    if (this.tokenshadeStudio?.input(t)) return;
     if(this.mediaLibrary?.input(t))return;
     if(this.dndCatalog?.input(t))return;
     if(this.flashEditor?.input(t))return;
@@ -2112,6 +2116,7 @@ export class Workspace {
     if(this.damageShowcase?.change(e.target))return;
     if(this.mediaLibrary?.change(e.target))return;
     if(this.flashEditor?.change(e.target))return;
+    if(this.tokenshadeStudio?.change(e.target))return;
     // The guided tour's practice finisher (listed while a tour runs) is never stored as the default
     // or linked to an entry: keyboard users can reach these pickers mid-tour.
     if ((e.target.hasAttribute("data-finisher-link") || e.target.hasAttribute("data-finisher-default")) && e.target.value === TOUR_PRACTICE_ID) { this.render(); return; }
@@ -2593,6 +2598,7 @@ export class Workspace {
       if (await this.activityAction(action, b)) return;
       if (await handleStateCatalogAction(this, action, b)) return;
       if (await handleFlaggedAction(this, action, b)) return;
+      if (await this.tokenshadeStudio?.action(action, b)) return;
       if (action === "item-details") {
         await openCatalogDetails(this, b.dataset.kind, b.dataset.id);
         return;

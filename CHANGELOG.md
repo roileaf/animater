@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.3.0 (2026-11-01)
+
+- **Tokenshade page.** A new page in the Animater window (Tools → Tokenshade): every Tokenshade look in a list grouped by kind, a live preview on a map, light or dark background, the layer editor beside it, shuffle, share codes to copy and paste, and "Add to animation" to put the look you made into any recipe. Recipes get their own Tokenshade lane in the timeline.
+- **Transitions and live looks.** Looks can now play once (dissolves in ten styles and five directions, colour washes) or follow the game: hit points lost, height, whose turn it is, darkness and weather. Looks crossfade in and out instead of popping.
+- **Tokenshade across Animater.** Knocked-out creatures partly dissolve, vanishing finishers dissolve away, finisher fragments can carry a Tokenshade look, teleports dissolve and form again where they land, summoned creatures form in, and conditions such as Petrified or Doomed play a transition as they land.
+- **Conditions grow with their value.** Frightened, Drained, Doomed, Dying, Sickened, Stupefied, Enfeebled, Clumsy and D&D's Exhaustion show a stronger look at each value. The new setting "Condition looks grow with their value" switches this off.
+- **Region looks.** Give a region an Animater look (Region configuration) and every creature inside shows it, fading in and out as they come and go. New looks for places: Haunted ground, Firelit, Moonlit, Fey glade, Heat shimmer, Cold mist.
+- **The world reacts.** Fire creatures shimmer with heat and cold ones breathe mist. Creatures near a light take on its colour, with a rim on the side facing it. Frost left by a spell is ice underfoot, acid is mud, and fire burns grass bare and melts snow. With the new "Weather on creatures" setting, every creature is soaked in rain and dusted in snow, unless under a roof.
+- **Fire you can see.** Torch and flame lights get heat haze and a trail of smoke. A creature with a torch light holds a burning torch in its square (Token configuration: which side, or none), its light coming from the flame. A creature holding a lantern carries it swinging from its hand.
+- **Light spells as orbs.** PF2e's Light and Everlight (and D&D's Light) float as a small glowing orb at the creature's shoulder in the light's own colour; Dancing Lights become four wisps circling it. The catalog's own Light marker steps aside while the orb shows.
+- **Sustain threads.** While a creature sustains a spell on another (PF2e and SF2e sustained spells, D&D concentration and the creatures it summoned), a faint shimmering thread runs from the caster to it.
+- **Fliers.** Fliers kick up dust as they take off and land, their shadow falls on the creatures below them, and effects on a hovering creature bob with it. Creatures drip after swimming or wading through water.
+- **Settings for all of it.** Every new effect has a world setting and an "on my screen" setting for players on slower computers, plus a Smoke amount slider.
+- **Fixed: lasting effects after a reload.** Right after reloading, lasting condition and effect animations could fail to come back on the scene until something changed. They now always return.
+
 ## 2.2.32 (2026-11-01)
 
 - **Aura style.** A new world setting (Animater settings → Look & light): keep auras as JB2A animations, or let Animater draw them with Tokenshade. A Tokenshade aura is drawn on the ground under the tokens: a crisp line exactly at its reach, and a band of the aura's own motif in its colour just inside it (runes, hexes, flame, frost, wind, vines, sparks, ripples, shadow, radiance, storm, music notes, skulls, hearts, eyes, blades or drops), picked from the aura itself, with nothing over the creatures inside. Lighter on slower computers too. The aura's small accent around its creature stays.

@@ -21,11 +21,14 @@ export const STUDIO_TRACKS = Object.freeze([
   { id: "target", icon: "◎", name: "Target", kind: "impact" },
   { id: "motion", icon: "⇄", name: "Token motion", kind: "motion" },
   { id: "sound", icon: "♪", name: "Sound", kind: "sound" },
-  { id: "fx", icon: "✧", name: "Filters & scene", kind: "tokenfx" },
+  // Tokenshade, Animater's own shader effects on the token, has a lane of its own; FXMaster's scene effects and
+  // overlays share the next.
+  { id: "tokenshade", icon: "✦", name: "Tokenshade", kind: "tokenfx" },
+  { id: "fx", icon: "✧", name: "Scene & overlays", kind: "scenefx" },
   // Only on recipes that teleport (or already hold a teleport stage).
   { id: "teleport", icon: "⤳", name: "Teleport", kind: "teleport" },
 ]);
-const LINKED_TRACKS = new Set(["caster", "fx"]);
+const LINKED_TRACKS = new Set(["caster", "tokenshade"]);
 // The ? panel: what you can do on the timeline, and the keys for it.
 const STUDIO_HELP = Object.freeze([
   ["Play", "Space plays or pauses · Home / End · , and . (or the arrows) step · L loops the recipe · Shift+L loops the selected clip"],
@@ -54,7 +57,8 @@ export function trackOf(stage) {
   if (k === "travel" || k === "projectile") return "flight";
   if (k === "motion" || k === "sprite") return "motion";
   if (k === "sound") return "sound";
-  if (k === "tokenfx" || k === "scenefx" || k === "overlay") return "fx";
+  if (k === "tokenfx") return "tokenshade";
+  if (k === "scenefx" || k === "overlay") return "fx";
   if (k === "teleport") return "teleport";
   return "target";
 }
@@ -68,7 +72,7 @@ export function shownVariant(recipe, stage, selectedIndex = -1) {
 }
 // A finisher leads with the tracks its moves live on; Source and Flight sit behind "+ More tracks"
 // unless they already hold stages.
-const FINISHER_ORDER = Object.freeze(["motion", "target", "sound", "fx", "caster", "flight"]);
+const FINISHER_ORDER = Object.freeze(["motion", "target", "sound", "tokenshade", "fx", "caster", "flight"]);
 const FINISHER_HIDDEN = new Set(["caster", "flight"]);
 export function studioTracks(recipe, selectedIndex = -1, { more = false } = {}) {
   const layout = timelineLayout(recipe);
@@ -545,6 +549,7 @@ function addStage(w, trackId) {
   if (track.kind === "motion") stage = { ...base, kind: "motion", motion: "lunge", subject: "source", assets: [], duration: 800, distance: 0.35, intensity: 1, scale: 1, opacity: 1, below: false, persist: false };
   else if (track.kind === "sound") stage = { ...base, kind: "sound", assets: [], soundFile: "", volume: 0.8, duration: Math.max(500, last.duration ?? 1000) };
   else if (track.kind === "tokenfx") stage = { ...base, kind: "tokenfx", assets: [], subject: "source", fxLibrary: "tokenshade", fxPreset: "", persist: linked };
+  else if (track.kind === "scenefx") stage = { ...base, kind: "scenefx", assets: [], subject: "source", fxCategory: "particle", fxType: "" };
   else if (track.kind === "teleport") {
     if (r.stages.some((s) => s.kind === "teleport")) return;
     // At the start, it lands where the recipe would teleport anyway: on the flight's arrival or the caster's gesture.

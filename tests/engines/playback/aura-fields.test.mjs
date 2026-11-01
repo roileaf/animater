@@ -33,3 +33,25 @@ test('a field follows its creature, fades in, and goes when removed',()=>{
  assert.equal(mesh.x,600);assert.equal(mesh.shader.uniforms.uAlpha,1);
  fields.remove('k');assert.equal(removed.length,1);[...ticks][0]?.();assert.equal(ticks.size,0,'stops ticking when empty');
 });
+test('a round spell area set to the Tokenshade look is tagged for every client; lines, cones and tiles keep their footage', async () => {
+ const { groundTag } = await import('../../../scripts/engines/playback/aura-fields.mjs');
+ const { normalizeOptions } = await import('../../../scripts/core/stage-options.mjs');
+ const stage = { kind: 'template', areaLook: 'tokenshade', areaMotif: 'flame', scale: 1, assets: ['jb2a.fireball'] };
+ const burst = { area: { type: 'circle', diameter: 400 } };
+ assert.deepEqual(groundTag(stage, burst, { name: 'Fireball' }), { motif: 'flame', color: groundTag(stage, burst, {}).color, inward: false, radius: 200 });
+ assert.equal(groundTag({ ...stage, areaMotif: 'auto' }, burst, { name: 'Sacred Circle', description: 'divine radiance' }).motif, 'radiance', 'automatic reads the animation');
+ assert.equal(groundTag(stage, { area: { type: 'cone', diameter: 400 } }, {}), null);
+ assert.equal(groundTag({ ...stage, areaTile: {} }, burst, {}), null);
+ assert.equal(groundTag({ ...stage, areaLook: 'jb2a' }, burst, {}), null);
+ assert.deepEqual(['areaLook', 'areaMotif'].map((k) => normalizeOptions({ kind: 'template', areaLook: 'tokenshade', areaMotif: 'skulls' })[k]), ['tokenshade', 'skulls']);
+ assert.equal(normalizeOptions({ kind: 'impact', areaLook: 'tokenshade' }).areaLook, undefined, 'templates only');
+ assert.equal(normalizeOptions({ kind: 'template' }).areaLook, undefined, 'JB2A is the unset default');
+});
+test('an aura never shows round a creature this screen does not draw: GM-hidden, unseen, undetected or faded out', async () => {
+ const { drawn } = await import('../../../scripts/engines/playback/aura-fields.mjs');
+ assert.equal(drawn({ visible: true, mesh: { visible: true, worldAlpha: 1 } }), true);
+ assert.equal(drawn({ visible: false, mesh: { visible: true } }), false, 'out of sight or GM-hidden');
+ assert.equal(drawn({ visible: true, mesh: { visible: false } }), false, 'its art hidden (undetected)');
+ assert.equal(drawn({ visible: true, mesh: { visible: true, renderable: false } }), false);
+ assert.equal(drawn({ visible: true, mesh: { visible: true, worldAlpha: 0 } }), false, 'faded out');
+});

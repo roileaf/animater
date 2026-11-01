@@ -10,6 +10,7 @@ const SELECTS = {
   shieldType: { 1: 'Fire', 2: 'Hexagons', 3: 'Smoke', 4: 'Stone plates', 5: 'Stone crown', 6: 'Wind', 7: 'Arcane runes', 8: 'Soap film', 9: 'Water', 10: 'Plasma', 11: 'Grid', 12: 'Warped space', 13: 'Colour swirl' },
   auraType: { 1: 'Cold (soft)', 2: 'Hot (licking)' },
   materialType: { 1: 'Stone', 2: 'Ice', 3: 'Iron', 4: 'Gold', 5: 'Crystal', 6: 'Bark' },
+  spreadFrom: { 1: 'From the feet up', 2: 'From the edges in', 3: 'From the centre out', 4: 'From the head down' },
   bindType: { 1: 'Vines', 2: 'Net', 3: 'Chains', 4: 'Ropes' },
   baseType: { 1: 'Disc', 2: 'Ring', 3: 'Pulse', 4: 'Rune circle', 5: 'Ally ring', 6: 'Caution (dashed)', 7: 'Foe (spiked)' },
   rayType: { 0: 'Sunburst', 1: 'Petals', 2: 'Scanning bar', 3: 'Falling shafts', 4: 'Hard spokes' },
@@ -17,12 +18,16 @@ const SELECTS = {
 const TYPE_SELECTS = {
   colorGradient: { type: { 0: 'Linear', 1: 'Radial', 2: 'Conic' } },
   polymorph: { type: { 1: 'Burning dissolve', 2: 'Wipe upward', 3: 'From the centre', 4: 'Pixel scatter' } },
+  dissolve: { style: { 1: 'Embers', 2: 'Ash', 3: 'Sparkles', 4: 'Shadow', 5: 'Pixels', 6: 'Melt', 7: 'Leaves', 8: 'Sand', 9: 'Light', 10: 'Shatter' },
+    from: { 1: 'Scattered', 2: 'From the feet up', 3: 'From the head down', 4: 'From the centre out', 5: 'From the edges in' } },
+  wash: { washType: { 1: 'Tint', 2: 'Drain (grey and dim)', 3: 'Glow', 4: 'Shadow', 5: 'Sickly' },
+    from: { 1: 'Scattered', 2: 'From the feet up', 3: 'From the head down', 4: 'From the centre out', 5: 'From the edges in' } },
 };
 // Settings driven by animations or internal bookkeeping, not shown as plain inputs.
 const HIDDEN = new Set(['time', 'seed', 'padding']);
 
 // Where a setting means something different for one filter. [min, max, step]
-const TYPE_RANGES = { veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] }, splash: { edge: [0, 1.5, 0.01] } };
+const TYPE_RANGES = { material: { spread: [0, 1, 0.01], front: [0, 1, 0.01] }, dissolve: { amount: [0, 1, 0.01], edge: [0.05, 1, 0.01], particles: [0, 2, 0.05], scale: [0.2, 4, 0.05] }, wash: { amount: [0, 1, 0.01], strength: [0, 1, 0.01], front: [0, 1, 0.01] }, veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] }, splash: { edge: [0, 1.5, 0.01] } };
 // [pattern, min, max, step] — first match wins.
 const RANGES = [
   [/^(?:amount|snow|cracks|tightness|bubbles|glow|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon|stretch|drip|rise)$/, 0, 1, 0.01],
@@ -80,6 +85,8 @@ export const ANIM_LABELS = {
   sinOscillation: 'Wave', syncSinOscillation: 'Wave (in sync)', halfSinOscillation: 'Swell',
   chaoticOscillation: 'Flicker', syncChaoticOscillation: 'Flicker (in sync)',
   colorOscillation: 'Colour shift', syncColorOscillation: 'Colour shift (in sync)', halfColorOscillation: 'Colour fade',
+  once: 'Transition (once, then hold)',
+  driven: 'Follows the game',
   randomNumber: 'Random each frame', randomNumberPerLoop: 'Random each loop', randomColor: 'Random colour each frame', randomColorPerLoop: 'Random colour each loop',
 };
 export const ANIM_CHOICES = Object.fromEntries(ANIM_TYPES.map(t => [t, ANIM_LABELS[t] ?? t]));
@@ -91,7 +98,7 @@ export const FILTER_LABELS = {
   smoke: 'Smoke', flood: 'Water', images: 'Mirror images', field: 'Force field', xray: 'Sun rays', liquid: 'Liquid', xglow: 'Living aura',
   pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash',
   polymorph: 'Polymorph', xfire: 'Magic fire', sprite: 'Image overlay', spriteMask: 'Image mask', replaceColor: 'Replace colour',
-  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins',
+  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins', dissolve: 'Dissolve (transition)', wash: 'Colour wash (transition)',
 };
 export const filterLabel = type => FILTER_LABELS[type] ?? words(type);
 export const FILTER_CHOICES = Object.fromEntries(Object.keys(SPECS).map(t => [t, filterLabel(t)]).sort((a, b) => a[1].localeCompare(b[1])));

@@ -44,6 +44,20 @@ export function auraLook(recipe) {
   return { motif, color: hex ? parseInt(hex.slice(1), 16) : AURA_FIELD_DEFAULTS.color, inward };
 }
 
+// A template stage set to the Tokenshade area look: what every client needs to draw its round area (a burst or
+// emanation) as a ground field. Lines, cones and areas drawn on a tile keep their footage (null).
+export function groundTag(stage, context, recipe) {
+  const area = context?.area;
+  if (stage?.kind !== 'template' || stage.areaLook !== 'tokenshade' || stage.areaTile || !area?.diameter || ['line', 'cone'].includes(area.type)) return null;
+  const auto = auraLook({ name: recipe?.name, description: recipe?.description, stages: [stage] });
+  const color = stage.tintEnabled && TINT.test(stage.tint ?? '') ? parseInt(stage.tint.slice(1), 16) : auto.color;
+  return { motif: stage.areaMotif && stage.areaMotif !== 'auto' ? stage.areaMotif : auto.motif, color, inward: auto.inward, radius: (area.diameter / 2) * (Number(stage.scale) || 1) };
+}
+
+// Is the creature drawn on this screen? An aura never gives away one this viewer cannot see: hidden by the GM, out of
+// sight, undetected (PF2e Visioner hides its art), or faded out. The same test the token filters use (engine.mjs).
+export const drawn = (t) => t.visible !== false && t.renderable !== false && t.mesh?.visible !== false && t.mesh?.renderable !== false && (t.mesh?.worldAlpha ?? 1) > 0.01;
+
 // The fields on this canvas. Host: PIXI, addToScene(mesh) / removeFromScene(mesh), ticker (add/remove), zoom(),
 // gridSize(), gridDistance(), now() in ms. add(key, { token, feet, look, soft, fadeMs }) draws one; remove(key) ends it.
 export function createAuraFields(host) {
@@ -51,6 +65,7 @@ export function createAuraFields(host) {
   let geometry = null, ticking = false;
   const quad = () => geometry ??= new host.PIXI.Geometry().addAttribute('aVertexPosition', [-1, -1, 1, -1, 1, 1, -1, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
   const radiusOf = (f) => {
+    if (f.radius > 0) return f.radius;
     const t = f.token, w = Number(t?.w ?? t?.document?.width * host.gridSize()) || host.gridSize();
     return w / 2 + f.feet * host.gridSize() / (host.gridDistance() > 0 ? host.gridDistance() : 5);
   };
@@ -61,8 +76,9 @@ export function createAuraFields(host) {
       if (!t || t.destroyed) { remove(key); continue; }
       const c = t.center ?? { x: (t.x ?? 0) + (t.w ?? 0) / 2, y: (t.y ?? 0) + (t.h ?? 0) / 2 };
       const radius = radiusOf(f);
+      if (t.ended) { remove(key); continue; }
       f.mesh.position.set(c.x, c.y);
-      f.mesh.visible = t.visible !== false && t.renderable !== false;
+      f.mesh.visible = drawn(t);
       const u = f.mesh.shader.uniforms;
       Object.assign(u, auraUniforms(f.look, { radius, inner: (Number(t.w) || host.gridSize()) / 2, zoom, time: (now - f.born) / 1000, grid: host.gridSize() }));
       u.uExtent = radius * 1.08;
@@ -81,14 +97,15 @@ export function createAuraFields(host) {
     return true;
   };
   return {
-    add(key, { token, feet, look, soft = false, fadeMs = 0 }) {
+    // `radius` (canvas px) sets the reach outright: a spell's area, not a creature's aura.
+    add(key, { token, feet, look, soft = false, fadeMs = 0, radius = 0 }) {
       remove(key);
-      if (!token || !(feet > 0)) return null;
+      if (!token || !(feet > 0 || radius > 0)) return null;
       const shader = host.PIXI.Shader.from(AURA_VERTEX, AURA_FRAGMENT, { ...auraUniforms(look), uExtent: 1 });
       const mesh = new host.PIXI.Mesh(quad(), shader);
       mesh.eventMode = 'none';
       const born = host.now();
-      fields.set(key, { token, feet, look, soft, mesh, born, until: fadeMs > 0 ? born + fadeMs : 0 });
+      fields.set(key, { token, feet, look, soft, mesh, born, until: fadeMs > 0 ? born + fadeMs : 0, radius });
       host.addToScene(mesh);
       if (!ticking) { host.ticker.add(update); ticking = true; }
       update();

@@ -51,6 +51,8 @@ export function normalizeFragments(s = {}) {
     // Burst and no tint stay unstored, so stages saved before them read back unchanged.
     ...(behavior !== "burst" ? { behavior } : {}),
     ...(tint !== "none" ? { tint } : {}),
+    // A Tokenshade look on the pieces as they fly (a token preset by name: embers on charred dust, frost on shards).
+    ...(typeof s.fragmentFx === "string" && s.fragmentFx.trim() ? { fragmentFx: s.fragmentFx.trim().slice(0, 100) } : {}),
     // The sender's attacker centre less the target's, in screen squares: where "absorb" flies.
     ...(Number.isFinite(tx) && Number.isFinite(ty) ? { towards: { x: limit(tx), y: limit(ty) } } : {}),
   };

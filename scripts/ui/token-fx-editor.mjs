@@ -3,6 +3,7 @@
 // (stage.fxLayers), so the preset itself never changes.
 import { specFor } from '../engines/tokenshade/filters/index.mjs';
 import { controlsFor, animatableKeys, ANIM_CHOICES, FILTER_CHOICES, filterLabel } from '../engines/tokenshade/controls.mjs';
+import { DRIVE_SOURCES } from '../engines/tokenshade/animation.mjs';
 import { layersOf, setLayerValue, setLayerAnimation, addLayer, removeLayer, moveLayer, layerValue, MAX_LAYERS } from '../engines/tokenshade/layers.mjs';
 
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,7 +37,9 @@ function animHTML(type, key, anim, attrs, label) {
     ? `<label>Rate${field('rate', key === 'time' ? flowRate(type, anim.speed) : anim.speed, 'step="0.05"')}</label>`
     : anim.animType.includes('otation')
       ? `<label>Turn every (ms)${field('loopDuration', anim.loopDuration ?? 3000, 'min="16" step="50"')}</label><label class="an-check"><input type="checkbox" ${a} data-anim="clockWise" ${anim.clockWise === false ? '' : 'checked'}>Clockwise</label>`
-      : `<label>From${field('val1', anim.val1)}</label><label>To${field('val2', anim.val2)}</label><label>Every (ms)${field('loopDuration', anim.loopDuration ?? 3000, 'min="16" step="50"')}</label>`;
+      : anim.animType === 'driven'
+        ? `<label>Follows<select ${a} data-anim="source">${opts(DRIVE_SOURCES, anim.source ?? 'hpLost')}</select></label><label>At none${field('val1', anim.val1)}</label><label>At full${field('val2', anim.val2)}</label>`
+      : `<label>From${field('val1', anim.val1)}</label><label>To${field('val2', anim.val2)}</label><label>${anim.animType === 'once' ? 'Over (ms)' : 'Every (ms)'}${field('loopDuration', anim.loopDuration ?? 3000, 'min="16" step="50"')}</label>`;
   return `<div class="an-fx-anim"><b>${esc(label)}</b><select ${a} data-anim="animType" aria-label="${esc(label)} animation"><option value="">Not animated</option>${opts(ANIM_CHOICES, anim.animType)}</select>${body}</div>`;
 }
 
@@ -82,6 +85,7 @@ export function applyTokenFxEdit(stage, preset, data, input) {
     if (data.anim === 'animType') next = setLayerAnimation(layers, li, key, input.value ? { animType: input.value } : null);
     else if (data.anim === 'rate') next = setLayerAnimation(layers, li, key, { speed: key === 'time' ? flowSpeed(layer.filterType, input.value) : Number(input.value) });
     else if (data.anim === 'clockWise') next = setLayerAnimation(layers, li, key, { clockWise: input.checked });
+    else if (data.anim === 'source') next = setLayerAnimation(layers, li, key, { source: input.value });
     else next = setLayerAnimation(layers, li, key, { [data.anim]: input.type === 'color' ? fromHex(input.value) : Number(input.value) });
   } else if (key === 'stops') {
     const layer = layers[li], stops = structuredClone(Array.isArray(layerValue(layer, 'stops')) ? layerValue(layer, 'stops') : []);

@@ -26,17 +26,28 @@ vec3 reliefNormal(float strength) {
 
 // The creature turned to a material. materialType: 1 stone, 2 ice, 3 iron, 4 gold,
 // 5 crystal, 6 bark. color 0 keeps the material's natural colour.
+// spread (0..1) covers only part of it, advancing from spreadFrom (1 the feet up, 2 the edges in, 3 the centre
+// out, 4 the head down) with a bright front: animate it with a Transition to turn a creature to stone as it lands.
 const material = {
   type: 'material', order: 340,
-  defaults: { materialType: 1, strength: 1, cracks: 0.5, grain: 1, color: 0, time: 0 },
+  defaults: { materialType: 1, strength: 1, cracks: 0.5, grain: 1, color: 0, spread: 1, spreadFrom: 1, front: 0.6, time: 0 },
   timeScale: 1,
   uniforms: {
     uKind: ['int', p => clamp(Math.round(f(p.materialType)), 1, 6)], uStrength: ['float', p => clamp(p.strength, 0, 1)],
     uCracks: ['float', p => clamp(p.cracks, 0, 1)], uGrain: ['float', p => clamp(p.grain, 0.1, 6)],
     uColor: ['vec3', p => rgb(p.color)], uNatural: ['bool', p => !(f(p.color) > 0 || Array.isArray(p.color))],
+    uSpread: ['float', p => clamp(p.spread, 0, 1)], uFrom: ['int', p => clamp(Math.round(f(p.spreadFrom)), 1, 4)], uFront: ['float', p => clamp(p.front, 0, 1)],
   },
   reach: () => 0,
   glsl: `${SHAPE}
+// How far along the spread this pixel is (0 where it starts, 1 where it ends), ragged by noise.
+float spreadPos(vec2 q, float R) {
+  vec2 a = fxArt();
+  int k = int(uFrom + 0.5);
+  float pos = k == 1 ? 1.0 - a.y : k == 4 ? a.y : k == 3 ? length(a - 0.5) * 1.414
+    : 1.0 - (depthIn(R * 0.06) + depthIn(R * 0.16) + depthIn(R * 0.32)) / 3.0;
+  return pos + gnoise(q * 0.35) * 0.1 + gnoise(q * 1.3) * 0.04;
+}
 void main() {
   vec4 base = fxSample(vTextureCoord);
   if (base.a <= 0.001) { gl_FragColor = base; return; }
@@ -44,6 +55,13 @@ void main() {
   float L = luma(art);
   float R = fxTokenRadius();
   vec2 q = fxCanvas() / (R * 0.12) * uGrain;
+  // Partly covered: what is past the front stays the creature, the front itself glows.
+  float covered = 1.0, front = 0.0;
+  if (uSpread < 0.999) {
+    float s = uSpread * 1.2 - 0.08, pos = spreadPos(q, R);
+    covered = smoothstep(s + 0.015, s - 0.015, pos);
+    front = smoothstep(0.06, 0.0, abs(pos - s)) * step(0.001, uSpread);
+  }
   vec3 n = reliefNormal(5.0);
   vec3 light = normalize(vec3(-0.45, -0.65, 0.6));
   float diffuse = clamp(dot(n, light), 0.0, 1.0);
@@ -82,7 +100,10 @@ void main() {
   }
   if (uNatural < 0.5) col = mix(col, uColor * (0.25 + 1.1 * luma(col)), 0.65);
   col = mix(col, art, keep);
-  gl_FragColor = vec4(mix(art, clamp(col, 0.0, 1.0), uStrength) * base.a, base.a);
+  vec3 outc = mix(art, clamp(col, 0.0, 1.0), uStrength * covered);
+  // The advancing front: a pale bright seam in the material's own colour.
+  outc = mix(outc, min(vec3(1.0), clamp(col, 0.0, 1.0) * 1.6 + 0.25), front * uFront);
+  gl_FragColor = vec4(outc * base.a, base.a);
 }`,
 };
 

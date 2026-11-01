@@ -16,7 +16,7 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN } from "./engines/motion/movement-feel.mjs";
+import { FLOOR_CHOICES, sceneFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor } from "./engines/motion/movement-feel.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
 import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
@@ -55,7 +55,8 @@ import { createWorldMuffle } from "./engines/sound/world-muffle.mjs";
 import { heartbeatPlan, heartbeatLinger, heartbeatWanted, playHeartbeat } from "./engines/sound/heartbeat.mjs";
 import { creatureBlood } from "./integrations/splatter.mjs";
 import { sceneWarpFilter } from "./engines/tokenshade/filters/scene-warp.mjs";
-import { createSummonsLights } from "./integrations/summons-walls.mjs";
+import { createSummonsLights, isSummonsActor } from "./integrations/summons-walls.mjs";
+import { conditionTransition } from "./catalogs/shared/condition-looks.mjs";
 import { createReactionHost } from "./engines/marks/reactions.mjs";
 import { reactionVisual } from "./engines/marks/reaction-fx.mjs";
 import { twoeCounteract, dnd5eDispelSpell, createDnd5eDispels, createDispelWindow, createFlickerHost, dispelMessage, receiveDispel as receiveDispelData, lastingAnimaterEffect, effectTokenIds, idsOfTokens, spotHolds } from "./engines/playback/dispel.mjs";
@@ -105,7 +106,7 @@ const registerSetting = (key, config) => game.settings.register(ID, key, {
   },
 });
 for (const hook of ['clientSettingChanged', 'updateSetting', 'canvasReady', 'canvasTearDown'])
-  Hooks.on(hook, () => hotSettings.invalidate());
+  Hooks.on(hook, () => { hotSettings.invalidate(); });
 
 import { JB2A_MISSING } from "./ui/environment-message.mjs";
 import { mediaIndexStore } from "./engines/media/media-index-store.mjs";
@@ -142,7 +143,7 @@ import {
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG, isFeatureItem, riderRecipes } from "./catalogs/pf2e/ability-catalog.mjs";
 // PF2e ability catalogs beside feats: setting key → catalog.
 import { findCatalogSpell as findSpellEntry } from "./catalogs/pf2e/spells/spell-catalog.mjs";
-import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden, previewSpot } from "./engines/motion/teleport.mjs";
+import { teleportPlan, teleportVisuals, playTeleport, itemRangeFeet, pickTeleportSpot, streakToken, holdHidden, previewSpot, teleportDissolve, arrivalDissolve, shouldFormIn } from "./engines/motion/teleport.mjs";
 import { fetchLandings } from "./engines/motion/fetch-path.mjs";
 import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, moveCone, ASK_TIMEOUT } from "./engines/motion/move-targets.mjs";
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
@@ -157,6 +158,14 @@ import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalog
 import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } from "./engines/playback/persistent-states.mjs";
 import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "./engines/playback/outside-combat.mjs";
 import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
+import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
+import { lightAround, litKey, litPreset } from "./engines/playback/surrounding-light.mjs";
+import { isFireLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
+import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
+import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
+import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount } from "./engines/motion/light-orb.mjs";
+import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
+import { createSustainThreads, sustainLinks, concentrationLinks } from "./engines/motion/sustain-threads.mjs";
 import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId, isDefeated } from "./engines/playback/defeated-look.mjs";
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
@@ -191,6 +200,38 @@ let flash;
 const clientId = uuid();
 // Tokenshade, animater's own token shaders: local to this client, paused while token filters are off.
 tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
+// Live values for Tokenshade effects that follow the game (animation.mjs DRIVE_SOURCES), each 0..1: HP lost, height
+// above the viewed floor (60 feet is the top), and 1 while it is this creature's turn.
+// How long Tokenshade effects fade in and out, so a look that changes crossfades ("Tokenshade fades").
+tokenFx.engine.blendMs = () => { try { return Number(hotSetting("tokenshadeBlend")) || 0; } catch { return 0; } };
+tokenFx.engine.drive = (token, sources) => {
+  const out = {};
+  // "Tokenshade follows the game" off: every live value stays at its start.
+  if (hotSetting("tokenshadeLive") === false) return out;
+  if (sources.includes("hpLost")) {
+    const hp = hpState(token.actor, game.system.id);
+    out.hpLost = hp && hp.max > 0 ? (hp.marked ? hp.value / hp.max : 1 - hp.value / hp.max) : 0;
+  }
+  if (sources.includes("height")) out.height = Math.max(0, (Number(token.document?.elevation) || 0) - (canvas.level?.elevation?.base ?? 0)) / 60;
+  if (sources.includes("turn")) out.turn = game.combat?.started && game.combat.combatant?.tokenId === token.id ? 1 : 0;
+  // Weather and light ("Tokenshade reacts to light and weather").
+  // ("Weather on creatures" keeps the weather value on, since its looks follow it.)
+  if (hotSetting("tokenshadeLightWeather") !== false || hotSetting("weatherOnCreatures") === true) {
+    if (sources.includes("darkness")) {
+      const at = token.center ?? { x: token.x, y: token.y };
+      let dark = canvas.environment?.darknessLevel ?? 0;
+      try { dark = canvas.effects?.getDarknessLevel?.(at, token.document?.elevation ?? 0) ?? dark; } catch { /* scene darkness */ }
+      // Standing in a light source counts as lit.
+      try { if (canvas.effects?.testInsideLight?.({ ...at, elevation: token.document?.elevation ?? 0 })) dark *= 0.25; } catch { /* no light test */ }
+      out.darkness = dark;
+    }
+    if (sources.includes("weather")) {
+      const at = token.center ?? { x: token.x, y: token.y };
+      out.weather = sceneWeatherNow() && !shelteredAt(at, token.document?.elevation ?? 0) ? 1 : 0;
+    }
+  }
+  return out;
+};
 // Adaptive playback on this client (engines/playback/adaptive-host.mjs): Foundry is read only when it runs.
 const adaptiveHost = createAdaptiveHost({
   state: turboState,
@@ -465,6 +506,179 @@ Hooks.on("canvasTearDown", () => {
   try { auraRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
   auraRoot = null;
 });
+// "New creatures appear": a token just placed forms in a Tokenshade look on every screen (never on a scene loading,
+// only on a creation). Its art is drawn a frame or two later, so it waits for it.
+Hooks.on("createToken", (doc) => {
+  let mode = "summons";
+  try { mode = hotSetting("newCreatureArrival") ?? "summons"; } catch { /* not registered yet */ }
+  const actor = doc.actor, traits = actor?.system?.traits?.value ?? [];
+  const summoned = isSummonsActor(actor) || traits.includes("summoned");
+  if (!shouldFormIn(mode, { summoned }) || !allowsTokenFx(localQuality()) || doc.parent?.id !== canvas?.scene?.id) return;
+  const preset = tokenFx.getPresets("tokenshade").find((p) => p.name === arrivalDissolve(traits));
+  if (!preset) return;
+  let tries = 0;
+  const form = () => {
+    const token = doc.object;
+    if (!token?.mesh) { if (++tries < 30) requestAnimationFrame(form); return; }
+    const remove = tokenFx.apply(token, preset, { speed: 1.2, blend: false });
+    setTimeout(() => { try { remove(); } catch { /* gone with the canvas */ } }, 2400);
+  };
+  requestAnimationFrame(form);
+});
+// "Weather on creatures": in rain every creature on the scene is soaked, in snow dusted with snow. The looks follow
+// the Bad weather live value, so a creature under a roof (a Suppress Weather region) shows nothing and one stepping
+// out gets wet as it goes. Kept in step as the weather changes and tokens come and go.
+const weatherLooks = new Map();
+const WEATHER_LOOKS = { rain: "Soaked in the rain", snow: "Dusted with snow" };
+const syncWeatherLooks = () => {
+  let on = false;
+  try { on = hotSetting("weatherOnCreatures") === true; } catch { /* not registered yet */ }
+  const kind = on && canvas?.ready && allowsTokenFx(localQuality()) ? sceneWeatherNow() : null;
+  const preset = kind && tokenFx.getPresets("tokenshade").find((p) => p.name === WEATHER_LOOKS[kind]);
+  const want = new Set(preset ? (canvas.tokens?.placeables ?? []).filter((t) => t.actor).map((t) => t.id) : []);
+  for (const [id, look] of weatherLooks) if (!want.has(id) || look.kind !== kind) { try { look.remove(); } catch { /* gone */ } weatherLooks.delete(id); }
+  for (const id of want) {
+    if (weatherLooks.has(id)) continue;
+    const token = canvas.tokens.get(id);
+    if (token?.mesh) weatherLooks.set(id, { kind, remove: tokenFx.apply(token, preset, { key: `weather:${id}` }) });
+  }
+};
+// A world-feel feature shows here when the world has it on and this player has not turned it off on their screen.
+function bothOn(key) { return hotSetting(key) !== false && hotSetting(`${key}Local`) !== false; }
+// Region looks (engines/playback/region-looks.mjs, the "Region looks" setting): a Tokenshade look set on a region
+// shows on each creature inside it, fading in as it steps in and out as it leaves.
+const regionLooks = new Map(), natureLooks = new Map();
+let regionLookTimer = null;
+const syncRegionLooksNow = () => {
+  let on = false;
+  try { on = bothOn("regionLooks"); } catch { /* not registered yet */ }
+  const presets = on && canvas?.ready && allowsTokenFx(localQuality()) ? tokenFx.getPresets("tokenshade") : [];
+  const wants = presets.length ? regionLookWants({
+    tokens: canvas.tokens?.placeables ?? [], regions: canvas.scene?.regions ?? [], id: ID,
+    // Where the creature is drawn, so a look fades in mid-walk as it crosses the edge.
+    inside: (r, t) => r.testPoint({ x: t.center.x, y: t.center.y, elevation: Number(t.document.elevation ?? 0) }),
+  }) : new Map();
+  syncRegionLooks(regionLooks, wants, {
+    apply: (tid, want) => {
+      const token = canvas.tokens.get(tid), preset = presets.find((p) => p.name === want.preset);
+      return token?.mesh && preset ? tokenFx.apply(token, preset, { key: `region:${tid}` }) : null;
+    },
+  });
+  // Heat and cold around creatures: a fire creature's air shimmers, a cold one's breath mists.
+  let nature = false;
+  try { nature = bothOn("natureLooks"); } catch { /* not registered yet */ }
+  const natural = new Map();
+  if (nature && presets.length) for (const t of canvas.tokens?.placeables ?? []) {
+    const preset = t.actor ? natureLook({ traits: t.actor.system?.traits?.value ?? [], name: t.actor.name ?? t.document.name }) : null;
+    if (preset) natural.set(t.id, { region: "nature", preset });
+  }
+  syncRegionLooks(natureLooks, natural, {
+    apply: (tid, want) => {
+      const token = canvas.tokens.get(tid), preset = presets.find((p) => p.name === want.preset);
+      return token?.mesh && preset ? tokenFx.apply(token, preset, { key: `nature:${tid}` }) : null;
+    },
+  });
+};
+const syncRegionLooksSoon = () => { if (regionLookTimer) return; regionLookTimer = setTimeout(() => { regionLookTimer = null; syncRegionLooksNow(); }, 100); };
+for (const hook of ["canvasReady", "createToken", "deleteToken", "drawToken", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { syncRegionLooksSoon(); });
+Hooks.on("updateToken", (doc, change) => { if ("x" in change || "y" in change || "elevation" in change) syncRegionLooksSoon(); });
+// A moving token: tested a few times a second while it walks (the document jumps ahead of the animation).
+const anyRegionLook = () => regionLooks.size > 0 || (canvas.scene?.regions?.some?.((r) => r.flags?.[ID]?.[REGION_LOOK_FLAG]) ?? false);
+Hooks.on("refreshToken", (token, flags) => { if (flags?.refreshPosition && anyRegionLook()) syncRegionLooksSoon(); });
+Hooks.on("canvasTearDown", () => { for (const looks of [regionLooks, natureLooks]) { for (const look of looks.values()) { try { look.remove(); } catch { /* gone */ } } looks.clear(); } });
+// Creatures lit by their surroundings (engines/playback/surrounding-light.mjs): each creature near a light takes on
+// its colour, with a rim on the side facing it; re-lit only on a change worth seeing, crossfading.
+const litLooks = new Map();
+let litTimer = null;
+const lightsReaching = (token) => {
+  const out = [], c = token.center;
+  for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      if (!source?.active || source.object === token || source.constructor?.name === "GlobalLightSource") continue;
+      const d = source.data ?? {};
+      if (!(d.radius > 0) || Math.hypot(d.x - c.x, d.y - c.y) >= d.radius) continue;
+      // Walls: only a light whose lit area holds the creature.
+      if (source.shape?.contains && !source.shape.contains(c.x, c.y)) continue;
+      const color = d.color === null || d.color === undefined ? null : Number(d.color);
+      out.push({ x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null, alpha: d.alpha ?? 0.5 });
+    } catch { /* a broken light never breaks the rest */ }
+  }
+  return out;
+};
+const syncLitLooksNow = () => {
+  let on = false;
+  try { on = bothOn("litBySurroundings"); } catch { /* not registered yet */ }
+  const live = on && canvas?.ready && allowsTokenFx(localQuality());
+  const seen = new Set();
+  if (live) for (const token of canvas.tokens?.placeables ?? []) {
+    if (!token.actor || !token.mesh || !token.visible) continue;
+    let darkness = canvas.environment?.darknessLevel ?? 0;
+    try { darkness = canvas.effects?.getDarknessLevel?.(token.center, token.document?.elevation ?? 0) ?? darkness; } catch { /* older Foundry */ }
+    const light = lightAround(token.center, lightsReaching(token), Math.max(0.15, darkness));
+    const key = litKey(light);
+    if (!key) continue;
+    seen.add(token.id);
+    const had = litLooks.get(token.id);
+    if (had?.key === key) continue;
+    try { had?.remove(); } catch { /* gone */ }
+    litLooks.set(token.id, { key, remove: tokenFx.apply(token, litPreset(light), { key: `lit:${token.id}` }) });
+  }
+  for (const [id, look] of litLooks) if (!seen.has(id)) { try { look.remove(); } catch { /* gone */ } litLooks.delete(id); }
+};
+const syncLitLooksSoon = () => { if (litTimer) return; litTimer = setTimeout(() => { litTimer = null; syncLitLooksNow(); }, 250); };
+for (const hook of ["canvasReady", "lightingRefresh", "createToken", "deleteToken", "drawToken", "updateAmbientLight", "createAmbientLight", "deleteAmbientLight", "sightRefresh"]) Hooks.on(hook, () => { syncLitLooksSoon(); });
+Hooks.on("refreshToken", (token, flags) => { if (flags?.refreshPosition && (litLooks.size || canvas.effects?.lightSources?.size)) syncLitLooksSoon(); });
+Hooks.on("canvasTearDown", () => { for (const look of litLooks.values()) { try { look.remove(); } catch { /* gone */ } } litLooks.clear(); });
+// Heat haze over fires (engines/distortion/fire-haze.mjs): each light animated as a torch or flame feeds the map
+// distortion host a lasting haze, riding on the light as it moves (a torch carried by a creature).
+const fireHazes = new Map();
+let fireHazeTimer = null;
+// Where a fire light burns: an ambient light where it stands; a token's light in the flame of the torch in its hand,
+// following the drawn token (its walk, its hover bob).
+const carrierOf = (source) => (source?.object?.document?.documentName === "Token" ? source.object : null);
+const flameOf = (source) => {
+  const token = carrierOf(source), side = torchSide(token?.document?.flags?.[ID]?.torchHand);
+  if (!token || !side || token.destroyed || !token.mesh || token.mesh.destroyed) return { x: source.data.x, y: source.data.y };
+  return torchPose({ x: token.mesh.position.x, y: token.mesh.position.y, width: token.w ?? canvas.grid?.size ?? 100, side }, canvas.grid?.size ?? 100).heat;
+};
+const syncFireHazeNow = () => {
+  let on = false;
+  try { on = bothOn("fireHaze"); } catch { /* not registered yet */ }
+  const want = new Map();
+  if (on && canvas?.ready) for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
+      const flags = source.object?.document?.flags?.[ID] ?? {};
+      if (!isFireLight(source.data, flags)) continue;
+      // A token's fire shown as an orb (or nothing) has no torch to haze above.
+      const bearer = carrierOf(source);
+      if (bearer && lightKindOf(bearer, source.data) !== "torch") continue;
+      const key = source.sourceId ?? source.object?.sourceId ?? source.object?.id;
+      if (key) want.set(key, source);
+    } catch { /* a broken light never breaks the rest */ }
+  }
+  for (const [key, haze] of fireHazes) if (!want.has(key)) { haze.ended = true; distortionHost.onEnded(haze); fireHazes.delete(key); }
+  for (const [key, source] of want) {
+    if (fireHazes.has(key)) continue;
+    const carried = !!carrierOf(source);
+    const tag = fireHazeTag(source.data, { grid: canvas.grid?.size ?? 100, level: canvas.level?.id ?? null, carried, at: flameOf(source) });
+    // A stand-in for an effect: the host reads its data, its live position (just above the flame) and whether it is gone.
+    const haze = {
+      ended: false,
+      data: { animaterWarp: tag, moduleName: "animater", sceneId: canvas.scene?.id },
+      get destroyed() { return this.ended || source.destroyed === true || !source.active; },
+      get worldPosition() { const at = flameOf(source); return { x: at.x, y: at.y - hazeAbove(tag.radius) }; },
+    };
+    fireHazes.set(key, haze);
+    distortionHost.onEffect(haze);
+  }
+};
+const syncFireHazeSoon = () => { if (fireHazeTimer) return; fireHazeTimer = setTimeout(() => { fireHazeTimer = null; syncFireHazeNow(); }, 300); };
+for (const hook of ["canvasReady", "lightingRefresh", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createToken", "deleteToken", "updateToken"]) Hooks.on(hook, () => { syncFireHazeSoon(); });
+Hooks.on("canvasTearDown", () => fireHazes.clear());
+const forgetWeatherLooks = () => { for (const look of weatherLooks.values()) { try { look.remove(); } catch { /* gone */ } } weatherLooks.clear(); };
+for (const hook of ["canvasReady", "updateScene", "createToken", "deleteToken", "drawToken"]) Hooks.on(hook, () => { setTimeout(syncWeatherLooks, 50); });
+Hooks.on("canvasTearDown", forgetWeatherLooks);
 // Clear on demand (api.clearGroundMarks, the GM keybinding): a GM clears every screen, a player their own.
 const clearGroundMarksApi = (options) => clearGroundMarks(options, {
   isGM: () => game.user.isGM, clear: clearMarks, emit: (data) => game.socket.emit(`module.${ID}`, data), sender: clientId, userId: game.user.id,
@@ -589,11 +803,22 @@ const screenTint = createScreenTint({
   },
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
+// A spell's round area set to the Tokenshade look: every client draws its ground field where the effect plays (it
+// follows the caster for an emanation) until the effect ends (engines/playback/aura-fields.mjs groundTag).
+const groundField = (effect) => {
+  const tag = effect?.data?.animaterGround;
+  if (!tag || effect.data.moduleName !== ID || !canvas?.ready || !(tag.radius > 0)) return;
+  const at = () => ({ x: Number(effect.x ?? effect.position?.x) || 0, y: Number(effect.y ?? effect.position?.y) || 0 });
+  const anchor = { get center() { return at(); }, w: 0, get visible() { return !effect.destroyed; }, get ended() { return effect.destroyed === true; } };
+  auraFields.add(`ground:${effect.id}`, { token: anchor, radius: tag.radius, look: { motif: tag.motif, color: tag.color, inward: tag.inward === true } });
+};
 Hooks.on("createSequencerEffect", (effect) => {
+  groundField(effect);
   lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); if (lightsHere()) lightHost.onEffect(effect); markLayer.onEffect(effect);
   summonsLights.onEffect(effect); distortionHost.onEffect(effect); cameraShake.onEffect(effect); screenTint.onEffect(effect);
 });
 Hooks.on("endedSequencerEffect", (effect) => {
+  auraFields.remove(`ground:${effect.id}`);
   lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); distortionHost.onEnded(effect);
 });
 // The effect lights here go out at once, or the summons' glows come back (effects already playing stay unlit).
@@ -608,7 +833,7 @@ Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); cle
 // animated x/y into the TokenDocument while it animates), so drags, ruler moves and macros all show. Animater's own
 // teleports and motions already leave afterimages and are skipped. Local sprites on the viewed level's floor, under
 // the tokens, like the ground marks.
-let feelRoot = null, feelTicker = null;
+let feelRoot = null, feelOverRoot = null, feelTicker = null;
 const feelSkip = new Map();
 // Each creature's tracks (engines/motion/creature-gait.mjs), worked out once per actor and token name and forgotten
 // when an actor or a token's name or actor changes.
@@ -740,6 +965,17 @@ const movementFeelRoot = () => {
   }
   return feelRoot;
 };
+// Above the creatures on the floor (Foundry draws tokens at sort layer 700): a flier's shadow passing over them.
+const movementFeelOverRoot = () => {
+  if (!feelOverRoot || feelOverRoot.destroyed) {
+    feelOverRoot = new PIXI.Container();
+    feelOverRoot.eventMode = "none";
+    feelOverRoot.elevation = canvas.level?.elevation?.base ?? 0;
+    feelOverRoot.sortLayer = 750;
+    canvas.primary.addChild(feelOverRoot);
+  }
+  return feelOverRoot;
+};
 const movementFeelSettingOn = (key) => { try { return hotSetting(key) !== false; } catch { return false; } };
 const movementFeelFloor = (point, token) => {
   const scene = canvas?.scene;
@@ -750,7 +986,16 @@ const movementFeelFloor = (point, token) => {
   });
   const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: doc.flags?.[ID]?.floor, doc }));
   const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
-  const floor = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
+  const ground = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
+  // "Spells change the floor": frost, acid, fire and blasts left on the ground change what the creature walks on.
+  let floor = ground;
+  if (movementFeelSettingOn("marksChangeFloor")) {
+    try {
+      const level = canvas.level?.id;
+      const kinds = (markLayer.near(point, 1) ?? []).filter((m) => !level || !m.tag?.level || m.tag.level === level).map((m) => m.tag?.mark);
+      floor = markedFloor(ground, kinds);
+    } catch { /* no marks layer yet */ }
+  }
   // Rain ("Weather on the ground"): soil out in the rain turns to mud, in its sound and its prints.
   return movementFeelSettingOn("weatherOnGround") && weatherAt(point, elevation) === "rain" ? rainFloor(floor, "rain").floor : floor;
 };
@@ -806,7 +1051,7 @@ const movementFeelBlood = (d) => {
 // lifetime for integrations that change actor data without emitting a hook.
 const movementViews = new Map();
 for (const hook of ['canvasReady', 'canvasTearDown', 'updateActor', 'createItem', 'updateItem', 'deleteItem', 'sightRefresh', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel'])
-  Hooks.on(hook, () => movementViews.clear());
+  Hooks.on(hook, () => { movementViews.clear(); });
 for (const hook of ['updateToken', 'deleteToken']) Hooks.on(hook, doc => movementViews.delete(doc.id));
 const FOOTPRINT_LIFETIME_KEYS = {
   sand:'movementFootprintSandSeconds',mud:'movementFootprintMudSeconds',snow:'movementFootprintSnowSeconds',
@@ -815,6 +1060,8 @@ const FOOTPRINT_LIFETIME_KEYS = {
 };
 const movementFeel = createMovementFeel({
   trails: groundTrails,
+  // "Shadows under every token": a soft contact shadow under standing creatures too, not only fliers.
+  groundShadows: () => { try { return hotSetting("groundShadows") === true; } catch { return false; } },
   enabled: () => movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal"),
   // Burrowers' entrance and exit holes (world setting "Burrow holes").
   holes: () => movementFeelSettingOn("burrowHoles"),
@@ -830,7 +1077,13 @@ const movementFeel = createMovementFeel({
   distance: () => canvas?.dimensions?.distance ?? 5,
   now: () => performance.now(),
   floorAt: movementFeelFloor,
-  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot }),
+  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot }),
+  // "Flier shadows fall on creatures".
+  shadowsOverTokens: () => movementFeelSettingOn("shadowsOverTokens"),
+  // "Dust when fliers take off and land".
+  flightDust: () => movementFeelSettingOn("flightDust"),
+  // "Creatures drip out of the water".
+  drips: () => movementFeelSettingOn("dripAfterSwimming"),
   tokens: () => {
     const placeables = canvas?.tokens?.placeables;
     if (!placeables?.length) return [];
@@ -1026,6 +1279,8 @@ const clearMovementFeel = () => {
   feelSkip.clear();
   try { feelRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
   feelRoot = null;
+  try { feelOverRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  feelOverRoot = null;
 };
 // Animater's own teleports carry animater.teleport on the update: no dust along the slide.
 Hooks.on("updateToken", (doc, changed, options) => {
@@ -1360,6 +1615,219 @@ Hooks.on("canvasReady", () => {
   if (!ticker || !P || vaporTicker === ticker) return;
   vaporTicker = ticker;
   ticker.add(() => { try { breathVapor.tick(); } catch { /* never stop the canvas */ } }, undefined, P.NORMAL);
+});
+// Smoke above fires (engines/motion/fire-smoke.mjs): every fire light this screen can see sends up a thin trail of
+// smoke, above the tokens with the breath vapor, at Balanced quality or better. The fires in view are listed twice a
+// second; their flames are read live each frame, so a carried torch trails its smoke.
+let smokeTicker = null, smokeList = [], smokeListAt = -Infinity;
+const smokeOn = () => {
+  try { return bothOn("fireSmoke") && qualityRank(localQuality()) >= 2 && !!canvas?.ready; } catch { return false; }
+};
+// What a token's own light is drawn as: 'torch', 'orb' or null (Token configuration → Animater light shown as; Auto:
+// a fire light is a torch, a Light spell's an orb). "Held on: nothing" draws neither.
+const lightKindOf = (token, data) => {
+  const flags = token?.document?.flags?.[ID] ?? {};
+  if (!torchSide(flags.torchHand)) return null;
+  const actor = token?.actor;
+  const items = [...(actor?.items ?? [])];
+  const effects = items.filter((i) => i.type === "effect" || i.type === "condition").map((i) => i.name)
+    .concat([...(actor?.effects ?? [])].map((e) => e.name));
+  // What it carries in hand (PF2e: held; D&D and others: equipped).
+  const held = items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true).map((i) => i.name);
+  return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data, flags), effects, held });
+};
+// How many lights it is: Dancing Lights several wisps circling the creature (its light stays at its middle).
+const wispsOf = (token) => orbCount([...(token?.actor?.items ?? [])].map((i) => i.name).concat([...(token?.actor?.effects ?? [])].map((e) => e.name)));
+const listSmokeFires = () => {
+  const stage = canvas.stage, s = stage?.scale?.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight];
+  const grid = canvas.grid?.size ?? 100, margin = grid * 3;
+  const view = { x: stage.pivot.x - sw / 2 / s - margin, y: stage.pivot.y - sh / 2 / s - margin, w: sw / s + 2 * margin, h: sh / s + 2 * margin };
+  const mid = { x: stage.pivot.x, y: stage.pivot.y }, out = [];
+  for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
+      const d = source.data, token = source.object?.document?.documentName === "Token" ? source.object : null;
+      // A light a token carries burns as its torch (held in its square, smoking small) when it is drawn as one.
+      if (token ? lightKindOf(token, d) !== "torch" : !isFireLight(d, source.object?.document?.flags?.[ID] ?? {})) continue;
+      if (d.x < view.x || d.y < view.y || d.x > view.x + view.w || d.y > view.y + view.h) continue;
+      // Whether this screen sees a standing fire, tested with the list (twice a second), not every frame.
+      let seen = true;
+      if (!token) { try { seen = canvas.visibility?.testVisibility?.({ x: d.x, y: d.y }, { tolerance: 2 }) !== false; } catch { /* shown */ } }
+      out.push({ source, token, seen, key: source.sourceId ?? source.object?.id ?? `${d.x},${d.y}`, size: token ? 0.35 : fireSize(d, grid), far: Math.hypot(d.x - mid.x, d.y - mid.y) });
+    } catch { /* a broken light never breaks the rest */ }
+  }
+  return out.sort((a, b) => a.far - b.far).slice(0, SMOKE_FIRES);
+};
+// "Creatures hold their torches" (engines/motion/held-torch.mjs): a token's own fire light is a torch in its hand.
+const heldTorchesOn = () => { try { return bothOn("heldTorches") && qualityRank(localQuality()) >= 2 && !!canvas?.ready; } catch { return false; } };
+// The whole torch over everything of its creature (the art, a sword drawn across it) and above Foundry's lighting
+// (fire gives light; lit, its flame washed out to a flat yellow): in the interface group, over its token layer. It is
+// only drawn while its creature shows on this screen.
+let torchLightRoot = null;
+const torchLightRootOf = () => {
+  if (!torchLightRoot || torchLightRoot.destroyed) {
+    torchLightRoot = new PIXI.Container();
+    torchLightRoot.eventMode = "none";
+    // The interface group sorts by zIndex, and its token layer (200) draws the creatures' art: just above it, under
+    // walls, notes, lights and controls (700+).
+    torchLightRoot.zIndex = 250;
+    (canvas.interface ?? canvas.primary).addChild(torchLightRoot);
+  }
+  return torchLightRoot;
+};
+const heldTorches = createHeldTorches({ PIXI: globalThis.PIXI, root: torchLightRootOf, grid: () => canvas?.grid?.size ?? 100 });
+const torchLean = new Map();
+// The torch's light comes from its flame, not the creature's middle: Foundry builds a token's light at its centre
+// (Token#_getLightSourceData), so its bright animated core sat on the creature's face. A creature holding its torch has
+// its light's origin moved to the flame; walls, radius and animation are Foundry's own. Read without canvas.ready,
+// since Foundry builds the lights while the canvas draws.
+const holdsTorches = () => { try { return bothOn("heldTorches") && qualityRank(localQuality()) >= 2; } catch { return false; } };
+const orbsOn = () => { try { return bothOn("lightOrbs") && qualityRank(localQuality()) >= 2; } catch { return false; } };
+const installTorchLight = () => {
+  const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
+  if (typeof proto?._getLightSourceData !== "function" || proto._getLightSourceData.animaterTorch) return false;
+  const original = proto._getLightSourceData;
+  const fromTheFlame = function (...args) {
+    const data = original.apply(this, args);
+    try {
+      const side = torchSide(this.document?.flags?.[ID]?.torchHand), kind = data && !data.disabled ? lightKindOf(this, data) : null;
+      const grid = canvas?.grid?.size ?? 100, place = { x: data?.x, y: data?.y, width: this.w ?? grid, side, key: this.document?.id };
+      const at = kind === "torch" && holdsTorches() ? torchPose(place, grid).heat : kind === "lantern" && holdsTorches() ? lanternPose(place, grid).centre
+        : kind === "orb" && orbsOn() && wispsOf(this) === 1 ? orbPose(place, grid).rest : null;
+      if (at) { data.x = at.x; data.y = at.y; }
+    } catch { /* Foundry's own origin */ }
+    return data;
+  };
+  fromTheFlame.animaterTorch = true;
+  proto._getLightSourceData = fromTheFlame;
+  return true;
+};
+const relightTokens = () => { for (const t of canvas?.tokens?.placeables ?? []) { try { t.initializeLightSource(); } catch { /* gone */ } } };
+Hooks.once("canvasInit", () => { installTorchLight(); });
+// A token switching which side holds its torch moves its light with it.
+Hooks.on("updateToken", (doc, change) => { const f = change?.flags?.[ID]; if (f && ("torchHand" in f || "lightAs" in f)) { try { doc.object?.initializeLightSource(); } catch { /* not drawn */ } } });
+// A Light spell landing or ending on a creature: its light becomes (or stops being) an orb.
+for (const hook of ["createItem", "deleteItem", "createActiveEffect", "deleteActiveEffect"]) Hooks.on(hook, (doc) => {
+  const actor = doc?.parent;
+  if (actor?.documentName !== "Actor") return;
+  for (const t of actor.getActiveTokens?.(true) ?? []) { try { t.initializeLightSource(); } catch { /* not drawn */ } }
+  smokeListAt = -Infinity; orbListAt = -Infinity;
+});
+Hooks.once("ready", () => { if (installTorchLight() && canvas?.ready) relightTokens(); });
+// This frame's fires: an ambient light burns where it stands; a carried one at the tip of the torch in the token's hand,
+// following the drawn token (its walk, its hover bob) and leaning its flame back as it moves.
+const smokeFiresNow = () => {
+  const time = performance.now();
+  if (time - smokeListAt >= VAPOR_REFRESH_MS) { smokeListAt = time; smokeList = listSmokeFires(); }
+  const holding = heldTorchesOn(), grid = canvas?.grid?.size ?? 100;
+  return smokeList.filter(({ source }) => !source.destroyed && source.active).map(({ source, token, seen, key, size }) => {
+    let at = { x: source.data.x, y: source.data.y }, torch = null;
+    const side = torchSide(token?.document?.flags?.[ID]?.torchHand);
+    if (token && side && holding && !token.destroyed && token.mesh && !token.mesh.destroyed) {
+      const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
+      const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
+      torchLean.set(key, { x, lean });
+      torch = { key, x, y, width: token.w ?? grid, side, lean, visible: token.visible === true && !token.document.hidden };
+      at = torchPose(torch, grid).top;
+    }
+    // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
+    const visible = torch ? torch.visible : seen;
+    return { key, size, visible, torch, ...at };
+  });
+};
+let smokeFrame = [];
+const fireSmoke = createFireSmoke({
+  enabled: smokeOn,
+  grid: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: vaporRootOf }),
+  fires: () => smokeFrame,
+  amount: () => { try { return Number(hotSetting("fireSmokeAmount")) || 1; } catch { return 1; } },
+});
+// Light orbs (engines/motion/light-orb.mjs): a creature lit by a Light spell has its light float at its shoulder.
+const lightOrbs = createLightOrbs({ PIXI: globalThis.PIXI, root: torchLightRootOf, grid: () => canvas?.grid?.size ?? 100 });
+// Held lanterns (engines/motion/held-lantern.mjs): hanging from the hand, swaying as the creature walks.
+const heldLanterns = createHeldLanterns({ PIXI: globalThis.PIXI, root: torchLightRootOf, grid: () => canvas?.grid?.size ?? 100 });
+let orbList = [], orbListAt = -Infinity;
+const listOrbs = () => {
+  const out = [];
+  for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      const token = source?.active && source.object?.document?.documentName === "Token" ? source.object : null;
+      const kind = token ? lightKindOf(token, source.data) : null;
+      if (kind === "orb" || kind === "lantern") out.push({ source, token, kind, key: token.id });
+    } catch { /* a broken light never breaks the rest */ }
+  }
+  return out;
+};
+const tickOrbs = () => {
+  const orbsHere = orbsOn(), lanternsHere = heldTorchesOn();
+  if (!canvas?.ready || (!orbsHere && !lanternsHere)) { if (lightOrbs.size) lightOrbs.clear(); if (heldLanterns.size) heldLanterns.clear(); return; }
+  if (performance.now() - orbListAt >= VAPOR_REFRESH_MS) { orbListAt = performance.now(); orbList = listOrbs(); }
+  const grid = canvas.grid?.size ?? 100, now = performance.now() / 1000;
+  const carried = orbList.filter(({ token, source }) => !token.destroyed && token.mesh && !token.mesh.destroyed && source.active).map(({ token, source, key, kind }) => {
+    const x = token.mesh.position.x, last = torchLean.get(`carry:${key}`);
+    const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
+    torchLean.set(`carry:${key}`, { x, lean });
+    return { kind, key, x, y: token.mesh.position.y, width: token.w ?? grid, side: torchSide(token.document.flags?.[ID]?.torchHand), lean,
+      color: source.data.color, visible: token.visible === true && !token.document.hidden };
+  });
+  lightOrbs.sync(orbsHere ? carried.filter((c) => c.kind === "orb").flatMap((c) => {
+    const n = wispsOf(canvas.tokens.get(c.key));
+    return n > 1 ? Array.from({ length: n }, (_, i) => ({ ...c, key: `${c.key}:wisp${i}`, wisp: { i, of: n } })) : [c];
+  }) : []);
+  heldLanterns.sync(lanternsHere ? carried.filter((c) => c.kind === "lantern") : []);
+  lightOrbs.tick(now);
+  heldLanterns.tick(now);
+};
+// Sustain threads (engines/motion/sustain-threads.mjs): a faint thread from a caster to each creature carrying a spell
+// it sustains, under the tokens. Who sustains what is read twice a second; the ends follow the drawn tokens.
+const threadsOn = () => { try { return bothOn("sustainThreads") && qualityRank(localQuality()) >= 2 && !!canvas?.ready; } catch { return false; } };
+const sustainThreads = createSustainThreads({ PIXI: globalThis.PIXI, root: movementFeelRoot });
+let threadList = [], threadListAt = -Infinity;
+// Actors by uuid: unlinked tokens of one NPC share an actor id, but each has its own uuid.
+const effectOrigin = (item) => {
+  try { return item.origin?.uuid ?? item.system?.context?.origin?.actor ?? null; } catch { return null; }
+};
+const listThreads = () => {
+  const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.actor);
+  // PF2e and SF2e: an effect marked sustained, cast by someone else.
+  const sustained = sustainLinks(tokens.map((t) => ({
+    id: t.id, actorId: t.actor.uuid,
+    effects: [...t.actor.items].filter((i) => i.type === "effect" && i.system?.duration?.sustained === true).map((i) => ({
+      id: i.id, sustained: true, originActorId: effectOrigin(i), hidden: i.system?.unidentified === true && !game.user.isGM })),
+  })));
+  return game.system.id === "dnd5e" ? [...sustained, ...concentrationLinks(tokens)] : sustained;
+};
+const tickThreads = () => {
+  if (!threadsOn()) { if (sustainThreads.size) sustainThreads.clear(); return; }
+  if (performance.now() - threadListAt >= VAPOR_REFRESH_MS) { threadListAt = performance.now(); threadList = listThreads(); }
+  sustainThreads.sync(threadList.map(({ key, from, to }) => {
+    const a = canvas.tokens.get(from), b = canvas.tokens.get(to);
+    const shows = (t) => t && !t.destroyed && t.mesh && !t.mesh.destroyed && t.visible === true && !t.document.hidden;
+    return shows(a) && shows(b) ? { key, a: { x: a.mesh.position.x, y: a.mesh.position.y }, b: { x: b.mesh.position.x, y: b.mesh.position.y }, visible: true } : { key, visible: false };
+  }));
+  sustainThreads.tick(performance.now() / 1000);
+};
+const tickFires = () => {
+  try { tickOrbs(); } catch { /* never stop the canvas */ }
+  try { tickThreads(); } catch { /* never stop the canvas */ }
+  if (!smokeOn() && !heldTorchesOn()) { if (fireSmoke.size || heldTorches.size) { fireSmoke.clear(); heldTorches.clear(); } return; }
+  smokeFrame = smokeFiresNow();
+  heldTorches.sync(heldTorchesOn() ? smokeFrame.map((f) => f.torch).filter(Boolean) : []);
+  heldTorches.tick(performance.now() / 1000);
+  fireSmoke.tick();
+};
+Hooks.on("canvasTearDown", () => {
+  fireSmoke.clear(); heldTorches.clear(); lightOrbs.clear(); heldLanterns.clear(); sustainThreads.clear(); threadList = []; threadListAt = -Infinity; torchLean.clear(); smokeList = []; smokeFrame = []; orbList = []; smokeListAt = -Infinity; orbListAt = -Infinity;
+  try { torchLightRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  torchLightRoot = null;
+});
+Hooks.on("canvasReady", () => {
+  const ticker = canvas?.app?.ticker, P = globalThis.PIXI?.UPDATE_PRIORITY;
+  if (!ticker || !P || smokeTicker === ticker) return;
+  smokeTicker = ticker;
+  ticker.add(() => { try { tickFires(); } catch { /* never stop the canvas */ } }, undefined, P.NORMAL);
 });
 // Hover explanation (ui/hover-explain.mjs): hovering a token lists what Animater plays on it here.
 // Lasting plays started on this client, lasting condition/effect layers (drawn on every client), and
@@ -2815,6 +3283,84 @@ Hooks.once("init", () => {
   registerSetting("auraStyle",{name:'Aura style',
     hint:'How an aura’s reach is drawn. JB2A animations: looping JB2A footage across the reach. Tokenshade: drawn by Animater on the ground, a crisp line exactly at the reach with a pattern in the aura’s colour and theme (flame, frost, runes, vines and more) and nothing over the creatures inside; lighter on slower computers. Either way the aura’s small accent stays around its creature.',
     scope:'world',config:true,type:String,choices:{...AURA_STYLES},default:'jb2a',onChange:()=>persistentStates?.schedule()});
+  registerSetting("conditionTransitions",{name:'Conditions transition in',
+    hint:'A condition that has just landed plays a transition before its lasting look: stone creeping up a petrified creature, sickness spreading over the sickened, a curse taking hold of the doomed, life draining from the drained, poison spreading through the veins. Only as it lands, never on a reload. Needs the Tokenshade condition looks.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("newCreatureArrival",{name:'New creatures appear',
+    hint:'A creature placed on the map forms in a Tokenshade look: fiends and undead rise from shadow, celestials step out of light, fire creatures rise from the ashes, the rest form from sparkles. Summoned creatures: the ones PF2e Summons Assistant places or that have the summoned trait. Needs Tokenshade token filters on.',
+    scope:'world',config:true,type:String,choices:{summons:'Summoned creatures form in',all:'Every new token forms in',off:'Off'},default:'summons'});
+  registerSetting("teleportDissolve",{name:'Teleports dissolve',
+    hint:'A teleporting creature dissolves away in a look matched to the spell (sparkles, embers, shadow, light) and forms again where it lands. Off: it fades out quickly. Needs Tokenshade token filters on.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("weatherOnCreatures",{name:'Weather on creatures',
+    hint:'In rain every creature on the scene is soaked (darker, bluer, wet), in snow dusted with snow, from Foundry\u2019s scene weather or FXMaster\u2019s rain and snow. A creature under a roof (a Suppress Weather region) stays dry. Needs Tokenshade token filters on.',
+    scope:'world',config:true,type:Boolean,default:false,onChange:()=>setTimeout(syncWeatherLooks,0)});
+  registerSetting("marksChangeFloor",{name:'Spells change the floor',
+    hint:'Marks spells leave on the ground change what creatures walk on: frost is ice underfoot, acid a sludge, fire melts snow to water and burns grass bare, a blast leaves cracked stone. Footsteps and footprints follow. Needs Ground marks on.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("natureLooks",{name:'Heat and cold around creatures',
+    hint:'A fire creature’s air shimmers with heat; a cold one breathes a faint mist. From its traits, else its name. Needs Tokenshade token filters on.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(syncRegionLooksNow,0)});
+  registerSetting("heldTorches",{name:'Creatures hold their torches and lanterns',
+    hint:'A creature whose own light burns (a light animated as a torch or flame) holds a small burning torch in its square: a flickering flame that leans back as it walks, its smoke rising from the flame. One holding a lantern carries it hanging from its hand instead, swaying. Either way its light comes from what it holds, not its middle. Drawn at Balanced quality or better.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(relightTokens,0)});
+  registerSetting("regionLooksLocal",{name:'Region looks on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("natureLooksLocal",{name:'Heat and cold around creatures on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("litBySurroundingsLocal",{name:'Creatures lit by their surroundings on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("fireHazeLocal",{name:'Heat haze over fires on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("fireSmokeLocal",{name:'Smoke above fires on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("heldTorchesLocal",{name:'Held torches and lanterns on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("lightOrbsLocal",{name:'Light spell orbs on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("sustainThreadsLocal",{name:'Sustain threads on my screen',
+    hint:'Turn off to never draw this on this screen (the world setting decides for everyone).',
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{try{syncRegionLooksNow();syncLitLooksNow();syncFireHazeNow();relightTokens();}catch{/* canvas not ready */}},0)});
+  registerSetting("fireSmokeAmount",{name:'Smoke amount on my screen',
+    hint:'How much smoke fires send up on this screen: 1 as drawn, less for a lighter screen, more for a smokier one.',
+    scope:'client',config:true,type:Number,range:{min:0.25,max:2,step:0.25},default:1});
+  registerSetting("conditionValueLooks",{name:'Condition looks grow with their value',
+    hint:'A valued condition (Frightened, Drained, Doomed, Dying\u2026) shows a stronger Tokenshade look at each value. Off: one look for every value, only stronger.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>persistentStates?.schedule()});
+  registerSetting("sustainThreads",{name:'Sustained spells show who holds them',
+    hint:'While a creature sustains a spell on another (PF2e and SF2e sustained spells; D&D concentration, its summoned creatures included), a faint shimmering thread runs from the caster to it, motes flowing along it, so everyone sees who holds what. It goes when the spell ends. Drawn at Balanced quality or better.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("lightOrbs",{name:'Light spells float as orbs',
+    hint:'A creature lit by a Light spell (PF2e\u2019s Light or Everlight, D&D\u2019s Light) has its light float at its shoulder as a small glowing orb, bobbing gently in the light\u2019s own colour, the light coming from the orb. Drawn at Balanced quality or better.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(()=>{relightTokens();persistentStates?.schedule();},0)});
+  registerSetting("fireSmoke",{name:'Smoke above fires',
+    hint:'Every fire light (a light animated as a torch or flame: braziers, campfires, a carried torch) sends up a thin trail of smoke that rises, sways and thins out. A bigger fire smokes more. Drawn at Balanced quality or better, only for fires you can see.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("fireHaze",{name:'Heat haze over fires',
+    hint:'The air above every fire light (a light animated as a torch or flame: braziers, campfires, a carried torch) shimmers with heat. Uses map distortion, so it shows at Full quality with Map distortion on.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>{for(const h of fireHazes.values()){h.ended=true;distortionHost.onEnded(h);}fireHazes.clear();setTimeout(syncFireHazeNow,0);}});
+  registerSetting("litBySurroundings",{name:'Creatures lit by their surroundings',
+    hint:'A creature near a light (a torch, a brazier, a glowing spell) takes on its colour and catches a rim of it on the side facing it. Strongest in the dark. Needs Tokenshade token filters on.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(syncLitLooksNow,0)});
+  registerSetting("regionLooks",{name:'Region looks',
+    hint:'A region given an Animater look (Region configuration) shows it on every creature inside, fading in and out as they come and go. Needs Tokenshade token filters on.',
+    scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(syncRegionLooksNow,0)});
+  registerSetting("tokenshadeLive",{name:'Tokenshade follows the game',
+    hint:'Tokenshade effects set to follow the game change with the creature: a look that drains as it is hurt, glows on its turn, shimmers as it climbs. Off: they hold their starting look.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("tokenshadeLightWeather",{name:'Tokenshade reacts to light and weather',
+    hint:'Effects that follow the game can also follow how dark it is where the creature stands (a glow brighter in the dark, dimmer in torchlight) and rain, snow or a storm over it (none under a roof).',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("tokenshadeBlend",{name:'Tokenshade fades',
+    hint:'How Tokenshade effects come and go on this screen: they fade in and out, and a look that changes (Frightened 2 easing to 1) crossfades into the next.',
+    scope:'client',config:true,type:String,choices:{'0':'At once','300':'Quick (0.3 s)','700':'Smooth (0.7 s)','1500':'Slow (1.5 s)'},default:'700'});
   registerSetting("aurasOutsideCombat",{name:'Auras outside combat',
     hint:'How aura looks (an aura\'s ring around its creature, often 30 to 90 feet) show while no combat has started on the scene. Subtle draws them smaller, fainter and calmer; Hide them until combat keeps them off the map until initiative is rolled. Allies inside an aura keep their small copy. In combat every aura shows as usual.',
     scope:'world',config:true,type:String,choices:{...AURAS_OUTSIDE_COMBAT},default:'show',onChange:()=>persistentStates?.schedule()});
@@ -3019,6 +3565,20 @@ Hooks.once("init", () => {
     hint: `Total time until footprints, creature grooves and flattened grass left on ${floor} fully fade, including carried wet/muddy/snowy prints on that ground. 0 keeps their natural lifetime (sand 6 seconds, mud 12, snow 20). Applies to existing and new tracks on every screen. Does not create tracks where none would normally appear. Dust, blood, water ripples and burrow holes keep their own timing; track limits still remove the oldest marks when full.`,
     scope: 'world', config: true, type: Number, default: 0,
     range: { min: 0, max: 3600, step: 1 },
+  });
+  registerSetting("dripAfterSwimming", {name:'Creatures drip out of the water',
+    hint:'A creature that climbs out of deep water drips as it walks for a few seconds, fewer drops as it dries; one that waded through water (a water floor or region) drips more lightly, for less time. Its wet footprints are the floor\u2019s own.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("flightDust", {name:'Dust when fliers take off and land',
+    hint:'A creature that starts or stops flying blows the floor out to both sides: dust off dirt, grit off stone, spray off water, a flurry off snow, and a ring pressed flat as it lands.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("shadowsOverTokens", {name:'Flier shadows fall on creatures',
+    hint:'A flying creature\u2019s shadow darkens the creatures it passes over, not only the floor between them.',
+    scope:'world',config:true,type:Boolean,default:true});
+  registerSetting("groundShadows", {
+    name: "Shadows under every token",
+    hint: "A soft shadow under every creature standing on the ground, not only under fliers, so tokens sit on the map instead of floating over it, and taking off reads at a glance. Needs Movement feel on.",
+    scope: "world", config: true, type: Boolean, default: false,
   });
   registerSetting("walkedPathHighlight", {
     name: "Walked path highlight",
@@ -3630,6 +4190,22 @@ Hooks.on("renderTokenConfig", (app, html) => {
   group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
   tab.append(group);
 });
+// Token configuration: which side of the token holds its torch (a light animated as a torch or flame), or none.
+Hooks.on("renderTokenConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.torchHand"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="light"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  const doc = app.document ?? app.token ?? app.object, value = doc?.flags?.[ID]?.torchHand ?? "";
+  const group = document.createElement("div");
+  group.className = "form-group";
+  group.innerHTML = `<label>Animater light held on</label><div class="form-fields"><select name="flags.${ID}.torchHand">${[["", "Right side"], ["left", "Left side"], ["none", "Nothing drawn (light from the middle)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">The side this token holds its torch (or its light orb floats), its light coming from there. Pick the side the art's free hand is on, or nothing.</p>`;
+  tab.append(group);
+  const kind = doc?.flags?.[ID]?.lightAs ?? "", shown = document.createElement("div");
+  shown.className = "form-group";
+  shown.innerHTML = `<label>Animater light shown as</label><div class="form-fields"><select name="flags.${ID}.lightAs">${[["", "Auto (a held lantern: a lantern; a fire light: a torch; a Light spell: an orb)"], ["torch", "A torch"], ["lantern", "A lantern"], ["orb", "A glowing orb"]].map(([v, l]) => `<option value="${v}"${v === kind ? " selected" : ""}>${l}</option>`).join("")}</select></div>`;
+  tab.append(shown);
+});
 // Token configuration: this token's own blood colour (flags.animater.bloodColor: '' by creature type, 'none' no blood,
 // '#rrggbb'), used when Splatter is not deciding.
 Hooks.on("renderTokenConfig", (app, html) => {
@@ -3782,6 +4358,16 @@ Hooks.on("renderRegionConfig", (app, html) => {
   const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab");
   if (!tab) return;
   tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's."));
+  // Region looks: a Tokenshade look on every creature inside.
+  if (!root.querySelector(`[name="flags.${ID}.${REGION_LOOK_FLAG}"]`)) {
+    const value = app.document?.flags?.[ID]?.[REGION_LOOK_FLAG] ?? "";
+    const names = tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b));
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    const group = document.createElement("div");
+    group.className = "form-group";
+    group.innerHTML = `<label>Animater look</label><div class="form-fields"><select name="flags.${ID}.${REGION_LOOK_FLAG}"><option value="">None</option>${names.map((n) => `<option value="${esc(n)}"${n === value ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></div><p class="hint">A Tokenshade look every creature inside this region shows (it fades in as they step in and out as they leave): haunted ground, a forge’s warmth, deep water. Make your own on Animater’s Tokenshade page.</p>`;
+    tab.append(group);
+  }
 });
 Hooks.once("ready", () => {
   // Room-aware sound: each grid square's room, swept once on the sound's level, forgotten when walls, doors, the
@@ -3795,12 +4381,14 @@ Hooks.once("ready", () => {
     bounds: () => canvas.dimensions?.rect ?? null,
   });
   for (const hook of ["createWall", "updateWall", "deleteWall", "canvasReady", "updateScene", "createLevel", "updateLevel", "deleteLevel"])
-    Hooks.on(hook, () => rooms.bump());
+    Hooks.on(hook, () => { rooms.bump(); });
   // One shared reverb per room class, built from Foundry's own impulse in the context Animater's sounds play in.
   const reverb = createReverbBuses({ contextOf: () => game.audio?.interface ?? null });
   // Load Foundry's impulse ahead of the first sound (it waits for the audio context, and retries cheaply).
   reverb.ready();
-  Hooks.on("canvasReady", () => reverb.ready());
+  // Never return reverb.ready()'s answer: Foundry fires canvasReady with Hooks.call, which stops at a false, and
+  // it is false until audio is unlocked (right after a reload), so every later canvasReady listener was skipped.
+  Hooks.on("canvasReady", () => { reverb.ready(); });
   // Where this player hears walls from (none for a GM with no token selected: nothing muffled, as in Foundry).
   const soundEar = () => muffleEar({
     controlled: canvas.tokens?.controlled?.[0] ?? null,
@@ -3873,7 +4461,23 @@ Hooks.once("ready", () => {
     const vanish = effect?.data?.animaterVanish;
     if (!vanish?.tokenId || (effect.data.sceneId && effect.data.sceneId !== canvas?.scene?.id)) return;
     const ms = Math.min(30000, Number(vanish.ms) || 0), grace = Number(vanish.grace);
-    try { holdHidden(canvas.scene?.tokens?.get(vanish.tokenId)?.object, ms, { origin: vanish.from, ...(Number.isFinite(grace) ? { grace: Math.min(30000, Math.max(0, grace)) } : {}) }); }
+    const token = canvas.scene?.tokens?.get(vanish.tokenId)?.object;
+    // "Teleports dissolve": it goes in a Tokenshade dissolve matched to the spell (sparkles, embers, shadow, light)
+    // and forms again where it lands. Off, or token filters off here: the plain quick fade.
+    let away = null, look = null;
+    if (token && hotSetting("teleportDissolve") !== false && allowsTokenFx(localQuality())) {
+      look = teleportDissolve(vanish.element);
+      const preset = tokenFx.getPresets("tokenshade").find((p) => p.name === look.out);
+      if (preset) away = tokenFx.apply(token, preset, { speed: 2, blend: false });
+    }
+    const back = () => {
+      try { away?.(); } catch { /* already gone */ }
+      const preset = look && tokenFx.getPresets("tokenshade").find((p) => p.name === look.in);
+      if (!preset || token.destroyed) return;
+      const remove = tokenFx.apply(token, preset, { speed: 1.5, blend: false });
+      setTimeout(() => { try { remove(); } catch { /* gone with the canvas */ } }, 1400);
+    };
+    try { holdHidden(token, ms, { origin: vanish.from, ...(away ? { fadeMs: 900, onBack: back } : {}), ...(Number.isFinite(grace) ? { grace: Math.min(30000, Math.max(0, grace)) } : {}) }); }
     catch (error) { console.warn("Animater teleport:", error?.message ?? error); }
   });
   Hooks.on("createSequencerEffect", (effect) => {
@@ -3884,9 +4488,30 @@ Hooks.once("ready", () => {
       if (token) afterimages.streak(token.mesh, trail.tint, streakLayout(trail.from, trail.to));
     } catch (error) { console.warn("Animater afterimages:", error?.message ?? error); }
   });
-  motions = new TokenMotionPlayer({ beforeStart: (token) => conditionBody?.restore(token), grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100 }).start(...args) }, afterimages });
+  motions = new TokenMotionPlayer({ beforeStart: (token) => conditionBody?.restore(token), grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100,
+    // A fragments stage's Tokenshade look, by preset name (none while token filters are off on this screen).
+    tokenshade: (name) => (allowsTokenFx(localQuality()) ? tokenFx.getPresets("tokenshade").find((p) => p.name === name) ?? tokenFx.getPresets("tokenshade-custom").find((p) => p.name === name) ?? null : null) }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
-  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()) });
+  // Effects riding on a creature's body (a border, flames, a condition's loop) move with its bob, sway and tremble;
+  // those drawn under the tokens (auras, ground areas) stay on the floor. Shifted by their pivot, which Sequencer
+  // leaves alone as it follows the token.
+  const riding = new WeakMap();
+  const followBody = (token, dx, dy) => {
+    const sequencer = globalThis.Sequencer?.EffectManager;
+    if (!sequencer) return;
+    const time = performance.now();
+    let list = riding.get(token);
+    if (!list || time - list.at > 500) {
+      const effects = sequencer.getEffects({ object: token }) ?? [];
+      list = { at: time, effects: effects.filter((e) => e?.data?.attachTo?.active && !e.data.belowTokens && !e.data.animaterGround) };
+      riding.set(token, list);
+    }
+    for (const e of list.effects) {
+      if (e.destroyed || !e.pivot) continue;
+      e.pivot.set(-dx / (e.scale?.x || 1), -dy / (e.scale?.y || 1));
+    }
+  };
+  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
     strength: () => { try { return hotSetting("idleLifeStrength"); } catch { return 1; } },
@@ -3903,7 +4528,7 @@ Hooks.once("ready", () => {
   let idlePending = null;
   const scheduleIdle = () => { idlePending ??= setTimeout(() => { idlePending = null; try { idleLife.sync(); } catch (error) { console.warn("Animater idle life:", error?.message ?? error); } }, 150); };
   for (const hook of ["canvasReady", "canvasPan", "createToken", "updateToken", "deleteToken", "updateActor", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem", "sightRefresh", "clientSettingChanged", "updateSetting"])
-    Hooks.on(hook, scheduleIdle);
+    Hooks.on(hook, (...args) => { scheduleIdle(...args); });
   Hooks.on("canvasTearDown", () => { clearTimeout(idlePending); idlePending = null; idleLife.clear(); });
   // Wounded looks: every client reads the same HP and draws the look locally (a Tokenshade
   // look under its own key, beside any condition looks, and a hunch or limp through ConditionBody).
@@ -3919,7 +4544,7 @@ Hooks.once("ready", () => {
   let woundPending = null;
   const scheduleWounds = () => { woundPending ??= setTimeout(() => { woundPending = null; try { woundedLooks.sync(); } catch (error) { console.warn("Animater wounded looks:", error?.message ?? error); } }, 120); };
   for (const hook of ["canvasReady", "createToken", "deleteToken", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem", "sightRefresh", "clientSettingChanged", "updateSetting"])
-    Hooks.on(hook, scheduleWounds);
+    Hooks.on(hook, (...args) => { scheduleWounds(...args); });
   Hooks.on("updateActor", (actor, changes) => {
     const track = hpPath(actor, game.system.id).replace(/\.value$/, "");
     if (foundry.utils.hasProperty(changes, track)) scheduleWounds();
@@ -3965,9 +4590,9 @@ Hooks.once("ready", () => {
     if (user.id === game.user.id) syncPreviewTokens();
   });
   Hooks.on("updateToken", syncPreviewTokens);
-  Hooks.on("canvasReady", syncPreviewTokens);
+  Hooks.on("canvasReady", () => { syncPreviewTokens(); });
   const pruneFx=()=>void optionalFx.pruneExpired().catch(error=>console.warn('Animater FXMaster cleanup:',error.message));
-  Hooks.on('canvasReady',pruneFx);
+  Hooks.on('canvasReady',()=>{pruneFx();});
   setInterval(pruneFx,30000).unref?.();
   pruneFx();
   // Compile Tokenshade's shaders in the background once the scene has settled, so the
@@ -3992,7 +4617,7 @@ Hooks.once("ready", () => {
     warmTokenFx();
   };
   rewarmShaders=prepareShaders;
-  Hooks.on('canvasReady',prepareShaders);
+  Hooks.on('canvasReady',()=>{prepareShaders();});
   if(canvas?.ready)prepareShaders();
   runtime = new AnimaterRuntime({
     soundCatalog: () =>
@@ -4195,12 +4820,30 @@ Hooks.once("ready", () => {
       subtle: () => hotSetting(SUBTLE_LASTING) === true,
       auraCalm: () => auraCalm(hotSetting("aurasOutsideCombat"), game.combat),
       auraStyle: () => hotSetting("auraStyle"),
+      // "Conditions transition in": a condition that just landed plays its Tokenshade transition on this screen
+      // (Turn to stone, Sickness spreads…) and its lasting look waits that long. Returns the wait in ms, 0 for none.
+      conditionTransition: (item, token) => {
+        if (hotSetting("conditionTransitions") === false || !allowsTokenFx(localQuality()) || hotSetting("conditionLooks") === "jb2a") return 0;
+        const name = conditionTransition(item), preset = name && tokenFx.getPresets("tokenshade").find((p) => p.name === name);
+        if (!preset || !token?.mesh) return 0;
+        // As long as its slowest one-time animation takes.
+        const ms = Math.max(0, ...preset.params.flatMap((f) => Object.values(f.animated ?? {}).filter((a) => a.animType === "once").map((a) => (Number(a.loopDuration) || 0) + (Number(a.pauseBetweenDuration) || 0))));
+        if (!(ms > 0)) return 0;
+        const remove = tokenFx.apply(token, preset, { blend: false });
+        // Held a moment past its end while the lasting look fades in over it.
+        setTimeout(() => { try { remove(); } catch { /* gone with the canvas */ } }, ms + 500);
+        return ms;
+      },
       auraField: auraFields,
       recipes,
       // Your own lasting recipes follow the same switch as every other custom recipe.
       customEnabled: () => enabled(),
       // Filling AA's gaps: a condition or effect AA animates stays with AA.
       yields: (item) => (aaFillGaps() || taFillGaps()) && yieldsToAA({ type: "effect", item }),
+      // A state Animater already shows another way steps aside: a Light spell floating as an orb ("Light spells float
+      // as orbs") has no catalog marker under it as well.
+      valueLooks: () => { try { return hotSetting("conditionValueLooks") !== false; } catch { return true; } },
+      drawnElsewhere: (item, token) => { try { return orbsOn() && isOrbEffect(item?.name) && lightKindOf(token, token?.light?.data ?? {}) === "orb"; } catch { return false; } },
       catalog: () => runtime.getCatalog(),
       state: (kind) => hotSetting(game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
       visibility: () => ({ isGM: game.user.isGM, secretConditions: ['pf2e','sf2e'].includes(game.system.id)&&game.settings.get(game.system.id, "metagame_secretCondition") === true }),
@@ -4233,7 +4876,7 @@ Hooks.once("ready", () => {
       trace: (status, detail, recipe, meta) => runtime.trace(status, detail, recipe, meta),
     });
     for (const hook of ["createActiveEffect","updateActiveEffect","deleteActiveEffect","createItem", "updateItem", "deleteItem", "updateActor", "createToken", "deleteToken", "canvasReady", "updateWorldTime", "updateCombat", "deleteCombat", "updateUser", "controlToken"])
-      Hooks.on(hook, () => persistentStates.schedule());
+      Hooks.on(hook, () => { persistentStates.schedule(); });
     // Moving/resizing an ordinary token only changes its own attached looks.
     // The controlled observer can change everybody's perceived conditions.
     const scheduleTokenState = token => {
@@ -4301,6 +4944,29 @@ Hooks.once("ready", () => {
         return t ? movementPerception(t, t.document, canvas.level?.id) : null;
       },
       movementMarks: (id) => movementFeel.marksOf?.(id) ?? null,
+      // The Tokenshade looks on a token, by their key (region:, nature:, lit:, weather:, a lasting state's...).
+      tokenLooks: (token) => {
+        const t = typeof token === "string" ? canvas.tokens?.get(token) : token;
+        return [...new Set((t?.mesh?.filters ?? []).map((f) => f.fxKey).filter(Boolean).map((k) => k.replace(/:\d+$/, "")))];
+      },
+      // Flier shadows drawn over creatures, and the fire lights hazing the air now.
+      overShadows: () => feelOverRoot?.destroyed ? 0 : feelOverRoot?.children?.length ?? 0,
+      fireHazes: () => fireHazes.size,
+      smokePuffs: () => fireSmoke.size,
+      heldTorches: () => heldTorches.size,
+      lightOrbs: () => lightOrbs.size,
+      heldLanterns: () => heldLanterns.size,
+      sustainThreads: () => sustainThreads.size,
+      // This screen's lasting state records: whether each is drawn, and whether Sequencer still has it.
+      lastingStates: () => [...(persistentStates?.active?.values() ?? [])].map((r) => ({ name: r.name, recipe: r.recipe?.name, token: r.token?.id, drawn: r.drawn === true, fade: r.fade, quiet: r.quiet, cancelled: r.cancelled, alive: Sequencer.EffectManager.getEffects({ name: r.name }).length > 0 })),
+      // The floor Animater's movement effects use at a point (scene, region, rain and spell marks).
+      floorAt: (point, token) => movementFeelFloor(point, token?.document ?? token),
+      // Lands one ground mark on this screen only (a live check of marks as floors): element as damage types are.
+      landMark: (center, element, radius = 100) => {
+        const tag = areaMark({ type: "circle", center, diameter: radius * 2 }, { element, sceneId: canvas.scene?.id, level: canvas.level?.id, seed: Date.now() });
+        if (tag) markLayer.land(tag);
+        return tag;
+      },
     },
     // GM only: share codes (one or several, or a list of them), export JSON, an export object or a recipe array,
     // checked and merged by id like the Import box. Returns { added, replaced, skipped }.
@@ -4571,7 +5237,7 @@ Hooks.once("ready", () => {
   const lensHp = new Map();
   const lensKeep = (actor) => { const s = actor?.uuid ? hpOf(actor) : null; if (s) lensHp.set(actor.uuid, s); };
   const lensFill = () => { lensHp.clear(); for (const t of canvas.tokens?.placeables ?? []) lensKeep(t.actor); };
-  Hooks.on("canvasReady", lensFill);
+  Hooks.on("canvasReady", () => { lensFill(); });
   if (canvas?.ready) lensFill();
   Hooks.on("createToken", (doc) => lensKeep(doc.actor));
   // Splatter's blood (its colour, and whether it bleeds at all) when it is active, else Animater's own rules.
@@ -4740,7 +5406,7 @@ Hooks.once("ready", () => {
   };
   const lensRefresh = () => { try { lensWound(); } catch (error) { runtime.trace("Blocked", `Wounded view: ${error.message}`); } try { lensLinger(); } catch { /* next change */ } };
   woundRefresh = lensRefresh;
-  for (const hook of ["combatStart", "updateCombat", "deleteCombat", "controlToken", "canvasReady"]) Hooks.on(hook, lensRefresh);
+  for (const hook of ["combatStart", "updateCombat", "deleteCombat", "controlToken", "canvasReady"]) Hooks.on(hook, (...args) => { lensRefresh(...args); });
   // Conditions and statuses (dying, unconscious, stable, dead) come as effects, or items in PF2e: a change to the
   // player's own creature refreshes the view (once, a moment later, for a batch of them).
   let woundSoon = null;

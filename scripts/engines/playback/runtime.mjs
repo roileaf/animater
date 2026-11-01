@@ -3,6 +3,7 @@ import { ID, DEFAULT_RECIPE_COLOR, matchRecipe, planRecipe, resolveAsset, valida
 import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
 import { applyEffectOptions, applyMediaOptions, cropAreaArt, normalizeOptions } from "../../core/stage-options.mjs";
+import { groundTag } from "./aura-fields.mjs";
 import { tokenFootprint, effectFootprint, artworkSize, offsetInGridSquares, beamGeometry } from "../media/media-preview.mjs";
 // A mask (a polygon, a { points } shape, or a list of them) grown by k around a point.
 function scaleMask(mask, at, k) {
@@ -530,7 +531,11 @@ export class AnimaterRuntime {
         const animaterShake = shakes?.get(s) ?? null;
         // ...and tints the screen from this one (engines/camera/screen-tint.mjs).
         const animaterTint = tints?.get(s) ?? null;
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}) }));
+        // ...and draws a round area as a Tokenshade ground field from this one (playback/aura-fields.mjs groundTag).
+        const animaterGround = groundTag(s, context, recipe);
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}), ...(animaterGround ? { animaterGround } : {}) }));
+        // Its footage still runs the clock (when the area shows and ends), unseen: the shader draws the area.
+        if (animaterGround) e.opacity(0);
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);

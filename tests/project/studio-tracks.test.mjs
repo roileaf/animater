@@ -24,28 +24,28 @@ function studioFor(recipe) {
 }
 const trackNames = (html) => [...html.matchAll(/<div class="an-st-track[^"]*" data-st-track="(\w+)"><div class="an-st-head"><span class="an-st-head-icon">[^<]*<\/span><b>([^<]*)<\/b>/g)].map((m) => [m[1], m[2]]);
 
-test("a finisher shows Token motion, Target, Sound, Filters & scene; Source and Flight are hidden", () => {
+test("a finisher shows Token motion, Target, Sound, Tokenshade, Scene & overlays; Source and Flight are hidden", () => {
   const r = finisher([stage("a", "impact")]);
-  assert.deepEqual(ids(r), ["motion", "target", "sound", "fx"]);
+  assert.deepEqual(ids(r), ["motion", "target", "sound", "tokenshade", "fx"]);
   assert.equal(studioTracks(r).hiddenCount, 2);
 });
 
 test("the More tracks toggle shows the hidden tracks after the others", () => {
   const r = finisher([stage("a", "impact")]);
-  assert.deepEqual(ids(r, { more: true }), ["motion", "target", "sound", "fx", "caster", "flight"]);
+  assert.deepEqual(ids(r, { more: true }), ["motion", "target", "sound", "tokenshade", "fx", "caster", "flight"]);
 });
 
 test("a hidden track that has stages always shows", () => {
   const r = finisher([stage("a", "impact"), stage("b", "projectile")]);
-  assert.deepEqual(ids(r), ["motion", "target", "sound", "fx", "flight"]);
+  assert.deepEqual(ids(r), ["motion", "target", "sound", "tokenshade", "fx", "flight"]);
   assert.equal(studioTracks(r).hiddenCount, 1, "only Source is still tucked away");
   const c = finisher([stage("a", "cast")]);
   assert.ok(ids(c).includes("caster"));
 });
 
-test("a normal recipe keeps all six tracks in today's order, with no More row", () => {
+test("a normal recipe keeps all its tracks in order, with no More row", () => {
   const r = { stages: [stage("a", "impact")] };
-  assert.deepEqual(ids(r), ["caster", "flight", "target", "motion", "sound", "fx"]);
+  assert.deepEqual(ids(r), ["caster", "flight", "target", "motion", "sound", "tokenshade", "fx"]);
   assert.equal(studioTracks(r).hiddenCount, 0);
   const html = studioHTML(studioFor({ ...validateRecipe({ id: "n", name: "N", trigger: "manual", stages: [stage("a", "impact")] }) }), r);
   assert.doesNotMatch(html, /studio-more/);
@@ -59,12 +59,12 @@ test("studio HTML for a finisher: new order, More tracks row, aria and tooltip",
   const p = practiceFinisher("flying");
   const w = studioFor(p);
   let html = studioHTML(w, p);
-  assert.deepEqual(trackNames(html).map((t) => t[0]), ["motion", "target", "sound", "fx"]);
+  assert.deepEqual(trackNames(html).map((t) => t[0]), ["motion", "target", "sound", "tokenshade", "fx"]);
   assert.match(html, /<button[^>]*data-action="studio-more"[^>]*aria-expanded="false"[^>]*>\+ More tracks/);
   assert.match(html, /data-action="studio-more"[^>]*data-tooltip="/);
   w.studioMoreTracks = true;
   html = studioHTML(w, p);
-  assert.deepEqual(trackNames(html), [["motion", "Token motion"], ["target", "Target"], ["sound", "Sound"], ["fx", "Filters &amp; scene"], ["caster", "Source"], ["flight", "Flight"]]);
+  assert.deepEqual(trackNames(html), [["motion", "Token motion"], ["target", "Target"], ["sound", "Sound"], ["tokenshade", "Tokenshade"], ["fx", "Scene &amp; overlays"], ["caster", "Source"], ["flight", "Flight"]]);
   assert.match(html, /aria-expanded="true"[^>]*>− Fewer tracks/);
 });
 

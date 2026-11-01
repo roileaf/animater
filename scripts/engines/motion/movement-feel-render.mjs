@@ -35,6 +35,15 @@ const TRAMPLED = [[-0.4, -0.3, 0.6, 0.1, 0], [0.1, 0.25, 0.7, -0.15, 0], [0.4, -
 const SHAPES = {
   ring(g, spec) { g.lineStyle(DRAW * 0.05, spec.color, 1); g.drawCircle(0, 0, R); },
   puff(g, spec) { drawSoftDisc(g, spec.color, 3); },
+  // Smoke: many faint rings with a square-root falloff, so the puff has a feathered edge and no visible bands.
+  smoke(g, spec) {
+    // Seven rings look the same as twelve at smoke's size and alpha, at little more than half the drawing.
+    for (let i = 7; i >= 1; i--) {
+      g.beginFill(spec.color, 1 / 7);
+      g.drawCircle(0, 0, (DRAW / 2) * Math.sqrt(i / 7));
+      g.endFill();
+    }
+  },
   drop(g, spec) { drawSoftDisc(g, spec.color, 3); },
   scuff(g, spec) { drawSoftDisc(g, spec.color, 2); },
   // A hard grit chip: an uneven four-sided stone.
@@ -215,12 +224,45 @@ const PRINTS = {
   },
 };
 
-export function createMovementFeelLayer({ PIXI, root }) {
+export function createMovementFeelLayer({ PIXI, root, overRoot = null }) {
   const live = new Set();
-  const add = (g) => { g.eventMode = 'none'; root().addChild(g); live.add(g); return g; };
+  const add = (g, to = root) => { g.eventMode = 'none'; to().addChild(g); live.add(g); return g; };
+  const shadowEllipse = () => {
+    const g = new PIXI.Graphics();
+    // Many faint rings stack into a smooth falloff (dense heart, feathered rim) with no visible bands.
+    for (let i = SHADOW_RINGS; i >= 1; i--) {
+      const r = (DRAW / 2) * (0.2 + 0.8 * Math.sqrt(i / SHADOW_RINGS));
+      g.beginFill(0x000000, 0.1);
+      g.drawEllipse(0, 0, r, r);
+      g.endFill();
+    }
+    return g;
+  };
   const remove = (g) => { live.delete(g); try { g.destroy(); } catch { /* already gone */ } };
+  // Smoke: one soft white disc drawn once into a texture, every puff a sprite of it tinted grey, so hundreds of puffs
+  // batch into a single draw (each its own vector shape cost over a millisecond a frame at a busy table).
+  let softDisc = null;
+  const softDiscTexture = () => {
+    if (softDisc && !softDisc.baseTexture?.destroyed) return softDisc;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = DRAW;
+    const ctx = canvas.getContext('2d'), grad = ctx.createRadialGradient(DRAW / 2, DRAW / 2, 0, DRAW / 2, DRAW / 2, DRAW / 2);
+    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.45, 'rgba(255,255,255,0.75)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, DRAW, DRAW);
+    return (softDisc = PIXI.Texture.from(canvas));
+  };
   return {
     addParticle(spec) {
+      if (spec.kind === 'smoke' && typeof PIXI.Sprite === 'function' && typeof document !== 'undefined') {
+        const sp = new PIXI.Sprite(softDiscTexture());
+        sp.anchor.set(0.5);
+        sp.tint = spec.color;
+        sp.position.set(spec.x, spec.y);
+        sp.rotation = spec.rotation ?? 0;
+        sp.alpha = 0;
+        sp.__animaterRadius = spec.radius;
+        return add(sp);
+      }
       const g = new PIXI.Graphics();
       (SHAPES[spec.kind] ?? SHAPES.puff)(g, spec);
       g.position.set(spec.x, spec.y);
@@ -239,14 +281,7 @@ export function createMovementFeelLayer({ PIXI, root }) {
     },
     removeParticle: remove,
     addShadow() {
-      const g = new PIXI.Graphics();
-      // Many faint rings stack into a smooth falloff (dense heart, feathered rim) with no visible bands.
-      for (let i = SHADOW_RINGS; i >= 1; i--) {
-        const r = (DRAW / 2) * (0.2 + 0.8 * Math.sqrt(i / SHADOW_RINGS));
-        g.beginFill(0x000000, 0.1);
-        g.drawEllipse(0, 0, r, r);
-        g.endFill();
-      }
+      const g = shadowEllipse();
       g.alpha = 0;
       return add(g);
     },
@@ -257,6 +292,30 @@ export function createMovementFeelLayer({ PIXI, root }) {
       g.alpha = geom.alpha;
     },
     removeShadow: remove,
+    // A flier's shadow over the creatures below: the same ellipse above the tokens, cut to the creatures' squares
+    // (rounded, as most token art is), so only their art darkens and the floor keeps its one shadow.
+    ...(overRoot ? {
+      addOverShadow() {
+        const box = new PIXI.Container(), g = shadowEllipse(), mask = new PIXI.Graphics();
+        box.addChild(g, mask);
+        g.mask = mask;
+        box.__animaterShadow = g; box.__animaterMask = mask;
+        box.alpha = 0;
+        return add(box, overRoot);
+      },
+      updateOverShadow(box, geom, covers) {
+        if (box.destroyed) return;
+        const g = box.__animaterShadow, mask = box.__animaterMask;
+        g.position.set(geom.x, geom.y);
+        g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
+        box.alpha = geom.alpha;
+        mask.clear();
+        mask.beginFill(0xffffff, 1);
+        for (const t of covers) { const w = t.width * 0.9; mask.drawRoundedRect(t.x - w / 2, t.y - w / 2, w, w, w * 0.3); }
+        mask.endFill();
+      },
+      removeOverShadow: remove,
+    } : {}),
     clear() { for (const g of [...live]) remove(g); },
   };
 }

@@ -72,8 +72,9 @@ export function bodyPose(kind, t, strength = 1, { period } = {}) {
 
 
 export class ConditionBody {
-  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true } = {}) {
-    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled });
+  // `follow(token, dx, dy)`: the body moved this far from its place (0, 0 when it is back), for what rides on it.
+  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true, follow = () => {} } = {}) {
+    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled, follow });
     this.records = new Map();
     // One pose per token: several conditions (PF2e Dying brings Unconscious) must not
     // each treat the other's offset as the natural pose, or the deltas compound
@@ -137,6 +138,7 @@ export class ConditionBody {
     }
     if (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) mesh.rotation = a.baseR;
     if (mesh.scale.y === a.setSY) mesh.scale.y = a.baseSY;
+    try { this.follow(token, 0, 0); } catch { /* optional */ }
   }
   tick() {
     this.handle = null;
@@ -179,6 +181,7 @@ export class ConditionBody {
       mesh.position.y = baseY + (pose.y ?? 0) * w;
       mesh.rotation = baseR + ((pose.r ?? 0) * Math.PI) / 180;
       mesh.scale.y = baseSY * (pose.sy ?? 1);
+      try { this.follow(token, mesh.position.x - baseX, mesh.position.y - baseY); } catch { /* optional */ }
       this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone',docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y });
     }
     if (this.records.size) this.handle = this.frame(() => this.tick());

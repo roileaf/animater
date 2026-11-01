@@ -30,7 +30,8 @@ export function fragmentsPreviewSVG(stage, at) {
 }
 
 // Only the fields that change the chosen pattern and cut are shown; the hold hint is for finishers.
-export function fragmentsControlsHTML(stage, index, previewAt = 0.6, { finisher = false } = {}) {
+// `looks`: Tokenshade token preset names to offer for the pieces' look.
+export function fragmentsControlsHTML(stage, index, previewAt = 0.6, { finisher = false, looks = [] } = {}) {
   // Behaviour and tint are set outright: a stage's generic colour `tint` is not a fragments tint.
   const n = normalizeFragments(stage), s = { ...stage, ...n, behavior: n.behavior ?? "burst", tint: n.tint ?? "none" };
   const field = (key, label, min, max, step) => `<label>${label}<input type="number" min="${min}" max="${max}" step="${step}" data-field="${key}" data-index="${index}" value="${s[key]}"></label>`;
@@ -41,6 +42,7 @@ export function fragmentsControlsHTML(stage, index, previewAt = 0.6, { finisher 
   return `<div class="an-editor-section an-fragments"><div class="an-section-title"><b>Token fragments</b><small>The real token disappears as the pieces fly</small></div>
     <div class="an-field-row">${select("pattern", "Pattern", FRAGMENT_PATTERNS)}${select("cut", "Cut", { attack: "Follow the attack", fixed: "Fixed angle" })}${s.cut === "fixed" ? field("angle", "Angle°", 0, 180, 5) : ""}</div>
     <div class="an-field-row">${select("behavior", "Behaviour", FRAGMENT_BEHAVIORS)}${select("tint", "Tint", FRAGMENT_TINTS)}</div>
+    ${looks.length ? `<div class="an-field-row"><label>Tokenshade look<select data-field="fragmentFx" data-index="${index}"><option value="">None</option>${looks.map((n) => `<option value="${esc(n)}" ${s.fragmentFx === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label></div>` : ""}
     <div class="an-field-row">${lo === hi ? "" : field("pieces", PIECES_LABEL[s.pattern] ?? "Pieces", lo, hi, 1)}${field("spread", "Spread (sq)", 0, 3, 0.1)}${field("spin", "Spin°", 0, 720, 5)}</div>
     <div class="an-field-row">${field("fall", "Fall", 0, 1, 0.05)}${field("drift", "Drift", 0, 1, 0.05)}${ownFade ? "" : field("fade", "Fade (ms)", 100, 3000, 50)}</div>
     ${hint ? `<p class="an-hint" data-behavior-hint>${hint}</p>` : ""}

@@ -28,8 +28,15 @@ export function shaderSource(spec) {
       ...Object.keys(spec.textures ?? {}).flatMap(name => [`uniform sampler2D ${name};`, `uniform vec2 ${name}Size;`]),
     ].join('\n');
     const body = spec.glsl.replace(/\bvoid main\(\)/, 'void fxMain()');
+    // uFxMix blends the effect with the untouched art (engine.mjs fades effects in and out, and crossfades a look
+    // that changes); at 1 the effect is drawn as it is.
     sources.set(spec.type, fragment(decls, `${REACH}\n${spec.field ? FIELD_SAMPLER : ''}\n${body}
-void main() { if (fxBeyondReach(0.0)) { gl_FragColor = fxSample(vTextureCoord); return; } fxMain(); }`));
+uniform float uFxMix;
+void main() {
+  if (fxBeyondReach(0.0)) { gl_FragColor = fxSample(vTextureCoord); return; }
+  fxMain();
+  if (uFxMix < 0.999) gl_FragColor = mix(fxSample(vTextureCoord), gl_FragColor, clamp(uFxMix, 0.0, 1.0));
+}`));
     // A margin of two coarsest texels keeps filtering at the edge of the reach unchanged.
     // phases: 2 averages two ring rotations half a turn of the dither apart, for sparse
     // wide rings: the mean the per-pixel dither gave the eye, without its grain turning
@@ -80,7 +87,7 @@ export function fxFilterClass(PIXI) {
         uScreenToArt: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
         uArtToScreen: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
         uArtSize: new Float32Array([100, 100]), uTokenSize: new Float32Array([100, 100]),
-        uReach: new Float32Array([-1e9, -1e9, 1e9, 1e9]),
+        uReach: new Float32Array([-1e9, -1e9, 1e9, 1e9]), uFxMix: 1,
       };
       for (const [name, [kind]] of Object.entries(spec.uniforms ?? {}))
         uniforms[name] = kind === 'vec2' ? new Float32Array(2) : kind === 'vec3' ? new Float32Array(3) : kind === 'vec4' ? new Float32Array(4) : 0;
@@ -124,9 +131,13 @@ export function fxFilterClass(PIXI) {
       const t = this.tokenSize, a = this.uniforms.uArtSize;
       return { width: t?.width ?? a[0], height: t?.height ?? a[1], size: Math.max(t?.width ?? a[0], t?.height ?? a[1]) };
     }
-    // Advance animations to `local` ms since the effect began and `world` ms (shared clock).
-    update(local, world) {
-      this.animations.sample(this.current, { local, world, key: this.fxKey });
+    // Advance animations to `local` ms since the effect began and `world` ms (shared clock); `drive`: the
+    // creature's live values (animation.mjs DRIVE_SOURCES) for animations that follow the game.
+    update(local, world, drive = null) {
+      this.animations.sample(this.current, { local, world, key: this.fxKey, drive });
+      // How much of the effect shows: its own strength (fxMix, for a filter with no strength setting) times the
+      // engine's fade in and out (fxBlend).
+      this.uniforms.uFxMix = (Number.isFinite(this.base.fxMix) ? this.base.fxMix : 1) * (Number.isFinite(this.fxBlend) ? this.fxBlend : 1);
       this.writeUniforms();
     }
     writeUniforms() {

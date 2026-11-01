@@ -108,3 +108,13 @@ test("the mini preview squashes flatten pieces wide and flat", () => {
   assert.match(fragmentsPreviewSVG({ ...s, pattern: "crush", behavior: "flatten" }, 1), /scale\(1\.150 0\.350\)/);
   assert.doesNotMatch(fragmentsPreviewSVG({ ...s, pattern: "lightning" }, 0.6), /scale\(|NaN/);
 });
+
+test("a fragments stage can carry a Tokenshade look for its pieces, chosen from the token presets", async () => {
+  const { normalizeFragments } = await import("../../scripts/engines/fragments/fragments.mjs");
+  assert.equal(normalizeFragments({ pattern: "dust", fragmentFx: "Burn away" }).fragmentFx, "Burn away");
+  assert.equal(normalizeFragments({ pattern: "dust" }).fragmentFx, undefined, "none is the unset default");
+  const html = fragmentsControlsHTML({ ...s, fragmentFx: "Shatter" }, 0, 0.6, { looks: ["Burn away", "Shatter"] });
+  assert.match(html, /<select data-field="fragmentFx" data-index="0">/);
+  assert.match(html, /<option value="Shatter" selected>/);
+  assert.doesNotMatch(fragmentsControlsHTML(s, 0), /fragmentFx/, "no presets to offer: no field");
+});

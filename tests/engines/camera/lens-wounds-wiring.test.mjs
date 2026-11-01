@@ -46,7 +46,7 @@ test('the player\'s own creature drives it: HP and conditions refresh it, a hit 
   assert.match(main, /dying: \{ value: Number\(attr\.dying\?\.value \?\? dyingItem\?\.value \?\? 0\) \|\| 0, max: Number\(attr\.dying\?\.max\) \|\| 4 \}/);
   assert.match(main, /death: \{ success: Number\(attr\.death\?\.success\) \|\| 0, failure: Number\(attr\.death\?\.failure\) \|\| 0 \}/);
   for (const hook of ['createActiveEffect', 'updateActiveEffect', 'deleteActiveEffect', 'createItem', 'updateItem', 'deleteItem']) assert.ok(main.includes(`"${hook}"`), hook);
-  assert.match(main, /for \(const hook of \["combatStart", "updateCombat", "deleteCombat", "controlToken", "canvasReady"\]\) Hooks\.on\(hook, lensRefresh\);/);
+  assert.match(main, /for \(const hook of \["combatStart", "updateCombat", "deleteCombat", "controlToken", "canvasReady"\]\) Hooks\.on\(hook, \(\.\.\.args\) => \{ lensRefresh\(\.\.\.args\); \}\);/);
   assert.match(main, /if \(role === "victim" && splash && lensMine\(\)\?\.actor === actor\) woundHit\(splash\);/);
   // The red edges beat with the lingering heartbeat; the down beat is uneven; death lets the heartbeat go.
   assert.match(main, /if \(!down && woundPulse > 0\) lensBlood\.pulse\(woundPulse\);/);

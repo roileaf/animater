@@ -577,3 +577,35 @@ test('reuse timers (Treat Wounds, Battle Medicine immunity) show nothing unless 
  assert.equal(f.manager.active.size,1,'picked in the effects catalog: it shows');
  await f.manager.destroy();
 });
+test('a condition that just landed plays its transition first, then its lasting look; never on a reload', async () => {
+ const { conditionTransition } = await import('../../../scripts/catalogs/shared/condition-looks.mjs');
+ const { freshlyApplied } = await import('../../../scripts/engines/playback/persistent-states.mjs');
+ assert.equal(conditionTransition({ slug: 'petrified' }), 'Turn to stone');
+ assert.equal(conditionTransition({ slug: 'persistent-damage', system: { persistent: { damageType: 'poison' } } }), 'Poison spreads');
+ assert.equal(conditionTransition({ slug: 'frightened' }), null);
+ assert.equal(freshlyApplied({ _stats: { createdTime: 1000 } }, 2000), true);
+ assert.equal(freshlyApplied({ _stats: { createdTime: 1000 } }, 600000), false, 'long on: a reload');
+ assert.equal(freshlyApplied({}, 2000), false, 'no timestamp never counts as fresh');
+ const intros = [];
+ const f = fixture([{ ...native(bless), _stats: { createdTime: Date.now() } }]);
+ f.manager.host.conditionTransition = (item) => { intros.push(item.name); return 1; };
+ await f.manager.reconcile(); await flush(); await new Promise((r) => setTimeout(r, 20)); await flush();
+ assert.equal(intros.length, 1, 'asked once as it lands');
+ await f.manager.destroy();
+});
+test('a state Animater already shows another way (a Light spell floating as an orb) steps aside, and returns when that stops',async()=>{
+ const f=fixture();let elsewhere=true;
+ f.manager.host.drawnElsewhere=(item,token)=>elsewhere&&token===f.token;
+ await f.manager.reconcile();await flush();
+ assert.equal(f.manager.active.size,0,'no catalog look under the orb');
+ elsewhere=false;await f.manager.reconcile();await flush();
+ assert.equal(f.manager.active.size,1,'the catalog look comes back');
+ await f.manager.destroy();
+});
+test('D&D Exhaustion grows step by step from its level on the actor; other effects have no level',async()=>{
+ const {conditionLevel}=await import('../../../scripts/engines/playback/persistent-states.mjs');
+ const exhaustion=(level)=>({documentName:'ActiveEffect',name:'Exhaustion',statuses:new Set(['exhaustion']),parent:{system:{attributes:{exhaustion:level}}}});
+ assert.deepEqual([1,2,3,4,5,6].map((l)=>conditionLevel(exhaustion(l))),[1,2,2,3,4,4]);
+ assert.equal(conditionLevel(exhaustion(0)),0);
+ assert.equal(conditionLevel({documentName:'ActiveEffect',name:'Bless',statuses:new Set()}),0);
+});

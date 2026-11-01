@@ -78,7 +78,7 @@ test('teleport tags its arrival with the trail', async () => {
   const host = (out) => ({ wait: async () => {}, move: async () => {}, effect: (asset, point, size, tint, data = null) => out.push([asset, data]) });
   await playTeleport({ mover, x: 400, y: 0, visuals: { out: 'custom.out', in: 'custom.in', scale: 1, tint: '#aa33ff' }, element: 'fire' }, host(effects));
   assert.deepEqual(effects, [
-    ['custom.out', { animaterVanish: { tokenId: 'tok', ms: 700 } }],
+    ['custom.out', { animaterVanish: { tokenId: 'tok', ms: 700, element: 'fire' } }],
     ['custom.in', { animaterTrail: { from: { x: 50, y: 50 }, to: { x: 450, y: 50 }, tint: '#aa33ff', tokenId: 'tok' } }],
   ], 'only the arrival carries it, tinted like that effect');
   const tintOf = async (visuals, element) => { const out = []; await playTeleport({ mover, x: 0, y: 0, visuals: { out: null, scale: 1, tint: '', ...visuals }, element }, host(out)); return out[0][1].animaterTrail.tint; };
@@ -148,4 +148,27 @@ test('teleport tags out and in with a warp; style none tags nothing', async () =
   delete mover.document.level;
   const off = await run({ out: 'custom.out', in: 'custom.in' }, { mapDistortion: () => false });
   assert.deepEqual(off.map(([, d]) => !!d?.animaterWarp), [false, false], 'the world setting turns it off');
+});
+
+test('a teleport dissolves in a look matched to its element, and holdHidden waits for it and says when the token is back', async () => {
+  const { teleportDissolve, holdHidden } = await import('../../../scripts/engines/motion/teleport.mjs');
+  assert.deepEqual(teleportDissolve('fire'), { out: 'Burn away', in: 'Rise from the ashes' });
+  assert.deepEqual(teleportDissolve('void'), { out: 'Fade into shadow', in: 'Rise from shadow' });
+  assert.deepEqual(teleportDissolve(undefined), { out: 'Sparkle away', in: 'Form from sparkles' });
+  let t = 0, back = 0; const frames = [];
+  const token = { mesh: { alpha: 1 }, document: { x: 0, y: 0 }, renderFlags: { set() {} } };
+  holdHidden(token, 2000, { now: () => t, frame: (f) => frames.push(f), cancel() {}, fadeMs: 900, onBack: () => back++ });
+  t = 450; frames.shift()(); assert.ok(Math.abs(token.mesh.alpha - 0.5) < 1e-9, 'half gone while the dissolve plays');
+  token.document.x = 300; frames.shift()(); assert.equal(back, 1); assert.equal(token.mesh.alpha, 1);
+});
+test('a new creature forms in a look matched to what it is; only summoned ones unless set to every new token', async () => {
+  const { arrivalDissolve, shouldFormIn } = await import('../../../scripts/engines/motion/teleport.mjs');
+  assert.equal(arrivalDissolve(['fiend']), 'Rise from shadow');
+  assert.equal(arrivalDissolve(['celestial']), 'Step out of light');
+  assert.equal(arrivalDissolve(['elemental', 'fire']), 'Rise from the ashes');
+  assert.equal(arrivalDissolve(['animal']), 'Form from sparkles');
+  assert.equal(shouldFormIn('summons', { summoned: true }), true);
+  assert.equal(shouldFormIn('summons', { summoned: false }), false, 'a creature the GM places is not summoned');
+  assert.equal(shouldFormIn('all', {}), true);
+  assert.equal(shouldFormIn('off', { summoned: true }), false);
 });

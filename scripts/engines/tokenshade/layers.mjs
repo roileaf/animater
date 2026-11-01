@@ -3,7 +3,7 @@
 // data can never reach a shader malformed or unbounded.
 import { specFor } from './filters/index.mjs';
 import { isColorArray } from './filters/util.mjs';
-import { ANIM_TYPES } from './animation.mjs';
+import { ANIM_TYPES, DRIVE_SOURCES } from './animation.mjs';
 
 export const MAX_LAYERS = 8;
 const ANIM_SET = new Set(ANIM_TYPES);
@@ -29,6 +29,7 @@ function cleanAnim(spec) {
     if (v !== undefined) out[k] = v;
   }
   for (const k of ['active', 'clockWise', 'wantInteger']) if (typeof spec[k] === 'boolean') out[k] = spec[k];
+  if (Object.hasOwn(DRIVE_SOURCES, spec.source)) out.source = spec.source;
   return out;
 }
 export function normalizeLayer(layer) {

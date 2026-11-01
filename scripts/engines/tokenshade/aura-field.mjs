@@ -7,6 +7,8 @@ import { NOISE, COLOR } from './glsl.mjs';
 // Motifs, by id. Each is a way of drawing the band at the edge of the reach.
 export const AURA_MOTIFS = Object.freeze({
   dashes: 1, runes: 2, hexes: 3, flame: 4, frost: 5, wind: 6, vines: 7, sparks: 8, ripples: 9, shadow: 10, radiance: 11, storm: 12, notes: 13, skulls: 14, hearts: 15, eyes: 16, blades: 17, drops: 18,
+  // Ground patterns across the whole area: a sigil drawn stroke by stroke, cracks opening, rime, smouldering ground.
+  sigil: 19, cracks: 20, rime: 21, smoulder: 22,
 });
 export const AURA_MOTIF_NAMES = Object.freeze(Object.fromEntries(Object.entries(AURA_MOTIFS).map(([k, v]) => [v, k])));
 
@@ -218,8 +220,55 @@ void main() {
   }
   band *= step(-px, e);
 
-  vec3 rgb = col * edge * uStrength.x + bandCol * band * uStrength.y + col * wash * uStrength.z;
-  a = clamp(edge * uStrength.x + band * uStrength.y + wash * uStrength.z, 0.0, 1.0) * uAlpha;
+  // Ground patterns: drawn across the whole area, not only its edge band (they suit a spell's area best).
+  float fill = 0.0;
+  vec3 fillCol = col;
+  float inside = step(0.0, e0) * smoothstep(uInner * 0.9, uInner * 1.3, d);
+  if (uMotif == 19) {
+    // Sigil: a circle and a five-pointed star drawn stroke by stroke over four seconds, then held, pulsing gently.
+    float drawn = clamp(t * 0.25, 0.0, 1.0), w = 1.4 * px + R * 0.004, rr = R * 0.82;
+    float circle = line(d - rr, w) * step(fract(ang / TAU + 0.25), drawn);
+    float star = 0.0;
+    for (int i = 0; i < 5; i++) {
+      float fi = float(i);
+      vec2 a0 = vec2(cos(fi * 2.0 * TAU / 5.0 - PI * 0.5), sin(fi * 2.0 * TAU / 5.0 - PI * 0.5)) * rr;
+      vec2 a1 = vec2(cos((fi + 1.0) * 2.0 * TAU / 5.0 - PI * 0.5), sin((fi + 1.0) * 2.0 * TAU / 5.0 - PI * 0.5)) * rr;
+      vec2 ab = a1 - a0; float h = clamp(dot(p - a0, ab) / dot(ab, ab), 0.0, 1.0);
+      // Each stroke draws in its turn, from one point to the next.
+      float upTo = clamp(drawn * 5.0 - fi, 0.0, 1.0);
+      star = max(star, line(length(p - a0 - ab * h), w) * step(h, upTo));
+    }
+    fill = (circle + star) * (0.75 + 0.25 * sin(t * 1.6));
+    fillCol = mix(col, vec3(1.0), 0.3);
+  } else if (uMotif == 20) {
+    // Cracks: splitting the ground from the middle outward over about six seconds, glowing where they open.
+    float reach = clamp(t * 0.16, 0.0, 1.0) * R;
+    vec3 c = cells(p / (R * 0.16), 0.0);
+    float crack = smoothstep(0.06, 0.0, c.y - c.x) * step(0.4, hash21(floor(p / (R * 0.16)) + c.z));
+    float open = smoothstep(reach, reach - R * 0.08, d + gnoise(p / (R * 0.1)) * R * 0.05);
+    float tip = smoothstep(R * 0.06, 0.0, abs(d - reach)) * step(d, R);
+    fill = crack * open * inside;
+    fillCol = mix(col * 0.3, mix(col, vec3(1.0, 0.85, 0.6), 0.5), tip + 0.3);
+  } else if (uMotif == 21) {
+    // Rime: frost crystals across the ground, glinting.
+    vec2 q = p / (R * 0.12);
+    float frost = smoothstep(0.5, 0.75, fbm(q) + 0.5) * 0.55 + smoothstep(0.92, 1.0, ridged(q * 2.0)) * 0.5;
+    float glint = smoothstep(0.96, 1.0, hash21(floor(q * 6.0))) * (0.5 + 0.5 * sin(t * 3.0 + hash21(floor(q * 6.0)) * TAU));
+    fill = (frost + glint) * inside;
+    fillCol = mix(col, vec3(0.92, 0.97, 1.0), 0.5 + 0.4 * glint);
+  } else if (uMotif == 22) {
+    // Smoulder: dark ash patches with embers glowing in their seams, breathing.
+    vec2 q = p / (R * 0.14);
+    vec3 c = cells(q, t * 0.1);
+    float ash = smoothstep(0.45, 0.8, fbm(q * 0.6) + 0.5);
+    float seam = smoothstep(0.08, 0.0, c.y - c.x);
+    float breathe = 0.6 + 0.4 * sin(t * 1.3 + c.z * TAU);
+    fill = (ash * 0.45 + seam * breathe) * inside;
+    fillCol = mix(col * 0.12, heatRamp(col, 0.75 * breathe), seam);
+  }
+
+  vec3 rgb = col * edge * uStrength.x + bandCol * band * uStrength.y + col * wash * uStrength.z + fillCol * fill * uStrength.y;
+  a = clamp(edge * uStrength.x + band * uStrength.y + wash * uStrength.z + fill * uStrength.y, 0.0, 1.0) * uAlpha;
   // Premultiplied out; shadow darkens what it covers.
   gl_FragColor = vec4(rgb * uAlpha, a);
 }`;

@@ -502,7 +502,7 @@ test('footstepVolume: quiet, wet floors louder, bigger creatures heavier', () =>
   assert.ok(footstepVolume('stone', { squares: 100 }) <= 0.17 * 2.2, 'a Gargantuan tread tops out at 2.2×');
 });
 
-function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 200, printCap, printLifetime, trails, steps = [] } = {}) {
+function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 200, printCap, printLifetime, trails, steps = [], groundShadows } = {}) {
   let time = 0;
   const live = new Set(), shadows = new Map(), log = { added: 0, removed: 0, shadowsAdded: 0, shadowsRemoved: 0, cleared: 0 };
   const layer = {
@@ -516,7 +516,7 @@ function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 20
   };
   const feel = createMovementFeel({
     tokens: () => tokens, floorAt: typeof floor === 'function' ? floor : () => floor, enabled: () => enabled, density: () => density, grid: () => 100, distance: () => 5,
-    now: () => time, layer, cap, printCap, printLifetime, trails, footstep: (f, at, t) => steps.push([f, t.id]),
+    now: () => time, layer, cap, printCap, printLifetime, trails, footstep: (f, at, t) => steps.push([f, t.id]), ...(groundShadows ? { groundShadows } : {}),
   });
   return { feel, live, shadows, log, steps, advance: (ms) => { time += ms; }, layer };
 }
@@ -866,4 +866,111 @@ test('rain wets the floor: dirt turns to mud, stone, wood, grass and sand get pu
   for (const f of ['water', 'mud', 'snow', 'ice']) assert.deepEqual(rainFloor(f, 'rain'), { floor: f, splash: false });
   assert.deepEqual(rainFloor('dirt', 'snow'), { floor: 'dirt', splash: false });
   assert.deepEqual(rainFloor('stone', null), { floor: 'stone', splash: false });
+});
+
+test('controller: Shadows under every token gives a standing creature a soft shadow; off, only fliers get one', () => {
+  const tok = { id: 's', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true };
+  let on = true;
+  const h = harness({ tokens: [tok], groundShadows: () => on });
+  h.feel.tick();
+  assert.equal(h.log.shadowsAdded, 1);
+  const flier = shadowGeometry({ x: 0, y: 0, width: 100 }), ground = shadowGeometry({ x: 0, y: 0, width: 100, grounded: true });
+  assert.ok(ground.alpha < flier.alpha, "softer than a flier's");
+  on = false; h.advance(16); h.feel.tick();
+  assert.equal(h.log.shadowsRemoved, 1);
+});
+test('spells change the floor: frost is ice, acid sludge, fire melts snow and burns grass, a blast cracks stone; the newest mark wins',async()=>{
+  const { markedFloor } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.equal(markedFloor('grass', []), 'grass');
+  assert.equal(markedFloor('grass', ['rime']), 'ice');
+  assert.equal(markedFloor('stone', ['residue']), 'mud');
+  assert.equal(markedFloor('snow', ['scorch']), 'water');
+  assert.equal(markedFloor('grass', ['scorch']), 'dirt');
+  assert.equal(markedFloor('stone', ['scorch']), 'stone');
+  assert.equal(markedFloor('dirt', ['cracks']), 'stone');
+  assert.equal(markedFloor('water', ['cracks']), 'water');
+  assert.equal(markedFloor('grass', ['rime', 'scorch']), 'dirt', 'fire after frost');
+  assert.equal(markedFloor('grass', ['scorch', 'stain', undefined]), 'dirt', 'marks with no floor of their own pass over');
+});
+test('a flier shadow passing over creatures on the ground darkens their art too, only where it falls',async()=>{
+  const { shadowCovers, castShadowGeometry } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const geom = castShadowGeometry({ x: 500, y: 500, width: 100, lift: 20, distance: 5, grid: 100 });
+  const high = castShadowGeometry({ x: 500, y: 500, width: 100, lift: 60, distance: 5, grid: 100 });
+  assert.ok(high.x > geom.x && high.y > geom.y && high.alpha < geom.alpha, 'higher: cast further down-right, fainter');
+  const covers = shadowCovers(geom, [{ x: 500, y: 560, width: 100 }, { x: 900, y: 900, width: 100 }, { x: 560, y: 600, width: 100 }]);
+  assert.deepEqual(covers.map((c) => c.x), [500, 560]);
+  assert.deepEqual(shadowCovers(null, [{ x: 0, y: 0, width: 100 }]), []);
+});
+test('the over-token shadow is drawn for fliers above standing creatures and dropped when they move apart',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const calls = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow() {}, removeShadow() {}, clear() {},
+    addOverShadow: () => { calls.push('add'); return {}; }, updateOverShadow: (h, g, covers) => calls.push(`up:${covers.length}`), removeOverShadow: () => calls.push('remove') };
+  let flier = { id: 'f', x: 500, y: 440, width: 100, elevation: 30, base: 0, visible: true, gait: 'none', action: 'fly' };
+  const ground = { id: 'g', x: 500, y: 520, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk' };
+  const feel = createMovementFeel({ shadowsOverTokens: () => true, tokens: () => [flier, ground], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {} });
+  feel.tick();
+  assert.deepEqual(calls, ['add', 'up:1']);
+  flier = { ...flier, x: 1500 };
+  feel.tick();
+  assert.equal(calls.at(-1), 'remove');
+});
+test('taking off and landing blow the floor out to both sides; landing is heavier with a ring; bigger creatures throw further',async()=>{
+  const { downdraft } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const at = { x: 500, y: 500 };
+  const lift = downdraft('dirt', at, { seed: 'a', grid: 100, width: 100 });
+  const land = downdraft('dirt', at, { seed: 'a', grid: 100, width: 100, landing: true });
+  assert.ok(lift.some((p) => p.vx < 0) && lift.some((p) => p.vx > 0), 'both sides');
+  assert.ok(lift.every((p) => Math.abs(p.vx) > Math.abs(p.vy)), 'mostly sideways');
+  assert.ok(land.length > lift.length && land.some((p) => p.kind === 'ring'));
+  assert.ok(!lift.some((p) => p.kind === 'ring'));
+  assert.deepEqual(downdraft('dirt', at, { seed: 'a' }), downdraft('dirt', at, { seed: 'a' }), 'the same on every screen');
+  assert.equal(downdraft('snow', at, { seed: 'a' })[0].kind, 'puff');
+  assert.equal(downdraft('water', at, { seed: 'a', landing: true }).at(-1).color, 0xd8ecff);
+  const far = (ps) => Math.max(...ps.map((p) => Math.abs(p.vx)));
+  assert.ok(far(downdraft('dirt', at, { seed: 'a', width: 300 })) > far(lift));
+});
+test('the feel layer lays the downdraft when a creature starts and stops flying',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  let added = 0, sounds = [];
+  const layer = { addParticle: () => { added++; return {}; }, updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow() {}, removeShadow() {}, clear() {} };
+  let t = { id: 'f', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'boots', action: 'walk' };
+  const feel = createMovementFeel({ flightDust: () => true, tokens: () => [t], floorAt: () => 'dirt', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep: (f, at, tok, kind) => sounds.push(kind) });
+  feel.tick(); assert.equal(added, 0);
+  t = { ...t, action: 'fly', elevation: 10 }; feel.tick();
+  const lifted = added; assert.ok(lifted >= 12, `lifted ${lifted}`);
+  t = { ...t, action: 'walk', elevation: 0 }; feel.tick();
+  assert.ok(added - lifted > lifted, 'a heavier landing'); assert.ok(sounds.includes('land'));
+});
+test('fresh out of deep water a creature drips as it walks, less as it dries, then not at all',async()=>{
+  const { dripsFor, createMovementFeel, DRIP_MS } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.ok(dripsFor({ x: 0, y: 0 }, { wet: 1 }).length > dripsFor({ x: 0, y: 0 }, { wet: 0.2 }).length);
+  assert.deepEqual(dripsFor({ x: 0, y: 0 }, { wet: 0 }), []);
+  assert.ok(dripsFor({ x: 0, y: 0 }, { wet: 1 }).every((d) => d.kind === 'drop' && Math.hypot(d.x, d.y) <= 50));
+  let time = 0, added = [];
+  const layer = { addParticle: (s) => { added.push(s); return s; }, updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow() {}, removeShadow() {}, clear() {} };
+  let t = { id: 's', x: 100, y: 100, width: 100, elevation: 0, base: 0, visible: true, gait: 'boots', action: 'swim' };
+  const feel = createMovementFeel({ drips: () => true, tokens: () => [t], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => time, layer, footstep() {} });
+  feel.tick();
+  const walk = (ms) => { for (let i = 0; i < 20; i++) { time += ms / 20; t = { ...t, action: 'walk', x: t.x + 10 }; feel.tick(); } };
+  walk(2000);
+  const wetDrops = added.filter((s) => s.kind === 'drop' && s.color !== undefined && s.color >= 0x9cc8e8).length;
+  assert.ok(wetDrops > 0, 'drips right after the swim');
+  added = []; time += DRIP_MS; walk(2000);
+  assert.equal(added.filter((s) => s.color === 0x9cc8e8 || s.color === 0xbfe0f4).length, 0, 'dry again');
+});
+test('wading through a water floor drips too, more lightly and for less time than a swim',async()=>{
+  const { createMovementFeel, DRIP_MS } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  let time = 0, added = [], floor = 'water';
+  const layer = { addParticle: (s) => { added.push(s); return s; }, updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow() {}, removeShadow() {}, clear() {} };
+  let t = { id: 'w', x: 100, y: 100, width: 100, elevation: 0, base: 0, visible: true, gait: 'boots', action: 'walk' };
+  const feel = createMovementFeel({ drips: () => true, tokens: () => [t], floorAt: () => floor, enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => time, layer, footstep() {} });
+  const walk = (ms) => { for (let i = 0; i < 20; i++) { time += ms / 20; t = { ...t, x: t.x + 10 }; feel.tick(); } };
+  const wet = () => added.filter((s) => s.color === 0x9cc8e8 || s.color === 0xbfe0f4).length;
+  feel.tick(); walk(1500);
+  assert.equal(wet(), 0, 'no drips while still in the water');
+  floor = 'stone'; walk(1500);
+  assert.ok(wet() > 0, 'drips once out of it');
+  added = []; time += DRIP_MS / 2; walk(1500);
+  assert.equal(wet(), 0, 'dry sooner than after a swim');
 });

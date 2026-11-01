@@ -12,7 +12,17 @@ export const ANIM_TYPES = [
   'chaoticOscillation', 'syncChaoticOscillation',
   'colorOscillation', 'syncColorOscillation', 'halfColorOscillation',
   'randomNumber', 'randomNumberPerLoop', 'randomColor', 'randomColorPerLoop',
+  // A transition: eases once from val1 to val2 over loopDuration (after pauseBetweenDuration), then holds.
+  'once',
+  // Follows the game: val1 at 0 and val2 at 1 of a live value of the creature (DRIVE_SOURCES), eased as it changes.
+  'driven',
 ];
+// The live values a 'driven' animation can follow, each 0..1 (engine.mjs works them out for each creature).
+export const DRIVE_SOURCES = Object.freeze({
+  hpLost: 'HP lost', height: 'Height above the ground', turn: 'Its turn in combat',
+  // Weather and light: how dark it is where the creature stands, and rain, snow or a storm over it (none under a roof).
+  darkness: 'Darkness where it stands', weather: 'Bad weather over it',
+});
 const KNOWN = new Set(ANIM_TYPES);
 const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
@@ -31,6 +41,7 @@ export function normalizeAnim(spec = {}) {
     clockWise: spec.clockWise !== false,
     shift: Math.max(0, num(spec.syncShift, 0)),
     integer: spec.wantInteger === true,
+    source: Object.hasOwn(DRIVE_SOURCES, spec.source) ? spec.source : 'hpLost',
   };
 }
 
@@ -61,7 +72,7 @@ export function loopPhase(a, t) {
 
 // The value of one animated parameter at local time `local` (ms since the effect started)
 // and world time `world` (ms, shared by every client). `base` is the parameter's static value.
-export function animValue(a, base, { local, world, key = '' }) {
+export function animValue(a, base, { local, world, key = '', drive = null }) {
   if (!a.active || !a.animType) return base;
   const sync = a.animType.startsWith('sync');
   const t = sync ? world : local;
@@ -69,7 +80,12 @@ export function animValue(a, base, { local, world, key = '' }) {
   const lerp = f => a.val1 + (a.val2 - a.val1) * f;
   let v;
   if (type === 'move') v = num(base, 0) + a.speed * t;
-  else {
+  else if (type === 'driven') v = lerp(Math.min(1, Math.max(0, num(drive?.[a.source], 0))));
+  else if (type === 'once') {
+    // Smoothstep ease: starts and lands softly, then stays on val2 for as long as the effect lasts.
+    const p = Math.min(1, Math.max(0, (t - a.pause) / a.loopDuration));
+    v = lerp(p * p * (3 - 2 * p));
+  } else {
     const { loop, p } = loopPhase(a, t);
     switch (type) {
       case 'rotation': v = (a.clockWise ? 1 : -1) * 360 * p; break;
@@ -103,8 +119,10 @@ export function compileAnimations(animated, base) {
     .filter(([, a]) => a.active && a.animType);
   return {
     keys: entries.map(([k]) => k),
-    sample(out, { local, world, key = '' }) {
-      for (const [param, a] of entries) out[param] = animValue(a, base[param], { local, world, key: key + param });
+    // Which live values its 'driven' animations follow (the engine works out only those).
+    sources: [...new Set(entries.filter(([, a]) => a.animType === 'driven').map(([, a]) => a.source))],
+    sample(out, { local, world, key = '', drive = null }) {
+      for (const [param, a] of entries) out[param] = animValue(a, base[param], { local, world, key: key + param, drive });
       return out;
     },
   };

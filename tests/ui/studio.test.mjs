@@ -16,7 +16,7 @@ test("studio sorts stages into role tracks", () => {
   assert.equal(trackOf({ kind: "motion" }), "motion");
   assert.equal(trackOf({ kind: "sprite" }), "motion");
   assert.equal(trackOf({ kind: "sound" }), "sound");
-  assert.equal(trackOf({ kind: "tokenfx" }), "fx");
+  assert.equal(trackOf({ kind: "tokenfx" }), "tokenshade");
   assert.equal(trackOf({ kind: "scenefx" }), "fx");
 });
 
@@ -27,7 +27,7 @@ test("studio tracks pack sequential clips into one lane and keep empty tracks", 
     stage("c", "impact", { delay: 200 }),
   ] };
   const { tracks, total, end } = studioTracks(recipe);
-  assert.deepEqual(tracks.map((t) => t.id), ["caster", "flight", "target", "motion", "sound", "fx"]);
+  assert.deepEqual(tracks.map((t) => t.id), ["caster", "flight", "target", "motion", "sound", "tokenshade", "fx"]);
   const target = tracks.find((t) => t.id === "target");
   assert.equal(target.lanes.length, 2, "a→b share a lane; c overlaps a");
   assert.deepEqual(target.lanes[0].map((r) => r.stageId), ["a", "b"]);
@@ -38,7 +38,7 @@ test("studio tracks pack sequential clips into one lane and keep empty tracks", 
 
 test("document-linked recipes only offer attached-layer tracks", () => {
   const recipe = { lifecycle: "document", stages: [stage("a", "aura", { subject: "source", persist: true })] };
-  assert.deepEqual(studioTracks(recipe).tracks.map((t) => t.id), ["caster", "fx"]);
+  assert.deepEqual(studioTracks(recipe).tracks.map((t) => t.id), ["caster", "tokenshade"]);
 });
 
 test("ruler labels stay readable as zoom changes", () => {
@@ -63,7 +63,7 @@ test("recipe clock can start part-way through", async () => {
 
 test("solo overrides mute; muting alone hides only muted tracks", () => {
   assert.deepEqual([...silencedTracks(new Set(["sound"]))], ["sound"]);
-  assert.deepEqual([...silencedTracks(new Set(["sound"]), new Set(["target", "sound"]))].sort(), ["caster", "flight", "fx", "motion", "teleport"]);
+  assert.deepEqual([...silencedTracks(new Set(["sound"]), new Set(["target", "sound"]))].sort(), ["caster", "flight", "fx", "motion", "teleport", "tokenshade"]);
   assert.equal(silencedTracks().size, 0);
 });
 
