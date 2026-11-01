@@ -154,7 +154,7 @@ const BUILTIN_STATE=Object.freeze({opacity:1,motion:true});
 // Each client derives its own visible layers from native documents. Persistent
 // Sequencer media is temporary/local: no socket playback or stale scene flags.
 export class PersistentStates{
- constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();this.dirtyTokens=new Set();this.fullScheduled=false;}
+ constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();this.handoff=new Map();this.dirtyTokens=new Set();this.fullScheduled=false;}
  // A lasting layer Sequencer no longer has: its scene re-initializing destroys every effect on the canvas
  // without an ended event. Played-once layers end on their own, so only lasting ones count.
  lost(r){return r.drawn===true&&!r.fade&&!r.cancelled&&this.host.alive?.(r.name)===false;}
@@ -172,6 +172,8 @@ export class PersistentStates{
  }
  accepts(name){if(!String(name??'').startsWith(`animater-state-${this.host.clientId}-`))return true;return !this.closed&&[...this.active.values()].some(r=>r.name===name&&!r.cancelled);}
  async reconcile(scope){
+  // Old looks a superseded reconcile handed over are taken up here, so every token is looked at.
+  if(this.handoff.size)scope=undefined;
   const revision=++this.revision,desired=new Map(),h=this.host;
   if(!this.closed&&h.ready()){
    const saved=h.recipes?.()??[],catalog=h.catalog(),visibility=h.visibility?.()??{},scene=h.sceneId();
@@ -216,16 +218,29 @@ export class PersistentStates{
   const stops=[],replaced=new Map();
   for(const [key,record] of this.active){const d=desired.get(key);if(d?.signature===record.signature&&!this.lost(record))continue;this.active.delete(key);if(d)replaced.set(key,record);else{record.cancelled=true;stops.push(this.end(record));}}
   await Promise.all(stops);
+  // How long a new look takes to fade in: the old one it replaces stays that long after it is up.
+  const settle=()=>{const ms=Number(h.lookBlendMs?.())||0;return ms>0?new Promise(res=>setTimeout(res,ms+100)):null;};
+  // Old looks handed over by a superseded reconcile (taken after the wait above, since it resumes first): kept
+  // until their replacement is up; one already being replaced goes once that replacement is up; one no longer
+  // wanted goes now.
+  for(const [key,record] of this.handoff){
+   this.handoff.delete(key);
+   const next=this.active.get(key);
+   if(next&&!next.cancelled){void Promise.resolve(next.up).then(settle).then(()=>{record.cancelled=true;return this.end(record);});continue;}
+   if(desired.has(key)&&!replaced.has(key))replaced.set(key,record);else{record.cancelled=true;void this.end(record);}
+  }
   const retire=key=>{const old=replaced.get(key);if(!old)return;replaced.delete(key);old.cancelled=true;return this.end(old);};
-  if(revision!==this.revision){await Promise.all([...replaced.keys()].map(retire));return;}
+  // A newer reconcile is running (PF2e updates the item, then the actor): it takes the old looks over and ends them
+  // once their replacements are up, instead of ending them here before anything replaces them.
+  if(revision!==this.revision){for(const [key,record] of replaced)if(!this.handoff.has(key))this.handoff.set(key,record);else{record.cancelled=true;void this.end(record);}if(!this.closed)this.schedule();return;}
   const replacing=new Set();
   for(const [key,d] of desired){
    if(this.closed||this.active.has(key))continue;
    replacing.add(key);
-   const record={...d,name:`animater-state-${h.clientId}-${++this.serial}`,cancelled:false,startedAt:replaced.get(key)?.startedAt??Date.now()};this.active.set(key,record);
+   const record={...d,name:`animater-state-${h.clientId}-${++this.serial}`,cancelled:false,startedAt:replaced.get(key)?.startedAt??Date.now(),continues:replaced.has(key)};this.active.set(key,record);
    // The old look goes once the new one has faded in (h.lookBlendMs), never mid-fade, so the plain token never shows.
-   const settled=()=>{const ms=replaced.has(key)?Number(h.lookBlendMs?.())||0:0;return ms>0?new Promise(res=>setTimeout(res,ms+100)):null;};
-   const work=this.start(record).then(()=>{const wait=settled();return wait?wait.then(()=>retire(key)):retire(key);},async error=>{await retire(key);if(this.active.get(key)===record)this.active.delete(key);await this.end(record);h.trace?.('Blocked',`${record.recipe.name}: ${error.message}`);});
+   const up=record.up=this.start(record);
+   const work=up.then(()=>{const wait=replaced.has(key)?settle():null;return wait?wait.then(()=>retire(key)):retire(key);},async error=>{await retire(key);if(this.active.get(key)===record)this.active.delete(key);await this.end(record);h.trace?.('Blocked',`${record.recipe.name}: ${error.message}`);});
    this.pending.add(work);void work.finally(()=>this.pending.delete(work));
   }
   // Anything changed but not restarted (the manager closed meanwhile) ends now.
@@ -287,9 +302,14 @@ export class PersistentStates{
   }
   if(r.cancelled||this.closed)return;
   // A condition that has just landed plays its transition first (stone creeping up the creature, a curse washing
-  // over it), then its lasting look takes over. Not on a reload or a turn-start replay.
-  const intro=!r.replaying&&freshlyApplied(r.item)?Number(h.conditionTransition?.(r.item,r.token))||0:0;
-  if(intro>0){await new Promise(res=>setTimeout(res,intro));if(r.cancelled||this.closed||this.active.get(r.key)!==r)return;}
+  // over it), then its lasting look takes over. Not on a reload or a turn-start replay, nor when it only changed
+  // (Drained 1 becoming 3 soon after it landed): replayed, the landing starts from the plain token again.
+  // It plays at its lasting look's strength (persistent damage shows fainter) and hands over by crossfading: its
+  // release() as the lasting look is put on, both fading over the same time.
+  const essential=plan.find(s=>s.kind==='tokenfx'&&s.persist&&s.fxEssential);
+  const landing=!r.replaying&&!r.continues&&freshlyApplied(r.item)?h.conditionTransition?.(r.item,r.token,{strength:essential?.fxStrength??1}):0;
+  const intro=Number(typeof landing==='object'?landing?.ms:landing)||0,landed=()=>{try{landing?.release?.();}catch{/* gone */}};
+  if(intro>0){await new Promise(res=>setTimeout(res,intro));if(r.cancelled||this.closed||this.active.get(r.key)!==r){landed();return;}}
   // Token filters last with the state. A condition's own look (fxEssential) also plays when the state is
   // set to play once, briefly, and grows with the condition's value.
   const filters=plan.filter(s=>s.kind==='tokenfx'&&s.persist&&(!r.fade||s.fxEssential));
@@ -298,6 +318,7 @@ export class PersistentStates{
    try { return await h.retainFx?.({...stage,...(stage.fxEssential?{fxStrength:(stage.fxStrength??1)*lookStrength,fxBaseStrength:stage.fxStrength??1,fxLevel:this.host.valueLooks?.()===false?0:conditionLevel(r.item)}:{}),destination:r.token},{session:r.name}); }
    catch(error){h.trace?.('Skipped',`Tokenshade: ${error.message}`);}
   })):[];
+  landed();
   if(r.fade&&releases.length)setTimeout(()=>releases.forEach(release=>{try{void release?.();}catch{/* already ended */}}),FADE_MS+offset)?.unref?.();
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   if(!r.replaying)h.trace?.('Persistent',`${r.recipe.name} follows ${r.token.name??'token'} while its condition or effect lasts.`,r.recipe,{key:r.key,automatic:true,origin:this.originOf(r)});
@@ -346,6 +367,6 @@ export class PersistentStates{
   this.host.changed?.(this.active.size);
   return true;
  }
- async clear(){++this.revision;clearTimeout(this.timer);this.timer=null;this.dirtyTokens.clear();this.fullScheduled=false;const records=[...this.active.values()];this.active.clear();for(const r of records)r.cancelled=true;await Promise.all(records.map(r=>this.end(r)));}
+ async clear(){++this.revision;clearTimeout(this.timer);this.timer=null;this.dirtyTokens.clear();this.fullScheduled=false;const records=[...this.active.values(),...this.handoff.values()];this.active.clear();this.handoff.clear();for(const r of records)r.cancelled=true;await Promise.all(records.map(r=>this.end(r)));}
  async destroy(){this.closed=true;await this.clear();}
 }

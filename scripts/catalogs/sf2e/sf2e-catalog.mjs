@@ -24,7 +24,9 @@ export function normalizeSfCatalogState(state={}){
  const number=(v,fallback,min,max)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
  return {enabled:state.enabled===true,independent:state.independent===true,preferCatalog:state.preferCatalog===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:ids(state.customized),motion:state.motion!==false,fade:state.fade===true,turn:state.turn===true,sound:state.sound!==false,soundVolume:number(state.soundVolume,.35,0,1),opacity:number(state.opacity,1,.1,1)};
 }
-export const sfEntryEnabled=(id,state)=>state?.enabled===true&&!state.excluded?.includes(id)&&(state.scope!=='selected'||state.selected?.includes(id)||state.customized?.includes(id));
+// Off-guard is on creatures constantly: it shows nothing unless picked or customized (as in the PF2e catalog).
+const QUIET=new Set(['sf2e-condition-conditions-AJh5ex99aV6VTggg']);
+export const sfEntryEnabled=(id,state)=>state?.enabled===true&&!state.excluded?.includes(id)&&(state.scope!=='selected'&&!QUIET.has(id)||state.selected?.includes(id)||state.customized?.includes(id));
 export function useSfEntry(state,id){
  if(!byId.has(id))throw Error('Choose an SF2e catalog entry.');state=normalizeSfCatalogState(state);
  return normalizeSfCatalogState({...state,enabled:true,independent:true,scope:state.enabled?state.scope:'selected',selected:state.enabled?[...state.selected,id]:[id],excluded:state.excluded.filter(v=>v!==id),customized:state.customized.filter(v=>v!==id)});

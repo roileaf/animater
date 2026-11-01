@@ -121,7 +121,7 @@ import {
   templateArea,
 } from "./engines/preview/canvas-preview-area.mjs";
 import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./engines/motion/motion.mjs";
-import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions } from './engines/playback/optional-fx.mjs';
+import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions, tintedPreset } from './engines/playback/optional-fx.mjs';
 import {catalogFxSettings} from './catalogs/shared/catalog-fx.mjs';
 import {conditionLookMode} from './catalogs/shared/condition-look-choice.mjs';
 import {RUNE_SETTING} from './catalogs/pf2e/weapons/weapon-runes.mjs';
@@ -1781,9 +1781,10 @@ const orbsOn = () => { try { return bothOn("lightOrbs") && qualityRank(localQual
 const installTorchLight = () => {
   const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
   if (typeof proto?._getLightSourceData !== "function" || proto._getLightSourceData.animaterTorch) return false;
-  const original = proto._getLightSourceData;
+  // The method passed on to is looked up at each call (another module may wrap Foundry's after this is installed).
+  const own = Object.hasOwn(proto, "_getLightSourceData") ? proto._getLightSourceData : null;
   const fromTheFlame = function (...args) {
-    const data = original.apply(this, args);
+    const data = (own ?? Object.getPrototypeOf(proto)._getLightSourceData).apply(this, args);
     try {
       const side = torchSide(this.document?.flags?.[ID]?.torchHand), kind = data && !data.disabled ? lightKindOf(this, data) : null;
       const grid = canvas?.grid?.size ?? 100, place = { x: data?.x, y: data?.y, width: this.w ?? grid, side, key: this.document?.id };
@@ -1809,13 +1810,15 @@ const lightIconsOf = (token) => {
     .concat([...(actor.effects ?? [])].map((e) => ({ name: e.name, type: "effect", img: e.img, rules: [] })));
   return drawnLightIcons({ kind, items, torches: holdsTorches(), orbs: orbsOn() });
 };
+// Other modules wrap the same method (PF2e Effects Halo, through libWrapper, on Foundry's Token): the method we pass
+// on to is looked up at each call, never kept from when this was installed, so their wrapping always runs.
 const installLightIcons = () => {
   const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
   if (typeof proto?._drawEffect !== "function" || proto._drawEffect.animaterIcons) return false;
-  const original = proto._drawEffect;
+  const own = Object.hasOwn(proto, "_drawEffect") ? proto._drawEffect : null;
   const unlessDrawn = async function (src, tint) {
     try { if (src && lightIconsOf(this)?.has(src)) return undefined; } catch { /* Foundry's own icons */ }
-    return original.call(this, src, tint);
+    return (own ?? Object.getPrototypeOf(proto)._drawEffect).call(this, src, tint);
   };
   unlessDrawn.animaterIcons = true;
   proto._drawEffect = unlessDrawn;
@@ -4998,21 +5001,22 @@ Hooks.once("ready", () => {
       auraCalm: () => auraCalm(hotSetting("aurasOutsideCombat"), game.combat),
       auraStyle: () => hotSetting("auraStyle"),
       // "Conditions transition in": a condition that just landed plays its Tokenshade transition on this screen
-      // (Turn to stone, Sickness spreads…) and its lasting look waits that long. Returns the wait in ms, 0 for none.
-      conditionTransition: (item, token) => {
+      // (Turn to stone, Nausea takes hold…) and its lasting look waits that long. Returns { ms, release } (0 for none):
+      // the transition plays at the lasting look's strength, ending as it starts, and release() crossfades it out as
+      // the lasting look fades in.
+      conditionTransition: (item, token, { strength = 1 } = {}) => {
         if (hotSetting("conditionTransitions") === false || !allowsTokenFx(localQuality()) || hotSetting("conditionLooks") === "jb2a") return 0;
         const name = conditionTransition(item), preset = name && tokenFx.getPresets("tokenshade").find((p) => p.name === name);
         if (!preset || !token?.mesh) return 0;
         // As long as its slowest one-time animation takes.
         const ms = Math.max(0, ...preset.params.flatMap((f) => Object.values(f.animated ?? {}).filter((a) => a.animType === "once").map((a) => (Number(a.loopDuration) || 0) + (Number(a.pauseBetweenDuration) || 0))));
         if (!(ms > 0)) return 0;
-        const remove = tokenFx.apply(token, preset, { blend: false });
-        // Held past its end until the lasting look has faded in over it ("Tokenshade fades"), so the plain token
-        // never shows between the two.
-        let fade = 0;
-        try { fade = Math.max(0, Number(tokenFx.engine.blendMs()) || 0); } catch { /* at once */ }
-        setTimeout(() => { try { remove(); } catch { /* gone with the canvas */ } }, ms + fade + 600);
-        return ms;
+        const remove = tokenFx.apply(token, tintedPreset(preset, { fxStrength: strength }));
+        let done = false;
+        const release = () => { if (done) return; done = true; try { remove(); } catch { /* gone with the canvas */ } };
+        // Never left behind if its lasting look never comes (the condition ended meanwhile).
+        setTimeout(release, ms + 5000);
+        return { ms, release };
       },
       auraField: auraFields,
       recipes,

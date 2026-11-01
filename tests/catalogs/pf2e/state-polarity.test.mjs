@@ -56,3 +56,12 @@ test('resistance wards take the damage type look; effects of one theme are told 
  assert.equal(coversToken(shield),false);
  assert.equal(coversToken({...shield,above:false}),true,'without above, a dome goes under the token');
 });
+
+test('off-guard shows nothing unless the GM picks it: it is on creatures all the time and only clutters them', async () => {
+  const { stateEntryEnabled, PF2E_CONDITIONS } = await import('../../../scripts/catalogs/pf2e/state-catalog.mjs');
+  const offGuard = PF2E_CONDITIONS.find(e => e.slug === 'off-guard'), prone = PF2E_CONDITIONS.find(e => e.slug === 'prone');
+  const all = { enabled: true, scope: 'all', selected: [], excluded: [], customized: [] };
+  assert.equal(stateEntryEnabled(offGuard.id, all), false);
+  assert.equal(stateEntryEnabled(prone.id, all), true);
+  assert.equal(stateEntryEnabled(offGuard.id, { ...all, selected: [offGuard.id] }), true, 'picked, it plays');
+});

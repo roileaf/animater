@@ -144,7 +144,9 @@ test('every catalogued condition in every system has its own Tokenshade look',as
  const {dndEntries}=await import('../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs');
  const {dhEntries}=await import('../../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs');
  for(const [system,list] of [['pf2e',PF2E_CONDITIONS],['sf2e',sfEntries('condition')],['dnd5e',dndEntries('condition')],['daggerheart',dhEntries('condition')]])
-  for(const e of list){const look=conditionLook(e);assert.ok(look&&PRESETS.some(p=>p.name===look.preset),`${system} ${e.slug??e.name}`);}
+  for(const e of list){if(['off-guard','flat-footed'].includes(e.slug))continue;const look=conditionLook(e);assert.ok(look&&PRESETS.some(p=>p.name===look.preset),`${system} ${e.slug??e.name}`);}
+ // Off-guard shows nothing (it is on creatures all the time).
+ assert.equal(conditionLook({slug:'off-guard'}),null);
  assert.equal(conditionLook({slug:'persistent-damage'},{damageType:'bleed'}).preset,'Bleeding');
 });
 test('the condition look switch is one world setting, Tokenshade unless set to JB2A',async()=>{

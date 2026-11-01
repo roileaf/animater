@@ -58,8 +58,8 @@ test('a failed optional persistent shader never prevents the native JB2A state l
  assert.equal(f.manager.active.size,1);assert.ok(traces.some(t=>t[0]==='Skipped'&&t[1].includes('Shader failed')));
  await f.manager.destroy();
 });
-test('Off-Guard and Wounded persistent canvas effects attach centered on small, large and rectangular tokens',async()=>{
- for(const slug of ['off-guard','wounded'])for(const [w,h] of [[100,100],[200,200],[100,200]]){
+test('Frightened and Wounded persistent canvas effects attach centered on small, large and rectangular tokens',async()=>{
+ for(const slug of ['frightened','wounded'])for(const [w,h] of [[100,100],[200,200],[100,200]]){
   const entry=PF2E_CONDITIONS.find(e=>e.slug===slug),f=fixture([native(entry)]);
   Object.assign(f.token,{w,h});await f.manager.reconcile();
   assert.deepEqual(f.calls.find(c=>c[0]==='attachTo')[2].offset,{x:0,y:0},`${slug} ${w}x${h}`);
@@ -336,6 +336,19 @@ test('a condition whose value changes (Frightened 2 to 1 at turn end) keeps show
  assert.equal(f.manager.active.size,1);
  await f.manager.destroy();
 });
+test('a value change that sets off several updates at once still keeps the old look until the new one is up',async()=>{
+ const item=native(fear);item.system.value.value=2;const f=fixture([item]);
+ await f.manager.reconcile();await flush();
+ const first=[...f.manager.active.values()][0].name;
+ f.setPending(true);item.system.value.value=1;
+ // PF2e updates the item, then the actor: two reconciles before the first is done.
+ const a=f.manager.reconcile(),b=f.manager.reconcile();await flush();
+ assert.ok(!f.calls.some(c=>c[0]==='end'&&c[1]===first),'the old look is still up while the new one loads');
+ f.waits.forEach(w=>w.resolve());await Promise.all([a,b]);await flush();
+ assert.ok(f.calls.some(c=>c[0]==='end'&&c[1]===first),'then it ends');
+ assert.equal(f.manager.active.size,1);
+ await f.manager.destroy();
+});
 test('the old look stays until the new one has faded in, so the plain token never shows between levels',async()=>{
  const item=native(fear);item.system.value.value=2;const f=fixture([item]);f.manager.host.lookBlendMs=()=>60;
  await f.manager.reconcile();await flush();
@@ -602,6 +615,18 @@ test('a condition that just landed plays its transition first, then its lasting 
  f.manager.host.conditionTransition = (item) => { intros.push(item.name); return 1; };
  await f.manager.reconcile(); await flush(); await new Promise((r) => setTimeout(r, 20)); await flush();
  assert.equal(intros.length, 1, 'asked once as it lands');
+ await f.manager.destroy();
+});
+test('a condition changing value soon after it landed does not replay its landing (Drained 1 to 3 never goes plain)', async () => {
+ const intros = [];
+ const item = { ...native(fear), _stats: { createdTime: Date.now() } }; item.system.value.value = 1;
+ const f = fixture([item]);
+ f.manager.host.conditionTransition = (it) => { intros.push(it.name); return 1; };
+ await f.manager.reconcile(); await flush(); await new Promise((r) => setTimeout(r, 20)); await flush();
+ assert.equal(intros.length, 1, 'it lands once');
+ item.system.value.value = 3;
+ await f.manager.reconcile(); await flush(); await new Promise((r) => setTimeout(r, 20)); await flush();
+ assert.equal(intros.length, 1, 'the new value takes over without landing again');
  await f.manager.destroy();
 });
 test('a state Animater already shows another way (a Light spell floating as an orb) steps aside, and returns when that stops',async()=>{

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.8 (2026-11-01)
+
+- **Valued conditions change without a flash.** A condition changing value soon after it landed (Drained 1 to 3) no longer replays its landing, which started again from the plain token. Several updates at once (PF2e updates the condition, then the actor) also keep the old look until the new one is up.
+- **Landings end as the condition looks.** Drained, sickened, doomed, petrified and persistent poison each land on exactly the look they then keep, at the same strength, and crossfade into it, so the colour no longer shifts as the landing ends.
+- **Off-guard shows nothing.** It is on creatures all the time (flanked, prone, grabbed) and only cluttered them. A GM can still pick it in the catalog.
+- **Works with PF2e Effects Halo again.** Hiding the light icons (2.4.7) stopped Halo from arranging the other icons round the token.
+
 ## 2.4.7 (2026-11-01)
 
 - **No plain token between looks.** A condition landing (stone creeping up, sickness spreading) now holds its transition until the lasting look has fully faded in, and a condition changing value (Frightened 2 to 1) keeps its old look until the new one is in, so the bare token never flashes between them.

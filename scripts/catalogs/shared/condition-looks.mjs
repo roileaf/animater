@@ -26,7 +26,8 @@ const LOOKS = {
   fascinated: 'Fascinated',
   grabbed: 'Held', grappled: 'Held',
   immobilized: 'Rooted',
-  'off-guard': 'Exposed', 'flat-footed': 'Exposed', vulnerable: 'Exposed', marked: 'Exposed', surprised: 'Exposed',
+  // Off-guard (and flat-footed) shows nothing: the PF2e catalog leaves it out (state-catalog.mjs).
+  vulnerable: 'Exposed', marked: 'Exposed', surprised: 'Exposed',
   prone: 'Prone',
   stunned: 'Dazed', incapacitated: 'Dazed',
   slowed: 'Sluggish',
@@ -54,7 +55,7 @@ const LOOKS = {
 // Persistent damage: that damage type's own look, at reduced strength.
 const DAMAGE = {
   fire: 'Burning', cold: 'Frostbitten', electricity: 'Electrocuted', lightning: 'Electrocuted', acid: 'Corroding',
-  poison: 'Envenomed', void: 'Withering', necrotic: 'Withering', vitality: 'Radiant Burn', radiant: 'Radiant Burn',
+  poison: 'Poison in the veins', void: 'Withering', necrotic: 'Withering', vitality: 'Radiant Burn', radiant: 'Radiant Burn',
   force: 'Force Jolt', mental: 'Psychic Warp', psychic: 'Psychic Warp', sonic: 'Resonance', thunder: 'Resonance', spirit: 'Spirit Rend',
   bleed: 'Bleeding', piercing: 'Bleeding', slashing: 'Bleeding', bludgeoning: 'Bleeding', physical: 'Bleeding',
 };
@@ -81,7 +82,8 @@ export const CONDITION_LOOK_PRESETS = [...new Set([...Object.values(LOOKS), ...O
 
 // The transition a condition plays as it lands, before its lasting look (Tokenshade presets): stone creeping up a
 // petrified creature, sickness spreading, doom taking hold, life draining, poison spreading through the veins.
-const TRANSITIONS = { petrified: 'Turn to stone', sickened: 'Sickness spreads', doomed: 'Doom takes hold', drained: 'Life drains away' };
+// Each ends exactly as its condition's lasting look starts, so the handover never changes the creature's colour.
+const TRANSITIONS = { petrified: 'Turn to stone', sickened: 'Nausea takes hold', doomed: 'Doom takes hold', drained: 'Drain takes hold' };
 const PERSISTENT_TRANSITIONS = { poison: 'Poison spreads' };
 export function conditionTransition(item) {
   const slug = String(item?.slug ?? item?.system?.slug ?? '').toLowerCase();

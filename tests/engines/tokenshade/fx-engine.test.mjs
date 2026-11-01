@@ -18,8 +18,8 @@ test('every Token Magic filter type and animation type has an animater implement
   for(const type of ANIM_TYPES)assert.ok(normalizeAnim({animType:type}).animType,type);
 });
 test('the built-in library has every Token Magic preset name we keep plus Tokenshade originals, every filter known',()=>{
-  assert.equal(PRESETS.length,292);
-  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,247);
+  assert.equal(PRESETS.length,295);
+  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,250);
   assert.ok(!PRESETS.some(p=>p.name==='DungeonDraft Tint'),'retired: a map-maker tint, not a token look');
   for(const name of ['Burning','Electrocuted','Corroding','Envenomed','Withering','Radiant Burn','Force Jolt','Psychic Warp','Resonance','Spirit Rend','Petrified','Frozen Solid','Entangled','Chained','Netted','Levitate','Marker: Foe','Rune Circle','Frostbitten','Submerged'])assert.ok(builtinPreset(name),name);
   assert.ok(!PRESETS.some(p=>/BW/.test(p.name)),'no Baileywiki names');
@@ -269,5 +269,29 @@ test('every valued condition grows worse step by step: a look of its own for eac
   for(const [slug,max] of Object.entries(top)){
     const base=conditionLook({slug}).preset;
     for(let v=2;v<=max;v++)assert.ok(builtinPreset(`${base} ${v}`),`${slug} ${v}: ${base} ${v}`);
+  }
+});
+test('every condition landing ends exactly as its lasting look starts, so the handover never changes the creature',async()=>{
+  const {conditionLook,conditionTransition}=await import('../../../scripts/catalogs/shared/condition-looks.mjs');
+  // Its value as it shows: an animated one at that moment of its own clock (a world-clock pulse has no known start).
+  const valueAt=(param,key,local)=>{
+    const spec=specFor(param.filterType),base=resolveParams(spec,param)[key],anim=param.animated?.[key];
+    if(!anim)return base;
+    assert.ok(!String(anim.animType).startsWith('sync'),`${param.filterType}.${key} pulses on the world clock: no known start to land on`);
+    return animValue(normalizeAnim(anim),base,{local,world:0});
+  };
+  const items=[{slug:'petrified'},{slug:'sickened'},{slug:'doomed'},{slug:'drained'},{slug:'persistent-damage',system:{persistent:{damageType:'poison'}}}];
+  for(const item of items){
+    const landing=builtinPreset(conditionTransition(item)),lasting=builtinPreset(conditionLook(item,{damageType:item.system?.persistent?.damageType}).preset);
+    assert.deepEqual(landing.params.map(f=>f.filterType).sort(),lasting.params.map(f=>f.filterType).sort(),`${item.slug}: the same filters`);
+    for(const [i,last] of lasting.params.entries()){
+      const land=landing.params.filter(f=>f.filterType===last.filterType)[lasting.params.filter((f,j)=>j<i&&f.filterType===last.filterType).length];
+      // Where a material spreads from, and its front, no longer show once it covers the creature.
+      for(const key of Object.keys(specFor(last.filterType).defaults).filter(k=>!['time','spreadFrom','front'].includes(k))){
+        const a=valueAt(land,key,600000),b=valueAt(last,key,0);
+        if(typeof a==='number')assert.ok(Math.abs(a-b)<1e-6,`${item.slug} ${last.filterType}.${key}: lands at ${a}, lasting starts at ${b}`);
+        else assert.deepEqual(a,b,`${item.slug} ${last.filterType}.${key}`);
+      }
+    }
   }
 });

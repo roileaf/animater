@@ -18,7 +18,10 @@ export function normalizeStateCatalogState(state={}){
 }
 // Reuse timers (Treat Wounds, Battle Medicine, Shield Immunity...) are bookkeeping, not magic on the creature: they
 // show nothing unless the GM picked or customized one.
-const timerOnly=id=>byId.get(id)?.theme==='cooldown';
+// Off-guard is on creatures constantly (flanked, prone, grabbed) and a look for it only clutters theirs: it shows
+// nothing either, unless picked or customized.
+const QUIET=new Set(['off-guard','flat-footed']);
+const timerOnly=id=>byId.get(id)?.theme==='cooldown'||QUIET.has(byId.get(id)?.slug);
 export function stateEntryEnabled(id,state){return state?.enabled===true&&!state.excluded?.includes(id)&&(state.selected?.includes(id)||state.customized?.includes(id)||state.scope!=='selected'&&!timerOnly(id));}
 export function useStateEntry(state,id){
  state=normalizeStateCatalogState(state);if(!byId.has(id))throw Error('Choose a condition or effect first.');
