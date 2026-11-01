@@ -22,7 +22,7 @@ for (const rows of Object.values(libraries)) for (const row of rows)
     const path = resolve(dataRoot, file);
     if (existsSync(path)) native.set(basename(file), path);
   }
-const recipes = [...catalogAuditEntries().map(e=>e.build()),...PF2E_EFFECTS.filter(e=>e.auras||e.auraSources).map(e=>stateRecipe(e,{aura:null}))];
+const recipes = [...catalogAuditEntries().map(e=>e.build()),...PF2E_EFFECTS.filter(e=>e.auras||e.auraSources).flatMap(e=>[stateRecipe(e,{aura:null}),stateRecipe(e)])];
 const selected = new Map();
 for (const [edition, rows] of Object.entries(libraries)) {
   const byKey = new Map(rows.map(r => [r.key, r]));

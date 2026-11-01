@@ -21,11 +21,12 @@ test('PF2e Workbench and patreon-v3 auras are catalog entries of their own',()=>
  assert.equal(findStateEntry({type:'effect',name:'Aura: Courageous Anthem',_stats:{compendiumSource:'Compendium.patreon-v3.effects.Item.RR8MSbHqxJdQxh2e'}})?.id,anthem.id);
  assert.deepEqual(anthem.modules,['xdy-pf2e-workbench','patreon-v3']);
 });
-test('each module aura draws a field at its radius that resolves in both JB2A editions',()=>{
+test('each module aura draws a reach ring at its radius and a small accent, resolving in both JB2A editions',()=>{
  for(const e of mods)for(const edition of ['free','patreon']){
   const r=stateRecipe(e,{catalog:libraries[edition],aura:{slug:e.auras[0].slug,radius:25,source:{}}});
   assert.ok(r.stages.length>=1,e.name);
-  for(const s of r.stages){assert.equal(s.auraRadius,25,`${e.name}: ${s.label}`);assert.ok(resolveAsset(s,libraries[edition]),`${e.name} (${edition}): ${s.label} has no installed asset`);}
+  assert.equal(r.stages.filter(s=>s.auraRadius===25&&/zoning/.test(resolveAsset(s,libraries[edition]))).length,1,e.name);assert.ok(r.stages.filter(s=>s.auraRadius).every(s=>s.auraRadius===25),e.name);assert.ok(r.stages.some(s=>!s.auraRadius),`${e.name}: no accent`);
+  for(const s of r.stages){assert.ok(resolveAsset(s,libraries[edition]),`${e.name} (${edition}): ${s.label} has no installed asset`);}
  }
 });
 test('the performer of a Workbench anthem shows the aura, not the spell effect it hands out',()=>{

@@ -226,7 +226,7 @@ export class PersistentStates{
   // An ally's copy keeps the aura's most telling layer (its glyph, orbit, flame), not the plain ring every
   // aura shares, so different auras stay recognisable on the allies inside them. Sparse footage (glints,
   // motes, streaks) vanishes at token size, so it comes with the aura's own coloured ring.
-  const lasting=plan.filter(s=>s.kind==='aura'&&s.persist),generic=s=>/template_circle\.aura\.|token_border\./.test(String(s.asset));
+  const lasting=plan.filter(s=>s.kind==='aura'&&s.persist),generic=s=>/template_circle\.aura\.|token_border\.|zoning\./.test(String(s.asset));
   const sparse=s=>/twinkling_stars\.|particles\.|wind_lines\.|swirling_leaves\.|butterflies\./.test(String(s.asset));
   const telling=lasting.find(s=>!generic(s)&&!sparse(s))??lasting.find(s=>!generic(s))??lasting[0];
   const allyCopy=!telling?[]:sparse(telling)?[lasting.find(generic),telling].filter(Boolean):[telling];

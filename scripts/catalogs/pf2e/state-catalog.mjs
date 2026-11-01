@@ -46,7 +46,8 @@ export function stateElement(entry,item){
  const value=ref.origin?ref.origin.split('.').reduce((v,k)=>v?.[k],item.origin?.flags?.system):selections[ref.flag];
  return entry.elementVariants[value]?value:Object.values(selections).find(v=>typeof v==='string'&&entry.elementVariants[v])??null;
 }
-const BORROWED_RING=['jb2a.template_circle.aura.03.outward.005.loop.combined.greenyellow','jb2a.template_circle.aura.03.outward.005.loop.combined.blue'];
+// A thin Zoning ring at the radius, like every aura design's reach (tools/pf2e-aura-designs.mjs).
+const BORROWED_RING=['jb2a.zoning.outward.circle.loop.bluegreen.01.03','jb2a.zoning.outward.circle.loop.bluegreen.01.01'];
 export function stateRecipe(entry,{damageType,element,catalog,auraVariant,aura=entry?.auras?.[0]??entry?.auraSources?.[0],fx=true,fxCatalog}={}){
  if(!entry)throw Error('Choose a condition or effect first.');
  const variantBase=entry.damageVariants?.[damageType]??(entry.elementVariants?.[element]?{...entry,...entry.elementVariants[element]}:entry);
@@ -69,11 +70,13 @@ export function stateRecipe(entry,{damageType,element,catalog,auraVariant,aura=e
  // has no field of its own: it gets a ring at its radius in the effect's colour, and the effect's own look stays
  // token-sized on its owner, so the aura no longer looks just like the allies inside it.
  const borrowed=Boolean(aura)&&!field&&!entry.auraAssets&&!entry.auras&&!entry.auraSources;
- const ring=borrowed?[{stageId:'aura-field',label:'Aura field',...lifetime,...area,assets:BORROWED_RING,opacity:.55,below:true,...(/^#[0-9a-f]{6}$/i.test(design.color??entry.color??'')?{tintEnabled:true,colorize:true,tint:design.color??entry.color}:{})}]:[];
+ const ring=borrowed?[{stageId:'aura-field',label:'Aura field',...lifetime,...area,assets:BORROWED_RING,opacity:.6,playbackRate:.6,below:true,...(/^#[0-9a-f]{6}$/i.test(design.color??entry.color??'')?{tintEnabled:true,colorize:true,tint:design.color??entry.color}:{})}]:[];
  const spread=borrowed?{}:area;
  const own=layers?layers.map(l=>{
   const selected=catalog?.length?resolveAsset(l,catalog):null,edition=selected?Object.values(l.editions??{}).find(e=>e.key===selected):null;
-  return {...l,...lifetime,...spread,...(edition?{tintEnabled:edition.colorSubstitution,colorize:edition.colorSubstitution}:{}),...(edition?.anchor?{customAnchor:true,anchorX:edition.anchor.x,anchorY:edition.anchor.y}:{})};
+  // An aura design's own layers are a small accent on the creature (no radius); its reach ring spans the radius.
+  const {accent,...layer}=l;
+  return {...layer,...lifetime,...(accent?{}:spread),...(edition?{tintEnabled:edition.colorSubstitution,colorize:edition.colorSubstitution}:{}),...(edition?.anchor?{customAnchor:true,anchorX:edition.anchor.x,anchorY:edition.anchor.y}:{})};
  }):[{stageId:'sustained',label:'Sustained visual',...lifetime,assets:design.assets,scale:design.scale??entry.scale,opacity:design.opacity??entry.opacity,below:design.below??entry.below,offsetX:design.offsetX??entry.offsetX,offsetY:design.offsetY??entry.offsetY,offsetUnits:design.offsetUnits??entry.offsetUnits,...spread,...(aura&&!borrowed?{below:true}:{}),...markerTint,...wardTint}];
  const stages=own;
  const built=withCatalogFx(validateRecipe({id:`${entry.systemId??'pf2e'}-state-${entry.id}${variant?`-${variant}`:''}`,name:variant?`${entry.name} (${variant[0].toUpperCase()+variant.slice(1)})`:entry.name,description:field?.rationale??design.rationale??entry.rationale,category:entry.group,color:design.color??entry.color,trigger:'effect',itemUuid:entry.uuid,match:entry.name,lifecycle:'document',stateEntry:entry.id,...(variant?{stateDamageType:variant}:{}),stages}),entry,{damageType,fx,fxCatalog});

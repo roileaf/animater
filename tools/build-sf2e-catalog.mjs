@@ -16,7 +16,7 @@ import {weaponRecipe} from '../scripts/catalogs/pf2e/weapons/weapon-choreography
 import {stateRecipe} from '../scripts/catalogs/pf2e/state-catalog.mjs';
 import {statePresentation} from '../scripts/catalogs/shared/state-presentation.mjs';
 import {buildConditionDesign,CONDITION_PLANS} from './pf2e-condition-designs.mjs';
-import {buildAuraDesign} from './pf2e-aura-designs.mjs';
+import {buildAuraDesign,reachRing,ACCENT} from './pf2e-aura-designs.mjs';
 import {frameFeatCatalog} from './feat-framing.mjs';
 import {diversifySpellMedia} from './spell-media-variety.mjs';
 import {allocateSpellIdentities} from './spell-variety-allocation.mjs';
@@ -404,7 +404,8 @@ for(const {entry,state}of states)for(const sourceEntry of source.entries)for(con
 }
 for(const {state}of states)if(state.auras?.length||state.auraSources?.length){
  try{state.auraDesign=buildAuraDesign(state,databases);}catch{
-  const media=selectStateMedia(databases,state.theme,state.slug);state.auraAssets=media.assets;state.auraDesign={id:state.slug,layers:[{assets:media.assets,stageId:'native-aura-field',scale:1,opacity:.9,below:true,playbackRate:.65}]};
+  // Its theme's look as a small accent on the creature, and a thin ring at its reach (as every PF2e aura design).
+  const media=selectStateMedia(databases,state.theme,state.slug);state.auraAssets=media.assets;state.auraDesign={id:state.slug,layers:[{assets:media.assets,stageId:'native-aura-field',accent:true,scale:ACCENT.scale,opacity:ACCENT.opacity,below:true,playbackRate:.65},reachRing(state.color,'outward',databases,state.slug)]};
  }
 }
 const variety=diversifySpellMedia(spells.map(e=>e.spell),databases,SPELL_MOTIFS);

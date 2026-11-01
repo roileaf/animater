@@ -35,18 +35,21 @@ test('prepared aura effect parent takes precedence over a shared base kinetic au
  const b=item(base),s=item(specific),actor={items:[b,s],auras:new Map([['kinetic-aura',{slug:'kinetic-aura',radius:10,effects:[{parent:s,uuid:entry('Effect: Shattershields').uuid}]}]])};
  assert.deepEqual(nativeAuraStates(actor).map(i=>i.animaterAura.entryId),[specific.id]);
 });
-test('every reviewed field has distinct resolved artwork beyond labels, timing, size or opacity; only same-ability aliases share',()=>{
+test('every reviewed aura: light footage spans its reach, heavy footage is an accent near the creature, a thin ring marks the edge; only same-ability aliases share',()=>{
  const fields=PF2E_EFFECTS.filter(e=>!e.modules&&(e.auras||e.auraSources));assert.equal(fields.length,117);
  for(const edition of ['free','patreon']){
   const groups=new Map(),structures=new Map();
   for(const e of fields){
    assert.ok(e.auraDesign,e.name);assert.equal(e.auraDesign.reviewedDescriptionHash,e.descriptionHash);
-   const r=stateRecipe(e,{catalog:libraries[edition]});assert.equal(r.stages.length,2);
+   const r=stateRecipe(e,{catalog:libraries[edition]});assert.ok(r.stages.length>=3&&r.stages.length<=4,e.name);
+   assert.ok(r.stages.some(s=>s.auraRadius&&!/zoning/.test(media(s,edition).key)),`${e.name}: something moves across its reach`);
+   assert.equal(r.stages.filter(s=>/^jb2a.zoning.(in|out)ward.circle.loop./.test(media(s,edition).key)).length,1,e.name);
    const key=JSON.stringify(r.stages.map(s=>[media(s,edition).file,s.tintEnabled?s.tint:null]).sort());
    const previous=groups.get(key);if(previous)assert.equal(previous,e.auraDesign.id,`${edition}: ${e.name}`);else groups.set(key,e.auraDesign.id);
    const structure=JSON.stringify(r.stages.map(s=>media(s,edition).key.replace(/\.(?:blue|grey|green|white|black|dark_black|orange|purple|red|yellow|pink|bluepurple|blueteal|greenpurple|greenyellow|purplered|orangeyellow|bluepink|pinkpurple|pinkyellow|orangepurple)$/,'')).sort());
    const old=structures.get(structure);if(old)assert.equal(old,e.auraDesign.id,`${edition} color-independent: ${e.name}`);else structures.set(structure,e.auraDesign.id);
-   for(const s of r.stages){assert.equal(assetGeometry(media(s,edition)),'radial');assert.equal(s.scale,1);assert.equal(s.offsetX,0);assert.equal(s.offsetY,0);assert.equal(s.persist,true);assert.ok(!/markers|token_border/.test(s.assets.join(' ')));}
+   for(const s of r.stages){assert.equal(assetGeometry(media(s,edition)),'radial');const light=/^jb2a.(aura_themed|particles|swirling_leaves|butterflies|fireflies|fairies|wind_lines|zoning)./.test(media(s,edition).key);
+    assert.equal(Boolean(s.auraRadius),light,`${e.name}: ${s.label} ${light?'spans the reach':'stays near the creature'}`);assert.equal(s.scale,light?1:2);assert.equal(s.offsetX,0);assert.equal(s.offsetY,0);assert.equal(s.persist,true);assert.ok(!/markers|token_border/.test(s.assets.join(' ')));}
   }
   assert.equal(groups.size,90);assert.equal(structures.size,90);
  }
@@ -60,11 +63,12 @@ test('native thermal and tradition selections change the field; unspecified choi
  assert.doesNotMatch(r(thermal,{}).stages.map(s=>s.assets).join(' '),/flames|cold/);
  assert.notDeepEqual(r(manifest,{manifestWillTradition:'arcane'}).stages.map(s=>s.assets),r(manifest,{manifestWillTradition:'primal'}).stages.map(s=>s.assets));
 });
-test('native emitter radius covers every layer; ordinary recipients and custom recipients stay local',()=>{
+test('native emitter radius sets the reach ring; the accent and ordinary or custom recipients stay local',()=>{
  const e=entry('Aura: Protective Wards'),item={type:'effect',name:e.name,sourceId:e.uuid,system:{}};
  const state={enabled:true,scope:'all',customized:[e.id]};
  const emitter={...item,animaterAura:{entryId:e.id,slug:'protective-wards',radius:25,source:item}};
- assert.ok(resolveStateRecipe(emitter,state,[],libraries.free).stages.every(s=>s.auraRadius===25));
+ const ward=resolveStateRecipe(emitter,state,[],libraries.free).stages;
+ assert.deepEqual(ward.map(s=>s.auraRadius),[undefined,undefined,25,25],'glyph and shimmer near the warder; motes and ring at the reach');
  assert.ok(resolveStateRecipe(item,state,[],libraries.free).stages.every(s=>s.auraRadius===undefined));
  const custom={...stateRecipe(e),name:'Personal ward',stages:stateRecipe(e).stages.map(s=>({...s,opacity:.75}))};
  const recipe=resolveStateRecipe(item,state,[custom],libraries.free);assert.equal(recipe.name,'Personal ward');assert.ok(recipe.stages.every(s=>s.auraRadius===undefined&&s.opacity===.75));

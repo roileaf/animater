@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.31 (2026-11-01)
+
+- **Calmer auras.** No aura fills its whole radius with heavy footage any more: glyph circles, vortexes, whirls, flow fields and fire rings now sit as a small accent around the creature. Each aura's own light motion (themed orbits, leaves, wind, drifting motes in its colour) spans its reach, and a thin ring in its colour marks the edge, its style differing from aura to aura. This covers PF2e auras, Workbench and patreon-v3 module auras, homebrew auras and SF2e auras.
+
 ## 2.2.30 (2026-11-01)
 
 - **Auras outside combat.** A new world setting (Animater settings → Look & light) for auras while no combat has started on the scene: show them, draw them subtle, or hide them until initiative is rolled. Allies inside an aura keep their small copy, and every aura shows as usual in combat.

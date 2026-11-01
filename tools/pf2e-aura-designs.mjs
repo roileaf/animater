@@ -145,14 +145,52 @@ const thermalPlans={
  cold:plan('Cold inward currents and refractive chill depict the native cold choice of Thermal Nimbus.',orbit('cold','blue','inward','Cold thermal currents'),shimmer('inward','Thermal chill')),
 };
 export const auraAbilityName=name=>{const n=name.replace(/^(?:Aura|Effect|Spell Effect|Stance):\s*/,'');return aliases[n]??n;};
-// Ground fields that fill the aura's radius; a design of only motes, stars or leaves would not show how far it reaches.
-const REACH=/^(template_circle\.|magic_signs\.circle\.|aura_themed\.|fire_ring\.|energy_field\.|bless\.)/;
-export const showsReach=spec=>spec.layers.some(l=>l.roots.some(r=>REACH.test(r)));
+// An aura covers 30 to 90 feet and everyone in it, so nothing heavy fills that radius. Its light footage (themed
+// orbits, motes, leaves, butterflies, wind) still spans it, so each aura moves in its own way; heavy footage (flow
+// fills, glyph circles, whirls, vortexes, fire rings, energy fields, a starburst) is an accent around the creature,
+// ACCENT squares across. A design with no light footage gets drifting motes in its colour across the reach, gathering,
+// spreading or circling as the design does. A thin Zoning ring marks the edge, drifting inward when the design gathers.
+export const ACCENT={scale:2,opacity:.75};
+export const LIGHT_FOOTAGE=/^(aura_themed|particles|swirling_leaves|butterflies|fireflies|fairies|wind_lines)\./;
+const MOTES={opacity:.7,playbackRate:.7,colors:['white','greenyellow']};
+// Motes across the reach for a design of only heavy footage: inward, outward or swirl, one style per aura.
+function reachMotes(tint,direction,db,seed){
+ const chosen={};
+ for(const [edition,rows] of Object.entries(db)){
+  // Outward styles .01 burst from the creature's centre: a cloud on it, not the reach.
+  const all=rows.filter(r=>r.key.startsWith(`jb2a.particles.${direction}.`)&&!/complete/.test(r.key)&&!(direction==='outward'&&/\.0[12]\.01$/.test(r.key)));
+  const color=MOTES.colors.find(c=>all.some(r=>r.key.split('.').includes(c)));
+  const styles=all.filter(r=>r.key.split('.').includes(color)).sort((a,b)=>a.key.localeCompare(b.key));
+  if(!styles.length)throw Error(`No ${direction} motes in ${edition}`);chosen[edition]=styles[ringStyle(`motes:${seed}`)%styles.length];
+ }
+ return {label:'Motes across the reach',below:false,opacity:MOTES.opacity,playbackRate:MOTES.playbackRate,stageId:'motes',
+  assets:[...new Set([chosen.patreon?.key,chosen.free?.key].filter(Boolean))],tintEnabled:true,colorize:true,tint,
+  editions:Object.fromEntries(Object.entries(chosen).map(([edition,row])=>[edition,{key:row.key,files:variantFiles(row),colorSubstitution:true}]))};
+}
+const REACH_RING={roots:direction=>[`zoning.${direction}.circle.loop.bluegreen`],opacity:.6,playbackRate:.6};
+// Which of the ring styles (dashed, broken, solid) an aura gets: fixed per aura, so like-coloured auras differ.
+const ringStyle=seed=>[...String(seed)].reduce((h,c)=>(h*31+c.charCodeAt(0))>>>0,7);
+// The reach ring for an aura of this tint, drifting inward or outward, in each edition (db: { edition: rows }).
+export function reachRing(tint,direction,db,seed=''){
+ const chosen={};
+ for(const [edition,rows] of Object.entries(db)){
+  const candidates=rows.filter(r=>REACH_RING.roots(direction).some(root=>r.key.startsWith(`jb2a.${root}.`)));
+  const styles=candidates.sort((a,b)=>a.key.localeCompare(b.key)),row=styles[ringStyle(seed)%styles.length];
+  if(!row)throw Error(`No Zoning reach ring in ${edition}`);chosen[edition]=row;
+ }
+ return {label:'Aura reach',below:true,opacity:REACH_RING.opacity,playbackRate:REACH_RING.playbackRate,stageId:'reach',
+  assets:[...new Set([chosen.patreon?.key,chosen.free?.key].filter(Boolean))],tintEnabled:true,colorize:true,tint,
+  editions:Object.fromEntries(Object.entries(chosen).map(([edition,row])=>[edition,{key:row.key,files:variantFiles(row),colorSubstitution:true}]))};
+}
 export function buildAuraDesign(entry,db){
  const ability=auraAbilityName(entry.name),spec=plans[ability];
  if(!spec)throw Error(`Native aura lacks a reviewed field composition: ${entry.name}`);
- for(const s of [spec,...Object.values(ability==='Manifest Will'?traditionPlans:ability==='Thermal Nimbus'?thermalPlans:{})])if(!showsReach(s))throw Error(`Aura design shows no reach: ${ability}`);
- const compile=(spec,id)=>({id,rationale:spec.rationale,layers:spec.layers.map((layer,i)=>{
+ const hue=spec=>spec.layers.find(l=>!/^(particles|twinkling_stars)\./.test(l.roots[0]))?.palette?.[1]??spec.layers[0].palette[1];
+ const gathers=spec=>spec.layers.some(l=>l.roots.some(r=>r.includes('.inward')));
+ const circles=spec=>spec.layers.some(l=>l.roots.some(r=>/whirl|vortex|\.orbit\.|radar/.test(r)));
+ const motes=(spec,id)=>spec.layers.some(l=>LIGHT_FOOTAGE.test(l.roots[0]))?[]:[reachMotes(hue(spec),gathers(spec)?'inward':circles(spec)?'swirl':'outward',db,id)];
+ const ring=(spec,id)=>reachRing(hue(spec),gathers(spec)?'inward':'outward',db,id);
+ const compile=(spec,id)=>({id,rationale:spec.rationale,layers:[...spec.layers.map((layer,i)=>{
   const {roots,palette,...options}=layer,[color,tint]=palette,chosen={};
   for(const [edition,rows] of Object.entries(db)){
    let candidates=[];
@@ -161,9 +199,10 @@ export function buildAuraDesign(entry,db){
    const colored=candidates.filter(r=>r.key.split('.').includes(color));
    chosen[edition]=(colored.length?colored:candidates).sort((a,b)=>colorAffinity(b.key,color)-colorAffinity(a.key,color)||a.key.localeCompare(b.key))[0];
   }
-  return {...options,stageId:`field-${i+1}`,assets:[...new Set([chosen.patreon.key,chosen.free.key])],tintEnabled:true,colorize:true,tint,
+  const accent=!LIGHT_FOOTAGE.test(roots[0]);
+  return {...options,...(accent?{accent:true,scale:ACCENT.scale,opacity:Math.min(options.opacity??1,ACCENT.opacity)}:{}),stageId:`field-${i+1}`,assets:[...new Set([chosen.patreon.key,chosen.free.key])],tintEnabled:true,colorize:true,tint,
    editions:Object.fromEntries(Object.entries(chosen).map(([edition,row])=>[edition,{key:row.key,files:variantFiles(row),colorSubstitution:!row.key.split('.').includes(color)}]))};
- })});
+ }),...motes(spec,id),ring(spec,id)]});
  return {...compile(spec,ability),reviewedDescriptionHash:entry.descriptionHash,
   ...(ability==='Manifest Will'?{choice:'tradition',variants:Object.fromEntries(Object.entries(traditionPlans).map(([k,v])=>[k,compile(v,`${ability}:${k}`)]))}:{}),
   ...(ability==='Thermal Nimbus'?{choice:'thermal',variants:Object.fromEntries(Object.entries(thermalPlans).map(([k,v])=>[k,compile(v,`${ability}:${k}`)]))}:{})};

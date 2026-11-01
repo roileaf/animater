@@ -15432,5 +15432,107 @@ export const MEDIA_FOOTPRINTS = {
     600,
     525,
     525
+  ],
+  "ParticlesInward01_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    346.875,
+    350
+  ],
+  "ParticlesInward01_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    350,
+    353.125
+  ],
+  "ParticlesInward02_01_Regular_White_400x400.webm": [
+    400,
+    400,
+    350,
+    346.875
+  ],
+  "ParticlesInward02_02_Regular_White_400x400.webm": [
+    400,
+    400,
+    353.125,
+    353.125
+  ],
+  "ParticlesInward02_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    365.625,
+    356.25
+  ],
+  "ParticlesInward02_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    356.25,
+    356.25
+  ],
+  "ParticlesOutward01_02_Regular_White_400x400.webm": [
+    400,
+    400,
+    359.375,
+    359.375
+  ],
+  "ParticlesOutward01_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    359.375,
+    350
+  ],
+  "ParticlesOutward01_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    356.25,
+    362.5
+  ],
+  "ParticlesOutward02_02_Regular_White_400x400.webm": [
+    400,
+    400,
+    381.25,
+    375
+  ],
+  "ParticlesOutward02_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    375,
+    371.875
+  ],
+  "ParticlesOutward02_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    359.375,
+    368.75
+  ],
+  "ZoningCircle01In_01_Regular_BlueGreen_Loop_600x600.webm": [
+    600,
+    600,
+    525,
+    525
+  ],
+  "ZoningCircle02In_01_Regular_BlueGreen_Loop_600x600.webm": [
+    600,
+    600,
+    525,
+    525
+  ],
+  "ZoningCircle02Out_01_Regular_BlueGreen_Loop_600x600.webm": [
+    600,
+    600,
+    525,
+    525
+  ],
+  "ZoningCircle03In_01_Regular_BlueGreen_Loop_600x600.webm": [
+    600,
+    600,
+    525,
+    520.3125
+  ],
+  "ZoningCircle03Out_01_Regular_BlueGreen_Loop_600x600.webm": [
+    600,
+    600,
+    525,
+    525
   ]
 };

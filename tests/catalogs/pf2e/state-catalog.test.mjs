@@ -24,7 +24,7 @@ test('all native effect Aura rules retain literal radii; formulas remain native 
 });
 test('catalog aura sample has area extent while native recipient resolution never propagates the field',()=>{
  const e=PF2E_EFFECTS.find(e=>e.name==="Aura: Demon's Knot"),recipe=stateRecipe(e),item=native(e),state=useStateEntry({},e.id);
- assert.equal(recipe.stages[0].auraRadius,30);assert.equal(recipe.stages[0].scale,1);assert.equal(recipe.stages[0].offsetY,0);
+ const reach=recipe.stages.find(s=>s.auraRadius);assert.equal(reach.auraRadius,30);assert.equal(reach.scale,1);assert.equal(reach.offsetY,0);
  assert.equal(resolveStateRecipe(item,state,[]).stages[0].auraRadius,undefined);
  const customized={...state,customized:[e.id]};
  assert.equal(resolveStateRecipe(item,customized,[recipe]).stages[0].auraRadius,undefined);

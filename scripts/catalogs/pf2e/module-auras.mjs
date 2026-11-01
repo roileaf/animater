@@ -3,23 +3,27 @@
 // catalog (built from PF2e's compendiums) had no entry for them. These entries give each its own field, so it can be
 // found, customised and left out like any built-in aura. Listed only while their module is active (moduleActive).
 // Each layer names a Patreon asset, then a JB2A free one: the first installed plays, tinted to the aura's colour.
-const RING = ['jb2a.template_circle.aura.03.outward.005.loop.combined.greenyellow', 'jb2a.template_circle.aura.03.outward.005.loop.combined.blue'];
-const DARK_RING = ['jb2a.template_circle.aura.03.inward.002.loop.combined.bluepurple', 'jb2a.template_circle.aura.03.outward.005.loop.combined.blue'];
+// Like every aura design (tools/pf2e-aura-designs.mjs): its own look is a small accent on the creature and its reach a
+// thin Zoning ring at the radius, drifting outward, or inward for a field closing in.
+const RING = ['jb2a.zoning.outward.circle.loop.bluegreen.01.03', 'jb2a.zoning.outward.circle.loop.bluegreen.01.01'];
+const DARK_RING = ['jb2a.zoning.inward.circle.loop.bluegreen.01.03', 'jb2a.zoning.inward.circle.loop.bluegreen.01.01'];
 const NOTES = ['jb2a.markers.music.greenorange', 'jb2a.markers.music_note.blue.01'];
 const layer = (label, assets, tint, extra = {}) => ({ label, assets, tintEnabled: true, colorize: true, tint, opacity: 0.85, below: true, playbackRate: 0.8, ...extra });
-const song = (tint, rationale, ring = RING) => ({ rationale, layers: [layer('Song field', ring, tint, { opacity: 0.6 }), layer('Notes in the air', NOTES, tint, { below: false, opacity: 0.8 })] });
-const sign = (tint, rationale, assets, ring = DARK_RING) => ({ rationale, layers: [layer('Aura field', ring, tint, { opacity: 0.55 }), layer('Sign', assets, tint, { opacity: 0.7 })] });
+const accent = (label, assets, tint, extra = {}) => layer(label, assets, tint, { accent: true, scale: 1.5, opacity: 0.75, ...extra });
+const reach = (ring, tint) => layer('Aura reach', ring, tint, { opacity: 0.6, playbackRate: 0.6 });
+const song = (tint, rationale, ring = RING) => ({ rationale, layers: [accent('Notes in the air', NOTES, tint, { below: false }), reach(ring, tint)] });
+const sign = (tint, rationale, assets, ring = DARK_RING) => ({ rationale, layers: [accent('Sign', assets, tint, { opacity: 0.7 }), reach(ring, tint)] });
 
 const DESIGNS = {
-  'courageous-anthem': { theme: 'music', color: '#ffb85c', ...song('#ffb85c', 'Courageous Anthem: a warm gold field the song fills, notes drifting through it.') },
-  'rallying-anthem': { theme: 'music', color: '#9fd8a8', ...song('#9fd8a8', 'Rallying Anthem: a calm green field of song, notes drifting through it.') },
-  'song-of-strength': { theme: 'music', color: '#ff9a5c', ...song('#ff9a5c', 'Song of Strength: a hot orange field of song, notes drifting through it.') },
-  'triple-time': { theme: 'music', color: '#8fe2f4', ...song('#8fe2f4', 'Triple Time: a quick bright-blue field of song, notes drifting through it.') },
-  'dirge-of-doom': { theme: 'music', color: '#8a6fb8', ...song('#8a6fb8', 'Dirge of Doom: a dark field drawing inward, slow notes of a funeral song.', DARK_RING) },
-  bane: { theme: 'curse', color: '#e07a84', ...sign('#e07a84', 'Bane: a field closing in on foes, an enchantment sign under the caster.', ['jb2a.magic_signs.circle.02.enchantment.loop.dark_pink', 'jb2a.magic_signs.circle.02.enchantment.loop.dark_pink']) },
-  malediction: { theme: 'curse', color: '#b07ad8', ...sign('#b07ad8', 'Malediction: a violet field closing in on foes, an enchantment sign under the caster.', ['jb2a.magic_signs.circle.02.enchantment.loop.dark_purple', 'jb2a.magic_signs.circle.02.enchantment.loop.dark_pink']) },
-  'lantern-intensify-vulnerability': { theme: 'light', color: '#ffc04d', ...sign('#ffc04d', 'Lantern Intensify Vulnerability: lantern light spreading out, a divination sign under the bearer.', ['jb2a.magic_signs.circle.02.divination.loop.yellow', 'jb2a.magic_signs.circle.02.divination.loop.blue'], RING) },
-  'desert-wind': { theme: 'air', color: '#d9b77a', rationale: 'Desert Wind: a whirl of sand-coloured wind around the kineticist.', layers: [layer('Desert whirl', ['jb2a.template_circle.whirl.loop.orange', 'jb2a.template_circle.whirl.loop.blue'], '#d9b77a', { opacity: 0.6 })] },
+  'courageous-anthem': { theme: 'music', color: '#ffb85c', ...song('#ffb85c', 'Courageous Anthem: warm gold notes around the performer, a thin ring marking the song’s reach.') },
+  'rallying-anthem': { theme: 'music', color: '#9fd8a8', ...song('#9fd8a8', 'Rallying Anthem: calm green notes around the performer, a thin ring marking the song’s reach.') },
+  'song-of-strength': { theme: 'music', color: '#ff9a5c', ...song('#ff9a5c', 'Song of Strength: hot orange notes around the performer, a thin ring marking the song’s reach.') },
+  'triple-time': { theme: 'music', color: '#8fe2f4', ...song('#8fe2f4', 'Triple Time: quick bright-blue notes around the performer, a thin ring marking the song’s reach.') },
+  'dirge-of-doom': { theme: 'music', color: '#8a6fb8', ...song('#8a6fb8', 'Dirge of Doom: slow notes of a funeral song, a dark ring drawing inward at its reach.', DARK_RING) },
+  bane: { theme: 'curse', color: '#e07a84', ...sign('#e07a84', 'Bane: an enchantment sign under the caster, a ring closing in on foes at its reach.', ['jb2a.magic_signs.circle.02.enchantment.loop.dark_pink', 'jb2a.magic_signs.circle.02.enchantment.loop.dark_pink']) },
+  malediction: { theme: 'curse', color: '#b07ad8', ...sign('#b07ad8', 'Malediction: a violet enchantment sign under the caster, a ring closing in on foes at its reach.', ['jb2a.magic_signs.circle.02.enchantment.loop.dark_purple', 'jb2a.magic_signs.circle.02.enchantment.loop.dark_pink']) },
+  'lantern-intensify-vulnerability': { theme: 'light', color: '#ffc04d', ...sign('#ffc04d', 'Lantern Intensify Vulnerability: a divination sign under the bearer, lantern light ringing its reach.', ['jb2a.magic_signs.circle.02.divination.loop.yellow', 'jb2a.magic_signs.circle.02.divination.loop.blue'], RING) },
+  'desert-wind': { theme: 'air', color: '#d9b77a', rationale: 'Desert Wind: a small whirl of sand-coloured wind around the kineticist, a ring at its reach.', layers: [accent('Desert whirl', ['jb2a.template_circle.whirl.loop.orange', 'jb2a.template_circle.whirl.loop.blue'], '#d9b77a', { opacity: 0.6 }), reach(RING, '#d9b77a')] },
 };
 // Same aura as one PF2e already has a design for: that design, so both look alike.
 const SAME_AS = { 'aura-of-despair': 'Effect: Aura of Despair', 'protectors-sphere': "Aura: Protector's Sphere" };
@@ -63,7 +67,7 @@ export function moduleAuraEntries(effects = []) {
       id: `${module}-${documentId}`, documentId, pack, sourcePack: pack, uuid: uuidOf(copies[0]), aliases: copies.slice(1).map(uuidOf),
       slug: copies[0][5], name, img, kind: 'effect', group: 'Module auras', modules,
       theme: design.theme, color: design.color, quality: 'themed', evidence: `Aura effect from ${from}`, rationale: design.rationale,
-      assets: layers.at(-1).assets, scale: 1.2, opacity: 0.85, below: true, private: false, presentationRole: 'marker', offsetX: 0, offsetY: 0,
+      assets: (layers.find((l) => l.accent) ?? layers[0]).assets, scale: 1.2, opacity: 0.85, below: true, private: false, presentationRole: 'marker', offsetX: 0, offsetY: 0,
       auras: copies.map(([, , , , , slug]) => ({ slug, radius })), auraDesign: { id: name, rationale: design.rationale, layers },
     }];
   });

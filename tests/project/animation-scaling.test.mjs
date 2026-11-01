@@ -60,9 +60,9 @@ test('validated import/export retains aura radius and local canvas preview rende
  assert.equal(calls.find(c=>c[0]==='size')[1].width,1300);
 });
 test('thirty-foot catalog aura fits narrow and wide previews while preserving token-to-field ratio',()=>{
- const r=stateRecipe(PF2E_EFFECTS.find(e=>e.name==="Aura: Demon's Knot"));
+ const r=stateRecipe(PF2E_EFFECTS.find(e=>e.name==="Aura: Demon's Knot")),reach=String(r.stages.findIndex(s=>s.auraRadius));
  for(const width of [240,400,720]){
-  const art={videoWidth:400,videoHeight:400,style:{}},layer={dataset:{layerStage:'0'},style:{setProperty(){}},querySelector:()=>art};
+  const art={videoWidth:400,videoHeight:400,style:{}},layer={dataset:{layerStage:reach},style:{setProperty(){}},querySelector:()=>art};
   const actor={style:{}},token={dataset:{previewToken:'source'},style:{},closest:()=>actor};
   const scene={clientWidth:width,clientHeight:300,style:{setProperty(){}},dataset:{previewTokens:JSON.stringify({source:{width:1,height:1}})},querySelectorAll:s=>s==='[data-layer-stage]'?[layer]:s==='[data-preview-token]'?[token]:[]};
   const player=new RecipePreview(scene,r,()=>{});player.draw(recipeFrame(player.recipe,1000));

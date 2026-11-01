@@ -93,12 +93,14 @@ test('effect expiry without deletion, secret visibility, and catalog pause remov
  item.isExpired=false;await f.manager.reconcile();item.system.unidentified=true;f.setVisibility({isGM:false});await f.manager.reconcile();assert.equal(f.manager.active.size,0);
  f.setVisibility({isGM:true});await f.manager.reconcile();f.states.effect.enabled=false;await f.manager.reconcile();assert.equal(f.manager.active.size,0);
 });
+// The width of each aura reach ring drawn so far (its Zoning footage), in order.
+const reachWidths=f=>{let file;return f.calls.flatMap(c=>c[0]==='file'?(file=c[1],[]):c[0]==='size'&&/zoning/.test(file)?[c[1].width]:[]);};
 test('native Form a Flock aura covers its ten-foot reach beyond the bearer footprint',async()=>{
  const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Form a Flock'),item=native(entry),f=fixture([item]);
  item.system.rules=[{key:'Aura',radius:10}];
  f.actor.auras=new Map([[entry.slug,{slug:entry.slug,radius:10,effects:[]}]]);
  await f.manager.reconcile();
- assert.equal(f.calls.find(c=>c[0]==='size')[1].width,500);
+ assert.deepEqual(reachWidths(f),[500]);
  await f.manager.destroy();
 });
 test('prepared radius drives dynamic aura growth, grid distance changes and cleanup',async()=>{
@@ -106,25 +108,25 @@ test('prepared radius drives dynamic aura growth, grid distance changes and clea
  item.system.rules=[{key:'Aura',slug:'manifest-will',radius:'@item.flags.pf2e.auraRadius'}];
  const aura={slug:'manifest-will',radius:10,effects:[]};f.actor.auras=new Map([[aura.slug,aura]]);
  await f.manager.reconcile();const first=[...f.manager.active.values()][0].name;
- assert.equal(f.calls.find(c=>c[0]==='size')[1].width,500);
+ assert.equal(reachWidths(f).at(-1),500);
  aura.radius=20;await f.manager.reconcile();
- assert.equal(f.calls.filter(c=>c[0]==='size').at(-1)[1].width,900);
+ assert.equal(reachWidths(f).at(-1),900);
  assert.ok(f.calls.some(c=>c[0]==='end'&&c[1]===first));
  f.manager.host.gridDistance=()=>10;await f.manager.reconcile();
- assert.equal(f.calls.filter(c=>c[0]==='size').at(-1)[1].width,500);
+ assert.equal(reachWidths(f).at(-1),500);
  f.actor.auras.clear();await f.manager.reconcile();
  assert.ok([...f.manager.active.values()].every(r=>!r.item.animaterAura));
  await f.manager.destroy();
 });
 test('Demon\'s Knot emits thirty feet from equipment bearer; its penalty recipient stays token-sized',async()=>{
  const entry=PF2E_EFFECTS.find(e=>e.name==="Aura: Demon's Knot"),recipient=native(entry),f=fixture([recipient]);
- assert.equal(stateRecipe(entry).stages[0].auraRadius,30);
+ assert.equal(stateRecipe(entry).stages.find(s=>s.auraRadius).auraRadius,30);
  const source={id:'knot',uuid:'Actor.a.Item.knot',name:"Demon's Knot",type:'equipment',sourceId:entry.auraSources.find(s=>s.slug==='demons-knot').uuid,system:{rules:[{key:'Aura',slug:'demons-knot',radius:30}]}};
  f.actor.items.push(source);f.actor.auras=new Map([['demons-knot',{slug:'demons-knot',radius:30,effects:[{parent:source,uuid:"Compendium.pf2e.equipment-effects.Item.Aura: Demon's Knot"}]}]]);
  await f.manager.reconcile();
  const fields=[...f.manager.active.values()].filter(r=>r.item.animaterAura);
- assert.equal(fields.length,1);assert.equal(fields[0].recipe.stages[0].auraRadius,30);
- assert.ok(f.calls.some(c=>c[0]==='size'&&c[1].width===1300));
+ assert.equal(fields.length,1);assert.ok(fields[0].recipe.stages.filter(s=>s.auraRadius).every(s=>s.auraRadius===30));
+ assert.ok(reachWidths(f).includes(1300),'its reach ring spans thirty feet');
  assert.ok(f.calls.some(c=>c[0]==='size'&&c[1].width===150));
  assert.ok(f.calls.some(c=>c[0]==='tieToDocuments'&&c[1].includes(source.uuid)));
  f.actor.items=[recipient];f.actor.auras.clear();await f.manager.reconcile();
@@ -142,7 +144,7 @@ test('multiple prepared auras from one Item retain separate keys and disappear i
 test('all field layers share one native lifetime and end together when an emitter disappears',async()=>{
  const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Protective Wards'),item=native(entry),f=fixture([item]);
  item.system.rules=[{key:'Aura',slug:'protective-wards',radius:15}];f.actor.auras=new Map([['protective-wards',{slug:'protective-wards',radius:15,effects:[]}]]);
- await f.manager.reconcile();assert.equal(f.calls.filter(c=>c[0]==='file').length,2);
+ await f.manager.reconcile();assert.equal(f.calls.filter(c=>c[0]==='file').length,4);
  const names=f.calls.filter(c=>c[0]==='name').map(c=>c[1]);assert.equal(new Set(names).size,1);
  assert.ok(f.calls.filter(c=>c[0]==='tieToDocuments').every(c=>c[1].includes(item.uuid)));
  f.actor.items=[];f.actor.auras.clear();await f.manager.reconcile();assert.equal(f.manager.active.size,0);

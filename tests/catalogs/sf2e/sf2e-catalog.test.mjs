@@ -87,7 +87,7 @@ test('native SF prepared aura radius grows the emitter rather than the recipient
  const entry=sfEntries('effect').find(e=>e.state.auraSources?.length),link=entry.state.auraSources[0];
  const source={id:'emitter',uuid:'Actor.a.Item.emitter',type:'feat',name:'Native emitter',sourceId:link.uuid,system:{rules:[{key:'Aura',slug:link.slug,radius:20}]}},actor={items:[source],auras:new Map([[link.slug,{slug:link.slug,radius:20,effects:[{parent:source,uuid:entry.uuid}]}]])};
  const states=sfActorStates(actor);assert.equal(states.length,1);assert.equal(states[0].animaterAura.radius,20);
- const recipe=resolveSfStateRecipe(states[0],useSfEntry({},entry.id));assert.ok(recipe.stages.every(s=>s.auraRadius===20));
+ const recipe=resolveSfStateRecipe(states[0],useSfEntry({},entry.id));const reach=recipe.stages.filter(s=>s.auraRadius);assert.ok(reach.length&&reach.every(s=>s.auraRadius===20),'its reach');
  const recipient=resolveSfStateRecipe(native(entry),useSfEntry({},entry.id));assert.ok(recipient.stages.every(s=>!s.auraRadius));
 });
 test('SF workspace uses native IDs for details and never exposes D&D edition controls',async()=>{
