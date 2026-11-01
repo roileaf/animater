@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.32 (2026-11-01)
+
+- **Aura style.** A new world setting (Animater settings → Look & light): keep auras as JB2A animations, or let Animater draw them with Tokenshade. A Tokenshade aura is drawn on the ground under the tokens: a crisp line exactly at its reach, and a band of the aura's own motif in its colour just inside it (runes, hexes, flame, frost, wind, vines, sparks, ripples, shadow, radiance, storm, music notes, skulls, hearts, eyes, blades or drops), picked from the aura itself, with nothing over the creatures inside. Lighter on slower computers too. The aura's small accent around its creature stays.
+- **Clearer token looks panel.** Holding Shift over a token now labels each look: Aura, From an aura, Effect or Condition.
+- **No double aura on its source.** A creature giving off an aura (a marshal in their own Marshal's Aura) no longer also shows the effect its aura hands back to it; allies inside keep theirs.
+
 ## 2.2.31 (2026-11-01)
 
 - **Calmer auras.** No aura fills its whole radius with heavy footage any more: glyph circles, vortexes, whirls, flow fields and fire rings now sit as a small accent around the creature. Each aura's own light motion (themed orbits, leaves, wind, drifting motes in its colour) spans its reach, and a thin ring in its colour marks the edge, its style differing from aura to aura. This covers PF2e auras, Workbench and patreon-v3 module auras, homebrew auras and SF2e auras.

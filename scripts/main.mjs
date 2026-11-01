@@ -156,6 +156,7 @@ import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, catalogWeapon, weaponRecipe, normaliz
 import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalogState, catalogStateEntry, stateRecipe } from "./catalogs/pf2e/state-catalog.mjs";
 import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } from "./engines/playback/persistent-states.mjs";
 import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "./engines/playback/outside-combat.mjs";
+import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
 import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId, isDefeated } from "./engines/playback/defeated-look.mjs";
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
@@ -437,6 +438,33 @@ const clearMarks = () => {
   try { markRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
   markRoot = null;
 };
+// Tokenshade auras (engines/playback/aura-fields.mjs, the "Aura style" setting): shader meshes on the floor, just
+// above the ground marks and under the tokens, one container per scene like the marks.
+let auraRoot = null;
+const auraFields = createAuraFields({
+  get PIXI() { return PIXI; },
+  addToScene: (mesh) => {
+    if (!auraRoot || auraRoot.destroyed) {
+      auraRoot = new PIXI.Container();
+      auraRoot.eventMode = "none";
+      auraRoot.elevation = canvas.level?.elevation?.base ?? 0;
+      auraRoot.sortLayer = 660;
+      canvas.primary.addChild(auraRoot);
+    }
+    auraRoot.addChild(mesh);
+  },
+  removeFromScene: (mesh) => { try { mesh.destroy(); } catch { /* canvas gone */ } },
+  ticker: { add: (fn) => canvas.app.ticker.add(fn), remove: (fn) => canvas.app?.ticker?.remove(fn) },
+  zoom: () => canvas.stage?.scale?.x ?? 1,
+  gridSize: () => canvas.grid?.size ?? 100,
+  gridDistance: () => canvas.scene?.grid?.distance ?? 5,
+  now: () => performance.now(),
+});
+Hooks.on("canvasTearDown", () => {
+  auraFields.clear();
+  try { auraRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
+  auraRoot = null;
+});
 // Clear on demand (api.clearGroundMarks, the GM keybinding): a GM clears every screen, a player their own.
 const clearGroundMarksApi = (options) => clearGroundMarks(options, {
   isGM: () => game.user.isGM, clear: clearMarks, emit: (data) => game.socket.emit(`module.${ID}`, data), sender: clientId, userId: game.user.id,
@@ -2784,6 +2812,9 @@ Hooks.once("init", () => {
   registerSetting(SUBTLE_LASTING,{name:'Subtle effects, conditions and auras',
     hint:'For tables that want only light touches: every catalog effect, condition and aura look on a creature is drawn smaller, fainter and calmer. An aura\'s ring keeps its size so you still see its reach. Attack, spell and other one-time animations are unchanged, and so are recipes you made yourself. To show lasting looks only when they land, each player can also set "Lasting condition animations".',
     scope:'world',config:true,type:Boolean,default:false,onChange:()=>persistentStates?.schedule()});
+  registerSetting("auraStyle",{name:'Aura style',
+    hint:'How an aura’s reach is drawn. JB2A animations: looping JB2A footage across the reach. Tokenshade: drawn by Animater on the ground, a crisp line exactly at the reach with a pattern in the aura’s colour and theme (flame, frost, runes, vines and more) and nothing over the creatures inside; lighter on slower computers. Either way the aura’s small accent stays around its creature.',
+    scope:'world',config:true,type:String,choices:{...AURA_STYLES},default:'jb2a',onChange:()=>persistentStates?.schedule()});
   registerSetting("aurasOutsideCombat",{name:'Auras outside combat',
     hint:'How aura looks (an aura\'s ring around its creature, often 30 to 90 feet) show while no combat has started on the scene. Subtle draws them smaller, fainter and calmer; Hide them until combat keeps them off the map until initiative is rolled. Allies inside an aura keep their small copy. In combat every aura shows as usual.',
     scope:'world',config:true,type:String,choices:{...AURAS_OUTSIDE_COMBAT},default:'show',onChange:()=>persistentStates?.schedule()});
@@ -4163,6 +4194,8 @@ Hooks.once("ready", () => {
       lastingMode: () => hotSetting("lastingMode"),
       subtle: () => hotSetting(SUBTLE_LASTING) === true,
       auraCalm: () => auraCalm(hotSetting("aurasOutsideCombat"), game.combat),
+      auraStyle: () => hotSetting("auraStyle"),
+      auraField: auraFields,
       recipes,
       // Your own lasting recipes follow the same switch as every other custom recipe.
       customEnabled: () => enabled(),

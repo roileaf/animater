@@ -22,6 +22,7 @@ export const SETTINGS_TABS = Object.freeze([
     { local: "quality" },
     { world: "conditionLooks" },
     { world: "subtleLasting" },
+    { world: "auraStyle" },
     { world: "aurasOutsideCombat" },
     { world: "catalogTokenFx" },
     { world: "catalogSceneFx" },

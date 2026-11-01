@@ -9,6 +9,7 @@ import {bodyTreatment} from '../motion/condition-body.mjs';
 import {coversToken,hollowFootage,refractionFootage,risingFlames} from '../../catalogs/shared/state-presentation.mjs';
 import {onGroundBelow} from './ground-elevation.mjs';
 import {isAuraLook} from './outside-combat.mjs';
+import {auraLook} from './aura-fields.mjs';
 
 export function activeState(item){
  if(item?.animaterAura){const source=item.animaterAura.source;return source?.type==='effect'?activeState(source):Boolean(source);}
@@ -43,7 +44,10 @@ export function actorStates(actor,profile){
  // already discarded overridden/lower-valued duplicates.
  const conditions=Array.from(actor?.conditions?.active??actor?.itemTypes?.condition??actor?.items??[]).filter(i=>i.type==='condition');
  const auras=nativeAuraStates(actor,profile),emitters=new Set(auras.map(i=>i.animaterAura.source.uuid));
- return [...effects.filter(i=>!emitters.has(i.uuid)),...conditions,...auras];
+ // An aura hands its effect to its own creature too (a marshal inside their own Marshal's Aura). Its ring already
+ // shows it there, so that copy is not drawn a second time; allies inside keep theirs.
+ const own=new Set(auras.map(i=>i.animaterAura.slug)),selfCopy=i=>{const a=i.flags?.pf2e?.aura;return Boolean(a?.origin)&&a.origin===actor?.uuid&&own.has(a.slug);};
+ return [...effects.filter(i=>!emitters.has(i.uuid)&&!selfCopy(i)),...conditions,...auras];
 }
 function ruleSlug(rule,item){return rule.slug??item.slug??item.system?.slug??String(item.name??'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');}
 export function nativeAuraStates(actor,{findStateEntry:lookup=findStateEntry,auraStateEntry:auraLookup=auraStateEntry,effects=PF2E_EFFECTS}={}){
@@ -144,7 +148,7 @@ export class PersistentStates{
  // A lasting layer Sequencer no longer has: its scene re-initializing destroys every effect on the canvas
  // without an ended event. Played-once layers end on their own, so only lasting ones count.
  lost(r){return r.drawn===true&&!r.fade&&!r.cancelled&&this.host.alive?.(r.name)===false;}
- async end(record){this.host.body?.remove(record.name);await Promise.all([this.host.end(record.name),this.host.stopFx?.(record.name)]);}
+ async end(record){this.host.body?.remove(record.name);this.host.auraField?.remove(record.name);await Promise.all([this.host.end(record.name),this.host.stopFx?.(record.name)]);}
  schedule(tokens){if(this.closed)return;if(tokens===undefined)this.fullScheduled=true;else for(const id of tokens)this.dirtyTokens.add(id);clearTimeout(this.timer);this.timer=setTimeout(()=>{this.timer=null;const scope=this.fullScheduled?undefined:new Set(this.dirtyTokens);this.fullScheduled=false;this.dirtyTokens.clear();void this.reconcile(scope).catch(e=>this.host.trace?.('Blocked',`Persistent effects: ${e.message}`));},35);}
  // Would a lasting animation show for this condition or effect (its catalog on, or your own
  // version)? Taking over Automated Animations stops AA's animation for the same document.
@@ -188,7 +192,7 @@ export class PersistentStates{
      const calm=isAuraLook(item,recipe,{granted:grantedByOtherAura(item,token)})?(h.auraCalm?.()??'show'):'show';if(calm==='hidden')continue;
      // The world's Subtle switch softens every catalog look (a recipe of your own keeps what you made).
      const soft=!item.animaterRecipe&&(h.subtle?.()===true||calm==='subtle');
-     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
+     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':'')+(h.auraStyle?.()??''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
     }
    }
    // Removed, its next application animates again.
@@ -242,7 +246,11 @@ export class PersistentStates{
   const authored=(h.recipes?.()??[]).some(saved=>saved.id===r.recipe.id);
   // Square token art without a dynamic ring is opaque to its corners: anything under it is hidden.
   const squareArt=!authored&&(h.opaqueArt?.(r.token)??false);
-  for(const s of shown){
+  // Aura style Tokenshade: the reach is drawn by a shader on the ground (aura-fields.mjs), not by its footage; the
+  // small accent around the creature stays. An ally's copy and a recipe of your own keep their footage.
+  const reach=!granted&&!authored&&h.auraStyle?.()==='tokenshade'&&h.auraField?shown.find(s=>s.auraRadius>0):null;
+  const drawn=reach?shown.filter(s=>!(s.auraRadius>0)):shown;
+  for(const s of drawn){
    if(layers++>=maxLayers)continue;
    const media=mediaForReference(catalog,s.asset);
    // Hollow rings (markers, rims, curse and glyph circles) go on top of any token: they frame the creature, while
@@ -278,10 +286,11 @@ export class PersistentStates{
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   if(!r.replaying)h.trace?.('Persistent',`${r.recipe.name} follows ${r.token.name??'token'} while its condition or effect lasts.`,r.recipe,{key:r.key,automatic:true,origin:this.originOf(r)});
   if(h.tokenAlive&&!h.tokenAlive(r.token)){await this.end(r);return;}
-  if(shown.length)await sequence.play({local:true});
+  if(drawn.length)await sequence.play({local:true});
   // Removal/scene changes can race asynchronous texture loading.
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
-  r.drawn=shown.length>0;
+  r.drawn=drawn.length>0;
+  if(reach)h.auraField.add(r.name,{token:r.token,feet:reach.auraRadius,look:auraLook(r.recipe),soft:r.soft===true,fadeMs:r.fade?FADE_MS+offset:0});
   // The creature itself reacts (trembles, sways, turns to stone…) while the state lasts.
   if(r.motion!==false){
    h.body?.add(r.name,r.token,r.item.animaterBody??bodyTreatment(r.item.name??r.recipe.name),{strength:level.scale});
@@ -308,7 +317,7 @@ export class PersistentStates{
  // catalog entry its recipe comes from (stateEntry) and the kind of state it is.
  onToken(tokenId,now=Date.now()){
   return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>FADE_MS)&&(r.token?.id??r.token?.document?.id)===tokenId)
-   .map(r=>({key:r.key,name:r.item?.animaterAura?r.recipe?.name??r.item?.name??'':r.item?.name??r.recipe?.name??'',stateEntry:r.recipe?.stateEntry??null,kind:r.item?.type??null}));
+   .map(r=>({key:r.key,name:r.item?.animaterAura?r.recipe?.name??r.item?.name??'':r.item?.name??r.recipe?.name??'',stateEntry:r.recipe?.stateEntry??null,kind:r.item?.type??null,aura:Boolean(r.item?.animaterAura),granted:grantedByOtherAura(r.item,r.token)}));
  }
  // Ends one state's animation here; it stays off until the condition or effect is removed and applied again.
  async stop(key){

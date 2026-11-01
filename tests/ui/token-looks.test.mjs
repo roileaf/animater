@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lookName, normalizeFlags, toggleFlag, flaggedText, panelRows, panelHTML } from "../../scripts/ui/token-looks.mjs";
+import { lookName, normalizeFlags, toggleFlag, flaggedText, panelRows, panelHTML, lookKind } from "../../scripts/ui/token-looks.mjs";
 
 test("a look's name drops the Spell Effect: prefix every effect shares", () => {
   assert.equal(lookName("Spell Effect: Bless"), "Bless");
@@ -31,9 +31,18 @@ test("the panel offers Hide here to everyone, Always off and Flag to the GM for 
   const player = panelRows(states, { entryOf, isGM: false });
   assert.ok(player.every((r) => !r.canAlways && !r.canFlag));
   const html = panelHTML(gm, { tokenName: "Qaelrin", isGM: true });
-  assert.match(html, /<b title="Spell Effect: Bless">Bless<\/b>/);
+  assert.match(html, /<b title="Spell Effect: Bless">Bless <small class="animater-looks-kind">Effect<\/small><\/b>/);
   assert.equal((html.match(/data-look-action="hide"/g) ?? []).length, 2);
   assert.equal((html.match(/data-look-action="always"/g) ?? []).length, 1);
   assert.match(html, /aria-pressed="true"[^>]*>⚑ Flagged/);
   assert.match(panelHTML([], { tokenName: "X" }), /No lasting looks/);
+});
+test("each row says what it is: the aura itself, an effect handed out by an aura, an effect or a condition", () => {
+  assert.equal(lookKind({ aura: true, kind: "effect" }), "Aura");
+  assert.equal(lookKind({ granted: true, kind: "effect" }), "From an aura");
+  assert.equal(lookKind({ kind: "condition" }), "Condition");
+  assert.equal(lookKind({ kind: "effect" }), "Effect");
+  const html = panelHTML(panelRows([{ key: "a", name: "Marshal's Aura", aura: true }, { key: "b", name: "Frightened", kind: "condition" }]));
+  assert.match(html, /Marshal&#39;s Aura <small class="animater-looks-kind">Aura<\/small>/);
+  assert.match(html, /Frightened <small class="animater-looks-kind">Condition<\/small>/);
 });

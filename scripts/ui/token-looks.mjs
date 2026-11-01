@@ -30,6 +30,8 @@ export function flaggedText(flags, { system = "pf2e", version = "" } = {}) {
   return [head, ...rows.map(([id, f]) => `- ${f.name} (${f.kind}, ${id})`)].join("\n");
 }
 
+// What a row is, shown beside its name: the aura itself (its ring), an effect an aura hands out, an effect, a condition.
+export const lookKind = (s) => s?.aura ? "Aura" : s?.granted ? "From an aura" : s?.kind === "condition" ? "Condition" : "Effect";
 // The panel's rows for one token: its lasting looks showing now (states.onToken), each with what its buttons can
 // do. `entryOf(row)` gives its catalog entry ({ id, name, kind }) or null when it has none (your own recipe, another
 // system's catalog): then only Hide here is offered.
@@ -37,7 +39,7 @@ export function panelRows(states, { entryOf = () => null, flags = {}, isGM = fal
   const flagged = normalizeFlags(flags);
   return (states ?? []).filter((s) => s?.key).map((s) => {
     const entry = entryOf(s) ?? null;
-    return { key: s.key, name: String(s.name ?? entry?.name ?? ""), entry, flagged: Boolean(entry && flagged[entry.id]), canAlways: isGM && Boolean(entry), canFlag: isGM && Boolean(entry) };
+    return { key: s.key, name: String(s.name ?? entry?.name ?? ""), kind: lookKind(s), entry, flagged: Boolean(entry && flagged[entry.id]), canAlways: isGM && Boolean(entry), canFlag: isGM && Boolean(entry) };
   });
 }
 
@@ -46,7 +48,7 @@ export function panelHTML(rows, { tokenName = "", isGM = false } = {}) {
   // No close button: letting go of Shift closes it.
   const head = `<header><span>Animater · ${esc(tokenName)}</span></header>`;
   if (!rows.length) return `${head}<p class="animater-looks-empty">No lasting looks on this token right now.</p>`;
-  const row = (r) => `<li data-key="${esc(r.key)}"><b title="${esc(r.name)}">${esc(lookName(r.name))}</b><span class="animater-looks-buttons">`
+  const row = (r) => `<li data-key="${esc(r.key)}"><b title="${esc(r.name)}">${esc(lookName(r.name))}${r.kind ? ` <small class="animater-looks-kind">${esc(r.kind)}</small>` : ""}</b><span class="animater-looks-buttons">`
     + `<button type="button" data-look-action="hide" data-key="${esc(r.key)}" title="${isGM ? "Hide it on this token on every screen" : "Hide it on this token on your screen"}, until it is applied again">Hide here</button>`
     + (r.canAlways ? `<button type="button" data-look-action="always" data-key="${esc(r.key)}" title="Leave it out of its catalog for the whole world">Always off</button>` : "")
     + (r.canFlag ? `<button type="button" data-look-action="flag" data-key="${esc(r.key)}" aria-pressed="${r.flagged}" title="${r.flagged ? "Flagged for a new look: click to clear" : "Flag it for a new look (listed in its catalog, and in a list you can send Animater's author)"}">${r.flagged ? "⚑ Flagged" : "⚐ Flag"}</button>` : "")

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PersistentStates,FADE_MS,justApplied,perceivedStates,activeState,stateVisible,storedStateDocument,nativeAuraStates,shownStates,tokenLookChanged} from '../../../scripts/engines/playback/persistent-states.mjs';
+import {PersistentStates,FADE_MS,actorStates,justApplied,perceivedStates,activeState,stateVisible,storedStateDocument,nativeAuraStates,shownStates,tokenLookChanged} from '../../../scripts/engines/playback/persistent-states.mjs';
 import {PF2E_CONDITIONS,PF2E_EFFECTS,stateRecipe,useStateEntry} from '../../../scripts/catalogs/pf2e/state-catalog.mjs';
 const fear=PF2E_CONDITIONS.find(e=>e.slug==='frightened'),damage=PF2E_CONDITIONS.find(e=>e.slug==='persistent-damage'),bless=PF2E_EFFECTS.find(e=>e.name==='Spell Effect: Bless');
 const native=(e,id='i')=>({id,uuid:`Actor.a.Item.${id}`,type:e.kind,name:e.name,slug:e.kind==='condition'?e.slug:undefined,sourceId:e.uuid,system:{active:true,value:{isValued:e.kind==='condition',value:1}},active:true});
@@ -132,6 +132,15 @@ test('Demon\'s Knot emits thirty feet from equipment bearer; its penalty recipie
  f.actor.items=[recipient];f.actor.auras.clear();await f.manager.reconcile();
  assert.equal(f.manager.active.size,1);assert.equal([...f.manager.active.values()][0].recipe.stages[0].auraRadius,undefined);
  await f.manager.destroy();
+});
+test("an aura's own creature shows the aura, not also the effect its aura hands back to it; others keep theirs",()=>{
+ const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Manifest Will'),source=native(entry,'src');
+ source.system.rules=[{key:'Aura',slug:'manifest-will',radius:30}];
+ const self={...native(bless,'self'),flags:{pf2e:{aura:{slug:'manifest-will',origin:'Actor.a'}}}};
+ const other={...native(bless,'other'),flags:{pf2e:{aura:{slug:'manifest-will',origin:'Actor.b'}}}};
+ const actor={uuid:'Actor.a',items:[source,self,other],auras:new Map([['manifest-will',{slug:'manifest-will',radius:30,effects:[]}]])};
+ const ids=actorStates(actor).map(i=>i.animaterAura?'aura':i.id);
+ assert.ok(ids.includes('aura'));assert.ok(!ids.includes('self'),'its own copy');assert.ok(ids.includes('other'),"another creature's aura");
 });
 test('multiple prepared auras from one Item retain separate keys and disappear independently',async()=>{
  const entry=PF2E_EFFECTS.find(e=>e.auras?.length===2),item=native(entry),f=fixture([item]);
@@ -532,6 +541,17 @@ test('the Subtle switch draws each catalog look smaller, fainter and calmer; you
  const full=await look(false),soft=await look(true);
  assert.ok(Math.abs(soft.width-full.width*.75)<1e-9,'smaller');
  assert.ok(Math.abs(soft.opacity-full.opacity*.55)<1e-9,'fainter');
+});
+test('Aura style Tokenshade draws the reach with a shader field; the accent stays footage',async()=>{
+ const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Protective Wards'),item=native(entry),f=fixture([item]);
+ item.system.rules=[{key:'Aura',slug:'protective-wards',radius:15}];f.actor.auras=new Map([['protective-wards',{slug:'protective-wards',radius:15,effects:[]}]]);
+ const fields=[],removed=[];f.manager.host.auraStyle=()=>'tokenshade';f.manager.host.auraField={add:(key,o)=>fields.push({key,...o}),remove:key=>removed.push(key)};
+ await f.manager.reconcile();await flush();
+ assert.equal(fields.length,1);assert.equal(fields[0].feet,15);assert.equal(fields[0].look.motif,'hexes');
+ assert.ok(f.calls.filter(c=>c[0]==='file').every(c=>!/zoning|particles/.test(c[1])),'no reach footage');
+ assert.ok(f.calls.some(c=>c[0]==='file'),'its accent still plays');
+ f.actor.auras.clear();f.actor.items=[];await f.manager.reconcile();assert.ok(removed.includes(fields[0].key));
+ await f.manager.destroy();
 });
 test('auras outside combat hide or go subtle; other looks on the token stay',async()=>{
  const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Manifest Will'),aura=native(entry),f=fixture([aura,native(bless,'b')]);

@@ -3443,6 +3443,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-token-looks li { display: grid; gap: 4px; padding: 4px 0; }
 .animater-token-looks li + li { border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.12)); }
 .animater-token-looks li b { font-weight: 600; overflow-wrap: anywhere; }
+.animater-token-looks .animater-looks-kind { margin-left: 4px; font-weight: 400; font-size: 0.85em; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.04em; }
 .animater-token-looks .animater-looks-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .animater-token-looks .animater-looks-buttons button { flex: none; width: auto; height: 22px; padding: 0 7px; font-size: var(--font-size-11, 11px); line-height: 1; }
 .animater-token-looks .animater-looks-buttons button[aria-pressed="true"] { border-color: #e0a53a; color: #f2c46b; }
