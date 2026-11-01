@@ -18,7 +18,8 @@ const FULL_OR_LIGHT = [(q) => canShake(q, true), "Needs Full or Light animation 
 // Each row: `world` (the GM's setting), `local` (this screen's), `extras` (more settings under it), `when` (only
 // where it applies: a system or an active module, as its registration listed it), `gmOnly` (a client setting only
 // a GM has a use for), `menu` (a button opening another settings menu), `quality` (see FULL_ONLY), `extrasWhen` (an
-// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window).
+// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window),
+// `noReset` (left alone by Reset to defaults).
 export const SETTINGS_TABS = Object.freeze([
   { id: "look", label: "Look & light", icon: "fa-solid fa-palette", rows: [
     { local: "quality" },
@@ -176,7 +177,8 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "daggerheartDualityAccent", when: (env) => env.systemId === "daggerheart" },
   ] },
   { id: "automation", label: "Automation & catalogs", icon: "fa-solid fa-wand-magic-sparkles", rows: [
-    { world: "automatic" },
+    // Off by default: a reset would quietly stop every saved recipe playing, so it never resets this one.
+    { world: "automatic", noReset: true },
     { world: "crossoverCatalog", when: TWOE },
     { world: "npcAbilities", when: PF2E },
     { world: "npcAbilityGuess", when: PF2E },
@@ -288,15 +290,16 @@ export function parseSettingValue(control, raw) {
 }
 
 // Reset to defaults: the settings a reset may change, only ever ones the window's rows list (never a menu's, a
-// catalog's or the saved recipes). `tab`: one tab's id, else every tab; `world`/`client`: which scopes to reset. A
-// player never resets a world setting, and rows that do not apply here (`when`, `gmOnly`) are left as they are.
+// catalog's, the saved recipes or a `noReset` row's). `tab`: one tab's id, else every tab; `world`/`client`: which
+// scopes to reset. A player never resets a world setting, and rows that do not apply here (`when`, `gmOnly`) are
+// left as they are.
 export function resettableSettings(tabs = SETTINGS_TABS, { id = "animater", registry, tab = null, world = false, client = false, isGM = false, systemId = "", modules = [] } = {}) {
   const env = { isGM, systemId, modules: modules instanceof Set ? modules : new Set(modules) };
   const keys = new Set();
   for (const t of tabs) {
     if (tab && t.id !== tab) continue;
     for (const row of t.rows) {
-      if (row.menu || (row.when && !row.when(env)) || (row.gmOnly && !isGM)) continue;
+      if (row.menu || row.noReset || (row.when && !row.when(env)) || (row.gmOnly && !isGM)) continue;
       for (const key of [row.world, row.local, ...(row.extras ?? [])]) {
         const scope = key ? registry.get(`${id}.${key}`)?.scope : null;
         if (scope === "world" ? world && isGM : scope === "client" && client) keys.add(key);

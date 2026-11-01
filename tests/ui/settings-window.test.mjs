@@ -250,3 +250,12 @@ test("the window offers a reset for everything and for each tab; only a GM is as
   assert.doesNotMatch(player, /name="world"/);
   assert.match(player, /name="client" checked/);
 });
+
+test("a reset never turns off the switch that plays the GM's own recipes", () => {
+  const records = new Map(WINDOW_SETTING_KEYS.map((k) => reg(k, "world", Boolean)));
+  for (const tab of [null, "automation"]) {
+    const keys = resettableSettings(SETTINGS_TABS, { registry: records, tab, isGM: true, world: true, client: true, systemId: "pf2e" });
+    assert.ok(keys.length > 0, `${tab ?? "every tab"} still resets something`);
+    assert.ok(!keys.includes("automatic"), tab ?? "every tab");
+  }
+});
