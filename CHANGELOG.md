@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.1 (2026-11-01)
+
+- **Your own light casts your shadow.** A creature carrying a torch or lantern, or with a Light orb at its shoulder, now casts its shadow away from that light. Before, a creature's own light was left out, so in the dark it had no shadow at all. A plain light at a token's middle still casts none.
+
 ## 2.4.0 (2026-11-01)
 
 - **Shadows in each creature's shape.** A flier's shadow is now its own outline (wings, tail and all) instead of a round blob, laid flat on the floor and softer the higher it flies. It breathes with its hover: a little larger and fainter as it rises. With "Shadows under every token", standing creatures cast their outline too. Art with no outline of its own (an opaque square portrait) keeps the round shadow. Dynamic-ring tokens cast the creature, not the ring.

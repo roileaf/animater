@@ -592,11 +592,14 @@ Hooks.on("canvasTearDown", () => { for (const looks of [regionLooks, natureLooks
 // its colour, with a rim on the side facing it; re-lit only on a change worth seeing, crossfading.
 const litLooks = new Map();
 let litTimer = null;
-const lightsReaching = (token) => {
+// `own`: also the creature's own light when it comes from beside it (a held torch or lantern, a Light orb at its
+// shoulder: installTorchLight moves it there), for the shadow it casts away from it; a light at its middle never counts.
+const lightsReaching = (token, { own = false } = {}) => {
   const out = [], c = token.center;
   for (const source of canvas.effects?.lightSources ?? []) {
     try {
-      if (!source?.active || source.object === token || source.constructor?.name === "GlobalLightSource") continue;
+      if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
+      if (source.object === token && !(own && Math.hypot((source.data?.x ?? c.x) - c.x, (source.data?.y ?? c.y) - c.y) > (token.w ?? 100) * 0.1)) continue;
       const d = source.data ?? {};
       if (!(d.radius > 0) || Math.hypot(d.x - c.x, d.y - c.y) >= d.radius) continue;
       // Walls: only a light whose lit area holds the creature.
@@ -1053,7 +1056,7 @@ const movementFeelBlood = (d) => {
 // lifetime for integrations that change actor data without emitting a hook.
 const movementViews = new Map();
 // The light a creature's shadow is cast by (engines/motion/movement-feel.mjs shadowFall): the strongest light reaching
-// it (engines/playback/surrounding-light.mjs, its own light left out) and the darkness where it is. Looked up at most
+// it (engines/playback/surrounding-light.mjs; its own held torch, lantern or Light orb included) and the darkness where it is. Looked up at most
 // twice a second while it moves; a creature standing still keeps its answer until the lighting changes (or two seconds).
 const flierLights = new Map();
 let lightingAge = 0;
@@ -1068,7 +1071,7 @@ const flierLight = (t) => {
   try {
     let darkness = canvas.environment?.darknessLevel ?? 0;
     try { darkness = canvas.effects?.getDarknessLevel?.(t.center, t.document?.elevation ?? 0) ?? darkness; } catch { /* older Foundry */ }
-    value = { light: lightAround(t.center, lightsReaching(t), 1), darkness };
+    value = { light: lightAround(t.center, lightsReaching(t, { own: true }), 1), darkness };
   } catch { value = null; }
   flierLights.set(t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
   return value;
