@@ -22,7 +22,10 @@ const feat = PF2E_FEATS.find((f) => f.slug === "sudden-charge");
 const recipe = featRecipe(feat, { motion: false });
 async function boot() {
   const { hooks, Hooks } = stubHooks();
-  const settings = new Map(), calls = [];
+  // As Foundry does, a setting written announces itself (Animater keeps hot settings until one changes).
+  const settings = new (class extends Map {
+    set(key, value) { super.set(key, value); for (const fn of hooks.get("clientSettingChanged") ?? []) { try { fn(`animater.${key}`, value, {}); } catch { /* a hook's own failure */ } } return this; }
+  })(), calls = [];
   globalThis.Hooks = Hooks;
   globalThis.foundry = {
     applications: { api: { ApplicationV2: class {}, HandlebarsApplicationMixin: (base) => class extends base {}, DialogV2: {} } },

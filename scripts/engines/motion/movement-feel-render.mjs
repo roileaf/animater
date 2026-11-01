@@ -265,10 +265,13 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     const pose = silhouettePose(geom, { cast }), k = silhouetteScale({ artWidth: art.width * (shape.fill?.w ?? 1), artHeight: art.height * (shape.fill?.h ?? 1), width: geom.width }) * pose.size;
     node.outer.visible = true;
     node.outer.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
-    // Flattened onto the floor after turning with the art, as a shadow lies.
-    node.outer.scale.set(1, pose.flat);
-    node.outer.alpha = geom.alpha * 0.85;
-    node.inner.rotation = art.rotation || 0;
+    // Laid on the floor along the light (`along`, radians): stretched out along it (`stretch`, a standing creature's
+    // long shadow), squashed across it (the pose's `flat`), the art keeping its own turn inside.
+    const along = Number(geom.along) || 0;
+    node.outer.rotation = along;
+    node.outer.scale.set(Math.max(1, Number(geom.stretch) || 1), pose.flat);
+    node.outer.alpha = geom.alpha;
+    node.inner.rotation = (art.rotation || 0) - along;
     const sx = ((art.width * k) / shape.width) * (art.flipX ? -1 : 1), sy = ((art.height * k) / shape.height) * (art.flipY ? -1 : 1);
     node.sharp.scale.set(sx, sy); node.soft.scale.set(sx, sy);
     node.sharp.alpha = 1 - pose.soft; node.soft.alpha = pose.soft;
@@ -325,11 +328,24 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       g.alpha = 0;
       return add(g);
     },
+    // Returns whether the shadow is settled: drawn in its shape, or round for good (no art, or art with no outline);
+    // false while its shape still waits its turn to be made, so the caller keeps updating it.
     updateShadow(g, geom) {
-      if (g.destroyed) return;
-      g.position.set(geom.x, geom.y);
-      g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
-      g.alpha = geom.art && laySilhouette(g, root(), geom, false) ? 0 : geom.alpha;
+      if (g.destroyed) return true;
+      // The round shadow where art has no shape: where the light lays it, stretched along the light like the rest.
+      g.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
+      g.rotation = Number(geom.along) || 0;
+      g.scale.set((geom.rx * 2 * Math.max(1, Number(geom.stretch) || 1)) / DRAW, (geom.ry * 2) / DRAW);
+      const shaped = !!geom.art && laySilhouette(g, root(), geom, false);
+      // With its shape drawn, the round one stays only as a standing creature's soft contact shadow (\`contact\`): under
+      // its feet, whatever the light, so it sits on the map even at noon when its cast shadow hides under its art.
+      if (shaped && geom.contact > 0) {
+        g.position.set(geom.x, geom.y); g.rotation = 0; g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
+        g.alpha = geom.contact;
+      } else g.alpha = shaped ? 0 : geom.alpha;
+      if (shaped || !geom.art) return true;
+      const art = typeof geom.art === 'function' ? geom.art() : geom.art;
+      return !art?.texture || silhouettes()?.known?.(art.texture) !== false;
     },
     removeShadow(g) { dropSilhouette(g); remove(g); },
     // A flier's shadow over the creatures below: the same ellipse above the tokens, cut to the creatures' squares

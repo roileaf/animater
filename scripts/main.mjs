@@ -89,11 +89,10 @@ import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { LOCK_TOOLS, listedClientSettings, organizeConfigCategory } from "./ui/settings-config-listing.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
-const hotSettings = frameSettings({
-  get: key => game.settings.get(ID, key),
-  frame: () => globalThis.canvas?.app?.ticker?.lastTime ?? performance.now(),
-});
+const hotSettings = frameSettings({ get: key => game.settings.get(ID, key) });
 const hotSetting = key => hotSettings.get(key);
+// Any setting written (this world's, this screen's, by Animater or another module): read afresh.
+for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged"]) Hooks.on(hook, () => hotSettings.invalidate());
 // Invalidate before our own onChange callbacks (not only after Foundry's
 // update hook): quality routing and other synchronous readers need the new value.
 const registerSetting = (key, config) => game.settings.register(ID, key, {
@@ -1050,7 +1049,7 @@ const movementFeelBlood = (d) => {
   return blood;
 };
 // Position/visibility are checked every frame; stationary metadata is reused.
-// Native document/perception hooks invalidate immediately, with a short fallback
+// Native document/perception hooks invalidate immediately, with a half-second fallback
 // lifetime for integrations that change actor data without emitting a hook.
 const movementViews = new Map();
 // The light a creature's shadow is cast by (engines/motion/movement-feel.mjs shadowFall): the strongest light reaching
@@ -1176,7 +1175,7 @@ const movementFeel = createMovementFeel({
       const skip = (until ?? 0) > time || motions?.active?.has?.(t) === true;
       const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview];
       const cached = movementViews.get(d.id);
-      if (cached && cached.token === t && time - cached.at < 100 && signature.every((value, i) => value === cached.signature[i])) {
+      if (cached && cached.token === t && time - cached.at < 500 && signature.every((value, i) => value === cached.signature[i])) {
         cached.view.skip = skip;
         return cached.view;
       }
@@ -5062,6 +5061,8 @@ Hooks.once("ready", () => {
       shapedShadows: () => (feelRoot?.destroyed ? [] : feelRoot?.children ?? []).filter((c) => !c.destroyed && c.children?.[0]?.children?.length === 2)
         .map((c) => ({ x: Math.round(c.position.x), y: Math.round(c.position.y), alpha: +c.alpha.toFixed(3), visible: c.visible, flat: c.scale.y })),
       sun: () => sunNow,
+      // The burrow and underwater sink's work this frame: whether it re-checks every token, and who it is easing.
+      sinkState: () => ({ dirty: sinkDirty, level: sinkLevel, pending: [...sinkPending], moving: [...sinkMoving], poses: sinkPoses.size, tints: waterTints.size, hidden: sunkHidden.size }),
       fireHazes: () => fireHazes.size,
       smokePuffs: () => fireSmoke.size,
       heldTorches: () => heldTorches.size,

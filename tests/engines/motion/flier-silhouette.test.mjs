@@ -22,7 +22,7 @@ test('the silhouette keeps the art’s drawn size, up to a little past its token
 
 test('laid flat on the floor, shrinking and softening with height; nearly whole when cast on creatures', () => {
   const low = silhouettePose(shadowGeometry({ x: 0, y: 0, width: 100, lift: 5 })), high = silhouettePose(shadowGeometry({ x: 0, y: 0, width: 100, lift: 50 }));
-  assert.ok(low.flat < 0.6 && low.size > high.size && high.soft > low.soft);
+  assert.ok(low.flat < 0.8 && low.size > high.size && high.soft > low.soft);
   assert.ok(low.size <= 1 && high.soft <= 1);
   const cast = silhouettePose(castShadowGeometry({ x: 0, y: 0, width: 100, lift: 20 }), { cast: true });
   assert.ok(cast.flat > 0.8 && cast.size === 1);
@@ -61,7 +61,7 @@ test('a flier with cut-out art casts its silhouette; without one the round shado
   layer.updateShadow(g, { ...geom, art: () => ({ texture: 'dragon', width: 200, height: 100, flipX: true, rotation: 0 }) });
   assert.equal(g.alpha, 0, 'the ellipse hides');
   const sil = root.children.find((c) => c !== g);
-  assert.ok(sil?.visible && sil.scale.y < 0.6);
+  assert.ok(sil?.visible && sil.scale.y < 0.8);
   // Cast down and to the right, past the token's own art.
   assert.deepEqual([sil.position.x, sil.position.y], [geom.fall.x, geom.fall.y]);
   assert.ok(geom.fall.x > 500 && geom.fall.y > 500 + 50);

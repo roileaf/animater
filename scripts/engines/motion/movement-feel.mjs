@@ -131,7 +131,7 @@ export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100
   const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5));
   const w = Number(width) || grid;
   const rx = w * Math.max(0.3, 0.42 - 0.01 * h);
-  if (grounded) return { x, y: y + w * 0.4, rx: w * 0.4, ry: w * 0.16, alpha: 0.3 };
+  if (grounded) return { x, y: y + w * 0.4, rx: w * 0.4, ry: w * 0.16, alpha: 0.5 };
   // `width` and `lift` (in squares) for a shadow drawn in the flier's own shape (flier-silhouette.mjs), and `fall`
   // where that one lies: cast down and to the right as the light falls, further the higher it flies, so it shows
   // past the creature's own art (a ring token's disc hides what lies under it).
@@ -186,43 +186,66 @@ export function castShadowGeometry({ x, y, width, lift = 0, distance = 5, grid =
   return { x: x + w * 0.1 * h, y: y + w * (0.3 + 0.1 * h), rx: w * 0.65, ry: w * 0.55, alpha: Math.max(0.3, 0.65 - 0.025 * h), width: w, lift: h };
 }
 
-// Where a flier's shadow falls from it, by the light: { dx, dy, alpha } (offset from the creature in pixels; alpha
-// scales its strength). `light` is the strongest light reaching it (surrounding-light.mjs lightAround: strength 0–1 and
-// angle in degrees toward the light, null all round), `darkness` the scene's there (0 day, 1 night). A light that
-// outshines the day throws the shadow straight away from it, longer the closer it is; else the scene's `sun`
-// (sun.mjs: { angle, height, strength }, the top left fairly high when not given, null none) throws it away from
-// itself, further the lower it stands; in the dark with no light there is no shadow. `grid` is the square in pixels.
-// `grounded`: a creature standing on the floor (`lift` then its body's height), its shadow from its feet, shorter and
-// lighter than a flier's. `lightHeight`: the light's
-// height above the floor in squares (a light on the floor, as most placed lights are, is taken as a lamp at head
-// height, one square). A light above the creature throws the shadow as far as it really would (shorter the higher the
-// light, longer and fainter as the creature climbs toward it); one level with it or below throws none on the floor.
-export function shadowFall({ width, lift = 0, light = null, darkness = 0, lightHeight = 0, sun: sky = DEFAULT_SUN, grid = 100, grounded = false } = {}) {
-  const w = Number(width) || 100, h = Math.max(0, Number(lift) || 0), g = Number(grid) || 100;
-  const sun = sky ? Math.min(1, Math.max(0, 1 - (Number(darkness) || 0) * 1.2)) * Math.min(1, Math.max(0, Number(sky.strength) || 0)) : 0;
-  // A light at or below the creature shines up past it: it throws no shadow on the floor at all.
-  const lh = Math.max(1, Number(lightHeight) || 0);
-  const lamp = light && light.strength >= 0.08 && lh > h ? light : null;
-  if (lamp && lamp.strength >= sun) {
-    // In the light's bright radius the shadow is dark and crisp; out in its dim light, faint and soft (`soft` 0–1).
+// Where a creature's shadows fall, by the lights: { sun, lamp }, each { dx, dy, alpha, soft } or null (offset from
+// the creature in pixels; alpha scales its strength). Every light casts its own, by its share of the light there: in
+// full day the sun's is dark and a torch's barely shows; at dusk both; at night only the torch's. `light` is the
+// strongest light reaching it (surrounding-light.mjs lightAround: strength 0–1 and angle in degrees toward the
+// light, null all round), `darkness` the scene's there (0 day, 1 night); the scene's `sun` (sun.mjs: { angle,
+// height, strength }, the top left fairly high when not given, null none) throws it away from itself, further the
+// lower it stands. `grid` is the square in pixels. `grounded`: a creature standing on the floor (`lift` then its
+// body's height), its shadow from its feet, shorter and lighter than a flier's. `lightHeight`: the light's height
+// above the floor in squares (a light on the floor, as most placed lights are, is taken as held up or on a wall, a
+// square and a half). A light above the creature throws the shadow as far as it really would (shorter the higher the light,
+// longer and fainter as the creature climbs toward it); one level with it or below throws none on the floor.
+export function shadowFalls({ width, lift = 0, body, light = null, darkness = 0, lightHeight = 0, sun: sky = DEFAULT_SUN, grid = 100, grounded = false } = {}) {
+  const w = Number(width) || 100, g = Number(grid) || 100, dark = Math.min(1, Math.max(0, Number(darkness) || 0));
+  const sun = sky ? Math.max(0, 1 - dark * 1.2) * Math.min(1, Math.max(0, Number(sky.strength) || 0)) : 0;
+  // How tall the creature stands (`body`, squares; a standing creature's is its `lift` when not given), the top of it,
+  // and the height its shadow is thrown from: a standing creature's whole height from its feet, a flier's middle.
+  const tall = Math.max(0, Number.isFinite(body) ? body : grounded ? Number(lift) || 0 : 0), up = grounded ? 0 : Math.max(0, Number(lift) || 0);
+  const top = up + tall, h = grounded ? tall : up + tall / 2;
+  // A light at or below the creature's top (a torch below a flier, or below a dragon even on the ground) shines up past
+  // it: no floor shadow from it.
+  const lh = Math.max(1.5, Number(lightHeight) || 0);
+  const lamp = light && light.strength >= 0.08 && lh > top ? light : null;
+  // How much each lights the creature: the sun by the day, a lamp by its strength there, weaker beside daylight.
+  const lampShare = lamp ? Math.min(1, lamp.strength) * (0.45 + 0.55 * dark) : 0, total = sun + lampShare;
+  // Each shadow's strength by its light's share: the main one whole, a light giving under a tenth casts none.
+  const weight = (part) => (total > 0 && part / total >= 0.1 ? Math.min(1, part / total / 0.6) : 0);
+  // One rule for every shadow: `length` is how far the light really throws it (from a standing creature's feet, or
+  // the whole body of a flier); past `cap` it fades rather than growing. A flier's sits whole at that distance (at
+  // least clear of its art); a standing creature's starts at its feet and stretches out along the light, fainter and
+  // softer the longer it gets. `soft` adds to that: crisp in sunlight, a little softer by a close light, more in dim.
+  const fall = (angle, length, vis, soft) => {
+    const cap = grounded ? g * 3 : g * 6, reach = Math.min(cap, length), away = ((angle + 180) * Math.PI) / 180;
+    let alpha = vis * (length > cap ? cap / length : 1);
+    if (!grounded) {
+      const at = Math.max(reach, w * 0.35);
+      return { dx: Math.cos(away) * at, dy: Math.sin(away) * at, alpha, soft: Math.min(1, soft) };
+    }
+    const stretch = 1 + reach / w;
+    alpha /= Math.sqrt(stretch);
+    return { dx: Math.cos(away) * reach / 2, dy: Math.sin(away) * reach / 2, alpha, soft: Math.min(1, soft + 0.15 * (stretch - 1)) };
+  };
+  let sunFall = null, lampFall = null;
+  if (lamp && weight(lampShare) > 0) {
+    // In the light's bright radius the shadow is dark and crisp; out in its dim light, faint and soft.
     const shine = Number.isFinite(lamp.brightness) ? lamp.brightness : Math.min(1, lamp.strength);
-    let alpha = 0.25 + 0.75 * shine;
-    const soft = 1 - shine;
+    const vis = (0.3 + 0.7 * shine) * weight(lampShare), soft = 0.25 + 0.6 * (1 - shine);
     // Lit from all round: no side to fall on, a small shadow straight under.
-    if (lamp.angle === null || lamp.angle === undefined) return { dx: 0, dy: w * 0.1, alpha, soft };
-    // As far as it really falls; climbing toward the light's height it stretches out and fades away.
-    const long = grounded ? g * 1.5 : w * (0.3 + 0.12 * h) * 1.6, real = Math.max(grounded ? 0 : w * 0.15, (Number(lamp.distance) || w) * (h / (lh - h)) * (grounded ? 0.4 : 1));
-    const reach = Math.min(long, real);
-    if (real > long) alpha *= long / real;
-    const away = ((lamp.angle + 180) * Math.PI) / 180;
-    return { dx: Math.cos(away) * reach, dy: Math.sin(away) * reach, alpha: grounded ? alpha * 0.85 : alpha, soft };
+    if (lamp.angle === null || lamp.angle === undefined) lampFall = { dx: 0, dy: w * 0.1, alpha: vis, soft };
+    // As far as it really falls: the light's distance times how high the creature is against how high the light is.
+    else lampFall = fall(lamp.angle, (Number(lamp.distance) || w) * (h / (lh - h)), vis, soft);
   }
-  if (!(sun > 0)) return { dx: 0, dy: 0, alpha: 0, soft: 1 };
-  // The sun: away from it, as far as the height throws it (a flier clear of its own art); a low sun's long shadow fades.
-  const long = grounded ? g * 1.5 : g * 6, real = grounded ? sunReach(h * g, sky.height) * 0.4 : w * 0.3 + sunReach(h * g, sky.height);
-  const reach = Math.min(long, real), away = ((sky.angle + 180) * Math.PI) / 180;
-  const alpha = sun * (real > long ? long / real : 1);
-  return { dx: Math.cos(away) * reach, dy: Math.sin(away) * reach, alpha, soft: 1 - sun };
+  // The sun: as far as its height throws the creature's.
+  if (sun > 0 && weight(sun) > 0) sunFall = fall(sky.angle, sunReach(h * g, sky.height), sun * weight(sun), 0.1 + 0.5 * (1 - sun));
+  return { sun: sunFall, lamp: lampFall };
+}
+
+// The stronger of a creature's shadows (shadowFalls), or none: { dx, dy, alpha 0 } in the dark with no light.
+export function shadowFall(args = {}) {
+  const { sun, lamp } = shadowFalls(args);
+  return (sun && (!lamp || sun.alpha >= lamp.alpha) ? sun : lamp) ?? { dx: 0, dy: 0, alpha: 0, soft: 1 };
 }
 
 // Dripping out of the water (the "Creatures drip out of the water" setting): for DRIP_MS after it leaves deep water
@@ -991,17 +1014,46 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
 }
 
 export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN }) {
-  // Where a creature's shadow falls now (shadowFall), eased toward its aim over about a quarter second so it swings
-  // round as the light or the sun moves instead of jumping. `lit`: token.light(), { light, darkness }.
-  const aimShadow = (token, move, lit, lift, grounded, point) => {
+  // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
+  // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
+  // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
+  const aimShadows = (token, move, lit, lift, grounded, body) => {
     const lightHeight = ((Number(lit.light?.elevation) || 0) - (Number(token.base) || 0)) / (distance() || 5);
-    const aim = shadowFall({ width: token.width, lift, light: lit.light, darkness: lit.darkness, lightHeight, sun: sun(), grid: grid() || 100, grounded });
-    const fall = move.fall ?? (move.fall = { ...aim, at: now() });
-    const time = now(), k = 1 - Math.exp(-Math.max(0, time - fall.at) / 250);
-    fall.dx += (aim.dx - fall.dx) * k; fall.dy += (aim.dy - fall.dy) * k; fall.alpha += (aim.alpha - fall.alpha) * k;
-    fall.soft = (fall.soft ?? aim.soft) + (aim.soft - (fall.soft ?? aim.soft)) * k; fall.at = time;
-    return fall;
+    const aims = shadowFalls({ width: token.width, lift, body, light: lit.light, darkness: lit.darkness, lightHeight, sun: sun(), grid: grid() || 100, grounded });
+    const time = now(), falls = move.falls ?? (move.falls = {});
+    let settled = true;
+    for (const slot of ['sun', 'lamp']) {
+      const aim = aims[slot], fall = falls[slot];
+      if (!fall) { falls[slot] = aim ? { ...aim, at: time } : { dx: 0, dy: 0, alpha: 0, soft: 1, at: time }; continue; }
+      const k = 1 - Math.exp(-Math.max(0, time - fall.at) / 250);
+      // Gone: it fades where it lay.
+      const to = aim ?? { dx: fall.dx, dy: fall.dy, alpha: 0, soft: fall.soft };
+      fall.dx += (to.dx - fall.dx) * k; fall.dy += (to.dy - fall.dy) * k; fall.alpha += (to.alpha - fall.alpha) * k;
+      fall.soft += (to.soft - fall.soft) * k; fall.at = time;
+      if (Math.abs(to.dx - fall.dx) > 0.5 || Math.abs(to.dy - fall.dy) > 0.5 || Math.abs(to.alpha - fall.alpha) > 0.005 || Math.abs(to.soft - fall.soft) > 0.01) settled = false;
+    }
+    move.settled = settled;
+    return falls.sun.alpha >= falls.lamp.alpha ? [falls.sun, falls.lamp] : [falls.lamp, falls.sun];
   };
+  // A shadow geometry moved to where a fall lays it, as strong as its light, softer in dim light.
+  const fallen = (geom, fall, point, grounded = false) => {
+    const off = Math.hypot(fall.dx, fall.dy), w = Number(geom.width) || 100;
+    return { ...geom, fall: { x: point.x + fall.dx, y: point.y + fall.dy }, alpha: geom.alpha * fall.alpha, lift: (geom.lift ?? 0) + 4 * fall.soft,
+      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch: grounded ? 1 + (2 * off) / w : 1 };
+  };
+  // The second shadow (the weaker light's), drawn only while it shows.
+  const seconds = new Map();
+  const second = (id, geom) => {
+    let handle = seconds.get(id);
+    if (!geom || !(geom.alpha > 0.005)) { if (handle) { seconds.delete(id); try { layer.removeShadow(handle); } catch { /* keep going */ } } return true; }
+    if (!handle) seconds.set(id, handle = layer.addShadow());
+    return layer.updateShadow(handle, geom) !== false;
+  };
+  // A creature's shadows are left as they are while nothing they hang on changes: where it stands, its size, its
+  // bob, its light and the sun (each kept as the same object until it changes), its art, and its shadows having
+  // eased all the way and been drawn in their shape. A still scene then costs almost nothing a frame.
+  const unchanged = (move, key, refs) => move.shadowKey === key && move.shadowDone === true && refs.every((r, i) => move.shadowRefs?.[i] === r);
+  const remember = (move, key, refs, done) => { move.shadowKey = key; move.shadowRefs = refs; move.shadowDone = done && move.settled !== false; };
   // `trails` (ground-trails.mjs createGroundTrails): what each stride also leaves (carried prints, blood, weather).
   const capOf = typeof cap === 'function' ? cap : () => cap;
   const printCapOf = typeof printCap === 'function' ? printCap : () => printCap;
@@ -1040,6 +1092,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     moves.clear();
     try { trails?.clear?.(); } catch { /* optional */ }
     known = new Set();
+    seconds.clear();
     try { layer.clear(); } catch { /* canvas gone */ }
   };
   const dropShadow = (id) => {
@@ -1049,6 +1102,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
       try { layer.removeShadow(handle); } catch { /* keep going */ }
     }
     dropOver(id);
+    second(id, null);
   };
   // The part of a flier's shadow drawn over the creatures below it (layer.addOverShadow, when the layer has one).
   const overs = new Map();
@@ -1192,26 +1246,33 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           let handle = shadows.get(id);
           if (!token.visible) dropShadow(id);
           else {
+          const lit = typeof token.light === 'function' ? token.light() : null;
+          const bob = typeof token.bob === 'function' ? Number(token.bob()) || 0 : 0;
+          const key = `${point.x}|${point.y}|${token.elevation}|${token.width}|${size}|${bob}`, refs = [lit, sun(), token.art];
+          if (handle && unchanged(move, key, refs) && move.lastCast) { flierShadows.push(move.lastCast); }
+          else {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size });
           const cast = castShadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size });
           // Cast away from the light (token.light(): { light, darkness }), easing round over about a quarter second as
           // the creature passes from one light to another.
-          const lit = typeof token.light === 'function' ? token.light() : null;
           // Its hover bob (token.bob(): pixels up, ±5% of its width): rising, the shadow spreads, softens and fades
           // a little; dipping, it tightens and darkens. The shadow itself stays on the floor.
-          const rise = typeof token.bob === 'function' ? (Number(token.bob()) || 0) / (Number(token.width) || size) : 0;
+          const rise = bob / (Number(token.width) || size);
           if (rise) { geom.rx *= 1 + 0.8 * rise; geom.ry *= 1 + 0.8 * rise; geom.alpha *= 1 - 2 * rise; geom.lift += 20 * rise; cast.alpha *= 1 - 2 * rise; cast.lift += 20 * rise; }
-          if (lit) {
-            const fall = aimShadow(token, move, lit, geom.lift, false, point);
-            geom.fall = { x: point.x + fall.dx, y: point.y + fall.dy };
-            // Dim light blurs it as height does.
-            geom.alpha *= fall.alpha; geom.lift += 4 * fall.soft;
-            cast.x = point.x + fall.dx; cast.y = point.y + fall.dy; cast.alpha *= fall.alpha; cast.lift += 4 * fall.soft;
-          }
           // `art`: the token's drawn art, for a shadow in its own shape (the layer keeps the round one without it).
-          layer.updateShadow(handle, token.art ? { ...geom, art: token.art } : geom);
-          flierShadows.push({ id, geom: token.art ? { ...cast, art: token.art } : cast, elevation: Number(token.elevation) || 0 });
+          if (token.art) geom.art = token.art;
+          if (lit) {
+            // The stronger light's shadow, and the weaker's beside it; the one over creatures below is the stronger's.
+            // Its body about as tall as it is wide: a light must be above all of it to cast its shadow.
+            const [main, other] = aimShadows(token, move, lit, geom.lift, false, 0.8 * (Number(token.width) || size) / size);
+            const done = layer.updateShadow(handle, fallen(geom, main, point)) !== false;
+            remember(move, key, refs, second(id, fallen(geom, other, point)) && done);
+            cast.x = point.x + main.dx; cast.y = point.y + main.dy; cast.alpha *= main.alpha; cast.lift += 4 * main.soft;
+          } else { remember(move, key, refs, layer.updateShadow(handle, geom) !== false); second(id, null); }
+          move.lastCast = { id, geom: token.art ? { ...cast, art: token.art } : cast, elevation: Number(token.elevation) || 0 };
+          flierShadows.push(move.lastCast);
+          }
           }
           // Off the ground: no marks. Keep the chosen winged/wingless sound; stationary hovering stays silent.
           if (kind !== null) for (const at of tracker.step(id, point)) { const feet = feetOf(token, at); sound(floorOf(feet, token), feet, token, kind); }
@@ -1221,17 +1282,21 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         // Standing on the ground: a soft contact shadow when "Shadows under every token" is on.
         if (groundShadows() && token.visible) {
           let handle = shadows.get(id);
-          if (!handle) shadows.set(id, handle = layer.addShadow());
-          const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true });
           // In its own shape, from its feet away from the light or the sun (its body about half its width tall).
           const lit = token.art && typeof token.light === 'function' ? token.light() : null;
+          const key = `${point.x}|${point.y}|${token.width}|${size}`, refs = [lit, sun(), token.art];
+          if (!handle || !unchanged(move, key, refs)) {
+          if (!handle) shadows.set(id, handle = layer.addShadow());
+          const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true });
           if (lit) {
-            const body = 0.5 * (Number(token.width) || size) / size;
-            const fall = aimShadow(token, move, lit, body, true, point);
-            Object.assign(geom, { width: Number(token.width) || size, lift: 4 * fall.soft, flat: 0.75, fall: { x: point.x + fall.dx, y: point.y + fall.dy }, art: token.art });
-            geom.alpha *= fall.alpha;
+            const body = 0.8 * (Number(token.width) || size) / size;
+            const [main, other] = aimShadows(token, move, lit, body, true);
+            // Its soft contact shadow under its feet stays too (the round one), a little darker the brighter the light.
+            Object.assign(geom, { width: Number(token.width) || size, lift: 0, flat: 1, art: token.art, contact: 0.18 + 0.12 * Math.max(main.alpha, other.alpha) });
+            const done = layer.updateShadow(handle, fallen(geom, main, point, true)) !== false;
+            remember(move, key, refs, second(id, fallen(geom, other, point, true)) && done);
+          } else { remember(move, key, refs, layer.updateShadow(handle, geom) !== false); second(id, null); }
           }
-          layer.updateShadow(handle, geom);
         } else dropShadow(id);
         for (const at of tracker.step(id, point)) emit(token, at, time, size, rate, kind, move);
       } catch (error) {

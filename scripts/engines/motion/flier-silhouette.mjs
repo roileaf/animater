@@ -41,7 +41,7 @@ export function silhouettePose(geom, { cast = false } = {}) {
   const lift = Math.max(0, Number(geom?.lift) || 0), w = Number(geom?.width) || 0;
   const size = cast || !(w > 0) ? 1 : Math.min(1, (Number(geom.rx) || 0) / (w * 0.42));
   // `geom.flat`: its own (a standing creature's shadow, under art drawn from above, keeps more of its shape).
-  return { flat: Number(geom?.flat) || (cast ? 0.85 : 0.45), size, soft: Math.min(1, lift / 8) };
+  return { flat: Number(geom?.flat) || (cast ? 0.85 : 0.7), size, soft: Math.min(1, lift / 8) };
 }
 
 // Silhouette textures, made once per art and kept: `get(texture)` is { sharp, soft, width, height } (the textures
@@ -97,6 +97,8 @@ export function createSilhouettes({ PIXI, doc = globalThis.document, now = () =>
       }
       return made.get(key);
     },
+    // Whether `texture`'s silhouette is settled: made, or known to be solid or unreadable (not still waiting its turn).
+    known(texture) { const key = keyOf(texture); return !key || made.has(key); },
     clear() {
       for (const shape of made.values()) for (const t of [shape?.sharp, shape?.soft]) { try { t?.texture.destroy(true); } catch { /* gone */ } }
       made.clear();

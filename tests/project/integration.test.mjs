@@ -44,7 +44,14 @@ function assertAttenuatedAudio(calls,profiles,userVolume){
 async function boot(system, extraKeys = [], { version } = {}) {
   let renderedApp;
   const hooks = new Map(),
-    settings = new Map(),
+    // As Foundry does, a setting written announces itself (Animater keeps hot settings until one changes).
+    settings = new (class extends Map {
+      set(key, value) {
+        super.set(key, value);
+        for (const fn of hooks?.get?.("clientSettingChanged") ?? []) { try { fn(`animater.${key}`, value, {}); } catch { /* a hook's own failure */ } }
+        return this;
+      }
+    })(),
     menus = [],
     bindings = [],
     calls = [],

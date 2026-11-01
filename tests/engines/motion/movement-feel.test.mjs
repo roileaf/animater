@@ -1029,6 +1029,70 @@ test('in a light’s bright radius the shadow is dark and crisp; out in its dim 
   const at = (brightness) => shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.6, angle: 0, distance: 100, brightness } });
   const bright = at(1), dim = at(0.3);
   assert.ok(bright.alpha > dim.alpha && bright.soft < dim.soft);
-  assert.equal(bright.soft, 0);
-  assert.equal(shadowFall({ width: 100, lift: 4, darkness: 0 }).soft, 0, 'full day: crisp');
+  assert.ok(bright.soft <= 0.3, 'a close light: a little soft even when bright');
+  assert.ok(shadowFall({ width: 100, lift: 4, darkness: 0 }).soft < bright.soft, 'full sun: crisper than any lamp');
+});
+test('every light casts its own shadow by its share: a torch barely shows by day, both at dusk, only the torch at night',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const torch = { strength: 0.6, angle: 0, distance: 100, brightness: 1 }, sun = { angle: -135, height: 55, strength: 1 };
+  const at = (darkness) => shadowFalls({ width: 100, lift: 0.5, grounded: true, darkness, lightHeight: 1, light: torch, sun, grid: 100 });
+  const day = at(0), dusk = at(0.5), night = at(1);
+  assert.ok(day.sun.alpha > 0.5 && day.lamp && day.lamp.alpha < day.sun.alpha / 2, 'day: the sun’s dark, the torch’s clearly fainter');
+  assert.ok(dusk.sun && dusk.lamp && dusk.lamp.alpha > day.lamp.alpha, 'dusk: both, the torch’s stronger');
+  assert.equal(night.sun, null, 'night: no sun');
+  assert.ok(night.lamp.alpha > dusk.lamp.alpha);
+  assert.ok(day.lamp.dx < 0 && day.sun.dx > 0, 'each away from its own light');
+  // A light giving under a tenth of the light casts none.
+  assert.equal(shadowFalls({ width: 100, lift: 0.5, grounded: true, darkness: 0, lightHeight: 1, light: { ...torch, strength: 0.1 }, sun, grid: 100 }).lamp, null);
+});
+test('a creature lit by the sun and a torch gets a second shadow, gone again when the torch is',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  let live = 0, t = 0, light = { strength: 0.8, angle: 0, distance: 100, brightness: 1 };
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => { live++; return {}; }, updateShadow() {}, removeShadow: () => { live--; }, clear() {} };
+  const walker = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', art: () => ({}), light: () => ({ light, darkness: 0.5 }) };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {} });
+  feel.tick();
+  assert.equal(live, 2, 'the sun’s and the torch’s');
+  light = null; t = 3000; feel.tick();
+  assert.equal(live, 1, 'the torch’s fades out and goes');
+});
+test('a still creature’s shadow is left alone once it has settled, and redrawn as soon as it moves',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  let updates = 0, t = 0;
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: () => { updates++; return true; }, removeShadow() {}, clear() {} };
+  const lit = { light: null, darkness: 0 }, art = () => ({});
+  const walker = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', art, light: () => lit };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {} });
+  for (let i = 0; i < 120; i++) { t += 16; feel.tick(); }
+  const settledAfter = updates;
+  for (let i = 0; i < 60; i++) { t += 16; feel.tick(); }
+  assert.equal(updates, settledAfter, 'no updates while nothing changes');
+  assert.ok(settledAfter < 60, 'it settles within the easing');
+  walker.x = 600; t += 16; feel.tick();
+  assert.ok(updates > settledAfter, 'moving redraws it');
+});
+test('one rule for every shadow: a low sun or a near torch throws a standing creature’s shadow long, stretched and fainter',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const stand = (sun, extra = {}) => shadowFalls({ width: 100, lift: 0.8, grounded: true, darkness: 0, sun, grid: 100, ...extra }).sun;
+  const noon = stand({ angle: 90, height: 70, strength: 1 }), dusk = stand({ angle: 180, height: 12, strength: 1 });
+  assert.ok(Math.hypot(dusk.dx, dusk.dy) > Math.hypot(noon.dx, noon.dy) * 4, 'long at dusk');
+  assert.ok(dusk.alpha < noon.alpha && dusk.soft > noon.soft, 'fainter and softer the longer it is');
+  assert.ok(noon.dy < 0 && dusk.dx > 0, 'away from the sun');
+  // A flier's shadow sits at the full projected distance; a standing creature's centre at half (it starts at the feet).
+  const flier = shadowFalls({ width: 100, lift: 2, darkness: 0, sun: { angle: 180, height: 45, strength: 1 }, grid: 100 }).sun;
+  const walker = shadowFalls({ width: 100, lift: 2, grounded: true, darkness: 0, sun: { angle: 180, height: 45, strength: 1 }, grid: 100 }).sun;
+  assert.ok(Math.abs(flier.dx - 200) < 1e-6 && Math.abs(walker.dx - 100) < 1e-6);
+  // A torch a square away at head height and a half: the same rule.
+  const torch = shadowFalls({ width: 100, lift: 0.8, grounded: true, darkness: 1, sun: null, lightHeight: 1.5, grid: 100, light: { strength: 0.8, angle: 0, distance: 100, brightness: 1 } }).lamp;
+  assert.ok(torch.dx < 0 && Math.abs(torch.dx) > 50, 'a long shadow away from a near, low torch');
+});
+test('a light must be above all of a flier to cast its shadow: a torch beside a big creature low in the air casts none',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const torch = { strength: 0.8, angle: 0, distance: 200, brightness: 1 };
+  // A 3-square dragon "flying" at the floor (2.4 squares tall) beside a torch held at a square and a half: none.
+  assert.equal(shadowFalls({ width: 300, lift: 0, body: 2.4, darkness: 1, sun: null, lightHeight: 1.5, light: torch, grid: 100 }).lamp, null);
+  // A small flier at the floor under the same torch: it casts one.
+  assert.ok(shadowFalls({ width: 50, lift: 0, body: 0.4, darkness: 1, sun: null, lightHeight: 1.5, light: torch, grid: 100 }).lamp);
+  // A light high above the dragon in the air: it does.
+  assert.ok(shadowFalls({ width: 300, lift: 6, body: 2.4, darkness: 1, sun: null, lightHeight: 12, light: torch, grid: 100 }).lamp);
 });
