@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.5 (2026-11-01)
+
+- **No snow indoors.** With Weather on creatures on, a creature under a roof (a Suppress Weather region) kept a faint dusting of snow: the frost faded with the weather but the snow itself stayed. Now the snow goes too, so a sheltered creature is dry and clean.
+
 ## 2.4.4 (2026-11-01)
 
 - **Tokens that cast no shadow.** A new "Animater casts no shadow" checkbox on the token sheet (Appearance), on placed tokens and on an actor's prototype token. Ticked, the token has no shadow on the ground or in flight: for a ghost, a marker, or art with its shadow drawn in.

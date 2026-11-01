@@ -229,6 +229,9 @@ test('the live values include light and weather',async()=>{
   for(const name of ['Glows in the dark','Soaked in the rain','Dusted with snow'])assert.ok(builtinPreset(name),name);
   for(const name of ['Soaked in the rain','Dusted with snow'])assert.ok(builtinPreset(name).params.some(f=>Object.values(f.animated??{}).some(a=>a.animType==='driven'&&a.source==='weather')),`${name} follows the weather (so it stays dry under a roof)`);
   for(const name of ['Flares when targeted','Marked while targeted','Highlighted when selected'])assert.equal(builtinPreset(name),null,name);
+  // Under a roof the weather is 0: the snow itself (not only the frost) must go, or a sheltered creature keeps a dusting.
+  const frost=builtinPreset('Dusted with snow').params.find(f=>f.filterType==='frost');
+  for(const key of ['amount','snow'])assert.ok(frost.animated?.[key]?.source==='weather'&&frost.animated[key].val1===0,`${key} is none without weather`);
 });
 test('previews make up live values that keep changing and play transitions again and again',async()=>{
   const {simulatedDrive,transitionCycle}=await import('../../../scripts/engines/preview/token-fx-preview.mjs');
