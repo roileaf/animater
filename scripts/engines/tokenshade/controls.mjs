@@ -98,7 +98,7 @@ export const FILTER_LABELS = {
   smoke: 'Smoke', flood: 'Water', images: 'Mirror images', field: 'Force field', xray: 'Sun rays', liquid: 'Liquid', xglow: 'Living aura',
   pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash',
   polymorph: 'Polymorph', xfire: 'Magic fire', sprite: 'Image overlay', spriteMask: 'Image mask', replaceColor: 'Replace colour',
-  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', snooze: 'Sleep (Zzz)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins', dissolve: 'Dissolve (transition)', wash: 'Colour wash (transition)',
+  ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', snooze: 'Sleep (Zzz)', orbit: 'Circling over the head (stars, hearts…)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins', dissolve: 'Dissolve (transition)', wash: 'Colour wash (transition)',
 };
 export const filterLabel = type => FILTER_LABELS[type] ?? words(type);
 export const FILTER_CHOICES = Object.fromEntries(Object.keys(SPECS).map(t => [t, filterLabel(t)]).sort((a, b) => a[1].localeCompare(b[1])));

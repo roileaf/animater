@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.6 (2026-11-01)
+
+- **Signs circling over the head.** A new Tokenshade filter, Circling over the head: little stars, sparkles, hearts, question marks or dizzy swirls going round on a tilted ring, passing behind the head and coming round in front. Stunned has stars, confused question marks, stupefied dizzy swirls (more at each level), fascinated golden sparkles and charmed hearts, so they read at a glance even zoomed out.
+- **Doomed and blinded show from afar.** Doomed has a dark rune ring turning under the creature, stronger at each level; blinded a much heavier black veil over the head.
+
 ## 2.4.5 (2026-11-01)
 
 - **No snow indoors.** With Weather on creatures on, a creature under a roof (a Suppress Weather region) kept a faint dusting of snow: the frost faded with the weather but the snow itself stayed. Now the snow goes too, so a sheltered creature is dry and clean.

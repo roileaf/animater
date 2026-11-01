@@ -286,15 +286,16 @@ export const PRESETS = [
     timed('liquid', 1.2, { color: 0xdfe6f2, blend: 8, intensity: 4, spectral: true, scale: 1.2 })),
   // Lasting conditions: quiet, steady looks on the creature (no one-off growth or bursts)
   token('Fading', F('adjustment', { saturation: 0.2, brightness: 0.62, contrast: 0.92, blue: 1.05 }, { brightness: cos(0.58, 0.68, 4000) })),
-  // Doom: dark veins and a black halo pressing in.
-  token('Doom', timed('veins', 0.4, { color: 0x3a1650, amount: 0.6, thickness: 1.1, pulse: 0.5, glow: 0.4 }), F('glow', { distance: 12, color: 0x12061a }, { outerStrength: cos(2, 3.6, 3000) }),
-    F('adjustment', { saturation: 0.65, brightness: 0.88 })),
+  // Doom (doomed): a dark rune ring turning beneath it, black veins and a halo pressing in.
+  token('Doom', timed('base', 0.4, { baseType: 4, color: 0x5a1a7a, radius: 0.5, alpha: 0.7 }), timed('veins', 0.4, { color: 0x3a1650, amount: 0.6, thickness: 1.1, pulse: 0.5, glow: 0.4 }),
+    F('glow', { distance: 12, color: 0x12061a }, { outerStrength: cos(2, 3.6, 3000) }), F('adjustment', { saturation: 0.65, brightness: 0.88 })),
   // Sickly (poisoned): green veins creeping under the skin.
   token('Sickly', timed('veins', 0.5, { color: 0x6aa82a, amount: 0.55, thickness: 1, pulse: 0.7, glow: 0.4 }), F('adjustment', { saturation: 0.8, red: 0.93, green: 1.06, blue: 0.88 })),
-  // Muddled (stupefied): a dull haze drifting over the mind, the creature dimmed. Nothing flickers.
-  token('Muddled', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.35 }), F('blur', { blur: 0.6 }), F('adjustment', { saturation: 0.7, brightness: 0.92, contrast: 0.9 })),
-  // Bewildered (confused): the world swirling, lost lights wandering round it.
-  token('Bewildered', F('twist', { radiusPercent: 90 }, { angle: sin(-0.35, 0.35, 3400, false) }), timed('globes', 0.5, { color: 0xc8b0ff, distortion: 0.6, scale: 45, alphaDiscard: false }),
+  // Muddled (stupefied): dizzy swirls drifting round its head, a dull haze over the mind.
+  token('Muddled', timed('orbit', 0.35, { glyph: 5, color: 0xb8b0cc, count: 2, size: 0.9 }), timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.3 }), F('blur', { blur: 0.6 }),
+    F('adjustment', { saturation: 0.7, brightness: 0.92, contrast: 0.9 })),
+  // Bewildered (confused): question marks circling its head, the world swirling.
+  token('Bewildered', timed('orbit', 0.7, { glyph: 4, color: 0xc8b0ff, count: 3 }), F('twist', { radiusPercent: 90 }, { angle: sin(-0.25, 0.25, 3400, false) }),
     F('adjustment', { saturation: 0.85 })),
   token('Dominated', timed('veins', 0.5, { color: 0x8a4ad0, amount: 0.3, thickness: 0.8, pulse: 0.8, glow: 0.6 }), F('glow', { outerStrength: 1.6, distance: 10, color: 0x9a5ae0 }, { outerStrength: cos(1, 2.2, 3000) })),
   // Dazzled: glare off the creature, washing it out, light streaking across it from above.
@@ -310,9 +311,9 @@ export const PRESETS = [
   token('Glitching', F('rgbSplit', {}, { redX: { animType: 'randomNumberPerLoop', loopDuration: 180, val1: -5, val2: 5 }, blueY: { animType: 'randomNumberPerLoop', loopDuration: 230, val1: -3, val2: 3 } }),
     F('crt', { curvature: 0, lineWidth: 1, lineContrast: 0.22, noise: 0.15, vignetting: 0 }, { time: { animType: 'move', speed: 0.001 }, seed: { animType: 'randomNumberPerLoop', loopDuration: 120, val1: 0, val2: 1 } }),
     F('transform', {}, { translationX: { animType: 'randomNumberPerLoop', loopDuration: 260, val1: -0.015, val2: 0.015 } })),
-  // Blinded: a dark veil drawn over the eyes, the rest dimmed.
-  token('Blinded', F('colorGradient', { type: 0, angle: 90, stops: [{ offset: 0, color: 0x050508, alpha: 0.85 }, { offset: 0.42, color: 0x050508, alpha: 0.55 }, { offset: 0.62, color: 0x050508, alpha: 0 }] }),
-    F('adjustment', { saturation: 0.6, brightness: 0.85 })),
+  // Blinded: a black veil over the eyes, the rest dimmed.
+  token('Blinded', F('colorGradient', { type: 0, angle: 90, stops: [{ offset: 0, color: 0x050508, alpha: 0.95 }, { offset: 0.38, color: 0x050508, alpha: 0.85 }, { offset: 0.55, color: 0x050508, alpha: 0 }] }),
+    F('adjustment', { saturation: 0.5, brightness: 0.75 })),
   // Muffled (deafened, silenced): colour dulled, grey rings of sound dying away round it.
   token('Muffled', timed('ripples', 0.25, { color: 0x8a94a0, intensity: 0.7, alphaDiscard: false }), F('adjustment', { saturation: 0.6, contrast: 0.85, brightness: 0.93 })),
   token('Cracked', timed('material', 1, { materialType: 1, strength: 0.6, cracks: 1, grain: 0.2 })),
@@ -321,9 +322,9 @@ export const PRESETS = [
   // Burdened: pressed down under the load, a heavy shadow under it.
   token('Burdened', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.92, 0.95, 2600, false), scaleY: cos(0.92, 0.95, 2600, false) }), F('shadow', { rotation: 90, distance: 7, blur: 9, alpha: 0.85, color: 0x080604 }),
     F('adjustment', { saturation: 0.85, brightness: 0.86 })),
-  // Fascinated: slow golden rings spreading over the creature, entrancing, and a warm pulse.
-  token('Fascinated', timed('wave', 0.35, { strength: 0.006, frequency: 70, color: 0xffe0a0, maxIntensity: 1.25, minIntensity: 0.95, anchorX: 0.5, anchorY: 0.35 }),
-    F('glow', { outerStrength: 1.2, distance: 8, color: 0xffd36a }, { outerStrength: cos(0.8, 1.6, 3600) })),
+  // Fascinated: golden sparkles drifting round its head, slow rings spreading over it, entranced.
+  token('Fascinated', timed('orbit', 0.45, { glyph: 2, color: 0xffd36a, count: 5, size: 0.8 }),
+    timed('wave', 0.35, { strength: 0.006, frequency: 70, color: 0xffe0a0, maxIntensity: 1.25, minIntensity: 0.95, anchorX: 0.5, anchorY: 0.35 })),
   // Held (grabbed, grappled): a hemp rope round it, squeezing tight now and then.
   token('Held', timed('bindings', 0.3, { bindType: 4, color: 0x8a6a42, thickness: 0.8, density: 0.35 }, { tightness: cos(0.2, 0.6, 2400) }),
     F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.95, 0.99, 2400) })),
@@ -332,8 +333,8 @@ export const PRESETS = [
   token('Exposed', F('outline', { thickness: 1.5, color: 0xd8342c }, { alpha: cos(0.35, 0.9, 1400) })),
   // Prone: flat on the ground, a wide shadow round it.
   token('Prone', F('transform', { pivotX: 0.5, pivotY: 1, scaleY: 0.8, scaleX: 1.05 }), F('shadow', { rotation: 90, distance: 2, blur: 6, alpha: 0.75, color: 0x0a0806 }), F('adjustment', { brightness: 0.86 })),
-  // Dazed (stunned): seeing stars and seeing double.
-  token('Dazed', timed('globes', 0.6, { color: 0xffe680, distortion: 0.3, scale: 35, alphaDiscard: false }), timed('images', 0.5, { nbImage: 2, alphaImg: 0.4, alphaChr: 0.3, ampX: 0.03, ampY: 0.02 }),
+  // Dazed (stunned): stars circling its head, seeing double.
+  token('Dazed', timed('orbit', 1, { glyph: 1, color: 0xffe14a, count: 4 }), timed('images', 0.5, { nbImage: 2, alphaImg: 0.3, alphaChr: 0.25, ampX: 0.025, ampY: 0.015 }),
     F('adjustment', { saturation: 0.75 }, { brightness: cos(0.85, 1, 2400, false) })),
   // Sluggish (slowed): wading through amber syrup, every motion dragged.
   token('Sluggish', timed('xfog', 0.12, { color: 0xc89434, density: 0.8, alphaDiscard: true }), F('adjustment', { saturation: 0.75, brightness: 0.92 })),
@@ -379,9 +380,9 @@ export const PRESETS = [
   token('Trembling', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.006, 0.006, 190, false) }),
     F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.2 }, { offset: 1, color: 0x05030a, alpha: 0.75 }] }),
     F('adjustment', { saturation: 0.6, brightness: 1 })),
-  // Smitten (charmed): a rosy warmth and soft pink rings.
-  token('Smitten', timed('wave', 0.3, { strength: 0.004, frequency: 60, color: 0xffb0d0, maxIntensity: 1.2, minIntensity: 0.95, anchorX: 0.5, anchorY: 0.3 }),
-    F('adjustment', { red: 1.08, green: 0.95, blue: 1.02 }), F('glow', { distance: 10, color: 0xff7fb4 }, { outerStrength: cos(1, 2.2, 2400) })),
+  // Smitten (charmed): little hearts circling its head, a rosy warmth.
+  token('Smitten', timed('orbit', 0.6, { glyph: 3, color: 0xff6fa8, count: 3, size: 0.85 }), F('adjustment', { red: 1.08, green: 0.95, blue: 1.02 }),
+    F('glow', { distance: 10, color: 0xff7fb4 }, { outerStrength: cos(0.8, 1.8, 2400) })),
   // Misted (concealed): a pale mist hanging round the creature.
   token('Misted', timed('xfog', 0.4, { color: 0xd8dee6, density: 0.55, alphaDiscard: true }), F('blur', { blur: 0.5 }), F('adjustment', { contrast: 0.85 })),
   // Wounded: old wounds, dried stains, colour a little lower.
@@ -404,10 +405,10 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.17, brightness: 0.52 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.3, 2.8, 950) })),
   token('Dying 4', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.31, color: 0x200000, alpha: 0.39 }, { offset: 1, color: 0x300000, alpha: 0.97 }] }),
     F('adjustment', { saturation: 0.1, brightness: 0.42 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.3, 3.4, 750) })),
-  token('Doom 2', timed('veins', 0.4, { color: 0x3a1650, amount: 0.75, thickness: 1.3, pulse: 0.6, glow: 0.5 }), F('glow', { distance: 14, color: 0x12061a }, { outerStrength: cos(2.8, 4.4, 3000) }),
-    F('adjustment', { saturation: 0.55, brightness: 0.8 })),
-  token('Doom 3', timed('veins', 0.4, { color: 0x3a1650, amount: 0.9, thickness: 1.55, pulse: 0.6, glow: 0.5 }), F('glow', { distance: 14, color: 0x12061a }, { outerStrength: cos(3.8, 5.4, 3000) }),
-    F('adjustment', { saturation: 0.45, brightness: 0.72 })),
+  token('Doom 2', timed('base', 0.4, { baseType: 4, color: 0x5a1a7a, radius: 0.5, alpha: 0.8 }), timed('veins', 0.4, { color: 0x3a1650, amount: 0.75, thickness: 1.3, pulse: 0.5, glow: 0.4 }),
+    F('glow', { distance: 12, color: 0x12061a }, { outerStrength: cos(2.8, 4.4, 3000) }), F('adjustment', { saturation: 0.55, brightness: 0.8 })),
+  token('Doom 3', timed('base', 0.4, { baseType: 4, color: 0x5a1a7a, radius: 0.5, alpha: 0.9 }), timed('veins', 0.4, { color: 0x3a1650, amount: 0.9, thickness: 1.55, pulse: 0.5, glow: 0.4 }),
+    F('glow', { distance: 12, color: 0x12061a }, { outerStrength: cos(3.8, 5.4, 3000) }), F('adjustment', { saturation: 0.45, brightness: 0.72 })),
   token('Drained Colour 2', F('colorGradient', { type: 0, angle: 90, replace: true, stops: [{ offset: 0, color: 0x9a9a9a, alpha: 0.1 }, { offset: 0.45, color: 0x9a9a9a, alpha: 0.5 }, { offset: 1, color: 0x8c8c8c, alpha: 0.9 }] }),
     F('adjustment', { brightness: 0.90 }, { saturation: cos(0.25, 0.55, 4200) })),
   token('Drained Colour 3', F('colorGradient', { type: 0, angle: 90, replace: true, stops: [{ offset: 0, color: 0x9a9a9a, alpha: 0.2 }, { offset: 0.45, color: 0x9a9a9a, alpha: 0.6 }, { offset: 1, color: 0x8c8c8c, alpha: 0.95 }] }),
@@ -426,9 +427,12 @@ export const PRESETS = [
     timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.22, rise: 0.7 }), F('adjustment', { saturation: 0.75 })),
   token('Nauseated 4', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.4, 0.82, 2200, false) }),
     timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.26, rise: 0.7 }), F('adjustment', { saturation: 0.7 })),
-  token('Muddled 2', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.45 }), F('blur', { blur: 0.9 }), F('adjustment', { saturation: 0.62, brightness: 0.89, contrast: 0.88 })),
-  token('Muddled 3', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.55 }), F('blur', { blur: 1.2 }), F('adjustment', { saturation: 0.55, brightness: 0.86, contrast: 0.88 })),
-  token('Muddled 4', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.65 }), F('blur', { blur: 1.5 }), F('adjustment', { saturation: 0.48, brightness: 0.83, contrast: 0.88 })),
+  token('Muddled 2', timed('orbit', 0.35, { glyph: 5, color: 0xb8b0cc, count: 3, size: 0.9 }), timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.4 }), F('blur', { blur: 0.9 }),
+    F('adjustment', { saturation: 0.62, brightness: 0.89, contrast: 0.9 })),
+  token('Muddled 3', timed('orbit', 0.35, { glyph: 5, color: 0xb8b0cc, count: 4, size: 0.9 }), timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.5 }), F('blur', { blur: 1.2 }),
+    F('adjustment', { saturation: 0.55, brightness: 0.86, contrast: 0.9 })),
+  token('Muddled 4', timed('orbit', 0.35, { glyph: 5, color: 0xb8b0cc, count: 5, size: 0.9 }), timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.6 }), F('blur', { blur: 1.5 }),
+    F('adjustment', { saturation: 0.48, brightness: 0.83, contrast: 0.9 })),
   token('Unsteady 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.018, 0.018, 1900, false), translationY: sin(-0.01, 0.01, 1300, false), rotation: sin(-2, 2, 1900, false) })),
   token('Unsteady 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.022, 0.022, 1900, false), translationY: sin(-0.012, 0.012, 1300, false), rotation: sin(-2.5, 2.5, 1900, false) })),
   token('Unsteady 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.026, 0.026, 1900, false), translationY: sin(-0.014, 0.014, 1300, false), rotation: sin(-3, 3, 1900, false) })),

@@ -343,4 +343,76 @@ void main() {
 }`,
 };
 
-export const STATUS_SPECS = [material, frost, bindings, baseMark, snooze];
+// Little things circling over the creature's head on a tilted ring: dimmer and smaller passing behind the head,
+// brighter in front. glyph: 1 stars (stunned), 2 sparkles, 3 hearts (charmed), 4 question marks (confused),
+// 5 dizzy swirls (stupefied).
+// count 2..6 on the ring; height lifts the ring (token radii above the middle); size scales them.
+const orbit = {
+  type: 'orbit', order: 795,
+  defaults: { glyph: 1, color: 0xffe14a, count: 4, size: 1, height: 0.62, alpha: 0.95, time: 0 },
+  timeScale: 1,
+  uniforms: {
+    uGlyph: ['int', p => clamp(Math.round(f(p.glyph)), 1, 5)], uColor: ['vec3', p => rgb(p.color)],
+    uCount: ['float', p => clamp(Math.round(f(p.count)), 2, 6)], uSize: ['float', p => clamp(p.size, 0.3, 3)],
+    uHeight: ['float', p => clamp(p.height, 0, 1.2)], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
+  },
+  reach: (p, c) => c.size * Math.max(0.12, 0.5 * (clamp(p.height, 0, 1.2) + 0.25) - 0.5) * clamp(p.size, 0.3, 3) + c.size * 0.06,
+  glsl: `
+float seg(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
+// Distance (in glyph radii, y down) to the glyph's shape: negative inside.
+float glyph(vec2 q, int k) {
+  float r = length(q), a = atan(q.x, -q.y);
+  if (k == 1) return r - (0.42 + 0.58 * pow(abs(cos(a * 2.5)), 5.0));
+  if (k == 2) return r - (0.3 + 0.7 * pow(abs(cos(a * 2.0)), 6.0));
+  if (k == 3) {
+    vec2 h = vec2(abs(q.x), q.y);
+    float lobe = length(h - vec2(0.36, -0.22)) - 0.42;
+    vec2 d = vec2((h.x + h.y) * 0.7071, (h.y - h.x) * 0.7071) - vec2(0.12, 0.12);
+    float tip = max(abs(d.x), abs(d.y)) - 0.5;
+    return min(lobe, max(tip, -q.y - 0.2));
+  }
+  // A spiral winding in two and a half turns.
+  if (k == 5) return max(abs(fract(r * 2.4 - a / TAU) - 0.5) / 2.4 - 0.07, r - 0.95);
+  // A question mark: a hook over a short stem and a dot (stroke distances, made solid by the caller's width).
+  vec2 c = vec2(0.0, -0.35);
+  float ring = abs(length(q - c) - 0.38);
+  if (q.y > c.y && q.x < 0.0) ring = 9.0;
+  float stem = seg(q, vec2(0.0, 0.03), vec2(0.0, 0.32));
+  float hookEnd = seg(q, vec2(0.38, -0.35), vec2(0.0, 0.03));
+  float dot1 = length(q - vec2(0.0, 0.72)) - 0.06;
+  return min(min(min(ring, stem), hookEnd) - 0.13, dot1 - 0.08);
+}
+void main() {
+  vec4 base = fxSample(vTextureCoord);
+  float R = fxTokenRadius();
+  vec2 p = fxCanvas() / R;
+  int k = int(uGlyph + 0.5);
+  float front = 0.0, back = 0.0, rimF = 0.0, rimB = 0.0;
+  for (int i = 0; i < 6; i++) {
+    float fi = float(i);
+    if (fi >= uCount) break;
+    float th = uTime * 2.2 + fi * TAU / uCount;
+    float depth = sin(th);
+    vec2 at = vec2(cos(th) * 0.42, -uHeight + depth * 0.13);
+    float s = 0.1 * uSize * mix(0.72, 1.08, depth * 0.5 + 0.5);
+    vec2 q = (p - at) / s;
+    // Each spins a little as it goes round (question marks only rock).
+    float spin = k == 4 ? sin(th * 1.5) * 0.35 : th * 0.8;
+    q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
+    float px = s * R * uZoom, d = glyph(q, k) * px;
+    float fill = smoothstep(0.8, -0.8, d), rim = smoothstep(px * 0.22 + 0.8, px * 0.22 - 0.8, d);
+    if (depth >= 0.0) { front = max(front, fill); rimF = max(rimF, rim); }
+    else { float dim = 0.55 + 0.45 * (1.0 + depth); back = max(back, fill * dim); rimB = max(rimB, rim * dim); }
+  }
+  // Behind the head: only where the art is not; in front: over it. Dark rims keep them readable anywhere.
+  vec3 dark = vec3(0.06, 0.05, 0.1);
+  vec4 o = fxBehind(base, dark, rimB * 0.6 * uAlpha);
+  o = fxBehind(o, uColor * 0.85, back * uAlpha);
+  float rf = rimF * 0.6 * uAlpha;
+  o = o * (1.0 - rf) + vec4(dark, 1.0) * rf;
+  float ff = front * uAlpha;
+  gl_FragColor = o * (1.0 - ff) + vec4(uColor, 1.0) * ff;
+}`,
+};
+
+export const STATUS_SPECS = [material, frost, bindings, baseMark, snooze, orbit];

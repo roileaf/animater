@@ -233,6 +233,10 @@ test('the live values include light and weather',async()=>{
   const frost=builtinPreset('Dusted with snow').params.find(f=>f.filterType==='frost');
   for(const key of ['amount','snow'])assert.ok(frost.animated?.[key]?.source==='weather'&&frost.animated[key].val1===0,`${key} is none without weather`);
 });
+test('stunned, confused, charmed, fascinated and stupefied circle their own signs over the head',async()=>{
+  const glyphOf=name=>builtinPreset(name).params.find(f=>f.filterType==='orbit')?.glyph;
+  assert.deepEqual(['Dazed','Bewildered','Smitten','Fascinated','Muddled','Muddled 4'].map(glyphOf),[1,4,3,2,5,5]);
+});
 test('previews make up live values that keep changing and play transitions again and again',async()=>{
   const {simulatedDrive,transitionCycle}=await import('../../../scripts/engines/preview/token-fx-preview.mjs');
   const a=simulatedDrive(0),b=simulatedDrive(1600);
