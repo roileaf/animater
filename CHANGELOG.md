@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Reset a catalog.** Each catalog page has a **Reset catalogue…** button in its header (GM) that puts that catalog back to the stock catalog: picked, left-out and customised entries cleared, look and sound choices back to their defaults, and the recipes Customize made for its entries deleted. It asks first, naming those recipes, and downloads one backup that the Recipes page's Import takes back. The catalog stays on or paused as it was unless you also ask for its fresh-install state; your own recipes, the starters and other catalogs' are kept.
+
 ## 3.8.6
 
 - **Outdoor life and Town life left Scene configuration.** The Animals panel now switches each scene's animals. **Outdoor life on this scene** is its On/Off, and the town's pigeons, hens, cats and dogs come when given a count under **Town**, without Outdoor life on. A scene that had Town life set turns it into those counts the first time the GM opens it, and any counts already set stay as they were.
