@@ -293,16 +293,16 @@ export const PRESETS = [
   token('Sickly', timed('veins', 0.5, { color: 0x6aa82a, amount: 0.55, thickness: 1, pulse: 0.7, glow: 0.4 }), F('adjustment', { saturation: 0.8, red: 0.93, green: 1.06, blue: 0.88 })),
   // Muddled (stupefied): a dull haze drifting over the mind, the creature dimmed. Nothing flickers.
   token('Muddled', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.35 }), F('blur', { blur: 0.6 }), F('adjustment', { saturation: 0.7, brightness: 0.92, contrast: 0.9 })),
-  // Bewildered (confused): soft lights wandering round, the creature swaying slowly as if lost.
-  token('Bewildered', timed('globes', 0.5, { color: 0xc8b0ff, distortion: 0.6, scale: 45, alphaDiscard: false }), F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-2, 2, 5200, false) }),
+  // Bewildered (confused): the world swirling, lost lights wandering round it.
+  token('Bewildered', F('twist', { radiusPercent: 90 }, { angle: sin(-0.35, 0.35, 3400, false) }), timed('globes', 0.5, { color: 0xc8b0ff, distortion: 0.6, scale: 45, alphaDiscard: false }),
     F('adjustment', { saturation: 0.85 })),
   token('Dominated', timed('veins', 0.5, { color: 0x8a4ad0, amount: 0.3, thickness: 0.8, pulse: 0.8, glow: 0.6 }), F('glow', { outerStrength: 1.6, distance: 10, color: 0x9a5ae0 }, { outerStrength: cos(1, 2.2, 3000) })),
   // Dazzled: glare off the creature, washing it out, light streaking across it from above.
   token('Dazzled', F('xbloom', { threshold: 0.32, brightness: 1.08, blur: 2 }, { bloomScale: cos(0.7, 1.5, 1700) }), F('adjustment', { saturation: 0.8, contrast: 0.85, brightness: 1.06 }),
     timed('ray', 0.5, { color: 0xfffaf0, alpha: 0.45, divisor: 18, anchorX: 0.2, anchorY: 0, alphaDiscard: true }), F('glow', { distance: 10, color: 0xfff6d8 }, { outerStrength: cos(0.8, 2.2, 1700) })),
-  // Paralyzed: locked rigid, colour gone cold, a thin glassy shell round the outline.
-  token('Paralyzed', F('adjustment', { saturation: 0.3, brightness: 0.88, contrast: 1.1, red: 0.92, green: 0.97, blue: 1.1 }), timed('frost', 0.2, { amount: 0.3, snow: 0, color: 0xc8d4e0 }),
-    F('outline', { thickness: 1.5, color: 0xcfe0f0, alpha: 0.7 })),
+  // Paralyzed: locked rigid, colour gone cold, a muscle twitching now and then.
+  token('Paralyzed', F('adjustment', { saturation: 0.5, brightness: 0.9, contrast: 1.1, red: 0.94, green: 0.98, blue: 1.06 }), F('outline', { thickness: 1.5, color: 0xcfe0f0, alpha: 0.6 }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: { animType: 'randomNumberPerLoop', loopDuration: 1400, val1: -0.004, val2: 0.004 } })),
   token('Haze', F('blur', { blur: 0.9 }), F('adjustment', { alpha: 0.82, contrast: 0.9 })),
   token('Unseen', F('distortion', { amount: 3, maskSpriteScaleX: 3, maskSpriteScaleY: 3 }, { maskSpriteX: { animType: 'move', speed: 0.02 }, maskSpriteY: { animType: 'move', speed: 0.025 } }),
     F('adjustment', { saturation: 0.6 }, { alpha: cos(0.3, 0.42, 3200) })),
@@ -313,30 +313,30 @@ export const PRESETS = [
   // Blinded: a dark veil drawn over the eyes, the rest dimmed.
   token('Blinded', F('colorGradient', { type: 0, angle: 90, stops: [{ offset: 0, color: 0x050508, alpha: 0.85 }, { offset: 0.42, color: 0x050508, alpha: 0.55 }, { offset: 0.62, color: 0x050508, alpha: 0 }] }),
     F('adjustment', { saturation: 0.6, brightness: 0.85 })),
-  // Muffled: colour dulled, faint rings spreading as if through water.
-  token('Muffled', timed('ripples', 0.4, { color: 0x9aa4b0, intensity: 0.35, alphaDiscard: true }), F('adjustment', { saturation: 0.65, contrast: 0.85, brightness: 0.95 })),
+  // Muffled (deafened, silenced): colour dulled, grey rings of sound dying away round it.
+  token('Muffled', timed('ripples', 0.25, { color: 0x8a94a0, intensity: 0.7, alphaDiscard: false }), F('adjustment', { saturation: 0.6, contrast: 0.85, brightness: 0.93 })),
   token('Cracked', timed('material', 1, { materialType: 1, strength: 0.6, cracks: 1, grain: 0.2 })),
-  // Unsteady: stumbling, catching itself.
-  token('Unsteady', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-5, 5, 1600, false), translationX: sin(-0.012, 0.012, 2300, false) })),
-  // Burdened: pressed down under the load, heavier on the ground.
-  token('Burdened', F('transform', { pivotX: 0.5, pivotY: 0.95, scaleX: 1.03 }, { scaleY: cos(0.93, 0.97, 2600, false) }), F('shadow', { rotation: 90, distance: 4, blur: 5, alpha: 0.75, color: 0x080604 }),
-    F('adjustment', { brightness: 0.92 })),
+  // Unsteady (clumsy): lurching off balance from side to side.
+  token('Unsteady', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.014, 0.014, 1900, false), translationY: sin(-0.008, 0.008, 1300, false), rotation: sin(-1.5, 1.5, 1900, false) })),
+  // Burdened: pressed down under the load, a heavy shadow under it.
+  token('Burdened', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.92, 0.95, 2600, false), scaleY: cos(0.92, 0.95, 2600, false) }), F('shadow', { rotation: 90, distance: 7, blur: 9, alpha: 0.85, color: 0x080604 }),
+    F('adjustment', { saturation: 0.85, brightness: 0.86 })),
   // Fascinated: slow golden rings spreading over the creature, entrancing, and a warm pulse.
   token('Fascinated', timed('wave', 0.35, { strength: 0.006, frequency: 70, color: 0xffe0a0, maxIntensity: 1.25, minIntensity: 0.95, anchorX: 0.5, anchorY: 0.35 }),
     F('glow', { outerStrength: 1.2, distance: 8, color: 0xffd36a }, { outerStrength: cos(0.8, 1.6, 3600) })),
-  // Held: a single rope looped round, drawing tight now and then.
-  token('Held', timed('bindings', 0.3, { bindType: 4, thickness: 0.9, density: 0.45 }, { tightness: cos(0.15, 0.55, 2400) })),
+  // Held (grabbed, grappled): a hemp rope round it, squeezing tight now and then.
+  token('Held', timed('bindings', 0.3, { bindType: 4, color: 0x8a6a42, thickness: 0.8, density: 0.35 }, { tightness: cos(0.2, 0.6, 2400) }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.95, 0.99, 2400) })),
   token('Rooted', timed('bindings', 0.4, { bindType: 1, thickness: 0.9, density: 0.6, tightness: 0.3 }), F('shadow', { rotation: 90, distance: 4, blur: 3, alpha: 0.6, color: 0x0a0806 })),
   // Exposed: a thin red edge that keeps catching the eye.
   token('Exposed', F('outline', { thickness: 1.5, color: 0xd8342c }, { alpha: cos(0.35, 0.9, 1400) })),
   // Prone: flat on the ground, a wide shadow round it.
   token('Prone', F('transform', { pivotX: 0.5, pivotY: 1, scaleY: 0.8, scaleX: 1.05 }), F('shadow', { rotation: 90, distance: 2, blur: 6, alpha: 0.75, color: 0x0a0806 }), F('adjustment', { brightness: 0.86 })),
-  // Dazed: seeing double, the creature reeling slowly and greyed.
-  token('Dazed', timed('images', 0.5, { nbImage: 2, alphaImg: 0.4, alphaChr: 0.3, ampX: 0.03, ampY: 0.02 }), F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-2.5, 2.5, 3400, false) }),
-    F('adjustment', { saturation: 0.7 }, { brightness: cos(0.85, 1, 2400, false) })),
-  // Sluggish: heavy and cold, the picture smearing as it moves.
-  token('Sluggish', F('blur', { blur: 0 }, { blurX: cos(0.2, 1.4, 3600, false) }), F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-1.5, 1.5, 6000, false) }),
-    F('adjustment', { saturation: 0.65, brightness: 0.92, red: 0.88, green: 0.95, blue: 1.14 })),
+  // Dazed (stunned): seeing stars and seeing double.
+  token('Dazed', timed('globes', 0.6, { color: 0xffe680, distortion: 0.3, scale: 35, alphaDiscard: false }), timed('images', 0.5, { nbImage: 2, alphaImg: 0.4, alphaChr: 0.3, ampX: 0.03, ampY: 0.02 }),
+    F('adjustment', { saturation: 0.75 }, { brightness: cos(0.85, 1, 2400, false) })),
+  // Sluggish (slowed): wading through amber syrup, every motion dragged.
+  token('Sluggish', timed('xfog', 0.12, { color: 0xc89434, density: 0.8, alphaDiscard: true }), F('adjustment', { saturation: 0.75, brightness: 0.92 })),
   // Attitudes: how the creature regards the party, as a coloured edge (shape and pulse differ too).
   token('Attitude: Helpful', F('outline', { thickness: 2, color: 0x3fd96a, alpha: 0.85 }), F('glow', { outerStrength: 1.5, distance: 8, color: 0x3fd96a })),
   token('Attitude: Friendly', F('outline', { thickness: 1.5, color: 0x6fcf7f, alpha: 0.7 })),
@@ -351,29 +351,34 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.85, brightness: 0.95 })),
   token('Lifeless', F('adjustment', { saturation: 0, brightness: 0.55, contrast: 0.9, blue: 1.04 })),
   token('Stable', F('adjustment', { saturation: 0.45, brightness: 0.78 }, { brightness: cos(0.74, 0.82, 4400) })),
-  // Sleeping: dim, breathing slowly.
-  token('Sleeping', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { scaleY: cos(0.985, 1.015, 4200, false) }), F('adjustment', { saturation: 0.7, brightness: 0.78, blue: 1.06 })),
+  // Sleeping (asleep, unconscious): dim, breathing slow and deep, Z's drifting up.
+  token('Sleeping', timed('snooze', 1, { count: 3 }), F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.98, 1.02, 4200, false), scaleY: cos(0.98, 1.02, 4200, false) }), F('adjustment', { saturation: 0.7, brightness: 0.78, blue: 1.06 })),
   token('Ethereal', timed('liquid', 0.6, { color: 0xcfe2ff, blend: 8, intensity: 3, spectral: true, scale: 1.2 }), F('adjustment', { saturation: 0.5 }, { alpha: cos(0.45, 0.6, 3600) })),
   token('Focused', F('glow', { outerStrength: 1, distance: 8, color: 0x8fc8ff }, { outerStrength: cos(0.6, 1.6, 2600) })),
   token('Evasive', timed('images', 2, { nbImage: 2, alphaImg: 0.3, alphaChr: 0.35, ampX: 0.06, ampY: 0.015 })),
-  token('Suffocating', F('adjustment', { saturation: 0.6, red: 0.85, green: 0.92, blue: 1.15 }, { brightness: cos(0.78, 0.92, 1400, false) })),
+  // Suffocating: short, desperate gasps, the skin turning blue.
+  token('Suffocating', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.975, 1, 800, false), scaleY: cos(0.975, 1, 800, false) }),
+    F('adjustment', { saturation: 0.6, red: 0.82, green: 0.9, blue: 1.18 }, { brightness: cos(0.78, 0.92, 1400, false) })),
   token('Shifting', F('twist', { radiusPercent: 90 }, { angle: sin(-0.3, 0.3, 2800, false) }), F('glow', { outerStrength: 1.2, distance: 8 }, { color: hue(0x7ad08a, 0xa07cff, 3000) })),
-  // Weary (fatigued, exhaustion): heavy slow breaths, shoulders sagging, colour dulled.
-  token('Weary', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { scaleY: cos(0.965, 1.015, 3800, false), rotation: sin(-1.2, 1.2, 7600, false) }), F('adjustment', { saturation: 0.6, brightness: 0.85 }),
+  // Weary (fatigued, exhaustion): slow heavy breaths, colour dulled, sinking into its shadow.
+  token('Weary', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.975, 1.005, 3800, false), scaleY: cos(0.975, 1.005, 3800, false) }), F('adjustment', { saturation: 0.6, brightness: 0.85 }),
     F('shadow', { rotation: 90, distance: 4, blur: 4, alpha: 0.6, color: 0x080604 })),
-  // Weakened (enfeebled): shrunk thin, knees giving a little.
-  token('Weakened', F('transform', { pivotX: 0.5, pivotY: 0.95, scaleX: 0.92 }, { scaleY: cos(0.95, 0.98, 2200, false), rotation: sin(-1.5, 1.5, 2600, false) }), F('adjustment', { saturation: 0.7, brightness: 0.92 })),
+  // Weakened (enfeebled): smaller, its strength draining from the edges.
+  token('Weakened', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.93, 0.95, 2600, false), scaleY: cos(0.93, 0.95, 2600, false) }),
+    F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.30, front: 0.5 }), F('adjustment', { saturation: 0.7, brightness: 0.92 })),
   // Dying: a red dark closing in, a slow heartbeat glow.
   token('Dying', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.55, color: 0x200000, alpha: 0.15 }, { offset: 1, color: 0x300000, alpha: 0.8 }] }),
     F('adjustment', { saturation: 0.35, brightness: 0.72 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.2, 1.8, 1500) })),
-  // Nauseated (sickened): green about the gills, queasy and swaying.
-  token('Nauseated', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-2.5, 2.5, 2800, false), translationY: sin(-0.008, 0.008, 1900, false) }),
-    F('adjustment', { saturation: 0.75, red: 0.9, green: 1.08, blue: 0.86 }), F('glow', { outerStrength: 1, distance: 6, color: 0x8fbf3a })),
+  // Nauseated (sickened): waves of nausea, a sickly flush welling up from the middle and ebbing, sour breath rising.
+  token('Nauseated', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.2, 0.65, 3400, false) }),
+    timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.14, rise: 0.7 }), F('adjustment', { saturation: 0.85 })),
   // Feverish (diseased): flushed, heat shimmering off the skin.
   token('Feverish', F('distortion', { amount: 2, maskSpriteScaleX: 2, maskSpriteScaleY: 2 }, { maskSpriteY: { animType: 'move', speed: -0.03 } }),
     F('adjustment', { saturation: 1.05, red: 1.14, green: 0.92, blue: 0.88 }), F('glow', { distance: 8, color: 0xe0602a }, { outerStrength: cos(0.6, 1.4, 2600) })),
-  // Trembling (frightened, fleeing): pale and shivering.
-  token('Trembling', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { translationX: sin(-0.006, 0.006, 190, false) }), F('adjustment', { saturation: 0.45, brightness: 1.05, red: 0.88, green: 0.97, blue: 1.12 })),
+  // Trembling (frightened, fleeing): drained pale, shivering, the dark closing in round it.
+  token('Trembling', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.006, 0.006, 190, false) }),
+    F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.2 }, { offset: 1, color: 0x05030a, alpha: 0.75 }] }),
+    F('adjustment', { saturation: 0.6, brightness: 1 })),
   // Smitten (charmed): a rosy warmth and soft pink rings.
   token('Smitten', timed('wave', 0.3, { strength: 0.004, frequency: 60, color: 0xffb0d0, maxIntensity: 1.2, minIntensity: 0.95, anchorX: 0.5, anchorY: 0.3 }),
     F('adjustment', { red: 1.08, green: 0.95, blue: 1.02 }), F('glow', { distance: 10, color: 0xff7fb4 }, { outerStrength: cos(1, 2.2, 2400) })),
@@ -384,9 +389,15 @@ export const PRESETS = [
     F('adjustment', { saturation: 0.85, brightness: 0.93 })),
   token('Rune Circle',timed('base', 1, { baseType: 4, color: 0xb48cff, radius: 0.62, alpha: 0.85 })),
   // Valued conditions get worse step by step (persistent-states passes the value; optional-fx picks "<look> <value>").
-  token('Trembling 2', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { translationX: sin(-0.009, 0.009, 170, false) }), F('adjustment', { saturation: 0.35, brightness: 1.08, red: 0.86, green: 0.96, blue: 1.16 })),
-  token('Trembling 3', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { translationX: sin(-0.012, 0.012, 150, false) }), F('adjustment', { saturation: 0.25, brightness: 1.1, red: 0.86, green: 0.96, blue: 1.2 })),
-  token('Trembling 4', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { translationX: sin(-0.016, 0.016, 120, false) }), F('adjustment', { saturation: 0.15, brightness: 1.12, red: 0.86, green: 0.96, blue: 1.26 })),
+  token('Trembling 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.009, 0.009, 170, false) }),
+    F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.28 }, { offset: 1, color: 0x05030a, alpha: 0.84 }] }),
+    F('adjustment', { saturation: 0.5, brightness: 0.96 })),
+  token('Trembling 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.012, 0.012, 150, false) }),
+    F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.36 }, { offset: 1, color: 0x05030a, alpha: 0.92 }] }),
+    F('adjustment', { saturation: 0.4, brightness: 0.92 })),
+  token('Trembling 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.016, 0.016, 130, false) }),
+    F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x05030a, alpha: 0 }, { offset: 0.55, color: 0x05030a, alpha: 0.44 }, { offset: 1, color: 0x05030a, alpha: 0.98 }] }),
+    F('adjustment', { saturation: 0.3, brightness: 0.88 })),
   token('Dying 2', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.47, color: 0x200000, alpha: 0.23 }, { offset: 1, color: 0x300000, alpha: 0.86 }] }),
     F('adjustment', { saturation: 0.25, brightness: 0.62 }), F('glow', { distance: 10, color: 0xa01010 }, { outerStrength: cos(0.3, 2.3, 1200) })),
   token('Dying 3', F('colorGradient', { type: 1, stops: [{ offset: 0, color: 0x200000, alpha: 0 }, { offset: 0.39, color: 0x200000, alpha: 0.31 }, { offset: 1, color: 0x300000, alpha: 0.92 }] }),
@@ -403,27 +414,30 @@ export const PRESETS = [
     F('adjustment', { brightness: 0.86 }, { saturation: cos(0.15, 0.4, 4200) })),
   token('Drained Colour 4', F('colorGradient', { type: 0, angle: 90, replace: true, stops: [{ offset: 0, color: 0x9a9a9a, alpha: 0.3 }, { offset: 0.45, color: 0x9a9a9a, alpha: 0.7 }, { offset: 1, color: 0x8c8c8c, alpha: 1 }] }),
     F('adjustment', { brightness: 0.82 }, { saturation: cos(0.05, 0.25, 4200) })),
-  token('Weakened 2', F('transform', { pivotX: 0.5, pivotY: 0.95, scaleX: 0.9 }, { scaleY: cos(0.93, 0.97, 2200, false), rotation: sin(-2, 2, 2600, false) }), F('adjustment', { saturation: 0.62, brightness: 0.89 })),
-  token('Weakened 3', F('transform', { pivotX: 0.5, pivotY: 0.95, scaleX: 0.88 }, { scaleY: cos(0.91, 0.96, 2200, false), rotation: sin(-2.5, 2.5, 2600, false) }), F('adjustment', { saturation: 0.55, brightness: 0.86 })),
-  token('Weakened 4', F('transform', { pivotX: 0.5, pivotY: 0.95, scaleX: 0.85 }, { scaleY: cos(0.89, 0.95, 2200, false), rotation: sin(-3, 3, 2600, false) }), F('adjustment', { saturation: 0.48, brightness: 0.83 })),
-  token('Nauseated 2', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-3.5, 3.5, 2600, false), translationY: sin(-0.01, 0.01, 1800, false) }),
-    F('adjustment', { saturation: 0.70, red: 0.88, green: 1.14, blue: 0.82 }), F('glow', { outerStrength: 1.3, distance: 7, color: 0x8fbf3a })),
-  token('Nauseated 3', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-4.5, 4.5, 2600, false), translationY: sin(-0.01, 0.01, 1800, false) }),
-    F('adjustment', { saturation: 0.65, red: 0.88, green: 1.2, blue: 0.82 }), F('glow', { outerStrength: 1.6, distance: 7, color: 0x8fbf3a })),
-  token('Nauseated 4', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-5.5, 5.5, 2600, false), translationY: sin(-0.01, 0.01, 1800, false) }),
-    F('adjustment', { saturation: 0.60, red: 0.88, green: 1.26, blue: 0.82 }), F('glow', { outerStrength: 2, distance: 7, color: 0x8fbf3a })),
+  token('Weakened 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.91, 0.93, 2600, false), scaleY: cos(0.91, 0.93, 2600, false) }),
+    F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.38, front: 0.5 }), F('adjustment', { saturation: 0.62, brightness: 0.89 })),
+  token('Weakened 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.89, 0.91, 2600, false), scaleY: cos(0.89, 0.91, 2600, false) }),
+    F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.46, front: 0.5 }), F('adjustment', { saturation: 0.55, brightness: 0.86 })),
+  token('Weakened 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.87, 0.89, 2600, false), scaleY: cos(0.87, 0.89, 2600, false) }),
+    F('wash', { washType: 2, from: 5, color: 0x6a7a90, amount: 0.5, strength: 0.54, front: 0.5 }), F('adjustment', { saturation: 0.48, brightness: 0.83 })),
+  token('Nauseated 2', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.3, 0.75, 3000, false) }),
+    timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.18, rise: 0.7 }), F('adjustment', { saturation: 0.8 })),
+  token('Nauseated 3', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.35, 0.78, 2600, false) }),
+    timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.22, rise: 0.7 }), F('adjustment', { saturation: 0.75 })),
+  token('Nauseated 4', timed('wash', 0.3, { washType: 5, from: 4, color: 0x9fc23a, strength: 0.75, front: 0.5 }, { amount: cos(0.4, 0.82, 2200, false) }),
+    timed('fumes', 0.25, { color: 0xb8c860, blend: 2, alpha: 0.26, rise: 0.7 }), F('adjustment', { saturation: 0.7 })),
   token('Muddled 2', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.45 }), F('blur', { blur: 0.9 }), F('adjustment', { saturation: 0.62, brightness: 0.89, contrast: 0.88 })),
   token('Muddled 3', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.55 }), F('blur', { blur: 1.2 }), F('adjustment', { saturation: 0.55, brightness: 0.86, contrast: 0.88 })),
   token('Muddled 4', timed('fumes', 0.3, { color: 0x8a7fa8, blend: 2, alpha: 0.65 }), F('blur', { blur: 1.5 }), F('adjustment', { saturation: 0.48, brightness: 0.83, contrast: 0.88 })),
-  token('Unsteady 2', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-7, 7, 1500, false), translationX: sin(-0.016, 0.016, 2300, false) })),
-  token('Unsteady 3', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-9, 9, 1400, false), translationX: sin(-0.02, 0.02, 2300, false) })),
-  token('Unsteady 4', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { rotation: sin(-11, 11, 1300, false), translationX: sin(-0.024, 0.024, 2300, false) })),
+  token('Unsteady 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.018, 0.018, 1900, false), translationY: sin(-0.01, 0.01, 1300, false), rotation: sin(-2, 2, 1900, false) })),
+  token('Unsteady 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.022, 0.022, 1900, false), translationY: sin(-0.012, 0.012, 1300, false), rotation: sin(-2.5, 2.5, 1900, false) })),
+  token('Unsteady 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { translationX: sin(-0.026, 0.026, 1900, false), translationY: sin(-0.014, 0.014, 1300, false), rotation: sin(-3, 3, 1900, false) })),
   // D&D's Exhaustion levels: wearier each step, the colour going, the shoulders lower, the breaths slower.
-  token('Weary 2', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { scaleY: cos(0.955, 1.01, 4400, false), rotation: sin(-1.8, 1.8, 8200, false) }), F('adjustment', { saturation: 0.48, brightness: 0.8 }),
+  token('Weary 2', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.965, 1.005, 4400, false), scaleY: cos(0.965, 1.005, 4400, false) }), F('adjustment', { saturation: 0.48, brightness: 0.8 }),
     F('shadow', { rotation: 90, distance: 5, blur: 5, alpha: 0.65, color: 0x080604 })),
-  token('Weary 3', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { scaleY: cos(0.94, 1.0, 5000, false), rotation: sin(-2.4, 2.4, 9000, false) }), F('adjustment', { saturation: 0.36, brightness: 0.74 }),
+  token('Weary 3', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.955, 1.005, 5000, false), scaleY: cos(0.955, 1.005, 5000, false) }), F('adjustment', { saturation: 0.36, brightness: 0.74 }),
     F('shadow', { rotation: 90, distance: 6, blur: 6, alpha: 0.7, color: 0x080604 })),
-  token('Weary 4', F('transform', { pivotX: 0.5, pivotY: 0.95 }, { scaleY: cos(0.925, 0.99, 5800, false), rotation: sin(-3, 3, 9800, false) }), F('adjustment', { saturation: 0.24, brightness: 0.66 }),
+  token('Weary 4', F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.945, 1.005, 5800, false), scaleY: cos(0.945, 1.005, 5800, false) }), F('adjustment', { saturation: 0.24, brightness: 0.66 }),
     F('shadow', { rotation: 90, distance: 7, blur: 7, alpha: 0.75, color: 0x080604 })),
   // Places (a region's Animater look, the heat and cold around a creature): quiet, so a whole party can stand in them.
   token('Haunted ground', F('adjustment', { saturation: 0.45, brightness: 0.9, red: 0.9, green: 0.98, blue: 1.12 }), F('glow', { distance: 8, color: 0x9fc4ff }, { outerStrength: cos(0.4, 1.2, 3600) })),

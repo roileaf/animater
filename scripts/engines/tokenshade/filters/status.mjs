@@ -233,8 +233,11 @@ void main() {
       float dd = band(p, ang, off, 0.03, 3.0, fi);
       float cord = smoothstep(w * 1.4, w * 0.8, dd);
       vec2 along = rot2(ang) * p;
-      float twist = 0.6 + 0.4 * sin((along.x * 40.0 + dd * 60.0));
-      vec3 c = (uNatural > 0.5 ? vec3(0.64, 0.50, 0.30) : uColor) * twist;
+      // A round cord (lit across its width) with fine twisted strands, not hard stripes.
+      float across = clamp(dd / (w * 1.4), 0.0, 1.0);
+      float round = 0.55 + 0.45 * sqrt(1.0 - across * across);
+      float twist = 0.86 + 0.14 * sin(along.x * 40.0 + dd * 60.0);
+      vec3 c = (uNatural > 0.5 ? vec3(0.64, 0.50, 0.30) : uColor) * round * twist;
       col = mix(col, c, cord); a = max(a, cord);
     }
   }
@@ -296,4 +299,48 @@ void main() {
 }`,
 };
 
-export const STATUS_SPECS = [material, frost, bindings, baseMark];
+// Asleep: small Z's drifting up out of the creature's head, growing as they rise and fading out, one after another.
+// count 1..4 Z's in flight; size scales them; dark rims keep them readable on pale art and pale maps.
+const snooze = {
+  type: 'snooze', order: 790,
+  defaults: { color: 0xf2f4ff, count: 3, size: 1, alpha: 0.9, time: 0 },
+  timeScale: 1,
+  uniforms: {
+    uColor: ['vec3', p => rgb(p.color)], uCount: ['float', p => clamp(Math.round(f(p.count)), 1, 4)],
+    uSize: ['float', p => clamp(p.size, 0.3, 3)], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
+  },
+  // The Z's rise about a radius above the middle and lean out to the right.
+  reach: (p, c) => c.size * 0.15 * clamp(p.size, 0.3, 3),
+  glsl: `
+float seg(vec2 p, vec2 a, vec2 b) { vec2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
+// Distance to a Z in a unit box centred on 0 (y down).
+float zee(vec2 q) {
+  return min(min(seg(q, vec2(-0.42, -0.45), vec2(0.42, -0.45)), seg(q, vec2(-0.42, 0.45), vec2(0.42, 0.45))), seg(q, vec2(0.42, -0.45), vec2(-0.42, 0.45)));
+}
+void main() {
+  vec4 base = fxSample(vTextureCoord);
+  float R = fxTokenRadius();
+  vec2 p = fxCanvas() / R;
+  float a = 0.0, rim = 0.0;
+  for (int i = 0; i < 4; i++) {
+    float fi = float(i);
+    if (fi >= uCount) break;
+    float life = fract(uTime * 0.28 + fi / uCount);
+    vec2 at = vec2(0.12 + life * 0.38 + sin(life * 6.0 + fi) * 0.04, -0.3 - life * 0.65);
+    float s = (0.06 + life * 0.08) * uSize;
+    vec2 q = (p - at) / s;
+    q = vec2(q.x + q.y * 0.12, q.y);
+    float d = zee(q) * s * R * uZoom;
+    float fade = smoothstep(0.0, 0.15, life) * (1.0 - smoothstep(0.7, 1.0, life));
+    float w = max(1.2, s * R * uZoom * 0.09);
+    a = max(a, smoothstep(w + 0.8, w - 0.8, d) * fade);
+    rim = max(rim, smoothstep(w * 2.2 + 0.8, w * 2.2 - 0.8, d) * fade);
+  }
+  vec4 dark = vec4(vec3(0.05, 0.05, 0.1), 1.0) * rim * 0.6 * uAlpha;
+  vec4 o = base * (1.0 - dark.a) + dark;
+  float fa = a * uAlpha;
+  gl_FragColor = o * (1.0 - fa) + vec4(uColor, 1.0) * fa;
+}`,
+};
+
+export const STATUS_SPECS = [material, frost, bindings, baseMark, snooze];

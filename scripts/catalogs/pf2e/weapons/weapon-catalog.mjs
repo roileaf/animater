@@ -64,20 +64,32 @@ function bombFor(item){
 // A ranged NPC Strike no weapon names: what it throws or spits, by the words of its name, else by its damage.
 const RANGED_WORDS={rock:'sling',boulder:'sling',stone:'sling',pebble:'sling',object:'sling',meat:'sling',corpse:'sling',coal:'sling',plate:'sling',
  quill:'dart',spike:'dart',spine:'dart',thorn:'dart',splinter:'dart',flechette:'dart',needle:'dart',barb:'dart',scalpel:'dart',cutlery:'dart',
- web:'bola',net:'bola',
+ web:'web',silk:'web',net:'bola',
  spit:'spit',squirt:'spit',spittle:'spit',mucus:'spit',slime:'spit',spore:'spit',glob:'spit',bile:'spit',vomit:'spit',
  beam:'beam',eye:'beam',ray:'beam',bolt:'beam',thunderbolt:'beam',note:'beam',blast:'beam'};
 // Energy shots, by damage type; others (void, mental, force, spirit) a violet comet.
 const ENERGY_SHOT={fire:'drake-rifle-fire',cold:'drake-rifle-cold',electricity:'drake-rifle-electricity',acid:'drake-rifle-acid',poison:'drake-rifle-poison',
  sonic:'blade-of-fallen-stars',vitality:'blade-of-fallen-stars',positive:'blade-of-fallen-stars'};
 const energyShot=element=>ENERGY_SHOT[element]??'ghosthands-comet';
+// A spider's Web: a strand of white silk shot at the target, a splash of webbing, and webbing wrapped round it on a
+// hit. The bola it once borrowed flies a mace. The bola's throw sound stays.
+const BOLA=byName.get('bola');
+const WEB=BOLA&&(()=>{const m=BOLA.modes.find(m=>m.mode==='thrown'),strand='jb2a.energy_strands.range.standard.purple.01',splash=['jb2a.web.02','jb2a.web.01'],wrap=['jb2a.web.complete.002.white','jb2a.web.01'];
+ return {...BOLA,id:'npc-web',name:'Web',slug:'web',img:'icons/svg/net.svg',group:'natural',category:'unarmed',traits:[],publication:'Creature attack',uuid:'',
+  description:'<p>A creature\'s web, shot at a foe.</p>',plainDescription:'A creature\'s web: a strand of silk shot at the target, webbing wrapping it on a hit.',
+  modes:[{...m,mode:'ranged',family:'web',traits:[],range:30,hands:0,
+   rationale:'A strand of white silk shoots to the target, webbing splashes over it and wraps it on a hit.',soundDesign:{profile:'thrown'},
+   assets:{contact:[],flight:[strand],accent:splash,return:[],bind:wrap},
+   looks:{flight:{colorize:true,tintEnabled:true,tint:'#eeeeee',scale:.6}},
+   selections:[strand,...splash,...wrap].map(key=>({edition:'patreon',slot:key===strand?'flight':splash.includes(key)?'accent':'bind',key,geometry:key===strand?'projectile':'radial',approximation:false})),
+   mediaTiming:{[strand]:{duration:2033,baked:true,contact:700},'jb2a.web.02':{duration:3042,baked:false},'jb2a.web.complete.002.white':{duration:6033,baked:false}},approximations:[]}]};})();
 function npcRangedStandIn(item,mode){
  const words=String(item?.name??'').toLowerCase().split(/[^a-z]+/).filter(Boolean).map(w=>w.replace(/(?<=..)s$/,''));
  const word=[...words].reverse().map(w=>RANGED_WORDS[w]).find(Boolean),element=naturalElement(item);
  const types=Object.values(item?.system?.damageRolls??{}).map(r=>r?.damageType);
  const slug=word==='spit'?(element==='physical'?'drake-rifle-acid':energyShot(element)):word==='beam'?energyShot(element==='physical'?'force':element)
   :word??(element!=='physical'?energyShot(element):types.includes('bludgeoning')?'sling':types.includes('slashing')?'dagger':'dart');
- const weapon=byName.get(normalize(slug));
+ const weapon=slug==='web'?WEB:byName.get(normalize(slug));
  return weapon?.modes.some(m=>isRanged(m.mode))?weapon:null;
 }
 // An NPC Strike has no weapon group: its linked weapon's group, or a Fist's. Ranged, its stand-in; else

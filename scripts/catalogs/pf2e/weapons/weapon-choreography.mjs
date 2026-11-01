@@ -11,7 +11,7 @@ export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}
  const systemId=weapon.systemId??'pf2e';
  const id=`${systemId}-weapon-${weapon.id}-${mode.mode}`,color=colors[mode.element]??colors.physical;
  const stage=(kind,slot,label,delay,extra={})=>{const film=Math.max(1300,...(mode.assets[slot]??[]).map(k=>mode.mediaTiming?.[k]?.duration??0))+150,long=kind==='impact'&&film>4650;
-  return {kind,stageId:`${id}-${slot}`,assets:mode.assets[slot],label,delay,duration:long?4650:film,...(long?{clipEnd:4050}:{}),scale:1,oneShot:true,fadeIn:0,fadeOut:long?600:120,scaleInDuration:0,targetSelection:'first',...extra};};
+  return {kind,stageId:`${id}-${slot}`,assets:mode.assets[slot],label,delay,duration:long?4650:film,...(long?{clipEnd:4050}:{}),scale:1,oneShot:true,fadeIn:0,fadeOut:long?600:120,scaleInDuration:0,targetSelection:'first',...extra,...(mode.looks?.[slot]??{})};};
  const firing=mode.mode==='ranged'&&['firearm','airgun'].includes(mode.family);
  // Per-mode body language: melee lunges (reach weapons extend rather than
  // step in), thrown objects and bombs wind back and release (the throw snaps
@@ -50,8 +50,8 @@ export function weaponRecipe(weapon,modeName=weapon?.modes?.[0]?.mode,options={}
   }
   if(mode.returning)stages.push(stage('travel','return','Return to wielder',start+offset+250,{travelOrigin:'target',afterStage:flight.stageId,timingAnchor:'end',startOffset:0}));
  }
- // Bolas wrap the first target: a brief binding cue after a hit.
- if(mode.family==='bola'&&mode.assets.bind?.length)stages.push(stage('aura','bind','Bola wraps target · brief binding cue',contactStage.delay+150,{subject:'targets',requiresHit:true,afterStage:contactStage.stageId,timingAnchor:'start',startOffset:150,duration:1800,oneShot:false,fadeIn:120,fadeOut:400,scale:.6,opacity:.85,persist:false}));
+ // Bolas and webs wrap the first target: a brief binding cue after a hit.
+ if(['bola','web'].includes(mode.family)&&mode.assets.bind?.length)stages.push(stage('aura','bind',`${mode.family==='web'?'Webbing':'Bola'} wraps target · brief binding cue`,contactStage.delay+150,{subject:'targets',requiresHit:true,afterStage:contactStage.stageId,timingAnchor:'start',startOffset:150,duration:1800,oneShot:false,fadeIn:120,fadeOut:400,scale:.6,opacity:.85,persist:false}));
  // Heavy shoving/tripping blows knock the struck target back a little.
  if(options.motion!==false&&mode.mode==='melee'&&mode.heavy&&['shove','trip'].some(t=>mode.traits?.includes(t)))stages.push({kind:'motion',stageId:`${id}-stagger`,label:'Target staggers',assets:[],motion:'stagger',subject:'targets',delay:contactStage.delay+120,afterStage:contactStage.stageId,timingAnchor:'start',startOffset:120,duration:900,intensity:.8,distance:.1,targetSelection:'first',requiresHit:true});
  if(mode.assets.fracture?.length)stages.push(stage('impact','fracture','Glass fragments',contactStage.delay+50,{afterStage:contactStage.stageId,timingAnchor:'start',startOffset:50,scale:.7,opacity:.55}));

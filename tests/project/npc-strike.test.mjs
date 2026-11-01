@@ -55,6 +55,17 @@ test("a ranged NPC Strike throws or spits what its name says, else by its damage
   assert.ok(resolve(npc("Tail Spike", "piercing"), "ranged"), "a ranged natural word throws instead");
 });
 
+test("a spider's Web shoots a strand of silk that wraps the target, not a thrown mace", () => {
+  const web = resolve(npc("Web", "bludgeoning"), "ranged");
+  const assets = web.stages.flatMap((s) => s.assets);
+  assert.ok(!assets.some((a) => /mace|dagger/.test(a)), assets.join(" "));
+  assert.match(flight(web), /energy_strands\.range/);
+  assert.equal(web.stages.find((s) => s.kind === "travel").tint, "#eeeeee", "the strand is white silk");
+  assert.ok(web.stages.some((s) => s.requiresHit && s.assets.some((a) => /^jb2a\.web\./.test(a))), "webbing wraps a struck target");
+  assert.match(flight(resolve(npc("Spinneret Web", "bludgeoning"), "ranged")), /energy_strands/);
+  assert.match(flight(resolve(npc("Net", "bludgeoning"), "ranged")), /mace\.throw/, "a thrown net is still the bola");
+});
+
 test("an NPC's alchemical bomb is the catalog's bomb", () => {
   const find = (name) => findCatalogWeapon({ type: "attack", weaponMode: "ranged", item: { type: "melee", name, system: { traits: { value: [] } } } })?.slug;
   assert.equal(find("Alchemical Bomb — Frost Vial"), "frost-vial-moderate");

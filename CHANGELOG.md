@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.3 (2026-11-01)
+
+- **A spider's Web shoots silk.** An NPC Strike named Web (or Silk) now shoots a white strand of silk, splashes webbing over the target and wraps it on a hit. It used to borrow the bola's look, which flies a mace.
+- **Condition looks that fit.** Many Tokenshade condition looks were a colour tint and a glow, too alike to tell apart, and some turned the whole token, which reads as a spin from above. Sickened now comes in waves of nausea, a sickly flush welling up and ebbing; frightened is pale and shivering with the dark closing in; slowed wades through amber; stunned sees stars; confused swirls; clumsy lurches; grabbed is held by a hemp rope; paralyzed twitches instead of frosting over; suffocating gasps; deafened has rings of sound dying away. Fatigued, enfeebled and encumbered breathe and shrink from the middle.
+- **Zzz.** Sleeping and unconscious creatures have small Z's drifting up out of their heads.
+
 ## 2.4.2 (2026-11-01)
 
 - **A switch for every shadow.** Two new settings under Floor & world: "Shadows in creatures' shapes" (off: round shadows, which still fall away from the light) and "A shadow for each light" (off: one shadow per creature, from the stronger light). They, "Shadows under every token" and "Flier shadows fall on creatures" each have their own row and an "on my screen" switch for slower computers.
