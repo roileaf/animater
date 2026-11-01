@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.2.30 (2026-11-01)
+
+- **Auras outside combat.** A new world setting (Animater settings → Look & light) for auras while no combat has started on the scene: show them, draw them subtle, or hide them until initiative is rolled. Allies inside an aura keep their small copy, and every aura shows as usual in combat.
+- **Footsteps outside combat.** A new world setting (Animater settings → Sound) for a party walking about the map in exploration: footsteps and other movement sounds play normally, quieter (half volume, heard within 3 squares) or not at all until combat starts.
+
 ## 2.2.29 (2026-10-31)
 
 - **Cleaner token looks panel.** The panel you get by holding Shift over a token's tooltip no longer has a close button: letting go of Shift closes it.

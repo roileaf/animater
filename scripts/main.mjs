@@ -155,6 +155,7 @@ const abilitySettingKey = item => item?.type === "action" ? "actionCatalog" : is
 import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalogState, catalogStateEntry, stateRecipe } from "./catalogs/pf2e/state-catalog.mjs";
 import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } from "./engines/playback/persistent-states.mjs";
+import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "./engines/playback/outside-combat.mjs";
 import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId, isDefeated } from "./engines/playback/defeated-look.mjs";
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
@@ -846,6 +847,10 @@ const movementFeel = createMovementFeel({
     // timing and tremor, silent.
     const soundOn = (key) => { try { return hotSetting(key) !== false; } catch { return true; } };
     if (!((token.preview || soundOn("footstepSounds")) && soundOn("footstepSoundsLocal"))) level = 0;
+    // "Footsteps outside combat": quieter and closer, or silent, until initiative is rolled (not in the showcase).
+    let calm = { gain: 1, range: null };
+    try { if (!token.preview) calm = stepCalm(hotSetting("footstepsOutsideCombat"), game.combat); } catch { /* not registered yet */ }
+    level *= calm.gain;
     if (!(level > 0) && !(mix.tremor > 0)) return;
     const seed = token.id ?? "";
     // How heavy the creature is: its size category (else its token width) and whether its body is heavy.
@@ -873,7 +878,7 @@ const movementFeel = createMovementFeel({
     vary.rate = Math.min(2, Math.max(0.35, vary.rate * mix.pitch));
     // How far it carries ("Footstep hearing range"), half as far again for Huge and bigger.
     let range = "normal";
-    try { range = hotSetting("footstepRange") ?? "normal"; } catch { /* not registered yet */ }
+    try { range = calm.range ?? hotSetting("footstepRange") ?? "normal"; } catch { /* not registered yet */ }
     const where = { x: at.x, y: at.y, elevation: token.elevation }, reach = footstepReach(range, weight) * (canvas.dimensions?.distance ?? 5);
     // A rained-on hard or open floor has puddles: a quiet splash under the step.
     const puddle = walking && movementFeelSettingOn("weatherOnGround") && weatherAt(at, token.elevation ?? 0) === "rain" && rainFloor(floor, "rain").splash;
@@ -2779,6 +2784,9 @@ Hooks.once("init", () => {
   registerSetting(SUBTLE_LASTING,{name:'Subtle effects, conditions and auras',
     hint:'For tables that want only light touches: every catalog effect, condition and aura look on a creature is drawn smaller, fainter and calmer. An aura\'s ring keeps its size so you still see its reach. Attack, spell and other one-time animations are unchanged, and so are recipes you made yourself. To show lasting looks only when they land, each player can also set "Lasting condition animations".',
     scope:'world',config:true,type:Boolean,default:false,onChange:()=>persistentStates?.schedule()});
+  registerSetting("aurasOutsideCombat",{name:'Auras outside combat',
+    hint:'How aura looks (an aura\'s ring around its creature, often 30 to 90 feet) show while no combat has started on the scene. Subtle draws them smaller, fainter and calmer; Hide them until combat keeps them off the map until initiative is rolled. Allies inside an aura keep their small copy. In combat every aura shows as usual.',
+    scope:'world',config:true,type:String,choices:{...AURAS_OUTSIDE_COMBAT},default:'show',onChange:()=>persistentStates?.schedule()});
   registerSetting(CROSSOVER_CATALOG,{...crossoverSettingText(game.system.id),scope:'world',
     // PF2e and SF2e only: the two systems share one rules engine.
     config:Boolean(crossoverSystem(game.system.id)),type:Boolean,default:false,
@@ -3043,6 +3051,11 @@ Hooks.once("init", () => {
     hint: "How far away footsteps, wing beats and other movement sounds can be heard (Foundry plays them only to tokens within this range). Huge and bigger creatures carry half as far again. Close 3 squares, Normal 6, Far 10, Very far 15.",
     scope: "world", config: true, type: String, default: "normal",
     choices: { close: "Close (3 squares)", normal: "Normal (6 squares)", far: "Far (10 squares)", veryFar: "Very far (15 squares)" },
+  });
+  registerSetting("footstepsOutsideCombat", {
+    name: "Footsteps outside combat",
+    hint: "Footsteps, wing beats and other movement sounds while no combat has started on the scene, for a party walking about the map in exploration. Quieter plays them at half volume, heard only within 3 squares; Off moves tokens silently. In combat they play as usual.",
+    scope: "world", config: true, type: String, default: "normal", choices: { ...STEPS_OUTSIDE_COMBAT },
   });
   registerSetting("quietSneaking", {
     name: "Sneaking is quiet",
@@ -4149,6 +4162,7 @@ Hooks.once("ready", () => {
       tokens: () => canvas.tokens?.placeables ?? [],
       lastingMode: () => hotSetting("lastingMode"),
       subtle: () => hotSetting(SUBTLE_LASTING) === true,
+      auraCalm: () => auraCalm(hotSetting("aurasOutsideCombat"), game.combat),
       recipes,
       // Your own lasting recipes follow the same switch as every other custom recipe.
       customEnabled: () => enabled(),

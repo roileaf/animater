@@ -14,5 +14,12 @@ test('Footstep sounds: a world switch and an on-my-screen one, listed in Sound',
 });
 
 test('off silences the step (level 0) but keeps its timing and tremor; the showcase passes the world switch', () => {
-  assert.match(main, /const soundOn = \(key\) => \{ try \{ return hotSetting\(key\) !== false; \} catch \{ return true; \} \};\s*if \(!\(\(token\.preview \|\| soundOn\("footstepSounds"\)\) && soundOn\("footstepSoundsLocal"\)\)\) level = 0;\s*if \(!\(level > 0\) && !\(mix\.tremor > 0\)\) return;/);
+  assert.match(main, /const soundOn = \(key\) => \{ try \{ return hotSetting\(key\) !== false; \} catch \{ return true; \} \};\s*if \(!\(\(token\.preview \|\| soundOn\("footstepSounds"\)\) && soundOn\("footstepSoundsLocal"\)\)\) level = 0;[\s\S]{0,400}?level \*= calm\.gain;\s*if \(!\(level > 0\) && !\(mix\.tremor > 0\)\) return;/);
+});
+
+test('Footsteps outside combat: a world choice listed in Sound, skipped by the showcase, narrowing the range', () => {
+  assert.match(registration('footstepsOutsideCombat'), /scope: "world", config: true, type: String, default: "normal"/);
+  assert.ok(SETTINGS_TABS.find((t) => t.id === 'sound').rows.some((r) => r.world === 'footstepsOutsideCombat'));
+  assert.match(main, /if \(!token\.preview\) calm = stepCalm\(hotSetting\("footstepsOutsideCombat"\), game\.combat\)/);
+  assert.match(main, /range = calm\.range \?\? hotSetting\("footstepRange"\)/);
 });

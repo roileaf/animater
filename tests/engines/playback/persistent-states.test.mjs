@@ -531,6 +531,21 @@ test('the Subtle switch draws each catalog look smaller, fainter and calmer; you
  assert.ok(Math.abs(soft.width-full.width*.75)<1e-9,'smaller');
  assert.ok(Math.abs(soft.opacity-full.opacity*.55)<1e-9,'fainter');
 });
+test('auras outside combat hide or go subtle; other looks on the token stay',async()=>{
+ const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Manifest Will'),aura=native(entry),f=fixture([aura,native(bless,'b')]);
+ aura.system.rules=[{key:'Aura',slug:'manifest-will',radius:30}];
+ f.actor.auras=new Map([['manifest-will',{slug:'manifest-will',radius:30,effects:[]}]]);
+ let calm='hidden';f.manager.host.auraCalm=()=>calm;
+ await f.manager.reconcile();await flush();
+ assert.deepEqual([...f.manager.active.values()].map(r=>Boolean(r.item.animaterAura)),[false],'only Bless shows');
+ calm='subtle';await f.manager.reconcile();await flush();
+ const ring=[...f.manager.active.values()].find(r=>r.item.animaterAura);
+ assert.ok(ring?.soft,'the aura comes back subtle');
+ assert.equal([...f.manager.active.values()].find(r=>!r.item.animaterAura).soft,false,'Bless keeps its full look');
+ calm='show';await f.manager.reconcile();await flush();
+ assert.equal([...f.manager.active.values()].find(r=>r.item.animaterAura).soft,false,'in combat: full aura');
+ await f.manager.destroy();
+});
 test('reuse timers (Treat Wounds, Battle Medicine immunity) show nothing unless the GM picks one',async()=>{
  const timer=PF2E_EFFECTS.find(e=>e.slug==='effect-treat-wounds-immunity'),f=fixture([native(timer)]);
  await f.manager.reconcile();await flush();

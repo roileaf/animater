@@ -8,6 +8,7 @@ import {previewFields} from '../../ui/activity-actions.mjs';
 import {bodyTreatment} from '../motion/condition-body.mjs';
 import {coversToken,hollowFootage,refractionFootage,risingFlames} from '../../catalogs/shared/state-presentation.mjs';
 import {onGroundBelow} from './ground-elevation.mjs';
+import {isAuraLook} from './outside-combat.mjs';
 
 export function activeState(item){
  if(item?.animaterAura){const source=item.animaterAura.source;return source?.type==='effect'?activeState(source):Boolean(source);}
@@ -183,8 +184,10 @@ export class PersistentStates{
      // A recipe with its own Lasting animation choice uses it in place of its catalog's.
      const lasting=recipe.lasting?{...state,fade:recipe.lasting!=='lasting',turn:recipe.lasting==='turn'}:state;
      const mode=h.lastingMode?.(),fade=item.animaterRecipe?state.fade===true:lastingFade(lasting.fade,mode),turn=!item.animaterRecipe&&fade&&lastingTurn(lasting,mode);
+     // "Auras outside combat": an aura's ring hides or goes subtle until initiative is rolled.
+     const calm=isAuraLook(item,recipe,{granted:grantedByOtherAura(item,token)})?(h.auraCalm?.()??'show'):'show';if(calm==='hidden')continue;
      // The world's Subtle switch softens every catalog look (a recipe of your own keeps what you made).
-     const soft=!item.animaterRecipe&&h.subtle?.()===true;
+     const soft=!item.animaterRecipe&&(h.subtle?.()===true||calm==='subtle');
      if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
     }
    }
