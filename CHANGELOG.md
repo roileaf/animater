@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.4.0 (2026-11-01)
 
 - **Shadows in each creature's shape.** A flier's shadow is now its own outline (wings, tail and all) instead of a round blob, laid flat on the floor and softer the higher it flies. It breathes with its hover: a little larger and fainter as it rises. With "Shadows under every token", standing creatures cast their outline too. Art with no outline of its own (an opaque square portrait) keeps the round shadow. Dynamic-ring tokens cast the creature, not the ring.
 - **Shadows follow the light.** A shadow falls away from the strongest light reaching the creature, and as far as that light really throws it: short under a light high above, none from a light below a flier. It is dark and crisp in a light's bright radius, faint and soft in its dim light, and swings round smoothly as the creature passes from one light to another.
