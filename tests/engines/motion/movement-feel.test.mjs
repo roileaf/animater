@@ -1056,6 +1056,21 @@ test('a creature lit by the sun and a torch gets a second shadow, gone again whe
   light = null; t = 3000; feel.tick();
   assert.equal(live, 1, 'the torch’s fades out and goes');
 });
+test('a token set to cast no shadow has none, standing or flying, and gets one back when the setting is cleared',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  let live = 0, t = 0;
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => { live++; return {}; }, updateShadow() {}, removeShadow: () => { live--; }, clear() {} };
+  const ghost = { id: 'g', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', shadow: false };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [ghost], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {} });
+  feel.tick();
+  assert.equal(live, 0, 'standing: none');
+  ghost.elevation = 30; ghost.action = 'fly'; t += 16; feel.tick();
+  assert.equal(live, 0, 'flying: none');
+  delete ghost.shadow; t += 16; feel.tick();
+  assert.equal(live, 1, 'cleared: its shadow is back');
+  ghost.shadow = false; t += 16; feel.tick();
+  assert.equal(live, 0, 'set again: gone');
+});
 test('a still creature’s shadow is left alone once it has settled, and redrawn as soon as it moves',async()=>{
   const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   let updates = 0, t = 0;

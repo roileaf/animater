@@ -1179,7 +1179,7 @@ const movementFeel = createMovementFeel({
       const until = feelSkip.get(d.id);
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
       const skip = (until ?? 0) > time || motions?.active?.has?.(t) === true;
-      const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview];
+      const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
       const cached = movementViews.get(d.id);
       if (cached && cached.token === t && time - cached.at < 500 && signature.every((value, i) => value === cached.signature[i])) {
         cached.view.skip = skip;
@@ -1195,6 +1195,8 @@ const movementFeel = createMovementFeel({
         ...movementFeelBlood(d),
         ...movementPerception(t, d, level),
         skip,
+        // Set to cast no shadow (Animater casts no shadow, on its token or prototype token).
+        ...(d.flags?.[ID]?.noShadow === true ? { shadow: false } : {}),
         // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
         art: () => tokenArt(t),
         light: () => flierLight(t),
@@ -4316,6 +4318,19 @@ onTokenConfig((app, html) => {
   const group = document.createElement("div");
   group.className = "form-group";
   group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
+  tab.append(group);
+});
+// Token configuration: this token casts no shadow (flags.animater.noShadow), for a ghost, a marker or art with its
+// own shadow drawn in.
+onTokenConfig((app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.noShadow"]`)) return;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector('.tab[data-tab="identity"]') ?? root.querySelector(".tab");
+  if (!tab) return;
+  const doc = app.document ?? app.token ?? app.object, value = doc?.flags?.[ID]?.noShadow === true;
+  const group = document.createElement("div");
+  group.className = "form-group";
+  group.innerHTML = `<label>Animater casts no shadow</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadow"${value ? " checked" : ""}></div><p class="hint">This token never casts a shadow, on the ground or in flight: for a ghost, a marker, or art with its shadow drawn in.</p>`;
   tab.append(group);
 });
 // Token configuration: which side of the token holds its torch (a light animated as a torch or flame), or none.

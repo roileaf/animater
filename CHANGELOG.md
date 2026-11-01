@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.4 (2026-11-01)
+
+- **Tokens that cast no shadow.** A new "Animater casts no shadow" checkbox on the token sheet (Appearance), on placed tokens and on an actor's prototype token. Ticked, the token has no shadow on the ground or in flight: for a ghost, a marker, or art with its shadow drawn in.
+
 ## 2.4.3 (2026-11-01)
 
 - **A spider's Web shoots silk.** An NPC Strike named Web (or Silk) now shoots a white strand of silk, splashes webbing over the target and wraps it on a hit. It used to borrow the bola's look, which flies a mace.

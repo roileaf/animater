@@ -1244,7 +1244,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         move.x = point.x; move.y = point.y;
         if (flying) {
           let handle = shadows.get(id);
-          if (!token.visible) dropShadow(id);
+          // token.shadow false: this token casts none (its own setting, flags.animater.noShadow).
+          if (!token.visible || token.shadow === false) dropShadow(id);
           else {
           const lit = typeof token.light === 'function' ? token.light() : null;
           const bob = typeof token.bob === 'function' ? Number(token.bob()) || 0 : 0;
@@ -1281,7 +1282,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         }
         if (token.visible && !under) standing.push({ id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0 });
         // Standing on the ground: a soft contact shadow when "Shadows under every token" is on.
-        if (groundShadows() && token.visible) {
+        if (groundShadows() && token.visible && token.shadow !== false) {
           let handle = shadows.get(id);
           // In its own shape, from its feet away from the light or the sun (its body about half its width tall).
           const art = shadowShapes() ? token.art : null, both = lightShadows();
