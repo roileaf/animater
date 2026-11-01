@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2 (2026-11-01)
+
+- **A switch for every shadow.** Two new settings under Floor & world: "Shadows in creatures' shapes" (off: round shadows, which still fall away from the light) and "A shadow for each light" (off: one shadow per creature, from the stronger light). They, "Shadows under every token" and "Flier shadows fall on creatures" each have their own row and an "on my screen" switch for slower computers.
+
 ## 2.4.1 (2026-11-01)
 
 - **Your own light casts your shadow.** A creature carrying a torch or lantern, or with a Light orb at its shoulder, now casts its shadow away from that light. Before, a creature's own light was left out, so in the dark it had no shadow at all. A plain light at a token's middle still casts none.

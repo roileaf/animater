@@ -1096,3 +1096,20 @@ test('a light must be above all of a flier to cast its shadow: a torch beside a 
   // A light high above the dragon in the air: it does.
   assert.ok(shadowFalls({ width: 300, lift: 6, body: 2.4, darkness: 1, sun: null, lightHeight: 12, light: torch, grid: 100 }).lamp);
 });
+test('"Shadows in creatures’ shapes" off draws round shadows; "A shadow for each light" off draws one',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const run = (shapes, both) => {
+    const geoms = [];
+    const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => { geoms.push(g); return true; }, removeShadow() {}, clear() {} };
+    const walker = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', art: () => ({}), light: () => ({ light: { strength: 0.8, angle: 0, distance: 100, brightness: 1 }, darkness: 0.5 }) };
+    const feel = createMovementFeel({ groundShadows: () => true, shadowShapes: () => shapes, lightShadows: () => both, tokens: () => [walker], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {} });
+    feel.tick();
+    return geoms;
+  };
+  const full = run(true, true), round = run(false, true), one = run(true, false);
+  assert.equal(full.length, 2, 'the sun’s and the lamp’s');
+  assert.ok(full.every((g) => g.art));
+  assert.ok(round.every((g) => !g.art) && round.length === 2, 'round, still one for each light');
+  assert.ok(round[0].along !== undefined && round[0].fall, 'round shadows still fall away from the light');
+  assert.equal(one.length, 1, 'one shadow, from the stronger light');
+});

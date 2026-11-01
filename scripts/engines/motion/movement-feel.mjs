@@ -1013,7 +1013,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
   // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
@@ -1248,7 +1248,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           else {
           const lit = typeof token.light === 'function' ? token.light() : null;
           const bob = typeof token.bob === 'function' ? Number(token.bob()) || 0 : 0;
-          const key = `${point.x}|${point.y}|${token.elevation}|${token.width}|${size}|${bob}`, refs = [lit, sun(), token.art];
+          const art = shadowShapes() ? token.art : null, both = lightShadows();
+          const key = `${point.x}|${point.y}|${token.elevation}|${token.width}|${size}|${bob}|${both}`, refs = [lit, sun(), art];
           if (handle && unchanged(move, key, refs) && move.lastCast) { flierShadows.push(move.lastCast); }
           else {
           if (!handle) shadows.set(id, handle = layer.addShadow());
@@ -1261,16 +1262,16 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const rise = bob / (Number(token.width) || size);
           if (rise) { geom.rx *= 1 + 0.8 * rise; geom.ry *= 1 + 0.8 * rise; geom.alpha *= 1 - 2 * rise; geom.lift += 20 * rise; cast.alpha *= 1 - 2 * rise; cast.lift += 20 * rise; }
           // `art`: the token's drawn art, for a shadow in its own shape (the layer keeps the round one without it).
-          if (token.art) geom.art = token.art;
+          if (art) geom.art = art;
           if (lit) {
             // The stronger light's shadow, and the weaker's beside it; the one over creatures below is the stronger's.
             // Its body about as tall as it is wide: a light must be above all of it to cast its shadow.
             const [main, other] = aimShadows(token, move, lit, geom.lift, false, 0.8 * (Number(token.width) || size) / size);
             const done = layer.updateShadow(handle, fallen(geom, main, point)) !== false;
-            remember(move, key, refs, second(id, fallen(geom, other, point)) && done);
+            remember(move, key, refs, second(id, both ? fallen(geom, other, point) : null) && done);
             cast.x = point.x + main.dx; cast.y = point.y + main.dy; cast.alpha *= main.alpha; cast.lift += 4 * main.soft;
           } else { remember(move, key, refs, layer.updateShadow(handle, geom) !== false); second(id, null); }
-          move.lastCast = { id, geom: token.art ? { ...cast, art: token.art } : cast, elevation: Number(token.elevation) || 0 };
+          move.lastCast = { id, geom: art ? { ...cast, art } : cast, elevation: Number(token.elevation) || 0 };
           flierShadows.push(move.lastCast);
           }
           }
@@ -1283,8 +1284,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         if (groundShadows() && token.visible) {
           let handle = shadows.get(id);
           // In its own shape, from its feet away from the light or the sun (its body about half its width tall).
-          const lit = token.art && typeof token.light === 'function' ? token.light() : null;
-          const key = `${point.x}|${point.y}|${token.width}|${size}`, refs = [lit, sun(), token.art];
+          const art = shadowShapes() ? token.art : null, both = lightShadows();
+          const lit = typeof token.light === 'function' ? token.light() : null;
+          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}`, refs = [lit, sun(), art];
           if (!handle || !unchanged(move, key, refs)) {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true });
@@ -1292,9 +1294,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
             const body = 0.8 * (Number(token.width) || size) / size;
             const [main, other] = aimShadows(token, move, lit, body, true);
             // Its soft contact shadow under its feet stays too (the round one), a little darker the brighter the light.
-            Object.assign(geom, { width: Number(token.width) || size, lift: 0, flat: 1, art: token.art, contact: 0.18 + 0.12 * Math.max(main.alpha, other.alpha) });
+            Object.assign(geom, { width: Number(token.width) || size, lift: 0, flat: 1, ...(art ? { art, contact: 0.18 + 0.12 * Math.max(main.alpha, both ? other.alpha : 0) } : {}) });
             const done = layer.updateShadow(handle, fallen(geom, main, point, true)) !== false;
-            remember(move, key, refs, second(id, fallen(geom, other, point, true)) && done);
+            remember(move, key, refs, second(id, both ? fallen(geom, other, point, true) : null) && done);
           } else { remember(move, key, refs, layer.updateShadow(handle, geom) !== false); second(id, null); }
           }
         } else dropShadow(id);

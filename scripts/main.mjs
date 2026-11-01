@@ -1142,7 +1142,10 @@ const FOOTPRINT_LIFETIME_KEYS = {
 const movementFeel = createMovementFeel({
   trails: groundTrails,
   // "Shadows under every token": a soft contact shadow under standing creatures too, not only fliers.
-  groundShadows: () => { try { return hotSetting("groundShadows") === true; } catch { return false; } },
+  groundShadows: () => { try { return hotSetting("groundShadows") === true && hotSetting("groundShadowsLocal") !== false; } catch { return false; } },
+  // "Shadows in creatures' shapes" and "A shadow for each light", each with its "on my screen" setting.
+  shadowShapes: () => movementFeelSettingOn("shadowShapes") && movementFeelSettingOn("shadowShapesLocal"),
+  lightShadows: () => movementFeelSettingOn("lightShadows") && movementFeelSettingOn("lightShadowsLocal"),
   enabled: () => movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal"),
   // Burrowers' entrance and exit holes (world setting "Burrow holes").
   holes: () => movementFeelSettingOn("burrowHoles"),
@@ -1160,7 +1163,7 @@ const movementFeel = createMovementFeel({
   floorAt: movementFeelFloor,
   layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot }),
   // "Flier shadows fall on creatures".
-  shadowsOverTokens: () => movementFeelSettingOn("shadowsOverTokens"),
+  shadowsOverTokens: () => movementFeelSettingOn("shadowsOverTokens") && movementFeelSettingOn("shadowsOverTokensLocal"),
   // The scene's sun (Scene configuration → Animater sun; "The sun follows the time of day").
   sun: () => sunNow,
   // "Dust when fliers take off and land".
@@ -3670,6 +3673,24 @@ Hooks.once("init", () => {
     hint: "A soft shadow under every creature standing on the ground, not only under fliers, so tokens sit on the map instead of floating over it, and taking off reads at a glance. Needs Movement feel on.",
     scope: "world", config: true, type: Boolean, default: false,
   });
+  registerSetting("groundShadowsLocal", { name: "Shadows under every token on my screen",
+    hint: "Turn off to never draw this on this screen (the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("shadowsOverTokensLocal", { name: "Flier shadows on creatures on my screen",
+    hint: "Turn off to never draw this on this screen (the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("shadowShapes", { name: "Shadows in creatures' shapes",
+    hint: "Each creature's shadow is its own outline (wings, tail and all), laid on the floor and stretched along the light, with a soft contact shadow under a standing creature's feet. Off: the round shadows. Art with no outline of its own (an opaque square portrait) always casts a round one.",
+    scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("shadowShapesLocal", { name: "Shadows in creatures' shapes on my screen",
+    hint: "Turn off for round shadows on this screen (a little lighter on slow computers; the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("lightShadows", { name: "A shadow for each light",
+    hint: "A creature lit by both the sun and a lamp (a torch, a lantern, a Light orb, a placed light) casts a shadow from each, as dark as that light's share: in full day the torch's is faint, at dusk both show, at night only the torch's. Off: one shadow, from the stronger light.",
+    scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("lightShadowsLocal", { name: "A shadow for each light on my screen",
+    hint: "Turn off for one shadow per creature on this screen (the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
   // The sun for creatures' shadows (Animater settings → Sun): the world's default, and which calendar tells the time.
   registerSetting(SUN_SETTING, { name: "Default sun", scope: "world", config: false, type: Object, default: { ...DEFAULT_SUN_SETTING } });
   registerSetting(CLOCK_SETTING, { name: "Time of day from", scope: "world", config: false, type: String, default: "auto" });
