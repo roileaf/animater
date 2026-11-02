@@ -572,6 +572,18 @@ test('controller: off clears everything; the cap holds new dust back', () => {
   assert.equal(off.log.added, 0);
 });
 
+test('controller: a creature playing an animation keeps its shadow; a teleport (it vanishes) drops it', () => {
+  const tok = { id: 'f', x: 0, y: 0, width: 100, elevation: 30, base: 0, action: 'fly', visible: true };
+  const h = harness({ tokens: [tok] });
+  h.feel.tick();
+  assert.equal(h.log.shadowsAdded, 1);
+  tok.skip = true; h.advance(16); h.feel.tick();
+  assert.equal(h.log.shadowsRemoved, 0, 'a spell cast or a lunge: still standing there');
+  assert.equal(h.log.added, 0, 'and no dust');
+  tok.gone = true; h.advance(16); h.feel.tick();
+  assert.equal(h.log.shadowsRemoved, 1, 'teleporting: no shadow while it is away');
+});
+
 test('controller: a token gone from the list loses its shadow; clear empties the layer', () => {
   const tok = { id: 'f', x: 0, y: 0, width: 100, elevation: 30, base: 0, action: 'fly', visible: true };
   const list = [tok];

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.13 (2026-11-02)
+
+- **Shadows stay while a creature casts.** A creature playing one of Animater's animations (a spell's cast, a lunge, a recoil) no longer loses its shadow until the animation ends; it only leaves no steps or dust meanwhile. A teleport still takes the shadow away while the creature is gone.
+
 ## 2.4.12 (2026-11-02)
 
 - **No more white circles near walls.** A shadow cut off at a wall could leave its cut-out shape drawn as a white patch the size of the light's reach, most often for a moment after a refresh, before each creature's shaped shadow was made.

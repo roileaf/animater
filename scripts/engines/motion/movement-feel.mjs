@@ -1286,9 +1286,13 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         // Seen or heard here (perceive): a creature only heard still steps, but leaves nothing to see.
         const present = token.visible || hears(token);
         if (!present || token.skip || kind === null) tracker.reset(id, point);
-        if (!present || token.skip) { dropShadow(id); moves.delete(id); continue; }
+        // `gone`: away (an Animater teleport, faded out as it slides): no shadow either. `skip` alone (playing one of
+        // Animater's animations, a spell's cast or a lunge): it makes no steps or dust, but still stands there and
+        // keeps its shadow.
+        if (!present || token.gone) { dropShadow(id); moves.delete(id); continue; }
         let move = moves.get(id);
         if (!move) moves.set(id, move = { x: point.x, y: point.y, last: time, moving: false });
+        if (token.skip) { move.x = point.x; move.y = point.y; move.moving = false; move.whoosh = false; }
         // "Dust when fliers take off and land": the floor blown out to both sides as it leaves or meets the ground.
         if (move.flying !== undefined && move.flying !== flying && !under && !medium.swimming && token.visible && flightDust()) {
           const floor = floorOf(point, token);

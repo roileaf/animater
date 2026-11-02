@@ -1285,11 +1285,12 @@ const movementFeel = createMovementFeel({
       const d = t.document, c = d.getCenterPoint();
       const until = feelSkip.get(d.id);
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
-      const skip = (until ?? 0) > time || motions?.active?.has?.(t) === true;
+      // Teleporting (gone: no shadow while it slides unseen), or playing an animation (skip: no steps or dust).
+      const gone = (until ?? 0) > time, skip = gone || motions?.active?.has?.(t) === true;
       const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
       const cached = movementViews.get(d.id);
       if (cached && cached.token === t && time - cached.at < 500 && signature.every((value, i) => value === cached.signature[i])) {
-        cached.view.skip = skip;
+        cached.view.skip = skip; cached.view.gone = gone;
         return cached.view;
       }
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
@@ -1301,7 +1302,7 @@ const movementFeel = createMovementFeel({
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
         ...movementFeelBlood(d),
         ...movementPerception(t, d, level),
-        skip,
+        skip, gone,
         // Set to cast no shadow (Animater casts no shadow, on its token or prototype token).
         ...(d.flags?.[ID]?.noShadow === true ? { shadow: false } : {}),
         // In a dynamic token ring: how far its ring reaches, a share of its width (Foundry draws the ring at the
