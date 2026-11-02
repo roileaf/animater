@@ -3,6 +3,8 @@
 // snare, silk wad or bola is thrown along the line and lands; motes stream from one end to the other. Every client
 // draws it from the tag on the stage's effect (runtime.mjs), for as long as that effect plays, on its own screen.
 
+import { tetherArt } from './tether-art.mjs';
+
 const TAU = Math.PI * 2;
 export const TETHER_STYLES = Object.freeze({
   rope: { kind: 'reach', color: 0xb08a5a, width: 0.05 },
@@ -50,126 +52,38 @@ const hash = (text) => {
   return (h >>> 0) / 4294967296;
 };
 
-// The drawing: one Graphics per tether over the tokens, redrawn each frame. `add(key, tag, ends)` with
-// `ends() => ({ a, b, grid, visible })` read live (the ends follow the drawn tokens); `remove(key)`; `tick(nowMs)`.
+// The drawing (tether-art.mjs): one container per tether over the tokens, placed each frame. `add(key, tag, ends)`
+// with `ends() => ({ a, b, grid, visible })` read live (the ends follow the drawn tokens); `remove(key)`; `tick(nowMs)`.
 export function createTethers({ PIXI, root }) {
   const tethers = new Map();
-  const drop = (t) => { try { if (!t.g.destroyed) t.g.destroy(); } catch { /* gone with the canvas */ } };
-  function line(g, pts, width, color, alpha) {
-    if (pts.length < 2) return;
-    g.lineStyle({ width, color, alpha, cap: 'round', join: 'round' });
-    g.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-    g.lineStyle(0);
-  }
+  const drop = (t) => { try { if (!t.art.root.destroyed) t.art.root.destroy({ children: true }); } catch { /* gone with the canvas */ } };
   function draw(t, now) {
     const { a, b, grid = 100, visible = true } = t.ends() ?? {};
-    const g = t.g;
-    g.clear();
-    if (!visible || !a || !b) return;
-    const s = tetherStyle(t.tag.style), st = tetherState(t.tag.style, now - t.start, t.tag.ms);
-    if (!s || !st || st.alpha <= 0) return;
-    const color = Number.isFinite(t.tag.color) ? t.tag.color : s.color, w = Math.max(1.5, s.width * grid), time = (now - t.start) / 1000;
-    const at = (u, opts) => tetherPoint(a, b, u, time, { seed: t.seed, ...opts });
-    if (s.kind === 'reach') {
-      const n = 28, reach = st.reach, pts = [];
-      const opts = { sag: t.tag.style === 'tongue' ? 0.02 : 0.05, wave: s.whip ? grid * 0.08 * (1 - reach) : grid * 0.02 };
-      for (let i = 0; i <= n; i++) pts.push(at((i / n) * reach, opts));
-      if (s.burning) line(g, pts, w * 2.6, 0xff4a00, 0.25 * st.alpha);
-      if (t.tag.style === 'tongue') {
-        // Fleshy and tapering: thick at the mouth, a rounded tip.
-        for (let i = 1; i < pts.length; i++) line(g, [pts[i - 1], pts[i]], w * (1.2 - 0.6 * (i / n)), color, st.alpha);
-        const tip = pts[pts.length - 1];
-        g.beginFill(color, st.alpha); g.drawCircle(tip.x, tip.y, w * 0.6); g.endFill();
-      } else if (t.tag.style === 'chain' || s.burning) {
-        // Links: alternate rings face on and edge on, one every link length.
-        const len = pts[0].len * reach, step = w * 1.6, count = Math.max(1, Math.floor(len / step));
-        g.lineStyle({ width: Math.max(1, w * 0.32), color: s.burning ? 0xffd27a : color, alpha: st.alpha });
-        for (let i = 0; i < count; i++) {
-          const p = at(((i + 0.5) / count) * reach, opts), ang = Math.atan2(b.y - a.y, b.x - a.x);
-          if (i % 2) { g.moveTo(p.x - Math.cos(ang) * step * 0.45, p.y - Math.sin(ang) * step * 0.45); g.lineTo(p.x + Math.cos(ang) * step * 0.45, p.y + Math.sin(ang) * step * 0.45); }
-          else g.drawEllipse(p.x, p.y, step * 0.55, w * 0.55);
-        }
-        g.lineStyle(0);
-      } else {
-        line(g, pts, w, color, st.alpha);
-        if (t.tag.style === 'rope') {
-          // The twist of its strands.
-          g.lineStyle({ width: Math.max(1, w * 0.25), color: 0x5a4028, alpha: 0.7 * st.alpha });
-          for (let i = 1; i < n; i += 1) {
-            const p = pts[i];
-            if (!p) continue;
-            g.moveTo(p.x - p.nx * w * 0.45 - p.ny * w * 0.3, p.y - p.ny * w * 0.45 + p.nx * w * 0.3);
-            g.lineTo(p.x + p.nx * w * 0.45 + p.ny * w * 0.3, p.y + p.ny * w * 0.45 - p.nx * w * 0.3);
-          }
-          g.lineStyle(0);
-        }
-        if (t.tag.style === 'vine') {
-          // Leaves along it, alternating sides, and thorns.
-          for (let i = 2; i < n; i += 3) {
-            const p = pts[i]; if (!p) continue;
-            const side = i % 2 ? 1 : -1;
-            g.beginFill(0x6f9a3a, st.alpha); g.drawEllipse(p.x + p.nx * w * 1.1 * side, p.y + p.ny * w * 1.1 * side, w * 0.9, w * 0.45); g.endFill();
-          }
-        }
-      }
-      // A rope that has reached coils round the target.
-      if (t.tag.style === 'rope' && reach > 0.98) {
-        g.lineStyle({ width: Math.max(1, w * 0.8), color, alpha: st.alpha });
-        g.drawEllipse(b.x, b.y, grid * 0.38, grid * 0.3);
-        g.lineStyle(0);
-      }
-    } else if (s.kind === 'thrown') {
-      const p = at(st.head, { sag: -0.12 }), spin = time * TAU * 2.2;
-      if (t.tag.style === 'bola') {
-        // Two weights on a cord, end over end.
-        const r = grid * 0.3, q1 = { x: p.x + Math.cos(spin) * r, y: p.y + Math.sin(spin) * r }, q2 = { x: p.x - Math.cos(spin) * r, y: p.y - Math.sin(spin) * r };
-        line(g, [q1, q2], Math.max(1, w), color, st.alpha);
-        g.beginFill(0x4a4038, st.alpha); g.drawCircle(q1.x, q1.y, grid * 0.1); g.drawCircle(q2.x, q2.y, grid * 0.1); g.endFill();
-      } else if (t.tag.style === 'snare') {
-        // A loop of cord tumbling, a sprung jaw on it.
-        g.lineStyle({ width: Math.max(1, w), color, alpha: st.alpha });
-        g.drawEllipse(p.x, p.y, grid * 0.2 * Math.abs(Math.cos(spin)) + grid * 0.05, grid * 0.2);
-        g.lineStyle({ width: Math.max(1, w * 1.2), color: 0x6a6a70, alpha: st.alpha });
-        g.moveTo(p.x - grid * 0.12, p.y); g.lineTo(p.x + grid * 0.12, p.y);
-        g.lineStyle(0);
-      } else {
-        // A wad of silk, a trailing strand back to the thrower; once landed it unfurls into threads.
-        line(g, [at(0, { sag: -0.12 }), p], Math.max(1, w * 0.4), color, 0.5 * st.alpha);
-        if (!st.landed) { g.beginFill(color, st.alpha); g.drawCircle(p.x, p.y, grid * 0.12); g.endFill(); }
-        else {
-          g.lineStyle({ width: Math.max(1, w * 0.5), color, alpha: st.alpha });
-          for (let i = 0; i < 8; i++) { const ang = (i / 8) * TAU + t.seed; g.moveTo(b.x, b.y); g.lineTo(b.x + Math.cos(ang) * grid * 0.45, b.y + Math.sin(ang) * grid * 0.45); }
-          g.drawCircle(b.x, b.y, grid * 0.25);
-          g.lineStyle(0);
-        }
-      }
-    } else {
-      // Motes streaming from one end to the other, each fading in and out on its way.
-      const count = 9;
-      for (let i = 0; i < count; i++) {
-        const u = ((time * 0.6 + i / count + t.seed) % 1 + 1) % 1, p = at(u, { sag: 0.04, wave: grid * 0.05 });
-        const alpha = Math.sin(Math.PI * u) * st.alpha;
-        g.beginFill(color, alpha * 0.35); g.drawCircle(p.x, p.y, w * 1.8); g.endFill();
-        g.beginFill(color, alpha); g.drawCircle(p.x, p.y, w * 0.7); g.endFill();
-      }
-    }
+    const st = tetherState(t.tag.style, now - t.start, t.tag.ms);
+    t.art.root.visible = Boolean(visible && a && b && st && st.alpha > 0);
+    if (!t.art.root.visible) return;
+    // How far a thrown thing has settled since it landed, a rope since it reached (0..1 over a sixth of its time).
+    const frac = (now - t.start) / t.tag.ms;
+    st.settle = Math.min(1, Math.max(0, (frac - 0.62) / 0.15));
+    const time = (now - t.start) / 1000;
+    // A point along the line, pushed `off` pixels across it.
+    const along = (u, off = 0) => { const p = tetherPoint(a, b, u, time, { sag: 0.04, seed: t.seed }); return { x: p.x + p.nx * off, y: p.y + p.ny * off }; };
+    t.art.draw({ a, b, grid, st, t: time, along, color: Number.isFinite(t.tag.color) ? t.tag.color : undefined });
   }
   return {
     add(key, tag, ends, now = performance.now()) {
       if (!tetherStyle(tag?.style) || !(tag.ms > 0)) return;
       this.remove(key);
-      const g = new PIXI.Graphics();
-      g.eventMode = 'none';
-      root()?.addChild(g);
-      tethers.set(key, { g, tag, ends, start: now, seed: hash(String(key)) * TAU });
+      const art = tetherArt(PIXI, tag.style, tetherStyle(tag.style).color);
+      root()?.addChild(art.root);
+      tethers.set(key, { art, tag, ends, start: now, seed: hash(String(key)) * TAU });
     },
     remove(key) { const t = tethers.get(key); if (t) { drop(t); tethers.delete(key); } },
     tick(now = performance.now()) {
       for (const [key, t] of tethers) {
-        if (t.g.destroyed || now - t.start > t.tag.ms + 500) { this.remove(key); continue; }
-        if (t.g.parent !== root()) root()?.addChild(t.g);
-        try { draw(t, now); } catch { this.remove(key); }
+        if (t.art.root.destroyed || now - t.start > t.tag.ms + 500) { this.remove(key); continue; }
+        if (t.art.root.parent !== root()) root()?.addChild(t.art.root);
+        try { draw(t, now); } catch (error) { console.warn('Animater tether:', error); this.remove(key); }
       }
     },
     clear() { for (const key of [...tethers.keys()]) this.remove(key); },
@@ -197,14 +111,15 @@ export function createTetherPreview({ PIXI, scene, style, pauseMs = 700, ms = 26
   const box = scene.getBoundingClientRect(), w = Math.max(80, Math.round(box.width)), h = Math.max(80, Math.round(box.height));
   const app = new PIXI.Application({ width: w, height: h, backgroundAlpha: 0, antialias: true, autoStart: false });
   const view = app.view;
-  Object.assign(view.style, { position: 'absolute', inset: '0', width: `${w}px`, height: `${h}px`, pointerEvents: 'none', zIndex: '2' });
+  // Hidden until its first frame is drawn, so it never shows a blank (white) canvas.
+  Object.assign(view.style, { position: 'absolute', inset: '0', width: `${w}px`, height: `${h}px`, pointerEvents: 'none', zIndex: '2', visibility: 'hidden' });
   scene.appendChild(view);
   const tethers = createTethers({ PIXI, root: () => app.stage });
   const ends = () => {
     const s = scene.querySelector('.an-tokenfx-sample')?.getBoundingClientRect(), r = scene.getBoundingClientRect();
     const a = s ? { x: s.left - r.left + s.width / 2, y: s.top - r.top + s.height / 2 } : { x: w * 0.25, y: h / 2 };
-    // The sample stands in the middle: the far end is near the right edge, a little lower.
-    return { a, b: { x: w * 0.9, y: a.y + h * 0.08 }, grid: Math.max(40, (s?.width ?? 120) * 0.7), visible: true };
+    // The far end sits down and to the right of the sample, clear of the edges.
+    return { a, b: { x: w * 0.72, y: Math.min(h * 0.8, a.y + h * 0.42) }, grid: Math.max(40, (s?.width ?? 120) * 0.7), visible: true };
   };
   let frame = 0, began = performance.now(), stopped = false;
   tethers.add('preview', { style, ms }, ends, began);
@@ -214,6 +129,7 @@ export function createTetherPreview({ PIXI, scene, style, pauseMs = 700, ms = 26
     if (now - began > ms + pauseMs) { began = now; tethers.add('preview', { style, ms }, ends, now); }
     tethers.tick(now);
     app.render();
+    view.style.visibility = "visible";
     frame = requestAnimationFrame(tick);
   };
   frame = requestAnimationFrame(tick);

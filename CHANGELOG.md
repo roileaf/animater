@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.18 (2026-11-02)
+
+- **Tokenshade travel looks, redrawn.** Ropes, vines, chains, tongues, snares, silk and bolas are now shaded, textured and lifted off the ground with their shadow beneath: a twisted rope that wraps round its target, a thorned vine with leaves cracking like a whip, polished chain links, a burning chain shedding embers, a glossy tapering tongue, a bola spinning in an arc, a snare that cinches tight, a silk wad that bursts into a web, and glowing motes with trails.
+
 ## 2.4.17 (2026-11-02)
 
 - **Top-down tokens get their own condition looks.** On a top-down or pop-out creature (cut-out art, not a ring token) nothing is painted on the ground under it, nothing assumes a head at the top, and stars, question marks and other glyphs circle over its body on a flat circle seen from above. Doom loses its ground sigil, Blinded dims the whole body, and no fake drop shadows are added.
