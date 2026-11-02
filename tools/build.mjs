@@ -36,6 +36,7 @@ export const STEPS = [
   { name: "footprints", script: "tools/audit-media-footprints.mjs", args: ["--write", "--fetch-missing-free", "--all-systems"], outputs: ["data/media-footprints.mjs", "data/media-footprint-audit.json"] },
   { name: "verify-dnd5e", script: "tools/verify-dnd5e-catalog.mjs", outputs: ["data/dnd5e-catalog-validation.json"] },
   { name: "daggerheart", script: "tools/build-daggerheart.mjs", outputs: ["data/daggerheart-catalog.mjs", "data/daggerheart-card-text.mjs"] },
+  { name: "draw-steel", script: "tools/build-draw-steel.mjs", outputs: ["data/draw-steel-catalog.mjs"] },
 ];
 
 const CACHE = join(ROOT, ".cache"), LOGS = join(CACHE, "build-logs"), MANIFEST = join(CACHE, "build-manifest.json");

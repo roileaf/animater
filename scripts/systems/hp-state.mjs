@@ -1,8 +1,11 @@
 // Hit points per system, for the kill path and finishers. PF2e, SF2e and D&D 5e count HP down to 0
 // at system.attributes.hp; Daggerheart marks hit points up to their maximum at
 // system.resources.hitPoints, and a companion marks stress instead (its takeDamage marks stress).
+// Draw Steel counts Stamina down at system.stamina: a creature is down at 0 (a hero is dying there and
+// keeps going negative until it is dead at minus its winded value).
 // Pure: main.mjs passes game.system.id.
 export function hpPath(actor, systemId) {
+  if (systemId === "draw-steel") return "system.stamina.value";
   if (systemId !== "daggerheart") return "system.attributes.hp.value";
   return actor?.type === "companion" ? "system.resources.stress.value" : "system.resources.hitPoints.value";
 }
@@ -16,7 +19,7 @@ export function hpState(actor, systemId) {
     if (!Number.isFinite(value) || !Number.isFinite(max)) return null;
     return { value, max, down: max > 0 && value >= max, marked: true };
   }
-  const hp = actor?.system?.attributes?.hp, value = Number(hp?.value);
+  const hp = systemId === "draw-steel" ? actor?.system?.stamina : actor?.system?.attributes?.hp, value = Number(hp?.value);
   if (!Number.isFinite(value)) return null;
   return { value, max: Number(hp?.max), down: value <= 0, marked: false };
 }
@@ -31,7 +34,7 @@ export function hpChange(before, after) {
 
 export const isKillTransition = (before, after) => hpChange(before, after)?.dropped === true;
 
-// Who a kill finisher plays on: PF2e/SF2e/D&D NPC actors; in Daggerheart an adversary, or any
+// Who a kill finisher plays on: PF2e/SF2e/D&D/Draw Steel NPC actors; in Daggerheart an adversary, or any
 // creature no player owns (a GM-run character or companion).
 export function isNpcActor(actor, systemId, { playerOwned = false } = {}) {
   if (!actor) return false;

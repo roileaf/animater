@@ -1050,7 +1050,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   const aimShadows = (token, move, lit, lift, grounded, body) => {
     const heightOf = (l) => ((Number(l?.elevation) || 0) - (Number(token.base) || 0)) / (distance() || 5);
     const lights = Array.isArray(lit.lights) ? lit.lights.map((l) => ({ ...l, height: heightOf(l) })) : lit.light ? [{ ...lit.light, height: heightOf(lit.light) }] : [];
-    const aims = shadowFalls({ width: token.width, lift, body, lights, darkness: lit.darkness, sun: sun(), grid: grid() || 100, grounded });
+    // In a wall's shade (lit.shade, 0–1: wall-shadows.mjs inWallShade) the sun reaches it that much less.
+    const sky = sun(), shade = Math.min(1, Math.max(0, Number(lit.shade) || 0));
+    const aims = shadowFalls({ width: token.width, lift, body, lights, darkness: lit.darkness, sun: sky && shade ? { ...sky, strength: (Number(sky.strength) || 0) * (1 - shade) } : sky, grid: grid() || 100, grounded });
     const time = now(), falls = move.falls ?? (move.falls = {});
     const want = new Map([['sun', aims.sun], ...aims.lamps.map((f) => [`lamp:${f.key}`, f])]);
     for (const slot of Object.keys(falls)) if (!want.has(slot)) want.set(slot, null);
@@ -1058,7 +1060,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     let settled = true;
     for (const [slot, aim] of want) {
       const fall = falls[slot];
-      if (!fall) { falls[slot] = aim ? { ...aim, at: time } : { dx: 0, dy: 0, alpha: 0, soft: 1, at: time }; continue; }
+      if (!fall) { falls[slot] = aim ? { ...aim, slot, at: time } : { dx: 0, dy: 0, alpha: 0, soft: 1, slot, at: time }; continue; }
       const k = 1 - Math.exp(-Math.max(0, time - fall.at) / 250);
       // Gone: it fades where it lay.
       const to = aim ?? { dx: fall.dx, dy: fall.dy, alpha: 0, soft: fall.soft };
@@ -1072,7 +1074,11 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     // animates it) flickers its shadow with it, darker as it flares: redrawn every frame while it does.
     const flickers = new Map(lights.filter((l) => l.key != null && typeof l.flicker === 'function').map((l) => [l.key, l.flicker]));
     move.settled = settled && flickers.size === 0;
-    return Object.values(falls).sort((a, b) => b.alpha - a.alpha).map((fall) => {
+    // Each says whether it is the sun's (kept off the floor walls already shade) and carries the floor its light
+    // reaches (lit.clips: { sun, [light key] }, flat x, y pairs; none on open ground), so it stops at walls.
+    return Object.values(falls).sort((a, b) => b.alpha - a.alpha).map((laid) => {
+      const sunlit = laid.slot === 'sun', clip = sunlit ? lit.clips?.sun : lit.clips?.[laid.key];
+      const fall = { ...laid, sun: sunlit, ...(clip ? { clip } : {}) };
       const flicker = flickers.get(fall.key);
       if (!flicker) return fall;
       let now = 1;
@@ -1091,7 +1097,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   const fallen = (geom, fall, point, grounded = false) => {
     const off = Math.hypot(fall.dx, fall.dy), w = Number(geom.width) || 100;
     return { ...geom, fall: { x: point.x + fall.dx, y: point.y + fall.dy }, alpha: geom.alpha * fall.alpha, lift: (geom.lift ?? 0) + 4 * fall.soft,
-      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch: grounded ? 1 + (2 * off) / w : 1 };
+      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch: grounded ? 1 + (2 * off) / w : 1, sun: fall.sun === true, ...(fall.clip ? { clip: fall.clip } : {}) };
   };
   // Each standing creature's grounding rim (rimGeometry; the layer's addRim, drawn as a shadow); null removes it.
   const rims = new Map();

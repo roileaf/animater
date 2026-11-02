@@ -69,6 +69,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "shadowsOverTokens", local: "shadowsOverTokensLocal" },
     { world: "shadowShapes", local: "shadowShapesLocal" },
     { world: "lightShadows", local: "lightShadowsLocal" },
+    { world: "wallShadows", local: "wallShadowsLocal", extras: ["wallShadowHeight"] },
     { menu: "sunMenu" },
     { local: "movementGmPerception", gmOnly: true },
     { world: "quietSneaking" },

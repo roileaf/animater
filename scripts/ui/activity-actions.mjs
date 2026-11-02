@@ -53,6 +53,7 @@ export function catalogStoreFor(host, origin, abilityProfile) {
   if (o.system === "sf2e" && host.setSfCatalogState) return { get: () => host.sfCatalogState(kind), set: (c) => host.setSfCatalogState(kind, c) };
   if (o.system === "dnd5e" && host.setDndCatalogState) return { get: () => host.dndCatalogState(kind), set: (c) => host.setDndCatalogState(kind, c) };
   if (o.system === "daggerheart" && host.setDhCatalogState) return { get: () => host.dhCatalogState(kind), set: (c) => host.setDhCatalogState(kind, c) };
+  if (o.system === "draw-steel" && host.setDsCatalogState) return { get: () => host.dsCatalogState(kind), set: (c) => host.setDsCatalogState(kind, c) };
   if (o.system && o.system !== "pf2e") return null;
   if (kind === "spell") return { get: () => host.catalogState(), set: (c) => host.setCatalogState(c) };
   if (kind === "weapon") return { get: () => host.weaponCatalogState(), set: (c) => host.setWeaponCatalogState(c) };

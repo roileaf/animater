@@ -25,6 +25,8 @@ import {tokenFx} from '../../scripts/engines/tokenshade/api.mjs';
 import {MediaLibrary} from '../../scripts/ui/media-library.mjs';
 import { rollMessage, dualityRoll, adversaryRoll, damageRoll, useHook, target as dhTarget } from "../fixtures/daggerheart-messages.mjs";
 import { dhEntries, dhRecipe as dhCatalogRecipe, useDhEntry } from "../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs";
+import { ability as dsAbility, abilityMessage as dsAbilityMessage } from "../fixtures/draw-steel-messages.mjs";
+import { dsEntry, dsRecipe as dsCatalogRecipe, useDsEntry } from "../../scripts/catalogs/draw-steel/draw-steel-catalog.mjs";
 import { timedStages } from "../../scripts/engines/playback/composition.mjs";
 globalThis.requestAnimationFrame = (fn) =>
   setTimeout(() => fn(performance.now()), 5);
@@ -109,7 +111,7 @@ async function boot(system, extraKeys = [], { version } = {}) {
     system: {
       id: system,
       title: system,
-      version: version ?? ({ sf2e: "1.5.1", pf2e: "8.5.1", daggerheart: "2.10.12" }[system] ?? "6.0.5"),
+      version: version ?? ({ sf2e: "1.5.1", pf2e: "8.5.1", daggerheart: "2.10.12", "draw-steel": "1.1.2" }[system] ?? "6.0.5"),
     },
     user: { id: "u", isGM: true, targets: new Set([target]) },
     modules: new Map([
@@ -1847,5 +1849,42 @@ test("Daggerheart finishers: one roll at two targets plays the use finisher only
   const details = f.api.activity().filter((e) => e.status === "Finisher").map((e) => e.detail);
   assert.equal(details.length, 1, JSON.stringify(f.api.activity()));
   assert.match(details[0], /Bandit/);
+  await f.api.stop();
+});
+
+// Draw Steel mode: a GM client with automatic playback on; the target token sits on scene "s".
+async function bootDrawSteel(extraKeys = []) {
+  const f = await boot("draw-steel", extraKeys);
+  f.settings.set("automatic", true);
+  f.target.document.parent = { id: "s" };
+  return f;
+}
+
+test("Draw Steel: an ability's power roll plays its recipe once, aimed at the rolled target", async () => {
+  const f = await bootDrawSteel();
+  const gouge = dsAbility("Gouge", { actor: f.actor });
+  f.settings.set("recipes", { schema: 1, recipes: [dhSaved("attack", "Gouge", "ds-attack")] });
+  await f.fire("createChatMessage", dsAbilityMessage(gouge, { targets: [{ uuid: `Scene.s.Token.${f.target.id}.Actor.t` }] }));
+  await settle();
+  assert.equal(played(f, "DH attack"), 1, JSON.stringify(f.api.activity()));
+  await f.fire("createChatMessage", dsAbilityMessage(gouge, { id: "other", author: "someone-else" }));
+  await settle();
+  assert.equal(played(f, "DH attack"), 1, "another user's ability plays on their own client");
+  await f.api.stop();
+});
+
+test("Draw Steel catalog: a monster's Bite plays the bite fallback with the catalog on", async () => {
+  const bite = dsEntry("draw-steel-fallback-weapon-bite");
+  const f = await bootDrawSteel(bite.variants.flatMap((v) => dsCatalogRecipe(bite, v.id).stages.flatMap((s) => s.assets)));
+  f.settings.set("automatic", false);
+  f.settings.set("recipes", { schema: 1, recipes: [] });
+  f.settings.set("drawSteelFallbackCatalog", useDsEntry({}, bite.id));
+  f.actor.type = "npc";
+  await f.fire("createChatMessage", dsAbilityMessage(dsAbility("Bite", { actor: f.actor }), { targets: [{ uuid: `Scene.s.Token.${f.target.id}.Actor.t` }] }));
+  // "Played" is traced once the wielder's lunge (a motion stage) and the last delayed stage have run.
+  const last = Math.max(...timedStages(dsCatalogRecipe(bite)).map((s) => (s.delay ?? 0) + (s.kind === "motion" ? s.duration ?? 0 : 0)));
+  await new Promise((resolve) => setTimeout(resolve, last + 1500));
+  assert.equal(played(f, "Any bite strike"), 1, JSON.stringify(f.api.activity()));
+  assert.ok(f.api.spells().spells.every((e) => e.systemId === "draw-steel"));
   await f.api.stop();
 });

@@ -3,6 +3,7 @@
 // The damage type comes from the latest damage roll aimed at that creature.
 import { isSyntheticItem, strikeItemOf, strikeLostItem, strikeSlugFromOptions, syntheticUuid } from "../finishers/strike-finishers.mjs";
 import { daggerheartAttackKind, daggerheartDamage } from "../../systems/daggerheart.mjs";
+import { drawSteelDamage } from "../../systems/draw-steel.mjs";
 
 // Every system's names folded onto one set of looks.
 const ALIASES = {
@@ -71,6 +72,8 @@ export function damageFromMessage(message, systemId) {
   // Daggerheart writes its damage roll onto the attack card (system.damage); its type is already
   // mapped to these names (physical by weapon family, magical by domain).
   if (systemId === "daggerheart") return daggerheartDamage(message);
+  // Draw Steel rolls each tier's damage into the ability's own message (system.parts).
+  if (systemId === "draw-steel") return drawSteelDamage(message);
   const rolls = Array.from(message?.rolls ?? []);
   const pf = message?.flags?.[systemId]?.context, dnd = message?.flags?.dnd5e;
   const isDamage = pf?.type === "damage-roll" || dnd?.roll?.type === "damage" || rolls.some((r) => /DamageRoll/.test(r?.constructor?.name ?? ""));

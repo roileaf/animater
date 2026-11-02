@@ -226,7 +226,9 @@ const PRINTS = {
   },
 };
 
-export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouettes: given = null }) {
+// `sunlit()`: the sunlit floor (wall-shadows.mjs: { texture, x, y, scale }, null with no wall shading it), the mask the
+// sun's shadows lie under, so a floor a wall already shades from the sun never darkens twice.
+export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouettes: given = null, sunlit: sunlitOf = null }) {
   const live = new Set();
   const add = (g, to = root) => { g.eventMode = 'none'; to().addChild(g); live.add(g); return g; };
   const shadowEllipse = () => {
@@ -261,6 +263,7 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     const shape = art?.texture ? silhouettes()?.get(art.texture) ?? null : null;
     if (!shape) { if (node && !node.outer.destroyed) node.outer.visible = false; return false; }
     if (!node || node.outer.destroyed) { shapes.set(holder, node = silhouetteNode()); parent.addChild(node.outer); }
+    else if (node.outer.parent !== parent) parent.addChild(node.outer);
     if (node.shape !== shape) { node.sharp.texture = shape.sharp.texture; node.soft.texture = shape.soft.texture; node.shape = shape; }
     const pose = silhouettePose(geom, { cast }), k = silhouetteScale({ artWidth: art.width * (shape.fill?.w ?? 1), artHeight: art.height * (shape.fill?.h ?? 1), width: geom.width }) * pose.size;
     node.outer.visible = true;
@@ -281,6 +284,49 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     const node = shapes.get(holder);
     shapes.delete(holder);
     try { if (node && !node.outer.destroyed) node.outer.destroy({ children: true }); } catch { /* already gone */ }
+  };
+  // The sun's shadows together under the sunlit floor (`sunlit()`), the mask moved and swapped as the walls change.
+  let sunHome = null, sunMask = null;
+  const applySunlit = () => {
+    if (!sunHome || sunHome.destroyed) return;
+    const lit = sunlitOf?.() ?? null;
+    if (!lit?.texture) { sunHome.mask = null; if (sunMask && !sunMask.destroyed) sunMask.visible = false; return; }
+    if (!sunMask || sunMask.destroyed) { sunMask = new PIXI.Sprite(lit.texture); sunMask.eventMode = 'none'; root().addChild(sunMask); }
+    if (sunMask.texture !== lit.texture) sunMask.texture = lit.texture;
+    sunMask.visible = true;
+    sunMask.position.set(lit.x, lit.y);
+    sunMask.scale.set(lit.scale, lit.scale);
+    sunHome.mask = sunMask;
+  };
+  const homeOf = (geom) => {
+    if (!geom.sun || !sunlitOf || typeof PIXI.Container !== 'function') return root();
+    if (!sunHome || sunHome.destroyed) { sunHome = new PIXI.Container(); sunHome.eventMode = 'none'; root().addChild(sunHome); applySunlit(); }
+    return sunHome;
+  };
+  // A shadow stops at walls: masked by the floor its light reaches (`clip`, flat x, y pairs), the round one and its
+  // shape each by their own copy (a mask serves one thing), drawn again only when that floor changes.
+  const clips = new WeakMap();
+  const dropClip = (holder) => {
+    const c = clips.get(holder);
+    if (!c) return;
+    clips.delete(holder);
+    try { holder.mask = null; } catch { /* gone */ }
+    const node = shapes.get(holder);
+    try { if (node && !node.outer.destroyed) node.outer.mask = null; } catch { /* gone */ }
+    for (const m of [c.round, c.shape]) remove(m);
+  };
+  const clipShadow = (holder, points, home) => {
+    if (!points) { dropClip(holder); return; }
+    let c = clips.get(holder);
+    if (!c) clips.set(holder, c = { round: add(new PIXI.Graphics(), () => home), shape: add(new PIXI.Graphics(), () => home), points: null });
+    for (const m of [c.round, c.shape]) if (m.parent !== home) home.addChild(m);
+    if (c.points !== points) {
+      for (const m of [c.round, c.shape]) { m.clear?.(); m.beginFill(0xffffff, 1); m.drawPolygon(points); m.endFill(); }
+      c.points = points;
+    }
+    holder.mask = c.round;
+    const node = shapes.get(holder);
+    if (node && !node.outer.destroyed) node.outer.mask = c.shape;
   };
   // Smoke: one soft white disc drawn once into a texture, every puff a sprite of it tinted grey, so hundreds of puffs
   // batch into a single draw (each its own vector shape cost over a millisecond a frame at a busy table).
@@ -336,14 +382,19 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       g.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
       g.rotation = Number(geom.along) || 0;
       g.scale.set((geom.rx * 2 * Math.max(1, Number(geom.stretch) || 1)) / DRAW, (geom.ry * 2) / DRAW);
-      const shaped = !!geom.art && laySilhouette(g, root(), geom, false);
+      const home = homeOf(geom);
+      if (g.parent !== home) home.addChild(g);
+      const shaped = !!geom.art && laySilhouette(g, home, geom, false);
+      clipShadow(g, geom.clip ?? null, home);
       // With its shape drawn, the round one is hidden; a grounding rim (`rim`) shows only in the art's shape, never round.
       g.alpha = shaped || geom.rim ? 0 : geom.alpha;
       if (shaped || !geom.art) return true;
       const art = typeof geom.art === 'function' ? geom.art() : geom.art;
       return !art?.texture || silhouettes()?.known?.(art.texture) !== false;
     },
-    removeShadow(g) { dropSilhouette(g); remove(g); },
+    removeShadow(g) { dropClip(g); dropSilhouette(g); remove(g); },
+    // The walls changed: the sunlit floor the sun's shadows lie under, again.
+    refreshSunlit() { applySunlit(); },
     // A standing creature's grounding rim (movement-feel.mjs rimGeometry): drawn as a shadow is.
     addRim() { return this.addShadow(); },
     updateRim(g, geom) { return this.updateShadow(g, geom); },

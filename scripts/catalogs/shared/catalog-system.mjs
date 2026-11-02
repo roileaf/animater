@@ -1,12 +1,14 @@
 export const CATALOG_PAGES = ['spells','feats','actions','features','weapons','items','conditions','effects','npc-abilities'];
 export function worldCatalogSystem(environment={}) {
-  return ['pf2e','dnd5e','sf2e','daggerheart'].includes(environment.systemId) ? environment.systemId : environment.demo && !environment.systemId ? 'pf2e' : null;
+  return ['pf2e','dnd5e','sf2e','daggerheart','draw-steel'].includes(environment.systemId) ? environment.systemId : environment.demo && !environment.systemId ? 'pf2e' : null;
 }
 const DAGGERHEART_PAGES={spells:'domain card',weapons:'weapon',conditions:'condition'};
+const DRAW_STEEL_PAGES={spells:'ability',weapons:'fallback',conditions:'condition'};
 export function catalogNavigation(environment={}) {
   const system=worldCatalogSystem(environment);
   if(!system)return [];
   if(system==='daggerheart')return [['spells','✧','Domain cards'],['weapons','➶','Weapons'],['conditions','◎','Conditions']];
+  if(system==='draw-steel')return [['spells','✧','Abilities'],['weapons','➶','Fallbacks'],['conditions','◎','Conditions']];
   const label=system==='sf2e'?'SF2e':system==='pf2e'?'PF2e':'D&D 5e';
   return [['spells','✧','spells'],['feats','⚔',system==='dnd5e'?'features':'feats'],...(system==='dnd5e'?[]:[['actions','➤','actions'],['features','✦','features']]),['weapons','➶','weapons'],...(system==='dnd5e'?[['items','◇','items']]:[]),['conditions','◎','conditions'],['effects','◌','effects'],['npc-abilities','☠','NPC abilities']].map(([page,icon,name])=>[page,icon,`${label} ${name}`]);
 }
@@ -35,10 +37,12 @@ export function catalogPageAllowed(page,environment) {
 export const dndSettingKey=kind=>`dnd5e${kind[0].toUpperCase()+kind.slice(1)}Catalog`;
 export const sfSettingKey=kind=>`sf2e${kind[0].toUpperCase()+kind.slice(1)}Catalog`;
 export const dhSettingKey=kind=>`daggerheart${kind[0].toUpperCase()+kind.slice(1)}Catalog`;
+export const dsSettingKey=kind=>`drawSteel${kind[0].toUpperCase()+kind.slice(1)}Catalog`;
 export function catalogPageTitle(page,environment){
  if(PF2E_BORROWED_PAGES[page])return `PF2e ${{spells:'spell',feats:'active feat',actions:'action',features:'feature',weapons:'weapon'}[PF2E_BORROWED_PAGES[page]]} catalog`;
  if(BORROWED_PAGES[page])return `SF2e ${{spell:'spell',feat:'active feat',action:'action',feature:'feature',weapon:'weapon'}[BORROWED_PAGES[page]]} catalog`;
  if(worldCatalogSystem(environment)==='daggerheart'&&CATALOG_PAGES.includes(page))return DAGGERHEART_PAGES[page]?`Daggerheart ${DAGGERHEART_PAGES[page]} catalog`:undefined;
+ if(worldCatalogSystem(environment)==='draw-steel'&&CATALOG_PAGES.includes(page))return DRAW_STEEL_PAGES[page]?`Draw Steel ${DRAW_STEEL_PAGES[page]} catalog`:undefined;
  const system=worldCatalogSystem(environment),kind={spells:'spell',feats:system==='dnd5e'?'active feature':'active feat',actions:system==='dnd5e'?null:'action',features:system==='dnd5e'?null:'feature',weapons:'weapon',items:'activated item',conditions:'condition',effects:'effect','npc-abilities':'NPC ability'}[page];
  return kind?`${system==='sf2e'?'SF2e':system==='dnd5e'?'D&D 5e':'PF2e'} ${kind} catalog`:{recipes:'Animation recipes',finishers:'Finishers',builder:'Build an animation',assets:'Media library',activity:'Playback activity',setup:'Ready for the table',flash:'Flash screens',flagged:'Flagged looks','creature-showcase':'Creature showcase','damage-showcase':'Damage immersion showcase'}[page];
 }

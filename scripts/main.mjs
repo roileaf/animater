@@ -35,6 +35,9 @@ import { heavyItem } from "./systems/heavy-item.mjs";
 import { glowResources, resourceWatch } from "./systems/hero-points.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
+import { drawSteelAbilityEvent, versionBelow as drawSteelVersionBelow, DRAW_STEEL_VERIFIED } from "./systems/draw-steel.mjs";
+import { dsStateHost, findDsState } from "./catalogs/draw-steel/draw-steel-states.mjs";
+import { DS_KINDS, DRAW_STEEL_SOURCE, dsEntries, dsEntry, dsRecipe, normalizeDsCatalogState, resolveDrawSteelAutomaticRecipe, findDsEntry } from "./catalogs/draw-steel/draw-steel-catalog.mjs";
 import { applyEventElement } from "./catalogs/shared/element-choice.mjs";
 import { AA_ID, AA_TAKEOVER, AA_FILL_GAPS, aaCustomized, aaAnimates, registerAATakeover } from "./integrations/automated-animations.mjs";
 import { TA_ID, TA_FILL_GAPS, TA_TAKEOVER, taAnimates, registerTATakeover } from "./integrations/trigger-animations.mjs";
@@ -159,6 +162,7 @@ import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "
 import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
+import { wallShadowQuads, inWallShade, createWallShadows } from "./engines/motion/wall-shadows.mjs";
 import { isFireLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
@@ -172,7 +176,7 @@ import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated,
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
 import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
-import { dndSettingKey,sfSettingKey,dhSettingKey, catalogListText } from './catalogs/shared/catalog-system.mjs';
+import { dndSettingKey,sfSettingKey,dhSettingKey,dsSettingKey, catalogListText } from './catalogs/shared/catalog-system.mjs';
 import { dndStateHost } from './catalogs/dnd5e/dnd5e-states.mjs';
 import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState} from './catalogs/sf2e/sf2e-catalog.mjs';
 import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
@@ -594,9 +598,6 @@ const litLooks = new Map();
 let litTimer = null;
 // `own`: also the creature's own light when it comes from beside it (a held torch or lantern, a Light orb at its
 // shoulder: installTorchLight moves it there), for the shadow it casts away from it; a light at its middle never counts.
-const lightsReaching = (token, { own = false } = {}) => {
-  const out = [], c = token.center;
-  for (const source of canvas.effects?.lightSources ?? []) {
 // How a light dances this moment ({ brightness, sway }), read live from Foundry's animation of it (a torch's flicker,
 // a pulse's wave), or null for a steady one: its shadows flicker and sway with it.
 const flickerOf = (source) => {
@@ -604,6 +605,9 @@ const flickerOf = (source) => {
   if (lightDance(type, {}, {}) === null) return null;
   return () => lightDance(type, source.animation ?? {}, source.layers?.illumination?.shader?.uniforms ?? {}) ?? 1;
 };
+const lightsReaching = (token, { own = false } = {}) => {
+  const out = [], c = token.center;
+  for (const source of canvas.effects?.lightSources ?? []) {
     try {
       if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
       if (source.object === token && !(own && Math.hypot((source.data?.x ?? c.x) - c.x, (source.data?.y ?? c.y) - c.y) > (token.w ?? 100) * 0.1)) continue;
@@ -615,7 +619,9 @@ const flickerOf = (source) => {
       out.push({ key: source.sourceId ?? source.object?.id ?? `${d.x},${d.y}`, x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null, alpha: d.alpha ?? 0.5, elevation: Number(d.elevation) || 0, bright: Number(d.bright) || 0,
         // How bright it shines and how softly it fades (surrounding-light.mjs lightShine).
         luminosity: Number.isFinite(d.luminosity) ? d.luminosity : 0.5, attenuation: Number.isFinite(d.attenuation) ? d.attenuation : 0.5,
-        flicker: flickerOf(source) });
+        flicker: flickerOf(source),
+        // The floor it lights (walls stop it as they stop its light): a creature's shadow from it stops there too.
+        shape: source.shape?.points ?? null });
     } catch { /* a broken light never breaks the rest */ }
   }
   return out;
@@ -1070,11 +1076,31 @@ const movementViews = new Map();
 // shadow (the brightest few), all of them as one, and the darkness where it is. Looked up at most
 // twice a second while it moves; a creature standing still keeps its answer until the lighting changes (or two seconds).
 const flierLights = new Map();
+// Where a creature's shadows may lie, so they stop at walls (a shadow reaching a wall climbs it, out of sight from
+// above): { clips: { sun, [light key] } } (flat x, y pairs), only with a wall that stops light within their reach; none
+// on open ground. A lamp's: the floor it lights (Foundry's own polygon); the sun's: the floor open from the creature,
+// swept by Foundry's wall test as a light would be. Walls that let light through (a window up close) let shadows
+// through as they let the light.
+const shadowClips = (t, reaching) => {
+  try {
+    const c = t.center, grid = canvas.grid?.size ?? 100, reach = 6 * Math.max(grid, t.w ?? grid) + (t.w ?? grid);
+    const near = canvas.walls?.quadtree?.getObjects?.(new PIXI.Rectangle(c.x - reach, c.y - reach, reach * 2, reach * 2)) ?? [];
+    const blocking = [...near].some((w) => { const d = w.document ?? w; return (Number(d.light) || 0) > 0 && !(Number(d.door) > 0 && Number(d.ds) === 1); });
+    if (!blocking) return {};
+    const clips = {};
+    for (const l of reaching) if (l.key != null && l.shape?.length >= 6) clips[l.key] = l.shape;
+    if (sunNow) {
+      const open = CONFIG.Canvas.polygonBackends?.light?.create?.({ x: c.x, y: c.y, elevation: t.document?.elevation ?? 0 }, { type: "light", radius: reach });
+      if (open?.points?.length >= 6) clips.sun = open.points;
+    }
+    return { clips };
+  } catch { return {}; }
+};
+// The most lights casting a creature's shadows at once (the brightest).
+const LIGHT_SHADOWS = 4;
 let lightingAge = 0;
 for (const hook of ["lightingRefresh", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { lightingAge++; });
 // How far each creature's body is lifted from its place now, in pixels (ConditionBody's hover bob, through followBody).
-// The most lights casting a creature's shadows at once (the brightest).
-const LIGHT_SHADOWS = 4;
 const bodyLift = new Map();
 const flierLight = (t) => {
   const now = performance.now(), had = flierLights.get(t.id), c = t.center;
@@ -1087,7 +1113,11 @@ const flierLight = (t) => {
     const reaching = lightsReaching(t, { own: true });
     const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
       .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
-    value = { light: lightAround(t.center, reaching, 1), lights, darkness };
+    // Out of the sun: indoors (a region that keeps the weather out, as for snow and rain) wholly; else in a wall's
+    // shade (walls cast shadows in sunlight), standing or flying no higher than the wall.
+    const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
+    const shade = shelteredAt(t.center, t.document?.elevation ?? 0) ? 1 : wallQuads.length ? inWallShade(t.center, wallQuads, { elevation: up }) : 0;
+    value = { light: lightAround(t.center, reaching, 1), lights, darkness, shade, ...shadowClips(t, reaching) };
   } catch { value = null; }
   flierLights.set(t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
   return value;
@@ -1137,6 +1167,73 @@ const refreshSun = () => {
 // The calendars' own changes too (a new day's sunrise, a climate zone), not only Foundry's clock.
 for (const hook of ["canvasReady", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { refreshSun(); });
 Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) refreshSun(); });
+// Walls cast shadows in sunlight (engines/motion/wall-shadows.mjs): each wall that stops light throws its shadow away
+// from the sun, baked once into one picture under the creatures; a creature standing in one casts no sun shadow.
+let wallShadowRoot = null, wallQuads = [], wallShadowTimer = null;
+const wallShadowRootOf = () => {
+  if (!wallShadowRoot || wallShadowRoot.destroyed) {
+    wallShadowRoot = new PIXI.Container();
+    wallShadowRoot.eventMode = "none";
+    wallShadowRoot.elevation = canvas.level?.elevation?.base ?? 0;
+    // Under the creatures' own shadows (650), over the map.
+    wallShadowRoot.sortLayer = 640;
+    canvas.primary.addChild(wallShadowRoot);
+  }
+  return wallShadowRoot;
+};
+const wallShadows = createWallShadows({ PIXI: globalThis.PIXI, root: wallShadowRootOf, render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+const wallShadowsOn = () => { try { return movementFeelSettingOn("wallShadows") && movementFeelSettingOn("wallShadowsLocal") && qualityRank(localQuality()) >= 2; } catch { return false; } };
+// Where a wall stands, in squares up from the level's floor: { top, bottom }. The Wall Height module's top and bottom
+// (a rail, a high window, an overhang); without its top, the level's ceiling; null where neither says (the world's
+// "Wall height", from the floor).
+const wallSpanOf = (doc) => {
+  const per = Number(canvas.grid?.distance) || 1, floor = Number(canvas.level?.elevation?.bottom) || 0;
+  const given = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
+  const own = doc.flags?.["wall-height"] ?? {}, ceiling = canvas.level?.elevation?.top;
+  const top = given(own.top) ? (Number(own.top) - floor) / per : given(ceiling) && Number(ceiling) > floor ? (Number(ceiling) - floor) / per : null;
+  const bottom = given(own.bottom) ? (Number(own.bottom) - floor) / per : null;
+  return { top, bottom };
+};
+// The walls of the level shown (a wall on no level stands on all of them).
+const wallsHere = () => {
+  const level = canvas.level?.id;
+  return (canvas.walls?.placeables ?? []).map((w) => w.document).filter((d) => !d.levels?.size || !level || d.levels.has(level))
+    .map((d) => ({ c: d.c, light: d.light, door: d.door, ds: d.ds, ...wallSpanOf(d) }));
+};
+// Under a roof: the regions that keep the weather out (as for snow and rain), where the sun never reaches.
+const indoorPolygons = () => {
+  const out = [];
+  for (const region of canvas?.scene?.regions ?? []) {
+    try {
+      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
+      for (const p of region.polygons ?? []) out.push(Array.from(p.points ?? []));
+    } catch { /* a broken region never breaks the shadows */ }
+  }
+  return out;
+};
+const rebuildWallShadows = () => {
+  wallShadowTimer = null;
+  try {
+    if (!canvas?.ready || !wallShadowsOn() || !sunNow) { wallQuads = []; wallShadows.clear(); return; }
+    // The sun's share by the scene's darkness, as a creature's sun shadow has it (movement-feel.mjs shadowFalls).
+    const darkness = Number(canvas.environment?.darknessLevel) || 0, sun = Math.max(0, 1 - darkness * 1.2) * (Number(sunNow.strength) || 0);
+    wallQuads = sun > 0.02 ? wallShadowQuads({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
+    wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons() });
+  } catch { wallQuads = []; wallShadows.clear(); } finally {
+    // Creatures look again for whether they stand in the shade or indoors (with wall shadows off too), and their sun
+    // shadows lie under the new sunlit floor.
+    flierLights.clear();
+    try { feelLayer.refreshSunlit(); } catch { /* not drawn yet */ }
+  }
+};
+const wallShadowsSoon = () => { if (!wallShadowTimer) wallShadowTimer = setTimeout(rebuildWallShadows, 150); };
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { wallShadowsSoon(); });
+Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) wallShadowsSoon(); });
+Hooks.on("canvasTearDown", () => {
+  clearTimeout(wallShadowTimer); wallShadowTimer = null; wallQuads = []; wallShadows.clear();
+  try { wallShadowRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
+  wallShadowRoot = null;
+});
 // A token's art as drawn (engines/motion/flier-silhouette.mjs): the creature inside a dynamic ring, not the ring, with
 // its drawn size, mirroring and turn.
 const tokenArt = (t) => {
@@ -1155,6 +1252,8 @@ const FOOTPRINT_LIFETIME_KEYS = {
   dirt:'movementFootprintDirtSeconds',grass:'movementFootprintGrassSeconds',stone:'movementFootprintStoneSeconds',
   wood:'movementFootprintWoodSeconds',water:'movementFootprintWaterSeconds',ice:'movementFootprintIceSeconds',
 };
+// The creatures' shadows' layer; the sun's lie under the sunlit floor the walls leave (walls cast shadows in sunlight).
+const feelLayer = createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot, sunlit: () => wallShadows.sunlit });
 const movementFeel = createMovementFeel({
   trails: groundTrails,
   // "Shadows under every token": standing creatures cast their shadows too, not only fliers.
@@ -1177,7 +1276,7 @@ const movementFeel = createMovementFeel({
   distance: () => canvas?.dimensions?.distance ?? 5,
   now: () => performance.now(),
   floorAt: movementFeelFloor,
-  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot }),
+  layer: feelLayer,
   // "Flier shadows fall on creatures".
   shadowsOverTokens: () => movementFeelSettingOn("shadowsOverTokens") && movementFeelSettingOn("shadowsOverTokensLocal"),
   // The scene's sun (Scene configuration → Animater sun; "The sun follows the time of day").
@@ -1213,12 +1312,12 @@ const movementFeel = createMovementFeel({
         skip,
         // Set to cast no shadow (Animater casts no shadow, on its token or prototype token).
         ...(d.flags?.[ID]?.noShadow === true ? { shadow: false } : {}),
-        // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
-        art: () => tokenArt(t),
-        light: () => flierLight(t),
         // In a dynamic token ring: how far its ring reaches, a share of its width (Foundry draws the ring at the
         // texture's scale over its subject correction: 0.5 at scale 1, 0.4 at 0.8), false without one.
         ring: d.ring?.enabled === true ? Math.min(0.7, Math.max(0.2, 0.5 * Math.abs(Number(d.texture?.scaleX) || 1) / (Number(t.ring?.scaleCorrection) || 1))) : false,
+        // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
+        art: () => tokenArt(t),
+        light: () => flierLight(t),
         bob: () => bodyLift.get(t.id) ?? 0,
       };
       movementViews.set(d.id, {token: t, signature, at: time, view});
@@ -1645,7 +1744,9 @@ Hooks.on("canvasReady", () => {
   if (!ticker || !P || feelTicker === ticker) return;
   feelTicker = ticker;
   // After token animations write this frame's position (they run above NORMAL), before the render.
-  ticker.add(() => { try { movementFeel.tick(); } catch { /* never stop the canvas */ } }, undefined, P.NORMAL);
+  // A frame that fails never stops the canvas, but says so once (a silent failure drew no shadows at all).
+  let told = false;
+  ticker.add(() => { try { movementFeel.tick(); } catch (error) { if (!told) { told = true; console.warn("Animater | movement feel failed a frame", error); } } }, undefined, P.NORMAL);
 });
 // Breath vapor on this client (engines/motion/breath-vapor.mjs): in the cold (snow falling, a snow or ice floor
 // underfoot, or the scene flag animater.cold), breathing creatures in view puff a faint white cloud with each breath out.
@@ -2286,6 +2387,7 @@ const acceptsEvents = () =>
   (game.system.id === "sf2e" && SF_KINDS.some(kind=>{const state=hotSetting(sfSettingKey(kind));return state?.enabled&&state.independent;})) ||
   (game.system.id === 'dnd5e' && DND_KINDS.some(kind=>{const state=hotSetting(dndSettingKey(kind));return state?.enabled&&state.independent;})) ||
   (game.system.id === 'daggerheart' && DH_KINDS.some(kind=>{const state=hotSetting(dhSettingKey(kind));return state?.enabled&&state.independent;})) ||
+  (game.system.id === 'draw-steel' && DS_KINDS.some(kind=>{const state=hotSetting(dsSettingKey(kind));return state?.enabled&&state.independent;})) ||
   (game.system.id === "pf2e" &&
     ["spellCatalog", "featCatalog", "actionCatalog", "featureCatalog", "weaponCatalog"].some((key) => {
       const state = hotSetting(key);
@@ -2304,9 +2406,9 @@ function environment() {
       ? "JB2A Free"
       : "Sequencer media";
   const system =
-    { pf2e: "Pathfinder 2e", sf2e: "Starfinder 2e", dnd5e: "D&D 5e", daggerheart: "Daggerheart" }[game.system.id] ??
+    { pf2e: "Pathfinder 2e", sf2e: "Starfinder 2e", dnd5e: "D&D 5e", daggerheart: "Daggerheart", "draw-steel": "Draw Steel" }[game.system.id] ??
     game.system.title;
-  const supported = ["pf2e", "sf2e", "dnd5e", "daggerheart"].includes(game.system.id);
+  const supported = ["pf2e", "sf2e", "dnd5e", "daggerheart", "draw-steel"].includes(game.system.id);
   const ready = Boolean(seq?.active && globalThis.Sequencer);
   return {
     ready,
@@ -2544,6 +2646,7 @@ function open() {
 function itemPage(item) {
   const type = item?.type, sys = game.system.id;
   if (sys === "daggerheart") return type === "domainCard" ? "spells" : type === "weapon" ? "weapons" : null;
+  if (sys === "draw-steel") return type === "ability" ? (findDsEntry({ type: "use", item })?.kind === "fallback" ? "weapons" : "spells") : null;
   if (type === "spell") return "spells";
   if (type === "weapon" || (sys !== "dnd5e" && type === "shield")) return "weapons";
   if (type === "condition") return "conditions";
@@ -2560,6 +2663,7 @@ function catalogEntryFor(item) {
     if (game.system.id === "dnd5e") return findDndCatalogEntry(event);
     if (game.system.id === "sf2e") return findSfCatalogEntry(event);
     if (game.system.id === "daggerheart") return findDhEntry(event);
+    if (game.system.id === "draw-steel") return findDsEntry(event);
     if (item.type === "spell") return findSpellEntry(event);
     if (["weapon", "shield", "melee"].includes(item.type)) return findWeaponEntry(event);
     if (["condition", "effect"].includes(item.type)) return findConditionEntry(item);
@@ -2579,7 +2683,7 @@ function recipeOrigin(recipe, context = {}) {
   if (named) {
     // A PF2e world's borrowed SF2e entries are managed on their own pages.
     const sf = sys === "sf2e" || (recipe.systemId === "sf2e" && borrowsSfPages());
-    const entry = sf ? sfEntry(named) : sys === "dnd5e" ? dndEntry(named) : sys === "daggerheart" ? dhEntry(named) : catalogStateEntry(named);
+    const entry = sf ? sfEntry(named) : sys === "dnd5e" ? dndEntry(named) : sys === "daggerheart" ? dhEntry(named) : sys === "draw-steel" ? dsEntry(named) : catalogStateEntry(named);
     if (entry?.kind) return { type: "catalog", system: sf ? "sf2e" : sys, kind: entry.kind, id: entry.id ?? named };
   }
   const item = context?.item, entry = item ? catalogEntryFor(item) : null;
@@ -2868,7 +2972,7 @@ async function receiveDisplace(data, senderId) {
 const CATALOG_KINDS = { pf2e: ["spellCatalog", "featCatalog", "actionCatalog", "featureCatalog", "weaponCatalog", "conditionCatalog", "effectCatalog"],
   sf2e: ["spell", "feat", "action", "feature", "weapon", "item", "condition", "effect"].map(sfSettingKey),
   dnd5e: ["spell", "feat", "weapon", "item", "condition", "effect"].map(dndSettingKey),
-  daggerheart: DH_KINDS.map(dhSettingKey) };
+  daggerheart: DH_KINDS.map(dhSettingKey), "draw-steel": DS_KINDS.map(dsSettingKey) };
 const crossoverOn = () => hotSetting(CROSSOVER_CATALOG) === true;
 // A PF2e world shows (and so manages) the SF2e catalogs it borrows.
 const borrowsSfPages = () => game.system.id === "pf2e" && crossoverOn();
@@ -2929,6 +3033,12 @@ function systemBuiltinRecipe(id,sys) {
   if(!entry)return null;
   const variant=entry.variants.find(v=>v.recipe.id===id),state=normalizeDhCatalogState(hotSetting(dhSettingKey(entry.kind)));
   return dhRecipe(entry,variant?.id,{motion:state.motion,sounds:state.sound?installedSoundCatalog(game.modules,globalThis.Sequencer?.Database):null,soundVolume:state.soundVolume});
+ }
+ if(sys==='draw-steel'){
+  const entry=dsEntry(id)??dsEntries().find(e=>e.variants.some(v=>v.recipe.id===id));
+  if(!entry)return null;
+  const variant=entry.variants.find(v=>v.recipe.id===id),state=normalizeDsCatalogState(hotSetting(dsSettingKey(entry.kind)));
+  return dsRecipe(entry,variant?.id,{motion:state.motion,sounds:state.sound?installedSoundCatalog(game.modules,globalThis.Sequencer?.Database):null,soundVolume:state.soundVolume});
  }
  if(sys!=='pf2e')return null;
  return (catalogStateEntry(id) && stateRecipe(catalogStateEntry(id),{catalog:runtime.getCatalog()})) ??
@@ -3063,6 +3173,13 @@ function workspaceHost() {
       if(!game.user.isGM||game.system.id!=='daggerheart'||!DH_KINDS.includes(kind))throw Error('Daggerheart catalog configuration requires a GM in a Daggerheart world.');
       const key=dhSettingKey(kind);
       await game.settings.set(ID,key,normalizeDhCatalogState({...hotSetting(key),...change}));
+      persistentStates?.schedule();
+    },
+    dsCatalogState:kind=>normalizeDsCatalogState(hotSetting(dsSettingKey(kind))),
+    setDsCatalogState:async(kind,change)=>{
+      if(!game.user.isGM||game.system.id!=='draw-steel'||!DS_KINDS.includes(kind))throw Error('Draw Steel catalog configuration requires a GM in a Draw Steel world.');
+      const key=dsSettingKey(kind);
+      await game.settings.set(ID,key,normalizeDsCatalogState({...hotSetting(key),...change}));
       persistentStates?.schedule();
     },
     soundCatalog: () =>
@@ -3520,6 +3637,7 @@ Hooks.once("init", () => {
   for(const kind of SF_KINDS)registerSetting(sfSettingKey(kind),{scope:"world",config:false,type:Object,default:normalizeSfCatalogState(),onChange:()=>persistentStates?.schedule()});
   for(const kind of DND_KINDS)registerSetting(dndSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDndCatalogState(),onChange:()=>persistentStates?.schedule()});
   for(const kind of DH_KINDS)registerSetting(dhSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDhCatalogState(),onChange:()=>persistentStates?.schedule()});
+  for(const kind of DS_KINDS)registerSetting(dsSettingKey(kind),{scope:'world',config:false,type:Object,default:normalizeDsCatalogState(),onChange:()=>persistentStates?.schedule()});
   for (const key of ["conditionCatalog", "effectCatalog"])
     registerSetting(key, { scope: "world", config: false, type: Object, default: normalizeStateCatalogState(), onChange: () => persistentStates?.schedule() });
   registerSetting("weaponCatalog", { scope: "world", config: false, type: Object, default: normalizeWeaponCatalogState() });
@@ -3747,6 +3865,15 @@ Hooks.once("init", () => {
   registerSetting("lightShadowsLocal", { name: "A shadow for each light on my screen",
     hint: "Turn off for one shadow per creature on this screen (the world setting decides for everyone).",
     scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("wallShadows", { name: "Walls cast shadows in sunlight",
+    hint: "Each wall that stops light throws its shadow on the floor away from the sun, longer as the sun sinks, and a creature standing in one casts no sun shadow of its own. Windows and foliage cast half, open doors none. None at night, in a scene with no sun, or inside a region that suppresses weather (a roof). Lights already stop at walls. Drawn at Balanced quality or better.",
+    scope: "world", config: true, type: Boolean, default: false });
+  registerSetting("wallShadowsLocal", { name: "Walls cast shadows in sunlight on my screen",
+    hint: "Turn off to never draw wall shadows on this screen (the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("wallShadowHeight", { name: "Wall height (squares)",
+    hint: "How tall walls stand for their shadows, when neither the Wall Height module nor the scene's level gives a height.",
+    scope: "world", config: true, type: Number, range: { min: 0.5, max: 10, step: 0.5 }, default: 2 });
   // The sun for creatures' shadows (Animater settings → Sun): the world's default, and which calendar tells the time.
   registerSetting(SUN_SETTING, { name: "Default sun", scope: "world", config: false, type: Object, default: { ...DEFAULT_SUN_SETTING } });
   registerSetting(CLOCK_SETTING, { name: "Time of day from", scope: "world", config: false, type: String, default: "auto" });
@@ -4226,7 +4353,7 @@ function withWeaponSurface(recipe, event, saved, sounds) {
   return withSurfaceSounds(recipe, { blow: blowOfItem(item, { family, element: event.element }), heft: heftOfItem(item), sounds, soundVolume: weaponSoundVolume() });
 }
 const withoutSurfaces = (recipe) => recipe.stages?.some((s) => s.surfaces) ? { ...recipe, stages: recipe.stages.filter((s) => !s.surfaces) } : recipe;
-const weaponSoundVolume = () => { const sys = game.system.id, key = sys === "dnd5e" ? dndSettingKey("weapon") : sys === "daggerheart" ? dhSettingKey("weapon") : sys === "sf2e" ? sfSettingKey("weapon") : "weaponCatalog";
+const weaponSoundVolume = () => { const sys = game.system.id, key = sys === "dnd5e" ? dndSettingKey("weapon") : sys === "daggerheart" ? dhSettingKey("weapon") : sys === "draw-steel" ? dsSettingKey("fallback") : sys === "sf2e" ? sfSettingKey("weapon") : "weaponCatalog";
   try { return hotSetting(key)?.soundVolume ?? 0.35; } catch { return 0.35; } };
 function systemRecipe(event, saved) {
   const sounds = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database);
@@ -4238,7 +4365,7 @@ function catalogSystemRecipe(event, saved, sounds) {
     // Borrowed catalogs are managed on their own pages, so each reads its own settings.
     resolve: (from, e) => twoeCatalogRecipe(from, e, saved, { customEnabled: enabled(), sounds, stateFor: (kind) => hotSetting(twoeSettingKey(from, kind)) }),
     knows: (e) => Boolean(catalogEntryFor(e.item) || saved.some((r) => matchRecipe([{ ...r, enabled: true }], e))) });
-  return sys==='dnd5e'?resolveDndAutomaticRecipe(event,kind=>hotSetting(dndSettingKey(kind)),saved,{customEnabled:enabled(),sounds,npcEnabled:hotSetting('npcAbilities')!==false,npcExcluded:hotSetting('npcAbilityExcluded')??[]}):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,kind=>hotSetting(dhSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):matchRecipe(saved,event);
+  return sys==='dnd5e'?resolveDndAutomaticRecipe(event,kind=>hotSetting(dndSettingKey(kind)),saved,{customEnabled:enabled(),sounds,npcEnabled:hotSetting('npcAbilities')!==false,npcExcluded:hotSetting('npcAbilityExcluded')??[]}):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,kind=>hotSetting(dhSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):sys==='draw-steel'?resolveDrawSteelAutomaticRecipe(event,kind=>hotSetting(dsSettingKey(kind)),saved,{customEnabled:enabled(),sounds}):matchRecipe(saved,event);
 }
 // Read-only designs for the GM's choreography. Catalog on/off choices are not
 // changed; custom recipes (including paused ones) keep their native priority.
@@ -4247,12 +4374,12 @@ function showcaseRecipe(event){
   const stateFor=kind=>{
     if(kind==='npcAbility'||kind==='npcAbilityGuess')return true;
     if(kind==='npcAbilityExcluded')return [];
-    const key=sys==='dnd5e'?dndSettingKey(kind):sys==='daggerheart'?dhSettingKey(kind):twoeSettingKey(sys,kind);
+    const key=sys==='dnd5e'?dndSettingKey(kind):sys==='daggerheart'?dhSettingKey(kind):sys==='draw-steel'?dsSettingKey(kind):twoeSettingKey(sys,kind);
     const state=key?hotSetting(key):{};
     return {...state,enabled:true,scope:'all',selected:[],excluded:[],independent:true,preferCatalog:false};
   };
   const options={customEnabled:true,sounds};
-  return ['pf2e','sf2e'].includes(sys)?twoeCatalogRecipe(sys,event,recipes(),{...options,stateFor}):sys==='dnd5e'?resolveDndAutomaticRecipe(event,stateFor,recipes(),options):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,stateFor,recipes(),options):null;
+  return ['pf2e','sf2e'].includes(sys)?twoeCatalogRecipe(sys,event,recipes(),{...options,stateFor}):sys==='dnd5e'?resolveDndAutomaticRecipe(event,stateFor,recipes(),options):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,stateFor,recipes(),options):sys==='draw-steel'?resolveDrawSteelAutomaticRecipe(event,stateFor,recipes(),options):null;
 }
 function previewShowcaseMovement(tokenId){
   if(!game.user.isGM)throw Error('Only a GM can preview NPC movement.');
@@ -4292,6 +4419,10 @@ function eventFrom(input) {
     }
     if (game.system.id === "daggerheart") {
       const author = input.author?.id ?? game.user.id, event = daggerheartRollEvent(input, author) ?? daggerheartDamageEvent(input, author);
+      return event?.skipped ? null : event;
+    }
+    if (game.system.id === "draw-steel") {
+      const event = drawSteelAbilityEvent(input, input.author?.id ?? game.user.id);
       return event?.skipped ? null : event;
     }
     const roll = input.flags?.dnd5e?.roll?.type;
@@ -4877,7 +5008,7 @@ Hooks.once("ready", () => {
     hasItemEffect: (actor, item) => {
       const name = sameEffectName(item?.name), id = item?.id;
       const from = (origin) => Boolean(id && String(origin ?? "").includes(id));
-      const effects = ["dnd5e", "daggerheart"].includes(game.system.id) ? Array.from(actor?.appliedEffects ?? actor?.effects ?? []) : Array.from(actor?.items ?? []).filter((i) => i.type === "effect");
+      const effects = ["dnd5e", "daggerheart", "draw-steel"].includes(game.system.id) ? Array.from(actor?.appliedEffects ?? actor?.effects ?? []) : Array.from(actor?.items ?? []).filter((i) => i.type === "effect");
       return effects.some((e) => from(e.origin ?? e.system?.context?.origin?.item) || (name && sameEffectName(e.name) === name));
     },
     // A player's GM-approved recipe animates their own characters first.
@@ -5008,9 +5139,9 @@ Hooks.once("ready", () => {
     },
   });
   runtime.refreshCatalog();
-  if (['pf2e','sf2e','dnd5e','daggerheart'].includes(game.system.id)) {
+  if (['pf2e','sf2e','dnd5e','daggerheart','draw-steel'].includes(game.system.id)) {
     persistentStates = new PersistentStates({
-      ...(game.system.id==='sf2e'?sfStateHost:game.system.id==='dnd5e'?dndStateHost:game.system.id==='daggerheart'?dhStateHost:{}),
+      ...(game.system.id==='sf2e'?sfStateHost:game.system.id==='dnd5e'?dndStateHost:game.system.id==='daggerheart'?dhStateHost:game.system.id==='draw-steel'?dsStateHost:{}),
       clientId,
       ready: () => Boolean(canvas.ready && environment().ready),
       sceneId: () => canvas.scene?.id,
@@ -5048,7 +5179,7 @@ Hooks.once("ready", () => {
       valueLooks: () => { try { return hotSetting("conditionValueLooks") !== false; } catch { return true; } },
       drawnElsewhere: (item, token) => { try { return orbsOn() && isOrbEffect(item?.name) && lightKindOf(token, token?.light?.data ?? {}) === "orb"; } catch { return false; } },
       catalog: () => runtime.getCatalog(),
-      state: (kind) => hotSetting(game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
+      state: (kind) => hotSetting(game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):game.system.id==='draw-steel'?dsSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
       visibility: () => ({ isGM: game.user.isGM, secretConditions: ['pf2e','sf2e'].includes(game.system.id)&&game.settings.get(game.system.id, "metagame_secretCondition") === true }),
       gridSize: () => canvas.grid?.size ?? 100,
       gridDistance: () => canvas.scene?.grid?.distance ?? 5,
@@ -5130,13 +5261,13 @@ Hooks.once("ready", () => {
     recipes,
     catalog: () => clone(runtime.getCatalog()),
     activity: () => clone(runtime.log),
-    spells: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_SOURCE), spells: clone(game.system.id==='daggerheart'?dhEntries('card'):game.system.id==='sf2e'?sfEntries('spell'):game.system.id==='dnd5e'?dndEntries('spell'):game.system.id==='pf2e'?PF2E_SPELLS:[]) }),
+    spells: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='draw-steel'?DRAW_STEEL_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_SOURCE), spells: clone(game.system.id==='daggerheart'?dhEntries('card'):game.system.id==='draw-steel'?dsEntries('ability'):game.system.id==='sf2e'?sfEntries('spell'):game.system.id==='dnd5e'?dndEntries('spell'):game.system.id==='pf2e'?PF2E_SPELLS:[]) }),
     feats: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_FEAT_SOURCE), feats: clone(game.system.id==='sf2e'?sfEntries('feat'):game.system.id==='dnd5e'?dndEntries('feat'):game.system.id==='pf2e'?PF2E_FEATS:[]) }),
     actions: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:PF2E_ACTION_CATALOG.source), actions: clone(game.system.id==='sf2e'?sfEntries('action'):game.system.id==='pf2e'?PF2E_ACTION_CATALOG.entries:[]) }),
     features: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:PF2E_FEATURE_CATALOG.source), features: clone(game.system.id==='sf2e'?sfEntries('feature'):game.system.id==='pf2e'?PF2E_FEATURE_CATALOG.entries:[]) }),
-    weapons: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_WEAPON_SOURCE), weapons: clone(game.system.id==='daggerheart'?dhEntries('weapon'):game.system.id==='sf2e'?sfEntries('weapon'):game.system.id==='dnd5e'?dndEntries('weapon'):game.system.id==='pf2e'?PF2E_WEAPONS:[]) }),
+    weapons: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='draw-steel'?DRAW_STEEL_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_WEAPON_SOURCE), weapons: clone(game.system.id==='daggerheart'?dhEntries('weapon'):game.system.id==='draw-steel'?dsEntries('fallback'):game.system.id==='sf2e'?sfEntries('weapon'):game.system.id==='dnd5e'?dndEntries('weapon'):game.system.id==='pf2e'?PF2E_WEAPONS:[]) }),
     items:()=>({source:clone(DND5E_SOURCE),items:clone(game.system.id==='dnd5e'?dndEntries('item'):[])}),
-    conditions: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), conditions: clone(game.system.id==='daggerheart'?dhEntries('condition'):game.system.id==='sf2e'?sfEntries('condition'):game.system.id==='dnd5e'?dndEntries('condition'):game.system.id==='pf2e'?PF2E_CONDITIONS:[]) }),
+    conditions: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='draw-steel'?DRAW_STEEL_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), conditions: clone(game.system.id==='daggerheart'?dhEntries('condition'):game.system.id==='draw-steel'?dsEntries('condition'):game.system.id==='sf2e'?sfEntries('condition'):game.system.id==='dnd5e'?dndEntries('condition'):game.system.id==='pf2e'?PF2E_CONDITIONS:[]) }),
     effects: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), effects: clone(game.system.id==='sf2e'?sfEntries('effect'):game.system.id==='dnd5e'?dndEntries('effect'):game.system.id==='pf2e'?PF2E_EFFECTS:[]) }),
     refreshPersistent: () => persistentStates?.reconcile(),
     // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
@@ -5160,6 +5291,7 @@ Hooks.once("ready", () => {
       shapedShadows: () => (feelRoot?.destroyed ? [] : feelRoot?.children ?? []).filter((c) => !c.destroyed && c.children?.[0]?.children?.length === 2)
         .map((c) => ({ x: Math.round(c.position.x), y: Math.round(c.position.y), alpha: +c.alpha.toFixed(3), visible: c.visible, flat: c.scale.y })),
       sun: () => sunNow,
+      wallShadows: () => ({ quads: wallQuads.length, built: wallShadows.built, spans: wallQuads.map((q) => ({ bottom: q.bottom, top: q.top, points: q.points.map(Math.round) })) }),
       // The burrow and underwater sink's work this frame: whether it re-checks every token, and who it is easing.
       sinkState: () => ({ dirty: sinkDirty, level: sinkLevel, pending: [...sinkPending], moving: [...sinkMoving], poses: sinkPoses.size, tints: waterTints.size, hidden: sunkHidden.size }),
       fireHazes: () => fireHazes.size,
@@ -6064,6 +6196,33 @@ Hooks.once("ready", () => {
       if (statuses.some((statusId) => findDhState({ type: "condition", statusId }) || (DH_DEFEATED_STATUSES.includes(statusId) && statusId !== "deathMove"))) return;
       const actor = effect?.parent?.documentName === "Actor" ? effect.parent : effect?.parent?.actor;
       if (actor) void dispatch({ id: `effect:${effect.uuid}`, type: "effect", systemId: "daggerheart", item: effect, actor });
+    });
+  }
+  if (game.system.id === "draw-steel") {
+    // Shapes verified against Draw Steel 1.1.2; an older system may move the fields the adapter reads.
+    if (drawSteelVersionBelow(game.system.version)) console.warn(`Animater | Draw Steel ${game.system.version} is older than ${DRAW_STEEL_VERIFIED}, the version its ability and chat shapes were checked against; some automatic animations may be skipped.`);
+    const resolved = (read, label) => {
+      try {
+        const event = read();
+        if (event?.skipped) { runtime.trace("Skipped", event.skipped); return null; }
+        return event;
+      } catch (error) { runtime.trace("Skipped", `${label}: ${error.message}`); return null; }
+    };
+    // One message per ability use, with its power rolls and damage (draw-steel.mjs); the damage log
+    // remembers it on every client (the shared createChatMessage hook). An ability without a power roll
+    // is aimed at the user's own targets.
+    Hooks.on("createChatMessage", (message) => {
+      void dispatch(resolved(() => drawSteelAbilityEvent(message, game.user.id, { sceneId: canvas.scene?.id ?? null,
+        targets: Array.from(game.user.targets ?? [], (t) => t.id) }), "Draw Steel ability"));
+    });
+    // An effect applied by this client: lasting conditions are the persistent layers' (draw-steel-states.mjs);
+    // any other effect plays its own recipe.
+    Hooks.on("createActiveEffect", (effect, _options, userId) => {
+      if (userId !== game.user.id || effect?.disabled || effect?.isSuppressed) return;
+      if (matchRecipe(recipes().filter((r) => r.lifecycle === "document"), { type: "effect", systemId: "draw-steel", item: effect })) return;
+      if (Array.from(effect?.statuses ?? []).some((statusId) => findDsState({ type: "condition", statusId }) || statusId === defeatedStatusId())) return;
+      const actor = effect?.parent?.documentName === "Actor" ? effect.parent : effect?.parent?.actor;
+      if (actor) void dispatch({ id: `effect:${effect.uuid}`, type: "effect", systemId: "draw-steel", item: effect, actor });
     });
   }
   for (const hook of ["createMeasuredTemplate", "createRegion"])

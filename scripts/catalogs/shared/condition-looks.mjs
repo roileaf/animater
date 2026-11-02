@@ -1,7 +1,7 @@
 // Lasting conditions shown on the creature itself with Tokenshade, quietly, instead of a
 // looping JB2A animation around it. Every condition the catalogs list has one, so a world
-// can show conditions with Tokenshade or with JB2A only. Names cover PF2e, SF2e, D&D 5e
-// and Daggerheart.
+// can show conditions with Tokenshade or with JB2A only. Names cover PF2e, SF2e, D&D 5e,
+// Daggerheart and Draw Steel.
 const LOOKS = {
   petrified: 'Petrified',
   drained: 'Drained Colour', enfeebled: 'Weakened', fatigued: 'Weary', exhaustion: 'Weary', exhausted: 'Weary',
@@ -29,7 +29,9 @@ const LOOKS = {
   // Off-guard (and flat-footed) shows nothing: the PF2e catalog leaves it out (state-catalog.mjs).
   vulnerable: 'Exposed', marked: 'Exposed', surprised: 'Exposed',
   prone: 'Prone',
-  stunned: 'Dazed', incapacitated: 'Dazed',
+  stunned: 'Dazed', incapacitated: 'Dazed', dazed: 'Dazed',
+  // Draw Steel: Weakened banes its power rolls, Taunted fixes its attention on the taunter.
+  weakened: 'Weakened', taunted: 'Fascinated',
   slowed: 'Sluggish',
   helpful: 'Attitude: Helpful', friendly: 'Attitude: Friendly', indifferent: 'Attitude: Indifferent', unfriendly: 'Attitude: Unfriendly', hostile: 'Attitude: Hostile',
   observed: 'Observed',

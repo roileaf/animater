@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.10 (2026-11-02)
+
+- **Draw Steel support.** Hero abilities from the system's Abilities compendium play their own animations, designed from each ability's element, shape, class style and name; every other ability (monsters, homebrew) plays its look's fallback with its forced movement and conditions; the ten conditions show as lasting looks. Verified with Draw Steel 1.1.2.
+- **Walls cast shadows in sunlight** (new setting, off by default). Each wall that stops light throws a soft shadow away from the sun, longer as it sinks and moving with the time of day; windows and foliage cast half, open doors none. Wall height comes from the Wall Height module's top and bottom (a raised wall leaves a lit gap beside it), else the level's ceiling, else a new Wall height setting. A creature standing in a wall's shade casts no sun shadow of its own.
+- **No sun indoors.** Inside a region that suppresses weather, creatures cast no sun shadow (only their lamps') and walls cast none.
+- **Creature shadows stop at walls.** A shadow reaching a wall that stops its light ends there, and a creature's sun shadow no longer darkens floor a wall already shades.
+
 ## 2.4.9 (2026-11-02)
 
 - **Every light casts its own shadow.** A creature lit by the sun and several lights shows a shadow away from each (the four brightest), each fading in and out on its own, instead of one shadow from all of them averaged.

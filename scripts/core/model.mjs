@@ -166,7 +166,7 @@ export function validateRecipe(input) {
     ...(input.teleportIn ? { teleportIn: input.teleportIn } : {}),
     ...(/^#[\da-f]{6}$/i.test(input.teleportTint ?? '') ? { teleportTint: input.teleportTint } : {}),
     ...(Number(input.teleportScale) > 0 ? { teleportScale: number(input.teleportScale, .1, 5, 1.8) } : {}),
-    ...(['pf2e','sf2e','dnd5e','daggerheart'].includes(input.systemId)?{systemId:input.systemId}:/^Compendium\.(pf2e|sf2e|dnd5e|daggerheart)\./.test(input.itemUuid??'')?{systemId:input.itemUuid.split('.')[1]}:{}),
+    ...(['pf2e','sf2e','dnd5e','daggerheart','draw-steel'].includes(input.systemId)?{systemId:input.systemId}:/^Compendium\.(pf2e|sf2e|dnd5e|daggerheart|draw-steel)\./.test(input.itemUuid??'')?{systemId:input.itemUuid.split('.')[1]}:{}),
     ...(!strikeScope&&text(input.catalogEntry,100)?{catalogEntry:text(input.catalogEntry,100)}:{}),
     ...(!strikeScope&&text(input.activityId,100)?{activityId:text(input.activityId,100)}:{}),
     // The activity's kind and name (a D&D 5e spell's Save, Attack, Heal...): the same activity on a copy of the item from

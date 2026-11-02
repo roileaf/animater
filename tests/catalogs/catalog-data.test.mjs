@@ -24,7 +24,7 @@ test('actual catalog imports omit inactive data and retain native/crossover look
  const pf=new URL('../../scripts/catalogs/pf2e/spells/spell-catalog.mjs',import.meta.url).href;
  const sf=new URL('../../scripts/catalogs/sf2e/sf2e-catalog.mjs',import.meta.url).href;
  const dnd=new URL('../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs',import.meta.url).href;
- for(const active of ['pf2e','sf2e','dnd5e','daggerheart']){
+ for(const active of ['pf2e','sf2e','dnd5e','daggerheart','draw-steel']){
    const code=`globalThis.game={system:{id:${JSON.stringify(active)}}};
      const p=await import(${JSON.stringify(pf)}),s=await import(${JSON.stringify(sf)}),d=await import(${JSON.stringify(dnd)});
      console.log(JSON.stringify({pf:p.PF2E_SPELLS.length,sf:s.sfEntries().length,dnd:d.dndEntries().length,pfLookup:p.PF2E_SPELLS.length?!!p.catalogSpell(p.PF2E_SPELLS[0].id):false,sfLookup:s.sfEntries().length?!!s.sfEntry(s.sfEntries()[0].id):false}));`;

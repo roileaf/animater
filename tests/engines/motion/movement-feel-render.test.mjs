@@ -135,3 +135,47 @@ test("every floor's strides render end to end", () => {
   layer.clear();
   assert.equal(root.children.length, 0);
 });
+
+test('a shadow stops at walls: masked by the floor its light reaches, unmasked on open ground', () => {
+  const root = container();
+  const layer = createMovementFeelLayer({ PIXI: { Graphics }, root: () => root });
+  const s = layer.addShadow();
+  const clip = [0, 0, 200, 0, 200, 200, 0, 200];
+  layer.updateShadow(s, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, clip });
+  assert.ok(s.mask, 'masked');
+  assert.ok(s.mask.calls.some((c) => c[0] === 'polygon' && c[1] === clip));
+  assert.equal(s.mask.parent, root, 'laid in the world, as the shadow is');
+  const mask = s.mask;
+  layer.updateShadow(s, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, clip });
+  assert.equal(s.mask, mask, 'the same floor: not drawn again');
+  assert.equal(mask.calls.filter((c) => c[0] === 'polygon').length, 1);
+  layer.updateShadow(s, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4 });
+  assert.equal(s.mask, null, 'open ground');
+  layer.removeShadow(s);
+  assert.ok(mask.destroyed);
+});
+
+test('the sun shadows lie under the sunlit floor: kept off floor a wall already shades', () => {
+  const root = container();
+  class Container { constructor() { this.children = []; this.position = point(); this.scale = point(); } addChild(c) { this.children.push(c); c.parent = this; return c; } destroy() { this.destroyed = true; } }
+  class Sprite extends Container { constructor(t) { super(); this.texture = t; } }
+  let sunlit = { texture: { id: 1 }, x: 10, y: 20, scale: 4 };
+  const layer = createMovementFeelLayer({ PIXI: { Graphics, Container, Sprite }, root: () => root, sunlit: () => sunlit });
+  const sun = layer.addShadow(), lamp = layer.addShadow();
+  layer.updateShadow(sun, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, sun: true });
+  layer.updateShadow(lamp, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4 });
+  assert.notEqual(sun.parent, root, 'in the sunlit floor keeping');
+  assert.equal(lamp.parent, root, 'a lamp lights a floor walls shade from the sun');
+  const holder = sun.parent;
+  assert.ok(holder.mask && holder.mask.texture === sunlit.texture);
+  assert.deepEqual([holder.mask.position.x, holder.mask.position.y, holder.mask.scale.x], [10, 20, 4]);
+  // The walls change: the new picture; none at all: no mask, the sun shadows as they are.
+  sunlit = { texture: { id: 2 }, x: 10, y: 20, scale: 4 };
+  layer.refreshSunlit();
+  assert.equal(holder.mask.texture.id, 2);
+  sunlit = null;
+  layer.refreshSunlit();
+  assert.equal(holder.mask, null);
+  layer.updateShadow(sun, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, sun: true });
+  assert.equal(sun.parent, holder, 'kept together, unmasked');
+});

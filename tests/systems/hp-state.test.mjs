@@ -56,3 +56,13 @@ test("Daggerheart NPCs: adversaries, and any creature no player owns", () => {
   assert.equal(isNpcActor({ type: "companion" }, "daggerheart", { playerOwned: true }), false);
   assert.equal(isNpcActor(null, "daggerheart"), false);
 });
+
+test("Draw Steel: Stamina counts down at system.stamina, down at 0 and below (a dying hero)", () => {
+  const hero = (value) => ({ type: "hero", system: { stamina: { value, max: 30, winded: 15 } } });
+  assert.equal(hpPath(hero(30), "draw-steel"), "system.stamina.value");
+  assert.deepEqual(hpState(hero(12), "draw-steel"), { value: 12, max: 30, down: false, marked: false });
+  assert.equal(hpState(hero(-4), "draw-steel").down, true);
+  assert.equal(isKillTransition(hpState(hero(5), "draw-steel"), hpState(hero(-2), "draw-steel")), true);
+  assert.equal(isNpcActor({ type: "npc" }, "draw-steel"), true);
+  assert.equal(isNpcActor({ type: "hero" }, "draw-steel"), false);
+});

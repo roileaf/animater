@@ -71,6 +71,7 @@ import {catalogListText,catalogNavigation,catalogPageAllowed,catalogPageTitle,wo
 import {DndCatalogWorkspace} from './dnd5e-catalog-ui.mjs';
 import {sfCatalogProfile} from '../catalogs/sf2e/sf2e-catalog.mjs';
 import {dhCatalogProfile} from '../catalogs/daggerheart/daggerheart-catalog.mjs';
+import {dsCatalogProfile} from '../catalogs/draw-steel/draw-steel-catalog.mjs';
 import { ORB_ELEMENTS, orbRecipe } from "../catalogs/shared/orb-builder.mjs";
 import { sampleRecipe, timedStages, variantMembers, previewVariants } from "../engines/playback/composition.mjs";
 import {
@@ -136,7 +137,7 @@ export function editedVariantOnly(recipe, index) {
 }
 // Sidebar names without their system prefix, capitalized: "PF2e spells" → "Spells".
 const shortNav = ([page, icon, name]) => [page, icon, String(name).replace(/^(PF2e|SF2e|D&D 5e) /, "").replace(/^./, (c) => c.toUpperCase())];
-const systemCaption = (env) => { const id = worldCatalogSystem(env); return id ? ` · ${({ pf2e: "PF2E", sf2e: "SF2E", dnd5e: "D&D 5E", daggerheart: "DAGGERHEART" })[id]}` : ""; };
+const systemCaption = (env) => { const id = worldCatalogSystem(env); return id ? ` · ${({ pf2e: "PF2E", sf2e: "SF2E", dnd5e: "D&D 5E", daggerheart: "DAGGERHEART", "draw-steel": "DRAW STEEL" })[id]}` : ""; };
 // +0.25 s / −0.10 s for a timing offset.
 const signedSeconds = (ms) => `${ms < 0 ? "−" : "+"}${(Math.abs(ms) / 1000).toFixed(2)} s`;
 function assetName(key) {
@@ -227,7 +228,7 @@ export class Workspace {
     this.host = host;
     const catalogSystem = worldCatalogSystem(host.environment?.() ?? {});
     // A PF2e world shows the SF2e catalogs it borrows (crossover) on their own sf2e-* pages.
-    this.dndCatalog = ['dnd5e','sf2e','daggerheart'].includes(catalogSystem) ? new DndCatalogWorkspace(this, catalogSystem === 'sf2e' ? sfCatalogProfile : catalogSystem === 'daggerheart' ? dhCatalogProfile : {})
+    this.dndCatalog = ['dnd5e','sf2e','daggerheart','draw-steel'].includes(catalogSystem) ? new DndCatalogWorkspace(this, catalogSystem === 'sf2e' ? sfCatalogProfile : catalogSystem === 'daggerheart' ? dhCatalogProfile : catalogSystem === 'draw-steel' ? dsCatalogProfile : {})
       : catalogSystem === 'pf2e' ? new DndCatalogWorkspace(this, { ...sfCatalogProfile, kinds: BORROWED_PAGES, borrowed: true, intro: "Borrowed from Starfinder 2e for items this world's own catalogs do not cover; passive feats excluded." }) : null;
     this.page = firstPage(host);
     this.search = "";
@@ -2054,7 +2055,7 @@ export class Workspace {
   }
   // New recipe: the two kinds behave differently, so the author picks one up front.
   lastingRecipesAvailable() {
-    return !this.host.playerMode && ["pf2e", "sf2e", "dnd5e", "daggerheart"].includes(this.host.environment?.()?.systemId);
+    return !this.host.playerMode && ["pf2e", "sf2e", "dnd5e", "daggerheart", "draw-steel"].includes(this.host.environment?.()?.systemId);
   }
   newChooserHTML() {
     const choice = (action, icon, title, text, example) => `<button class="an-new-choice" data-action="${action}"><span class="an-new-icon">${icon}</span><b>${title}</b><small>${text}</small><small class="an-new-example">${example}</small></button>`;
