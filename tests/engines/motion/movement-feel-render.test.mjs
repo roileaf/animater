@@ -155,6 +155,16 @@ test('a shadow stops at walls: masked by the floor its light reaches, unmasked o
   assert.ok(mask.destroyed);
 });
 
+test('a clipped shadow with no silhouette yet leaves no white floor shape drawn', () => {
+  const root = container();
+  const layer = createMovementFeelLayer({ PIXI: { Graphics }, root: () => root });
+  const s = layer.addShadow();
+  layer.updateShadow(s, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, clip: [0, 0, 200, 0, 200, 200, 0, 200] });
+  const drawn = root.children.filter((c) => c !== s && c.calls?.some((k) => k[0] === 'polygon'));
+  assert.ok(drawn.length >= 1);
+  for (const m of drawn) assert.equal(m.renderable, false, 'a mask shape is never drawn itself');
+});
+
 test('the sun shadows lie under the sunlit floor: kept off floor a wall already shades', () => {
   const root = container();
   class Container { constructor() { this.children = []; this.position = point(); this.scale = point(); } addChild(c) { this.children.push(c); c.parent = this; return c; } destroy() { this.destroyed = true; } }

@@ -320,7 +320,9 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     if (!points) { dropClip(holder); return; }
     let c = clips.get(holder);
     if (!c) clips.set(holder, c = { round: add(new PIXI.Graphics(), () => home), shape: add(new PIXI.Graphics(), () => home), points: null });
-    for (const m of [c.round, c.shape]) if (m.parent !== home) home.addChild(m);
+    // Never drawn themselves: the shape's copy waits unused while a creature has no silhouette (one made a frame
+    // after a refresh), and drawn it would be a white floor the size of the light's reach.
+    for (const m of [c.round, c.shape]) { if (m.parent !== home) home.addChild(m); m.renderable = false; }
     if (c.points !== points) {
       for (const m of [c.round, c.shape]) { m.clear?.(); m.beginFill(0xffffff, 1); m.drawPolygon(points); m.endFill(); }
       c.points = points;

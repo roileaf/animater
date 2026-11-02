@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.12 (2026-11-02)
+
+- **No more white circles near walls.** A shadow cut off at a wall could leave its cut-out shape drawn as a white patch the size of the light's reach, most often for a moment after a refresh, before each creature's shaped shadow was made.
+
 ## 2.4.11 (2026-11-02)
 
 - **A height for each wall's shadow.** Wall configuration has an Animater shadow section (Shadow top and Shadow bottom, in the scene's units) when the Wall Height module is not on; empty, a wall takes the level's ceiling, else the Wall height setting.
