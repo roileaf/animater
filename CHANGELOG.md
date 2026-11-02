@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.20 (2026-11-02)
+
+- **Play once plays your whole animation.** A Condition / effect recipe of your own set to play once now shows its lasting layers for their full length (a 6 s ward turns all the way round), instead of fading after 3 seconds. Built-in looks still show for their brief moment.
+- **Re-applied D&D 5e effects play again.** Applying a spell's effect to a creature that still has it disabled re-enables that effect rather than creating a new one; it now animates as freshly applied, for while-on-token and one-shot effect recipes alike.
+
 ## 2.4.19 (2026-11-02)
 
 - **D&D 5e spell effects in any language.** An effect a spell applies to its target now plays its Condition / effect recipe when the world is translated: the recipe bound to the spell's compendium effect, or named after the spell in English, finds the target's copy ("Protection contre le mal et le bien") through the spell that applied it.

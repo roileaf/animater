@@ -645,3 +645,23 @@ test('D&D Exhaustion grows step by step from its level on the actor; other effec
  assert.equal(conditionLevel(exhaustion(0)),0);
  assert.equal(conditionLevel({documentName:'ActiveEffect',name:'Bless',statuses:new Set()}),0);
 });
+test('Play once: an effect disabled and enabled again plays again, though its document is old (D&D 5e re-applies by re-enabling)',async()=>{
+ const entry=PF2E_EFFECTS.find(e=>stateRecipe(e).stages.some(s=>s.kind==='aura'&&s.persist&&!s.auraRadius));
+ const item={...native(entry),_stats:{createdTime:Date.now()-600000}},f=fixture([item]);f.states.effect.fade=true;
+ await f.manager.reconcile();await flush();
+ assert.equal(f.calls.filter(c=>c[0]==='play').length,0,'already on the token: quiet');
+ item.system.disabled=true;await f.manager.reconcile();await flush();
+ item.system.disabled=false;const before=f.calls.length;await f.manager.reconcile();await flush();
+ assert.ok(f.calls.slice(before).some(c=>c[0]==='play'),'enabled again: it plays');
+ const after=f.calls.length;await f.manager.reconcile();await flush();
+ assert.equal(f.calls.slice(after).filter(c=>c[0]==='play').length,0,'and only once');
+ await f.manager.destroy();
+});
+test('Play once: a recipe of your own plays its whole lasting layer, a catalog look its moment',async()=>{
+ const entry=PF2E_EFFECTS.find(e=>stateRecipe(e).stages.some(s=>s.kind==='aura'&&s.persist&&!s.auraRadius));
+ const recipe=stateRecipe(entry),own={...recipe,id:'mine',stages:recipe.stages.map(s=>s.kind==='aura'&&s.persist?{...s,delay:0,duration:6000}:s)};
+ const f=fixture([{...native(entry),_stats:{createdTime:Date.now()}}]);f.states.effect.fade=true;f.setSaved([own]);f.manager.host.resolveStateRecipe=()=>own;
+ await f.manager.reconcile();await flush();
+ assert.ok(f.calls.some(c=>c[0]==='duration'&&c[1]===6000));
+ await f.manager.destroy();
+});

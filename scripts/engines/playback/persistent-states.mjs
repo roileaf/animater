@@ -91,6 +91,10 @@ const stateKey=i=>String(slug(i)??'').toLowerCase();
 // already on the token (a reload or scene change), since it only counts as applied within APPLIED_WINDOW.
 export const FADE_MS=3000;
 const APPLIED_WINDOW=15000;
+// Played once, a recipe of your own plays its whole lasting layers (a 6 s ward turns all the way round); a
+// catalog look shows for FADE_MS.
+export const fadeLength=r=>Math.max(FADE_MS,Number(r?.fadeMs)||0);
+const ownFadeMs=recipe=>Math.max(0,...recipe.stages.filter(s=>['aura','tokenfx'].includes(s.kind)&&s.persist).map(s=>(Number(s.delay)||0)+(Number(s.duration)||0)));
 // Each player's own choice for lasting layers (client setting lastingMode): the catalog's Lasting
 // animation setting, always on, played once when applied, or played when applied and again briefly whenever
 // the token's turn starts. Built-in states (Defeated) keep the Defeated look setting.
@@ -154,7 +158,7 @@ const BUILTIN_STATE=Object.freeze({opacity:1,motion:true});
 // Each client derives its own visible layers from native documents. Persistent
 // Sequencer media is temporary/local: no socket playback or stale scene flags.
 export class PersistentStates{
- constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();this.handoff=new Map();this.dirtyTokens=new Set();this.fullScheduled=false;}
+ constructor(host){this.host=host;this.active=new Map();this.stopped=new Set();this.played=new Set();this.serial=0;this.revision=0;this.timer=null;this.closed=false;this.pending=new Set();this.handoff=new Map();this.present=new Set();this.gone=new Set();this.dirtyTokens=new Set();this.fullScheduled=false;}
  // A lasting layer Sequencer no longer has: its scene re-initializing destroys every effect on the canvas
  // without an ended event. Played-once layers end on their own, so only lasting ones count.
  lost(r){return r.drawn===true&&!r.fade&&!r.cancelled&&this.host.alive?.(r.name)===false;}
@@ -204,9 +208,14 @@ export class PersistentStates{
      const calm=isAuraLook(item,recipe,{granted:grantedByOtherAura(item,token)})?(h.auraCalm?.()??'show'):'show';if(calm==='hidden')continue;
      // The world's Subtle switch softens every catalog look (a recipe of your own keeps what you made).
      const soft=!item.animaterRecipe&&(h.subtle?.()===true||calm==='subtle');
-     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':'')+(h.auraStyle?.()??''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!justApplied(item))});shown++;if(fade)this.played.add(key);}
+     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':'')+(h.auraStyle?.()??''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!(this.gone.has(key)||justApplied(item))),...(fade&&saved.some(x=>x.id===recipe.id)?{fadeMs:ownFadeMs(recipe)}:{})});shown++;if(fade)this.played.add(key);}
     }
    }
+   // A state gone from the token (disabled or removed) that comes back is applied again: D&D 5e re-enables the
+   // effect it applied before instead of creating another.
+   for(const key of this.present)if(!present.has(key)&&(!prefixes||prefixes.some(prefix=>key.startsWith(prefix)))){this.present.delete(key);this.gone.add(key);}
+   for(const key of present){this.present.add(key);this.gone.delete(key);}
+   if(this.gone.size>500)this.gone.clear();
    // Removed, its next application animates again.
    for(const key of this.stopped)if(!present.has(key)&&(!prefixes||prefixes.some(prefix=>key.startsWith(prefix))))this.stopped.delete(key);
    // A play-once state played on this client stays quiet while it lasts, even hidden from view or
@@ -292,7 +301,7 @@ export class PersistentStates{
     .attachTo(r.token,{offset:offsetInGridSquares(s,r.token,grid),gridUnits:true,bindRotation:s.bindRotation,bindAlpha:true,bindVisibility:true,bindElevation:true})
     .size(artworkSize(effectFootprint(granted?{...s,auraRadius:0}:s,r.token,grid,h.gridDistance?.()??5)*(granted&&s.auraRadius?Math.min(s.scale,1):s.scale)*level.scale*softScale,media)).opacity(Math.min(1,s.opacity*r.opacity*level.opacity*(granted?.8:1)*overArt*(soft?.opacity??1)))
     .temporary().delay((s.delay??0)+offset).fadeIn(s.fadeIn);
-   if(r.fade)e.duration(FADE_MS).fadeOut(Math.max(s.fadeOut??0,800));else e.persist().fadeOut(s.fadeOut);
+   if(r.fade)e.duration(fadeLength(r)).fadeOut(Math.max(s.fadeOut??0,800));else e.persist().fadeOut(s.fadeOut);
    // A perceived Concealed/Hidden is a stand-in with no document of its own: tie it to the token only.
    const documents=[r.token.document?.uuid,r.item.animaterPerceived?null:(h.storedDocument??storedStateDocument)(r.item)].filter(uuid=>uuid&&(h.documentExists?.(uuid)??true));
    if(documents.length)e.tieToDocuments(documents);
@@ -319,7 +328,7 @@ export class PersistentStates{
    catch(error){h.trace?.('Skipped',`Tokenshade: ${error.message}`);}
   })):[];
   landed();
-  if(r.fade&&releases.length)setTimeout(()=>releases.forEach(release=>{try{void release?.();}catch{/* already ended */}}),FADE_MS+offset)?.unref?.();
+  if(r.fade&&releases.length)setTimeout(()=>releases.forEach(release=>{try{void release?.();}catch{/* already ended */}}),fadeLength(r)+offset)?.unref?.();
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   if(!r.replaying)h.trace?.('Persistent',`${r.recipe.name} follows ${r.token.name??'token'} while its condition or effect lasts.`,r.recipe,{key:r.key,automatic:true,origin:this.originOf(r)});
   if(h.tokenAlive&&!h.tokenAlive(r.token)){await this.end(r);return;}
@@ -327,12 +336,12 @@ export class PersistentStates{
   // Removal/scene changes can race asynchronous texture loading.
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   r.drawn=drawn.length>0;
-  if(reach)h.auraField.add(r.name,{token:r.token,feet:reach.auraRadius,look:auraLook(r.recipe),soft:r.soft===true,fadeMs:r.fade?FADE_MS+offset:0});
+  if(reach)h.auraField.add(r.name,{token:r.token,feet:reach.auraRadius,look:auraLook(r.recipe),soft:r.soft===true,fadeMs:r.fade?fadeLength(r)+offset:0});
   // The creature itself reacts (trembles, sways, turns to stone…) while the state lasts.
   if(r.motion!==false){
    h.body?.add(r.name,r.token,r.item.animaterBody??bodyTreatment(r.item.name??r.recipe.name),{strength:level.scale});
    // Played once: the creature reacts only while the animation shows.
-   if(r.fade)setTimeout(()=>{if(this.active.get(r.key)===r)h.body?.remove?.(r.name);},FADE_MS+offset)?.unref?.();
+   if(r.fade)setTimeout(()=>{if(this.active.get(r.key)===r)h.body?.remove?.(r.name);},fadeLength(r)+offset)?.unref?.();
   }
  }
  // A token's turn starts: its layers set to replay at turn start (the player's choice, or the catalog's
@@ -348,12 +357,12 @@ export class PersistentStates{
  originOf(r){try{return this.host.origin?.(r.item,r.recipe)??null;}catch{return null;}}
  // Lasting layers showing now, for the Activity page's Now playing (a faded one-time showing is over).
  running(now=Date.now()){
-  return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>FADE_MS)).map(r=>({key:r.key,name:r.recipe?.name??r.item?.name??'',on:r.token?.name??'',startedAt:r.startedAt??now,recipeId:r.recipe?.id,origin:this.originOf(r),...previewFields(r.visualPlan,r.token,r.item)}));
+  return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>fadeLength(r))).map(r=>({key:r.key,name:r.recipe?.name??r.item?.name??'',on:r.token?.name??'',startedAt:r.startedAt??now,recipeId:r.recipe?.id,origin:this.originOf(r),...previewFields(r.visualPlan,r.token,r.item)}));
  }
  // The lasting looks showing now on one token, for its looks panel (ui/token-looks.mjs): its key, name, the
  // catalog entry its recipe comes from (stateEntry) and the kind of state it is.
  onToken(tokenId,now=Date.now()){
-  return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>FADE_MS)&&(r.token?.id??r.token?.document?.id)===tokenId)
+  return [...this.active.values()].filter(r=>!r.cancelled&&!r.quiet&&!(r.fade&&now-(r.startedAt??now)>fadeLength(r))&&(r.token?.id??r.token?.document?.id)===tokenId)
    .map(r=>({key:r.key,name:r.item?.animaterAura?r.recipe?.name??r.item?.name??'':r.item?.name??r.recipe?.name??'',stateEntry:r.recipe?.stateEntry??null,kind:r.item?.type??null,aura:Boolean(r.item?.animaterAura),granted:grantedByOtherAura(r.item,r.token)}));
  }
  // Ends one state's animation here; it stays off until the condition or effect is removed and applied again.
@@ -367,6 +376,6 @@ export class PersistentStates{
   this.host.changed?.(this.active.size);
   return true;
  }
- async clear(){++this.revision;clearTimeout(this.timer);this.timer=null;this.dirtyTokens.clear();this.fullScheduled=false;const records=[...this.active.values(),...this.handoff.values()];this.active.clear();this.handoff.clear();for(const r of records)r.cancelled=true;await Promise.all(records.map(r=>this.end(r)));}
+ async clear(){++this.revision;clearTimeout(this.timer);this.timer=null;this.dirtyTokens.clear();this.fullScheduled=false;const records=[...this.active.values(),...this.handoff.values()];this.active.clear();this.handoff.clear();this.present.clear();this.gone.clear();for(const r of records)r.cancelled=true;await Promise.all(records.map(r=>this.end(r)));}
  async destroy(){this.closed=true;await this.clear();}
 }

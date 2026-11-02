@@ -6207,7 +6207,7 @@ Hooks.once("ready", () => {
     Hooks.on("dnd5e.postUseActivity", (activity, _config, results) => {
       void dispatch(dnd5eEvent("use", activity, { results }));
     });
-    Hooks.on("createActiveEffect", (effect, _options, userId) => {
+    const effectApplied = (effect, userId) => {
       if (userId !== game.user.id || effect.disabled || effect.isSuppressed) return;
       if(matchRecipe(recipes().filter(r=>r.lifecycle==='document'),{type:'effect',systemId:'dnd5e',item:effect}))return;
       const actor =
@@ -6216,11 +6216,16 @@ Hooks.once("ready", () => {
           : effect.parent?.actor;
       if (actor)
         void dispatch({
-          id: `effect:${effect.uuid}`,
+          id: `effect:${effect.uuid}:${Date.now()}`,
           type: "effect",
           item: effect,
           actor,
         });
+    };
+    Hooks.on("createActiveEffect", (effect, _options, userId) => effectApplied(effect, userId));
+    // Applying a spell's effect again to a creature that still has it disabled re-enables that one.
+    Hooks.on("updateActiveEffect", (effect, changes, _options, userId) => {
+      if (changes?.disabled === false) effectApplied(effect, userId);
     });
   }
   if (game.system.id === "daggerheart") {
