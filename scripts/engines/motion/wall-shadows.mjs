@@ -63,6 +63,98 @@ export function wallShadowQuads({ walls = [], sun = null, grid = 100, height = 2
   return out;
 }
 
+// Light through windows and open doors (the "Light through windows" setting): the sun, or the moon, shining through an
+// opening lands on the floor beyond it, away from the light, from where its sill's light reaches to where its head's
+// does. It shows only under a roof (outside, that floor is lit already). The longest a shaft grows (squares):
+export const WINDOW_SHAFT_CAP = 8;
+// A wall's opening the light passes, squares up from the floor ({ bottom, top, alpha }), or null: a window (light
+// restriction proximity or distance, Foundry's window) from a 3 ft sill to a 7 ft head, glass taking some; an open
+// door from the floor to 7 ft, whole. Real sizes, whatever the wall's height (a level's 20 ft ceiling made 17 ft
+// windows): `foot` is a foot in squares (a 5 ft square: 0.2). Never past the wall's own top.
+export function windowOpening(wall = {}, height = 2, foot = 0.2) {
+  const given = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+  const bottom = given(wall.bottom) ? Math.max(0, Number(wall.bottom)) : 0;
+  const top = given(wall.top) && Number(wall.top) > bottom ? Number(wall.top) : bottom + height, ft = Number(foot) > 0 ? Number(foot) : 0.2;
+  const upTo = (feet) => Math.min(top, bottom + feet * ft);
+  if (Number(wall.door) > 0) return Number(wall.ds) === 1 ? { bottom, top: upTo(7), alpha: 1 } : null;
+  // A window: Foundry's Window (light proximity or distance), or glass drawn as a wall that lets the light through
+  // freely (none) but stops movement.
+  const light = Number(wall.light) || 0, glass = light === 0 && Number(wall.move) > 0;
+  return (light >= 30 || glass) && upTo(7) > upTo(3) ? { bottom: upTo(3), top: upTo(7), alpha: 0.8 } : null;
+}
+// Each opening's patch of light: { points (a quadrilateral, flat x, y pairs; its first two points along the near
+// edge), alpha }. As wallShadowQuads, for the same walls, sun and height. `indoors` the roofs: an opening whose sunward
+// side is under one too (a door between two rooms) lets no daylight through.
+export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, indoors = [], foot = 0.2 } = {}) {
+  if (!sun || !(Number(sun.strength) > 0)) return [];
+  const away = ((Number(sun.angle) || 0) + 180) * Math.PI / 180, dx = Math.cos(away), dy = Math.sin(away);
+  const out = [];
+  for (const wall of walls) {
+    const open = windowOpening(wall, height, foot), c = wall?.c;
+    if (!open || !Array.isArray(c) || c.length < 4) continue;
+    // From the opening itself (seen from above the light streams in from the window), out to where its head's light
+    // lands: a high sill's gap below it would leave the patch floating, never reading as the window's.
+    const near = 0, far = Math.min(WINDOW_SHAFT_CAP, wallShadowReach(open.top, sun.height)) * grid;
+    if (!(far - near > grid * 0.1)) continue;
+    const [ax, ay, bx, by] = c.map(Number);
+    const sunward = { x: (ax + bx) / 2 - dx * grid * 0.5, y: (ay + by) / 2 - dy * grid * 0.5 };
+    if (indoors.some((p) => inside(sunward, p))) continue;
+    out.push({ points: [ax + dx * near, ay + dy * near, bx + dx * near, by + dy * near, bx + dx * far, by + dy * far, ax + dx * far, ay + dy * far], alpha: open.alpha });
+  }
+  return out;
+}
+
+// The shafts' layer: build({ shafts, bounds, indoors (the roofs, as for the shadows), color (0xrrggbb), alpha }) bakes
+// them, brightest at the opening and spreading fainter across the floor, kept only under the roofs; clear() drops them.
+// Added to `root()` over the lit scene.
+export function createWindowShafts({ PIXI, root, render }) {
+  let sprite = null, texture = null;
+  const drop = () => {
+    try { sprite?.parent?.removeChild(sprite); sprite?.destroy(); } catch { /* gone with the canvas */ }
+    try { texture?.destroy(true); } catch { /* gone */ }
+    sprite = null; texture = null;
+  };
+  const SLICES = 6;
+  return {
+    build({ shafts = [], bounds, indoors = [], color = 0xfff2d8, alpha = 1 } = {}) {
+      drop();
+      if (!shafts.length || !indoors.length || !bounds || !(alpha > 0)) return;
+      const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
+      const w = Math.max(1, Math.ceil(bounds.width * k)), h = Math.max(1, Math.ceil(bounds.height * k));
+      const at = (p) => p.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k);
+      const stage = new PIXI.Container(), g = new PIXI.Graphics();
+      // Each patch in slices from the opening out, fading as the light spreads.
+      for (const s of shafts) {
+        const [ax, ay, bx, by, cx, cy, ex, ey] = s.points, lerp = (p, q, t) => p + (q - p) * t;
+        for (let i = 0; i < SLICES; i++) {
+          const t0 = i / SLICES, t1 = (i + 1) / SLICES;
+          g.beginFill(0xffffff, s.alpha * (1 - 0.65 * (i + 0.5) / SLICES));
+          g.drawPolygon(at([lerp(ax, ex, t0), lerp(ay, ey, t0), lerp(bx, cx, t0), lerp(by, cy, t0), lerp(bx, cx, t1), lerp(by, cy, t1), lerp(ax, ex, t1), lerp(ay, ey, t1)]));
+          g.endFill();
+        }
+      }
+      // Only under the roofs.
+      const roofs = new PIXI.Graphics();
+      for (const p of indoors) { roofs.beginFill(0xffffff, 1); roofs.drawPolygon(at(p)); roofs.endFill(); }
+      g.mask = roofs;
+      stage.addChild(g, roofs);
+      stage.filters = [new PIXI.BlurFilter(SOFTNESS * 1.5)];
+      texture = PIXI.RenderTexture.create({ width: w, height: h });
+      try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+      sprite = new PIXI.Sprite(texture);
+      sprite.eventMode = 'none';
+      sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      sprite.tint = color;
+      sprite.position.set(bounds.x, bounds.y);
+      sprite.scale.set(1 / k, 1 / k);
+      sprite.alpha = alpha;
+      root().addChild(sprite);
+    },
+    clear: drop,
+    get built() { return !!sprite; },
+  };
+}
+
 // Whether `point` lies in a wall's shadow, and how deep (the strongest covering it, 0 none): a creature `elevation`
 // squares up (flying, or standing on something) is above a wall no taller than that.
 export function inWallShade(point, quads = [], { elevation = 0 } = {}) {

@@ -25,3 +25,15 @@ test('the haze sits round the flame, a bigger fire a little wider, and rides on 
   assert.equal(big.level, 'L1');
   assert.equal(slotParams(small, 1000).kind, slotParams({ kind: 'haze', at: { x: 0, y: 0 }, radius: 10, startMs: 0, lengthMs: null }, 0).kind, 'drawn as a haze');
 });
+
+import { smokesLight, isFireLight as fireLight } from '../../../scripts/engines/distortion/fire-haze.mjs';
+test('a light smokes and shimmers by its animation, or by its own On and Off, each on its own', () => {
+  const torch = { animation: { type: 'torch' } }, plain = { animation: { type: 'pulse' } };
+  assert.equal(smokesLight(torch, {}), true);
+  assert.equal(smokesLight(torch, { smoke: 'false' }), false, 'Off, as the form saves it');
+  assert.equal(smokesLight(plain, { smoke: 'true' }), true, 'On for any light');
+  assert.equal(smokesLight(torch, { heatHaze: false }), true, 'no haze still smokes');
+  assert.equal(fireLight(torch, { heatHaze: 'false' }), false);
+  assert.equal(fireLight(torch, { smoke: false }), true, 'no smoke still shimmers');
+  assert.equal(smokesLight(torch, { smoke: '' }), true, 'Auto');
+});

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.5.0 (2026-11-02)
+
+- **Sunrise and sunset colour.** In scenes whose sun follows the time of day, the low sun turns open ground golden, then deep orange at the horizon, with a rose afterglow just after sunset and before sunrise. Only where the light falls: rooms under a roof keep their own colours and shade keeps little of it. Drawn on each screen; the scene's lighting and darkness are never changed. Turning it on turns off Calendaria's own "Sync Scene Ambience with Time of Day", so the map is not coloured twice.
+- **Moonlight.** By night the moon tints open ground silver-blue and casts faint shadows from creatures and walls, by how much of it is lit (the brightest of the world's moons, from Calendaria or Simple Calendar Reborn): bright at full moon, nothing at new moon. A fixed sun follows the clock too: by night the moon shines from the same spot.
+- **Clouds hide the sun and the moon.** Calendaria's weather (or the scene's own weather) dims shadows, light through windows and the dawn and dusk colour: fainter under clouds, none under a storm. The scene's Shadow strength still applies on top.
+- **Light through windows.** The sun shines through windows and open doors onto the floor under a roof, from where it stands: short pools at noon, long golden shafts at dawn and dusk, silver under a bright moon. Windows are Foundry's window walls or glass (light none, movement blocked) at real sizes; a door between two rooms lets no daylight through.
+- **The sun dial shows the moon** by night, with its phase, its place in the sky and its faint shadow.
+- **Smoke and heat haze per light.** Ambient Light configuration → Light Animation → Animater: Smoke and Heat haze, each Auto, On or Off.
+- **Fixes:** a calendar not yet ready no longer lights a time-of-day scene with a full sun at night; creatures hidden from this screen (out of the selected token's sight) cast no shadow; colour no longer shows tokens as dark shapes through roofs.
+
 ## 2.4.20 (2026-11-02)
 
 - **Play once plays your whole animation.** A Condition / effect recipe of your own set to play once now shows its lasting layers for their full length (a 6 s ward turns all the way round), instead of fading after 3 seconds. Built-in looks still show for their brief moment.

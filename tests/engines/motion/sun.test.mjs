@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sunFromClock, sceneSun, sunReach, clockSource, COMPASS, DEFAULT_SUN, DEFAULT_SUN_SETTING } from '../../../scripts/engines/motion/sun.mjs';
+import { sunFromClock, sunGlow, moonFromClock, fixedAt, skyClear, moonLit, phaseLit, sceneSun, sunReach, clockSource, COMPASS, DEFAULT_SUN, DEFAULT_SUN_SETTING } from '../../../scripts/engines/motion/sun.mjs';
 import { sunValues, clockChoices } from '../../../scripts/ui/sun-settings.mjs';
 import { shadowFall } from '../../../scripts/engines/motion/movement-feel.mjs';
 
@@ -59,4 +59,51 @@ test('the default sun saves as numbers, with only real modes', () => {
   assert.deepEqual(sunValues({ mode: 'time', from: '-135', height: '40', east: '0', strength: '0.5' }), { mode: 'time', from: -135, height: 40, east: 0, strength: 0.5 });
   assert.equal(sunValues({ mode: '' }).mode, 'fixed', 'the world default has no "World default"');
   assert.equal(sunValues({ strength: '3' }).strength, 1);
+});
+test('dawn and dusk colour: golden as the sun sinks, deep orange at the horizon, a rose afterglow, nothing at noon or midnight', () => {
+  const at = (day) => sunGlow({ day, sunrise: 0.25, sunset: 0.75 });
+  assert.equal(at(0.5), null, 'noon');
+  assert.equal(at(0), null, 'midnight');
+  assert.equal(sunGlow(null), null, 'no clock');
+  const golden = at(0.72), horizon = at(0.749), after = at(0.76), late = at(0.79);
+  assert.ok(golden && horizon && after);
+  assert.ok(horizon.amount > golden.amount, 'stronger as it sinks');
+  assert.ok(horizon.color[2] < golden.color[2], 'redder at the horizon');
+  assert.ok(after.color[2] > after.color[1], 'rose after sunset');
+  assert.equal(late, null, 'gone once twilight ends');
+  assert.ok(at(0.245) && at(0.255), 'dawn too');
+});
+test('moonlight: silver-blue by night as the moon is lit, and faint shadows from a moon crossing the night sky', () => {
+  assert.equal(moonLit(0), 0); assert.equal(moonLit(0.5), 1); assert.ok(Math.abs(moonLit(0.25) - 0.5) < 1e-9);
+  assert.equal(phaseLit('waxing-gibbous'), 0.75); assert.equal(phaseLit('Full Moon'), 1); assert.equal(phaseLit('New Moon'), 0); assert.equal(phaseLit(''), null);
+  const night = (moon) => sunGlow({ day: 0, sunrise: 0.25, sunset: 0.75, moon });
+  assert.equal(night(0), null, 'new moon: nothing');
+  const full = night(1), half = night(0.5);
+  assert.ok(full.amount > half.amount, 'brighter moon, stronger tint');
+  assert.ok(full.color[2] > full.color[0], 'blue');
+  assert.equal(moonFromClock({ day: 0.5, moon: 1 }), null, 'not by day');
+  assert.equal(moonFromClock({ day: 0, moon: 0.05 }), null, 'a thin moon casts none');
+  const midnight = moonFromClock({ day: 0, moon: 1 });
+  assert.ok(midnight.moon && midnight.height > 40 && midnight.strength <= 0.35);
+  const scene = sceneSun({ mode: 'time' }, { clock: { day: 0, sunrise: 0.25, sunset: 0.75, moon: 1 } });
+  assert.ok(scene?.moon, 'the scene sun is the moon by night');
+  assert.equal(sceneSun({ mode: 'time' }, { clock: { day: 0, sunrise: 0.25, sunset: 0.75 } }), null, 'no moon known: no night shadows');
+});
+test('a fixed sun stays where it is set and follows the clock: the moon there by night, none under a new moon', () => {
+  const fixed = sceneSun({ mode: 'fixed', from: 'nw', height: 'mid' }, { clock: { day: 0, sunrise: 0.25, sunset: 0.75, moon: 1 } });
+  assert.ok(fixed.moon && fixed.angle === -135 && fixed.height === 40 && fixed.strength <= 0.35);
+  assert.equal(sceneSun({ mode: 'fixed' }, { clock: { day: 0, sunrise: 0.25, sunset: 0.75, moon: 0 } }), null);
+  assert.equal(sceneSun({ mode: 'fixed', from: 'nw' }, { clock: { day: 0.5, sunrise: 0.25, sunset: 0.75 } }).strength, 1, 'by day');
+  assert.equal(fixedAt({ angle: 0, height: 30, strength: 1 }, null).strength, 1, 'no clock: always the sun');
+});
+test('clouds hide the sun and the moon: fainter under clouds, none under a storm, by the calendar or the scene weather', () => {
+  assert.equal(skyClear(null), 1); assert.equal(skyClear({ id: 'clear' }), 1); assert.equal(skyClear({ id: 'thunderstorm' }), 0);
+  assert.equal(skyClear('rainStorm'), 0, 'Foundry scene weather');
+  assert.ok(skyClear({ id: 'homebrew-drizzle', precipitation: { intensity: 0.5 } }) < 0.6, 'unknown: by how hard it falls');
+  const day = { day: 0.5, sunrise: 0.25, sunset: 0.75 };
+  assert.ok(Math.abs(sceneSun({ mode: 'time' }, { clock: { ...day, sky: 0.35 } }).strength - sceneSun({ mode: 'time' }, { clock: day }).strength * 0.35) < 1e-9);
+  assert.equal(sceneSun({ mode: 'time' }, { clock: { ...day, sky: 0 } }), null, 'storm: no shadows');
+  assert.equal(sceneSun({ mode: 'fixed' }, { clock: { day: 0, sunrise: 0.25, sunset: 0.75, moon: 1, sky: 0 } }), null, 'no moon behind the clouds');
+  assert.equal(sunGlow({ day: 0, sunrise: 0.25, sunset: 0.75, moon: 1, sky: 0 }), null, 'no moonlit tint either');
+  assert.ok(sunGlow({ day: 0.74, sunrise: 0.25, sunset: 0.75, sky: 0.35 }).amount < sunGlow({ day: 0.74, sunrise: 0.25, sunset: 0.75 }).amount, 'a greyer dusk');
 });

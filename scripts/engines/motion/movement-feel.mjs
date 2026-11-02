@@ -204,7 +204,8 @@ export function castShadowGeometry({ x, y, width, lift = 0, distance = 5, grid =
 // every one of them casts its own shadow, returned as `lamps` ({ key, dx, dy, alpha, soft }), `lamp` the strongest.
 export function shadowFalls({ width, lift = 0, body, light = null, lights = null, darkness = 0, lightHeight = 0, sun: sky = DEFAULT_SUN, grid = 100, grounded = false } = {}) {
   const w = Number(width) || 100, g = Number(grid) || 100, dark = Math.min(1, Math.max(0, Number(darkness) || 0));
-  const sun = sky ? Math.max(0, 1 - dark * 1.2) * Math.min(1, Math.max(0, Number(sky.strength) || 0)) : 0;
+  // The moon (sky.moon) shines by night: darkness is its time, not a reason to fade.
+  const sun = sky ? (sky.moon ? 1 : Math.max(0, 1 - dark * 1.2)) * Math.min(1, Math.max(0, Number(sky.strength) || 0)) : 0;
   // How tall the creature stands (`body`, squares; a standing creature's is its `lift` when not given), the top of it,
   // and the height its shadow is thrown from: a standing creature's whole height from its feet, a flier's middle.
   const tall = Math.max(0, Number.isFinite(body) ? body : grounded ? Number(lift) || 0 : 0), up = grounded ? 0 : Math.max(0, Number(lift) || 0);

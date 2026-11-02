@@ -3574,6 +3574,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-sun .an-sun-shadow { stroke: #000; stroke-width: 26; stroke-linecap: round; }
 .animater-sun .an-sun-token { fill: #8a7a62; stroke: #2a241d; stroke-width: 2; }
 .animater-sun .an-sun-core { fill: #fff8d6; }
+.animater-sun .an-sun-moon-face { fill: #e4ebf7; }
+.animater-sun .an-sun-moon-dark { fill: #1c2a44; cy: 0; }
+.animater-sun .an-sun-moon-glow { fill: #b8c8ff; filter: blur(3px); }
 .animater-sun .an-sun-side { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .animater-sun .an-sun-readout { margin: 0; font-weight: 600; }
 .animater-sun .an-sun-strength { display: flex; flex-direction: column; gap: 4px; }
@@ -3585,6 +3588,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-sun .an-sun-mark { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #ffd9a0; }
 .animater-sun .an-sun-now { position: absolute; top: -5px; width: 0; height: 0; margin-left: -5px; border: 5px solid transparent; border-top-color: #fff; }
 .animater-sun .an-sun-scrub { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: radial-gradient(#fff8d6, #ffc341 60%, #ff9a1f); box-shadow: 0 0 6px #ffc341; pointer-events: none; }
+.animater-sun .an-sun-scrub.an-sun-scrub-moon { background: radial-gradient(#ffffff, #dfe6f7 60%, #9fb0d8); box-shadow: 0 0 6px #b8c8ff; }
 .animater-sun .an-sun-hours { position: relative; height: 14px; font-size: 10px; opacity: 0.7; }
 .animater-sun .an-sun-hours span { position: absolute; transform: translateX(-50%); }
 .animater-sun .an-sun-hours span:first-child { transform: none; }

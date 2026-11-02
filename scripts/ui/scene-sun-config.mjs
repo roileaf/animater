@@ -5,7 +5,8 @@
 // higher in the sky); following the time of day, drag the dial to set where east lies on this map, and scrub the day
 // ruler under it to see the sun at any hour (only here: the game's clock is not changed). Its values go in hidden
 // fields, so the form saves them: <prefix>.{mode, from, height, east, strength} (flags.<id>.sun for a scene).
-import { sunFromClock, directionOf, heightOf, COMPASS, DEFAULT_SUN, DEFAULT_SUN_SETTING } from '../engines/motion/sun.mjs';
+// By night the moon takes the sun's place, lit as much as the calendar says, with its faint shadow.
+import { sunFromClock, moonFromClock, fixedAt, directionOf, heightOf, COMPASS, DEFAULT_SUN, DEFAULT_SUN_SETTING } from '../engines/motion/sun.mjs';
 
 const C = 110, R = 88, TOKEN = 15;
 const rad = (deg) => (deg * Math.PI) / 180;
@@ -18,11 +19,13 @@ const nameOf = (deg) => {
   const d = ((deg % 360) + 540) % 360 - 180;
   return NAMES.reduce((best, n) => (Math.abs(((d - n[1] + 540) % 360) - 180) < Math.abs(((d - best[1] + 540) % 360) - 180) ? n : best))[0];
 };
+// How the moon looks lit as much as `lit` (0–1).
+const phaseName = (lit) => (lit < 0.05 ? 'new moon' : lit < 0.4 ? 'crescent moon' : lit < 0.6 ? 'half moon' : lit < 0.95 ? 'gibbous moon' : 'full moon');
 const clockText = (day) => { const m = Math.round(((day % 1) + 1) % 1 * 1440); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
 
 // The fieldset for `flags` (a scene's sun flags, or the world default), `defaults` the world's default sun (shown,
 // not edited, while a scene keeps "World default"; `null`: this is the world default itself, with no such button),
-// `clock` the time now ({ day, sunrise, sunset } or null), `prefix` the field names' start (`flags.<id>.sun` from
+// `clock` the time now ({ day, sunrise, sunset, moon (0–1 lit, from a calendar) } or null), `prefix` the field names' start (`flags.<id>.sun` from
 // `id` when not given), `legend` its title.
 export function sunConfigElement({ flags = {}, defaults = DEFAULT_SUN_SETTING, clock = null, id = 'animater', prefix = `flags.${id}.sun`, legend = 'Animater sun' } = {}) {
   const scene = defaults !== null, world = { ...DEFAULT_SUN_SETTING, ...(defaults ?? {}) };
@@ -47,6 +50,7 @@ export function sunConfigElement({ flags = {}, defaults = DEFAULT_SUN_SETTING, c
       <svg class="an-sun-dial" viewBox="0 0 220 220" aria-label="The map from above: drag the sun">
         <defs>
           <radialGradient id="an-sun-sky" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#f6e7b8" stop-opacity="0.35"/><stop offset="100%" stop-color="#1c2a44" stop-opacity="0.55"/></radialGradient>
+          <clipPath id="an-sun-moon-disc"><circle r="9"/></clipPath>
           <radialGradient id="an-sun-glow"><stop offset="0%" stop-color="#fff6c8"/><stop offset="55%" stop-color="#ffc341"/><stop offset="100%" stop-color="#ff9a1f" stop-opacity="0"/></radialGradient>
         </defs>
         <circle cx="${C}" cy="${C}" r="${R}" fill="url(#an-sun-sky)" class="an-sun-ring"/>
@@ -57,6 +61,7 @@ export function sunConfigElement({ flags = {}, defaults = DEFAULT_SUN_SETTING, c
         <line class="an-sun-shadow" x1="${C}" y1="${C}" x2="${C}" y2="${C}"/>
         <circle class="an-sun-token" cx="${C}" cy="${C}" r="${TOKEN}"/>
         <g class="an-sun-sun"><circle r="17" fill="url(#an-sun-glow)"/><circle r="7" class="an-sun-core"/></g>
+        <g class="an-sun-moon"><circle r="13" class="an-sun-moon-glow"/><circle r="9" class="an-sun-moon-face"/><circle r="9" class="an-sun-moon-dark" clip-path="url(#an-sun-moon-disc)"/></g>
       </svg>
       <div class="an-sun-side">
         <p class="an-sun-readout"></p>
@@ -96,16 +101,30 @@ export function sunConfigElement({ flags = {}, defaults = DEFAULT_SUN_SETTING, c
     input('mode').value = state.mode; input('from').value = Math.round(state.from); input('height').value = Math.round(state.height); input('east').value = Math.round(state.east);
     $('output').textContent = `${Math.round(v.strength * 100)}%`;
     let sun = null;
-    if (m === 'fixed') sun = { angle: v.from, height: v.height };
+    // Fixed: where it is set, the sun by day and the moon by night (the clock now).
+    const fixedNow = m === 'fixed' ? fixedAt({ angle: v.from, height: v.height, strength: 1 }, clock) : null;
+    const fixedNight = m === 'fixed' && Boolean(clock) && !sunFromClock(clock);
+    if (m === 'fixed') sun = fixedNight ? null : { angle: v.from, height: v.height };
     if (m === 'time') sun = sunFromClock({ day: preview, sunrise: rise, sunset: set, east: v.east });
+    // Night: the moon where it stands, its dark part covering the face as it wanes (a calendar's moon only).
+    const lit = Math.min(1, Math.max(0, Number(day.moon) || 0)), moon = fixedNow?.moon ? fixedNow : m === 'time' && !sun ? moonFromClock({ day: preview, sunrise: rise, sunset: set, east: v.east, moon: lit }) : null;
+    const moonG = $('.an-sun-moon');
+    if (moon) {
+      const [x, y] = at(moon.angle, radiusOf(moon.height));
+      moonG.setAttribute('transform', `translate(${x} ${y})`); moonG.style.display = '';
+      $('.an-sun-moon-dark').setAttribute('cx', String(-18 * lit));
+      $('.an-sun-moon-glow').style.opacity = String(0.2 + 0.5 * lit);
+    } else moonG.style.display = 'none';
+    $('.an-sun-scrub').classList.toggle('an-sun-scrub-moon', m === 'time' && !sun);
     // The sun on the dial, and the creature's shadow cast away from it (longer the lower it stands).
     const sunG = $('.an-sun-sun'), shadow = $('.an-sun-shadow');
-    if (sun && m !== 'none') {
-      const [x, y] = at(sun.angle, radiusOf(sun.height));
-      sunG.setAttribute('transform', `translate(${x} ${y})`); sunG.style.display = '';
-      const len = Math.min(R * 0.85, (TOKEN * 1.2) / Math.tan(rad(Math.max(3, sun.height)))), [sx, sy] = at(sun.angle + 180, len);
+    const caster = sun ?? moon;
+    if (caster && m !== 'none') {
+      const [x, y] = at(caster.angle, radiusOf(caster.height));
+      if (sun) { sunG.setAttribute('transform', `translate(${x} ${y})`); sunG.style.display = ''; } else sunG.style.display = 'none';
+      const len = Math.min(R * 0.85, (TOKEN * 1.2) / Math.tan(rad(Math.max(3, caster.height)))), [sx, sy] = at(caster.angle + 180, len);
       shadow.setAttribute('x2', sx); shadow.setAttribute('y2', sy);
-      shadow.style.opacity = String(0.15 + 0.45 * v.strength * (m === 'time' ? Math.min(1, sun.height / 8) : 1));
+      shadow.style.opacity = String(sun ? 0.15 + 0.45 * v.strength * (m === 'time' ? Math.min(1, sun.height / 8) : 1) : 0.1 + 0.6 * v.strength * moon.strength);
     } else { sunG.style.display = 'none'; shadow.setAttribute('x2', C); shadow.setAttribute('y2', C); }
     // Following the day: the sun's path across the sky, and the map's east marker to drag.
     const path = [];
@@ -119,10 +138,17 @@ export function sunConfigElement({ flags = {}, defaults = DEFAULT_SUN_SETTING, c
     const times = `Sunrise ${clockText(rise)}, sunset ${clockText(set)}${clock ? '' : ' (no clock: 06:00 to 18:00)'}.`;
     if (m === 'none') { readout.textContent = 'No sun: only lights cast shadows here.'; hint.textContent = 'For caves, dungeons and overcast scenes.'; }
     else if (m === 'fixed') {
-      readout.textContent = `Shines from the ${nameOf(v.from)}, ${Math.round(v.height)}° up: shadows ${v.height >= 60 ? 'short' : v.height >= 30 ? 'medium' : 'long'}.`;
+      const length = v.height >= 60 ? 'short' : v.height >= 30 ? 'medium' : 'long';
+      readout.textContent = !fixedNight ? `Shines from the ${nameOf(v.from)}, ${Math.round(v.height)}° up: shadows ${length}.`
+        : moon ? `Night now: a ${phaseName(lit)} shines from the ${nameOf(v.from)}, ${Math.round(v.height)}° up: faint moonlight shadows.`
+        : `Night now: no moon to cast shadows. By day the sun shines from the ${nameOf(v.from)}, ${Math.round(v.height)}° up.`;
       hint.textContent = 'Drag the sun: round the dial for its direction, toward the middle for a higher sun.';
     } else {
-      readout.textContent = sun ? `${clockText(preview)}: the sun in the ${nameOf(sun.angle)}, ${Math.round(sun.height)}° up.` : `${clockText(preview)}: night, no sunlight shadows.`;
+      readout.textContent = sun ? `${clockText(preview)}: the sun in the ${nameOf(sun.angle)}, ${Math.round(sun.height)}° up.`
+        : moon ? `${clockText(preview)}: night, a ${phaseName(lit)} in the ${nameOf(moon.angle)}, ${Math.round(moon.height)}° up: faint moonlight shadows.`
+        : !clock || clock.moon === undefined ? `${clockText(preview)}: night, no sunlight shadows.`
+        : lit >= 0.1 ? `${clockText(preview)}: night, the ${phaseName(lit)} low on the horizon.`
+        : `${clockText(preview)}: night, ${lit > 0 ? 'a thin moon' : 'new moon or moonlight off'}: no moonlight shadows.`;
       hint.textContent = `Drag the dial to turn the map's east (the sun rises there, crosses the south at noon, sets in the west). Scrub the day to preview an hour; the game's clock stays as it is. ${times}`;
     }
     if (inherits()) hint.textContent = `This scene uses the world default (Animater settings → Sun); pick a button to give it its own.${m === 'time' ? ` ${times}` : ''}`;

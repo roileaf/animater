@@ -164,13 +164,13 @@ import { cutOutArt } from "./engines/playback/art-crop.mjs";
 import { createTethers, createTetherPreview } from "./engines/playback/tethers.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
-import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan } from "./engines/motion/wall-shadows.mjs";
-import { isFireLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
+import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts } from "./engines/motion/wall-shadows.mjs";
+import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
-import { sceneSun, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING } from "./engines/motion/sun.mjs";
+import { sceneSun, sunGlow, moonLit, phaseLit, skyClear, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING } from "./engines/motion/sun.mjs";
 import { sunSettingsMenu, SUN_SETTING, CLOCK_SETTING } from "./ui/sun-settings.mjs";
 import { sunConfigElement } from "./ui/scene-sun-config.mjs";
 import { createSustainThreads, sustainLinks, concentrationLinks } from "./engines/motion/sustain-threads.mjs";
@@ -1154,7 +1154,7 @@ const clockNow = () => {
     if (!c) return null;
     const hours = d.hoursPerDay || 24, minutes = d.minutesPerHour || 60, seconds = d.secondsPerMinute || 60;
     const day = ((c.hour ?? 0) + ((c.minute ?? 0) + (c.second ?? 0) / seconds) / minutes) / hours;
-    let rise = 0.25, set = 0.75;
+    let rise = 0.25, set = 0.75, moon = 0;
     const okHours = (v) => Number.isFinite(v) && v >= 0 && v <= hours;
     // The calendar chosen in Animater settings → Sun (automatic: Calendaria, else Simple Calendar Reborn, else Foundry).
     let choice = "auto";
@@ -1162,18 +1162,30 @@ const clockNow = () => {
     const source = clockSource(choice, (id) => game.modules.get(id)?.active === true);
     // Calendaria: sunrise and sunset in hours into the day, for the scene's climate zone.
     const calendaria = source === "calendaria" ? globalThis.CALENDARIA?.api : null;
+    // A calendar not ready yet (or failing) keeps the clock's own day: never no clock at all, which would light a
+    // time-of-day scene with the fixed sun at night.
+    const ask = (fn) => { try { return fn(); } catch { return null; } };
     if (calendaria) {
-      const r = Number(calendaria.getSunrise?.()), s = Number(calendaria.getSunset?.());
+      const r = Number(ask(() => calendaria.getSunrise?.())), s = Number(ask(() => calendaria.getSunset?.()));
       if (okHours(r) && okHours(s) && s > r) { rise = r / hours; set = s / hours; }
+      // The brightest moon (a world may have several), by its place in its cycle (0 new, 0.5 full).
+      try { const all = calendaria.getAllMoonPhases?.(); moon = Math.max(0, ...(Array.isArray(all) ? all : [calendaria.getMoonPhase?.(0)]).map((m) => moonLit(m?.position))); } catch { /* no moons */ }
     } else if (source === "foundryvtt-simple-calendar-reborn" && globalThis.SimpleCalendar?.api) {
       // Simple Calendar Reborn: today's sunrise and sunset as timestamps; into the day from today's start.
-      const sc = globalThis.SimpleCalendar.api, ts = sc.timestamp(), date = sc.timestampToDate(ts), cfg = sc.getTimeConfiguration?.() ?? {};
-      const spm = cfg.secondsInMinute || seconds, mph = cfg.minutesInHour || minutes, hpd = cfg.hoursInDay || hours;
-      const start = ts - ((date.hour * mph + date.minute) * spm + (date.second ?? 0)), perDay = hpd * mph * spm;
-      const r = (Number(date.sunrise) - start) / perDay, s = (Number(date.sunset) - start) / perDay;
-      if (r >= 0 && s <= 1 && s > r) { rise = r; set = s; }
+      ask(() => {
+        const sc = globalThis.SimpleCalendar.api, ts = sc.timestamp(), date = sc.timestampToDate(ts), cfg = sc.getTimeConfiguration?.() ?? {};
+        const spm = cfg.secondsInMinute || seconds, mph = cfg.minutesInHour || minutes, hpd = cfg.hoursInDay || hours;
+        const start = ts - ((date.hour * mph + date.minute) * spm + (date.second ?? 0)), perDay = hpd * mph * spm;
+        const r = (Number(date.sunrise) - start) / perDay, s = (Number(date.sunset) - start) / perDay;
+        if (r >= 0 && s <= 1 && s > r) { rise = r; set = s; }
+      });
+      try { const phase = globalThis.SimpleCalendar.api.getAllMoons?.()?.[0]?.currentPhase; moon = phaseLit(phase?.icon) ?? phaseLit(phase?.name) ?? 0; } catch { /* no moons */ }
     }
-    return { day, sunrise: rise, sunset: set };
+    // Moonlight (Animater settings → Sunrise and sunset colour): Foundry's own clock knows no moon.
+    try { if (hotSetting("moonLight") === false) moon = 0; } catch { /* not registered yet */ }
+    // Clouds: Calendaria's weather now, else the scene's own weather effect.
+    const sky = skyClear((calendaria && ask(() => calendaria.getCurrentWeather?.())) || canvas?.scene?.weather || null);
+    return { day, sunrise: rise, sunset: set, moon, sky };
   } catch { return null; }
 };
 // The scene's sun now, kept until the time, the scene or the setting changes (never worked out a frame).
@@ -1183,12 +1195,96 @@ const sunDefaults = () => { try { return { ...DEFAULT_SUN_SETTING, ...(hotSettin
 const refreshSun = () => {
   try {
     const flags = canvas?.scene?.flags?.[ID]?.sun ?? {}, defaults = sunDefaults(), mode = flags.mode || defaults.mode;
-    sunNow = sceneSun(flags, { defaults, clock: mode === "time" ? clockNow() : null });
+    // A fixed sun follows the clock too: by night it is the moon where it stands.
+    sunNow = sceneSun(flags, { defaults, clock: mode === "none" ? null : clockNow() });
   } catch { sunNow = DEFAULT_SUN; }
 };
+// Dawn, dusk and moonlit nights colour the map (sun.mjs sunGlow) in scenes whose sun follows the time of day: one
+// translucent veil over the lit scene (over the darkness a calendar module sets, which would drown it underneath), at
+// the top of Foundry's lighting, drawn on each screen. The scene's own lighting is never changed. Not in the interface
+// layer: that one is cut out where tokens stand (they showed as dark shapes through roofs), and draws into a picture
+// of its own where a multiplied wash turns black.
+let sunWash = null;
+// Where the colour falls: the open ground the sun or moon reaches (outdoors, not under a roof, not in a wall's shadow),
+// soft-edged; rooms and shade keep their own colours beside the warm light. Rebuilt with the wall shadows.
+let washMask = null;
+const rebuildWashMask = () => {
+  const old = washMask;
+  washMask = null;
+  try {
+    if (canvas?.ready) {
+      const b = canvas.dimensions.sceneRect, k = Math.min(0.25, 4096 / Math.max(1, b.width, b.height));
+      const w = Math.max(1, Math.ceil(b.width * k)), h = Math.max(1, Math.ceil(b.height * k));
+      const at = (pts) => pts.map((v, i) => (v - (i % 2 ? b.y : b.x)) * k);
+      const open = new PIXI.Graphics(), cut = new PIXI.Graphics();
+      open.beginFill(0xffffff, 1); open.drawRect(0, 0, w, h); open.endFill();
+      cut.blendMode = PIXI.BLEND_MODES.ERASE;
+      for (const pts of indoorPolygons()) { cut.beginFill(0xffffff, 1); cut.drawPolygon(at(pts)); cut.endFill(); }
+      // Shade under an open sky keeps some of its colour (the sky lights it too); a room keeps none.
+      // As faint as the shadows themselves: a sun on the horizon throws long ones that barely show.
+      const shade = 0.6 * Math.min(1, Math.max(0, Number(sunNow?.strength) || 0));
+      if (shade > 0.02) for (const q of wallQuads) { cut.beginFill(0xffffff, q.alpha * shade); cut.drawPolygon(at(q.points)); cut.endFill(); }
+      open.addChild(cut);
+      open.filters = [new PIXI.BlurFilter(2)];
+      const texture = PIXI.RenderTexture.create({ width: w, height: h });
+      try { canvas.app.renderer.render(open, { renderTexture: texture, clear: true }); } finally { open.destroy({ children: true }); }
+      washMask = { texture, x: b.x, y: b.y, scale: 1 / k };
+    }
+  } catch { washMask = null; }
+  refreshSunWash();
+  try { old?.texture?.destroy(true); } catch { /* gone */ }
+};
+const refreshSunWash = () => {
+  try {
+    const flags = canvas?.scene?.flags?.[ID]?.sun ?? {}, mode = flags.mode || sunDefaults().mode;
+    const on = canvas?.ready && hotSetting("sunColor") !== false && hotSetting("sunColorLocal") !== false && mode === "time";
+    const glow = on ? sunGlow(clockNow()) : null, amount = glow ? glow.amount * Math.min(1, Math.max(0, Number(hotSetting("sunColorStrength")) || 0)) * 0.55 : 0;
+    if (!(amount > 0.005)) { if (sunWash && !sunWash.destroyed) sunWash.visible = false; return; }
+    if (!sunWash || sunWash.destroyed) {
+      sunWash = new PIXI.Sprite(PIXI.Texture.WHITE);
+      sunWash.eventMode = "none";
+      // Under FXMaster's own above-the-darkness weather (100000).
+      sunWash.zIndex = 99990;
+      canvas.effects.addChild(sunWash);
+      canvas.effects.sortChildren?.();
+    }
+    if (washMask) {
+      sunWash.texture = washMask.texture;
+      sunWash.position.set(washMask.x, washMask.y);
+      sunWash.scale.set(washMask.scale, washMask.scale);
+    } else {
+      const r = canvas.dimensions.sceneRect;
+      sunWash.texture = PIXI.Texture.WHITE;
+      sunWash.position.set(r.x, r.y);
+      sunWash.width = r.width;
+      sunWash.height = r.height;
+    }
+    sunWash.tint = new PIXI.Color(glow.color).toNumber();
+    sunWash.alpha = amount * 0.5;
+    sunWash.visible = true;
+  } catch { if (sunWash && !sunWash.destroyed) sunWash.visible = false; }
+};
+Hooks.on("canvasTearDown", () => {
+  try { sunWash?.destroy(); } catch { /* gone with the canvas */ }
+  try { washMask?.texture?.destroy(true); } catch { /* gone */ }
+  sunWash = null; washMask = null;
+});
+// Animater's dawn and dusk colour replaces Calendaria's own ("Sync Scene Ambience with Time of Day"): both on, the map
+// is coloured twice. Turned on (and at each start while it is on), the GM's client turns Calendaria's off. Its weather
+// hue and its moon brightening the darkness stay, which Animater does not do.
+const quietCalendarColour = async () => {
+  try {
+    if (!game.user?.isGM || !game.modules.get("calendaria")?.active || hotSetting("sunColor") === false) return;
+    if (game.settings.get("calendaria", "colorShiftSync") !== true) return;
+    await game.settings.set("calendaria", "colorShiftSync", false);
+    ui.notifications?.info("Animater: Calendaria's “Sync Scene Ambience with Time of Day” is turned off, as Animater's sunrise and sunset colour now colours the map.");
+  } catch { /* Calendaria without that setting */ }
+};
+Hooks.once("ready", () => { void quietCalendarColour(); });
+Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.sunColor` || setting?.key === "calendaria.colorShiftSync") void quietCalendarColour(); });
 // The calendars' own changes too (a new day's sunrise, a climate zone), not only Foundry's clock.
-for (const hook of ["canvasReady", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { refreshSun(); });
-Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) refreshSun(); });
+for (const hook of ["canvasReady", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { refreshSun(); refreshSunWash(); });
+Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) { refreshSun(); refreshSunWash(); } });
 // Walls cast shadows in sunlight (engines/motion/wall-shadows.mjs): each wall that stops light throws its shadow away
 // from the sun, baked once into one picture under the creatures; a creature standing in one casts no sun shadow.
 let wallShadowRoot = null, wallQuads = [], wallShadowTimer = null;
@@ -1212,7 +1308,7 @@ const wallSpanOf = (doc) => wallSpan(doc.flags, { floor: Number(canvas.level?.el
 const wallsHere = () => {
   const level = canvas.level?.id;
   return (canvas.walls?.placeables ?? []).map((w) => w.document).filter((d) => !d.levels?.size || !level || d.levels.has(level))
-    .map((d) => ({ c: d.c, light: d.light, door: d.door, ds: d.ds, ...wallSpanOf(d) }));
+    .map((d) => ({ c: d.c, light: d.light, move: d.move, door: d.door, ds: d.ds, ...wallSpanOf(d) }));
 };
 // Under a roof: the regions that keep the weather out (as for snow and rain), where the sun never reaches.
 const indoorPolygons = () => {
@@ -1230,7 +1326,8 @@ const rebuildWallShadows = () => {
   try {
     if (!canvas?.ready || !wallShadowsOn() || !sunNow) { wallQuads = []; wallShadows.clear(); return; }
     // The sun's share by the scene's darkness, as a creature's sun shadow has it (movement-feel.mjs shadowFalls).
-    const darkness = Number(canvas.environment?.darknessLevel) || 0, sun = Math.max(0, 1 - darkness * 1.2) * (Number(sunNow.strength) || 0);
+    // The moon shines by night: the darkness is its time, not a reason to fade.
+    const darkness = Number(canvas.environment?.darknessLevel) || 0, sun = (sunNow.moon ? 1 : Math.max(0, 1 - darkness * 1.2)) * (Number(sunNow.strength) || 0);
     wallQuads = sun > 0.02 ? wallShadowQuads({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
     wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons() });
   } catch { wallQuads = []; wallShadows.clear(); } finally {
@@ -1238,13 +1335,45 @@ const rebuildWallShadows = () => {
     // shadows lie under the new sunlit floor.
     flierLights.clear();
     try { feelLayer.refreshSunlit(); } catch { /* not drawn yet */ }
+    rebuildShafts();
+    rebuildWashMask();
   }
 };
+// Sun and moon light through windows and open doors onto the floors under roofs (wall-shadows.mjs windowShafts): on the
+// floor, under the creatures and the roof tiles that hide the room; warm by day, golden at dusk, silver under the moon.
+let shaftRoot = null;
+const shaftRootOf = () => {
+  if (!shaftRoot || shaftRoot.destroyed) {
+    shaftRoot = new PIXI.Container();
+    shaftRoot.eventMode = "none";
+    shaftRoot.elevation = canvas.level?.elevation?.base ?? 0;
+    // Over the walls' shadows (640), under the creatures' own (650).
+    shaftRoot.sortLayer = 645;
+    canvas.primary.addChild(shaftRoot);
+  }
+  return shaftRoot;
+};
+const windowShaftLayer = createWindowShafts({ PIXI: globalThis.PIXI, root: shaftRootOf, render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+// A foot in squares, by the scene's grid (5 ft squares: 0.2; metres turned to feet).
+const footInSquares = () => { const d = Number(canvas.grid?.distance) || 5, u = String(canvas.grid?.units ?? "ft").toLowerCase(); return /^m(et(er|re)s?)?$|^m.?$/.test(u) ? 0.3048 / d : 1 / d; };
+const shaftsOn = () => { try { return hotSetting("windowLight") !== false && hotSetting("windowLightLocal") !== false && qualityRank(localQuality()) >= 2; } catch { return false; } };
+const rebuildShafts = () => {
+  try {
+    if (!canvas?.ready || !shaftsOn() || !sunNow) { windowShaftLayer.clear(); return; }
+    const indoors = indoorPolygons(), shafts = indoors.length ? windowShafts({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, indoors, foot: footInSquares() }) : [];
+    const glow = sunNow.moon ? null : sunGlow(clockNow()), warm = [1, 0.95, 0.84];
+    const rgb = sunNow.moon ? [0.75, 0.83, 1] : glow ? warm.map((v, i) => v + (glow.color[i] - v) * glow.amount) : warm;
+    const strength = Number(sunNow.strength) || 0;
+    windowShaftLayer.build({ shafts, bounds: canvas.dimensions.sceneRect, indoors, color: new PIXI.Color(rgb).toNumber(), alpha: sunNow.moon ? 0.55 * Math.min(1, strength / 0.2) : 0.6 * strength });
+  } catch { windowShaftLayer.clear(); }
+};
 const wallShadowsSoon = () => { if (!wallShadowTimer) wallShadowTimer = setTimeout(rebuildWallShadows, 150); };
-for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { wallShadowsSoon(); });
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { wallShadowsSoon(); });
 Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) wallShadowsSoon(); });
 Hooks.on("canvasTearDown", () => {
-  clearTimeout(wallShadowTimer); wallShadowTimer = null; wallQuads = []; wallShadows.clear();
+  clearTimeout(wallShadowTimer); wallShadowTimer = null; wallQuads = []; wallShadows.clear(); windowShaftLayer.clear();
+  try { shaftRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
+  shaftRoot = null;
   try { wallShadowRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
   wallShadowRoot = null;
 });
@@ -1346,6 +1475,9 @@ const movementFeel = createMovementFeel({
         skip, gone,
         // Set to cast no shadow (Animater casts no shadow, on its token or prototype token).
         ...(d.flags?.[ID]?.noShadow === true ? { shadow: false } : {}),
+        // Not drawn on this screen (out of the selected token's sight, in the dark): no shadow either, whatever the GM
+        // perceives (its marks and sounds still go by what this screen perceives).
+        ...(t.visible !== true ? { shadow: false } : {}),
         // In a dynamic token ring: how far its ring reaches, a share of its width (Foundry draws the ring at the
         // texture's scale over its subject correction: 0.5 at scale 1, 0.4 at 0.8), false without one.
         ring: d.ring?.enabled === true ? Math.min(0.7, Math.max(0.2, 0.5 * Math.abs(Number(d.texture?.scaleX) || 1) / (Number(t.ring?.scaleCorrection) || 1))) : false,
@@ -1902,7 +2034,7 @@ const listSmokeFires = () => {
       if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
       const d = source.data, token = source.object?.document?.documentName === "Token" ? source.object : null;
       // A light a token carries burns as its torch (held in its square, smoking small) when it is drawn as one.
-      if (token ? lightKindOf(token, d) !== "torch" : !isFireLight(d, source.object?.document?.flags?.[ID] ?? {})) continue;
+      if (token ? lightKindOf(token, d) !== "torch" : !smokesLight(d, source.object?.document?.flags?.[ID] ?? {})) continue;
       if (d.x < view.x || d.y < view.y || d.x > view.x + view.w || d.y > view.y + view.h) continue;
       // Whether this screen sees a standing fire, tested with the list (twice a second), not every frame.
       let seen = true;
@@ -3928,9 +4060,27 @@ Hooks.once("init", () => {
   registerSetting("wallShadowsLocal", { name: "Walls cast shadows in sunlight on my screen",
     hint: "Turn off to never draw wall shadows on this screen (the world setting decides for everyone).",
     scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("windowLight", { name: "Light through windows",
+    hint: "The sun shines through windows and open doors onto the floor inside, in from where it stands: short shafts at noon, long golden ones at dawn and dusk, silver under a bright moon. Shows only under a roof, a region that keeps the weather out (as for snow and rain). Drawn at Balanced quality or better.",
+    scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("windowLightLocal", { name: "Light through windows on my screen",
+    hint: "Turn off to never draw light through windows on this screen (the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
     hint: "How tall walls stand for their shadows, when neither the Wall Height module nor the scene's level gives a height.",
     scope: "world", config: true, type: Number, range: { min: 0.5, max: 10, step: 0.5 }, default: 2 });
+  registerSetting("sunColor", { name: "Sunrise and sunset colour",
+    hint: "In scenes whose sun follows the time of day, the low sun turns the whole map golden, then deep orange at the horizon, with a rose afterglow just after sunset and before sunrise (and moonlight by night, below). Drawn on each screen over the lit map: the scene's own lighting and darkness are not changed. On, it turns off Calendaria's own “Sync Scene Ambience with Time of Day”, so the map is not coloured twice.",
+    scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("sunColorLocal", { name: "Sunrise and sunset colour on my screen",
+    hint: "Turn off to never colour the map at dawn and dusk on this screen (the world setting decides for everyone).",
+    scope: "client", config: true, type: Boolean, default: true });
+  registerSetting("moonLight", { name: "Moonlight",
+    hint: "By night the moon tints the map silver-blue and casts faint shadows from creatures and walls, by how much of it is lit: bright at full moon, nothing at new moon. Needs Calendaria or Simple Calendar Reborn for the moon's phase.",
+    scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("sunColorStrength", { name: "Colour strength",
+    hint: "How strongly dawn and dusk colour the map.",
+    scope: "world", config: true, type: Number, range: { min: 0.1, max: 1, step: 0.05 }, default: 0.6 });
   // The sun for creatures' shadows (Animater settings → Sun): the world's default, and which calendar tells the time.
   registerSetting(SUN_SETTING, { name: "Default sun", scope: "world", config: false, type: Object, default: { ...DEFAULT_SUN_SETTING } });
   registerSetting(CLOCK_SETTING, { name: "Time of day from", scope: "world", config: false, type: String, default: "auto" });
@@ -4563,6 +4713,22 @@ Hooks.on("renderWallConfig", (app, html) => {
   // After the window's last section, inside its scrolling part (before the footer it left pinned under the rest).
   const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
   if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
+});
+// Ambient Light configuration → Light Animation: whether this light smokes and shimmers with heat. Auto follows its
+// animation (a torch, flame or fire does); On and Off choose for this light alone.
+Hooks.on("renderAmbientLightConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.smoke"]`)) return;
+  const flags = (app.document ?? app.object)?.flags?.[ID] ?? {};
+  const pick = (name, label) => {
+    const v = flags[name] === true || flags[name] === "true" ? "true" : flags[name] === false || flags[name] === "false" ? "false" : "";
+    return `<div class="form-group"><label>${label}</label><div class="form-fields"><select name="flags.${ID}.${name}">${[["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
+  };
+  const set = document.createElement("fieldset");
+  set.innerHTML = `<legend>Animater</legend>${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}
+    <p class="hint">Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both.</p>`;
+  const tab = root.querySelector('.tab[data-tab="animation"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
+  tab.append(set);
 });
 // Token configuration fields go on both a placed token's sheet and its actor's prototype token.
 const onTokenConfig =(fn) => { Hooks.on("renderTokenConfig", fn); Hooks.on("renderPrototypeTokenConfig", fn); };

@@ -6,11 +6,14 @@ export const FIRE_ANIMATIONS = Object.freeze(new Set(['torch', 'flame', 'fire', 
 
 // Whether a light (its source data, plus its document's Animater flags) is a fire.
 export function isFireLight(data = {}, flags = {}) {
-  if (flags?.heatHaze === false) return false;
-  if (flags?.heatHaze === true) return true;
-  const type = String(data?.animation?.type ?? '').toLowerCase();
-  return FIRE_ANIMATIONS.has(type);
+  return choiceOf(flags?.heatHaze) ?? FIRE_ANIMATIONS.has(String(data?.animation?.type ?? '').toLowerCase());
 }
+// Whether a light sends up smoke (Ambient Light configuration → Animater: Smoke): its own choice, else a fire does.
+export function smokesLight(data = {}, flags = {}) {
+  return choiceOf(flags?.smoke) ?? FIRE_ANIMATIONS.has(String(data?.animation?.type ?? '').toLowerCase());
+}
+// A light's own on/off choice (the form saves "true"/"false"; "" or none follows its animation).
+const choiceOf = (v) => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : null);
 
 // The haze's tag (a lasting 'haze', see scene-distortion.mjs): over the flame and a little above it, where the heat
 // rises (never over the creature holding it). A bigger fire (a bright light reaching further) is a little wider, never

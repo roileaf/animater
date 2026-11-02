@@ -126,3 +126,43 @@ test('the layer bakes the shadows once into one soft picture under the creatures
   shadows.clear();
   assert.equal(root.children.length, 0);
 });
+
+import { windowOpening, windowShafts, createWindowShafts, WINDOW_SHAFT_CAP } from '../../../scripts/engines/motion/wall-shadows.mjs';
+test('light through windows: a window between its sill and head, an open door from the floor, nothing through a solid wall or closed door', () => {
+  assert.deepEqual(windowOpening({ light: 30 }, 2), { bottom: 0.6000000000000001, top: 1.4000000000000001, alpha: 0.8 }, 'a 3 ft sill, a 7 ft head');
+  assert.deepEqual(windowOpening({ light: 30, top: 4 }, 2), windowOpening({ light: 30 }, 2), 'a tall wall (a 20 ft ceiling) keeps the window its size');
+  assert.ok(Math.abs(windowOpening({ light: 30 }, 2, 0.3048 / 1.5).top - 7 * 0.3048 / 1.5) < 1e-9, '1.5 m squares');
+  assert.ok(windowOpening({ light: 40 }, 2), 'distance-limited window');
+  assert.equal(windowOpening({ light: 20 }, 2), null, 'a solid wall');
+  assert.equal(windowOpening({ light: 10 }, 2), null, 'foliage casts dappled shade, no shaft');
+  assert.equal(windowOpening({ door: 1, ds: 0, light: 20 }, 2), null, 'closed door');
+  assert.deepEqual(windowOpening({ door: 1, ds: 1, light: 20 }, 2), { bottom: 0, top: 1.4000000000000001, alpha: 1 });
+});
+test('window shafts land away from the sun, longer as it sinks, capped', () => {
+  const walls = [{ c: [0, 0, 100, 0], light: 30 }];
+  const high = windowShafts({ walls, sun: { angle: -90, height: 60, strength: 1 }, grid: 100 });
+  const low = windowShafts({ walls, sun: { angle: -90, height: 10, strength: 1 }, grid: 100 });
+  assert.equal(high.length, 1);
+  assert.ok(high[0].points[5] > 0, 'sun in the north: the light falls south');
+  assert.ok(low[0].points[5] > high[0].points[5], 'longer at dusk');
+  assert.ok(low[0].points[5] <= WINDOW_SHAFT_CAP * 100 + 1e-6, 'capped');
+  assert.deepEqual(windowShafts({ walls, sun: null }), []);
+  assert.deepEqual(windowShafts({ walls: [{ c: [0, 0, 100, 0], light: 20 }], sun: { angle: -90, height: 30, strength: 1 } }), []);
+});
+test('the shafts layer draws nothing without a roof to fall under', () => {
+  const added = [];
+  const layer = createWindowShafts({ PIXI: {}, root: () => ({ addChild: (c) => added.push(c) }), render: () => {} });
+  layer.build({ shafts: [{ points: [0, 0, 1, 0, 1, 1, 0, 1], alpha: 1 }], bounds: { x: 0, y: 0, width: 100, height: 100 }, indoors: [] });
+  assert.equal(layer.built, false);
+});
+test('a door between two rooms under the roof lets no daylight through; one to the outside does', () => {
+  const sun = { angle: -90, height: 30, strength: 1 }, roof = [0, 0, 1000, 0, 1000, 1000, 0, 1000];
+  const inner = { c: [400, 500, 600, 500], door: 1, ds: 1, light: 20 }, outer = { c: [400, 0, 600, 0], door: 1, ds: 1, light: 20 };
+  assert.equal(windowShafts({ walls: [inner], sun, grid: 100, indoors: [roof] }).length, 0, 'sun side indoors');
+  assert.equal(windowShafts({ walls: [outer], sun, grid: 100, indoors: [roof] }).length, 1, 'sun side outdoors');
+});
+test('glass drawn as a wall that lets light through but stops movement is a window; one that stops nothing is not', () => {
+  assert.ok(windowOpening({ light: 0, move: 20 }, 2), 'light none, movement normal');
+  assert.equal(windowOpening({ light: 0, move: 0 }, 2), null, 'stops nothing');
+  assert.equal(windowOpening({ light: 0 }, 2), null, 'no movement given');
+});
