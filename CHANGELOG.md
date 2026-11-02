@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.14 (2026-11-02)
+
+- **Animated tokens cast moving shadows.** A token whose art plays (a video, such as Tokener's animated top-down tokens) casts its shadow from its own frames as they play, so its wings and tail move in its shadow too.
+
 ## 2.4.13 (2026-11-02)
 
 - **Shadows stay while a creature casts.** A creature playing one of Animater's animations (a spell's cast, a lunge, a recoil) no longer loses its shadow until the animation ends; it only leaves no steps or dust meanwhile. A teleport still takes the shadow away while the creature is gone.

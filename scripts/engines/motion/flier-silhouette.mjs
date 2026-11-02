@@ -8,6 +8,11 @@
 export const SILHOUETTE_SIZE = 128;
 // The size to draw a silhouette at for art drawn `drawn` pixels across: 128, 256 or 512.
 export const silhouetteSize = (drawn) => { const d = Number(drawn) || 0; return d > 320 ? 512 : d > 160 ? 256 : SILHOUETTE_SIZE; };
+// The blurs, in the silhouette's pixels at any size: sharp for a low flier, soft for a high one.
+export const SHARP_BLUR = SILHOUETTE_SIZE * 0.025, SOFT_BLUR = SILHOUETTE_SIZE * 0.08;
+// Whether `texture` plays (a video token, such as Tokener's animated top-down art): its shadow is drawn from its own
+// frames as they play, not from one made silhouette.
+export const isMoving = (texture) => /^video$/i.test(texture?.baseTexture?.resource?.source?.tagName ?? '');
 // Art that covers more than this share of its frame has no outline to cast.
 export const SOLID_COVERAGE = 0.82;
 // How much larger than its token a shadow may grow (wide wings, a long tail).
@@ -85,7 +90,7 @@ export function createSilhouettes({ PIXI, doc = globalThis.document, now = () =>
       ctx.fillRect(0, 0, c.width, c.height);
       return { texture: PIXI.Texture.from(c), scale: (w + pad * 2) / w };
     };
-    return { sharp: draw(SILHOUETTE_SIZE * 0.025), soft: draw(SILHOUETTE_SIZE * 0.08), width: w, height: h, fill };
+    return { sharp: draw(SHARP_BLUR), soft: draw(SOFT_BLUR), width: w, height: h, fill };
   };
   return {
     // `size`: the silhouette's longer side (silhouetteSize of the art as drawn); each size made once.

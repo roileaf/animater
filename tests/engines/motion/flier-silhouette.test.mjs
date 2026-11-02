@@ -95,6 +95,32 @@ test('a flier with cut-out art casts its silhouette; without one the round shado
   assert.ok(sil.destroyed && g.destroyed);
 });
 
+test('animated art (a video token) casts a shadow that moves with it: its own frames, tinted black and blurred', () => {
+  const point = () => ({ x: 0, y: 0, set(x, y = x) { this.x = x; this.y = y; } });
+  class Node { constructor() { this.children = []; this.position = point(); this.scale = point(); this.anchor = point(); this.alpha = 1; this.visible = true; this.destroyed = false; this.tint = 0xffffff; this.filters = null; }
+    addChild(...c) { for (const n of c) { this.children.push(n); n.parent = this; } } destroy() { this.destroyed = true; } }
+  class Graphics extends Node { beginFill() {} drawEllipse() {} endFill() {} }
+  class BlurFilter { constructor() { this.blur = 0; } }
+  const root = new Node(), shape = { sharp: { texture: 'S' }, soft: { texture: 'F' }, width: 128, height: 128, fill: { w: 1, h: 1 } };
+  const video = { baseTexture: { resource: { source: { tagName: 'VIDEO' } } }, frame: { width: 512, height: 512 } };
+  const still = { baseTexture: { resource: { source: { tagName: 'IMG' } } }, frame: { width: 512, height: 512 } };
+  const layer = createMovementFeelLayer({ PIXI: { Graphics, Container: Node, Sprite: Node, BlurFilter }, root: () => root,
+    silhouettes: { get: () => shape, clear() {} } });
+  const g = layer.addShadow(), geom = shadowGeometry({ x: 500, y: 500, width: 100, lift: 10 });
+  layer.updateShadow(g, { ...geom, art: () => ({ texture: video, width: 100, height: 100, rotation: 0 }) });
+  const inner = root.children.find((c) => c !== g).children[0], [sharp, soft] = inner.children;
+  assert.equal(sharp.texture, video, 'the playing video itself, so every frame shows');
+  assert.equal(sharp.tint, 0x000000, 'black');
+  assert.equal(soft.visible, false);
+  assert.ok(inner.filters?.[0] instanceof BlurFilter && inner.filters[0].blur > 0, 'softened as the made ones are');
+  assert.ok(Math.abs(Math.abs(sharp.scale.x) * 512 - 100 * silhouettePose(geom).size) < 1e-9, 'drawn at the art’s size');
+  layer.updateShadow(g, { ...geom, art: () => ({ texture: still, width: 100, height: 100, rotation: 0 }) });
+  assert.equal(sharp.texture, 'S', 'a still image: the made silhouette again');
+  assert.equal(sharp.tint, 0xffffff);
+  assert.equal(soft.visible, true);
+  assert.equal(inner.filters, null);
+});
+
 test('silhouettes are made one a frame, so many new creatures at once never stall', () => {
   let t = 0;
   const doc = { createElement: () => ({ getContext: () => ({ drawImage() {}, fillRect() {}, getImageData: () => ({ data: new Uint8ClampedArray(32 * 32 * 4) }) }) }) };

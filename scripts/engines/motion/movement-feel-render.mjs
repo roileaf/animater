@@ -3,7 +3,7 @@
 // faded; a flier's shadow is its art's soft silhouette laid on the floor (flier-silhouette.mjs), else a stack of faint
 // ellipses, no blur.
 // `root()` returns (and makes, when needed) the container on the viewed level's floor.
-import { createSilhouettes, silhouettePose, silhouetteScale, silhouetteSize } from './flier-silhouette.mjs';
+import { createSilhouettes, silhouettePose, silhouetteScale, silhouetteSize, isMoving, SHARP_BLUR, SOFT_BLUR } from './flier-silhouette.mjs';
 
 const DRAW = 100;
 const SHADOW_RINGS = 14;
@@ -265,7 +265,15 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     if (!shape) { if (node && !node.outer.destroyed) node.outer.visible = false; return false; }
     if (!node || node.outer.destroyed) { shapes.set(holder, node = silhouetteNode()); parent.addChild(node.outer); }
     else if (node.outer.parent !== parent) parent.addChild(node.outer);
-    if (node.shape !== shape) { node.sharp.texture = shape.sharp.texture; node.soft.texture = shape.soft.texture; node.shape = shape; }
+    // Art that plays (a video token): its own frames as they play, tinted black and blurred as the made ones are, so
+    // the shadow moves with it; the made silhouette still says whether it has an outline and how much of it is art.
+    const moving = isMoving(art.texture) && typeof PIXI.BlurFilter === 'function';
+    const key = moving ? art.texture : shape;
+    if (node.shape !== key) {
+      node.sharp.texture = moving ? art.texture : shape.sharp.texture; node.soft.texture = shape.soft.texture; node.shape = key;
+      node.sharp.tint = moving ? 0x000000 : 0xffffff; node.soft.visible = !moving;
+      node.inner.filters = moving ? [node.blur ??= new PIXI.BlurFilter()] : null;
+    }
     const pose = silhouettePose(geom, { cast }), k = silhouetteScale({ artWidth: art.width * (shape.fill?.w ?? 1), artHeight: art.height * (shape.fill?.h ?? 1), width: geom.width }) * pose.size;
     node.outer.visible = true;
     node.outer.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
@@ -277,6 +285,14 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     node.outer.alpha = geom.alpha;
     node.inner.rotation = (art.rotation || 0) - along;
     const sx = ((art.width * k) / shape.width) * (art.flipX ? -1 : 1), sy = ((art.height * k) / shape.height) * (art.flipY ? -1 : 1);
+    if (moving) {
+      const f = art.texture.frame, zoom = Math.abs(parent.worldTransform?.a ?? 1) || 1;
+      node.sharp.scale.set(((art.width * k) / f.width) * (art.flipX ? -1 : 1), ((art.height * k) / f.height) * (art.flipY ? -1 : 1));
+      node.sharp.alpha = 1;
+      // The made ones' blur, carried from the silhouette's pixels to the screen's.
+      node.blur.blur = (SHARP_BLUR + (SOFT_BLUR - SHARP_BLUR) * pose.soft) * ((art.width * k) / shape.width) * zoom;
+      return true;
+    }
     node.sharp.scale.set(sx, sy); node.soft.scale.set(sx, sy);
     node.sharp.alpha = 1 - pose.soft; node.soft.alpha = pose.soft;
     return true;
