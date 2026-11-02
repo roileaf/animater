@@ -142,7 +142,7 @@ put('monsterfeatures24-mmTramplingCharg', design('The creature thunders straight
 put('monsterfeatures24-mmTrample0000000', design('The creature stomps down on a prone foe.', () => [
   motion('slam', 'source', { stageId: 'stomp', duration: 900, intensity: 0.6 }),
   impact('Stomp', ['impact.009.orange'], { stageId: 'hit', after: 'stomp', anchor: 'start', offset: 600, duration: 900 }),
-  aura('Ground cracks', ['ground_cracks.01.orange'], { subject: 'targets', after: 'hit', anchor: 'start', duration: 1400, scale: 0.6, below: true, opacity: 0.7 }),
+  aura('Ground cracks', ['impact.ground_crack.01.orange'], { subject: 'targets', after: 'hit', anchor: 'start', duration: 1400, scale: 0.6, below: true, opacity: 0.7 }),
   motion('press', 'targets', { after: 'hit', anchor: 'start', duration: 700, intensity: 0.6 }),
 ], ab('kick')));
 put('monsterfeatures24-mmAquaticCharge0', design('The creature swims straight at an enemy in a rush of bubbles.', () => [
@@ -198,7 +198,7 @@ put('monsterfeatures24-mmLeap0000000000', design('A powerful jump: dust on take-
 const deadlyLeap = design('The creature leaps high and crashes down onto the creatures below.', () => [
   motion('leap', 'source', { stageId: 'jump', duration: 1500, intensity: 0.5, distance: 3, motionRange: 'target', motionHeading: 'toward', motionEndpoint: 'near' }),
   impact('Crushing landing', ['impact.009.orange'], { stageId: 'land', after: 'jump', anchor: 'arrival', duration: 1000, scale: 1.1 }),
-  aura('Ground cracks', ['ground_cracks.01.orange'], { subject: 'targets', after: 'land', anchor: 'start', duration: 1500, scale: 0.8, below: true, opacity: 0.75 }),
+  aura('Ground cracks', ['impact.ground_crack.01.orange'], { subject: 'targets', after: 'land', anchor: 'start', duration: 1500, scale: 0.8, below: true, opacity: 0.75 }),
   motion('stagger', 'targets', { after: 'land', anchor: 'start', duration: 750, intensity: 0.6 }),
 ], { sound: 'bludgeon' });
 put(['monsterfeatures-bG5Z45jj4wz0N3T6:dnd5eactivity000', 'monsterfeatures-bG5Z45jj4wz0N3T6:dnd5eactivity100', 'monsterfeatures24-mmDeadlyLeap0000'], deadlyLeap);
@@ -214,7 +214,7 @@ put(['monsterfeatures-X96xsQjIolyHtV91', 'monsterfeatures24-mmWhirlwindOfSan'], 
 put('monsterfeatures24-mmWorldshakingMo', design('The colossus strides and every footfall ends in a ground-splitting shock wave.', () => [
   motion('rush', 'source', { stageId: 'stride', duration: 1600, intensity: 0.4, distance: 2, motionRange: 'distance', motionHeading: 'toward', motionEndpoint: 'near' }),
   motion('slam', 'source', { stageId: 'stomp', after: 'stride', anchor: 'end', duration: 800, intensity: 0.6 }),
-  area('Shock wave', ['ground_cracks.03.orange'], { stageId: 'quake', after: 'stomp', anchor: 'start', offset: 550, duration: 2200 }),
+  area('Shock wave', ['impact.ground_crack.03.orange'], { stageId: 'quake', after: 'stomp', anchor: 'start', offset: 550, duration: 2200 }),
   aura('Debris', ['falling_rocks.top.1x1.grey'], { after: 'stomp', anchor: 'start', offset: 550, duration: 1500, scale: 0.9 }),
   motion('stagger', 'targets', { after: 'quake', anchor: 'start', offset: 150, duration: 800, intensity: 0.6 }),
 ], { sound: 'earthquake' }));
@@ -228,7 +228,7 @@ put(['classes24-phbftrActionSurg', 'classfeatures-xF1VTcJ3AdkbTsdQ'], design('Ac
 ], { sound: null }));
 put(['classes24-phbftrSecondWind', 'classfeatures-nTjmWbyHweXuIqwc'], design('Second Wind: the fighter digs into their stamina, catches a breath and steadies.', () => [
   motion('press', 'source', { stageId: 'breath', duration: 800, intensity: 0.5 }),
-  aura('Steadying heartbeat', ['ui.heartbeat.01.green'], { after: 'breath', anchor: 'start', offset: 200, duration: 1800, scale: 0.6, offsetY: -0.55, offsetUnits: 'token' }),
+  aura('Steadying heartbeat', ['ui.heartbeat.02.green'], { after: 'breath', anchor: 'start', offset: 200, duration: 1800, scale: 0.6, offsetY: -0.55, offsetUnits: 'token' }),
   motion('pulse', 'source', { after: 'breath', anchor: 'end', duration: 700, intensity: 0.4 }),
 ], { sound: null }));
 const indomitable = design('Indomitable: the fighter shrugs off the failed save through sheer grit.', () => [
@@ -239,19 +239,19 @@ const indomitable = design('Indomitable: the fighter shrugs off the failed save 
 put(['classes24-phbftrIndomitabl', 'classfeatures-653ZHbNcmm7ZGXbw'], indomitable);
 put('classfeatures-Q1exex5ALteprrPo', design('Indomitable Might: raw strength braced against the ground.', () => [
   motion('brace', 'source', { stageId: 'set', duration: 800, intensity: 0.7 }),
-  aura('Ground gives under the strain', ['ground_cracks.01.orange'], { after: 'set', anchor: 'start', offset: 300, duration: 1500, scale: 0.6, below: true, opacity: 0.6 }),
+  aura('Ground gives under the strain', ['impact.ground_crack.01.orange'], { after: 'set', anchor: 'start', offset: 300, duration: 1500, scale: 0.6, below: true, opacity: 0.6 }),
 ], { sound: null }));
 const clingToLife = design('Refusing to fall: the creature staggers, then plants itself with a stubborn heartbeat at 1 hit point.', () => [
   motion('stagger', 'source', { stageId: 'reel', duration: 700, intensity: 0.6 }),
   motion('brace', 'source', { after: 'reel', anchor: 'end', duration: 700, intensity: 0.6 }),
-  aura('Stubborn heartbeat', ['ui.heartbeat.01.red', 'ui.heartbeat.01.green'], { after: 'reel', anchor: 'end', duration: 1800, scale: 0.6, offsetY: -0.55, offsetUnits: 'token', ...tint('#d84a4a') }),
+  aura('Stubborn heartbeat', ['ui.heartbeat.02.red', 'ui.heartbeat.01.green'], { after: 'reel', anchor: 'end', duration: 1800, scale: 0.6, offsetY: -0.55, offsetUnits: 'token' }),
 ], { sound: null });
 put(['monsterfeatures-8FX2KlWyBAKEYGzs', 'origins24-phbsptRelentless', 'races-97c8i9Z28thvZuA8', 'classes24-phbbrbRelentless:dnd5eactivity100', 'classfeatures-FqfmbPgxiyrWzhYk:dnd5eactivity000', 'classfeatures-FqfmbPgxiyrWzhYk:dnd5eactivity100'], clingToLife);
 put(['classes24-phbbrbRage000000', 'classfeatures-VoR0SUrNX5EJVPIO'], design('Rage: a primal roar, the barbarian swells and shakes with fury as a red flush washes over them.', () => [
   motion('brace', 'source', { stageId: 'gather', duration: 600, intensity: 0.7 }),
   motion('shake', 'source', { after: 'gather', anchor: 'end', duration: 700, intensity: 0.6 }),
   motion('pulse', 'source', { after: 'gather', anchor: 'end', duration: 900, intensity: 0.7 }),
-  aura('Fury flares', ['impact.012.dark_red', 'impact.012.blue'], { after: 'gather', anchor: 'end', duration: 1200, scale: 0.9, ...tint('#c0392b') }),
+  aura('Fury flares', ['impact.012.red', 'impact.012.blue'], { after: 'gather', anchor: 'end', duration: 1200, scale: 0.9 }),
   aura('Ground shudders', ['ground_cracks.01.dark_red', 'ground_cracks.01.orange'], { after: 'gather', anchor: 'end', duration: 1800, scale: 0.7, below: true, opacity: 0.65 }),
 ], ab('battleCry')));
 put(['classes24-phbbrbFrenzy0000', 'classfeatures-CkbbAckeCtyHXEnL'], { ...strike('Frenzy: a reckless, furious extra blow while raging.', { hit: ['melee_generic.slash.01.orange'], hitTint: '#d65a3a', src: 'lunge', srcI: 1, tgt: 'stagger', accent: ['impact.012.dark_red', 'impact.012.blue'], accentTint: '#c0392b' }), ...ab('greatsword') });
@@ -389,7 +389,7 @@ put('monsterfeatures-BpwXJvMA7MfVQ7i6', design('Rock Catching: the giant braces 
 put('monsterfeatures24-mmBoulderToss000', design('The giant winds back and hurls a boulder that smashes down at the point.', () => [
   motion('throw', 'source', { stageId: 'wind', duration: 900, intensity: 0.8 }),
   projectile('Boulder in flight', ['boulder.toss.02.01.stone.brown'], { stageId: 'rock', after: 'wind', anchor: 'start', offset: 350, duration: 1300 }),
-  area('Boulder crashes down', ['ground_cracks.02.orange'], { stageId: 'crash', after: 'rock', anchor: 'end', offset: -150, duration: 1800 }),
+  area('Boulder crashes down', ['impact.ground_crack.02.orange'], { stageId: 'crash', after: 'rock', anchor: 'end', offset: -150, duration: 1800, ...tint('#a08060') }),
   impact('Debris spray', ['falling_rocks.side.1x1.grey'], { after: 'rock', anchor: 'end', offset: -150, duration: 1200, scale: 0.8 }),
   motion('stagger', 'targets', { after: 'crash', anchor: 'start', offset: 100, duration: 700, intensity: 0.6 }),
 ], { sound: 'earth' }));
@@ -461,25 +461,25 @@ put('monsterfeatures24-mmMucusCloud0000:clFFG8uDBSFzxIo8', design('Mucus Cloud: 
 // Spitting / ranged natural attacks
 put(['monsterfeatures-0awyZX05OnVLF4k2', 'monsterfeatures24-mmBlindingSpittl'], design('Blinding Spittle: a chemical glob is spat at a point and bursts in a blinding flash.', () => [
   motion('throw', 'source', { stageId: 'spit', duration: 700, intensity: 0.5 }),
-  projectile('Chemical glob', ['throwable.throw.flask.01.white', 'throwable.throw.flask.01.orange'], { stageId: 'glob', after: 'spit', anchor: 'start', offset: 250, duration: 900, scale: 0.4, ...tint('#e8f0b0') }),
+  projectile('Chemical glob', ['ranged.04.projectile.01.green', 'throwable.throw.flask.01.orange'], { stageId: 'glob', after: 'spit', anchor: 'start', offset: 250, duration: 900, scale: 0.4, ...tint('#e8f0b0') }),
   area('Blinding flash', ['explosion.02.yellow', 'impact.006.yellow'], { stageId: 'flash', after: 'glob', anchor: 'end', offset: -100, duration: 1300 }),
   motion('recoil', 'targets', { after: 'flash', anchor: 'start', offset: 100, duration: 600, intensity: 0.4 }),
 ], { sound: 'light' }));
 put('monsterfeatures24-mmPoisonousSpitt', design('Poisonous Spittle: a stream of venom is spat into the target\'s face.', () => [
   motion('throw', 'source', { stageId: 'spit', duration: 700, intensity: 0.5 }),
-  travel('Venom stream', ['ranged.01.instant.01.dark_green', 'ranged.01.instant.01.dark_orange'], { stageId: 'stream', after: 'spit', anchor: 'start', offset: 250, duration: 800, scale: 0.6, ...tint('#7fbf3a') }),
-  impact('Venom splash', ['impact_themed.poison.greenyellow', 'liquid.splash.blue'], { after: 'stream', anchor: 'arrival', duration: 1000, scale: 0.7, ...tint('#7fbf3a') }),
+  travel('Venom stream', ['ranged.04.instant.01.green', 'ranged.01.instant.01.dark_orange'], { stageId: 'stream', after: 'spit', anchor: 'start', offset: 250, duration: 800, scale: 0.6, ...tint('#7fbf3a') }),
+  impact('Venom splash', ['liquid.splash02.green', 'liquid.splash.blue'], { after: 'stream', anchor: 'arrival', duration: 1000, scale: 0.7, ...tint('#7fbf3a') }),
   motion('recoil', 'targets', { after: 'stream', anchor: 'arrival', duration: 650, intensity: 0.5 }),
 ], { sound: 'poison' }));
 const sting = design('A stinging tentacle lashes the target with paralytic venom.', () => [
   motion('lunge', 'source', { stageId: 'lash', duration: 600, intensity: 0.7 }),
-  impact('Venomous sting', ['impact_themed.poison.greenyellow', 'impact.003.blue'], { stageId: 'hit', after: 'lash', anchor: 'start', offset: 200, duration: 1000, scale: 0.7, ...tint('#a8d65a') }),
+  impact('Venomous sting', ['liquid.splash02.green', 'impact.003.blue'], { stageId: 'hit', after: 'lash', anchor: 'start', offset: 200, duration: 1000, scale: 0.7, ...tint('#a8d65a') }),
   motion('shake', 'targets', { after: 'hit', anchor: 'start', duration: 800, intensity: 0.4 }),
 ], { sound: 'poison' });
 put(['monsterfeatures24-mmParalyzingTent', 'monsterfeatures-nKpLMXS9E10TSGhU'], sting);
 const webShot = design('A sticky strand of webbing is shot at the target and wraps around it.', () => [
   motion('throw', 'source', { stageId: 'shoot', duration: 650, intensity: 0.4 }),
-  travel('Web strand', ['web.complete.002.white', 'energy_strands.range.standard.purple'], { stageId: 'strand', after: 'shoot', anchor: 'start', offset: 200, duration: 900, scale: 0.5, ...tint('#eeeeee') }),
+  travel('Web strand', ['energy_strands.range.standard.grey', 'energy_strands.range.standard.purple'], { stageId: 'strand', after: 'shoot', anchor: 'start', offset: 200, duration: 900, scale: 0.5, ...tint('#eeeeee') }),
   impact('Webbing wraps', ['web.complete.002.white'], { after: 'strand', anchor: 'arrival', duration: 1500, scale: 0.6 }),
   motion('shake', 'targets', { after: 'strand', anchor: 'arrival', duration: 800, intensity: 0.35 }),
 ], { sound: 'vines' });
@@ -548,7 +548,7 @@ put('monsterfeatures24-mmDeathlyTelepor', design('Deathly Teleport: the creature
 put('monsterfeatures24-mmRadiantTelepor', design('Radiant Teleport: the celestial vanishes in a flash and radiance bursts where it was.', () => [
   aura('Vanish in light', ['teleport.01.yellow', 'teleport.01.blue'], { stageId: 'out', duration: 1300, scale: 0.9 }),
   motion('flicker', 'source', { after: 'out', anchor: 'start', duration: 1000, intensity: 0.8 }),
-  area('Radiant burst', ['explosion.02.yellow', 'impact.006.yellow'], { after: 'out', anchor: 'start', offset: 250, duration: 1500 }),
+  area('Radiant burst', ['divine_smite.target.yellowwhite', 'impact.006.yellow'], { after: 'out', anchor: 'start', offset: 250, duration: 1500 }),
 ], { sound: 'holy' }));
 
 // ---------------------------------------------------------------- divine & paladin
@@ -602,13 +602,13 @@ put('classfeatures-E8ozg8avUVOX9N7u', design('Divine Sense: the paladin opens th
 ], { sound: 'detect' }));
 const holyNimbus = design('Holy Nimbus: the paladin blazes with an aura of sunlight.', () => [
   motion('levitate', 'source', { stageId: 'rise', duration: 1400, intensity: 0.25 }),
-  aura('Sunlight radiates', ['spirit_guardians.blueyellow.no_ring', 'spirit_guardians.blueyellow.ring'], { stageId: 'sun', duration: 2600, scale: 1.4, opacity: 0.8, below: true }),
+  aura('Sunlight radiates', ['markers.light.complete.yellow', 'spirit_guardians.blueyellow.ring'], { stageId: 'sun', duration: 2600, scale: 1.4, opacity: 0.8, below: true }),
   aura('Radiant core', ['sacred_flame.source.yellow'], { after: 'sun', anchor: 'start', offset: 200, duration: 1600, scale: 0.8 }),
 ], { sound: 'holy' });
 put(['classes24-phbpdnHolyNimbus:k6gGbWQBoLTgqbSG', 'classfeatures-ANE5gjojvhNEagzz'], holyNimbus);
 put('monsterfeatures24-mmHolyBurst00000', design('Holy Burst: a sphere of radiant light detonates at the chosen point.', () => [
   cast('Radiance gathers', ['sacred_flame.source.yellow'], { stageId: 'gather', duration: 900, scale: 0.6 }),
-  area('Radiant detonation', ['explosion.02.yellow', 'impact.006.yellow'], { stageId: 'burst', after: 'gather', anchor: 'start', offset: 500, duration: 1600 }),
+  area('Radiant detonation', ['divine_smite.target.yellowwhite', 'impact.006.yellow'], { stageId: 'burst', after: 'gather', anchor: 'start', offset: 500, duration: 1600 }),
   motion('recoil', 'targets', { after: 'burst', anchor: 'start', offset: 200, duration: 700, intensity: 0.5 }),
 ], { sound: 'holy' }));
 put('classfeatures-U7BIPVPsptBmwsnV', design('Cleansing Touch: the paladin touches a creature and a hostile spell unravels in a soft radiance.', () => [
@@ -627,7 +627,7 @@ put('monsterfeatures24-mmGuidingLight00', design('Guiding Light: a flash of ligh
 ], { sound: 'radiantRay' }));
 put('monsterfeatures24-mmSlayingBow0000', design('Slaying Bow: a radiant arrow flies true at the chosen creature.', () => [
   motion('brace', 'source', { stageId: 'draw', duration: 700, intensity: 0.4 }),
-  travel('Radiant arrow', ['arrow.physical.white'], { stageId: 'arrow', after: 'draw', anchor: 'end', offset: -150, duration: 900, ...tint('#fff0a8') }),
+  travel('Radiant arrow', ['arrow.physical.orange', 'arrow.physical.white'], { stageId: 'arrow', after: 'draw', anchor: 'end', offset: -150, duration: 900 }),
   impact('Radiant strike', ['sacred_flame.target.yellow'], { after: 'arrow', anchor: 'arrival', duration: 1400, scale: 0.8 }),
   motion('recoil', 'targets', { after: 'arrow', anchor: 'arrival', duration: 650, intensity: 0.5 }),
 ], ab('longbow')));
@@ -824,7 +824,7 @@ put(['monsterfeatures-r2nM5I77LnSvkLvD', 'monsterfeatures24-mmConsumeLife000:1Hy
 ], { sound: 'drain' }));
 put('monsterfeatures24-mmLifeDrain00000', design('Life Drain: a necrotic touch withers the target and saps its hit point maximum.', () => [
   motion('lunge', 'source', { stageId: 'touch', duration: 600, intensity: 0.7 }),
-  impact('Withering touch', ['impact.004.dark_purple', 'impact.004.blue'], { stageId: 'hit', after: 'touch', anchor: 'start', offset: 200, duration: 1000, scale: 0.8, ...tint('#6a4a8c') }),
+  impact('Withering touch', ['impact.004.dark_purple', 'impact.004.blue'], { stageId: 'hit', after: 'touch', anchor: 'start', offset: 200, duration: 1000, scale: 0.8, ...tint('#6a4a8c'), bodyLook: 'Withering' }),
   travel('Life siphoned', ['energy_strands.range.standard.dark_purple', 'energy_strands.range.standard.purple'], { after: 'hit', anchor: 'start', offset: 200, duration: 1000, scale: 0.45, travelOrigin: 'target' }),
   motion('recoil', 'targets', { after: 'hit', anchor: 'start', duration: 650, intensity: 0.5 }),
 ], { sound: 'drain' }));
@@ -849,10 +849,10 @@ put('monsterfeatures-wkIN7WTeX8ebbjtv', design('Petrifying Gaze: meeting the cre
 ], { sound: 'earth' }));
 put('monsterfeatures-BDnjS1sQi2pdARh8', design('The stone golem\'s Slow: time drags for creatures around it.', () => [
   motion('press', 'source', { duration: 800, intensity: 0.4 }),
-  aura('Time drags', ['icosahedron.rune.above.dark_greenpurple', 'icosahedron.rune.above.blueyellow'], { subject: 'targets', duration: 2000, scale: 0.5, offsetY: -0.4, offsetUnits: 'token', ...tint('#a9c2d6') }),
+  aura('Time drags', ['magic_signs.circle.02.transmutation.complete.blue', 'icosahedron.rune.above.blueyellow'], { subject: 'targets', duration: 2000, scale: 0.5, offsetY: -0.4, offsetUnits: 'token' }),
 ], { sound: 'slow' }));
 put('monsterfeatures-ZIGTG2qhkJ54jEk4', design('Haste: time quickens around the creature, which moves in blurred afterimages.', () => [
-  aura('Time quickens', ['icosahedron.rune.above.dark_greenpurple', 'icosahedron.rune.above.blueyellow'], { stageId: 'rune', duration: 1600, scale: 0.6, offsetY: -0.4, offsetUnits: 'token' }),
+  aura('Time quickens', ['magic_signs.circle.02.transmutation.complete.yellow', 'icosahedron.rune.above.blueyellow'], { stageId: 'rune', duration: 1600, scale: 0.6, offsetY: -0.4, offsetUnits: 'token' }),
   sprite('Afterimage', { after: 'rune', anchor: 'start', offset: 300, duration: 800, opacity: 0.35, offsetX: -0.15, offsetUnits: 'token' }),
   motion('shake', 'source', { after: 'rune', anchor: 'start', offset: 300, duration: 700, intensity: 0.3 }),
 ], { sound: 'time' }));
@@ -952,7 +952,7 @@ put(['monsterfeatures-dPPLbo3Unu3TqZrs:dnd5eactivity000', 'monsterfeatures-dPPLb
   motion('shake', 'targets', { after: 'babble', anchor: 'start', offset: 400, duration: 700, intensity: 0.3 }),
 ], { sound: 'whispers' }));
 put(['monsterfeatures-hu2pgYS1RD7hglvg', 'monsterfeatures24-mmHorrorNimbus00'], design('Horror Nimbus: scintillating, multicolored light flares from the creature.', () => [
-  area('Scintillating light', ['energy_field.01.multicolored', 'energy_field.01.blue'], { stageId: 'nimbus', duration: 2200, opacity: 0.8 }),
+  area('Scintillating light', ['smoke.puff.ring.01.multicolored', 'energy_field.01.blue'], { stageId: 'nimbus', duration: 2200, opacity: 0.8 }),
   motion('pulse', 'source', { duration: 800, intensity: 0.5 }),
   motion('cower', 'targets', { after: 'nimbus', anchor: 'start', offset: 400, duration: 1000, intensity: 0.4 }),
 ], { sound: 'fear' }));
@@ -967,7 +967,7 @@ put('monsterfeatures24-mmCacophony00000', design('Cacophony: a deafening din eru
 ], { sound: 'sonic' }));
 put('monsterfeatures24-mmThunderousBell', design('Thunderous Bellow: a cone of deafening, terrifying sound bursts from the creature.', () => [
   motion('brace', 'source', { stageId: 'draw', duration: 600, intensity: 0.6 }),
-  area('Bellowing cone', ['extras.tmfx.outpulse.cone.01.fast', 'extras.tmfx.outpulse.cone.01.normal'], { stageId: 'bellow', after: 'draw', anchor: 'end', offset: -100, duration: 1600, ...tint('#9fc7ff') }),
+  area('Bellowing cone', ['extras.tmfx.outpulse.cone.01.fast', 'extras.tmfx.outpulse.cone.01.normal'], { stageId: 'bellow', after: 'draw', anchor: 'end', offset: -100, duration: 1600, ...tint('#9fc7ff'), areaLook: 'tokenshade' }),
   motion('lunge', 'source', { after: 'draw', anchor: 'end', duration: 700, intensity: 0.4 }),
   motion('recoil', 'targets', { after: 'bellow', anchor: 'start', offset: 300, duration: 700, intensity: 0.5 }),
 ], { sound: 'sonic' }));

@@ -20,7 +20,7 @@ put('grab', design('Grab: the creature clamps onto the creature it just hit and 
 ], ab('unarmed')));
 put('constrict', design('Constrict: coils or limbs tighten around the held creature and crush it.', () => [
   motion('brace', 'source', { stageId: 'tighten', duration: 800, intensity: 0.6 }),
-  aura('Coils tighten', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'coil', subject: 'targets', after: 'tighten', anchor: 'start', offset: 150, duration: 1400, scale: 0.7, opacity: 0.8, ...tint('#8a7a5c') }),
+  aura('Coils tighten', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'coil', subject: 'targets', after: 'tighten', anchor: 'start', offset: 150, duration: 1400, scale: 0.7, opacity: 0.8, ...tint('#8a7a5c'), bodyLook: 'Bound' }),
   impact('Crushing squeeze', ['impact.009.orange'], { after: 'coil', anchor: 'start', offset: 600, duration: 800, scale: 0.55 }),
   motion('shake', 'targets', { after: 'coil', anchor: 'start', offset: 300, duration: 1100, intensity: 0.5 }),
 ], ab('unarmed')));
@@ -71,7 +71,7 @@ put('sweep', design('A wide swing or lashing tail sweeps through every creature 
 put('trample', design('Trample: the creature thunders through the spaces of everything in its way.', () => [
   rushTo({ distance: 10 }), dust({ after: 'run', anchor: 'start' }),
   impact('Trampling', ['impact.009.orange'], { stageId: 'hit', after: 'run', anchor: 'arrival', duration: 900, scale: 0.8, optionalTargets: true }),
-  aura('Ground cracks', ['ground_cracks.01.orange'], { subject: 'targets', after: 'hit', anchor: 'start', duration: 1400, scale: 0.6, below: true, opacity: 0.7, optionalTargets: true }),
+  aura('Ground cracks', ['impact.ground_crack.01.orange'], { subject: 'targets', after: 'hit', anchor: 'start', duration: 1400, scale: 0.6, below: true, opacity: 0.7, optionalTargets: true }),
   motion('stagger', 'targets', { after: 'hit', anchor: 'start', duration: 750, intensity: 0.6, optionalTargets: true }),
 ], ab('kick')));
 

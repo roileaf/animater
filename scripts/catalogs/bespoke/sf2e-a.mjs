@@ -86,7 +86,7 @@ export default {
   'sf2e:gPvtmKMRpg9I9D7H': design('Earthen weight crashes onto the target and drags it downward toward cracking ground.', () => [
     cast('Weight of earth', ['cast_generic.earth.01.browngreen'], { stageId: 'eb-c', scale: 0.8, duration: 700 }),
     impact('Earthen weight falls', ['falling_rocks.top.1x1.sandstone', 'falling_rocks.top.1x1.grey'], { stageId: 'eb-r', after: 'eb-c', duration: 1600, scale: 0.8 }),
-    impact('Pulled to ground', ['ground_cracks.02.orange'], { after: 'eb-r', anchor: 'start', offset: 600, duration: 1800, scale: 0.8, below: true }),
+    impact('Pulled to ground', ['impact.ground_crack.02.orange'], { after: 'eb-r', anchor: 'start', offset: 600, duration: 1800, scale: 0.8, below: true, ...tint('#a08060') }),
     motion('press', 'targets', { after: 'eb-r', anchor: 'start', offset: 300, duration: 1300, intensity: 0.9 }),
   ]),
   // Eclipse Burst: a globe of freezing darkness explodes.
@@ -261,7 +261,7 @@ export default {
   // Vitality Web: the network manifests as a web of vital energy.
   'sf2e:6HMiN0oQzeoYR3it': design('Strands of green vital energy web from the caster to each bonded target and bloom into healing light.', () => [
     cast('Network surges', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'vw-c', scale: 0.8, duration: 600 }),
-    travel('Vital threads', ['energy_strands.range.standard.dark_green.01', 'energy_strands.range.standard.purple.01'], { stageId: 'vw-t', after: 'vw-c', anchor: 'start', offset: 300, duration: 1600, ...tint('#7be08a') }),
+    travel('Vital threads', ['energy_strands.range.multiple.greenyellow.02', 'energy_strands.range.standard.purple.01'], { stageId: 'vw-t', after: 'vw-c', anchor: 'start', offset: 300, duration: 1600 }),
     impact('Fast healing', ['healing_generic.03.burst.green', 'healing_generic.03.burst.bluegreen'], { after: 'vw-t', anchor: 'end', offset: -150, duration: 1800 }),
     motion('pulse', 'targets', { after: 'vw-t', anchor: 'end', offset: -150, duration: 900, intensity: 0.4 }),
   ], { sound: 'healing' }),
@@ -383,7 +383,7 @@ export default {
   // Bullet Fever: frenzy instead of falling at 0 HP.
   'sf2e:sf2e-feat-feats-9RqJNPSx5T6b2WoB': design('The operative refuses to fall: a red surge of adrenaline bursts out and it shakes with frenzy.', () => [
     cast('Refuses to fall', ['cast_generic.dark.01.red', 'cast_generic.fire.01.orange'], { stageId: 'bv-c', duration: 700 }),
-    aura('Frenzy', ['particles.outward.red.01.03', 'particles.outward.greenyellow.01.03'], { after: 'bv-c', anchor: 'start', offset: 300, duration: 1800, ...tint('#e0303a') }),
+    aura('Frenzy', ['energy_strands.overlay.dark_red', 'particles.outward.greenyellow.01.03'], { after: 'bv-c', anchor: 'start', offset: 300, duration: 1800, ...tint('#d04a3a') }),
     motion('shake', 'source', { after: 'bv-c', anchor: 'start', offset: 300, duration: 900, intensity: 0.5 }),
   ], { sound: 'battleCry', soundNamespace: 'ability' }),
   // Caustic Trail: a slime trail of resin and corrosive slime.
@@ -409,7 +409,7 @@ export default {
   // Clinging Flare: solar flare wraps around foes, immobilising them.
   'sf2e:sf2e-feat-feats-uoFMox9RchlL7Jbm': design('A solar flare streaks to the foe and wraps around it in golden tendrils.', () => [
     travel('Solar flare', ['ranged_missile.001.orangeyellow', 'ranged_missile.001.blue'], { stageId: 'cl-t', duration: 1200 }),
-    impact('Flare wraps', ['entangle.02.complete.03.dark_orange', 'entangle.yellow'], { after: 'cl-t', anchor: 'end', offset: -150, duration: 2200, scale: 0.6 }),
+    impact('Flare wraps', ['energy_strands.overlay.orange.01', 'entangle.yellow'], { after: 'cl-t', anchor: 'end', offset: -150, duration: 2200, scale: 0.6 }),
     motion('recoil', 'targets', { after: 'cl-t', anchor: 'end', offset: -150, duration: 650, intensity: 0.5 }),
   ], { sound: 'radiantRay' }),
   // Command an Animal: issue an order to an animal.
@@ -420,7 +420,7 @@ export default {
   // Controlled Rage: temporary rage with extra melee damage.
   'sf2e:sf2e-feat-actions-Mfih4GjatO1sw2Ug': design('Red fury boils up around the creature as it shudders with controlled rage.', () => [
     cast('Rage builds', ['cast_generic.dark.01.red', 'cast_generic.fire.01.orange'], { stageId: 'cr-c', duration: 700 }),
-    aura('Controlled fury', ['particles.outward.red.01.03', 'particles.outward.greenyellow.01.03'], { after: 'cr-c', anchor: 'start', offset: 300, duration: 1800, ...tint('#e0303a') }),
+    aura('Controlled fury', ['energy_strands.overlay.dark_red', 'particles.outward.greenyellow.01.03'], { after: 'cr-c', anchor: 'start', offset: 300, duration: 1800, ...tint('#d04a3a') }),
     motion('shake', 'source', { after: 'cr-c', anchor: 'start', offset: 300, duration: 900, intensity: 0.4 }),
   ]),
   // Coordinated Ambush!: designate an enemy for a hidden ally.
@@ -540,7 +540,7 @@ export default {
   // Enter Rivener State: embrace anger and grow Large.
   'sf2e:sf2e-feat-feats-kxXC7sNk5GCDqKeZ': design('Red rage boils over the ikeshti as its body swells into the rivener form.', () => [
     cast('Anger boils', ['cast_generic.dark.01.red', 'cast_generic.fire.01.orange'], { stageId: 'rv-c', duration: 800 }),
-    aura('Rivener fury', ['particles.outward.red.02.03', 'particles.outward.greenyellow.02.03'], { after: 'rv-c', anchor: 'start', offset: 300, duration: 2000, scale: 1.4, ...tint('#d8342b') }),
+    aura('Rivener fury', ['energy_strands.overlay.dark_red', 'particles.outward.greenyellow.02.03'], { after: 'rv-c', anchor: 'start', offset: 300, duration: 2000, scale: 1.4, ...tint('#d8342b') }),
     sprite('Body swells', { after: 'rv-c', anchor: 'start', offset: 500, duration: 1400, opacity: 0.4, scaleOut: 1.4, scaleOutDuration: 1200, fadeOut: 500 }),
     motion('pulse', 'source', { after: 'rv-c', anchor: 'start', offset: 400, duration: 1200, intensity: 1 }),
   ]),

@@ -211,11 +211,11 @@ const stinkingCloud = design('A sphere of nauseating yellow-green gas billows at
   motion('shake', 'targets', { after: 'sc-f', anchor: 'start', offset: 700, duration: 800, intensity: 0.5, ...OPT }),
 ], { sound: 'poison' });
 const enlarge = design('The creature swells to giant size in a surge of crimson magic.', () => [
-  aura('Crimson surge', ['template_circle.aura.03.outward'], { duration: 1800, scale: 1.3, ...tint('#d0413a') }),
+  aura('Crimson surge', ['template_circle.aura.01.complete.small.yellow', 'template_circle.aura.03.outward'], { duration: 1800, scale: 1.3, ...tint('#d0413a') }),
   motion('pulse', 'source', { duration: 1200, intensity: 0.9 }),
 ], { sound: 'transform' });
 const reduce = design('The creature contracts to a fraction of its size as crimson magic draws inward.', () => [
-  aura('Crimson contraction', ['template_circle.aura.03.inward'], { duration: 1800, scale: 1.3, ...tint('#d0413a') }),
+  aura('Crimson contraction', ['extras.tmfx.inpulse.circle.02.normal'], { duration: 1800, scale: 1.3, ...tint('#d0413a') }),
   motion('press', 'source', { duration: 1000, intensity: 0.7 }),
 ], { sound: 'transform' });
 const invisibility = design('The creature shimmers and fades from sight.', () => [
@@ -293,14 +293,14 @@ const seeInvisibility = design('The wielder\'s eyes are opened to the invisible 
 ], { sound: 'detect' });
 const rulership = design('The rod is raised and creatures who see it are compelled to obey its wielder.', () => [
   cast('Rod raised', ['magic_signs.circle.02.enchantment.complete.yellow', 'magic_signs.circle.02.enchantment.complete.pink'], { stageId: 'ru-c', scale: 1.1, below: true, duration: 2200 }),
-  aura('Authority radiates', ['template_circle.aura.03.outward'], { after: 'ru-c', anchor: 'start', offset: 300, duration: 1800, scale: 1.6, ...tint('#ffd36b') }),
+  aura('Authority radiates', ['template_circle.out_pulse.02.burst.yellowwhite', 'template_circle.aura.03.outward'], { after: 'ru-c', anchor: 'start', offset: 300, duration: 1800, scale: 1.6 }),
   impact('Compelled', ['magic_signs.rune.enchantment.complete.yellow', 'magic_signs.rune.enchantment.complete.pink'], { after: 'ru-c', anchor: 'start', offset: 700, duration: 1500, scale: 0.45, ...OPT }),
 ], { sound: 'psychic' });
 
 // ---- Wondrous items ----------------------------------------------------------
 const hornBlast = design('The horn bellows a thunderous blast that ripples out through the cone.', () => [
   cast('Horn sounds', ['soundwave.02.blue'], { stageId: 'hb-c', scale: 0.6, duration: 800 }),
-  area('Thunderous blast', ['template_cone_5e.001.001.blue', 'template_cone_5e.001.001.purplered'], { stageId: 'hb-a', after: 'hb-c', anchor: 'start', offset: 250, duration: 1800, ...tint('#bcd8ff') }),
+  area('Thunderous blast', ['template_cone_5e.001.001.blue', 'template_cone_5e.001.001.purplered'], { stageId: 'hb-a', after: 'hb-c', anchor: 'start', offset: 250, duration: 1800, ...tint('#bcd8ff'), areaLook: 'tokenshade' }),
   motion('stagger', 'targets', { after: 'hb-a', anchor: 'start', offset: 400, duration: 800, ...OPT }),
   motion('recoil', 'source', { after: 'hb-c', anchor: 'start', duration: 600, intensity: 0.4 }),
 ], { sound: 'sonic' });
@@ -411,7 +411,7 @@ const poisonDarts = design('Hidden tubes fire a volley of poisoned darts at the 
 ], { sound: 'pierce' });
 const poisonNeedle = design('A tiny poisoned needle springs from the lock and pricks the meddler.', () => [
   impact('Needle pricks', ['impact.005.white', 'impact.005.orange'], { stageId: 'pn-i', duration: 700, scale: 0.35, ...OPT }),
-  impact('Venom spreads', ['icon.poison.dark_green'], { after: 'pn-i', anchor: 'start', offset: 300, duration: 1500, scale: 0.5, ...OPT }),
+  impact('Venom spreads', ['icon.poison.dark_green'], { after: 'pn-i', anchor: 'start', offset: 300, duration: 1500, scale: 0.5, ...OPT, bodyLook: 'Envenomed' }),
   motion('recoil', 'targets', { after: 'pn-i', anchor: 'start', duration: 500, intensity: 0.4, ...OPT }),
 ], { sound: 'pierce' });
 const huntingTrap = design('The sawtooth steel jaws snap shut on the creature\'s leg.', () => [
@@ -545,7 +545,7 @@ const mithral = design('The armor takes on the light, silvery sheen of mithral.'
 ], { sound: 'metalResonance' });
 const giantStrength = (why, assets, tintHex, sound) => design(why, () => [
   aura('Giant might surges', assets, { stageId: 'gs-a', duration: 2200, scale: 1.2, ...(tintHex ? tint(tintHex) : {}) }),
-  aura('Strength swells', ['template_circle.aura.03.outward'], { after: 'gs-a', anchor: 'start', offset: 300, duration: 1600, scale: 1.2, opacity: 0.7, ...tint(tintHex ?? '#d9a050') }),
+  aura('Strength swells', ['extras.tmfx.outpulse.circle.01.normal'], { after: 'gs-a', anchor: 'start', offset: 300, duration: 1600, scale: 1.2, opacity: 0.7, ...tint(tintHex ?? '#d9a050'), ...tint('#d9a050') }),
   motion('pulse', 'source', { after: 'gs-a', anchor: 'start', offset: 300, duration: 1200, intensity: 0.9 }),
 ], { sound });
 const giantCloud = giantStrength('Cloud giant strength fills the drinker on a swirl of high wind.', ['whirlwind.bluegrey'], null, 'wind');
@@ -621,7 +621,7 @@ const philter = design('A heart-shaped bubble rises from the rose-hued philter; 
 ], { sound: 'psychic' });
 const pipesHaunting = design('The pipes play an eerie, spellbinding tune that fills listeners with fear.', () => [
   cast('Eerie tune', ['music_notations.flat.purple', 'music_notations.flat.blue'], { stageId: 'ph-c', scale: 0.5, offsetY: -0.5, offsetUnits: 'token', duration: 1200 }),
-  area('Haunting notes', ['template_circle.symbol.normal.horror.purple'], { after: 'ph-c', anchor: 'start', offset: 300, duration: 2800, opacity: 0.6, below: true, fadeOut: 600 }),
+  area('Haunting notes', ['template_circle.symbol.normal.horror.purple'], { after: 'ph-c', anchor: 'start', offset: 300, duration: 2800, opacity: 0.6, below: true, fadeOut: 600, areaLook: 'tokenshade', areaMotif: 'notes' }),
   impact('Frightened', ['markers.fear.dark_purple.02'], { after: 'ph-c', anchor: 'start', offset: 800, duration: 1800, scale: 0.7, ...OPT }),
   motion('cower', 'targets', { after: 'ph-c', anchor: 'start', offset: 900, duration: 900, ...OPT }),
 ], { sound: 'whispers' });
@@ -762,10 +762,10 @@ const slaying = design('The bullet\'s slaying magic surges through a creature of
   motion('stagger', 'targets', { after: 'sl-i', anchor: 'start', offset: 200, duration: 800, ...OPT }),
 ], { sound: 'drain' });
 const glue = design('A thin layer of sovereign glue is spread over the surface.', () => [
-  area('Glue spreads', ['grease.dark_grey.loop', 'grease.dark_brown.loop'], { duration: 2400, opacity: 0.7, below: true, fadeOut: 600, ...tint('#efe9da') }),
+  area('Glue spreads', ['liquid.blob.blue', 'grease.dark_brown.loop'], { duration: 2400, opacity: 0.7, below: true, fadeOut: 600, ...tint('#efe9da') }),
 ], { sound: null });
 const solvent = design('Universal solvent hisses over the surface and dissolves any adhesive.', () => [
-  area('Solvent spreads', ['liquid.splash.grey', 'liquid.splash.blue'], { stageId: 'so-l', duration: 1300, opacity: 0.8, ...tint('#dfe6ee') }),
+  area('Solvent spreads', ['liquid.splash.blue'], { stageId: 'so-l', duration: 1300, opacity: 0.8, ...tint('#dfe6ee') }),
   area('Adhesive dissolves', ['fumes.steam.white'], { after: 'so-l', anchor: 'start', offset: 400, duration: 1800, opacity: 0.7 }),
 ], { sound: null });
 const sphereEngulf = design('The sphere of annihilation swallows matter: the creature is caught in the void.', () => [
@@ -809,7 +809,7 @@ const lordlyMight = design('The rod is swung as a magic mace.', () => [
 const paralysisRay = design('A thin blue ray lances from the wand and the target\'s limbs lock rigid.', () => [
   cast('Wand charges', ['cast_generic.02.blue'], { stageId: 'pr-c', scale: 0.5, duration: 700 }),
   travel('Paralyzing ray', ['energy_beam.normal.blue'], { stageId: 'pr-t', after: 'pr-c', anchor: 'start', offset: 300, duration: 1400, ...OPT }),
-  impact('Limbs lock', ['markers.stun.dark_teal', 'markers.stun.purple'], { after: 'pr-t', anchor: 'arrival', duration: 1600, scale: 0.6, ...OPT }),
+  impact('Limbs lock', ['markers.stun.dark_teal', 'markers.stun.purple'], { after: 'pr-t', anchor: 'arrival', duration: 1600, scale: 0.6, ...OPT, bodyLook: 'Held' }),
   motion('shake', 'targets', { after: 'pr-t', anchor: 'arrival', duration: 600, intensity: 0.3, ...OPT }),
 ], { sound: 'forceRay' });
 const conceal = design('The ring fades from sight on the wearer\'s finger.', () => [

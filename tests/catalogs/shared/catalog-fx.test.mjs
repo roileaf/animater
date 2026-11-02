@@ -29,7 +29,9 @@ test('all native catalog builders add installed provider stages and preserve the
  let enhanced=0;
  for(const build of builders){
   const base=build({fx:false}),r=build({fxCatalog});
-  assert.deepEqual(r.stages.filter(s=>!s.catalogFx),base.stages,r.name);
+  // A stage with a body look is replaced by that look on the same creature (same stage id); every other stays.
+  const bodied=new Set(r.stages.filter(s=>s.fxProfile==='body').map(s=>s.stageId));
+  assert.deepEqual(r.stages.filter(s=>!s.catalogFx),base.stages.filter(s=>!bodied.has(s.stageId)),r.name);
   assert.deepEqual(validateRecipe(r),r,r.name);
   assert.ok(r.stages.length<=MAX_STAGES,r.name);
   if(fx(r).length)enhanced++;

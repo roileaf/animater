@@ -25,6 +25,13 @@ test('a marked stage becomes its Tokenshade body look on the same creature, at t
   assert.equal(out.stages.find((s) => s.stageId === 'c').kind, 'cast', 'unmarked stages stay');
 });
 
+test('a tinted body look keeps its colour (a golden glow stays golden)', () => {
+  const r = validateRecipe({ id: 'g', name: 'g', trigger: 'use', stages: [{ kind: 'aura', stageId: 'v', assets: ['jb2a.shimmer.01.blue'], duration: 1500, subject: 'targets', tintEnabled: true, tint: '#ffe9a8', bodyLook: 'glow' }] });
+  assert.equal(withBodyLooks(r, catalog(['glow'])).stages[0].fxTint, '#ffe9a8');
+  // A material brings its own colours: the old clip's tint is not laid over stone.
+  assert.equal(withBodyLooks(recipe(), catalog(['Petrified'])).stages.find((s) => s.stageId === 'skin').fxTint, '');
+});
+
 test('without Tokenshade, or without that preset, the JB2A clip plays as before', () => {
   assert.equal(withBodyLooks(recipe(), { tokenReady: false, presets: [] }).stages.find((s) => s.stageId === 'skin').kind, 'aura');
   const partial = withBodyLooks(recipe(), catalog(['Chained']));

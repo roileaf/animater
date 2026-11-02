@@ -69,7 +69,7 @@ export default {
 
   'pf2e:qUSWPWxYF8gfhfHM': design('Helpful Tinkering: a quick wrench-and-fiddle at an ally\'s weapon, which then glows with your innovation\'s boost.', () => [
     impact('Tinker', ['wrench.melee.01.orange', 'wrench.melee.01.white'], { stageId: 'tk-w', delay: 200, duration: 1200, scale: 0.7 }),
-    impact('Boost installed', ['impact.013.001.orangeyellow', 'impact.orange'], { after: 'tk-w', anchor: 'start', offset: 600, duration: 1200, scale: 0.6 }),
+    impact('Boost installed', ['impact.013.001.orangeyellow', 'impact.orange'], { after: 'tk-w', anchor: 'start', offset: 600, duration: 1200, scale: 0.6, ...tint('#f2a33a'), bodyLook: 'glow' }),
     motion('lunge', 'source', { delay: 100, duration: 800, distance: 0.12, intensity: 0.4 }),
   ]),
 
@@ -405,7 +405,7 @@ export default {
 
   'pf2e:RwOGkOLCalt4sqz6': design('Kaiju Stance: you swell to Large with the might of a kaiju, the earth shattering around your feet.', () => [
     cast('Earth shatters', ['impact.ground_crack.03.orange', 'impact.ground_crack.orange.03'], { stageId: 'ks-c', scale: 1, below: true, duration: 1500 }),
-    aura('Kaiju might', ['ground_cracks.01.orange', 'ground_cracks.orange.01'], { after: 'ks-c', anchor: 'start', offset: 500, duration: 2400, scale: 1.6, below: true, opacity: 0.85, fadeOut: 600 }),
+    aura('Kaiju might', ['impact.ground_crack.01.orange', 'ground_cracks.orange.01'], { after: 'ks-c', anchor: 'start', offset: 500, duration: 2400, scale: 1.6, below: true, opacity: 0.85, fadeOut: 600 }),
     motion('slam', 'source', { delay: 200, duration: 1000, intensity: 0.7 }),
   ], { sound: 'earthquake' }),
 
@@ -452,7 +452,7 @@ export default {
   ], { sound: 'water' }),
 
   'pf2e:9O7DLcXVXpwLVXI6': design('Lassoing Lash: you whip your lash out and wrap it around the opponent to haul them in.', () => [
-    travel('Lash wraps', ['energy_strands.range.standard.grey', 'energy_strands.range.standard.purple'], { stageId: 'll-lash', delay: 250, duration: 1300, ...tint('#8b6a43') }),
+    travel('Lash wraps', ['energy_strands.range.standard.grey.02', 'energy_strands.range.standard.purple'], { stageId: 'll-lash', delay: 250, duration: 1300, ...tint('#d9a865') }),
     impact('Coil', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { after: 'll-lash', anchor: 'start', offset: 600, duration: 1500, scale: 0.7, ...tint('#8b6a43') }),
     motion('throw', 'source', { duration: 800, intensity: 0.5 }),
   ], ab('whip')),
@@ -485,7 +485,7 @@ export default {
   'pf2e:aUhx6xKOhPuK9fEZ': design('Liberating Dive: steel-feathered wings sprout and propel you across the field, one wing slicing a foe while the other frees an ally.', () => [
     cast('Steel wings sprout', ['swirling_feathers.outburst.01.textured', 'swirling_feathers.outburst.01.textured'], { stageId: 'ld-w', scale: 1, duration: 1300, ...tint('#c1c6cc') }),
     motion('leap', 'source', { stageId: 'ld-fly', after: 'ld-w', anchor: 'start', offset: 400, duration: 2000, distance: 1.9, intensity: 0.4, motionRange: 'distance', motionHeading: 'toward', motionEndpoint: 'near' }),
-    impact('Wing-edge slice', ['melee_generic.slash.01.bluepurple', 'melee_generic.slash.01.orange'], { after: 'ld-fly', anchor: 'start', offset: 900, duration: 1200, targetSelection: 'first', ...tint('#c1c6cc') }),
+    impact('Wing-edge slice', ['melee_generic.slash.02.001.blue', 'melee_generic.slash.01.orange'], { after: 'ld-fly', anchor: 'start', offset: 900, duration: 1200, targetSelection: 'first', ...tint('#c1c6cc') }),
     impact('Restraints shorn', ['impact.005.white', 'impact.005.orange'], { after: 'ld-fly', anchor: 'start', offset: 1300, duration: 1100, scale: 0.6, targetSelection: 'secondary' }),
   ]),
 
@@ -562,7 +562,7 @@ export default {
 
   'pf2e:buUSr6Dh9md9WqJx': design("Mage's Field Dressing: glowing threads of arcane magic bind the ally's wounds as Battle Medicine.", () => [
     travel('Arcane threads', ['energy_strands.range.standard.purple', 'energy_strands.range.standard.purple'], { stageId: 'fd-th', delay: 200, duration: 1300 }),
-    impact('Bandaged', ['healing_generic.200px.purple', 'healing_generic.200px.purple'], { after: 'fd-th', anchor: 'start', offset: 700, duration: 1800, scale: 0.8 }),
+    impact('Bandaged', ['healing_generic.burst.purplepink', 'healing_generic.200px.purple'], { after: 'fd-th', anchor: 'start', offset: 700, duration: 1800, scale: 0.8 }),
   ], { sound: 'healing' }),
 
   'pf2e:YJCAiNpFbX2MIc0G': design('Magnetic Field: a magnetic field surrounds you, metal motes orbiting in your aura.', () => [
@@ -601,7 +601,7 @@ export default {
     motion('sink', 'source', { stageId: 'mm-sink', delay: 200, duration: 900, intensity: 0.6 }),
     motion('rush', 'source', { after: 'mm-sink', anchor: 'start', offset: 500, duration: 2400, distance: 2, intensity: 0.35, motionRange: 'distance', motionHeading: 'toward', motionEndpoint: 'near' }),
     motion('rush', 'targets', { after: 'mm-sink', anchor: 'start', offset: 800, duration: 2400, distance: 2, intensity: 0.35, motionRange: 'distance', motionHeading: 'toward', motionEndpoint: 'near' }),
-    aura('Tunnel trail', ['ground_cracks.01.orange', 'ground_cracks.orange.01'], { after: 'mm-sink', anchor: 'start', offset: 600, duration: 2000, scale: 0.7, below: true, fadeOut: 500 }),
+    aura('Tunnel trail', ['impact.ground_crack.01.orange', 'ground_cracks.orange.01'], { after: 'mm-sink', anchor: 'start', offset: 600, duration: 2000, scale: 0.7, below: true, fadeOut: 500 }),
   ], { sound: 'earth', fx: false }),
 
   'pf2e:fGwd5g6yHzcyeCG1': design("Martyr's Parry: you intercede with your parrying weapon, guarding your bonded partner.", () => [
@@ -657,7 +657,7 @@ export default {
 
   'pf2e:HbdOZ8YTtu8ykASc': design('Metal Carapace: sheets of bent, rusted metal clamp around you into an armored shell, a rusty steel shield forming in hand.', () => [
     cast('Metal gathers', ['aura_themed.01.inward.complete.metal.01.red', 'aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'mcp-c', scale: 0.9, duration: 1300 }),
-    aura('Rusted carapace', ['shield_themed.above.molten_earth.01.dark_orange', 'shield_themed.above.molten_earth.01.orange'], { after: 'mcp-c', anchor: 'start', offset: 600, duration: 2000, scale: 1, opacity: 0.8, fadeOut: 500, ...tint('#8a5a3c') }),
+    aura('Rusted carapace', ['shield_themed.above.molten_earth.01.dark_orange', 'shield_themed.above.molten_earth.01.orange'], { after: 'mcp-c', anchor: 'start', offset: 600, duration: 2000, scale: 1, opacity: 0.8, fadeOut: 500, ...tint('#8a5a3c'), bodyLook: 'Ironskin' }),
     motion('brace', 'source', { after: 'mcp-c', anchor: 'start', offset: 500, duration: 900, intensity: 0.5 }),
   ], { sound: 'metal' }),
 
@@ -738,7 +738,7 @@ export default {
 
   'pf2e:hO4sKslTrSQMLbGx': design('Mountain Quake: you stomp and the earth shakes violently around you.', () => [
     cast('Stomp', ['impact.ground_crack.03.orange', 'impact.ground_crack.orange.03'], { stageId: 'mq-c', scale: 1.1, below: true, duration: 1600 }),
-    aura('Quake spreads', ['ground_cracks.03.orange', 'ground_cracks.orange.03'], { after: 'mq-c', anchor: 'start', offset: 300, duration: 2400, scale: 2.4, below: true, opacity: 0.85, fadeOut: 600 }),
+    aura('Quake spreads', ['impact.ground_crack.03.orange', 'ground_cracks.orange.03'], { after: 'mq-c', anchor: 'start', offset: 300, duration: 2400, scale: 2.4, below: true, opacity: 0.85, fadeOut: 600 }),
     motion('slam', 'source', { duration: 900, intensity: 0.8 }),
   ], { sound: 'earthquake' }),
 
@@ -871,7 +871,7 @@ export default {
 
   'pf2e:Canug4VdAMqycpAJ': design('Oni Rampage: your own spilled blood invigorates you into hasted, furious speed.', () => [
     cast('Spilled blood', ['liquid.splash_side.red', 'liquid.splash_side02.red'], { stageId: 'or-b', scale: 0.5, duration: 1000 }),
-    aura('Hasted fury', ['wind_lines.01.01.white'], { after: 'or-b', anchor: 'start', offset: 400, duration: 1800, scale: 0.9, opacity: 0.8, ...tint('#e05050') }),
+    aura('Hasted fury', ['energy_strands.overlay.dark_red.01', 'wind_lines.01.01.white'], { after: 'or-b', anchor: 'start', offset: 400, duration: 1800, scale: 0.9, opacity: 0.8 }),
     motion('shake', 'source', { after: 'or-b', anchor: 'start', offset: 300, duration: 900, intensity: 0.5 }),
   ]),
 
@@ -984,7 +984,7 @@ export default {
 
   'pf2e:hPanopG3TbXKr52O': design('Pesh Skin: your plant form bristles with hundreds of spines.', () => [
     cast('Spines sprout', ['ice_spikes.radial.burst.white', 'ice_spikes.radial.burst.white'], { stageId: 'pk-c', scale: 0.7, duration: 1400, ...tint('#7aa84a') }),
-    aura('Spiny hide', ['aura_themed.01.orbit.complete.nature.01.green'], { after: 'pk-c', anchor: 'start', offset: 600, duration: 2000, scale: 1, opacity: 0.85, fadeOut: 500 }),
+    aura('Spiny hide', ['aura_themed.01.orbit.complete.wood.01.green'], { after: 'pk-c', anchor: 'start', offset: 600, duration: 2000, scale: 1, opacity: 0.85, fadeOut: 500 }),
   ], { sound: 'thornWall' }),
 
   'pf2e:KnaKxKP3eCUcCZC7': design('Petrifying Gaze Mimicry: your medusa-like stare locks on the target and a grey stony stiffness creeps over it.', () => [

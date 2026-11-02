@@ -45,7 +45,7 @@ export default {
   // ---------------------------------------------------------------- strikes
   'pf2e:ogsVovr4LxFVi42V': design("A crushing guardian blow cracks the foe's armor or hide; a cracked-shield sigil marks the opened defenses.", () => [
     ...heavyBlow('Armor-cracking blow'),
-    impact('Armor splits open', ['template_circle.symbol.normal.shield_cracked.dark_red', 'template_circle.symbol.normal.shield_cracked.purple'], { after: 'hit', anchor: 'start', offset: 350, duration: 1500, scale: 0.55, fadeIn: 150, fadeOut: 400 }),
+    impact('Armor splits open', ['icon.shield_cracked.dark_red', 'template_circle.symbol.normal.shield_cracked.purple'], { after: 'hit', anchor: 'start', offset: 350, duration: 1500, scale: 0.55, fadeIn: 150, fadeOut: 400 }),
   ]),
   'pf2e:X5SZIwtYpx0r9MPx': design('A mythic blow lands and hurls the foe up to 15 feet away, trailing a ring of dust.', () => [
     ...heavyBlow('Forceful mythic blow', BLUNT, { scale: 1.35 }),
@@ -147,7 +147,7 @@ export default {
   ]),
   'pf2e:Tln47zk8F8nswrEI': design('Jaws bite into a helpless creature and its life flows back as temporary vigor.', () => [
     ...lungeHit('Feasting bite', ['bite.200px.red'], { scale: 0.9 }),
-    travel('Life drawn from the meal', ['energy_strands.range.standard.dark_red', 'energy_strands.range.standard.purple'], { stageId: 'flow', travelOrigin: 'target', after: 'hit', anchor: 'start', offset: 450, duration: 1300 }),
+    travel('Life drawn from the meal', ['energy_strands.range.multiple.dark_red.01', 'energy_strands.range.standard.purple'], { stageId: 'flow', travelOrigin: 'target', after: 'hit', anchor: 'start', offset: 450, duration: 1300 }),
     aura('Temporary vigor', ['energy_strands.complete.dark_red.01', 'energy_strands.complete.blue'], { after: 'flow', anchor: 'end', offset: -300, duration: 1400, scale: 0.8, ...tint(RED) }),
   ]),
 
@@ -173,7 +173,7 @@ export default {
   ], { sound: 'explosion' }),
   'pf2e:lmo55Y5NS5iZa56o': design('The head is flung at the foe and lets out a bone-chilling wail before returning.', () => [
     motion('throw', 'source', { stageId: 'throw', duration: 800, intensity: 0.6 }),
-    projectile('Flung head', ['impact_themed.skull.pinkpurple', 'toll_the_dead.green.skull_smoke'], { stageId: 'head', after: 'throw', anchor: 'start', offset: 250, duration: 1100, scale: 0.45 }),
+    projectile('Flung head', ['spell_projectile.skull.pinkpurple', 'toll_the_dead.green.skull_smoke'], { stageId: 'head', after: 'throw', anchor: 'start', offset: 250, duration: 1100, scale: 0.45 }),
     impact('Bone-chilling wail', ['toll_the_dead.blue.skull_smoke', 'toll_the_dead.green.skull_smoke'], { stageId: 'wail', after: 'head', anchor: 'end', offset: -150, duration: 1600, scale: 0.9 }),
     motion('cower', 'targets', { after: 'wail', anchor: 'start', offset: 200, duration: 1100, intensity: 0.4 }),
   ], { sound: 'wail', soundNamespace: 'ability' }),
@@ -358,7 +358,7 @@ export default {
   ], { sound: 'wind' }),
   'pf2e:uBBQtYDIsVxnUJsZ': design('The air thickens with ghostly ectoplasm across a 30-foot emanation, shielding allies.', () => [
     cast('Spirits called', ['energy_strands.complete.dark_green.01', 'energy_strands.complete.blue'], { stageId: 'call', scale: 0.8, duration: 1200 }),
-    aura('Ectoplasm thickens the air', ['fog_cloud.02.green02', 'fog_cloud.01.white'], { after: 'call', anchor: 'start', offset: 400, duration: 3000, auraRadius: 30, opacity: 0.45, below: true, fadeIn: 500, fadeOut: 700 }),
+    aura('Ectoplasm thickens the air', ['fog_cloud.02.white', 'fog_cloud.01.white'], { after: 'call', anchor: 'start', offset: 400, duration: 3000, auraRadius: 30, opacity: 0.45, below: true, fadeIn: 500, fadeOut: 700, ...tint('#bfe8cf') }),
   ], { sound: 'spirit' }),
   'pf2e:zfnZki2CxmZXdNBO': design('Electricity crackles over the monk as resistance, and a melee attacker gets a shock back.', () => [
     aura('Crackling resistance', ['static_electricity.02.blue'], { stageId: 'static', duration: 1600, scale: 1.05 }),
@@ -374,7 +374,7 @@ export default {
   'pf2e:nKkbEKbE9vfKWKdd': design('Attuned to the stone, the dwarf feels tremors ripple outward through 20 feet of ground.', () => [
     motion('sink', 'source', { stageId: 'attune', duration: 900, intensity: 0.25 }),
     cast('Hand to stone', ['impact.ground_crack.01.orange'], { after: 'attune', anchor: 'start', offset: 200, duration: 1200, scale: 0.6, below: true }),
-    aura('Tremors ripple outward', ['template_circle.out_pulse.01.burst.greenorange', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'attune', anchor: 'start', offset: 500, duration: 1800, auraRadius: 20, opacity: 0.6, below: true, ...tint('#c08a4a') }),
+    aura('Tremors ripple outward', ['template_circle.out_pulse.02.burst.greenorange', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'attune', anchor: 'start', offset: 500, duration: 1800, auraRadius: 20, opacity: 0.6, below: true, ...tint('#c08a4a') }),
   ], { sound: 'earth' }),
   'pf2e:DaW1Ugz0a24jhWLY': design('The critical unarmed blow reverberates through the foe\'s body, shaking muscle from bone.', () => [
     impact('Reverberating shockwave', ['toll_the_dead.grey.shockwave', 'toll_the_dead.green.shockwave'], { stageId: 'wave', duration: 1300, scale: 0.9 }),
@@ -383,7 +383,7 @@ export default {
   ], { sound: 'bludgeon' }),
   'pf2e:PsLne80WUsD4IFa6': design('Hands dig a shallow pit underfoot and kick a cone of grit in the chosen direction.', () => [
     motion('sink', 'source', { stageId: 'dig', duration: 1200, intensity: 0.3 }),
-    aura('Shallow pit', ['ground_cracks.01.orange'], { after: 'dig', anchor: 'start', duration: 2200, scale: 1, below: true, fadeOut: 500 }),
+    aura('Shallow pit', ['impact.ground_crack.01.orange'], { after: 'dig', anchor: 'start', duration: 2200, scale: 1, below: true, fadeOut: 500 }),
     cone('Grit cloud kicked up', ['breath_weapons.poison.cone.orange', 'breath_weapons.poison.cone.green'], { optionalTargets: true, after: 'dig', anchor: 'start', offset: 500, duration: 1500, opacity: 0.8, ...tint('#b08850') }),
   ], { sound: 'earth' }),
   'pf2e:g3J3kSfnlYjq34Md': design('The object blinks out of its owner\'s grasp and reappears on the thief.', () => [
@@ -466,7 +466,7 @@ export default {
     motion('drift', 'source', { duration: 1500, intensity: 0.5 }),
   ]),
   'pf2e:VaxsPPPsgXzNxQVI': design('Wild dragonets swarm around you in a flock that dazzles enemies within 10 feet.', () => [
-    aura('Dragonets swarm in', ['swirling_feathers.outburst.01.orange', 'swirling_feathers.outburst.01.textured'], { stageId: 'flock', duration: 1800, scale: 1.4 }),
+    aura('Dragonets swarm in', ['swirling_feathers.outburst.01.orange', 'swirling_feathers.outburst.01.textured'], { stageId: 'flock', duration: 1800, scale: 1.4, areaLook: 'tokenshade', areaMotif: 'swarm' }),
     aura('Flock aura dazzles', ['twinkling_stars.points08.orange'], { after: 'flock', anchor: 'start', offset: 500, duration: 2200, auraRadius: 10, opacity: 0.7, below: true }),
   ]),
   'pf2e:GZrvQo5FcoP5qocX': design('The wound yawns open grotesquely and the attacker recoils, sickened.', () => [
@@ -491,6 +491,6 @@ export default {
   ], { sound: 'battleCry', soundNamespace: 'ability' }),
   'pf2e:9LvJo3K2AjKcVvTc': design('Toxic demonic sludge oozes over the body and weapons.', () => [
     cast('Corruption expelled', ['fumes.toxic.green', 'fumes.04.complete.grey'], { stageId: 'expel', scale: 0.8, duration: 1100 }),
-    aura('Toxic sludge coats you', ['fumes.04.loop.green', 'fumes.04.loop.grey'], { after: 'expel', anchor: 'start', offset: 400, duration: 2400, scale: 1, opacity: 0.8, fadeIn: 300, fadeOut: 500 }),
+    aura('Toxic sludge coats you', ['fumes.04.loop.green', 'fumes.04.loop.grey'], { after: 'expel', anchor: 'start', offset: 400, duration: 2400, scale: 1, opacity: 0.8, fadeIn: 300, fadeOut: 500, bodyLook: 'Envenomed' }),
   ], { sound: 'poison' }),
 };

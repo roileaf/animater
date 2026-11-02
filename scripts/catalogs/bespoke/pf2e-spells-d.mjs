@@ -79,7 +79,7 @@ export default {
     cast('Bones crushed in hand', ['cast_generic.01.dark_purple', 'cast_generic.01.yellow'], { stageId: 'sk-cast', duration: 700, scale: 0.7 }),
     area('Earth splits open', ['impact.ground_crack.purple.02', 'impact.ground_crack.orange.02'], { stageId: 'sk-crack', after: 'sk-cast', anchor: 'end', duration: 1800, ...tint('#7a6a5a') }),
     area('Bony hands claw upward', ['arcane_hand.purple'], { stageId: 'sk-hands', after: 'sk-crack', anchor: 'start', offset: 300, duration: 2200, scale: 0.7, fadeIn: 200, fadeOut: 500, ...tint('#e8e0cc') }),
-    area('Skulls of the march', ['toll_the_dead.grey.skull_smoke', 'toll_the_dead.green.skull_smoke'], { after: 'sk-hands', anchor: 'start', offset: 400, duration: 2000, scale: 0.6 }),
+    area('Skulls of the march', ['toll_the_dead.grey.skull_smoke', 'toll_the_dead.green.skull_smoke'], { after: 'sk-hands', anchor: 'start', offset: 400, duration: 2000, scale: 0.6, areaLook: 'tokenshade', areaMotif: 'skulls' }),
     motion('stagger', 'targets', { after: 'sk-hands', anchor: 'start', offset: 600, duration: 800, intensity: 0.5 }),
   ], { sound: 'earthquake' }),
 
@@ -164,7 +164,7 @@ export default {
   // Steal the Sky: flying target loses the air's support and drops.
   'pf2e:zoY0fQYTF1NzezTg': design('You deny a flying creature the air\'s support; a downdraft slams over it and drives it toward the ground.', () => [
     impact('Downdraft', ['wind_lines.01.02.white'], { stageId: 'sk-down', duration: 1200, scale: 1.1, rotation: 90 }),
-    impact('Air collapses', ['template_circle.out_pulse.01.burst.bluewhite'], { after: 'sk-down', anchor: 'start', offset: 300, duration: 1200, scale: 0.6, opacity: 0.7 }),
+    impact('Air collapses', ['template_circle.out_pulse.02.burst.bluewhite'], { after: 'sk-down', anchor: 'start', offset: 300, duration: 1200, scale: 0.6, opacity: 0.7 }),
     motion('press', 'targets', { after: 'sk-down', anchor: 'start', offset: 200, duration: 1100, intensity: 0.8 }),
   ], { sound: 'wind' }),
 
@@ -205,7 +205,7 @@ export default {
   'pf2e:qGWORxQ0aSsH2taf': design('You cruelly draw the breath out of the creature\'s lungs; air streams out of it and it chokes and doubles over.', () => [
     cast('Grasping gesture', ['particles.inward.white.02.03', 'particles.inward.greenyellow.02.03'], { stageId: 'su-cast', duration: 900, scale: 0.6, ...tint('#e8f4ff') }),
     impact('Breath torn out', ['particles.outward.white.02.03', 'particles.outward.greenyellow.02.03'], { stageId: 'su-air', after: 'su-cast', anchor: 'start', offset: 300, duration: 1600, scale: 0.7, ...tint('#e8f4ff') }),
-    impact('Chest crushed', ['impact.012.blue'], { after: 'su-air', anchor: 'start', offset: 500, duration: 900, scale: 0.5, ...tint('#cfe0f0') }),
+    impact('Chest crushed', ['impact.009.white', 'impact.012.blue'], { after: 'su-air', anchor: 'start', offset: 500, duration: 900, scale: 0.5, ...tint('#cfe0f0') }),
     motion('cower', 'targets', { after: 'su-air', anchor: 'start', offset: 300, duration: 1200, intensity: 0.6 }),
   ]),
 
@@ -213,7 +213,7 @@ export default {
   'pf2e:a3aQxCpoj1q1NQxC': design('A powerful globe of searing sunlight explodes across the burst, scorching everything in blinding radiance.', () => [
     cast('Sunlight gathers', ['sacred_flame.source.yellow'], { stageId: 'su-cast', duration: 900, scale: 0.8 }),
     area('Globe of sunlight bursts', ['explosion.03.yellow', 'explosion.03.blueyellow'], { stageId: 'su-boom', after: 'su-cast', anchor: 'end', duration: 1800 }),
-    area('Searing wave', ['template_circle.out_pulse.01.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'su-boom', anchor: 'start', offset: 150, duration: 1500, ...tint('#ffd36b') }),
+    area('Searing wave', ['template_circle.out_pulse.02.burst.bluewhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'su-boom', anchor: 'start', offset: 150, duration: 1500, ...tint('#ffd36b') }),
     impact('Burning light', ['sacred_flame.target.yellow'], { after: 'su-boom', anchor: 'start', offset: 400, duration: 1500, scale: 0.8 }),
     motion('recoil', 'targets', { after: 'su-boom', anchor: 'start', offset: 300, duration: 700, intensity: 0.5 }),
   ], { sound: 'explosion' }),
@@ -290,7 +290,7 @@ export default {
     motion('lunge', 'source', { stageId: 'tt-lunge', duration: 650, intensity: 0.5 }),
     impact('Icy water engulfs', ['liquid.splash.blue'], { stageId: 'tt-water', after: 'tt-lunge', anchor: 'start', offset: 350, duration: 1300, scale: 0.8 }),
     impact('Ice forms', ['impact.frost.blue', 'impact.frost.white.01'], { after: 'tt-water', anchor: 'start', offset: 400, duration: 1200, scale: 0.7 }),
-    impact('Clinging rime', ['ice_spikes.radial.burst.blue', 'ice_spikes.radial.burst.white'], { after: 'tt-water', anchor: 'start', offset: 600, duration: 1600, scale: 0.6, below: true }),
+    impact('Clinging rime', ['ice_spikes.radial.burst.blue', 'ice_spikes.radial.burst.white'], { after: 'tt-water', anchor: 'start', offset: 600, duration: 1600, scale: 0.6, below: true, bodyLook: 'Frostbitten' }),
     motion('stagger', 'targets', { after: 'tt-water', anchor: 'start', duration: 800, intensity: 0.5 }),
   ]),
 
@@ -304,8 +304,8 @@ export default {
   // Theogeny: genesis of a divine realm around you.
   'pf2e:9dyWP9RGCFwunGEo': design('Divine light floods outward as a new divine realm forms around you, transfiguring the whole emanation.', () => [
     cast('Divine spark', ['divine_smite.caster.standard.yellowwhite', 'divine_smite.caster.blueyellow'], { stageId: 'th-cast', duration: 1300, scale: 0.9 }),
-    area('Realm unfolds', ['template_circle.out_pulse.01.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { stageId: 'th-realm', after: 'th-cast', anchor: 'start', offset: 700, duration: 2000, ...tint('#ffe9a8') }),
-    area('Celestial motes', ['twinkling_stars.points06.orange'], { after: 'th-realm', anchor: 'start', offset: 300, duration: 2600, opacity: 0.8, fadeOut: 700 }),
+    area('Realm unfolds', ['template_circle.out_pulse.02.burst.bluewhite', 'template_circle.out_pulse.01.burst.bluewhite'], { stageId: 'th-realm', after: 'th-cast', anchor: 'start', offset: 700, duration: 2000, ...tint('#ffe9a8') }),
+    area('Celestial motes', ['glint.yellow.many'], { after: 'th-realm', anchor: 'start', offset: 300, duration: 2600, opacity: 0.8, fadeOut: 700 }),
     aura('Divine radiance', ['bless.400px.intro.yellow'], { after: 'th-cast', anchor: 'start', offset: 500, duration: 2200, scale: 1, fadeOut: 500 }),
     motion('pulse', 'source', { after: 'th-cast', anchor: 'start', offset: 500, duration: 900, intensity: 0.5 }),
   ], { sound: 'bless' }),
@@ -451,7 +451,7 @@ export default {
   'pf2e:9o5aG5025ZczjkPb': design('You stamp and the earth around you heaves, chunks of rock throwing nearby enemies off balance and to the ground.', () => [
     motion('slam', 'source', { stageId: 'ir-slam', duration: 650, intensity: 0.8 }),
     area('Earth heaves', ['impact.ground_crack.orange.02'], { stageId: 'ir-heave', after: 'ir-slam', anchor: 'start', offset: 300, duration: 1600 }),
-    area('Rubble', ['ground_cracks.02.orange'], { after: 'ir-heave', anchor: 'start', offset: 200, duration: 2200, opacity: 0.8, fadeOut: 600 }),
+    area('Rubble', ['impact.ground_crack.02.orange'], { after: 'ir-heave', anchor: 'start', offset: 200, duration: 2200, opacity: 0.8, fadeOut: 600, ...tint('#a08060') }),
     motion('stagger', 'targets', { after: 'ir-heave', anchor: 'start', offset: 200, duration: 800, intensity: 0.7 }),
   ], { sound: 'earth' }),
 
@@ -468,7 +468,7 @@ export default {
   'pf2e:XGB77j7m0SLky8U1': design('You screech with an unearthly voice and a cone of sonic and void energy smashes everything before you.', () => [
     cast('Unearthly screech', ['toll_the_dead.purple.shockwave', 'toll_the_dead.green.shockwave'], { stageId: 'ud-cast', duration: 900, scale: 0.6 }),
     area('Destructive cone', ['breath_weapons02.burst.cone.arcana.dark_black.01', 'breath_weapons02.burst.cone.fire.orange.01'], { stageId: 'ud-cone', after: 'ud-cast', anchor: 'start', offset: 400, duration: 1800, ...tint('#5a2a7a') }),
-    area('Sonic waves', ['soundwave.02.purple', 'soundwave.02.blue'], { after: 'ud-cone', anchor: 'start', duration: 1400, opacity: 0.7 }),
+    area('Sonic waves', ['soundwave.02.purple', 'soundwave.02.blue'], { after: 'ud-cone', anchor: 'start', duration: 1400, opacity: 0.7, areaLook: 'tokenshade' }),
     motion('stagger', 'targets', { after: 'ud-cone', anchor: 'start', offset: 400, duration: 800, intensity: 0.7 }),
   ]),
 

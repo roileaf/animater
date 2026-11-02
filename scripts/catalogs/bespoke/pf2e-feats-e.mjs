@@ -195,7 +195,7 @@ export default {
   'pf2e:7PjBANpMMoBxTYq3': design('The kinetic aura condenses into swirling, superheated steam armor that hisses around the user.', () => [
     cast('Water flashes to steam', ['impact.water.02.blue'], { scale: 0.9, duration: 1000 }),
     aura('Steam armor swirls', ['fumes.steam.white'], { delay: 300, scale: 1.8, duration: 2600, opacity: 0.85, fadeIn: 300, fadeOut: 600 }),
-    aura('Scalding heat', ['fire_ring.500px.red'], { delay: 450, scale: 1.3, duration: 2200, opacity: 0.35, below: true, fadeIn: 300, fadeOut: 600, ...tint('#ff9a5a') }),
+    aura('Scalding heat', ['fire_ring.500px.red'], { delay: 450, scale: 1.3, duration: 2200, opacity: 0.35, below: true, fadeIn: 300, fadeOut: 600, ...tint('#ff9a5a'), bodyLook: 'Heat shimmer' }),
     motion('pulse', 'source', { delay: 300, duration: 800, intensity: 0.3 }),
   ]),
 
@@ -226,7 +226,7 @@ export default {
   // Stonewall: become petrified until end of turn.
   'pf2e:gLOLdDj21bTaLHp7': design('Stone surges up the dwarf\'s body, turning it to rigid grey rock that shrugs off the blow.', () => [
     cast('Stone surges', CRACK, { scale: 0.9, duration: 1200, below: true }),
-    aura('Petrified skin', ['shimmer.01.blue'], { delay: 300, duration: 2000, scale: 1, ...tint('#8d8d8d') }),
+    aura('Petrified skin', ['shimmer.01.blue'], { delay: 300, duration: 2000, scale: 1, ...tint('#8d8d8d'), bodyLook: 'Petrified' }),
     motion('brace', 'source', { delay: 300, duration: 900, intensity: 0.4 }),
   ]),
 
@@ -248,7 +248,7 @@ export default {
   // Storm Shroud: a swirling storm of rain/sand/snow grants concealment.
   'pf2e:nAVLB5MLYWUu8N71': design('A small swirling storm of wind-driven rain and cloud wraps around the user, blurring its outline.', () => [
     cast('Storm gathers', ['whirlwind.bluegrey'], { scale: 1, duration: 1300 }),
-    aura('Shrouding storm', ['sleet_storm.01.blue'], { delay: 400, scale: 1.6, duration: 2400, opacity: 0.7, fadeIn: 300, fadeOut: 600 }),
+    aura('Shrouding storm', ['whirlwind.bluegrey'], { delay: 400, scale: 1.6, duration: 2400, opacity: 0.7, fadeIn: 300, fadeOut: 600 }),
     aura('Concealed', ['fog_cloud.01.white'], { delay: 600, scale: 1.4, duration: 2000, opacity: 0.45, fadeIn: 300, fadeOut: 600 }),
   ], { sound: 'wind' }),
 
@@ -256,7 +256,7 @@ export default {
   'pf2e:hv0SwlsAtcnR7R4T': design('A miniature thunderstorm spirals over the burst: lightning bolts strike each creature and a tremendous thunderclap rolls out.', () => [
     cast('Gather the storm', ['static_electricity.01.blue'], { scale: 0.8, duration: 900 }),
     impact('Storm clouds swirl', ['whirlwind.bluegrey'], { stageId: 'sp-c', delay: 300, scale: 2.2, duration: 2200, opacity: 0.7, below: true }),
-    impact('Lightning strikes', ['call_lightning.low_res.blue'], { stageId: 'sp-l', after: 'sp-c', anchor: 'start', offset: 400, duration: 1300, scale: 0.8, ...ALL }),
+    impact('Lightning strikes', ['lightning_strike.blue'], { stageId: 'sp-l', after: 'sp-c', anchor: 'start', offset: 400, duration: 1300, scale: 0.8, ...ALL }),
     impact('Thunderclap', ['thunderwave.center.blue'], { after: 'sp-l', anchor: 'start', offset: 300, duration: 1100, scale: 0.9, ...ALL }),
     motion('shake', 'targets', { after: 'sp-l', anchor: 'start', offset: 200, duration: 700, intensity: 0.4, ...ALL }),
   ]),
@@ -478,7 +478,7 @@ export default {
   // Tectonic Stomp: tremors in a 30-ft emanation knock creatures prone.
   'pf2e:9XXtDeRF2egCCzcx': design('A heavy stomp sends tremors rippling outward; cracks run across the ground and creatures standing on it are thrown down.', () => [
     motion('slam', 'source', { duration: 700, intensity: 0.7 }),
-    aura('Tremor rings out', ['ground_cracks.01.orange'], { stageId: 'ts', delay: 350, scale: 5, duration: 2000, below: true, fadeOut: 600 }),
+    aura('Tremor rings out', ['impact.ground_crack.01.orange'], { stageId: 'ts', delay: 350, scale: 5, duration: 2000, below: true, fadeOut: 600 }),
     impact('Ground heaves', CRACK, { after: 'ts', anchor: 'start', offset: 300, duration: 1200, scale: 0.8, below: true, ...ALL }),
     motion('stagger', 'targets', { after: 'ts', anchor: 'start', offset: 350, duration: 900, intensity: 0.6, ...ALL }),
   ]),
@@ -536,7 +536,7 @@ export default {
     cast('Beseech the spirits', ['spirit_guardians.blue.spirits', 'spirit_guardians.blueyellow.ring'], { scale: 1.6, duration: 1400, opacity: 0.8 }),
     impact('First ghostly warrior', ['spiritual_weapon.longsword.01.spectral.01.blue', 'spiritual_weapon.greatsword.01.spectral.02.green'], { stageId: 'dw-a', delay: 500, duration: 1600, scale: 0.9, fadeIn: 200, fadeOut: 400, targetSelection: 'first' }),
     impact('Second ghostly warrior', ['spiritual_weapon.longsword.01.spectral.01.blue', 'spiritual_weapon.greatsword.01.spectral.02.green'], { delay: 800, duration: 1600, scale: 0.9, fadeIn: 200, fadeOut: 400, targetSelection: 'second' }),
-    impact('Spirit cut', ['impact.005.blue', 'impact.005.orange'], { after: 'dw-a', anchor: 'start', offset: 700, duration: 900, scale: 0.6, ...ALL }),
+    impact('Spirit cut', ['melee_generic.slash.02.001.blue', 'impact.005.orange'], { after: 'dw-a', anchor: 'start', offset: 700, duration: 900, scale: 0.6, ...ALL }),
   ], { sound: 'spirit' }),
 
   // The Shattered Mountain Weeps: rock sphere explodes into falling debris and shrapnel.
@@ -561,7 +561,7 @@ export default {
   'pf2e:H63SJLkenhLDkVnN': design('The final line of the Crimson Oath is cried aloud and overwhelming crimson power erupts around the oathbearer.', () => [
     cast('Crimson Oath cry', WAVE('red'), { scale: 1.2, duration: 1100 }),
     motion('pulse', 'source', { duration: 800, intensity: 0.5 }),
-    aura('Unbridled power', ['divine_smite.caster.dark_red', 'divine_smite.caster.blueyellow'], { delay: 400, scale: 1.1, duration: 1800, ...tint('#c41b2b') }),
+    aura('Unbridled power', ['divine_smite.caster.red', 'divine_smite.caster.blueyellow'], { delay: 400, scale: 1.1, duration: 1800 }),
     aura('Crimson aura', ['energy_field.01.yellow', 'energy_field.01.blue'], { delay: 900, scale: 1.2, duration: 2000, opacity: 0.6, fadeIn: 300, fadeOut: 500, ...tint('#b3121f') }),
   ], { sound: 'battleCry', soundNamespace: 'ability' }),
 
@@ -577,7 +577,7 @@ export default {
   'pf2e:TXWxuF8O44zNTUz8': design('A thousand lifetimes of frustration stare out through the samsaran\'s eyes, and the target reels, sickened by the weight of it.', () => [
     cast('Ancient glare', ['eyes.01.dark_purple.single', 'eyes.01.dark_green.single'], { stageId: 'tg', scale: 0.5, duration: 1100 }),
     travel('Despair pours out', ['energy_strands.range.standard.purple.01'], { after: 'tg', anchor: 'start', offset: 400, duration: 1100 }),
-    impact('Sickened', ['icon.poison.dark_green'], { after: 'tg', anchor: 'start', offset: 1000, duration: 1500, scale: 0.55 }),
+    impact('Sickened', ['icon.poison.dark_green'], { after: 'tg', anchor: 'start', offset: 1000, duration: 1500, scale: 0.55, bodyLook: 'Withering' }),
     motion('cower', 'targets', { after: 'tg', anchor: 'start', offset: 1000, duration: 900, intensity: 0.4 }),
   ], { sound: 'whispers' }),
 
@@ -650,7 +650,7 @@ export default {
   'pf2e:F8V4dN91JmHIOQCv': design('The toppled titan hits the ground with a force that shakes the earth, and the tremor knocks nearby enemies down too.', () => [
     motion('slam', 'targets', { stageId: 'tt-s', duration: 700, intensity: 0.7, targetSelection: 'first' }),
     impact('Titan crashes down', ['impact.ground_crack.02.orange', 'impact.ground_crack.01.orange'], { stageId: 'tt', delay: 250, duration: 1500, scale: 1.3, below: true, targetSelection: 'first' }),
-    impact('Shockwave spreads', ['ground_cracks.01.orange'], { after: 'tt', anchor: 'start', offset: 300, duration: 1400, scale: 1, below: true, targetSelection: 'secondary' }),
+    impact('Shockwave spreads', ['impact.ground_crack.01.orange'], { after: 'tt', anchor: 'start', offset: 300, duration: 1400, scale: 1, below: true, targetSelection: 'secondary' }),
     motion('stagger', 'targets', { after: 'tt', anchor: 'start', offset: 400, duration: 900, intensity: 0.6, targetSelection: 'secondary' }),
   ], { sound: 'earthquake' }),
 
@@ -672,7 +672,7 @@ export default {
   // Tremor: small localized tremor in a 10-ft burst.
   'pf2e:r5vSplcFXtTS0kOB': design('A localized tremor shakes the burst: the ground cracks under each creature and they are jolted, the unlucky ones knocked prone.', () => [
     cast('Earth answers', ['cast_generic.earth.01.browngreen'], { scale: 0.8, duration: 900 }),
-    impact('Ground cracks', ['ground_cracks.01.orange'], { stageId: 'tr', delay: 350, duration: 1800, scale: 1.1, below: true, ...ALL }),
+    impact('Ground cracks', ['impact.ground_crack.01.orange'], { stageId: 'tr', delay: 350, duration: 1800, scale: 1.1, below: true, ...ALL }),
     motion('shake', 'targets', { after: 'tr', anchor: 'start', offset: 100, duration: 1000, intensity: 0.6, ...ALL }),
     impact('Dust kicks up', DUST, { after: 'tr', anchor: 'start', offset: 400, duration: 1000, scale: 0.6, ...ALL }),
   ]),
@@ -870,7 +870,7 @@ export default {
   // Wake and Tremble: the world convulses; creatures fall prone.
   'pf2e:J3Ewv9D0iAKusDNH': design('The roused world convulses: the ground heaves and cracks beneath every creature, throwing them prone.', () => [
     cast('The world wakes', ['cast_generic.earth.01.browngreen'], { scale: 0.9, duration: 900 }),
-    impact('Ground convulses', ['ground_cracks.01.orange'], { stageId: 'wt', delay: 350, duration: 1600, scale: 1.1, below: true, ...ALL }),
+    impact('Ground convulses', ['impact.ground_crack.01.orange'], { stageId: 'wt', delay: 350, duration: 1600, scale: 1.1, below: true, ...ALL }),
     motion('stagger', 'targets', { after: 'wt', anchor: 'start', offset: 200, duration: 900, intensity: 0.6, ...ALL }),
   ], { sound: 'earthquake' }),
 
@@ -1133,7 +1133,7 @@ export default {
   // Zombie Horde: construct splits into a shambling swarm of corpses.
   'pf2e:5uhKRkYDzLP7v3XY': design('The reanimated construct breaks apart into a shambling swarm of tiny corpses that pours over nearby enemies, clawing at them.', () => [
     cast('Construct splits apart', ['smoke.puff.ring.01.dark_black', 'smoke.puff.ring.01.white'], { scale: 1.4, duration: 1000, ...tint('#6b6248') }),
-    aura('Shambling swarm', ['spirit_guardians.dark_black.particles', 'spirit_guardians.blueyellow.ring'], { delay: 300, scale: 2.4, duration: 2200, opacity: 0.8, below: true, fadeOut: 500, ...tint('#6b6248') }),
+    aura('Shambling swarm', ['spirit_guardians.dark_black.particles', 'spirit_guardians.blueyellow.ring'], { delay: 300, scale: 2.4, duration: 2200, opacity: 0.8, below: true, fadeOut: 500, ...tint('#6b6248'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     impact('Swarm claws', CLAWS('dark_red'), { delay: 800, duration: 1000, scale: 0.7, repeats: 2, repeatInterval: 500, ...ALL }),
     motion('shake', 'targets', { delay: 900, duration: 1100, intensity: 0.4, ...ALL }),
   ], { sound: 'swarm' }),

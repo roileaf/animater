@@ -103,7 +103,7 @@ const enchantWard = why => design(why, () => [
 // --- life stealing / wounding / sharpness --------------------------------------
 const lifeSteal = why => design(why, () => [
   impact('Life is torn from the wound', ['toll_the_dead.purple.skull_smoke', 'toll_the_dead.green.skull_smoke'], { stageId: 'hit', duration: 1800, scale: 0.8, ...tint('#7a1f3a') }),
-  travel('Stolen vitality flows back', ['energy_strands.range.standard.dark_red', 'energy_strands.range.standard.purple'], { stageId: 'flow', travelOrigin: 'target', after: 'hit', anchor: 'start', offset: 350, duration: 1400 }),
+  travel('Stolen vitality flows back', ['energy_strands.range.multiple.dark_red.01', 'energy_strands.range.standard.purple'], { stageId: 'flow', travelOrigin: 'target', after: 'hit', anchor: 'start', offset: 350, duration: 1400 }),
   aura('Wielder flushes with stolen life', ['energy_strands.in.red.01', 'energy_strands.in.green.01'], { after: 'flow', anchor: 'end', offset: -300, duration: 1400, scale: 0.8, ...tint('#b0203c') }),
   reel({ intensity: 0.4, requiresHit: false }),
 ], { sound: 'drain' });
@@ -215,7 +215,7 @@ export default {
   'dnd5e:dnd5e-monsterfeatures24-mmCursedTouch000': darkTouch('A cursing touch, not a blade slash: necrotic smoke marks the curse.'),
   'dnd5e:dnd5e-monsterfeatures24-mmParalyzingTouc': design('A touch that leaves the target Paralyzed; shown as a numbing touch and stun, not ice spikes.', () => [
     ...swing('Numbing touch', ['melee_generic.creature_attack.fist.002.green', 'melee_generic.creature_attack.fist.002.blue'], { duration: 1300, scale: 1, ...tint('#6b8f5a') }),
-    impact('Muscles lock rigid', ['icon.stun.purple', 'markers.stun.purple.01'], after({ offset: 400, duration: 1800, scale: 0.6, offsetY: -0.35, offsetUnits: 'token' })),
+    impact('Muscles lock rigid', ['icon.stun.purple', 'markers.stun.purple.01'], after({ offset: 400, duration: 1800, scale: 0.6, offsetY: -0.35, offsetUnits: 'token', bodyLook: 'Held' })),
     motion('shake', 'targets', { after: 'hit', anchor: 'start', offset: 450, duration: 700, intensity: 0.3, requiresHit: true }),
   ], { sound: 'psychic' }),
   'dnd5e:dnd5e-monsterfeatures24-mmDrainingSwipe0:pZ84SpChkTN52eO6-melee': design('A shadowy swipe that saps Strength: a claw rake that leaves necrotic smoke, not a gathered cast.', () => [
@@ -280,7 +280,7 @@ export default {
     motion('recoil', 'targets', { after: 'fly', anchor: 'end', duration: 700, intensity: 0.4 }),
   ], { sound: 'radiantRay' }),
   'dnd5e:dnd5e-monsterfeatures24-mmInfernalGlaive:IS4utGV80LpDrjvt': design('An infernal wound bleeds hellfire at the start of each turn.', () => [
-    impact('Infernal wound bleeds', ['liquid.splash.red', 'liquid.splash02.red'], { stageId: 'hit', duration: 1400, scale: 0.7, ...tint('#7a1010') }),
+    impact('Infernal wound bleeds', ['liquid.splash02.red'], { stageId: 'hit', duration: 1400, scale: 0.7 }),
     impact('Hellfire licks the wound', ['impact.fire.01.orange'], after({ offset: 200, duration: 1500, scale: 0.6, ...tint('#c0281a') })),
     reel({ intensity: 0.35, requiresHit: false }),
   ], { sound: 'fire' }),
@@ -401,9 +401,9 @@ export default {
   ], { sound: 'pierce' }),
 
   // Dwarven Thrower: always returns
-  'dnd5e:dnd5e-equipment24-dmgDwarvenThrowe:bd1kKOncfoLha8CT-thrown': hammerHurl('The hammer flies, strikes with extra force and flies back to your hand.', [impact('Force burst', ['explosion.02.purple', 'explosion.02.blue'], { after: 'hit', anchor: 'start', duration: 1300, scale: 0.5 })]),
-  'dnd5e:dnd5e-equipment24-dmgDwarvenThrowe:w3ATyMSroDLch6Re-ranged': hammerHurl('The hammer flies, strikes with extra force and flies back to your hand.', [impact('Force burst', ['explosion.02.purple', 'explosion.02.blue'], { after: 'hit', anchor: 'start', duration: 1300, scale: 0.5 })]),
-  'dnd5e:dnd5e-equipment24-dmgDwarvenThrowe:w3ATyMSroDLch6Re-thrown': hammerHurl('The hammer flies, strikes with extra force and flies back to your hand.', [impact('Force burst', ['explosion.02.purple', 'explosion.02.blue'], { after: 'hit', anchor: 'start', duration: 1300, scale: 0.5 })]),
+  'dnd5e:dnd5e-equipment24-dmgDwarvenThrowe:bd1kKOncfoLha8CT-thrown': hammerHurl('The hammer flies, strikes with extra force and flies back to your hand.', [impact('Force burst', ['impact.011.blue', 'explosion.02.blue'], { after: 'hit', anchor: 'start', duration: 1300, scale: 0.5, ...tint('#e8e2d0') })]),
+  'dnd5e:dnd5e-equipment24-dmgDwarvenThrowe:w3ATyMSroDLch6Re-ranged': hammerHurl('The hammer flies, strikes with extra force and flies back to your hand.', [impact('Force burst', ['impact.011.blue', 'explosion.02.blue'], { after: 'hit', anchor: 'start', duration: 1300, scale: 0.5, ...tint('#e8e2d0') })]),
+  'dnd5e:dnd5e-equipment24-dmgDwarvenThrowe:w3ATyMSroDLch6Re-thrown': hammerHurl('The hammer flies, strikes with extra force and flies back to your hand.', [impact('Force burst', ['impact.011.blue', 'explosion.02.blue'], { after: 'hit', anchor: 'start', duration: 1300, scale: 0.5, ...tint('#e8e2d0') })]),
   'dnd5e:dnd5e-items-kvD4ElYCfCKpjDeg:nrzlvqGr1Iv0fAa0-ranged': hammerHurl('The hammer strikes and immediately flies back to your hand.'),
   'dnd5e:dnd5e-items-kvD4ElYCfCKpjDeg:KNkfMHvoRKvrWQbV-ranged': hammerHurl('Against a giant the hammer lands harder, then flies back to your hand.', [motion('stagger', 'targets', { after: 'hit', anchor: 'start', duration: 800, intensity: 0.6 })]),
 

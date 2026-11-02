@@ -39,15 +39,15 @@ export default {
 
   // Earthbind: the weight of earth drags a flying target to the ground.
   'pf2e:gPvtmKMRpg9I9D7H': design('Earthen weight drags the flier down: rocks fall onto the target, which is pressed to the cracking ground.', () => [
-    cast('Weight of earth', ['ground_cracks.03.orange'], { stageId: 'c', scale: 0.6, duration: 900 }),
+    cast('Weight of earth', ['impact.ground_crack.03.orange'], { stageId: 'c', scale: 0.6, duration: 900 }),
     impact('Falling stone', ['falling_rocks.top.1x1.sandstone', 'falling_rocks.top.1x1.grey'], { stageId: 'rocks', after: 'c', anchor: 'start', offset: 400, duration: 1500, scale: 0.9 }),
     motion('press', 'targets', { after: 'rocks', anchor: 'start', offset: 300, duration: 1000 }),
-    impact('Grounded', ['ground_cracks.01.orange'], { after: 'rocks', anchor: 'start', offset: 900, duration: 1800, scale: 0.8, below: true }),
+    impact('Grounded', ['impact.ground_crack.01.orange'], { after: 'rocks', anchor: 'start', offset: 900, duration: 1800, scale: 0.8, below: true }),
   ]),
 
   // Earthbreaker Stride: gain a burrow Speed; the ground parts as you move.
   'pf2e:uZmUhjgqiX6d0Dv6': design('The ground parts around the caster, who sinks into a freshly opened burrow.', () => [
-    cast('Stone stirs', ['ground_cracks.03.orange'], { stageId: 'stir', scale: 0.9, duration: 1200, below: true }),
+    cast('Stone stirs', ['impact.ground_crack.03.orange'], { stageId: 'stir', scale: 0.9, duration: 1200, below: true }),
     cast('Burrow opens', ['burrow.out.01.brown', 'ground_cracks.01.orange'], { stageId: 'burrow', after: 'stir', anchor: 'start', offset: 450, duration: 1600, scale: 0.9 }),
     motion('sink', 'source', { after: 'burrow', anchor: 'start', offset: 250, duration: 1200 }),
   ]),
@@ -81,7 +81,7 @@ export default {
   'pf2e:0JUOgbbFCapp3HlW': design('A thrown chunk of elemental matter rather than an alchemical flask: the caster flicks a stone-and-moss shard at the foe, which cracks on impact.', () => [
     cast('Matter gathers', ['cast_generic.earth.01.browngreen'], { stageId: 'gather', scale: 0.6, duration: 700 }),
     motion('throw', 'source', { after: 'gather', anchor: 'start', offset: 300, duration: 600 }),
-    travel('Elemental chunk', ['spell_projectile.earth.01.browngreen', 'boulder.toss.02.01.stone.brown'], { stageId: 'toss', after: 'gather', anchor: 'start', offset: 450, duration: 1300, scale: 0.45 }),
+    travel('Elemental chunk', ['boulder.toss.02.01.stone.brown'], { stageId: 'toss', after: 'gather', anchor: 'start', offset: 450, duration: 1300, scale: 0.45 }),
     impact('Chunk shatters', ['impact.boulder.01', 'impact.001.blue'], { stageId: 'hit', after: 'toss', anchor: 'start', offset: 900, duration: 1100, scale: 0.6 }),
     motion('recoil', 'targets', { after: 'hit', anchor: 'start', duration: 600 }),
   ]),
@@ -92,7 +92,7 @@ export default {
     sprite('Silhouette swells', { stageId: 'grow', after: 'c', anchor: 'start', offset: 450, duration: 1300, opacity: 0.55, fadeOut: 500 }),
     motion('pulse', 'source', { after: 'c', anchor: 'start', offset: 500, duration: 1000, intensity: 0.8 }),
     motion('slam', 'source', { stageId: 'stomp', after: 'grow', anchor: 'end', offset: -300, duration: 700 }),
-    impact('Stomp', ['ground_cracks.02.orange'], { after: 'stomp', anchor: 'start', offset: 300, duration: 1800, scale: 1.1, below: true }),
+    impact('Stomp', ['impact.ground_crack.02.orange'], { after: 'stomp', anchor: 'start', offset: 300, duration: 1800, scale: 1.1, below: true, ...tint('#a08060') }),
   ]),
 
   // Ember Doppelgänger: smoke and embers form a glowing duplicate that blasts a 10-foot burst.
@@ -139,7 +139,7 @@ export default {
   'pf2e:gWmLT5SkA0qH2mNE': design('Venom coats the companion: a green splash and a brief toxic drip on the target rather than a 7.8 s poison cloud.', () => [
     cast('Venom summoned', ['fumes.toxic.green', 'fumes.04.complete.grey'], { stageId: 'c', scale: 0.6, duration: 1000 }),
     impact('Venom coats', ['liquid.splash.green', 'liquid.splash.blue'], { stageId: 'coat', after: 'c', anchor: 'start', offset: 500, duration: 1300, scale: 0.6, ...tint('#5fcf3a') }),
-    aura('Dripping venom', ['icon.poison.dark_green'], { subject: 'targets', after: 'coat', anchor: 'start', offset: 600, duration: 1600, scale: 0.4, offsetY: -0.55, offsetUnits: 'token', fadeIn: 200, fadeOut: 500 }),
+    aura('Dripping venom', ['icon.poison.dark_green'], { subject: 'targets', after: 'coat', anchor: 'start', offset: 600, duration: 1600, scale: 0.4, offsetY: -0.55, offsetUnits: 'token', fadeIn: 200, fadeOut: 500, bodyLook: 'Envenomed' }),
   ]),
 
   // Eradicate Undeath: massive deluge of life energy in a 30-foot cone.
@@ -264,9 +264,9 @@ export default {
 
   // Flame Wisp: three faintly glowing wisps of fire float around your head.
   'pf2e:3q9tBMWsWQKlXPPJ': design('Three distinct flame wisps appear in a ring around the caster\'s head instead of overlapping on one spot.', () => [
-    cast('Wisp one', ['dancing_light.yellow'], { stageId: 'w1', duration: 2600, scale: 0.22, offsetX: -0.4, offsetY: -0.45, offsetUnits: 'token', fadeIn: 200, fadeOut: 500, ...tint('#ff8a3d') }),
-    cast('Wisp two', ['dancing_light.yellow'], { after: 'w1', anchor: 'start', offset: 250, duration: 2400, scale: 0.22, offsetX: 0.4, offsetY: -0.45, offsetUnits: 'token', fadeIn: 200, fadeOut: 500, ...tint('#ff8a3d') }),
-    cast('Wisp three', ['dancing_light.yellow'], { after: 'w1', anchor: 'start', offset: 500, duration: 2200, scale: 0.22, offsetY: -0.7, offsetUnits: 'token', fadeIn: 200, fadeOut: 500, ...tint('#ffb347') }),
+    cast('Wisp one', ['flaming_sphere.200px.orange.01'], { stageId: 'w1', duration: 2600, scale: 0.22, offsetX: -0.4, offsetY: -0.45, offsetUnits: 'token', fadeIn: 200, fadeOut: 500 }),
+    cast('Wisp two', ['flaming_sphere.200px.orange.01'], { after: 'w1', anchor: 'start', offset: 250, duration: 2400, scale: 0.22, offsetX: 0.4, offsetY: -0.45, offsetUnits: 'token', fadeIn: 200, fadeOut: 500 }),
+    cast('Wisp three', ['flaming_sphere.200px.orange.01'], { after: 'w1', anchor: 'start', offset: 500, duration: 2200, scale: 0.22, offsetY: -0.7, offsetUnits: 'token', fadeIn: 200, fadeOut: 500 }),
   ]),
 
   // Flammable Fumes: an invisible toxic cloud that later becomes explosive.
@@ -351,7 +351,7 @@ export default {
   // Forge: superheat the target (especially metal), dealing fire damage.
   'pf2e:FTR8m4qrhYzTRyrD': design('The target glows white-hot as heat floods inward and flames lick it; trimmed from an 8 s metal aura.', () => [
     cast('Heat channelled', ['cast_generic.fire.01.orange'], { stageId: 'c', scale: 0.6, duration: 700 }),
-    impact('Superheating', ['particles.inward.orange.01.04', 'particles.inward.greenyellow.01.04'], { stageId: 'heat', after: 'c', anchor: 'start', offset: 350, duration: 1300, scale: 0.8, ...tint('#ff7a2a') }),
+    impact('Superheating', ['particles.inward.orange.01.04', 'particles.inward.greenyellow.01.04'], { stageId: 'heat', after: 'c', anchor: 'start', offset: 350, duration: 1300, scale: 0.8, ...tint('#ff7a2a'), bodyLook: 'Super-Heat' }),
     impact('Red-hot flare', ['flames.01.orange'], { after: 'heat', anchor: 'start', offset: 600, duration: 1800, scale: 0.8 }),
     motion('shake', 'targets', { after: 'heat', anchor: 'start', offset: 700, duration: 700, intensity: 0.5 }),
   ]),
@@ -375,7 +375,7 @@ export default {
   // Freeze Time: stop time for everything but yourself.
   'pf2e:1dsahW4g1ggXtypx': design('A brief frozen-moment flash with a still afterimage instead of a 17.6 s spinning icosahedron.', () => [
     cast('Time halts', ['icosahedron.simple.blue', 'icosahedron.simple'], { stageId: 'c', scale: 0.8, duration: 2600, fadeIn: 200, fadeOut: 600 }),
-    cast('Stilled world', ['template_circle.out_pulse.01.burst.bluewhite'], { after: 'c', anchor: 'start', offset: 300, duration: 1800, scale: 1.6, opacity: 0.6 }),
+    cast('Stilled world', ['template_circle.out_pulse.02.burst.bluewhite'], { after: 'c', anchor: 'start', offset: 300, duration: 1800, scale: 1.6, opacity: 0.6 }),
     sprite('Held instant', { after: 'c', anchor: 'start', offset: 600, duration: 2000, opacity: 0.4, fadeOut: 700 }),
   ]),
 
@@ -392,7 +392,7 @@ export default {
   'pf2e:vFkz0gVBUT2gGnm1': design('A frost gust tears down the line and the caster, turned to snow, is carried along it past the foes; previously the caster never moved.', () => [
     cast('Cold breath', ['cast_generic.ice.01.blue', 'cast_generic.02.blue'], { stageId: 'c', scale: 0.7, duration: 700 }),
     area('Shard-laden gust', ['ray_of_frost.blue'], { stageId: 'gust', after: 'c', anchor: 'start', offset: 300, duration: 1800 }),
-    area('Snow flurry', ['wind_stream.white'], { after: 'gust', anchor: 'start', offset: 150, duration: 1800, opacity: 0.7, ...tint('#d6f0ff') }),
+    area('Snow flurry', ['breath_weapons02.burst.line.ice.01', 'wind_stream.white'], { after: 'gust', anchor: 'start', offset: 150, duration: 1800, opacity: 0.7 }),
     sprite('Snow-crystal silhouette', { after: 'gust', anchor: 'start', offset: 300, duration: 1200, opacity: 0.4, fadeOut: 500, ...tint('#d6f0ff') }),
     motion('rush', 'source', { after: 'gust', anchor: 'start', offset: 400, duration: 1300, distance: 8, intensity: 0.6, motionRange: 'target', motionEndpoint: 'past' }),
     motion('shake', 'targets', { after: 'gust', anchor: 'start', offset: 500, duration: 700, intensity: 0.5 }),
@@ -428,7 +428,7 @@ export default {
   'pf2e:H481wmQUtEUhxHzi': design('A mould-green cloud of spores billows through the cone and sickened creatures stagger.', () => [
     cast('Exhale', ['smoke.puff.side.green', 'smoke.puff.side.grey'], { stageId: 'c', scale: 0.5, duration: 800 }),
     area('Spore cloud', ['breath_weapons.poison.cone.green'], { stageId: 'cone', after: 'c', anchor: 'start', offset: 200, duration: 2200, ...tint('#8aa35a') }),
-    area('Drifting spores', ['particles.002.001.complete.few.greenpurple', 'particles.002.001.complete.few.blue'], { after: 'cone', anchor: 'start', offset: 400, duration: 2000, opacity: 0.8, ...tint('#a6b86a') }),
+    area('Drifting spores', ['particles.002.001.complete.many.greenyellow', 'particles.002.001.complete.few.blue'], { after: 'cone', anchor: 'start', offset: 400, duration: 2000, opacity: 0.8, ...tint('#a6b86a') }),
     motion('stagger', 'targets', { after: 'cone', anchor: 'start', offset: 600, duration: 800, intensity: 0.5 }),
   ]),
 
@@ -443,13 +443,13 @@ export default {
   // Gale Blast: wind whirls around you in a 5-foot emanation, pushing creatures away.
   'pf2e:dDiOnjcsBFbAvP6t': design('A short whirl of wind around the caster shoves adjacent creatures outward; trimmed from an 8 s whirlwind.', () => [
     area('Whirling gale', ['whirlwind.bluewhite', 'whirlwind.bluegrey'], { stageId: 'w', duration: 1800, fadeOut: 500 }),
-    area('Gust ring', ['template_circle.out_pulse.01.burst.bluewhite'], { after: 'w', anchor: 'start', offset: 250, duration: 1300, opacity: 0.6 }),
+    area('Gust ring', ['template_circle.out_pulse.02.burst.bluewhite'], { after: 'w', anchor: 'start', offset: 250, duration: 1300, opacity: 0.6 }),
     motion('rush', 'targets', { after: 'w', anchor: 'start', offset: 400, duration: 700, distance: 1, intensity: 0.6, motionRange: 'distance', motionHeading: 'away' }),
   ]),
 
   // Garden of Stone: a 10-foot-tall stalagmite erupts, piercing and pushing creatures; smaller spikes around it.
   'pf2e:YZiPAxdZFYXu6BvA': design('Stone spikes erupt from cracking ground across the burst and shove creatures aside, instead of cracks alone.', () => [
-    cast('Ground shakes', ['ground_cracks.03.orange'], { stageId: 'c', scale: 0.8, duration: 900, below: true }),
+    cast('Ground shakes', ['impact.ground_crack.03.orange'], { stageId: 'c', scale: 0.8, duration: 900, below: true }),
     area('Ground fractures', ['ground_cracks.01.orange'], { stageId: 'gc', after: 'c', anchor: 'start', offset: 400, duration: 2400, below: true }),
     area('Stalagmite erupts', ['ice_spikes.radial.burst.grey', 'ice_spikes.radial.burst.white'], { stageId: 'spike', after: 'gc', anchor: 'start', offset: 250, duration: 1800, ...tint('#8a7a62') }),
     motion('recoil', 'targets', { after: 'spike', anchor: 'start', offset: 150, duration: 700 }),
@@ -508,7 +508,7 @@ export default {
   // Glacial Skewer: a large spike of ice launched at a target, pushing it 10 feet back.
   'pf2e:LecsGlwWvnfyOeec': design('A launched ice spike shatters on the target and drives it back 10 feet, replacing a faint glint contact.', () => [
     cast('Ice spike forms', ['cast_generic.ice.01.blue', 'cast_generic.02.blue'], { stageId: 'c', scale: 0.6, duration: 700 }),
-    travel('Ice spike', ['spell_projectile.ice_shard.blue'], { stageId: 'shard', after: 'c', anchor: 'start', offset: 350, duration: 1200, scale: 0.75 }),
+    travel('Ice spike', ['arrow.cold.blue', 'spell_projectile.ice_shard.blue'], { stageId: 'shard', after: 'c', anchor: 'start', offset: 350, duration: 1200, scale: 0.75 }),
     impact('Skewering impact', ['impact_themed.ice_shard.01.blue', 'impact_themed.ice_shard.blue'], { stageId: 'hit', after: 'shard', anchor: 'start', offset: 850, duration: 1200, scale: 0.9 }),
     motion('rush', 'targets', { after: 'hit', anchor: 'start', offset: 50, duration: 700, distance: 2, intensity: 0.7, motionRange: 'distance', motionHeading: 'away' }),
   ]),
@@ -524,22 +524,22 @@ export default {
   // Goblin Pox: your touch afflicts the target with an itchy, allergenic rash.
   'pf2e:zJQnkKEKbJqGB3iB': design('A touch leaves a sickly green rash bloom on the target, which squirms, instead of a 7.8 s purple poison cloud.', () => [
     motion('lunge', 'source', { stageId: 'touch', duration: 600, intensity: 0.6 }),
-    impact('Rash blooms', ['particles.outward.greenyellow.01.03'], { stageId: 'rash', after: 'touch', anchor: 'start', offset: 250, duration: 1400, scale: 0.6 }),
-    impact('Sickened', ['icon.poison.dark_green'], { after: 'rash', anchor: 'start', offset: 400, duration: 1400, scale: 0.4, offsetY: -0.55, offsetUnits: 'token' }),
+    impact('Rash blooms', ['particles.outward.greenyellow.01.03'], { stageId: 'rash', after: 'touch', anchor: 'start', offset: 250, duration: 1400, scale: 0.6, bodyLook: 'Envenomed' }),
+    impact('Sickened', ['icon.poison.dark_green'], { after: 'rash', anchor: 'start', offset: 400, duration: 1400, scale: 0.4, offsetY: -0.55, offsetUnits: 'token', bodyLook: 'Envenomed' }),
     motion('shake', 'targets', { after: 'rash', anchor: 'start', offset: 300, duration: 800, intensity: 0.4 }),
   ], { sound: 'poison' }),
 
   // Grasp of the Deep: the phantasmal pressure of the deep sea crushes the target.
   'pf2e:rwWtpZpkNYvypknx': design('Phantasmal deep water closes over the target and crushes it down; trimmed from 8 s overlays.', () => [
     impact('Deep water closes', ['liquid.splash.blue'], { stageId: 'w', duration: 1500, scale: 0.8, ...tint('#1f4a8a') }),
-    impact('Crushing pressure', ['energy_field.02.above.blue'], { after: 'w', anchor: 'start', offset: 300, duration: 2200, scale: 0.7, opacity: 0.8, ...tint('#2a5aa0') }),
+    impact('Crushing pressure', ['energy_field.02.above.blue'], { after: 'w', anchor: 'start', offset: 300, duration: 2200, scale: 0.7, opacity: 0.8, ...tint('#2a5aa0'), bodyLook: 'Submerged' }),
     motion('press', 'targets', { after: 'w', anchor: 'start', offset: 400, duration: 1200 }),
   ]),
 
   // Grasping Earth: hand-like protrusions of rock and soil grab and bury creatures.
   'pf2e:Wpgt5TYcTHLDei6J': design('Earthen hands claw up out of cracked ground and seize the creatures in the burst.', () => [
-    cast('Stone stirs', ['ground_cracks.03.orange'], { stageId: 'c', scale: 0.8, duration: 900, below: true }),
-    area('Ground fractures', ['ground_cracks.01.orange'], { stageId: 'gc', after: 'c', anchor: 'start', offset: 400, duration: 2600, below: true }),
+    cast('Stone stirs', ['impact.ground_crack.03.orange'], { stageId: 'c', scale: 0.8, duration: 900, below: true }),
+    area('Ground fractures', ['impact.ground_crack.01.orange'], { stageId: 'gc', after: 'c', anchor: 'start', offset: 400, duration: 2600, below: true }),
     area('Earthen hands grasp', ['black_tentacles.dark_purple'], { stageId: 'hands', after: 'gc', anchor: 'start', offset: 300, duration: 2600, ...tint('#8a6a44') }),
     motion('stagger', 'targets', { after: 'hands', anchor: 'start', offset: 500, duration: 900 }),
   ]),
@@ -593,8 +593,8 @@ export default {
   // Haunting Hymn: a jarring hymn in a 15-foot cone deals sonic damage.
   'pf2e:b5BQbwmuBhgPXTyi': design('A ghostly blue wash of sound and notes fills the cone and listeners flinch, replacing a detection-cone outline.', () => [
     cast('Hymn begins', ['music_notations.bass_clef.blue', 'icon.music_note.blue'], { stageId: 'c', scale: 0.6, duration: 900 }),
-    area('Jarring hymn', ['template_cone_PF2e.001.001.blueteal', 'template_cone_PF2e.001.001.purplered'], { stageId: 'cone', after: 'c', anchor: 'start', offset: 300, duration: 1800, ...tint('#8fc8ff') }),
-    area('Dissonant notes', ['music_notations.bass_clef.blue', 'icon.music_note.blue'], { after: 'cone', anchor: 'start', offset: 200, duration: 1600, scale: 0.5 }),
+    area('Jarring hymn', ['template_cone_PF2e.001.001.blueteal', 'template_cone_PF2e.001.001.purplered'], { stageId: 'cone', after: 'c', anchor: 'start', offset: 300, duration: 1800, ...tint('#8fc8ff'), areaLook: 'tokenshade' }),
+    area('Dissonant notes', ['music_notations.bass_clef.blue', 'icon.music_note.blue'], { after: 'cone', anchor: 'start', offset: 200, duration: 1600, scale: 0.5, areaLook: 'tokenshade' }),
     motion('cower', 'targets', { after: 'cone', anchor: 'start', offset: 400, duration: 800, intensity: 0.5 }),
   ]),
 
@@ -610,7 +610,7 @@ export default {
     cast('Heart glows', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'c', scale: 0.6, duration: 700 }),
     travel('Life bolt', ['magic_missile.green', 'magic_missile.purple'], { stageId: 'bolt', after: 'c', anchor: 'start', offset: 400, duration: 1200, scale: 0.65, ...tint('#7dff9a') }),
     impact('Vital burst', ['healing_generic.03.burst.green', 'healing_generic.03.burst.bluegreen'], { stageId: 'hit', after: 'bolt', anchor: 'start', offset: 850, duration: 1600, scale: 1 }),
-    area('Vital plume', ['template_circle.out_pulse.01.burst.bluewhite'], { after: 'hit', anchor: 'start', offset: 250, duration: 1500, opacity: 0.7, ...tint('#8dffa8') }),
+    area('Vital plume', ['template_circle.out_pulse.02.burst.bluewhite'], { after: 'hit', anchor: 'start', offset: 250, duration: 1500, opacity: 0.7, ...tint('#8dffa8') }),
   ]),
 
   // Heaving Earth: strike the ground and send a wave through it that explodes at the target, pushing it back and prone.
@@ -625,7 +625,7 @@ export default {
 
   // Hedge Prison: a hollow cube of dense bushes encases the target.
   'pf2e:z0ffligcrkVtKZd6': design('Dense hedges and vines close around the target in a few seconds rather than two 8.5 s loops.', () => [
-    impact('Hedge walls rise', ['plant_growth.03.square.2x2.complete.greenyellow', 'plant_growth.03.round.2x2.complete.greenyellow'], { stageId: 'h', duration: 3500, scale: 1.2, fadeOut: 600 }),
+    impact('Hedge walls rise', ['entangle.02.complete.02.green', 'plant_growth.03.round.2x2.complete.greenyellow'], { stageId: 'h', duration: 3500, scale: 1.2, fadeOut: 600 }),
     impact('Vines knit', ['vine.complete.nature.group.01.green'], { after: 'h', anchor: 'start', offset: 400, duration: 3000, scale: 1.1, fadeOut: 600 }),
   ], { sound: 'vines' }),
 
@@ -641,7 +641,7 @@ export default {
     motion('throw', 'source', { stageId: 'throw', duration: 600 }),
     projectile('Holy water vial', ['throwable.throw.flask.01.white', 'throwable.throw.flask.01.orange'], { stageId: 'vial', after: 'throw', anchor: 'start', offset: 250, duration: 1000, scale: 0.5 }),
     area('Cascade', ['water_splash.circle.01.blue'], { stageId: 'splash', after: 'vial', anchor: 'end', offset: -100, duration: 2200 }),
-    area('Sacred shimmer', ['ward.star.yellow.01', 'ward.star.yellow'], { after: 'splash', anchor: 'start', offset: 200, duration: 2000, opacity: 0.6 }),
+    area('Sacred shimmer', ['ward.star.yellow.01', 'ward.star.yellow'], { after: 'splash', anchor: 'start', offset: 200, duration: 2000, opacity: 0.6, areaLook: 'tokenshade', areaMotif: 'radiance' }),
     motion('recoil', 'targets', { after: 'splash', anchor: 'start', offset: 200, duration: 650 }),
   ]),
 
@@ -816,7 +816,7 @@ export default {
   'pf2e:JEMSVySuS4jvTepQ': design('The ancient automaton heaves up out of the ground and its fiery eye beam scorches the foes, instead of a silent 8 s metal aura.', () => [
     cast('Ground heaves', ['impact.ground_crack.01.orange'], { stageId: 'gc', scale: 1.6, duration: 2000, below: true }),
     cast('Automaton emerges', ['aura_themed.01.outward.complete.metal.01.grey'], { stageId: 'emerge', after: 'gc', anchor: 'start', offset: 300, duration: 2000, scale: 1.4, fadeOut: 500 }),
-    travel('Eyes of fire', ['energy_beam.normal.red.01', 'energy_beam.normal.blue.01'], { stageId: 'beam', after: 'emerge', anchor: 'start', offset: 900, duration: 1600, scale: 0.8, ...tint('#ff7a2a') }),
+    travel('Eyes of fire', ['scorching_ray.01.orange', 'energy_beam.normal.blue.01'], { stageId: 'beam', after: 'emerge', anchor: 'start', offset: 900, duration: 1600, scale: 0.8 }),
     impact('Searing impact', ['impact.fire.01.orange', 'explosion.01.orange'], { stageId: 'hit', after: 'beam', anchor: 'start', offset: 500, duration: 1300, scale: 0.8 }),
     motion('recoil', 'targets', { after: 'hit', anchor: 'start', duration: 650 }),
   ], { sound: 'fireRay' }),

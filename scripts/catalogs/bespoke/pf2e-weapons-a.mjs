@@ -96,7 +96,7 @@ export default {
   // Alghollthu Whip: aqudel tentacle strobing with small patterns of light.
   'pf2e:TIq0xuvRpIdPglsA:melee': design('An aqudel tentacle whip that "constantly strobes with small patterns of light": blue-teal light motes flicker along the lash on contact.', ({ recipe: r }) => [
     ...base(r),
-    impact('Strobing light patterns', ['particles.002.001.complete.few.blueteal', 'particles.002.001.complete.few.blue'], { after: sid(r, 'contact'), anchor: 'start', offset: 120, duration: 1300, scale: 0.45, opacity: 0.85 }),
+    impact('Strobing light patterns', ['particles.002.001.complete.many.blueteal', 'particles.002.001.complete.few.blue'], { after: sid(r, 'contact'), anchor: 'start', offset: 120, duration: 1300, scale: 0.45, opacity: 0.85 }),
   ]),
 
   // Atmospheric Staff: strikes with an imposing boom.

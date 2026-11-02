@@ -76,7 +76,7 @@ export default {
 
   // Acidic Burst: a shell of acid forms around the caster and bursts outward.
   'pf2e:rnNGALRtsjspFTws': design('A shell of acid wraps the caster, then bursts outward in a ring of splashing acid that drenches everyone adjacent.', () => [
-    aura('Acid shell', ['bubble.001.001.complete.green', 'bubble.001.001.complete.blue'], { stageId: 'ab-shell', duration: 900, scale: 1.1, ...tint('#8fe04a') }),
+    aura('Acid shell', ['shield.01.outro_explode.green', 'bubble.001.001.complete.blue'], { stageId: 'ab-shell', duration: 900, scale: 1.1, ...tint('#8fe04a') }),
     area('Shell bursts', ['water_splash.circle.01.green', 'water_splash.circle.01.blue'], { stageId: 'ab-burst', after: 'ab-shell', anchor: 'end', offset: -150, duration: 1600, ...tint('#8fe04a') }),
     motion('pulse', 'source', { after: 'ab-shell', anchor: 'end', offset: -200, duration: 500, intensity: 0.6 }),
     motion('recoil', 'targets', { after: 'ab-burst', anchor: 'start', offset: 150, duration: 600, intensity: 0.5 }),
@@ -126,7 +126,7 @@ export default {
   // Allfood: 8 s blob was overlong; this is a quick transmutation of an object into bland edible goo.
   'pf2e:X3fWP6YCSzcdtg93': design('A transmutation sign turns over the object and it slumps into a bland, gooey beige mass.', () => [
     cast('Matter softens', ['magic_signs.rune.transmutation.complete.yellow'], { stageId: 'af-sign', scale: 0.5, duration: 1600 }),
-    impact('Edible goo', ['liquid.blob.brown', 'liquid.blob.blue'], { after: 'af-sign', anchor: 'start', offset: 700, duration: 1800, scale: 0.7, ...tint('#d6c29a') }),
+    impact('Edible goo', ['liquid.blob.blue'], { after: 'af-sign', anchor: 'start', offset: 700, duration: 1800, scale: 0.7, ...tint('#d6c29a') }),
   ]),
 
   // Amalgamizing Leap: you and the target catapult through space; departure-only shimmer left both tokens static.
@@ -343,7 +343,7 @@ export default {
   // Beheading Buzz Saw: a molten bladed disc wheels down the line slicing everyone; targets had no wound or reaction.
   'pf2e:dKWc83KKiXoIJkhp': design('Molten scrap spins into a bladed disc that wheels down the line; each creature in its path is slashed and bleeds.', () => [
     cast('Molten scrap gathers', ['cast_generic.fire.01.orange'], { stageId: 'bz-cast', scale: 0.7, duration: 600, ...tint('#ffb070') }),
-    area('Buzz saw wheels forward', ['chakram.01.return.01', 'template_line_piercing.generic.01.orange'], { stageId: 'bz-saw', after: 'bz-cast', anchor: 'end', duration: 2200, ...tint('#ffb070') }),
+    area('Buzz saw wheels forward', ['chakram.01.throw.01', 'template_line_piercing.generic.01.orange'], { stageId: 'bz-saw', after: 'bz-cast', anchor: 'end', duration: 2200, ...tint('#ffb070') }),
     impact('Bladed cut', ['melee_generic.slash.01.orange', 'melee_generic.slash.01.orange'], { after: 'bz-saw', anchor: 'start', offset: 700, duration: 900, scale: 0.8, targetSelection: 'all' }),
     impact('Bleeding wound', ['liquid.splash_side02.red'], { after: 'bz-saw', anchor: 'start', offset: 900, duration: 1000, scale: 0.5, targetSelection: 'all' }),
     motion('stagger', 'targets', { after: 'bz-saw', anchor: 'start', offset: 750, duration: 700, intensity: 0.55 }),
@@ -412,14 +412,14 @@ export default {
   // Blight: plants wither and crops spoil; blue-purple leaves and blue motes read as a fey bloom.
   'pf2e:7yWXx3qC4eFNHhxD': design('Dead brown leaves whirl away from the caster and grey motes of withered soil drift off.', () => [
     cast('Leaves wither', ['swirling_leaves.outburst.01.orangered', 'swirling_leaves.outburst.01.pink'], { stageId: 'bl-leaves', scale: 0.9, duration: 2400, ...tint('#8a6b3a') }),
-    cast('Soil sickens', ['particles.outward.white.01.03', 'particles.outward.greenyellow.01.03'], { after: 'bl-leaves', anchor: 'start', offset: 600, duration: 2200, scale: 0.9, ...tint('#6f6658') }),
+    cast('Soil sickens', ['particles.outward.white.01.03', 'particles.outward.greenyellow.01.03'], { after: 'bl-leaves', anchor: 'start', offset: 600, duration: 2200, scale: 0.9, ...tint('#b3a993') }),
   ]),
 
   // Blightburn Blast: a cone of radioactive blightburn energy; a poison icon projectile ran 6.5 s.
   'pf2e:EgkypvUZIZkx1UlQ': design('A cone of lurid green radiation blasts from the caster\'s hands, glittering with crystal motes; creatures inside recoil sickened.', () => [
     cast('Radiation gathers', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'bb-cast', scale: 0.7, duration: 600 }),
     area('Blightburn blast', ['breath_weapons02.burst.cone.fire.green.01', 'breath_weapons.poison.cone.green'], { stageId: 'bb-cone', after: 'bb-cast', anchor: 'end', offset: -100, duration: 2200, ...tint('#b6ff3a') }),
-    area('Crystal glimmer', ['twinkling_stars.points06.white'], { after: 'bb-cone', anchor: 'start', offset: 400, duration: 1800, opacity: 0.8, ...tint('#d9ff9a') }),
+    area('Crystal glimmer', ['glint.yellow.many'], { after: 'bb-cone', anchor: 'start', offset: 400, duration: 1800, opacity: 0.8, ...tint('#d9ff9a') }),
     motion('recoil', 'targets', { after: 'bb-cone', anchor: 'start', offset: 400, duration: 700, intensity: 0.5 }),
   ]),
 
@@ -453,7 +453,7 @@ export default {
   'pf2e:59NR1hA2jPSgg2sW': design('Searing blisters swell on the target\'s skin, bubbling with yellow-green caustic fluid as it flinches.', () => [
     cast('Point', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'bl-cast', scale: 0.6, duration: 500 }),
     impact('Blisters swell', ['bubble.001.002.complete.green', 'bubble.001.002.complete.blue'], { stageId: 'bl-swell', after: 'bl-cast', anchor: 'end', duration: 2000, scale: 0.45, ...tint('#c8d94a') }),
-    impact('Caustic sheen', ['fumes.04.complete.green', 'fumes.04.complete.grey'], { after: 'bl-swell', anchor: 'start', offset: 500, duration: 1600, scale: 0.7, opacity: 0.7 }),
+    impact('Caustic sheen', ['fumes.04.complete.green', 'fumes.04.complete.grey'], { after: 'bl-swell', anchor: 'start', offset: 500, duration: 1600, scale: 0.7, opacity: 0.7, bodyLook: 'Corroding' }),
     motion('shake', 'targets', { after: 'bl-swell', anchor: 'start', offset: 300, duration: 800, intensity: 0.4 }),
   ]),
 
@@ -501,7 +501,7 @@ export default {
   // Bloodspray Curse: any wound gushes blood; a yellow ward rune read as protective.
   'pf2e:VXUrO8TwRqBpNzdU': design('A blood-red curse settles on the target and its skin weeps a brief gush of blood.', () => [
     cast('Curse spoken', ['cast_generic.dark.01.red', 'cast_generic.01.yellow'], { stageId: 'bs-cast', scale: 0.6, duration: 700 }),
-    impact('Wound curse', ['condition.curse.01.016.red'], { stageId: 'bs-curse', after: 'bs-cast', anchor: 'start', offset: 400, duration: 2000, scale: 0.6 }),
+    impact('Wound curse', ['markers.drop.red.01'], { stageId: 'bs-curse', after: 'bs-cast', anchor: 'start', offset: 400, duration: 2000, scale: 0.6 }),
     impact('Blood gushes', ['liquid.splash02.red'], { after: 'bs-curse', anchor: 'start', offset: 600, duration: 1100, scale: 0.5 }),
     motion('shake', 'targets', { after: 'bs-curse', anchor: 'start', offset: 600, duration: 600, intensity: 0.35 }),
   ]),
@@ -667,7 +667,7 @@ export default {
   // Calcification: bone dust invades a creature and starts turning it into a bone statue; blue motes and a skull icon ran long.
   'pf2e:L13n9NKvfGLApse1': design('A puff of bone dust engulfs the target and pale bone crusts inward over its body as it stiffens.', () => [
     impact('Bone dust', ['smoke.puff.centered.grey'], { stageId: 'ca-dust', duration: 1300, scale: 0.8, ...tint('#e8e0cc') }),
-    impact('Body calcifies', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'ca-dust', anchor: 'start', offset: 500, duration: 2000, scale: 0.9, ...tint('#ece4cf') }),
+    impact('Body calcifies', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'ca-dust', anchor: 'start', offset: 500, duration: 2000, scale: 0.9, ...tint('#ece4cf'), bodyLook: 'Petrified' }),
     motion('press', 'targets', { after: 'ca-dust', anchor: 'start', offset: 700, duration: 1300, intensity: 0.45 }),
   ]),
 
@@ -725,7 +725,7 @@ export default {
 
   // Cataclysm: five world-ending cataclysms strike at once; the old stack ran to 8 s and never hit the creatures.
   'pf2e:wLIvH0AT1u7oa64N': design('Every cataclysm lands at once across the burst: the ground splits, acid rain and freezing shards fall, lightning lashes, a tidal surge and flames roll through, and everyone inside is battered.', () => [
-    area('Earthquake', ['ground_cracks.03.orange'], { stageId: 'cy-quake', duration: 3500, below: true }),
+    area('Earthquake', ['impact.ground_crack.03.orange'], { stageId: 'cy-quake', duration: 3500, below: true }),
     area('Acid rain', ['template_square.raindrops.001.7x7.instant.combined.greenyellow', 'template_square.raindrops.001.7x7.instant.combined.blue'], { after: 'cy-quake', anchor: 'start', offset: 200, duration: 2600, ...tint('#93e03c') }),
     area('Freezing wind', ['ice_spikes.radial.burst.white'], { after: 'cy-quake', anchor: 'start', offset: 600, duration: 2400 }),
     area('Lightning lashes', ['lightning_strike.blue'], { after: 'cy-quake', anchor: 'start', offset: 900, duration: 1800 }),
@@ -829,7 +829,7 @@ export default {
   // Clinging Ice: sleet and snow collect on the feet and legs; a 6.6 s sleet storm on the whole token ran long.
   'pf2e:MraZBLJ4Be3ogmWL': design('Freezing sleet swirls down and ice crusts around the target\'s feet as it struggles to move.', () => [
     impact('Sleet falls', ['sleet_storm.01.blue', 'sleet_storm.01.blue'], { stageId: 'ci-sleet', duration: 2000, scale: 0.5 }),
-    impact('Ice clings to legs', ['ice_spikes.radial.burst.blue', 'ice_spikes.radial.burst.white'], { after: 'ci-sleet', anchor: 'start', offset: 600, duration: 1600, scale: 0.5, offsetY: 0.25, offsetUnits: 'token', below: true }),
+    impact('Ice clings to legs', ['ice_spikes.radial.burst.blue', 'ice_spikes.radial.burst.white'], { after: 'ci-sleet', anchor: 'start', offset: 600, duration: 1600, scale: 0.5, offsetY: 0.25, offsetUnits: 'token', below: true, bodyLook: 'Frostbitten' }),
     motion('shake', 'targets', { after: 'ci-sleet', anchor: 'start', offset: 700, duration: 900, intensity: 0.35 }),
   ]),
 
@@ -1048,14 +1048,14 @@ export default {
   // Cry of Destruction: a booming voice smashes what's in front of the caster; drifting soundwave projectiles ran 4.5 s.
   'pf2e:0H1ozccQGGFLUwFI': design('The caster\'s voice booms out as a cone of shattering sound that rocks every creature in front of them.', () => [
     cast('Voice booms', ['cast_generic.sound.01.pinkteal'], { stageId: 'cd-voice', scale: 0.7, duration: 600 }),
-    area('Destructive cry', ['template_cone_PF2e.001.002.blueteal', 'template_cone_PF2e.001.001.purplered'], { stageId: 'cd-cone', after: 'cd-voice', anchor: 'start', offset: 250, duration: 1600 }),
+    area('Destructive cry', ['template_cone_PF2e.001.002.blueteal', 'template_cone_PF2e.001.001.purplered'], { stageId: 'cd-cone', after: 'cd-voice', anchor: 'start', offset: 250, duration: 1600, areaLook: 'tokenshade' }),
     impact('Sonic shatter', ['impact.sound.01.pinkteal', 'shatter.blue'], { after: 'cd-cone', anchor: 'start', offset: 350, duration: 900, scale: 0.6, targetSelection: 'all' }),
     motion('recoil', 'targets', { after: 'cd-cone', anchor: 'start', offset: 350, duration: 650, intensity: 0.55 }),
   ]),
 
   // Cup of Dust: an unquenchable thirst curse; an 8 s blood drop and blue motes missed the dryness.
   'pf2e:10siFBMF4pIDhVmf': design('A dry curse settles on the target and dust puffs from its parched lips as it sags.', () => [
-    impact('Thirst curse', ['condition.curse.01.019.red'], { stageId: 'cu-curse', duration: 1800, scale: 0.6, ...tint('#c9a46a') }),
+    impact('Thirst curse', ['condition.curse.01.001.red'], { stageId: 'cu-curse', duration: 1800, scale: 0.6, ...tint('#c9a46a') }),
     impact('Parching dust', ['smoke.puff.centered.grey'], { after: 'cu-curse', anchor: 'start', offset: 500, duration: 1300, scale: 0.6, ...tint('#cbb08a') }),
     motion('stagger', 'targets', { after: 'cu-curse', anchor: 'start', offset: 600, duration: 900, intensity: 0.35 }),
   ]),
@@ -1100,7 +1100,7 @@ export default {
   'pf2e:smiVuoFMSgY2FTOO': design('A shallow pool spreads across the burst and jets of water leap up in a musical fountain display.', () => [
     area('Pool spreads', ['water_splash.circle.01.blue'], { stageId: 'df-pool', duration: 1800 }),
     area('Fountain jets', ['lava_spout.001.001.complete.blue', 'lava_spout.001.001.complete.orangeyellow'], { after: 'df-pool', anchor: 'start', offset: 500, duration: 2400, scale: 0.5, ...tint('#8fd4ff') }),
-    area('Music', ['music_notations.beamed_quavers.blue'], { after: 'df-pool', anchor: 'start', offset: 900, duration: 1600, scale: 0.5 }),
+    area('Music', ['music_notations.beamed_quavers.blue'], { after: 'df-pool', anchor: 'start', offset: 900, duration: 1600, scale: 0.5, areaLook: 'tokenshade', areaMotif: 'notes' }),
   ]),
 
   // Dancing Shield: a levitated shield orbits the target; the target itself levitating was wrong.
@@ -1155,7 +1155,7 @@ export default {
   // Decompose: rapid decay of a corpse; an 8.7 s purple smoke ran long.
   'pf2e:AvUDguV71UG7srSj': design('Sickly green rot smoke rises from the touched corpse as it crumbles to motes.', () => [
     impact('Decay begins', ['smoke.puff.centered.dark_green', 'smoke.puff.centered.grey'], { stageId: 'de-rot', duration: 1700, scale: 0.8 }),
-    impact('Matter departs', ['particles.outward.greenyellow.01.04'], { after: 'de-rot', anchor: 'start', offset: 500, duration: 1600, scale: 0.7, ...tint('#7c7a52') }),
+    impact('Matter departs', ['particles.outward.greenyellow.01.04'], { after: 'de-rot', anchor: 'start', offset: 500, duration: 1600, scale: 0.7, ...tint('#b5b37a') }),
   ]),
 
   // Defy the Gods: draining divine power from the target back to the caster; the beam flowed the wrong way.
@@ -1255,7 +1255,7 @@ export default {
   // Diamond Dust: an emanation of dancing ice crystals; a 6.8 s sleet film exceeded the cap.
   'pf2e:wjJW9hWY5CkkMvY5': design('The air around the caster supercools into a glittering cloud of dancing ice crystals.', () => [
     area('Ice crystals', ['sleet_storm.01.blue'], { stageId: 'dd-sleet', duration: 3500, fadeOut: 600 }),
-    area('Refracting glints', ['twinkling_stars.points06.white'], { after: 'dd-sleet', anchor: 'start', offset: 500, duration: 2600, ...tint('#cfefff') }),
+    area('Refracting glints', ['glint.blue.many', 'twinkling_stars.points06.white'], { after: 'dd-sleet', anchor: 'start', offset: 500, duration: 2600, ...tint('#cfefff') }),
   ]),
 
   // ---- Batch 9 (Dimensional Assault .. Drain Life) ----
@@ -1344,7 +1344,7 @@ export default {
 
   // Divine Plagues: wracking divine plagues; a 7.8 s purple gas read as arcane poison.
   'pf2e:NkeLctXo9FLGnDhi': design('A golden curse of judgement settles on the target and sickly plague-smoke wracks it.', () => [
-    impact('Divine judgement', ['condition.curse.01.009.red'], { stageId: 'dp-curse', duration: 1800, scale: 0.6, ...tint('#e0c060') }),
+    impact('Divine judgement', ['condition.curse.01.001.red'], { stageId: 'dp-curse', duration: 1800, scale: 0.6, ...tint('#e0c060') }),
     impact('Plague smoke', ['smoke.puff.centered.dark_green', 'smoke.puff.centered.grey'], { after: 'dp-curse', anchor: 'start', offset: 500, duration: 1500, scale: 0.7 }),
     motion('stagger', 'targets', { after: 'dp-curse', anchor: 'start', offset: 550, duration: 900, intensity: 0.45 }),
   ]),

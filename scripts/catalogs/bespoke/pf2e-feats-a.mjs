@@ -37,7 +37,7 @@ export default {
   // Absolve Sins: 30-foot emanation of mental damage forcing enemies to reflect on their sins.
   'pf2e:sUMrRRFsHiJf4VXP': design('A wave of judgment pulses out across the 30-foot emanation and each enemy cowers as it is forced to face its sins.', () => [
     cast('Judgment gathers', ['divine_smite.caster.reversed.dark_purple', 'divine_smite.caster.reversed.blueyellow'], { stageId: 'abs-cast', scale: 0.9, duration: 1100 }),
-    aura('Absolution wave', ['template_circle.out_pulse.01.burst.purplepink', 'template_circle.out_pulse.01.burst.bluewhite'], { stageId: 'abs-wave', after: 'abs-cast', anchor: 'start', offset: 600, scale: 4, opacity: 0.8, below: true, duration: 2000, fadeOut: 500 }),
+    aura('Absolution wave', ['template_circle.out_pulse.02.burst.purplepink', 'template_circle.out_pulse.01.burst.bluewhite'], { stageId: 'abs-wave', after: 'abs-cast', anchor: 'start', offset: 600, scale: 4, opacity: 0.8, below: true, duration: 2000, fadeOut: 500 }),
     impact('Sins weigh on the mind', ['energy_strands.complete.dark_purple.01', 'energy_strands.complete.blue.01'], { stageId: 'abs-hit', after: 'abs-wave', anchor: 'start', offset: 500, scale: 0.9, duration: 1500, ...OPT }),
     motion('cower', 'targets', { after: 'abs-hit', anchor: 'start', offset: 150, duration: 1000, intensity: 0.4, ...OPT }),
   ], { sound: 'psychic' }),
@@ -92,7 +92,7 @@ export default {
 
   // Animal Rage: the barbarian transforms into their instinct animal.
   'pf2e:1VLOhyq0IFMY2rqh': design('A red surge of primal rage swells around you and bestial claws rake the air as your body becomes your animal.', () => [
-    cast('Primal rage surges', ['divine_smite.caster.reversed.dark_red', 'divine_smite.caster.reversed.blueyellow'], { stageId: 'ar-rage', scale: 0.9, duration: 1200, ...tint('#c0302a') }),
+    cast('Primal rage surges', ['divine_smite.caster.reversed.red', 'divine_smite.caster.reversed.blueyellow'], { stageId: 'ar-rage', scale: 0.9, duration: 1200 }),
     sprite('Form swells', { after: 'ar-rage', anchor: 'start', offset: 400, duration: 1200 }),
     aura('Bestial claws', ['claws.400px.dark_red', 'claws.400px.red'], { after: 'ar-rage', anchor: 'start', offset: 700, scale: 0.8, duration: 1000 }),
     motion('pulse', 'source', { after: 'ar-rage', anchor: 'start', offset: 500, duration: 1000, intensity: 0.8 }),
@@ -233,7 +233,7 @@ export default {
   // Bleed Out: ranged bloodletting spell attack.
   'pf2e:skPVYOSDj7oC6PSX': design('Residual blood magic lashes out as a crimson bolt and opens a bleeding wound.', () => [
     cast('Blood magic stirs', ['cast_generic.dark.01.red', 'cast_generic.02.blue'], { stageId: 'bo-cast', scale: 0.7, duration: 900, ...tint('#9c1515') }),
-    travel('Bloodletting bolt', ['scorching_ray.01.dark_red', 'scorching_ray.01.orange'], { stageId: 'bo-ray', after: 'bo-cast', anchor: 'start', offset: 450, duration: 1300, ...tint('#9c1515') }),
+    travel('Bloodletting bolt', ['scorching_ray.01.red', 'scorching_ray.01.orange'], { stageId: 'bo-ray', after: 'bo-cast', anchor: 'start', offset: 450, duration: 1300 }),
     impact('Wound opens', ['liquid.splash_side.red', 'liquid.splash_side02.red'], { after: 'bo-ray', anchor: 'end', scale: 0.8, duration: 1300 }),
   ], { sound: 'drain' }),
 
@@ -335,7 +335,7 @@ export default {
   // Cleansing Light: a burst of light from your horn in a 20-foot emanation.
   'pf2e:gXAAJCnjfCDK7YV2': design('Your horn flares and a ring of cleansing light sweeps out 20 feet around you.', () => [
     cast('Horn flares', ['sacred_flame.source.white', 'sacred_flame.source.yellow'], { stageId: 'cl-horn', scale: 0.8, offsetY: -0.3, offsetUnits: 'token', duration: 1100 }),
-    aura('Cleansing burst', ['template_circle.out_pulse.01.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'cl-horn', anchor: 'start', offset: 450, scale: 3, below: true, opacity: 0.85, duration: 1800, fadeOut: 500 }),
+    aura('Cleansing burst', ['template_circle.out_pulse.02.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'cl-horn', anchor: 'start', offset: 450, scale: 3, below: true, opacity: 0.85, duration: 1800, fadeOut: 500 }),
     motion('pulse', 'source', { after: 'cl-horn', anchor: 'start', offset: 300, duration: 800, intensity: 0.4 }),
   ]),
 
@@ -347,7 +347,7 @@ export default {
 
   // Constricting Hold: the eidolon squeezes a grabbed creature.
   'pf2e:si8FGX2ZRxetdVHp': design('Your eidolon tightens its coils around the grabbed creature and squeezes.', () => [
-    aura('Coils tighten', ['entangle.02.complete.04.grey', 'entangle.02.complete.02.green'], { subject: 'targets', stageId: 'ch-coil', scale: 1, duration: 2000, fadeOut: 500 }),
+    aura('Coils tighten', ['entangle.02.complete.04.grey', 'entangle.02.complete.02.green'], { subject: 'targets', stageId: 'ch-coil', scale: 1, duration: 2000, fadeOut: 500, bodyLook: 'Held' }),
     impact('Crushing squeeze', FIST, { after: 'ch-coil', anchor: 'start', offset: 600, scale: 0.8, duration: 1000 }),
     motion('press', 'targets', { after: 'ch-coil', anchor: 'start', offset: 500, duration: 1100, intensity: 0.6 }),
   ], { sound: 'bludgeon' }),
@@ -378,7 +378,7 @@ export default {
   'pf2e:AV9NkSLNvv0UcdcP': design('You exhale a cone of sickly green, flesh-eating gas that eats at everything in it.', () => [
     motion('lunge', 'source', { stageId: 'bhd-breathe', duration: 700, intensity: 0.4 }),
     travel('Flesh-eating gas', ['breath_weapons.poison.cone.green'], { stageId: 'bhd-cone', after: 'bhd-breathe', anchor: 'start', offset: 250, targetSelection: 'first', duration: 2400 }),
-    impact('Flesh corrodes', ['impact.001.green', 'impact.005.orange'], { after: 'bhd-cone', anchor: 'start', offset: 800, scale: 0.8, duration: 1300, ...OPT, ...tint('#7fcf3a') }),
+    impact('Flesh corrodes', ['impact.001.green', 'impact.005.orange'], { after: 'bhd-cone', anchor: 'start', offset: 800, scale: 0.8, duration: 1300, ...OPT, ...tint('#7fcf3a'), bodyLook: 'Corroding' }),
   ]),
 
   // Breath of the Dragon (Dragonblood): exhale a torrent of draconic energy.

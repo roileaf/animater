@@ -167,7 +167,7 @@ export function withBodyLooks(recipe, catalog) {
     if(!s.bodyLook||!can(s.bodyLook))return s;
     const subject=s.kind==='impact'?'targets':s.subject??'source';
     return {kind:'tokenfx',stageId:s.stageId,label:`Tokenshade · ${s.bodyLook}`,assets:[],catalogFx:true,fxProfile:'body',
-      fxPreset:s.bodyLook,fxLibrary:'tokenshade',fxTint:'',subject,persist:s.persist===true,delay:s.delay??0,duration:s.duration,
+      fxPreset:s.bodyLook,fxLibrary:'tokenshade',fxTint:s.bodyLook==='glow'&&s.tintEnabled&&/^#[0-9a-f]{6}$/i.test(s.tint??'')?s.tint:'',subject,persist:s.persist===true,delay:s.delay??0,duration:s.duration,
       afterStage:s.afterStage,timingAnchor:s.timingAnchor,startOffset:s.startOffset,optionalTargets:subject==='targets',
       targetSelection:s.targetSelection??'all',targetLimit:s.targetLimit??0,targetStagger:s.targetStagger??0,requiresHit:s.requiresHit===true};
   })});

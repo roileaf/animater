@@ -262,7 +262,7 @@ put('jD8RW5PdLI6snlsO', design('Mark the Center: a breath of enchanted red ash b
 put('Rlp7ND33yYfxiEWi', design('Master Strike: the hit lands on an off-guard foe at a vital point, and the target seizes up, paralyzed or worse.', () => [
   motion('lunge', 'source', { stageId: 'swing', duration: 550, intensity: 0.5 }),
   impact('Vital point', ['sneak_attack.dark_red', 'sneak_attack.dark_green'], { stageId: 'hit', after: 'swing', anchor: 'start', offset: 200, duration: 1100, scale: 0.8, ...FIRST }),
-  aura('Paralysis grips', ['icon.stun.purple'], { subject: 'targets', after: 'hit', anchor: 'start', offset: 500, duration: 1300, scale: 0.5, fadeOut: 400, ...FIRST }),
+  aura('Paralysis grips', ['icon.stun.purple'], { subject: 'targets', after: 'hit', anchor: 'start', offset: 500, duration: 1300, scale: 0.5, fadeOut: 400, ...FIRST, bodyLook: 'Held' }),
   motion('shake', 'targets', { after: 'hit', anchor: 'start', offset: 200, duration: 800, intensity: 0.4, ...FIRST }),
 ], ab('dagger')));
 put('74iat04PtfG8gn2Q', surge('Mighty Rage: the rage boils over so fast that a second rage action follows in the same breath, a red flare of fury.', {
@@ -397,7 +397,7 @@ put('BfC5pWAns8PNewW3', command('Passage of Lines: the commander signals and squ
 put('ZC4SuXmL79N9VVIW', design('Patron\'s Claim: a grasping limb of the patron stretches from the familiar\'s maw, tears at the creature\'s spirit and drains it.', () => [
   cast('Familiar\'s maw opens', ['smoke.puff.centered.dark_purple', 'smoke.puff.centered.grey'], { stageId: 'maw', scale: 0.6, duration: 900, ...tint('#4a2d5f') }),
   travel('Patron\'s grasping limb', TETHER('dark_purple'), { stageId: 'limb', after: 'maw', anchor: 'start', offset: 300, duration: 1500, ...FIRST }),
-  impact('Spirit torn', ['impact.004.dark_purple', 'impact.004.blue'], { stageId: 'rip', after: 'limb', anchor: 'start', offset: 700, duration: 1000, scale: 0.8, ...FIRST, ...tint('#6a4a8c') }),
+  impact('Spirit torn', ['impact.004.dark_purple', 'impact.004.blue'], { stageId: 'rip', after: 'limb', anchor: 'start', offset: 700, duration: 1000, scale: 0.8, ...FIRST, ...tint('#6a4a8c'), bodyLook: 'Spirit Rend' }),
   motion('stagger', 'targets', { after: 'rip', anchor: 'start', duration: 750, intensity: 0.6, ...FIRST }),
 ], sp('spirit')));
 put('VBwNo2Wbfd4n4Y3g', design('Patron\'s Presence: a palpable, oppressive weight spreads 15 feet from the familiar, fogging the minds of enemies within.', () => [
@@ -486,7 +486,7 @@ put('QHFMeJGzFWj2QczA', brew('Quick Tincture: a short-lived elixir is brewed in 
 const rage = (why) => design(why, () => [
   motion('brace', 'source', { stageId: 'gather', duration: 600, intensity: 0.7 }),
   aura('Red battle aura', BUFF('purplered'), { stageId: 'aura', after: 'gather', anchor: 'start', offset: 200, duration: 2400, scale: 1.1, fadeOut: 600, ...tint('#d0302a') }),
-  aura('Fury flares', ['impact.012.dark_red', 'impact.012.blue'], { after: 'gather', anchor: 'end', duration: 1000, scale: 0.9, ...tint('#c0392b') }),
+  aura('Fury flares', ['impact.012.red', 'impact.012.blue'], { after: 'gather', anchor: 'end', duration: 1000, scale: 0.9 }),
   motion('shake', 'source', { after: 'gather', anchor: 'end', duration: 600, intensity: 0.6 }),
   motion('pulse', 'source', { after: 'gather', anchor: 'end', offset: 450, duration: 800, intensity: 0.7 }),
   aura('Ground shudders', ['ground_cracks.01.dark_red', 'ground_cracks.01.orange'], { after: 'gather', anchor: 'end', duration: 1600, scale: 0.7, below: true, opacity: 0.6 }),
@@ -718,7 +718,7 @@ put('vFaNE7s7vFs9BxJW', reroll('Set Free: the attempt to break the hold is rolle
 }));
 put('VCUz5EnBUJF07j1a', design('Sever Conduit: the summoner snaps the tether and the eidolon winks out before the killing damage lands.', () => [
   motion('shake', 'source', { stageId: 'snap', duration: 600, intensity: 0.3 }),
-  aura('Conduit snaps', ['shimmer.01.orange', 'shimmer.01.blue'], { after: 'snap', anchor: 'start', duration: 900, scale: 0.7, ...tint('#f2dc8a') }),
+  aura('Conduit snaps', ['impact.012.yellow', 'shimmer.01.blue'], { after: 'snap', anchor: 'start', duration: 900, scale: 0.7, ...tint('#f2dc8a') }),
   motion('flicker', 'targets', { after: 'snap', anchor: 'start', offset: 200, duration: 900, intensity: 0.8, ...FIRST }),
 ], sp('dispel')));
 put('XFdTDDAPO7U0r4Et', design('Sever Four Dragonfly Wings: the ikon slashes from one foe to the next, up to four cuts in a single flowing sequence.', () => [
@@ -893,7 +893,7 @@ put('f8vqWQktvmtSRpUb', design('Spiritual Scar: the scar flares to absorb the fi
 ], sp('holy')));
 put('dwA0wfUaRf4aT0eB', design('Spit Ambient Magic: the ostilli flashes red and spits a dart of magic at the target.', () => [
   cast('Ostilli flashes red', ['impact.012.red', 'impact.012.blue'], { stageId: 'flash', scale: 0.4, duration: 600, ...tint('#e04a3a') }),
-  travel('Magic dart', ['ranged.01.projectile.01.dark_orange'], { stageId: 'dart', after: 'flash', anchor: 'start', offset: 250, duration: 800, ...FIRST, ...tint('#e04a3a') }),
+  travel('Magic dart', ['magic_missile.purple'], { stageId: 'dart', after: 'flash', anchor: 'start', offset: 250, duration: 800, ...FIRST, ...tint('#e04a3a') }),
   impact('Dart pierces', ['impact.005.red', 'impact.005.orange'], { after: 'dart', anchor: 'end', duration: 800, scale: 0.6, ...FIRST }),
   motion('recoil', 'targets', { after: 'dart', anchor: 'end', duration: 600, intensity: 0.4, ...FIRST }),
 ], sp('pierce')));
@@ -923,7 +923,7 @@ put('D2PNfIw7U6Ks0VY4', design('Steel Your Resolve: a deep breath and a steadyin
 ], quiet()));
 put('GPd3hmyUSbcSBj39', design('Stellar Misfortune: a dooming star glints over the creature, and its check is rolled twice for the worse.', () => [
   motion('press', 'source', { stageId: 'call', duration: 600, intensity: 0.2 }),
-  impact('Dooming star', ['markers.circle_of_stars.orangepurple', 'markers.circle_of_stars.blue'], { stageId: 'star', after: 'call', anchor: 'start', offset: 250, duration: 1600, scale: 0.6, ...above(-0.5), ...FIRST, ...tint('#c05050') }),
+  impact('Dooming star', ['twinkling_stars.points04.white', 'markers.circle_of_stars.blue'], { stageId: 'star', after: 'call', anchor: 'start', offset: 250, duration: 1600, scale: 0.6, ...above(-0.5), ...FIRST, ...tint('#c05050') }),
   impact('Ill fortune', D20, { after: 'star', anchor: 'start', offset: 400, duration: 1200, scale: 0.35, ...side(0.5), ...FIRST, ...tint('#c05050') }),
 ], quiet()));
 put('UHpkTuCtyaPqiCAB', design('Step: a careful 5-foot step that draws no reactions.', () => [
@@ -1185,7 +1185,7 @@ put('B7wDxyjX66JkiCOV', handwork('Venom Draw: the weapon comes out of its sheath
 }));
 put('JAka1VWMPGOm5JpR', design('Verdant Rest: the user grows still and takes root, bark and leaves overtaking their form.', () => [
   motion('sink', 'source', { stageId: 'root', duration: 1500, intensity: 0.2 }),
-  aura('Takes root', ['plant_growth.03.round.2x2.complete.greenyellow'], { after: 'root', anchor: 'start', duration: 2200, scale: 0.9, below: true }),
+  aura('Takes root', ['plant_growth.03.round.2x2.complete.greenyellow'], { after: 'root', anchor: 'start', duration: 2200, scale: 0.9, below: true, bodyLook: 'Barkskin' }),
   aura('Leaves unfurl', ['swirling_leaves.complete.02.green'], { after: 'root', anchor: 'start', offset: 400, duration: 1600, scale: 0.8 }),
 ], sp('growth')));
 put('iJLzVonevhsi2uPs', design('Visions of Sin: the eidolon floods the target\'s mind with tormenting images of sin.', () => [

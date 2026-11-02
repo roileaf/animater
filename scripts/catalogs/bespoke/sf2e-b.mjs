@@ -210,7 +210,7 @@ export default {
   [F('feats-Io08S9xtxr9zmfBg')]: design('Grapple Dance: a kasathan acrobatic grapple using the foe\'s weight; a spinning step into the hold.', () => grab({ pre: [motion('spin', 'source', { stageId: 'twirl', duration: 700, intensity: 0.4 })], delay: 500 }), { fx: false }),
   [F('feats-tE1t3fwt4ukbfZ8f')]: design('Guilt Trip: a heartbreaking look of disappointment shames the attacker, who recoils sickened with guilt.', () => [
     cast('Look of utter disappointment', ['eyes.01.bluegreen.single', 'eyes.01.dark_green.single'], { stageId: 'look', scale: 0.55, offsetY: -0.5, offsetUnits: 'token', duration: 1200 }),
-    impact('Shame', ['icon.horror.teal', 'icon.horror.purple'], { stageId: 'shame', after: 'look', anchor: 'start', offset: 450, duration: 1400, scale: 0.6, offsetY: -0.5, offsetUnits: 'token' }),
+    impact('Shame', ['icon.drop.dark_green', 'icon.horror.purple'], { stageId: 'shame', after: 'look', anchor: 'start', offset: 450, duration: 1400, scale: 0.6, offsetY: -0.5, offsetUnits: 'token' }),
     motion('cower', 'targets', { after: 'shame', anchor: 'start', duration: 900, intensity: 0.4 }),
   ], { fx: false }),
   [F('actions-Wt3PzHoo3BauvifP')]: design('Gunk Spray spews caustic chemicals in a 30-foot cone: an acid spray fills the cone.', () => [
@@ -353,7 +353,7 @@ export default {
   ], { fx: false }),
   [F('feats-BK1xOBi8FSrt5Lfg')]: design('Muzzle Flash: an aimed shot whose blinding flash leaves the target dazzled.', () => gun({ targetMotion: 'cower', extra: [impact('Dazzling flare', ['impact.006.yellow'], { after: 'hit', anchor: 'start', duration: 900, scale: 0.7 })] })),
   [F('feats-PYOgmegDpeiynDiK')]: design('Nanite Armament Boost pours nanites into your weapon so it deals electricity: crackling nanite current runs over you.', () => [
-    cast('Nanites flow', [sci(1, 'blue')], { stageId: 'flow', duration: 1200 }),
+    cast('Nanites flow', ['particles.002.001.complete.many.blue'], { stageId: 'flow', duration: 1200 }),
     aura('Electrified weapon', ['static_electricity.02.blue'], { after: 'flow', anchor: 'start', offset: 400, duration: 1800, scale: 0.9, fadeOut: 500 }),
   ]),
   [F('feats-OlSfsaJSE4Lk7wkt')]: design('Nanite Form: you dissolve into a Huge flying swarm of nanites.', () => [
@@ -606,7 +606,7 @@ export default {
     cast('Slick puddle', ['liquid.splash.green', 'liquid.splash.blue'], { after: 'squirt', anchor: 'start', offset: 250, duration: 1400, scale: 0.8, offsetX: 1, offsetUnits: 'token', below: true, ...tint('#7fd6c8') }),
   ]),
   [F('actions-oKLA4xGqOkugw45C')]: design('Slitherskin: toxins secreted through your flesh poison the creature touching you.', () => [
-    aura('Toxic sheen', ['fumes.toxic.green', 'fumes.04.complete.grey'], { stageId: 'sheen', duration: 1300, scale: 0.8 }),
+    aura('Toxic sheen', ['fumes.toxic.green', 'fumes.04.complete.grey'], { stageId: 'sheen', duration: 1300, scale: 0.8, bodyLook: 'Envenomed' }),
     impact('Poisoned touch', ['impact.001.green', 'impact.001.blue'], { after: 'sheen', anchor: 'start', offset: 400, duration: 900, scale: 0.7 }),
     motion('recoil', 'targets', { after: 'sheen', anchor: 'start', offset: 450, duration: 650, intensity: 0.45 }),
   ]),
@@ -724,7 +724,7 @@ export default {
     impact('Minds assailed', ['toll_the_dead.purple.shockwave', 'toll_the_dead.green.shockwave'], { after: 'wave', anchor: 'arrival', duration: 1200, scale: 0.8, targetStagger: 100 }),
     motion('stagger', 'targets', { after: 'wave', anchor: 'arrival', duration: 800, intensity: 0.4 }),
   ]),
-  [F('feats-QpHJD3PSRSxq7Vu5')]: design('Terror-Forming: Area/Auto-Fire that blasts the battlefield into ruined, difficult ground.', () => autoFire({ extra: [area('Ground torn apart', ['ground_cracks.01.orange'], { after: 'hits', anchor: 'start', offset: 200, duration: 2400, below: true, fadeOut: 700 })] })),
+  [F('feats-QpHJD3PSRSxq7Vu5')]: design('Terror-Forming: Area/Auto-Fire that blasts the battlefield into ruined, difficult ground.', () => autoFire({ extra: [area('Ground torn apart', ['impact.ground_crack.01.orange'], { after: 'hits', anchor: 'start', offset: 200, duration: 2400, below: true, fadeOut: 700 })] })),
   [F('feats-8MTJ72rLLLqFCKhe')]: design('The Harder They Fall: you exploit the big creature\'s size as an ally hits it, sending it off balance.', () => [
     impact('Weak point', IMP, { stageId: 'hit', duration: 800, scale: 0.7 }),
     motion('stagger', 'targets', { after: 'hit', anchor: 'start', offset: 150, duration: 900, intensity: 0.6 }),
@@ -915,7 +915,7 @@ export default {
   ]),
   [W('3yWQhmBrAXnBhYaF:ranged')]: design('Flamethrower spews burning chemicals, not bullets.', () => [
     cast('Igniter', ['cast_generic.fire.side01.orange', 'cast_generic.fire.01.orange'], { stageId: 'ign', duration: 600, scale: 0.6 }),
-    travel('Flame jet', ['fire_bolt.orange'], { stageId: 'jet', after: 'ign', anchor: 'start', offset: 150, duration: 900 }),
+    travel('Flame jet', ['fire_jet.orange'], { stageId: 'jet', after: 'ign', anchor: 'start', offset: 150, duration: 900 }),
     impact('Burning chemicals', ['impact.fire.01.orange', 'explosion.01.orange'], { after: 'jet', anchor: 'arrival', duration: 1000 }),
     motion('recoil', 'source', { after: 'ign', anchor: 'start', duration: 450, intensity: 0.3 }),
   ], { sound: 'fireCone' }),

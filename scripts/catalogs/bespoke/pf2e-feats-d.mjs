@@ -110,12 +110,12 @@ export default {
   'pf2e:FMjihpGLn9eQ14Gw': design('Quaking Stomp: a stomp so forceful it sets off a minor earthquake around the barbarian.', () => [
     motion('slam', 'source', { duration: 1100, intensity: 0.6 }),
     aura('Stomp impact', ['impact.ground_crack.03.orange'], { stageId: 'stomp', delay: 350, duration: 1600, scale: 2, below: true }),
-    aura('Ground splits', ['ground_cracks.03.orange'], { after: 'stomp', anchor: 'start', offset: 250, duration: 2600, scale: 3.5, below: true, fadeOut: 600 }),
+    aura('Ground splits', ['impact.ground_crack.03.orange'], { after: 'stomp', anchor: 'start', offset: 250, duration: 2600, scale: 3.5, below: true, fadeOut: 600 }),
     motion('shake', 'targets', { after: 'stomp', anchor: 'start', offset: 300, duration: 1500, intensity: 0.4 }),
   ]),
   'pf2e:it5yM6sbwJJysm9U': design('Quick Root: roots sprout from the legs and plunge into the ground to hold footing.', () => [
     cast('Roots plunge down', ['vine.complete.nature.group.01.green'], { stageId: 'roots', duration: 1600, scale: 0.9, below: true }),
-    aura('Rooted stance', ['plant_growth.03.round.2x2.complete.greenyellow'], { after: 'roots', anchor: 'start', offset: 300, duration: 1600, scale: 0.9, below: true, opacity: 0.8 }),
+    aura('Rooted stance', ['plant_growth.03.round.2x2.complete.greenyellow'], { after: 'roots', anchor: 'start', offset: 300, duration: 1600, scale: 0.9, below: true, opacity: 0.8, bodyLook: 'Rooted' }),
     motion('brace', 'source', { after: 'roots', anchor: 'start', offset: 150, duration: 1100, intensity: 0.5 }),
   ], { sound: 'vines' }),
   'pf2e:ux6kbsqRMsu9VHtn': design('Quill Spray: a mass of quills is launched across a 30-foot cone, piercing every foe in it.', () => [
@@ -167,7 +167,7 @@ export default {
   'pf2e:u2en8XQqxX9mQxkm': design('Rattle the Earth: the kineticist strikes the ground and an earthquake ripples out over the foes.', () => [
     motion('slam', 'source', { duration: 1100, intensity: 0.6 }),
     aura('Ground struck', ['impact.ground_crack.03.orange'], { stageId: 'strike', delay: 350, duration: 1600, scale: 1.8, below: true }),
-    impact('Fissures open', ['ground_cracks.02.orange'], { after: 'strike', anchor: 'start', offset: 400, duration: 2200, scale: 1.4, below: true, fadeOut: 500 }),
+    impact('Fissures open', ['impact.ground_crack.02.orange'], { after: 'strike', anchor: 'start', offset: 400, duration: 2200, scale: 1.4, below: true, fadeOut: 500, ...tint('#a08060') }),
     impact('Debris jolts', ['falling_rocks.top.1x1.sandstone', 'falling_rocks.top.1x1.grey'], { after: 'strike', anchor: 'start', offset: 600, duration: 1500, scale: 0.9 }),
     motion('shake', 'targets', { after: 'strike', anchor: 'start', offset: 400, duration: 1500, intensity: 0.5 }),
   ]),
@@ -210,7 +210,7 @@ export default {
     cast('Arms open to the seasons', ['cast_generic.03.greenyellow', 'cast_generic.02.blue'], { stageId: 'open', duration: 900, scale: 0.8 }),
     aura('Seasonal storm spirals', ['whirlwind.bluewhite', 'whirlwind.bluegrey'], { stageId: 'storm', after: 'open', anchor: 'start', offset: 450, duration: 2600, scale: 3.2, opacity: 0.75, fadeIn: 300, fadeOut: 500 }),
     aura('Spring and autumn leaves', ['swirling_leaves.outburst.01.greenorange', 'swirling_leaves.outburst.01.pink'], { after: 'storm', anchor: 'start', duration: 2000, scale: 3 }),
-    aura('Winter flurry', ['sleet_storm.01.blue', 'sleet_storm.01.blue'], { after: 'storm', anchor: 'start', offset: 400, duration: 2000, scale: 2.4, opacity: 0.6 }),
+    aura('Winter flurry', ['whirlwind.bluegrey', 'sleet_storm.01.blue'], { after: 'storm', anchor: 'start', offset: 400, duration: 2000, scale: 2.4, opacity: 0.6 }),
     impact('Seasons strike', ['swirling_leaves.complete.01.orangered', 'swirling_leaves.complete.01.green'], { after: 'storm', anchor: 'start', offset: 600, duration: 1500, scale: 0.9 }),
     motion('stagger', 'targets', { after: 'storm', anchor: 'start', offset: 600, duration: 1100, intensity: 0.5 }),
   ], { sound: 'wind' }),
@@ -318,7 +318,7 @@ export default {
   'pf2e:vHKNJZPBxj66nJzZ': design('Rupture Stomp: an armoured heel cracks the ground into difficult terrain within 10 feet.', () => [
     motion('slam', 'source', { duration: 1100, intensity: 0.6 }),
     aura('Heel impact', ['impact.ground_crack.02.orange'], { stageId: 'stomp', delay: 350, duration: 1500, scale: 1.4, below: true }),
-    aura('Ground ruptures', ['ground_cracks.02.orange'], { after: 'stomp', anchor: 'start', offset: 250, duration: 2600, scale: 2.5, below: true, fadeOut: 600 }),
+    aura('Ground ruptures', ['ground_cracks.02.white', 'ground_cracks.02.orange'], { after: 'stomp', anchor: 'start', offset: 250, duration: 2600, scale: 2.5, below: true, fadeOut: 600, ...tint('#a08060') }),
   ], { sound: 'earthquake' }),
   'pf2e:40mZVDnIP5qBNhTH': design('Sand Snatcher: a figure of sand rises beside the target and seizes it with grasping arms.', () => [
     cast('Sand gathers', ['cast_generic.earth.01.browngreen'], { stageId: 'gather', duration: 900, scale: 0.7 }),
@@ -362,7 +362,7 @@ export default {
   ]),
   'pf2e:D5atazp26amNzoqO': design('See You in Hell: a blast of spiritual energy lashes from the dying soul at the creature that felled it.', () => [
     cast('Soul flares', ['sacred_flame.source.white', 'sacred_flame.source.yellow'], { stageId: 'flare', duration: 900, scale: 0.8, ...tint('#cfe0ff') }),
-    travel('Spirit lash', ['energy_strands.range.standard.dark_purple02.01', 'energy_strands.range.standard.purple.01'], { stageId: 'lash', after: 'flare', anchor: 'start', offset: 400, duration: 1500 }),
+    travel('Spirit lash', ['energy_strands.range.standard.blue.01', 'energy_strands.range.standard.purple.01'], { stageId: 'lash', after: 'flare', anchor: 'start', offset: 400, duration: 1500 }),
     impact('Spirit strikes', ['spirit_guardians.dark_whiteblue.spirits', 'spirit_guardians.blueyellow.ring'], { after: 'lash', anchor: 'arrival', duration: 1500, scale: 0.7 }),
     motion('recoil', 'targets', { after: 'lash', anchor: 'arrival', duration: 800, intensity: 0.6 }),
   ]),

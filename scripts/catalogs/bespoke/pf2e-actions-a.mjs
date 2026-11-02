@@ -157,7 +157,7 @@ export default {
 
   'pf2e:MHLuKy4nQO2Z4Am1': design('Administer First Aid: mundane medicine — you kneel to the patient and a steady heartbeat returns (no magic, no music).', () => [
     motion('press', 'source', { delay: 0, duration: 900, intensity: 0.25 }),
-    impact('Heartbeat steadies', ['ui.heartbeat.01.green'], { delay: 400, duration: 1800, scale: 0.55, ...above, fadeIn: 200, fadeOut: 400 }),
+    impact('Heartbeat steadies', ['ui.heartbeat.02.green'], { delay: 400, duration: 1800, scale: 0.55, ...above, fadeIn: 200, fadeOut: 400 }),
   ], SILENT),
 
   'pf2e:zB1g4oa3UKARhCSY': design('Adopt Persona: your tattoo casts an illusory disguise — a purple illusion sigil, a puff of glamour and your form flickering into a new guise.', () => [
@@ -235,7 +235,7 @@ export default {
   ], SILENT),
 
   'pf2e:b3h3QqvwS5fnaiu1': design('Banshee Cry: a screeching firework bursts near the spellcaster to disrupt it (Will save).', () => [
-    projectile('Firework', ['throwable.launch.missile.01.blue'], { stageId: 'bc-fly', duration: 1000, scale: 0.5 }),
+    projectile('Firework', ['throwable.launch.missile.04.pinkpurple', 'throwable.launch.missile.01.blue'], { stageId: 'bc-fly', duration: 1000, scale: 0.5 }),
     impact('Screeching burst', ['firework.02.orangeyellow', 'firework.02.orangeyellow.01'], { stageId: 'bc-boom', after: 'bc-fly', anchor: 'arrival', duration: 1500, scale: 0.8 }),
     impact('Screech', ['soundwave.02.red', 'soundwave.02.blue'], { after: 'bc-boom', anchor: 'start', offset: 150, duration: 1100, scale: 0.7 }),
     motion('shake', 'targets', { after: 'bc-boom', anchor: 'start', duration: 700, intensity: 0.5 }),
@@ -287,8 +287,8 @@ export default {
   ], sp('chainBinding')),
 
   'pf2e:k6ML9SPMxaGJyjqO': design('Bite and Sting: your swarm bites and stings every creature in its space (Reflex save).', () => [
-    impact('Swarm bites', ['bite.200px.yellow', 'bite.200px.red'], { stageId: 'bs', duration: 1100, scale: 0.6, repeats: 2, repeatInterval: 350, targetStagger: 150 }),
-    impact('Stings', ['impact.005.yellow', 'impact.005.orange'], { after: 'bs', anchor: 'start', offset: 300, duration: 900, scale: 0.4 }),
+    impact('Swarm bites', ['bite.200px.yellow', 'bite.200px.red'], { stageId: 'bs', duration: 1100, scale: 0.6, repeats: 2, repeatInterval: 350, targetStagger: 150, areaLook: 'tokenshade', areaMotif: 'swarm' }),
+    impact('Stings', ['impact.005.yellow', 'impact.005.orange'], { after: 'bs', anchor: 'start', offset: 300, duration: 900, scale: 0.4, areaLook: 'tokenshade', areaMotif: 'swarm' }),
     motion('shake', 'targets', { after: 'bs', anchor: 'start', duration: 900, intensity: 0.4 }),
   ], sp('swarm')),
 
@@ -333,7 +333,7 @@ export default {
   ], SILENT),
 
   'pf2e:5VbPhxZYfagIqE1z': design("Brandish the Gorgon's Gaze: you raise the mirrored aegis, now dull as stone, and the gorgon's eyes on it glint.", () => [
-    cast('Aegis raised', ['shield.01.intro.yellow', 'shield.01.intro.blue'], { stageId: 'gg', scale: 1, duration: 1300, ...tint('#9a9a8a') }),
+    cast('Aegis raised', ['icon.shield.yellow', 'shield.01.intro.blue'], { stageId: 'gg', scale: 1, duration: 1300, ...tint('#9a9a8a') }),
     cast("Gorgon's eyes", ['eyes.01.dark_green.single'], { after: 'gg', anchor: 'start', offset: 500, duration: 1300, scale: 0.4, fadeIn: 150, fadeOut: 400 }),
     motion('brace', 'source', { delay: 100, duration: 1000, intensity: 0.5 }),
   ], ab('shieldRaise')),
@@ -572,7 +572,7 @@ export default {
   ], sp('void')),
 
   'pf2e:5V49l0K460CcvBOO': design('Defend Life: a crimson life-link carries the damage from your ward to you.', () => [
-    travel('Life link', ['energy_strands.range.standard.dark_red', 'energy_strands.range.standard.purple'], { stageId: 'dl', duration: 1300, opacity: 0.85 }),
+    travel('Life link', ['energy_strands.range.multiple.dark_red.01', 'energy_strands.range.standard.purple'], { stageId: 'dl', duration: 1300, opacity: 0.85 }),
     impact('Ward spared', ['shield.01.complete.01.red', 'shield.01.complete.01.blue'], { after: 'dl', anchor: 'arrival', duration: 1300, scale: 0.8, opacity: 0.7 }),
     motion('stagger', 'source', { after: 'dl', anchor: 'start', offset: 500, duration: 800, intensity: 0.4 }),
   ], SILENT),
@@ -674,7 +674,7 @@ export default {
     buff('Realm siphoned', ['energy_strands.in.blue', 'energy_strands.in.green'], 'Bolstered', ['on_token_buff.001.001.bluepurple'])),
 
   'pf2e:GKIKJNInDev72qai': design('Drape Ambient Magic: your ostilli wraps you in a bubble of refracting light and you vanish from sight.', () => [
-    aura('Refracting bubble', ['condition.boon.02.001.refraction'], { stageId: 'rf', scale: 1.1, duration: 1800, fadeIn: 300, fadeOut: 600 }),
+    aura('Refracting bubble', ['shield.01.complete.01.white', 'condition.boon.02.001.refraction'], { stageId: 'rf', scale: 1.1, duration: 1800, fadeIn: 300, fadeOut: 600 }),
     motion('flicker', 'source', { after: 'rf', anchor: 'start', offset: 500, duration: 900, intensity: 0.5 }),
   ], SILENT),
 
@@ -1201,7 +1201,7 @@ export default {
   ], SILENT),
 
   'pf2e:wt6jdjjje16Nx34f': design('Jumping Jenny: you foul a flying creature\'s flight — a noose of rope drags at it.', () => [
-    impact('Noose', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { stageId: 'jj', duration: 1600, scale: 0.7, ...tint('#a68a5a') }),
+    impact('Noose', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { stageId: 'jj', duration: 1600, scale: 0.7, ...tint('#a68a5a'), bodyLook: 'Bound' }),
     motion('press', 'targets', { after: 'jj', anchor: 'start', offset: 300, duration: 1000, intensity: 0.4 }),
   ], SILENT),
 
@@ -1212,7 +1212,7 @@ export default {
   ], sp('light')),
 
   'pf2e:yUjuLbBMflVum8Yn': design('Launch Fireworks: you light a firework from your toolkit and it bursts in a bright display at the chosen point.', () => [
-    projectile('Rocket', ['throwable.launch.missile.01.blue'], { stageId: 'lf', duration: 1100, scale: 0.4 }),
+    projectile('Rocket', ['throwable.launch.missile.04.pinkpurple', 'throwable.launch.missile.01.blue'], { stageId: 'lf', duration: 1100, scale: 0.4 }),
     impact('Firework burst', ['firework.01.orangeyellow', 'firework.01.orangeyellow.01'], { after: 'lf', anchor: 'arrival', duration: 1600, scale: 0.9 }),
     motion('throw', 'source', { delay: 0, duration: 700, intensity: 0.4 }),
   ], sp('explosion')),

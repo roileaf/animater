@@ -212,7 +212,7 @@ const sleetStorm = design('Freezing rain and sleet pour down across the cylinder
 const spareTheDying = design('Gentle healing steadies the dying creature’s faltering heartbeat until it is stable.', () => [
   cast('Healing touch', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'sd-c', scale: 0.55, duration: 900 }),
   aura('Life steadied', ['healing_generic.200px.green'], { subject: 'targets', stageId: 'sd-a', after: 'sd-c', anchor: 'start', offset: 400, duration: 1800, scale: 0.8 }),
-  impact('Heartbeat steadies', ['ui.heartbeat.01.green'], { after: 'sd-a', anchor: 'start', offset: 300, duration: 1800, scale: 0.5 }),
+  impact('Heartbeat steadies', ['ui.heartbeat.02.green'], { after: 'sd-a', anchor: 'start', offset: 300, duration: 1800, scale: 0.5 }),
 ], { sound: 'healing' });
 
 const spiritualWeapon = (conjure) => design('A floating, spectral weapon of force appears and swings at a creature near it.', () => [

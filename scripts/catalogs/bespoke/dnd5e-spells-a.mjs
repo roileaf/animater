@@ -285,7 +285,7 @@ const flameBladeAttack = design('The caster lunges and slashes with the blade of
 
 const flameStrike = design('A vertical column of divine fire roars down from above onto the cylinder.', () => [
   cast('Divine call', HOLY, { stageId: 'c', scale: 0.8, duration: 1100 }),
-  area('Column of fire descends', ['sacred_flame.target.yellow'], { stageId: 'col', after: 'c', anchor: 'start', offset: 500, duration: 2000, ...tint('#ff9a3c') }),
+  area('Column of fire descends', ['sacred_flame.target.yellow'], { stageId: 'col', after: 'c', anchor: 'start', offset: 500, duration: 2000 }),
   area('Flames erupt', ['fireball.explosion.orange'], { after: 'col', anchor: 'start', offset: 700, duration: 2000 }),
   motion('recoil', 'targets', { after: 'col', anchor: 'start', offset: 800, duration: 700 }),
 ]);
@@ -321,7 +321,7 @@ const forcecage = design('A cube-shaped prison of invisible force springs into e
 
 const freezingSphere = design('A frigid globe streaks to the chosen point and explodes in a 60-foot burst of ice.', () => [
   cast('Cold gathers', ['cast_generic.ice.01.blue', 'cast_generic.02.blue'], { stageId: 'c', scale: 0.8, duration: 1000 }),
-  travel('Frigid globe', ['spell_projectile.ice_shard.blue'], { stageId: 'g', after: 'c', anchor: 'start', offset: 500, duration: 1100, travelDestination: 'area' }),
+  travel('Frigid globe', ['snowball_toss.white.01'], { stageId: 'g', after: 'c', anchor: 'start', offset: 500, duration: 1100, travelDestination: 'area' }),
   area('Ice explodes', ['ice_spikes.radial.burst.blue', 'ice_spikes.radial.burst.white'], { after: 'g', anchor: 'end', duration: 2400 }),
   motion('recoil', 'targets', { after: 'g', anchor: 'end', offset: 200, duration: 700 }),
 ]);
@@ -452,7 +452,7 @@ const acidSplash2014 = design('A bubble of acid is hurled at one or two creature
 const acidSplash2024 = design('An acidic bubble flies to the chosen point and explodes across the 5-foot sphere.', () => [
   cast('Acid gathers', ['cast_generic.02.green', 'cast_generic.water.02.blue'], { stageId: 'c', scale: 0.7, duration: 800 }),
   motion('throw', 'source', { after: 'c', anchor: 'start', offset: 300, duration: 600 }),
-  travel('Acid bubble', ['spell_projectile.poison.greenyellow', 'liquid.blob.blue'], { stageId: 'b', after: 'c', anchor: 'start', offset: 450, duration: 900, travelDestination: 'area' }),
+  travel('Acid bubble', ['liquid.blob.green', 'liquid.blob.blue'], { stageId: 'b', after: 'c', anchor: 'start', offset: 450, duration: 900, travelDestination: 'area' }),
   area('Acid explodes', ['liquid.splash.bright_green', 'liquid.splash.blue'], { after: 'b', anchor: 'end', duration: 1500 }),
   motion('recoil', 'targets', { after: 'b', anchor: 'end', offset: 100, duration: 600 }),
 ]);

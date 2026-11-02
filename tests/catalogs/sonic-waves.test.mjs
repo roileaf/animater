@@ -12,8 +12,8 @@ test('sound poured out as a cone or line with no footage of its own is drawn as 
     const cone = areas(key).find((s) => s.label === label);
     assert.equal(cone?.areaLook, 'tokenshade', `${key} ${label}`);
   }
-  // A real cone pulse fits a bellow: it keeps its footage.
-  assert.equal(areas('dnd5e:dnd5e-monsterfeatures24-mmThunderousBell').find((s) => s.label === 'Bellowing cone').areaLook, undefined);
+  // The bellow's cone pulse is one faint disc off to one side (the full audit): it is drawn as waves too.
+  assert.equal(areas('dnd5e:dnd5e-monsterfeatures24-mmThunderousBell').find((s) => s.label === 'Bellowing cone').areaLook, 'tokenshade');
   // Round sound rings keep JB2A's soundwaves.
   assert.equal(areas('pf2e:r82rqcm0MmGaBFkM').find((s) => s.label === 'Vibrations').areaLook, undefined);
 });

@@ -60,7 +60,7 @@ export default {
   // 9 Living Terrain
   'pf2e:ygZHabZRS1ypucaw': design('The burst churns into a roiling cauldron of earth, cracking and spitting rock as it rolls over creatures.', () => [
     area('Ground fractures', GROUND_CRACK, { stageId: 'crack', duration: 2600, below: true }),
-    area('Earth roils', ['eruption.orange.01'], { after: 'crack', anchor: 'start', offset: 300, duration: 2400 }),
+    area('Earth roils', ['eruption.orange.01'], { after: 'crack', anchor: 'start', offset: 300, duration: 2400, ...tint('#8a6a48') }),
     impact('Rubble tosses', ['falling_rocks.top.1x1.grey'], { after: 'crack', anchor: 'start', offset: 700, duration: 1400, scale: 0.6 }),
     motion('stagger', 'targets', { after: 'crack', anchor: 'start', offset: 800, duration: 800 }),
   ]),
@@ -129,7 +129,7 @@ export default {
   // 28 Magic Hide
   'pf2e:u2uSeH6YSbK1ajTy': design('The companion\'s hide thickens with an earthy, bark-like layer and it braces.', () => [
     cast('Hide thickens', ['cast_generic.earth.01.browngreen'], { stageId: 'c', duration: 800, scale: 0.7 }),
-    impact('Thicker hide', ['aura_themed.01.inward.complete.nature.01.green'], { stageId: 'hide', after: 'c', duration: 1800, scale: 1, ...tint('#8b6b43') }),
+    impact('Thicker hide', ['aura_themed.01.inward.complete.nature.01.green'], { stageId: 'hide', after: 'c', duration: 1800, scale: 1, ...tint('#8b6b43'), bodyLook: 'Barkskin' }),
     impact('Hardened shell', ['shield.01.intro.green', 'shield.01.intro.blue'], { after: 'hide', anchor: 'start', offset: 700, duration: 1500, scale: 1, opacity: 0.6, ...tint('#a27d4f') }),
     motion('brace', 'targets', { after: 'hide', anchor: 'start', offset: 700, duration: 900 }),
   ]),
@@ -163,7 +163,7 @@ export default {
   // 34 Magic's Vessel
   'pf2e:u4FGIUQgruLjml7J': design('Pure magic pours inward and the target becomes a glowing divine receptacle.', () => [
     impact('Pure magic gathers', ['particles.inward.greenyellow.01.01'], { stageId: 'in', duration: 2000, scale: 1, ...tint('#c9b6ff') }),
-    impact('Divine receptacle', ['energy_field.02.above.blue'], { after: 'in', anchor: 'start', offset: 700, duration: 2200, scale: 1, opacity: 0.8 }),
+    impact('Divine receptacle', ['energy_field.02.above.blue'], { after: 'in', anchor: 'start', offset: 700, duration: 2200, scale: 1, opacity: 0.8, ...tint('#ffe9a8'), bodyLook: 'glow' }),
     impact('Ward rune', ['particle_burst.01.rune.bluepurple'], { after: 'in', anchor: 'start', offset: 1100, duration: 1500, scale: 0.8 }),
   ]),
   // 35 Magical Fetters
@@ -238,7 +238,7 @@ export default {
   'pf2e:Oy6qBhzayCnqOiEO': design('A drop of the caster\'s blood is charged onto the weapon.', () => [
     cast('Blood placed', ['liquid.splash02.red'], { stageId: 'b', duration: 1400, scale: 0.4 }),
     cast('Essence charged', ['icon.drop.red'], { after: 'b', anchor: 'start', offset: 500, duration: 1800, scale: 0.3 }),
-    cast('Curse glows', ['sneak_attack.dark_red', 'sneak_attack.dark_green'], { after: 'b', anchor: 'start', offset: 900, duration: 1400, scale: 0.4 }),
+    cast('Curse glows', ['icon.runes.dark_red', 'sneak_attack.dark_green'], { after: 'b', anchor: 'start', offset: 900, duration: 1400, scale: 0.4 }),
   ]),
   // 57 Martyr's Intervention
   'pf2e:M9TiCE1vlG1j2faM': design('The caster\'s own life force streams to the dying ally and forms a shield as the harm transfers back.', () => [
@@ -321,7 +321,7 @@ export default {
   // 75 Mimic Undead
   'pf2e:xlRv8vCTHh1NeMpw': design('The caster wraps death around itself like a cloak; colors wash out to a deathly pall.', () => [
     cast('Death gathers', ['arms_of_hadar.dark_purple'], { stageId: 'c', duration: 1100, scale: 0.6 }),
-    aura('Cloak of death', ['smoke.plumes.01.grey'], { after: 'c', anchor: 'start', offset: 400, duration: 2400, scale: 0.9, opacity: 0.7, ...tint('#7d8a86') }),
+    aura('Cloak of death', ['smoke.plumes.01.grey'], { after: 'c', anchor: 'start', offset: 400, duration: 2400, scale: 0.9, opacity: 0.7, ...tint('#7d8a86'), bodyLook: 'Withering' }),
     aura('Lifeless skull', ['toll_the_dead.grey.skull_smoke', 'toll_the_dead.green.skull_smoke'], { after: 'c', anchor: 'start', offset: 900, duration: 1800, scale: 0.5 }),
   ], { sound: 'shadow' }),
   // 76 Mind Games
@@ -369,7 +369,7 @@ export default {
   // 100 Moonburst
   'pf2e:Shiuhdb2nO6Qgk3k': design('A globe of chilling silver moonlight explodes across the burst.', () => [
     cast('Moonlight gathers', ['moonbeam.01.intro.blue'], { stageId: 'c', duration: 900, scale: 0.6 }),
-    area('Moonlight globe bursts', ['explosion.bluewhite', 'explosion.02.blue'], { stageId: 'b', after: 'c', duration: 1600 }),
+    area('Moonlight globe bursts', ['explosion.05.bluewhite', 'explosion.02.blue'], { stageId: 'b', after: 'c', duration: 1600 }),
     area('Silver frost', ['impact.frost.white.01'], { after: 'b', anchor: 'start', offset: 300, duration: 1600, opacity: 0.8 }),
     motion('stagger', 'targets', { after: 'b', anchor: 'start', offset: 300, duration: 800 }),
   ]),
@@ -507,7 +507,7 @@ export default {
   // 134 Nettleskin
   'pf2e:BA143r8fCqmSjdRf': design('Green thorns burst out of the caster\'s skin and settle in a bristling layer.', () => [
     cast('Thorns sprout', ['ice_spikes.radial.burst.white'], { stageId: 't', duration: 1400, scale: 0.8, ...tint('#5f8a3a') }),
-    aura('Nettle layer', ['vine.complete.nature.single.02.green'], { after: 't', anchor: 'start', offset: 400, duration: 2200, scale: 0.8, opacity: 0.85 }),
+    aura('Nettle layer', ['vine.complete.nature.single.02.green'], { after: 't', anchor: 'start', offset: 400, duration: 2200, scale: 0.8, opacity: 0.85, bodyLook: 'Barkskin' }),
     motion('brace', 'source', { after: 't', anchor: 'start', offset: 200, duration: 800 }),
   ], { sound: 'thornWall' }),
   // 135 Never Mind
@@ -543,7 +543,7 @@ export default {
   // 146 Oaken Resilience
   'pf2e:YWrfKetOqDwVFut7': design('Bark creeps over the target\'s skin and it braces like an oak.', () => [
     impact('Bark spreads', ['aura_themed.01.inward.complete.wood.01.green'], { stageId: 'b', duration: 2400, scale: 1, bodyLook: 'Barkskin' }),
-    impact('Oaken skin', ['shield.01.intro.green', 'shield.01.intro.blue'], { after: 'b', anchor: 'start', offset: 700, duration: 1500, scale: 1, opacity: 0.55, ...tint('#7a5a3a') }),
+    impact('Oaken skin', ['shield.01.intro.green', 'shield.01.intro.blue'], { after: 'b', anchor: 'start', offset: 700, duration: 1500, scale: 1, opacity: 0.55, ...tint('#7a5a3a'), bodyLook: 'Barkskin' }),
     motion('brace', 'targets', { after: 'b', anchor: 'start', offset: 700, duration: 900 }),
   ]),
   // 147 Oathkeeper's Insignia
@@ -866,7 +866,7 @@ export default {
   ], { sound: 'pocketTransition' }),
   // 239 Planar Seal
   'pf2e:XZE4BawIlTf88Yl9': design('A visible abjuration barrier seals the area against planar travel.', () => [
-    area('Planar barrier', ['bubble.001.001.complete.blue'], { stageId: 'b', duration: 3600, opacity: 0.8 }),
+    area('Planar barrier', ['shield.01.complete.01.blue'], { stageId: 'b', duration: 3600, opacity: 0.8 }),
     area('Seal rune', ['magic_signs.circle.02.abjuration.complete.blue'], { after: 'b', anchor: 'start', offset: 500, duration: 2600, scale: 0.6 }),
   ], { sound: 'shield' }),
   // 240 Planar Servitor
@@ -986,13 +986,13 @@ export default {
   ], { sound: 'growth' }),
   // 270 Prismatic Sphere
   'pf2e:PngDCmU0MXZkbu0v': design('A seven-layered sphere of colored light forms over the burst.', () => [
-    area('Red layer', ['bubble.001.001.complete.blue'], { stageId: 'r', duration: 3600, ...tint('#ff4141') }),
-    area('Orange layer', ['bubble.001.001.complete.blue'], { delay: 150, duration: 3500, scale: 0.97, ...tint('#ffa74a') }),
-    area('Yellow layer', ['bubble.001.001.complete.blue'], { delay: 300, duration: 3400, scale: 0.94, ...tint('#f2e965') }),
-    area('Green layer', ['bubble.001.001.complete.blue'], { delay: 450, duration: 3300, scale: 0.91, ...tint('#77ca69') }),
-    area('Blue layer', ['bubble.001.001.complete.blue'], { delay: 600, duration: 3200, scale: 0.88, ...tint('#67b3ea') }),
-    area('Indigo layer', ['bubble.001.001.complete.blue'], { delay: 750, duration: 3100, scale: 0.85, ...tint('#6864c8') }),
-    area('Violet layer', ['bubble.001.001.complete.blue'], { delay: 900, duration: 3000, scale: 0.82, ...tint('#b979d4') }),
+    area('Red layer', ['shield.01.complete.01.blue'], { stageId: 'r', duration: 3600, ...tint('#ff4141') }),
+    area('Orange layer', ['shield.01.complete.01.blue'], { delay: 150, duration: 3500, scale: 0.97, ...tint('#ffa74a') }),
+    area('Yellow layer', ['shield.01.complete.01.blue'], { delay: 300, duration: 3400, scale: 0.94, ...tint('#f2e965') }),
+    area('Green layer', ['shield.01.complete.01.blue'], { delay: 450, duration: 3300, scale: 0.91, ...tint('#77ca69') }),
+    area('Blue layer', ['shield.01.complete.01.blue'], { delay: 600, duration: 3200, scale: 0.88, ...tint('#67b3ea') }),
+    area('Indigo layer', ['shield.01.complete.01.blue'], { delay: 750, duration: 3100, scale: 0.85, ...tint('#6864c8') }),
+    area('Violet layer', ['shield.01.complete.01.blue'], { delay: 900, duration: 3000, scale: 0.82, ...tint('#b979d4') }),
   ]),
   // 271 Prismatic Spray
   'pf2e:d6o52BnjViNz7Gub': design('A fan of rainbow beams cascades from the caster\'s hand; struck creatures reel.', () => [
@@ -1053,7 +1053,7 @@ export default {
   ], { sound: 'shield' }),
   // 284 Protector's Sphere
   'pf2e:DH9Y3RQGWO0GzXGU': design('A protective sphere expands around the cleric and allies.', () => [
-    area('Protective sphere', ['bubble.001.001.complete.blue'], { stageId: 'b', duration: 3400, opacity: 0.8 }),
+    area('Protective sphere', ['shield.01.complete.01.blue'], { stageId: 'b', duration: 3400, opacity: 0.8 }),
     area('Shield glow', ['magic_signs.circle.02.abjuration.complete.blue'], { after: 'b', anchor: 'start', offset: 400, duration: 2600, scale: 0.6 }),
   ], { sound: 'shield' }),
   // 287 Psychic Outburst
@@ -1108,7 +1108,7 @@ export default {
   // 298 Purifying Icicle
   'pf2e:9Ga1AOQdHKYXUY4O': design('An icicle of frozen life essence flies at the foe and shatters with a vital glow.', () => [
     cast('Icicle forms', ['glint.blue.few', 'glint.yellow.few'], { stageId: 'c', duration: 600, scale: 0.7 }),
-    travel('Icicle flies', ['spell_projectile.ice_shard.blue'], { stageId: 'i', after: 'c', duration: 1200, scale: 0.65 }),
+    travel('Icicle flies', ['arrow.cold.blue', 'spell_projectile.ice_shard.blue'], { stageId: 'i', after: 'c', duration: 1200, scale: 0.65 }),
     impact('Icicle shatters', ['impact_themed.ice_shard.blue'], { after: 'i', anchor: 'start', offset: 800, duration: 1200, scale: 0.8 }),
     impact('Vital glow', ['sacred_flame.target.white', 'sacred_flame.target.yellow'], { after: 'i', anchor: 'start', offset: 900, duration: 1300, scale: 0.5 }),
     motion('recoil', 'targets', { after: 'i', anchor: 'start', offset: 850, duration: 650 }),
@@ -1147,7 +1147,7 @@ export default {
   // 304 Pyroclastic Truth
   'pf2e:IeVP2xkNJf5kVAig': design('A blast of liquid fire floods the vast burst and brands everything it touches.', () => [
     cast('Truth spoken', ['cast_generic.fire.01.orange'], { stageId: 'c', duration: 900, scale: 0.9 }),
-    area('Liquid fire', ['liquid.splash_side02.red'], { stageId: 'l', after: 'c', duration: 1800, ...tint('#e67b21') }),
+    area('Liquid fire', ['lava_spout.001.001.complete.orangeyellow'], { stageId: 'l', after: 'c', duration: 1800 }),
     area('Flames', ['flames.04.complete.orange'], { after: 'l', anchor: 'start', offset: 300, duration: 3000 }),
     impact('Soul brand', ['ward.rune.yellow.01'], { after: 'l', anchor: 'start', offset: 800, duration: 2000, scale: 0.5, ...tint('#ff7a2a') }),
     motion('stagger', 'targets', { after: 'l', anchor: 'start', offset: 400, duration: 800 }),
@@ -1197,7 +1197,7 @@ export default {
   'pf2e:0AZOIMRvZtePuGOw': design('Multi-hued flames break through the ground and soar up with dangerous fumes.', () => [
     area('Ground breaks', ['impact.ground_crack.01.orange', 'impact.ground_crack.orange.01'], { stageId: 'g', duration: 1600, below: true }),
     area('Rainbow fire spout', ['lava_spout.001.001.complete.orangeyellow'], { stageId: 'l', after: 'g', anchor: 'start', offset: 300, duration: 3200 }),
-    area('Prismatic sparks', ['firework.01.yellow.02'], { after: 'l', anchor: 'start', offset: 400, duration: 2400 }),
+    area('Prismatic sparks', ['firework.01.bluepink.03', 'firework.01.yellow.02'], { after: 'l', anchor: 'start', offset: 400, duration: 2400 }),
     area('Fumes', ['fumes.04.complete.purple', 'fumes.04.complete.grey'], { after: 'l', anchor: 'start', offset: 900, duration: 2600, opacity: 0.6 }),
     motion('stagger', 'targets', { after: 'l', anchor: 'start', offset: 400, duration: 800 }),
   ]),
@@ -1258,7 +1258,7 @@ export default {
   // 335 Ray of Corruption
   'pf2e:nPxYYID5JARKouSV': design('A sickly grey beam of toxic spores strikes the target and rots it.', () => [
     cast('Spores gather', ['fumes.04.complete.grey'], { stageId: 'c', duration: 700, scale: 0.6 }),
-    travel('Spore ray', ['energy_beam.normal.dark_green.01', 'energy_beam.normal.blue.01'], { stageId: 'r', after: 'c', duration: 1500, scale: 0.8, ...tint('#8d9478') }),
+    travel('Spore ray', ['energy_beam.normal.yellow.01', 'energy_beam.normal.blue.01'], { stageId: 'r', after: 'c', duration: 1500, scale: 0.8, ...tint('#b5bc98') }),
     impact('Spore burst', ['fumes.04.complete.green', 'fumes.04.complete.grey'], { after: 'r', anchor: 'start', offset: 700, duration: 2000, scale: 0.9, ...tint('#8d9478') }),
     motion('recoil', 'targets', { after: 'r', anchor: 'start', offset: 700, duration: 650 }),
   ]),
@@ -1323,7 +1323,7 @@ export default {
     cast('Arm charges', ['energy_strands.complete.blue.01'], { stageId: 'c', duration: 900, scale: 0.7 }),
     motion('lunge', 'source', { stageId: 'l', after: 'c', anchor: 'start', offset: 500, duration: 650 }),
     impact('Rending force', ['arcane_hand.blue'], { stageId: 'h', after: 'l', anchor: 'start', offset: 250, duration: 1300, scale: 0.8 }),
-    impact('Magic torn', ['icon.shield_cracked.purple'], { after: 'h', anchor: 'start', offset: 500, duration: 1500, scale: 0.4 }),
+    impact('Magic torn', ['impact.004.dark_purple', 'icon.shield_cracked.purple'], { after: 'h', anchor: 'start', offset: 500, duration: 1500, scale: 0.4 }),
     motion('recoil', 'targets', { after: 'h', anchor: 'start', offset: 200, duration: 650 }),
   ]),
   // 367 Repelling Pulse
@@ -1438,7 +1438,7 @@ export default {
   'pf2e:1bw6XJMOERcbC5Iq': design('Void energy tears the target\'s spirit partly out of its body.', () => [
     impact('Void grips', ['arms_of_hadar.dark_purple'], { stageId: 'v', duration: 1600, scale: 0.6 }),
     sprite('Spirit torn loose', { subject: 'targets', after: 'v', anchor: 'start', offset: 400, duration: 1400, opacity: 0.5, offsetY: -0.3, offsetUnits: 'token' }),
-    impact('Spirit severed', ['spirit_guardians.dark_purple.no_ring', 'spirit_guardians.blueyellow.ring'], { after: 'v', anchor: 'start', offset: 500, duration: 2200, scale: 0.6 }),
+    impact('Spirit severed', ['spirit_guardians.dark_purple.no_ring', 'spirit_guardians.blueyellow.ring'], { after: 'v', anchor: 'start', offset: 500, duration: 2200, scale: 0.6, bodyLook: 'Spirit Rend' }),
     motion('stagger', 'targets', { after: 'v', anchor: 'start', offset: 500, duration: 900 }),
   ]),
   // 398 Rising Surf
@@ -1563,7 +1563,7 @@ export default {
   // 447 Sea of Thought
   'pf2e:tSosbMsftXcRaQgT': design('An ankle-high torrent of semi-solid thought sloshes across the burst and bogs creatures down.', () => [
     area('Sloshing thought', ['liquid.blob.purple', 'liquid.blob.blue'], { stageId: 's', duration: 3400, opacity: 0.85, ...tint('#9a7fd0') }),
-    area('Thought currents', ['energy_strands.02.marker.bluepurple'], { after: 's', anchor: 'start', offset: 400, duration: 2800, opacity: 0.6 }),
+    area('Thought currents', ['energy_strands.02.marker.bluepurple'], { after: 's', anchor: 'start', offset: 400, duration: 2800, opacity: 0.6, areaLook: 'tokenshade', areaMotif: 'ripples' }),
     motion('sink', 'targets', { after: 's', anchor: 'start', offset: 700, duration: 1300, intensity: 0.4 }),
   ]),
   // 448 Sea Surge
@@ -1622,7 +1622,7 @@ export default {
     cast('Shadows gather', ['smoke.plumes.01.purple', 'smoke.plumes.01.grey'], { stageId: 'c', duration: 900, scale: 1, ...tint('#2b2533') }),
     sprite('Shadow clones', { after: 'c', anchor: 'start', offset: 300, duration: 2000, opacity: 0.5 }),
     area('Shadow swarm', ['darkness.black'], { stageId: 'a', after: 'c', anchor: 'start', offset: 400, duration: 3000, opacity: 0.7 }),
-    impact('Clones strike', ['melee_generic.slash.01.orange'], { after: 'a', anchor: 'start', offset: 600, duration: 1000, scale: 0.6, ...tint('#3a2f4a') }),
+    impact('Clones strike', ['flurry_of_blows.physical.dark_purple', 'melee_generic.slash.01.orange'], { after: 'a', anchor: 'start', offset: 600, duration: 1000, scale: 0.6 }),
     motion('shake', 'targets', { after: 'a', anchor: 'start', offset: 600, duration: 800, intensity: 0.5 }),
   ]),
   // 468 Shadow Raid

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.16 (2026-11-02)
+
+- **Every animation checked against what it shows.** A frame-by-frame audit of all 1,754 looks in the hand-written designs fixed 161 of them: radiant bursts, tremors and judgement waves no longer leave a ring of music notes; Second Wind's heartbeat beats instead of flatlining; stomps and quakes crack the earth instead of glowing like lava; Enlarge, Reduce and Rulership lose their charm hearts; curses show blood and withering instead of a radiation sign and a treble clef; red rage, blood and spore effects are no longer tinted to black; Beheading Buzz Saw flies forward; Prismatic Sphere's seven layers nest as coloured domes; and many more.
+- **More Tokenshade where JB2A falls short.** Paralysis, poison, sickness, corrosion, drowning pressure and heat change the creature itself; more sound cones roll out as waves; more swarms swarm; skulls, notes, radiance and ripples are drawn on the ground. Every one keeps its animation for worlds without Tokenshade, and on JB2A Free.
+- **Fix: oversized art no longer oversizes effects.** A token whose art is scaled past its square (a Tokenizer pop-out) gets effects sized to the creature, not to its art.
+
 ## 2.4.15 (2026-11-02)
 
 - **Breath weapons, reworked.** A creature rears back with a deep inhale, roars, and the breath is out at once: each clip plays from just before it forms to its fade (a lightning breath is out in about two seconds and over in under five, not nine). Its sound is layered like Chain Lightning's: the inhale, a dragon's roar, then its element when the breath is fully out (a lightning bolt and thunder, a gout of flame, a freezing gale...), each ringing out and fading. Creatures react when the breath reaches them. Lightning keeps its own colours; void, radiant, cold lines, sonic and other breaths have art of their own; its light flashes along the breath as it leaves the mouth instead of washing the map for seconds.

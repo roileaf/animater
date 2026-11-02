@@ -259,7 +259,7 @@ const SPELLS = {
   ] },
   Earthquake: { sound: 'earthquake', why: 'an intense tremor rips through the ground', build: () => [
     cast('Earth stirs', ['cast_generic.earth.01.browngreen'], { stageId: 'c', duration: 900, scale: 0.7 }),
-    impact('Ground ruptures', ['ground_cracks.03.orange', 'ground_cracks.01.orange'], { after: 'c', anchor: 'start', offset: 300, duration: 3000, scale: 2.2, below: true, ...T1 }),
+    impact('Ground ruptures', ['impact.ground_crack.03.orange', 'ground_cracks.01.orange'], { after: 'c', anchor: 'start', offset: 300, duration: 3000, scale: 2.2, below: true, ...T1 }),
     impact('Fissure', ['impact.ground_crack.orange.02'], { after: 'c', anchor: 'start', offset: 500, duration: 1800, scale: 1.4, ...OT }),
     motion('shake', 'targets', { after: 'c', anchor: 'start', offset: 500, duration: 1600, intensity: 1, ...OT }),
   ] },
@@ -326,7 +326,7 @@ const retributive = (why, withArea) => design(why, () => [
   withArea
     ? area('Arcane detonation', ['explosion.04.dark_purple', 'explosion.04.blue'], { stageId: 'boom', after: 'snap', anchor: 'start', offset: 250, duration: 2200 })
     : aura('Arcane detonation', ['explosion.04.dark_purple', 'explosion.04.blue'], { stageId: 'boom', after: 'snap', anchor: 'start', offset: 250, duration: 2200, scale: 4 }),
-  aura('Shockwave', ['side_impact.part.shockwave.purple', 'side_impact.part.shockwave.blue'], { after: 'snap', anchor: 'start', offset: 300, duration: 1200, scale: 3, below: true }),
+  aura('Shockwave', ['toll_the_dead.purple.shockwave', 'side_impact.part.shockwave.blue'], { after: 'snap', anchor: 'start', offset: 300, duration: 1200, scale: 3, below: true }),
   motion('recoil', 'targets', { after: 'boom', anchor: 'start', offset: 200, duration: 800, intensity: 1.2, ...OT }),
 ], { sound: 'explosion' });
 
@@ -354,7 +354,7 @@ const absorb = why => design(why, () => [
 const insectCloud = why => design(why, () => [
   cast('Swarm released', ['cast_generic.earth.01.browngreen'], { stageId: 'c', duration: 800, scale: 0.6 }),
   area('Harmless insect cloud', ['particles.swirl.greenyellow.01.01'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, opacity: 0.9, ...tint('#2a2014'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
-  area('Obscuring haze', ['ambient_fog.001.complete.small.greenyellow', 'ambient_fog.001.complete.small.white'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, opacity: 0.4, below: true }),
+  area('Obscuring haze', ['ambient_fog.001.complete.small.white'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, opacity: 0.4, below: true, ...tint('#b8a98a') }),
 ], { sound: 'swarm' });
 
 const thunderTarget = why => design(why, () => [
@@ -459,7 +459,7 @@ const K = {
   'dnd5e:dnd5e-equipment24-dmgStaffOfThunde:CnEqIoGzAUahrQIH': design('Staff of Thunder and Lightning — Thunderclap: a deafening thunderclap fills a 60-foot radius around the staff.', () => [
     cast('Staff raised', ['soundwave.02.blue'], { stageId: 'c', duration: 700, scale: 0.6 }),
     area('Thunderclap', ['thunderwave.center.blue'], { stageId: 'w', after: 'c', anchor: 'end', offset: -200, duration: 1600 }),
-    area('Shock ring', ['template_circle.out_pulse.01.burst.bluewhite'], { after: 'w', anchor: 'start', offset: 100, duration: 1600, opacity: 0.7 }),
+    area('Shock ring', ['template_circle.out_pulse.02.burst.bluewhite'], { after: 'w', anchor: 'start', offset: 100, duration: 1600, opacity: 0.7 }),
     motion('stagger', 'targets', { after: 'w', anchor: 'start', offset: 200, duration: 800, ...OT }),
   ], { sound: 'sonic' }),
   // Staff of Withering
@@ -641,7 +641,7 @@ const K = {
   // Cube of Force 2014, Cubic Gate 2014
   'dnd5e:dnd5e-items-s4fR8bxQGSt4wbH7': design('Cube of Force: pressing a face creates a cube-shaped barrier of force around the user — a force barrier, not an illusion shimmer.', () => [
     aura('Face pressed', ['cast_shape.square.01.blue'], { stageId: 'c', duration: 800, scale: 0.6 }),
-    aura('Barrier of force', ['wall_of_force.sphere.blue', 'wall_of_force.sphere.grey'], { after: 'c', anchor: 'start', offset: 300, duration: 3000, scale: 2.4, opacity: 0.6, fadeIn: 300 }),
+    aura('Barrier of force', ['wall_of_force.horizontal.blue', 'wall_of_force.sphere.grey'], { after: 'c', anchor: 'start', offset: 300, duration: 3000, scale: 2.4, opacity: 0.6, fadeIn: 300 }),
   ], { sound: 'force' }),
   'dnd5e:dnd5e-items-6ai1pEde3iQX30Fr': cast_('Gate', 'Cubic Gate'),
   // Demon Armor: clawed gauntlets.
@@ -740,13 +740,13 @@ const K = {
   // Helm of Brilliance
   'dnd5e:dnd5e-equipment24-dmgHelmOfBrillia:IFscsoX8eRdhxP5s': design('Helm of Brilliance — Diamond Light: the diamonds blaze, searing undead with radiant light in a 30-foot radius.', () => [
     aura('Diamonds blaze', ['twinkling_stars.points08.white'], { stageId: 'c', duration: 900, scale: 0.6 }),
-    area('Radiant light', ['template_circle.out_pulse.01.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'c', anchor: 'start', offset: 300, duration: 2000, opacity: 0.85 }),
+    area('Radiant light', ['template_circle.out_pulse.02.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'c', anchor: 'start', offset: 300, duration: 2000, opacity: 0.85 }),
     motion('cower', 'targets', { after: 'c', anchor: 'start', offset: 600, duration: 800, ...OT }),
   ], { sound: 'holy' }),
   'dnd5e:dnd5e-equipment24-dmgHelmOfBrillia:yCKpY8iNj7IoLdHN': design('Helm of Brilliance — Explosive Emanation: the gems explode in a 60-foot blast of searing light and fire.', () => [
     aura('Gems overload', ['twinkling_stars.points08.white'], { stageId: 'c', duration: 700, scale: 0.6 }),
     area('Brilliant explosion', ['explosion.01.yellow', 'explosion.03.blueyellow'], { stageId: 'x', after: 'c', anchor: 'start', offset: 300, duration: 1800 }),
-    area('Radiant wave', ['template_circle.out_pulse.01.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'x', anchor: 'start', offset: 150, duration: 1800, opacity: 0.8 }),
+    area('Radiant wave', ['template_circle.out_pulse.02.burst.yellowwhite', 'template_circle.out_pulse.01.burst.bluewhite'], { after: 'x', anchor: 'start', offset: 150, duration: 1800, opacity: 0.8 }),
     motion('recoil', 'targets', { after: 'x', anchor: 'start', offset: 200, duration: 800, ...OT }),
   ], { sound: 'explosion' }),
   // Ivory Goat of Terror figurine left; Wooden staff etc. kept.

@@ -1853,7 +1853,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "reflective outward judgment; centered bloom, expanding entrance",
-    "compositionHash": "dba1865a76f4de829815a60df28fd823672dd933eb0e38d04ae4c7e3d8083a56",
+    "compositionHash": "32c2b516303e9d1997592a8dea80f5af6243c1e7ab421b4da1f6e2e1c4e9a40f",
     "sharedCount": 1
   },
   {
@@ -14029,7 +14029,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "animal fierce expanding silhouette; centered bloom, expanding entrance",
-    "compositionHash": "12cac25f7963965bf24d67d390cc36f2247550a3a85d9538c25c324ca217d57c",
+    "compositionHash": "04fc6f511ba47a2fb538016fc8b911842afb20e3ab9a4242f5559d4554220c6e",
     "sharedCount": 1
   },
   {
@@ -41235,7 +41235,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "residual spell bloodletting mark; centered bloom, expanding entrance",
-    "compositionHash": "4125f06c248d72fca10a56dce2c718061e4e7deca773b04f98350da074e65a85",
+    "compositionHash": "e21df9be621df8b45f73706c4751c6045d63700bdac95f933fe320a7bf68ef3e",
     "sharedCount": 1
   },
   {
@@ -76194,7 +76194,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "horn light fans through allies and dazzles enemy-facing edge; centered bloom, expanding entrance",
-    "compositionHash": "398048f8e35deb73cc073a2d412dc6c0d76b3eb45886b53460fad2c3006011cb",
+    "compositionHash": "2d99a0158b76e036df541036153ffbcb2b6f483ba053a178f885d2fb26c5b2c0",
     "sharedCount": 1
   },
   {
@@ -89799,7 +89799,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "existing eidolon grip tightens inward at victim; centered bloom, contracting entrance",
-    "compositionHash": "c022e8467abca9aa4dcd29a138626786504940972aa993d61aa891a9eb172bd3",
+    "compositionHash": "cd5607955f7a3e6d43dbb0f29690cfd73e8ba19e13cbc5bed4476240ce76f46e",
     "sharedCount": 1
   },
   {
@@ -124803,7 +124803,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "3f2ac32a8dcb999d53dc5210d793b0df4c8c6e0b984578f074bd65250b4087fd",
+    "compositionHash": "ad71442d5558fc1f56a5ac9134f493d0b621e44330586c18a8972e7f08914cd7",
     "sharedCount": 1
   },
   {
@@ -159535,7 +159535,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "subtle ground vibration rings return to source feet; low wide sweep, turning entrance",
-    "compositionHash": "e892ff8a7eab357fcdffc7d56602288cdc6c547283b0d343c05129afd9dcb491",
+    "compositionHash": "9162fbdb7186b6c4795f072a06a8b2928172aea3970170c299382aa480be42f4",
     "sharedCount": 1
   },
   {
@@ -161131,7 +161131,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "thick translucent ectoplasm fills friendly defensive perimeter; centered bloom, turning entrance",
-    "compositionHash": "727697c601c33ac2185caf9cce0e89870ee638da485eff4c8f3a25a1baef0e1e",
+    "compositionHash": "7b8002b98cc3893b08aa56a36d8d63575ed57250c249a468abfe438e73aacd4d",
     "sharedCount": 1
   },
   {
@@ -185226,7 +185226,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "toxic sludge coats body and weapon edge; centered bloom, expanding entrance",
-    "compositionHash": "bb443e18eb400e2bc55c8aa3f856ae59410e09c37bff84ed3f86403186dfe942",
+    "compositionHash": "c18542689cf802045c69b79c32cb70ebc9c88929bb560dd4fa0045017f961cc0",
     "sharedCount": 1
   },
   {
@@ -192296,7 +192296,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "adjacent jaws contact draws short life thread inward; centered bloom, contracting entrance",
-    "compositionHash": "09fa1ccac561a65fea5ab46795e13ca744e841af815ae9856a3f9f2be04e9d48",
+    "compositionHash": "d04c349e24bbcdd4e8a0d83ba78afce3eb31b7377a502f39725c9bd6746c7b4c",
     "sharedCount": 1
   },
   {
@@ -205844,7 +205844,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile-return; centered bloom, turning entrance",
-    "compositionHash": "e5e0258dd492d5cc86c5c28331278941438feb81d08d3b790528a46a89008bd0",
+    "compositionHash": "5e53d9b04aa3b81843d37c50a0142cbf24d9f1149b32ad0f12b1ee4dce28850f",
     "sharedCount": 1
   },
   {
@@ -214704,7 +214704,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "small dragonet-like orbit gathers around source perimeter; centered bloom, turning entrance",
-    "compositionHash": "70b58d65032eeda9d8db95bac82ef36ffc6a321a92b557a25a255c9a7bc3bb43",
+    "compositionHash": "e6d6a1aaeceebcc9271ebe1517f34dd21e6d3485c4a1f290dccc957b5aba1c04",
     "sharedCount": 1
   },
   {
@@ -252347,7 +252347,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "fine tool sparks tune adjacent ally weapon edge; centered bloom, expanding entrance",
-    "compositionHash": "e96c4bb37b52e7c86c2762fb2378978bc5629a91c32279203443cedae280feb8",
+    "compositionHash": "7fae0d930632026cb973982770ec320d03626eb9cd0c1a423d2c93bdbb127c28",
     "sharedCount": 1
   },
   {
@@ -291130,7 +291130,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "large heavy silhouette grows into earth-shattering ready stance; centered bloom, expanding entrance",
-    "compositionHash": "5290af94a9b00fb39350d657b8529923ec0ea40e8524b165831379b334c97d2c",
+    "compositionHash": "8987e3155f4ed9cd5e64f82975f5a74b2be71bde84d134276e4a40a6acc76d6f",
     "sharedCount": 1
   },
   {
@@ -298017,7 +298017,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "lash loop wraps target and pulls toward source-side landing cue; centered bloom, expanding entrance",
-    "compositionHash": "6b73e20b03bcc3e9e8087b195b674b757bbfc9e19ca9028c20759f11f16e869d",
+    "compositionHash": "3365d4df068ccade8c43ee950962af028c6901e46f3ecb9bc41e495c56e4ac62",
     "sharedCount": 1
   },
   {
@@ -325925,7 +325925,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "bent rusty metal sheets build fragile armor shell; centered bloom, expanding entrance",
-    "compositionHash": "84de448ed7ee12923c9b385f47a12afc88511b48b13d75bcbc10131fce6d8954",
+    "compositionHash": "2d46a9d5b51312d2b8f072b25e55c89f3c9859d50af4325fd2632d631d6b7417",
     "sharedCount": 1
   },
   {
@@ -333208,7 +333208,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Heavy stomp followed by expanding fractured ground ring; low wide sweep, expanding entrance",
-    "compositionHash": "10edf33d7de8d45a656cdc68df1559846fef6e206710ce25376f0ef0ba4f978a",
+    "compositionHash": "d1620a4f274354d1a320f976d8b815ef992b9e1867681bafe1d75d0ddf0e43c9",
     "sharedCount": 1
   },
   {
@@ -348789,7 +348789,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Blood-red edge sparks surge into forward haste streaks around source; centered bloom, expanding entrance",
-    "compositionHash": "053ebfc3be131b7fcce664a7f85c838fe8680396a448f33c574105d4ef4f32ed",
+    "compositionHash": "dd9ad837f2637512caf98570ee0a398586741257dfc7c67fb28b93b8500bf5ac",
     "sharedCount": 1
   },
   {
@@ -363273,7 +363273,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Hundreds of fine spines radiate from plant skin, tips show faint hallucinatory wisps; centered bloom, expanding entrance",
-    "compositionHash": "44c647dd4017eb8ff71eaee55352e4162c2977cf470dba9bbb295c8710e42f6a",
+    "compositionHash": "3ccddbae6ca3cea93a336ea31ccf6e6ae5d6d556c1f3286db155bc964d1deea0",
     "sharedCount": 1
   },
   {
@@ -388520,7 +388520,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Heavy stomp starts expanding cracked-earth ripple with staggered tremors; centered bloom, expanding entrance",
-    "compositionHash": "9b79665a6aebebec2604f60743e213a0d3ec9ebae2fa4f3d3ae9174d9988b3de",
+    "compositionHash": "58ac2ce0d9219d12b5c3ca8dc7946c09b6037d2f048bb89366fa0db4c069e6dc",
     "sharedCount": 1
   },
   {
@@ -390555,7 +390555,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-roots; centered bloom, expanding entrance",
-    "compositionHash": "803da81b529ce08cfe60405b6ec8bf16d789d37b0940a6b181b8a067b3458758",
+    "compositionHash": "f5eed3a7914f883c00f3b5ef51511623a652f08419146f8db95e21c6dc81bb92",
     "sharedCount": 1
   },
   {
@@ -400175,7 +400175,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Ground-strike pulse opens deep directional fissures in wide cone; centered bloom, expanding entrance",
-    "compositionHash": "a3c966af771f4fa6857f9b19e25b2dee54c8cb908065882525bb9d153850e61b",
+    "compositionHash": "4eb2540941d932de3c026b09a232633a399ead5a5e634c6df32999f5ef134134",
     "sharedCount": 1
   },
   {
@@ -414384,7 +414384,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Four clockwise seasonal sectors expand: lightning, rain, leaves and snow; centered bloom, closing entrance",
-    "compositionHash": "c32be2e605fd08d79731bead7fd325b9ddc2bad03183e02c0c29c6c9b4cb55ed",
+    "compositionHash": "15aa450f31660c554523c7038ef91c2045aa94bba7d1e0ad55b796fc8c7d9518",
     "sharedCount": 1
   },
   {
@@ -436213,7 +436213,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Armored heel impact cracks close ground ring into rough fractured tiles; low wide sweep, closing entrance",
-    "compositionHash": "95e25a19d4ab04f470fbcfa85c49aeebce6cc6d88beb527303a4a08a7a01820c",
+    "compositionHash": "02597e06938f9488a0dcedcebaa496fa50460d3b84bcfc08354aa4ff925f605c",
     "sharedCount": 1
   },
   {
@@ -449273,7 +449273,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Low soul flash lashes toward attacker then bursts in spiritual contact; centered bloom, expanding entrance",
-    "compositionHash": "0b3ebffb2fb3e4606c87df1a56afe69c7ac295cfc6e954bfc241037589450c37",
+    "compositionHash": "dddf44d4ff5a0002382206bd07daeded6bc96418be86b8d31d5525d0a240e344",
     "sharedCount": 1
   },
   {
@@ -503749,7 +503749,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Swirling steam armor forms around feet and shoulders with restrained jet wisps; centered bloom, turning entrance",
-    "compositionHash": "90df2e46c49a074ce676fa0786b9b6dd310e0c48092feff958566334b149e6c6",
+    "compositionHash": "7a8ed79bd3e81a25832d68b04d2eb06a5695b63221412d65f16d721843ce961d",
     "sharedCount": 1
   },
   {
@@ -508041,7 +508041,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Stout source silhouette hardens rapidly into stone shell with still pose; centered bloom, closing entrance",
-    "compositionHash": "9f6044cd70ab60cecd5ba5cbbf9617d73fa36cf3e0d7a7f3f033406591a644c2",
+    "compositionHash": "998a9c8bacbe4151d20c8c2a091fb6c0d5a826f0043747f197e479afc5631096",
     "sharedCount": 1
   },
   {
@@ -509289,7 +509289,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Terrain-matched rain/sand/snow/cloud storm swirls around obvious silhouette; centered bloom, turning entrance",
-    "compositionHash": "5c6468a92a384e73c32f488c38886f42c2a84fad1387d65cb3efccb5f510e6c2",
+    "compositionHash": "aa67bc20f527feead4a09937a1acd6a6f3297d488ebe5b49766bedf5b0e275cf",
     "sharedCount": 1
   },
   {
@@ -509554,7 +509554,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Remote miniature thundercloud spins; crossed lightning precedes broad thunderclap; centered bloom, expanding entrance",
-    "compositionHash": "6a78079867bd904421da15cfe61226bd85c475b3c73cac07e404fd6cad1ba243",
+    "compositionHash": "9729019f14d1a53ca0d2d973f582d3d5719375683291741afeb375cdde45943c",
     "sharedCount": 1
   },
   {
@@ -534035,7 +534035,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Heavy tectonic stomp opens wide ground-only tremor rings; low wide sweep, expanding entrance",
-    "compositionHash": "9420cfaa23be93fe93f44a993290403d9aaf7be823dc5216f40543e3f86a4e53",
+    "compositionHash": "23c1be51ffb04968e4b27715d08b9734d980277aedaec5333c8ca1e45bd06a50",
     "sharedCount": 1
   },
   {
@@ -539683,7 +539683,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "manifested-pair; centered bloom, expanding entrance",
-    "compositionHash": "0ad174b592bd5efd2bec6061c79e7cf443a0703d7fa68b27248a62f51891c3fe",
+    "compositionHash": "06076d9f2ad9920fd64e9e3610b9d070ad20a2d7bde590178939ef10b69eded7",
     "sharedCount": 1
   },
   {
@@ -540486,7 +540486,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Final oath cry opens overwhelming crimson power mantle around source; centered bloom, expanding entrance",
-    "compositionHash": "ba7e51f5d28b43ddac5d9ec23362663f4734cd50e344171e842344cc3decd90c",
+    "compositionHash": "7ae1b2996af055566c0b4901f8a5ac0a0ab6e1aaf07783cb86e3652b818d3463",
     "sharedCount": 1
   },
   {
@@ -542519,7 +542519,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "target-eyes; centered bloom, expanding entrance",
-    "compositionHash": "3b6946da28c46434687afbb9fa27b171da43094b372190ce11c1e354a19d6492",
+    "compositionHash": "1c99aa427dc071447d872bd5c091637b7babae926bbfcdc35f8d7f4873a076b2",
     "sharedCount": 1
   },
   {
@@ -550102,7 +550102,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "target-burst; centered bloom, expanding entrance",
-    "compositionHash": "13a8038b98cb1f3210653cfdd08752e4b9a1fa30e59c60b27f57b47c6650cacf",
+    "compositionHash": "4e5b169be24685e284b3de6e0ebde96c55e0d56f4b02f84d9406fb889fbdbcb4",
     "sharedCount": 1
   },
   {
@@ -556090,7 +556090,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "target-burst; centered bloom, expanding entrance",
-    "compositionHash": "00596313268ed2fe352bce778d4f2a68f1fb495cebad1d056ad6de78fc36c1e7",
+    "compositionHash": "794563aff28097ad913e2567d651ffea20a76d5f68957422291289b40d6f8cd4",
     "sharedCount": 1
   },
   {
@@ -587060,7 +587060,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Waking-world convulsion shakes broad ground ring in one strong tremor; low wide sweep, expanding entrance",
-    "compositionHash": "ea704cfdefe7efffffe36f62021e46b6208e6168c7af82517115774ece8ad844",
+    "compositionHash": "308d4dceb0bedda95fc06c1e25f4aed3a916d73f0a4fadaeeafcdd1c1c8c698a",
     "sharedCount": 1
   },
   {

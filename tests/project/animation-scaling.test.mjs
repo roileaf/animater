@@ -334,6 +334,11 @@ test("portrait art and footprint fallbacks remain uniform and finite", () => {
   assert.equal(tokenFootprint(ringed(100, -1.6), 100), 80, "mirrored");
   // Without a ring, texture oversizing does not grow effects.
   assert.equal(tokenFootprint({ w: 100, h: 100, document: { texture: { scaleX: 1.6 }, ring: { enabled: false, subject: { scale: 2 } } } }, 100), 100);
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { width: 1, texture: { scaleX: 2, scaleY: 2 } } }, 100), 100, "pop-out art at texture scale 2");
+  // Pop-out art spilling past a ring (Tokenizer's oversized tokens) never grows effects past the square.
+  assert.equal(tokenFootprint(ringed(100, 2, 1), 100), 100, "texture 2 over subject 1");
+  assert.equal(tokenFootprint(ringed(100, 2, 0.75), 100), 100, "texture 2 over subject 0.75");
+  assert.equal(tokenFootprint(ringed(100, 1.3, 1), 100), 100, "ring fill 1.3");
   assert.deepEqual(artworkGeometry(55, undefined, undefined), {
     width: 55,
     height: 55,
