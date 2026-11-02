@@ -4,7 +4,7 @@ import {clone,normalize,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverrid
 import {addSpellSounds} from '../../engines/sound/spell-sounds.mjs';
 import {addAbilitySounds} from '../../engines/sound/ability-sounds.mjs';
 import {applyCatalogMotion,dndMotionReview,withoutCatalogMotion} from '../shared/catalog-motion.mjs';
-import {withCatalogFx} from '../shared/catalog-fx.mjs';
+import {withCatalogFx,withAuditedLooks} from '../shared/catalog-fx.mjs';
 import {normalizeElement} from '../shared/element-choice.mjs';
 import {MARKS} from '../../engines/marks/ground-marks.mjs';
 import {resolveDndNpcAction,findDndNpcAction} from './dnd5e-npc-actions.mjs';
@@ -51,7 +51,8 @@ export function dndRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,fx
   const design={profile:variant.soundProfile,excludeRoles:variant.soundExcludeRoles};
   recipe.stages=variant.soundNamespace==='ability'?addAbilitySounds(item,recipe.stages,{sounds,soundVolume,mode:variant.weaponMode,design}):addSpellSounds(item,recipe.stages,{sounds,soundVolume,design});
  }
- return withoutHexDome(withCatalogFx(validateRecipe(recipe),entry,{fx,fxCatalog,variant,motion,sounds,soundVolume}));
+ // The audited clips again after the hex dome gives way (its stand-in has a verdict of its own).
+ return withAuditedLooks(validateRecipe(withoutHexDome(withCatalogFx(validateRecipe(recipe),entry,{fx,fxCatalog,variant,motion,sounds,soundVolume}))),entry,fx===false?{}:fxCatalog);
 }
 // The floor mark a thrown flask's contents leave (Alchemist's Fire, Acid): its theme, when the item is thrown as
 // a flask or vial. Holy water and oil leave none (no mark for their themes).

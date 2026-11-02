@@ -790,7 +790,7 @@ const hold = (why, color, sound) => design(why, () => [
 put('classfeatures-Phy02H5x0TKHd7T3', hold('Chains of Carceri: spectral chains of the prison plane bind the celestial, fiend or elemental (Hold Monster).', '#b48cff', 'chainBinding'));
 put('monsterfeatures24-mmChill000000000', hold('Chill: the dragon casts Hold Monster, frost-rimed bindings locking the target in place.', '#bfe8ff', 'cold'));
 put('monsterfeatures24-mmConjureInferna', design('Conjure Infernal Chain: a burning chain lashes out and wraps the target.', () => [
-  travel('Fiery chain', ['energy_strands.range.standard.dark_red', 'energy_strands.range.standard.purple'], { stageId: 'chain', duration: 1100, scale: 0.6, ...tint('#ff6a2a') }),
+  travel('Fiery chain', ['energy_strands.range.standard.dark_red', 'energy_strands.range.standard.purple'], { travelLook: 'tokenshade', tetherStyle: 'burning-chain', stageId: 'chain', duration: 1100, scale: 0.6, ...tint('#ff6a2a') }),
   impact('Chain binds', ['markers.chain.spike.complete.02.red', 'markers.chain.standard.complete.02.red'], { after: 'chain', anchor: 'arrival', duration: 1600, scale: 0.7 }),
   impact('Hellfire', ['flames.01.orange', 'impact.fire.01.orange'], { after: 'chain', anchor: 'arrival', duration: 1200, scale: 0.5 }),
   motion('shake', 'targets', { after: 'chain', anchor: 'arrival', duration: 800, intensity: 0.4 }),
@@ -1006,7 +1006,7 @@ put(['classes24-phbdrdNaturesSan:oV51RLBkYFH4MPrS'], design('Nature\'s Sanctuary
 
 // ---------------------------------------------------------------- dragon wings / flight
 const wings = design('Spectral draconic wings unfurl and lift the creature into the air.', () => [
-  aura('Wings unfurl', ['swirling_feathers.outburst.01.purple', 'swirling_feathers.outburst.01.textured'], { stageId: 'wings', duration: 1300, scale: 0.9, ...tint('#b8a0e0') }),
+  aura('Wings unfurl', ['swirling_feathers.outburst.01.purple', 'swirling_feathers.outburst.01.textured'], { bodyLook: 'Dragon Wings', stageId: 'wings', duration: 1300, scale: 0.9, ...tint('#b8a0e0') }),
   aura('Shadow below', ['drop_shadow.dark_black'], { after: 'wings', anchor: 'start', offset: 300, duration: 2000, scale: 0.85, opacity: 0.5, below: true, offsetY: 0.2, offsetUnits: 'token' }),
   motion('levitate', 'source', { after: 'wings', anchor: 'start', offset: 300, duration: 2000, intensity: 0.8 }),
 ], { sound: 'wind' });

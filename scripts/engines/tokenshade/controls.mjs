@@ -16,6 +16,9 @@ const SELECTS = {
   rayType: { 0: 'Sunburst', 1: 'Petals', 2: 'Scanning bar', 3: 'Falling shafts', 4: 'Hard spokes' },
 };
 const TYPE_SELECTS = {
+  wings: { style: { 0: 'Leathery', 1: 'Feathered', 2: 'Light' } },
+  growth: { kind: { 0: 'Fungus', 1: 'Mycelium', 2: 'Coral', 3: 'Scales', 4: 'Ink' } },
+  orbit: { glyph: { 1: 'Stars', 2: 'Sparkles', 3: 'Hearts', 4: 'Question marks', 5: 'Spirals', 6: 'Drops', 7: 'Arrows down', 8: 'Speech marks' } },
   colorGradient: { type: { 0: 'Linear', 1: 'Radial', 2: 'Conic' } },
   polymorph: { type: { 1: 'Burning dissolve', 2: 'Wipe upward', 3: 'From the centre', 4: 'Pixel scatter' } },
   dissolve: { style: { 1: 'Embers', 2: 'Ash', 3: 'Sparkles', 4: 'Shadow', 5: 'Pixels', 6: 'Melt', 7: 'Leaves', 8: 'Sand', 9: 'Light', 10: 'Shatter' },
@@ -27,7 +30,8 @@ const TYPE_SELECTS = {
 const HIDDEN = new Set(['time', 'seed', 'padding']);
 
 // Where a setting means something different for one filter. [min, max, step]
-const TYPE_RANGES = { material: { spread: [0, 1, 0.01], front: [0, 1, 0.01] }, dissolve: { amount: [0, 1, 0.01], edge: [0.05, 1, 0.01], particles: [0, 2, 0.05], scale: [0.2, 4, 0.05] }, wash: { amount: [0, 1, 0.01], strength: [0, 1, 0.01], front: [0, 1, 0.01] }, veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] }, splash: { edge: [0, 1.5, 0.01] } };
+const TYPE_RANGES = { wings: { span: [0.3, 2.5, 0.05], beat: [0, 2, 0.05], alpha: [0, 1, 0.01] }, growth: { amount: [0, 1, 0.01], scale: [0.2, 5, 0.05] },
+  flatten: { amount: [0, 1, 0.01], tones: [2, 8, 1], ink: [0.5, 8, 0.1], detail: [0.02, 1, 0.01] }, material: { spread: [0, 1, 0.01], front: [0, 1, 0.01] }, dissolve: { amount: [0, 1, 0.01], edge: [0.05, 1, 0.01], particles: [0, 2, 0.05], scale: [0.2, 4, 0.05] }, wash: { amount: [0, 1, 0.01], strength: [0, 1, 0.01], front: [0, 1, 0.01] }, veins: { thickness: [0.2, 4, 0.05] }, bindings: { thickness: [0.2, 4, 0.05] }, base: { radius: [0.2, 1.5, 0.01] }, splash: { edge: [0, 1.5, 0.01] } };
 // [pattern, min, max, step] — first match wins.
 const RANGES = [
   [/^(?:amount|snow|cracks|tightness|bubbles|glow|alpha|[a-z]*Alpha|alphaImg|alphaChr|alphaTolerance|threshold|discardThreshold|billowy|tintIntensity|glint|sepia|noise|lineContrast|vignetting|vignettingBlur|scratchDensity|tintIntensity|epsilon|stretch|drip|rise)$/, 0, 1, 0.01],
@@ -96,7 +100,7 @@ export const FILTER_LABELS = {
   twist: 'Twist', zoomblur: 'Zoom blur', blur: 'Blur', bulgepinch: 'Bulge / pinch', zapshadow: 'Remove baked shadow', ray: 'Light rays',
   fog: 'Fog', xfog: 'Thick fog', electric: 'Lightning', wave: 'Ripples', shockwave: 'Shockwave', fire: 'Fire', fumes: 'Fumes',
   smoke: 'Smoke', flood: 'Water', images: 'Mirror images', field: 'Force field', xray: 'Sun rays', liquid: 'Liquid', xglow: 'Living aura',
-  pixel: 'Pixelate', web: 'Spider web', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash', stain: 'Stain (blood, mud)',
+  pixel: 'Pixelate', web: 'Spider web', wings: 'Wings', growth: 'Growth on the body', flatten: 'Flat drawing', ripples: 'Sun ripples', globes: 'Fireflies', transform: 'Move / turn / squash', splash: 'Splash', stain: 'Stain (blood, mud)',
   polymorph: 'Polymorph', xfire: 'Magic fire', sprite: 'Image overlay', spriteMask: 'Image mask', replaceColor: 'Replace colour',
   ddTint: 'Map tint', rgbSplit: 'RGB split', material: 'Material (stone, ice, metal…)', frost: 'Frost and snow', bindings: 'Bindings (vines, net, chains, ropes)', snooze: 'Sleep (Zzz)', orbit: 'Circling over the head (stars, hearts…)', base: 'Ground marker', corrode: 'Corrosion', veins: 'Veins', dissolve: 'Dissolve (transition)', wash: 'Colour wash (transition)',
 };

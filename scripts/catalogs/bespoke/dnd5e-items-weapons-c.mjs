@@ -737,7 +737,7 @@ const ropeAnimate = design('The rope uncoils and snakes through the air at its o
   aura('Rope snakes out', ['vine.complete.nature.single.01.green'], { duration: 2400, scale: 0.6, offsetX: 0.8, offsetUnits: 'token', ...tint('#b08a5a') }),
 ], { sound: null });
 const ropeEntangle = design('The rope lashes out and coils tightly around the target.', () => [
-  travel('Rope lashes out', ['vine.complete.nature.single.01.green'], { stageId: 're-t', duration: 1200, ...OPT, ...tint('#b08a5a') }),
+  travel('Rope lashes out', ['vine.complete.nature.single.01.green'], { travelLook: 'tokenshade', tetherStyle: 'rope', stageId: 're-t', duration: 1200, ...OPT, ...tint('#b08a5a') }),
   aura('Rope binds', ['entangle.brown'], { subject: 'targets', after: 're-t', anchor: 'arrival', duration: 2200, scale: 0.8, ...OPT, ...tint('#b08a5a'), bodyLook: 'Bound' }),
   motion('press', 'targets', { after: 're-t', anchor: 'arrival', duration: 900, intensity: 0.5, ...OPT }),
 ], { sound: 'whip', ...ABILITY });

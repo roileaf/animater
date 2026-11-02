@@ -18,10 +18,10 @@ test('every Token Magic filter type and animation type has an animater implement
   for(const type of ANIM_TYPES)assert.ok(normalizeAnim({animType:type}).animType,type);
 });
 test('the built-in library has every Token Magic preset name we keep plus Tokenshade originals, every filter known',()=>{
-  assert.equal(PRESETS.length,295);
-  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,250);
+  assert.equal(PRESETS.length,308);
+  assert.equal(PRESETS.filter(p=>p.library===LIBRARY.TOKEN).length,263);
   assert.ok(!PRESETS.some(p=>p.name==='DungeonDraft Tint'),'retired: a map-maker tint, not a token look');
-  for(const name of ['Burning','Electrocuted','Corroding','Envenomed','Withering','Radiant Burn','Force Jolt','Psychic Warp','Resonance','Spirit Rend','Petrified','Frozen Solid','Entangled','Chained','Netted','Levitate','Marker: Foe','Rune Circle','Frostbitten','Submerged'])assert.ok(builtinPreset(name),name);
+  for(const name of ['Burning','Electrocuted','Corroding','Envenomed','Withering','Radiant Burn','Force Jolt','Psychic Warp','Resonance','Spirit Rend','Petrified','Frozen Solid','Entangled','Chained','Netted','Levitate','Marker: Foe','Rune Circle','Frostbitten','Submerged','Dragon Wings','Luminous Wings','Fungal Growth','Mycelium','Coral Growth','Scaled Hide','Ink-Smeared','Chattering','Weighed Down','Spirit Current','Clinging Silk'])assert.ok(builtinPreset(name),name);
   assert.ok(!PRESETS.some(p=>/BW/.test(p.name)),'no Baileywiki names');
   assert.equal(PRESETS.filter(p=>p.library===LIBRARY.REGION).length,45);
   for(const p of PRESETS)for(const f of p.params)assert.ok(specFor(f.filterType),`${p.name}: ${f.filterType}`);

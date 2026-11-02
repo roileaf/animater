@@ -26,6 +26,9 @@ export const BODY_LOOKS = Object.freeze(Object.fromEntries([['', 'None (the clip
   'Chained', 'Bound', 'Netted', 'Entangled', 'Held', 'Rooted',
   'Mud-Caked', 'Blood-Soaked', 'Corroding', 'Submerged',
   'Heat shimmer', 'Super-Heat', 'Haze', 'Molten', 'Scorched', 'Frostbitten', 'Snowed Over', 'Withering', 'Envenomed', 'Spirit Rend', 'glow',
+  'Blinded', 'Unseen', 'Prone', 'Sluggish',
+  'Dragon Wings', 'Fiendish Wings', 'Feathered Wings', 'Luminous Wings',
+  'Fungal Growth', 'Mycelium', 'Coral Growth', 'Scaled Hide', 'Ink-Smeared', 'Chattering', 'Weighed Down', 'Spirit Current', 'Clinging Silk',
 ].map((name) => [name, name])]));
 export const OPTION_GROUPS = {
   "Timing & repetition": [
@@ -83,6 +86,10 @@ export const OPTION_GROUPS = {
     // A round area (burst, emanation) drawn by Tokenshade on the ground instead of its footage (playback/aura-fields.mjs).
     ["areaLook", "Area look", "jb2a", { jb2a: "JB2A animation", tokenshade: "Tokenshade ground (round areas)" }],
     ["areaMotif", "Tokenshade motif", "auto", { auto: "Automatic (from the animation)", ...Object.fromEntries(Object.keys(AURA_MOTIFS).map((m) => [m, m[0].toUpperCase() + m.slice(1)])) }],
+    // A travel or projectile stage drawn by Tokenshade instead of its footage: a rope, vine or chain reaching out, a
+    // thrown snare, silk or bola, motes streaming (playback/tethers.mjs).
+    ["travelLook", "Travel look", "jb2a", { jb2a: "JB2A animation", tokenshade: "Tokenshade (drawn)" }],
+    ["tetherStyle", "Tokenshade travel", "rope", { rope: "Rope", vine: "Vine", chain: "Chain", "burning-chain": "Burning chain", tongue: "Tongue", snare: "Snare", silk: "Silk wad", bola: "Bola", motes: "Stream of motes" }],
     ["zIndex", "Layer priority", 0, -100, 100, 1],
     ["overlayFit", "Fit overlay to screen", true],
   ],
@@ -228,7 +235,10 @@ export function normalizeOptions(stage) {
   if(!result.repeatSimultaneous)delete result.repeatSimultaneous;
   if(!result.optionalTargets)delete result.optionalTargets;
   if(!result.lightDelay)delete result.lightDelay;
-  if(!result.bodyLook || !['impact', 'aura'].includes(stage.kind))delete result.bodyLook;
+  // The Tokenshade travel look is for travel and projectile stages only; JB2A (and a rope) is the unset default.
+  if(result.travelLook !== 'tokenshade' || !['travel', 'projectile'].includes(stage.kind)){delete result.travelLook;delete result.tetherStyle;}
+  else if(result.tetherStyle === 'rope')delete result.tetherStyle;
+  if(!result.bodyLook || !['impact', 'aura', 'cast'].includes(stage.kind))delete result.bodyLook;
   return result;
 }
 export function validateSoundFile(path) {

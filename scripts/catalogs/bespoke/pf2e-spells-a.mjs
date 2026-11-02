@@ -959,7 +959,7 @@ export default {
   // Coral Scourge: barnacles and coral grow over the body and stiffen the joints; a spike-trap film and a blood drop ran 6.4 s.
   'pf2e:ZIk1EYbG6l4JuUkO': design('Rough coral and barnacles crust inward over the target and it stiffens.', () => [
     cast('Sea magic', ['cast_generic.water.02.blue'], { stageId: 'cs-cast', scale: 0.6, duration: 600 }),
-    impact('Coral crusts over', ['aura_themed.01.inward.complete.wood.01.red', 'aura_themed.01.inward.complete.wood.01.green'], { stageId: 'cs-coral', after: 'cs-cast', anchor: 'end', duration: 2000, scale: 0.9, ...tint('#e39a8c') }),
+    impact('Coral crusts over', ['aura_themed.01.inward.complete.wood.01.red', 'aura_themed.01.inward.complete.wood.01.green'], { bodyLook: 'Coral Growth', stageId: 'cs-coral', after: 'cs-cast', anchor: 'end', duration: 2000, scale: 0.9, ...tint('#e39a8c') }),
     impact('Brine drips', ['liquid.splash_side.blue'], { after: 'cs-coral', anchor: 'start', offset: 500, duration: 1000, scale: 0.4 }),
     motion('press', 'targets', { after: 'cs-coral', anchor: 'start', offset: 600, duration: 1200, intensity: 0.4 }),
   ]),
@@ -1386,7 +1386,7 @@ export default {
 
   // Dragon Wings: leathery wings sprout; purple feathers read as bird wings.
   'pf2e:HWJODX2zPg5cg34F': design('Dark leathery wings unfurl in a rush of air and the caster beats up into flight.', () => [
-    cast('Wings unfurl', ['swirling_feathers.outburst.01.red', 'swirling_feathers.outburst.01.textured'], { stageId: 'dw-wings', duration: 1600, scale: 1.1, ...tint('#7a3b2a') }),
+    cast('Wings unfurl', ['swirling_feathers.outburst.01.red', 'swirling_feathers.outburst.01.textured'], { bodyLook: 'Dragon Wings', stageId: 'dw-wings', duration: 1600, scale: 1.1, ...tint('#7a3b2a') }),
     cast('Wingbeat gust', ['wind_lines.01.02.white'], { after: 'dw-wings', anchor: 'start', offset: 400, duration: 1400 }),
     motion('levitate', 'source', { after: 'dw-wings', anchor: 'start', offset: 400, duration: 2000, intensity: 0.8 }),
   ], { sound: 'wind' }),

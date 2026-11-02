@@ -4,6 +4,8 @@ import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
 import { applyEffectOptions, applyMediaOptions, cropAreaArt, normalizeOptions } from "../../core/stage-options.mjs";
 import { groundTag } from "./aura-fields.mjs";
+import { cropsToArt } from "./art-crop.mjs";
+import { tetherTag } from "./tethers.mjs";
 import { tokenFootprint, effectFootprint, artworkSize, offsetInGridSquares, beamGeometry } from "../media/media-preview.mjs";
 // A mask (a polygon, a { points } shape, or a list of them) grown by k around a point.
 function scaleMask(mask, at, k) {
@@ -522,7 +524,9 @@ export class AnimaterRuntime {
         // Tagged on the starting client; each client's adapter reads it (engines/playback/adaptive.mjs).
         const animaterTier = tier, animaterLasting = Boolean(lasts);
         // Every client lights the scene from this one description (engines/lighting/effect-lights.mjs).
-        const animaterLight = lights?.get(s) ?? null;
+        // A stage Tokenshade draws (a rope, a vine) casts no light of the clip it stands in for.
+        const animaterTether = tetherTag(s, mediaSpan(s));
+        const animaterLight = animaterTether ? null : lights?.get(s) ?? null;
         // ...and paints the floor mark from this one (engines/marks/ground-marks.mjs).
         const animaterMark = groundMarks?.get(s) ?? null;
         // ...and bends the scene from this one (engines/distortion/scene-distortion.mjs).
@@ -533,9 +537,9 @@ export class AnimaterRuntime {
         const animaterTint = tints?.get(s) ?? null;
         // ...and draws a round area as a Tokenshade ground field from this one (playback/aura-fields.mjs groundTag).
         const animaterGround = groundTag(s, context, recipe, { grid: this.host.gridSize?.() ?? 100 });
-        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}), ...(animaterGround ? { animaterGround } : {}) }));
+        e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}), ...(animaterGround ? { animaterGround } : {}), ...(animaterTether ? { animaterTether } : {}) }));
         // Its footage still runs the clock (when the area shows and ends), unseen: the shader draws the area.
-        if (animaterGround) e.opacity(0);
+        if (animaterGround || animaterTether) e.opacity(0);
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);
@@ -642,7 +646,8 @@ export class AnimaterRuntime {
               bindRotation: s.bindRotation,
               bindAlpha: s.bindAlpha,
             });
-          if (s.maskToken) e.mask(s.destination);
+          // On a top-down or pop-out creature, an effect sitting on it shows on its body only (art-crop.mjs).
+          if (s.maskToken || cropsToArt(s, this.host.cutOutArt?.(s.destination) === true)) e.mask(s.destination);
         }
         applyEffectOptions(e, s);
         if (s.flightOutcome === "past" && !(s.fadeOut >= PAST_FADE_MS)) e.fadeOut(PAST_FADE_MS);

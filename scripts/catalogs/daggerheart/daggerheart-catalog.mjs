@@ -10,7 +10,7 @@ import { clone, normalize, validateRecipe, matchRecipe, ownRecipe, matchStrikeOv
 import { DH_ROLL_TYPES, MELEE_RANGES, dhDamageKind, weaponFamily, featureElement } from "../../systems/daggerheart.mjs";
 import { DEFEATED_RECIPE } from "../../engines/playback/defeated-look.mjs";
 import { weaponSoundDesign, cardSoundDesign, featureSoundDesign, utilitySoundDesign, withDhSounds, weaponMotion, featureMotion, utilityMotion } from "./daggerheart-polish.mjs";
-import { withConditionLook } from "../shared/catalog-fx.mjs";
+import { withConditionLook, withAuditedLooks } from "../shared/catalog-fx.mjs";
 import { withCatalogTeleport } from "../shared/catalog-teleport.mjs";
 export { DAGGERHEART_SOURCE };
 export const DH_KINDS = Object.freeze(["card", "weapon", "condition"]);
@@ -400,7 +400,7 @@ export function dhRecipe(entry, variantId, { motion = true, actionId = null, sou
   if (!motion && recipe.stages.some((s) => s.kind !== "motion")) recipe.stages = recipe.stages.filter((s) => s.kind !== "motion");
   if (recipe.lifecycle !== "document") recipe.stages = withDhSounds(entry, variant, recipe.stages, { sounds, soundVolume });
   // Lasting conditions (Hidden, Restrained) show a quiet Tokenshade look when it is available.
-  return withConditionLook(withCatalogTeleport(validateRecipe(recipe), entry), entry);
+  return withConditionLook(withAuditedLooks(withCatalogTeleport(validateRecipe(recipe), entry), entry), entry);
 }
 // A feature fallback plays the variant of the event's shape, its attack roll the variant of its range.
 export function dhVariantForEvent(entry, event) {

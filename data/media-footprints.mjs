@@ -187,6 +187,12 @@ export const MEDIA_FOOTPRINTS = {
     441.4063,
     468.75
   ],
+  "AmbientFog001_001_Loop_PinkYellow_500x500.webm": [
+    500,
+    500,
+    441.4063,
+    472.6563
+  ],
   "AmbientFog001_001_Loop_White_1200x1200.webm": [
     1200,
     1200,
@@ -715,6 +721,12 @@ export const MEDIA_FOOTPRINTS = {
     766.4063,
     787.5
   ],
+  "AuraComplete01_01_Regular_Yellow_500x500.webm": [
+    500,
+    500,
+    460.9375,
+    460.9375
+  ],
   "AuraComplete01_01_Regular_Yellow_900x900.webm": [
     900,
     900,
@@ -1135,6 +1147,36 @@ export const MEDIA_FOOTPRINTS = {
     193.75,
     187.5
   ],
+  "Bless_01_Regular_Yellow_Loop_400x400.webm": [
+    400,
+    400,
+    387.5,
+    375
+  ],
+  "Bone01_01_Regular_White_15ft_1000x400.webm": [
+    1000,
+    400,
+    820.3125,
+    274.5098
+  ],
+  "Bone01_01_Regular_White_30ft_1600x400.webm": [
+    1600,
+    400,
+    1450,
+    312.5
+  ],
+  "Bone01_01_Regular_White_60ft_2800x400.webm": [
+    2800,
+    400,
+    2646.875,
+    311.1111
+  ],
+  "Bone01_01_Regular_White_90ft_4000x400.webm": [
+    4000,
+    400,
+    3875,
+    276.9231
+  ],
   "Bonfire_01_Regular_Orange_400x400.webm": [
     400,
     400,
@@ -1447,11 +1489,47 @@ export const MEDIA_FOOTPRINTS = {
     417.1875,
     332.8125
   ],
+  "BubbleLoop002_001_White_3x3_600x600.webm": [
+    600,
+    600,
+    417.1875,
+    337.5
+  ],
   "BubbleLoop002_002_Blue_3x3_600x600.webm": [
     600,
     600,
     435.9375,
     426.5625
+  ],
+  "Bullet_03_Regular_Blue_05ft_600x400.webm": [
+    600,
+    400,
+    407.8125,
+    244.7059
+  ],
+  "Bullet_03_Regular_Blue_15ft_1000x400.webm": [
+    1000,
+    400,
+    710.9375,
+    258.8235
+  ],
+  "Bullet_03_Regular_Blue_30ft_1600x400.webm": [
+    1600,
+    400,
+    1312.5,
+    250
+  ],
+  "Bullet_03_Regular_Blue_60ft_2800x400.webm": [
+    2800,
+    400,
+    2493.75,
+    266.6667
+  ],
+  "Bullet_03_Regular_Blue_90ft_4000x400.webm": [
+    4000,
+    400,
+    3718.75,
+    276.9231
   ],
   "BurningHands_01_Regular_Green_600x600.webm": [
     600,
@@ -1548,6 +1626,12 @@ export const MEDIA_FOOTPRINTS = {
     400,
     343.75,
     278.125
+  ],
+  "Butterflies_01_Regular_Orange_Many_400x400.webm": [
+    400,
+    400,
+    359.375,
+    353.125
   ],
   "Butterflies_01_Regular_Orange_Single_400x400.webm": [
     400,
@@ -1988,6 +2072,12 @@ export const MEDIA_FOOTPRINTS = {
     421.875
   ],
   "ConditionBoon01_012_Green_600x600.webm": [
+    600,
+    600,
+    403.125,
+    426.5625
+  ],
+  "ConditionBoon01_012_Yellow_600x600.webm": [
     600,
     600,
     403.125,
@@ -3631,6 +3721,12 @@ export const MEDIA_FOOTPRINTS = {
     387.5,
     387.5
   ],
+  "DivineSmiteReversed_01_Regular_Red_Caster_400x400.webm": [
+    400,
+    400,
+    393.75,
+    400
+  ],
   "DivineSmite_01_Dark_Purple_Target_400x400.webm": [
     400,
     400,
@@ -3660,6 +3756,12 @@ export const MEDIA_FOOTPRINTS = {
     400,
     375,
     375
+  ],
+  "DivineSmite_01_Regular_Red_Caster_400x400.webm": [
+    400,
+    400,
+    390.625,
+    400
   ],
   "DivineSmite_01_Regular_YellowWhite_Caster_400x400.webm": [
     400,
@@ -3906,6 +4008,30 @@ export const MEDIA_FOOTPRINTS = {
     1000,
     898.4375,
     882.8125
+  ],
+  "EnergyBeamReverse_01_Dark_Red_15ft_1000x400.webm": [
+    1000,
+    400,
+    601.5625,
+    203.9216
+  ],
+  "EnergyBeamReverse_01_Dark_Red_30ft_1600x400.webm": [
+    1600,
+    400,
+    1175,
+    200
+  ],
+  "EnergyBeamReverse_01_Dark_Red_60ft_2800x400.webm": [
+    2800,
+    400,
+    2384.375,
+    200
+  ],
+  "EnergyBeamReverse_01_Dark_Red_90ft_4000x400.webm": [
+    4000,
+    400,
+    3593.75,
+    246.1538
   ],
   "EnergyBeam_01_Regular_Blue_15ft_1000x400.webm": [
     1000,
@@ -5689,6 +5815,12 @@ export const MEDIA_FOOTPRINTS = {
     176.5625,
     198.4375
   ],
+  "FlurryOfBlows_01_Dark_Purple_Physical01_800x600.webm": [
+    800,
+    600,
+    400,
+    300
+  ],
   "FlurryOfBlows_01_Regular_Blue_Physical01_800x600.webm": [
     800,
     600,
@@ -6835,6 +6967,12 @@ export const MEDIA_FOOTPRINTS = {
     381.25,
     162.5
   ],
+  "HeartbeatECG01_02_Regular_Red_400x400.webm": [
+    400,
+    400,
+    381.25,
+    162.5
+  ],
   "HumanFootPrint_01_Grey_200x200.webm": [
     200,
     200,
@@ -7123,6 +7261,12 @@ export const MEDIA_FOOTPRINTS = {
     153.125,
     165.625
   ],
+  "IconRunes_01_Dark_Red_200x200.webm": [
+    200,
+    200,
+    146.875,
+    176.5625
+  ],
   "IconRunes_01_Regular_Blue_200x200.webm": [
     200,
     200,
@@ -7146,6 +7290,12 @@ export const MEDIA_FOOTPRINTS = {
     200,
     146.875,
     176.5625
+  ],
+  "IconShieldCracked_01_Dark_Red_200x200.webm": [
+    200,
+    200,
+    157.8125,
+    171.875
   ],
   "IconShieldCracked_01_Regular_Purple_200x200.webm": [
     200,
@@ -7362,6 +7512,12 @@ export const MEDIA_FOOTPRINTS = {
     400,
     362.5,
     321.875
+  ],
+  "ImpactIceShard02_01_Regular_Blue_600x600.webm": [
+    600,
+    600,
+    412.5,
+    351.5625
   ],
   "ImpactMusicNote01_01_Regular_Pink_400x400.webm": [
     400,
@@ -7729,6 +7885,12 @@ export const MEDIA_FOOTPRINTS = {
     402.3438,
     398.4375
   ],
+  "InPulse_02_Circle_Normal_500.webm": [
+    500,
+    500,
+    492.1875,
+    492.1875
+  ],
   "Indicator_01_Regular_Yellow_200x200.webm": [
     200,
     200,
@@ -8089,6 +8251,12 @@ export const MEDIA_FOOTPRINTS = {
     276.5625,
     398.4375
   ],
+  "LiquidSplashSide01_Bright_Purple_600x600.webm": [
+    600,
+    600,
+    276.5625,
+    398.4375
+  ],
   "LiquidSplashSide01_Dark_Black_600x600.webm": [
     600,
     600,
@@ -8210,6 +8378,12 @@ export const MEDIA_FOOTPRINTS = {
     237.5
   ],
   "MarkerBubble_01_Regular_Blue_400x400.webm": [
+    400,
+    400,
+    387.5,
+    387.5
+  ],
+  "MarkerBubble_01_Regular_Rainbow_400x400.webm": [
     400,
     400,
     387.5,
@@ -9157,6 +9331,18 @@ export const MEDIA_FOOTPRINTS = {
     271.875,
     259.375
   ],
+  "Marker_01_Regular_Red_400x400.webm": [
+    400,
+    400,
+    318.75,
+    321.875
+  ],
+  "Marker_01_Regular_Yellow_400x400.webm": [
+    400,
+    400,
+    315.625,
+    321.875
+  ],
   "Maul01_01_Regular_White_800x600.webm": [
     800,
     600,
@@ -9757,6 +9943,12 @@ export const MEDIA_FOOTPRINTS = {
     387.5,
     387.5
   ],
+  "MusicMarker_01_Regular_Pink_400x400.webm": [
+    400,
+    400,
+    387.5,
+    387.5
+  ],
   "MusicMarker_01_Regular_PurplePink_400x400.webm": [
     400,
     400,
@@ -10003,6 +10195,12 @@ export const MEDIA_FOOTPRINTS = {
     581.25,
     581.25
   ],
+  "OutPulse_02_Regular_GreenOrange_Burst_600x600.webm": [
+    600,
+    600,
+    581.25,
+    581.25
+  ],
   "OutPulse_02_Regular_PurplePink_Burst_600x600.webm": [
     600,
     600,
@@ -10128,6 +10326,12 @@ export const MEDIA_FOOTPRINTS = {
     600,
     360.9375,
     328.125
+  ],
+  "ParticlesComplete002_001_Many_BlueTeal_600x600.webm": [
+    600,
+    600,
+    464.0625,
+    473.4375
   ],
   "ParticlesComplete002_001_Many_Blue_600x600.webm": [
     600,
@@ -10267,6 +10471,12 @@ export const MEDIA_FOOTPRINTS = {
     346.875,
     350
   ],
+  "ParticlesInward01_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    346.875,
+    350
+  ],
   "ParticlesInward01_05_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10285,6 +10495,12 @@ export const MEDIA_FOOTPRINTS = {
     350,
     350
   ],
+  "ParticlesInward01_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    350,
+    353.125
+  ],
   "ParticlesInward02_01_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10297,6 +10513,12 @@ export const MEDIA_FOOTPRINTS = {
     350,
     346.875
   ],
+  "ParticlesInward02_01_Regular_White_400x400.webm": [
+    400,
+    400,
+    350,
+    346.875
+  ],
   "ParticlesInward02_02_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10304,6 +10526,12 @@ export const MEDIA_FOOTPRINTS = {
     353.125
   ],
   "ParticlesInward02_02_Regular_Purple_400x400.webm": [
+    400,
+    400,
+    353.125,
+    353.125
+  ],
+  "ParticlesInward02_02_Regular_White_400x400.webm": [
     400,
     400,
     353.125,
@@ -10345,6 +10573,12 @@ export const MEDIA_FOOTPRINTS = {
     362.5,
     356.25
   ],
+  "ParticlesInward02_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    365.625,
+    356.25
+  ],
   "ParticlesInward02_05_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10352,6 +10586,12 @@ export const MEDIA_FOOTPRINTS = {
     356.25
   ],
   "ParticlesInward02_05_Regular_Purple_400x400.webm": [
+    400,
+    400,
+    356.25,
+    356.25
+  ],
+  "ParticlesInward02_05_Regular_White_400x400.webm": [
     400,
     400,
     356.25,
@@ -10405,6 +10645,12 @@ export const MEDIA_FOOTPRINTS = {
     359.375,
     365.625
   ],
+  "ParticlesOutward01_02_Regular_White_400x400.webm": [
+    400,
+    400,
+    359.375,
+    359.375
+  ],
   "ParticlesOutward01_03_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10447,6 +10693,12 @@ export const MEDIA_FOOTPRINTS = {
     353.125,
     346.875
   ],
+  "ParticlesOutward01_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    359.375,
+    350
+  ],
   "ParticlesOutward01_05_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10458,6 +10710,12 @@ export const MEDIA_FOOTPRINTS = {
     400,
     353.125,
     365.625
+  ],
+  "ParticlesOutward01_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    356.25,
+    362.5
   ],
   "ParticlesOutward02_01_Regular_GreenYellow_400x400.webm": [
     400,
@@ -10488,6 +10746,12 @@ export const MEDIA_FOOTPRINTS = {
     400,
     371.875,
     371.875
+  ],
+  "ParticlesOutward02_02_Regular_White_400x400.webm": [
+    400,
+    400,
+    381.25,
+    375
   ],
   "ParticlesOutward02_03_Regular_GreenYellow_400x400.webm": [
     400,
@@ -10525,6 +10789,12 @@ export const MEDIA_FOOTPRINTS = {
     371.875,
     371.875
   ],
+  "ParticlesOutward02_04_Regular_White_400x400.webm": [
+    400,
+    400,
+    375,
+    371.875
+  ],
   "ParticlesOutward02_05_Regular_GreenYellow_400x400.webm": [
     400,
     400,
@@ -10536,6 +10806,12 @@ export const MEDIA_FOOTPRINTS = {
     400,
     353.125,
     365.625
+  ],
+  "ParticlesOutward02_05_Regular_White_400x400.webm": [
+    400,
+    400,
+    359.375,
+    368.75
   ],
   "ParticlesSwirl01_01_Regular_Blue_400x400.webm": [
     400,
@@ -10909,6 +11185,36 @@ export const MEDIA_FOOTPRINTS = {
     3781.25,
     338.4615
   ],
+  "ProjectileSkull01_01_Regular_PinkPurple_05ft_600x400.webm": [
+    600,
+    400,
+    421.875,
+    324.7059
+  ],
+  "ProjectileSkull01_01_Regular_PinkPurple_15ft_1000x400.webm": [
+    1000,
+    400,
+    789.0625,
+    313.7255
+  ],
+  "ProjectileSkull01_01_Regular_PinkPurple_30ft_1600x400.webm": [
+    1600,
+    400,
+    1400,
+    312.5
+  ],
+  "ProjectileSkull01_01_Regular_PinkPurple_60ft_2800x400.webm": [
+    2800,
+    400,
+    2603.125,
+    333.3333
+  ],
+  "ProjectileSkull01_01_Regular_PinkPurple_90ft_4000x400.webm": [
+    4000,
+    400,
+    3812.5,
+    338.4615
+  ],
   "Quarterstaff01_01_Regular_Blue_800x600.webm": [
     800,
     600,
@@ -11268,6 +11574,36 @@ export const MEDIA_FOOTPRINTS = {
     500,
     484.375,
     480.4688
+  ],
+  "RangedInstant04_01_Regular_Green_05ft_600x400.webm": [
+    600,
+    400,
+    473.4375,
+    296.4706
+  ],
+  "RangedProjectile04_01_Regular_Green_15ft_1000x400.webm": [
+    1000,
+    400,
+    859.375,
+    305.8824
+  ],
+  "RangedProjectile04_01_Regular_Green_30ft_1600x400.webm": [
+    1600,
+    400,
+    1462.5,
+    287.5
+  ],
+  "RangedProjectile04_01_Regular_Green_60ft_2800x400.webm": [
+    2800,
+    400,
+    2625,
+    266.6667
+  ],
+  "RangedProjectile04_01_Regular_Green_90ft_4000x400.webm": [
+    4000,
+    400,
+    3843.75,
+    276.9231
   ],
   "Rapier01_01_Regular_Blue_800x600.webm": [
     800,
@@ -11737,6 +12073,12 @@ export const MEDIA_FOOTPRINTS = {
     312.5,
     318.75
   ],
+  "Shield_01_Regular_Green_OutroExplode_400x400.webm": [
+    400,
+    400,
+    381.25,
+    381.25
+  ],
   "Shield_01_Regular_Purple_Complete_400x400.webm": [
     400,
     400,
@@ -12078,6 +12420,36 @@ export const MEDIA_FOOTPRINTS = {
     800,
     768.75,
     781.25
+  ],
+  "SlingShot_01_Regular_White_05ft_600x400.webm": [
+    600,
+    400,
+    389.0625,
+    169.4118
+  ],
+  "SlingShot_01_Regular_White_15ft_1000x400.webm": [
+    1000,
+    400,
+    773.4375,
+    172.549
+  ],
+  "SlingShot_01_Regular_White_30ft_1600x400.webm": [
+    1600,
+    400,
+    1337.5,
+    175
+  ],
+  "SlingShot_01_Regular_White_60ft_2800x400.webm": [
+    2800,
+    400,
+    2537.5,
+    177.7778
+  ],
+  "SlingShot_01_Regular_White_90ft_4000x400.webm": [
+    4000,
+    400,
+    3750,
+    184.6154
   ],
   "SmokeCircleComplete001_001_White_15ft_800x800.webm": [
     800,
@@ -15187,6 +15559,12 @@ export const MEDIA_FOOTPRINTS = {
     543.75,
     595.3125
   ],
+  "WaterSplashConeLoop_01_01_Regular_Red_600x600.webm": [
+    600,
+    600,
+    543.75,
+    595.3125
+  ],
   "WaterSplashLoop_01_01_Regular_Blue_600x600.webm": [
     600,
     600,
@@ -15427,85 +15805,13 @@ export const MEDIA_FOOTPRINTS = {
     393.75,
     256.25
   ],
-  "ZoningCircle01Out_01_Regular_BlueGreen_Loop_600x600.webm": [
+  "ZoningCircle01In_01_Regular_BlueGreen_Loop_600x600.webm": [
     600,
     600,
     525,
     525
   ],
-  "ParticlesInward01_04_Regular_White_400x400.webm": [
-    400,
-    400,
-    346.875,
-    350
-  ],
-  "ParticlesInward01_05_Regular_White_400x400.webm": [
-    400,
-    400,
-    350,
-    353.125
-  ],
-  "ParticlesInward02_01_Regular_White_400x400.webm": [
-    400,
-    400,
-    350,
-    346.875
-  ],
-  "ParticlesInward02_02_Regular_White_400x400.webm": [
-    400,
-    400,
-    353.125,
-    353.125
-  ],
-  "ParticlesInward02_04_Regular_White_400x400.webm": [
-    400,
-    400,
-    365.625,
-    356.25
-  ],
-  "ParticlesInward02_05_Regular_White_400x400.webm": [
-    400,
-    400,
-    356.25,
-    356.25
-  ],
-  "ParticlesOutward01_02_Regular_White_400x400.webm": [
-    400,
-    400,
-    359.375,
-    359.375
-  ],
-  "ParticlesOutward01_04_Regular_White_400x400.webm": [
-    400,
-    400,
-    359.375,
-    350
-  ],
-  "ParticlesOutward01_05_Regular_White_400x400.webm": [
-    400,
-    400,
-    356.25,
-    362.5
-  ],
-  "ParticlesOutward02_02_Regular_White_400x400.webm": [
-    400,
-    400,
-    381.25,
-    375
-  ],
-  "ParticlesOutward02_04_Regular_White_400x400.webm": [
-    400,
-    400,
-    375,
-    371.875
-  ],
-  "ParticlesOutward02_05_Regular_White_400x400.webm": [
-    400,
-    400,
-    359.375,
-    368.75
-  ],
-  "ZoningCircle01In_01_Regular_BlueGreen_Loop_600x600.webm": [
+  "ZoningCircle01Out_01_Regular_BlueGreen_Loop_600x600.webm": [
     600,
     600,
     525,

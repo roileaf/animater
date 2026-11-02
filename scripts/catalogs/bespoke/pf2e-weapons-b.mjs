@@ -391,7 +391,7 @@ export default {
     flight('Bola flight', ['mace.throw', 'dagger.throw.01.white'], { duration: 2250 }),
     landed('Weights strike', ['impact.005.white', 'impact.005.orange']),
     aura('Cord wraps target', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { subject: 'targets', after: 'flight', anchor: 'start', offset: 1000, duration: 1800, scale: 0.6, fadeOut: 400, ...tint('#b8a98a') }),
-    travel('Bola spools back', ['mace.throw', 'dagger.return.01.white'], { after: 'flight', anchor: 'end', offset: 500, duration: 1800, travelOrigin: 'target', fadeOut: 120 }),
+    travel('Bola spools back', ['mace.throw', 'dagger.return.01.white'], { travelLook: 'tokenshade', tetherStyle: 'bola', after: 'flight', anchor: 'end', offset: 500, duration: 1800, travelOrigin: 'target', fadeOut: 120 }),
   ]),
 
   // Worldringer khakkharas.

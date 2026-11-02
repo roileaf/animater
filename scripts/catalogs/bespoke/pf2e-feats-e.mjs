@@ -70,7 +70,7 @@ export default {
   'pf2e:6ZM8ZtLa4wwkrVJE': design('A jet of black ink sprays into the attacker\'s face, smearing it so it is dazzled.', () => [
     motion('recoil', 'source', { duration: 500, intensity: 0.3 }),
     impact('Ink splashes the attacker', ['liquid.splash_side.dark_black', 'liquid.splash_side.blue'], { stageId: 'ink', delay: 150, duration: 1200, scale: 0.9, ...tint('#141418') }),
-    aura('Ink clings', ['liquid.blob.blue'], { subject: 'targets', after: 'ink', anchor: 'start', offset: 500, duration: 1800, scale: 0.7, opacity: 0.8, fadeOut: 500, ...tint('#141418') }),
+    aura('Ink clings', ['liquid.blob.blue'], { bodyLook: 'Ink-Smeared', subject: 'targets', after: 'ink', anchor: 'start', offset: 500, duration: 1800, scale: 0.7, opacity: 0.8, fadeOut: 500, ...tint('#141418') }),
     motion('shake', 'targets', { after: 'ink', anchor: 'start', offset: 150, duration: 700, intensity: 0.4 }),
   ]),
 
@@ -353,7 +353,7 @@ export default {
   // Surprise Snare: a quick-deploy snare triggers in the opponent's space.
   'pf2e:wqrOVv9gnqF4nlLR': design('The user flicks a prepared snare into the foe\'s square and it springs immediately, snapping shut around it.', () => [
     motion('throw', 'source', { duration: 700, intensity: 0.4 }),
-    projectile('Snare tossed', ['caltrops.01.grey'], { stageId: 'ss-t', delay: 250, duration: 700, scale: 0.4 }),
+    projectile('Snare tossed', ['caltrops.01.grey'], { travelLook: 'tokenshade', tetherStyle: 'snare', stageId: 'ss-t', delay: 250, duration: 700, scale: 0.4 }),
     impact('Snare springs', ['spike_trap.05x05ft.top.no_base', 'spike_trap.05x05ft.top.holes', 'impact.005.orange'], { stageId: 'ss-h', after: 'ss-t', anchor: 'end', duration: 1300, scale: 0.8 }),
     motion('shake', 'targets', { after: 'ss-h', anchor: 'start', offset: 150, duration: 700, intensity: 0.45 }),
   ]),
@@ -835,7 +835,7 @@ export default {
   'pf2e:fYD0SrZhMyJVQgvl': design('A long vine sprouts from the arm and lashes out like a whip across up to 30 feet to slash the target.', () => [
     cast('Vine sprouts', ['vine.complete.nature.single.01.green'], { scale: 0.5, duration: 900 }),
     motion('lunge', 'source', { delay: 300, duration: 600, intensity: 0.4 }),
-    travel('Vine whips out', ['energy_strands.range.standard.dark_green.01', 'energy_strands.range.standard.purple.01'], { stageId: 'vl', delay: 400, duration: 900, ...tint('#3e8e2a') }),
+    travel('Vine whips out', ['energy_strands.range.standard.dark_green.01', 'energy_strands.range.standard.purple.01'], { travelLook: 'tokenshade', tetherStyle: 'vine', stageId: 'vl', delay: 400, duration: 900, ...tint('#3e8e2a') }),
     impact('Lash', CLAW('green'), { after: 'vl', anchor: 'end', duration: 1000 }),
   ]),
 
@@ -938,7 +938,7 @@ export default {
   // Webslinger: the effects of a 2nd-rank Web spell.
   'pf2e:VXAIElMlMnVvz3x5': design('The anadi slings a huge web of silk that splays over the targeted area and the creatures in it.', () => [
     motion('throw', 'source', { duration: 700, intensity: 0.4 }),
-    projectile('Silk flung', ['web.02'], { stageId: 'ws', delay: 250, duration: 700, scale: 0.4 }),
+    projectile('Silk flung', ['web.02'], { travelLook: 'tokenshade', tetherStyle: 'silk', stageId: 'ws', delay: 250, duration: 700, scale: 0.4 }),
     impact('Web splays', ['web.complete.002.white', 'web.01'], { after: 'ws', anchor: 'end', duration: 2000, scale: 1.4, ...ALL }),
   ], { sound: 'vines' }),
 

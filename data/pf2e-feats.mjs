@@ -43,7 +43,7 @@ export const PF2E_FEAT_SOURCE = {
       "patreon": 2338,
       "free": 2338
     },
-    "visiblyReframed": 1067,
+    "visiblyReframed": 1052,
     "method": "Edition-specific effects-only comparison at 200ms / 0.1-square / 15-degree precision; IDs, names, labels and inactive tint ignored. Semantic activity cues get discrete visible framing when a shared basis collides."
   },
   "descriptionChars": 1181799,
@@ -11649,7 +11649,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "spiral performance glitter; centered bloom, turning entrance",
-    "compositionHash": "bad9065bc09d23896975a3c63988067b0949c8b5b23711cabf6eaaecaa3faeb0",
+    "compositionHash": "45643398b9951574c6e732c676ce0f4516017ef68d89e064a1c12f27c0abfff5",
     "sharedCount": 1
   },
   {
@@ -13765,7 +13765,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; centered bloom, turning entrance",
-    "compositionHash": "113ab97fc849a46683289afe27d3ef740aa231d0c0d942d25fcf2bcd0be7189d",
+    "compositionHash": "ecfd3eb1e43eda15203164a4657f285c55c5e88b774fd28d2b5cd422aa2da5ce",
     "sharedCount": 1
   },
   {
@@ -15115,7 +15115,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "wide-cleave; centered bloom, expanding entrance",
-    "compositionHash": "1a5ecc8ac08d18aa7be6e9d01fbf5138cb5ec009dcf9a14a46bce6b79bd63af5",
+    "compositionHash": "322eb1202894713f53b683cf5936ea7b33a3a07479fa1e9f90e93cd68ffc0ee5",
     "sharedCount": 1
   },
   {
@@ -16709,7 +16709,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "thousand spirit shards dispersal; centered bloom, unfolding entrance",
-    "compositionHash": "b9360e47d1908c85662103516c7c963c25fd03527da7acad00ecb0db7085a91a",
+    "compositionHash": "1e58c4cf6998ca82012794a23a1a6324af0f2e1cdf0a3d96b698f60ea81f910f",
     "sharedCount": 1
   },
   {
@@ -17978,7 +17978,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "incoming reversal weapon arc; centered bloom, expanding entrance",
-    "compositionHash": "061f14e6f054b1bbebf6b6b0ba6ced1efbdfc83ebab17503c95438c9c159aae9",
+    "compositionHash": "560a4e10a4989c6f676e4e0006403319d6f390f15a0234d5d5f20c754baaca48",
     "sharedCount": 1
   },
   {
@@ -19832,7 +19832,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-burst; centered bloom, unfolding entrance",
-    "compositionHash": "f7b6d1d27e67251fa88ea31ea0e9586978abb73f08bbb0361dd968e359f7b0e1",
+    "compositionHash": "5b2f0697997cc1ec4424850e6aa74bde076949a860ab1e65717f2766ae55a580",
     "sharedCount": 1
   },
   {
@@ -22443,7 +22443,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "ash skin low obscure mantle; low wide sweep, expanding entrance",
-    "compositionHash": "aaf1de5908e5db7887762e3ba7c26285f57a2581201022e85192c72451479dea",
+    "compositionHash": "2e98f75feaac2b9633dbd7b8ef7a75a341f0424a502a41457fcbf95a21e96430",
     "sharedCount": 1
   },
   {
@@ -23503,7 +23503,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; centered bloom, expanding entrance",
-    "compositionHash": "d1fcaf059c9cb8027c8d1a930d379d3e1de1c341143313fc13b144254a36276f",
+    "compositionHash": "90f3ec5cf7a2d112f0aedce2ad96e4742a8c08e62b1184a8217a7b436d80fb7e",
     "sharedCount": 1
   },
   {
@@ -40457,7 +40457,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "rushing talon then grasp coil; centered bloom, turning entrance",
-    "compositionHash": "967cd5722cd6756f5e87c00203bbd575ff535dd2fe6bf3665dcec58626ea8430",
+    "compositionHash": "79e9aea18eaafa1b60426792d94bb2aef5388adf58c3288923b55cf2a10570f8",
     "sharedCount": 1
   },
   {
@@ -50586,7 +50586,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "touch-link memories flow from target inward; low wide sweep, contracting entrance",
-    "compositionHash": "20fd6363d8716fc129ce364758e3c975083c9e6cbbca12dd43b7aeb41c912e44",
+    "compositionHash": "864cf56414a014784c696df00d202f5f396089a3f70e8c9182c0710b814a6b19",
     "sharedCount": 1
   },
   {
@@ -51704,7 +51704,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "target mental halo siphons into source; centered bloom, contracting entrance",
-    "compositionHash": "88bb0a1121ad95c14ce67a7fc612fa168586ea4694967de2d924bfbd75700ad8",
+    "compositionHash": "b0a70ee3801fc65c5f01ac44e6497f928c070a2c1974197b6513dd188c57ff6a",
     "sharedCount": 1
   },
   {
@@ -52473,7 +52473,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-crown; centered bloom, expanding entrance",
-    "compositionHash": "4e7303d580fb58a08348e2570443abbc5762df347c59712b972a2b195ea0bf02",
+    "compositionHash": "6b859e60763995e46c7f0b2569fcf98ab3dec920d78c302f1928365e3598b72d",
     "sharedCount": 1
   },
   {
@@ -54856,7 +54856,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "wide-cleave; centered bloom, expanding entrance",
-    "compositionHash": "6b541980b755962493e41159d7dc35a27f99376d9f95b8a601404af0cdad8f21",
+    "compositionHash": "71940bb19d6aacf3d60eaa24a2c2a3db3e5b39183a1facf729c39b4f4f0de192",
     "sharedCount": 1
   },
   {
@@ -58157,7 +58157,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "mortar launch followed by concentrated ground punch; low wide sweep, breathing entrance",
-    "compositionHash": "80caac6e9d38f2f2a15bb4d8413a8427fe9545dc9e248030a851fc6d93b92680",
+    "compositionHash": "05c90b3d434b0da865627ce9a1a147eb41e524546a0ae42aaefcc87d7f8598e7",
     "sharedCount": 1
   },
   {
@@ -58433,7 +58433,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "sudden lunge from hiding into a grip; centered bloom, expanding entrance",
-    "compositionHash": "4682c9102d84dfbf3fd9ae4972b30ace57011881b3bf372bfbf6f1e10f90e058",
+    "compositionHash": "89433c0cbc2d5fa052345b969f8ee1d8e00b34ae44bd11e2c2b51aea568dbf00",
     "sharedCount": 1
   },
   {
@@ -59231,7 +59231,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "instrument-breaking discord expands into sound burst; centered bloom, expanding entrance",
-    "compositionHash": "0ab64eec5c9b63f819d2803c4bf9d87393e1b6632d70deccf71a9316d4dd9523",
+    "compositionHash": "7803b6fd654f91c7c94626d4a7b0eac9630d5562c403730ae8f7eec5cc2ac934",
     "sharedCount": 1
   },
   {
@@ -61541,7 +61541,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "ground-hugging scurrying swarm fills remote burst; low wide sweep, unfolding entrance",
-    "compositionHash": "89516cf33f07cdf6f98681a57ff9d5411914680d8b70f0735ee4a626c19d43d5",
+    "compositionHash": "fd95d845f3a7204eeda5c632f50de7f87d04d907a73a211a9bb06e65a091d0f1",
     "sharedCount": 1
   },
   {
@@ -66652,7 +66652,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "catchy beat loops outward with alternating dancing accents; low wide sweep, expanding entrance",
-    "compositionHash": "fbf6d97818a597ca62a9a9deb35a26c4ecd7a6f7eca414165b130dc46ef5fb5e",
+    "compositionHash": "bb8e24cff8d1cef19114384918feb372fd37c32cebcee72d13ec7be702d6b0b8",
     "sharedCount": 1
   },
   {
@@ -73030,12 +73030,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-curse; low wide sweep, expanding entrance",
-    "compositionHash": "08368d0f64a57365d1f6ef47715da2c5030d38f9e37a989fe331d7f67b65f2b5",
+    "visualDirection": "target-curse; centered bloom, expanding entrance",
+    "compositionHash": "590183a0680aba476f7d0f52bc3d612ee21bd893a30929caa26f2c2426a58647",
     "sharedCount": 1
   },
   {
@@ -78936,7 +78936,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "c8eda23f0ef286e68331544425152e56cc01e9b355d005293908279abac8d7ea",
+    "compositionHash": "9650002ef95323c2647f108533b4b9056f489de8b50fe86c559fedd4a1873992",
     "sharedCount": 1
   },
   {
@@ -82427,7 +82427,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "4a3c404429afa3a02d6c87c78e0ce56d1d51188a72d46c2d124442f2b70d3b82",
+    "compositionHash": "c6c82658e7b9411c6cdb0b5fb63775007422a7bb011d2b44618c4759a4f30a57",
     "sharedCount": 1
   },
   {
@@ -102525,7 +102525,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-to-target; centered bloom, expanding entrance",
-    "compositionHash": "fadd8ddead7ce88c43ede45faa885b3c701c0f70c2e5f55172c473b20edda2d9",
+    "compositionHash": "9a4be30b78c983e01cf564868e45bef17535c1a76ef9f7951871710943690711",
     "sharedCount": 1
   },
   {
@@ -102777,7 +102777,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "water tendril spirals from source limb into existing grabber; centered bloom, turning entrance",
-    "compositionHash": "f7ae27b5024831365f037bfb569a3bf82f9b0dd210c83495bfc5a66c04dd8eed",
+    "compositionHash": "1365ca235f9c7bbdca2bad68944a1862d556347d24ff96b9db453b17b7c7aad8",
     "sharedCount": 1
   },
   {
@@ -103296,12 +103296,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "mask-shaped veil screens source from undead gaze; high narrow rise, expanding entrance",
-    "compositionHash": "37d7232eefc192f413174234d4279714791ef2f0cee5079b6f6995c2c5dc9402",
+    "visualDirection": "mask-shaped veil screens source from undead gaze; low wide sweep, expanding entrance",
+    "compositionHash": "c3f48172ef57ff2043ccd462f011603bf43b9e6c41ff95a66c9efe3566f95457",
     "sharedCount": 1
   },
   {
@@ -107795,7 +107795,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "measured half-stride dance culminates in divine dragon-memory pulse; centered bloom, expanding entrance",
-    "compositionHash": "07273e7382e6c6c07d3f35627648850236180595204960807523eb8f0e3e6137",
+    "compositionHash": "f2a56affe7070e3aa0400f4bfc98ae572537f1a038c642a9a667269d873c83bd",
     "sharedCount": 1
   },
   {
@@ -109905,12 +109905,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "source-halo; high narrow rise, expanding entrance",
-    "compositionHash": "dd60c91cc1eadc4260cfc1c708ed72bf62bcc065b722e997f02a4451ecbbe0b2",
+    "visualDirection": "source-halo; low wide sweep, expanding entrance",
+    "compositionHash": "87e9518839b3856c4928b93ee2f283861be5ae1a31244956228a8cde2ca4697c",
     "sharedCount": 1
   },
   {
@@ -111775,7 +111775,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "dea2a73068ccfac3c55241bd6e364999f93f7770fe0fd9281153a66b65c132a5",
+    "compositionHash": "c9f859b911c54036415f8b64fcf1355181a084f8015891eb8bace0cea5e912b6",
     "sharedCount": 1
   },
   {
@@ -112581,7 +112581,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "whirling weapon gleams culminate in unnerving show; centered bloom, expanding entrance",
-    "compositionHash": "171189b723d32663e923cd29006bf5ea9af5a3616daea80d435499f7286fef7a",
+    "compositionHash": "c958a466d754f4686969bcbccc6da6c536f2ad7933fbfacbce64658c2d4cc5a0",
     "sharedCount": 1
   },
   {
@@ -116214,7 +116214,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; low wide sweep, expanding entrance",
-    "compositionHash": "f03a215ac7e291f17db26001caeeae78028c3a98164a05e483e767114b1d38c4",
+    "compositionHash": "89351a252908265dbbb516db88ea595003a0551c61a55f1a643b10c2d7146a80",
     "sharedCount": 1
   },
   {
@@ -123736,7 +123736,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-scale; low wide sweep, expanding entrance",
-    "compositionHash": "91cbaba357ed9f5e52f5fd645cf2cb25399691303b2637f72d3b9feee1062a9f",
+    "compositionHash": "205d7082d0bdec79ce454f4f8b8a7a668fa8bbf27da5bd6410c0f4239a13fe33",
     "sharedCount": 1
   },
   {
@@ -126690,7 +126690,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "cone moisture ribbons pull inward then life spark rekindles; high narrow rise, contracting entrance",
-    "compositionHash": "048c2a4f8cf6c506248b86965116146fa301667188eac783ce1925cc8d0d593c",
+    "compositionHash": "f173926082139f3df37b74149d5a06f8b0232165a2f87c88cd215fbf92aaa91f",
     "sharedCount": 1
   },
   {
@@ -127788,7 +127788,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "wide outward life threads reverse into dying source; centered bloom, expanding entrance",
-    "compositionHash": "323e71ba6baa4531dcb48d96ae114e7468404cdc2b842b79a571b9cc190568a6",
+    "compositionHash": "bed3add3fc0797224b45c9159ae81135ff575c9f4055d60bb41b5fd760fd380c",
     "sharedCount": 1
   },
   {
@@ -128053,7 +128053,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "temporary spectral muscle channels a selected maneuver; centered bloom, expanding entrance",
-    "compositionHash": "23e31950f344fb8ec6307c4da8b17f891ab41acfd3b8d488a09054caa0be0ec9",
+    "compositionHash": "03553eae5a467b08878be0a793b9678b401abc6fa1f6b262eeb33bfaac753458",
     "sharedCount": 1
   },
   {
@@ -139355,12 +139355,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "stage flourish draws attention as ally edge fades; low wide sweep, expanding entrance",
-    "compositionHash": "289873cc415746a7041f2d5d0417cd59b56e8cd4d2fb7534fd90989424032478",
+    "visualDirection": "stage flourish draws attention as ally edge fades; centered bloom, expanding entrance",
+    "compositionHash": "2034c879eddb415a9c6d834c906fd5eb9e7e2cc1315427f9749d474022b3b09b",
     "sharedCount": 1
   },
   {
@@ -140096,7 +140096,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "target-runes; centered bloom, turning entrance",
-    "compositionHash": "8085c220f900a0d5c5cae5f725f7ae7f962d893ec194c626be58b894bfaab02a",
+    "compositionHash": "cd8aae36099f667d9c00fd50329e8e1276079bedb292cae4a0aaf53e685022df",
     "sharedCount": 1
   },
   {
@@ -144924,12 +144924,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "sweeping",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "source-wave; low wide sweep, sweeping entrance",
-    "compositionHash": "fc7b746bcdfb6091fac326a68fd090bd611fb833bac212e1b4bd31b91e113a04",
+    "visualDirection": "source-wave; centered bloom, sweeping entrance",
+    "compositionHash": "3045c3caf90e5969abbcdeed50a87063d028c2dac06d27a1b585178c108eebb3",
     "sharedCount": 1
   },
   {
@@ -146237,7 +146237,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "triggered snare line hops once into nearby second target; centered bloom, sweeping entrance",
-    "compositionHash": "68f6a5b2122f31a6784ed97efafa47fc0bd8e99de4feaaec5e49996fc09b28df",
+    "compositionHash": "87785cc691526d37ba601923027c21eaa9d470ca1cbb79176f478f54c34f3985",
     "sharedCount": 1
   },
   {
@@ -146775,12 +146775,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "sweeping",
-      "frame": 2,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-wave; high narrow rise, sweeping entrance",
-    "compositionHash": "eba21a296358cdaf5b7f8b3a3948fbfb9e74ed998aeb106b0350a140d00c663b",
+    "visualDirection": "target-wave; low wide sweep, sweeping entrance",
+    "compositionHash": "b332f0f7a05be40d872e1df1871a858c05062c938cec353b6ad6aa96103c7eb8",
     "sharedCount": 1
   },
   {
@@ -147037,7 +147037,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; centered bloom, expanding entrance",
-    "compositionHash": "236fbe5e8af216e1080a032d1e9a5907d5b3e7a6cd6b66952825a317c68a0a71",
+    "compositionHash": "6bbe4e97d260ec34a0b44594762d2cfc7f4e907b1cf14ab6f580c47c2d2249df",
     "sharedCount": 1
   },
   {
@@ -153223,7 +153223,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "mixed-pair; centered bloom, expanding entrance",
-    "compositionHash": "17c7954864fe1535127742695554dd2e11028c53da13ff1c63f97c8e598e8fb3",
+    "compositionHash": "e06207a705b86f0e87bfaf93287d0f740e6f385e8a33ce53f6431e288fe8f5e2",
     "sharedCount": 1
   },
   {
@@ -158189,12 +158189,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "dust and pollen thicken established waking-world area; left crescent, expanding entrance",
-    "compositionHash": "cbdad82e04b21cf9d3ddd2d0ed5f31fa3e994b054b718d3667062e0b416e52ba",
+    "visualDirection": "dust and pollen thicken established waking-world area; centered bloom, expanding entrance",
+    "compositionHash": "f76cc521d2b168c5f492d5f12e29a1cec8c39dc1d02352bac88092263df1d379",
     "sharedCount": 1
   },
   {
@@ -161401,12 +161401,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "sweeping",
-      "frame": 3,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "source-wave; left crescent, sweeping entrance",
-    "compositionHash": "573f190889ba3ae09d23d535cd1305b9a110f737c5c0e66cc8ccbb362e453535",
+    "visualDirection": "source-wave; low wide sweep, sweeping entrance",
+    "compositionHash": "529bb0d0d0c413a0952df4c43d3c70e78dbd4d2b49225baf3af21e6f90c08e6c",
     "sharedCount": 1
   },
   {
@@ -162200,12 +162200,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "unfolding",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "source-afterimage; low wide sweep, unfolding entrance",
-    "compositionHash": "f4338a1534b065d08f7bcb447275d391d4f3dba526909c0cf9f422662c4bd79c",
+    "visualDirection": "source-afterimage; centered bloom, unfolding entrance",
+    "compositionHash": "52528ceffbb8d37706f65924481a0739d90ef3cc40c4c5730336d4451e20dbff",
     "sharedCount": 1
   },
   {
@@ -168847,7 +168847,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "wounded source grip catches attacking limb or weapon; centered bloom, expanding entrance",
-    "compositionHash": "d330d299f1bff06a9c6f0cec7a2abc85aae3ecc37624f01e363648ff82b10bd1",
+    "compositionHash": "f54957745cdce02be6437bb01df72d803237fbb7a8b3d9541443c7f114314ec4",
     "sharedCount": 1
   },
   {
@@ -176091,7 +176091,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "loose arm wrappings unfurl around recently damaged foe; low wide sweep, expanding entrance",
-    "compositionHash": "de70031711c095e58f684667cb9013ee60f234603debf78100b70a63d68b41c5",
+    "compositionHash": "12a828b7ba885aae476b4e47910036657bfc3c0a3c03e9e685cb4faaf54dc817",
     "sharedCount": 1
   },
   {
@@ -182502,7 +182502,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "gripped foe echo rises then drops into fiery landing ring; centered bloom, ascending entrance",
-    "compositionHash": "9a2fa188869cfe6673dd5d1f20363024851dfbfdba5107667bc08c6f98ca3ff5",
+    "compositionHash": "9d15e5decc48dcf852d89d773d3f6bbcd8659f3e3af57c316064792679bb4682",
     "sharedCount": 1
   },
   {
@@ -183064,7 +183064,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "weapon mechanisms snap open into leverage hooks; high narrow rise, expanding entrance",
-    "compositionHash": "b52f4f83b6131c46d36b571d450d59a2528d20fa138f19b328b73fc786f51cd0",
+    "compositionHash": "19610a284e2d2187eb9765ec1ce89d29e3d2d1ad6b5c0b11e6c6e4abed7ee137",
     "sharedCount": 1
   },
   {
@@ -183629,12 +183629,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "foe blood spray curls toward source life reservoir; low wide sweep, expanding entrance",
-    "compositionHash": "fb11dd6dd03dea9903d84162dc029959d41f8702f097e93cfc95bccaf48f6856",
+    "visualDirection": "foe blood spray curls toward source life reservoir; centered bloom, expanding entrance",
+    "compositionHash": "0fb0fefa2c5d2198fbdb77ab9afe8a266ea0b64dd3eae20e82f31c9069a35b04",
     "sharedCount": 1
   },
   {
@@ -187041,12 +187041,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 0,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "crimson source image phases briefly and reforms; centered bloom, expanding entrance",
-    "compositionHash": "ee2d17fc101eef348db2b6fc76a5a4cbe97ab0f1fda7e879d7d22d6e754b3180",
+    "visualDirection": "crimson source image phases briefly and reforms; high narrow rise, expanding entrance",
+    "compositionHash": "43cb60730ab6504c40ddbcb5f9f342403bda42cba52a70ef207189444a5e1579",
     "sharedCount": 1
   },
   {
@@ -189843,7 +189843,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; high narrow rise, expanding entrance",
-    "compositionHash": "236b4ffe213158b0d4ae102a1ce8dd28449cbee32f968d88e8aa6f84acc765bc",
+    "compositionHash": "c87454785dca540af08b9cf208f582a27b4881235186566a8fc4a96d144c87b1",
     "sharedCount": 1
   },
   {
@@ -191451,12 +191451,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-curse; high narrow rise, expanding entrance",
-    "compositionHash": "8b52f6962a6493b30769b2e8dbacfdd0e08de99e7d3163bb3ee295bbe7577e4b",
+    "visualDirection": "target-curse; low wide sweep, expanding entrance",
+    "compositionHash": "2f2502ab8413835ec7939ad204c98732a01ee949262582bb62c7800b0637ef59",
     "sharedCount": 1
   },
   {
@@ -191744,7 +191744,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "target-burst; centered bloom, sweeping entrance",
-    "compositionHash": "489359ebf2045ff84f72448feecd36961d786f0f0e32aa0d164dfcc892f51dc5",
+    "compositionHash": "d4949c7e0637b9fe381f5a1407162dcab42f3ed8dc2f72b590893d52f1d8ef43",
     "sharedCount": 1
   },
   {
@@ -198203,7 +198203,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "existing grip bands tighten with braced source silhouette; centered bloom, contracting entrance",
-    "compositionHash": "b2cacf55400b144e4ea6679c7cc74619941018361f16ad5861eb180c329a468f",
+    "compositionHash": "6a22ffbcfb225f1e391afcbb621fdcd124117ea242e33354eeefaffe1d233382",
     "sharedCount": 1
   },
   {
@@ -199529,7 +199529,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "homing-projectile; centered bloom, expanding entrance",
-    "compositionHash": "f82efba6ebb2d0a9dcc5fe861023ea665dc6c1514f1aa4cfed315cbf63000bb2",
+    "compositionHash": "4eef1184e54c7c94039cabda98769518ee9c793039f2dd343e6251b140211f71",
     "sharedCount": 1
   },
   {
@@ -203016,12 +203016,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "source-cone; left crescent, expanding entrance",
-    "compositionHash": "f0a39af30ecea40e8b6e6aa82a36fc8568164ee246dcb21cdc98636f5571ae20",
+    "visualDirection": "source-cone; high narrow rise, expanding entrance",
+    "compositionHash": "f61b3232b8dbf7e2323f0a6c80a16806371f00545373f396a05ae9678fa01399",
     "sharedCount": 1
   },
   {
@@ -205315,7 +205315,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; left crescent, expanding entrance",
-    "compositionHash": "dbf039bd42293da5f6a6af021e776eaed258db5d1a45d7796308df437b4f6c33",
+    "compositionHash": "d39cbf531b46146a7f10c007e7e099f50e11af3fe514465cc8f517a93eec9a1f",
     "sharedCount": 1
   },
   {
@@ -205570,12 +205570,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "twirling disguise silhouettes alternate into obvious blur; right crescent, expanding entrance",
-    "compositionHash": "78cbfeab76214047ebf8be8aeebb61bc3dcbc045b28a3b96a1957f3e084ea680",
+    "visualDirection": "twirling disguise silhouettes alternate into obvious blur; high narrow rise, expanding entrance",
+    "compositionHash": "37d7232eefc192f413174234d4279714791ef2f0cee5079b6f6995c2c5dc9402",
     "sharedCount": 1
   },
   {
@@ -207662,7 +207662,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-wave; low wide sweep, sweeping entrance",
-    "compositionHash": "d58586cde251c21b964cec70a32d1befab91be019f55f3ab53b1e06c49f8a78e",
+    "compositionHash": "b4ebfbe45e0bce98e475d7942ab6c6fa3e55c4cbb342858df7fe978ddcba3103",
     "sharedCount": 1
   },
   {
@@ -210715,7 +210715,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; right crescent, expanding entrance",
-    "compositionHash": "6b5f514d5eb0c4023d23790c05d6d6f0cb6504a7abcdbeeec06d1eb0a7c7796f",
+    "compositionHash": "61664aada3226999c5dca5209c5fb6bfba9f86b580d31302448f646d8cdb27aa",
     "sharedCount": 1
   },
   {
@@ -215256,7 +215256,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "existing grip unthreads foe alternate-form outline; low wide sweep, sweeping entrance",
-    "compositionHash": "01a2c7fc707e40b4470d0ace517feadafa7e74ddf23b68b8a3e3c8231265b24e",
+    "compositionHash": "28dceadc8606d13676f575c1a6be96f49b801fbe618c4c0d07f59ee084cf4ffc",
     "sharedCount": 1
   },
   {
@@ -217877,12 +217877,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 3,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "playful foxlike distraction curl masks source or small object; diagonal ascending, expanding entrance",
-    "compositionHash": "51c24efa5521312ecd4337960eb1c219df621a3925f2e0edee2cbb43c6525463",
+    "visualDirection": "playful foxlike distraction curl masks source or small object; left crescent, expanding entrance",
+    "compositionHash": "8c3ae2ddf20e6d99d1e8463b8570f99aaff3e92ee207a9350ef89e806f488845",
     "sharedCount": 1
   },
   {
@@ -219592,12 +219592,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "turning",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-runes; low wide sweep, turning entrance",
-    "compositionHash": "17385a3e42aa3d07e3b3670d56b45d7afd025619f7d03478c30f310b96d03cf4",
+    "visualDirection": "target-runes; centered bloom, turning entrance",
+    "compositionHash": "f5b48d886642404df30b9fe11c3106e5b3a4b68c2d2c545ec7559a8d8298a8ba",
     "sharedCount": 1
   },
   {
@@ -220422,12 +220422,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-curse; left crescent, expanding entrance",
-    "compositionHash": "a5ad10b7feb0dae872633f8d120b47d2e3b7eb44476f723aa3495f18a02bc41c",
+    "visualDirection": "target-curse; high narrow rise, expanding entrance",
+    "compositionHash": "617c6fa970023085c674fd7a94f7a9962fc90a671473a53b7c02593142290cfc",
     "sharedCount": 1
   },
   {
@@ -222042,7 +222042,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "rage-powered hand clamps previously struck foe outline; centered bloom, sweeping entrance",
-    "compositionHash": "0460c459b9edc4e929682b2a01e3c558cd7e7a02f8d2652da4ea8c59c02d8427",
+    "compositionHash": "c19ccc92c9442ce7fecf51a176a708ec849b9a13a8872acb9ae139d5bf884329",
     "sharedCount": 1
   },
   {
@@ -223056,7 +223056,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "mounted momentum throws the weapon on a long arc; low wide sweep, expanding entrance",
-    "compositionHash": "87a12b197b70695fe3625b6335f7a28d0b1fb240caacd47722805a090b3f6bb8",
+    "compositionHash": "ed9adc05983d7f20d747d354131b73635dd250d5c121a79a74e927fcb35a3f0c",
     "sharedCount": 1
   },
   {
@@ -225704,12 +225704,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 3,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-distraction; right crescent, expanding entrance",
-    "compositionHash": "9e6105af48070c084c6cecbee74c1d40c89cadd68550809c8a6ccf584b302433",
+    "visualDirection": "target-distraction; left crescent, expanding entrance",
+    "compositionHash": "f4f49411d152ddc8da09783e53833cff687a7a81aabdeb44e6758e3362959388",
     "sharedCount": 1
   },
   {
@@ -227062,12 +227062,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-vision; right crescent, expanding entrance",
-    "compositionHash": "861caf19346a900de6eea1fc1412b80966792b1dad651403cebce718877c1a8b",
+    "visualDirection": "target-vision; high narrow rise, expanding entrance",
+    "compositionHash": "ab695dd589e013ad5c96a2e82bf1759aaf35d609c1eaf1591cfd24f9b21d5730",
     "sharedCount": 1
   },
   {
@@ -231765,7 +231765,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "silly repetitive note loop annoys selected foe attention; high narrow rise, expanding entrance",
-    "compositionHash": "6df345359f4ab0d27acc8b5cf17c1f8c5197ddf1167f612fc93030ae7efa54e8",
+    "compositionHash": "3109099e859896762dc379dcf580fc16859d35c6423cca8876de5e7e93ea0624",
     "sharedCount": 1
   },
   {
@@ -242017,7 +242017,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; diagonal ascending, expanding entrance",
-    "compositionHash": "338c43963efcf562544c5e67c8502c9a9ec1a233cba8ed1ba7be97f8d23e7441",
+    "compositionHash": "8a47f76c13c4c4fe73213fe31f2a4c7b38c13c5ddfb2bab60d5282907437b2b4",
     "sharedCount": 1
   },
   {
@@ -242829,12 +242829,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "performative firearm brandish narrows foe attention tunnel; left crescent, expanding entrance",
-    "compositionHash": "25198eb61e53a35bd85b2c4e0b3afdb6db47d78302ab91f68b48a57d0c15340d",
+    "visualDirection": "performative firearm brandish narrows foe attention tunnel; centered bloom, expanding entrance",
+    "compositionHash": "62a28f89b018844d4ffe6a262fa1df48d296ed932b822d87a83fcbf31d5417df",
     "sharedCount": 1
   },
   {
@@ -246782,7 +246782,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "bark plates grow around body and optional hand shield; centered bloom, expanding entrance",
-    "compositionHash": "15c9244faad53773093a65fb084d4c51071f5996140e7b8982ed892a4021812a",
+    "compositionHash": "ad21827f0e6aed89bb874ad56d1f7d7d739a86f3b1c994b4ada1ac311420da59",
     "sharedCount": 1
   },
   {
@@ -250241,7 +250241,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "incoming fire reshapes into close heat-smoke screen; centered bloom, closing entrance",
-    "compositionHash": "3cda31196dc765aec4f734eac75441ba6240890d12ba7363e45a71af8103646a",
+    "compositionHash": "5a5ff87c5d5a2c71fd18feb134ae31f4c7bb44967d17bd539e776287f1009945",
     "sharedCount": 1
   },
   {
@@ -252620,12 +252620,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "ostentatious one-or-two stride dance conceals casting-ready focus; high narrow rise, expanding entrance",
-    "compositionHash": "322475d3dd67b0e82892bbdc7fe113ff0af1c8c767fa188d1d18e3b92f0f4a4e",
+    "visualDirection": "ostentatious one-or-two stride dance conceals casting-ready focus; centered bloom, expanding entrance",
+    "compositionHash": "4fcc3131b986d7ae8c850e2c5f3b6533904ddd141a4e8530cebf330582fd4262",
     "sharedCount": 1
   },
   {
@@ -257607,7 +257607,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "homing-projectile; diagonal settling, expanding entrance",
-    "compositionHash": "47bbf5d1a4a39450c9a32ab47a59a6900698b82ec539f139a01fb165a16fd475",
+    "compositionHash": "debf62948492b1a6aa741e9687333802bf17c54735f71dfac145869b6b3879d4",
     "sharedCount": 1
   },
   {
@@ -258624,7 +258624,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "careful firearm shot sparks ground beside foe feet; low wide sweep, expanding entrance",
-    "compositionHash": "1a0e7347640f9941a18b9b154bcd013686cbcaba4b818431af2bb291a484cd70",
+    "compositionHash": "9812fab21120324a7e4aea0d5fce87f7a56d10119535512c64662351fcb40632",
     "sharedCount": 1
   },
   {
@@ -259688,7 +259688,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "rapid-projectile-pair; centered bloom, expanding entrance",
-    "compositionHash": "1d231ba5b7c61a37754b2b2e570c0515ffafeda50bb6b4b0c07766fb803f02a3",
+    "compositionHash": "db8ee52f34d46eac49569095a67c2e7b99c5e3dc183eabcdbb86872da34b92b8",
     "sharedCount": 1
   },
   {
@@ -260711,7 +260711,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "projectile; centered bloom, expanding entrance",
-    "compositionHash": "05861c2d090d130b6b7f0b0e6b035544b39656584170392d1d19a5100e754359",
+    "compositionHash": "c67d8a5c49a26259710f0591ae8c8ccab6f97a683380d9f0193acdd299ca1952",
     "sharedCount": 1
   },
   {
@@ -269607,7 +269607,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "horde claws mob target then clutch surrounding grip bands; low wide sweep, expanding entrance",
-    "compositionHash": "e4f9d85ca41ece8dd33b289efe76e019d52e712904b49f9ba88b459c20002b9c",
+    "compositionHash": "7137ac07edf393488a366f96dc2fb1f9590fe6017353bfe91bd7ffe651bfe16e",
     "sharedCount": 1
   },
   {
@@ -270401,7 +270401,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "projectile; low wide sweep, expanding entrance",
-    "compositionHash": "9dd45aa2f8d398b080950f5473399d95182cac4e793d5f3106ea2496dae097de",
+    "compositionHash": "c6f39e0e73b71a0dbc6882452bcdeaaa23a5b109e4e4c76581b6e29917a110f0",
     "sharedCount": 1
   },
   {
@@ -271942,7 +271942,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single physical warshard shot penetrates sequential aligned foes; centered bloom, sweeping entrance",
-    "compositionHash": "fc6297dcd0024c88738970dbc9994997af1a3e9e4925d15e41016191b3e3744e",
+    "compositionHash": "74d65998cc377d86cd106ba66a01867377be4042f76505127735cd491c128846",
     "sharedCount": 1
   },
   {
@@ -272740,12 +272740,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 4,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "hellish visions flood the demoralized foe; diagonal ascending, expanding entrance",
-    "compositionHash": "5cd5ac30962b9fdc78a80de1c941e1b695902cf4204bfb03b581488c5036806c",
+    "visualDirection": "hellish visions flood the demoralized foe; right crescent, expanding entrance",
+    "compositionHash": "00b10f1b40416183396abcde9bfe47128fb84a94c85c605079f392f07b7d50fc",
     "sharedCount": 1
   },
   {
@@ -282028,7 +282028,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "85be290cbf3d4a9eb26c83cac206f2dae60f7690bcb69ebc2807f0496f5428bf",
+    "compositionHash": "d7af41e6469990a77fb6811e07c9e727477a557d00f3d1c1a8f5f507cd039015",
     "sharedCount": 1
   },
   {
@@ -289827,12 +289827,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "small carried-item arcs rotate above alternating hand glints; left crescent, expanding entrance",
-    "compositionHash": "e959a4b0d23c610ad2979c788e1cee56de6f7c6c0f8de68e72e29f8bc0b267ba",
+    "visualDirection": "small carried-item arcs rotate above alternating hand glints; low wide sweep, expanding entrance",
+    "compositionHash": "699038e3caa8a638b9d389a24ca95847a5e9613f1ae6e7ca9a949050fe02fba7",
     "sharedCount": 1
   },
   {
@@ -292172,12 +292172,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 6,
+      "frame": 4,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "source-mask; diagonal settling, expanding entrance",
-    "compositionHash": "fd094d5e96074bc77b892d9a75e67cc0c6a2a82e2b541e4228fb65a2881d392c",
+    "visualDirection": "source-mask; right crescent, expanding entrance",
+    "compositionHash": "1531de16fea98b9c7366db3b43fe51c200f59a3a245931d5aa53d5c961c3874c",
     "sharedCount": 1
   },
   {
@@ -299068,12 +299068,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "paired adjacent source-foe echoes follow a shared dance direction; right crescent, expanding entrance",
-    "compositionHash": "d2858c386cbcb54c69d05360ef9fa8e79972359e19580023af3b887c49cd6ecd",
+    "visualDirection": "paired adjacent source-foe echoes follow a shared dance direction; low wide sweep, expanding entrance",
+    "compositionHash": "8e031925cce530d5b4966a34d9869727a1872e614f6ad255dbd8a0850485c062",
     "sharedCount": 1
   },
   {
@@ -318605,7 +318605,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-afterimage; centered bloom, expanding entrance",
-    "compositionHash": "6ab24d7b537d10f3ac1bee7bb2f7831bc2d961210c9e6ea5ab0c7797d62d077b",
+    "compositionHash": "26ff4ca8cdaa5ac73ca1c3b94cada2bb27527cc7254773614d0f7b79b8bc88d4",
     "sharedCount": 1
   },
   {
@@ -322756,7 +322756,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; low wide sweep, expanding entrance",
-    "compositionHash": "37a9c14977ab0283190ceb520e961af72a25370e76e25a6567df06fad6e3bf0a",
+    "compositionHash": "3182eeb662bb09c43b344a084e053d9937ea236908395eaad16a3a01bd8a679f",
     "sharedCount": 1
   },
   {
@@ -326781,7 +326781,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, closing entrance",
-    "compositionHash": "c7d7e4ec2d5a5479dd6f544249f9e2c1e1bd3505718750c34a610716ad1950df",
+    "compositionHash": "90319938851023c2c141df176991864b54403c60dd199220f0aa0c6043612cd1",
     "sharedCount": 1
   },
   {
@@ -327036,7 +327036,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "mind weapon swings then breaks into psychic shard cone; high narrow rise, ascending entrance",
-    "compositionHash": "39be2966c41b08e6071f6ae5cf10ef78daee9c3e36b109048cd077ecd7e33c75",
+    "compositionHash": "56737202494b4f56c7947c8554dfddb9447489791be2a709a693471a09893d25",
     "sharedCount": 1
   },
   {
@@ -331435,7 +331435,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Spiral thin molten lash closes into crossing wire coils with staggered ember contacts; centered bloom, turning entrance",
-    "compositionHash": "78650b431ba32b15fa64eb46ade9104cfe8add3ee3066791f41dc4f0f78d5f65",
+    "compositionHash": "b11ac63243ee2012fbc8df034ca166dd0d4cf7d55c9a1115647616d3bfab42e7",
     "sharedCount": 1
   },
   {
@@ -332248,7 +332248,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "horizontal; high narrow rise, expanding entrance",
-    "compositionHash": "94917f9a6991fbd03a63d590fbe48f524ecd609e132af2f48cc448ad533224b8",
+    "compositionHash": "9adec656d63d1bcd829d09304419d7dd4f5cec694e60c308f1910238ca672a19",
     "sharedCount": 1
   },
   {
@@ -337613,7 +337613,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Bag-sized portal rim opens; small target echo contracts toward aperture; centered bloom, contracting entrance",
-    "compositionHash": "0db5a977a41930d12804c7d77a174e735700fbdc1af8209e55ca94e0a9857643",
+    "compositionHash": "a6c2edbd1db94de5c0503a412c196ce0f968958f0460b32bf956bc931290cac7",
     "sharedCount": 1
   },
   {
@@ -354078,7 +354078,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; left crescent, expanding entrance",
-    "compositionHash": "ec2a121050a4903e38242d0c2502d4bfa477060949b1239e7e13600065482d80",
+    "compositionHash": "969779b51223ff00ab2552016b20698049e1a42866621578bcda6c46a86b8f15",
     "sharedCount": 1
   },
   {
@@ -357853,7 +357853,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; centered bloom, expanding entrance",
-    "compositionHash": "55edd0c6d19285774922c6ff47280b52506dd30eac4f26964895711e628619d6",
+    "compositionHash": "8f7d6dba244583d2760cb65cd1b6418ac87d43e3904391d83a75fa4059f32820",
     "sharedCount": 1
   },
   {
@@ -360224,7 +360224,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "One piercing projectile traverses straight line, sequential contacts along path; low wide sweep, sweeping entrance",
-    "compositionHash": "320d3ccb6fe8369989d89ddf6138875feb0725aea68d5fc92e46a99d552f7e3c",
+    "compositionHash": "26039d9b1837d54fe42f317720a2bd540a7dbb1e6ae80162268a5a20d12975ef",
     "sharedCount": 1
   },
   {
@@ -360496,7 +360496,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "line; high narrow rise, sweeping entrance",
-    "compositionHash": "7e3b668d2b0f6d3d033ba2e8ca3aa96e8b8df9c21f2831b47e847d772ce59fa9",
+    "compositionHash": "e18d60a806c0df3782ccbce3b4925d00b89bc9a993052d056afec50d5f8b35e1",
     "sharedCount": 1
   },
   {
@@ -361512,12 +361512,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 0,
+      "frame": 5,
       "size": 1,
-      "pause": 400
+      "pause": 0
     },
-    "visualDirection": "One stationary decoy remains while smaller slipping echo fades sideways; centered bloom, expanding entrance",
-    "compositionHash": "ade0fadf72666928f3b4512bf96ad225b5d7af41198113eb239a7dfe6e21a915",
+    "visualDirection": "One stationary decoy remains while smaller slipping echo fades sideways; diagonal ascending, expanding entrance",
+    "compositionHash": "51c24efa5521312ecd4337960eb1c219df621a3925f2e0edee2cbb43c6525463",
     "sharedCount": 1
   },
   {
@@ -365929,7 +365929,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Companion-driven horn jab gives single sharp contact followed by close binding arc; low wide sweep, closing entrance",
-    "compositionHash": "7414408e5132c3cf9cc4311e3c94d6b380856773ff7b88087ffba47b4d0275bc",
+    "compositionHash": "f46a64fd68a7ea9a014b1eddeaf118ffabd5193c48ec83c82f157d8d9d6a9ebb",
     "sharedCount": 1
   },
   {
@@ -366205,7 +366205,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "One close Strike crosses target then clamps into tight pinning brace; centered bloom, closing entrance",
-    "compositionHash": "6601d80531e314c7e12afe5d3c2f505d55930e2c3beb77161ad48814395d78cf",
+    "compositionHash": "c8118830d5849d9ff1f4718af1b475f8413832ba7f11e5b646ce83a01bec5f28",
     "sharedCount": 1
   },
   {
@@ -369136,12 +369136,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 6,
       "size": 1,
-      "pause": 400
+      "pause": 0
     },
-    "visualDirection": "Slight offset threshold silhouette holds clearly visible translucent edges; low wide sweep, expanding entrance",
-    "compositionHash": "f4fe3bda2f2812e4c9a652965f21755706f2f0c7dbf7caee0269e044b3275249",
+    "visualDirection": "Slight offset threshold silhouette holds clearly visible translucent edges; diagonal settling, expanding entrance",
+    "compositionHash": "6dae349ef779c470de787185cd7bd7bd7b572fc062b78c1408c15b72488e7bf5",
     "sharedCount": 1
   },
   {
@@ -370195,7 +370195,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Finger-height metallic flow coats object outline from bottom upward; low wide sweep, ascending entrance",
-    "compositionHash": "ac0f1f0e3ef290f7e8c72328342c22006ea7c767a07bb8355563301b234f0b71",
+    "compositionHash": "a1e7a01fe2a8b29bf743fd373bb02e51b9538af1fb5c14be14bf6b4bfdde0a92",
     "sharedCount": 1
   },
   {
@@ -370445,12 +370445,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "sweeping",
-      "frame": 4,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Skeleton echo lowers into still prone-shaped outline with extinguished motion motes; right crescent, sweeping entrance",
-    "compositionHash": "78ed34d3eb1e13a423affbfd1a8fe98cab1137adef033ba5434dac7fb4f10b13",
+    "visualDirection": "Skeleton echo lowers into still prone-shaped outline with extinguished motion motes; low wide sweep, sweeping entrance",
+    "compositionHash": "f9ead15fb7b5aa3b6125cfcabd7aa4b1c8f456cef4e8a0c93464669441de150a",
     "sharedCount": 1
   },
   {
@@ -370707,7 +370707,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Showy victory flourish opens outward toward spectators then returns confidence glint; centered bloom, turning entrance",
-    "compositionHash": "fb2f0a525d2ad121bd392e231d3b4b08bddd9928f39bb1b6a40a1575e28e2030",
+    "compositionHash": "7528ea5bc9161ad4730c87012e370bf43769ae4d6d00383fd774e96b34134d3c",
     "sharedCount": 1
   },
   {
@@ -373092,12 +373092,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 0,
       "size": 1,
       "pause": 400
     },
-    "visualDirection": "Impact shakes dense golden pollen outward into broad soft cloud; high narrow rise, expanding entrance",
-    "compositionHash": "f4343702cbc8b396974898863d4eb11a42833bb4fc0c4115688e405d5989e440",
+    "visualDirection": "Impact shakes dense golden pollen outward into broad soft cloud; centered bloom, expanding entrance",
+    "compositionHash": "faa698c6658b0cb03637ecf1cc38ab6a5c7595e6e7100288a53cda5afee9f3dc",
     "sharedCount": 1
   },
   {
@@ -382632,7 +382632,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "horizontal-push; centered bloom, expanding entrance",
-    "compositionHash": "c3fcc40eee5653ad45a70086d43e0e6e48bd35ec245da139b2a09e291b6cd6b0",
+    "compositionHash": "052ace085208619946d699c247d2b27791058372a6b4501e207179433403fdd0",
     "sharedCount": 1
   },
   {
@@ -383992,7 +383992,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; right crescent, expanding entrance",
-    "compositionHash": "f23ab1e4f590938c1bab667639e59debddfed861851d10f6359bb8fd08dfb722",
+    "compositionHash": "665b2c939bf1d1dc0173c7d82ba071f59ded0e0038a7507fddc610df65ebd007",
     "sharedCount": 1
   },
   {
@@ -391063,7 +391063,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "projectile; high narrow rise, expanding entrance",
-    "compositionHash": "96c0cc7ccb37ee3ce8369db968f718d86238083c918c39bffbdd930d6dbf6012",
+    "compositionHash": "8e94f96af02241bcda2392602287724171ed9678e9b7680240f49de2c3274045",
     "sharedCount": 1
   },
   {
@@ -393952,7 +393952,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Celestial corona thickens around obvious silhouette with trailing divine rays; centered bloom, expanding entrance",
-    "compositionHash": "ac09889fb1cce7ba2444eca18b41388b968193e2d17557786982094ba3323705",
+    "compositionHash": "0958bd4d49b14b1e2460be2ca312fcf701c8fe017a9cad28ff6b4e98d9add96f",
     "sharedCount": 1
   },
   {
@@ -395286,7 +395286,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Red raincloud forms above area; rust rain coats surfaces below; low wide sweep, expanding entrance",
-    "compositionHash": "8fe3ee55606d79467a245206b97c3f5b4a9dfff7ed3069274a1acd878e76bfb9",
+    "compositionHash": "36005d8397fd11dd04026f9365a3a19e225632143f87128c7b572478d26b78fd",
     "sharedCount": 1
   },
   {
@@ -397072,7 +397072,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "ally-halos; centered bloom, expanding entrance",
-    "compositionHash": "bb568140236cd8f82ccf21cf9737b36c33df62f80763ec7f6310911d77c6eb44",
+    "compositionHash": "3b40a077079ad8b6fe09f2a2edbed42840fd87c814a64d3bd252a81d29f1986a",
     "sharedCount": 1
   },
   {
@@ -402539,12 +402539,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "contracting",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Eidolon silhouette folds abruptly inward into fading summoning seam; low wide sweep, contracting entrance",
-    "compositionHash": "23442d70335ea8f5ea2544f1944abfc252923c8aa603cdda965c0a047a4e10ed",
+    "visualDirection": "Eidolon silhouette folds abruptly inward into fading summoning seam; centered bloom, contracting entrance",
+    "compositionHash": "bd5006e845299e7bc1e98e7999daa2e6fab310ea920ba963f6fa17695f70acc5",
     "sharedCount": 1
   },
   {
@@ -402799,12 +402799,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 1,
       "size": 1,
       "pause": 400
     },
-    "visualDirection": "Decoy and source echoes cross through short reactive exchange trails; left crescent, expanding entrance",
-    "compositionHash": "c865fcf2e68668a509139cda6c6fb36caf9cd7c08bd13f9b4d940cdaaa53f5ec",
+    "visualDirection": "Decoy and source echoes cross through short reactive exchange trails; low wide sweep, expanding entrance",
+    "compositionHash": "c72a185142ab9fa750d0820a1a251e864e7b39c6a7bc3015643764bd690b02e8",
     "sharedCount": 1
   },
   {
@@ -404687,7 +404687,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Low net lattice wraps toward target feet with short rope tether; left crescent, expanding entrance",
-    "compositionHash": "5ab331c260ea8d9f317ccecdc09dbafac196019f3ef83a61376a748acc6eb0a5",
+    "compositionHash": "0713b9a68c73bc43568598ee7746fbd7cd18cf5977c27f25a4391bd4a8008bd7",
     "sharedCount": 1
   },
   {
@@ -413611,7 +413611,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "hook; low wide sweep, expanding entrance",
-    "compositionHash": "d8e99bfe8aa9cdb3213894747f360d4b3e3991e1244b99b634b83372bb9f453f",
+    "compositionHash": "7b03fb356b106bd22a1e4c50c42ba9576a9ebf5fcf5958fd46a8b67eb59a44de",
     "sharedCount": 1
   },
   {
@@ -416239,7 +416239,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Crossbow chamber glints once before single bolt flies to localized hit; high narrow rise, expanding entrance",
-    "compositionHash": "a89047014bf60343a1d7f19264343a210d68b58b9033eda14f65a687bbcbea06",
+    "compositionHash": "faaddea843a3c84c8651b278de5795174a7be38ae762d87df5678877972f4dc0",
     "sharedCount": 1
   },
   {
@@ -417540,7 +417540,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Whisper-marked ammunition flies once; two target rune glints answer on contact; centered bloom, turning entrance",
-    "compositionHash": "43f1eae8d1bb4871ff40bcd4fde590980796acb4b2c1b47d59ffc2f35bd06b15",
+    "compositionHash": "d2a1cc14e9c2825fdca89d5dd7b3a85c3986c5303bdadadf94b8892471001643",
     "sharedCount": 1
   },
   {
@@ -419128,7 +419128,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Teacher's corrected maneuver echo traces firm opposing-hand path at target; right crescent, expanding entrance",
-    "compositionHash": "05c5d9c22337c6862614dae09e9d126c42bd047c6845c54e9bbd33977ab9f70d",
+    "compositionHash": "5078b74d46311715b3ac7d514cfdcbc0d0a7bc8f1549ed34fad3763c94b59919",
     "sharedCount": 1
   },
   {
@@ -420197,7 +420197,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "horizontal-push; low wide sweep, expanding entrance",
-    "compositionHash": "3c212f509ef8e2320f6d554215056076c02eca467cb1ff2e27ea66b618d3a1d3",
+    "compositionHash": "739d2b8eea379d8e5e365df153e36ddbccc26a7bd5846025cd3fdd12d0583df7",
     "sharedCount": 1
   },
   {
@@ -424719,12 +424719,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 3,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-vision; diagonal ascending, expanding entrance",
-    "compositionHash": "f207dc8cb9f7f3b8f13c1fb0e9f69583415cff624435208a3d27c0afc58104c4",
+    "visualDirection": "target-vision; left crescent, expanding entrance",
+    "compositionHash": "5c9dc72a0778884ad00b884ea6cdb1eb6a02fc99b26492ad15afa8490b69a75d",
     "sharedCount": 1
   },
   {
@@ -428836,12 +428836,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "ally-halo; diagonal ascending, expanding entrance",
-    "compositionHash": "08c72a2a3d564d99d32bb4193fe3a3c366d9bec2110b63a0c794eb9c440cadb0",
+    "visualDirection": "ally-halo; high narrow rise, expanding entrance",
+    "compositionHash": "015626fcb755b31d73263c8f79d8faec89a7f7130449f717b6de56087a52d18b",
     "sharedCount": 1
   },
   {
@@ -429844,7 +429844,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Inward swirling current curves from target toward source with tightening eddy; centered bloom, contracting entrance",
-    "compositionHash": "46356deb7df9db9700596ae59518382f2f9f9340ed281531a59f2c0de2a913b9",
+    "compositionHash": "fafb0d06fab66a809c000029a7743ddae28c9f8a05ae6d394fac0ed148ca7c33",
     "sharedCount": 1
   },
   {
@@ -431858,7 +431858,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "low-tether; low wide sweep, expanding entrance",
-    "compositionHash": "f6e0b5f2316385047449ee9279cebaec719c54bec5352c2bf7cfdb11ed996162",
+    "compositionHash": "96ccc6ecd2370a4624bd2c5d5d271d471e5704bd8cd1d40c4f5cbbf91ffbfca1",
     "sharedCount": 1
   },
   {
@@ -435975,7 +435975,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Two approach trails converge into low body tackle and hand capture arc; low wide sweep, expanding entrance",
-    "compositionHash": "e465551637f288c850132b2036e01a19743a86d6201d649425009b1fe5f455ef",
+    "compositionHash": "ae5b63021486317c09d53be20707dece852bca60851de09c57e33274fd1508f4",
     "sharedCount": 1
   },
   {
@@ -436977,7 +436977,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Powerful monologue waves alternate hostile-facing pressure and ally readiness accents; centered bloom, sweeping entrance",
-    "compositionHash": "159f006c00562b1a57d9ad6dcb7ac55fd7c10bacf11060dc2e58fbcc08713087",
+    "compositionHash": "4da5c2d2b4163f29280187d8ffcf1e4bf77f0d4acce36e09eacb4fdd7e92ee54",
     "sharedCount": 1
   },
   {
@@ -441968,12 +441968,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 6,
+      "frame": 5,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "target-curse; diagonal settling, expanding entrance",
-    "compositionHash": "bd22765d57c234fbaa07ec9a8eb6fc3c09079cb7e5ec331c7e15e52ec1c41858",
+    "visualDirection": "target-curse; diagonal ascending, expanding entrance",
+    "compositionHash": "42c6c026124954e46171030faee317702fb94ea168ef779a44dd241f31114690",
     "sharedCount": 1
   },
   {
@@ -444320,7 +444320,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Target-held weapon glows hot; short disarming arc nudges its outline; low wide sweep, sweeping entrance",
-    "compositionHash": "5862114567a231ebecd2f037404f742e13c0370ad9366a0a726fb3048d170960",
+    "compositionHash": "972cd1f002a733b9dc96eacd2803cd019af7923994430ccafc690778cb8e8104",
     "sharedCount": 1
   },
   {
@@ -449827,7 +449827,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Close hand arc seizes existing struck target and draws tight near-body tether; centered bloom, closing entrance",
-    "compositionHash": "8c0c070c67992b6cb4961d087d92cfc0285ae9f50219d4d81d834a6e47e7534e",
+    "compositionHash": "720694813c21f78078b08ef041078217032d4ebfee2e326badb17e1c9dc70446",
     "sharedCount": 1
   },
   {
@@ -450339,7 +450339,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "projectile; left crescent, expanding entrance",
-    "compositionHash": "9a3e95dce447ea4ed8d7349a7b318c7dd85db5cd4055c67b5e721344298ddb59",
+    "compositionHash": "97e9a53927278c8f9af291f3d9f2451e6f44c251f566f5b98c4065c0e1938fec",
     "sharedCount": 1
   },
   {
@@ -453852,7 +453852,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; high narrow rise, expanding entrance",
-    "compositionHash": "164d2d24f5b9814093cdfaef48eb9df6f82194f6971893521639ce4bd7ccbdd0",
+    "compositionHash": "ba5d789a8dcd7c3e6fc3149055333113657089e80f83500040efa611715ee5fc",
     "sharedCount": 1
   },
   {
@@ -457548,12 +457548,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
-      "size": 0.75,
-      "pause": 800
+      "frame": 0,
+      "size": 1,
+      "pause": 0
     },
-    "visualDirection": "Source fury ribbon kindles willing ally's crimson rage crest; right crescent, expanding entrance",
-    "compositionHash": "cc76fb87d089d990114754580a4c7a7fc348bc482b28f0998c77db39bfa2ce8b",
+    "visualDirection": "Source fury ribbon kindles willing ally's crimson rage crest; centered bloom, expanding entrance",
+    "compositionHash": "e56637127249700bce564041b60bc106b2d477cba95d1a1f6405feb892c21a68",
     "sharedCount": 1
   },
   {
@@ -458077,12 +458077,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 4,
       "size": 0.75,
       "pause": 800
     },
-    "visualDirection": "Treasured trinket glint crosses to ally and holds personal-link thread; diagonal ascending, expanding entrance",
-    "compositionHash": "810256a24de9a9c3f1a1aa13c7794aedd2b655a7cae7d4b662123b2f609f6aba",
+    "visualDirection": "Treasured trinket glint crosses to ally and holds personal-link thread; right crescent, expanding entrance",
+    "compositionHash": "3ac96dabaa515463ca1535d5e17950201fe38090051dd81032cdee9a47bca292",
     "sharedCount": 1
   },
   {
@@ -458345,12 +458345,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 6,
+      "frame": 5,
       "size": 0.75,
       "pause": 800
     },
-    "visualDirection": "Single temporary focus bead manifests through subtle hand arc at ally; diagonal settling, expanding entrance",
-    "compositionHash": "3320fd284801846fd044941c161dd0e78a16a600cd74900c5ffba7c6596ecec6",
+    "visualDirection": "Single temporary focus bead manifests through subtle hand arc at ally; diagonal ascending, expanding entrance",
+    "compositionHash": "072cbf9b71b4334f7f1848fbca7d6902fbcbb28a91670f0aaf6b13d3c19486c2",
     "sharedCount": 1
   },
   {
@@ -459593,7 +459593,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, closing entrance",
-    "compositionHash": "5298337001f072b0e181998f8f6690837bc07fdbb58d6179d7552a4f8f11600f",
+    "compositionHash": "1f65d06a5ffb5129e306c27a80f779ed59631cb0350be5cbfda61a6fadf7ed64",
     "sharedCount": 1
   },
   {
@@ -462460,12 +462460,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 0,
-      "size": 1.25,
-      "pause": 0
+      "frame": 6,
+      "size": 0.75,
+      "pause": 800
     },
-    "visualDirection": "Raised shield crescent interposes across adjacent ally's arrow lane; centered bloom, expanding entrance",
-    "compositionHash": "c8ceb7c378b77b35cbbb0e41a181f84e582e88b6879cd6dd1b6b3ed739f09267",
+    "visualDirection": "Raised shield crescent interposes across adjacent ally's arrow lane; diagonal settling, expanding entrance",
+    "compositionHash": "306da9961d8e686e8b2957a1d28961cebbf9ced5ce9578bf843dedefb36650d9",
     "sharedCount": 1
   },
   {
@@ -465618,7 +465618,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "source-halo; centered bloom, expanding entrance",
-    "compositionHash": "70db3fcff59a11a2ce27fdf57f2d3b3fae6e598d50d067e4966e7657e7bc0b20",
+    "compositionHash": "3f51b96bead0135b96c078323c5a7fdf336dd0982664d01a00aff66c87ebd653",
     "sharedCount": 1
   },
   {
@@ -467140,7 +467140,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Boastful stunt echo repeats one flourish then confidence crest settles; centered bloom, closing entrance",
-    "compositionHash": "5d832a77d12f15f3896f69d2cdc27fa98ae3ad240b2e14e3b35d681db0a4f648",
+    "compositionHash": "e10b637132ccc181056eebabb76d4a6f8ce7a30cf0c747ceac5d4bdc354a5fe9",
     "sharedCount": 1
   },
   {
@@ -469034,12 +469034,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "sweeping",
-      "frame": 5,
+      "frame": 4,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Small quiet Step echo slides behind soft concealment angle; diagonal ascending, sweeping entrance",
-    "compositionHash": "8030b574c21a997286f37594436b60062646d05dd0ae688bb50b625dcbc46726",
+    "visualDirection": "Small quiet Step echo slides behind soft concealment angle; right crescent, sweeping entrance",
+    "compositionHash": "64bf2b9e54ddacd07f6253739cc0de3d7244c06801c163237b6621cee7fb1156",
     "sharedCount": 1
   },
   {
@@ -471994,12 +471994,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Beguiling song ripples expand broadly with soft captivating target curls; right crescent, expanding entrance",
-    "compositionHash": "a47ba5e1d573686de51599af60b9e9f047ceb7d2349a7e3f65feb0afa9cd8a9f",
+    "visualDirection": "Beguiling song ripples expand broadly with soft captivating target curls; high narrow rise, expanding entrance",
+    "compositionHash": "2d4901db42aa210879c1b598e60f2ab997020c83ea25b9425913c6428a50499f",
     "sharedCount": 1
   },
   {
@@ -474296,7 +474296,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "e10456a501e0165534fa67032b2c8782aff3abdd450a8766d83c377161b79dc2",
+    "compositionHash": "84909b1e2f09c598fda07fe5b4ea998226bd2e7501d018b3fc2ed46e80c7598a",
     "sharedCount": 1
   },
   {
@@ -475935,12 +475935,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 0,
       "size": 1.25,
       "pause": 0
     },
-    "visualDirection": "Lash forms wide ally-grasp loop then slings short cosmetic movement echo; low wide sweep, expanding entrance",
-    "compositionHash": "7661f3541e26fd7686478f779eec8bb769efcb4ae8ede37ac0ddfe6c0786dee7",
+    "visualDirection": "Lash forms wide ally-grasp loop then slings short cosmetic movement echo; centered bloom, expanding entrance",
+    "compositionHash": "75e0fda3f92ca9d0a95a66e3e030e54be5715f28678df1c11a80edd745d1268f",
     "sharedCount": 1
   },
   {
@@ -477977,7 +477977,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; right crescent, expanding entrance",
-    "compositionHash": "70e1a2d8f2e5c6ff1bba2bde01e502ca243e9bd6f8229e81705014665c30835f",
+    "compositionHash": "6f104fb2fe85d12c57c74f30c6ed4d00745a6bb837c0d23308975d7ff0393723",
     "sharedCount": 1
   },
   {
@@ -478989,12 +478989,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 1,
       "size": 1.25,
       "pause": 0
     },
-    "visualDirection": "ally-halos; high narrow rise, expanding entrance",
-    "compositionHash": "17539a4dccc5d7ce8aa0c049a54a5562e32db4ef03350ae4f696398d9aef22f8",
+    "visualDirection": "ally-halos; low wide sweep, expanding entrance",
+    "compositionHash": "28e81327c5338a64790bd92ae9a17f0202dbbabd72714396016382eeb859506e",
     "sharedCount": 1
   },
   {
@@ -479259,12 +479259,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 2,
       "size": 1,
       "pause": 400
     },
-    "visualDirection": "source-afterimage; right crescent, expanding entrance",
-    "compositionHash": "de93a9e66c84429c475d17827f8302a0a0e4ac48d01528bf36894bc382cc05bb",
+    "visualDirection": "source-afterimage; high narrow rise, expanding entrance",
+    "compositionHash": "77460cca75f5419c93ce0695cfab19fa3972f230befba0c1ad4bbe4799bd2c93",
     "sharedCount": 1
   },
   {
@@ -479519,7 +479519,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "projectile; centered bloom, breathing entrance",
-    "compositionHash": "93da6f6d5a25a219df1efb0fd9e5bec4eeb446650de0e42d4d01797edd2b362d",
+    "compositionHash": "6d4ba0d91212bb39f9739d1435fdc379c9876eddfeb98f0c602e0921d807d367",
     "sharedCount": 1
   },
   {
@@ -482385,7 +482385,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Finality splinter opens slow dark spiritual vortex around source; low wide sweep, unfolding entrance",
-    "compositionHash": "3a7acd39654ea34a833a629724e95ecd9b0611cc6eb04be6f9e4e13c41cae9e2",
+    "compositionHash": "957c12641ed7387c026bae47b0ea72157bfa35143c00a753d9f72575fad0279e",
     "sharedCount": 1
   },
   {
@@ -482643,7 +482643,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Raised blade sheds bright darkness-piercing beacon toward knight silhouettes; centered bloom, expanding entrance",
-    "compositionHash": "de97df7015c6916e60b02a9cce9b90fd8657275a2ee1bafe0b28ca6a038bf6a8",
+    "compositionHash": "8f89a996b93f65dcea5d71803ab5c4f974aeeca011ca01e3b429d0ae8b54045a",
     "sharedCount": 1
   },
   {
@@ -495055,7 +495055,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Short dark ink spray splashes toward adjacent attacker with opaque smear; centered bloom, expanding entrance",
-    "compositionHash": "22b7ada54e23f764df1a8f5b5a22fcee60292aca9bfe1453ca5ea1b56ba28f27",
+    "compositionHash": "9ca4246234fb8158e37281444c84d6f6a6530f9796618d977cfed5406d65cc71",
     "sharedCount": 1
   },
   {
@@ -498943,12 +498943,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 2,
       "size": 1.25,
       "pause": 0
     },
-    "visualDirection": "ally-halos; left crescent, expanding entrance",
-    "compositionHash": "fd6b90dcdd566d88df7b3c2758f06f868ea4a665cf7d9f66d9876ec0b7d71eb8",
+    "visualDirection": "ally-halos; high narrow rise, expanding entrance",
+    "compositionHash": "17539a4dccc5d7ce8aa0c049a54a5562e32db4ef03350ae4f696398d9aef22f8",
     "sharedCount": 1
   },
   {
@@ -501876,7 +501876,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Low stopping hand/foot arc presses against rising foe's movement line; low wide sweep, ascending entrance",
-    "compositionHash": "bbce21b2a33e1f94905f32ef97b51619f9b3201d3431f0674fdd02a0bfeb0b79",
+    "compositionHash": "1f895f60b3b037ae259f927a98b9824b98fe1bf6435114a64118f054bec4b8cd",
     "sharedCount": 1
   },
   {
@@ -502153,7 +502153,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "low-contact; low wide sweep, expanding entrance",
-    "compositionHash": "8813a055d8dc17e42b4f763875c116d1da4e3e363a084865dd7149a498dc2020",
+    "compositionHash": "f4eecfddb462076635131f4627e0d0dd457fa779c7cf96bcec15ac485700e854",
     "sharedCount": 1
   },
   {
@@ -511130,7 +511130,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "choking grip tightens on the held victim; low wide sweep, contracting entrance",
-    "compositionHash": "3168cb52c363c88115eac00fc77758a44b1f406b162b73f229f253f867e95de9",
+    "compositionHash": "0e4d9b6b8ecfc1712a3699684b0c0339cb7093a961ab4ee3d44477cee8b24aa3",
     "sharedCount": 1
   },
   {
@@ -519036,7 +519036,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Few compact nerve-point jab glints mark target limbs and head in deliberate succession; diagonal ascending, expanding entrance",
-    "compositionHash": "b17f679e6b682581b9f2e3cfa68f6e738cffaa7999a1e5b441348f898c4a26fb",
+    "compositionHash": "489f50a650d864becf5378bd0d66464231e4fb99a437ba4366005c5564c517c2",
     "sharedCount": 1
   },
   {
@@ -520395,7 +520395,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Small snare parts deploy under foe then trigger one local trap accent; centered bloom, expanding entrance",
-    "compositionHash": "71d33be3abc8b980133eb0dd9c71452c20f91af3f76c6c19bfce59d4041d7dc6",
+    "compositionHash": "ae447ddc13a9c48ee562f8064fda5c3414986a586eb06b139ea429b66554caa7",
     "sharedCount": 1
   },
   {
@@ -527084,7 +527084,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "projectile; right crescent, expanding entrance",
-    "compositionHash": "fb02c920779cc9d023f9e916eb7c9809155251f65640071fedbc05d9121475ca",
+    "compositionHash": "a24d6c10def9a99b68cde5ca767bcc9e7062c3268896bb7983537bf30f50c391",
     "sharedCount": 1
   },
   {
@@ -527630,7 +527630,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Tail-shaped lash flick curls around target item edge; diagonal settling, expanding entrance",
-    "compositionHash": "9f4733c79f436fc6a764cdb0a70328904f5866bb652e53a7692ec7ad86c369ac",
+    "compositionHash": "509dbb15ad0d8098fb8b8ba07a73e93d71f42c6da5459e392b867abc212e92c1",
     "sharedCount": 1
   },
   {
@@ -530572,7 +530572,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Critical-wound opening draws one close grabbing hand arc around foe; low wide sweep, closing entrance",
-    "compositionHash": "ecec0daf120639cb56a713b67547408098e6bcc67b70c56ecc48240ea7d6c5ae",
+    "compositionHash": "a38f8d767b9dfc6a3f2c901318840082a27f2d700288b50c0a5f8489911d9552",
     "sharedCount": 1
   },
   {
@@ -531923,7 +531923,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "projectile; diagonal ascending, expanding entrance",
-    "compositionHash": "0bf733237587f85abe379b86ebee4ab7f3d9be27b24c60cd6e380c16adb7f9b1",
+    "compositionHash": "6ea784f1e17e5afc143897232d056e947237577e51d7853f46186f691b0c2526",
     "sharedCount": 1
   },
   {
@@ -533792,12 +533792,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Pearl tears fall into small gleaming ground beads, allure ripples spread; high narrow rise, expanding entrance",
-    "compositionHash": "86110009ac3251fbd90b905349f0830495248348a29735e36204386ebca4cdfa",
+    "visualDirection": "Pearl tears fall into small gleaming ground beads, allure ripples spread; low wide sweep, expanding entrance",
+    "compositionHash": "9f00908448d32599d3b03628756790ebc079355942ec2b075e71ce47ad6f09bb",
     "sharedCount": 1
   },
   {
@@ -535406,12 +535406,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 3,
       "size": 1,
       "pause": 400
     },
-    "visualDirection": "Readable alternating slow/quick offset echoes obscure tempo around obvious source; diagonal ascending, expanding entrance",
-    "compositionHash": "e8d72680dba3af4aaa2704a09a4cd5c870a438ec64a24b3581f305e49f974a81",
+    "visualDirection": "Readable alternating slow/quick offset echoes obscure tempo around obvious source; left crescent, expanding entrance",
+    "compositionHash": "90ed142f26fe3179bce6f1bd191019623c09bbecf91ecf9d8c6a6cfe9e05b10d",
     "sharedCount": 1
   },
   {
@@ -547754,7 +547754,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "wide-cleave; low wide sweep, expanding entrance",
-    "compositionHash": "2d796eabd8461f519ebac93873cf07946632af81942ee67dc07c6ca6b25face2",
+    "compositionHash": "ee94bf750a00c9644a8c14c28e507897b5843f2cc3a06634f0af65c0a4254388",
     "sharedCount": 1
   },
   {
@@ -549059,7 +549059,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Tongue lash flick catches weapon outline in short disarming curl; low wide sweep, sweeping entrance",
-    "compositionHash": "fb7f94a9dc9c647c5efa05ea3f3bf83fe98d5774a7f58bf8b08d6e7f020ffbe3",
+    "compositionHash": "8a2f45dff5a55e0746f58dcd69a28b7a3084223fab9472070a8c09db518f3ca4",
     "sharedCount": 1
   },
   {
@@ -556867,7 +556867,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Three arrows fly simultaneously in triangular spacing and meet one foe; centered bloom, expanding entrance",
-    "compositionHash": "af08d4343a50f8db0ada9fdd55210032ae3096c3609155ec91be43d671486247",
+    "compositionHash": "3684391eec70ae2332d2aa37b9a917eff528b18034cb9c62ef65f2816e152ddf",
     "sharedCount": 1
   },
   {
@@ -558937,12 +558937,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "ascending",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Triumphant shout rises from critical-hit aftermath into chosen composition wave; low wide sweep, ascending entrance",
-    "compositionHash": "6b58140716ba12b7ca023545f4915bca84875374b7c965b23389164d48b12dde",
+    "visualDirection": "Triumphant shout rises from critical-hit aftermath into chosen composition wave; centered bloom, ascending entrance",
+    "compositionHash": "5a882cc297c2b9bc387db8b5b4b5f00af5573e745fdfe88a23aa4e9d809e4dda",
     "sharedCount": 1
   },
   {
@@ -567013,12 +567013,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "mixed-pair; low wide sweep, expanding entrance",
-    "compositionHash": "18fa0b4f635ac442ec9b89011411ba83d0ff64233d17892b6052223b170ab6b5",
+    "visualDirection": "mixed-pair; centered bloom, expanding entrance",
+    "compositionHash": "4b3b8166ec9389573c1e8e82191185d0e1e4e475969885b4cd29dbb78378cad0",
     "sharedCount": 1
   },
   {
@@ -570684,12 +570684,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 4,
+      "frame": 3,
       "size": 1.25,
       "pause": 0
     },
-    "visualDirection": "Signifer mask eye glints fan into ally sight marks; right crescent, expanding entrance",
-    "compositionHash": "03b1e3dbb125907c9615cf480150dc749f38a2f8b4515ec5f985ba7342191dca",
+    "visualDirection": "Signifer mask eye glints fan into ally sight marks; left crescent, expanding entrance",
+    "compositionHash": "c16b2fd412680af9fa42fc208d43903656b5869a0bf222adfaf475eaab69faeb",
     "sharedCount": 1
   },
   {
@@ -573075,13 +573075,13 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "sweeping",
-      "frame": 4,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
     "bespoke": false,
-    "visualDirection": "source-wave; right crescent, sweeping entrance",
-    "compositionHash": "22e5a85db287f8888b319446f7321f663e338bd1f5a3b2a0e55c77a2dd77eabf",
+    "visualDirection": "source-wave; high narrow rise, sweeping entrance",
+    "compositionHash": "eba21a296358cdaf5b7f8b3a3948fbfb9e74ed998aeb106b0350a140d00c663b",
     "sharedCount": 1
   },
   {
@@ -575513,7 +575513,7 @@ export const PF2E_FEATS = [
       "pause": 400
     },
     "visualDirection": "Weighted armor/body lean redirects incoming momentum into off-balance target echo; centered bloom, expanding entrance",
-    "compositionHash": "3331569a582b87e24d72c7a2a06e75dfa9a2b3507e6d5d40187664ac37a0b597",
+    "compositionHash": "936c2025ef528c12ac54f73ffb9b2102fa2de16f08375bf1e892d8a22fccdfd5",
     "sharedCount": 1
   },
   {
@@ -576778,12 +576778,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Quick scholarly tale opens measured narrative page/ripple flourish; diagonal ascending, expanding entrance",
-    "compositionHash": "4383d66a0bf5640e75177fad4d2cc2b64228ff8fae7b2f7a2721a2c9044cd2fb",
+    "visualDirection": "Quick scholarly tale opens measured narrative page/ripple flourish; low wide sweep, expanding entrance",
+    "compositionHash": "d7097bf3d29352f11eb6834da5b0cc286d804e03ca0321a021e715fda744aba1",
     "sharedCount": 1
   },
   {
@@ -581816,7 +581816,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "wide-cleave; high narrow rise, expanding entrance",
-    "compositionHash": "81aa9efcfd4ed46952ef727fef605cd7fc6fd799a8e583da83950135da80ba26",
+    "compositionHash": "d7e718b4be509477b1c9a27a43367ae668b1a06e9db5c9fbf97adfe199d8a0f8",
     "sharedCount": 1
   },
   {
@@ -583113,7 +583113,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Single long arm-vine visibly lashes toward foe and lands whip-like cut; centered bloom, expanding entrance",
-    "compositionHash": "fdd7ca03447dfeaa1d26bd003e4adb7157684ce37a4d10c87ab9be81d2563773",
+    "compositionHash": "801b906ec17b5ac2b2dd62f714e11b2f30ab396ff93e45131d5f98a10e54a1ee",
     "sharedCount": 1
   },
   {
@@ -587573,7 +587573,7 @@ export const PF2E_FEATS = [
     },
     "bespoke": false,
     "visualDirection": "target-wave; centered bloom, sweeping entrance",
-    "compositionHash": "4c6179a6b672ebbc9c0134c83005820188d220ddc368f945bd101dba40fc05c5",
+    "compositionHash": "40098e58b542b812e68268dd33043fa2692c50fdad2e8cf016c611bf28524e9e",
     "sharedCount": 1
   },
   {
@@ -589433,12 +589433,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 5,
+      "frame": 4,
       "size": 1.25,
       "pause": 0
     },
-    "visualDirection": "Prey vulnerability glint passes through pointing/calling ribbon to ally readiness mark; diagonal ascending, expanding entrance",
-    "compositionHash": "2d01d63ff16302fe03cf7978fb9650be4d7f9cc0ef7b982c5f519848a05aa30a",
+    "visualDirection": "Prey vulnerability glint passes through pointing/calling ribbon to ally readiness mark; right crescent, expanding entrance",
+    "compositionHash": "c964254ee35c62ae1877d5391cf6f338de7abd80a3126f6c1a8eb4c0d44c7c2a",
     "sharedCount": 1
   },
   {
@@ -595660,7 +595660,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Large silky web lattice stretches across selected ground area; low wide sweep, expanding entrance",
-    "compositionHash": "e1bcdaf5a73b7fee516fa13235424f72099d05b06d11116bd40d489067ddb2fa",
+    "compositionHash": "4cf278387d049cbc55473b2056f470c16cdcf1277dbb92d2e8b62da74647f1a3",
     "sharedCount": 1
   },
   {
@@ -610030,7 +610030,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; diagonal ascending, expanding entrance",
-    "compositionHash": "300595e943f15869e0ab465e1c2ec7076b1d3829a493ecc35727fba142a077ea",
+    "compositionHash": "d72581d02b0b8a8d3286dfe87e3a4456e5da7403f1378b2fb5d751f6f271acbf",
     "sharedCount": 1
   },
   {

@@ -10,10 +10,11 @@ import { validateRecipe } from "../core/model.mjs";
 import { filterLabel } from "../engines/tokenshade/controls.mjs";
 import { CONDITION_LOOK_PRESETS } from "../catalogs/shared/condition-looks.mjs";
 import { DAMAGE_LOOK_PRESETS } from "../engines/playback/damage-moments.mjs";
+import { TETHER_LABELS } from "../engines/playback/tethers.mjs";
 
 // The preset list's sections, in order. A preset's section comes from what it is: a name prefix, how it animates
 // (once: a transition; driven: follows the game), whether a condition or damage uses it, or Token Magic's basics.
-export const PRESET_GROUPS = ["Transitions", "Follows the game", "Knocked out", "Conditions", "Places", "Damage", "Attitudes", "Markers", "Looks", "Basics"];
+export const PRESET_GROUPS = ["Body forms", "Transitions", "Follows the game", "Knocked out", "Conditions", "Places", "Damage", "Attitudes", "Markers", "Looks", "Basics"];
 const CONDITION_SET = new Set(CONDITION_LOOK_PRESETS), DAMAGE_SET = new Set(DAMAGE_LOOK_PRESETS);
 // Looks meant for a region (Region configuration → Animater look) and the heat and cold around creatures.
 const PLACE_SET = new Set(["Haunted ground", "Firelit", "Moonlit", "Fey glade", "Heat shimmer", "Cold mist", "Submerged"]);
@@ -22,6 +23,8 @@ export function presetGroup(name, params = []) {
   if (/^Knocked out:/.test(name)) return "Knocked out";
   if (/^Attitude:/.test(name)) return "Attitudes";
   if (/^Marker:/.test(name)) return "Markers";
+  // Wings and growths take on the creature's body (they grow in, so they would otherwise read as transitions).
+  if ((params ?? []).some((p) => ["wings", "growth"].includes(p?.filterType))) return "Body forms";
   if (anims.includes("once")) return "Transitions";
   if (anims.includes("driven")) return "Follows the game";
   if (DAMAGE_SET.has(name)) return "Damage";
@@ -33,7 +36,9 @@ export function presetGroup(name, params = []) {
 
 export const TOKENSHADE_PAGE = "tokenshade";
 export const STUDIO_INDEX = "studio";
-const LIBRARIES = { tokenshade: "Token", "tokenshade-region": "Region", "tokenshade-custom": "Mine" };
+const LIBRARIES = { tokenshade: "Token", "tokenshade-region": "Region", "tokenshade-custom": "Mine", travel: "Travel" };
+// The Travel tab: what a travel or projectile stage can draw itself (playback/tethers.mjs) instead of a clip.
+const TRAVEL = "travel";
 // What the preview stands on: a map-grey grid by default, so dark looks (shadow, smoke) show against it.
 const BACKGROUNDS = { map: "Map", light: "Light", dark: "Dark" };
 const LOOP_MS = 60000;
@@ -63,6 +68,8 @@ export class TokenshadeStudio {
     // The preview's zoom (the token's size on the stage) and which list sections are open.
     this.zoom = 1;
     this.openGroups = new Set();
+    // The travel look shown in the Travel tab.
+    this.tether = "rope";
   }
   // Does the effect being edited follow the game anywhere (a 'driven' animation)?
   followsGame() { return layersOf(this.draft ?? {}, this.preset()).some((l) => Object.values(l.animated ?? {}).some((a) => a.animType === "driven")); }
@@ -71,6 +78,7 @@ export class TokenshadeStudio {
   select(name) { this.draft = studioStage(this.library, name); }
 
   html() {
+    if (this.library === TRAVEL) return this.travelHTML();
     const ready = this.w.host.fxCatalog?.()?.tokenReady === true;
     if (!ready) return `<div class="an-work"><section class="an-library"><div class="an-empty">Tokenshade is turned off.<small>Turn on Tokenshade filters in Animater settings, or raise this screen's animation quality.</small></div></section></div>`;
     const catalog = this.w.host.fxCatalog?.()?.presets ?? [];
@@ -78,7 +86,7 @@ export class TokenshadeStudio {
     const list = q ? all.filter((p) => p.name.toLowerCase().includes(q)) : all;
     if (!this.draft || this.draft.fxLibrary !== this.library || !all.some((p) => p.name === this.draft.fxPreset)) { if (!this.draft?.fxLayers?.length || !all.length) this.select(list[0]?.name ?? ""); }
     const d = this.draft, recipes = this.w.listedRecipes?.() ?? [], has = Boolean(d?.fxPreset || d?.fxLayers?.length);
-    const count = (id) => catalog.filter((p) => libraryId(p.library) === id).length;
+    const count = (id) => id === TRAVEL ? Object.keys(TETHER_LABELS).length : catalog.filter((p) => libraryId(p.library) === id).length;
     const kinds = (p) => [...new Set((p.filterTypes ?? []).map(filterLabel))];
     const tabs = Object.entries(LIBRARIES).map(([id, label]) => `<button type="button" class="${id === this.library ? "is-active" : ""}" data-action="studio-library" data-library="${id}" aria-pressed="${id === this.library}">${esc(label)} <small>${count(id)}</small></button>`).join("");
     const row = (p) => `<li><button type="button" class="an-studio-row${p.name === d?.fxPreset ? " is-active" : ""}" data-action="studio-pick" data-name="${esc(p.name)}" aria-pressed="${p.name === d?.fxPreset}"><span>${esc(p.name)}</span><small>${esc(kinds(p).join(" · "))}</small></button></li>`;
@@ -125,6 +133,33 @@ export class TokenshadeStudio {
   ${d ? tokenFxEditorHTML(d, STUDIO_INDEX, this.preset(), { canSave: true }).replace("<details class=\"an-fx-editor\"", "<details class=\"an-fx-editor\" open").replace("edited for this stage", "edited") : ""}</section></div>`;
   }
 
+  // The Travel tab: the drawn travel looks, one playing over and over across the preview.
+  travelHTML() {
+    const catalog = this.w.host.fxCatalog?.()?.presets ?? [];
+    const count = (id) => id === TRAVEL ? Object.keys(TETHER_LABELS).length : catalog.filter((p) => libraryId(p.library) === id).length;
+    const tabs = Object.entries(LIBRARIES).map(([id, label]) => `<button type="button" class="${id === this.library ? "is-active" : ""}" data-action="studio-library" data-library="${id}" aria-pressed="${id === this.library}">${esc(label)} <small>${count(id)}</small></button>`).join("");
+    const [name, blurb] = TETHER_LABELS[this.tether] ?? TETHER_LABELS.rope;
+    const rows = Object.entries(TETHER_LABELS).map(([id, [label, about]]) => `<li><button type="button" class="an-studio-row${id === this.tether ? " is-active" : ""}" data-action="studio-tether" data-style="${esc(id)}" aria-pressed="${id === this.tether}"><span>${esc(label)}</span><small>${esc(about)}</small></button></li>`).join("");
+    const token = this.w.host.previewTokens?.()?.source, img = this.w.host.mediaURL?.("icons/svg/mystery-man.svg") ?? "icons/svg/mystery-man.svg";
+    const art = token?.img ? (this.w.host.mediaURL?.(token.img) ?? token.img) : img, px = Math.round(120 * this.zoom);
+    this.described = "Playing · loops";
+    return `<div class="an-work an-studio-work"><section class="an-library an-studio-list">
+  <header class="an-studio-head"><span class="an-eyebrow">TOOLS</span><h2>Tokenshade</h2><p>Travel looks: what a travel or projectile stage can draw itself, from its caster to its target, where no clip fits.</p></header>
+  <div class="an-segmented an-studio-libraries" role="group" aria-label="Preset library">${tabs}</div>
+  <ul class="an-studio-presets"><li class="an-studio-group"><details open><summary><span>Travel looks</span><small>${Object.keys(TETHER_LABELS).length}</small></summary><ul>${rows}</ul></details></li></ul>
+</section>
+<section class="an-studio-stage">
+  <div class="an-studio-card an-studio-preview">
+    <div class="an-studio-card-title"><b>${esc(name)}</b><span class="an-studio-kinds"><span>Travel look</span></span></div>
+    <div class="an-media-preview an-tokenfx-scene an-studio-scene an-studio-travel" data-studio-scene data-studio-bg="${esc(this.background)}" aria-label="Travel look preview" style="justify-content:flex-start;padding-left:12%"><div class="an-tokenfx-sample" data-preview-token="source" style="width:${px}px;height:${px}px"><div class="an-preview-token-art"><img src="${esc(art)}" alt="${esc(token?.name ?? "Sample token")}" style="width:${px}px;height:${px}px"></div></div></div>
+    <div class="an-studio-preview-foot"><span class="an-studio-status" data-studio-status>${esc(this.status || this.described)}</span></div>
+  </div>
+  <div class="an-studio-card an-studio-use"><div class="an-studio-card-title"><b>Use it</b><small>${esc(blurb)}</small></div>
+    <p class="an-hint">In any animation, open a travel or projectile stage, set <b>Travel look</b> to Tokenshade and <b>Tokenshade travel</b> to ${esc(name)}. Its clip still sets the timing; a tint colours it.</p>
+    <button type="button" class="an-studio-ghost" data-action="studio-tether-canvas" ${this.w.host.previewTether ? "" : "disabled"}>Preview on the canvas</button></div>
+</section></div>`;
+  }
+
   // Live preview: the draft plays on the sample token, looped, restarted after each edit.
   mount() {
     // Sections the GM opens or closes stay that way across redraws.
@@ -140,6 +175,13 @@ export class TokenshadeStudio {
     const epoch = ++this.epoch;
     await this.stopRun();
     const scene = this.w.root.querySelector("[data-studio-scene]");
+    if (this.library === TRAVEL) {
+      if (!scene || !this.w.host.createTetherPreview) return;
+      const preview = this.w.host.createTetherPreview(scene, this.tether);
+      if (epoch !== this.epoch) { preview?.stop(); return; }
+      this.run = preview;
+      return;
+    }
     if (!scene || !this.draft || (!this.draft.fxPreset && !this.draft.fxLayers?.length) || !this.w.host.createTokenFxPreview) return;
     try {
       delete scene.dataset.fxError;
@@ -202,6 +244,12 @@ export class TokenshadeStudio {
     if (this.w.page !== TOKENSHADE_PAGE) return false;
     if (action === "studio-library") { this.library = b.dataset.library; this.search = ""; this.draft = null; this.w.render(); return true; }
     if (action === "studio-pick") { this.select(b.dataset.name); this.w.render(); return true; }
+    if (action === "studio-tether") { this.tether = Object.hasOwn(TETHER_LABELS, b.dataset.style) ? b.dataset.style : "rope"; this.status = ""; this.w.render(); return true; }
+    if (action === "studio-tether-canvas") {
+      try { await this.w.host.previewTether(this.tether); this.setStatus("Playing on canvas, from your token to your target"); }
+      catch (error) { this.setStatus(error.message); }
+      return true;
+    }
     if (action === "studio-replay") { this.mount(); return true; }
     if (action === "studio-background") {
       this.background = Object.hasOwn(BACKGROUNDS, b.dataset.background) ? b.dataset.background : "map";

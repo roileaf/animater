@@ -51,7 +51,8 @@ test('every reviewed aura: light footage spans its reach, heavy footage is an ac
    for(const s of r.stages){assert.equal(assetGeometry(media(s,edition)),'radial');const light=/^jb2a.(aura_themed|particles|swirling_leaves|butterflies|fireflies|fairies|wind_lines|zoning)./.test(media(s,edition).key);
     assert.equal(Boolean(s.auraRadius),light,`${e.name}: ${s.label} ${light?'spans the reach':'stays near the creature'}`);assert.equal(s.scale,light?1:2);assert.equal(s.offsetX,0);assert.equal(s.offsetY,0);assert.equal(s.persist,true);assert.ok(!/markers|token_border/.test(s.assets.join(' ')));}
   }
-  assert.equal(groups.size,90);assert.equal(structures.size,90);
+  // The audited clips (look-fixes.mjs) give one more aura its own Patreon look.
+  const designs=edition==='free'?90:91;assert.equal(groups.size,designs);assert.equal(structures.size,designs);
  }
 });
 test('native thermal and tradition selections change the field; unspecified choices stay neutral',()=>{

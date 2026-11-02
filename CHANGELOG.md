@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.17 (2026-11-02)
+
+- **Top-down tokens get their own condition looks.** On a top-down or pop-out creature (cut-out art, not a ring token) nothing is painted on the ground under it, nothing assumes a head at the top, and stars, question marks and other glyphs circle over its body on a flat circle seen from above. Doom loses its ground sigil, Blinded dims the whole body, and no fake drop shadows are added.
+- **Prone, pressed flat.** A prone top-down creature drops where it lies, flattens into a drawing (flat tones under dark ink) with dust settling round it, and its long shadow shrinks to a tight one under it. Every prone creature now casts a short shadow.
+- **Conditions move the art itself.** Paralyzed, Petrified, Unconscious and Dying hold a Tokener animation still; Slowed, Fatigued and Prone slow it; Quickened and Frightened speed it up. It plays as before when the condition ends.
+- **Effects stay on the body.** A lasting effect on a top-down creature (Blaze's flames) burns only on its body, not across its square; wards, domes, condition badges and markers keep their own shape.
+- **Every generated animation checked.** A frame-by-frame audit of all 2,022 looks in the generated PF2e, D&D 5e, SF2e, Daggerheart and Draw Steel catalogs fixed 451 of them: condition badges no longer show a syringe, biohazard sign or bee on unrelated effects, Petrified and other conditions change the creature itself, kanji hunter's marks became an eye, and many tints that turned clips black are corrected.
+- **New Tokenshade looks:** Dragon, Fiendish, Feathered and Luminous Wings; Fungal Growth, Mycelium, Coral Growth, Scaled Hide and Ink-Smeared; Chattering, Weighed Down, Spirit Current and Clinging Silk. In the Tokenshade studio, wings and growths sit under Body forms.
+- **Tokenshade travel looks.** A travel or projectile stage can now be drawn instead of playing a clip: a rope that coils round its target, a vine, a chain or burning chain, a tongue, a thrown snare, silk wad or bola, or a stream of motes. Ropes, vines, tongues, snares and energy drains across the catalogs use them, and the studio's new Travel tab previews each one.
+
 ## 2.4.16 (2026-11-02)
 
 - **Every animation checked against what it shows.** A frame-by-frame audit of all 1,754 looks in the hand-written designs fixed 161 of them: radiant bursts, tremors and judgement waves no longer leave a ring of music notes; Second Wind's heartbeat beats instead of flatlining; stomps and quakes crack the earth instead of glowing like lava; Enlarge, Reduce and Rulership lose their charm hearts; curses show blood and withering instead of a radiation sign and a treble clef; red rage, blood and spore effects are no longer tinted to black; Beheading Buzz Saw flies forward; Prismatic Sphere's seven layers nest as coloured domes; and many more.

@@ -55,6 +55,13 @@ export function bodyPose(kind, t, strength = 1, { period } = {}) {
     case 'breathe': return { sy: 1 - 0.025 * k * (0.5 + 0.5 * wave(t, 4)) };
     // Knocked down: the token lies on its side, a little lower, still breathing.
     case 'prone': { const f = Math.min(1, t / 0.4), fall = 1 - (1 - f) ** 3; return { r: 80 * fall, y: 0.06 * fall, sy: 1 - 0.02 * (0.5 + 0.5 * wave(t, 4)) }; }
+    // Knocked down, seen from above (top-down art): turning it would only spin it, so it drops flat where it is,
+    // settling smaller with a little bounce, and breathes slowly in place.
+    case 'prone-top': {
+      const f = Math.min(1, t / 0.45), fall = 1 - (1 - f) ** 3, bounce = f < 1 ? 0.03 * Math.sin(Math.PI * f) : 0;
+      const s = 1 - 0.1 * fall + bounce, breath = 1 - 0.015 * (0.5 + 0.5 * wave(t, 4.5));
+      return { sx: s * breath, sy: s * breath };
+    }
     // Idle life: a ~1% breath; a flier bobs ±3% of its height (yh: in token heights).
     case 'idle-breathe': return { sy: 1 - 0.025 * k * (0.5 + 0.5 * wave(t, period ?? 4)) };
     case 'idle-hover': return { yh: 0.05 * k * wave(t, period ?? 2.4) };
@@ -73,8 +80,9 @@ export function bodyPose(kind, t, strength = 1, { period } = {}) {
 
 export class ConditionBody {
   // `follow(token, dx, dy)`: the body moved this far from its place (0, 0 when it is back), for what rides on it.
-  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true, follow = () => {} } = {}) {
-    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled, follow });
+  // `cutOut(token)`: its art is a top-down or pop-out creature on a clear background (lies flat when prone).
+  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true, follow = () => {}, cutOut = () => false } = {}) {
+    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled, follow, cutOut });
     this.records = new Map();
     // One pose per token: several conditions (PF2e Dying brings Unconscious) must not
     // each treat the other's offset as the natural pose, or the deltas compound
@@ -138,6 +146,7 @@ export class ConditionBody {
     }
     if (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) mesh.rotation = a.baseR;
     if (mesh.scale.y === a.setSY) mesh.scale.y = a.baseSY;
+    if (mesh.scale.x === a.setSX) mesh.scale.x = a.baseSX;
     try { this.follow(token, 0, 0); } catch { /* optional */ }
   }
   tick() {
@@ -172,17 +181,22 @@ export class ConditionBody {
       // turn. Native document rotation changes still establish a new baseline.
       const baseR = a && (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) ? a.baseR : mesh.rotation;
       const baseSY = a && mesh.scale.y === a.setSY ? a.baseSY : mesh.scale.y;
-      const full = bodyPose(r.kind, (time - r.start) / 1000, r.strength, { period: r.period }), w = token.w ?? 100;
+      const baseSX = a && mesh.scale.x === a.setSX ? a.baseSX : mesh.scale.x;
+      let flat = false;
+      if (r.kind === 'prone') { try { flat = this.cutOut(token) === true; } catch { /* lies on its side */ } }
+      const full = bodyPose(flat ? 'prone-top' : r.kind, (time - r.start) / 1000, r.strength, { period: r.period }), w = token.w ?? 100;
       if (full.yh) full.y = (full.y ?? 0) + (full.yh * (token.h ?? w)) / w;
       // Standing back up: the pose eases away.
       const f = r.leaving === undefined ? 1 : (1 - Math.min(1, (time - r.leaving) / RISE)) ** 2;
-      const pose = { x: (full.x ?? 0) * f, y: (full.y ?? 0) * f, r: (full.r ?? 0) * f, sy: 1 - (1 - (full.sy ?? 1)) * f };
+      const pose = { x: (full.x ?? 0) * f, y: (full.y ?? 0) * f, r: (full.r ?? 0) * f, sy: 1 - (1 - (full.sy ?? 1)) * f, sx: 1 - (1 - (full.sx ?? 1)) * f };
       mesh.position.x = baseX + (pose.x ?? 0) * w;
       mesh.position.y = baseY + (pose.y ?? 0) * w;
       mesh.rotation = baseR + ((pose.r ?? 0) * Math.PI) / 180;
       mesh.scale.y = baseSY * (pose.sy ?? 1);
+      mesh.scale.x = baseSX * pose.sx;
       try { this.follow(token, mesh.position.x - baseX, mesh.position.y - baseY); } catch { /* optional */ }
-      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone',docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y });
+      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone'&&!flat,docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y,
+        baseSX, setSX: mesh.scale.x });
     }
     if (this.records.size) this.handle = this.frame(() => this.tick());
   }

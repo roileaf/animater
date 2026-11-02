@@ -121,6 +121,9 @@ export function isFlying({ action, statuses } = {}) {
   return false;
 }
 
+// How tall a creature lying prone stands, a share of its width (a standing one: 0.8), for the shadow it casts.
+export const LYING_BODY = 0.12;
+
 // A flier's shadow: an ellipse under its feet, pushed down-right (light from the top left) and shrunk and faded by
 // height. `lift` is height above the floor in scene distance units; `width` the token's width in pixels. `grounded`:
 // the softer shadow a standing creature casts with "Shadows under every token".
@@ -1380,13 +1383,15 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           // In its own shape, from its feet away from the light or the sun (its body about half its width tall).
           const art = shadowShapes() ? token.art : null, both = lightShadows();
           const lit = typeof token.light === 'function' ? token.light() : null;
-          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}`, refs = [lit, sun(), art];
+          // Lying on the floor (prone): its shadow is cast from barely above it, short and close.
+          const lying = (typeof token.lying === 'function' ? token.lying() : token.statuses?.has?.('prone')) === true;
+          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}`, refs = [lit, sun(), art];
           if (!handle || !unchanged(move, key, refs)) {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true });
           let main = null;
           if (lit) {
-            const body = 0.8 * (Number(token.width) || size) / size;
+            const body = (lying ? LYING_BODY : 0.8) * (Number(token.width) || size) / size;
             const [first, ...others] = aimShadows(token, move, lit, body, true);
             main = first;
             // The shadows its lights cast, and the rim below: no big round one under it (on a token's disc it read as

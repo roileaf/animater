@@ -236,4 +236,39 @@ void main() {
 }`,
 };
 
-export const COLOR_SPECS = [adjustment, ddTint, replaceColor, colorGradient, dot, ascii, pixel, rgbSplit, crt, oldfilm];
+// Pressed flat into a drawing: the shading falls to a few flat tones, the colour fades a little and dark ink traces
+// the outline and the strongest inner edges. `amount` 0..1 eases between the art and the drawing.
+const flatten = {
+  type: 'flatten', order: 330,
+  defaults: { amount: 1, tones: 4, saturation: 0.7, ink: 2, inkColor: 0x14100c, inkAlpha: 0.85, detail: 0.22 },
+  uniforms: {
+    uAmount: ['float', p => clamp(p.amount, 0, 1)], uTones: ['float', p => clamp(Math.round(f(p.tones)), 2, 8)],
+    uSat: ['float', p => clamp(p.saturation, 0, 2)], uInk: ['float', p => clamp(p.ink, 0.5, 8)],
+    uInkColor: ['vec3', p => rgb(p.inkColor)], uInkAlpha: ['float', p => clamp(p.inkAlpha, 0, 1)], uDetail: ['float', p => clamp(p.detail, 0.02, 1)],
+  },
+  reach: () => 0,
+  glsl: `
+void main() {
+  vec4 c = fxSample(vTextureCoord);
+  if (c.a <= 0.001) { gl_FragColor = c; return; }
+  vec3 col = unpremul(c);
+  float l = luma(col);
+  // A few flat tones, each keeping its own hue.
+  float band = (floor(l * uTones) + 0.5) / uTones;
+  vec3 toned = clamp(col * (band / max(l, 0.04)), 0.0, 1.0);
+  toned = mix(vec3(luma(toned)), toned, uSat);
+  // Ink: where the art ends (inside the silhouette) and where its brightness jumps.
+  float edgeA = 0.0, edgeL = 0.0;
+  for (int i = 0; i < 8; i++) {
+    float a = float(i) * 0.7853982;
+    vec4 n = fxAt(vec2(cos(a), sin(a)) * uInk);
+    edgeA = max(edgeA, c.a - n.a);
+    edgeL = max(edgeL, abs(l - luma(unpremul(n))) * n.a);
+  }
+  float ink = max(smoothstep(0.25, 0.7, edgeA), smoothstep(uDetail, uDetail + 0.12, edgeL)) * uInkAlpha;
+  vec3 drawn = mix(toned, uInkColor, ink);
+  gl_FragColor = vec4(mix(col, drawn, uAmount) * c.a, c.a);
+}`,
+};
+
+export const COLOR_SPECS = [adjustment, ddTint, replaceColor, colorGradient, dot, ascii, pixel, rgbSplit, crt, oldfilm, flatten];

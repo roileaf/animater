@@ -529,6 +529,27 @@ export const PRESETS = [
   token('Knocked out: Mental', F('wash', { washType: 2, from: 3, color: 0x6a5a90, strength: 0.85, front: 0.6 }, { amount: once(0, 1, 1600) })),
   token('Knocked out: Sonic', timed('dissolve', 1, { style: 10, from: 1, color: 0xc8d0e0, edge: 0.5 }, { amount: once(0, 0.4, 1000) })),
   token('Knocked out: Spirit', timed('dissolve', 1, { style: 3, from: 1, color: 0xf2f6ff, edge: 0.6 }, { amount: once(0, 0.45, 1600) })),
+  // Wings from the creature's back (a dragon form, a fiend's, an angel's, flight granted by magic), beating slowly.
+  token('Dragon Wings', timed('wings', 0.55, { style: 0, color: 0x6a3022, boneColor: 0x2a140c, span: 1.75, beat: 1 }, { alpha: once(0, 1, 500) })),
+  token('Fiendish Wings', timed('wings', 0.8, { style: 0, color: 0x3c1016, boneColor: 0x120406, span: 1.5, beat: 1.2 }, { alpha: once(0, 1, 400) })),
+  token('Feathered Wings', timed('wings', 0.5, { style: 1, color: 0xe6dccb, span: 1.65, beat: 0.9 }, { alpha: once(0, 1, 500) })),
+  token('Luminous Wings', timed('wings', 0.4, { style: 2, color: 0xffe3a0, span: 1.75, beat: 0.8 }, { alpha: once(0, 0.9, 700) })),
+  // Growths over the body, spreading in patches: fungus and mould, mycelium threads, coral, scales, ink.
+  token('Fungal Growth', F('growth', { kind: 0, color: 0xe2d6bc, accent: 0x6b6a3a }, { amount: once(0, 0.6, 1800) })),
+  token('Mycelium', F('growth', { kind: 1, color: 0xf2eee2, scale: 1.2 }, { amount: once(0, 0.7, 2000) })),
+  token('Coral Growth', F('growth', { kind: 2, color: 0xf08a7a, accent: 0x8a3348 }, { amount: once(0, 0.55, 1800) })),
+  token('Scaled Hide', timed('growth', 1, { kind: 3, color: 0x7f9a5a, accent: 0x2f3d22 }, { amount: once(0, 1, 1500) })),
+  // Chattering (endless talk, insults, yammering): speech marks bobbing round its head.
+  token('Chattering', timed('orbit', 0.9, { glyph: 8, color: 0xf4efe6, count: 3, size: 0.75, height: 0.6 })),
+  // Weighed down: arrows pressing down on it, smaller and darker under the load.
+  token('Weighed Down', timed('orbit', 0.8, { glyph: 7, color: 0x8a8a98, count: 3, size: 0.8, height: 0.7, fall: true }),
+    F('transform', { pivotX: 0.5, pivotY: 0.5 }, { scaleX: cos(0.9, 0.93, 2400, false), scaleY: cos(0.9, 0.93, 2400, false) }), F('adjustment', { brightness: 0.8, saturation: 0.8 })),
+  // A ghostly current: pale water flowing round it and away, rings drifting out on it.
+  token('Spirit Current', timed('xglow', 0.5, { auraType: 1, color: 0xa8e2ff, thickness: 3, scale: 2.5, auraIntensity: 1.3, subAuraIntensity: 0.45, threshold: 0.3, discard: false }),
+    timed('ripples', 0.4, { color: 0xc4efff, intensity: 0.7 }), F('adjustment', { blue: 1.08, saturation: 0.85 })),
+  // Clinging silk (spider climbing): a few fine threads catching the light at its edges, not a web over it.
+  token('Clinging Silk', timed('web', 0.15, { color: 0xf2f2ee, thickness: 0.5, div1: 7, div2: 2, alphaDiscard: true })),
+  token('Ink-Smeared', F('growth', { kind: 4, color: 0x0c0c16 }, { amount: once(0, 0.65, 900) })),
 ];
 
 // The library is shared: nothing may change it. Callers clone before tinting or scaling.

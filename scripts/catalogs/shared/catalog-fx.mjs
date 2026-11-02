@@ -10,6 +10,7 @@ import {fxSemantics} from './catalog-fx-semantics.mjs';
 import {fitCastClips} from '../../engines/playback/cast-clip.mjs';
 import {wholeBreathClips} from '../../engines/media/media-lifetime.mjs';
 import {withCatalogTeleport} from './catalog-teleport.mjs';
+import {withLookFixes} from './look-fixes.mjs';
 
 export function catalogFxSettings(game = globalThis.game) {
   const enabled = key => { try { return game?.settings?.get('animater',key) !== false; } catch { return true; } };
@@ -172,6 +173,12 @@ export function withBodyLooks(recipe, catalog) {
       targetSelection:s.targetSelection??'all',targetLimit:s.targetLimit??0,targetStagger:s.targetStagger??0,requiresHit:s.requiresHit===true};
   })});
 }
+// For catalogs built outside withCatalogFx (Daggerheart, Draw Steel): the audited clips, then their body looks.
+export function withAuditedLooks(recipe, entry, catalog) {
+  const fixed=withLookFixes(recipe,entry?.name??recipe.name);
+  if(fixed===recipe)return recipe;
+  return withBodyLooks(validateRecipe(fixed),catalog??liveCatalogFx());
+}
 export function withCatalogFx(recipe, entry, options={}) {
   // Reviewed bespoke compositions and play-time element choice come first, so they
   // apply whether or not optional FX providers are installed.
@@ -185,10 +192,14 @@ export function withCatalogFx(recipe, entry, options={}) {
   if(breath!==recipe)recipe=validateRecipe(breath);
   // A teleport spell's own Teleport stage, timed to its art (catalog-teleport.mjs).
   recipe=withCatalogTeleport(recipe,entry);
+  // The audited clip for each stage (look-fixes.mjs): a better clip, or a Tokenshade look marked for withBodyLooks.
+  const fixed=withLookFixes(recipe,entry?.name??recipe.name);
+  if(fixed!==recipe)recipe=validateRecipe(fixed);
   if (options.fx===false||BESPOKE[recipe.bespoke]?.fx===false)return recipe;
   const catalog=options.fxCatalog??liveCatalogFx();
   if (!catalog.tokenReady&&!catalog.sceneReady)return recipe;
-  recipe=withBodyLooks(recipe,catalog);
+  // A condition the catalog plays with JB2A only keeps its clips, body looks included.
+  if(!jb2aOnly(recipe,entry,catalog,options))recipe=withBodyLooks(recipe,catalog);
   const has=(name,library)=>catalog.presets?.some(p=>p.name===name&&p.library===library);
   const looked=withConditionLook(recipe,entry,{...options,fxCatalog:catalog});
   if(looked!==recipe)return looked;

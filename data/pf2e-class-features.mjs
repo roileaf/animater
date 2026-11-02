@@ -1332,7 +1332,7 @@ export const PF2E_CLASS_FEATURES = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "e6a23f440ab9ac6a6dd94eb4084794a603520cd6adbc484bda7c383ec23a96b0",
+    "compositionHash": "a8957f4c0a9c58d0d06c8eb616d4e6759fc6d15fb0ea6d318adab92f68ca6ce3",
     "sharedCount": 1
   }
 ];

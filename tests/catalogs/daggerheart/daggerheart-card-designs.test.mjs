@@ -8,6 +8,7 @@ import { DOMAIN_PALETTES, cardDesigns, cardStages, levelScale, dhEntries, dhReci
 import { DH_DOMAINS, DH_ROLL_TYPES } from "../../../scripts/systems/daggerheart.mjs";
 import { planRecipe, resolveAsset } from "../../../scripts/core/model.mjs";
 import { assetDatabases } from "../../../tools/asset-databases.mjs";
+import { withLookFixes } from "../../../scripts/catalogs/shared/look-fixes.mjs";
 
 const context = { source: { id: "caster", center: { x: 100, y: 100 }, w: 100, h: 100 }, targets: [{ id: "target", center: { x: 500, y: 100 }, w: 100, h: 100 }], gridSize: 100, gridDistance: 5 };
 const cardEntry = (card) => dhEntries("card").find((e) => e.id === `daggerheart-card-${card.id}`);
@@ -123,15 +124,19 @@ for (const [domain, designs] of designed) {
       assert.equal(Boolean(record.use), triggers.length === 2, `${card.name}: a \`use\` design exactly when the card has a second (use) variant`);
       for (const v of entry.variants) {
         const r = dhRecipe(entry, v.id), part = v.recipe.trigger === "use" && record.use ? record.use : record;
-        // A teleporting card (Blink Out) adds its Teleport stage (catalog-teleport.mjs).
-        assert.equal(stageSignature(r.stages.filter((s) => s.kind !== "teleport")), stageSignature(designStages(part, { palette: DOMAIN_PALETTES[domain], level: card.level, levelScale })), `${card.name} ${v.id}`);
+        // A teleporting card (Blink Out) adds its Teleport stage (catalog-teleport.mjs); the audited clips
+        // (look-fixes.mjs) stand in for the design's own where the audit found a better one.
+        const stages = designStages(part, { palette: DOMAIN_PALETTES[domain], level: card.level, levelScale }).map((s) => ({ ...s, tintEnabled: s.tintEnabled ?? Boolean(s.tint) }));
+        const designed = withLookFixes({ stages }, entry.name).stages;
+        assert.equal(stageSignature(r.stages.filter((s) => s.kind !== "teleport")), stageSignature(designed), `${card.name} ${v.id}`);
       }
       for (const [id, design] of Object.entries(record.actions ?? {})) {
         const action = text.actions.find((a) => a.id === id);
         assert.ok(action, `${card.name}: per-action design ${id} names one of its actions`);
         const quotedHere = [...design.notes.matchAll(/["“]([^"”]+)["”]/g)].map((m) => m[1].toLowerCase());
         assert.ok(quotedHere.some((q) => text.description.toLowerCase().includes(q)), `${card.name} ${action.name}: notes quote the card's own words`);
-        assert.equal(stageSignature(played(card, action).stages), stageSignature(designStages(design, { palette: DOMAIN_PALETTES[domain], level: card.level, levelScale })), `${card.name} ${action.name} plays its own design`);
+        const own = designStages(design, { palette: DOMAIN_PALETTES[domain], level: card.level, levelScale }).map((s) => ({ ...s, tintEnabled: s.tintEnabled ?? Boolean(s.tint) }));
+        assert.equal(stageSignature(played(card, action).stages), stageSignature(withLookFixes({ stages: own }, cardEntry(card).name).stages), `${card.name} ${action.name} plays its own design`);
       }
     }
   });

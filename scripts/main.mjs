@@ -160,6 +160,8 @@ import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalog
 import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } from "./engines/playback/persistent-states.mjs";
 import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "./engines/playback/outside-combat.mjs";
 import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
+import { cutOutArt } from "./engines/playback/art-crop.mjs";
+import { createTethers, createTetherPreview } from "./engines/playback/tethers.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan } from "./engines/motion/wall-shadows.mjs";
@@ -210,6 +212,8 @@ tokenFx.engine.enabled = () => allowsTokenFx(localQuality());
 // above the viewed floor (60 feet is the top), and 1 while it is this creature's turn.
 // How long Tokenshade effects fade in and out, so a look that changes crossfades ("Tokenshade fades").
 tokenFx.engine.blendMs = () => { try { return Number(hotSetting("tokenshadeBlend")) || 0; } catch { return 0; } };
+// Top-down and pop-out art shows each look's top-down form (engines/tokenshade/top-down.mjs).
+tokenFx.engine.cutOut = (token) => tokenCutOut(token);
 tokenFx.engine.drive = (token, sources) => {
   const out = {};
   // "Tokenshade follows the game" off: every live value stays at its start.
@@ -834,13 +838,30 @@ const groundField = (effect) => {
   const anchor = { get center() { return at(); }, w: 0, get visible() { return !effect.destroyed; }, get ended() { return effect.destroyed === true; } };
   auraFields.add(`ground:${effect.id}`, { token: anchor, radius: tag.radius, look: { motif: tag.motif, color: tag.color, inward: tag.inward === true }, wave: tag.wave ? tag : null, swarm: tag.swarm ? tag : null });
 };
+// A travel or projectile stage drawn by Tokenshade (engines/playback/tethers.mjs): every client draws its rope, vine or
+// thrown snare between the two ends (a token followed as it moves, or a fixed point) while its effect plays.
+const tethers = createTethers({ PIXI: globalThis.PIXI, root: () => movementFeelOverRoot() });
+const tetherEnd = (ref) => {
+  if (ref?.token) { const t = canvas?.tokens?.get(ref.token); return t?.mesh && !t.mesh.destroyed ? { x: t.mesh.position.x, y: t.mesh.position.y } : null; }
+  return Number.isFinite(ref?.x) ? { x: ref.x, y: ref.y } : null;
+};
+const tether = (effect) => {
+  const tag = effect?.data?.animaterTether;
+  if (!tag || effect.data.moduleName !== ID || !canvas?.ready) return;
+  tethers.add(`tether:${effect.id}`, tag, () => {
+    const a = tetherEnd(tag.from), b = tetherEnd(tag.to);
+    return { a, b, grid: canvas?.grid?.size ?? 100, visible: !!a && !!b && !effect.destroyed };
+  });
+};
 Hooks.on("createSequencerEffect", (effect) => {
   groundField(effect);
+  tether(effect);
   lightenEffect(effect?.data, localQuality()); adaptiveHost.onEffect(effect); if (lightsHere()) lightHost.onEffect(effect); markLayer.onEffect(effect);
   summonsLights.onEffect(effect); distortionHost.onEffect(effect); cameraShake.onEffect(effect); screenTint.onEffect(effect);
 });
 Hooks.on("endedSequencerEffect", (effect) => {
   auraFields.remove(`ground:${effect.id}`);
+  tethers.remove(`tether:${effect.id}`);
   lightHost.onEnded(effect); summonsLights.onEffectEnded(effect); markLayer.onEnded(effect); distortionHost.onEnded(effect);
 });
 // The effect lights here go out at once, or the summons' glows come back (effects already playing stay unlit).
@@ -849,7 +870,7 @@ const effectLightsHere = (on) => {
   else for (const doc of canvas?.scene?.tokens ?? []) summonsLights.onToken(doc);
   canvas?.perception?.update({ refreshLighting: true, refreshVision: true });
 };
-Hooks.on("canvasTearDown", () => { summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); cameraShake.clear(); screenTint.clear(); killCam.clear(); });
+Hooks.on("canvasTearDown", () => { tethers.clear(); summonsLights.clear(); lightHost.clear(); clearMarks(); distortionHost.clear(); cameraShake.clear(); screenTint.clear(); killCam.clear(); });
 // Movement feel on this client (engines/motion/movement-feel.mjs): each floor's own marks at a moving token's feet,
 // a drop shadow under a flier. Every move from any source is read from the drawn token each frame (v14 writes the
 // animated x/y into the TokenDocument while it animates), so drags, ruler moves and macros all show. Animater's own
@@ -1229,6 +1250,25 @@ Hooks.on("canvasTearDown", () => {
 });
 // A token's art as drawn (engines/motion/flier-silhouette.mjs): the creature inside a dynamic ring, not the ring, with
 // its drawn size, mirroring and turn.
+// Whether a token's art is cut out: its image read once, small, per texture (a video by its current frame).
+const cutOutByTexture = new Map();
+const tokenCutOut = (token) => {
+  const t = token?.object ?? token, texture = t?.mesh?.texture, base = texture?.baseTexture;
+  if (!base) return false;
+  const ring = t.document?.ring?.enabled === true, key = `${base.uid ?? base.cacheId}|${texture.frame?.x},${texture.frame?.y},${texture.frame?.width},${texture.frame?.height}`;
+  if (!cutOutByTexture.has(key)) {
+    let pixels = null;
+    try {
+      const source = base.resource?.source, f = texture.frame, c = document.createElement('canvas');
+      c.width = c.height = 32;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(source, f.x, f.y, f.width, f.height, 0, 0, 32, 32);
+      pixels = ctx.getImageData(0, 0, 32, 32).data;
+    } catch { /* another site's image: unreadable */ }
+    cutOutByTexture.set(key, pixels);
+  }
+  return cutOutArt({ ring, pixels: cutOutByTexture.get(key) });
+};
 const tokenArt = (t) => {
   const mesh = t?.mesh;
   if (!mesh || mesh.destroyed || !mesh.texture) return null;
@@ -1316,6 +1356,8 @@ const movementFeel = createMovementFeel({
         order: () => Number(t.mesh?.sort ?? d.sort) || 0,
         light: () => flierLight(t),
         bob: () => bodyLift.get(t.id) ?? 0,
+        // Lying prone on the floor (PF2e keeps its conditions off actor.statuses), read each frame.
+        lying: () => { try { return d.hasStatusEffect?.("prone") === true; } catch { return false; } },
       };
       movementViews.set(d.id, {token: t, signature, at: time, view});
       return view;
@@ -2059,6 +2101,7 @@ const tickThreads = () => {
 const tickFires = () => {
   try { tickOrbs(); } catch { /* never stop the canvas */ }
   try { tickThreads(); } catch { /* never stop the canvas */ }
+  try { tethers.tick(performance.now()); } catch { /* never stop the canvas */ }
   if (!smokeOn() && !heldTorchesOn()) { if (fireSmoke.size || heldTorches.size) { fireSmoke.clear(); heldTorches.clear(); } return; }
   smokeFrame = smokeFiresNow();
   heldTorches.sync(heldTorchesOn() ? smokeFrame.map((f) => f.torch).filter(Boolean) : []);
@@ -3278,6 +3321,15 @@ function workspaceHost() {
     createTokenFxPreview:async(scene,recipe)=>{
       if(!fxCatalog().tokenReady)return null;
       return new TokenFxPreview({scene,recipe,PIXI:globalThis.PIXI,tokenFx,world:()=>game.time.serverTime});
+    },
+    // The Tokenshade studio's Travel tab: a travel look looping on its preview, or played on the canvas.
+    createTetherPreview:(scene,style)=>createTetherPreview({PIXI:globalThis.PIXI,scene,style}),
+    previewTether:async style=>{
+      if(!canvas.ready)throw Error('Open a scene first.');
+      const context=manualContext();
+      if(!context.source)throw Error('Select your token first.');
+      if(!context.targets?.length)throw Error('Target a creature first: the travel look reaches from your token to it.');
+      return game.modules.get(ID)?.api?.play({id:'tokenshade-travel',name:'Travel look',trigger:'use',stages:[{kind:'travel',stageId:'travel',assets:['jb2a.energy_strands.range.standard.dark_green.01'],travelLook:'tokenshade',tetherStyle:style,duration:2600}]});
     },
     previewTokenFx:stage=>{
       if(!canvas.ready)throw Error('Open a scene first.');
@@ -4858,7 +4910,7 @@ Hooks.once("ready", () => {
       e.pivot.set(-dx / (e.scale?.x || 1), -dy / (e.scale?.y || 1));
     }
   };
-  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody });
+  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody, cutOut: (token) => tokenCutOut(token) });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
     strength: () => { try { return hotSetting("idleLifeStrength"); } catch { return 1; } },
@@ -4997,6 +5049,9 @@ Hooks.once("ready", () => {
     heavyItem: (item) => heavyItem(item, game.system.id),
     // Whether a used item deals damage, so its cast or use marks the floor (a buff that picks an element does not).
     itemDamages: (item) => usedItemDamages(item, game.system.id),
+    // Whether a token's art is cut out (a top-down or pop-out creature on a clear background): effects sitting on it
+    // show on its body only (engines/playback/art-crop.mjs).
+    cutOutArt: (token) => tokenCutOut(token),
     // The element of that damage, for a placed area no damage roll names one for.
     itemElement: (item, context) => usedItemElement(item, game.system.id, context?.activity),
     // The level this client views and its floor, for a mark whose source token names none.

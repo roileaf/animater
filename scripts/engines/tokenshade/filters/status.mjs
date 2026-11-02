@@ -350,13 +350,14 @@ void main() {
 // circling, they slip down either side of the head and fade (sweat running, a strength draining away).
 const orbit = {
   type: 'orbit', order: 795,
-  defaults: { glyph: 1, color: 0xffe14a, count: 4, size: 1, height: 0.62, alpha: 0.95, fall: false, time: 0 },
+  // `flat`: seen from above (top-down art): a plain circle round the middle of the body, every glyph over it.
+  defaults: { glyph: 1, color: 0xffe14a, count: 4, size: 1, height: 0.62, alpha: 0.95, fall: false, flat: false, time: 0 },
   timeScale: 1,
   uniforms: {
-    uGlyph: ['int', p => clamp(Math.round(f(p.glyph)), 1, 7)], uColor: ['vec3', p => rgb(p.color)],
+    uGlyph: ['int', p => clamp(Math.round(f(p.glyph)), 1, 8)], uColor: ['vec3', p => rgb(p.color)],
     uCount: ['float', p => clamp(Math.round(f(p.count)), 2, 6)], uSize: ['float', p => clamp(p.size, 0.3, 3)],
     uHeight: ['float', p => clamp(p.height, 0, 1.2)], uAlpha: ['float', p => clamp(p.alpha, 0, 1)],
-    uFall: ['bool', p => p.fall === true],
+    uFall: ['bool', p => p.fall === true], uFlat: ['bool', p => p.flat === true],
   },
   reach: (p, c) => c.size * Math.max(0.12, 0.5 * (clamp(p.height, 0, 1.2) + 0.25) - 0.5) * clamp(p.size, 0.3, 3) + c.size * 0.06,
   glsl: `
@@ -379,6 +380,8 @@ float glyph(vec2 q, int k) {
     float cone = q.y < 0.22 && q.y > -0.8 ? (abs(q.x) - 0.5 * (q.y + 0.8) / 1.02) * 0.85 : 9.0;
     return min(body, cone);
   }
+  // Chatter: three short strokes fanning out, the marks drawn round a mouth that will not stop.
+  if (k == 8) return min(seg(q, vec2(-0.55, 0.45), vec2(-0.8, -0.35)), min(seg(q, vec2(0.0, 0.5), vec2(0.0, -0.5)), seg(q, vec2(0.55, 0.45), vec2(0.8, -0.35)))) - 0.12;
   // An arrow pointing down.
   if (k == 7) return min(seg(q, vec2(0.0, -0.75), vec2(0.0, 0.45)), min(seg(q, vec2(-0.5, 0.05), vec2(0.0, 0.6)), seg(q, vec2(0.5, 0.05), vec2(0.0, 0.6)))) - 0.17;
   // A spiral winding in two and a half turns.
@@ -412,10 +415,21 @@ void main() {
       depth = 1.0;
       fade = smoothstep(0.0, 0.15, life) * (1.0 - smoothstep(0.65, 1.0, life));
     }
+    if (uFlat > 0.5) {
+      // From above: round the middle on a true circle, all the same size, none behind the body. Drops run outward.
+      depth = 1.0;
+      at = vec2(cos(th), sin(th)) * 0.6;
+      if (uFall > 0.5) {
+        float life = fract(uTime * 0.45 + fi / uCount);
+        float dir = fi * TAU / uCount + hash11(fi) * 0.6;
+        at = vec2(cos(dir), sin(dir)) * (0.2 + life * 0.5);
+        fade = smoothstep(0.0, 0.15, life) * (1.0 - smoothstep(0.65, 1.0, life));
+      }
+    }
     float s = 0.1 * uSize * mix(0.72, 1.08, depth * 0.5 + 0.5);
     vec2 q = (p - at) / s;
     // Each spins a little as it goes round (question marks only rock; drops and arrows keep upright).
-    float spin = k >= 6 ? 0.0 : k == 4 ? sin(th * 1.5) * 0.35 : th * 0.8;
+    float spin = k >= 6 && k != 8 ? 0.0 : k == 4 || k == 8 ? sin(th * 1.5) * 0.35 : th * 0.8;
     q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
     float px = s * R * uZoom, d = glyph(q, k) * px;
     float fill = smoothstep(0.8, -0.8, d) * fade, rim = smoothstep(px * 0.22 + 0.8, px * 0.22 - 0.8, d) * fade;

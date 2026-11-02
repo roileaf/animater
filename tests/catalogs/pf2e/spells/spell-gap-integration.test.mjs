@@ -6,6 +6,7 @@ import {FIRE_SPELL_MOTIFS} from '../../../../scripts/catalogs/pf2e/spells/spell-
 import {assetDatabases} from '../../../../tools/asset-databases.mjs';
 import {assetGeometry} from '../../../../tools/spell-asset-selection.mjs';
 import {resolveAsset} from '../../../../scripts/core/model.mjs';
+import {clipLength} from '../../../../scripts/catalogs/shared/look-fixes.mjs';
 import {spellSources} from '../../../../tools/pf2e-source.mjs';
 import {analyzeSpellDescription,nativeSpellDescription} from '../../../../tools/spell-semantics.mjs';
 import {readFile} from 'node:fs/promises';
@@ -49,10 +50,12 @@ test('all 897 reviewed spell gaps retain their intended artwork and valid stage 
         if(['motion','sprite','sound'].includes(stage.kind))continue;
         const key=resolveAsset(stage,rows),row=byKey.get(key);
         assert(row,`${spell.name}/${edition}: missing ${stage.label}`);
-        assert(roots.some(root=>key===`jb2a.${root}`||key.startsWith(`jb2a.${root}.`)),`${spell.name}/${edition}: ${stage.label} selected unrelated ${key}`);
-        const geometry=assetGeometry(row);
         const slot=Object.keys(spell.design.assets).find(slot=>JSON.stringify(spell.design.assets[slot])===JSON.stringify(stage.assets));
-        const mediaDuration=spell.design.mediaTiming[slot]?.duration??0;
+        // A clip the visual audit chose instead (look-fixes.mjs) is no longer one of the reviewed roots.
+        if(slot)assert(roots.some(root=>key===`jb2a.${root}`||key.startsWith(`jb2a.${root}.`)),`${spell.name}/${edition}: ${stage.label} selected unrelated ${key}`);
+        const geometry=assetGeometry(row);
+        // An audited swap (look-fixes.mjs) is measured by its own clip.
+        const mediaDuration=slot?spell.design.mediaTiming[slot]?.duration??0:clipLength(key);
         assert(mediaDuration>0,`${spell.name}/${edition}: unmeasured ${stage.label}`);
         assert(stage.duration+1>=mediaDuration/(stage.playbackRate??1)+stage.fadeOut,`${spell.name}/${edition}: clips ${stage.label}`);
         if(stage.kind==='travel')assert(['beam','line','projectile'].includes(geometry),`${spell.name}/${edition}: stretches ${key}`);

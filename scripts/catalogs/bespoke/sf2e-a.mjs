@@ -534,7 +534,7 @@ export default {
   ]),
   // Entangling Mycelium: fungus spreads in your square as difficult terrain.
   'sf2e:sf2e-feat-feats-23GpILO1Ds6US3Fu': design('Fungal mycelium spreads over the ground beneath the entu colony and knits into a tangle.', () => [
-    cast('Mycelium spreads', ['plant_growth.03.round.2x2.complete.greenyellow'], { stageId: 'em-g', duration: 2400, scale: 0.8, below: true, ...tint('#c8b98a') }),
+    cast('Mycelium spreads', ['plant_growth.03.round.2x2.complete.greenyellow'], { bodyLook: 'Mycelium', stageId: 'em-g', duration: 2400, scale: 0.8, below: true, ...tint('#c8b98a') }),
     aura('Fungal tangle', ['entangle.02.complete.02.green'], { after: 'em-g', anchor: 'start', offset: 500, duration: 2200, scale: 0.8, below: true, opacity: 0.85 }),
   ]),
   // Enter Rivener State: embrace anger and grow Large.

@@ -12,7 +12,7 @@ import { wholeBreathClips, clipLength } from "../../engines/media/media-lifetime
 import { abilityLook, abilityRow, DS_ELEMENTS } from "../../systems/draw-steel.mjs";
 import { NATURAL_ATTACK } from "../daggerheart/daggerheart-catalog.mjs";
 import { withDhSounds } from "../daggerheart/daggerheart-polish.mjs";
-import { withConditionLook } from "../shared/catalog-fx.mjs";
+import { withConditionLook, withAuditedLooks } from "../shared/catalog-fx.mjs";
 import { DS_LOOKS, dsLook, designAbility, riderStages, classStyle, wholeClips, untargetedStages } from "./draw-steel-design.mjs";
 export { DRAW_STEEL_SOURCE, DS_LOOKS, dsLook };
 export const DS_KINDS = Object.freeze(["ability", "fallback", "condition"]);
@@ -143,8 +143,8 @@ export function dsRecipe(entry, variantId, { motion = true, sounds = null, sound
   if (untargeted && recipe.lifecycle !== "document") recipe.stages = untargetedStages(recipe.stages);
   if (!motion && recipe.stages.some((s) => s.kind !== "motion")) recipe.stages = recipe.stages.filter((s) => s.kind !== "motion");
   if (recipe.lifecycle !== "document") recipe.stages = withDhSounds(entry, variant, recipe.stages, { sounds, soundVolume });
-  if (recipe.lifecycle === "document") return withConditionLook(validateRecipe(recipe), entry);
-  const fitted = validateRecipe(wholeBreathClips(fitCastClips(validateRecipe(recipe))));
+  if (recipe.lifecycle === "document") return withConditionLook(withAuditedLooks(validateRecipe(recipe), entry), entry);
+  const fitted = validateRecipe(wholeBreathClips(fitCastClips(withAuditedLooks(validateRecipe(recipe), entry))));
   return validateRecipe({ ...fitted, stages: wholeClips(fitted.stages, clipLength) });
 }
 // An element fallback plays the variant of the event's shape (and, for a strike, its range).

@@ -7,6 +7,7 @@ import {FIRE_SPELL_MOTIFS} from '../../scripts/catalogs/pf2e/spells/spell-fire-d
 import {assetGeometry} from '../../tools/spell-asset-selection.mjs';
 import {SPELL_SOUND_DESIGNS} from '../../data/spell-sounds.mjs';
 import {catalogFxDesign} from '../../scripts/catalogs/shared/catalog-fx.mjs';
+import {clipLength} from '../../scripts/catalogs/shared/look-fixes.mjs';
 const audit=JSON.parse(await readFile(new URL('../../data/pf2e-spell-variety-audit.json',import.meta.url),'utf8'));
 const get=name=>PF2E_SPELLS.find(s=>s.name===name);
 const recipe=name=>spellRecipe(get(name),undefined,{motion:false,sound:false,fx:false});
@@ -55,7 +56,8 @@ test('reviewed fire materials resolve matching geometry and complete measured li
     else if(shape==='cone')assert.equal(s.kind,'template',`${spell.name}/${edition}: cone`);
     else assert.equal(shape,'radial',`${spell.name}/${edition}: centered directional film`);
     const slot=Object.keys(spell.design.assets).find(k=>JSON.stringify(spell.design.assets[k])===JSON.stringify(s.assets));
-    const lifetime=spell.design.mediaTiming[slot]?.duration;
+    // An audited swap (look-fixes.mjs) is measured by its own clip.
+    const lifetime=slot?spell.design.mediaTiming[slot]?.duration:clipLength(key);
     assert.ok(lifetime>0,`${spell.name}/${edition}: ${slot} not measured`);
     assert.ok(s.duration+1>=lifetime/(s.playbackRate??1)+s.fadeOut,`${spell.name}/${edition}: ${slot} cut off`);
    }

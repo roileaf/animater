@@ -401,7 +401,7 @@ export default {
   // Frog Tongue: your tongue lashes out to strike and stick to a creature.
   'pf2e:cnRltZAjU9aCklqz': design('A pink tongue lashes out and smacks the target, which is jerked; the stone-rumble sound did not fit.', () => [
     motion('lunge', 'source', { stageId: 'lash', duration: 500, intensity: 0.5 }),
-    travel('Tongue lashes', ['energy_strands.range.standard.purple.01'], { stageId: 'tongue', after: 'lash', anchor: 'start', offset: 100, duration: 1300, scale: 0.35, ...tint('#e08aa8') }),
+    travel('Tongue lashes', ['energy_strands.range.standard.purple.01'], { travelLook: 'tokenshade', tetherStyle: 'tongue', stageId: 'tongue', after: 'lash', anchor: 'start', offset: 100, duration: 1300, scale: 0.35, ...tint('#e08aa8') }),
     impact('Sticky smack', ['liquid.splash.bright_green', 'liquid.splash.blue'], { stageId: 'hit', after: 'tongue', anchor: 'start', offset: 450, duration: 1100, scale: 0.4, ...tint('#e7a2bd') }),
     motion('recoil', 'targets', { after: 'hit', anchor: 'start', duration: 550 }),
   ], { sound: 'bludgeon' }),
@@ -436,7 +436,7 @@ export default {
   'pf2e:3VxVbZqIRvpKkg3O': design('A spore cone washes over foes and fungal growths erupt on them, trimmed from an 8 s cone with a residue at 9 s.', () => [
     cast('Spores gather', ['fumes.toxic.green', 'fumes.04.complete.grey'], { stageId: 'c', scale: 0.8, duration: 700 }),
     area('Spore swarm', ['breath_weapons.poison.cone.green'], { stageId: 'cone', after: 'c', anchor: 'start', offset: 300, duration: 2200 }),
-    impact('Fungal growths erupt', ['plant_growth.03.round.2x2.complete.greenyellow'], { after: 'cone', anchor: 'start', offset: 800, duration: 2200, scale: 0.5, ...tint('#9a8f5a') }),
+    impact('Fungal growths erupt', ['plant_growth.03.round.2x2.complete.greenyellow'], { bodyLook: 'Fungal Growth', after: 'cone', anchor: 'start', offset: 800, duration: 2200, scale: 0.5, ...tint('#9a8f5a') }),
     motion('stagger', 'targets', { after: 'cone', anchor: 'start', offset: 900, duration: 800, intensity: 0.6 }),
   ]),
 
@@ -547,7 +547,7 @@ export default {
   // Grasping Vine: a vine erupts beneath you and stretches to grab the target.
   'pf2e:cQgPIohUja0DUiRL': design('A vine erupts at the caster and lashes across to coil around the target; trimmed from two 8.5 s vine loops.', () => [
     cast('Vine erupts', ['vine.complete.nature.single.01.green'], { stageId: 'v', scale: 0.7, duration: 1800 }),
-    travel('Vine stretches', ['energy_strands.range.standard.purple.01'], { stageId: 'reach', after: 'v', anchor: 'start', offset: 300, duration: 1400, scale: 0.5, ...tint('#5c884d') }),
+    travel('Vine stretches', ['energy_strands.range.standard.purple.01'], { travelLook: 'tokenshade', tetherStyle: 'vine', stageId: 'reach', after: 'v', anchor: 'start', offset: 300, duration: 1400, scale: 0.5, ...tint('#5c884d') }),
     impact('Vine coils', ['vine.complete.nature.group.01.green'], { stageId: 'coil', after: 'reach', anchor: 'start', offset: 600, duration: 2200, scale: 0.8 }),
     motion('stagger', 'targets', { after: 'coil', anchor: 'start', offset: 200, duration: 800, intensity: 0.6 }),
   ]),
@@ -632,7 +632,7 @@ export default {
   // Hidebound: the struck target's skin erupts in thick hide or dense scales.
   'pf2e:3TuGuGZqyOBmWp7N': design('A reaction: hide and scales close over the target, which braces against the blow; trimmed from an 8 s nature aura.', () => [
     impact('Hide hardens', ['aura_themed.01.inward.complete.nature.01.green'], { stageId: 'hide', duration: 1800, scale: 0.9, ...tint('#8a7a52') }),
-    impact('Scales', ['icon.shield.green'], { after: 'hide', anchor: 'start', offset: 400, duration: 1300, scale: 0.4, offsetY: -0.55, offsetUnits: 'token' }),
+    impact('Scales', ['icon.shield.green'], { bodyLook: 'Scaled Hide', after: 'hide', anchor: 'start', offset: 400, duration: 1300, scale: 0.4, offsetY: -0.55, offsetUnits: 'token' }),
     motion('brace', 'targets', { after: 'hide', anchor: 'start', offset: 200, duration: 800 }),
   ]),
 

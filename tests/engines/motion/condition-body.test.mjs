@@ -68,6 +68,18 @@ test('prone does not adopt a temporary action rotation as its upright baseline',
  assert.equal(t.mesh.rotation,0,'stands upright after the condition is removed');
 });
 
+// Seen from above, turning a creature only spins it: a top-down token lies flat where it is instead.
+test('a prone top-down creature drops flat without turning and stands back to its size',()=>{
+ const {body,step}=runner({cutOut:()=>true}),t=token();t.document={rotation:0};
+ body.add('prone',t,'prone');step(600);
+ assert.equal(t.mesh.rotation,0,'never turned');
+ assert.ok(t.mesh.scale.x<0.92&&t.mesh.scale.y<0.92,'lying low: smaller');
+ assert.ok(Math.abs(t.mesh.scale.x-t.mesh.scale.y)<1e-9,'evenly, not squashed one way');
+ assert.deepEqual(t.mesh.position,{x:500,y:300},'where it fell');
+ body.remove('prone');step(500);
+ assert.deepEqual([t.mesh.scale.x,t.mesh.scale.y,t.mesh.rotation],[1,1,0]);
+});
+
 test('a genuine document rotation while prone becomes the new upright direction',()=>{
  const {body,step}=runner(),t=token();t.document={rotation:0};
  body.add('prone',t,'prone');step(500);

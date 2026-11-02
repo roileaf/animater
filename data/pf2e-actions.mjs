@@ -5002,7 +5002,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description supports performance, command or encouragement.; centered bloom, expanding entrance",
-    "compositionHash": "2e695c8ade218d92ec8e1824e1a34be76a1bc46e0222ce016cf677cb9cece4f9",
+    "compositionHash": "fbbcd99f28926e97eafb62187ca3ab9f9a00351fc3a2044fcb8dcfb5fa6e50c1",
     "sharedCount": 1
   },
   {
@@ -5510,7 +5510,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description provides defense, resistance or protection.; centered bloom, expanding entrance",
-    "compositionHash": "ecc21577a7930623b7b3f959058f33e5fe21a3b47000adc40783f13bd45228f2",
+    "compositionHash": "dafc3525356844fe3cb8c574463495c630d50f2a228e9d146e4e96bd8d60827d",
     "sharedCount": 1
   },
   {
@@ -7469,7 +7469,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Native stance activation sets a source stance; its granted attacks are separate uses.; centered bloom, expanding entrance",
-    "compositionHash": "9e92498658f3b39e1028e2af014d7763d77a0cb7efa2b10b152ef7fd24aea567",
+    "compositionHash": "3675914a572d82e9a9191d932aa7ea5f1039f5cb2f57ade1a7dd1eb21ccf8552",
     "sharedCount": 1
   },
   {
@@ -9436,7 +9436,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "22c44f7d96e10b6494c273a7b8058e276817460a88ed228f3f94e0ea153a5b41",
+    "compositionHash": "6293a214b347b8b22dd66c3872359ce49a4970c702b43c4e1066537a8ddae222",
     "sharedCount": 1
   },
   {
@@ -11682,7 +11682,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "f31b52aee8313b5851d274dd10d4ab54beb987ea03eb1432c8aadfddfdeaabd0",
+    "compositionHash": "b6c7a0393f232dce0fff66be788bc4b1f154002755cbf2b1eca5407cfd97b4b4",
     "sharedCount": 1
   },
   {
@@ -11922,7 +11922,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "ca5ce94a9943e041244202587f57e40df58a2c3322ce553fad3efd1ddf9e4f2c",
+    "compositionHash": "02898c97c549927d161c43109164e4411882db2292ec6aed6e0e800cb2b78b1d",
     "sharedCount": 1
   },
   {
@@ -13944,7 +13944,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description provides defense, resistance or protection.; centered bloom, expanding entrance",
-    "compositionHash": "62d1e6239046120e94b23d9a13abf6fe7c66ccc6f16c72352861e9cbcc3924c8",
+    "compositionHash": "8f46548539f1487ec5e0be79ab691bd4fb28fbd016e85f04d8910a02c2f10391",
     "sharedCount": 1
   },
   {
@@ -18579,7 +18579,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "43253f73c3d9bd205214c6643bda8a57ad056b95804334e6da86bed83134de1c",
+    "compositionHash": "e38e454d4ede8a818c59de6e64277c5310c559b04c5feced053562d82fab9dec",
     "sharedCount": 1
   },
   {
@@ -18825,7 +18825,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "a10fa62b5655653f19dafe6ed48af7ec9e859e31693254a9fe78e3092b37fcb4",
+    "compositionHash": "310d47c1e106e247cd1eea1eee2c504d7b9b8aef117c9959845de64c0fa04dac",
     "sharedCount": 1
   },
   {
@@ -19075,7 +19075,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "916a66b711b6c41c2d16c3c1e3894e04f2792d108c5a43b80c911d952cee41c1",
+    "compositionHash": "49e37a11fef37a5d3b205a25ea203ceaa50e9dd704d6548e0f2c19a22c8f88b5",
     "sharedCount": 1
   },
   {
@@ -23421,7 +23421,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "ced0775d76ffaee2b1e9ea90343e6677679971c848ad44382d3f2611b6b4b961",
+    "compositionHash": "775416333e04ee736955b4ba00e16df7b91ffd64983c8916453c4133f8ecde40",
     "sharedCount": 1
   },
   {
@@ -28313,7 +28313,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "73d52ef2ec14ea8202a984d03c957043a0109d50aa53f3399ca7f79f5337d052",
+    "compositionHash": "bc3916b742be6f8dbd4a693e288ffcf170ea6e30d3f105af83db6b7c518a4e31",
     "sharedCount": 1
   },
   {
@@ -35000,7 +35000,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "827cc27d1a966fbed07dec974e6f547f2846acf6afdab6b5fb5e18ea7ddfa4a4",
+    "compositionHash": "e967b4a4b25bb020141bfa226c6f670cf5fda41c842d84462398e4bd0bb26db5",
     "sharedCount": 1
   },
   {
@@ -35246,7 +35246,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "e61561f6c1fd22c7a06255eccdb8fc49b2cf1905305b826dba0caa1cbf0499c5",
+    "compositionHash": "0f4b2a646756aad282ec8b0b4aa0e3d9fb2cc9054f7d4d2a288d9aec2c98e347",
     "sharedCount": 1
   },
   {
@@ -37456,7 +37456,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description specifies two attacks/Strikes.; centered bloom, expanding entrance",
-    "compositionHash": "103073a88e96ef620be65a2829cd229ddac86a26ab35bbbaa007854fb90a1865",
+    "compositionHash": "cf722208013f1d7ede50d9e1096fdb435f67fb96af32308f0a7bc55fb1975153",
     "sharedCount": 1
   },
   {
@@ -37717,7 +37717,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description launches described elemental/material projectile.; centered bloom, expanding entrance",
-    "compositionHash": "262c9dde6018592f33f03a3fecbb042f778ff455154a6e49a571e60b41ec14e4",
+    "compositionHash": "e466ca0757b9a6243056e5a2eae70e8d5aa5f83fe9bda7ffc7a4c5b494a957b0",
     "sharedCount": 1
   },
   {
@@ -45615,7 +45615,7 @@ export const PF2E_ACTIONS = [
     },
     "bespoke": false,
     "visualDirection": "Description intimidates or causes fear.; centered bloom, expanding entrance",
-    "compositionHash": "eb281d21afd716369fb98466ea3c996e0a7b914151023c7668e0f379d071fb26",
+    "compositionHash": "8598544629720fa39882f64aa680914d4adcdffd57069986bbf40c7cf794c69c",
     "sharedCount": 1
   },
   {
@@ -47885,7 +47885,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "16fd5bee8a57c899b18dbf09c7806932c3c9f6ead39e991b2bb1ed8a5306f5ed",
+    "compositionHash": "b58734ade929a7b3637fba3a36a7559b1c1f8a5bb4169486969db93beb7d8fd6",
     "sharedCount": 1
   },
   {
@@ -53097,7 +53097,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "2ecb621db4a32785dc309a783123637376f7ddaaea50077355c14f08c3730381",
+    "compositionHash": "7874b206e36c9cb2bee2411598c1d85d7bfd5516c5f9e7f58287cb7193d81226",
     "sharedCount": 1
   },
   {
@@ -53336,7 +53336,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; low wide sweep, expanding entrance",
-    "compositionHash": "b5a41d7ac210376e8089e4ffbb3386b0f5023346bf4966d25dbbd81de1ed0091",
+    "compositionHash": "ea368ad770c54f07afa4a05f5051c73cf290236ef146ea7caa26fe175431619d",
     "sharedCount": 1
   },
   {
@@ -54119,7 +54119,7 @@ export const PF2E_ACTIONS = [
     },
     "bespoke": false,
     "visualDirection": "Description intimidates or causes fear.; centered bloom, expanding entrance",
-    "compositionHash": "5b02a453e8b01b0470e517570a941c72088557519eb46128805ec3c10a4c4c79",
+    "compositionHash": "b40205d0e23817b989abf3a7fcd9a293af3662d629fbe68ef00a51ba060c353d",
     "sharedCount": 1
   },
   {
@@ -57002,7 +57002,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "d15a6cf7554dcd80210cca8e20337f49397de36b7fe2c4f9396df03112d5d8da",
+    "compositionHash": "aa83f64351e48ca7dac819689a4bab818ddd80f8f3919e0f03427ce524708d8f",
     "sharedCount": 1
   },
   {
@@ -63906,7 +63906,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description supports flight or ascent.; centered bloom, expanding entrance",
-    "compositionHash": "02108db66061054349c969e41852ce89f18d4bb0cde63c93d15359dda84881ca",
+    "compositionHash": "5363621d46342b61113fd08f0599857d193bc64ac117d73af92ef701ab727fbf",
     "sharedCount": 1
   },
   {
@@ -64170,7 +64170,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description explicitly emits a directed beam/ray; never substituted with an impact or missile.; centered bloom, expanding entrance",
-    "compositionHash": "550cccf45e8db3fae37de6e2d7535242ef098345fadc46ab506ecc4a8dc17c9a",
+    "compositionHash": "8429c055f12bf6f6f01427585836aa57d4254fc172c9d8e57feb9f4a9bd31277",
     "sharedCount": 1
   },
   {
@@ -64697,7 +64697,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description delivers along a line; a directed beam approximates chosen endpoints.; centered bloom, expanding entrance",
-    "compositionHash": "82d3c6f033a68b1583bf0545f227b9703c9f723ff610a7fed756210a79a83228",
+    "compositionHash": "eb6d8d638b0b5e408fd61dedf990527f0c9af3018051b88d141dc9c53d4d64f3",
     "sharedCount": 1
   },
   {
@@ -69127,7 +69127,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "520cdddb6dce184ae662cbb0ecb5faca0c4ff1ecac848f75859afa6bca7d8f46",
+    "compositionHash": "7a56b58c783e12a3f9151a3e96a7b0e5a0b67cd9117d43ad051cfda670a9c099",
     "sharedCount": 1
   },
   {
@@ -77238,7 +77238,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "fe869c7370231eba744a613af8729f70594dec39146772b058267332aa6b314e",
+    "compositionHash": "846d4f32fe7f49a0fcf35e1d43b3eef213899b2530c22e6498c98223ece2e449",
     "sharedCount": 1
   },
   {
@@ -82655,7 +82655,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "1ad52ad04ec064050d65142466c7a98fcf76726dd0fed8b528de2ebdb7763cdc",
+    "compositionHash": "e38627aa9b6536cf46fdedd2bef371f0fe806a75746e621fa53152f5f450005a",
     "sharedCount": 1
   },
   {
@@ -96270,7 +96270,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "705fdd756907baa957b9c86fb6e519def040c1d3a73061422278d943d2664997",
+    "compositionHash": "61f6ebe75fc2d1cb34e38300082069f4ef08a5922b6cec82bcc9c2407064b0f8",
     "sharedCount": 1
   },
   {
@@ -98284,7 +98284,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "b53ad9ca4ddae571a9036631f7384559ccedd24b27dff999e9bf2c3e63281a52",
+    "compositionHash": "a94a1c3af6f10a1095c80249fd9e5b1b43ed23e20c4fcf27b93397d33b6aebb8",
     "sharedCount": 1
   },
   {
@@ -105942,7 +105942,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "21605792f1fe6acb271f1f768bf0554a5753d676d9a7c963f881172be319c145",
+    "compositionHash": "83d2f474b51220363486ea49f9430a9847180408eaf6f64c7ad6873ff21488a8",
     "sharedCount": 1
   },
   {
@@ -107669,7 +107669,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "No sufficiently concrete visual delivery; finite symbolic activity cue.; centered bloom, expanding entrance",
-    "compositionHash": "7f6f2fa0dcff5fe53b21360d70d5a9ef060cd820b9a511ea00135a9b0102d6a8",
+    "compositionHash": "fac3c2b021723945d280c0f967b5dc958fea946d8af6cce2b9229fb8ad9d7b7d",
     "sharedCount": 1
   },
   {
@@ -110850,7 +110850,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description grants an active movement maneuver.; centered bloom, expanding entrance",
-    "compositionHash": "731ea49dc2ccd3cb3f5b7bfdf26948c9795a4ae29c978d08f1b8850e20d5bce2",
+    "compositionHash": "a12d156c8c66a07c0f80d5b1414551648ab8ed73af5d8d3c967c75d5272b0b41",
     "sharedCount": 1
   },
   {
@@ -111106,7 +111106,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "11f01bddbef002d6d8fc38a3ce6e5340e2934268264bddc985c474410d5cd8b7",
+    "compositionHash": "260c96b88706ae4ea2065fb81d0b0d011c3d5dd8a04f226f14d92682e9bb72e6",
     "sharedCount": 1
   },
   {
@@ -113050,7 +113050,7 @@ export const PF2E_ACTIONS = [
     },
     "bespoke": false,
     "visualDirection": "Description restrains or grapples affected creature.; centered bloom, expanding entrance",
-    "compositionHash": "5291080dd6c624afe5845d8064efe164875385419e735540934a7629d73cb9e2",
+    "compositionHash": "793a0bc2dbf900d95ebe88361a6cde55e32eacb4956a454931e90e69e89fadad",
     "sharedCount": 1
   },
   {
@@ -122876,7 +122876,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description heals or restores health.; centered bloom, expanding entrance",
-    "compositionHash": "b67deb5a4c09ef66f65efde2fef0af34457c86954f57882dfa970fc72b7bf311",
+    "compositionHash": "b5b9b717a81b82c017f0d57b121c9f7c31907d0a348890db9cc0b9617b29dbb1",
     "sharedCount": 1
   },
   {
@@ -125095,7 +125095,7 @@ export const PF2E_ACTIONS = [
       "pause": 0
     },
     "visualDirection": "Description directly damages affected creatures; localized target effects, no invented projectile.; centered bloom, expanding entrance",
-    "compositionHash": "7deec5e9f8941e22891815873d36142b5fab10dd6cd1376f65356bce5ae23754",
+    "compositionHash": "f376f4c95a51d8fd1abfba2f0f08522ad623a6e9533d8155aeda74c6f394b42b",
     "sharedCount": 1
   },
   {
