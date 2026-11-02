@@ -337,17 +337,17 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       g.rotation = Number(geom.along) || 0;
       g.scale.set((geom.rx * 2 * Math.max(1, Number(geom.stretch) || 1)) / DRAW, (geom.ry * 2) / DRAW);
       const shaped = !!geom.art && laySilhouette(g, root(), geom, false);
-      // With its shape drawn, the round one stays only as a standing creature's soft contact shadow (\`contact\`): under
-      // its feet, whatever the light, so it sits on the map even at noon when its cast shadow hides under its art.
-      if (shaped && geom.contact > 0) {
-        g.position.set(geom.x, geom.y); g.rotation = 0; g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
-        g.alpha = geom.contact;
-      } else g.alpha = shaped ? 0 : geom.alpha;
+      // With its shape drawn, the round one is hidden; a grounding rim (`rim`) shows only in the art's shape, never round.
+      g.alpha = shaped || geom.rim ? 0 : geom.alpha;
       if (shaped || !geom.art) return true;
       const art = typeof geom.art === 'function' ? geom.art() : geom.art;
       return !art?.texture || silhouettes()?.known?.(art.texture) !== false;
     },
     removeShadow(g) { dropSilhouette(g); remove(g); },
+    // A standing creature's grounding rim (movement-feel.mjs rimGeometry): drawn as a shadow is.
+    addRim() { return this.addShadow(); },
+    updateRim(g, geom) { return this.updateShadow(g, geom); },
+    removeRim(g) { this.removeShadow(g); },
     // A flier's shadow over the creatures below: the same ellipse above the tokens, cut to the creatures' squares
     // (rounded, as most token art is), so only their art darkens and the floor keeps its one shadow.
     ...(overRoot ? {
@@ -363,15 +363,19 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       updateOverShadow(box, geom, covers) {
         if (box.destroyed) return;
         const g = box.__animaterShadow, mask = box.__animaterMask;
-        g.position.set(geom.x, geom.y);
-        g.scale.set((geom.rx * 2) / DRAW, (geom.ry * 2) / DRAW);
+        // Where it lies: a flier's below it, a standing creature's laid out along its light.
+        g.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
+        g.rotation = Number(geom.along) || 0;
+        g.scale.set((geom.rx * 2 * Math.max(1, Number(geom.stretch) || 1)) / DRAW, (geom.ry * 2) / DRAW);
         // In the flier's shape where its art has one (the silhouette brings its own strength), else the ellipse.
         const shaped = !!geom.art && laySilhouette(box, box.__animaterShade, geom, true);
         g.visible = !shaped;
         box.alpha = shaped ? 1 : geom.alpha;
         mask.clear();
         mask.beginFill(0xffffff, 1);
-        for (const t of covers) { const w = t.width * 0.9; mask.drawRoundedRect(t.x - w / 2, t.y - w / 2, w, w, w * 0.3); }
+        // A token in a ring: its disc exactly (`ring`, how far its ring reaches as a share of its width), darkened
+        // evenly; no band of its background left pale at the edge, no floor round it darkened.
+        for (const t of covers) { const w = t.width * 0.9; if (t.ring) mask.drawCircle(t.x, t.y, t.width * (typeof t.ring === 'number' ? t.ring : 0.45)); else mask.drawRoundedRect(t.x - w / 2, t.y - w / 2, w, w, w * 0.3); }
         mask.endFill();
       },
       removeOverShadow(box) { dropSilhouette(box); remove(box); },

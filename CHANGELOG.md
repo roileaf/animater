@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.9 (2026-11-02)
+
+- **Every light casts its own shadow.** A creature lit by the sun and several lights shows a shadow away from each (the four brightest), each fading in and out on its own, instead of one shadow from all of them averaged.
+- **Light spell orbs cast shadows.** A light's strength now comes from Foundry's own settings: its bright and dim radius, luminosity and attenuation. Its colour intensity only tints, so PF2e's Light spell (intensity 0.05) shines as brightly as a torch.
+- **Shadows flicker with their light.** A torch, flame or siren light's shadows darken, shorten and sway as its flame flares, in step with Foundry's animation of it; a pulse light's swell and ebb.
+- **Big creatures cast proper shadows.** A dragon's shadow is as dark as a cat's, only bigger, and a creature taller than a light (a torch on the ground) still casts one. Large and bigger creatures standing between a light and smaller ones put them in their shade, within each token's ring.
+- **Deeper shadows by a lone light.** At night, a creature lit by a single light casts a darker shadow; beside other light or in daylight, as before.
+- **No more round shadow under tokens.** The soft disc under every standing token is gone; free-standing token art (no ring) gets a tight shadow hugging its own outline instead.
+
 ## 2.4.8 (2026-11-01)
 
 - **Valued conditions change without a flash.** A condition changing value soon after it landed (Drained 1 to 3) no longer replays its landing, which started again from the plain token. Several updates at once (PF2e updates the condition, then the actor) also keep the old look until the new one is up.

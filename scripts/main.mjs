@@ -158,7 +158,7 @@ import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } fr
 import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "./engines/playback/outside-combat.mjs";
 import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
-import { lightAround, litKey, litPreset } from "./engines/playback/surrounding-light.mjs";
+import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { isFireLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
@@ -597,6 +597,13 @@ let litTimer = null;
 const lightsReaching = (token, { own = false } = {}) => {
   const out = [], c = token.center;
   for (const source of canvas.effects?.lightSources ?? []) {
+// How a light dances this moment ({ brightness, sway }), read live from Foundry's animation of it (a torch's flicker,
+// a pulse's wave), or null for a steady one: its shadows flicker and sway with it.
+const flickerOf = (source) => {
+  const type = source?.data?.animation?.type;
+  if (lightDance(type, {}, {}) === null) return null;
+  return () => lightDance(type, source.animation ?? {}, source.layers?.illumination?.shader?.uniforms ?? {}) ?? 1;
+};
     try {
       if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
       if (source.object === token && !(own && Math.hypot((source.data?.x ?? c.x) - c.x, (source.data?.y ?? c.y) - c.y) > (token.w ?? 100) * 0.1)) continue;
@@ -605,7 +612,10 @@ const lightsReaching = (token, { own = false } = {}) => {
       // Walls: only a light whose lit area holds the creature.
       if (source.shape?.contains && !source.shape.contains(c.x, c.y)) continue;
       const color = d.color === null || d.color === undefined ? null : Number(d.color);
-      out.push({ x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null, alpha: d.alpha ?? 0.5, elevation: Number(d.elevation) || 0, bright: Number(d.bright) || 0 });
+      out.push({ key: source.sourceId ?? source.object?.id ?? `${d.x},${d.y}`, x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null, alpha: d.alpha ?? 0.5, elevation: Number(d.elevation) || 0, bright: Number(d.bright) || 0,
+        // How bright it shines and how softly it fades (surrounding-light.mjs lightShine).
+        luminosity: Number.isFinite(d.luminosity) ? d.luminosity : 0.5, attenuation: Number.isFinite(d.attenuation) ? d.attenuation : 0.5,
+        flicker: flickerOf(source) });
     } catch { /* a broken light never breaks the rest */ }
   }
   return out;
@@ -1055,13 +1065,16 @@ const movementFeelBlood = (d) => {
 // Native document/perception hooks invalidate immediately, with a half-second fallback
 // lifetime for integrations that change actor data without emitting a hook.
 const movementViews = new Map();
-// The light a creature's shadow is cast by (engines/motion/movement-feel.mjs shadowFall): the strongest light reaching
-// it (engines/playback/surrounding-light.mjs; its own held torch, lantern or Light orb included) and the darkness where it is. Looked up at most
+// The lights a creature's shadows are cast by (engines/motion/movement-feel.mjs shadowFalls): every light reaching it
+// (engines/playback/surrounding-light.mjs; its own held torch, lantern or Light orb included), each casting its own
+// shadow (the brightest few), all of them as one, and the darkness where it is. Looked up at most
 // twice a second while it moves; a creature standing still keeps its answer until the lighting changes (or two seconds).
 const flierLights = new Map();
 let lightingAge = 0;
 for (const hook of ["lightingRefresh", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { lightingAge++; });
 // How far each creature's body is lifted from its place now, in pixels (ConditionBody's hover bob, through followBody).
+// The most lights casting a creature's shadows at once (the brightest).
+const LIGHT_SHADOWS = 4;
 const bodyLift = new Map();
 const flierLight = (t) => {
   const now = performance.now(), had = flierLights.get(t.id), c = t.center;
@@ -1071,7 +1084,10 @@ const flierLight = (t) => {
   try {
     let darkness = canvas.environment?.darknessLevel ?? 0;
     try { darkness = canvas.effects?.getDarknessLevel?.(t.center, t.document?.elevation ?? 0) ?? darkness; } catch { /* older Foundry */ }
-    value = { light: lightAround(t.center, lightsReaching(t, { own: true }), 1), darkness };
+    const reaching = lightsReaching(t, { own: true });
+    const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
+      .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
+    value = { light: lightAround(t.center, reaching, 1), lights, darkness };
   } catch { value = null; }
   flierLights.set(t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
   return value;
@@ -1141,7 +1157,7 @@ const FOOTPRINT_LIFETIME_KEYS = {
 };
 const movementFeel = createMovementFeel({
   trails: groundTrails,
-  // "Shadows under every token": a soft contact shadow under standing creatures too, not only fliers.
+  // "Shadows under every token": standing creatures cast their shadows too, not only fliers.
   groundShadows: () => { try { return hotSetting("groundShadows") === true && hotSetting("groundShadowsLocal") !== false; } catch { return false; } },
   // "Shadows in creatures' shapes" and "A shadow for each light", each with its "on my screen" setting.
   shadowShapes: () => movementFeelSettingOn("shadowShapes") && movementFeelSettingOn("shadowShapesLocal"),
@@ -1200,6 +1216,9 @@ const movementFeel = createMovementFeel({
         // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
         art: () => tokenArt(t),
         light: () => flierLight(t),
+        // In a dynamic token ring: how far its ring reaches, a share of its width (Foundry draws the ring at the
+        // texture's scale over its subject correction: 0.5 at scale 1, 0.4 at 0.8), false without one.
+        ring: d.ring?.enabled === true ? Math.min(0.7, Math.max(0.2, 0.5 * Math.abs(Number(d.texture?.scaleX) || 1) / (Number(t.ring?.scaleCorrection) || 1))) : false,
         bob: () => bodyLift.get(t.id) ?? 0,
       };
       movementViews.set(d.id, {token: t, signature, at: time, view});
@@ -3703,11 +3722,11 @@ Hooks.once("init", () => {
     hint:'A creature that starts or stops flying blows the floor out to both sides: dust off dirt, grit off stone, spray off water, a flurry off snow, and a ring pressed flat as it lands.',
     scope:'world',config:true,type:Boolean,default:true});
   registerSetting("shadowsOverTokens", {name:'Flier shadows fall on creatures',
-    hint:'A flying creature\u2019s shadow darkens the creatures it passes over, not only the floor between them.',
+    hint:'A flying creature\u2019s shadow darkens the creatures it passes over, not only the floor between them; so does a large or bigger creature\u2019s standing between a light and smaller creatures.',
     scope:'world',config:true,type:Boolean,default:true});
   registerSetting("groundShadows", {
     name: "Shadows under every token",
-    hint: "A soft shadow under every creature standing on the ground, not only under fliers, so tokens sit on the map instead of floating over it, and taking off reads at a glance. Needs Movement feel on.",
+    hint: "Every creature standing on the ground casts its shadows too, not only fliers, so tokens sit on the map instead of floating over it, and taking off reads at a glance. Needs Movement feel on.",
     scope: "world", config: true, type: Boolean, default: false,
   });
   registerSetting("groundShadowsLocal", { name: "Shadows under every token on my screen",
@@ -3717,7 +3736,7 @@ Hooks.once("init", () => {
     hint: "Turn off to never draw this on this screen (the world setting decides for everyone).",
     scope: "client", config: true, type: Boolean, default: true });
   registerSetting("shadowShapes", { name: "Shadows in creatures' shapes",
-    hint: "Each creature's shadow is its own outline (wings, tail and all), laid on the floor and stretched along the light, with a soft contact shadow under a standing creature's feet. Off: the round shadows. Art with no outline of its own (an opaque square portrait) always casts a round one.",
+    hint: "Each creature's shadow is its own outline (wings, tail and all), laid on the floor and stretched along the light. Off: the round shadows. Art with no outline of its own (an opaque square portrait) always casts a round one.",
     scope: "world", config: true, type: Boolean, default: true });
   registerSetting("shadowShapesLocal", { name: "Shadows in creatures' shapes on my screen",
     hint: "Turn off for round shadows on this screen (a little lighter on slow computers; the world setting decides for everyone).",

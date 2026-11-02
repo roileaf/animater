@@ -996,6 +996,176 @@ test('a flier’s shadow falls away from the light that outshines the day; none 
   const around = shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.8, angle: null } });
   assert.ok(around.dx === 0 && around.dy > 0 && around.alpha > 0, 'lit all round: straight under');
 });
+test('a Light orb in daylight casts its own shadow beside the sun’s, however faint its colour',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  // PF2e's Light spell: colour intensity 0.05, at the creature's shoulder (up and to the right).
+  const light = lightAround({ x: 0, y: 0 }, [{ x: 30, y: -30, radius: 850, bright: 450, color: 0xe7f3f1, alpha: 0.05, elevation: 2.5 }], 1);
+  const { sun, lamp } = shadowFalls({ width: 100, body: 0.8, light, darkness: 0, lightHeight: 0.5, grounded: true });
+  assert.ok(sun.alpha > 0 && lamp?.alpha > 0.1, 'both shadows');
+  assert.ok(lamp.dx < 0 && lamp.dy > 0, 'away from the orb: down and to the left');
+});
+test('a big creature’s shadow is as dark as a small one’s, only bigger',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const sun = { angle: -151.6, height: 23.8, strength: 1 };
+  for (const grounded of [true, false]) {
+    // A flier as high against its size (a dragon at 12 squares, a hawk at 4).
+    const fall = (w) => shadowFalls({ width: w, body: 0.8 * w / 100, lift: grounded ? 0 : 4 * w / 100, darkness: 0, sun, grid: 100, grounded }).sun;
+    const medium = fall(100);
+    for (const w of [200, 300, 400]) assert.ok(Math.abs(fall(w).alpha - medium.alpha) < 0.02, `${grounded ? 'standing' : 'flying'} ${w}: ${fall(w).alpha} vs ${medium.alpha}`);
+  }
+  // A very low sun still fades a shadow too long, rather than laying it across the map.
+  const dusk = shadowFalls({ width: 100, body: 0.8, darkness: 0, sun: { ...sun, height: 3 }, grid: 100, grounded: true }).sun;
+  assert.ok(Math.hypot(dusk.dx, dusk.dy) * 2 <= 300 + 1e-9);
+});
+test('a creature standing taller than a light still casts its shadow, from its body below the light',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const lamp = { shine: 1, strength: 0.5, angle: 0, distance: 200, brightness: 1, key: 'torch', height: 0.5 };
+  const fall = (w) => shadowFalls({ width: w, body: 0.8 * w / 100, lights: [lamp], darkness: 1, sun: null, grid: 100, grounded: true }).lamps[0];
+  const medium = fall(100);
+  for (const w of [200, 300, 400]) {
+    const big = fall(w);
+    assert.ok(big && big.dx < 0 && big.alpha > medium.alpha * 0.6, `${w}: away from the light, about as dark`);
+  }
+  assert.deepEqual(fall(100), medium, 'one shorter than the light as before');
+  // A flier above the light: none on the floor from it, still.
+  assert.equal(shadowFalls({ width: 300, body: 2.4, lift: 4, lights: [lamp], darkness: 1, sun: null, grid: 100 }).lamps.length, 0);
+});
+test('every light casts its own shadow, away from itself',async()=>{
+  const { shadowFalls, createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  const torch = { radius: 400, bright: 200, alpha: 0.5, elevation: 10 };
+  const one = (l, key) => ({ ...lightAround({ x: 0, y: 0 }, [l], 1), key, height: 2 });
+  const lights = [one({ ...torch, x: 150, y: 0 }, 'east'), one({ ...torch, x: -150, y: 0 }, 'west')];
+  const { lamps } = shadowFalls({ width: 100, body: 0.8, lights, darkness: 1, sun: null, grounded: true });
+  assert.deepEqual(lamps.map((f) => f.key), ['east', 'west']);
+  assert.ok(lamps[0].dx < 0 && lamps[1].dx > 0 && lamps.every((f) => f.alpha > 0.1), 'each away from its own light');
+  // Drawn: three shadows (the stronger, then one for each other light), and back to one as the lights go out.
+  const drawn = new Set();
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => { const h = {}; drawn.add(h); return h; }, updateShadow() {}, removeShadow: (h) => drawn.delete(h), clear() {} };
+  let t = 0, lit = { light: lights[0], lights: [...lights, one({ ...torch, x: 0, y: 150 }, 'south')], darkness: 1 };
+  const flier = { id: 'f', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', light: () => lit };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [flier], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
+  const step = () => { t += 1000; feel.tick(); };
+  feel.tick(); step();
+  assert.equal(drawn.size, 3);
+  lit = { light: null, lights: [], darkness: 1 };
+  for (let i = 0; i < 10; i++) step();
+  assert.equal(drawn.size, 1, 'only its own shadow left, faded');
+});
+test('a flickering light’s shadow flickers with it, frame by frame; a steady one is left alone',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  const updates = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => updates.push(g.alpha), removeShadow() {}, clear() {} };
+  let t = 0, k = 1;
+  const torch = { ...lightAround({ x: 0, y: 0 }, [{ x: 150, y: 0, radius: 400, bright: 200, alpha: 0.5, elevation: 10 }], 1), key: 'torch', flicker: () => k };
+  const lit = { light: torch, lights: [torch], darkness: 1 };
+  const walker = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', light: () => lit };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
+  feel.tick(); t += 5000; feel.tick();
+  const steady = updates.at(-1);
+  k = 0.6; t += 16; feel.tick();
+  assert.ok(Math.abs(updates.at(-1) - steady * 0.6) < 1e-6, 'dimmer as its flame dips');
+  k = 1.3; t += 16; feel.tick();
+  assert.ok(Math.abs(updates.at(-1) - steady * 1.3) < 1e-6, 'darker as it flares');
+  // Without a flicker it settles and is no longer redrawn.
+  delete torch.flicker; t += 5000; feel.tick(); feel.tick();
+  const n = updates.length; t += 16; feel.tick();
+  assert.equal(updates.length, n);
+});
+test('a flame’s shadow dances: shorter and crisper as it flares, swaying side to side',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  let last = null;
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => { last = g; }, removeShadow() {}, clear() {} };
+  let t = 0, now = { brightness: 1, sway: 0 };
+  const torch = { ...lightAround({ x: 0, y: 0 }, [{ x: 150, y: 0, radius: 400, bright: 200, alpha: 0.5, elevation: 10 }], 1), key: 'torch', flicker: () => now };
+  const lit = { light: torch, lights: [torch], darkness: 1 };
+  const walker = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', light: () => lit };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
+  feel.tick(); t += 5000; feel.tick();
+  const off = (g) => Math.hypot(g.fall.x - 500, g.fall.y - 500), steady = { ...last };
+  now = { brightness: 1.3, sway: 0 }; t += 16; feel.tick();
+  assert.ok(off(last) < off(steady) && last.lift < steady.lift, 'flaring: shorter, crisper');
+  now = { brightness: 0.7, sway: 0 }; t += 16; feel.tick();
+  assert.ok(off(last) > off(steady) && last.lift > steady.lift, 'dipping: longer, softer');
+  now = { brightness: 1, sway: 1 }; t += 16; feel.tick();
+  const right = last.fall.y;
+  now = { brightness: 1, sway: -1 }; t += 16; feel.tick();
+  assert.ok(Math.abs(right - last.fall.y) > 2 && Math.abs(off(last) - off(steady)) < 1, 'sways round, as long');
+  // A plain number still dims it alone.
+  now = 0.5; t += 16; feel.tick();
+  assert.ok(Math.abs(off(last) - off(steady)) < 1e-6 && Math.abs(last.alpha - steady.alpha * 0.5) < 1e-6);
+});
+test('by a lone light at night the shadow is deep; beside other light, as before; the sun’s never',async()=>{
+  const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const torch = (key, angle) => ({ shine: 1, strength: 0.5, angle, distance: 150, brightness: 1, key, height: 2 });
+  const lone = shadowFalls({ width: 100, body: 0.8, lights: [torch('a', 0)], darkness: 1, sun: null, grounded: true }).lamps[0];
+  const pair = shadowFalls({ width: 100, body: 0.8, lights: [torch('a', 0), torch('b', 180)], darkness: 1, sun: null, grounded: true }).lamps[0];
+  const dusk = shadowFalls({ width: 100, body: 0.8, lights: [torch('a', 0)], darkness: 0.3, sun: null, grounded: true }).lamps[0];
+  assert.ok(lone.alpha > pair.alpha * 1.4, `${lone.alpha} vs ${pair.alpha}`);
+  assert.ok(lone.alpha > dusk.alpha, 'deepest in full night');
+  const day = shadowFalls({ width: 100, body: 0.8, darkness: 0, grounded: true }).sun;
+  assert.ok(day.alpha <= 1);
+});
+test('a standing creature sits on the floor: a tight rim of shadow hugging it, its ring’s disc or its own outline',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  const geoms = new Map();
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => geoms.set(h, g), removeShadow: (h) => geoms.delete(h), clear() {} };
+  Object.assign(layer, { addRim: layer.addShadow, updateRim: layer.updateShadow, removeRim: layer.removeShadow });
+  const torch = { ...lightAround({ x: 0, y: 0 }, [{ x: 200, y: 0, radius: 600, bright: 300, alpha: 0.5, elevation: 10 }], 1), key: 't' };
+  const lit = { light: torch, lights: [torch], darkness: 1 };
+  const rimOf = (token) => {
+    geoms.clear();
+    const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [token], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {}, sun: () => null });
+    feel.tick();
+    return [...geoms.values()].find((g) => g.rim);
+  };
+  const base = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', light: () => lit };
+  assert.equal(rimOf({ ...base, art: {}, ring: true }), undefined, 'a token in a ring: none (a disc round a coin)');
+  assert.equal(rimOf({ ...base }), undefined, 'no outline of its own: none');
+  const free = rimOf({ ...base, art: {} });
+  assert.ok(free.art && free.stretch > 1 && free.flat > 1 && free.alpha > 0, 'its own outline, a little larger');
+  assert.ok(free.fall.x < 500 && free.fall.x > 494 && Math.abs(free.fall.y - 500) < 1, 'a hair away from the light (to its east)');
+  assert.equal(rimOf({ ...base, art: {}, shadow: false }), undefined, 'casts none');
+});
+test('a big creature’s shadow falls over the smaller creatures behind it, not over bigger ones or itself',async()=>{
+  const { createMovementFeel, shadowCovers } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  // A shadow stretched east from (500, 500): covers what lies along it, not beside it.
+  const long = { x: 500, y: 500, rx: 100, ry: 60, fall: { x: 650, y: 500 }, along: 0, stretch: 2.5 };
+  assert.deepEqual(shadowCovers(long, [{ x: 800, y: 500, width: 100 }, { x: 650, y: 750, width: 100 }]).map((t) => t.x), [800]);
+  assert.deepEqual(shadowCovers(long, [{ x: 800, y: 500, width: 100, ring: 0.4 }]), [{ x: 800, y: 500, width: 100, ring: 0.4 }], 'a ringed one is shaded as its disc, as far as its ring reaches');
+  const overs = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow() {}, removeShadow() {}, addOverShadow: () => ({}), updateOverShadow: (h, g, covers) => overs.push(covers.map((c) => c.x)), removeOverShadow() {}, clear() {} };
+  const torch = { shine: 1, strength: 0.5, angle: 180, distance: 150, brightness: 1, elevation: 10, key: 't' };
+  const lit = { light: torch, lights: [torch], darkness: 1 };
+  const walker = (id, x, width) => ({ id, x, y: 500, width, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', light: () => lit });
+  const run = (list) => { overs.length = 0; createMovementFeel({ groundShadows: () => true, shadowsOverTokens: () => true, tokens: () => list, enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {}, sun: () => null }).tick(); return overs.flat(); };
+  // The light to the west: the dragon's shadow falls east, over the cat behind it.
+  assert.deepEqual(run([walker('dragon', 500, 300), walker('cat', 760, 100)]), [760]);
+  assert.deepEqual(run([walker('dog', 500, 100), walker('cat', 620, 100)]), [], 'a medium creature shades no one');
+  assert.deepEqual(run([walker('dragon', 500, 300), walker('cat', 300, 100)]), [], 'not the one on the lit side');
+  // A second, weaker light to the east: its shadow shades the cat to the west too.
+  const east = { ...torch, angle: 0, distance: 250, brightness: 0.6, key: 'e' };
+  lit.lights = [torch, east];
+  assert.deepEqual(run([walker('dragon', 500, 300), walker('cat', 300, 100), walker('dog', 760, 100)]).sort(), [300, 760]);
+});
+test('a creature in its own shape casts only its lights’ shadows: no round one under it',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  const one = (x, y, key) => ({ ...lightAround({ x: 0, y: 0 }, [{ x, y, radius: 400, bright: 200, alpha: 0.5, elevation: 10 }], 1), key });
+  const geoms = new Map();
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => geoms.set(h, g), removeShadow: (h) => geoms.delete(h), clear() {} };
+  let t = 0;
+  const lit = { light: null, lights: [one(150, 0, 'e'), one(-150, 0, 'w'), one(0, 150, 's')], darkness: 1 };
+  const walker = { id: 'w', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', art: {}, light: () => lit };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
+  feel.tick(); t += 1000; feel.tick();
+  assert.equal(geoms.size, 3);
+  assert.ok([...geoms.values()].every((g) => !(g.contact > 0) && g.art), 'each in its shape, where its light lays it');
+});
 test('the shadow eases round to a new light instead of jumping',async()=>{
   const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const seen = [];
