@@ -221,3 +221,17 @@ test("a D&D 5e recipe plays for its spell in any language: the identifier matche
   assert.equal(matchRecipe([recipe], { type: "template", item: { name: "Огненный шар", system: { identifier: "fireball" } } })?.id, "r");
   assert.equal(matchRecipe([recipe], { type: "template", item: { name: "Огненный шар", system: { identifier: "fire-storm" } } }), null);
 });
+test("a D&D 5e spell effect applied to a target in another language matches the recipe bound to its compendium effect", () => {
+  const spell = { documentName: "Item", _stats: { compendiumSource: "Compendium.dnd5e.spells.Item.sp1" }, system: { identifier: "protection-from-evil-and-good" } };
+  const casterEffect = { documentName: "ActiveEffect", id: "fx1", uuid: "Actor.c.Item.s.ActiveEffect.fx1", parent: spell, _stats: {} };
+  const applied = { documentName: "ActiveEffect", id: "new", uuid: "Actor.t.ActiveEffect.new", name: "Protection contre le mal et le bien", parent: { documentName: "Actor" }, _stats: { duplicateSource: casterEffect.uuid } };
+  const lookup = { [casterEffect.uuid]: casterEffect };
+  globalThis.fromUuidSync = (uuid) => lookup[uuid] ?? null;
+  try {
+    const bound = { id: "b", name: "PfEG", trigger: "effect", enabled: true, match: "Unrelated", itemUuid: "Compendium.dnd5e.spells.Item.sp1.ActiveEffect.fx1", stages: [] };
+    assert.equal(matchRecipe([bound], { type: "effect", item: applied })?.id, "b");
+    const named = { id: "n", name: "PfEG", trigger: "effect", enabled: true, match: "Protection from Evil and Good", stages: [] };
+    assert.equal(matchRecipe([named], { type: "effect", item: applied })?.id, "n");
+    assert.equal(matchRecipe([{ ...named, match: "Bless" }], { type: "effect", item: applied }), null);
+  } finally { delete globalThis.fromUuidSync; }
+});

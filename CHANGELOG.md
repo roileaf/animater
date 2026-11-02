@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.4.19 (2026-11-02)
+
+- **D&D 5e spell effects in any language.** An effect a spell applies to its target now plays its Condition / effect recipe when the world is translated: the recipe bound to the spell's compendium effect, or named after the spell in English, finds the target's copy ("Protection contre le mal et le bien") through the spell that applied it.
+- **Drop an effect on an effect recipe.** A Condition / effect recipe now takes an Active Effect dropped from a sheet or compendium, and a bound compendium effect shows its spell's name instead of "Unavailable item".
+
 ## 2.4.18 (2026-11-02)
 
 - **Tokenshade travel looks, redrawn.** Ropes, vines, chains, tongues, snares, silk and bolas are now shaded, textured and lifted off the ground with their shadow beneath: a twisted rope that wraps round its target, a thorned vine with leaves cracking like a whip, polished chain links, a burning chain shedding embers, a glossy tapering tongue, a bola spinning in an arc, a snare that cinches tight, a silk wad that bursts into a web, and glowing motes with trails.

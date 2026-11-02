@@ -2452,10 +2452,12 @@ export class Workspace {
       // a finisher adds the strike's name, unlinked.
       const strike = this.recipe()?.finisher ? strikeFromDrag(data, (uuid) => this.host.resolveActor?.(uuid) ?? globalThis.fromUuidSync?.(uuid, { strict: false }) ?? null) : null;
       if (strike) { this.addFinisherName(strike.name); return; }
-      if (data.type !== "Item" || !data.uuid)
-        throw Error("Drop a Foundry item here.");
+      // An effect recipe also binds an Active Effect (a spell's effect from its sheet or compendium).
+      const effect = data.type === "ActiveEffect" && this.recipe()?.trigger === "effect";
+      if ((data.type !== "Item" && !effect) || !data.uuid)
+        throw Error(data.type === "ActiveEffect" ? "Drop an effect on a Condition / effect recipe." : "Drop a Foundry item here.");
       const item = await this.host.resolveItem(data.uuid);
-      if (!item) throw Error("Item could not be resolved.");
+      if (!item) throw Error(`${effect ? "Effect" : "Item"} could not be resolved.`);
       // A finisher applies to many names: the drop adds one card (linked to the item), never a single bound item.
       if (this.recipe()?.finisher) { this.addFinisherName(item.name, item.uuid); return; }
       const r = this.edit();

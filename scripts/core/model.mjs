@@ -412,7 +412,34 @@ function hasActivity(item, id) {
   if (typeof activities.has === "function") return activities.has(id);
   return Object.hasOwn(activities, id);
 }
+// D&D 5e applies a spell's effect to its target as a copy recording only `_stats.duplicateSource` (the caster's
+// copy, on the cast spell), named in the world's language. Following those sources gives the effect's links (the
+// spell's compendium link plus ".ActiveEffect.<id>", as a dropped compendium effect is bound) and the spell's
+// identifier, which stays English in every language.
+const syncUuid = (uuid) => { try { return globalThis.fromUuidSync?.(uuid, { strict: false }) ?? null; } catch { return null; } };
+export function effectSources(effect, resolve = syncUuid) {
+  const uuids = [], names = [];
+  if (effect?.documentName !== "ActiveEffect") return { uuids, names };
+  let at = effect;
+  for (let hops = 0; at && hops < 3; hops++) {
+    const item = at.parent?.documentName === "Item" ? at.parent : null;
+    const source = item?._stats?.compendiumSource ?? item?.flags?.core?.sourceId;
+    if (source && at.id) uuids.push(`${source}.ActiveEffect.${at.id}`);
+    if (item?.system?.identifier) names.push(item.system.identifier);
+    uuids.push(at.uuid, at._stats?.compendiumSource, at._stats?.duplicateSource);
+    const next = at._stats?.duplicateSource ?? at._stats?.compendiumSource;
+    at = next && next !== at.uuid ? resolve(next) : null;
+  }
+  // No source left to follow (the caster's spell is gone): the spell that applied it names it.
+  if (!names.length) {
+    const origin = resolve(effect.system?.origin?.item ?? effect.system?.origin?.activity ?? effect.origin);
+    const spell = origin?.documentName === "Item" ? origin : origin?.item;
+    if (spell?.system?.identifier) names.push(spell.system.identifier);
+  }
+  return { uuids: uuids.filter(Boolean), names };
+}
 export function matchRecipe(recipes, event) {
+  const sources = effectSources(event.item);
   const names = new Set(
     [
       event.item?.name,
@@ -423,6 +450,7 @@ export function matchRecipe(recipes, event) {
       event.item?.system?.baseItem,
       event.item?.system?.group,
       event.activityName,
+      ...sources.names,
     ]
       .filter(Boolean)
       .map(normalize),
@@ -434,6 +462,7 @@ export function matchRecipe(recipes, event) {
     event.item?.original?.uuid,
     event.item?.flags?.core?.sourceId,
     event.item?._stats?.compendiumSource,
+    ...sources.uuids,
   ];
   const named = (r) => String(r.match ?? "").split(",").some((n) => n.trim() && names.has(normalize(n)));
   // A recipe bound to one creature's own item (Actor... or a token's) plays for that item only: one hero's look for

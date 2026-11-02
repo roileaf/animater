@@ -3513,11 +3513,16 @@ function workspaceHost() {
     resolveItem: (uuid) => fromUuid(uuid),
     // Name/icon for a bound item without loading it (compendium index or world doc).
     itemSummary: (uuid) => {
+      const pack = uuid.startsWith("Compendium.") ? game.packs.get(uuid.split(".").slice(1, 3).join("."))?.title : "";
       try {
-        const doc = fromUuidSync(uuid);
-        if (!doc) return null;
-        const pack = uuid.startsWith("Compendium.") ? game.packs.get(uuid.split(".").slice(1, 3).join("."))?.title : "";
-        return { name: doc.name, img: doc.img, type: doc.type, source: pack || (doc.parent?.name ?? "World") };
+        const doc = fromUuidSync(uuid, { strict: false });
+        if (doc) return { name: doc.name, img: doc.img, type: doc.documentName === "ActiveEffect" ? "effect" : doc.type, source: pack || (doc.parent?.name ?? "World") };
+      } catch { /* an effect inside a compendium item is not in the index */ }
+      // A compendium item's effect: named for its item, which the index has.
+      const [, itemUuid] = /^(Compendium\..+?)\.ActiveEffect\.[^.]+$/.exec(uuid) ?? [];
+      try {
+        const item = itemUuid ? fromUuidSync(itemUuid, { strict: false }) : null;
+        return item ? { name: `${item.name} (effect)`, img: item.img, type: "effect", source: pack } : null;
       } catch { return null; }
     },
     confirm: (content) => {
