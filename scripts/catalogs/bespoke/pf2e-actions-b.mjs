@@ -755,7 +755,7 @@ put('3ZzoI9MTtJFd1Kjl', design('Share Senses: the summoner\'s eyes go blank as t
 ], quiet()));
 put('Xj3LvT3I78cVwzer', design('Shatter Glass: shards of the glassy skin burst off and slash into the adjacent attacker.', () => [
   motion('shake', 'source', { stageId: 'crack', duration: 500, intensity: 0.4 }),
-  impact('Glass shards', ['side_impact.ice_shard.blue'], { stageId: 'shards', after: 'crack', anchor: 'start', offset: 150, duration: 1000, scale: 0.8, ...FIRST, ...tint('#e0f4f8') }),
+  impact('Glass shards', ['side_impact.part.fast.ice_shard.blue'], { stageId: 'shards', after: 'crack', anchor: 'start', offset: 150, duration: 1000, scale: 0.8, ...FIRST, ...tint('#e0f4f8') }),
   motion('recoil', 'targets', { after: 'shards', anchor: 'start', offset: 150, duration: 650, intensity: 0.5, ...FIRST }),
 ], sp('slash')));
 put('uruoG0PuuA0CqEG7', design('Shed Spirit: the familiar\'s spirit leaves its shell, flies at an enemy and drains it, then swoops to mend an ally.', () => [
@@ -979,12 +979,12 @@ put('NdMSHDtV9G7MbdP2', design('Survive the Wilds: the pelt shines gold and a pr
 ], sp('bless')));
 put('E48YTUyreo1kc9GM', design('Swarm Forth: the swarm boils out of the user\'s body into an adjacent space as a roiling dark cloud.', () => [
   motion('shake', 'source', { stageId: 'boil', duration: 700, intensity: 0.4 }),
-  aura('Swarm emerges', ['fumes.04.complete.black', 'fumes.04.complete.grey'], { stageId: 'swarm', after: 'boil', anchor: 'start', offset: 200, duration: 1800, scale: 0.9, opacity: 0.85, ...side(1), ...tint('#2d2a24') }),
+  aura('Swarm emerges', ['fumes.04.complete.black', 'fumes.04.complete.grey'], { stageId: 'swarm', after: 'boil', anchor: 'start', offset: 200, duration: 1800, scale: 0.9, opacity: 0.85, ...side(1), ...tint('#1e1a14'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
 ], sp('swarm')));
 put('Wukpm200zHDuS85V', design('Swarming Assault: the dispersed eidolon swarms over every creature in its space, biting and clawing.', () => [
   motion('shake', 'source', { stageId: 'surge', duration: 900, intensity: 0.4 }),
   impact('Biting swarm', CLAWS, { stageId: 'bites', after: 'surge', anchor: 'start', offset: 200, duration: 900, scale: 0.6, repeats: 2, repeatInterval: 350, ...ALL }),
-  impact('Swarm roils', ['fumes.04.complete.black', 'fumes.04.complete.grey'], { after: 'surge', anchor: 'start', offset: 100, duration: 1500, scale: 0.7, opacity: 0.6, ...ALL, ...tint('#2d2a24') }),
+  impact('Swarm roils', ['fumes.04.complete.black', 'fumes.04.complete.grey'], { after: 'surge', anchor: 'start', offset: 100, duration: 1500, scale: 0.7, opacity: 0.6, ...ALL, ...tint('#1e1a14'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
   motion('shake', 'targets', { after: 'bites', anchor: 'start', duration: 900, intensity: 0.4, ...ALL }),
 ], sp('swarm')));
 put('cyl7y8GcGjd8ENC7', design('Swift Choreography: a quick called reminder and the ally twists out of the effect with the rehearsed move.', () => [
@@ -1225,7 +1225,7 @@ put('tu5viJZT4zFE1sYn', design('Whirlwind Maul: the eidolon lashes out in all di
 ], ab('claw')));
 put('ncdryKskPwHMgHFh', design('Wicked Thorns: thorns snap off and hook into the attacker, drawing blood.', () => [
   motion('shake', 'source', { stageId: 'bristle', duration: 450, intensity: 0.4 }),
-  impact('Thorns hook in', ['side_impact.ice_shard.blue'], { stageId: 'thorns', after: 'bristle', anchor: 'start', offset: 150, duration: 900, scale: 0.7, ...FIRST, ...tint('#6a8a3a') }),
+  impact('Thorns hook in', ['side_impact.part.fast.ice_shard.blue'], { stageId: 'thorns', after: 'bristle', anchor: 'start', offset: 150, duration: 900, scale: 0.7, ...FIRST, ...tint('#6a8a3a') }),
   impact('Bleeding', BLOOD, { after: 'thorns', anchor: 'start', offset: 400, duration: 1100, scale: 0.4, ...FIRST }),
   motion('recoil', 'targets', { after: 'thorns', anchor: 'start', offset: 100, duration: 650, intensity: 0.5, ...FIRST }),
 ], sp('pierce')));

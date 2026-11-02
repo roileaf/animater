@@ -9,6 +9,8 @@ export const AURA_MOTIFS = Object.freeze({
   dashes: 1, runes: 2, hexes: 3, flame: 4, frost: 5, wind: 6, vines: 7, sparks: 8, ripples: 9, shadow: 10, radiance: 11, storm: 12, notes: 13, skulls: 14, hearts: 15, eyes: 16, blades: 17, drops: 18,
   // Ground patterns across the whole area: a sigil drawn stroke by stroke, cracks opening, rime, smouldering ground.
   sigil: 19, cracks: 20, rime: 21, smoulder: 22,
+  // A swarm of small creatures: drawn by its own shader (swarm-field.mjs), never by the aura band.
+  swarm: 23,
 });
 export const AURA_MOTIF_NAMES = Object.freeze(Object.fromEntries(Object.entries(AURA_MOTIFS).map(([k, v]) => [v, k])));
 

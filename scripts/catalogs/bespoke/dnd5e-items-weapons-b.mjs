@@ -63,12 +63,12 @@ const SPELLS = {
   ] },
   'Giant Insect': { sound: 'swarm', why: 'nearby insects swell into giant forms', build: () => [
     cast('Conjuration', ['magic_signs.circle.02.transmutation.complete.green', 'magic_signs.circle.02.transmutation.complete.yellow'], { stageId: 'c', duration: 1300, scale: 0.8 }),
-    impact('Insects swell', ['fireflies.few.01.green'], { after: 'c', anchor: 'start', offset: 400, duration: 2200, scale: 1, ...tint('#7a6a2a'), ...OT }),
+    impact('Insects swell', ['particles.swirl.greenyellow.01.01'], { after: 'c', anchor: 'start', offset: 400, duration: 2200, scale: 1, ...OT, ...tint('#2a2014'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     motion('pulse', 'targets', { after: 'c', anchor: 'start', offset: 600, duration: 1200, ...OT }),
   ] },
   'Insect Plague': { sound: 'swarm', why: 'swarming, biting locusts fill a sphere', build: () => [
     cast('Swarm called', ['cast_generic.earth.01.browngreen'], { stageId: 'c', duration: 900, scale: 0.7 }),
-    impact('Locust swarm', ['fireflies.many.01.green'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, scale: 2.4, ...tint('#6b5a2a'), ...T1 }),
+    impact('Locust swarm', ['particles.swirl.greenyellow.01.01'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, scale: 2.4, ...T1, ...tint('#4a3a18'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     motion('shake', 'targets', { after: 'c', anchor: 'start', offset: 800, duration: 1200, intensity: 0.5, ...OT }),
   ] },
   'Arcane Lock': { sound: 'chainBinding', why: 'a closed door or container is magically locked', build: () => [
@@ -155,7 +155,7 @@ const SPELLS = {
     impact('Spark of mind', ['twinkling_stars.points08.white'], { after: 'c', anchor: 'start', offset: 1200, duration: 1400, scale: 0.6, ...OT }),
   ] },
   Barkskin: { sound: 'growth', why: 'the target\'s skin takes on a rough, bark-like appearance', build: () => [
-    impact('Bark covers skin', ['aura_themed.01.inward.complete.wood.01.green'], { duration: 2600, scale: 1, ...OT }),
+    impact('Bark covers skin', ['aura_themed.01.inward.complete.wood.01.green'], { duration: 2600, scale: 1, ...OT, bodyLook: 'Barkskin' }),
     motion('brace', 'targets', { delay: 500, duration: 800, ...OT }),
   ] },
   'Locate Animals or Plants': { sound: 'detect', why: 'the caster senses the direction of a named beast or plant', build: () => [
@@ -268,7 +268,7 @@ const SPELLS = {
     impact('Stone reshapes', ['impact.ground_crack.01.orange'], { after: 'c', anchor: 'start', offset: 400, duration: 1600, scale: 0.8, ...T1 }),
   ] },
   Stoneskin: { sound: 'earth', why: 'a creature\'s flesh becomes as hard as stone', build: () => [
-    impact('Stone skin', ['aura_themed.01.inward.complete.metal.01.grey'], { duration: 2400, scale: 1, ...OT, ...tint('#9a8f80') }),
+    impact('Stone skin', ['aura_themed.01.inward.complete.metal.01.grey'], { duration: 2400, scale: 1, ...OT, ...tint('#9a8f80'), bodyLook: 'Petrified' }),
     motion('brace', 'targets', { delay: 500, duration: 800, ...OT }),
   ] },
   'Wall of Stone': { sound: 'stoneWall', why: 'a nonmagical wall of solid stone springs into existence', build: () => [
@@ -353,7 +353,7 @@ const absorb = why => design(why, () => [
 
 const insectCloud = why => design(why, () => [
   cast('Swarm released', ['cast_generic.earth.01.browngreen'], { stageId: 'c', duration: 800, scale: 0.6 }),
-  area('Harmless insect cloud', ['fireflies.many.01.green'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, opacity: 0.9, ...tint('#7a6a3a') }),
+  area('Harmless insect cloud', ['particles.swirl.greenyellow.01.01'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, opacity: 0.9, ...tint('#2a2014'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
   area('Obscuring haze', ['ambient_fog.001.complete.small.greenyellow', 'ambient_fog.001.complete.small.white'], { after: 'c', anchor: 'start', offset: 300, duration: 3200, opacity: 0.4, below: true }),
 ], { sound: 'swarm' });
 
@@ -569,7 +569,7 @@ const K = {
   // Bead of Force: a bead is thrown and explodes into a sphere of force.
   'dnd5e:dnd5e-equipment24-dmgBeadOfForce00': design('Bead of Force: the thrown bead explodes in a 10-foot sphere of force that can trap creatures in a globe.', () => [
     motion('throw', 'source', { duration: 800 }),
-    projectile('Bead', ['spell_projectile.ice_shard.blue'], { stageId: 'b', delay: 200, duration: 1300, scale: 0.3, ...tint('#7f6bd6'), ...T1 }),
+    projectile('Bead', ['slingshot', 'bullet.03.blue'], { stageId: 'b', delay: 200, duration: 1300, scale: 0.3, ...tint('#7f6bd6'), ...T1 }),
     area('Force burst', ['explosion.04.dark_purple', 'explosion.04.blue'], { stageId: 'x', after: 'b', anchor: 'arrival', duration: 1500 }),
     area('Globe of force', ['wall_of_force.sphere.purple', 'wall_of_force.sphere.grey'], { after: 'x', anchor: 'start', offset: 400, duration: 2800, opacity: 0.6 }),
   ], { sound: 'force' }),

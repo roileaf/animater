@@ -52,6 +52,25 @@ test('every active feat has a full-description audio decision; silent activities
 test('audio does not silently disappear from previously full eight-stage feat designs',()=>{
  for(const f of PF2E_FEATS){const r=featRecipe(f,{soundCatalog:allSounds});assert.ok(r.stages.length<=12);if(FEAT_SOUND_DESIGNS[f.id].profile)assert.ok(r.stages.some(s=>s.kind==='sound'),f.name);}
 });
+test('a breath layers its sounds on its own moments: the inhale, a roar as it exhales, its element when it is fully out',()=>{
+ const stages=[{kind:'motion',stageId:'inhale',label:'Inhale',delay:0,duration:900},{kind:'template',stageId:'exhale',label:'Exhalation',delay:750,duration:3600}];
+ const cues=addAbilitySounds({id:'x',slug:'x'},stages,{soundCatalog:allSounds,design:{profile:'breath-electricity'},moments:{formed:1100}}).filter(s=>s.kind==='sound');
+ const at=label=>cues.find(s=>s.label===label);
+ assert.ok(cues.length>=4,'inhale, roar, bolt and thunder');
+ assert.equal(at('Deep inhale').afterStage,'inhale');
+ assert.equal(at('Dragon roar').afterStage,'exhale');assert.ok(at('Dragon roar').startOffset<=0,'the roar opens the exhale');
+ const thunder=at('Thunder breaks');assert.equal(thunder.afterStage,'exhale');assert.ok(thunder.startOffset>=1100,'thunder once the bolt is out, not when the exhale starts');
+ assert.ok(at('Lightning bolt').startOffset<thunder.startOffset);
+ // A roar or a thunder roll rings out and fades away, not cut off at the 4.5 s every pack sound is held to.
+ const long=addAbilitySounds({id:'x',slug:'x'},stages,{soundCatalog:{resolve:c=>({...c,duration:4500,nativeDuration:8000})},design:{profile:'breath-electricity'},moments:{formed:1100}}).find(s=>s.label==='Dragon roar');
+ assert.equal(long.duration,6000,'up to six seconds');assert.ok(long.fadeOut>=1000,`a long fade, got ${long.fadeOut}`);
+ for(const element of ['fire','cold','electricity','acid','poison','void','sonic','vitality','other']){
+  const cues=ABILITY_SOUND_PROFILES[`breath-${element}`];
+  assert.ok(cues?.length>=3,`breath-${element} has its layers`);
+  assert.ok(cues.some(c=>c.at==='formed'),`breath-${element} lands its element when the breath is out`);
+  for(const c of cues)assert.ok(c.candidates.length,`breath-${element}: ${c.label} has a recording`);
+ }
+});
 test('repeated contact cues keep visual cadence when audio has a shorter duration',()=>{
  const f=PF2E_FEATS.find(f=>f.slug==='double-slice');
  for(const interval of [0,500]){

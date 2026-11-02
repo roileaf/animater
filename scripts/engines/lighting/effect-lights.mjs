@@ -8,6 +8,8 @@ import { ELEMENT_COLORS, normalizeElement } from '../../catalogs/shared/element-
 const WARM_WHITE = '#ffe8c0';
 const MIN_SQUARES = 1;
 const MAX_SQUARES = 12;
+// How far a breath's light along its line reaches, in squares.
+const ONE_SHOT_LINE_SQUARES = 3;
 const LASTING_AREA_MS = 2000;
 export const LASTING_MS = 86400000;
 const MIN_FADE_MS = 300;
@@ -48,9 +50,10 @@ export function isLuminous(assetKey) {
   return !!key && !VETO.test(key) && LUMINOUS.test(key);
 }
 
-// A light that stays for the effect's life instead of playing once.
+// A light that stays for the effect's life instead of playing once. A clip played once (a breath) is not lasting,
+// however long it runs: it flashes and settles rather than holding a steady glow.
 function isLasting(stage) {
-  return !!stage?.persist || (['aura', 'template'].includes(stage?.kind) && (stage.duration ?? 0) > LASTING_AREA_MS);
+  return !!stage?.persist || (['aura', 'template'].includes(stage?.kind) && !stage.oneShot && (stage.duration ?? 0) > LASTING_AREA_MS);
 }
 
 export const isBeam = stage => ['travel', 'projectile'].includes(stage?.kind) && BEAM.test(assetOf(stage));
@@ -174,11 +177,13 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
 
   function buildTag({ stage, at }, anchor, budget = 1) {
     const shape = lightShape(stage);
-    // The light can only start once its anchor does; a stage that began earlier is cut short.
-    const offset = startOf(stage) - startOf(anchor);
+    // The light can only start once its anchor does; a stage that began earlier is cut short. `lightDelay`: a clip
+    // that only lights up partway in (a breath leaving the mouth) starts its light then, and still ends with it.
+    const offset = startOf(stage) + Math.max(0, stage.lightDelay ?? 0) - startOf(anchor);
+    const length = lengthOf(stage) - Math.min(lengthOf(stage), Math.max(0, stage.lightDelay ?? 0));
     const tag = {
       color: lightColor(stage, { element, recipeColor }), shape, ...lightRadius(radiusOf(stage), grid),
-      startMs: Math.max(0, offset), lengthMs: Math.max(0, lengthOf(stage) + Math.min(0, offset)),
+      startMs: Math.max(0, offset), lengthMs: Math.max(0, length + Math.min(0, offset)),
       fadeMs: Math.max(MIN_FADE_MS, stage.fadeOut ?? 0), lasting: isLasting(stage),
     };
     if (typeof level === 'string' && level) tag.level = level;
@@ -204,16 +209,18 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
     } else {
       // A still light sits where its stage is: the anchor's own position can be elsewhere (a line starts at the caster).
       tag.at = { x: at.x, y: at.y };
-      if (tag.lasting) spread(tag, stage, budget);
+      // A lasting wall, or a breath or beam clip laid along a line, is lit along its length.
+      if (tag.lasting || BEAM.test(assetOf(stage))) spread(tag, stage, budget);
     }
     return tag;
   }
 
-  // A lasting wall along a line: lights at the middles of equal stretches of it, each sized to its stretch.
+  // A lasting wall along a line: lights at the middles of equal stretches of it, each sized to its stretch. A clip
+  // played once along it (a breath) lights only the ground by the line, not its whole stretch around it.
   function spread(tag, stage, budget) {
     const span = spanOf?.(stage);
     const lights = span && spreadAlong(span.from, span.to, grid, { spanSquares, max: budget });
-    if (lights) Object.assign(tag, lights);
+    if (lights) Object.assign(tag, lights, tag.lasting ? {} : { dim: Math.min(lights.dim, ONE_SHOT_LINE_SQUARES), bright: Math.min(lights.bright, ONE_SHOT_LINE_SQUARES / 2) });
   }
 }
 

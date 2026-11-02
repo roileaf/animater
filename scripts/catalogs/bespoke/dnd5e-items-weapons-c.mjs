@@ -88,7 +88,7 @@ const stoneShape = design('Stone flows like clay under the wearer\'s touch.', ()
 ], { sound: 'earth' });
 const stoneskin = design('The wearer\'s flesh hardens to the grey sheen of stone.', () => [
   cast('Earth rises', ['cast_generic.earth.01.browngreen'], { stageId: 'sk-c', scale: 0.6, duration: 900 }),
-  aura('Skin turns to stone', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { after: 'sk-c', anchor: 'start', offset: 400, duration: 2400, scale: 1.1, ...tint('#8a8378') }),
+  aura('Skin turns to stone', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { after: 'sk-c', anchor: 'start', offset: 400, duration: 2400, scale: 1.1, ...tint('#8a8378'), bodyLook: 'Petrified' }),
   motion('brace', 'source', { after: 'sk-c', anchor: 'start', offset: 450, duration: 800 }),
 ], { sound: 'earth' });
 const wallOfStone = design('A wall of stone grinds up out of the ground at the chosen spot.', () => [
@@ -349,7 +349,7 @@ const ironBands = design('The iron sphere is hurled, springing open in flight in
   motion('press', 'targets', { after: 'ib-t', anchor: 'arrival', duration: 900, intensity: 0.6, requiresHit: true }),
 ], { sound: 'chainBinding' });
 const strainBonds = design('The bound creature strains against its restraints.', () => [
-  aura('Bonds creak', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { duration: 1600, scale: 0.9, opacity: 0.8, ...tint('#7a6a5c') }),
+  aura('Bonds creak', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { duration: 1600, scale: 0.9, opacity: 0.8, ...tint('#7a6a5c'), bodyLook: 'Bound' }),
   motion('shake', 'source', { duration: 1000, intensity: 0.6 }),
 ], { sound: null });
 const ironFlaskTrap = design('The flask\'s mouth yawns and a vortex tugs the extraplanar creature toward it.', () => [
@@ -599,7 +599,7 @@ const heroism = design('A rush of heroic courage: golden blessing and a bolsteri
   aura('Bolstered', ['shield.01.complete.01.yellow', 'shield.01.complete.01.blue'], { after: 'hr-b', anchor: 'start', offset: 500, duration: 1800, scale: 0.9, opacity: 0.8 }),
 ], { sound: 'bless' });
 const invulnerability = design('Liquefied iron hardens over the drinker into a resistant metallic sheen.', () => [
-  aura('Iron sheath', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { duration: 2200, scale: 1.1, ...tint('#8d939b') }),
+  aura('Iron sheath', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { duration: 2200, scale: 1.1, ...tint('#8d939b'), bodyLook: 'Ironskin' }),
   motion('brace', 'source', { duration: 900, delay: 300, intensity: 0.6 }),
 ], { sound: 'metalResonance' });
 const longevity = design('Years flow back out of the drinker in a soft, renewing light.', () => [
@@ -633,7 +633,7 @@ const pipesHauntingSelf = design('The pipes play an eerie, spellbinding tune tha
 ], { sound: 'whispers' });
 const pipesRats = design('A shrill tune on the pipes calls a swarm of rats out of the shadows.', () => [
   cast('Shrill tune', ['music_notations.quaver.green', 'music_notations.quaver.blue'], { stageId: 'pr-c', scale: 0.5, offsetY: -0.5, offsetUnits: 'token', duration: 1200 }),
-  aura('Rats boil out', ['smoke.plumes.01.grey'], { after: 'pr-c', anchor: 'start', offset: 500, duration: 2200, scale: 0.9, offsetX: 1, offsetUnits: 'token', ...tint('#5a4a3a') }),
+  aura('Rats boil out', ['smoke.plumes.01.grey'], { after: 'pr-c', anchor: 'start', offset: 500, duration: 2200, scale: 0.9, offsetX: 1, offsetUnits: 'token', ...tint('#3a3430'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
 ], { sound: 'song' });
 const pipesSway = design('The piper\'s tune works on the rats\' small minds, swaying them to obey.', () => [
   cast('Piping tune', ['music_notations.quaver.green', 'music_notations.quaver.blue'], { stageId: 'pw-c', scale: 0.5, offsetY: -0.5, offsetUnits: 'token', duration: 1200 }),
@@ -738,7 +738,7 @@ const ropeAnimate = design('The rope uncoils and snakes through the air at its o
 ], { sound: null });
 const ropeEntangle = design('The rope lashes out and coils tightly around the target.', () => [
   travel('Rope lashes out', ['vine.complete.nature.single.01.green'], { stageId: 're-t', duration: 1200, ...OPT, ...tint('#b08a5a') }),
-  aura('Rope binds', ['entangle.brown'], { subject: 'targets', after: 're-t', anchor: 'arrival', duration: 2200, scale: 0.8, ...OPT, ...tint('#b08a5a') }),
+  aura('Rope binds', ['entangle.brown'], { subject: 'targets', after: 're-t', anchor: 'arrival', duration: 2200, scale: 0.8, ...OPT, ...tint('#b08a5a'), bodyLook: 'Bound' }),
   motion('press', 'targets', { after: 're-t', anchor: 'arrival', duration: 900, intensity: 0.5, ...OPT }),
 ], { sound: 'whip', ...ABILITY });
 const scarab = design('The golden scarab flares, warding its bearer against death magic.', () => [
@@ -799,7 +799,7 @@ const gemStream = design('A stream of gemstones sprays out along the line and pe
   motion('stagger', 'targets', { after: 'gm-a', anchor: 'start', offset: 400, duration: 700, ...OPT }),
 ], { sound: 'bludgeon' });
 const heavyRain = design('A heavy downpour falls in the cylinder.', () => [
-  area('Heavy rain', ['sleet_storm.02.blue'], { duration: 3400, opacity: 0.8, fadeIn: 400, fadeOut: 700, ...tint('#8cb8e0') }),
+  area('Heavy rain', ['template_square.raindrops.001.7x7.instant.combined.blue'], { duration: 3400, opacity: 0.8, fadeIn: 400, fadeOut: 700 }),
 ], { sound: 'water' });
 const lordlyMight = design('The rod is swung as a magic mace.', () => [
   motion('lunge', 'source', { stageId: 'lm-m', duration: 800 }),

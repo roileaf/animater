@@ -24,7 +24,7 @@ const bite = (why, extra = []) => design(why, () => [
 const venomBite = why => bite(why, [impact('Venom seeps into the wound', POISON, after({ offset: 350, duration: 1600, scale: 0.7 }))]);
 
 const stoneCreep = why => design(why, () => [
-  impact('Grey stone creeps over the flesh', ['cast_generic.earth.01.browngreen'], { stageId: 'st', duration: 1800, scale: 0.9, ...tint('#9a9a94') }),
+  impact('Grey stone creeps over the flesh', ['cast_generic.earth.01.browngreen'], { stageId: 'st', duration: 1800, scale: 0.9, ...tint('#9a9a94'), bodyLook: 'Turn to stone' }),
   impact('Dust sheds as the body stiffens', ['smoke.puff.centered.grey'], { after: 'st', anchor: 'start', offset: 700, duration: 1400, scale: 0.8, opacity: 0.7 }),
   motion('press', 'targets', { after: 'st', anchor: 'start', offset: 300, duration: 1100, intensity: 0.4 }),
 ], { sound: 'earth' });
@@ -140,10 +140,10 @@ const berserk = why => design(why, () => [
 // --- nets --------------------------------------------------------------------
 const netThrow = why => design(why, () => [
   motion('throw', 'source', { stageId: 'tw', duration: 900, intensity: 0.6 }),
-  impact('Net drops over the target', ['web.complete.002.white'], { stageId: 'hit', delay: 400, duration: 2400, scale: 0.9, ...tint('#c8b48a') }),
+  impact('Net drops over the target', ['web.complete.002.white'], { stageId: 'hit', delay: 400, duration: 2400, scale: 0.9, ...tint('#c8b48a'), bodyLook: 'Netted' }),
 ], { sound: 'whip', ...A });
 const netSave = why => design(why, () => [
-  impact('Net tangles the target', ['web.complete.002.white'], { duration: 2400, scale: 0.9, ...tint('#c8b48a') }),
+  impact('Net tangles the target', ['web.complete.002.white'], { duration: 2400, scale: 0.9, ...tint('#c8b48a'), bodyLook: 'Netted' }),
 ], { sound: 'whip', ...A });
 
 // --- javelin melee -----------------------------------------------------------
@@ -225,7 +225,7 @@ export default {
   ], { sound: 'drain' }),
   'dnd5e:dnd5e-monsterfeatures24-mmChain000000000': design('A lashing chain grapples and Restrains the target; chain lash plus binding links, not a blade slash.', () => [
     ...swing('Chain lashes out', ['melee_attack.01.flail.01'], { duration: 1500 }),
-    impact('Chains wrap the target', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], after({ offset: 450, duration: 2000, scale: 0.7, ...tint('#a8a8a8') })),
+    impact('Chains wrap the target', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], after({ offset: 450, duration: 2000, scale: 0.7, ...tint('#a8a8a8'), bodyLook: 'Chained' })),
     motion('press', 'targets', { after: 'hit', anchor: 'start', offset: 500, duration: 900, intensity: 0.4, requiresHit: true }),
   ], { sound: 'flail', ...A }),
   'dnd5e:dnd5e-monsterfeatures24-mmHailOfBark0000': design('Hail of Bark flings shards of bark, not a javelin.', () => [

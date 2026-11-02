@@ -84,6 +84,38 @@ const profiles={
  flashGrenade:[cue('Grenade toss','release','^ggg-sfx\\.ranged\\.thrown\\.general','^psfx\\.weapon-swooshes\\.light\\.v1\\.group01'),cue('Flash-bang burst','impact','^ggg-sfx\\.ranged\\.bomb\\.explosion','cantrips\\.thunderclap')],
  bladeParry:[cue('Blade parry','contact','^ggg-sfx\\.melee\\.blade\\.parry','','Combat/Single/Shield Hit/')],
 };
+// NPC breath weapons, layered as Chain Lightning is: a deep inhale as the creature rears back, a roar opening the
+// exhale, then the element itself when the breath is fully out. Each cue is pinned to the design's own stage
+// (`stage`) at `at` ('start', or 'formed': the moment the breath reaches its full length, which differs per
+// clip) plus `offset` ms, not to the first stage of its role.
+const pin=(c,stage,at,offset=0)=>({...c,stage,at,offset});
+// Fresh cues per profile: building one consumes its selectors.
+const inhale=()=>pin(cue('Deep inhale','cast','^ggg-sfx\\.magic\\.air\\.breathe\\.in'),'inhale','start',100);
+const roar=()=>pin(cue('Dragon roar','cast','','^psfx\\.creature\\.dragons\\.roar'),'exhale','start',-150);
+const breath=(...layers)=>[inhale(),roar(),...layers];
+Object.assign(profiles,{
+ 'breath-electricity':breath(
+  pin(cue('Lightning bolt','release','^ggg-sfx\\.magic\\.electricity\\.lightning_bolt\\.[^.]+\\.cast','^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.secondary$'),'exhale','formed',-350),
+  pin(cue('Thunder breaks','impact','^ggg-sfx\\.magic\\.electricity\\.thunder\\.strike','^psfx\\.3rd-level-spells\\.call-lightning\\.[^.]+\\.primary$','Nature/Single/Thunder/thunder-[1256]\\.'),'exhale','formed',100)),
+ 'breath-fire':breath(
+  pin(cue('Gout of flame','release','^ggg-sfx\\.magic\\.fire\\.firebreath','^psfx\\.creature\\.dragons\\.attacks\\.breath\\.[^.]+\\.fire'),'exhale','formed',-450),
+  pin(cue('Flames roar on','impact','^ggg-sfx\\.magic\\.fire\\.surge\\.flames','burning-hands'),'exhale','formed',150)),
+ 'breath-cold':breath(
+  pin(cue('Freezing gale','release','^ggg-sfx\\.magic\\.ice\\.gale','^psfx\\.creature\\.dragons\\.attacks\\.breath\\.[^.]+\\.cold'),'exhale','formed',-400)),
+ 'breath-acid':breath(
+  pin(cue('Acid spray','release','^ggg-sfx\\.magic\\.acid\\.cast\\.general\\.03','acid-splash'),'exhale','formed',-300),
+  pin(cue('Corrosion hisses','impact','^ggg-sfx\\.magic\\.acid\\.debuff\\.virulent'),'exhale','formed',200)),
+ 'breath-poison':breath(
+  pin(cue('Toxic cloud','release','^ggg-sfx\\.magic\\.acid\\.cast\\.general\\.0[12]','poison-spray'),'exhale','formed',-300)),
+ 'breath-void':breath(
+  pin(cue('Void wave','release','^ggg-sfx\\.magic\\.occult\\.pulse\\.01','arms-of-hadar'),'exhale','formed',-300)),
+ 'breath-sonic':breath(
+  pin(cue('Shockwave','release','^ggg-sfx\\.magic\\.sonic\\.slam','cantrips\\.thunderclap'),'exhale','formed',-200)),
+ 'breath-vitality':breath(
+  pin(cue('Radiant rush','release','^ggg-sfx\\.magic\\.divine\\.cast\\.general\\.0[34]'),'exhale','formed',-300)),
+ 'breath-other':breath(
+  pin(cue('Rushing gust','release','^ggg-sfx\\.magic\\.air\\.wind\\.gust\\.long'),'exhale','formed',-400)),
+});
 const missing=[],selected=new Map();
 for(const [profile,cues]of Object.entries(profiles))for(const c of cues){
  c.candidates=[];

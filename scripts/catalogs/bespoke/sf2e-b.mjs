@@ -215,7 +215,7 @@ export default {
   ], { fx: false }),
   [F('actions-Wt3PzHoo3BauvifP')]: design('Gunk Spray spews caustic chemicals in a 30-foot cone: an acid spray fills the cone.', () => [
     cast('Chemicals spew', ['liquid.splash_side.green', 'liquid.splash_side.blue'], { stageId: 'spew', scale: 0.6, duration: 700 }),
-    area('Caustic cone', ['breath_weapons.poison.cone.green'], { stageId: 'cone', after: 'spew', anchor: 'start', offset: 250, duration: 2200, ...tint('#9fe05a') }),
+    area('Caustic cone', ['water_splash.cone.01.green', 'water_splash.cone.01.blue'], { stageId: 'cone', after: 'spew', anchor: 'start', offset: 250, duration: 2200, fadeOut: 500, ...tint('#9fe05a') }),
     motion('lunge', 'source', { after: 'spew', anchor: 'start', duration: 600, intensity: 0.3 }),
   ]),
   [F('feats-Nh1QHQqbLXcMLRdo')]: design('Hampering Flare: a ranged solar flare Strike; a golden helix bolt with a dazzling hit instead of a 4-second beam.', () => [
@@ -599,7 +599,7 @@ export default {
   ]),
   [F('feats-64rwZGS8fKt8P5Ae')]: design('Slime Spray coats a 15-foot cone with slippery slime.', () => [
     cast('Slime sprays', ['liquid.splash_side.green', 'liquid.splash_side.blue'], { stageId: 'spray', duration: 800, scale: 0.6 }),
-    area('Slippery cone', ['breath_weapons.poison.cone.green'], { after: 'spray', anchor: 'start', offset: 250, duration: 2200, opacity: 0.85, ...tint('#7fd6c8') }),
+    area('Slippery cone', ['water_splash.cone.01.blue'], { after: 'spray', anchor: 'start', offset: 250, duration: 2200, fadeOut: 500, opacity: 0.85, ...tint('#7fd6c8') }),
   ]),
   [F('ancestry-features-F7aBUHwgBVRdyZJe')]: design('Slime Squirt turns one adjacent square into slick difficult terrain.', () => [
     cast('Slime squirts', ['liquid.splash_side.green', 'liquid.splash_side.blue'], { stageId: 'squirt', duration: 800, scale: 0.6 }),
@@ -616,7 +616,7 @@ export default {
   ], { sound: null, fx: false }),
   [F('feats-M8Kr3GSzRQFsu8QZ')]: design('Spew Acidic Bile violently sprays acid-poison bile in a 30-foot cone.', () => [
     cast('Retch', ['liquid.splash_side.green', 'liquid.splash_side.blue'], { stageId: 'retch', duration: 700, scale: 0.6 }),
-    area('Bile cone', ['breath_weapons.poison.cone.green'], { after: 'retch', anchor: 'start', offset: 250, duration: 2300, ...tint('#b6d94a') }),
+    area('Bile cone', ['water_splash.cone.01.green', 'water_splash.cone.01.blue'], { after: 'retch', anchor: 'start', offset: 250, duration: 2300, fadeOut: 500, ...tint('#b6d94a') }),
     motion('lunge', 'source', { after: 'retch', anchor: 'start', duration: 600, intensity: 0.35 }),
   ]),
   [F('feats-iDOe44t6NDW3Wvr8')]: design('Spore Shot: a spore pod Strike packed with extra choking spores.', () => [
@@ -834,7 +834,8 @@ export default {
   ]),
   [F('actions-Pdam8vyOw6KSQvRe')]: design('Wail: a sonic wail through a 60-foot cone.', () => [
     cast('Wail', ['soundwave.02.blue'], { stageId: 'wail', duration: 1100 }),
-    area('Sonic cone', ['breath_weapons02.burst.cone.arcana.purple.01', 'breath_weapons.cold.cone.blue'], { after: 'wail', anchor: 'start', offset: 250, duration: 2200, ...tint('#9ad7ff') }),
+    // No footage fits a wail poured out in a cone: Tokenshade draws its waves (the clip only keeps time).
+    area('Sonic cone', ['breath_weapons02.burst.cone.arcana.purple.01', 'breath_weapons.cold.cone.blue'], { after: 'wail', anchor: 'start', offset: 250, duration: 2200, ...tint('#9ad7ff'), areaLook: 'tokenshade' }),
     motion('recoil', 'targets', { after: 'wail', anchor: 'start', offset: 600, duration: 700, intensity: 0.45 }),
   ]),
   [F('feats-WJwaAuKBPBLGT8yl')]: design('Waiting for your Moment: you hold back for the perfect moment, gaining a quickened first round.', () => [
@@ -861,7 +862,7 @@ export default {
   ], { fx: false }),
   [F('feats-Srv7MbqIEqb5OHlC')]: design('World Shards unleashes superdense red-hot iron shards in a 30-foot cone.', () => [
     cast('Planetary cores call', ['cast_generic.earth.01', 'cast_generic.earth.01.browngreen'], { stageId: 'call', duration: 800 }),
-    area('Red-hot iron shards', ['breath_weapons02.burst.cone.fire.orange.01', 'breath_weapons.fire.cone.orange.01'], { after: 'call', anchor: 'start', offset: 300, duration: 2200, ...tint('#ff6a2b') }),
+    area('Red-hot iron shards', ['cone_of_cold.orange', 'cone_of_cold.blue'], { after: 'call', anchor: 'start', offset: 300, duration: 2600, fadeOut: 500, ...tint('#ff6a2b') }),
     motion('recoil', 'targets', { after: 'call', anchor: 'start', offset: 900, duration: 700, intensity: 0.5 }),
   ]),
   [F('feats-tFQeG2J1OxlXi0TI')]: design('Wormhole Warren creates a pair of wormholes, one adjacent to you.', () => [

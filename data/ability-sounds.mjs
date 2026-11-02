@@ -7462,6 +7462,1354 @@ export const ABILITY_SOUND_PROFILES = {
       ]
     }
   ],
+  "breath-electricity": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Lightning bolt",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -350,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.cast.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Cast A.ogg",
+          "nativeDuration": 2531,
+          "meanDb": -25.1,
+          "peakDb": -5.2,
+          "gain": 1,
+          "duration": 2531
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.cast.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Cast B.ogg",
+          "nativeDuration": 2722,
+          "meanDb": -24.9,
+          "peakDb": -1.9,
+          "gain": 0.88105,
+          "duration": 2722
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.lightning_bolt.01.cast.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Shock/Lightning Bolt Cast C.ogg",
+          "nativeDuration": 2081,
+          "meanDb": -23.9,
+          "peakDb": -5.4,
+          "gain": 1,
+          "duration": 2081
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.3rd-level-spells.call-lightning.v1.secondary",
+          "file": "modules/psfx/library/3rd-level-spells/call-lightning/v1/secondary/chain-lightning-secondary-strike-5ft-00.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -21.3,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.3rd-level-spells.call-lightning.v1.secondary",
+          "file": "modules/psfx/library/3rd-level-spells/call-lightning/v1/secondary/chain-lightning-secondary-strike-5ft-01.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -21,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.3rd-level-spells.call-lightning.v1.secondary",
+          "file": "modules/psfx/library/3rd-level-spells/call-lightning/v1/secondary/chain-lightning-secondary-strike-5ft-02.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -21.9,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.3rd-level-spells.call-lightning.v1.secondary",
+          "file": "modules/psfx/library/3rd-level-spells/call-lightning/v1/secondary/chain-lightning-secondary-strike-5ft-03.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -24.7,
+          "peakDb": -1.6,
+          "gain": 0.85114,
+          "duration": 4000
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.3rd-level-spells.call-lightning.v1.secondary",
+          "file": "modules/psfx/library/3rd-level-spells/call-lightning/v1/secondary/chain-lightning-secondary-strike-5ft-04.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -21.7,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4000
+        }
+      ]
+    },
+    {
+      "label": "Thunder breaks",
+      "role": "impact",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.thunder.strike.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic II/Air and Thunder/Thunder Strike 001.ogg",
+          "nativeDuration": 5004,
+          "meanDb": -20.6,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.thunder.strike.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic II/Air and Thunder/Thunder Strike 002.ogg",
+          "nativeDuration": 3501,
+          "meanDb": -18.2,
+          "peakDb": -1.3,
+          "gain": 0.81283,
+          "duration": 3501
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.thunder.strike.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic II/Air and Thunder/Thunder Strike 003.ogg",
+          "nativeDuration": 4502,
+          "meanDb": -21.5,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.electricity.thunder.strike.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic II/Air and Thunder/Thunder Strike 004.ogg",
+          "nativeDuration": 4996,
+          "meanDb": -21,
+          "peakDb": -1.2,
+          "gain": 0.81283,
+          "duration": 4500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.3rd-level-spells.call-lightning.v1.primary",
+          "file": "modules/psfx/library/3rd-level-spells/call-lightning/v1/primary/lightning-strike-001.ogg",
+          "nativeDuration": 6000,
+          "meanDb": -15.6,
+          "peakDb": 0,
+          "gain": 0.60256,
+          "duration": 4500
+        },
+        {
+          "module": "soundfxlibrary",
+          "key": "",
+          "file": "modules/soundfxlibrary/Nature/Single/Thunder/thunder-1.mp3",
+          "nativeDuration": 15004,
+          "meanDb": -26.3,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4500
+        },
+        {
+          "module": "soundfxlibrary",
+          "key": "",
+          "file": "modules/soundfxlibrary/Nature/Single/Thunder/thunder-2.mp3",
+          "nativeDuration": 22325,
+          "meanDb": -28.6,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4500
+        },
+        {
+          "module": "soundfxlibrary",
+          "key": "",
+          "file": "modules/soundfxlibrary/Nature/Single/Thunder/thunder-5.mp3",
+          "nativeDuration": 18157,
+          "meanDb": -21,
+          "peakDb": 0,
+          "gain": 0.70795,
+          "duration": 4500
+        },
+        {
+          "module": "soundfxlibrary",
+          "key": "",
+          "file": "modules/soundfxlibrary/Nature/Single/Thunder/thunder-6.mp3",
+          "nativeDuration": 9395,
+          "meanDb": -16.7,
+          "peakDb": 0,
+          "gain": 0.68391,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
+  "breath-fire": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Gout of flame",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -450,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.fire.firebreath.01.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Elemental Spell Vol 1/Dragon_Fireball 1.ogg",
+          "nativeDuration": 3706,
+          "meanDb": -19.1,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 3706
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.attacks.breath.small.fire",
+          "file": "modules/psfx/library/creature/dragons/attacks/breath-attack-small-fire-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -17.8,
+          "peakDb": -4.8,
+          "gain": 0.77625,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Flames roar on",
+      "role": "impact",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": 150,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.fire.surge.flames.01.01",
+          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Firespray 1.ogg",
+          "nativeDuration": 2049,
+          "meanDb": -18,
+          "peakDb": -4.7,
+          "gain": 0.79433,
+          "duration": 2049
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.fire.surge.flames.01.02",
+          "file": "modules/ggg/assets/sounds/TomMusic/FreeFantasySFX/Spells/Firespray 2.ogg",
+          "nativeDuration": 2078,
+          "meanDb": -18.3,
+          "peakDb": -5,
+          "gain": 0.82224,
+          "duration": 2078
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.1st-level-spells.burning-hands.v1.001",
+          "file": "modules/psfx/library/1st-level-spells/burning-hands/v1/burning-hands-01.ogg",
+          "nativeDuration": 5000,
+          "meanDb": -15.7,
+          "peakDb": 0,
+          "gain": 0.60954,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
+  "breath-cold": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Freezing gale",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -400,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.ice.gale.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Ice/Arctic Gale.ogg",
+          "nativeDuration": 3491,
+          "meanDb": -22.8,
+          "peakDb": -3,
+          "gain": 1,
+          "duration": 3491
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.ice.gale.02.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Ice/Frost Nova.ogg",
+          "nativeDuration": 3654,
+          "meanDb": -21.3,
+          "peakDb": -0.6,
+          "gain": 0.75858,
+          "duration": 3654
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.attacks.breath.small.cold",
+          "file": "modules/psfx/library/creature/dragons/attacks/breath-attack-small-cold-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -19.8,
+          "peakDb": -4.8,
+          "gain": 0.97724,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
+  "breath-acid": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Acid spray",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -300,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.cast.general.03.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Elemental Spell Vol 1/Poison_Magic_Whoosh 1.ogg",
+          "nativeDuration": 2295,
+          "meanDb": -21.3,
+          "peakDb": -4.5,
+          "gain": 1,
+          "duration": 2295
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.cast.general.03.02",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Elemental Spell Vol 1/Poison_Magic_Whoosh 2.ogg",
+          "nativeDuration": 2274,
+          "meanDb": -22.1,
+          "peakDb": -5.8,
+          "gain": 1,
+          "duration": 2274
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.acid-splash.v1.05ft",
+          "file": "modules/psfx/library/cantrips/acid-splash/v1/acid-splash-003-05ft.ogg",
+          "nativeDuration": 3500,
+          "meanDb": -23.4,
+          "peakDb": -1.2,
+          "gain": 0.81283,
+          "duration": 3500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.acid-splash.v1.15ft",
+          "file": "modules/psfx/library/cantrips/acid-splash/v1/acid-splash-003-15ft.ogg",
+          "nativeDuration": 3500,
+          "meanDb": -23.9,
+          "peakDb": -0.9,
+          "gain": 0.78524,
+          "duration": 3500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.acid-splash.v1.30ft",
+          "file": "modules/psfx/library/cantrips/acid-splash/v1/acid-splash-003-30ft.ogg",
+          "nativeDuration": 3500,
+          "meanDb": -23.2,
+          "peakDb": -1.2,
+          "gain": 0.81283,
+          "duration": 3500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.acid-splash.v1.60ft",
+          "file": "modules/psfx/library/cantrips/acid-splash/v1/acid-splash-003-60ft.ogg",
+          "nativeDuration": 3500,
+          "meanDb": -23,
+          "peakDb": -0.9,
+          "gain": 0.78524,
+          "duration": 3500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.acid-splash.v1.90ft",
+          "file": "modules/psfx/library/cantrips/acid-splash/v1/acid-splash-003-90ft.ogg",
+          "nativeDuration": 3500,
+          "meanDb": -23.5,
+          "peakDb": -0.3,
+          "gain": 0.73282,
+          "duration": 3500
+        }
+      ]
+    },
+    {
+      "label": "Corrosion hisses",
+      "role": "impact",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": 200,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.debuff.virulent.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Acid/Grotesque Acid A.ogg",
+          "nativeDuration": 5846,
+          "meanDb": -20.6,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.debuff.virulent.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Acid/Grotesque Acid B.ogg",
+          "nativeDuration": 4780,
+          "meanDb": -20.4,
+          "peakDb": -1.4,
+          "gain": 0.83176,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.debuff.virulent.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Acid/Grotesque Acid C.ogg",
+          "nativeDuration": 7231,
+          "meanDb": -21.2,
+          "peakDb": -1.5,
+          "gain": 0.8414,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
+  "breath-poison": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Toxic cloud",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -300,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.cast.general.02.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Elemental Spell Vol 1/Poison_Spell 1.ogg",
+          "nativeDuration": 2466,
+          "meanDb": -20.1,
+          "peakDb": -4.3,
+          "gain": 1,
+          "duration": 2466
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.cast.general.01.01",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Elemental Spell Vol 1/Poison_Spell 2.ogg",
+          "nativeDuration": 5554,
+          "meanDb": -21,
+          "peakDb": -2,
+          "gain": 0.89125,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.acid.cast.general.01.02",
+          "file": "modules/ggg/assets/sounds/KhronStudio/Elemental Spell Vol 1/Poison_Spell 3.ogg",
+          "nativeDuration": 4573,
+          "meanDb": -19.8,
+          "peakDb": -1.5,
+          "gain": 0.8414,
+          "duration": 4500
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.poison-spray.v1",
+          "file": "modules/psfx/library/cantrips/poison-spray/v1/poison-spray-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -24.1,
+          "peakDb": -5.1,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
+  "breath-void": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Void wave",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -300,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.occult.pulse.01.abyss",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Dark/Abyssal Pulse.ogg",
+          "nativeDuration": 6780,
+          "meanDb": -20.7,
+          "peakDb": -4.2,
+          "gain": 1,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.occult.pulse.01.shock",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Dark/Dread Wave.ogg",
+          "nativeDuration": 5314,
+          "meanDb": -20.6,
+          "peakDb": -1.5,
+          "gain": 0.8414,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.occult.pulse.01.shatter",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Magic/Dark/Soul Shatter.ogg",
+          "nativeDuration": 3799,
+          "meanDb": -21.8,
+          "peakDb": -1.6,
+          "gain": 0.85114,
+          "duration": 3799
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.1st-level-spells.arms-of-hadar.v1.001",
+          "file": "modules/psfx/library/1st-level-spells/arms-of-hadar/v1/arms-of-hadar-00.ogg",
+          "nativeDuration": 4000,
+          "meanDb": -16.3,
+          "peakDb": -2.2,
+          "gain": 0.65313,
+          "duration": 4000
+        }
+      ]
+    }
+  ],
+  "breath-sonic": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Shockwave",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -200,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.sonic.slam.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Modern Magic Sound FX Pack Vol. 1/Offensive Spells/Shockwave Slam 001.ogg",
+          "nativeDuration": 1570,
+          "meanDb": -18.4,
+          "peakDb": -1.8,
+          "gain": 0.83176,
+          "duration": 1570
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.sonic.slam.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Modern Magic Sound FX Pack Vol. 1/Offensive Spells/Shockwave Slam 002.ogg",
+          "nativeDuration": 1605,
+          "meanDb": -19.1,
+          "peakDb": -2.7,
+          "gain": 0.90157,
+          "duration": 1605
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.sonic.slam.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Modern Magic Sound FX Pack Vol. 1/Offensive Spells/Shockwave Slam 003.ogg",
+          "nativeDuration": 1439,
+          "meanDb": -20.3,
+          "peakDb": -4.5,
+          "gain": 1,
+          "duration": 1439
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.sonic.slam.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Modern Magic Sound FX Pack Vol. 1/Offensive Spells/Shockwave Slam 004.ogg",
+          "nativeDuration": 984,
+          "meanDb": -18.9,
+          "peakDb": -1.6,
+          "gain": 0.85114,
+          "duration": 984
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.sonic.slam.01.05",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Modern Magic Sound FX Pack Vol. 1/Offensive Spells/Shockwave Slam 005.ogg",
+          "nativeDuration": 984,
+          "meanDb": -19.5,
+          "peakDb": -2.4,
+          "gain": 0.93325,
+          "duration": 984
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.sonic.slam.01.06",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Modern Magic Sound FX Pack Vol. 1/Offensive Spells/Shockwave Slam 006.ogg",
+          "nativeDuration": 978,
+          "meanDb": -20.2,
+          "peakDb": -2.2,
+          "gain": 0.91201,
+          "duration": 978
+        },
+        {
+          "module": "psfx",
+          "key": "psfx.cantrips.thunderclap.v1",
+          "file": "modules/psfx/library/cantrips/thunderclap/v1/thunderclap-001.ogg",
+          "nativeDuration": 5520,
+          "meanDb": -15.8,
+          "peakDb": 0,
+          "gain": 0.6166,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
+  "breath-vitality": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Radiant rush",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -300,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.divine.cast.general.04.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Light/Soulflare Cast A.ogg",
+          "nativeDuration": 2207,
+          "meanDb": -33.7,
+          "peakDb": -9.4,
+          "gain": 1,
+          "duration": 2207
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.divine.cast.general.04.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Light/Soulflare Cast B.ogg",
+          "nativeDuration": 2222,
+          "meanDb": -33.8,
+          "peakDb": -12.5,
+          "gain": 1,
+          "duration": 2222
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.divine.cast.general.04.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Light/Soulflare Cast C.ogg",
+          "nativeDuration": 2323,
+          "meanDb": -31.1,
+          "peakDb": -9.1,
+          "gain": 1,
+          "duration": 2323
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.divine.cast.general.04.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Light/Soulflare Cast D.ogg",
+          "nativeDuration": 2231,
+          "meanDb": -31.4,
+          "peakDb": -8.2,
+          "gain": 1,
+          "duration": 2231
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.divine.cast.general.04.05",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Simple Magic Sound FX Pack Vol. 3/Light/Soulflare Cast E.ogg",
+          "nativeDuration": 1907,
+          "meanDb": -31.4,
+          "peakDb": -7.7,
+          "gain": 1,
+          "duration": 1907
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.divine.cast.general.03.01",
+          "file": "modules/ggg/assets/sounds/Soniss/GDC2026/Epic Stock Media/Light Power Up.ogg",
+          "nativeDuration": 1535,
+          "meanDb": -23.4,
+          "peakDb": -2.3,
+          "gain": 0.92257,
+          "duration": 1535
+        }
+      ]
+    }
+  ],
+  "breath-other": [
+    {
+      "label": "Deep inhale",
+      "role": "cast",
+      "stage": "inhale",
+      "at": "start",
+      "offset": 100,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In A.ogg",
+          "nativeDuration": 1114,
+          "meanDb": -24.2,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 1114
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In B.ogg",
+          "nativeDuration": 1016,
+          "meanDb": -24.4,
+          "peakDb": -6.4,
+          "gain": 1,
+          "duration": 1016
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In C.ogg",
+          "nativeDuration": 1042,
+          "meanDb": -23.3,
+          "peakDb": -5.9,
+          "gain": 1,
+          "duration": 1042
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.breathe.in.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Breath/Breathe In D.ogg",
+          "nativeDuration": 1239,
+          "meanDb": -24.2,
+          "peakDb": -6.2,
+          "gain": 1,
+          "duration": 1239
+        }
+      ]
+    },
+    {
+      "label": "Dragon roar",
+      "role": "cast",
+      "stage": "exhale",
+      "at": "start",
+      "offset": -150,
+      "candidates": [
+        {
+          "module": "psfx",
+          "key": "psfx.creature.dragons.roar.small",
+          "file": "modules/psfx/library/creature/dragons/roar/dragon-roar-small-001.ogg",
+          "nativeDuration": 8000,
+          "meanDb": -28.1,
+          "peakDb": -6.5,
+          "gain": 1,
+          "duration": 4500
+        }
+      ]
+    },
+    {
+      "label": "Rushing gust",
+      "role": "release",
+      "stage": "exhale",
+      "at": "formed",
+      "offset": -400,
+      "candidates": [
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.wind.gust.long.01.01",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Whooshes/Big Wind Gust A.ogg",
+          "nativeDuration": 9140,
+          "meanDb": -20.3,
+          "peakDb": -5.1,
+          "gain": 1,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.wind.gust.long.01.02",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Whooshes/Big Wind Gust B.ogg",
+          "nativeDuration": 11485,
+          "meanDb": -20.4,
+          "peakDb": -5.2,
+          "gain": 1,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.wind.gust.long.01.03",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Whooshes/Big Wind Gust C.ogg",
+          "nativeDuration": 9929,
+          "meanDb": -20.2,
+          "peakDb": -5,
+          "gain": 1,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.wind.gust.long.01.04",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Whooshes/Big Wind Gust D.ogg",
+          "nativeDuration": 9488,
+          "meanDb": -20.7,
+          "peakDb": -5.4,
+          "gain": 1,
+          "duration": 4500
+        },
+        {
+          "module": "ggg",
+          "key": "ggg-sfx.magic.air.wind.gust.long.01.05",
+          "file": "modules/ggg/assets/sounds/ovani-sounds/Air/Whooshes/Big Wind Gust E.ogg",
+          "nativeDuration": 11949,
+          "meanDb": -19.9,
+          "peakDb": -4.5,
+          "gain": 0.98855,
+          "duration": 4500
+        }
+      ]
+    }
+  ],
   "bomb-void": [
     {
       "label": "Bomb toss",

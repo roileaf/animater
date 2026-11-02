@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.4.15 (2026-11-02)
+
+- **Breath weapons, reworked.** A creature rears back with a deep inhale, roars, and the breath is out at once: each clip plays from just before it forms to its fade (a lightning breath is out in about two seconds and over in under five, not nine). Its sound is layered like Chain Lightning's: the inhale, a dragon's roar, then its element when the breath is fully out (a lightning bolt and thunder, a gout of flame, a freezing gale...), each ringing out and fading. Creatures react when the breath reaches them. Lightning keeps its own colours; void, radiant, cold lines, sonic and other breaths have art of their own; its light flashes along the breath as it leaves the mouth instead of washing the map for seconds.
+- **Sound drawn as waves.** Where no animation fits sound poured out in a cone or line, Animater draws it: pale waves rolling out from the mouth (sonic breaths, Thunderous Strike, Wail, Eagle's Cry, Ponpoko-Pon!, NPC sonic cones and lines). Any cone or line set to the Tokenshade area look gets them.
+- **Swarms drawn as swarms.** Insect clouds, locusts, ants, bees, mosquitoes, maggots, rats and vermin are now hundreds of small dark bodies swirling round a creature or pouring over an area, instead of glowing motes.
+- **Bodies that change, change.** Skin turning to stone or iron, bark growing over a creature, nets, ropes and chains binding it, rust and mud: 35 effects now change the creature itself with Tokenshade instead of floating a recoloured swirl over it. The stage editor has the option too (Tokenshade look on the creature); where Tokenshade cannot play it, the animation plays as before.
+- **Better-fitting animations.** An audit of recoloured animations swapped 28 for ones that fit: real insects and mayflies, mud, slime and bile splashes, glass and red-hot shards, falling stars, a water jet, rain, crimson mist, a healing glow, a blue-white plasma wall, and projectiles that no longer end in a skull or biohazard burst.
+- **Effect lights.** A long animation played once (a breath) flashes and settles instead of holding a steady glow, and a line of it lights the ground along it rather than a map-sized circle. New stage option: Effect light starts after (ms).
+- **Fixes.** A disabled Concentrating effect no longer draws sustain threads. A Tokener top-down token is no longer darkened in a disc by a big creature's shadow.
+
 ## 2.4.14 (2026-11-02)
 
 - **Animated tokens cast moving shadows.** A token whose art plays (a video, such as Tokener's animated top-down tokens) casts its shadow from its own frames as they play, so its wings and tail move in its shadow too.

@@ -49,7 +49,8 @@ export default {
   'pf2e:hDvjODvJXdFjZJ81': design('Ponpoko-Pon!: two thunderous belly-drum beats push a 30-foot cone of sonic force over the foes.', () => [
     cast('Belly drum beats', ['soundwave.02.blue'], { stageId: 'drum', duration: 900, scale: 0.9, repeats: 2, repeatInterval: 450 }),
     motion('pulse', 'source', { duration: 900, intensity: 0.4, repeats: 2, repeatInterval: 450 }),
-    travel('Sonic cone', ['breath_weapons02.burst.cone.arcana.purple.01', 'breath_weapons.cold.cone.blue'], { stageId: 'cone', after: 'drum', anchor: 'start', offset: 700, duration: 1600, targetSelection: 'first', opacity: 0.8, ...tint('#7fe0d0') }),
+    // The 30-foot cone it places, drawn by Tokenshade as sound waves rolling out (no footage fits).
+    area('Sonic cone', ['breath_weapons02.burst.cone.arcana.purple.01', 'breath_weapons.cold.cone.blue'], { stageId: 'cone', after: 'drum', anchor: 'start', offset: 700, duration: 1600, opacity: 0.8, ...tint('#7fe0d0'), areaLook: 'tokenshade' }),
     impact('Pressure hits', ['shatter.blue'], { after: 'cone', anchor: 'start', offset: 450, duration: 1200, scale: 0.9 }),
     motion('stagger', 'targets', { after: 'cone', anchor: 'start', offset: 450, duration: 1000, intensity: 0.5 }),
   ]),
@@ -101,7 +102,7 @@ export default {
     motion('stagger', 'targets', { after: 'vortex', anchor: 'start', offset: 600, duration: 1100, intensity: 0.6 }),
   ]),
   'pf2e:mwPOOTtELS4X7reC': design('Pyre Ant Sting: the swarm of burning-red ants stings every creature in its space.', () => [
-    impact('Ant swarm', ['fireflies.many.01.red', 'fireflies.many.01.green'], { stageId: 'swarm', duration: 2200, scale: 1, ...tint('#e0452a') }),
+    impact('Ant swarm', ['particles.swirl.greenyellow.01.01', 'fireflies.many.01.green'], { stageId: 'swarm', duration: 2200, scale: 1, ...tint('#5a2414'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     impact('Burning stings', ['impact.fire.01.orange'], { after: 'swarm', anchor: 'start', offset: 500, duration: 1000, scale: 0.45, repeats: 3, repeatInterval: 300 }),
     motion('shake', 'targets', { after: 'swarm', anchor: 'start', offset: 500, duration: 1200, intensity: 0.35 }),
   ], { sound: 'swarm' }),
@@ -190,7 +191,7 @@ export default {
   'pf2e:mNiJvsbyxdLBnTRs': design('Rebirth in Living Stone: rock overflows to consume the kineticist, then cracks open to reveal a body of living stone.', () => [
     cast('Rock engulfs the form', ['falling_rocks.top.1x1.sandstone', 'falling_rocks.top.1x1.grey'], { stageId: 'engulf', duration: 1300, scale: 1.2 }),
     aura('Stone shell cracks open', ['explosion.shrapnel.bomb.01.grey', 'explosion.shrapnel.bomb.01.black'], { stageId: 'crack', after: 'engulf', anchor: 'start', offset: 900, duration: 1100, scale: 0.8 }),
-    aura('Living stone settles', ['impact.ground_crack.white.01', 'impact.ground_crack.orange.01'], { after: 'crack', anchor: 'start', offset: 150, duration: 1400, scale: 1.2, below: true }),
+    aura('Living stone settles', ['impact.ground_crack.white.01', 'impact.ground_crack.orange.01'], { after: 'crack', anchor: 'start', offset: 150, duration: 1400, scale: 1.2, below: true, bodyLook: 'Petrified' }),
     motion('brace', 'source', { after: 'crack', anchor: 'start', duration: 1100, intensity: 0.5 }),
   ]),
   'pf2e:wUBodqhXq3n4XbvK': design('Reel \'Em In: a harpoon or spear strike hooks the foe and hauls it 10 feet closer.', () => [
@@ -298,13 +299,13 @@ export default {
   ]),
   'pf2e:gC3IeHyuVsX2Vtg8': design('Roiling Mudslide: water and earth form a mudslide over a 30-foot cone, smashing foes back and coating them in mud.', () => [
     cast('Earth and water mix', ['cast_generic.earth.01.browngreen'], { stageId: 'mix', duration: 900, scale: 0.8 }),
-    travel('Mudslide', ['breath_weapons.poison.cone.orange', 'breath_weapons.poison.cone.green'], { stageId: 'slide', after: 'mix', anchor: 'start', offset: 400, duration: 1800, targetSelection: 'first', ...tint('#6b4a2b') }),
-    impact('Mud coats', ['liquid.splash.brown', 'liquid.splash.blue'], { after: 'slide', anchor: 'start', offset: 600, duration: 1300, ...tint('#6b4a2b') }),
+    travel('Mudslide', ['water_splash.cone.01.blue'], { stageId: 'slide', after: 'mix', anchor: 'start', offset: 400, duration: 1800, fadeOut: 400, targetSelection: 'first', ...tint('#6b4a2b') }),
+    impact('Mud coats', ['liquid.splash.brown', 'liquid.splash.blue'], { after: 'slide', anchor: 'start', offset: 600, duration: 1300, ...tint('#6b4a2b'), bodyLook: 'Mud-Caked' }),
     motion('rush', 'targets', { after: 'slide', anchor: 'start', offset: 650, duration: 1300, distance: 1, motionRange: 'distance', motionHeading: 'away', intensity: 0.5 }),
   ]),
   'pf2e:ZJSkCrud1FZ7PMFk': design('Rotten Slurry: a glob of foul slurry is hurled at a foe, bludgeoning and sickening it.', () => [
     motion('throw', 'source', { duration: 900, intensity: 0.4 }),
-    travel('Slurry glob', ['spell_projectile.poison.greenyellow', 'ranged.04.projectile.01.green'], { stageId: 'glob', delay: 200, duration: 1200, ...tint('#7a8a2a') }),
+    travel('Slurry glob', ['ranged.04.projectile.01.green'], { stageId: 'glob', delay: 200, duration: 1200, ...tint('#7a8a2a') }),
     impact('Slurry splatters', ['liquid.splash.green', 'liquid.splash.blue'], { after: 'glob', anchor: 'arrival', duration: 1200, ...tint('#7a8a2a') }),
     motion('recoil', 'targets', { after: 'glob', anchor: 'arrival', duration: 800, intensity: 0.5 }),
   ], { sound: 'poison' }),

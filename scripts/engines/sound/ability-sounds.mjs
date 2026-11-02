@@ -8,7 +8,8 @@ export {ABILITY_SOUND_PROFILES,FEAT_SOUND_DESIGNS,WEAPON_SOUND_DESIGNS};
 const profiles={...SOUND_PROFILES,...ABILITY_SOUND_PROFILES};
 const seed=text=>[...text].reduce((h,c)=>(Math.imul(h,31)+c.charCodeAt(0))>>>0,0);
 export const abilitySoundInfo=(item,mode)=>mode?WEAPON_SOUND_DESIGNS[`${item.id}:${mode}`]:FEAT_SOUND_DESIGNS[item.id];
-export function addAbilitySounds(item,stages,{soundCatalog,sounds=soundCatalog,soundVolume=.35,mode,design=abilitySoundInfo(item,mode)}={}){
+// `moments`: named times (ms after its stage starts) a pinned cue may land on ({ formed: 1100 }: a breath fully out).
+export function addAbilitySounds(item,stages,{soundCatalog,sounds=soundCatalog,soundVolume=.35,mode,design=abilitySoundInfo(item,mode),moments={}}={}){
  if(!sounds)return stages;
  const result=[...stages];
  for(const [cueIndex,cue]of (profiles[design?.profile]??[]).entries()){
@@ -18,6 +19,19 @@ export function addAbilitySounds(item,stages,{soundCatalog,sounds=soundCatalog,s
   const best=['ggg','psfx','soundfxlibrary','pf2e-creature-sounds'].find(m=>choices.some(c=>c.active.module===m));
   const variants=choices.filter(c=>c.active.module===best),variantSeed=seed(item.slug+':'+(mode??'')+':'+cueIndex);
   let anchors;
+  // A pinned cue (a breath's layers): its own stage at its own moment, whatever its role.
+  if(cue.stage){
+   const anchor=stages.find(s=>s.stageId===cue.stage);
+   if(!anchor||result.length>=MAX_STAGES)continue;
+   const chosen=variants[variantSeed%variants.length],startOffset=Math.round((moments[cue.at]??0)+(cue.offset??0));
+   // Its whole recording up to six seconds (a roar, a thunder roll), not the 4.5 s other cues are held to, fading
+   // away over its last quarter where it is cut.
+   const length=Math.min(6000,Math.max(chosen.active.duration,chosen.active.nativeDuration??0));
+   result.push({kind:'sound',stageId:`audio-${item.id}-${mode??'feat'}-${cueIndex}-0`,label:cue.label,assets:[],duration:length,delay:anchor.delay,
+    afterStage:anchor.stageId,timingAnchor:'start',startOffset,subject:'source',volume:automaticCueVolume(soundVolume,chosen.active),soundFile:chosen.active.file,fadeIn:10,fadeOut:Math.round(Math.min(1500,length*.25)),
+    optionalSound:{profile:design.profile,cue:cueIndex,gain:soundGain(chosen.active),candidates:[chosen.original,...cue.candidates.filter(c=>c!==chosen.original)]}});
+   continue;
+  }
   if(cue.role==='release')anchors=stages.filter(s=>['travel','projectile'].includes(s.kind)&&!s.label?.includes('Return'));
   else if(cue.role==='reload')anchors=stages.filter(s=>/reload|chamber/i.test(s.label));
   else if(cue.role==='impact'||cue.role==='contact'){

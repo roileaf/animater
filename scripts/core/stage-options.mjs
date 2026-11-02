@@ -20,6 +20,13 @@ export const TRACK_PROPERTIES = {
   height: "Artwork height change (squares)",
 };
 // [key, label, default, min, max, step] or [key, label, default, choices].
+// Tokenshade presets that change a creature's own body, for a stage's body look (unset: the clip itself).
+export const BODY_LOOKS = Object.freeze(Object.fromEntries([['', 'None (the clip)'], ...[
+  'Petrified', 'Turn to stone', 'Cracked', 'Ironskin', 'Turn to iron', 'Gilded', 'Turn to gold', 'Barkskin', 'Crystallized', 'Crystallize', 'Frozen Solid', 'Freeze solid',
+  'Chained', 'Bound', 'Netted', 'Entangled', 'Held', 'Rooted',
+  'Mud-Caked', 'Blood-Soaked', 'Corroding', 'Submerged',
+  'Heat shimmer', 'Super-Heat', 'Haze', 'Molten', 'Scorched', 'Frostbitten', 'Snowed Over', 'Withering', 'Envenomed', 'Spirit Rend', 'glow',
+].map((name) => [name, name])]));
 export const OPTION_GROUPS = {
   "Timing & repetition": [
     ["requiresHit", "Only after a confirmed successful attack", false],
@@ -43,6 +50,8 @@ export const OPTION_GROUPS = {
     ["playbackRate", "Media speed", 1, 0.25, 3, 0.25],
     ["clipStart", "Skip opening (ms)", 0, 0, 30000, 50],
     ["clipEnd", "Stop clip at (ms, 0 = its end)", 0, 0, 30000, 50],
+    // A clip that only lights up partway in (a breath leaving the mouth): its effect light waits for that moment.
+    ["lightDelay", "Effect light starts after (ms)", 0, 0, 30000, 50],
   ],
   "Placement & attachment": [
     ["optionalTargets", "Skip stage when no targets are selected", false],
@@ -101,6 +110,9 @@ export const OPTION_GROUPS = {
     ["blur", "Blur (pixels)", 0, 0, 20, 1],
     ["glow", "Glow strength", 0, 0, 10, 0.5],
     ["glowColor", "Glow color", "#9e8aff"],
+    // On a creature: Tokenshade changes the creature itself (stone skin, chains, mud) in place of this clip, where
+    // Tokenshade can play it (catalog-fx.mjs withBodyLooks); elsewhere the clip plays.
+    ["bodyLook", "Tokenshade look on the creature", "", BODY_LOOKS],
   ],
   "Token copies": [
     ["copies", "Copies", 1, 1, 6, 1],
@@ -152,7 +164,9 @@ export function normalizeOptions(stage) {
   // Line and cone art ends at the area's far edge unless it reaches past it.
   if(!result.areaReach || stage.kind !== 'template')delete result.areaReach;
   // The Tokenshade area look is for template stages only; JB2A (and its motif) is the unset default.
-  if(result.areaLook !== 'tokenshade' || stage.kind !== 'template'){delete result.areaLook;delete result.areaMotif;}
+  // A swarm may also be drawn round a creature (an impact or aura stage).
+  const swarmOnCreature = ['impact', 'aura'].includes(stage.kind) && result.areaMotif === 'swarm';
+  if(result.areaLook !== 'tokenshade' || (stage.kind !== 'template' && !swarmOnCreature)){delete result.areaLook;delete result.areaMotif;}
   else if(result.areaMotif === 'auto')delete result.areaMotif;
   if (["travel", "projectile"].includes(stage.kind) && stage.travelDestination === "area") {
     result.areaLayout = stage.areaLayout === "fan" ? "fan" : "fit";
@@ -213,6 +227,8 @@ export function normalizeOptions(stage) {
   // Keep pre-existing saved compositions stable when the new mode is off.
   if(!result.repeatSimultaneous)delete result.repeatSimultaneous;
   if(!result.optionalTargets)delete result.optionalTargets;
+  if(!result.lightDelay)delete result.lightDelay;
+  if(!result.bodyLook || !['impact', 'aura'].includes(stage.kind))delete result.bodyLook;
   return result;
 }
 export function validateSoundFile(path) {

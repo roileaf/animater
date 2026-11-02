@@ -150,7 +150,7 @@ export default {
   // Ancient Dust: a coughed cloud of grey grave soil in a cone; old projectile smoke ran 9 s.
   'pf2e:OJ91rm1FkJSlf3nk': design('The caster coughs a cone of grey grave soil; creatures caught in it choke on the void-tainted dust.', () => [
     motion('recoil', 'source', { duration: 500, intensity: 0.35 }),
-    area('Grave dust cone', ['breath_weapons02.burst.cone.arcana.dark_black.01', 'breath_weapons.poison.cone.green'], { stageId: 'ad-cone', offset: 150, duration: 2200, ...tint('#9b927f') }),
+    area('Grave dust cone', ['breath_weapons.poison.cone.green'], { stageId: 'ad-cone', offset: 150, duration: 2200, ...tint('#9b927f') }),
     area('Dust settles', ['template_cone_PF2e.001.001.purplered'], { after: 'ad-cone', anchor: 'start', offset: 600, duration: 1800, opacity: 0.4, below: true, ...tint('#7a7365') }),
     motion('cower', 'targets', { after: 'ad-cone', anchor: 'start', offset: 450, duration: 900, intensity: 0.4 }),
   ]),
@@ -653,14 +653,14 @@ export default {
   // Buzzing Bites: crawling insects bite the foe; a magic sword swing was entirely wrong.
   'pf2e:BItahht2hEHvR9Bt': design('A cloud of buzzing insects swarms over the target and bites, and it swats and squirms.', () => [
     cast('Hex', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'bz-cast', scale: 0.6, duration: 550 }),
-    impact('Insect swarm', ['fireflies.many.01.orange', 'fireflies.many.01.green'], { stageId: 'bz-swarm', after: 'bz-cast', anchor: 'end', duration: 2200, scale: 0.6, ...tint('#4a3b1f') }),
+    impact('Insect swarm', ['fireflies.many.01.orange', 'fireflies.many.01.green'], { stageId: 'bz-swarm', after: 'bz-cast', anchor: 'end', duration: 2200, scale: 0.6, ...tint('#2a2014'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     impact('Tiny bites', ['bite.200px.grey', 'bite.200px.red'], { after: 'bz-swarm', anchor: 'start', offset: 500, duration: 800, scale: 0.35 }),
     motion('shake', 'targets', { after: 'bz-swarm', anchor: 'start', offset: 400, duration: 1200, intensity: 0.35 }),
   ]),
 
   // Buzzing Servants: bees from Axis build geometric wax shapes; purple butterflies were the wrong creature.
   'pf2e:U7415tttUO8JLvpf': design('A golden swarm of bees descends on the square and builds glowing geometric wax shapes there.', () => [
-    area('Bee swarm', ['fireflies.many.01.yellow', 'fireflies.many.01.green'], { stageId: 'bs-bees', duration: 2600, scale: 0.8, ...tint('#ffcc33') }),
+    area('Bee swarm', ['fireflies.many.01.yellow', 'fireflies.many.01.green'], { stageId: 'bs-bees', duration: 2600, scale: 0.8, ...tint('#3a2c0a'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     area('Wax geometry', ['magic_signs.circle.02.transmutation.complete.yellow'], { after: 'bs-bees', anchor: 'start', offset: 900, duration: 2400, scale: 0.8, below: true, ...tint('#f0c048') }),
   ], { sound: 'swarm' }),
 
@@ -1033,7 +1033,7 @@ export default {
   // Crimson Breath: a blast of crimson mist exhaled at the target; green poison fog for 7.8 s was the wrong colour.
   'pf2e:ExQk8AwDphmckEmZ': design('The caster exhales a blast of crimson mist that engulfs the target, which chokes and staggers.', () => [
     motion('lunge', 'source', { stageId: 'cb-breath', duration: 550, intensity: 0.35 }),
-    travel('Crimson mist', ['breath_weapons.poison.cone.dark_red', 'breath_weapons.poison.cone.green'], { stageId: 'cb-mist', after: 'cb-breath', anchor: 'start', offset: 200, duration: 1500, scale: 0.6, ...tint('#b0203a') }),
+    travel('Crimson mist', ['breath_weapons.poison.cone.red', 'breath_weapons.poison.cone.green'], { stageId: 'cb-mist', after: 'cb-breath', anchor: 'start', offset: 200, duration: 1500, scale: 0.6, ...tint('#b0203a') }),
     impact('Toxic miasma', ['fumes.04.complete.purple', 'fumes.04.complete.grey'], { stageId: 'cb-fog', after: 'cb-mist', anchor: 'start', offset: 700, duration: 1800, scale: 0.8, ...tint('#a3243f') }),
     motion('stagger', 'targets', { after: 'cb-fog', anchor: 'start', offset: 200, duration: 900, intensity: 0.45 }),
   ]),
@@ -1041,7 +1041,7 @@ export default {
   // Crucible of Iron: molten iron pours over the target and encases it.
   'pf2e:i5h9VQ1T6MLInINM': design('A spout of molten iron pours down on the target, then cools into a grey metal shell around it.', () => [
     impact('Molten iron pours', ['lava_spout.001.001.complete.orangeyellow'], { stageId: 'ci-pour', duration: 1800, scale: 0.5 }),
-    impact('Iron encases', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'ci-pour', anchor: 'start', offset: 900, duration: 1800, scale: 0.9 }),
+    impact('Iron encases', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'ci-pour', anchor: 'start', offset: 900, duration: 1800, scale: 0.9, bodyLook: 'Turn to iron' }),
     motion('press', 'targets', { after: 'ci-pour', anchor: 'start', offset: 500, duration: 1300, intensity: 0.5 }),
   ]),
 

@@ -157,6 +157,21 @@ export function withConditionLook(recipe, entry, options={}) {
     {kind:'tokenfx',stageId:`${recipe.id}-tokenshade`,label:`Tokenshade · ${look.preset}`,assets:[],catalogFx:true,fxProfile:'condition',
       fxPreset:look.preset,fxLibrary:'tokenshade',fxTint:'',fxStrength:look.strength,fxEssential:true,subject:'source',persist:true,delay:0,duration:6000}]});
 }
+// A stage marked with a body look (stage option bodyLook: the skin turning to stone, chains binding a creature)
+// becomes that Tokenshade look on the same creature at the same time, where Tokenshade can play it; elsewhere its
+// JB2A clip plays as before.
+export function withBodyLooks(recipe, catalog) {
+  const can=preset=>catalog?.tokenReady&&catalog.presets?.some(p=>p.name===preset&&p.library==='tokenshade');
+  if(!recipe.stages.some(s=>s.bodyLook&&can(s.bodyLook)))return recipe;
+  return validateRecipe({...recipe,stages:recipe.stages.map(s=>{
+    if(!s.bodyLook||!can(s.bodyLook))return s;
+    const subject=s.kind==='impact'?'targets':s.subject??'source';
+    return {kind:'tokenfx',stageId:s.stageId,label:`Tokenshade · ${s.bodyLook}`,assets:[],catalogFx:true,fxProfile:'body',
+      fxPreset:s.bodyLook,fxLibrary:'tokenshade',fxTint:'',subject,persist:s.persist===true,delay:s.delay??0,duration:s.duration,
+      afterStage:s.afterStage,timingAnchor:s.timingAnchor,startOffset:s.startOffset,optionalTargets:subject==='targets',
+      targetSelection:s.targetSelection??'all',targetLimit:s.targetLimit??0,targetStagger:s.targetStagger??0,requiresHit:s.requiresHit===true};
+  })});
+}
 export function withCatalogFx(recipe, entry, options={}) {
   // Reviewed bespoke compositions and play-time element choice come first, so they
   // apply whether or not optional FX providers are installed.
@@ -173,6 +188,7 @@ export function withCatalogFx(recipe, entry, options={}) {
   if (options.fx===false||BESPOKE[recipe.bespoke]?.fx===false)return recipe;
   const catalog=options.fxCatalog??liveCatalogFx();
   if (!catalog.tokenReady&&!catalog.sceneReady)return recipe;
+  recipe=withBodyLooks(recipe,catalog);
   const has=(name,library)=>catalog.presets?.some(p=>p.name===name&&p.library===library);
   const looked=withConditionLook(recipe,entry,{...options,fxCatalog:catalog});
   if(looked!==recipe)return looked;

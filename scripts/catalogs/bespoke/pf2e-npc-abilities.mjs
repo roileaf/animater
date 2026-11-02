@@ -4,6 +4,7 @@
 // Clips and pacing follow the D&D monster features in dnd5e-features-a.mjs.
 import { cast, travel, projectile, impact, area, aura, sprite, motion, tint, design } from './helpers.mjs';
 import { damageLook } from '../../engines/playback/damage-moments.mjs';
+import { addAbilitySounds } from '../../engines/sound/ability-sounds.mjs';
 
 const out = {};
 const put = (ids, d) => { for (const id of [].concat(ids)) out[`pf2e:npc-${id}`] = d; };
@@ -159,27 +160,61 @@ put('spores', design('A cloud of spores bursts from the creature and fills the a
 ], { sound: 'poison' }));
 
 // ---------------------------------------------------------------- breath weapons
-// Rear back, a wisp of the element at the maw, then the exhalation fills the placed cone or line.
+// The creature rears back with a deep inhale, a wisp of its element at the maw; then it roars the breath out and
+// the breath fills the placed cone or line at once. Its creatures react, and its element sounds, when the breath
+// is fully out (`formed`), not when the clip starts.
+// Each clip plays a window of itself (ms into the film): JB2A's breaths fizz at the mouth for two seconds or more
+// before they shoot out, and fade into haze for seconds after. The window opens just before the breath forms and
+// closes once it has faded; `formed` is when, inside the window, it reaches its full length (measured frame by frame).
+const CLIP = {
+  lightningLine: { assets: ['breath_weapons.lightning.line.blue'], clipStart: 2000, clipEnd: 5600, formed: 1100 },
+  fireLine: { assets: ['breath_weapons.fire.line.orange'], clipStart: 2800, clipEnd: 6800, formed: 1300 },
+  acidLine: { assets: ['breath_weapons.acid.line.green'], clipStart: 2400, clipEnd: 6400, formed: 800 },
+  fireCone: { assets: ['breath_weapons.fire.cone.orange.01'], clipStart: 2800, clipEnd: 7000, formed: 1100 },
+  coldCone: { assets: ['breath_weapons.cold.cone.blue'], clipStart: 2800, clipEnd: 7000, formed: 1400 },
+  poisonCone: { assets: ['breath_weapons.poison.cone.green'], clipStart: 2800, clipEnd: 7200, formed: 1400 },
+  // The second set grows straight from the mouth: full in about two seconds. JB2A Free has only its fire, so each
+  // falls back to that and is recoloured to its element (a recolour keeps the film's light and dark), one look for both.
+  iceLine: { assets: ['breath_weapons02.burst.line.ice.01', 'breath_weapons02.burst.line.fire.orange.01'], clipStart: 300, clipEnd: 4800, formed: 1800, tint: '#a9d8ff' },
+  iceCone: { assets: ['breath_weapons02.burst.cone.ice', 'breath_weapons02.burst.cone.fire.orange'], clipStart: 0, clipEnd: 4500, formed: 1800, tint: '#a9d8ff' },
+  voidLine: { assets: ['breath_weapons02.burst.line.arcana.dark_black.01', 'breath_weapons02.burst.line.fire.orange.01'], clipStart: 300, clipEnd: 4800, formed: 1800, tint: '#5b3d80' },
+  voidCone: { assets: ['breath_weapons02.burst.cone.arcana.dark_black', 'breath_weapons02.burst.cone.fire.orange'], clipStart: 0, clipEnd: 4500, formed: 1800, tint: '#5b3d80' },
+  holyLine: { assets: ['breath_weapons02.burst.line.holy.yellow.01', 'breath_weapons02.burst.line.fire.orange.01'], clipStart: 300, clipEnd: 4800, formed: 1800, tint: '#ffe28a' },
+  holyCone: { assets: ['breath_weapons02.burst.cone.holy.yellow', 'breath_weapons02.burst.cone.fire.orange'], clipStart: 0, clipEnd: 4500, formed: 1800, tint: '#ffe28a' },
+};
+// A clip recoloured for an element with no breath of its own.
+const as = (clip, hex) => ({ ...clip, tint: hex });
 const BREATH = {
-  fire: { puff: ['cast_generic.fire.01.orange'], cone: ['breath_weapons.fire.cone.orange'], line: ['breath_weapons.fire.line.orange'], sound: 'fireCone' },
-  cold: { puff: ['cast_generic.ice.01.blue', 'smoke.puff.side.grey'], puffTint: '#bfe8ff', cone: ['breath_weapons.cold.cone.blue'], line: ['breath_weapons02.burst.line.ice', 'breath_weapons.lightning.line.blue'], tint: '#cfeeff', sound: 'coldCone' },
-  electricity: { puff: ['static_electricity.01.blue'], cone: ['breath_weapons.cold.cone.blue'], line: ['breath_weapons.lightning.line.blue'], tint: '#9fd8ff', sound: 'electric' },
-  acid: { puff: ['smoke.puff.side.green', 'smoke.puff.side.grey'], puffTint: '#9be060', cone: ['breath_weapons.poison.cone.green'], line: ['breath_weapons.acid.line.green'], tint: '#9be060', sound: 'acid' },
-  poison: { puff: ['smoke.puff.side.dark_green', 'smoke.puff.side.grey'], puffTint: '#7fbf5a', cone: ['breath_weapons.poison.cone.green'], line: ['breath_weapons.acid.line.green'], tint: '#7fbf5a', sound: 'poison' },
-  void: { puff: ['smoke.puff.side.dark_purple', 'smoke.puff.side.grey'], puffTint: '#6b4a8f', cone: ['breath_weapons.poison.cone.purple', 'breath_weapons.poison.cone.green'], line: ['breath_weapons.acid.line.green'], tint: '#6b4a8f', sound: 'void' },
-  sonic: { puff: ['smoke.puff.side.grey'], cone: ['breath_weapons.cold.cone.blue'], line: ['breath_weapons.lightning.line.blue'], tint: '#d8dde8', sound: 'sonic' },
+  fire: { puff: ['cast_generic.fire.01.orange'], cone: CLIP.fireCone, line: CLIP.fireLine },
+  cold: { puff: ['cast_generic.ice.01.blue', 'smoke.puff.side.grey'], puffTint: '#bfe8ff', cone: CLIP.coldCone, line: CLIP.iceLine },
+  // No lightning cone exists: the cold cone's streaking shards, recoloured to a crackling electric blue.
+  electricity: { puff: ['static_electricity.01.blue'], cone: as(CLIP.coldCone, '#7cc8ff'), line: CLIP.lightningLine },
+  acid: { puff: ['smoke.puff.side.green', 'smoke.puff.side.grey'], puffTint: '#9be060', cone: as(CLIP.poisonCone, '#b5e04a'), line: CLIP.acidLine },
+  poison: { puff: ['smoke.puff.side.dark_green', 'smoke.puff.side.grey'], puffTint: '#7fbf5a', cone: CLIP.poisonCone, line: as(CLIP.acidLine, '#7fbf5a') },
+  void: { puff: ['smoke.puff.side.dark_purple', 'smoke.puff.side.grey'], puffTint: '#6b4a8f', cone: CLIP.voidCone, line: CLIP.voidLine },
+  vitality: { puff: ['smoke.puff.side.grey'], puffTint: '#fff2b0', cone: CLIP.holyCone, line: CLIP.holyLine },
+  // Sound pouring out of the mouth: no JB2A breath looks like it, so Tokenshade draws pale waves rolling out along the
+  // cone or line (tokenshade/wave-field.mjs, the front reaching the far end in 0.8 s); the clip only keeps time, unseen.
+  sonic: { puff: ['smoke.puff.side.grey'], cone: { ...as(CLIP.iceCone, '#e2e6f0'), clipEnd: 2600, formed: 800, look: 'tokenshade' }, line: { ...as(CLIP.iceLine, '#e2e6f0'), clipEnd: 2900, formed: 800, look: 'tokenshade' } },
   // Anything else (force, mental, spirit, untyped): a grey gust in the area's shape.
-  other: { puff: ['smoke.puff.side.grey'], cone: ['breath_weapons.poison.cone.green'], line: ['breath_weapons.acid.line.green'], tint: '#c8c8d0', sound: 'wind' },
+  other: { puff: ['smoke.puff.side.grey'], cone: as(CLIP.iceCone, '#c8c8d0'), line: as(CLIP.iceLine, '#c8c8d0') },
 };
 export const BREATH_ELEMENTS = Object.keys(BREATH);
 for (const [element, b] of Object.entries(BREATH)) for (const shape of ['cone', 'line']) {
-  out[`pf2e:npc-breath:${element}-${shape}`] = design(`Breath Weapon: the creature rears back and exhales ${element === 'other' ? 'its breath' : element} in a ${shape}.`, () => [
-    motion('brace', 'source', { stageId: 'inhale', duration: 700, intensity: 0.6 }),
-    cast('Breath gathers at the maw', b.puff, { stageId: 'maw', scale: 0.55, duration: 900, faceTarget: true, ...(b.puffTint ? tint(b.puffTint) : {}) }),
-    area('Exhalation', b[shape], { stageId: 'exhale', after: 'inhale', anchor: 'end', offset: -100, duration: 2200, oneShot: true, ...(b.tint ? tint(b.tint) : {}) }),
-    motion('pulse', 'source', { after: 'inhale', anchor: 'end', duration: 900, intensity: 0.45 }),
-    motion('recoil', 'targets', { after: 'exhale', anchor: 'start', offset: 600, duration: 800, intensity: 0.6, optionalTargets: true }),
-  ], { sound: b.sound });
+  const clip = b[shape], window = { clipStart: clip.clipStart, clipEnd: clip.clipEnd };
+  out[`pf2e:npc-breath:${element}-${shape}`] = design(`Breath Weapon: the creature rears back and exhales ${element === 'other' ? 'its breath' : element} in a ${shape}.`, ({ recipe, options }) => {
+    const stages = [
+      // Rearing back to draw breath, then heaving as the breath pours out (neither aims: a breath often has no target).
+      motion('brace', 'source', { stageId: 'inhale', duration: 1000, intensity: 0.65 }),
+      cast('Breath gathers at the maw', b.puff, { stageId: 'maw', after: 'inhale', anchor: 'start', offset: 250, scale: 0.55, duration: 900, opacity: 0.85, faceTarget: true, ...(b.puffTint ? tint(b.puffTint) : {}) }),
+      area('Exhalation', clip.assets, { stageId: 'exhale', after: 'inhale', anchor: 'end', offset: -150, duration: clip.clipEnd - clip.clipStart, oneShot: true, ...window, fadeOut: 300, lightDelay: Math.max(100, clip.formed - 300), ...(clip.tint ? tint(clip.tint) : {}), ...(clip.look ? { areaLook: clip.look } : {}) }),
+      motion('pulse', 'source', { after: 'exhale', anchor: 'start', offset: Math.max(0, clip.formed - 400), duration: 900, intensity: 0.5 }),
+      motion('recoil', 'targets', { after: 'exhale', anchor: 'start', offset: clip.formed, duration: 800, intensity: 0.6, optionalTargets: true }),
+    ].map((s, i) => ({ stageId: `${recipe.id}-b${i + 1}`, ...s }));
+    // Its own layered sound, pinned to these stages (applyBespoke adds none: sound is null below).
+    const sounds = options.sounds ?? options.soundCatalog;
+    return sounds ? addAbilitySounds({ id: recipe.id, slug: `${recipe.id}-${element}-${shape}` }, stages, { sounds, soundVolume: options.soundVolume, design: { profile: `breath-${element}` }, moments: { formed: clip.formed } }) : stages;
+  }, { sound: null });
 }
 
 // ---------------------------------------------------------------- one-of-a-kind abilities
@@ -200,7 +235,7 @@ const lookOf = element => (element === 'physical' ? PHYSICAL : damageLook(elemen
 // A cone or line uses the breath art of its energy, else the grey gust tinted to the damage's colour.
 const blastOf = (element, shape) => {
   const b = BREATH[element] ?? BREATH.other;
-  return { assets: b[shape], tint: BREATH[element] ? b.tint : lookOf(element).color };
+  return { assets: b[shape].assets, tint: BREATH[element] ? b[shape].tint : lookOf(element).color, look: BREATH[element] ? b[shape].look : undefined };
 };
 for (const element of ABILITY_ELEMENTS) {
   const look = lookOf(element), sound = SOUND[element], color = look.color;
@@ -210,7 +245,7 @@ for (const element of ABILITY_ELEMENTS) {
     out[`pf2e:npc-generic:${shape}-${element}`] = design(`The creature unleashes ${element === 'physical' ? 'a blast' : `${element}`} across the ${shape} it aims.`, () => [
       motion('brace', 'source', { stageId: 'brace', duration: 600, intensity: 0.5 }),
       puff({ faceTarget: true }),
-      area('Blast', blast.assets, { stageId: 'blast', after: 'brace', anchor: 'end', offset: -100, duration: 2000, oneShot: true, ...(blast.tint ? tint(blast.tint) : {}) }),
+      area('Blast', blast.assets, { stageId: 'blast', after: 'brace', anchor: 'end', offset: -100, duration: 2000, oneShot: true, ...(blast.tint ? tint(blast.tint) : {}), ...(blast.look ? { areaLook: blast.look } : {}) }),
       motion('recoil', 'targets', { after: 'blast', anchor: 'start', offset: 500, duration: 800, intensity: 0.6, optionalTargets: true }),
     ], { sound: SHAPED_SOUND[shape]?.[element] ?? sound });
   }
@@ -235,7 +270,7 @@ put('blink', design('The creature vanishes in a blink and reappears.', () => [
   motion('flicker', 'source', { after: 'out', anchor: 'start', duration: 900, intensity: 0.5 }),
 ], { sound: 'teleport' }));
 put('heal', design('Healing light washes over the creature.', () => [
-  aura('Healing glow', ['sacred_flame.target.yellow', 'impact.003.yellow'], { stageId: 'glow', duration: 1500, scale: 0.8, opacity: 0.85, ...tint('#bff0a0') }),
+  aura('Healing glow', ['healing_generic.400px.green', 'impact.003.yellow'], { stageId: 'glow', duration: 1500, scale: 0.8, opacity: 0.85 }),
   motion('pulse', 'source', { after: 'glow', anchor: 'start', duration: 900, intensity: 0.3 }),
 ], { sound: 'healing' }));
 put('magic', design('Magic gathers around the creature as it calls on its power.', () => [
@@ -253,7 +288,7 @@ put('disarm', design('The creature wrenches at a held weapon; the animation does
   motion('shake','targets',{after:'wrench',anchor:'start',offset:250,duration:650,intensity:0.18}),
 ], ab('unarmed')));
 put('bind', design('Binding strands gather around the target; the native rules determine restraint and escape.', () => [
-  aura('Binding strands', ['energy_strands.complete.dark_red.01'], {subject:'targets',stageId:'bind',duration:1700,scale:0.75,opacity:0.7,...tint('#c6c9bb')}),
+  aura('Binding strands', ['energy_strands.complete.dark_red.01'], {subject:'targets',stageId:'bind',duration:1700,scale:0.75,opacity:0.7,...tint('#c6c9bb'), bodyLook: 'Bound' }),
   motion('press','targets',{after:'bind',anchor:'start',offset:250,duration:1000,intensity:0.25}),
 ], {sound:null}));
 put('confuse', design('A disorienting influence shimmers around the target without inventing damage or a forced move.', () => [

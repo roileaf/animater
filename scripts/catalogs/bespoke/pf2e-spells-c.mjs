@@ -19,7 +19,7 @@ export default {
   // 2 Lignify
   'pf2e:2hMy9ROM2dOZB8Jq': design('Wood creeps inward over the target and bark-like vines lock around it as it slows.', () => [
     impact('Wood enters flesh', ['aura_themed.01.inward.complete.wood.01.green'], { stageId: 'wood', duration: 2600, scale: 1 }),
-    impact('Bark closes', ['vine.complete.nature.single.01.green'], { after: 'wood', anchor: 'start', offset: 700, duration: 2400, scale: 0.8, ...tint('#8a6a45') }),
+    impact('Bark closes', ['vine.complete.nature.single.01.green'], { after: 'wood', anchor: 'start', offset: 700, duration: 2400, scale: 0.8, ...tint('#8a6a45'), bodyLook: 'Barkskin' }),
     motion('press', 'targets', { after: 'wood', anchor: 'start', offset: 800, duration: 1200, intensity: 0.6 }),
   ], { sound: 'growth' }),
   // 4 Lingering Composition
@@ -278,7 +278,7 @@ export default {
   'pf2e:wTYxxYJWN348oV15': design('An unarmed strike charged with medusa power turns the target\'s skin to grey stone.', () => [
     motion('lunge', 'source', { stageId: 'l', duration: 700 }),
     impact('Medusa strike', ['unarmed_strike.magical.01.green', 'unarmed_strike.magical.01.blue'], { stageId: 'hit', after: 'l', anchor: 'start', offset: 250, duration: 1200, scale: 1 }),
-    impact('Petrifying stone', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'hit', anchor: 'start', offset: 400, duration: 2400, scale: 0.9, ...tint('#9b9488') }),
+    impact('Petrifying stone', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'hit', anchor: 'start', offset: 400, duration: 2400, scale: 0.9, ...tint('#9b9488'), bodyLook: 'Turn to stone' }),
     motion('press', 'targets', { after: 'hit', anchor: 'start', offset: 500, duration: 1000, intensity: 0.5 }),
   ], { sound: 'bludgeon' }),
   // 65 Mental Map
@@ -411,7 +411,7 @@ export default {
   // 107 Mountain Resilience
   'pf2e:2BV2yYPfVJ5zirZt': design('Stone crusts over the target\'s skin like a mountain face and it braces.', () => [
     impact('Stone stirs', ['impact.earth.01.browngreen', 'ground_cracks.orange.01'], { stageId: 's', duration: 1200, scale: 0.8 }),
-    impact('Stone skin', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 's', anchor: 'start', offset: 400, duration: 2200, scale: 1, ...tint('#8d7f6e') }),
+    impact('Stone skin', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 's', anchor: 'start', offset: 400, duration: 2200, scale: 1, ...tint('#8d7f6e'), bodyLook: 'Petrified' }),
     motion('brace', 'targets', { after: 's', anchor: 'start', offset: 600, duration: 900 }),
   ]),
   // 108 Movanic Glimmer
@@ -532,7 +532,7 @@ export default {
   // 139 Noxious Metals
   'pf2e:3A3ueS9Q0s3U8KXE': design('Toxic metal fumes fill the burst and coalesce as metal on each creature\'s skin.', () => [
     area('Toxic fumes', ['fumes.toxic.green', 'fumes.04.complete.grey'], { stageId: 'f', duration: 2600, opacity: 0.75 }),
-    impact('Metal coalesces', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'f', anchor: 'start', offset: 600, duration: 1800, scale: 0.7, ...tint('#9fb08a') }),
+    impact('Metal coalesces', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'f', anchor: 'start', offset: 600, duration: 1800, scale: 0.7, ...tint('#9fb08a'), bodyLook: 'Ironskin' }),
     motion('stagger', 'targets', { after: 'f', anchor: 'start', offset: 800, duration: 800 }),
   ]),
   // 145 Nymph's Token
@@ -542,7 +542,7 @@ export default {
   ]),
   // 146 Oaken Resilience
   'pf2e:YWrfKetOqDwVFut7': design('Bark creeps over the target\'s skin and it braces like an oak.', () => [
-    impact('Bark spreads', ['aura_themed.01.inward.complete.wood.01.green'], { stageId: 'b', duration: 2400, scale: 1 }),
+    impact('Bark spreads', ['aura_themed.01.inward.complete.wood.01.green'], { stageId: 'b', duration: 2400, scale: 1, bodyLook: 'Barkskin' }),
     impact('Oaken skin', ['shield.01.intro.green', 'shield.01.intro.blue'], { after: 'b', anchor: 'start', offset: 700, duration: 1500, scale: 1, opacity: 0.55, ...tint('#7a5a3a') }),
     motion('brace', 'targets', { after: 'b', anchor: 'start', offset: 700, duration: 900 }),
   ]),
@@ -763,7 +763,7 @@ export default {
   // 210 Pest Swarm
   'pf2e:fRqHDOWmgcUTeT03': design('A buzzing squadron of pests swarms up from the ground and air.', () => [
     cast('Pests gather', ['particles.inward.greenyellow.01.01'], { stageId: 'g', duration: 1600, scale: 1.2, ...tint('#5a5038') }),
-    impact('Pest swarm', ['particles.002.001.complete.many.blue'], { after: 'g', anchor: 'start', offset: 600, duration: 2800, scale: 1.2, ...tint('#4a4430') }),
+    impact('Pest swarm', ['particles.002.001.complete.many.blue'], { after: 'g', anchor: 'start', offset: 600, duration: 2800, scale: 1.2, ...tint('#2a2014'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
   ], { sound: 'swarm' }),
   // 211 Pet Cache
   'pf2e:F1nlmqOIucch3Cmt': design('A pocket dimension opens and the companion is drawn inside.', () => [
@@ -780,7 +780,7 @@ export default {
   // 213 Petrify
   'pf2e:znv4ECL7ZtuiagtA': design('Grey stone creeps over the target\'s body as it slows to a halt.', () => [
     cast('Earth stirs', ['cast_generic.earth.01.browngreen'], { stageId: 'c', duration: 700, scale: 0.7 }),
-    impact('Stone creeps', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 's', after: 'c', duration: 2600, scale: 1, ...tint('#8f8a80') }),
+    impact('Stone creeps', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 's', after: 'c', duration: 2600, scale: 1, ...tint('#8f8a80'), bodyLook: 'Turn to stone' }),
     impact('Stone dust', ['smoke.puff.centered.grey'], { after: 's', anchor: 'start', offset: 900, duration: 1400, scale: 0.7 }),
     motion('press', 'targets', { after: 's', anchor: 'start', offset: 500, duration: 1500, intensity: 0.5 }),
   ]),
@@ -1362,7 +1362,7 @@ export default {
   ]),
   // 377 Restraining Chains
   'pf2e:WjgDgSDng1MS8g17': design('A steel chain bursts from the ground and wraps the target\'s limbs, dragging on it.', () => [
-    impact('Steel chain', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { stageId: 'c', duration: 2600, scale: 1.1, ...tint('#b8c0c8') }),
+    impact('Steel chain', ['markers.chain.standard.complete.02.grey', 'markers.chain.standard.complete.02.red'], { stageId: 'c', duration: 2600, scale: 1.1, ...tint('#b8c0c8'), bodyLook: 'Chained' }),
     impact('Ground anchor', ['impact.ground_crack.01.white', 'impact.ground_crack.orange.01'], { after: 'c', anchor: 'start', duration: 1500, scale: 0.6, below: true }),
     motion('press', 'targets', { after: 'c', anchor: 'start', offset: 400, duration: 1000, intensity: 0.6 }),
   ]),
@@ -1512,7 +1512,7 @@ export default {
   ], { sound: 'wind' }),
   // 419 Rusting Grasp
   'pf2e:0fYE64odlKqISzft': design('Corrosive rust spreads over the metal target.', () => [
-    impact('Rust spreads', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'r', duration: 2200, scale: 0.9, ...tint('#a05c33') }),
+    impact('Rust spreads', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'r', duration: 2200, scale: 0.9, ...tint('#a05c33'), bodyLook: 'Corroding' }),
     impact('Flaking rust', ['particles.outward.greenyellow.01.01'], { after: 'r', anchor: 'start', offset: 600, duration: 1800, scale: 0.8, ...tint('#a05c33') }),
     motion('shake', 'targets', { after: 'r', anchor: 'start', offset: 600, duration: 700, intensity: 0.3 }),
   ], { sound: 'acid' }),

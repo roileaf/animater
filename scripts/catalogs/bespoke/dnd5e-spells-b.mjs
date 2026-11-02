@@ -229,7 +229,7 @@ const spiritualWeaponArea = design('A floating, spectral weapon of force materia
 const stoneskin = design('The willing creature’s flesh turns as hard as stone, shrugging off mundane blows.', () => [
   cast('Earth gathers', ['cast_generic.earth.01.browngreen'], { stageId: 'sk-c', scale: 0.6, duration: 1000 }),
   aura('Rock grit swirls', ['aura_themed.01.inward.complete.metal.01.grey'], { subject: 'targets', stageId: 'sk-g', after: 'sk-c', anchor: 'start', offset: 400, duration: 1800, scale: 1.1, ...tint('#8b7d6b') }),
-  aura('Flesh hardens to stone', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { subject: 'targets', after: 'sk-g', anchor: 'start', offset: 600, duration: 2200, ...tint('#8b7d6b') }),
+  aura('Flesh hardens to stone', ['shield.01.complete.01.white', 'shield.01.complete.01.blue'], { subject: 'targets', after: 'sk-g', anchor: 'start', offset: 600, duration: 2200, ...tint('#8b7d6b'), bodyLook: 'Turn to stone' }),
   motion('brace', 'targets', { after: 'sk-g', anchor: 'start', offset: 700, duration: 1000 }),
 ], { sound: 'earth' });
 
@@ -276,7 +276,7 @@ const tinyHut = design('A stationary dome of force springs into existence around
 
 const vitriolicSphere = design('A glowing ball of acid streaks to the point and explodes in a 20-foot sphere of corrosive spray.', () => [
   cast('Acid gathers', ['cast_generic.02.green', 'cast_generic.02.blue'], { stageId: 'vs-c', scale: 0.6, duration: 800 }),
-  travel('Ball of acid streaks', ['fireball.beam.dark_green', 'fireball.beam.orange'], { stageId: 'vs-t', after: 'vs-c', anchor: 'start', offset: 350, duration: 1500, travelDestination: 'area', ...tint('#8fd14f') }),
+  travel('Ball of acid streaks', ['fireball.beam.orange'], { stageId: 'vs-t', after: 'vs-c', anchor: 'start', offset: 350, duration: 1500, travelDestination: 'area', ...tint('#8fd14f') }),
   area('Acid explodes', ['explosion.04.green', 'explosion.02.blue'], { stageId: 'vs-a', after: 'vs-t', anchor: 'end', offset: -150, duration: 1800, ...tint('#8fd14f') }),
   area('Corrosive splash', ['liquid.splash.bright_green', 'liquid.splash.blue'], { after: 'vs-a', anchor: 'start', offset: 200, duration: 2000, ...tint('#7fd13a') }),
   motion('stagger', 'targets', { after: 'vs-a', anchor: 'start', offset: 200, duration: 800, ...OPT }),

@@ -487,7 +487,7 @@ put(['monsterfeatures-i8WDjw4J1gJWQmqG:dnd5eactivity100', 'monsterfeatures24-mmW
 put(['monsterfeatures-6HJpLJxctQdMLeuB', 'monsterfeatures24-mmAntennae000000', 'monsterfeatures24-mmReflexiveAnten', 'monsterfeatures24-mmDestroyMetal00'], design('The rust monster\'s antennae flick against metal, which flakes away into rust.', () => [
   motion('lunge', 'source', { stageId: 'touch', duration: 600, intensity: 0.5 }),
   impact('Metal corrodes', ['impact.008.orange'], { stageId: 'hit', after: 'touch', anchor: 'start', offset: 200, duration: 900, scale: 0.55, ...tint('#b5651d') }),
-  impact('Rust flakes', ['smoke.puff.centered.grey'], { after: 'hit', anchor: 'start', offset: 150, duration: 1100, scale: 0.6, opacity: 0.8, ...tint('#a0522d') }),
+  impact('Rust flakes', ['smoke.puff.centered.grey'], { after: 'hit', anchor: 'start', offset: 150, duration: 1100, scale: 0.6, opacity: 0.8, ...tint('#a0522d'), bodyLook: 'Corroding' }),
 ], { sound: 'acid' }));
 put(['monsterfeatures-QMGBV7OSnXqWLdhr', 'monsterfeatures24-mmBarbedHide0000'], design('Barbed Hide: the creature bristles and its barbs stab whatever is grappling it.', () => [
   motion('pulse', 'source', { stageId: 'bristle', duration: 600, intensity: 0.4 }),
@@ -844,7 +844,7 @@ put(['monsterfeatures-8C6hkMXWLeymmJ5C:dnd5eactivity000', 'monsterfeatures-8C6hk
 ], { sound: 'light' }));
 put('monsterfeatures-wkIN7WTeX8ebbjtv', design('Petrifying Gaze: meeting the creature\'s eyes, the target\'s flesh begins to stiffen to stone.', () => [
   aura('Gaze', ['eyes.01.dark_yellow.single', 'eyes.01.dark_green.single'], { stageId: 'eyes', duration: 1000, scale: 0.5, offsetY: -0.3, offsetUnits: 'token' }),
-  aura('Stone creeps', ['ground_cracks.01.white', 'ground_cracks.01.orange'], { subject: 'targets', after: 'eyes', anchor: 'start', offset: 450, duration: 1600, scale: 0.6, below: true, ...tint('#9e9e8c') }),
+  aura('Stone creeps', ['ground_cracks.01.white', 'ground_cracks.01.orange'], { subject: 'targets', after: 'eyes', anchor: 'start', offset: 450, duration: 1600, scale: 0.6, below: true, ...tint('#9e9e8c'), bodyLook: 'Turn to stone' }),
   motion('shake', 'targets', { after: 'eyes', anchor: 'start', offset: 450, duration: 800, intensity: 0.3 }),
 ], { sound: 'earth' }));
 put('monsterfeatures-BDnjS1sQi2pdARh8', design('The stone golem\'s Slow: time drags for creatures around it.', () => [
@@ -996,7 +996,7 @@ put(['monsterfeatures-gM767AhU36B6LUGU'], design('Lightning Storm: three bolts o
   motion('recoil', 'targets', { after: 'strike', anchor: 'start', offset: 150, duration: 650, intensity: 0.6 }),
 ], { sound: 'lightningBolt' }));
 put('monsterfeatures24-mmCloudOfInsects', design('Cloud of Insects: a buzzing swarm descends on the target.', () => [
-  impact('Swarm descends', ['fireflies.few.02.yellow', 'fireflies.few.02.green'], { stageId: 'swarm', duration: 2000, scale: 0.8, ...tint('#4a4a3a') }),
+  impact('Swarm descends', ['particles.swirl.greenyellow.01.01', 'fireflies.few.02.green'], { stageId: 'swarm', duration: 2000, scale: 0.8, ...tint('#2a2014'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
   motion('shake', 'targets', { after: 'swarm', anchor: 'start', offset: 300, duration: 1200, intensity: 0.35 }),
 ], { sound: 'swarm' }));
 put(['classes24-phbdrdNaturesSan:oV51RLBkYFH4MPrS'], design('Nature\'s Sanctuary: the spectral trees and vines shift to a new spot.', () => [

@@ -10,6 +10,9 @@ const hash = (text) => {
   return (h >>> 0) / 4294967296;
 };
 
+// An effect Foundry or the system treats as off (disabled, suppressed, inactive) holds nothing.
+const isOn = (e) => !!e && e.disabled !== true && e.isSuppressed !== true && e.active !== false;
+
 // The threads to draw: one per sustained effect on a creature that someone else cast, from the caster's token to it.
 // `tokens`: [{ id, actorId, effects: [{ id, sustained, originActorId, hidden }] }] (actor uuids: unlinked copies of one
 // NPC share an id); a caster with no token here draws
@@ -20,7 +23,7 @@ export function sustainLinks(tokens = []) {
   const out = [];
   for (const t of tokens) {
     for (const e of t.effects ?? []) {
-      if (!e.sustained || e.hidden || !e.originActorId || e.originActorId === t.actorId) continue;
+      if (!e.sustained || !isOn(e) || e.hidden || !e.originActorId || e.originActorId === t.actorId) continue;
       const caster = byActor.get(e.originActorId);
       if (caster && caster.id !== t.id) out.push({ key: `${caster.id}>${t.id}:${e.id}`, from: caster.id, to: t.id });
     }
@@ -35,10 +38,11 @@ export function concentrationLinks(tokens = []) {
   const byActor = new Map(tokens.map((t) => [t.actor?.uuid, t])), byDoc = new Map(tokens.map((t) => [t.document?.uuid, t])), out = [];
   for (const caster of tokens) {
     for (const effect of caster.actor?.effects ?? []) {
-      if (!effect.statuses?.has?.('concentrating') || typeof effect.getDependents !== 'function') continue;
+      if (!effect.statuses?.has?.('concentrating') || !isOn(effect) || typeof effect.getDependents !== 'function') continue;
       let held = [];
       try { held = effect.getDependents() ?? []; } catch { /* a dependent gone */ }
       for (const d of held) {
+        if (d?.documentName === 'ActiveEffect' && !isOn(d)) continue;
         const target = d?.documentName === 'Token' ? byDoc.get(d.uuid) : d?.documentName === 'ActiveEffect' ? byActor.get(d.parent?.uuid) : null;
         if (target && target !== caster) out.push({ key: `${caster.id}>${target.id}:${d.id}`, from: caster.id, to: target.id });
       }

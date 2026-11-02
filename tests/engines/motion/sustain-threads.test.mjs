@@ -37,3 +37,23 @@ test('D&D concentration: a thread to each creature holding the caster\u2019s eff
   assert.deepEqual(concentrationLinks([caster, target, summon]).map((l) => l.key), ['wiz>orc:hold', 'wiz>wolf:wolf']);
   assert.deepEqual(concentrationLinks([caster]), [], 'targets off the scene draw nothing');
 });
+
+test('D&D concentration: a disabled, suppressed or inactive concentration (or held effect) draws no thread', () => {
+  const target = { id: 'orc', actor: { uuid: 'Actor.orc', effects: [] }, document: { uuid: 'Scene.s.Token.orc' } };
+  const held = (extra = {}) => ({ documentName: 'ActiveEffect', id: 'hold', parent: { uuid: 'Actor.orc' }, ...extra });
+  const caster = (conc) => ({ id: 'wiz', actor: { uuid: 'Actor.wiz', effects: [conc] }, document: { uuid: 'Scene.s.Token.wiz' } });
+  const conc = (extra = {}, dependents = [held()]) => ({ statuses: new Set(['concentrating']), getDependents: () => dependents, ...extra });
+  assert.equal(concentrationLinks([caster(conc()), target]).length, 1, 'an active one draws');
+  assert.deepEqual(concentrationLinks([caster(conc({ disabled: true })), target]), [], 'disabled');
+  assert.deepEqual(concentrationLinks([caster(conc({ isSuppressed: true })), target]), [], 'suppressed');
+  assert.deepEqual(concentrationLinks([caster(conc({ active: false })), target]), [], 'inactive');
+  assert.deepEqual(concentrationLinks([caster(conc({}, [held({ disabled: true })])), target]), [], 'the held effect disabled');
+});
+
+test('PF2e: an inactive sustained effect draws no thread', () => {
+  const tokens = [
+    { id: 'wiz', actorId: 'A', effects: [] },
+    { id: 'ally', actorId: 'B', effects: [{ id: 'ward', sustained: true, originActorId: 'A', active: false }, { id: 'hex', sustained: true, originActorId: 'A' }] },
+  ];
+  assert.deepEqual(sustainLinks(tokens).map((l) => l.key), ['wiz>ally:hex']);
+});

@@ -34,7 +34,7 @@ export default {
   'sf2e:HAaRcHfN4g83eSEC': design('Earth answers the casting and stone plates close over the target as a carapace; the target braces under the weight.', () => [
     cast('Earth answers', ['cast_generic.earth.01.browngreen'], { stageId: 'cf-c', scale: 0.8, duration: 800 }),
     impact('Stone plates close', ['falling_rocks.top.1x1.sandstone', 'falling_rocks.top.1x1.grey'], { stageId: 'cf-r', after: 'cf-c', duration: 1600, scale: 0.8 }),
-    aura('Stone carapace', ['aura_themed.01.inward.complete.metal.01.grey'], { subject: 'targets', after: 'cf-r', anchor: 'start', offset: 600, duration: 2000, scale: 0.9, ...tint('#9a8466') }),
+    aura('Stone carapace', ['aura_themed.01.inward.complete.metal.01.grey'], { subject: 'targets', after: 'cf-r', anchor: 'start', offset: 600, duration: 2000, scale: 0.9, ...tint('#9a8466'), bodyLook: 'Petrified' }),
     motion('brace', 'targets', { after: 'cf-r', anchor: 'start', offset: 500, duration: 900, intensity: 0.6 }),
   ], { sound: 'earth' }),
   // Call Cosmos: a column of burning stars and frozen comets with a swirl of stardust.
@@ -117,7 +117,7 @@ export default {
   ], { sound: 'void' }),
   // Falling Stars: falling stars explode upon colliding with the ground.
   'sf2e:jrBa9deU2ULFWvSl': design('Stars streak down from the sky and explode on impact, scattering stardust; creatures stagger.', () => [
-    area('Stars streak down', ['lightning_strike.yellow', 'lightning_strike.blue'], { stageId: 'fs-s', duration: 900, ...tint('#ffd36b') }),
+    area('Stars streak down', ['divine_smite.target.yellowwhite', 'divine_smite.target.blueyellow'], { stageId: 'fs-s', duration: 900, ...tint('#ffd36b') }),
     area('Explosive collision', ['explosion.03.yellow', 'explosion.01.orange'], { stageId: 'fs-x', after: 'fs-s', anchor: 'start', offset: 450, duration: 1700 }),
     area('Stardust', ['twinkling_stars.points07.white'], { after: 'fs-x', anchor: 'start', offset: 700, duration: 2200, opacity: 0.8, fadeOut: 600 }),
     motion('stagger', 'targets', { after: 'fs-x', anchor: 'start', offset: 150, duration: 750, intensity: 0.8 }),
@@ -185,7 +185,7 @@ export default {
   // Phantasmal Fleet: a vision of starships bombarding the ground with laser fire.
   'sf2e:Y3egStSTzL8k86qc': design('Phantom laser fire strikes down from an orbiting fleet: beams hit each creature and illusory blasts ripple through the area.', () => [
     cast('Fleet projected', ['markers_scifi.001.complete.001.purplered'], { stageId: 'pf-c', scale: 0.8, duration: 700 }),
-    impact('Laser strikes from orbit', ['lightning_strike.red', 'lightning_strike.blue'], { stageId: 'pf-l', optionalTargets: true, after: 'pf-c', duration: 900, repeats: 2, repeatInterval: 450, ...tint('#ff5a5a') }),
+    impact('Laser strikes from orbit', ['divine_smite.target.red', 'divine_smite.target.blueyellow'], { stageId: 'pf-l', optionalTargets: true, after: 'pf-c', duration: 900, repeats: 2, repeatInterval: 450, ...tint('#ff5a5a') }),
     area('Bombardment blasts', ['explosion.03.purplepink', 'explosion.01.orange'], { stageId: 'pf-x', after: 'pf-c', anchor: 'start', offset: 600, duration: 1600, repeats: 2, repeatInterval: 600, opacity: 0.85 }),
     motion('cower', 'targets', { after: 'pf-x', anchor: 'start', offset: 200, duration: 1200, intensity: 0.7 }),
   ], { sound: 'explosion' }),
@@ -267,7 +267,7 @@ export default {
   ], { sound: 'healing' }),
   // Wall of Plasma: a wall of crackling plasma.
   'sf2e:dRP4Imw3RJNQqEgc': design('A blue-white wall of plasma flame rises with electric arcs crackling along its length.', () => [
-    area('Plasma wall', ['wall_of_fire.300x100.blue'], { stageId: 'wp-w', duration: 4200, fadeIn: 300, fadeOut: 600, ...tint('#b98cff') }),
+    area('Plasma wall', ['wall_of_fire.300x100.blue'], { stageId: 'wp-w', duration: 4200, fadeIn: 300, fadeOut: 600 }),
     area('Crackling arcs', ['static_electricity.02.blue'], { after: 'wp-w', anchor: 'start', offset: 600, duration: 2400, areaLayout: 'tiles', opacity: 0.85 }),
   ], { sound: 'fireWall' }),
   // Wave of Despair: inflict despair on creatures in a cone.

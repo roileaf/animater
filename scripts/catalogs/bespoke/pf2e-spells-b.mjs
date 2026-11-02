@@ -16,8 +16,8 @@ export default {
   'pf2e:Q6cvsLytYffpeN3g': design('A swarm of undead mosquitoes (dark-red firefly motes) fills the burst over a sickly necrotic haze.', () => [
     cast('Plague gathers', ['fumes.04.complete.purple', 'fumes.04.complete.grey'], { stageId: 'gather', scale: 0.9, duration: 1200 }),
     area('Necrotic haze', ['fumes.04.complete.purple', 'fumes.04.complete.grey'], { stageId: 'haze', after: 'gather', anchor: 'start', offset: 600, duration: 3200, opacity: 0.7, below: true }),
-    area('Mosquito swarm', ['fireflies.many.01.red', 'fireflies.many.01.green'], { after: 'haze', anchor: 'start', offset: 250, duration: 3200, ...tint('#5a1020') }),
-    area('Second wave', ['fireflies.many.02.red', 'fireflies.many.02.green'], { after: 'haze', anchor: 'start', offset: 700, duration: 2800, ...tint('#3d2a40') }),
+    area('Mosquito swarm', ['fireflies.many.01.red', 'fireflies.many.01.green'], { after: 'haze', anchor: 'start', offset: 250, duration: 3200, ...tint('#2a1618'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
+    area('Second wave', ['fireflies.many.02.red', 'fireflies.many.02.green'], { after: 'haze', anchor: 'start', offset: 700, duration: 2800, ...tint('#2a1618'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
   ]),
 
   // Dust Storm: swirling, choking dust that cuts like sand.
@@ -31,7 +31,8 @@ export default {
   'pf2e:AUZPwEorddewm0x1': design('A sonic cone of soundwaves and feathers erupts from the caster; deafened foes flinch and cower from the eagle cry.', () => [
     cast('Eagle cry', ['soundwave.02.blue'], { stageId: 'cry', scale: 0.6, duration: 1000 }),
     motion('pulse', 'source', { after: 'cry', anchor: 'start', duration: 600, intensity: 0.6 }),
-    area('Piercing cone', ['breath_weapons.cold.cone.blue'], { stageId: 'cone', after: 'cry', anchor: 'start', offset: 250, duration: 1800, opacity: 0.55, ...tint('#cfe6ff') }),
+    // No footage fits a cry poured out in a cone: Tokenshade draws its sound waves (the clip only keeps time).
+    area('Piercing cone', ['breath_weapons.cold.cone.blue'], { stageId: 'cone', after: 'cry', anchor: 'start', offset: 250, duration: 1800, opacity: 0.55, ...tint('#cfe6ff'), areaLook: 'tokenshade' }),
     area('Feathers', ['swirling_feathers.outburst.01.blue', 'swirling_feathers.outburst.01.textured'], { after: 'cone', anchor: 'start', offset: 200, duration: 1800, scale: 0.6 }),
     motion('cower', 'targets', { after: 'cone', anchor: 'start', offset: 450, duration: 900 }),
   ]),
@@ -226,7 +227,7 @@ export default {
   'pf2e:89Hj5QuqvcwVXcqj': design('Same iron-plating transformation, but with a ringing metal sound instead of the healing-glow chime.', () => [
     cast('Iron spreads', ['cast_generic.02.dark_purple', 'cast_generic.02.blue'], { stageId: 'c', scale: 0.9, duration: 900, ...tint('#b8bcc4') }),
     sprite('Silhouette hardens', { after: 'c', anchor: 'start', offset: 400, duration: 1200, opacity: 0.5, fadeOut: 400 }),
-    aura('Metal plates close', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'c', anchor: 'start', offset: 500, duration: 2000, scale: 1 }),
+    aura('Metal plates close', ['aura_themed.01.inward.complete.metal.01.grey'], { after: 'c', anchor: 'start', offset: 500, duration: 2000, scale: 1, bodyLook: 'Ironskin' }),
     motion('brace', 'source', { after: 'c', anchor: 'start', offset: 700, duration: 900 }),
   ], { sound: 'metal' }),
 
@@ -246,7 +247,7 @@ export default {
   // Final Fate of the Locust Host: conjure Deskari's rotting, vermin-riddled corpse; stench sickens foes.
   'pf2e:bIz6QnUIxu5Z7vEH': design('The rotting Lord of Locusts arrives in black smoke wrapped in a buzzing locust haze; its stench sickens enemies, instead of the caster levitating on feathers.', () => [
     cast('Corpse arrives', ['smoke.puff.ring.01.dark_black', 'smoke.puff.ring.01.white'], { stageId: 'arr', scale: 1.4, duration: 1600 }),
-    aura('Locust haze', ['fireflies.many.01.orange', 'fireflies.many.01.green'], { stageId: 'haze', after: 'arr', anchor: 'start', offset: 400, duration: 3200, scale: 1.8, fadeIn: 300, fadeOut: 600, ...tint('#5b4a22') }),
+    aura('Locust haze', ['fireflies.many.01.orange', 'fireflies.many.01.green'], { stageId: 'haze', after: 'arr', anchor: 'start', offset: 400, duration: 3200, scale: 1.8, fadeIn: 300, fadeOut: 600, ...tint('#4a3a18'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     aura('Putrid stench', ['fumes.toxic.green', 'fumes.04.complete.grey'], { after: 'arr', anchor: 'start', offset: 700, duration: 2800, scale: 1.6, opacity: 0.55, below: true, fadeOut: 600 }),
     impact('Sickened', ['icon.poison.dark_green'], { after: 'haze', anchor: 'start', offset: 900, duration: 1400, scale: 0.4, offsetY: -0.55, offsetUnits: 'token' }),
     motion('stagger', 'targets', { after: 'haze', anchor: 'start', offset: 900, duration: 900, intensity: 0.7 }),
@@ -311,7 +312,7 @@ export default {
   // Flesh Tsunami: a thrall melts into a massive wave of sticky flesh across a 60-foot cone.
   'pf2e:jtACJQc6n9ZaG9kA': design('A thrall bursts into a crimson wave of flesh that sweeps the cone and mires foes, instead of a splash projectile over a cone outline.', () => [
     impact('Thrall liquefies', ['liquid.splash02.red'], { stageId: 'melt', duration: 1300, scale: 0.9 }),
-    area('Flesh wave', ['breath_weapons.poison.cone.red', 'breath_weapons.poison.cone.green'], { stageId: 'wave', after: 'melt', anchor: 'start', offset: 400, duration: 2200, ...tint('#8a1c2b') }),
+    area('Flesh wave', ['water_splash.cone.01.red', 'water_splash.cone.01.blue'], { stageId: 'wave', after: 'melt', anchor: 'start', offset: 400, duration: 2200, fadeOut: 500, ...tint('#8a1c2b') }),
     motion('stagger', 'targets', { after: 'wave', anchor: 'start', offset: 600, duration: 900, intensity: 0.6 }),
   ]),
 
@@ -665,7 +666,7 @@ export default {
   // Hydraulic Push: a blast of pressurised water bludgeons the target and knocks it back.
   'pf2e:jfVCuOpzC6mUrf6f': design('A real jet of water (not a wind gust) slams the target, which is driven back; splash trimmed from 5.4 s.', () => [
     cast('Pressure gathers', ['water_splash.circle.01.blue'], { stageId: 'c', scale: 0.6, duration: 700 }),
-    travel('Water jet', ['breath_weapons.acid.line.blue', 'breath_weapons.acid.line.green'], { stageId: 'jet', after: 'c', anchor: 'start', offset: 350, duration: 1300, scale: 0.8, ...tint('#4aa8ff') }),
+    travel('Water jet', ['template_line_piercing.water.01.blue', 'breath_weapons.acid.line.green'], { stageId: 'jet', after: 'c', anchor: 'start', offset: 350, duration: 1300, scale: 0.8, ...tint('#4aa8ff') }),
     impact('Water slams', ['liquid.splash_side.bright_blue', 'liquid.splash_side.blue'], { stageId: 'hit', after: 'jet', anchor: 'start', offset: 600, duration: 1300, scale: 0.9 }),
     motion('rush', 'targets', { after: 'hit', anchor: 'start', offset: 50, duration: 700, distance: 1.5, intensity: 0.7, motionRange: 'distance', motionHeading: 'away' }),
   ]),
@@ -863,7 +864,7 @@ export default {
   // Leng Sting: a nightmarish replica of a Leng spider's venomous bite on a touched creature.
   'pf2e:QVMjPfXlpnmeuWKS': design('A stabbing venomous sting with a dark venom burst and the target reeling, instead of a 7.8 s poison cloud.', () => [
     motion('lunge', 'source', { stageId: 'stab', duration: 600 }),
-    impact('Sting', ['impact_themed.poison.greenyellow', 'impact.001.blue'], { stageId: 'hit', after: 'stab', anchor: 'start', offset: 250, duration: 1100, scale: 0.6, ...tint('#7a5aa8') }),
+    impact('Sting', ['liquid.splash_side.bright_purple', 'liquid.splash_side.blue'], { stageId: 'hit', after: 'stab', anchor: 'start', offset: 250, duration: 1100, scale: 0.6, ...tint('#7a5aa8') }),
     impact('Leng venom', ['fumes.toxic.green', 'fumes.04.complete.grey'], { after: 'hit', anchor: 'start', offset: 200, duration: 1600, scale: 0.5, opacity: 0.8, ...tint('#5a3a7a') }),
     motion('stagger', 'targets', { after: 'hit', anchor: 'start', duration: 800, intensity: 0.6 }),
   ]),

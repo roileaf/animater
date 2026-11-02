@@ -80,7 +80,7 @@ const banish = design('An abjuration sigil opens a planar vortex beneath the tar
 
 const barkskin = design('Bark creeps inward over the touched creature, hardening its skin.', () => [
   cast('Nature gathers', ['swirling_leaves.complete.01.green'], { stageId: 'c', scale: 0.8, duration: 1200 }),
-  aura('Bark hardens', ['aura_themed.01.inward.complete.wood.01.green'], { subject: 'targets', stageId: 'b', after: 'c', anchor: 'start', offset: 500, duration: 2600, scale: 1.1, fadeOut: 500 }),
+  aura('Bark hardens', ['aura_themed.01.inward.complete.wood.01.green'], { subject: 'targets', stageId: 'b', after: 'c', anchor: 'start', offset: 500, duration: 2600, scale: 1.1, fadeOut: 500, bodyLook: 'Barkskin' }),
   motion('brace', 'targets', { after: 'b', anchor: 'start', offset: 600, duration: 800 }),
 ]);
 
@@ -303,7 +303,7 @@ const flamingSphereRam = design('The flaming sphere rolls into the creature and 
 
 const fleshToStone = design('Stone creeps inward over the target and stiffens its body as it fights the petrification.', () => [
   cast('Earth gathers', ['cast_generic.earth.01.browngreen'], { stageId: 'c', scale: 0.8, duration: 1000 }),
-  aura('Stone creeps in', ['aura_themed.01.inward.complete.metal.01.grey'], { subject: 'targets', stageId: 's', after: 'c', anchor: 'start', offset: 500, duration: 2400, scale: 1.1, fadeOut: 500 }),
+  aura('Stone creeps in', ['aura_themed.01.inward.complete.metal.01.grey'], { subject: 'targets', stageId: 's', after: 'c', anchor: 'start', offset: 500, duration: 2400, scale: 1.1, fadeOut: 500, bodyLook: 'Turn to stone' }),
   impact('Grit and dust', ['smoke.puff.centered.grey'], { after: 's', anchor: 'start', offset: 900, duration: 1500, scale: 0.8 }),
   motion('press', 'targets', { after: 's', anchor: 'start', offset: 500, duration: 1000, intensity: 0.6 }),
 ]);

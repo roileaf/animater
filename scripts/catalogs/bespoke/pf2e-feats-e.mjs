@@ -435,7 +435,7 @@ export default {
   // Take in the Catch: net grapple, step, draw, Strike.
   'pf2e:6f05ORvbFKeLVRBM': design('The net is cast over the foe and hauled tight, then the user steps in, draws a weapon and strikes the netted creature.', () => [
     motion('throw', 'source', { duration: 700, intensity: 0.4 }),
-    impact('Net snares', ['web.01'], { stageId: 'tc-n', delay: 250, duration: 1500, scale: 0.7 }),
+    impact('Net snares', ['web.01'], { stageId: 'tc-n', delay: 250, duration: 1500, scale: 0.7, bodyLook: 'Netted' }),
     motion('dodge', 'source', { after: 'tc-n', anchor: 'start', offset: 600, duration: 700, intensity: 0.25, distance: 0.5, motionRange: 'distance', motionHeading: 'toward', motionEndpoint: 'near' }),
     impact('Strike the catch', SLASH, { after: 'tc-n', anchor: 'start', offset: 1200, duration: 1100 }),
   ]),
@@ -1092,7 +1092,7 @@ export default {
   'pf2e:csjkzb5dsyZPeOtY': design('The Strike lands and ravenous maggots burst into the wound, whispering Kabriri\'s horrors into the victim\'s mind.', () => [
     lunge(),
     hit('Strike', SLASH, { stageId: 'fg', duration: 1100 }),
-    impact('Maggots burst forth', ['impact_themed.poison.greenyellow', 'icon.poison.dark_green'], { after: 'fg', anchor: 'start', offset: 300, duration: 1100, scale: 0.6, ...tint('#e0dcb0') }),
+    impact('Maggots burst forth', ['impact_themed.poison.greenyellow', 'icon.poison.dark_green'], { after: 'fg', anchor: 'start', offset: 300, duration: 1100, scale: 0.6, ...tint('#d8d0b0'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     impact('Ghoulish horror', ['icon.skull.dark_green', 'icon.skull.purple'], { after: 'fg', anchor: 'start', offset: 700, duration: 1300, scale: 0.5 }),
     motion('shake', 'targets', { after: 'fg', anchor: 'start', offset: 400, duration: 800, intensity: 0.45 }),
   ]),

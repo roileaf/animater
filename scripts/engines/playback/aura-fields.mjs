@@ -3,6 +3,8 @@
 // the aura's small accent around the creature stays footage. auraLook picks the motif and colour from the aura's
 // design, so no aura needs one chosen by hand.
 import { AURA_VERTEX, AURA_FRAGMENT, AURA_FIELD_DEFAULTS, auraUniforms } from '../tokenshade/aura-field.mjs';
+import { WAVE_FRAGMENT, WAVE_FIELD_DEFAULTS, waveUniforms } from '../tokenshade/wave-field.mjs';
+import { SWARM_FRAGMENT, SWARM_FIELD_DEFAULTS, swarmUniforms } from '../tokenshade/swarm-field.mjs';
 
 export const AURA_STYLES = Object.freeze({ jb2a: 'JB2A animations', tokenshade: 'Tokenshade (drawn by Animater)' });
 
@@ -44,14 +46,45 @@ export function auraLook(recipe) {
   return { motif, color: hex ? parseInt(hex.slice(1), 16) : AURA_FIELD_DEFAULTS.color, inward };
 }
 
-// A template stage set to the Tokenshade area look: what every client needs to draw its round area (a burst or
-// emanation) as a ground field. Lines, cones and areas drawn on a tile keep their footage (null).
-export function groundTag(stage, context, recipe) {
+// A template stage set to the Tokenshade area look: what every client needs to draw its area as a ground field. A
+// round one (a burst or emanation) is an aura field; a cone or line is waves rolling out along it from its origin
+// (tokenshade/wave-field.mjs: a sonic breath). Areas drawn on a tile keep their footage (null).
+// The swarm motif (tokenshade/swarm-field.mjs) draws a swarm instead: round a creature for an impact or aura stage
+// (`grid` px sizes it to the creature), over a round area, or pouring along a cone or line.
+export function groundTag(stage, context, recipe, { grid = 100 } = {}) {
   const area = context?.area;
-  if (stage?.kind !== 'template' || stage.areaLook !== 'tokenshade' || stage.areaTile || !area?.diameter || ['line', 'cone'].includes(area.type)) return null;
+  if (stage?.areaLook !== 'tokenshade' || stage.areaTile) return null;
+  if (stage.areaMotif === 'swarm') return swarmTag(stage, area, grid);
+  if (stage.kind !== 'template') return null;
+  if (['line', 'cone'].includes(area?.type)) return waveTag(stage, area);
+  if (!area?.diameter) return null;
   const auto = auraLook({ name: recipe?.name, description: recipe?.description, stages: [stage] });
   const color = stage.tintEnabled && TINT.test(stage.tint ?? '') ? parseInt(stage.tint.slice(1), 16) : auto.color;
   return { motif: stage.areaMotif && stage.areaMotif !== 'auto' ? stage.areaMotif : auto.motif, color, inward: auto.inward, radius: (area.diameter / 2) * (Number(stage.scale) || 1) };
+}
+
+// A cone or line's waves: from its origin toward its far end, as wide as the cone's angle or the line.
+function waveTag(stage, area) {
+  if (!area.center || !area.endpoint) return null;
+  const dx = area.endpoint.x - area.center.x, dy = area.endpoint.y - area.center.y, length = Math.hypot(dx, dy);
+  if (!(length > 0)) return null;
+  const color = stage.tintEnabled && TINT.test(stage.tint ?? '') ? parseInt(stage.tint.slice(1), 16) : WAVE_FIELD_DEFAULTS.color;
+  const tag = { wave: area.type, origin: { x: area.center.x, y: area.center.y }, rotation: Math.atan2(dy, dx), length, color, radius: length };
+  if (area.type === 'cone') tag.halfAngle = ((Number(area.angle) > 0 ? Number(area.angle) : 90) * Math.PI) / 360;
+  else tag.halfWidth = (Number(area.width) > 0 ? Number(area.width) : length / 20) / 2;
+  return tag;
+}
+
+// A swarm's field: round the creature it lands on (following it), over a round area, or along a cone or line.
+function swarmTag(stage, area, grid) {
+  const color = stage.tintEnabled && TINT.test(stage.tint ?? '') ? parseInt(stage.tint.slice(1), 16) : SWARM_FIELD_DEFAULTS.color;
+  if (['impact', 'aura'].includes(stage.kind)) {
+    const radius = grid * 0.8 * Math.min(2, Math.max(0.5, Number(stage.scale) || 1));
+    return { swarm: 'circle', follow: true, radius, color };
+  }
+  if (stage.kind !== 'template') return null;
+  if (['line', 'cone'].includes(area?.type)) { const w = waveTag(stage, area); return w && { ...w, wave: undefined, swarm: area.type, color }; }
+  return area?.diameter ? { swarm: 'circle', follow: false, radius: (area.diameter / 2) * (Number(stage.scale) || 1), color } : null;
 }
 
 // Is the creature drawn on this screen? An aura never gives away one this viewer cannot see: hidden by the GM, out of
@@ -77,11 +110,28 @@ export function createAuraFields(host) {
       const c = t.center ?? { x: (t.x ?? 0) + (t.w ?? 0) / 2, y: (t.y ?? 0) + (t.h ?? 0) / 2 };
       const radius = radiusOf(f);
       if (t.ended) { remove(key); continue; }
-      f.mesh.position.set(c.x, c.y);
-      f.mesh.visible = drawn(t);
       const u = f.mesh.shader.uniforms;
-      Object.assign(u, auraUniforms(f.look, { radius, inner: (Number(t.w) || host.gridSize()) / 2, zoom, time: (now - f.born) / 1000, grid: host.gridSize() }));
-      u.uExtent = radius * 1.08;
+      if (f.swarm) {
+        // Round its creature (following it) or over its round area; along its cone or line from where it was placed.
+        const round = f.swarm.swarm === 'circle', at = round ? c : f.swarm.origin;
+        f.mesh.position.set(at.x, at.y);
+        f.mesh.rotation = round ? 0 : f.swarm.rotation;
+        if (round && f.swarm.follow) f.mesh.visible = drawn(t);
+        const length = round ? f.swarm.radius : f.swarm.length;
+        Object.assign(u, swarmUniforms({ color: f.swarm.color }, { shape: f.swarm.swarm, length, halfAngle: f.swarm.halfAngle, halfWidth: f.swarm.halfWidth, time: (now - f.born) / 1000, grid: host.gridSize() }));
+        u.uExtent = length * 1.05;
+      } else if (f.wave) {
+        // Waves stay where their area was placed, turned along it.
+        f.mesh.position.set(f.wave.origin.x, f.wave.origin.y);
+        f.mesh.rotation = f.wave.rotation;
+        Object.assign(u, waveUniforms({ color: f.wave.color }, { ...f.wave, time: (now - f.born) / 1000 }));
+        u.uExtent = f.wave.length * 1.05;
+      } else {
+        f.mesh.position.set(c.x, c.y);
+        f.mesh.visible = drawn(t);
+        Object.assign(u, auraUniforms(f.look, { radius, inner: (Number(t.w) || host.gridSize()) / 2, zoom, time: (now - f.born) / 1000, grid: host.gridSize() }));
+        u.uExtent = radius * 1.08;
+      }
       // Fades in, and out when it is played once; Subtle draws it fainter.
       const age = now - f.born, fadeIn = Math.min(1, age / 400), fadeOut = f.until ? Math.max(0, Math.min(1, (f.until - now) / 800)) : 1;
       u.uAlpha = fadeIn * fadeOut * (f.soft ? 0.55 : 1);
@@ -97,15 +147,20 @@ export function createAuraFields(host) {
     return true;
   };
   return {
-    // `radius` (canvas px) sets the reach outright: a spell's area, not a creature's aura.
-    add(key, { token, feet, look, soft = false, fadeMs = 0, radius = 0 }) {
+    // `radius` (canvas px) sets the reach outright: a spell's area, not a creature's aura. `wave` (groundTag's cone or
+    // line: wave, origin, rotation, length, halfAngle or halfWidth, color) draws waves along it instead.
+    add(key, { token, feet, look, soft = false, fadeMs = 0, radius = 0, wave = null, swarm = null }) {
       remove(key);
       if (!token || !(feet > 0 || radius > 0)) return null;
-      const shader = host.PIXI.Shader.from(AURA_VERTEX, AURA_FRAGMENT, { ...auraUniforms(look), uExtent: 1 });
+      const shader = swarm
+        ? host.PIXI.Shader.from(AURA_VERTEX, SWARM_FRAGMENT, { ...swarmUniforms({ color: swarm.color }, { shape: swarm.swarm }), uExtent: 1 })
+        : wave
+        ? host.PIXI.Shader.from(AURA_VERTEX, WAVE_FRAGMENT, { ...waveUniforms({ color: wave.color }, wave), uExtent: 1 })
+        : host.PIXI.Shader.from(AURA_VERTEX, AURA_FRAGMENT, { ...auraUniforms(look), uExtent: 1 });
       const mesh = new host.PIXI.Mesh(quad(), shader);
       mesh.eventMode = 'none';
       const born = host.now();
-      fields.set(key, { token, feet, look, soft, mesh, born, until: fadeMs > 0 ? born + fadeMs : 0, radius });
+      fields.set(key, { token, feet, look, soft, mesh, born, until: fadeMs > 0 ? born + fadeMs : 0, radius, wave, swarm });
       host.addToScene(mesh);
       if (!ticking) { host.ticker.add(update); ticking = true; }
       update();

@@ -532,7 +532,7 @@ export class AnimaterRuntime {
         // ...and tints the screen from this one (engines/camera/screen-tint.mjs).
         const animaterTint = tints?.get(s) ?? null;
         // ...and draws a round area as a Tokenshade ground field from this one (playback/aura-fields.mjs groundTag).
-        const animaterGround = groundTag(s, context, recipe);
+        const animaterGround = groundTag(s, context, recipe, { grid: this.host.gridSize?.() ?? 100 });
         e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}), ...(animaterGround ? { animaterGround } : {}) }));
         // Its footage still runs the clock (when the area shows and ends), unseen: the shader draws the area.
         if (animaterGround) e.opacity(0);

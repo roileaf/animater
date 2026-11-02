@@ -342,7 +342,7 @@ export default {
 
   'pf2e:iBdvNOWazhiXeUUa': design('Invoke Defense: spirit-hide and sturdy bark manifest around you during your trance.', () => [
     cast('Spirits gather', ['aura_themed.01.inward.complete.wood.01.green'], { stageId: 'id-c', scale: 0.9, duration: 1300 }),
-    aura('Bark and hide', ['aura_themed.01.orbit.complete.wood.01.green'], { after: 'id-c', anchor: 'start', offset: 600, duration: 2200, scale: 1, opacity: 0.85, fadeOut: 500 }),
+    aura('Bark and hide', ['aura_themed.01.orbit.complete.wood.01.green'], { after: 'id-c', anchor: 'start', offset: 600, duration: 2200, scale: 1, opacity: 0.85, fadeOut: 500, bodyLook: 'Barkskin' }),
     motion('brace', 'source', { after: 'id-c', anchor: 'start', offset: 300, duration: 900, intensity: 0.5 }),
   ], { sound: 'spirit' }),
 
@@ -363,7 +363,7 @@ export default {
 
   'pf2e:x9cYkB8DrUBBwqJd': design('Ironblood Stance: you enter the stance of impenetrable iron; a ring of steel settles around you.', () => [
     cast('Iron gathers', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'ib-c', scale: 0.9, duration: 1300 }),
-    aura('Iron stance', ['aura_themed.01.orbit.complete.metal.01.grey'], { after: 'ib-c', anchor: 'start', offset: 600, duration: 2400, scale: 1, opacity: 0.85, fadeOut: 500 }),
+    aura('Iron stance', ['aura_themed.01.orbit.complete.metal.01.grey'], { after: 'ib-c', anchor: 'start', offset: 600, duration: 2400, scale: 1, opacity: 0.85, fadeOut: 500, bodyLook: 'Ironskin' }),
     motion('brace', 'source', { after: 'ib-c', anchor: 'start', offset: 300, duration: 1000, intensity: 0.6 }),
   ], { sound: 'metal' }),
 
@@ -663,7 +663,7 @@ export default {
 
   'pf2e:syyT2xBA4H72TpOt': design('Metallic Skin: thick elemental metal spreads over your skin, slowing you but turning blows.', () => [
     cast('Metal spreads', ['aura_themed.01.inward.complete.metal.01.grey'], { stageId: 'msk-c', scale: 0.9, duration: 1300 }),
-    aura('Metal skin', ['shield.02.complete.01.white', 'shield.01.complete.01.blue'], { after: 'msk-c', anchor: 'start', offset: 600, duration: 1800, scale: 1, opacity: 0.8, ...tint('#c1c6cc') }),
+    aura('Metal skin', ['shield.02.complete.01.white', 'shield.01.complete.01.blue'], { after: 'msk-c', anchor: 'start', offset: 600, duration: 1800, scale: 1, opacity: 0.8, ...tint('#c1c6cc'), bodyLook: 'Ironskin' }),
     motion('brace', 'source', { after: 'msk-c', anchor: 'start', offset: 500, duration: 900, intensity: 0.5 }),
   ], { sound: 'metal' }),
 
@@ -990,7 +990,7 @@ export default {
   'pf2e:KnaKxKP3eCUcCZC7': design('Petrifying Gaze Mimicry: your medusa-like stare locks on the target and a grey stony stiffness creeps over it.', () => [
     cast('Petrifying stare', ['eyes.01.single.orangeyellow', 'eyes.01.dark_green.single'], { stageId: 'pgm-c', scale: 0.5, offsetY: -0.3, offsetUnits: 'token', duration: 1100 }),
     travel('Gaze', ['energy_beam.normal.yellow.01', 'energy_beam.normal.blue.01'], { stageId: 'pgm-g', after: 'pgm-c', anchor: 'start', offset: 500, duration: 1000, opacity: 0.6 }),
-    impact('Stone creeps', ['impact.ground_crack.01.white', 'impact.ground_crack.01.orange'], { after: 'pgm-g', anchor: 'start', offset: 400, duration: 1500, scale: 0.6, below: true }),
+    impact('Stone creeps', ['impact.ground_crack.01.white', 'impact.ground_crack.01.orange'], { after: 'pgm-g', anchor: 'start', offset: 400, duration: 1500, scale: 0.6, below: true, bodyLook: 'Turn to stone' }),
     impact('Stiffening', ['smoke.puff.centered.grey', 'smoke.puff.centered.grey'], { after: 'pgm-g', anchor: 'start', offset: 500, duration: 1300, scale: 0.6 }),
   ], { sound: 'earth' }),
 

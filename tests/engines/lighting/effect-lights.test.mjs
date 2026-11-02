@@ -370,6 +370,27 @@ test('a lasting line area gets up to three lights spaced along it, within the ca
   assert.equal(planLights([bolt], opts({ bolt: 0 }, { spanOf: () => span })).get(bolt).points, undefined);
 });
 
+// A dragon's lightning breath washed the whole map in a steady pale glow for seven seconds: its clip is long, so
+// it counted as a lasting area, lit at full strength by one light as big as the line.
+test('a breath along a line flashes along its length, then settles: no map-wide steady glow', () => {
+  const span = { from: { x: 0, y: 0 }, to: { x: sq(20), y: 0 } };
+  const breath = st('exhale', 'template', 'jb2a.breath_weapons.lightning.line.blue', { at: { x: sq(10), y: 0 }, r: sq(10), duration: 3600, oneShot: true });
+  const tag = planLights([breath], opts({ exhale: 0 }, { spanOf: () => span })).get(breath);
+  assert.equal(tag.lasting, false, 'a clip played once is not a lasting area');
+  assert.equal(tag.shape, 'strobe');
+  assert.equal(tag.points.length, 3, 'lit along the line');
+  assert.ok(tag.dim <= 3, `each light lights the line, not the map around it: got ${tag.dim}`);
+  // Its light waits for the bolt to leave the mouth (`lightDelay`), and still ends with the clip.
+  const delayed = { ...breath, lightDelay: 1100 };
+  const late = planLights([delayed], opts({ exhale: 0 }, { spanOf: () => span })).get(delayed);
+  assert.equal(late.startMs, 1100);
+  assert.equal(late.lengthMs, 3600 - 1100);
+  assert.ok(envelope(tag, 2000) < 0.5, 'settles to a held glow after the strike');
+  // A fire breath cone, played once: a flash that settles, not a flicker held at full strength.
+  const cone = st('cone', 'template', 'jb2a.breath_weapons.fire.cone.orange.01', { at: { x: sq(3), y: 0 }, r: sq(3), duration: 4200, oneShot: true });
+  assert.equal(planLights([cone], opts({ cone: 0 })).get(cone).shape, 'flash');
+});
+
 test('classifier: flaming art is fire', () => {
   assert.equal(isLuminous('flaming.sphere.flaming.sphere.02.orange.400x400'), true);
   assert.equal(lightShape({ asset: 'flaming.sphere.02.orange', persist: true }), 'flicker');

@@ -43,7 +43,7 @@ export const PF2E_FEAT_SOURCE = {
       "patreon": 2338,
       "free": 2338
     },
-    "visiblyReframed": 1068,
+    "visiblyReframed": 1067,
     "method": "Edition-specific effects-only comparison at 200ms / 0.1-square / 15-degree precision; IDs, names, labels and inactive tint ignored. Semantic activity cues get discrete visible framing when a shared basis collides."
   },
   "descriptionChars": 1181799,
@@ -246782,7 +246782,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "bark plates grow around body and optional hand shield; centered bloom, expanding entrance",
-    "compositionHash": "c14d1e23432c90411a2b31f6717413e1940ddd08ebcb9bf6d50d74b5bc63cdb0",
+    "compositionHash": "15c9244faad53773093a65fb084d4c51071f5996140e7b8982ed892a4021812a",
     "sharedCount": 1
   },
   {
@@ -279896,12 +279896,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 1,
+      "frame": 0,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "overcharging magic strains enemy casting focus into unstable knot; low wide sweep, expanding entrance",
-    "compositionHash": "f3b8a553960b32b9dc4b76a947407918086c9365b0f7c8d61968e10153a6a8c4",
+    "visualDirection": "overcharging magic strains enemy casting focus into unstable knot; centered bloom, expanding entrance",
+    "compositionHash": "23bfdbf34b7db67673c2d973cca0d97db00bf0e4635757bbe903f106b2f0bf23",
     "sharedCount": 1
   },
   {
@@ -284412,7 +284412,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "spirit hide or bark quality thickens body edge; centered bloom, expanding entrance",
-    "compositionHash": "027d817d1bb9a4140055cbb68fd3a8b7666e5607fb7fee622c3d2899ede3b5d5",
+    "compositionHash": "515b462f2f6b8f8d1deaa8a2567076e954be21973920ddaf16ed0e3e0a68a201",
     "sharedCount": 1
   },
   {
@@ -285787,7 +285787,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "impenetrable iron body silhouette settles into grounded guard; low wide sweep, sweeping entrance",
-    "compositionHash": "3acebc404f87e1fe10a40610f1bccb156f8d596a3ae7e8a5b85153deceb6f0fd",
+    "compositionHash": "c2e9aefbe63175b790fb04113cef61aff812033dd3e7f354b8815c4e2431dc1b",
     "sharedCount": 1
   },
   {
@@ -326203,7 +326203,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "thick elemental metal plating slowly covers natural skin; low wide sweep, expanding entrance",
-    "compositionHash": "760efc0d5802cd4ce59315ea36227c4a7baaa4180fc10f065c3c3acdf609c81f",
+    "compositionHash": "12c0780482040ba3c60d4ffdc39d8d05e6d728bc9dcf65838096d9f96110633a",
     "sharedCount": 1
   },
   {
@@ -363529,7 +363529,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Eye glint crosses narrow gaze lane; stone facets briefly close around target; centered bloom, unfolding entrance",
-    "compositionHash": "f9d8533b0691365a81f75b3d6f023d46199b0a2c08ad58f15f9821fc120d4db2",
+    "compositionHash": "15e327115c4c5458136e7ead7bda5a98c48fa957143aa1a4199d863861eabaef",
     "sharedCount": 1
   },
   {
@@ -387992,7 +387992,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Small biting swarm glints punctuate red-orange toxic sting haze; centered bloom, unfolding entrance",
-    "compositionHash": "fb9e51a1aac81dc1a93dfaf83b6babb0e8af416f296e9909d0d0bae97ea8f7cb",
+    "compositionHash": "fc0f314d6b4bab096bbdfa9b7ca217bb4b4b5dbb46da13f4307e3fa6e4708fef",
     "sharedCount": 1
   },
   {
@@ -406746,7 +406746,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "Rock shell grows over body then cracks open into living-stone silhouette; centered bloom, expanding entrance",
-    "compositionHash": "f7177465b2bfd112637907558aac21d678e6ba58346d466cbe307a4d3ec1036f",
+    "compositionHash": "798ab2e7b6e68559b95b435a096aa489d60211a1e7052b6403c63e422ce7f6c1",
     "sharedCount": 1
   },
   {
@@ -410679,12 +410679,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 2,
+      "frame": 1,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Incoming elemental ribbon bends through source deflection arc toward new foe; high narrow rise, expanding entrance",
-    "compositionHash": "58ca2208890bbf0224fba152a5e27714a126d9d4896f375548d8d50af0fb74e8",
+    "visualDirection": "Incoming elemental ribbon bends through source deflection arc toward new foe; low wide sweep, expanding entrance",
+    "compositionHash": "3bdf6084588d81733b7a1a6860123205eb59a7257ac18e18751e6f979cb58684",
     "sharedCount": 1
   },
   {
@@ -433899,7 +433899,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "arcing-projectile; centered bloom, expanding entrance",
-    "compositionHash": "0160ccbd2197e2671a769d1602ab51a96b800ef4c0755cfe26fae7bc1c931706",
+    "compositionHash": "0a3b5f8d2f141452970ae8ebe096db9669450b878944507662b09499cb5a1a69",
     "sharedCount": 1
   },
   {
@@ -519580,12 +519580,12 @@ export const PF2E_FEATS = [
     },
     "framing": {
       "entrance": "expanding",
-      "frame": 3,
+      "frame": 2,
       "size": 1,
       "pause": 0
     },
-    "visualDirection": "Target casting glyph breaks; scattered power streams into source recharge ring; left crescent, expanding entrance",
-    "compositionHash": "22aa858d7042f95cbeef4cccb36641896fd029cd8076182e3e403fac1c0f883c",
+    "visualDirection": "Target casting glyph breaks; scattered power streams into source recharge ring; high narrow rise, expanding entrance",
+    "compositionHash": "58ca2208890bbf0224fba152a5e27714a126d9d4896f375548d8d50af0fb74e8",
     "sharedCount": 1
   },
   {
@@ -528419,7 +528419,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "8fb396188ac46f1872067d9c75465cfcad91e59ff6a3e4186e35e01e83b179c1",
+    "compositionHash": "cd08232a79ef7ec12a1096691a48e57c8d23825fdf9ee9e1cdf6bd6547a3f6b3",
     "sharedCount": 1
   },
   {
@@ -610311,7 +610311,7 @@ export const PF2E_FEATS = [
       "pause": 0
     },
     "visualDirection": "single-contact; centered bloom, expanding entrance",
-    "compositionHash": "358f04d4b8f497a82fb8fdb0a93533b4e5ce3fa1d41eecbca2d4770a0c4aa7a4",
+    "compositionHash": "f62ac64aa447ed60b56e6128fa05ae191b93013401740ddfb4fd9c7367df653a",
     "sharedCount": 1
   },
   {

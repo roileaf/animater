@@ -476,7 +476,7 @@ export default {
   ]),
   'pf2e:cZa6br5C3Iyzqqi9': design('Bark grows over the kineticist as armor, and a wooden shield forms in the free hand.', () => [
     cast('Wood answers', ['swirling_leaves.outburst.01.greenorange', 'swirling_leaves.outburst.01.pink'], { stageId: 'call', duration: 1000 }),
-    aura('Bark armor grows', ['aura_themed.01.inward.complete.wood.01'], { stageId: 'bark', after: 'call', anchor: 'start', offset: 300, duration: 1800, scale: 1.1 }),
+    aura('Bark armor grows', ['aura_themed.01.inward.complete.wood.01'], { stageId: 'bark', after: 'call', anchor: 'start', offset: 300, duration: 1800, scale: 1.1, bodyLook: 'Barkskin' }),
     aura('Wooden shield', ['shield.01.complete.01.green', 'shield.01.complete.01.blue'], { after: 'bark', anchor: 'start', offset: 500, duration: 1500, scale: 1, ...tint('#8b6a3a') }),
     motion('brace', 'source', { after: 'bark', anchor: 'start', offset: 600, duration: 900, intensity: 0.4 }),
   ], { sound: 'vines' }),

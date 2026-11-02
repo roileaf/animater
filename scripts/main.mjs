@@ -824,14 +824,15 @@ const screenTint = createScreenTint({
   },
 });
 // Light, Balanced and Low draw Animater's effects without blur or glow, on this client only (core/quality.mjs).
-// A spell's round area set to the Tokenshade look: every client draws its ground field where the effect plays (it
-// follows the caster for an emanation) until the effect ends (engines/playback/aura-fields.mjs groundTag).
+// A spell's area set to the Tokenshade look: every client draws its ground field where the effect plays (a round one
+// follows the caster for an emanation; a cone or line rolls waves out along it) until the effect ends
+// (engines/playback/aura-fields.mjs groundTag).
 const groundField = (effect) => {
   const tag = effect?.data?.animaterGround;
   if (!tag || effect.data.moduleName !== ID || !canvas?.ready || !(tag.radius > 0)) return;
   const at = () => ({ x: Number(effect.x ?? effect.position?.x) || 0, y: Number(effect.y ?? effect.position?.y) || 0 });
   const anchor = { get center() { return at(); }, w: 0, get visible() { return !effect.destroyed; }, get ended() { return effect.destroyed === true; } };
-  auraFields.add(`ground:${effect.id}`, { token: anchor, radius: tag.radius, look: { motif: tag.motif, color: tag.color, inward: tag.inward === true } });
+  auraFields.add(`ground:${effect.id}`, { token: anchor, radius: tag.radius, look: { motif: tag.motif, color: tag.color, inward: tag.inward === true }, wave: tag.wave ? tag : null, swarm: tag.swarm ? tag : null });
 };
 Hooks.on("createSequencerEffect", (effect) => {
   groundField(effect);
@@ -2038,10 +2039,13 @@ const listThreads = () => {
   const sustained = sustainLinks(tokens.map((t) => ({
     id: t.id, actorId: t.actor.uuid,
     effects: [...t.actor.items].filter((i) => i.type === "effect" && i.system?.duration?.sustained === true).map((i) => ({
-      id: i.id, sustained: true, originActorId: effectOrigin(i), hidden: i.system?.unidentified === true && !game.user.isGM })),
+      id: i.id, sustained: true, active: !(i.isExpired || i.system?.expired), originActorId: effectOrigin(i), hidden: i.system?.unidentified === true && !game.user.isGM })),
   })));
   return game.system.id === "dnd5e" ? [...sustained, ...concentrationLinks(tokens)] : sustained;
 };
+// An effect toggled on or off, added or ended: read who sustains what on the next frame, not half a second on.
+const rereadThreads = () => { threadListAt = -Infinity; };
+for (const hook of ["createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "updateItem", "deleteItem"]) Hooks.on(hook, rereadThreads);
 const tickThreads = () => {
   if (!threadsOn()) { if (sustainThreads.size) sustainThreads.clear(); return; }
   if (performance.now() - threadListAt >= VAPOR_REFRESH_MS) { threadListAt = performance.now(); threadList = listThreads(); }

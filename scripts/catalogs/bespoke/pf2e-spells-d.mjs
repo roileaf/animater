@@ -229,7 +229,7 @@ export default {
   // Swarming Wasp Stings: disembodied stingers stab creatures.
   'pf2e:LVwmAH5NGvTuuQSU': design('A buzzing swarm of disembodied wasp stingers descends on the targets, stabbing them repeatedly and injecting venom.', () => [
     cast('Swarm conjured', ['particles.002.001.complete.many.orangeyellow', 'particles.002.001.complete.many.blue'], { stageId: 'ws-cast', duration: 900, scale: 0.8, ...tint('#e6c23a') }),
-    aura('Stingers swarm', ['particles.002.001.complete.many.orangeyellow', 'particles.002.001.complete.many.blue'], { subject: 'targets', stageId: 'ws-swarm', after: 'ws-cast', anchor: 'start', offset: 500, duration: 2200, scale: 1.1, ...tint('#e6c23a') }),
+    aura('Stingers swarm', ['particles.002.001.complete.many.orangeyellow', 'particles.002.001.complete.many.blue'], { subject: 'targets', stageId: 'ws-swarm', after: 'ws-cast', anchor: 'start', offset: 500, duration: 2200, scale: 1.1, ...tint('#3a2c0a'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     impact('Stings', ['impact.003.yellow', 'impact.003.blue'], { after: 'ws-swarm', anchor: 'start', offset: 300, duration: 600, scale: 0.3, repeats: 4, repeatInterval: 250 }),
     impact('Venom', ['impact_themed.poison.greenyellow', 'icon.poison.dark_green'], { after: 'ws-swarm', anchor: 'start', offset: 1300, duration: 1200, scale: 0.4 }),
     motion('shake', 'targets', { after: 'ws-swarm', anchor: 'start', offset: 300, duration: 1200, intensity: 0.4 }),
@@ -333,7 +333,8 @@ export default {
   'pf2e:r82rqcm0MmGaBFkM': design('You swing your two-handed weapon in a massive Strike and the impact releases a cone of sonic vibrations that topples creatures.', () => [
     motion('lunge', 'source', { stageId: 'ts-lunge', duration: 750, intensity: 0.7 }),
     impact('Heavy Strike', ['melee_generic.bludgeoning.two_handed', 'melee_attack.03.greatclub.01'], { stageId: 'ts-hit', targetSelection: 'first', after: 'ts-lunge', anchor: 'start', offset: 350, duration: 1000, scale: 1 }),
-    area('Sonic cone', ['template_cone_PF2e.001.003.blue', 'template_cone_PF2e.001.001.purplered'], { stageId: 'ts-cone', after: 'ts-hit', anchor: 'start', offset: 300, duration: 1600, opacity: 0.85 }),
+    // No footage fits sound poured out in a cone: Tokenshade draws its waves (the marker only keeps time).
+    area('Sonic cone', ['template_cone_PF2e.001.003.blue', 'template_cone_PF2e.001.001.purplered'], { stageId: 'ts-cone', after: 'ts-hit', anchor: 'start', offset: 300, duration: 1600, opacity: 0.85, areaLook: 'tokenshade' }),
     area('Vibrations', ['soundwave.02.blue'], { after: 'ts-cone', anchor: 'start', duration: 1300, opacity: 0.6 }),
     motion('stagger', 'targets', { after: 'ts-cone', anchor: 'start', offset: 300, duration: 800, intensity: 0.6 }),
   ], { sound: 'sonic' }),
@@ -399,9 +400,9 @@ export default {
 
   // Tracking Mayflies: mayfly swarm guides a ranged Strike.
   'pf2e:HnykPqaCEPk3d2n3': design('A magical swarm of mayflies gathers and guides your shot through the sky to the target.', () => [
-    cast('Mayflies gather', ['fireflies.many.01.green'], { stageId: 'tm-flies', duration: 1100, scale: 0.8, ...tint('#e8f0b0') }),
+    cast('Mayflies gather', ['butterflies.many.orange'], { stageId: 'tm-flies', duration: 1100, scale: 0.8, ...tint('#e8f0b0') }),
     travel('Guided shot', ['arrow.physical.white.01'], { stageId: 'tm-shot', after: 'tm-flies', anchor: 'start', offset: 700, duration: 1300 }),
-    impact('Mayflies swarm the target', ['fireflies.few.02.green'], { after: 'tm-shot', anchor: 'end', offset: -250, duration: 1600, scale: 0.7, fadeOut: 500, ...tint('#e8f0b0') }),
+    impact('Mayflies swarm the target', ['butterflies.few.orange'], { after: 'tm-shot', anchor: 'end', offset: -250, duration: 1600, scale: 0.7, fadeOut: 500, ...tint('#e8f0b0') }),
     motion('recoil', 'targets', { after: 'tm-shot', anchor: 'end', offset: -250, duration: 600, intensity: 0.45 }),
   ], { sound: 'bow', soundNamespace: 'ability' }),
 
@@ -498,7 +499,7 @@ export default {
   // Vitrifying Blast: cone of glass shards.
   'pf2e:g2V4ID0pl1ZGAxZj': design('You launch a cone of glittering glass shards that embed in creatures and begin turning them to glass.', () => [
     cast('Glass forms', ['glint.yellow.many'], { stageId: 'vb-cast', duration: 700, scale: 0.6, ...tint('#d8f0ff') }),
-    area('Glass shard cone', ['breath_weapons02.burst.cone.ice.01', 'breath_weapons.cold.cone.blue'], { stageId: 'vb-cone', after: 'vb-cast', anchor: 'start', offset: 350, duration: 1700, ...tint('#cfeaf0') }),
+    area('Glass shard cone', ['cone_of_cold.blue', 'breath_weapons.cold.cone.blue'], { stageId: 'vb-cone', after: 'vb-cast', anchor: 'start', offset: 350, duration: 2600, fadeOut: 500, ...tint('#cfeaf0') }),
     impact('Shards embed', ['impact_themed.ice_shard.blue'], { after: 'vb-cone', anchor: 'start', offset: 450, duration: 1200, scale: 0.6, ...tint('#e0f4f8') }),
     motion('stagger', 'targets', { after: 'vb-cone', anchor: 'start', offset: 450, duration: 800, intensity: 0.55 }),
   ], { sound: 'pierce' }),
@@ -506,8 +507,8 @@ export default {
   // Vomit Swarm: belch a cone of magical vermin.
   'pf2e:cB17yFc9456Pyfec': design('You belch forth a cone of skittering magical vermin that swarm over everyone in the area, biting and stinging.', () => [
     motion('lunge', 'source', { stageId: 'vs-belch', duration: 600, intensity: 0.4 }),
-    area('Vermin pour out', ['breath_weapons.poison.cone.green'], { stageId: 'vs-cone', after: 'vs-belch', anchor: 'start', offset: 250, duration: 1800, ...tint('#6a5a3a') }),
-    impact('Vermin swarm over foes', ['particles.002.001.complete.many.greenyellow', 'particles.002.001.complete.many.blue'], { after: 'vs-cone', anchor: 'start', offset: 500, duration: 2000, scale: 0.9, ...tint('#5a4a2a') }),
+    area('Vermin pour out', ['breath_weapons.poison.cone.green'], { stageId: 'vs-cone', after: 'vs-belch', anchor: 'start', offset: 250, duration: 1800, ...tint('#3a3430'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
+    impact('Vermin swarm over foes', ['particles.002.001.complete.many.greenyellow', 'particles.002.001.complete.many.blue'], { after: 'vs-cone', anchor: 'start', offset: 500, duration: 2000, scale: 0.9, ...tint('#3a3430'), areaLook: 'tokenshade', areaMotif: 'swarm' }),
     motion('shake', 'targets', { after: 'vs-cone', anchor: 'start', offset: 500, duration: 1200, intensity: 0.4 }),
   ]),
 
