@@ -1164,6 +1164,23 @@ test('a big creature’s shadow falls over the smaller creatures behind it, not 
   lit.lights = [torch, east];
   assert.deepEqual(run([walker('dragon', 500, 300), walker('cat', 300, 100), walker('dog', 760, 100)]).sort(), [300, 760]);
 });
+test('a shadow is not laid over a creature its caster is drawn over (a top-down token lying on it)',async()=>{
+  const { createMovementFeel, drawnOver } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const dragon = { x: 500, y: 500, width: 300, elevation: 0, order: 1e7 };
+  assert.equal(drawnOver(dragon, { x: 620, y: 500, width: 100, elevation: 0, order: 1 }), true, 'beneath it and drawn under it');
+  assert.equal(drawnOver(dragon, { x: 760, y: 500, width: 100, elevation: 0, order: 1 }), false, 'beside it');
+  assert.equal(drawnOver({ ...dragon, order: 0 }, { x: 620, y: 500, width: 100, elevation: 0, order: 1 }), false, 'drawn over the dragon');
+  assert.equal(drawnOver({ ...dragon, elevation: 30 }, { x: 620, y: 500, width: 100, elevation: 0, order: 1 }), false, 'a flier is drawn above the shade by its elevation');
+  const overs = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow() {}, removeShadow() {}, addOverShadow: () => ({}), updateOverShadow: (h, g, covers) => overs.push(covers.map((c) => c.x)), removeOverShadow() {}, clear() {} };
+  const torch = { shine: 1, strength: 0.5, angle: 180, distance: 150, brightness: 1, elevation: 10, key: 't' };
+  const lit = { light: torch, lights: [torch], darkness: 1 };
+  const walker = (id, x, width, order) => ({ id, x, y: 500, width, elevation: 0, base: 0, visible: true, gait: 'none', action: 'walk', light: () => lit, order: () => order });
+  const run = (list) => { overs.length = 0; createMovementFeel({ groundShadows: () => true, shadowsOverTokens: () => true, tokens: () => list, enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {}, sun: () => null }).tick(); return overs.flat(); };
+  assert.deepEqual(run([walker('dragon', 500, 300, 0), walker('cat', 620, 100, 1)]), [620], 'a regular dragon, drawn under the cat: the cat is in its shade');
+  assert.deepEqual(run([walker('dragon', 500, 300, 1e7), walker('cat', 620, 100, 1)]), [], 'a top-down dragon over the cat: no shade painted over the dragon');
+  assert.deepEqual(run([walker('dragon', 500, 300, 1e7), walker('cat', 760, 100, 1)]), [760], 'one behind it, clear of its art, still is');
+});
 test('each shadow says whether it is the sun’s and carries the floor its light reaches, to stop at walls',async()=>{
   const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const drawn = [];

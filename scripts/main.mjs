@@ -1310,6 +1310,9 @@ const movementFeel = createMovementFeel({
         ring: d.ring?.enabled === true ? Math.min(0.7, Math.max(0.2, 0.5 * Math.abs(Number(d.texture?.scaleX) || 1) / (Number(t.ring?.scaleCorrection) || 1))) : false,
         // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
         art: () => tokenArt(t),
+        // Where it is drawn among the creatures at its elevation (its mesh's sort; another module may raise it, as
+        // Tokener does for a top-down token lying over the creatures beneath it), read each frame.
+        order: () => Number(t.mesh?.sort ?? d.sort) || 0,
         light: () => flierLight(t),
         bob: () => bodyLift.get(t.id) ?? 0,
       };

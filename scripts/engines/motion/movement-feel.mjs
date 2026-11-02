@@ -293,6 +293,18 @@ export function shadowCovers(geom, grounded = []) {
   }).map((t) => ({ x: t.x, y: t.y, width: t.width, ...(t.ring ? { ring: t.ring } : {}) }));
 }
 
+// Whether `caster` (x, y its centre, width, elevation, order: where it is drawn among creatures at its elevation) lies
+// over creature `t` on the same floor, drawn after it (a top-down token over the creatures beneath it). Its shadow is
+// then not laid over `t`'s art, which the caster's own art covers there: the shade, drawn above the tokens on that floor,
+// would darken the caster instead. (A flier is drawn above the shade by its elevation, so it never is.)
+export function drawnOver(caster, t) {
+  if (!caster || !t) return false;
+  if ((Number(caster.elevation) || 0) !== (Number(t.elevation) || 0)) return false;
+  if ((Number(caster.order) || 0) <= (Number(t.order) || 0)) return false;
+  const reach = ((Number(caster.width) || 0) + (Number(t.width) || 0)) / 2;
+  return Math.abs(t.x - caster.x) < reach && Math.abs(t.y - caster.y) < reach;
+}
+
 // A standing creature's grounding rim: a tight soft shadow hugging it, so it sits on the floor rather than floating
 // over it, whatever the light (what a renderer calls ambient occlusion): its own outline a little larger, nudged a hair
 // away from its main light (`away`, that light's fall { dx, dy }), darker on its shadow side. Only where its art stands
@@ -1268,6 +1280,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     const seen = new Set(), unseen = new Set();
     // This frame's flier shadows and the creatures standing on the ground, for the shadows that pass over them.
     const flierShadows = [], standing = [], groundCasts = [];
+    // Where a token is drawn among the creatures at its elevation (token.order(), its mesh's sort), 0 when unknown.
+    const orderOf = (token) => { try { return typeof token.order === 'function' ? Number(token.order()) || 0 : 0; } catch { return 0; } };
     lastUnseen = unseen;
     for (const token of tokens() ?? []) {
       let id;
@@ -1359,7 +1373,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           if (kind !== null) for (const at of tracker.step(id, point)) { const feet = feetOf(token, at); sound(floorOf(feet, token), feet, token, kind); }
           continue;
         }
-        if (token.visible && !under) standing.push({ id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0, ring: token.ring || false });
+        if (token.visible && !under) standing.push({ id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0, ring: token.ring || false, order: orderOf(token) });
         // Standing on the ground: its shadows when "Shadows under every token" is on.
         if (groundShadows() && token.visible && token.shadow !== false) {
           let handle = shadows.get(id);
@@ -1389,7 +1403,10 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           } else { remember(move, key, refs, layer.updateShadow(handle, geom) !== false); second(id, null); move.lastGround = null; }
           rim(id, rimGeometry({ x: point.x, y: point.y, width: Number(token.width) || size, art, ring: token.ring || false, away: main }));
           }
-          if (move.lastGround) groundCasts.push(...move.lastGround);
+          if (move.lastGround) {
+            const caster = { x: point.x, y: point.y, width: Number(token.width) || size, elevation: Number(token.elevation) || 0, order: orderOf(token) };
+            groundCasts.push(...move.lastGround.map((f) => ({ ...f, caster })));
+          }
         } else dropShadow(id);
         for (const at of tracker.step(id, point)) emit(token, at, time, size, rate, kind, move);
       } catch (error) {
@@ -1409,7 +1426,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     }
     // A big creature standing between a light and smaller creatures puts them in its shade.
     if (over) for (const f of groundCasts) {
-      const covers = shadowCovers(f.geom, standing.filter((t) => t.id !== f.owner && (Number(t.width) || 0) < f.width && t.elevation <= f.elevation));
+      const covers = shadowCovers(f.geom, standing.filter((t) => t.id !== f.owner && (Number(t.width) || 0) < f.width && t.elevation <= f.elevation && !drawnOver(f.caster, t)));
       if (!covers.length) continue;
       covering.add(f.id);
       let handle = overs.get(f.id);
