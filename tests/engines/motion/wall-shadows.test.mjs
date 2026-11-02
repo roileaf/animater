@@ -39,6 +39,30 @@ test('a wall raised off the floor (Wall Height’s bottom) casts from its bottom
   assert.equal(hung.top, 5);
 });
 
+test('a wall’s height: the Wall Height module’s, else its own Animater fields, else the level’s ceiling, else the world’s', async () => {
+  const { wallSpan } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // Scene units (5 ft a square), up from the level's floor at 10 ft.
+  const at = { floor: 10, per: 5, ceiling: 30 };
+  assert.deepEqual(wallSpan({ 'wall-height': { top: 25, bottom: 15 }, animater: { shadowTop: 40 } }, at), { top: 3, bottom: 1 }, 'Wall Height first');
+  assert.deepEqual(wallSpan({ animater: { shadowTop: 20, shadowBottom: 15 } }, at), { top: 2, bottom: 1 }, 'its own fields');
+  assert.deepEqual(wallSpan({ animater: { shadowTop: null, shadowBottom: 15 } }, at), { top: 4, bottom: 1 }, 'a bottom alone: the ceiling above it');
+  assert.deepEqual(wallSpan({}, at), { top: 4, bottom: null }, 'the level’s ceiling');
+  assert.deepEqual(wallSpan({}, { floor: 0, per: 5, ceiling: null }), { top: null, bottom: null }, 'the world’s height');
+  assert.deepEqual(wallSpan({ animater: { shadowTop: '' } }, { floor: 0, per: 5 }), { top: null, bottom: null }, 'an emptied field');
+});
+
+test('a big creature half in a wall’s shade is half shaded: its footprint, not only its middle', async () => {
+  const { shadeAcross } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // The wall's shadow from x 500 to 700 (sun in the west, a wall 2 squares tall).
+  const quads = wallShadowQuads({ walls: [wall], sun: west, grid, height: 2 });
+  assert.equal(shadeAcross({ x: 600, y: 200 }, 100, quads), 1, 'a small creature wholly in it');
+  assert.equal(shadeAcross({ x: 400, y: 200 }, 100, quads), 0, 'wholly out');
+  // A dragon three squares wide, its middle just inside the shadow's edge: a third of it out in the sun.
+  const dragon = shadeAcross({ x: 650, y: 200 }, 300, quads);
+  assert.ok(dragon > 0.3 && dragon < 0.8, String(dragon));
+  assert.equal(shadeAcross({ x: 600, y: 200 }, 100, quads, { elevation: 2 }), 0, 'above the wall');
+});
+
 test('how long a shadow reaches: height over the tangent of the sun, never past the cap', () => {
   assert.ok(Math.abs(wallShadowReach(2, 45) - 2) < 1e-9);
   assert.equal(wallShadowReach(2, 1), WALL_SHADOW_CAP);

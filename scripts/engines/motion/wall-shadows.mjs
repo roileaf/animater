@@ -20,6 +20,19 @@ export function wallShadowStrength(wall = {}) {
   return light >= 20 && light < 30 ? 1 : light > 0 ? 0.5 : 0;
 }
 
+// Where a wall stands for its shadow, in squares up from the level's floor: { top, bottom } (null where nothing says:
+// the world's "Wall height", from the floor). From its `flags`: the Wall Height module's top and bottom first, else its
+// own (Wall configuration → Animater shadow: flags.animater.shadowTop / shadowBottom); without a top, the level's
+// ceiling. All in scene units: `floor` the level's floor, `ceiling` its top (null none), `per` scene units a square.
+export function wallSpan(flags = {}, { floor = 0, per = 1, ceiling = null } = {}) {
+  const given = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+  const up = (v) => (Number(v) - (Number(floor) || 0)) / (Number(per) || 1);
+  const module = flags?.['wall-height'] ?? {}, own = flags?.animater ?? {};
+  const top = given(module.top) ? module.top : given(own.shadowTop) ? own.shadowTop : given(ceiling) && Number(ceiling) > (Number(floor) || 0) ? ceiling : null;
+  const bottom = given(module.bottom) ? module.bottom : given(own.shadowBottom) ? own.shadowBottom : null;
+  return { top: top === null ? null : up(top), bottom: bottom === null ? null : up(bottom) };
+}
+
 // How far (squares) a wall `height` squares tall throws its shadow with the sun `sunHeight` degrees up.
 export function wallShadowReach(height, sunHeight) {
   const up = Math.max(0, Math.min(89.9, Number(sunHeight) || 0)) * Math.PI / 180;
@@ -59,6 +72,16 @@ export function inWallShade(point, quads = [], { elevation = 0 } = {}) {
     if (inside(point, q.points)) deepest = q.alpha;
   }
   return deepest;
+}
+
+// How much of a creature `width` pixels across, standing at `point`, lies in walls' shadows (0–1): its footprint
+// sampled three by three, so a dragon with a third of it out in the sun keeps a third of its sun shadow.
+export function shadeAcross(point, width, quads = [], { elevation = 0 } = {}) {
+  if (!quads.length) return 0;
+  const step = (Number(width) || 0) / 3;
+  let total = 0;
+  for (const i of [-1, 0, 1]) for (const j of [-1, 0, 1]) total += inWallShade({ x: point.x + i * step, y: point.y + j * step }, quads, { elevation });
+  return total / 9;
 }
 
 // Even-odd point in a polygon (flat x, y pairs).

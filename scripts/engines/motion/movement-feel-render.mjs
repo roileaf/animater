@@ -3,7 +3,7 @@
 // faded; a flier's shadow is its art's soft silhouette laid on the floor (flier-silhouette.mjs), else a stack of faint
 // ellipses, no blur.
 // `root()` returns (and makes, when needed) the container on the viewed level's floor.
-import { createSilhouettes, silhouettePose, silhouetteScale } from './flier-silhouette.mjs';
+import { createSilhouettes, silhouettePose, silhouetteScale, silhouetteSize } from './flier-silhouette.mjs';
 
 const DRAW = 100;
 const SHADOW_RINGS = 14;
@@ -260,7 +260,8 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
   const laySilhouette = (holder, parent, geom, cast) => {
     let node = shapes.get(holder);
     const art = typeof geom.art === 'function' ? geom.art() : geom.art;
-    const shape = art?.texture ? silhouettes()?.get(art.texture) ?? null : null;
+    // Made at about the size the art is drawn, so a big creature's shadow is as crisp as a small one's.
+    const shape = art?.texture ? silhouettes()?.get(art.texture, silhouetteSize(Math.max(art.width, art.height))) ?? null : null;
     if (!shape) { if (node && !node.outer.destroyed) node.outer.visible = false; return false; }
     if (!node || node.outer.destroyed) { shapes.set(holder, node = silhouetteNode()); parent.addChild(node.outer); }
     else if (node.outer.parent !== parent) parent.addChild(node.outer);
@@ -390,7 +391,7 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       g.alpha = shaped || geom.rim ? 0 : geom.alpha;
       if (shaped || !geom.art) return true;
       const art = typeof geom.art === 'function' ? geom.art() : geom.art;
-      return !art?.texture || silhouettes()?.known?.(art.texture) !== false;
+      return !art?.texture || silhouettes()?.known?.(art.texture, silhouetteSize(Math.max(art.width, art.height))) !== false;
     },
     removeShadow(g) { dropClip(g); dropSilhouette(g); remove(g); },
     // The walls changed: the sunlit floor the sun's shadows lie under, again.

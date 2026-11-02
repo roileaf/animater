@@ -49,6 +49,24 @@ test('silhouettes are made once per art; solid or unreadable art gets none', () 
   assert.equal(cut.get({ valid: false, baseTexture: { uid: 4 }, frame: {} }), null, 'not loaded yet');
 });
 
+test('a big creature’s silhouette is made bigger, so its shadow is as crisp as a small one’s', async () => {
+  const { silhouetteSize } = await import('../../../scripts/engines/motion/flier-silhouette.mjs');
+  assert.equal(silhouetteSize(100), 128);
+  assert.equal(silhouetteSize(250), 256);
+  assert.equal(silhouetteSize(780), 512, 'never past 512');
+  assert.equal(silhouetteSize(undefined), 128);
+  const blurs = [];
+  const doc = { createElement: () => ({ width: 0, height: 0, getContext: () => ({ set filter(v) { const m = /blur\(([\d.]+)px\)/.exec(v); if (m) blurs.push(Number(m[1])); }, get filter() { return 'none'; },
+    drawImage() {}, fillRect() {}, getImageData: () => ({ data: rgba(Array(32 * 32).fill(0).map((_, i) => (i % 4 ? 0 : 255))) }) }) }) };
+  const cut = createSilhouettes({ PIXI: { Texture: { from: () => ({ destroy() {} }) } }, doc, gap: 0 });
+  const art = { valid: true, baseTexture: { uid: 9, resource: { source: {} } }, frame: { x: 0, y: 0, width: 1000, height: 1000 } };
+  const small = cut.get(art, 128), big = cut.get(art, 512);
+  assert.equal(small.width, 128);
+  assert.equal(big.width, 512, 'its own, larger');
+  assert.equal(cut.get(art, 512), big, 'kept');
+  assert.deepEqual(blurs.slice(0, 2), blurs.slice(2, 4), 'the same blur in pixels at any size');
+});
+
 test('a flier with cut-out art casts its silhouette; without one the round shadow stays', () => {
   const point = () => ({ x: 0, y: 0, set(x, y = x) { this.x = x; this.y = y; } });
   class Node { constructor() { this.children = []; this.position = point(); this.scale = point(); this.anchor = point(); this.alpha = 1; this.visible = true; this.destroyed = false; }

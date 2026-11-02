@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.4.11 (2026-11-02)
+
+- **A height for each wall's shadow.** Wall configuration has an Animater shadow section (Shadow top and Shadow bottom, in the scene's units) when the Wall Height module is not on; empty, a wall takes the level's ceiling, else the Wall height setting.
+- **Big creatures half in a wall's shade keep half their sun shadow.** Shade is measured across a creature's footprint, not only its middle, so a dragon with part of it in the sun still casts that part's shadow.
+- **Big creatures' shadows are as crisp as small ones'.** A large creature's silhouette is made at a size close to how it is drawn, instead of stretched (and blurred) several times over.
+
 ## 2.4.10 (2026-11-02)
 
 - **Draw Steel support.** Hero abilities from the system's Abilities compendium play their own animations, designed from each ability's element, shape, class style and name; every other ability (monsters, homebrew) plays its look's fallback with its forced movement and conditions; the ten conditions show as lasting looks. Verified with Draw Steel 1.1.2.

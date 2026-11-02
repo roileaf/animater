@@ -162,7 +162,7 @@ import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "
 import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
-import { wallShadowQuads, inWallShade, createWallShadows } from "./engines/motion/wall-shadows.mjs";
+import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan } from "./engines/motion/wall-shadows.mjs";
 import { isFireLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
@@ -1116,7 +1116,7 @@ const flierLight = (t) => {
     // Out of the sun: indoors (a region that keeps the weather out, as for snow and rain) wholly; else in a wall's
     // shade (walls cast shadows in sunlight), standing or flying no higher than the wall.
     const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
-    const shade = shelteredAt(t.center, t.document?.elevation ?? 0) ? 1 : wallQuads.length ? inWallShade(t.center, wallQuads, { elevation: up }) : 0;
+    const shade = shelteredAt(t.center, t.document?.elevation ?? 0) ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
     value = { light: lightAround(t.center, reaching, 1), lights, darkness, shade, ...shadowClips(t, reaching) };
   } catch { value = null; }
   flierLights.set(t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
@@ -1183,17 +1183,9 @@ const wallShadowRootOf = () => {
 };
 const wallShadows = createWallShadows({ PIXI: globalThis.PIXI, root: wallShadowRootOf, render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
 const wallShadowsOn = () => { try { return movementFeelSettingOn("wallShadows") && movementFeelSettingOn("wallShadowsLocal") && qualityRank(localQuality()) >= 2; } catch { return false; } };
-// Where a wall stands, in squares up from the level's floor: { top, bottom }. The Wall Height module's top and bottom
-// (a rail, a high window, an overhang); without its top, the level's ceiling; null where neither says (the world's
-// "Wall height", from the floor).
-const wallSpanOf = (doc) => {
-  const per = Number(canvas.grid?.distance) || 1, floor = Number(canvas.level?.elevation?.bottom) || 0;
-  const given = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
-  const own = doc.flags?.["wall-height"] ?? {}, ceiling = canvas.level?.elevation?.top;
-  const top = given(own.top) ? (Number(own.top) - floor) / per : given(ceiling) && Number(ceiling) > floor ? (Number(ceiling) - floor) / per : null;
-  const bottom = given(own.bottom) ? (Number(own.bottom) - floor) / per : null;
-  return { top, bottom };
-};
+// Where a wall stands, in squares up from the level's floor (engines/motion/wall-shadows.mjs wallSpan): the Wall Height
+// module's top and bottom, else its own Animater shadow fields, else the level's ceiling, else the world's height.
+const wallSpanOf = (doc) => wallSpan(doc.flags, { floor: Number(canvas.level?.elevation?.bottom) || 0, per: Number(canvas.grid?.distance) || 1, ceiling: canvas.level?.elevation?.top ?? null });
 // The walls of the level shown (a wall on no level stands on all of them).
 const wallsHere = () => {
   const level = canvas.level?.id;
@@ -4489,6 +4481,23 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const tab = root.querySelector('.tab[data-tab="environment"]') ?? root.querySelector('.tab[data-tab="ambience"]') ?? root.querySelector('.tab[data-tab="basics"]') ?? root.querySelector(".tab");
   if (!tab) return;
   tab.append(sunConfigElement({ flags: app.document?.flags?.[ID]?.sun ?? {}, defaults: sunDefaults(), clock: clockNow(), id: ID }));
+});
+// Wall configuration: how tall this wall stands for its shadow in the sun (walls cast shadows in sunlight), its top and
+// bottom in the scene's units; empty for the level's ceiling or the world's height. Left to the Wall Height module's own
+// fields when it is on.
+Hooks.on("renderWallConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.shadowTop"]`) || game.modules.get("wall-height")?.active) return;
+  const doc = app.document ?? app.object, flags = doc?.flags?.[ID] ?? {}, units = doc?.parent?.grid?.units || canvas.scene?.grid?.units || "";
+  const value = (v) => (v === null || v === undefined || v === "" ? "" : String(v));
+  const set = document.createElement("fieldset");
+  set.innerHTML = `<legend>Animater shadow</legend>
+    <div class="form-group"><label>Shadow top${units ? ` (${units})` : ""}</label><div class="form-fields"><input type="number" step="any" name="flags.${ID}.shadowTop" value="${value(flags.shadowTop)}" placeholder="Level ceiling or world height"></div></div>
+    <div class="form-group"><label>Shadow bottom${units ? ` (${units})` : ""}</label><div class="form-fields"><input type="number" step="any" name="flags.${ID}.shadowBottom" value="${value(flags.shadowBottom)}" placeholder="The floor"></div></div>
+    <p class="hint">How tall this wall stands for the shadow it casts in sunlight ("Walls cast shadows in sunlight"). A bottom above the floor (a rail, a high window) leaves a lit gap beside the wall. Empty: the level's ceiling, else Animater's Wall height setting.</p>`;
+  // After the window's last section, inside its scrolling part (before the footer it left pinned under the rest).
+  const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
+  if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
 });
 // Token configuration fields go on both a placed token's sheet and its actor's prototype token.
 const onTokenConfig =(fn) => { Hooks.on("renderTokenConfig", fn); Hooks.on("renderPrototypeTokenConfig", fn); };

@@ -2,8 +2,12 @@
 // blurs: sharp for a low flier, soft for a high one), laid flat on the floor below it. Art with no outline of its own
 // (an opaque square portrait) keeps the round shadow, as its silhouette would only be a square.
 
-// The size the silhouette is drawn at (its longer side, in pixels): a shadow is soft, so small is enough.
+// The size the silhouette is drawn at (its longer side, in pixels): a shadow is soft, so small is enough for a creature
+// of a square or so; a bigger one's is drawn bigger (silhouetteSize), its blur the same in pixels, so a dragon's shadow
+// is as crisp as a cat's, not stretched six times as soft.
 export const SILHOUETTE_SIZE = 128;
+// The size to draw a silhouette at for art drawn `drawn` pixels across: 128, 256 or 512.
+export const silhouetteSize = (drawn) => { const d = Number(drawn) || 0; return d > 320 ? 512 : d > 160 ? 256 : SILHOUETTE_SIZE; };
 // Art that covers more than this share of its frame has no outline to cast.
 export const SOLID_COVERAGE = 0.82;
 // How much larger than its token a shadow may grow (wide wings, a long tail).
@@ -56,11 +60,11 @@ export function createSilhouettes({ PIXI, doc = globalThis.document, now = () =>
     const base = texture?.baseTexture, f = texture?.frame;
     return base ? `${base.uid ?? base.cacheId ?? ''}|${f?.x},${f?.y},${f?.width},${f?.height}` : null;
   };
-  const make = (texture) => {
+  const make = (texture, size) => {
     const source = texture.baseTexture?.resource?.source, f = texture.frame;
     if (!source || !(f?.width > 0) || !(f?.height > 0) || !doc?.createElement) return null;
     // The full art is shrunk once, to the silhouette's size; the probe and both blurs read that small copy.
-    const k = SILHOUETTE_SIZE / Math.max(f.width, f.height), w = Math.max(1, Math.round(f.width * k)), h = Math.max(1, Math.round(f.height * k));
+    const k = size / Math.max(f.width, f.height), w = Math.max(1, Math.round(f.width * k)), h = Math.max(1, Math.round(f.height * k));
     const small = doc.createElement('canvas');
     small.width = w; small.height = h;
     const s = small.getContext('2d', { willReadFrequently: true });
@@ -84,21 +88,22 @@ export function createSilhouettes({ PIXI, doc = globalThis.document, now = () =>
     return { sharp: draw(SILHOUETTE_SIZE * 0.025), soft: draw(SILHOUETTE_SIZE * 0.08), width: w, height: h, fill };
   };
   return {
-    get(texture) {
-      const key = keyOf(texture);
+    // `size`: the silhouette's longer side (silhouetteSize of the art as drawn); each size made once.
+    get(texture, size = SILHOUETTE_SIZE) {
+      const art = keyOf(texture), key = art && `${art}|${size}`;
       if (!key || !texture.valid && texture.valid !== undefined) return null;
       if (!made.has(key)) {
         const time = now();
         if (time - lastMade < gap) return null;
         lastMade = time;
         let shape = null;
-        try { shape = make(texture); } catch { shape = null; }
+        try { shape = make(texture, size); } catch { shape = null; }
         made.set(key, shape);
       }
       return made.get(key);
     },
     // Whether `texture`'s silhouette is settled: made, or known to be solid or unreadable (not still waiting its turn).
-    known(texture) { const key = keyOf(texture); return !key || made.has(key); },
+    known(texture, size = SILHOUETTE_SIZE) { const art = keyOf(texture); return !art || made.has(`${art}|${size}`); },
     clear() {
       for (const shape of made.values()) for (const t of [shape?.sharp, shape?.soft]) { try { t?.texture.destroy(true); } catch { /* gone */ } }
       made.clear();
