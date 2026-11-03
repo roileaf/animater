@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.6.4 (2026-11-03)
+
+- **Tracks only where the snow lies.** Light snow lies in patches, and creatures now leave snow prints (and crunch) only on those patches, not on the bare grass between them; as it deepens and the patches join, the tracks spread with them.
+
 ## 2.6.3 (2026-11-03)
 
 - **The weather goes on where the party is not.** As the GM moves the clock, every scene with water carries on under its weather: a river left half frozen keeps freezing in a frost while the party is elsewhere, and thaws when it warms. Each scene follows Calendaria's weather for its own climate zone (else the zone in play), and a blizzard set on the scene freezes it whatever the calendar says. Needs a GM connected; with none, a scene catches up when it is next viewed.

@@ -166,7 +166,7 @@ import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
-import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf } from "./engines/motion/sky-light.mjs";
+import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt } from "./engines/motion/sky-light.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, seasonGround, groundInputs, groundStep, groundMoved } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
@@ -1056,7 +1056,9 @@ const movementFeelFloor = (point, token) => {
   }
   if ((wet >= WET_MUDDY || lying > 0) && !shelteredAt(point, elevation)) {
     if (wet >= WET_MUDDY) floor = rainFloor(floor, "rain").floor;
-    floor = snowFloor(floor, lying);
+    // Snow lying light lies in patches: tracks only where the patch is drawn.
+    const rect = canvas.dimensions?.sceneRect, patch = lying > 0 && rect ? snowPatchAt({ x: point.x - rect.x, y: point.y - rect.y }, lying, canvas.grid?.size ?? 100) : 0;
+    floor = snowFloor(floor, patch >= 0.5 ? lying : 0);
   }
   return floor;
 };

@@ -147,3 +147,13 @@ test('a rainbow comes out when the rain stops under a clearing sky, and fades as
   assert.equal(rainbowOf({ wet: 1, sun: { ...sun, moon: true } }), 0, 'by moonlight: none');
   assert.equal(rainbowOf({ wet: 1, sun, clouds: 0.9 }), 0, 'overcast');
 });
+
+test('light snow lies in patches, and the tracks know where; deep snow lies everywhere', async () => {
+  const { snowPatchAt } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const spots = [];
+  for (let x = 0; x < 4000; x += 97) for (let y = 0; y < 3000; y += 89) spots.push({ x, y });
+  const share = (snow) => spots.filter((p) => snowPatchAt(p, snow, 100) >= 0.5).length / spots.length;
+  assert.ok(share(0.3) > 0.01 && share(0.3) < 0.6, 'light snow: some patches, much bare ground');
+  assert.ok(share(1) > 0.97, 'deep snow: everywhere');
+  assert.equal(share(0), 0, 'none: nowhere');
+});

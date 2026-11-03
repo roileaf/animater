@@ -136,6 +136,16 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); 
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s; }
+// Where snow lies in patches: the same pattern as snowPatchAt in this file (a hash without sine, so the GPU and the
+// creatures' tracks agree on it).
+float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float patchNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(patchHash(i), patchHash(i + vec2(1, 0)), f.x), mix(patchHash(i + vec2(0, 1)), patchHash(i + vec2(1, 1)), f.x), f.y); }
+float snowPatch(vec2 px, float snow){
+  vec2 p = px / (uGrid * 4.0); float s = 0.0, a = 0.5;
+  for (int i = 0; i < 5; i++) { s += a * patchNoise(p); p = p * 2.03 + 17.0; a *= 0.5; }
+  return smoothstep(1.0 - snow * 1.15, 1.05 - snow * 1.15, s);
+}
 float twinkle(vec2 p, float cell, float t, float rate){
   vec2 c = floor(p / cell), f = fract(p / cell) - 0.5;
   float h = hash(c), on = pow(max(0.0, sin(t * rate * (0.6 + h) + h * 40.0)), 10.0);
@@ -278,7 +288,7 @@ void main(){
     }
     if (uSnow > 0.01) {
       // Snow lies first in patches, then everywhere open; on water only once it has frozen over.
-      float lie = smoothstep(1.0 - uSnow * 1.15, 1.05 - uSnow * 1.15, fbm(px / (uGrid * 4.0))) * outside * (1.0 - water + ice);
+      float lie = snowPatch(px, uSnow) * outside * (1.0 - water + ice);
       // Thin enough for the ground to show through where it lies light, crusted and drifted where it lies deep.
       float grain = noise(px / (uGrid * 0.25)), drift = noise(px / (uGrid * 1.1));
       float s = lie * (0.3 + 0.3 * uSnow) * (0.7 + 0.2 * grain + 0.25 * drift);
@@ -804,4 +814,26 @@ export function rainbowOf({ wet = 0, raining = false, sun = null, clouds = 0 } =
   if (raining || !sun || sun.moon || !((Number(sun.strength) || 0) > 0.3)) return 0;
   const fresh = Math.min(1, Math.max(0, ((Number(wet) || 0) - 0.9) / 0.08)), open = Math.min(1, Math.max(0, 1 - (Number(clouds) || 0) * 1.3));
   return fresh * open * Math.min(1, Number(sun.strength) || 0);
+}
+
+// How much snow lies at a point (0–1) while it lies in patches (`snow` the ground's, 0–1): the shader's snowPatch, so a
+// creature leaves tracks only where snow is drawn. `x`, `y` from the scene's top-left corner (its sceneRect), in pixels.
+const fract = (v) => v - Math.floor(v);
+const patchHash = (x, y) => {
+  let a = fract(x * 0.1031), b = fract(y * 0.1031), c = fract(x * 0.1031);
+  const d = a * (b + 33.33) + b * (c + 33.33) + c * (a + 33.33);
+  a += d; b += d; c += d;
+  return fract((a + b) * c);
+};
+const patchNoise = (x, y) => {
+  const ix = Math.floor(x), iy = Math.floor(y); let fx = x - ix, fy = y - iy;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  const mix = (p, q, t) => p + (q - p) * t;
+  return mix(mix(patchHash(ix, iy), patchHash(ix + 1, iy), fx), mix(patchHash(ix, iy + 1), patchHash(ix + 1, iy + 1), fx), fy);
+};
+export function snowPatchAt({ x = 0, y = 0 } = {}, snow = 0, grid = 100) {
+  let px = x / (grid * 4), py = y / (grid * 4), s = 0, a = 0.5;
+  for (let i = 0; i < 5; i++) { s += a * patchNoise(px, py); px = px * 2.03 + 17; py = py * 2.03 + 17; a *= 0.5; }
+  const lo = 1 - snow * 1.15, hi = 1.05 - snow * 1.15, t = Math.min(1, Math.max(0, (s - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
 }
