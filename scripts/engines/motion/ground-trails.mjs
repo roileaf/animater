@@ -9,8 +9,8 @@ import { DEFAULT_BLOOD, creatureBloodType } from './blood-colors.mjs';
 
 // What each floor leaves on the feet: how many strides it lasts on another floor, and the prints it makes there.
 export const CARRY = Object.freeze({
-  // Wet prints: a dark, translucent darkening of the floor, drying in about 8 s.
-  water: Object.freeze({ strides: 6, color: 0x18232b, alpha: 0.3, life: 8000, hold: 0.3 }),
+  // Wet prints: the floor darkened in a ragged stain of the print, drying from the edges in about 8 s.
+  water: Object.freeze({ strides: 6, color: 0x18232b, alpha: 0.5, life: 8000, hold: 0.3, wet: true }),
   // Muddy prints: brown, lingering about 12 s.
   mud: Object.freeze({ strides: 8, color: 0x4a3420, alpha: 0.48, life: 12000, hold: 0.45 }),
   // Snow knocked off the feet: faint white, gone in about 5 s.
@@ -43,7 +43,8 @@ export function carriedPrints(print, at, { grid = 100, width = grid, gait = 'boo
   const look = print && CARRY[print.floor];
   if (!look) return [];
   const alpha = look.alpha * Math.max(0, Math.min(1, print.strength ?? 1));
-  return prints(gait, printPart(look, alpha), at, { grid, width }).map((p) => ({ ...p, carried: print.floor }));
+  // A wet print shrinks as it dries, its edges going first.
+  return prints(gait, printPart(look, alpha), at, { grid, width }).map((p) => ({ ...p, carried: print.floor, ...(look.wet ? { wet: true, grow: -0.4 } : {}) }));
 }
 
 // Same text, same numbers.

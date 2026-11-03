@@ -261,7 +261,45 @@ const PRINTS = {
 
 // `sunlit()`: the sunlit floor (wall-shadows.mjs: { texture, x, y, scale }, null with no wall shading it), the mask the
 // sun's shadows lie under, so a floor a wall already shades from the sun never darkens twice.
-export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouettes: given = null, sunlit: sunlitOf = null }) {
+// A footprint pressed into snow or mud: the print's own shape (its gait's, PRINTS) made a hollow, shaded by a light from
+// the upper left (dark on the side toward it, lit on the far wall) with a little ridge of pushed-up ground round it;
+// `hollow` the floor. Or a wet print (`wet`): the shape as a patchy dark stain. Made once a gait, floor and direction
+// (sixteen), as a picture `N` px wide standing for HOLLOW_SPAN of the DRAW box.
+const HOLLOW_N = 64, HOLLOW_SPAN = 1.3;
+const HOLLOW_LOOK = {
+  snow: { tint: [78, 92, 118], glint: [255, 255, 255], deep: 0.5, rim: 0.75, ridge: 0.35 },
+  mud: { tint: [30, 20, 10], glint: [190, 170, 140], deep: 0.7, rim: 0.45, ridge: 0.55 },
+};
+const blurred = (src, n, radius) => {
+  const tmp = new Float32Array(n * n), out = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { let s = 0, c = 0; for (let k = -radius; k <= radius; k++) { const xx = x + k; if (xx < 0 || xx >= n) continue; s += src[y * n + xx]; c++; } tmp[y * n + x] = s / c; }
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { let s = 0, c = 0; for (let k = -radius; k <= radius; k++) { const yy = y + k; if (yy < 0 || yy >= n) continue; s += tmp[yy * n + x]; c++; } out[y * n + x] = s / c; }
+  return out;
+};
+const hash01 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+export function hollowPixels(mask, n, { look = 'snow', turn = 0, wet = false } = {}) {
+  const m1 = blurred(mask, n, 1), m2 = blurred(mask, n, 4), px = new Uint8ClampedArray(n * n * 4);
+  if (wet) {
+    // A wet stain: the shape a little ragged at its edge, dark, never quite even.
+    for (let i = 0; i < n * n; i++) { const x = i % n, y = (i - x) / n, rag = (hash01(Math.floor(x / 3), Math.floor(y / 3)) - 0.5) * 0.35, a = Math.max(0, Math.min(1, (m1[i] + rag - 0.25) / 0.35));
+      px[i * 4] = 12; px[i * 4 + 1] = 14; px[i * 4 + 2] = 20; px[i * 4 + 3] = a * 255; }
+    return px;
+  }
+  const L0 = HOLLOW_LOOK[look] ?? HOLLOW_LOOK.snow, c = Math.cos(-turn), s = Math.sin(-turn), lw = [-0.55, -0.45, 0.7];
+  const L = [lw[0] * c - lw[1] * s, lw[0] * s + lw[1] * c, lw[2]], Ln = Math.hypot(...L);
+  const h = new Float32Array(n * n); for (let i = 0; i < n * n; i++) h[i] = -m1[i] * 1.3 + L0.ridge * Math.max(0, m2[i] - m1[i]) * 2.5;
+  const at = (x, y) => h[Math.max(0, Math.min(n - 1, y)) * n + Math.max(0, Math.min(n - 1, x))];
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const i = y * n + x, nx = -(at(x + 1, y) - at(x - 1, y)) * 4, ny = -(at(x, y + 1) - at(x, y - 1)) * 4, nn = Math.hypot(nx, ny, 1);
+    const lit = (nx * L[0] + ny * L[1] + L[2]) / (nn * Ln) - L[2] / Ln;
+    const dark = Math.min(1, Math.max(0, -lit) * 1.6 + (m1[i] > 0.5 ? 0.15 * m1[i] : 0)), bright = Math.min(1, Math.max(0, lit) * 1.5);
+    const a = Math.max(dark * L0.deep, bright * L0.rim), col = dark * L0.deep >= bright * L0.rim ? L0.tint : L0.glint;
+    px[i * 4] = col[0]; px[i * 4 + 1] = col[1]; px[i * 4 + 2] = col[2]; px[i * 4 + 3] = a * 255;
+  }
+  return px;
+}
+
+export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouettes: given = null, sunlit: sunlitOf = null, renderer = null }) {
   const live = new Set();
   const add = (g, to = root) => { g.eventMode = 'none'; to().addChild(g); live.add(g); return g; };
   const shadowEllipse = () => {
@@ -392,8 +430,61 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     ctx.fillStyle = grad; ctx.fillRect(0, 0, DRAW, DRAW);
     return (softDisc = PIXI.Texture.from(canvas));
   };
+  // Prints pressed into the ground, and wet ones (hollowPixels), each made once and kept.
+  const hollows = new Map();
+  const hollowTexture = (spec) => {
+    const r = renderer?.(); if (!r || typeof document === 'undefined') return null;
+    const turn = spec.wet ? 0 : (((Math.round((spec.rotation ?? 0) / (Math.PI / 8)) % 16) + 16) % 16) * (Math.PI / 8);
+    const key = `${spec.gait ?? 'boots'}:${spec.wet ? 'wet' : spec.hollow}:${turn.toFixed(3)}`;
+    if (hollows.has(key)) return hollows.get(key);
+    let tex = null;
+    try {
+      const g = new PIXI.Graphics(), holder = new PIXI.Container(), k = HOLLOW_N / (DRAW * HOLLOW_SPAN);
+      (PRINTS[spec.gait] ?? PRINTS.boots)(g, 0xffffff); g.scale.set(k); g.position.set(HOLLOW_N / 2, HOLLOW_N / 2); holder.addChild(g);
+      const rt = PIXI.RenderTexture.create({ width: HOLLOW_N, height: HOLLOW_N });
+      r.render(holder, { renderTexture: rt, clear: true });
+      const raw = r.extract.pixels(rt), mask = new Float32Array(HOLLOW_N * HOLLOW_N);
+      for (let i = 0; i < mask.length; i++) mask[i] = raw[i * 4 + 3] / 255;
+      rt.destroy(true); holder.destroy({ children: true });
+      const px = hollowPixels(mask, HOLLOW_N, { look: spec.hollow, turn, wet: !!spec.wet });
+      const cv = document.createElement('canvas'); cv.width = cv.height = HOLLOW_N; cv.getContext('2d').putImageData(new ImageData(px, HOLLOW_N, HOLLOW_N), 0, 0);
+      tex = PIXI.Texture.from(cv);
+    } catch { tex = null; }
+    hollows.set(key, tex);
+    return tex;
+  };
+  // A breath's cloud: a soft, torn puff of noise drawn once (CLOUD px), every cloud a sprite of it.
+  let cloud = null;
+  const CLOUD = 64;
+  const cloudTexture = () => {
+    if (cloud && !cloud.baseTexture?.destroyed) return cloud;
+    const cv = document.createElement('canvas'); cv.width = cv.height = CLOUD; const g = cv.getContext('2d'), im = g.createImageData(CLOUD, CLOUD);
+    const nz = (x, y) => { const ix = Math.floor(x), iy = Math.floor(y); let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy); const a = hash01(ix, iy), b = hash01(ix + 1, iy), c = hash01(ix, iy + 1), d = hash01(ix + 1, iy + 1); return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy; };
+    for (let y = 0; y < CLOUD; y++) for (let x = 0; x < CLOUD; x++) {
+      const dx = (x - CLOUD / 2) / (CLOUD / 2), dy = (y - CLOUD / 2) / (CLOUD / 2), r = Math.hypot(dx, dy), tear = 0.5 * nz(x / 9, y / 9) + 0.3 * nz(x / 4, y / 4) + 0.2 * nz(x / 2, y / 2);
+      const edge = 1 - Math.min(1, Math.max(0, (r - 0.15 - tear * 0.45) / 0.4)), k = (y * CLOUD + x) * 4;
+      im.data[k] = im.data[k + 1] = im.data[k + 2] = 255; im.data[k + 3] = Math.min(1, Math.max(0, edge * (0.35 + Math.max(0, tear * 2.2 - 0.4)))) * 255;
+    }
+    g.putImageData(im, 0, 0);
+    return (cloud = PIXI.Texture.from(cv));
+  };
   return {
     addParticle(spec) {
+      if (spec.cloud && typeof PIXI.Sprite === 'function' && typeof document !== 'undefined') {
+        const sp = new PIXI.Sprite(cloudTexture());
+        sp.anchor.set(0.5); sp.tint = spec.color; sp.position.set(spec.x, spec.y); sp.rotation = spec.rotation ?? 0; sp.alpha = 0;
+        sp.__animaterRadius = spec.radius; sp.__animaterUnit = DRAW / CLOUD;
+        return add(sp);
+      }
+      if ((spec.hollow || spec.wet) && typeof PIXI.Sprite === 'function') {
+        const tex = hollowTexture(spec);
+        if (tex) {
+          const sp = new PIXI.Sprite(tex);
+          sp.anchor.set(0.5); sp.position.set(spec.x, spec.y); sp.rotation = spec.rotation ?? 0; sp.alpha = 0;
+          sp.__animaterRadius = spec.radius; sp.__animaterUnit = (DRAW * HOLLOW_SPAN) / HOLLOW_N;
+          return add(sp);
+        }
+      }
       if (spec.kind === 'smoke' && typeof PIXI.Sprite === 'function' && typeof document !== 'undefined') {
         const sp = new PIXI.Sprite(softDiscTexture());
         sp.anchor.set(0.5);
@@ -414,7 +505,7 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     },
     updateParticle(g, state) {
       if (g.destroyed) return;
-      const s = (g.__animaterRadius * 2 * state.scale) / DRAW;
+      const s = ((g.__animaterRadius * 2 * state.scale) / DRAW) * (g.__animaterUnit ?? 1);
       g.position.set(state.x, state.y);
       g.scale.set(s, s);
       g.rotation = state.rotation ?? 0;

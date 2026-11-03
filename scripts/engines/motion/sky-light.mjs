@@ -61,8 +61,9 @@ export function heatOf({ sun = null, sky = 1, temperature = null, hotGround = fa
 }
 
 const SURFACE_OF = { water: 'water', snow: 'frozen', ice: 'frozen', sand: 'hot', grass: 'grass' };
-// The floors fireflies come out over: grass, and an outdoor scene's dirt (most outdoor maps are grassy).
-const GRASSY = new Set(['grass', 'dirt']);
+// A scene whose floor is grass is grass everywhere (fireflies, the season's colour). Not dirt: it is also the guess for
+// any outdoor or lit scene with no floor set, and painted every such map's streets and floors green, fireflies over them.
+const GRASSY = new Set(['grass']);
 /**
  * Where the map's surfaces lie: { water, frozen, hot, grass } polygon lists (flat x, y pairs) from the regions with a
  * floor (movement-feel.mjs regionFloor), `bare` the regions with any other floor, and `whole`: the surface the scene's
@@ -126,7 +127,7 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D uWater, uBanks, uFrozen, uIndoor, uGrass, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns;
 uniform vec2 uSize, uWindDir;
-uniform vec4 uBird;     // a flock's centre (x, y), heading (radians) and whether it flies (w)
+uniform vec4 uBird;     // a flock's centre (x, y), heading (radians) and its birds' size (w, 1 a square and a half each; 0 none)
 uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain, uIce, uLitter;
 uniform vec4 uSeason;   // the season's colour over the open ground (rgb) and how strongly (a)
 uniform float uMoon;    // moonlight on the open ground at night (0–1: how much of the moon is lit)
@@ -689,12 +690,14 @@ void main(){
   if (uMode > 2.5) {
     // A flock in a loose V, each bird's shadow beating its wings; drawn over the roofs and trees too ('above').
     float birds = 0.0;
-    if (uBird.w > 0.5) {
+    if (uBird.w > 0.01) {
+      // The birds' own scale: the grid's, times the scene's bird size (a city map's squares are wide, its birds small).
+      float bs = uGrid * uBird.w;
       vec2 fwd = vec2(cos(uBird.z), sin(uBird.z)), side = vec2(-fwd.y, fwd.x);
       for (int i = 0; i < 7; i++) {
         float fi = float(i), row = floor((fi + 1.0) / 2.0), s = mod(fi, 2.0) < 0.5 ? 1.0 : -1.0;
-        vec2 at = uBird.xy - fwd * row * uGrid * 0.9 + side * s * row * uGrid * 0.75 + side * sin(t * 0.7 + fi) * uGrid * 0.12;
-        vec2 d = px - at; d = vec2(dot(d, fwd), dot(d, side)) / uGrid;
+        vec2 at = uBird.xy - fwd * row * bs * 0.9 + side * s * row * bs * 0.75 + side * sin(t * 0.7 + fi) * bs * 0.12;
+        vec2 d = px - at; d = vec2(dot(d, fwd), dot(d, side)) / bs;
         // Each beats its wings on its own rhythm, now and then gliding.
         float beat = abs(sin(t * 6.0 + fi * 1.9)) * smoothstep(-0.3, 0.3, sin(t * 0.8 + fi * 2.3));
         birds = max(birds, birdShape(d, beat));
@@ -712,12 +715,13 @@ void main(){
     float a = 0.0;
     // Wet ground darkens.
     a = 1.0 - (1.0 - a) * (1.0 - uWet * 0.2 * outside * (1.0 - water));
-    // Under the shadows, the season's colour over the open ground, most on grass, in soft patches; and the leaves lying.
+    // Under the shadows, the season's colour on the grass (never on bare stone, streets or sand: a city's paving tinted
+    // green), in soft patches; and the leaves lying.
     vec3 under = vec3(0.0); float ua = 0.0;
     if (uSeason.a > 0.005) {
       float grass = max(texture2D(uGrass, vUv).a, uGrassAll * (1.0 - texture2D(uBare, vUv).a));
       float patch = 0.65 + 0.7 * fbm(px / (uGrid * 5.0));
-      ua = uSeason.a * outside * (1.0 - water) * (0.45 + 0.55 * grass) * patch;
+      ua = uSeason.a * outside * (1.0 - water) * grass * patch;
       under = uSeason.rgb * ua;
     }
     if (uLitter > 0.01) {
@@ -846,8 +850,9 @@ void main(){
     col += vec3(0.58, 0.66, 0.86) * uMoon * 0.22 * outside * (1.0 - 0.85 * cloud) * (0.85 + 0.3 * fbm(px / (uGrid * 12.0)));
   }
   if (uFireflies > 0.01) {
-    // Fireflies over the grass and the banks: each wanders on its own slow loop and glows now and then.
-    float place = max(meadow, banks) + 0.25 * outside;
+    // Fireflies over the grass and the banks only: each wanders on its own slow loop and glows now and then. (Never over
+    // bare ground: a plain map, a street or a dungeon floor, with no season or temperature known, was all lit with them.)
+    float place = max(meadow, banks * outside);
     vec2 cellSize = vec2(uGrid * 1.3);
     vec2 c0 = floor(px / cellSize);
     float glow = 0.0;
@@ -976,7 +981,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       meshes[0].visible = wet > 0.02 || (season?.[3] ?? 0) > 0.005 || litter > 0.01;
       clouding = light > 0.005 && (clouds > 0.05 || fxOn);
       meshes[4].visible = clouding || casting || weathering;
-      meshes[3].visible = sunny && own[0].uBird[3] > 0.5;
+      meshes[3].visible = sunny && own[0].uBird[3] > 0.01;
       meshes[1].visible = (sunny && (hasGlints || wet > 0.05)) || fireflies > 0.01 || (rain > 0.01 && (hasWater || wet > 0.05)) || moon > 0.01;
       // The weather on the map (sky-weather.mjs weatherScene; null none), drawn over the roofs.
       const fall = (f) => (f ? [f.kind, f.amount, f.size, 0] : [0, 0, 1, 0]), tint = (f) => (f ? [...f.color, 1] : [1, 1, 1, 1]);
@@ -1017,7 +1022,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     bird(flock, roofs = []) {
       if (!own.length) return;
       if (flock) drawRoofs(roofs);
-      set({ uBird: flock ? [flock.x - origin.x, flock.y - origin.y, flock.angle, 1] : [0, 0, 0, 0] });
+      set({ uBird: flock ? [flock.x - origin.x, flock.y - origin.y, flock.angle, Math.max(0.05, Number(flock.scale) || 1)] : [0, 0, 0, 0] });
       meshes[3].visible = !!flock && own[0].uStrength > 0.02;
     },
     // Where the sun reaches, for the water's light: `sunlit` the wall shadows' sunlit floor (null: everywhere), `trees`

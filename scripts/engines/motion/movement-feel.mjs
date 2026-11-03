@@ -10,7 +10,10 @@ export const FLOORS = Object.freeze(['stone', 'wood', 'dirt', 'grass', 'sand', '
 export const FLOOR_CHOICES = Object.freeze([
   ['', 'From the scene (auto)'], ['stone', 'Stone'], ['wood', 'Wood'], ['dirt', 'Dirt'], ['grass', 'Grass'],
   ['sand', 'Sand'], ['snow', 'Snow'], ['water', 'Water'], ['ice', 'Ice'], ['mud', 'Mud'],
+  ['none', 'None (no step sounds, no marks)'],
 ]);
+// A floor that makes nothing: no step sounds and no marks on it (a wing beat still sounds over it).
+export const NO_FLOOR = 'none';
 // The particle kinds movement-feel-render.mjs knows how to draw.
 export const PARTICLE_KINDS = Object.freeze(['puff', 'ring', 'drop', 'scuff', 'chip', 'fleck', 'blade', 'tuft', 'streak', 'spark', 'crack', 'blob', 'print', 'groove', 'mound', 'wake', 'trample', 'hole']);
 // What each floor kicks up per stride: a list of parts, each one particle kind thrown by one emitter.
@@ -84,7 +87,7 @@ export const FLOOR_LOOK = Object.freeze({
     { kind: 'print', emit: 'print', color: 0x2c1f13, alpha: 0.5, size: 0.11, life: 12000, hold: 0.55 },
   ] },
 });
-const isFloor = (value) => FLOORS.includes(value);
+const isFloor = (value) => FLOORS.includes(value) || value === NO_FLOOR;
 
 const OUTDOORS = /outdoor|outside|exterior|forest|woods|woodland|jungle|field|meadow|plain|prairie|road|path|trail|camp|village|town|city|street|market|square|farm|garden|desert|dune|beach|coast|shore|island|swamp|marsh|hill|mountain|cliff|valley|canyon|wilderness|grass|clearing|ruins|graveyard|cemetery|battlefield|bridge|river|lake|snow|tundra|winter/i;
 // From the scene: global illumination, or a name or background path that sounds outdoors, is dirt; else stone.
@@ -473,7 +476,9 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
       out.push({ ...base, color: part.color, light: part.light, x: at.x + Math.cos(across) * off, y: at.y + Math.sin(across) * off,
         radius: width * part.size, rotation: heading, grow: 0, spring: part.spring ?? 0, lasting: true, blades });
     } else if (part.emit === 'print') {
-      out.push(...tracksFor(gait, part, base, at, { grid, width }));
+      // In snow and mud a print is a hollow pressed into the ground (drawn so where the layer can).
+      const pressed = floor === 'snow' || floor === 'mud';
+      out.push(...tracksFor(gait, part, base, at, { grid, width }).map((p) => (pressed ? { ...p, hollow: floor, alpha: 1 } : p)));
     } else if (part.emit === 'crack') {
       if (random() >= (part.chance ?? 1)) return;
       out.push({ ...base, color: part.color, x: at.x, y: at.y, radius: unit * part.size * (0.8 + random() * 0.4),
@@ -1082,7 +1087,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, kicks = null }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
   // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
@@ -1234,8 +1239,14 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   // Marks each creature has laid since the scene loaded (a live check compares before and after a walk).
   const laidTotals = new Map();
   const lay = (specs, time, floor, trailKind = null) => {
+    if (floor === NO_FLOOR) return;
     const limit = capOf(), printLimit = printCapOf();
+    let stroked = false;
     for (let spec of specs) {
+      // A step into water rings it on the GPU (`ripples`, step-ripples.mjs) when that is drawn: the first ring only.
+      if (ripples && spec.kind === 'ring' && floor === 'water') { if (!spec.delay) { try { ripples(spec); } catch { /* optional */ } } continue; }
+      // A swimmer's stroke rings the water too: its rings falling behind it open into the wake's V by themselves.
+      if (ripples && trailKind === 'swim' && spec.kind === 'wake') { if (!stroked) { stroked = true; try { ripples({ ...spec, radius: (Number(spec.radius) || 28) * 1.2 }); } catch { /* optional */ } } continue; }
       // Grooves, smears and a burrower's churned earth last as long as prints and share their budget.
       const print = spec.kind === 'print' || spec.kind === 'groove' || spec.lasting === true;
       if (print) {
@@ -1254,13 +1265,14 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     }
   };
   const hears = (token) => token.audible ?? token.visible === true;
-  const sound = (floor, at, token, kind) => { if (!hears(token)) return; try { footstep?.(floor, at, token, kind); } catch { /* sound is optional */ } };
+  const sound = (floor, at, token, kind) => { if (!hears(token) || (floor === NO_FLOOR && kind !== 'wing' && kind !== 'flight')) return; try { footstep?.(floor, at, token, kind); } catch { /* sound is optional */ } };
   // Seen from above a creature stands on its whole token: its marks and its steps come from under its middle.
   const feetOf = (token, at) => ({ ...at });
   // One stride of a token moving by `kind` (movementSound; never null here): its floor marks and its sound.
   const emit = (token, at, time, size, rate, kind, move) => {
     const feet = feetOf(token, at);
     const floor = floorOf(feet, token);
+    if (floor === NO_FLOOR) return;
     const opts = { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots' };
     // A burrower churns the earth instead of stepping on it; a swimmer leaves a wake on water; a jumper marks nothing
     // until it lands; everything else (walk, climb, crawl) marks its floor as a walker does.
@@ -1287,6 +1299,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
       move.drips = (move.drips ?? 0) + 1;
       specs = [...specs, ...dripsFor(feet, { seed: token.id, grid: size, width: token.width || size, wet: (move.wetBy ?? 1) * (1 - (time - move.wetAt) / wetFor), n: move.drips })];
     }
+    // A step can send a stone skittering (`kicks`, the caller decides where and how often).
+    if (token.visible && kicks && !trailKind && kind !== 'jump') { try { kicks({ x: feet.x, y: feet.y, floor, heading: Number(at.heading) || 0, size: token.width || size }); } catch { /* optional */ } }
     if (token.visible) lay(specs, time, floor, trailKind);
     move.index = at.index ?? 0; move.heading = at.heading ?? 0;
     if (kind !== 'jump') sound(floor, feet, token, kind);
@@ -1296,6 +1310,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   const land = (token, point, time, size, rate, move) => {
     const at = { x: point.x, y: point.y, heading: move.heading ?? 0, index: (move.index ?? 0) + 1 }, feet = feetOf(token, at);
     const floor = floorOf(feet, token);
+    if (floor === NO_FLOOR) return;
     if (token.visible) lay(puffsFor(floor, feet, { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots' }), time, floor);
     sound(floor, feet, token, 'land');
   };

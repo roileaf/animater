@@ -69,11 +69,12 @@ export function vaporPuff(token, { grid = 100, n = 0 } = {}) {
   for (let i = 0; i < count; i++) {
     const speed = grid * (0.1 + random() * 0.06) * reach, side = (random() - 0.5) * 0.5;
     out.push({
-      kind: 'puff', owner: token.id, color: 0xf4f8fc, x: token.x + ox, y: token.y + oy,
-      // Readable at table zoom on light and dark maps alike: a soft cloud about a fifth of a square, half opaque.
-      vx: (dx - dy * side) * speed, vy: (dy + dx * side) * speed - grid * 0.03, radius: grid * 0.1 * scale * (0.8 + random() * 0.4),
+      // A torn, soft cloud (drawn from its own picture: `cloud`), each turned its own way and turning slowly as it goes.
+      kind: 'puff', cloud: true, owner: token.id, color: 0xeef3f8, x: token.x + ox, y: token.y + oy,
+      // Readable at table zoom on light and dark maps alike: a cloud about a quarter of a square, half opaque.
+      vx: (dx - dy * side) * speed, vy: (dy + dx * side) * speed - grid * 0.03, radius: grid * 0.13 * scale * (0.8 + random() * 0.4),
       alpha: 0.5 + random() * 0.12, delay: i * 110, life: Math.round((1700 + random() * 500) * linger), hold: 0.2,
-      rotation: 0, spin: 0, grow: 1.6 + random() * 0.8,
+      rotation: random() * Math.PI * 2, spin: (random() - 0.5) * 0.6, grow: 1.6 + random() * 0.8,
     });
   }
   return out;

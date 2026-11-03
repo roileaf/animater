@@ -168,6 +168,16 @@ import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts
 import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
+import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
+import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
+import { createVermin } from "./engines/motion/vermin.mjs";
+import { createUndergroundLife, sootSpots, ventsIn, wetRuns } from "./engines/motion/underground-life.mjs";
+import { createDrips } from "./engines/motion/drips.mjs";
+import { createStepRipples } from "./engines/motion/step-ripples.mjs";
+import { createLightFlames, flameUnit, fireKindOf } from "./engines/motion/light-flames.mjs";
+import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays } from "./engines/motion/indoor-air.mjs";
+import { createCavern } from "./engines/motion/cavern.mjs";
+import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, seasonGround, groundInputs, groundStep, groundMoved } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
@@ -1026,6 +1036,8 @@ const movementFeelOverRoot = () => {
 const movementFeelSettingOn = (key) => { try { return hotSetting(key) !== false; } catch { return false; } };
 // How wet the ground must still be after rain (0–1) for soil to stay mud underfoot.
 const WET_MUDDY = 0.3;
+// A region's floor as set (its flag), else water where it drips into a pool or deep water.
+const floorFlagOf = (region) => { const own = region?.flags?.[ID] ?? {}; return own.floor || (own.drips && (own.dripDepth === "pool" || own.dripDepth === "deep") ? "water" : own.floor); };
 const movementFeelFloor = (point, token) => {
   const scene = canvas?.scene;
   const base = sceneFloor({
@@ -1033,7 +1045,7 @@ const movementFeelFloor = (point, token) => {
     // v14 keeps the backdrop on the level (Scene#background is deprecated and warns).
     background: canvas.level?.background?.src ?? "",
   });
-  const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: doc.flags?.[ID]?.floor, doc }));
+  const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc }));
   const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
   const ground = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
   // "Spells change the floor": frost, acid, fire and blasts left on the ground change what the creature walks on.
@@ -1210,15 +1222,18 @@ const clockNow = () => {
   } catch { return null; }
 };
 // The scene's sun now, kept until the time, the scene or the setting changes (never worked out a frame).
-let sunNow = DEFAULT_SUN;
+let sunNow = DEFAULT_SUN, skySunNow = DEFAULT_SUN;
 // The world's default sun (Animater settings → Sun), for scenes left on "World default".
 const sunDefaults = () => { try { return { ...DEFAULT_SUN_SETTING, ...(hotSetting(SUN_SETTING) ?? {}) }; } catch { return DEFAULT_SUN_SETTING; } };
 const refreshSun = () => {
   try {
     const flags = canvas?.scene?.flags?.[ID]?.sun ?? {}, defaults = sunDefaults(), mode = flags.mode || defaults.mode;
     // A fixed sun follows the clock too: by night it is the moon where it stands.
-    sunNow = sceneSun(flags, { defaults, clock: mode === "none" ? null : clockNow() });
-  } catch { sunNow = DEFAULT_SUN; }
+    skySunNow = sceneSun(flags, { defaults, clock: mode === "none" ? null : clockNow() });
+    // No sun or moon reaches underground (no sun shadows, window light or moonlight there), only through the places
+    // open to the sky (the caverns' skylights).
+    sunNow = undergroundScene() ? null : skySunNow;
+  } catch { sunNow = DEFAULT_SUN; skySunNow = DEFAULT_SUN; }
 };
 // Dawn, dusk and moonlit nights colour the map (sun.mjs sunGlow) in scenes whose sun follows the time of day: one
 // translucent veil over the lit scene (over the darkness a calendar module sets, which would drown it underneath), at
@@ -1258,7 +1273,7 @@ const rebuildWashMask = () => {
 const refreshSunWash = () => {
   try {
     const flags = canvas?.scene?.flags?.[ID]?.sun ?? {}, mode = flags.mode || sunDefaults().mode;
-    const on = canvas?.ready && hotSetting("sunColor") !== false && hotSetting("sunColorLocal") !== false && mode === "time";
+    const on = canvas?.ready && hotSetting("sunColor") !== false && hotSetting("sunColorLocal") !== false && mode === "time" && !undergroundScene();
     const glow = on ? sunGlow(clockNow()) : null, amount = glow ? glow.amount * Math.min(1, Math.max(0, Number(hotSetting("sunColorStrength")) || 0)) * 0.55 : 0;
     if (!(amount > 0.005)) { if (sunWash && !sunWash.destroyed) sunWash.visible = false; return; }
     if (!sunWash || sunWash.destroyed) {
@@ -1508,6 +1523,136 @@ const rebuildGlows = () => {
 const glowsSoon = () => { if (!glowTimer) glowTimer = setTimeout(rebuildGlows, 300); };
 // A light lit, moved or put out in a room (a lamp, a hearth, a creature carrying a torch indoors).
 for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createToken", "deleteToken", "lightingRefresh"]) Hooks.on(hook, () => { glowsSoon(); });
+// The air around the lamps (engines/motion/lamp-air.mjs): sparks off the fires and dust turning in the light, drawn over
+// the darkness with the window glow. Where the lights reach is baked again when they change; the fires near the view are
+// picked a few times a second.
+const lampAir = createLampAir({ PIXI: globalThis.PIXI, root: glowRootOf, smokeRoot: () => smokeRootOf(), render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+const embersOn = () => bothSettingsOn("lampEmbers"), motesOn = () => bothSettingsOn("lampMotes");
+let lampTimer = null, lampLights = [], lampLookAt = 0, lampLightsKey = "";
+const lampSoon = () => { if (!lampTimer) lampTimer = setTimeout(rebuildLampAir, 400); };
+const rebuildLampAir = () => {
+  lampTimer = null;
+  try {
+    if (!canvas?.ready || !(embersOn() || motesOn())) { lampAir.clear(); lampLights = []; return; }
+    lampLights = [];
+    for (const source of canvas.effects?.lightSources ?? []) {
+      try {
+        if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
+        const d = source.data ?? {}, radius = Number(d.radius) || 0;
+        if (!(radius > 0)) continue;
+        const own = source.object?.document?.flags?.[ID] ?? {}, color = d.color === null || d.color === undefined ? null : Number(d.color);
+        lampLights.push({ x: d.x, y: d.y, radius, color: Number.isFinite(color) ? color : null, shape: source.shape?.points ? Array.from(source.shape.points) : null,
+          fire: source.object?.document?.documentName !== "Token" && isFireLight(d, own),
+          // Moths round it (Light configuration → Animater → Moths): Auto a fire light underground, On or Off this one.
+          moths: own.moths === true || own.moths === "true" ? true : own.moths === false || own.moths === "false" ? false : null,
+          // Soot on the wall behind it (Light configuration → Animater → Soot): Auto a fire light underground, On or Off.
+          soot: own.soot === true || own.soot === "true" ? true : own.soot === false || own.soot === "false" ? false : null });
+      } catch { /* a broken light never breaks the rest */ }
+    }
+    lampAir.build({ lights: lampLights, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size });
+    const lightsKey = lampLights.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.radius)},${l.fire ? 1 : 0},${l.soot},${l.moths}`).join(";");
+    if (lightsKey !== lampLightsKey) { lampLightsKey = lightsKey; lifeSoon(); }
+    lampLookAt = 0;
+  } catch { lampAir.clear(); }
+};
+for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { lampSoon(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(lampTimer); lampTimer = null; lampAir.clear(); lampLights = []; lampLightsKey = ""; });
+// The air indoors (engines/motion/indoor-air.mjs): in an underground scene, or one with a region marked as open to the
+// outside, the air flows from the rooms toward the openings through every open door; opening a door sends a gust. Worked
+// out again when a door opens or shuts, or the walls or regions change.
+const draftsOn = () => bothSettingsOn("drafts"), roomSmokeOn = () => bothSettingsOn("roomSmoke");
+const undergroundScene = () => { const own = canvas?.scene?.flags?.[ID] ?? {}; return own.underground === true || own.acoustics === "cave" || own.acoustics === "hall"; };
+let draftTimer = null, gustAt = -Infinity, gustFrom = null, airLive = false, previewOpenings = [], airField = null;
+// How the air moves at a point now (0 still – 1 the fastest streams in a gust): how fast it runs there (a doorway on the
+// way out fast, a room's corner barely), and the gust once it has swept that far from the door that opened.
+const airAt = (x, y) => {
+  if (!airLive || !airField) return 0;
+  const i = Math.floor((x - airField.x) / airField.cell), j = Math.floor((y - airField.y) / airField.cell);
+  if (i < 0 || j < 0 || i >= airField.cols || j >= airField.rows) return 0;
+  const k = j * airField.cols + i; if (airField.dist[k] <= 0) return 0;
+  const delay = airField.delays?.[k] ?? -1, since = (performance.now() - gustAt) / 1000;
+  return Math.min(1, airField.speed[k] * draftStrength(delay >= 0 ? since - delay : -1) * 1.8);
+};
+const draftSoon = () => { if (!draftTimer) draftTimer = setTimeout(rebuildDraft, 250); };
+const rebuildDraft = () => {
+  draftTimer = null;
+  try {
+    const regions = [];
+    for (const region of canvas?.scene?.regions ?? []) {
+      try {
+        const leads = Array.from(region.behaviors ?? []).some((b) => !b.disabled && /teleport|changeLevel|level/i.test(b.type)), outside = !!region.flags?.[ID]?.opensOutside;
+        if (leads || outside) regions.push({ polygons: regionAreas(region), leads, outside });
+      } catch { /* skip */ }
+    }
+    airLive = !!canvas?.ready && draftsOn() && (undergroundScene() || regions.some((r) => r.outside));
+    if (!airLive) { airField = null; lampAir.draft(null); cavern.draft(null); return; }
+    const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ c: d.c, move: d.move, door: d.door, ds: d.ds }));
+    const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size;
+    const openings = [...sceneOpenings({ walls, regions, bounds, grid }), ...previewOpenings];
+    const field = draftField({ walls, bounds, grid, openings });
+    field.openings = openings;
+    // The gust of a door opened lately sweeps out from it.
+    field.delays = gustFrom && performance.now() - gustAt < 12000 ? gustDelays(field, gustFrom, { grid }) : null;
+    airField = field;
+    const pixels = draftPixels(field, field.delays);
+    lampAir.draft(pixels, field.cols, field.rows);
+    cavern.draft(pixels, field);
+  } catch { airField = null; lampAir.draft(null); }
+};
+for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { draftSoon(); });
+// A door opening: the air rushes for the way out.
+Hooks.on("updateWall", (wall, change) => {
+  if (change?.ds === 1 && wall?.parent?.id === canvas?.scene?.id) { const [x1, y1, x2, y2] = wall.c; gustAt = performance.now(); gustFrom = { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }; }
+  draftSoon();
+});
+Hooks.on("canvasTearDown", () => { clearTimeout(draftTimer); draftTimer = null; airLive = false; });
+// The air at a point as a push ({ x, y }, its way times how hard it moves): smoke and breath drift with it.
+const airVecAt = (x, y) => {
+  const a = airAt(x, y); if (!(a > 0)) return { x: 0, y: 0 };
+  const i = Math.floor((x - airField.x) / airField.cell), j = Math.floor((y - airField.y) / airField.cell), k = (j * airField.cols + i) * 2;
+  return { x: airField.dir[k] * a, y: airField.dir[k + 1] * a };
+};
+// How the air moving at a point pushes across the view (−1 west … 1 east): a flame leans with it.
+const airLeanAt = (x, y) => {
+  const strength = airAt(x, y); if (!(strength > 0)) return 0;
+  const i = Math.floor((x - airField.x) / airField.cell), j = Math.floor((y - airField.y) / airField.cell);
+  return (airField.dir[(j * airField.cols + i) * 2] || 0) * strength;
+};
+// Fire lights in moving air flicker harder, and gutter for a few seconds when a door opens on their way out: their own
+// animation quickened on this screen only (the light itself unchanged), eased back as the gust settles.
+const torchDraftOn = () => bothSettingsOn("torchDraft");
+const flameBase = new WeakMap();
+const gutterFlames = (on) => {
+  for (const light of canvas?.lighting?.placeables ?? []) {
+    const anim = light.lightSource?.animation; if (!anim || !light.lightSource?.active || !/torch|flame|fire/i.test(String(anim.type ?? ""))) continue;
+    if (!flameBase.has(anim)) flameBase.set(anim, { speed: anim.speed, intensity: anim.intensity });
+    const base = flameBase.get(anim), moving = on ? airAt(light.center.x, light.center.y) : 0;
+    // A steady draft a little livelier, more where the air runs fast; a gust whipping it as it sweeps past.
+    const speed = Math.min(10, base.speed * (1 + 1.4 * moving));
+    // Foundry's animation time is speed × the time since load (+ seed): a new speed alone would throw the flicker to a
+    // far point of its noise each time it changed (the light strobing through a gust). The seed takes up the change,
+    // so the flicker carries on from where it was, only faster.
+    if (Math.abs(speed - anim.speed) > 1e-3 && Number(anim.speed) > 0 && Number.isFinite(anim.time) && Number.isFinite(anim.seed)) {
+      const t = ((anim.time - anim.seed) * 5000) / anim.speed;
+      anim.seed += ((anim.speed - speed) * t) / 5000;
+    }
+    anim.speed = speed; anim.intensity = Math.min(10, base.intensity + 5 * Math.max(0, moving - 0.3));
+  }
+};
+// What the lamps' air shows now: the fires near the view, and the dust in the dark (bright day washes it out).
+const lookLampAir = (now) => {
+  if (now - lampLookAt < (now - gustAt < 8000 ? 50 : 250)) return;
+  lampLookAt = now;
+  try {
+    const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight];
+    const view = { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s };
+    const dark = undergroundScene() ? 1 : Math.min(1, Math.max(0, ((Number(canvas.environment?.darknessLevel) || 0) - 0.25) / 0.45));
+    const lean = torchDraftOn() && !lightFlamesOn() ? 1 : 0;
+    lampAir.look({ fires: embersOn() || lean ? fireSparksOf(lampLights, view, canvas.grid.size) : [], embers: embersOn() ? 0.6 + 0.4 * dark : 0, motes: motesOn() ? dark : 0, wind: { x: 0.02, y: -0.01 },
+      air: airLive, since: (now - gustAt) / 1000, smoke: roomSmokeOn() && undergroundScene() ? 0.85 : 0, lean });
+    gutterFlames(torchDraftOn() ? 1 : 0);
+  } catch { /* the canvas mid-change */ }
+};
 // Sunlight past overhead tiles (engines/motion/canopy-light.mjs): trees cast dappled shade on the ground away from the
 // sun, broken by sun flecks that move with the leaves; roofs cast a building's shadow outside and let light in through
 // their holes. On the floor, over the walls' shadows, under the window light.
@@ -1526,8 +1671,11 @@ const bakeInto = (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, c
 // Falling leaves lie under the tree tiles with the shade: hidden by the crown, seen as they drift out past it.
 const canopyLight = createCanopyLight({ PIXI: globalThis.PIXI, root: canopyRootOf, render: bakeInto });
 const bothSettingsOn = (key) => { try { return hotSetting(key) !== false && hotSetting(`${key}Local`) !== false && qualityRank(localQuality()) >= 2; } catch { return false; } };
-const canopyOn = () => bothSettingsOn("canopyLight");
-const roofLightOn = () => bothSettingsOn("roofLight");
+// The open sky's effects (sun through trees and roofs, clouds, birds, rain, snow, lightning, the moon on the ground...)
+// never show in an underground scene.
+const outdoorOn = (key) => bothSettingsOn(key) && !undergroundScene();
+const canopyOn = () => outdoorOn("canopyLight");
+const roofLightOn = () => outdoorOn("roofLight");
 // How solid each tile picture is (canopy-light.mjs solidShare), read once, small, per picture.
 const solidByTexture = new Map();
 const tileSolid = (texture) => {
@@ -1652,6 +1800,346 @@ const birdRootOf = () => {
   birdRoot.elevation = Math.max(Number(canvas.level?.elevation?.base) || 0, ...(canvas.tiles?.placeables ?? []).map((t) => Number(t.document?.elevation) || 0)) + 0.02;
   return birdRoot;
 };
+// Dust shaken from the ceiling (engines/motion/ceiling-dust.mjs): over the creatures and the tiles, with the birds.
+const ceilingDust = createCeilingDust({ PIXI: globalThis.PIXI, root: birdRootOf });
+const ceilingDustOn = () => bothSettingsOn("ceilingDust");
+// Whether there is a ceiling over a point: the scene is underground (its own option, or its acoustics a cave or a hall),
+// or the point lies under a roof (a region that keeps the weather out).
+const underCeiling = (at) => {
+  const own = canvas?.scene?.flags?.[ID] ?? {};
+  if (own.underground === true || own.acoustics === "cave" || own.acoustics === "hall") return true;
+  try { return indoorPolygons().some((p) => pointInPolygon(at, p)); } catch { return false; }
+};
+Hooks.on("canvasTearDown", () => { ceilingDust.clear(); });
+// Life in the dark and water dripping (engines/motion/vermin.mjs, drips.mjs): rats on the floor under the creatures,
+// bats over everything; puddles on the floor where a region says it drips.
+const floorLayer = (key, sortLayer) => {
+  let c = null;
+  return () => {
+    if (!c || c.destroyed) { c = new PIXI.Container(); c.eventMode = "none"; c.sortLayer = sortLayer; canvas.primary.addChild(c); }
+    c.elevation = Number(canvas.level?.elevation?.base) || 0;
+    return c;
+  };
+};
+const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646), smokeRootOf = floorLayer("roomSmoke", 760);
+const vermin = createVermin({ PIXI: globalThis.PIXI, root: ratRootOf, batsRoot: birdRootOf });
+const drips = createDrips({ PIXI: globalThis.PIXI, root: dripRootOf });
+// A step into water rings it as a drop does (engines/motion/step-ripples.mjs): over the floor, under the creatures.
+const stepRipples = createStepRipples({ PIXI: globalThis.PIXI, root: floorLayer("stepRipples", 647), grid: () => canvas?.grid?.size ?? 100 });
+let stepRipplesFloorFor = null;
+const rippleStep = (spec) => {
+  const size = Math.max(0.5, (Number(spec.radius) || canvas.grid.size * 0.28) / (canvas.grid.size * 0.28));
+  // In a dripping region's pool, its own water rings (the map under it is its floor, not the water's face).
+  if (drips.step({ x: spec.x, y: spec.y, size })) return;
+  if (stepRipplesFloorFor !== canvas.scene?.id) { stepRipplesFloorFor = canvas.scene?.id; stepRipples.floor(mapFloor()); }
+  stepRipples.add({ x: spec.x, y: spec.y, size });
+};
+Hooks.on("canvasTearDown", () => { stepRipples.clear(); stepRipplesFloorFor = null; });
+const verminOn = () => bothSettingsOn("vermin"), dripsOn = () => bothSettingsOn("drips");
+// The map's own picture and where it lies (seen through a puddle's water, bent by its ripples).
+const mapFloor = () => {
+  const bg = canvas.primary?.background, texture = bg?.texture;
+  if (!texture?.valid) return null;
+  const ax = Number(bg.anchor?.x) || 0, ay = Number(bg.anchor?.y) || 0;
+  return { texture, rect: { x: bg.x - bg.width * ax, y: bg.y - bg.height * ay, width: bg.width, height: bg.height } };
+};
+// The caverns (engines/motion/cavern.mjs, webs.mjs): what a region marked as a cavern holds (Region configuration →
+// Cavern): mist on the floor, glowing fungus, crystals, lava, cobwebs. The stone and the lava on the floor, their light
+// over the darkness; the webs over the floor's things.
+const caveFloorOf = floorLayer("caveFloor", 648), webRootOf = floorLayer("webs", 690);
+const cavern = createCavern({ PIXI: globalThis.PIXI, floor: caveFloorOf, glow: glowRootOf, render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+const webs = createWebs({ PIXI: globalThis.PIXI, root: webRootOf });
+// Life and wear underground (engines/motion/underground-life.mjs): eyes glinting in the dark, moths round the fires,
+// crawlers at the walls' feet, pebbles kicked by a step, soot over the wall torches; wet walls, steam vents and bad air
+// where a region says so (Region configuration → Cavern); rubble a cave-in brought down (kept with the scene).
+const underLife = createUndergroundLife({ PIXI: globalThis.PIXI, floor: floorLayer("underFloor", 649), above: floorLayer("underAbove", 765), glow: glowRootOf });
+let foulPolygons = [], underWanted = false, underSpots = [], underCrawl = [], underLook = null, underLookAt = 0, rubbleSceneId = null;
+const rubblePlayed = new Set();
+const foulAt = (x, y) => foulPolygons.some((p) => pointInPolygon({ x, y }, p));
+// The rubble of the cave-ins in this scene ({ x, y, radius, seed, at }).
+const sceneRubble = () => (canvas.scene?.flags?.[ID]?.rubble ?? []).filter((r) => r && Number.isFinite(Number(r.x)) && Number.isFinite(Number(r.y)));
+// A cave-in comes down on every screen that has the scene open as the GM saves it: the view shakes, the stones fall and
+// bounce, the dust rolls out on the air. One already there when the scene loaded just lies there.
+const playFreshRubble = () => {
+  if (!canvas?.ready || !bothSettingsOn("caveRubble")) return;
+  for (const r of sceneRubble()) {
+    if (rubblePlayed.has(r.seed)) continue;
+    rubblePlayed.add(r.seed);
+    try { underLife.caveIn({ x: Number(r.x), y: Number(r.y), radius: Number(r.radius) || canvas.grid.size * 1.5, seed: r.seed }); } catch { /* the canvas mid-change */ }
+    try { cameraShake.tremor({ at: { x: r.x, y: r.y }, weight: 8, sceneId: canvas.scene.id, seed: `cavein:${r.seed}`, scale: 1.6 }); } catch { /* no shake */ }
+  }
+};
+Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && foundry.utils.hasProperty(change ?? {}, `flags.${ID}.rubble`)) playFreshRubble(); });
+// The GM brings the ceiling down here (saved with the scene, so it lies there from now on), or clears the rubble.
+const bringCeilingDown = async ({ x, y, radius } = {}) => {
+  if (!game.user?.isGM || !canvas?.scene || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return false;
+  const r = { x: Math.round(x), y: Math.round(y), radius: Math.round(Number(radius) || canvas.grid.size * 1.5), seed: Math.floor(Math.random() * 1e9), at: Date.now() };
+  await canvas.scene.update({ [`flags.${ID}.rubble`]: [...sceneRubble(), r].slice(-24) });
+  return true;
+};
+const clearRubble = async () => { if (!game.user?.isGM || !canvas?.scene) return false; await canvas.scene.unsetFlag(ID, "rubble"); return true; };
+// The cave-in on the Token controls (GM), where the GM is during play: Cave-in arms a click on the map, a dusty ring following the pointer to show
+// where and how wide; the click brings the ceiling down there (Shift: a bigger fall); Escape or a right click lets it
+// go. Clear rubble asks first, then takes every cave-in's rubble away.
+let caveInAim = null;
+const stopCaveInAim = () => {
+  if (!caveInAim) return;
+  const { ring, move, down, key } = caveInAim; caveInAim = null;
+  window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key, true);
+  try { ring.destroy(); } catch { /* gone with the canvas */ }
+};
+const aimCaveIn = () => {
+  stopCaveInAim();
+  if (!game.user?.isGM || !canvas?.ready) return;
+  const grid = canvas.grid.size, ring = new PIXI.Graphics(); ring.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(ring);
+  let big = false;
+  const at = (e) => canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
+  const draw = (p) => { const r = grid * (big ? 3 : 1.5); ring.clear(); ring.lineStyle(3, 0xb2a591, 0.9); ring.beginFill(0x6e6252, 0.18); ring.drawCircle(0, 0, r); ring.endFill(); ring.lineStyle(1, 0xb2a591, 0.5); ring.drawCircle(0, 0, r * 0.5); ring.position.set(p.x, p.y); };
+  const onCanvas = (e) => e.target === canvas.app.view;
+  const move = (e) => { big = e.shiftKey; if (onCanvas(e)) draw(at(e)); };
+  // Taken before Foundry sees it (no selection box, no region drawn).
+  const down = (e) => {
+    if (!onCanvas(e)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    if (e.button === 0) { const p = at(e); bringCeilingDown({ x: p.x, y: p.y, radius: grid * (e.shiftKey ? 3 : 1.5) }); }
+    stopCaveInAim();
+  };
+  const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); stopCaveInAim(); } else if (e.key === "Shift") big = true; };
+  caveInAim = { ring, move, down, key };
+  window.addEventListener("pointermove", move, true); window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
+  ui.notifications?.info("Cave-in: click where the ceiling comes down (Shift: a bigger fall). Escape or right click to cancel.");
+};
+Hooks.on("canvasTearDown", stopCaveInAim);
+Hooks.on("getSceneControlButtons", (controls) => {
+  try {
+    if (!game.user?.isGM) return;
+    const tokens = Array.isArray(controls) ? controls.find((c) => c.name === "tokens" || c.name === "token") : controls?.tokens ?? controls?.token;
+    if (!tokens?.tools) return;
+    const tools = tokens.tools, order = Object.keys(tools).length + 10;
+    const add = (tool) => { if (Array.isArray(tools)) tools.push(tool); else tools[tool.name] = tool; };
+    add({ name: "animaterCaveIn", title: "Cave-in (Animater): click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: true,
+      onChange: () => aimCaveIn() });
+    add({ name: "animaterClearRubble", title: "Clear rubble (Animater): take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: true,
+      onChange: () => clearRubbleAsk() });
+  } catch { /* another layout of the controls */ }
+});
+let rubbleAsking = false;
+const clearRubbleAsk = async () => {
+  if (rubbleAsking || !sceneRubble().length) { if (!sceneRubble().length) ui.notifications?.info("No rubble in this scene."); return; }
+  rubbleAsking = true;
+  try {
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Clear rubble" }, content: `<p>Take away the rubble of all ${sceneRubble().length} cave-in(s) in this scene?</p>` });
+    if (ok) await clearRubble();
+  } catch { /* closed */ } finally { rubbleAsking = false; }
+};
+// Bad air starves the fires in it: a fire light standing in it reaches only so far (on every screen, its light as
+// Foundry builds it; the light itself unchanged).
+const installFoulAir = () => {
+  const proto = globalThis.CONFIG?.AmbientLight?.objectClass?.prototype;
+  if (typeof proto?._getLightSourceData !== "function" || proto._getLightSourceData.animaterFoul) return;
+  const own = Object.hasOwn(proto, "_getLightSourceData") ? proto._getLightSourceData : null;
+  const starved = function (...args) {
+    const data = (own ?? Object.getPrototypeOf(proto)._getLightSourceData).apply(this, args);
+    try {
+      if (data && foulPolygons.length && foulAt(data.x, data.y) && isFireLight(data, this.document?.flags?.[ID] ?? {})) { data.dim = (Number(data.dim) || 0) * 0.55; data.bright = (Number(data.bright) || 0) * 0.45; }
+    } catch { /* Foundry's own */ }
+    return data;
+  };
+  starved.animaterFoul = true;
+  proto._getLightSourceData = starved;
+};
+Hooks.once("ready", installFoulAir);
+let foulKey = "";
+const refoulLights = () => {
+  const key = JSON.stringify(foulPolygons); if (key === foulKey) return; foulKey = key;
+  try { for (const l of canvas.lighting?.placeables ?? []) l.initializeLightSource?.(); canvas.perception.update({ refreshLighting: true, refreshVision: true }); } catch { /* not ready */ }
+};
+// A step on stone or earth underground now and then kicks a pebble skittering ahead.
+const kickPebble = ({ x, y, floor, heading, size }) => {
+  if (!["stone", "dirt"].includes(floor) || !undergroundScene() || !bothSettingsOn("cavePebbles")) return;
+  if (Math.random() > 0.22 * Math.min(2, (Number(size) || canvas.grid.size) / canvas.grid.size)) return;
+  underLife.kick({ x, y }, heading);
+};
+// The underground's living things each frame; who is where looked at twice a second.
+const tickUnderLife = (seconds) => {
+  const now = performance.now(), view = viewNow();
+  if (!underLook || now - underLookAt > 500) {
+    underLookAt = now;
+    const grid = canvas.grid.size, near = (p, pad) => p.x > view.x - pad && p.y > view.y - pad && p.x < view.x + view.w + pad && p.y < view.y + view.h + pad;
+    const deep = underWanted;
+    // The scene says how often (Scene configuration → Animater: eyes in the dark).
+    const eyeRate = String(canvas.scene?.flags?.[ID]?.eyes ?? "");
+    const dark = deep && bothSettingsOn("caveEyes") && eyeRate !== "never" ? underSpots.filter((p) => near(p, -grid)) : [];
+    underLook = {
+      eyes: dark.length ? dark : null, eyeRate,
+      moths: deep && bothSettingsOn("caveMoths") ? lampLights.filter((l) => (l.moths ?? l.fire) && near(l, grid * 2)).sort((a, b) => Math.hypot(a.x - view.x - view.w / 2, a.y - view.y - view.h / 2) - Math.hypot(b.x - view.x - view.w / 2, b.y - view.y - view.h / 2)) : null,
+      crawl: deep && bothSettingsOn("caveMoths") ? underCrawl.filter((c) => near(c.a, grid * 2)).slice(0, 40) : null,
+    };
+    if (underLook.moths && !underLook.moths.length) underLook.moths = null;
+    if (underLook.crawl && !underLook.crawl.length) underLook.crawl = null;
+  }
+  underLife.tick(seconds, { view, ...underLook, lit: litForRats, creatures: creaturesNow(), air: airVecAt });
+};
+let lavaPolygons = [], cavePreview = [], caveTouches = [], caveLookAt = 0;
+// The cavern parts of the scene, with any previewed on this screen: { kind, tone, areas }.
+const cavernRegions = () => {
+  const out = [];
+  for (const region of canvas.scene?.regions ?? []) {
+    const kind = String(region.flags?.[ID]?.cavern ?? ""); if (!kind) continue;
+    try { const [what, tone] = kind.split("-"); out.push({ kind: what, tone, areas: regionAreas(region) }); } catch { /* skip */ }
+  }
+  if (undergroundScene()) for (const region of canvas.scene?.regions ?? []) { if (!region.flags?.[ID]?.openSky) continue; try { out.push({ kind: "sky", areas: regionAreas(region) }); } catch { /* skip */ } }
+  for (const p of cavePreview) { const [what, tone] = String(p.kind).split("-"); out.push({ kind: what, tone, areas: [[p.x, p.y, p.x + p.w, p.y, p.x + p.w, p.y + p.h, p.x, p.y + p.h]] }); }
+  return out;
+};
+const rebuildCavern = () => {
+  cavern.clear(); webs.clear();
+  const had = lavaPolygons.length; lavaPolygons = [];
+  if (!canvas?.ready) return;
+  const grid = canvas.grid.size, walls = wallsHere(), parts = cavernRegions(), seed = canvas.scene?.id ?? "cave";
+  const of = (kind, setting) => bothSettingsOn(setting) ? parts.filter((p) => p.kind === kind) : [];
+  const fungus = of("fungus", "caveFungus").map((p) => ({ areas: p.areas, color: p.tone ?? "green" }));
+  const crystals = of("crystals", "caveCrystals").map((p) => ({ areas: p.areas, stone: p.tone ?? "amethyst" }));
+  const lava = of("lava", "caveLava").map((p) => p.areas), mist = of("mist", "caveMist").map((p) => p.areas), sky = of("sky", "caveSkylight").map((p) => p.areas);
+  // Floor, not the solid rock between the rooms: somewhere a lamp lights (as for the rats).
+  const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
+  cavern.build({ fungus, crystals, lava, mist, sky, walls, grid, seed, isFloor: floor });
+  lavaPolygons = lava.flat();
+  const webAreas = of("webs", "caveWebs").flatMap((p) => p.areas);
+  if (webAreas.length) webs.build({ corners: webCorners({ walls, areas: webAreas, grid, seed, floor }), grid, seed });
+  // The underground's wear: wet walls, steam, bad air, soot over the wall torches, the rubble of cave-ins.
+  try {
+    const deep = undergroundScene(), flat = (kind, setting) => of(kind, setting).flatMap((p) => p.areas);
+    foulPolygons = flat("foul", "caveFoul");
+    const fires = bothSettingsOn("caveSoot") ? lampLights.filter((l) => l.soot ?? (deep && l.fire)).map((l) => ({ key: `${Math.round(l.x)},${Math.round(l.y)}`, x: l.x, y: l.y })) : [];
+    const rubble = bothSettingsOn("caveRubble") ? sceneRubble().map((r) => ({ x: Number(r.x), y: Number(r.y), radius: Number(r.radius) || grid * 1.5, seed: r.seed })) : [];
+    // A scene just opened: its cave-ins have already happened.
+    if (rubbleSceneId !== canvas.scene?.id) { rubbleSceneId = canvas.scene?.id; for (const r of rubble) rubblePlayed.add(r.seed); }
+    underLife.build({ soot: sootSpots(fires, walls, { grid }), wet: wetRuns(flat("wet", "caveWet"), walls, { grid, floor }), vents: ventsIn(flat("steam", "caveSteam"), { grid, seed }), foul: foulPolygons, rubble, grid });
+    underWanted = deep && (bothSettingsOn("caveEyes") || bothSettingsOn("caveMoths"));
+    // Where eyes may glint: by the walls, at the dim edge of the lights or beyond them (the lights don't move often;
+    // worked out with the rest).
+    const glowAt = (p) => { let best = 0; for (const l of lampLights) { const d = Math.hypot(p.x - l.x, p.y - l.y); if (d < l.radius && 1 - d / l.radius > best && (!l.shape || pointInPolygon(p, l.shape))) best = 1 - d / l.radius; } return best; };
+    // Floor the air reaches (Drafts), so the dark corridors count too, not only where a lamp shines; else a lamp's lit area.
+    const open = (p) => { if (!airField) return floor(p); const i = Math.floor((p.x - airField.x) / airField.cell), j = Math.floor((p.y - airField.y) / airField.cell); return i >= 0 && j >= 0 && i < airField.cols && j < airField.rows && airField.dist[j * airField.cols + i] > 0; };
+    underSpots = [];
+    if (underWanted && bothSettingsOn("caveEyes")) for (const w of walls) {
+      const [x1, y1, x2, y2] = w.c, len = Math.hypot(x2 - x1, y2 - y1); if (len < grid || !(Number(w.move) > 0)) continue;
+      const nx = -(y2 - y1) / len, ny = (x2 - x1) / len, n = Math.round(len / grid);
+      for (let i = 0; i < n; i++) { const f = (i + 0.5) / n; for (const s of [1, -1]) { const p = { x: x1 + (x2 - x1) * f + nx * s * grid * 0.35, y: y1 + (y2 - y1) * f + ny * s * grid * 0.35 }; if (open(p) && glowAt(p) < 0.4) underSpots.push(p); } }
+    }
+    // The foot of each long wall, a little out from it on the floor side: where the crawlers run.
+    underCrawl = [];
+    if (underWanted) for (const w of walls) {
+      if (!(Number(w.move) > 0) || Number(w.door) > 0) continue;
+      const [x1, y1, x2, y2] = w.c, len = Math.hypot(x2 - x1, y2 - y1); if (len < grid * 1.5) continue;
+      const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+      for (const s of [1, -1]) { const o = grid * 0.12 * s, a = { x: x1 + nx * o, y: y1 + ny * o }, b = { x: x2 + nx * o, y: y2 + ny * o }; if (floor({ x: (a.x + b.x) / 2 + nx * s * grid * 0.2, y: (a.y + b.y) / 2 + ny * s * grid * 0.2 })) underCrawl.push({ a, b }); }
+    }
+    underLook = null;
+    refoulLights();
+  } catch { underLife.clear(); }
+  // The air shimmers over the lava (the heat shimmer's hot ground).
+  if (had || lavaPolygons.length) { try { rebuildSky(); } catch { /* the sky not ready */ } }
+};
+// The light through a skylight now: the sun's (warm, golden at dawn and dusk) or the moon's (silver), as strong as it
+// is in the open and dimmed by cloud; the pool it lights lies away from the sun, further the lower it stands.
+const skylightNow = (grid) => {
+  const sun = skySunNow; if (!sun) return null;
+  const strength = (Number(sun.strength) || 0) * (sun.moon ? 0.45 : 1), glow = sun.moon ? null : sunGlow(clockNow()), warm = [1, 0.93, 0.78];
+  const color = sun.moon ? [0.7, 0.8, 1] : glow ? warm.map((v, i) => v + (glow.color[i] - v) * glow.amount) : warm;
+  const away = (((Number(sun.angle) || 0) + 180) * Math.PI) / 180, reach = grid * (0.6 + 3 * (1 - Math.min(1, Math.max(0, (Number(sun.height) || 45) / 90))));
+  return { color, strength, shift: [Math.cos(away) * reach, Math.sin(away) * reach] };
+};
+// The caverns each frame: the fungus dims where creatures pass, the crystals catch the lights near the view, feet part
+// the mist (a few times a second); the clock moves.
+const tickCavern = (seconds, now) => {
+  if (now - caveLookAt > 120) {
+    caveLookAt = now;
+    const view = viewNow(), grid = canvas.grid.size;
+    if (cavern.wantsTouches || cavern.wantsFeet) {
+      const here = creaturesNow();
+      if (cavern.wantsFeet) cavern.feet(here);
+      if (cavern.wantsTouches) {
+        for (const c of here) { const last = caveTouches.findLast?.((t) => Math.hypot(t.x - c.x, t.y - c.y) < grid * 0.3); if (!last || now - last.at > 1500) caveTouches.push({ x: c.x, y: c.y, at: now }); }
+        caveTouches = caveTouches.filter((t) => now - t.at < 4000).slice(-12);
+      }
+    }
+    let lights = [];
+    if (cavern.wantsLights) {
+      const mid = { x: view.x + view.w / 2, y: view.y + view.h / 2 };
+      for (const s of canvas.effects?.lightSources ?? []) {
+        if (!s?.active || s.constructor?.name?.includes("Global")) continue;
+        const d = s.data ?? {}, reach = Number(d.dim) || Number(d.radius) || Number(s.radius) || 0; if (!(reach > 0)) continue;
+        if (d.x < view.x - reach || d.y < view.y - reach || d.x > view.x + view.w + reach || d.y > view.y + view.h + reach) continue;
+        let color = [1, 0.85, 0.66]; try { if (d.color !== null && d.color !== undefined) color = new PIXI.Color(d.color).toRgbArray(); } catch { /* the default */ }
+        lights.push({ x: d.x, y: d.y, reach, strength: Math.min(1, (Number(d.luminosity) || 0.5) + 0.5), color, far: Math.hypot(d.x - mid.x, d.y - mid.y) });
+      }
+      lights = lights.sort((a, b) => a.far - b.far).slice(0, 8);
+    }
+    // Underground it is always night (no sun reaches it, whatever the clock or the scene's light).
+    const dark = undergroundScene() ? 1 : canvas.environment?.globalLightSource?.active ? 0 : Math.min(1, Math.max(0, ((Number(canvas.environment?.darknessLevel) || 0) - 0.2) / 0.5));
+    cavern.look({ touches: caveTouches.map((t) => ({ x: t.x, y: t.y, ago: (now - t.at) / 1000 })), lights, dark, sky: cavern.wantsSky ? skylightNow(grid) : null });
+  }
+  cavern.tick(seconds);
+};
+// How lit a spot is for a rat (0 dark – 1 bright): the scene's own light, and the lamps' bright inner glow (a rat keeps
+// to the dim edge of a light, not out of its reach altogether).
+const litForRats = (x, y) => {
+  // Underground only the lamps light the way (no daylight down there, whatever the scene's light).
+  const base = undergroundScene() ? 0 : canvas.environment?.globalLightSource?.active ? 0.3 : Math.max(0, 1 - (Number(canvas.environment?.darknessLevel) || 0) * 1.4);
+  let best = Math.min(0.5, base);
+  for (const l of lampLights) { const d = Math.hypot(x - l.x, y - l.y), inner = l.radius * 0.5; if (d < inner) best = Math.max(best, 1 - d / inner); }
+  return best;
+};
+// Where rats might be: half a square off each wall, either side, on a floor some light reaches (inside a lamp's lit
+// area, walls and all: a room or a corridor, not the solid rock between them).
+// The light that throws a shadow at a point: the strongest lamp reaching it that sees it (walls between block it), as
+// { x, y, strength 0–1 }; null in the dark.
+const nearestLamp = (x, y) => {
+  let best = null, strength = 0;
+  for (const l of lampLights) { const d = Math.hypot(x - l.x, y - l.y); if (d >= l.radius) continue; const s = 1 - d / l.radius; if (s > strength) { strength = s; best = l; } }
+  if (!best || (Array.isArray(best.shape) && best.shape.length >= 6 && !pointInPolygon({ x, y }, best.shape))) return null;
+  return { x: best.x, y: best.y, strength: Math.min(1, strength * 1.6) };
+};
+const ratSpots = () => {
+  const grid = canvas.grid.size, spots = [];
+  const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
+  for (const w of canvas.walls?.placeables ?? []) {
+    const [x1, y1, x2, y2] = w.document.c, len = Math.hypot(x2 - x1, y2 - y1); if (len < grid) continue;
+    const nx = -(y2 - y1) / len, ny = (x2 - x1) / len, mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    for (const side of [1, -1]) { const pt = { x: mx + side * nx * grid * 0.4, y: my + side * ny * grid * 0.4 }; if (floor(pt)) spots.push(pt); }
+  }
+  return spots;
+};
+const wallBlocks = (a, b) => { try { return !!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" }); } catch { return false; } };
+let lifeTimer = null;
+const lifeSoon = () => { if (!lifeTimer) lifeTimer = setTimeout(rebuildLife, 600); };
+const rebuildLife = () => {
+  lifeTimer = null;
+  try {
+    vermin.clear(); drips.clear();
+    if (!canvas?.ready) return;
+    const grid = canvas.grid.size, b = canvas.dimensions.sceneRect;
+    if (verminOn() && underCeiling({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) && (canvas.scene?.flags?.[ID]?.underground || ["cave", "hall"].includes(canvas.scene?.flags?.[ID]?.acoustics))) {
+      const spots = ratSpots();
+      vermin.populate({ spots, count: Math.min(14, Math.max(4, Math.round(spots.length / 20))), lit: litForRats, grid, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: wallBlocks });
+    }
+    if (dripsOn()) {
+      const areas = [];
+      // Each region's drip pace and how deep its water lies.
+      for (const region of canvas.scene?.regions ?? []) if (region.flags?.[ID]?.drips) { try { const own = region.flags[ID]; areas.push(...regionAreas(region).map((a) => Object.assign(a, { pace: own.dripPace ?? "", depth: own.dripDepth ?? "" }))); } catch { /* skip */ } }
+      const water = [];
+      for (const region of canvas.scene?.regions ?? []) { try { if (!region.flags?.[ID]?.drips && regionFloor({ name: region.name, flag: region.flags?.[ID]?.floor }) === "water") water.push(...regionAreas(region)); } catch { /* skip */ } }
+      if (areas.length) drips.build({ areas, grid, water, floor: mapFloor() });
+    }
+  } catch { vermin.clear(); drips.clear(); }
+  try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
+};
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, () => { lifeSoon(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; underWanted = false; underSpots = []; underCrawl = []; underLook = null; rubbleSceneId = null; rubblePlayed.clear(); });
+const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
+const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 }));
 const surfaceLight = createSurfaceLight({ PIXI: globalThis.PIXI, root: skyRootOf, above: birdRootOf, glowing: glowRootOf, render: bakeInto, renderAt: (o, rt, transform) => canvas.app.renderer.render(o, { renderTexture: rt, clear: true, transform }) });
 // Snow lying on the roofs and in the trees (sky-light.mjs createTileSnow): just over the highest overhead tile, under the
 // birds' shadows.
@@ -1669,7 +2157,7 @@ const snowRootOf = () => {
 const tileSnow = createTileSnow({ PIXI: globalThis.PIXI, root: snowRootOf });
 // The trees swaying in the wind (canopy-light.mjs createTreeSway): on the tree tiles themselves.
 const treeSway = createTreeSway({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 });
-const treeSwayOn = () => bothSettingsOn("treeSway");
+const treeSwayOn = () => outdoorOn("treeSway");
 let skyWind = 0;
 const swayTrees = () => { try { treeSway.attach(canvas?.ready && treeSwayOn() ? sunlitTiles().tree.map((t) => t.mesh) : []); } catch { treeSway.clear(); } };
 const tileSnowOn = () => bothSettingsOn("tileSnow");
@@ -1749,15 +2237,15 @@ const syncFxLightning = (now) => {
     }
   } catch { /* FXMaster changed its insides: leave it be */ }
 };
-const cloudsOn = () => bothSettingsOn("cloudShadows"), glintsOn = () => bothSettingsOn("surfaceGlints");
+const cloudsOn = () => outdoorOn("cloudShadows"), glintsOn = () => outdoorOn("surfaceGlints");
 const shimmerOn = () => { try { return hotSetting("heatShimmer") !== false && canDistort(localQuality(), hotSetting("heatShimmerLocal")); } catch { return false; } };
-const lightningOn = () => bothSettingsOn("lightningFlashes");
-const leavesOn = () => bothSettingsOn("fallingLeaves"), mistOn = () => bothSettingsOn("morningMist");
-const wetOn = () => bothSettingsOn("wetGround"), snowCoverOn = () => bothSettingsOn("snowCover"), firefliesOn = () => bothSettingsOn("fireflies");
-const birdsOn = () => bothSettingsOn("birdShadows"), rainRingsOn = () => bothSettingsOn("rainRings");
-const weatherLightOn = () => bothSettingsOn("weatherLight"), weatherMapOn = () => bothSettingsOn("weatherOnMap");
-const frozenWaterOn = () => bothSettingsOn("frozenWater"), seasonGroundOn = () => bothSettingsOn("seasonGround"), rainbowOn = () => bothSettingsOn("rainbows");
-const surfaceLifeOn = () => cloudsOn() || glintsOn() || mistOn() || wetOn() || snowCoverOn() || firefliesOn() || birdsOn() || rainRingsOn() || frozenWaterOn() || seasonGroundOn() || rainbowOn() || weatherLightOn() || weatherMapOn() || hotSetting("moonLight") !== false;
+const lightningOn = () => outdoorOn("lightningFlashes");
+const leavesOn = () => outdoorOn("fallingLeaves"), mistOn = () => outdoorOn("morningMist");
+const wetOn = () => outdoorOn("wetGround"), snowCoverOn = () => outdoorOn("snowCover"), firefliesOn = () => outdoorOn("fireflies");
+const birdsOn = () => outdoorOn("birdShadows"), rainRingsOn = () => outdoorOn("rainRings");
+const weatherLightOn = () => outdoorOn("weatherLight"), weatherMapOn = () => outdoorOn("weatherOnMap");
+const frozenWaterOn = () => outdoorOn("frozenWater"), seasonGroundOn = () => outdoorOn("seasonGround"), rainbowOn = () => outdoorOn("rainbows");
+const surfaceLifeOn = () => cloudsOn() || glintsOn() || mistOn() || wetOn() || snowCoverOn() || firefliesOn() || birdsOn() || rainRingsOn() || frozenWaterOn() || seasonGroundOn() || rainbowOn() || weatherLightOn() || weatherMapOn() || (hotSetting("moonLight") !== false && !undergroundScene());
 // The season: Calendaria's, else Simple Calendar Reborn's, else unknown.
 const seasonNow = () => {
   try {
@@ -1825,7 +2313,7 @@ const groundAway = () => {
         // (A scene this screen kept before the ground was kept in the scenes starts from what it kept.)
         let kept = scene.flags?.[ID]?.ground ?? null;
         if (!kept) { try { kept = JSON.parse(localStorage.getItem(`${ID}.ground.${game.world?.id}.${scene.id}`) ?? "null"); } catch { kept = null; } }
-        if (!kept && !scene.regions?.some((r) => { try { return regionFloor({ name: r.name, flag: r.flags?.[ID]?.floor }) === "water"; } catch { return false; } })) continue;
+        if (!kept && !scene.regions?.some((r) => { try { return regionFloor({ name: r.name, flag: floorFlagOf(r) }) === "water"; } catch { return false; } })) continue;
         const { calendaria, weather } = awayWeather(scene);
         writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, ...groundInputs({ calendaria, scene: scene.weather ?? "", temperature: weather.temperature, sun: daylight }) }));
       }
@@ -1838,7 +2326,7 @@ const surfacesHere = () => {
   const scene = canvas?.scene, regions = [];
   for (const region of scene?.regions ?? []) {
     try {
-      const floor = regionFloor({ name: region.name, flag: region.flags?.[ID]?.floor });
+      const floor = regionFloor({ name: region.name, flag: floorFlagOf(region) });
       // A river's flow: the compass point it flows toward (as a map angle) and how swift.
       const toward = region.flags?.[ID]?.flowTo, flow = toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : null;
       if (floor) regions.push({ floor, polygons: regionAreas(region), freezes: !region.flags?.[ID]?.noFreeze, flow, current: region.flags?.[ID]?.current === "swift" ? 1 : 0.4 });
@@ -1908,7 +2396,7 @@ const lookSky = () => {
     snowNow = { snow: tileSnowOn() ? ground.snow : 0, wind: weather.wind };
     tileSnow.look(snowNow);
     skyOpen = Number.isFinite(sky) ? sky : 1; skyWindAngle = weather.windAngle; skyWind = weather.wind;
-    skyHeat = shimmerOn() && skySurfaces ? Math.max(heatOf({ sun: sunNow, sky, temperature: weather.temperature, hotGround: skySurfaces.hot.length > 0 || skySurfaces.whole === "hot" }), (drawn?.heat ?? 0) * (sunNow && !sunNow.moon ? 0.9 : 0.3)) : 0;
+    skyHeat = shimmerOn() && skySurfaces ? Math.max(heatOf({ sun: sunNow, sky, temperature: weather.temperature, hotGround: skySurfaces.hot.length > 0 || skySurfaces.whole === "hot" }), (drawn?.heat ?? 0) * (sunNow && !sunNow.moon ? 0.9 : 0.3), lavaPolygons.length ? 0.75 : 0) : 0;
     // How fierce the storm is (0 none): how often and how bright it flashes.
     skyStorm = lightningOn() ? Math.max(weather.storm ? weather.severity : 0, drawn?.storm ?? 0) : 0;
   } catch { surfaceLight.look({ light: 0 }); skyHeat = 0; skyStorm = 0; }
@@ -1928,7 +2416,7 @@ const rebuildSky = () => {
     const weather = weatherNow();
     // Hot: the sand, or the whole map in a heat wave (from 30 °C).
     const hotAll = skySurfaces.whole === "hot" || (weather.temperature !== null && weather.temperature >= 30) || (drawnNow?.heat ?? 0) > 0.1;
-    if (shimmerOn()) heatShimmer.build({ hot: skySurfaces.hot, hotAll, bounds }); else heatShimmer.clear();
+    if (shimmerOn()) heatShimmer.build({ hot: [...skySurfaces.hot, ...lavaPolygons], hotAll, bounds }); else heatShimmer.clear();
     lookSky();
   } catch { surfaceLight.clear(); heatShimmer.clear(); }
 };
@@ -1961,8 +2449,12 @@ const castFxClouds = () => {
   surfaceLight.fxClouds(box, { x: Math.cos(away) * reach, y: Math.sin(away) * reach });
 };
 const weatherRoofs = () => { try { return sunlitTiles().roof.map((t) => ({ ...t, shown: t.shown })); } catch { return []; } };
+// How big this scene's birds are (Scene configuration → Animater: bird shadows): a city map's squares are wide, so its
+// birds are drawn smaller; Off: none here.
+const BIRD_SIZES = Object.freeze({ "": 1, small: 0.5, tiny: 0.28, off: 0 });
+const birdSize = () => BIRD_SIZES[String(canvas?.scene?.flags?.[ID]?.birds ?? "")] ?? 1;
 const flyBirds = (now) => {
-  const fair = birdsOn() && sunNow && !sunNow.moon && (Number(sunNow.strength) || 0) > 0.3 && skyOpen > 0.6 && canvas?.dimensions;
+  const fair = birdsOn() && birdSize() > 0 && sunNow && !sunNow.moon && (Number(sunNow.strength) || 0) > 0.3 && skyOpen > 0.6 && canvas?.dimensions;
   if (!fair) { if (flock) surfaceLight.bird(null); flock = null; nextFlockAt = null; return; }
   if (!flock) {
     nextFlockAt ??= now + nextFlockMs(Math.random());
@@ -1974,7 +2466,7 @@ const flyBirds = (now) => {
   if (k >= 1) { flock = null; surfaceLight.bird(null); return; }
   // The roofs as drawn now: one faded for a creature inside shows the room, and no birds over it.
   const roofs = sunlitTiles().roof.map((t) => ({ ...t, shown: t.shown }));
-  surfaceLight.bird({ x: flock.from.x + (flock.to.x - flock.from.x) * k, y: flock.from.y + (flock.to.y - flock.from.y) * k, angle: flock.angle }, roofs);
+  surfaceLight.bird({ x: flock.from.x + (flock.to.x - flock.from.x) * k, y: flock.from.y + (flock.to.y - flock.from.y) * k, angle: flock.angle, scale: birdSize() }, roofs);
 };
 // The leaves, water, dust, heat and storm move each frame: only while something of them shows.
 Hooks.on("canvasReady", () => { canvas.app.ticker.add(skyTick); });
@@ -1995,6 +2487,15 @@ function skyTick() {
   // A roof fading for a creature inside takes its snow with it.
   if (tileSnow.showing) tileSnow.shown(snowTiles.map(tileShown));
   if (surfaceLight.shown) surfaceLight.tick(seconds);
+  if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) lampAir.tick(seconds); }
+  if (ceilingDust.busy) ceilingDust.tick(seconds);
+  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: wallBlocks, view: viewNow(), light: nearestLamp });
+  if (drips.count) drips.tick(seconds);
+  { const now = performance.now(); if (now - lightFlamesAt > (now - gustAt < 8000 ? 100 : 500)) { lightFlamesAt = now; syncLightFlames(); } if (lightFlames.count) lightFlames.tick(now / 1000); }
+  if (stepRipples.busy) stepRipples.tick(seconds);
+  if (cavern.busy) tickCavern(seconds, performance.now());
+  if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
+  if (underWanted || underLife.busy) tickUnderLife(seconds);
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.
   if (glowShadowsDirty && windowGlowLayer.built) glowShadowsDirty = windowGlowLayer.shadows(glowCreatures(), wallsHere()) === true;
@@ -2071,9 +2572,11 @@ const FOOTPRINT_LIFETIME_KEYS = {
   wood:'movementFootprintWoodSeconds',water:'movementFootprintWaterSeconds',ice:'movementFootprintIceSeconds',
 };
 // The creatures' shadows' layer; the sun's lie under the sunlit floor the walls leave (walls cast shadows in sunlight).
-const feelLayer = createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot, sunlit: () => wallShadows.sunlit });
+const feelLayer = createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movementFeelRoot, overRoot: movementFeelOverRoot, sunlit: () => wallShadows.sunlit, renderer: () => canvas?.app?.renderer ?? null });
 const movementFeel = createMovementFeel({
   trails: groundTrails,
+  ripples: rippleStep,
+  kicks: kickPebble,
   // "Shadows under every token": standing creatures cast their shadows too, not only fliers.
   groundShadows: () => { try { return hotSetting("groundShadows") === true && hotSetting("groundShadowsLocal") !== false; } catch { return false; } },
   // "Shadows in creatures' shapes" and "A shadow for each light", each with its "on my screen" setting.
@@ -2292,6 +2795,12 @@ const movementFeel = createMovementFeel({
     const thudWeight = token.gait === "hooves" && !token.bulk?.heavy && weight < 4 ? 2 : weight;
     const thud = thudFile(thudWeight, step, seed), boom = thudLevel(thudWeight);
     // Tremor is a separate layer of the footfall, independent of bass volume or bass-file playback.
+    // Under a ceiling, the heavy step shakes dust down around it (with the step's thud, whatever the tremor setting).
+    if (weight >= 4 && !sneak && ceilingDustOn() && underCeiling(at)) stepping.then((sound) => {
+      if (!sound) return;
+      later(() => { try { ceilingDust.fall({ at: { x: at.x, y: at.y }, weight, grid: canvas.grid?.size ?? 100, seed: `${seed}:${step}:dust` }, canvas.app.renderer); } catch { /* the canvas mid-change */ } },
+        thudDelayMs({ stepPeakMs: audioPeakMs(sound.buffer), stepRate: vary.rate, thudPeakMs: 0 }));
+    }).catch(() => {});
     if (weight >= 4 && mix.tremor > 0 && !sneak && movementFeelSettingOn("footfallTremor")) stepping.then((sound) => {
       if (!sound) return;
       later(() => cameraShake.tremor({ at: { x: at.x, y: at.y }, weight, sceneId, level: sceneLevel,
@@ -2606,6 +3115,9 @@ const listVaporTokens = () => {
   const scene = canvas.scene, level = canvas.level?.id, raw = scene?.flags?.[ID]?.cold;
   // Scene configuration's Animater climate: "cold" or "warm" decides; unset, the weather and floor do.
   const flag = raw === true || raw === "cold" ? true : raw === false || raw === "warm" ? false : undefined;
+  // Unset: underground is cold, and so is a cold day (Calendaria's temperature, 5 °C or under), wherever it stands.
+  let chill = false;
+  if (flag === undefined) { chill = undergroundScene(); if (!chill) { try { const tc = weatherNow().temperature; chill = Number.isFinite(tc) && tc <= 5; } catch { /* no weather */ } } }
   const placed = [];
   for (const t of canvas.tokens?.placeables ?? []) {
     try {
@@ -2619,7 +3131,7 @@ const listVaporTokens = () => {
     let cold = false;
     try {
       const d = t.document, c = d.getCenterPoint(), feet = { x: c.x, y: c.y + (t.w ?? 100) * 0.25 };
-      cold = isCold({ flag, weather: weatherAt(feet, d.elevation ?? 0), floor: movementFeelFloor(feet, { elevation: d.elevation ?? 0 }) });
+      cold = chill || isCold({ flag, weather: weatherAt(feet, d.elevation ?? 0), floor: movementFeelFloor(feet, { elevation: d.elevation ?? 0 }) });
     } catch { /* warm */ }
     return { t, cold };
   });
@@ -2711,6 +3223,31 @@ const heldTorchesOn = () => { try { return bothOn("heldTorches") && qualityRank(
 // (fire gives light; lit, its flame washed out to a flat yellow): in the interface group, over its token layer. It is
 // only drawn while its creature shows on this screen.
 let torchLightRoot = null;
+// Flames on the map's fire lights (engines/motion/light-flames.mjs): where a torch or brazier light stands, the held
+// torch's flame burns, unless the light says not (Light configuration → Animater → Flame). Looked at twice a second.
+const lightFlamesOn = () => bothSettingsOn("lightFlames");
+let lightFlamesAt = 0;
+const syncLightFlames = () => {
+  const list = [];
+  if (canvas?.ready && lightFlamesOn()) {
+    const grid = canvas.grid.size;
+    for (const light of canvas.lighting?.placeables ?? []) {
+      try {
+        const src = light.lightSource; if (!src?.active || light.document.hidden) continue;
+        const own = light.document.flags?.[ID] ?? {}, flag = own.flame;
+        const on = flag === true || flag === "true" ? true : flag === false || flag === "false" ? false : isFireLight(src.data, own);
+        if (!on) continue;
+        // In bad air the flame burns low.
+        const low = foulPolygons.length && foulAt(light.center.x, light.center.y) ? 0.6 : 1;
+        // A torch one tongue; a brazier or a campfire a bed of them (by its animation, or Light configuration → Fire).
+        const kind = fireKindOf(own.fireKind, src.data?.animation?.type ?? light.document.config?.animation?.type);
+        list.push({ key: light.id, x: light.center.x, y: light.center.y, unit: Math.round(flameUnit(fireSize(src.data, grid), grid) * low * (Number(own.flameSize) > 0 ? Math.min(3, Number(own.flameSize)) : 1)), color: src.data?.color ?? null, kind, grid });
+      } catch { /* a light mid-change */ }
+    }
+  }
+  lightFlames.sync(list);
+  lightFlames.look((key) => { const l = canvas.lighting?.get?.(key); if (!l || !torchDraftOn()) return 0; const a = airLeanAt(l.center.x, l.center.y); return Math.sign(a) * 0.8 * Math.min(1, Math.sqrt(Math.abs(a) * 1.6)); });
+};
 const torchLightRootOf = () => {
   if (!torchLightRoot || torchLightRoot.destroyed) {
     torchLightRoot = new PIXI.Container();
@@ -2722,6 +3259,9 @@ const torchLightRootOf = () => {
   }
   return torchLightRoot;
 };
+const lightFlames = createLightFlames({ PIXI: globalThis.PIXI, root: () => torchLightRootOf() });
+for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { lightFlamesAt = 0; });
+Hooks.on("canvasTearDown", () => { lightFlames.clear(); });
 const heldTorches = createHeldTorches({ PIXI: globalThis.PIXI, root: torchLightRootOf, grid: () => canvas?.grid?.size ?? 100 });
 const torchLean = new Map();
 // The torch's light comes from its flame, not the creature's middle: Foundry builds a token's light at its centre
@@ -2871,7 +3411,7 @@ const fireSmoke = createFireSmoke({
   grid: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
   layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: vaporRootOf }),
-  fires: () => smokeFrame.filter((f) => !f.chimney),
+  fires: () => smokeFrame.filter((f) => !f.chimney).map((f) => { const v = airVecAt(f.x, f.y); return v.x || v.y ? { ...f, drift: { x: v.x * 1.4, y: v.y * 1.4 } } : f; }),
   amount: () => { try { return Number(hotSetting("fireSmokeAmount")) || 1; } catch { return 1; } },
 });
 // Light orbs (engines/motion/light-orb.mjs): a creature lit by a Light spell has its light float at its shoulder.
@@ -4784,6 +5324,29 @@ Hooks.once("init", () => {
     registerSetting(key, { name, hint: `${hint} ${quality}`, scope: "world", config: true, type: Boolean, default: true });
     registerSetting(local, { name: `${name} on my screen`, hint: `Turn off to never draw ${name.toLowerCase()} on this screen (the world setting decides for everyone).`, scope: "client", config: true, type: Boolean, default: true });
   };
+  skyPair("drafts", "draftsLocal", "Drafts", "In an underground scene (or one with a region marked as open to the outside), the air flows through every open door toward the way out: dust streams with it, sparks are carried along, smoke drains out. Opening a door sends a gust that settles into a steady draft; a sealed room's air stands still.");
+  skyPair("roomSmoke", "roomSmokeLocal", "Smoke in the air", "In an underground scene, the fires' smoke gathers in their rooms in slow rolling layers, lit by the fires, and streams out along the draft toward the way out.");
+  skyPair("vermin", "verminLocal", "Rats and bats", "In an underground scene (Scene configuration → Animater: underground, or cave or hall acoustics), rats scurry along the walls, keeping out of the light and scattering from anyone who comes close, and a few bats flit high overhead.");
+  skyPair("drips", "dripsLocal", "Dripping water", "Where a region is marked as dripping (Region configuration → Drips from the ceiling), water drips into dark, glistening puddles, each drop sending out a ring.");
+  skyPair("torchDraft", "torchDraftLocal", "Flames in the draft", "Where the air moves (\"Drafts\"), the flames of fire lights lean with it and flicker harder; when a door opens on their way out they gutter for a few seconds, then settle.");
+  skyPair("caveMist", "caveMistLocal", "Cavern mist", "Where a region is marked as mist (Region configuration → Cavern), low mist hugs the floor and drifts; walking through parts it, the trail closing slowly behind.");
+  skyPair("caveFungus", "caveFungusLocal", "Glowing fungus", "Where a region is marked as glowing fungus (Region configuration → Cavern), clusters of small glowing caps grow on a faint web of threads, breathing slowly brighter and dimmer; brushing past dims them for a few seconds. Green, blue or violet.");
+  skyPair("caveCrystals", "caveCrystalsLocal", "Crystals", "Where a region is marked as crystals (Region configuration → Cavern), clusters of crystal grow out of its walls: dull in the dark, each face lit as it turns toward a nearby light, flashing when one lines up. Amethyst, clear quartz or rose.");
+  skyPair("caveLava", "caveLavaLocal", "Lava", "Where a region is marked as lava (Region configuration → Cavern), a black crust drifts in plates over molten rock glowing up through the cracks; bubbles burst, the rock around is lit orange, and the air shimmers over it (with Heat shimmer).");
+  skyPair("lightFlames", "lightFlamesLocal", "Flames on fire lights", "A light animated as a torch, flame or fire burns with a real flame where it stands (the held torch's own fire), flickering, leaning with the draft; for maps whose torches and braziers are drawn without fire. Light configuration → Animater → Flame turns it off for one light, or on for any light.");
+  skyPair("caveSkylight", "caveSkylightLocal", "Light through openings to the sky", "In an underground scene, where a region is marked as open to the sky (Region configuration → Animater → Open to the sky: a hole in the ceiling, a shaft, a cave mouth), daylight falls in as a pool on the floor with a faint shaft of light and dust turning in it, away from the sun and longer when it is low; golden at dawn and dusk, silver moonlight at night. Nowhere else underground does the sun or moon reach.");
+  skyPair("caveWebs", "caveWebsLocal", "Cobwebs", "Where a region is marked as cobwebs (Region configuration → Cavern), dusty, torn webs hang in the corners of its walls and stir in the draft; now and then a spider lowers itself on a thread and climbs back.");
+  skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
+  skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light.");
+  skyPair("caveWet", "caveWetLocal", "Wet walls", "Where a region is marked as wet walls (Region configuration → Cavern), water seeps down the walls: a dark wet band at their foot, with runs out from it, glistening where the light catches it.");
+  skyPair("caveSteam", "caveSteamLocal", "Steam vents", "Where a region is marked as steam vents (Region configuration → Cavern), steam breathes up from cracks in the floor, warm-lit, now and then puffing out in a burst, and drifts off on the draft.");
+  skyPair("caveFoul", "caveFoulLocal", "Bad air", "Where a region is marked as bad air (Region configuration → Cavern), a sickly haze hangs, swelling and thinning, leaning down the draft; the fires in it burn low, their light reaching less far.");
+  skyPair("caveSoot", "caveSootLocal", "Soot over torches", "In an underground scene, the wall behind each fire light standing against a wall is blackened with soot, spreading along it.");
+  skyPair("cavePebbles", "cavePebblesLocal", "Pebbles underfoot", "In an underground scene, now and then a step on stone or earth kicks a pebble skittering ahead, bouncing and rolling to a stop.");
+  skyPair("caveRubble", "caveRubbleLocal", "Cave-ins", "The GM can bring a ceiling down (Region configuration → Animater → Cave-in): the view shakes, rocks fall and bounce, dust rolls out on the air, and the rubble stays where it fell.");
+  skyPair("ceilingDust", "ceilingDustLocal", "Dust from the ceiling", "Under a ceiling (an underground scene, or a room under a roof), a heavy creature's step shakes grit and dust down around it, settling on the floor: more and wider the bigger it is.");
+  skyPair("lampEmbers", "lampEmbersLocal", "Sparks from fires", "Every fire light (a light animated as a torch, flame or fire, or set to on in its Animater options) throws sparks now and then, rising on the heat, flaring and dying out; brightest in the dark.");
+  skyPair("lampMotes", "lampMotesLocal", "Dust in the light", "In dim and dark scenes, fine dust turns slowly in the air where the lights reach, a soft sparkle inside each light's glow that stops at the walls.");
   skyPair("canopyLight", "canopyLightLocal", "Light through trees", "Overhead tree tiles cast their shade on the ground away from the sun, broken by sun flecks that drift and wink as the leaves move: short at noon, long and golden at dawn and dusk, silver under a bright moon, faint under clouds. A tile counts as a tree when its file name says so (tree, oak, pine, canopy, foliage…); Tile configuration → Animater → Sunlight decides for one tile.");
   skyPair("roofLight", "roofLightLocal", "Roof shadows", "Overhead roof tiles cast a building's shadow on the open ground away from the sun, and let the sun in through their holes onto the floor inside (a ruin, a broken roof). A tile counts as a roof when its file name says so (roof, house, tower, tent…) or its picture is solid; Tile configuration → Animater → Sunlight decides for one tile.");
   skyPair("cloudShadows", "cloudShadowsLocal", "Cloud shadows", "On a cloudy day, the clouds' shadows drift over the open ground with the wind: a few under scattered clouds, more as it clouds over. From Calendaria's weather, else the scene's.");
@@ -5401,6 +5964,18 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const value = app.document?.getFlag?.(ID, "acoustics") ?? "";
   const group = document.createElement("div");
   group.className = "form-group";
+  const under = document.createElement("div");
+  under.className = "form-group";
+  under.innerHTML = `<label>Animater: underground</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.underground"${app.document?.getFlag?.(ID, "underground") ? " checked" : ""}></div><p class="hint">A ceiling overhead everywhere in this scene (a dungeon, a cave, a crypt): a heavy creature's step shakes dust down from it. Cave or hall acoustics count as underground too; rooms under a roof region always do.</p>`;
+  tab.append(under);
+  const eyes = document.createElement("div"), eyesNow = String(app.document?.getFlag?.(ID, "eyes") ?? "");
+  eyes.className = "form-group";
+  eyes.innerHTML = `<label>Animater: eyes in the dark</label><div class="form-fields"><select name="flags.${ID}.eyes">${[["", "Now and then (one pair, long quiet between)"], ["often", "Often (something is watching)"], ["never", "Never"]].map(([v, l]) => `<option value="${v}"${v === eyesNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">In an underground scene, a pair of eyes glints back from a dark corner for a few seconds and is gone when light or a creature comes near ("Eyes in the dark").</p>`;
+  tab.append(eyes);
+  const birds = document.createElement("div"), birdsNow = String(app.document?.getFlag?.(ID, "birds") ?? "");
+  birds.className = "form-group";
+  birds.innerHTML = `<label>Animater: bird shadows</label><div class="form-fields"><select name="flags.${ID}.birds">${[["", "Normal (each bird about a square and a half)"], ["small", "Small (half)"], ["tiny", "Tiny (a big city or region map)"], ["off", "Off on this map"]].map(([v, l]) => `<option value="${v}"${v === birdsNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">The size of the flocks' shadows crossing this map on a clear day ("Bird shadows"): smaller where a square covers a lot of ground, so they sit with the map's own birds; Off for none here.</p>`;
+  tab.append(birds);
   group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);
 });
@@ -5484,8 +6059,12 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     return `<div class="form-group"><label>${label}</label><div class="form-fields"><select name="flags.${ID}.${name}">${[["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
   };
   const set = document.createElement("fieldset");
-  set.innerHTML = `<legend>Animater</legend>${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}${pick("chimney", "Chimney smoke")}
-    <p class="hint">Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both. Chimney smoke: a hearth in a room smokes from the roof above it while the roof is drawn (Auto); On always smokes above the roofs (a forge), Off never.</p>`;
+  const kinds = [["", "Auto (a torch one flame, a flame or fire a brazier)"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]];
+  const fireKind = `<div class="form-group"><label>Fire</label><div class="form-fields"><select name="flags.${ID}.fireKind">${kinds.map(([o, l]) => `<option value="${o}"${o === (flags.fireKind ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
+  const sizes = [["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]];
+  const flameSize = `<div class="form-group"><label>Flame size</label><div class="form-fields"><select name="flags.${ID}.flameSize">${sizes.map(([o, l]) => `<option value="${o}"${o === String(flags.flameSize ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
+  set.innerHTML = `<legend>Animater</legend>${pick("flame", "Flame")}${fireKind}${flameSize}${pick("moths", "Moths")}${pick("soot", "Soot")}${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}${pick("chimney", "Chimney smoke")}
+    <p class="hint">A flame burning where this light stands ("Flames on fire lights": Off where the map already draws its fire); Fire: one tongue for a torch, a bed of them across a brazier's bowl or a campfire; Flame size: bigger or smaller than its light makes it, to fit the sconce or bowl the map draws. Moths: in an underground scene, moths loop round it ("Moths and crawlers"); Auto: every fire light. Soot: the wall behind it blackened ("Soot over torches"); Auto: a fire light against a wall in an underground scene, On any light against a wall, anywhere. Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both. Chimney smoke: a hearth in a room smokes from the roof above it while the roof is drawn (Auto); On always smokes above the roofs (a forge), Off never.</p>`;
   const tab = root.querySelector('.tab[data-tab="animation"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });
@@ -5697,34 +6276,70 @@ onTokenConfig((app, html) => {
 });
 for (const hook of ['closeTokenConfig', 'closePrototypeTokenConfig']) Hooks.on(hook, (app) => movementConfigCleanup.get(app)?.());
 Hooks.on('canvasTearDown', () => { for (const stop of movementConfigStops) stop(); });
+// Animater's region options, on a tab of their own in Region configuration (grouped, and scrolling on their own).
 Hooks.on("renderRegionConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.floor"]`)) return;
-  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab");
-  if (!tab) return;
-  tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's. The sun glitters on water and sparkles on snow and ice here, and the air shimmers over sand at a hot midday."));
-  // Water that never freezes (a hot spring, a fast river).
-  const noFreeze = document.createElement("div");
-  noFreeze.className = "form-group";
-  noFreeze.innerHTML = `<label>Never freezes</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noFreeze"${app.document?.flags?.[ID]?.noFreeze ? " checked" : ""}></div><p class="hint">Water here stays open in a hard frost ("Water freezes"): a hot spring, a fast river.</p>`;
-  tab.append(noFreeze);
-  // A river: which way it flows and how swift.
-  const flowTo = app.document?.flags?.[ID]?.flowTo ?? "", current = app.document?.flags?.[ID]?.current ?? "";
-  const flowing = document.createElement("div");
-  flowing.className = "form-group";
+  const nav = root.querySelector("nav.sheet-tabs, nav.tabs"), sibling = root.querySelector('.tab[data-group="sheet"]') ?? root.querySelector(".tab");
+  if (!sibling) return;
+  const own = app.document?.flags?.[ID] ?? {}, group = sibling.dataset.group ?? "sheet", active = app.tabGroups?.[group] === "animater";
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const select = (name, value, options) => `<select name="flags.${ID}.${name}">${options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
+  const field = (label, input, hint) => { const div = document.createElement("div"); div.className = "form-group"; div.innerHTML = `<label>${label}</label><div class="form-fields">${input}</div><p class="hint">${hint}</p>`; return div; };
+  const box = (name) => `<input type="checkbox" name="flags.${ID}.${name}"${own[name] ? " checked" : ""}>`;
+  const section = (title, ...fields) => { const set = document.createElement("fieldset"); set.innerHTML = `<legend>${title}</legend>`; set.append(...fields); return set; };
+  // The tab and its button.
+  const tab = document.createElement("section");
+  tab.className = `tab animater-region scrollable${active ? " active" : ""}`;
+  tab.dataset.group = group; tab.dataset.tab = "animater";
+  tab.style.cssText = "overflow-y: auto; min-height: 0; flex: 1;";
+  if (nav && !nav.querySelector('[data-tab="animater"]')) {
+    const button = document.createElement("a");
+    button.dataset.action = "tab"; button.dataset.group = group; button.dataset.tab = "animater";
+    if (active) button.classList.add("active");
+    button.innerHTML = '<i class="fa-solid fa-wand-sparkles" inert></i> <span>Animater</span>';
+    nav.append(button);
+  }
+  if (active) { for (const t of root.querySelectorAll(`.tab[data-group="${group}"]`)) t.classList.remove("active"); for (const a of nav?.querySelectorAll(`[data-group="${group}"]`) ?? []) a.classList.toggle("active", a.dataset.tab === "animater"); }
+  // The floor and its water.
   const points = [["", "Still (lake, pond)"], ["n", "North"], ["ne", "North-east"], ["e", "East"], ["se", "South-east"], ["s", "South"], ["sw", "South-west"], ["w", "West"], ["nw", "North-west"]];
-  flowing.innerHTML = `<label>Flows toward</label><div class="form-fields"><select name="flags.${ID}.flowTo">${points.map(([v, l]) => `<option value="${v}"${v === flowTo ? " selected" : ""}>${l}</option>`).join("")}</select><select name="flags.${ID}.current">${[["", "Gentle"], ["swift", "Swift"]].map(([v, l]) => `<option value="${v}"${v === current ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind.</p>`;
-  tab.append(flowing);
+  tab.append(section("Floor and water",
+    floorSelect(own.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's. The sun glitters on water and sparkles on snow and ice here, and the air shimmers over sand at a hot midday."),
+    field("Never freezes", box("noFreeze"), 'Water here stays open in a hard frost ("Water freezes"): a hot spring, a fast river.'),
+    field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind.")));
+  // Water dripping from the ceiling: its pace and the pool it falls into show only when it drips.
+  const pace = field("Drip pace", select("dripPace", own.dripPace ?? "", [["slow", "Slow (a drop now and then)"], ["", "Steady"], ["fast", "Fast"], ["faster", "Very fast (a steady trickle)"]]), "How often the drops fall here (each spot keeps its own rhythm).");
+  const depth = field("Pool depth", select("dripDepth", own.dripDepth ?? "", [["", "A puddle (the floor plain through it)"], ["pool", "A pool"], ["deep", "Deep water (dark, the floor barely seen)"]]), "How deep the water the drops fall into: shallow shows the floor through it; deeper is darker, the floor fading, the ripples bending it more. A pool or deep water is a water floor for creatures walking through (splashes, wet steps), unless the floor above says otherwise.");
+  const drips = field("Drips from the ceiling", box("drips"), 'Water seeps through the ceiling and drips here into a pool filling the region, its rings bending the floor seen through it ("Dripping water"). Over open water, the water itself rings.');
+  const showDrips = () => { const on = drips.querySelector("input").checked; pace.hidden = !on; depth.hidden = !on; };
+  drips.querySelector("input").addEventListener("change", showDrips); showDrips();
+  tab.append(section("Dripping water", drips, pace, depth));
+  // Underground.
+  const caveKinds = [["", "None"], ["mist", "Mist on the floor"], ["fungus-green", "Glowing fungus (green)"], ["fungus-blue", "Glowing fungus (blue)"], ["fungus-violet", "Glowing fungus (violet)"], ["crystals-amethyst", "Crystals (amethyst)"], ["crystals-quartz", "Crystals (clear quartz)"], ["crystals-rose", "Crystals (rose)"], ["lava", "Lava"], ["webs", "Cobwebs"], ["wet", "Wet walls"], ["steam", "Steam vents"], ["foul", "Bad air"]];
+  tab.append(section("Underground",
+    field("Cavern", select("cavern", own.cavern ?? "", caveKinds), "What this region holds: low mist hugging the floor, glowing fungus, crystals growing out of its walls, a lava pool, cobwebs in its corners, water seeping down its walls, steam rising from its floor, or bad air that starves the fires. Each has its own setting."),
+    field("Open to the sky", box("openSky"), 'In an underground scene, the sky shows through here (a hole in the ceiling, a shaft, a cave mouth): daylight falls in as a pool on the floor with a shaft of light and dust turning in it, moonlight at night ("Light through openings to the sky"). Nowhere else underground does the sun or moon reach.'),
+    field("Opens to the outside", box("opensOutside"), 'A way out to the open air here: stairs up, a cave mouth, an air shaft, a collapsed ceiling. The air indoors flows toward it through every open door ("Drafts"). Doors on the scene\'s edge standing open, and regions that lead elsewhere (teleport, change level), count without this.')));
+  // A cave-in (GM): the ceiling comes down over this region, its rubble kept with the scene.
+  if (game.user?.isGM && app.document?.parent?.id === canvas?.scene?.id) {
+    const caveIn = field("Cave-in", `<button type="button" data-animater-cavein><i class="fa-solid fa-person-falling-burst"></i> Bring the ceiling down</button><button type="button" data-animater-clearrubble><i class="fa-solid fa-broom"></i> Clear all rubble</button>`, 'The ceiling over this region collapses now, for everyone: the view shakes, rocks fall and bounce, dust rolls out, and the rubble stays ("Cave-ins"). Clearing takes away every cave-in\'s rubble in the scene. The Token controls have the same two buttons, to bring the ceiling down wherever you click.');
+    caveIn.querySelector("[data-animater-cavein]").addEventListener("click", () => {
+      try { const pts = regionAreas(app.document).flat(), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        bringCeilingDown({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, radius: Math.min(canvas.grid.size * 4, Math.max(canvas.grid.size * 0.75, Math.min(x1 - x0, y1 - y0) / 2)) });
+      } catch { /* no shape */ } });
+    caveIn.querySelector("[data-animater-clearrubble]").addEventListener("click", () => { clearRubble(); });
+    tab.querySelector("fieldset:last-of-type")?.append(caveIn);
+  }
   // Region looks: a Tokenshade look on every creature inside.
   if (!root.querySelector(`[name="flags.${ID}.${REGION_LOOK_FLAG}"]`)) {
-    const value = app.document?.flags?.[ID]?.[REGION_LOOK_FLAG] ?? "";
+    const value = own[REGION_LOOK_FLAG] ?? "";
     const names = tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b));
-    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-    const group = document.createElement("div");
-    group.className = "form-group";
-    group.innerHTML = `<label>Animater look</label><div class="form-fields"><select name="flags.${ID}.${REGION_LOOK_FLAG}"><option value="">None</option>${names.map((n) => `<option value="${esc(n)}"${n === value ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></div><p class="hint">A Tokenshade look every creature inside this region shows (it fades in as they step in and out as they leave): haunted ground, a forge’s warmth, deep water. Make your own on Animater’s Tokenshade page.</p>`;
-    tab.append(group);
+    tab.append(section("Creatures inside", field("Animater look", select(REGION_LOOK_FLAG, value, [["", "None"], ...names.map((n) => [n, n])]), "A Tokenshade look every creature inside this region shows (it fades in as they step in and out as they leave): haunted ground, a forge’s warmth, deep water. Make your own on Animater’s Tokenshade page.")));
   }
+  // After the window's own tabs, before its footer (the Update button stays at the bottom).
+  const tabs = root.querySelectorAll(`.tab[data-group="${group}"]`);
+  (tabs[tabs.length - 1] ?? sibling).after(tab);
 });
 Hooks.once("ready", () => {
   // Room-aware sound: each grid square's room, swept once on the sound's level, forgotten when walls, doors, the
@@ -6332,6 +6947,37 @@ Hooks.once("ready", () => {
       // { rain: 0.7, clouds: 1 }, wind 0–1, windAngle radians, and `preset` a Calendaria weather's id); null: the real one.
       previewWeatherLight: (weather = null) => { weatherPreview = weather; lookSky(); rebuildSky(); return weatherCast; },
       chimneyPuffs: () => chimneySmoke.size,
+      // Shake dust down from the ceiling at a point, as a heavy step would (weight 4 Large – 8 Gargantuan).
+      // Rats and bats now in this scene, and drips over an area (flat x, y pairs), whatever the scene says.
+      verminHere: (count = 10) => { const b = canvas.dimensions.sceneRect; vermin.populate({ spots: ratSpots(), count, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } }); return vermin.count; },
+      // A cavern feature in a box on this screen only ({ kind: "lava" | "mist" | "fungus-blue" | "crystals-rose" | "webs" ..., x, y, w, h }); none: clear.
+      // The ceiling coming down here for everyone (GM; kept with the scene), or all the rubble cleared.
+      caveIn: (x, y, radius) => bringCeilingDown({ x, y, radius }),
+      clearRubble: () => clearRubble(),
+      // A pebble kicked from here toward a heading (radians), on this screen only.
+      // What the underground's life has to go on: eye spots, crawler paths, what it shows near the view now.
+      underground: () => ({ wanted: underWanted, spots: underSpots.length, firstSpot: underSpots[0] ?? null, crawl: underCrawl.length, air: !!airField, foul: foulPolygons.length, look: underLook ? { eyes: underLook.eyes?.length ?? 0, moths: underLook.moths?.length ?? 0, crawl: underLook.crawl?.length ?? 0 } : null }),
+      kickHere: (x, y, heading = 0) => { underLife.kick({ x, y }, heading); return underLife.busy; },
+      cavernHere: (...parts) => { cavePreview = parts.filter(Boolean); rebuildCavern(); return cavern.busy || webs.count > 0; },
+      // A step into water here (as a creature wading makes).
+      // A footprint laid here as a step would ({ hollow: "snow" | "mud" } or { wet: true }, gait, heading); returns a remover.
+      printHere: (x, y, { hollow = "snow", wet = false, gait = "boots", heading = 0, size = 0.11 } = {}) => {
+        const radius = canvas.grid.size * size, handle = feelLayer.addParticle({ kind: "print", x, y, radius, rotation: heading, gait, hollow: wet ? undefined : hollow, wet, color: 0x6c7f97 });
+        feelLayer.updateParticle(handle, { x, y, scale: 1, rotation: heading, alpha: 1 });
+        return () => feelLayer.removeParticle(handle);
+      },
+      rippleHere: (x, y, size = 1) => { rippleStep({ x, y, radius: canvas.grid.size * 0.28 * size }); return stepRipples.busy; },
+      dripsHere: (area, water = []) => { drips.build({ areas: area ? [area] : [], grid: canvas.grid.size, water, floor: mapFloor() }); return drips.count; },
+      // The air as if this scene were underground (drafts and smoke on this screen), and a gust now.
+      previewAir: (on = true, openings = []) => { for (const flags of [canvas.scene.flags, canvas.scene._source.flags]) (flags[ID] ??= {}).underground = on; previewOpenings = on ? openings : []; draftSoon(); lampLookAt = 0; return on; },
+      gustNow: (x = canvas.stage.pivot.x, y = canvas.stage.pivot.y) => { gustAt = performance.now(); gustFrom = { x, y }; draftSoon(); },
+      // The air now: whether it moves, the ways out, how many squares it reaches, and how hard it blows.
+      air: () => {
+        if (!airField) return { live: airLive, reached: 0 };
+        let reached = 0; for (const d of airField.dist) if (d > 0) reached++;
+        return { live: airLive, gust: +((performance.now() - gustAt) / 1000).toFixed(1), openings: (airField.openings ?? []).map((o) => (Array.isArray(o) ? `region of ${o.length / 2} corners` : `point ${Math.round(o.x)},${Math.round(o.y)}`)), reached, squares: airField.cols * airField.rows, at: (x, y) => airAt(x, y) };
+      },
+      shakeCeiling: (at, weight = 6) => ceilingDust.fall({ at, weight, grid: canvas.grid?.size ?? 100, seed: `debug:${performance.now()}` }, canvas.app.renderer),
       heldTorches: () => heldTorches.size,
       lightOrbs: () => lightOrbs.size,
       heldLanterns: () => heldLanterns.size,

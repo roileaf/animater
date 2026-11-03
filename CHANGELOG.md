@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.8.0 (2026-11-03)
+
+Underground scenes come alive. Every new effect has a world setting and an "on my screen" setting (Animater settings); most are set per region on the new **Animater tab of Region configuration**, or per light under Light configuration → Animater.
+
+- **The air moves.** In an underground scene (or one with a region marked as opening to the outside), the air flows through every open door toward the way out, fastest through doorways and narrow passages. Opening a door sends a gust that swells through the rooms and settles into a steady draft; a sealed room's air stands still. Dust drifts with it, specks of dust stream through the doorways, sparks are carried off, and the fires' flames lean with it and flicker harder in a gust.
+- **Smoke in the air.** The fires' smoke hangs as a faint haze in their rooms, drawn out along the draft where it runs fast.
+- **Flames on fire lights.** A torch, brazier or campfire light burns with a real flame where it stands, for maps that draw their sconces and bowls without fire: one tongue for a torch, a bed of flames for a brazier or a bonfire. Light configuration → Animater: Fire (its kind) and Flame size.
+- **Caverns** (Region configuration → Animater → Cavern): low mist hugging the floor that parts as creatures walk through; glowing fungus that dims where it is brushed; crystals catching the lights; lava under a drifting crust, lighting the rock orange; dusty cobwebs in the corners with a spider now and then; water seeping down the walls; steam vents breathing from the floor; and bad air, a sickly haze in which the fires burn low and light less far.
+- **Dripping water.** A region can drip from the ceiling into a puddle, a pool or deep water, each drop ringing it, at its own pace. Pools and deep water count as water underfoot. Walking through water rings it the same way.
+- **Light through openings to the sky.** A region marked as open to the sky lets daylight (or moonlight) fall into an underground scene as a pool on the floor with a shaft of light and dust turning in it. Nowhere else underground does the sun or moon reach, and underground it is always night for everything else.
+- **Life in the dark.** Rats scurry along the walls, keeping out of the light and scattering from anyone who comes near; bats circle overhead. Moths loop round the fires (Light configuration → Animater → Moths), beetles and a centipede run along the foot of the walls, and now and then a pair of eyes glints back from a dark corner (Scene configuration → Animater: eyes in the dark, now and then, often or never). All cast shadows from the lights and keep out of the walls.
+- **Wear and weight.** Soot blackens the wall behind a wall torch (Light configuration → Animater → Soot). A heavy creature's step shakes dust from the ceiling. A step on stone or earth now and then kicks a pebble skittering ahead.
+- **Cave-ins.** The GM brings a ceiling down anywhere with the new Cave-in button in the Token controls (Shift for a bigger fall): the view shakes, rocks fall and bounce, dust rolls out on the air, and the rubble stays where it fell, for everyone. Clear rubble takes it away.
+- **Breath and prints.** Breath in the cold rises as a soft, torn cloud. Prints in snow and mud are pressed hollows, and a creature out of the water leaves wet prints.
+- **Bird shadows per map.** Scene configuration → Animater: bird shadows normal, small, tiny (a city or region map, where a square covers a lot of ground) or off.
+- **A floor of None.** Scenes and regions can choose None for their floor: no step sounds and no marks there.
+- **Fixes.** Fireflies come out only over grass and water banks, not over every plain map at dusk. The season's colour lies only on grass, so city streets and stone floors are no longer tinted green. With the sun turned off for a map, the morning mist still clears a few hours after sunrise.
+
 ## 2.7.1 (2026-11-03)
 
 - **Lighter weather.** The weather on the map costs two to three times less on the graphics card: lighter noise where its finest detail never showed, the clouds' lit side and the sandstorm's billows worked out more cheaply, and nothing drawn over a room you look into. Same look, smoother on modest machines.

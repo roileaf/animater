@@ -23,7 +23,9 @@ export function mistOf({ day = 0.5, sunrise = 0.25, sunset = 0.75, sun = null, f
   const noon = (sunrise + sunset) / 2;
   if (!(day < noon) || day < sunrise - 0.08) return 0;
   if (day < sunrise) return clamp01((day - (sunrise - 0.08)) / 0.04);
-  const up = sun && !sun.moon ? Number(sun.height) || 0 : 0;
+  // No sun on this map (turned off): it burns off with the morning anyway, gone about three hours after sunrise.
+  if (!sun) return clamp01(1 - (day - sunrise) / 0.12);
+  const up = !sun.moon ? Number(sun.height) || 0 : 0;
   return clamp01(1 - up / 25);
 }
 
