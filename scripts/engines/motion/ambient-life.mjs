@@ -131,3 +131,24 @@ export function seasonGround(season, { wind = 0 } = {}) {
   if (!SEASON_TINTS[season]) return { tint: [0, 0, 0, 0], litter: 0 };
   return { tint: [...SEASON_TINTS[season]], litter: SEASON_LITTER[season] * (1 - 0.4 * Math.min(1, Math.max(0, Number(wind) || 0))) };
 }
+
+// What the weather does to the ground now ({ rain, snow, temperature, air, sun } for createGroundWeather's update), from
+// Calendaria's weather and the scene's own: snow falling from the scene's weather settles and freezes whatever the
+// calendar's temperature (`temperature` the weather's, °C or null; `sun` 0–1 on the ground).
+export function groundInputs({ calendaria = null, scene = '', temperature = null, sun = 0 } = {}) {
+  const falling = fallingOf({ calendaria, scene });
+  const settles = settlingTemperature({ calendaria, scene, temperature });
+  return { rain: falling.rain, snow: falling.snow, temperature: settles, air: settles === null && falling.snow > 0.05 ? -5 : temperature, sun };
+}
+
+// The ground of a scene nobody is looking at, carried on to `now` (game seconds) under the weather now (groundInputs'):
+// the river freezes on while the party is elsewhere. `kept` the scene's last ({ wet, snow, ice, at } or null: it starts
+// bare, from now).
+export function groundStep(kept, { now = 0, ...input } = {}) {
+  let out = null;
+  createGroundWeather({ load: () => kept, save: (state) => { out = state; } }).update({ now, ...input });
+  return out;
+}
+
+// Whether a scene's kept ground has changed enough to write again: by a hundredth of anything, or a quarter hour on.
+export const groundMoved = (was, now) => !was || !now || ['wet', 'snow', 'ice'].some((k) => Math.abs((Number(was[k]) || 0) - (Number(now[k]) || 0)) >= 0.01) || Math.abs((Number(now.at) || 0) - (Number(was.at) || 0)) >= 900;

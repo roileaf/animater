@@ -112,3 +112,17 @@ test('the ground through the year: a colour for each season, leaves lying deep i
   assert.ok(seasonGround('autumn', { wind: 1 }).litter < seasonGround('autumn').litter, 'a wind blows them off');
   assert.deepEqual(seasonGround(null), { tint: [0, 0, 0, 0], litter: 0 }, 'no season known: nothing');
 });
+
+test('a scene nobody is looking at freezes on in a frost, step by step, and thaws when it warms', async () => {
+  const { groundStep, groundInputs, groundMoved } = await import('../../../scripts/engines/motion/ambient-life.mjs');
+  const cold = groundInputs({ temperature: -10 }), warm = groundInputs({ temperature: 12, sun: 1 });
+  let kept = groundStep(null, { now: 0, ...cold });
+  assert.equal(kept.ice, 0, 'starts bare');
+  for (let h = 1; h <= 6; h++) kept = groundStep(kept, { now: h * 3600, ...cold });
+  assert.ok(kept.ice > 0.5, 'six hours of hard frost: mostly frozen');
+  const frozen = kept.ice;
+  kept = groundStep(kept, { now: 9 * 3600, ...warm });
+  assert.ok(kept.ice < frozen, 'thawing');
+  assert.ok(groundMoved({ wet: 0, snow: 0, ice: 0, at: 0 }, kept) && !groundMoved(kept, { ...kept }), 'written only when it moved');
+  assert.equal(groundInputs({ scene: 'blizzard', temperature: 20 }).air, -5, 'a blizzard on the scene freezes whatever the calendar says');
+});

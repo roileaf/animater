@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.6.3 (2026-11-03)
+
+- **The weather goes on where the party is not.** As the GM moves the clock, every scene with water carries on under its weather: a river left half frozen keeps freezing in a frost while the party is elsewhere, and thaws when it warms. Each scene follows Calendaria's weather for its own climate zone (else the zone in play), and a blizzard set on the scene freezes it whatever the calendar says. Needs a GM connected; with none, a scene catches up when it is next viewed.
+- **Every screen sees the same ground.** The puddles, snow and ice are kept in the scene, written by the GM, so every player finds the same river frozen (no longer kept on each screen).
+
 ## 2.6.2 (2026-11-03)
 
 - **Chimney smoke shows.** A light set to Chimney smoke: On now smokes from its chimney even with its own Smoke set to Off (a hearth that smokes only above the roof), and whether or not the fire inside can be seen from outside.

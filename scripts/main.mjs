@@ -167,7 +167,7 @@ import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/s
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf } from "./engines/motion/sky-light.mjs";
-import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, seasonGround } from "./engines/motion/ambient-life.mjs";
+import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, seasonGround, groundInputs, groundStep, groundMoved } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
@@ -1302,7 +1302,11 @@ Hooks.once("ready", () => { void quietCalendarColour(); });
 Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.sunColor` || setting?.key === "calendaria.colorShiftSync") void quietCalendarColour(); });
 // The calendars' own changes too (a new day's sunrise, a climate zone), not only Foundry's clock.
 for (const hook of ["canvasReady", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { refreshSun(); refreshSunWash(); lookSunlit(); });
-Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) { refreshSun(); refreshSunWash(); lookSunlit(); } });
+Hooks.on("updateScene", (scene, change, options) => {
+  if (scene?.id !== canvas?.scene?.id) return;
+  if (options?.animaterGround) { if (!game.user.isGM) { groundWeather = null; lookSunlit(); } return; }
+  refreshSun(); refreshSunWash(); lookSunlit();
+});
 // Walls cast shadows in sunlight (engines/motion/wall-shadows.mjs): each wall that stops light throws its shadow away
 // from the sun, baked once into one picture under the creatures; a creature standing in one casts no sun shadow.
 let wallShadowRoot = null, wallQuads = [], wallShadowTimer = null;
@@ -1713,21 +1717,73 @@ const seasonNow = () => {
     return seasonOf(globalThis.SimpleCalendar?.api?.getCurrentSeason?.() ?? null);
   } catch { return null; }
 };
-// The ground's rain and snow over time (ambient-life.mjs createGroundWeather), kept on this screen per scene so a
-// reload finds the puddles and the snow as they were.
+// The ground's rain, snow and ice over time (ambient-life.mjs createGroundWeather), kept in the scene (the GM writes it,
+// so every screen finds the same river frozen) and on this screen too, for a reload in between.
 let groundWeather = null, groundScene = null;
+const leadGM = () => game.user?.isGM && (game.users.activeGM?.isSelf ?? true);
+const groundWrites = new Map();
+let groundWriteTimer = null;
+// The GM writes the scenes' ground now and then (only when it moved), all in one update.
+const writeGroundSoon = (sceneId, state) => {
+  if (!leadGM() || !sceneId) return;
+  const was = game.scenes.get(sceneId)?.flags?.[ID]?.ground;
+  if (!groundMoved(was, state)) return;
+  groundWrites.set(sceneId, state);
+  groundWriteTimer ??= setTimeout(() => {
+    groundWriteTimer = null;
+    const updates = [...groundWrites].filter(([id]) => game.scenes.get(id)).map(([id, s]) => ({ _id: id, [`flags.${ID}.ground`]: s }));
+    groundWrites.clear();
+    if (updates.length) Scene.updateDocuments(updates, { animaterGround: true }).catch(() => { /* a scene gone */ });
+  }, 2000);
+};
 const groundOf = () => {
   const id = canvas?.scene?.id;
   if (!groundWeather || groundScene !== id) {
     groundScene = id;
     const key = `${ID}.ground.${game.world?.id}.${id}`;
     groundWeather = createGroundWeather({
-      load: () => { try { return JSON.parse(localStorage.getItem(key) ?? "null"); } catch { return null; } },
-      save: (state) => { try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* storage refused */ } },
+      load: () => {
+        const shared = canvas?.scene?.flags?.[ID]?.ground;
+        if (shared && Number.isFinite(shared.at)) return shared;
+        try { return JSON.parse(localStorage.getItem(key) ?? "null"); } catch { return null; }
+      },
+      save: (state) => { try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* storage refused */ } writeGroundSoon(id, state); },
     });
   }
   return groundWeather;
 };
+// The weather a scene has now: Calendaria's for its climate zone (else the zone in play), and the scene's own.
+const awayWeather = (scene) => {
+  const api = globalThis.CALENDARIA?.api;
+  let calendaria = null;
+  try { const zone = scene?.flags?.calendaria?.climateZoneOverride; calendaria = (zone && api?.getCurrentWeather?.(zone)) || api?.getCurrentWeather?.() || null; } catch { /* not ready */ }
+  const own = scene?.flags?.[ID] ?? {};
+  const weather = weatherOf({ calendaria, scene: scene?.weather ?? "", fx: scene?.flags?.fxmaster?.effects ?? {}, fxFilters: scene?.flags?.fxmaster?.filters ?? {}, own: { wind: own.wind, windFrom: own.windFrom } });
+  return { calendaria, weather };
+};
+// The scenes the party is not on carry on too: as the GM moves the clock, each scene with water (or ground already
+// kept) has its rain, snow and ice brought up to now under its weather now, so the river freezes while they are away.
+let groundAwayTimer = null;
+const groundAway = () => {
+  if (!leadGM() || groundAwayTimer) return;
+  groundAwayTimer = setTimeout(() => {
+    groundAwayTimer = null;
+    try {
+      const now = Number(game.time?.worldTime) || 0, clock = clockNow();
+      const daylight = clock && clock.day > clock.sunrise && clock.day < clock.sunset ? 0.6 : 0;
+      for (const scene of game.scenes) {
+        if (scene.id === canvas?.scene?.id) continue;
+        // (A scene this screen kept before the ground was kept in the scenes starts from what it kept.)
+        let kept = scene.flags?.[ID]?.ground ?? null;
+        if (!kept) { try { kept = JSON.parse(localStorage.getItem(`${ID}.ground.${game.world?.id}.${scene.id}`) ?? "null"); } catch { kept = null; } }
+        if (!kept && !scene.regions?.some((r) => { try { return regionFloor({ name: r.name, flag: r.flags?.[ID]?.floor }) === "water"; } catch { return false; } })) continue;
+        const { calendaria, weather } = awayWeather(scene);
+        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, ...groundInputs({ calendaria, scene: scene.weather ?? "", temperature: weather.temperature, sun: daylight }) }));
+      }
+    } catch { /* never breaks the clock */ }
+  }, 1500);
+};
+Hooks.on("updateWorldTime", groundAway);
 // Where water, snow and ice, and hot sand lie: the regions with those floors, and the scene's own floor everywhere else.
 const surfacesHere = () => {
   const scene = canvas?.scene, regions = [];
@@ -1752,9 +1808,8 @@ const lookSky = () => {
     skyFalling = falling;
     // Rain and snow on the ground carry on by the game clock, whether drawn or not, so turning them on finds them right.
     // A blizzard set on the scene settles even when the calendar says it is warm.
-    const settles = settlingTemperature({ calendaria, scene: canvas?.scene?.weather ?? "", temperature: weather.temperature });
     // The ice goes by the air's own temperature (falling snow from the scene's weather means freezing, as for the snow).
-    const ground = groundOf().update({ now: Number(game.time?.worldTime) || 0, rain: falling.rain, snow: falling.snow, temperature: settles, air: settles === null && falling.snow > 0.05 ? -5 : weather.temperature, sun: fall?.light ?? 0 });
+    const ground = groundOf().update({ now: Number(game.time?.worldTime) || 0, ...groundInputs({ calendaria, scene: canvas?.scene?.weather ?? "", temperature: weather.temperature, sun: fall?.light ?? 0 }) });
     const fog = /fog|mist/i.test(`${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}`);
     surfaceLight.look({
       light: fall ? fall.light : 0, clouds: cloudsOn() ? cloudCover(sky) : 0, color: sunlightColor(), wind: weather.wind, windAngle: weather.windAngle,
