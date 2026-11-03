@@ -281,3 +281,25 @@ test('a lightning flash comes into a room through its windows: a patch fanning i
   assert.deepEqual(windowFlashes({ walls: [{ c: [100, 0, 200, 0], light: 20 }], indoors: [room], grid: 100 }), [], 'a solid wall');
   assert.deepEqual(windowFlashes({ walls: [{ c: [100, 0, 200, 0], light: 30 }], indoors: [room, [0, -400, 400, -400, 400, 0, 0, 0]], grid: 100 }), [], 'between two rooms');
 });
+
+test('a creature behind a closed door or a wall from the lamp casts no shadow in its window\u2019s light, even under the same roof', async () => {
+  const { glowShadows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // One roof over two rooms; the lamp in the right one, its window to the south; the creature in the left one.
+  const room = [0, 0, 400, 0, 400, 200, 0, 200];
+  const glows = [{ points: [250, 200, 350, 200, 380, 400, 220, 400], from: { x: 300, y: 200 }, reach: 200, up: 1, shadow: 1, lamp: { x: 300, y: 100 }, room }];
+  const creature = [{ x: 100, y: 120, r: 30, height: 1.2 }];
+  assert.ok(glowShadows(glows, creature).length > 0, 'no walls known: in the lamp\u2019s room, it casts');
+  const door = { c: [200, 0, 200, 200], light: 20, door: 1, ds: 0 };
+  assert.deepEqual(glowShadows(glows, creature, { walls: [door] }), [], 'the door between them closed: none');
+  assert.ok(glowShadows(glows, creature, { walls: [{ ...door, ds: 1 }] }).length > 0, 'the door open: it casts');
+});
+
+test('a lamp\u2019s shadow ends at its room\u2019s wall, not running on outside into another window\u2019s light', async () => {
+  const { glowShadows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  const room = [0, 0, 400, 0, 400, 200, 0, 200];
+  const glows = [{ points: [-50, 200, 50, 200, 80, 400, -80, 400], from: { x: 0, y: 200 }, reach: 600, up: 1, shadow: 1, lamp: { x: 100, y: 100 }, room }];
+  const creature = [{ x: 200, y: 100, r: 30, height: 1.2 }];
+  const wall = { c: [300, 0, 300, 200], light: 20, door: 0, ds: 0 };
+  const free = glowShadows(glows, creature)[0], cut = glowShadows(glows, creature, { walls: [wall] })[0];
+  assert.ok(free.points[4] > 400 && cut.points[4] <= 301, 'stops at the wall');
+});

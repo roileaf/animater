@@ -157,3 +157,32 @@ test('light snow lies in patches, and the tracks know where; deep snow lies ever
   assert.ok(share(1) > 0.97, 'deep snow: everywhere');
   assert.equal(share(0), 0, 'none: nowhere');
 });
+
+test('with Calendaria lifting the night by the moon, the ground moonlight is half, not twice the brightening', async () => {
+  const { moonGlow, calendariaMoonLifts } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(moonGlow(1), 1);
+  assert.equal(moonGlow(1, { calendariaLifts: true }), 0.5);
+  assert.equal(calendariaMoonLifts({ active: true, sync: true, moonSync: true }), true, 'world settings on');
+  assert.equal(calendariaMoonLifts({ active: true, sync: true, moonSync: true, sceneMoonSync: 'disabled' }), false, 'scene turned it off');
+  assert.equal(calendariaMoonLifts({ active: true, sync: false, moonSync: true }), false, 'its darkness does not follow the clock');
+  assert.equal(calendariaMoonLifts({ active: false, sync: true, moonSync: true }), false, 'no Calendaria');
+});
+
+test('the weather lights the outdoors its own way: a storm darkest, rain grey-blue, an overcast sky flat, clear none', async () => {
+  const { weatherLight } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(weatherLight({ clouds: 0.2 })[3], 0, 'clear: none');
+  const grey = weatherLight({ clouds: 1 }), rain = weatherLight({ rain: 0.7, clouds: 1 }), storm = weatherLight({ storm: true, severity: 1, rain: 1, clouds: 1 });
+  assert.ok(grey[3] > 0 && rain[3] > grey[3] && storm[3] > rain[3], 'deeper as it worsens');
+  assert.ok(storm[1] > storm[0], 'a storm green-grey');
+  assert.ok(weatherLight({ kind: 'sandstorm' })[0] > weatherLight({ kind: 'sandstorm' })[2], 'a sandstorm amber');
+  assert.ok(weatherLight({ rain: 1, day: 0 })[3] < weatherLight({ rain: 1, day: 1 })[3], 'by night less');
+});
+
+test('cloud shadows follow the FXMaster clouds: their direction and speed, and give way to their own shadows', async () => {
+  const { fxClouds } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(fxClouds({}), null);
+  assert.equal(fxClouds({ a: { type: 'rain', options: {} } }), null);
+  const c = fxClouds({ p: { type: 'clouds', options: { direction: 90, speed: 0.29, dropShadow: true } } });
+  assert.ok(Math.abs(c.angle - Math.PI / 2) < 1e-9 && c.speed === 0.29 && c.shadows === true);
+  assert.equal(fxClouds({ p: { type: 'clouds', options: { direction: 0 } } }).shadows, false);
+});

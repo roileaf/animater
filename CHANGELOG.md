@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.7.0 (2026-11-03)
+
+Animater now draws the weather itself. Every new effect has a world setting and an "on my screen" setting (Animater settings, Sky).
+
+- **Weather on the map.** All of Calendaria's weathers, drawn by Animater on the graphics card in one pass, whatever the weather. Clouds are seen from above and lit from the sun's side, with their shadows thrown where the sun casts them; an overcast sky closes into one grey ceiling. Rain falls in four depths with splashes and gusting sheets; drizzle is fine, a sunshower sunlit, a monsoon torrential with standing water. Snow drifts on eddies, a blizzard whites out, sleet and hail fall as they should. Fog banks and low mist settle in the hollows. A thunderstorm, hurricane, monsoon or tornado brings lightning. A tornado or dust devil swirls across the map, a hurricane's bands spiral overhead, a sandstorm billows, a heat wave shimmers, wildfire smoke rolls with embers in it. An ice storm glazes everything and permafrost creeps in from the edges. The fantasy weathers too: blood and acid rain, aurora, ley surges, divine light, a black sun, the nullfront's static, gravewind's wisps, meteor showers, spores and miasma. The glowing ones shine through the night's darkness. FXMaster's effects for Calendaria's weather are hidden on your screen while this is on (its settings are never changed).
+- **Animater weathers for any scene.** Scene configuration → Weather Effect lists every Animater weather, so a scene can have its own without Calendaria.
+- **Weather light.** The weather lights the outdoors its own way: a grey day's flat, cool light, rain's grey-blue, a storm's dark green-grey, a sandstorm's amber. A room you look into keeps its own light. Calendaria's "Sync Scene Ambience with Weather" is turned off while this is on.
+- **Cloud shadows** cross roofs and trees as well as the ground, fade out under a closed overcast sky, and are cast from FXMaster's own clouds when it draws them.
+- **Moonlight on the ground** is stronger, and halves itself if Calendaria's moon darkness is on, so the night is never brightened twice.
+- **Light through windows at night:** a creature no longer casts a shadow from a lamp through a closed door or a wall, and a lamp's shadow stops at its room's walls.
+
 ## 2.6.4 (2026-11-03)
 
 - **Tracks only where the snow lies.** Light snow lies in patches, and creatures now leave snow prints (and crunch) only on those patches, not on the bare grass between them; as it deepens and the patches join, the tracks spread with them.

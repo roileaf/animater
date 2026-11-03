@@ -86,6 +86,8 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "treeSway", local: "treeSwayLocal" },
     { world: "seasonGround", local: "seasonGroundLocal" },
     { world: "rainbows", local: "rainbowsLocal" },
+    { world: "weatherLight", local: "weatherLightLocal" },
+    { world: "weatherOnMap", local: "weatherOnMapLocal" },
     { world: "fireflies", local: "firefliesLocal" },
     { world: "birdShadows", local: "birdShadowsLocal" },
     { world: "rainRings", local: "rainRingsLocal" },

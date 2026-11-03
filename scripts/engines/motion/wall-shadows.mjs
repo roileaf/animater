@@ -187,16 +187,35 @@ export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100,
 // its body's radius), half (px, half its square; r / 0.64 when not given), height (squares), art (its token's art,
 // { texture, flipX }: its shadow is drawn in its shape) }]. Returns [{ points (flat
 // x, y pairs: the two sides at the creature, then their far ends), body: { x, y, r (its token's round) }, depth (its
-// share of the glow's `shadow`), hard (the lamp's: barely fading), art }], added together where they overlap.
+// share of the glow's `shadow`), hard (the lamp's: barely fading), art }], added together where they overlap. `walls`
+// (as wallShadowQuads's): a creature with a wall that stops light between it and the lamp (a closed door, a room's wall
+// under the same roof) casts no shadow from it.
 export const WINDOW_SAMPLES = 4;
+// A wall that stops a lamp's light: one that blocks light and is no opening (a window, an open door).
+const solid = (w) => Number(w.light) > 0 && !windowOpening(w);
+// Where along the line from a to b (0–1) the first solid wall crosses it, or Infinity.
+const firstWall = (a, b, walls) => {
+  let best = Infinity;
+  for (const w of walls) {
+    if (!solid(w)) continue;
+    const [x1, y1, x2, y2] = w.c, d = (b.x - a.x) * (y2 - y1) - (b.y - a.y) * (x2 - x1);
+    if (Math.abs(d) < 1e-9) continue;
+    const t = ((x1 - a.x) * (y2 - y1) - (y1 - a.y) * (x2 - x1)) / d, u = ((x1 - a.x) * (b.y - a.y) - (y1 - a.y) * (b.x - a.x)) / d;
+    if (t > 0.001 && u >= 0 && u <= 1 && t < best) best = t;
+  }
+  return best;
+};
+const lightBlocked = (a, b, walls) => firstWall(a, b, walls) < 0.999;
 export const LAMP_SHARE = 0.7;
-export function glowShadows(glows = [], creatures = []) {
+export function glowShadows(glows = [], creatures = [], { walls = [] } = {}) {
   const out = [];
   // A wedge from the light at `L` past the creature, `far` from the light at most.
   const wedge = (c, L, far, lh, depth, hard = false) => {
     const r = Number(c.r) || 0, hc = Number(c.height) || 1, d = Math.hypot(c.x - L.x, c.y - L.y);
     if (d <= r * 1.05) return;
-    const reach = hc >= lh ? far : Math.min(far, (d * lh) / (lh - hc));
+    let reach = hc >= lh ? far : Math.min(far, (d * lh) / (lh - hc));
+    // A lamp's shadow stops at the room's wall (it goes on only through a window or an open door).
+    if (hard && walls.length) { const hit = firstWall(L, { x: L.x + ((c.x - L.x) / d) * reach, y: L.y + ((c.y - L.y) / d) * reach }, walls); if (Number.isFinite(hit)) reach = Math.min(reach, hit * reach); }
     if (reach <= d) return;
     // Where the light's rays graze the creature's sides.
     const back = Math.atan2(L.y - c.y, L.x - c.x), turn = Math.acos(r / d), side = [];
@@ -237,6 +256,7 @@ export function glowShadows(glows = [], creatures = []) {
       if (Math.abs(lamp.at.x - c.x) < half && Math.abs(lamp.at.y - c.y) < half) continue;
       if (Math.hypot(c.x - lamp.at.x, c.y - lamp.at.y) >= lamp.far) continue;
       if (lamp.rooms.length && !lamp.rooms.some((room) => inside(c, room)) && !lamp.glows.some((g) => inside(c, g))) continue;
+      if (walls.length && lightBlocked(lamp.at, c, walls)) continue;
       wedge(c, lamp.at, lamp.far, lamp.lh, lamp.shadow * (c.art?.texture ? 1 : LAMP_SHARE), true);
     }
   }
@@ -353,11 +373,11 @@ export function createWindowGlow({ PIXI, root, render }) {
       sprite.blendMode = PIXI.BLEND_MODES.ADD;
       root().addChild(sprite);
     },
-    // The creatures standing about ([{ x, y, r, height }], glowShadows): their shadows cut out of the glows, redrawn
+    // The creatures standing about ([{ x, y, r, height }], glowShadows, and the walls between them and the lamps): their shadows cut out of the glows, redrawn
     // only when one in a glow has moved.
-    shadows(creatures = []) {
+    shadows(creatures = [], walls = []) {
       if (!shade || !frame) return;
-      const cast = glowShadows(built, creatures), store = silhouettes();
+      const cast = glowShadows(built, creatures, { walls }), store = silhouettes();
       const shapes = cast.map((s) => (s.art?.texture && store ? store.get(s.art.texture, SILHOUETTE_SIZE) : null));
       const waiting = cast.some((s) => s.art?.texture && store && !store.known(s.art.texture, SILHOUETTE_SIZE));
       const key = cast.map((s, i) => `${s.points.map((v) => Math.round(v)).join(',')}${shapes[i] ? '*' : ''}`).join(';');
