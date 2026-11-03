@@ -403,3 +403,15 @@ test('spreadAlong: up to three lights along a line, one per four squares, sized 
   assert.equal(spreadAlong({ x: 0, y: 0 }, { x: 4000, y: 0 }, GRID, { max: 2 }).points.length, 2);
   assert.equal(spreadAlong(null, { x: 1, y: 1 }, GRID), null);
 });
+
+test('a shot that charges before it leaves glows at the caster until it does, then still sweeps to its target', () => {
+  const ray = { stageId: 'r', kind: 'travel', asset: 'jb2a.eldritch_blast.purple', delay: 0, duration: 1500, contact: 1250, departure: 1250 };
+  const lights = planLights([ray], { tiers: new Map([['r', 0]]), grid: 100, pointOf: () => ({ x: 600, y: 0 }), radiusOf: () => 50, originOf: () => ({ x: 0, y: 0 }) });
+  const tag = lights.get(ray);
+  assert.equal(tag.arriveMs, 1250);
+  assert.equal(tag.departMs, 1150);
+  const flying = { ...ray, departure: 400 };
+  assert.equal(planLights([flying], { tiers: new Map([['r', 0]]), grid: 100, pointOf: () => ({ x: 600, y: 0 }), radiusOf: () => 50, originOf: () => ({ x: 0, y: 0 }) }).get(flying).departMs, 400);
+  const plain = { ...ray, departure: undefined };
+  assert.equal(planLights([plain], { tiers: new Map([['r', 0]]), grid: 100, pointOf: () => ({ x: 600, y: 0 }), radiusOf: () => 50, originOf: () => ({ x: 0, y: 0 }) }).get(plain).departMs, undefined);
+});

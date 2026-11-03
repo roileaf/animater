@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.1 (2026-11-03)
+
+- **A shot's light leaves when the shot does.** The light of a spell that charges before it fires (Eldritch Blast) waits at the caster while it charges, then sweeps to the target as the ray crosses, instead of creeping along the line the whole time. Every measured shot's light now sets off when its clip launches.
+
 ## 2.5.0 (2026-11-02)
 
 - **Sunrise and sunset colour.** In scenes whose sun follows the time of day, the low sun turns open ground golden, then deep orange at the horizon, with a rose afterglow just after sunset and before sunrise. Only where the light falls: rooms under a roof keep their own colours and shade keeps little of it. Drawn on each screen; the scene's lighting and darkness are never changed. Turning it on turns off Calendaria's own "Sync Scene Ambience with Time of Day", so the map is not coloured twice.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf } from '../../../scripts/engines/playback/flight-path.mjs';
+import { departureOf, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 import { MEDIA_LANDINGS, RANGE_UNMEASURED } from '../../../data/media-landings.mjs';
 
@@ -363,4 +363,13 @@ test('a hidden roll flies like a hit: to a target in sight, into the wall when t
   assert.equal(seen.missed.size, 0);
   const hidden = withFlightPaths([flight({ kind: 'projectile' })], opts({ context: ctx({ outcome: 'hidden' }) }));
   assert.equal(hidden.plan[0].flightOutcome, 'wall');
+});
+
+test('departureOf: when a travel clip\'s shot leaves, played at the stage\'s speed; a projectile leaves at once', () => {
+  const ray = { kind: 'travel', asset: 'jb2a.eldritch_blast.purple', duration: 1500 };
+  const leaves = departureOf(ray, 600);
+  assert.ok(leaves >= 1200 && leaves <= 1250, String(leaves));
+  assert.equal(departureOf({ ...ray, playbackRate: 2 }, 600), leaves / 2);
+  assert.equal(departureOf({ ...ray, kind: 'projectile' }, 600), null);
+  assert.equal(departureOf({ ...ray, asset: 'jb2a.no_such_clip' }, 600), null);
 });

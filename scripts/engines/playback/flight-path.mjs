@@ -117,6 +117,17 @@ export function targetArrivalOf(s, reach, { gridPx = 100, tables } = {}) {
   return Number.isFinite(landing) ? playedAt(s, landing) : null;
 }
 
+// When the shot in a travel clip leaves the caster over a line `reach` px long, in elapsed ms into the stage: the
+// departure of the range variant Sequencer plays (rangeLanding). Null when not known (a projectile, a clip
+// without range variants or measurements): it leaves as the stage starts. An eldritch blast charges for 1.2 s
+// before its ray crosses the line at once; its light waits at the caster as long.
+export function departureOf(s, reach, { gridPx = 100, tables } = {}) {
+  if (s.kind !== 'travel') return null;
+  const { departure } = rangeLanding(s.asset, reach, gridPx, tables);
+  return Number.isFinite(departure) && departure > 0 ? playedAt(s, departure) : null;
+}
+const departing = (next, ms) => (ms > 0 ? Object.assign(next, { departure: Math.round(ms) }) : next);
+
 // The flight with `arrival` as its contact and flightArrivalShift: how much later (earlier when negative) that
 // is than the recipe's own arrival, which its target's impacts and what followed them move with.
 function arriving(s, next, arrival) {
@@ -141,12 +152,14 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
     // No wall test: the flight flies as it always did (a miss bent wide by Sequencer), a hit landing on time.
     if (!walls || !collides) {
       const arrival = role === 'attack-miss' ? null : targetArrivalOf(s, distance(from, aim), { gridPx });
-      return arrival === null ? s : arriving(s, { ...s }, arrival);
+      const leaves = departureOf(s, distance(from, aim), { gridPx });
+      return arrival === null && leaves === null ? s : departing(arriving(s, { ...s }, arrival), leaves);
     }
     const path = planFlight({ from, targetRect: footprintOf(s.endpoint, gridPx), to: aim, role, seed, gridPx, collides, shieldBlock: s.shieldBlock });
     const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}) };
     if (path.outcome === 'wall') arriving(s, next, wallArrivalOf(next, { gridPx }));
     if (path.outcome === 'target') arriving(s, next, targetArrivalOf(next, distance(path.from, path.to), { gridPx }));
+    departing(next, departureOf(next, distance(path.from, path.to), { gridPx }));
     if (path.outcome === 'wall' && role === 'attack-hit') blocked.add(tokenId(s.endpoint));
     if (role === 'attack-miss' && path.outcome !== 'target') missed.add(tokenId(s.endpoint));
     return next;

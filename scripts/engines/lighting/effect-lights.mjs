@@ -14,6 +14,8 @@ const LASTING_AREA_MS = 2000;
 export const LASTING_MS = 86400000;
 const MIN_FADE_MS = 300;
 const GLOW_IN_MS = 100;
+// The shortest time a flight's glow takes to cross its line: a ray all but instant still sweeps, not jumps.
+const MIN_FLIGHT_MS = 100;
 const FLASH_RISE_MS = 60;
 // A burst settles to a held glow by SETTLE_MS, then dims slowly until its stage ends.
 const SETTLE_MS = 700;
@@ -192,6 +194,8 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
       // A flight's glow lasts until it lands, then fades out.
       tag.arriveMs = stage.contact > 0 ? stage.contact : 0.55 * (stage.duration ?? 0);
       tag.lengthMs = tag.arriveMs;
+      // A shot that charges before it leaves (an eldritch blast's ray) glows at the caster until it does.
+      if (stage.departure > 0) tag.departMs = Math.max(0, Math.min(stage.departure, tag.arriveMs - MIN_FLIGHT_MS));
       const from = originOf?.(stage);
       if (from) Object.assign(tag, { from: { x: from.x, y: from.y }, to: { x: at.x, y: at.y } });
     } else if (isFlight(stage)) {

@@ -66,9 +66,9 @@ export function createLightHost({
   // A flight's glow slides along its path on the effect's clock; a still light sits at its tagged place
   // (a stretched line's own position is its start); a light that follows a token rides on its anchor.
   const positionOf = (light, t) => {
-    const { from, to, arriveMs, at, follow } = light.tag;
+    const { from, to, arriveMs, departMs = 0, at, follow } = light.tag;
     if (from && to && arriveMs > 0) {
-      const k = clamp01(t / arriveMs);
+      const k = arriveMs > departMs ? clamp01((t - departMs) / (arriveMs - departMs)) : t >= arriveMs ? 1 : 0;
       return finitePoint({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
     }
     const fixed = follow ? null : finitePoint(at);

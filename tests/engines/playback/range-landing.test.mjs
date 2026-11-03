@@ -21,7 +21,7 @@ test('rangeVariant among the variants a clip has: the shortest covers from 0, th
 
 test('rangeLanding reads the picked variant, a named variant, or the latest of a partial path', () => {
   const tables = { landings: { 'jb2a.x.a.15ft': 600, 'jb2a.x.a.60ft': 800, 'jb2a.x.b.15ft': 700, 'jb2a.x.b.60ft': 750 }, unmeasured: ['jb2a.z.c.15ft', 'jb2a.z.c.60ft', 'jb2a.x.a.90ft'] };
-  const at = (asset, px) => rangeLanding(asset, px, 100, tables);
+  const at = (asset, px) => { const { departure, ...rest } = rangeLanding(asset, px, 100, tables); return rest; };
   assert.deepEqual(at('jb2a.x.a', 300), { range: true, landing: 600 });
   assert.deepEqual(at('jb2a.x.a', 1200), { range: true, landing: 800 });
   assert.deepEqual(at('jb2a.x.a.60ft', 300), { range: true, landing: 800 });
@@ -51,4 +51,27 @@ test('the measured table holds JB2A ranged weapon and beam variants, later for l
   for (const ms of Object.values(MEDIA_LANDINGS)) assert.ok(Number.isInteger(ms) && ms > 0 && ms % 10 === 0);
   // A variant is either measured or listed as unmeasured, never both.
   for (const key of RANGE_UNMEASURED) assert.ok(!(key in MEDIA_LANDINGS) && /\.\d\dft$/.test(key), key);
+});
+
+test('rangeLanding tells when the shot leaves: its landing less its flight, timed from how much later it lands farther', () => {
+  const tables = {
+    // Flies all along: 5 ms a foot over the long variants.
+    landings: { 'jb2a.a.15ft': 575, 'jb2a.a.30ft': 650, 'jb2a.a.60ft': 800, 'jb2a.a.90ft': 950, 'jb2a.a.05ft': 200,
+      // Charges, then an all but instant ray: lands at the same time in every variant.
+      'jb2a.r.05ft': 100, 'jb2a.r.15ft': 1250, 'jb2a.r.30ft': 1250, 'jb2a.r.90ft': 1250,
+      'jb2a.one.30ft': 400 },
+    unmeasured: ['jb2a.r.60ft'],
+  };
+  const leaves = (asset, px) => rangeLanding(asset, px, 100, tables).departure;
+  assert.equal(leaves('jb2a.a', 600), 500);
+  assert.equal(leaves('jb2a.a', 1600), 500);
+  assert.equal(leaves('jb2a.a.30ft', 0), 500);
+  assert.equal(leaves('jb2a.r', 600), 1250);
+  // Never before the clip starts, never after the shot lands.
+  assert.equal(leaves('jb2a.a', 0), 175);
+  // Unknown: the variant unmeasured, or too few long variants to time a flight.
+  assert.equal(leaves('jb2a.r', 1000), null);
+  assert.equal(leaves('jb2a.one', 600), null);
+  // The measured eldritch blast charges about as long as it takes to land.
+  assert.ok(rangeLanding('jb2a.eldritch_blast.purple', 600, 100).departure >= 1200);
 });

@@ -447,3 +447,15 @@ test('an anchor light is skipped on a level that is not shown', () => {
   host.tick();
   assert.equal(out.sources.length, 0);
 });
+
+test('a travel light that departs late waits at its origin, then slides to the target', () => {
+  const { host, out } = make();
+  const glow = { color: '#ffffff', shape: 'glow', dim: 1, bright: 0.5, startMs: 0, lengthMs: 1250, fadeMs: 300, lasting: false, arriveMs: 1250, departMs: 1150, from: { x: 0, y: 0 }, to: { x: 1000, y: 0 } };
+  host.onEffect(effect(glow, { x: 0, y: 0 }));
+  host.tick();
+  const [s] = out.sources;
+  for (let t = 16; t <= 1140; t += 16) { out.t = t; host.tick(); }
+  assert.ok(s.inits.every((d) => d.x === 0), 'at the caster while it charges');
+  for (let t = 1150; t <= 1400; t += 16) { out.t = t; host.tick(); }
+  assert.equal(s.inits.at(-1).x, 1000, 'on the target once it lands');
+});
