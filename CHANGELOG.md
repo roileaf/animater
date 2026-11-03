@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.2 (2026-11-03)
+
+- **Spell lights leave when their shot does, measured from the clips.** Each shot's launch is now read from the JB2A clip's own frames instead of guessed, so Magic Missile, Fire Bolt and other bolts no longer hold their light at the caster while the missile is already flying (a 2.5.1 regression). Eldritch Blast waits at the caster through its charge at every range, short ones included.
+- **Beams light their line when they fire.** Ray of Frost, energy strands, Chain Lightning and other beams light the line only once the beam appears, and arcs from one target to the next wait for their launch too.
+- **More spells glow.** Guiding Bolt, Starry Wisp, Witch Bolt, Disintegrate and Spray of Stars now light the scene as they fly.
+- **Lightning makes every target convulse.** An electric spell written without a hit reaction (Lightning Bolt, Chain Lightning, Shocking Grasp, Call Lightning and more) now jolts its targets as the lightning lands.
+
 ## 2.5.1 (2026-11-03)
 
 - **A shot's light leaves when the shot does.** The light of a spell that charges before it fires (Eldritch Blast) waits at the caster while it charges, then sweeps to the target as the ray crosses, instead of creeping along the line the whole time. Every measured shot's light now sets off when its clip launches.

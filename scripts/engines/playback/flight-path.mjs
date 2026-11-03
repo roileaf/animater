@@ -119,7 +119,7 @@ export function targetArrivalOf(s, reach, { gridPx = 100, tables } = {}) {
 
 // When the shot in a travel clip leaves the caster over a line `reach` px long, in elapsed ms into the stage: the
 // departure of the range variant Sequencer plays (rangeLanding). Null when not known (a projectile, a clip
-// without range variants or measurements): it leaves as the stage starts. An eldritch blast charges for 1.2 s
+// without range variants or measurements): it leaves as the stage starts. An eldritch blast charges for 1.1 s
 // before its ray crosses the line at once; its light waits at the caster as long.
 export function departureOf(s, reach, { gridPx = 100, tables } = {}) {
   if (s.kind !== 'travel') return null;
@@ -148,7 +148,11 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
     if (!FLIGHTS.includes(s.kind)) return s;
     const from = point(centerOf(s.origin)), aim = point(s.landing ?? centerOf(s.endpoint));
     const role = roleOf(s, context, preview);
-    if (role === 'fixed') return s;
+    // A fixed flight (from a target, over an area) flies as planned; it still sets off when its clip launches.
+    if (role === 'fixed') {
+      const leaves = departureOf(s, distance(from, aim), { gridPx });
+      return leaves === null ? s : departing({ ...s }, leaves);
+    }
     // No wall test: the flight flies as it always did (a miss bent wide by Sequencer), a hit landing on time.
     if (!walls || !collides) {
       const arrival = role === 'attack-miss' ? null : targetArrivalOf(s, distance(from, aim), { gridPx });

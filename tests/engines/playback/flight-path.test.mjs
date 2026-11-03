@@ -368,8 +368,18 @@ test('a hidden roll flies like a hit: to a target in sight, into the wall when t
 test('departureOf: when a travel clip\'s shot leaves, played at the stage\'s speed; a projectile leaves at once', () => {
   const ray = { kind: 'travel', asset: 'jb2a.eldritch_blast.purple', duration: 1500 };
   const leaves = departureOf(ray, 600);
-  assert.ok(leaves >= 1200 && leaves <= 1250, String(leaves));
+  assert.ok(leaves >= 1000 && leaves <= 1250, String(leaves));
   assert.equal(departureOf({ ...ray, playbackRate: 2 }, 600), leaves / 2);
   assert.equal(departureOf({ ...ray, kind: 'projectile' }, 600), null);
   assert.equal(departureOf({ ...ray, asset: 'jb2a.no_such_clip' }, 600), null);
+});
+
+test('a fixed flight (an arc from the last target) still sets off when its clip launches', () => {
+  const asset = 'jb2a.chain_lightning.primary.blue';
+  const arc = flight({ asset, assets: [asset], travelOrigin: 'previousTarget', duration: 1867 });
+  const [s] = withFlightPaths([arc], opts()).plan;
+  assert.equal(s.departure, Math.round(departureOf(arc, 1000)));
+  assert.ok(s.departure > 0);
+  assert.equal(s.flightFrom, undefined, 'flies as planned');
+  assert.equal(arc.departure, undefined, 'the planned stage is not changed');
 });

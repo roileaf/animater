@@ -14,7 +14,8 @@ const opts = (tiers, extra = {}) => ({
 });
 
 test('classifier: physical and smoke never luminous', () => {
-  for (const k of ['jb2a.fireball.explosion.orange', 'jb2a.chain_lightning.primary.blue', 'jb2a.magic_missile.purple', 'jb2a.fire_bolt.orange', 'jb2a.healing_generic.200px.green'])
+  for (const k of ['jb2a.fireball.explosion.orange', 'jb2a.chain_lightning.primary.blue', 'jb2a.magic_missile.purple', 'jb2a.fire_bolt.orange', 'jb2a.healing_generic.200px.green',
+    'jb2a.guiding_bolt.01.yellow', 'jb2a.witch_bolt.blue', 'jb2a.disintegrate.green', 'jb2a.twinkling_stars.points07.white'])
     assert.equal(isLuminous(k), true, k);
   for (const k of ['jb2a.bolt.physical.white02', 'jb2a.arrow.physical.white.01', 'jb2a.smoke.puff.centered.grey', 'jb2a.liquid.splash02.red', 'jb2a.darkness.black', 'jb2a.melee_attack.01.trail'])
     assert.equal(isLuminous(k), false, k);
@@ -414,4 +415,13 @@ test('a shot that charges before it leaves glows at the caster until it does, th
   assert.equal(planLights([flying], { tiers: new Map([['r', 0]]), grid: 100, pointOf: () => ({ x: 600, y: 0 }), radiusOf: () => 50, originOf: () => ({ x: 0, y: 0 }) }).get(flying).departMs, 400);
   const plain = { ...ray, departure: undefined };
   assert.equal(planLights([plain], { tiers: new Map([['r', 0]]), grid: 100, pointOf: () => ({ x: 600, y: 0 }), radiusOf: () => 50, originOf: () => ({ x: 0, y: 0 }) }).get(plain).departMs, undefined);
+});
+
+test('a beam that charges before it fires lights its line only once it fires', () => {
+  const beam = { stageId: 'b', kind: 'travel', asset: 'jb2a.energy_beam.normal.purple.01', delay: 0, duration: 2000, departure: 1150 };
+  const plan = (stage) => planLights([stage], { tiers: new Map([['b', 0]]), grid: 100, pointOf: () => ({ x: 600, y: 0 }), radiusOf: () => 50, originOf: () => ({ x: 0, y: 0 }) }).get(stage);
+  assert.equal(plan(beam).startMs, 1150);
+  assert.equal(plan(beam).lengthMs, 850);
+  assert.equal(plan({ ...beam, departure: undefined }).startMs, 0);
+  assert.equal(plan({ ...beam, departure: undefined }).lengthMs, 2000);
 });

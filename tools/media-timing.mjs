@@ -103,32 +103,83 @@ async function fileContact({ path, metadata, duration }, template, width, { gues
   );
   // Persisted per file, decoder and endpoint: the same frames give the same contact.
   const crossed = await persistentProbe(import.meta.url, "contact", path, { decoder, duration, endpoint, ...(reach ? { method: "reach" } : {}) }, async () => {
-    const { stdout: frames } = await exec(
-      "ffmpeg",
-      [
-        "-v",
-        "error",
-        "-threads",
-        "1",
-        "-filter_threads",
-        "1",
-        "-c:v",
-        decoder,
-        "-i",
-        path,
-        "-vf",
-        "fps=20,scale=100:40,format=rgba",
-        "-f",
-        "rawvideo",
-        "-pix_fmt",
-        "rgba",
-        "pipe:1",
-      ],
-      { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
-    );
+    const frames = await decodeFrames(path, decoder);
     return reach ? reachedContact(frames, endpoint) : crossedContact(frames, endpoint);
   });
   return crossed ?? (guess ? Math.round(duration * 0.6) : null);
+}
+// A clip's frames at 20 fps, 100x40 RGBA, alpha decoded.
+async function decodeFrames(path, decoder) {
+  const { stdout } = await exec(
+    "ffmpeg",
+    [
+      "-v",
+      "error",
+      "-threads",
+      "1",
+      "-filter_threads",
+      "1",
+      "-c:v",
+      decoder,
+      "-i",
+      path,
+      "-vf",
+      "fps=20,scale=100:40,format=rgba",
+      "-f",
+      "rawvideo",
+      "-pix_fmt",
+      "rgba",
+      "pipe:1",
+    ],
+    { encoding: "buffer", maxBuffer: 32 * 1024 * 1024 },
+  );
+  return stdout;
+}
+// Where a departure is timed along the line: the columns from 40% of the way out to the end. A charge glowing at
+// the caster reaches a third of the way along a short variant's line (an eldritch blast's 15 ft clip).
+const DEPARTURE_FROM = 0.4;
+// When the shot leaves the caster, in media ms: when it first lights each column from DEPARTURE_FROM of the way
+// along the line (template[1] from the left to template[2] from the right) to its end, fitted to a straight
+// flight and wound back to the line's start. An eldritch blast charges 1.1 s, then its ray crosses at once; a
+// magic missile sets off at 350 ms and flies until 850 ms. Null when fewer than three columns are crossed, or the
+// far ones first (a burst at the target).
+export function departedAt(frames, start, end) {
+  const points = [];
+  for (let i = 0; i <= 6; i++) {
+    const along = DEPARTURE_FROM + i * (1 - DEPARTURE_FROM) / 6;
+    const ms = crossedContact(frames, Math.round(start + along * (end - start)));
+    if (ms !== null) points.push([along, ms]);
+  }
+  if (points.length < 3) return null;
+  const mx = points.reduce((n, [x]) => n + x, 0) / points.length, my = points.reduce((n, [, y]) => n + y, 0) / points.length;
+  const slope = points.reduce((n, [x, y]) => n + (x - mx) * (y - my), 0) / points.reduce((n, [x]) => n + (x - mx) ** 2, 0);
+  if (slope < 0) return null;
+  return Math.max(0, Math.min(points.at(-1)[1], Math.round(my - slope * mx)));
+}
+async function fileDeparture({ path, metadata, duration }, template, width) {
+  const decoder = metadata.streams[0].codec_name === "vp8" ? "libvpx" : "libvpx-vp9";
+  const start = Math.round(100 * (template?.[1] ?? 0) / (width || 1000));
+  const end = Math.round(100 * (1 - (template?.[2] ?? 0) / (width || 1000)));
+  return persistentProbe(import.meta.url, "departure", path, { decoder, duration, start, end, from: DEPARTURE_FROM, fit: "line" }, async () =>
+    departedAt(await decodeFrames(path, decoder), start, end));
+}
+// When the shot leaves the caster in each range variant of a ranged clip, in media ms rounded down to 10 ms:
+// { "30ft": 350, ... }. A variant with random alternatives takes the earliest of them, so a light that waits
+// for it never lags its shot. A variant is left out when any of its files is missing or unmeasured; null when
+// none is measured.
+export async function variantDepartures(row, databases) {
+  if (!row?.distanceFiles) return null;
+  const departures = {};
+  for (const [ft, files] of Object.entries(row.distanceFiles)) {
+    const times = [];
+    for (const file of [files].flat(Infinity).filter((f) => typeof f === "string" && f.endsWith(".webm"))) {
+      const measured = await mediaMetadata(file, databases);
+      const width = Number(basename(file).match(/_(\d+)x\d+\.webm$/i)?.[1]);
+      times.push(measured ? await fileDeparture(measured, row.template, width) : null);
+    }
+    if (times.length && times.every(Number.isFinite)) departures[ft] = Math.floor(Math.min(...times) / 10) * 10;
+  }
+  return Object.keys(departures).length ? departures : null;
 }
 // When the shot lands in each range variant (05/15/30/60/90 ft) of a ranged
 // clip, in media ms rounded up to 10 ms: { "30ft": 650, ... }. A variant with
@@ -283,4 +334,38 @@ ${[...gaps].sort().map((k) => `  ${JSON.stringify(k)},`).join("\n")}
 ];
 `);
   console.log(`${keys.length} variant landings, ${gaps.size} range variants unmeasured`);
+}
+// Writes data/media-departures.mjs: when the shot leaves the caster in each range variant of every stretched
+// clip that lights its flight (effect lighting waits for it), keyed by the variant's Sequencer database path.
+// Rebuild: rtk proxy node tools/media-timing.mjs --write-departures
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href && process.argv.includes("--write-departures")) {
+  const { isLuminous } = await import("../scripts/engines/lighting/effect-lights.mjs");
+  const databases = await assetDatabases(), departures = {}, gaps = new Set();
+  for (const rows of Object.values(databases))
+    for (const row of rows) {
+      if (!row.distanceFiles || !isLuminous(row.key) || !STRETCHED.includes(assetGeometry(row))) continue;
+      const present = await Promise.all(variantFiles(row).map((file) => mediaMetadata(file, databases)));
+      if (!present.some(Boolean)) continue;
+      const measured = (await variantDepartures(row, databases)) ?? {};
+      for (const [ft, ms] of Object.entries(measured)) {
+        const key = `${row.key}.${ft}`;
+        departures[key] = Math.min(departures[key] ?? Infinity, ms);
+      }
+      for (const ft of Object.keys(row.distanceFiles)) if (!(ft in measured)) gaps.add(`${row.key}.${ft}`);
+    }
+  for (const key of gaps) delete departures[key];
+  const keys = Object.keys(departures).sort();
+  const { version } = JSON.parse(await readFile(new URL("../../jb2a_patreon/module.json", import.meta.url), "utf8"));
+  await writeFile(new URL("../data/media-departures.mjs", import.meta.url),
+    `// When the shot in each range variant of a luminous JB2A ranged clip (projectile or beam) leaves the caster
+// (media ms from the clip's start, rounded down to 10 ms; the earliest of a variant's random alternatives),
+// timed from the frames as tools/media-timing.mjs departedAt does. Keyed by the variant's Sequencer database
+// path. Measured from JB2A Patreon ${version} (Free edition files when present). A variant not listed is not
+// known: its light leaves as its stage starts.
+// Rebuild: rtk proxy node tools/media-timing.mjs --write-departures
+export const MEDIA_DEPARTURES = {
+${keys.map((k) => `  ${JSON.stringify(k)}: ${departures[k]},`).join("\n")}
+};
+`);
+  console.log(`${keys.length} variant departures, ${gaps.size} range variants unmeasured`);
 }

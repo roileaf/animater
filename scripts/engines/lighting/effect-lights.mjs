@@ -29,7 +29,7 @@ const NOT_VISUAL = new Set(['sound', 'motion', 'tokenfx', 'scenefx']);
 
 // Asset keys are dotted words ('jb2a.fire_bolt.orange'); words match whole, with a numeric suffix allowed.
 const word = names => new RegExp(`(?:^|[._])(?:${names})(?=$|[._\\d])`);
-const LUMINOUS = word('fire\\w*|flame\\w*|flaming|explosion|lightning|electric\\w*|energy|arcane|magic_missile|eldritch|ray|beam|laser|radiant|divine|holy|sun\\w*|light\\w*|plasma|spark\\w*|glow\\w*|healing\\w*');
+const LUMINOUS = word('fire\\w*|flame\\w*|flaming|explosion|lightning|electric\\w*|energy|arcane|magic_missile|eldritch|ray|beam|laser|radiant|divine|holy|sun\\w*|light\\w*|plasma|spark\\w*|glow\\w*|healing\\w*|guiding_bolt|witch_bolt|disintegrate|twinkling_stars');
 const VETO = word('physical|smoke|blood|liquid|web|crack\\w*|darkness');
 const LIGHTNING = word('lightning|electric\\w*');
 const FIRE = word('fire\\w*|flame\\w*|flaming');
@@ -199,7 +199,10 @@ export function planLights(plan, { tiers, grid, pointOf, radiusOf, originOf, fol
       const from = originOf?.(stage);
       if (from) Object.assign(tag, { from: { x: from.x, y: from.y }, to: { x: at.x, y: at.y } });
     } else if (isFlight(stage)) {
-      // A beam: lights along it from where it starts to where it lands, each sized to its stretch.
+      // A beam: lights along it from where it starts to where it lands, each sized to its stretch, once it fires
+      // (a ray that charges at the caster first lights nothing along its line until then).
+      const fires = Math.min(Math.max(0, stage.departure ?? 0), tag.lengthMs);
+      Object.assign(tag, { startMs: tag.startMs + fires, lengthMs: tag.lengthMs - fires });
       const from = originOf?.(stage);
       if (!from) tag.at = { x: at.x, y: at.y };
       else {

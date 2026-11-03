@@ -377,8 +377,11 @@ export class AnimaterRuntime {
     if (surge > 1) recipe = applyMomentum(recipe, surge);
     if (streak?.strained) recipe = validateRecipe(applyStrain(recipe));
     // Lightning's targets convulse (electrocute.mjs). A Strike's element is its rune or rider's, not the blow's.
-    if (!["weapon", "melee"].includes(context.item?.type))
-      recipe = withElectrocution(recipe, context.element ?? recipe.chosenElement ?? (context.item ? this.host.itemElement?.(context.item, context) : undefined));
+    if (!["weapon", "melee"].includes(context.item?.type)) {
+      const jolted = withElectrocution(recipe, context.element ?? recipe.chosenElement ?? (context.item ? this.host.itemElement?.(context.item, context) : undefined));
+      // A convulsion added where none was written is filled in like any stage.
+      if (jolted !== recipe) recipe = jolted.stages.length > recipe.stages.length ? validateRecipe(jolted) : jolted;
+    }
     recipe = prepareRecipeSounds(recipe, this.host.soundCatalog?.());
     recipe = withWeaponScale(recipe, this.host.weaponScale?.() ?? 1);
     if (!this.host.ready())

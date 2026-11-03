@@ -53,25 +53,25 @@ test('the measured table holds JB2A ranged weapon and beam variants, later for l
   for (const key of RANGE_UNMEASURED) assert.ok(!(key in MEDIA_LANDINGS) && /\.\d\dft$/.test(key), key);
 });
 
-test('rangeLanding tells when the shot leaves: its landing less its flight, timed from how much later it lands farther', () => {
+test('rangeLanding tells when the shot leaves the caster in the variant it plays, as measured', () => {
   const tables = {
-    // Flies all along: 5 ms a foot over the long variants.
-    landings: { 'jb2a.a.15ft': 575, 'jb2a.a.30ft': 650, 'jb2a.a.60ft': 800, 'jb2a.a.90ft': 950, 'jb2a.a.05ft': 200,
-      // Charges, then an all but instant ray: lands at the same time in every variant.
-      'jb2a.r.05ft': 100, 'jb2a.r.15ft': 1250, 'jb2a.r.30ft': 1250, 'jb2a.r.90ft': 1250,
-      'jb2a.one.30ft': 400 },
-    unmeasured: ['jb2a.r.60ft'],
+    landings: { 'jb2a.a.15ft': 575, 'jb2a.a.30ft': 650, 'jb2a.b.15ft': 700, 'jb2a.b.30ft': 900 },
+    unmeasured: [],
+    departures: { 'jb2a.a.15ft': 300, 'jb2a.a.30ft': 350, 'jb2a.b.15ft': 600 },
   };
   const leaves = (asset, px) => rangeLanding(asset, px, 100, tables).departure;
-  assert.equal(leaves('jb2a.a', 600), 500);
-  assert.equal(leaves('jb2a.a', 1600), 500);
-  assert.equal(leaves('jb2a.a.30ft', 0), 500);
-  assert.equal(leaves('jb2a.r', 600), 1250);
-  // Never before the clip starts, never after the shot lands.
-  assert.equal(leaves('jb2a.a', 0), 175);
-  // Unknown: the variant unmeasured, or too few long variants to time a flight.
-  assert.equal(leaves('jb2a.r', 1000), null);
-  assert.equal(leaves('jb2a.one', 600), null);
-  // The measured eldritch blast charges about as long as it takes to land.
-  assert.ok(rangeLanding('jb2a.eldritch_blast.purple', 600, 100).departure >= 1200);
+  assert.equal(leaves('jb2a.a', 300), 300);
+  assert.equal(leaves('jb2a.a', 600), 350);
+  assert.equal(leaves('jb2a.a.30ft.0', 0), 350);
+  // A partial path: the entry that lands latest, and its departure.
+  assert.equal(leaves('jb2a', 300), 600);
+  // A variant whose departure was not measured.
+  assert.equal(leaves('jb2a.b', 600), null);
+  assert.equal(leaves('jb2a.b.30ft', 600), null);
+});
+
+test('the measured departures: an eldritch blast charges a second before its ray, a magic missile flies half its clip', () => {
+  const blast = rangeLanding('jb2a.eldritch_blast.purple', 600, 100), missile = rangeLanding('jb2a.magic_missile.purple', 600, 100);
+  assert.ok(blast.departure >= 1000 && blast.landing - blast.departure <= 250, JSON.stringify(blast));
+  assert.ok(missile.departure < 0.6 * missile.landing, JSON.stringify(missile));
 });
