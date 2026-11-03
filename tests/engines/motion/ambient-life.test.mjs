@@ -93,3 +93,22 @@ test('the clock set anew (a jump of more than a month, as a world time read befo
   assert.equal(ground.update({ now: -396739800, temperature: 15 }).snow, 1, 'back to the real time: nothing');
   assert.ok(ground.update({ now: -396739800 + 3600, temperature: 15 }).snow < 1, 'an hour at 15 °C: it melts');
 });
+
+test('still water freezes in a hard frost, faster the colder, and thaws above freezing', () => {
+  const at = (air, hours, start = 0) => { const g = createGroundWeather({ load: () => ({ wet: 0, snow: 0, ice: start, at: 0 }) }); return g.update({ now: hours * 3600, air }).ice; };
+  assert.equal(at(0, 10), 0, 'just below zero: open');
+  assert.ok(at(-5, 4) > 0 && at(-5, 4) < 1, 'a frost freezes it over some hours');
+  assert.ok(at(-20, 4) > at(-5, 4), 'faster the colder');
+  assert.equal(at(-15, 24), 1, 'a day at −15 °C locks it');
+  assert.ok(at(10, 3, 1) < 1, 'it thaws once warm');
+  const deep = createGroundWeather({ load: () => ({ wet: 0, snow: 0.9, ice: 0, at: 0 }) });
+  assert.ok(deep.update({ now: 6 * 3600, air: null }).ice > 0, 'no temperature known: deep snow lying freezes it');
+});
+
+test('the ground through the year: a colour for each season, leaves lying deep in autumn and blown off in a wind', async () => {
+  const { seasonGround } = await import('../../../scripts/engines/motion/ambient-life.mjs');
+  for (const s of ['spring', 'summer', 'autumn', 'winter']) assert.ok(seasonGround(s).tint[3] > 0, s);
+  assert.ok(seasonGround('autumn').litter > seasonGround('winter').litter && seasonGround('summer').litter === 0);
+  assert.ok(seasonGround('autumn', { wind: 1 }).litter < seasonGround('autumn').litter, 'a wind blows them off');
+  assert.deepEqual(seasonGround(null), { tint: [0, 0, 0, 0], litter: 0 }, 'no season known: nothing');
+});

@@ -52,3 +52,16 @@ test('smoke follows the fires: only visible ones, capped, cleared when off', () 
   on = false; smoke.tick();
   assert.equal(smoke.size, 0);
 });
+
+test('a hearth under a roof smokes out of its chimney, carried downwind; a carried torch never does', async () => {
+  const { chimneyOf, chimneyPlume, smokePuff } = await import('../../../scripts/engines/motion/fire-smoke.mjs');
+  assert.equal(chimneyOf({ indoors: true, roofShown: 1 }), true, 'a hearth under the roof');
+  assert.equal(chimneyOf({ indoors: true, roofShown: 0 }), false, 'the roof faded: its smoke shows in the room');
+  assert.equal(chimneyOf({ indoors: false, roofShown: 1 }), false, 'a campfire');
+  assert.equal(chimneyOf({ choice: true }), true, 'a forge set to always');
+  assert.equal(chimneyOf({ choice: false, indoors: true, roofShown: 1 }), false, 'set never');
+  assert.equal(chimneyOf({ choice: true, carried: true }), false, 'a carried torch');
+  const plume = chimneyPlume({ key: 'h', x: 0, y: 0, size: 1 }, 1, 0);
+  assert.ok(plume.size > 1 && plume.drift.x > 0.9, 'fuller, and carried east in a strong east wind');
+  assert.ok(smokePuff(plume, { grid: 100, n: 1 }).vx > smokePuff({ key: 'h', x: 0, y: 0, size: 1 }, { grid: 100, n: 1 }).vx, 'leaning downwind');
+});

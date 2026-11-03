@@ -51,18 +51,21 @@ export function leavesOf({ season = null, wind = 0.3 } = {}) {
 }
 
 // How fast the ground wets and dries, whitens and melts, in game hours for the whole way.
-const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4;
+const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4, FREEZES_HOURS = 8, THAWS_HOURS = 5;
 /**
  * The ground's weather over time: { wet, snow } (0–1), carried on from one moment to the next by the game clock. Rain
  * wets it within half an hour; it dries over about four hours, faster in sun and heat. Snow whitens it over two hours
  * (only while it is cold enough to stay, 2 °C or less, or unknown); it melts over about four hours above freezing.
- * `load()` gives what was kept ({ wet, snow, at } or null), `save(state)` keeps it.
+ * Still water freezes (`ice`, 0–1) in a hard frost: from −3 °C over about eight hours, faster the colder (a day at
+ * −15 °C locks it), and thaws above 1 °C over a few hours, faster in sun and warmth; `air` is the air's own
+ * temperature (null unknown: then snow lying deep for long freezes it slowly, and it thaws once the snow is gone and the
+ * sun is out). `load()` gives what was kept ({ wet, snow, ice, at } or null), `save(state)` keeps it.
  */
 export function createGroundWeather({ load = () => null, save = () => {} } = {}) {
   let state = null;
   return {
-    update({ now = 0, rain = 0, snow = 0, temperature = null, sun = 0 } = {}) {
-      state ??= (() => { const kept = load(); return kept && Number.isFinite(kept.at) ? { wet: clamp01(kept.wet), snow: clamp01(kept.snow), at: kept.at } : { wet: 0, snow: 0, at: now }; })();
+    update({ now = 0, rain = 0, snow = 0, temperature = null, air = temperature, sun = 0 } = {}) {
+      state ??= (() => { const kept = load(); return kept && Number.isFinite(kept.at) ? { wet: clamp01(kept.wet), snow: clamp01(kept.snow), ice: clamp01(kept.ice ?? 0), at: kept.at } : { wet: 0, snow: 0, ice: 0, at: now }; })();
       // A jump of more than a month is the clock set anew (a world time read before it is ready, a calendar changed),
       // not weather: what lies stays. Shorter skips carry their weather, at most two days of it.
       const gap = (Number(now) - state.at) / 3600, hours = Math.abs(gap) > 24 * 30 ? 0 : Math.min(48, Math.max(0, gap));
@@ -73,11 +76,14 @@ export function createGroundWeather({ load = () => null, save = () => {} } = {})
       const stays = warm === null || warm <= 2;
       if (snow > 0.05 && stays) state.snow = clamp01(state.snow + hours * clamp01(snow) / SNOWS_HOURS * 2);
       else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 2) state.snow = clamp01(state.snow - hours * (warm !== null ? 1 + clamp01((warm - 2) / 8) : 0.5) * (1 + clamp01(sun)) / MELTS_HOURS / 2);
+      const cold = air !== null && Number.isFinite(Number(air)) ? Number(air) : null;
+      if (cold !== null ? cold <= -3 : state.snow >= 0.6) state.ice = clamp01(state.ice + hours * (cold !== null ? 0.25 + clamp01((-3 - cold) / 12) : 0.15) / FREEZES_HOURS * 4);
+      else if (cold !== null ? cold > 1 : state.snow <= 0.05 && sun > 0.3) state.ice = clamp01(state.ice - hours * (cold !== null ? 1 + clamp01((cold - 1) / 8) : 0.5) * (1 + clamp01(sun)) / THAWS_HOURS / 2);
       state.at = now;
       save({ ...state });
-      return { wet: state.wet, snow: state.snow };
+      return { wet: state.wet, snow: state.snow, ice: state.ice };
     },
-    get now() { return state ? { wet: state.wet, snow: state.snow } : { wet: 0, snow: 0 }; },
+    get now() { return state ? { wet: state.wet, snow: state.snow, ice: state.ice } : { wet: 0, snow: 0, ice: 0 }; },
   };
 }
 
@@ -113,4 +119,15 @@ export function flockPath(bounds, random = Math.random, windAngle = null) {
     to: { x: cx + Math.cos(a) * reach + nx * side, y: cy + Math.sin(a) * reach + ny * side },
     angle: a, ms: 2 * reach / 0.35,
   };
+}
+
+// The open ground through the year: a soft colour laid over it ({ tint: [r, g, b, strength] }) — spring's fresh green,
+// summer's sun-bleached straw, autumn's brown, winter's dull grey-green — and how thick fallen leaves lie under the trees
+// (`litter` 0–1: deep in autumn, a few left in winter and spring, less in a wind that blows them off). None for an unknown
+// season.
+const SEASON_TINTS = Object.freeze({ spring: [0.45, 0.78, 0.28, 0.16], summer: [0.86, 0.76, 0.38, 0.15], autumn: [0.7, 0.42, 0.16, 0.3], winter: [0.6, 0.63, 0.64, 0.3] });
+const SEASON_LITTER = Object.freeze({ spring: 0.08, summer: 0, autumn: 0.8, winter: 0.25 });
+export function seasonGround(season, { wind = 0 } = {}) {
+  if (!SEASON_TINTS[season]) return { tint: [0, 0, 0, 0], litter: 0 };
+  return { tint: [...SEASON_TINTS[season]], litter: SEASON_LITTER[season] * (1 - 0.4 * Math.min(1, Math.max(0, Number(wind) || 0))) };
 }

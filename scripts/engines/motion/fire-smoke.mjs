@@ -38,8 +38,9 @@ export function smokeDue(key, fromMs, toMs, size = 1) {
   return Math.max(0, Math.floor(toMs * rate + p) - Math.floor(fromMs * rate + p));
 }
 
-// The `n`th puff of a fire { key, x, y, size }: a small soft grey disc just above the flame that rises steadily, drifts
-// a little to one side, widens and fades over a few seconds.
+// The `n`th puff of a fire { key, x, y, size, drift? }: a small soft grey disc just above the flame that rises steadily,
+// drifts a little to one side, widens and fades over a few seconds. `drift` ({ x, y }, in rises): the wind carrying it
+// off (a chimney's plume above the roofs leans downwind).
 export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
   const random = rng(`${fire.key}:${n}:smoke`), size = Math.min(2.5, Math.max(0.3, Number(fire.size) || 1));
   const unit = grid * Math.sqrt(size), rise = grid * (0.55 + random() * 0.25) * Math.sqrt(size);
@@ -49,7 +50,7 @@ export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
   return {
     kind: 'smoke', owner: fire.key, color: GREYS[Math.floor(random() * GREYS.length) % GREYS.length],
     x: fire.x + (random() - 0.5) * unit * 0.06, y: fire.y - unit * 0.08,
-    vx: lean * rise, vy: -rise, radius: unit * (0.1 + random() * 0.03),
+    vx: (lean + (Number(fire.drift?.x) || 0)) * rise, vy: (-1 + (Number(fire.drift?.y) || 0)) * rise, radius: unit * (0.1 + random() * 0.03),
     alpha: 0.3 + random() * 0.1, delay: 0, life,
     // Still rising as it fades (its motion would only ease to a stop well after it is gone), so the plume stays a column.
     motionLife: life * 2.4,
@@ -101,3 +102,16 @@ export function createFireSmoke({ fires, enabled, grid, now, layer, cap = SMOKE_
   };
   return { tick, clear, get size() { return particles.size; } };
 }
+
+// Whether a fire smokes out of a chimney, above the roof, instead of in the room: `choice` the light's own (true always,
+// false never, else auto); auto, a fire in a room (`indoors`) under a roof drawn now (`roofShown`, 0–1). A carried torch
+// never does.
+export function chimneyOf({ choice = null, indoors = false, roofShown = 0, carried = false } = {}) {
+  if (carried) return false;
+  if (choice === true || choice === 'true') return true;
+  if (choice === false || choice === 'false') return false;
+  return !!indoors && (Number(roofShown) || 0) > 0.5;
+}
+// A chimney's plume: fuller than an open fire's, carried downwind (`wind` 0–1 blowing toward `angle`, radians).
+export const chimneyPlume = (fire, wind = 0, angle = 0) => ({ ...fire, size: Math.max(1.2, (Number(fire.size) || 1) * 1.3),
+  drift: { x: Math.cos(angle) * (0.15 + 0.85 * Math.min(1, Math.max(0, Number(wind) || 0))), y: Math.sin(angle) * (0.15 + 0.85 * Math.min(1, Math.max(0, Number(wind) || 0))) } });

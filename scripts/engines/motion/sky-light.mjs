@@ -66,14 +66,18 @@ const GRASSY = new Set(['grass', 'dirt']);
  * Where the map's surfaces lie: { water, frozen, hot, grass } polygon lists (flat x, y pairs) from the regions with a
  * floor (movement-feel.mjs regionFloor), `bare` the regions with any other floor, and `whole`: the surface the scene's
  * own floor gives everywhere else ('frozen' for a snowy scene, 'hot' for a sandy one, else null), `grassAll` whether it
- * is grassy. `regions`: [{ floor, polygons }]; a polygon's `holes` (flat x, y pairs each) the holes drawn in it.
+ * is grassy. `flows` the rivers ({ polygons, angle, speed }). `regions`: [{ floor, polygons, freezes, flow, current }]; a polygon's `holes` (flat x, y pairs each) the holes drawn in it.
  */
 export function surfacesOf({ sceneFloor = null, regions = [] } = {}) {
-  const out = { water: [], frozen: [], hot: [], grass: [], bare: [], whole: SURFACE_OF[sceneFloor] ?? null, grassAll: GRASSY.has(sceneFloor) };
+  const out = { water: [], freezes: [], flows: [], frozen: [], hot: [], grass: [], bare: [], whole: SURFACE_OF[sceneFloor] ?? null, grassAll: GRASSY.has(sceneFloor) };
   if (out.whole === 'water' || out.whole === 'grass') out.whole = null;
   for (const r of regions ?? []) {
     const kind = SURFACE_OF[r?.floor], polygons = (r?.polygons ?? []).filter((p) => p?.length >= 6);
     if (kind) out[kind].push(...polygons);
+    // Water that freezes in a hard frost: every water region but one that never does (`freezes` false: a hot spring).
+    if (kind === 'water' && r.freezes !== false) out.freezes.push(...polygons);
+    // A river: which way it flows (`flow`, radians on the map, the way the water goes) and how fast (`current` 0–1).
+    if (kind === 'water' && Number.isFinite(r.flow) && polygons.length) out.flows.push({ polygons, angle: r.flow, speed: Math.min(1, Math.max(0, Number(r.current ?? 0.4))) });
     if (r?.floor && r.floor !== 'grass') out.bare.push(...polygons);
   }
   return out;
@@ -119,10 +123,14 @@ void main(){ vUv = aUvs; gl_Position = vec4((projectionMatrix * translationMatri
 const FRAG = `
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D uWater, uBanks, uFrozen, uIndoor, uGrass, uBare, uLow, uRoofShown, uSunlit, uTreeShade;
+uniform sampler2D uWater, uBanks, uFrozen, uIndoor, uGrass, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns;
 uniform vec2 uSize, uWindDir;
 uniform vec4 uBird;     // a flock's centre (x, y), heading (radians) and whether it flies (w)
-uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain;
+uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain, uIce, uLitter;
+uniform vec4 uSeason;   // the season's colour over the open ground (rgb) and how strongly (a)
+uniform float uMoon;    // moonlight on the open ground at night (0–1: how much of the moon is lit)
+uniform vec4 uBow;      // a rainbow: its centre (x, y, scene pixels), radius and strength
+uniform vec2 uBowDir;   // the way it faces: away from the sun
 uniform vec3 uColor;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -135,10 +143,13 @@ float twinkle(vec2 p, float cell, float t, float rate){
 }
 // The sun caught on wavelet crests: short bright streaks lying across the wind, each flashing for a moment and gone,
 // many at once when the wind ruffles the water. 0–1.
+// Which way the water's wavelets travel here, and how fast: the wind's, or a river's current (set in main).
+vec2 gDir = vec2(1.0, 0.0);
+float gPace = 0.3;
 float crestGlints(vec2 px, float t){
-  vec2 side = vec2(-uWindDir.y, uWindDir.x);
+  vec2 side = vec2(-gDir.y, gDir.x);
   // Crests travel with the wind; the pattern is laid along it (q.x) and across it (q.y).
-  vec2 q = vec2(dot(px, uWindDir) - t * uGrid * (0.15 + 0.35 * uWind), dot(px, side));
+  vec2 q = vec2(dot(px, gDir) - t * uGrid * gPace, dot(px, side));
   float cell = uGrid * 0.06, best = 0.0;
   vec2 c0 = floor(q / cell);
   for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) {
@@ -162,6 +173,13 @@ float crestGlints(vec2 px, float t){
   // The glitter gathers in one or two bright areas where the swell tilts the water to the sun, shifting slowly.
   float patches = smoothstep(0.45, 0.72, noise(q / (uGrid * 3.5) + vec2(t * 0.04, -t * 0.03)));
   return best * patches;
+}
+// How frozen the water is here (0–1): ice creeps in from the banks as it freezes (the blurred water mask is lowest at
+// its edges), raggedly, until it covers the whole of it; only water that freezes (uFreeze).
+float iceOver(vec2 px, float water){
+  if (uIce < 0.005 || water < 0.01) return 0.0;
+  float deep = smoothstep(0.45, 0.98, texture2D(uBanks, vUv).a), ragged = fbm(px / (uGrid * 0.9)) - 0.5;
+  return water * texture2D(uFreeze, vUv).a * smoothstep(0.0, 0.1, uIce * 1.3 - deep - ragged * 0.35);
 }
 // One bird's shadow seen from above, in squares from its middle (u.x ahead, u.y to its side): a slim body and head, a
 // short tail, and two wings swept back and gently crooked, each tapering to its tip. 'beat' (0 wings level – 1 raised
@@ -214,18 +232,67 @@ void main(){
     }
     // Wet ground darkens.
     a = 1.0 - (1.0 - a) * (1.0 - uWet * 0.2 * outside * (1.0 - water));
-    gl_FragColor = vec4(vec3(0.04, 0.05, 0.06) * a, a);
+    // Under the shadows, the season's colour over the open ground, most on grass, in soft patches; and the leaves lying.
+    vec3 under = vec3(0.0); float ua = 0.0;
+    if (uSeason.a > 0.005) {
+      float grass = max(texture2D(uGrass, vUv).a, uGrassAll * (1.0 - texture2D(uBare, vUv).a));
+      float patch = 0.65 + 0.7 * fbm(px / (uGrid * 5.0));
+      ua = uSeason.a * outside * (1.0 - water) * (0.45 + 0.55 * grass) * patch;
+      under = uSeason.rgb * ua;
+    }
+    if (uLitter > 0.01) {
+      // Fallen leaves where the trees stand and spilling a little past their crowns (the canopy hides what lies right
+      // under it), each a small turned oval in an autumn colour. (The crowns' mask is widened by looking a grid and more
+      // around, and firmed up.)
+      vec2 reach = uGrid * 1.3 / uSize, near = reach * 0.5;
+      float trees = max(max(texture2D(uCrowns, vUv).a, max(max(texture2D(uCrowns, vUv + vec2(near.x, 0.0)).a, texture2D(uCrowns, vUv - vec2(near.x, 0.0)).a),
+        max(texture2D(uCrowns, vUv + vec2(0.0, near.y)).a, texture2D(uCrowns, vUv - vec2(0.0, near.y)).a))),
+        0.7 * max(max(texture2D(uCrowns, vUv + vec2(reach.x, 0.0)).a, texture2D(uCrowns, vUv - vec2(reach.x, 0.0)).a),
+        max(texture2D(uCrowns, vUv + vec2(0.0, reach.y)).a, texture2D(uCrowns, vUv - vec2(0.0, reach.y)).a)));
+      trees = smoothstep(0.03, 0.3, trees);
+      float cell = uGrid * 0.16;
+      vec2 c = floor(px / cell), f = fract(px / cell) - 0.5;
+      float h = hash(c + 3.7);
+      if (h < uLitter * trees * 0.6 * outside * (1.0 - water)) {
+        float turn = hash(c + 1.1) * 3.14159, ct = cos(turn), st = sin(turn);
+        vec2 q = vec2(ct * f.x - st * f.y, st * f.x + ct * f.y) - (vec2(hash(c + 5.1), hash(c + 7.3)) - 0.5) * 0.4;
+        float leaf = 1.0 - smoothstep(0.85, 1.0, length(vec2(q.x / 0.32, q.y / 0.15)));
+        vec3 hue = hash(c + 9.9) < 0.33 ? vec3(0.78, 0.42, 0.13) : hash(c + 9.9) < 0.66 ? vec3(0.62, 0.24, 0.1) : vec3(0.82, 0.66, 0.22);
+        float la = leaf * 0.85;
+        under = under * (1.0 - la) + hue * (0.8 + 0.2 * h) * la; ua = 1.0 - (1.0 - ua) * (1.0 - la);
+      }
+    }
+    gl_FragColor = vec4(vec3(0.04, 0.05, 0.06) * a + under * (1.0 - a), a + ua * (1.0 - a));
     return;
   }
   if (uMode > 1.5) {
     vec3 col = vec3(0.0); float a = 0.0;
+    float ice = iceOver(px, water) * outside;
+    if (ice > 0.01) {
+      // Ice: a pale, matte, faintly blue sheet, clouded where it is thicker, with hairline cracks and a white rime at its
+      // creeping edge.
+      float cloud = fbm(px / (uGrid * 1.6)), crack = 1.0 - smoothstep(0.0, 0.035, abs(noise(px / (uGrid * 0.55)) - 0.5));
+      vec3 sheet = mix(vec3(0.62, 0.74, 0.84), vec3(0.86, 0.92, 0.97), cloud) * (1.0 - 0.22 * crack);
+      float rim = ice * (1.0 - smoothstep(0.55, 1.0, ice));
+      col = mix(sheet, vec3(0.96, 0.98, 1.0), rim * 0.6) * ice * 0.78; a = ice * 0.78;
+    }
     if (uSnow > 0.01) {
-      // Snow lies first in patches, then everywhere open; not on water.
-      float lie = smoothstep(1.0 - uSnow * 1.15, 1.05 - uSnow * 1.15, fbm(px / (uGrid * 4.0))) * outside * (1.0 - water);
+      // Snow lies first in patches, then everywhere open; on water only once it has frozen over.
+      float lie = smoothstep(1.0 - uSnow * 1.15, 1.05 - uSnow * 1.15, fbm(px / (uGrid * 4.0))) * outside * (1.0 - water + ice);
       // Thin enough for the ground to show through where it lies light, crusted and drifted where it lies deep.
       float grain = noise(px / (uGrid * 0.25)), drift = noise(px / (uGrid * 1.1));
       float s = lie * (0.3 + 0.3 * uSnow) * (0.7 + 0.2 * grain + 0.25 * drift);
-      col = mix(vec3(0.82, 0.88, 0.97), vec3(0.97, 0.98, 1.0), drift) * s; a = s;
+      col = col * (1.0 - s) + mix(vec3(0.82, 0.88, 0.97), vec3(0.97, 0.98, 1.0), drift) * s; a = 1.0 - (1.0 - a) * (1.0 - s);
+    }
+    if (uBow.w > 0.01) {
+      // A broad, soft arc on the side away from the sun, red outside to violet inside, fading toward its ends.
+      vec2 d = px - uBow.xy; float r = length(d) / uBow.z, side = dot(d / max(1.0, length(d)), uBowDir);
+      float band = (r - 0.88) / 0.12;
+      if (band > 0.0 && band < 1.0 && side > -0.1) {
+        vec3 hue = clamp(abs(fract(vec3(0.0, 0.33, 0.67) + (1.0 - band) * 0.8) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
+        float s = uBow.w * 0.22 * sin(band * 3.14159) * smoothstep(-0.1, 0.45, side) * outside;
+        col = col * (1.0 - s) + hue * s; a = 1.0 - (1.0 - a) * (1.0 - s);
+      }
     }
     if (uMist > 0.01) {
       // Mist lies thickest over water and low ground, thinner elsewhere, drifting slowly.
@@ -238,25 +305,37 @@ void main(){
   }
   vec3 col = vec3(0.0);
   float banks = texture2D(uBanks, vUv).a * (1.0 - water);
+  // Frozen water is ice: no sheen, crests, glints or rain rings on it, but it sparkles.
+  float iced = iceOver(px, water);
+  water *= 1.0 - iced;
   float frozen = max(texture2D(uFrozen, vUv).a, uFrozenAll) * (1.0 - water);
   if (uStrength > 0.02) {
     float light = 0.0;
     // Where the sun reaches the water: not in a wall's shadow (the sunlit floor), not under the trees' shade.
     float sunny = texture2D(uSunlit, vUv).a * (1.0 - 0.9 * texture2D(uTreeShade, vUv).a);
     if (water > 0.01 && sunny > 0.02) {
-      vec2 side = vec2(-uWindDir.y, uWindDir.x);
+      // A river carries its wavelets, sheen and glints downstream; still water goes with the wind.
+      vec4 fl = texture2D(uFlow, vUv);
+      float flowing = fl.a, current = flowing > 0.01 ? fl.b / fl.a : 0.0;
+      gDir = flowing > 0.01 ? normalize(fl.rg / fl.a * 2.0 - 1.0 + vec2(1e-4)) : uWindDir;
+      gPace = 0.15 + 0.35 * uWind + 1.1 * current;
+      vec2 side = vec2(-gDir.y, gDir.x);
       // Sheen: broad, soft brightness where the surface tilts toward the sun, drifting slowly; strongest on calm water,
       // where it mirrors the sky.
-      vec2 w = px / (uGrid * 4.0) + uWindDir * t * (0.02 + 0.06 * uWind);
+      vec2 w = px / (uGrid * 4.0) + gDir * t * (0.02 + 0.06 * uWind + 0.25 * current);
       float sheen = smoothstep(0.5, 0.85, fbm(w + vec2(t * 0.01, 0.0)));
-      // The wavelets themselves: fine crests across the wind, travelling with it, faintly lit.
-      vec2 f = vec2(dot(px, uWindDir) / (uGrid * 0.12) - t * (1.5 + 3.0 * uWind), dot(px, side) / (uGrid * 0.5));
+      // The wavelets themselves: fine crests across the wind (or the current), travelling with it, faintly lit.
+      vec2 f = vec2(dot(px, gDir) / (uGrid * 0.12) - t * (1.5 + 3.0 * uWind + 6.0 * current), dot(px, side) / (uGrid * 0.5));
+      // On a river, long streaks of foam carried downstream.
+      float foam = flowing > 0.01 ? smoothstep(0.76, 0.92, noise(vec2(dot(px, gDir) / (uGrid * 0.9) - t * (0.6 + 2.5 * current), dot(px, side) / (uGrid * 0.07)))) * flowing : 0.0;
+      light += water * foam * (0.06 + 0.1 * current);
       float crests = smoothstep(0.62, 0.8, noise(f) * 0.7 + noise(f * 2.3 + 3.1) * 0.3);
       // Glints gather where the sheen tilts the surface to the sun, and spread with the wind.
       float glints = crestGlints(px, t) * (0.35 + 0.65 * sheen);
       light += water * sunny * (sheen * (0.14 - 0.06 * uWind) + crests * (0.03 + 0.04 * uWind) + glints * 3.0);
     }
     if (frozen > 0.01) light += frozen * twinkle(px, uGrid * 0.12, t, 1.6) * 0.7;
+    if (iced > 0.01) light += iced * outside * twinkle(px, uGrid * 0.1, t, 1.4) * 0.8;
     // Puddles on wet ground catch the sky.
     if (uWet > 0.05) light += uWet * smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * outside * (1.0 - water) * 0.1;
     col += uColor * light * outside * uStrength;
@@ -279,6 +358,12 @@ void main(){
       }
       col += vec3(0.8, 0.85, 0.9) * rings * pool * 0.35;
     }
+  }
+  if (uMoon > 0.01) {
+    // Silver moonlight on the open ground, broken where a cloud passes over the moon's light.
+    vec2 q = px / (uGrid * 9.0) - uWindDir * t * (0.01 + 0.05 * uWind);
+    float cloud = uClouds > 0.05 ? smoothstep(1.0 - uClouds - 0.05, 1.0 - uClouds + 0.07, fbm(q)) : 0.0;
+    col += vec3(0.58, 0.66, 0.86) * uMoon * 0.07 * outside * (1.0 - 0.85 * cloud) * (0.85 + 0.3 * fbm(px / (uGrid * 12.0)));
   }
   if (uFireflies > 0.01) {
     // Fireflies over the grass and the banks: each wanders on its own slow loop and glows now and then.
@@ -314,6 +399,8 @@ const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
  */
 export function createSurfaceLight({ PIXI, root, render, above = root }) {
   let masks = [], meshes = [], own = [], hasGlints = false, hasWater = false, origin = { x: 0, y: 0 }, area = null, roofShown = null;
+  // The rainbow comes and goes over some seconds, never at once: `bow` where it is now, `bowTo` where look wants it.
+  let bow = 0, bowTo = 0;
   const drop = () => {
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
@@ -340,11 +427,25 @@ export function createSurfaceLight({ PIXI, root, render, above = root }) {
   };
   const set = (values) => { for (const u of own) Object.assign(u, values); };
   return {
-    build({ water = [], frozen = [], frozenAll = false, grass = [], bare = [], grassAll = false, indoors = [], bounds, grid = 100 } = {}) {
+    build({ water = [], freezes = water, flows = [], frozen = [], frozenAll = false, grass = [], bare = [], grassAll = false, indoors = [], bounds, grid = 100 } = {}) {
       drop();
       if (!bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
       const w = Math.max(1, Math.ceil(bounds.width * k)), h = Math.max(1, Math.ceil(bounds.height * k));
+      // The rivers: each one's direction (red, green: its x and y, from 0 to 1) and current (blue), where it flows.
+      const bakeFlow = (list) => {
+        const stage = new PIXI.Container(), g = new PIXI.Graphics(), to = (v) => Math.round(Math.min(1, Math.max(0, v)) * 255);
+        for (const river of list) {
+          const color = (to(Math.cos(river.angle) * 0.5 + 0.5) << 16) | (to(Math.sin(river.angle) * 0.5 + 0.5) << 8) | to(river.speed);
+          for (const p of river.polygons) { const at = (q) => q.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k); g.beginFill(color, 1); g.drawPolygon(at(p)); for (const hole of p.holes ?? []) { g.beginHole(); g.drawPolygon(at(hole)); g.endHole(); } g.endFill(); }
+        }
+        stage.addChild(g);
+        stage.filters = [new PIXI.BlurFilter(2)];
+        const texture = PIXI.RenderTexture.create({ width: w, height: h });
+        try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+        masks.push(texture);
+        return texture;
+      };
       const bake = (list, blur) => {
         const stage = new PIXI.Container(), g = new PIXI.Graphics();
         for (const p of list) { const at = (q) => q.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k); g.beginFill(0xffffff, 1); g.drawPolygon(at(p)); for (const hole of p.holes ?? []) { g.beginHole(); g.drawPolygon(at(hole)); g.endHole(); } g.endFill(); }
@@ -362,10 +463,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root }) {
       // The banks: a wider, softer water, so the ripples' light spills a little onto the ground beside it; the low
       // ground the mist gathers on: wider still.
       const uniforms = {
-        uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uIndoor: bake(indoors, 1),
-        uGrass: bake(grass, 2), uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY,
+        uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: bake(freezes, 1), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1),
+        uGrass: bake(grass, 2), uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -379,14 +480,18 @@ export function createSurfaceLight({ PIXI, root, render, above = root }) {
       meshes = [shade, light, pale, flock];
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === flock ? above : root)().addChild(m); }
     },
-    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0 } = {}) {
+    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0 } = {}) {
       if (!own.length) return;
       const sunny = light > 0.02;
-      set({ uStrength: sunny ? light : 0, uClouds: clouds, uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain });
-      meshes[0].visible = (sunny && clouds > 0.05) || wet > 0.02;
+      set({ uStrength: sunny ? light : 0, uClouds: clouds, uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
+        // The rainbow faces away from the sun: its centre off toward the sun, so the arc sweeps across the middle of the map.
+        uBow: area ? [area.bounds.width / 2 + Math.cos(sunAngle) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(sunAngle) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45, bow] : [0, 0, 1, 0],
+        uBowDir: [-Math.cos(sunAngle), -Math.sin(sunAngle)] });
+      meshes[0].visible = (sunny && clouds > 0.05) || wet > 0.02 || (season?.[3] ?? 0) > 0.005 || litter > 0.01;
       meshes[3].visible = sunny && own[0].uBird[3] > 0.5;
-      meshes[1].visible = (sunny && (hasGlints || wet > 0.05)) || fireflies > 0.01 || (rain > 0.01 && (hasWater || wet > 0.05));
-      meshes[2].visible = snow > 0.01 || mist > 0.01;
+      meshes[1].visible = (sunny && (hasGlints || wet > 0.05)) || fireflies > 0.01 || (rain > 0.01 && (hasWater || wet > 0.05)) || moon > 0.01;
+      bowTo = rainbow;
+      meshes[2].visible = snow > 0.01 || mist > 0.01 || (hasWater && ice > 0.01) || Math.max(bow, bowTo) > 0.01;
     },
     bird(flock, roofs = []) {
       if (!own.length) return;
@@ -396,8 +501,15 @@ export function createSurfaceLight({ PIXI, root, render, above = root }) {
     },
     // Where the sun reaches, for the water's light: `sunlit` the wall shadows' sunlit floor (null: everywhere), `trees`
     // the trees' baked shade (null: none); both over the same scene rectangle as the rest.
-    shade({ sunlit = null, trees = null } = {}) { set({ uSunlit: sunlit ?? PIXI.Texture.WHITE, uTreeShade: trees ?? PIXI.Texture.EMPTY }); },
-    tick(seconds) { for (const u of own) u.uTime += seconds; },
+    shade({ sunlit = null, trees = null, crowns = null } = {}) { set({ uSunlit: sunlit ?? PIXI.Texture.WHITE, uTreeShade: trees ?? PIXI.Texture.EMPTY, uCrowns: crowns ?? PIXI.Texture.EMPTY }); },
+    tick(seconds) {
+      for (const u of own) u.uTime += seconds;
+      if (bow !== bowTo) {
+        bow += Math.max(-seconds / 8, Math.min(seconds / 8, bowTo - bow));
+        for (const u of own) u.uBow[3] = bow;
+        if (bow <= 0.01 && bowTo <= 0.01 && meshes[2]) { bow = 0; for (const u of own) u.uBow[3] = 0; }
+      }
+    },
     clear: drop,
     get shown() { return meshes.some((m) => m.visible); },
   };
@@ -683,4 +795,13 @@ export function createTileSnow({ PIXI, root }) {
     get built() { return meshes.length > 0; },
     get showing() { return meshes.some((m) => m.visible); },
   };
+}
+
+// A rainbow after the rain (0 none – 1 at its brightest): with the sun out (not the moon, well up and strong), once the
+// rain has stopped and only while the ground is fresh from it (`wet` 0–1, drying from 1 after the rain: gone by 0.9, about
+// the first hour), fading as it dries, and none under a heavy sky (`clouds` 0–1).
+export function rainbowOf({ wet = 0, raining = false, sun = null, clouds = 0 } = {}) {
+  if (raining || !sun || sun.moon || !((Number(sun.strength) || 0) > 0.3)) return 0;
+  const fresh = Math.min(1, Math.max(0, ((Number(wet) || 0) - 0.9) / 0.08)), open = Math.min(1, Math.max(0, 1 - (Number(clouds) || 0) * 1.3));
+  return fresh * open * Math.min(1, Number(sun.strength) || 0);
 }

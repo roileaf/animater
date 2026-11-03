@@ -16,7 +16,7 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor } from "./engines/motion/movement-feel.mjs";
+import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
 import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
@@ -165,11 +165,11 @@ import { createTethers, createTetherPreview } from "./engines/playback/tethers.m
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes } from "./engines/motion/wall-shadows.mjs";
-import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight } from "./engines/motion/canopy-light.mjs";
-import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash } from "./engines/motion/sky-light.mjs";
-import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath } from "./engines/motion/ambient-life.mjs";
+import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
+import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf } from "./engines/motion/sky-light.mjs";
+import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, seasonGround } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
-import { createFireSmoke, fireSize, SMOKE_FIRES } from "./engines/motion/fire-smoke.mjs";
+import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
@@ -1049,6 +1049,11 @@ const movementFeelFloor = (point, token) => {
   // After the rain ("Wet ground after rain"): soil still wet is mud until it dries; snow lying on the open ground ("Snow
   // cover") crunches underfoot and takes the creatures' tracks. Neither under a roof.
   const soaked = groundOf().now, wet = wetOn() ? soaked.wet : 0, lying = snowCoverOn() ? soaked.snow : 0;
+  // Water frozen over is ice underfoot, unless its region never freezes.
+  if (floor === "water" && frozenWaterOn() && soaked.ice > 0) {
+    const kept = regions.some((r) => r.doc.flags?.[ID]?.noFreeze && (() => { try { return r.doc.testPoint({ x: point.x, y: point.y, elevation }); } catch { return false; } })());
+    floor = frozenFloor(floor, soaked.ice, !kept);
+  }
   if ((wet >= WET_MUDDY || lying > 0) && !shelteredAt(point, elevation)) {
     if (wet >= WET_MUDDY) floor = rainFloor(floor, "rain").floor;
     floor = snowFloor(floor, lying);
@@ -1632,6 +1637,11 @@ const snowRootOf = () => {
   return snowRoot;
 };
 const tileSnow = createTileSnow({ PIXI: globalThis.PIXI, root: snowRootOf });
+// The trees swaying in the wind (canopy-light.mjs createTreeSway): on the tree tiles themselves.
+const treeSway = createTreeSway({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 });
+const treeSwayOn = () => bothSettingsOn("treeSway");
+let skyWind = 0;
+const swayTrees = () => { try { treeSway.attach(canvas?.ready && treeSwayOn() ? sunlitTiles().tree.map((t) => t.mesh) : []); } catch { treeSway.clear(); } };
 const tileSnowOn = () => bothSettingsOn("tileSnow");
 const rebuildTileSnow = () => {
   try {
@@ -1693,7 +1703,8 @@ const lightningOn = () => bothSettingsOn("lightningFlashes");
 const leavesOn = () => bothSettingsOn("fallingLeaves"), mistOn = () => bothSettingsOn("morningMist");
 const wetOn = () => bothSettingsOn("wetGround"), snowCoverOn = () => bothSettingsOn("snowCover"), firefliesOn = () => bothSettingsOn("fireflies");
 const birdsOn = () => bothSettingsOn("birdShadows"), rainRingsOn = () => bothSettingsOn("rainRings");
-const surfaceLifeOn = () => cloudsOn() || glintsOn() || mistOn() || wetOn() || snowCoverOn() || firefliesOn() || birdsOn() || rainRingsOn();
+const frozenWaterOn = () => bothSettingsOn("frozenWater"), seasonGroundOn = () => bothSettingsOn("seasonGround"), rainbowOn = () => bothSettingsOn("rainbows");
+const surfaceLifeOn = () => cloudsOn() || glintsOn() || mistOn() || wetOn() || snowCoverOn() || firefliesOn() || birdsOn() || rainRingsOn() || frozenWaterOn() || seasonGroundOn() || rainbowOn() || hotSetting("moonLight") !== false;
 // The season: Calendaria's, else Simple Calendar Reborn's, else unknown.
 const seasonNow = () => {
   try {
@@ -1723,7 +1734,9 @@ const surfacesHere = () => {
   for (const region of scene?.regions ?? []) {
     try {
       const floor = regionFloor({ name: region.name, flag: region.flags?.[ID]?.floor });
-      if (floor) regions.push({ floor, polygons: regionAreas(region) });
+      // A river's flow: the compass point it flows toward (as a map angle) and how swift.
+      const toward = region.flags?.[ID]?.flowTo, flow = toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : null;
+      if (floor) regions.push({ floor, polygons: regionAreas(region), freezes: !region.flags?.[ID]?.noFreeze, flow, current: region.flags?.[ID]?.current === "swift" ? 1 : 0.4 });
     } catch { /* a broken region never breaks the rest */ }
   }
   const floor = sceneFloor({ flag: scene?.flags?.[ID]?.floor, globalLight: scene?.environment?.globalLight?.enabled === true, name: scene?.name, background: canvas.level?.background?.src ?? "" });
@@ -1740,7 +1753,8 @@ const lookSky = () => {
     // Rain and snow on the ground carry on by the game clock, whether drawn or not, so turning them on finds them right.
     // A blizzard set on the scene settles even when the calendar says it is warm.
     const settles = settlingTemperature({ calendaria, scene: canvas?.scene?.weather ?? "", temperature: weather.temperature });
-    const ground = groundOf().update({ now: Number(game.time?.worldTime) || 0, rain: falling.rain, snow: falling.snow, temperature: settles, sun: fall?.light ?? 0 });
+    // The ice goes by the air's own temperature (falling snow from the scene's weather means freezing, as for the snow).
+    const ground = groundOf().update({ now: Number(game.time?.worldTime) || 0, rain: falling.rain, snow: falling.snow, temperature: settles, air: settles === null && falling.snow > 0.05 ? -5 : weather.temperature, sun: fall?.light ?? 0 });
     const fog = /fog|mist/i.test(`${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}`);
     surfaceLight.look({
       light: fall ? fall.light : 0, clouds: cloudsOn() ? cloudCover(sky) : 0, color: sunlightColor(), wind: weather.wind, windAngle: weather.windAngle,
@@ -1749,11 +1763,19 @@ const lookSky = () => {
       fireflies: firefliesOn() && clock ? firefliesOf({ day: clock.day, sunset: clock.sunset, season, temperature: weather.temperature }) : 0,
       // Rain rings on open water only: none under a roof (the regions keep the weather out).
       rain: rainRingsOn() ? falling.rain : 0,
+      ice: frozenWaterOn() ? ground.ice : 0,
+      // Moonlight on the ground by night, as much as the moon is lit ("Moonlight").
+      moon: sunNow?.moon && hotSetting("moonLight") !== false ? Math.min(1, Number(clock?.moon) || 0) : 0,
+      // A rainbow when the rain has just stopped and the sun is out.
+      rainbow: rainbowOn() ? rainbowOf({ wet: ground.wet, raining: falling.rain > 0.05, sun: sunNow, clouds: cloudCover(sky) }) : 0,
+      sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180,
+      // The year on the ground: its colour and the fallen leaves (none under snow lying deep).
+      ...(seasonGroundOn() ? (({ tint, litter }) => ({ season: tint, litter: litter * (1 - ground.snow) }))(seasonGround(season, { wind: weather.wind })) : {}),
     });
     // The roofs and trees hold the ground's snow (a tree less, and less in a wind).
     snowNow = { snow: tileSnowOn() ? ground.snow : 0, wind: weather.wind };
     tileSnow.look(snowNow);
-    skyOpen = Number.isFinite(sky) ? sky : 1; skyWindAngle = weather.windAngle;
+    skyOpen = Number.isFinite(sky) ? sky : 1; skyWindAngle = weather.windAngle; skyWind = weather.wind;
     skyHeat = shimmerOn() && skySurfaces ? heatOf({ sun: sunNow, sky, temperature: weather.temperature, hotGround: skySurfaces.hot.length > 0 || skySurfaces.whole === "hot" }) : 0;
     // How fierce the storm is (0 none): how often and how bright it flashes.
     skyStorm = lightningOn() && weather.storm ? weather.severity : 0;
@@ -1765,7 +1787,7 @@ const rebuildSky = () => {
     if (!canvas?.ready) return;
     skySurfaces = surfacesHere();
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size, glints = glintsOn();
-    if (surfaceLifeOn()) surfaceLight.build({ water: glints || mistOn() || firefliesOn() || rainRingsOn() ? skySurfaces.water : [], frozen: glints ? skySurfaces.frozen : [], frozenAll: glints && skySurfaces.whole === "frozen",
+    if (surfaceLifeOn()) surfaceLight.build({ water: glints || mistOn() || firefliesOn() || rainRingsOn() || frozenWaterOn() ? skySurfaces.water : [], freezes: skySurfaces.freezes, flows: skySurfaces.flows, frozen: glints ? skySurfaces.frozen : [], frozenAll: glints && skySurfaces.whole === "frozen",
       grass: skySurfaces.grass, bare: skySurfaces.bare, grassAll: skySurfaces.grassAll, indoors: indoorPolygons(), bounds, grid });
     else surfaceLight.clear();
     shadeWater();
@@ -1777,9 +1799,9 @@ const rebuildSky = () => {
   } catch { surfaceLight.clear(); heatShimmer.clear(); }
 };
 // The water glints only where the sun reaches it: the wall shadows' sunlit floor and the trees' shade, as last built.
-function shadeWater() { try { surfaceLight.shade({ sunlit: wallShadows.sunlit?.texture ?? null, trees: canopyLight.treeShade }); } catch { /* not built */ } }
+function shadeWater() { try { surfaceLight.shade({ sunlit: wallShadows.sunlit?.texture ?? null, trees: canopyLight.treeShade, crowns: canopyLight.crowns }); } catch { /* not built */ } }
 let canopyTimer = null, skyTimer = null;
-const canopySoon = () => { if (!canopyTimer) canopyTimer = setTimeout(() => { canopyTimer = null; rebuildCanopy(); rebuildTileSnow(); }, 200); };
+const canopySoon = () => { if (!canopyTimer) canopyTimer = setTimeout(() => { canopyTimer = null; rebuildCanopy(); rebuildTileSnow(); swayTrees(); }, 200); };
 const skySoon = () => { if (!skyTimer) skyTimer = setTimeout(() => { skyTimer = null; rebuildSky(); }, 250); };
 for (const hook of ["canvasReady", "drawTile", "createTile", "updateTile", "deleteTile", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { canopySoon(); glowsSoon(); });
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged", "updateWorldTime", "calendaria.weatherChange", "calendaria.ready", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { skySoon(); });
@@ -1809,6 +1831,12 @@ function skyTick() {
   const seconds = (canvas.app.ticker.deltaMS || 16) / 1000;
   if (canopyLight.shown) canopyLight.tick(seconds);
   flyBirds(performance.now());
+  // The trees sway with the wind and keep up with the camera.
+  if (treeSway.swaying) {
+    const st = canvas.stage.transform; st.updateLocalTransform();
+    treeSway.set({ wind: skyWind, angle: skyWindAngle, view: { x: st.localTransform.tx, y: st.localTransform.ty, scale: st.localTransform.a } });
+    treeSway.tick(seconds);
+  }
   // A roof fading for a creature inside takes its snow with it.
   if (tileSnow.showing) tileSnow.shown(snowTiles.map(tileShown));
   if (surfaceLight.shown) surfaceLight.tick(seconds);
@@ -2606,6 +2634,19 @@ for (const hook of ["createItem", "deleteItem", "createActiveEffect", "deleteAct
   smokeListAt = -Infinity; orbListAt = -Infinity;
 });
 Hooks.once("ready", () => { if (installTorchLight() && canvas?.ready) relightTokens(); });
+// A point in a polygon (flat x, y pairs), not in one of its holes.
+const pointInPolygon = ({ x, y }, p) => {
+  if (p?.holes?.some((h) => pointInPolygon({ x, y }, h))) return false;
+  let hit = false;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit;
+  return hit;
+};
+// A point within a tile as drawn (its rectangle about its anchor; turned tiles taken by their bounds).
+const pointInRect = ({ x, y }, t) => { const w = Math.abs(t.width), h = Math.abs(t.height), ax = t.anchorX ?? 0.5, ay = t.anchorY ?? 0.5; return x >= t.x - ax * w && x <= t.x + (1 - ax) * w && y >= t.y - ay * h && y <= t.y + (1 - ay) * h; };
+let roofList = [], roofListAt = -Infinity, roomList = [], roomListAt = -Infinity;
+const chimneys = new Map();
+const roofsNow = () => { const time = performance.now(); if (time - roofListAt > 1000) { roofListAt = time; try { roofList = sunlitTiles().roof; } catch { roofList = []; } } return roofList; };
+const indoorsNow = () => { const time = performance.now(); if (time - roomListAt > 1000) { roomListAt = time; try { roomList = indoorPolygons(); } catch { roomList = []; } } return roomList; };
 // This frame's fires: an ambient light burns where it stands; a carried one at the tip of the torch in the token's hand,
 // following the drawn token (its walk, its hover bob) and leaning its flame back as it moves.
 const smokeFiresNow = () => {
@@ -2624,16 +2665,51 @@ const smokeFiresNow = () => {
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
     const visible = torch ? torch.visible : seen;
-    return { key, size, visible, torch, ...at };
+    // A hearth under a roof drawn now smokes out of its chimney instead (looked at twice a second: the roof fades slowly).
+    let chimney = false;
+    if (!token) {
+      const had = chimneys.get(key);
+      if (had && time - had.at < 500) chimney = had.value;
+      else {
+        try {
+          const point = { x: source.data.x, y: source.data.y }, inside = indoorsNow().some((p) => pointInPolygon(point, p));
+          const over = inside ? roofsNow().filter((r) => r.mesh && pointInRect(point, r)).reduce((m, r) => Math.max(m, tileShown(r.mesh)), 0) : 0;
+          chimney = chimneyOf({ choice: source.object?.document?.flags?.[ID]?.chimney ?? null, indoors: inside, roofShown: over });
+        } catch { chimney = false; }
+        chimneys.set(key, { at: time, value: chimney });
+      }
+    }
+    return { key, size, visible, torch, chimney, ...at };
   });
 };
 let smokeFrame = [];
+// Smoke from the chimneys: a hearth under a roof smokes above it (fire-smoke.mjs chimneyOf), on a layer just over the
+// highest overhead tile, carried downwind.
+let chimneyRoot = null;
+const chimneyRootOf = () => {
+  if (!chimneyRoot || chimneyRoot.destroyed) {
+    chimneyRoot = new PIXI.Container();
+    chimneyRoot.eventMode = "none";
+    chimneyRoot.sortLayer = 1099;
+    canvas.primary.addChild(chimneyRoot);
+  }
+  chimneyRoot.elevation = Math.max(Number(canvas.level?.elevation?.base) || 0, ...(canvas.tiles?.placeables ?? []).map((t) => Number(t.document?.elevation) || 0)) + 0.015;
+  return chimneyRoot;
+};
+const chimneySmoke = createFireSmoke({
+  enabled: smokeOn,
+  grid: () => canvas?.grid?.size ?? 100,
+  now: () => performance.now(),
+  layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: chimneyRootOf }),
+  fires: () => smokeFrame.filter((f) => f.chimney).map((f) => chimneyPlume(f, skyWind, skyWindAngle)),
+  amount: () => { try { return Number(hotSetting("fireSmokeAmount")) || 1; } catch { return 1; } },
+});
 const fireSmoke = createFireSmoke({
   enabled: smokeOn,
   grid: () => canvas?.grid?.size ?? 100,
   now: () => performance.now(),
   layer: createMovementFeelLayer({ PIXI: globalThis.PIXI, root: vaporRootOf }),
-  fires: () => smokeFrame,
+  fires: () => smokeFrame.filter((f) => !f.chimney),
   amount: () => { try { return Number(hotSetting("fireSmokeAmount")) || 1; } catch { return 1; } },
 });
 // Light orbs (engines/motion/light-orb.mjs): a creature lit by a Light spell has its light float at its shoulder.
@@ -2708,14 +2784,15 @@ const tickFires = () => {
   try { tickOrbs(); } catch { /* never stop the canvas */ }
   try { tickThreads(); } catch { /* never stop the canvas */ }
   try { tethers.tick(performance.now()); } catch { /* never stop the canvas */ }
-  if (!smokeOn() && !heldTorchesOn()) { if (fireSmoke.size || heldTorches.size) { fireSmoke.clear(); heldTorches.clear(); } return; }
+  if (!smokeOn() && !heldTorchesOn()) { if (fireSmoke.size || heldTorches.size || chimneySmoke.size) { fireSmoke.clear(); chimneySmoke.clear(); heldTorches.clear(); } return; }
   smokeFrame = smokeFiresNow();
   heldTorches.sync(heldTorchesOn() ? smokeFrame.map((f) => f.torch).filter(Boolean) : []);
   heldTorches.tick(performance.now() / 1000);
   fireSmoke.tick();
+  chimneySmoke.tick();
 };
 Hooks.on("canvasTearDown", () => {
-  fireSmoke.clear(); heldTorches.clear(); lightOrbs.clear(); heldLanterns.clear(); sustainThreads.clear(); threadList = []; threadListAt = -Infinity; torchLean.clear(); smokeList = []; smokeFrame = []; orbList = []; smokeListAt = -Infinity; orbListAt = -Infinity;
+  fireSmoke.clear(); chimneySmoke.clear(); chimneys.clear(); roofListAt = -Infinity; roomListAt = -Infinity; heldTorches.clear(); lightOrbs.clear(); heldLanterns.clear(); sustainThreads.clear(); threadList = []; threadListAt = -Infinity; torchLean.clear(); smokeList = []; smokeFrame = []; orbList = []; smokeListAt = -Infinity; orbListAt = -Infinity;
   try { torchLightRoot?.destroy({ children: true }); } catch { /* canvas gone */ }
   torchLightRoot = null;
 });
@@ -4554,6 +4631,10 @@ Hooks.once("init", () => {
   skyPair("morningMist", "morningMistLocal", "Morning mist", "Mist gathers before sunrise, thickest over water and low ground, and burns off as the sun climbs; in fog it lies all day.");
   skyPair("wetGround", "wetGroundLocal", "Wet ground after rain", "Rain darkens the open ground and leaves puddles that catch the sky; it dries over a few hours of game time, faster in sun and heat. Kept on each screen per scene.");
   skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground, first in patches; it melts over a few hours of game time once it is above freezing. Kept on each screen per scene.");
+  skyPair("rainbows", "rainbowsLocal", "Rainbows", "When the rain stops and the sun comes out under a clearing sky, a soft rainbow arcs over the map away from the sun, fading as the ground dries.");
+  skyPair("seasonGround", "seasonGroundLocal", "The ground through the seasons", "The open ground takes the season's colour, most on grass: fresh green in spring, sun-bleached in summer, brown in autumn, dull and grey in winter; and fallen leaves lie under the trees in autumn, blown off in a wind. The season from Calendaria or Simple Calendar Reborn.");
+  skyPair("treeSway", "treeSwayLocal", "Trees in the wind", "The tree tiles sway with the wind, each out of step with the next, their leaves fluttering: barely in still air, a good deal in a gale. From Calendaria's weather or the scene's wind.");
+  skyPair("frozenWater", "frozenWaterLocal", "Water freezes", "In a hard frost the water freezes over, the ice creeping in from the banks: pale and matte with fine cracks, sparkling, snow lying on it, and ice underfoot. It freezes from −3 °C over some hours (faster the colder) and thaws above freezing; with no temperature known, deep snow lying for long freezes it. Region configuration → Never freezes keeps a hot spring open. Kept on each screen per scene.");
   skyPair("tileSnow", "tileSnowLocal", "Snow on roofs and trees", "Snow lying on the ground lies on the roofs and in the trees too (the roof and tree tiles): a roof under a blanket, a tree's leaves caught white on top, less in a wind. It melts with the ground's. A roof fading for a creature inside takes its snow with it.");
   skyPair("fireflies", "firefliesLocal", "Fireflies", "On warm summer evenings fireflies glow over the grass and by the water from sunset into the first hours of the night (none in winter, autumn or under 15 °C).");
   skyPair("rainRings", "rainRingsLocal", "Rain on water", "While it rains (Calendaria's weather or the scene's), rings spread where the drops land on water and on the puddles of wet ground, more the harder it rains.");
@@ -5239,8 +5320,8 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     return `<div class="form-group"><label>${label}</label><div class="form-fields"><select name="flags.${ID}.${name}">${[["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
   };
   const set = document.createElement("fieldset");
-  set.innerHTML = `<legend>Animater</legend>${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}
-    <p class="hint">Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both.</p>`;
+  set.innerHTML = `<legend>Animater</legend>${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}${pick("chimney", "Chimney smoke")}
+    <p class="hint">Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both. Chimney smoke: a hearth in a room smokes from the roof above it while the roof is drawn (Auto); On always smokes above the roofs (a forge), Off never.</p>`;
   const tab = root.querySelector('.tab[data-tab="animation"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });
@@ -5458,6 +5539,18 @@ Hooks.on("renderRegionConfig", (app, html) => {
   const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab");
   if (!tab) return;
   tab.append(floorSelect(app.document?.flags?.[ID]?.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's. The sun glitters on water and sparkles on snow and ice here, and the air shimmers over sand at a hot midday."));
+  // Water that never freezes (a hot spring, a fast river).
+  const noFreeze = document.createElement("div");
+  noFreeze.className = "form-group";
+  noFreeze.innerHTML = `<label>Never freezes</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noFreeze"${app.document?.flags?.[ID]?.noFreeze ? " checked" : ""}></div><p class="hint">Water here stays open in a hard frost ("Water freezes"): a hot spring, a fast river.</p>`;
+  tab.append(noFreeze);
+  // A river: which way it flows and how swift.
+  const flowTo = app.document?.flags?.[ID]?.flowTo ?? "", current = app.document?.flags?.[ID]?.current ?? "";
+  const flowing = document.createElement("div");
+  flowing.className = "form-group";
+  const points = [["", "Still (lake, pond)"], ["n", "North"], ["ne", "North-east"], ["e", "East"], ["se", "South-east"], ["s", "South"], ["sw", "South-west"], ["w", "West"], ["nw", "North-west"]];
+  flowing.innerHTML = `<label>Flows toward</label><div class="form-fields"><select name="flags.${ID}.flowTo">${points.map(([v, l]) => `<option value="${v}"${v === flowTo ? " selected" : ""}>${l}</option>`).join("")}</select><select name="flags.${ID}.current">${[["", "Gentle"], ["swift", "Swift"]].map(([v, l]) => `<option value="${v}"${v === current ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind.</p>`;
+  tab.append(flowing);
   // Region looks: a Tokenshade look on every creature inside.
   if (!root.querySelector(`[name="flags.${ID}.${REGION_LOOK_FLAG}"]`)) {
     const value = app.document?.flags?.[ID]?.[REGION_LOOK_FLAG] ?? "";

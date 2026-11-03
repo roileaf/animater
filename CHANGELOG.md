@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.6.1 (2026-11-03)
+
+More life on the map through the weather and the year. Each new effect has a world setting and an "on my screen" setting (Animater settings, Sky).
+
+- **Water freezes.** In a hard frost (from −3 °C, over some hours, faster the colder) the water freezes over, the ice creeping in from the banks: pale and matte with fine cracks, sparkling, snow lying on it, and creatures skidding on it as on ice. It thaws above freezing. Region configuration → Never freezes keeps a hot spring open.
+- **Rivers flow.** Region configuration → Flows toward gives a river its direction (and Gentle or Swift): its ripples, glints and streaks of foam are carried downstream instead of drifting with the wind.
+- **Trees in the wind.** Tree tiles sway with the wind, each out of step with the next: barely in still air, a good deal in a gale.
+- **Chimney smoke.** A fire in a room smokes from the roof above it while the roof is drawn, its plume leaning downwind. Light configuration → Animater → Chimney smoke: Auto, On (a forge, always above the roofs) or Off.
+- **The ground through the seasons.** The open ground takes the season's colour, most on grass: fresh green in spring, sun-bleached in summer, brown in autumn, grey in winter. In autumn fallen leaves lie around the trees, fewer in a wind and none under deep snow.
+- **Moonlight on the ground.** By night a faint silver light lies on the open ground, as bright as the moon is full (none at new moon), broken where clouds pass over it. Part of the Moonlight setting.
+- **Rainbows.** When the rain stops and the sun comes out under a clearing sky, a soft rainbow arcs over the map away from the sun, fading as the ground dries.
+
 ## 2.6.0 (2026-11-03)
 
 The sky comes down to the map: light through the trees, weather that settles on the ground and the roofs, life in the grass and over the water, and light from the windows at night. Every effect has a world setting and an "on my screen" setting (Animater settings, Sky), and most are drawn from Balanced quality up.

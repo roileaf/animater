@@ -285,5 +285,72 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
     get shown() { return meshes.some((m) => m.visible); },
     // The trees' shade as baked (alpha: how deep), over the same scene rectangle; null when no tree casts one.
     get treeShade() { return own[0]?.uHasTrees > 0.5 ? own[0].uTrees : null; },
+    // Where the trees' crowns stand (not their shade): the ground the fallen leaves lie on.
+    get crowns() { return own[0]?.uTreesAt ?? null; },
+  };
+}
+
+// How far a tree's crown sways in the wind (0 still – 1 a gale), in pixels on the map for a `grid`-pixel square: a
+// little even in still air, a good deal in a gale.
+export const swayOf = (wind, grid = 100) => (0.01 + 0.05 * Math.min(1, Math.max(0, Number(wind) || 0))) * grid;
+
+// High precision: the filter vertex stage declares inputSize and outputFrame so, and a uniform shared by both stages
+// must match (a mismatch fails to link and the tree draws as nothing).
+const SWAY = `
+precision highp float;
+varying vec2 vTextureCoord;
+uniform sampler2D uSampler;
+uniform vec4 inputSize, outputFrame;
+uniform vec3 uView;     // the stage's offset (x, y) and scale: screen = map * scale + offset
+uniform vec2 uDir, uSeed;
+uniform float uTime, uAmp, uGrid;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+void main(){
+  vec2 screen = vTextureCoord * inputSize.xy + outputFrame.xy, map = (screen - uView.xy) / uView.z;
+  vec2 w = map / (uGrid * 2.2) + uSeed;
+  // The crown leans with the gusts, each part a little after the next, so it rolls rather than slides.
+  float gust = 0.55 + 0.45 * sin(uTime * 0.45 + uSeed.x * 3.0) * sin(uTime * 0.31 + uSeed.y);
+  float lean = sin(uTime * 1.3 + w.x * 1.7 + w.y * 1.1) * 0.6 + (noise(w + uTime * 0.35) - 0.5);
+  vec2 off = uDir * lean * gust;
+  // And the leaves flutter, finer and quicker.
+  vec2 f = map / (uGrid * 0.45) + uSeed;
+  off += vec2(noise(f + uTime * 1.9) - 0.5, noise(f - uTime * 2.1 + 7.3) - 0.5) * 0.35;
+  gl_FragColor = texture2D(uSampler, vTextureCoord + off * uAmp * uView.z * inputSize.zw);
+}`;
+
+// The trees swaying in the wind: a light ripple of each tree tile's own picture (its mesh), leaning the way the wind
+// blows and fluttering, each tree out of step with the others. attach(meshes) puts it on the tree tiles (any others
+// lose it), set({ wind, angle, view }) follows the wind and the camera, tick(seconds) moves it, clear() takes it off.
+export function createTreeSway({ PIXI, grid = () => 100 }) {
+  const on = new Map();
+  const off = (mesh) => {
+    const filter = on.get(mesh);
+    on.delete(mesh);
+    try { if (mesh && !mesh.destroyed && mesh.filters) mesh.filters = mesh.filters.filter((f) => f !== filter); } catch { /* gone with the canvas */ }
+    try { filter?.destroy?.(); } catch { /* gone */ }
+  };
+  return {
+    attach(meshes = []) {
+      const want = new Set(meshes.filter((m) => m && !m.destroyed));
+      for (const mesh of [...on.keys()]) if (!want.has(mesh)) off(mesh);
+      let n = 0;
+      for (const mesh of want) {
+        n++;
+        if (on.has(mesh)) continue;
+        const filter = new PIXI.Filter(undefined, SWAY, { uView: [0, 0, 1], uDir: [1, 0], uSeed: [n * 3.17, n * 1.93], uTime: n * 4.1, uAmp: 0, uGrid: grid() });
+        filter.padding = 0.08 * grid();
+        mesh.filters = [...(mesh.filters ?? []), filter];
+        on.set(mesh, filter);
+      }
+    },
+    set({ wind = 0, angle = 0, view = null } = {}) {
+      if (!view) return;
+      for (const filter of on.values()) Object.assign(filter.uniforms, { uAmp: swayOf(wind, grid()), uDir: [Math.cos(angle), Math.sin(angle)], uView: [view.x, view.y, view.scale], uGrid: grid() });
+    },
+    tick(seconds) { for (const filter of on.values()) filter.uniforms.uTime += seconds; },
+    clear() { for (const mesh of [...on.keys()]) off(mesh); },
+    get swaying() { return on.size; },
   };
 }

@@ -118,3 +118,32 @@ test('a storm\'s severity: Calendaria\'s rain and wind, else FXMaster\'s lightni
   assert.ok(strikeStrength(0, 1) < strikeStrength(1, 1), 'a distant strike dimmer');
   assert.ok(doubleStrike(1) > doubleStrike(0.2));
 });
+
+test('a water region freezes unless it never does', async () => {
+  const { surfacesOf } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const pond = [0, 0, 100, 0, 100, 100, 0, 100], spring = [200, 0, 300, 0, 300, 100, 200, 100];
+  const s = surfacesOf({ regions: [{ floor: 'water', polygons: [pond] }, { floor: 'water', polygons: [spring], freezes: false }] });
+  assert.equal(s.water.length, 2);
+  assert.deepEqual(s.freezes, [pond], 'the hot spring stays open');
+});
+
+test('a river flows the way its region says, gently or swiftly; still water has no flow', async () => {
+  const { surfacesOf } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const river = [0, 0, 100, 0, 100, 400, 0, 400], pond = [200, 0, 300, 0, 300, 100, 200, 100];
+  const s = surfacesOf({ regions: [{ floor: 'water', polygons: [river], flow: Math.PI / 2, current: 1 }, { floor: 'water', polygons: [pond] }] });
+  assert.equal(s.flows.length, 1, 'only the river');
+  assert.equal(s.flows[0].angle, Math.PI / 2);
+  assert.equal(s.flows[0].speed, 1);
+  assert.equal(s.water.length, 2);
+});
+
+test('a rainbow comes out when the rain stops under a clearing sky, and fades as the ground dries', async () => {
+  const { rainbowOf } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const sun = { angle: -150, height: 40, strength: 1 };
+  assert.ok(rainbowOf({ wet: 1, sun }) > 0.9, 'the rain just stopped');
+  assert.equal(rainbowOf({ wet: 1, raining: true, sun }), 0, 'still raining');
+  assert.equal(rainbowOf({ wet: 0.85, sun }), 0, 'dried out');
+  assert.ok(rainbowOf({ wet: 0.94, sun }) > 0 && rainbowOf({ wet: 0.94, sun }) < rainbowOf({ wet: 1, sun }), 'fading as it dries');
+  assert.equal(rainbowOf({ wet: 1, sun: { ...sun, moon: true } }), 0, 'by moonlight: none');
+  assert.equal(rainbowOf({ wet: 1, sun, clouds: 0.9 }), 0, 'overcast');
+});

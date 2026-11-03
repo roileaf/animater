@@ -639,6 +639,10 @@ export function rainFloor(floor, weather) {
   const wet = RAIN_TURNS[floor] ?? floor;
   return { floor: wet, splash: RAIN_SPLASHES.has(wet) };
 }
+// Water frozen over (the ground's ice, 0–1, ambient-life.mjs): from most of the way frozen, water underfoot is ice
+// (its skids, glints and cracks), unless it never freezes.
+export const ICE_HOLDS = 0.6;
+export const frozenFloor = (floor, ice, freezes = true) => (floor === 'water' && freezes && (Number(ice) || 0) >= ICE_HOLDS ? 'ice' : floor);
 // Snow lying on the ground (the ground's snow, 0–1, sky-light.mjs's snow cover): from a quarter of a cover on, the
 // open ground underfoot is snow (its sound and its prints: tracks across it). Water and ice stay as they are.
 export const SNOW_LIES = 0.25;

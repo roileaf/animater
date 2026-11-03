@@ -79,3 +79,20 @@ test('tileLeaves: its own choice, else its name, else the gaps in its picture', 
   assert.equal(tileLeaves({ src: 'tree%20tile%20bokken.webp' }), LEAVES.medium, 'unreadable');
   assert.ok(LEAVES.sparse < LEAVES.medium && LEAVES.medium < LEAVES.dense && LEAVES.dense === 1);
 });
+
+test('trees sway with the wind: a little in still air, much more in a gale; the filter comes off cleanly', async () => {
+  const { swayOf, createTreeSway } = await import('../../../scripts/engines/motion/canopy-light.mjs');
+  assert.ok(swayOf(0, 100) > 0 && swayOf(1, 100) > 4 * swayOf(0, 100));
+  class Filter { constructor(v, f, u) { this.uniforms = u; } destroy() {} }
+  const mesh = { filters: null }, other = { filters: [{ keep: true }] };
+  const sway = createTreeSway({ PIXI: { Filter }, grid: () => 100 });
+  sway.attach([mesh, other]);
+  assert.equal(sway.swaying, 2);
+  assert.equal(other.filters.length, 2, 'beside its own filters');
+  sway.set({ wind: 1, angle: 0, view: { x: 0, y: 0, scale: 1 } });
+  assert.equal(mesh.filters[0].uniforms.uAmp, swayOf(1, 100));
+  sway.attach([mesh]);
+  assert.deepEqual(other.filters, [{ keep: true }], 'a tile no longer a tree loses it, keeping its own');
+  sway.clear();
+  assert.equal(mesh.filters.length, 0);
+});

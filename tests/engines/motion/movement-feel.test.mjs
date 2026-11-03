@@ -1417,3 +1417,11 @@ test('a walking plant leaves root prints and sheds a leaf every other stride, on
   assert.equal(shedLeaf('water', at(2)), null, 'none on water');
   assert.ok(!puffsFor('grass', at(2), { gait: 'boots', width: 100 }).some((p) => p.gait === 'leaf'), 'only plants shed');
 });
+
+test('water frozen over is ice underfoot, most of the way frozen and only where it freezes', async () => {
+  const { frozenFloor } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.equal(frozenFloor('water', 0.8), 'ice');
+  assert.equal(frozenFloor('water', 0.3), 'water', 'still thin: water');
+  assert.equal(frozenFloor('water', 1, false), 'water', 'a hot spring');
+  assert.equal(frozenFloor('grass', 1), 'grass');
+});
