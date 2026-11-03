@@ -150,6 +150,9 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); 
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s; }
+// Lighter stacks for the weather, which redraws every pixel every frame: three or four layers, rescaled to fbm's range.
+float fbm3(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s / 0.875 * 0.96875; }
+float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s / 0.9375 * 0.96875; }
 // Where snow lies in patches: the same pattern as snowPatchAt in this file (a hash without sine, so the GPU and the
 // creatures' tracks agree on it).
 float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -199,11 +202,13 @@ float crestGlints(vec2 px, float t){
   return best * patches;
 }
 // How frozen the water is here (0–1): ice creeps in from the banks as it freezes (the blurred water mask is lowest at
-// its edges), raggedly, until it covers the whole of it; only water that freezes (uFreeze).
+// its edges), raggedly, until it covers the whole of it; only water that freezes (uFreeze). At the region's very edge it
+// thins out raggedly, so a region drawn a little off the painted banks leaves no ruled line.
 float iceOver(vec2 px, float water){
   if (uIce < 0.005 || water < 0.01) return 0.0;
-  float deep = smoothstep(0.45, 0.98, texture2D(uBanks, vUv).a), ragged = fbm(px / (uGrid * 0.9)) - 0.5;
-  return water * texture2D(uFreeze, vUv).a * smoothstep(0.0, 0.1, uIce * 1.3 - deep - ragged * 0.35);
+  float banks = texture2D(uBanks, vUv).a, deep = smoothstep(0.45, 0.98, banks), ragged = fbm(px / (uGrid * 0.9)) - 0.5;
+  float rim = smoothstep(0.32, 0.62, banks + ragged * 0.3);
+  return water * rim * texture2D(uFreeze, vUv).a * smoothstep(0.0, 0.1, uIce * 1.3 - deep - ragged * 0.35);
 }
 // One bird's shadow seen from above, in squares from its middle (u.x ahead, u.y to its side): a slim body and head, a
 // short tail, and two wings swept back and gently crooked, each tapering to its tip. 'beat' (0 wings level – 1 raised
@@ -223,8 +228,8 @@ float birdShape(vec2 u, float beat){
 // a second, warping noise, drifting with the wind.
 float cloudField(vec2 px, float t){
   vec2 q = px / (uGrid * 5.0) - uWindDir * t * (0.05 + 0.14 * uWind);
-  vec2 warp = vec2(fbm(q * 1.3 + vec2(1.7, 9.2) + t * 0.01), fbm(q * 1.3 + vec2(8.3, 2.8) - t * 0.012)) - 0.5;
-  return fbm(q + warp * 0.9);
+  vec2 warp = vec2(noise(q * 1.3 + vec2(1.7, 9.2) + t * 0.01), noise(q * 1.3 + vec2(8.3, 2.8) - t * 0.012)) - 0.5;
+  return fbm4(q + warp * 0.9);
 }
 // Laying one colour over what is drawn so far (premultiplied).
 vec4 overP(vec4 p, vec3 c, float a){ a = clamp(a, 0.0, 1.0); return vec4(c * a + p.rgb * (1.0 - a), a + p.a * (1.0 - a)); }
@@ -235,7 +240,7 @@ vec4 addP(vec4 p, vec3 c, float a){ a = clamp(a, 0.0, 1.0); return vec4(p.rgb + 
 // flying debris. Each in cells of the map, one at most per cell, there or not by the amount. f: kind, amount, size.
 // Gusts: broad bands of heavier weather sweeping across the map with the wind (0.35 light – 1 heaviest).
 float gustAt(vec2 px, float t){
-  return 0.35 + 0.65 * smoothstep(0.32, 0.72, fbm(px / (uGrid * 12.0) - uWindDir * t * (0.12 + 0.3 * uWind) + vec2(0.0, t * 0.02)));
+  return 0.35 + 0.65 * smoothstep(0.32, 0.72, fbm3(px / (uGrid * 12.0) - uWindDir * t * (0.12 + 0.3 * uWind) + vec2(0.0, t * 0.02)));
 }
 // Rain seen from above: four depths of thin streaks, each drop's length and brightness its own, brightest at its head
 // and fading along its tail (the near ones longer, from the blur of their speed); sheets of heavier rain sweep through;
@@ -308,14 +313,14 @@ vec4 sandLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
   float speed = (2.5 + 5.0 * uWind);
   // Three layers of billows, the near ones faster, each torn by a warp that rolls with them; lit on their windward
   // face, shadowed in their lee, so they have body.
-  for (int i = 0; i < 3; i++) {
-    float depth = float(i), near = 1.0 - depth * 0.3, scale = 4.5 - depth * 1.2;
+  for (int i = 0; i < 2; i++) {
+    float depth = float(i), near = 1.0 - depth * 0.45, scale = 4.5 - depth * 1.8;
     vec2 q = vec2(along / (uGrid * scale) - t * speed * (0.18 + 0.12 * near), across / (uGrid * scale * 0.45)) + depth * vec2(5.1, 2.7);
-    vec2 warp = vec2(fbm(q * 0.8 + vec2(t * 0.15, 0.0)), fbm(q * 0.8 + vec2(3.7, -t * 0.12))) - 0.5;
-    float body = fbm(q + warp * 1.8), lee = fbm(q + warp * 1.8 + vec2(0.12, 0.0));
+    vec2 warp = vec2(noise(q * 0.8 + vec2(t * 0.15, 0.0)), noise(q * 0.8 + vec2(3.7, -t * 0.12))) - 0.5;
+    float body = fbm4(q + warp * 1.8), lee = body - (noise(q * 2.0 + warp * 3.6 + vec2(0.25, 0.0)) - 0.5) * 0.12;
     float billow = smoothstep(0.38, 0.78, body) * (0.55 + 0.45 * gust);
     vec3 tone = col * (0.72 + 0.5 * clamp((body - lee) * 6.0 + 0.5, 0.0, 1.0));
-    p = overP(p, tone, billow * (0.32 + 0.12 * near) * amount * over);
+    p = overP(p, tone, billow * (0.4 + 0.12 * near) * amount * over);
   }
   // Fine grain racing through: specks flickering past, too quick to be lines.
   vec2 g = vec2(along - t * uGrid * (9.0 + 9.0 * uWind), across) / (uGrid * 0.06 * size);
@@ -522,6 +527,7 @@ void main(){
     float inside = texture2D(uIndoor, vUv).a, roof = texture2D(uRoofShown, vUv).a;
     // (A dark wash in the light's colour, not a multiply: Foundry's canvas layer draws its children blended normally.)
     float over = (1.0 - inside) + inside * roof, s = uVeil.a * 0.5 * over;
+    if (over < 0.01) { gl_FragColor = vec4(0.0); return; }
     // The clouds' shadows, some five squares across, drifting the way the wind blows (and a little even on a still day:
     // the wind aloft); more of them the cloudier: over the ground, the roofs and the trees alike. A sky closing over has
     // no sun between its clouds: no shadows, only its flat light.
@@ -545,7 +551,8 @@ void main(){
       // Lit from the sun's side: brighter where the cloud thins toward the sun, grey-blue where it deepens away from it.
       float edge = 1.0 - uCover, d = cloudField(px, t);
       vec2 toSun = -normalize(uCloudShift + vec2(1e-3));
-      float lit = clamp(0.5 + (d - cloudField(px + toSun * uGrid * 0.35, t)) * 4.0, 0.0, 1.0);
+      vec2 lq = (px + toSun * uGrid * 0.35) / (uGrid * 5.0) - uWindDir * t * (0.05 + 0.14 * uWind);
+      float lit = clamp(0.5 + (d - fbm3(lq)) * 4.0, 0.0, 1.0);
       float c = smoothstep(edge - 0.04, edge + 0.22, d) * (1.0 - 0.6 * smoothstep(0.75, 1.0, uCover));
       vec3 tone = mix(vec3(0.58, 0.62, 0.7), vec3(1.0), 0.35 + 0.65 * lit) * uCloudSky.rgb * (0.6 + 0.4 * sun);
       pw = overP(pw, tone, c * 0.42 * uCloudSky.a * over);
@@ -555,7 +562,7 @@ void main(){
       // Two banks at different heights drifting at their own pace, warped into wisps; deeper in the hollows and over water.
       vec2 q = px / (uGrid * 7.0) - uWindDir * t * (0.02 + 0.06 * uWind);
       vec2 warp = vec2(noise(q * 2.0 + t * 0.03), noise(q * 2.0 + 5.2 - t * 0.025)) - 0.5;
-      float lowBank = fbm(q + warp * 0.8), highBank = fbm(q * 0.6 + vec2(3.1, 7.4) - uWindDir * t * 0.02);
+      float lowBank = fbm4(q + warp * 0.8), highBank = fbm3(q * 0.6 + vec2(3.1, 7.4) - uWindDir * t * 0.02);
       float hollow = 0.75 + 0.5 * texture2D(uLow, vUv).a;
       float n = 0.6 * smoothstep(0.25, 0.75, lowBank) + 0.4 * smoothstep(0.3, 0.7, highBank);
       pw = overP(pw, uFogW.rgb, uFogW.a * (0.3 + 0.7 * n) * hollow * 0.8 * over);
@@ -563,7 +570,7 @@ void main(){
     // Overcast: one low grey ceiling seen from above, unbroken, its underside rolling slowly; the ground dim beneath it.
     if (uSky.x > 0.005) {
       vec2 q = px / (uGrid * 9.0) - uWindDir * t * (0.02 + 0.06 * uWind);
-      float roll = fbm(q + vec2(fbm(q * 1.5 + t * 0.01), 0.0) * 0.8), fine = fbm(q * 3.5 + 7.0);
+      float roll = fbm4(q + vec2(noise(q * 1.5 + t * 0.01), 0.0) * 0.8), fine = noise(q * 3.5 + 7.0);
       vec3 tone = mix(vec3(0.5, 0.53, 0.58), vec3(0.78, 0.8, 0.84), roll * 0.8 + fine * 0.2);
       pw = overP(pw, tone, (0.34 + 0.12 * roll) * uSky.x * over);
     }
@@ -573,7 +580,7 @@ void main(){
       vec2 side = vec2(-uWindDir.y, uWindDir.x);
       vec2 q = vec2(dot(px, uWindDir) / (uGrid * 6.0) - t * 0.03, dot(px, side) / (uGrid * 2.2));
       vec2 warp = vec2(noise(q * 1.3 + t * 0.02), noise(q * 1.3 + 4.4)) - 0.5;
-      float veil = smoothstep(0.3, 0.7, fbm(q + warp * 0.9)), wisp = smoothstep(0.5, 0.78, fbm(q * 2.3 + warp + 9.0));
+      float veil = smoothstep(0.3, 0.7, fbm4(q + warp * 0.9)), wisp = smoothstep(0.5, 0.78, fbm3(q * 2.3 + warp + 9.0));
       float hollow = 0.8 + 0.7 * texture2D(uLow, vUv).a;
       pw = overP(pw, vec3(0.94, 0.96, 0.98), (0.12 + veil * 0.4 + wisp * 0.25) * hollow * uSky.y * over);
     }
@@ -584,22 +591,22 @@ void main(){
     if (uSky.z > 0.005) {
       vec2 side = vec2(-uWindDir.y, uWindDir.x);
       vec2 q = vec2(dot(px, uWindDir) / (uGrid * 5.0) - t * (0.6 + 1.2 * uWind), dot(px, side) / (uGrid * 14.0));
-      float sheet = smoothstep(0.45, 0.8, fbm(q + vec2(noise(q * 0.5 + t * 0.1), 0.0)));
+      float sheet = smoothstep(0.45, 0.8, fbm3(q + vec2(noise(q * 0.5 + t * 0.1), 0.0)));
       pw = overP(pw, vec3(0.5, 0.55, 0.62), sheet * 0.3 * uSky.z * over);
-      float pool = smoothstep(0.55, 0.75, fbm(px / (uGrid * 2.5) + 3.3)) * outside * (1.0 - water);
+      float pool = smoothstep(0.55, 0.75, fbm3(px / (uGrid * 2.5) + 3.3)) * outside * (1.0 - water);
       pw = overP(pw, vec3(0.36, 0.42, 0.5), pool * 0.18 * uSky.z * over);
     }
     // A hurricane from above: great bands of cloud spiralling round its eye, far off the map's corner, turning slowly.
     if (uSky.w > 0.005) {
       vec2 eye = uSize * vec2(1.25, -0.35), d = px - eye;
       float r = length(d) / max(uSize.x, uSize.y), ang = atan(d.y, d.x);
-      float arm = sin(ang * 2.0 - log(r + 0.05) * 7.0 + t * 0.12 + fbm(vec2(ang * 2.0, r * 6.0)) * 2.5);
-      float band = smoothstep(0.0, 0.9, arm) * (0.6 + 0.4 * fbm(px / (uGrid * 6.0) - uWindDir * t * 0.3));
+      float arm = sin(ang * 2.0 - log(r + 0.05) * 7.0 + t * 0.12 + fbm3(vec2(ang * 2.0, r * 6.0)) * 2.5);
+      float band = smoothstep(0.0, 0.9, arm) * (0.6 + 0.4 * fbm3(px / (uGrid * 6.0) - uWindDir * t * 0.3));
       pw = overP(pw, mix(vec3(0.42, 0.45, 0.5), vec3(0.75, 0.78, 0.82), band), band * 0.5 * uSky.w * over);
     }
     // Freezing rain's glaze: everything outdoors coated in clear ice, glossy and pale, catching hard points of light.
     if (uSky2.x > 0.005) {
-      float sheen = 0.5 + 0.5 * fbm(px / (uGrid * 1.5));
+      float sheen = 0.5 + 0.5 * fbm3(px / (uGrid * 1.5));
       pw = overP(pw, vec3(0.82, 0.9, 1.0), (0.12 + 0.12 * sheen) * uSky2.x * over);
       float glint = twinkle(px, uGrid * 0.22, t, 2.5) * smoothstep(0.55, 0.85, sheen);
       pw = overP(pw, vec3(1.0), glint * 0.9 * uSky2.x * over);
@@ -607,7 +614,7 @@ void main(){
     // Frost creeping in from the map's edges: feathery white veins branching across the ground, thickening as it comes.
     if (uSky2.y > 0.005) {
       vec2 e = min(px, uSize - px) / uGrid;
-      float reach = min(e.x, e.y), creep = 1.0 - smoothstep(2.0, 9.0, reach + (fbm(px / (uGrid * 3.0)) - 0.5) * 6.0);
+      float reach = min(e.x, e.y), creep = 1.0 - smoothstep(2.0, 9.0, reach + (fbm3(px / (uGrid * 3.0)) - 0.5) * 6.0);
       float veins = 0.0, amp = 1.0, sc = 1.2;
       for (int k = 0; k < 3; k++) { veins += amp * (1.0 - smoothstep(0.0, 0.06, abs(noise(px / (uGrid * sc) + float(k) * 7.0) - 0.5))); amp *= 0.6; sc *= 0.45; }
       float rime = clamp(veins * 0.6, 0.0, 1.0) * creep + creep * 0.25;
@@ -624,8 +631,8 @@ void main(){
     // Smoke: thick billows rolling with the wind, dark and brown, thinning to haze between them.
     if (uSky2.w > 0.005) {
       vec2 q = px / (uGrid * 6.0) - uWindDir * t * (0.08 + 0.15 * uWind) + vec2(0.0, -t * 0.02);
-      vec2 warp = vec2(fbm(q * 1.2 + t * 0.04), fbm(q * 1.2 + 5.5 - t * 0.03)) - 0.5;
-      float body = fbm(q + warp * 1.5), lit = fbm(q + warp * 1.5 + vec2(0.1, -0.1));
+      vec2 warp = vec2(noise(q * 1.2 + t * 0.04), noise(q * 1.2 + 5.5 - t * 0.03)) - 0.5;
+      float body = fbm4(q + warp * 1.5), lit = body - (noise(q * 2.5 + warp * 3.0 + vec2(0.3, -0.3)) - 0.5) * 0.12;
       float billow = smoothstep(0.4, 0.75, body);
       vec3 tone = mix(vec3(0.24, 0.2, 0.17), vec3(0.5, 0.42, 0.34), clamp((lit - body) * 5.0 + 0.5, 0.0, 1.0));
       pw = overP(pw, tone, billow * 0.55 * uSky2.w * over);
@@ -638,7 +645,7 @@ void main(){
       vec2 q = vec2(dot(px, uWindDir) / (uGrid * 4.0) - t * 0.6, dot(px, side) / (uGrid * 0.8));
       // Spectral wisps: torn ribbons racing with the wind, brighter at their edges, faint trails behind them.
       vec2 warp = vec2(noise(q * 0.8 + t * 0.2), noise(q * 0.8 + 3.3)) - 0.5;
-      float body = fbm(q + warp * 1.4);
+      float body = fbm4(q + warp * 1.4);
       float wisp = smoothstep(0.58, 0.72, body) * (1.0 - smoothstep(0.72, 0.9, body)) * 1.4 + smoothstep(0.72, 0.9, body) * 0.5;
       pw = overP(pw, uWisps.rgb, wisp * uWisps.a * 0.55 * over);
     }
@@ -654,14 +661,15 @@ void main(){
       vec2 d = px - cen;
       bool twister = uOdd.w < 1.5;
       float radius = uGrid * (twister ? 6.0 : 2.5), r = length(d) / radius;
+      if (r < 1.6) {
       // The air turning: a cloud of dust whose pattern is wound round the middle, faster nearer it, so it swirls.
       float turn = t * (twister ? 2.2 : 3.5) / (0.25 + r) ;
       vec2 sp = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * (d / radius);
-      float dust = fbm(sp * 2.8 + 11.0) * 0.6 + fbm(sp * 6.5 - 3.0) * 0.4;
+      float dust = fbm4(sp * 2.8 + 11.0) * 0.6 + fbm3(sp * 6.5 - 3.0) * 0.4;
       float body = smoothstep(0.32, 0.7, dust) * (1.0 - smoothstep(0.55, 1.15, r));
       // The funnel itself: dense and dark round a small eye, a skirt of dust thrown out where it meets the ground.
       float wall = smoothstep(0.06, 0.18, r) * (1.0 - smoothstep(0.18, 0.42, r));
-      float skirt = (1.0 - smoothstep(0.0, 0.3, abs(r - 0.95))) * smoothstep(0.3, 0.7, fbm(sp * 4.0 + t * 0.2));
+      float skirt = (1.0 - smoothstep(0.0, 0.3, abs(r - 0.95))) * smoothstep(0.3, 0.7, fbm3(sp * 4.0 + t * 0.2));
       vec3 tone = twister ? vec3(0.2, 0.19, 0.17) : vec3(0.74, 0.6, 0.4);
       // Its shadow on the ground, cast away from the sun.
       vec2 sd = (d - uCloudShift * 0.6) / radius;
@@ -673,6 +681,7 @@ void main(){
       vec2 pol = vec2(r * 7.0, (ang + t * 2.2 / (0.4 + r)) / 6.2832 * 18.0);
       vec2 oid = floor(pol), ofl = fract(pol) - 0.5;
       if (r < 1.4 && hash(oid + 4.4) < (twister ? 0.3 : 0.15)) pw = overP(pw, tone * 0.5, (1.0 - smoothstep(0.1, 0.2, length(ofl))) * 0.9 * uSwirlAmount * over);
+      }
     }
     gl_FragColor = pw;
     return;

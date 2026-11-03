@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.7.1 (2026-11-03)
+
+- **Lighter weather.** The weather on the map costs two to three times less on the graphics card: lighter noise where its finest detail never showed, the clouds' lit side and the sandstorm's billows worked out more cheaply, and nothing drawn over a room you look into. Same look, smoother on modest machines.
+- **Ice without a ruled edge.** Frozen water thins out raggedly at the edge of its region, so a water region drawn a little off the painted banks no longer leaves a straight line across the ice.
+
 ## 2.7.0 (2026-11-03)
 
 Animater now draws the weather itself. Every new effect has a world setting and an "on my screen" setting (Animater settings, Sky).
