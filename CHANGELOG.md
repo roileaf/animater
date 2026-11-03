@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.5.3 (2026-11-03)
+
+- **A hovering creature's shadow stays put.** A token set to Fly no longer has its shadow slide back and forth across the floor as it bobs; it keeps its place, as a striding creature's does, and only softens a little as the body rises.
+
 ## 2.5.2 (2026-11-03)
 
 - **Spell lights leave when their shot does, measured from the clips.** Each shot's launch is now read from the JB2A clip's own frames instead of guessed, so Magic Missile, Fire Bolt and other bolts no longer hold their light at the caster while the missile is already flying (a 2.5.1 regression). Eldritch Blast waits at the caster through its charge at every range, short ones included.

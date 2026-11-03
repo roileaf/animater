@@ -1358,13 +1358,16 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           // Its hover bob (token.bob(): pixels up, ±5% of its width): rising, the shadow spreads, softens and fades
           // a little; dipping, it tightens and darkens. The shadow itself stays on the floor.
           const rise = bob / (Number(token.width) || size);
+          // How high it flies, in squares, before the bob softens the drawn shadow (geom.lift doubles as its blur): the
+          // lights throw it from there, so a hovering creature's shadow keeps its place as it bobs.
+          const height = geom.lift;
           if (rise) { geom.rx *= 1 + 0.8 * rise; geom.ry *= 1 + 0.8 * rise; geom.alpha *= 1 - 2 * rise; geom.lift += 20 * rise; cast.alpha *= 1 - 2 * rise; cast.lift += 20 * rise; }
           // `art`: the token's drawn art, for a shadow in its own shape (the layer keeps the round one without it).
           if (art) geom.art = art;
           if (lit) {
             // The stronger light's shadow, and the weaker's beside it; the one over creatures below is the stronger's.
             // Its body about as tall as it is wide: a light must be above all of it to cast its shadow.
-            const [main, ...others] = aimShadows(token, move, lit, geom.lift, false, 0.8 * (Number(token.width) || size) / size);
+            const [main, ...others] = aimShadows(token, move, lit, height, false, 0.8 * (Number(token.width) || size) / size);
             const done = layer.updateShadow(handle, fallen(geom, main, point)) !== false;
             remember(move, key, refs, second(id, both ? others.map((other) => fallen(geom, other, point)) : null) && done);
             cast.x = point.x + main.dx; cast.y = point.y + main.dy; cast.alpha *= main.alpha; cast.lift += 4 * main.soft;

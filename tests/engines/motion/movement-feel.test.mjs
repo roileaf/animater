@@ -1360,3 +1360,24 @@ test('"Shadows in creatures’ shapes" off draws round shadows; "A shadow for ea
   assert.ok(round[0].along !== undefined && round[0].fall, 'round shadows still fall away from the light');
   assert.equal(one.length, 1, 'one shadow, from the stronger light');
 });
+
+test('a hovering creature’s shadow keeps its place as it bobs; only its softness and size breathe',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
+  let last = null;
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => { last = g; }, removeShadow() {}, clear() {} };
+  let t = 0, bob = 0;
+  // A torch three squares away, held up: set to fly at the floor's height, it hovers in place and bobs.
+  const torch = { ...lightAround({ x: 500, y: 500 }, [{ x: 200, y: 600, radius: 800, bright: 400, alpha: 0.5, elevation: 10 }], 1), key: 'torch' };
+  const lit = { light: torch, lights: [torch], darkness: 1 };
+  const flier = { id: 'f', x: 500, y: 500, width: 100, elevation: 0, base: 0, visible: true, gait: 'none', action: 'fly', light: () => lit, bob: () => bob };
+  const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [flier], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
+  const settle = () => { for (let i = 0; i < 20; i++) { t += 100; feel.tick(); } return { ...last.fall }; };
+  feel.tick();
+  const still = settle();
+  for (const b of [5, -5, 3]) {
+    bob = b;
+    const now = settle();
+    assert.ok(Math.hypot(now.x - still.x, now.y - still.y) < 0.5, `bob ${b}: ${JSON.stringify(now)} vs ${JSON.stringify(still)}`);
+  }
+});
