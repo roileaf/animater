@@ -502,7 +502,7 @@ test('footstepVolume: quiet, wet floors louder, bigger creatures heavier', () =>
   assert.ok(footstepVolume('stone', { squares: 100 }) <= 0.17 * 2.2, 'a Gargantuan tread tops out at 2.2×');
 });
 
-function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 200, printCap, printLifetime, trails, steps = [], groundShadows } = {}) {
+function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 200, printCap, printLifetime, trails, steps = [], groundShadows, fills } = {}) {
   let time = 0;
   const live = new Set(), shadows = new Map(), log = { added: 0, removed: 0, shadowsAdded: 0, shadowsRemoved: 0, cleared: 0 };
   const layer = {
@@ -516,7 +516,7 @@ function harness({ tokens, floor = 'dirt', enabled = true, density = 1, cap = 20
   };
   const feel = createMovementFeel({
     tokens: () => tokens, floorAt: typeof floor === 'function' ? floor : () => floor, enabled: () => enabled, density: () => density, grid: () => 100, distance: () => 5,
-    now: () => time, layer, cap, printCap, printLifetime, trails, footstep: (f, at, t) => steps.push([f, t.id]), ...(groundShadows ? { groundShadows } : {}),
+    now: () => time, layer, cap, printCap, printLifetime, trails, ...(fills ? { fills } : {}), footstep: (f, at, t) => steps.push([f, t.id]), ...(groundShadows ? { groundShadows } : {}),
   });
   return { feel, live, shadows, log, steps, advance: (ms) => { time += ms; }, layer };
 }
@@ -1380,4 +1380,40 @@ test('a hovering creature’s shadow keeps its place as it bobs; only its softne
     const now = settle();
     assert.ok(Math.hypot(now.x - still.x, now.y - still.y) < 0.5, `bob ${b}: ${JSON.stringify(now)} vs ${JSON.stringify(still)}`);
   }
+});
+
+test('snow lying on the open ground is snow underfoot, from a quarter of a cover; water and ice stay', async () => {
+  const { snowFloor } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.equal(snowFloor('grass', 0.6), 'snow');
+  assert.equal(snowFloor('stone', 0.3), 'snow');
+  assert.equal(snowFloor('grass', 0.1), 'grass', 'a dusting: the grass still');
+  assert.equal(snowFloor('water', 1), 'water');
+  assert.equal(snowFloor('ice', 1), 'ice');
+});
+
+test('controller: fresh snow fills the tracks in it: prints age as many times as fast as fills() gives for their floor', () => {
+  const run = (fills) => {
+    const token = { id: 'fill', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true };
+    const h = harness({ tokens: [token], floor: 'snow', printLifetime: 10000, fills });
+    h.feel.tick(); token.x = 160; h.advance(16); h.feel.tick();
+    for (let i = 0; i < 10; i++) { h.advance(200); h.feel.tick(); }
+    return h.feel.prints;
+  };
+  assert.ok(run(undefined) > 0, 'two seconds on, still there');
+  assert.equal(run((floor) => (floor === 'snow' ? 6 : 1)), 0, 'in a blizzard: filled in');
+  assert.ok(run((floor) => (floor === 'mud' ? 6 : 1)) > 0, 'only their own floor');
+});
+
+test('a walking plant leaves root prints and sheds a leaf every other stride, on any floor but water', async () => {
+  const { puffsFor, shedLeaf, LEAF_COLORS } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const at = (index) => ({ x: 500, y: 500, heading: 0, index });
+  const snow = puffsFor('snow', at(1), { gait: 'roots', width: 100 });
+  assert.ok(snow.some((p) => p.kind === 'print' && p.gait === 'roots'), 'root prints in the snow');
+  const grass = puffsFor('grass', at(2), { gait: 'roots', width: 100 });
+  const leaf = grass.find((p) => p.gait === 'leaf');
+  assert.ok(leaf, 'a leaf on the grass, which keeps no prints');
+  assert.ok(LEAF_COLORS.includes(leaf.color), 'in its own colour, not the ground\'s');
+  assert.equal(shedLeaf('grass', at(3)), null, 'every other stride');
+  assert.equal(shedLeaf('water', at(2)), null, 'none on water');
+  assert.ok(!puffsFor('grass', at(2), { gait: 'boots', width: 100 }).some((p) => p.gait === 'leaf'), 'only plants shed');
 });

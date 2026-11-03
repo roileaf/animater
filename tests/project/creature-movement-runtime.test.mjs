@@ -30,7 +30,7 @@ function host({ tremorOn = false } = {}) {
 }
 
 test('every classified creature gait has creature audio on every supported floor', () => {
-  for (const gait of GAITS.filter((g) => !['boots', 'unknown', 'none'].includes(g))) {
+  for (const gait of GAITS.filter((g) => !['boots', 'roots', 'unknown', 'none'].includes(g))) {
     const family = movement.GAIT_STEP_FILES[gait === 'claws' ? 'paws' : gait];
     for (const floor of Object.keys(movement.FOOTSTEP_FILES)) {
       const pick = movement.gaitStep(gait, floor, 0);

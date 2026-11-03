@@ -513,7 +513,8 @@ export const PRESETS = [
   token('Wind as it climbs', F('distortion', { maskSpriteScaleX: 2, maskSpriteScaleY: 2 }, { amount: follows('height', 0, 6), maskSpriteY: { animType: 'move', speed: -0.04 } })),
   // Weather and light: a glow that only shows in the dark, a creature soaked and darkened in the rain.
   token('Glows in the dark', F('glow', { distance: 10, color: 0x9fd8ff }, { outerStrength: follows('darkness', 0, 2.6) })),
-  token('Dusted with snow', F('frost', { color: 0xeef6ff }, { amount: follows('weather', 0, 0.35), snow: follows('weather', 0, 0.7) }), F('adjustment', {}, { brightness: follows('weather', 1, 1.05), blue: follows('weather', 1, 1.08) })),
+  // Only snow settling on top in soft clumps: no frost veins (a frozen creature's), barely colder.
+  token('Dusted with snow', F('frost', { color: 0xeef6ff }, { amount: follows('weather', 0, 0), snow: follows('weather', 0, 0.45) }), F('adjustment', {}, { brightness: follows('weather', 1, 1.03), blue: follows('weather', 1, 1.04) })),
   token('Soaked in the rain', F('adjustment', {}, { brightness: follows('weather', 1, 0.78), saturation: follows('weather', 1, 0.68), blue: follows('weather', 1, 1.22), green: follows('weather', 1, 1.05) }),
     F('glow', { distance: 6, color: 0x9cc8ff }, { outerStrength: follows('weather', 0, 0.9) })),
   // Knocked out (damage-moments.mjs deathRecipe): the killing blow's look eats about half the creature as it falls,

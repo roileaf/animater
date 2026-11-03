@@ -12,10 +12,11 @@
 //   claws    splayed five-toed clawed prints in staggered pairs and a tail drag between them (lizards, crocodiles)
 //   slither  one continuous wavy groove, no prints (snakes, nagas, worms)
 //   ooze     one smooth, wide smear (oozes, slimes, jellies, puddings)
+//   roots    a knot of splayed root tendrils, left and right, with a leaf dropped now and then (leshies, treants, plants)
 //   legs     clusters of tiny dots (spiders, insects, centipedes, crabs, swarms)
 //   unknown  dust and footsteps but no prints: anything Animater cannot place, and wheeled things
 //   none     nothing at all, not even dust or footsteps: incorporeal creatures (ghosts, wraiths, wisps)
-export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'unknown', 'none']);
+export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'roots', 'unknown', 'none']);
 
 // Short stems only match a whole word (plural allowed): "cat" never matches "catapult", "ant" never "giant".
 const words = (list) => new RegExp(`\\b(?:${list.split(/\s+/).filter(Boolean).join('|')})(?:s|es)?\\b`, 'i');
@@ -34,6 +35,8 @@ const NAME_GAITS = [
   ['dragon', words('dragon wyvern drake wyrm wyrmling dracolisk')],
   ['dragon', tails('dragon drake wyrm')],
   ['ooze', words('ooze slime jelly jellies pudding gelatinous blob')],
+  // Walking plants: roots for feet.
+  ['roots', words('leshy leshies treant shambling')],
   ['slither', words('snake serpent viper cobra python adder asp naga worm eel slug leech grick larva maggot salamander')],
   ['slither', tails('snake serpent worm')],
   ['legs', words('spider scorpion centipede millipede beetle ant insect crab tick mite roach cockroach mantis locust swarm vermin ankheg crawler chuul drider isopod')],
@@ -56,13 +59,14 @@ const TRAIT_GAITS = [
   ['ooze', ['ooze']],
   ['legs', ['swarm']],
   ['dragon', ['dragon']],
+  ['roots', ['plant', 'leshy']],
   ['paws', ['animal', 'beast']],
-  ['boots', ['humanoid', 'giant', 'fey', 'fiend', 'celestial', 'undead', 'construct', 'elemental', 'plant', 'monitor',
+  ['boots', ['humanoid', 'giant', 'fey', 'fiend', 'celestial', 'undead', 'construct', 'elemental', 'monitor',
     'aeon', 'azata', 'demon', 'devil', 'daemon', 'angel', 'archon', 'genie', 'goblin', 'orc', 'elf', 'dwarf', 'gnome',
-    'halfling', 'human', 'kobold', 'leshy', 'ratfolk', 'catfolk', 'lizardfolk', 'android', 'ysoki', 'vesk', 'lashunta']],
+    'halfling', 'human', 'kobold', 'ratfolk', 'catfolk', 'lizardfolk', 'android', 'ysoki', 'vesk', 'lashunta']],
 ];
 // A player character's ancestry that changes its feet; any other character wears boots.
-const ANCESTRY_GAITS = { centaur: 'hooves', minotaur: 'hooves', tengu: 'talons' };
+const ANCESTRY_GAITS = { centaur: 'hooves', minotaur: 'hooves', tengu: 'talons', leshy: 'roots' };
 
 const list = (value) => {
   if (!value) return [];
@@ -82,8 +86,8 @@ export function creatureGait({ system = '', actor = null, name = '' } = {}) {
   const typeValue = String((typeof type === 'string' ? type : type.value) ?? '').toLowerCase();
   if (actor?.type === 'character') {
     for (const trait of traits) if (ANCESTRY_GAITS[trait]) return ANCESTRY_GAITS[trait];
-    const race = items.find((n) => /\b(centaur|minotaur|tengu)\b/i.test(n));
-    if (race) return ANCESTRY_GAITS[race.toLowerCase().match(/\b(centaur|minotaur|tengu)\b/)[1]];
+    const race = items.find((n) => /\b(centaur|minotaur|tengu|leshy)\b/i.test(n));
+    if (race) return ANCESTRY_GAITS[race.toLowerCase().match(/\b(centaur|minotaur|tengu|leshy)\b/)[1]];
     return 'boots';
   }
   const text = `${name ?? ''} ${actor?.name ?? ''} ${typeof type === 'object' ? `${type.subtype ?? ''} ${type.custom ?? ''}` : ''}`;

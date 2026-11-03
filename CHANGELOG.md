@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.6.0 (2026-11-03)
+
+The sky comes down to the map: light through the trees, weather that settles on the ground and the roofs, life in the grass and over the water, and light from the windows at night. Every effect has a world setting and an "on my screen" setting (Animater settings, Sky), and most are drawn from Balanced quality up.
+
+- **Light through the trees.** Tree tiles cast their shade on the ground away from the sun, broken by sun flecks that drift and wink as the leaves move: short at noon, long and golden at dusk, silver under the moon. A tile's height is read from its level (a roof as tall as its storey, a tree by its name), and its leaves are sparse, medium or dense by its name or picture. Tile configuration → Animater sets the sunlight (tree, roof or none), leaves and height for one tile.
+- **Roof shadows.** Roof tiles cast a building's shadow on the open ground, and let the sun in through their holes onto the floor inside.
+- **Cloud shadows** drift over the open ground with the wind on a cloudy day.
+- **Sun on the water, snow and ice.** Soft sheen and a few bright, sun-coloured glints on water, gathering where the swell turns to the sun and never in shade; snow and ice sparkle.
+- **Heat shimmer** over hot ground at midday under a clear sky.
+- **Lightning that lights the room through its windows.** In a thunderstorm the map flashes, and a room only where the flash comes in: a bright patch fanning in from each window and open door. Strikes follow the storm's severity (Calendaria's rain and wind, else FXMaster's lightning frequency): a mild storm flashes now and then and dimly, a fierce one often, brightly and sometimes twice. While these flashes are on, Calendaria's HUD lightning and FXMaster's lightning are stood in for on each screen (their settings are never changed).
+- **Warm light from the windows at night.** A lit room's light spills out of its windows and open doors onto the ground outside, in the light's colour, hidden under the eaves and the trees. Creatures standing in it cast their own shapes' shadows away from the lamp, falling across other creatures too. Wall configuration → Animater window says what fills a window: glass, an open frame, curtains (a dim, soft light) or shutters (light in bands).
+- **Falling leaves** drift from under the trees: a few in summer, many and golden red in autumn, blossom in spring.
+- **Morning mist** over water and low ground before sunrise, burning off as the sun climbs.
+- **Wet ground after rain:** darkened ground and puddles that catch the sky, drying over a few hours of game time; soil stays mud underfoot until it dries.
+- **Snow cover:** falling snow whitens the open ground, the roofs and the trees (a new "Snow on roofs and trees" setting), and melts once it is warm. Snow from the scene's weather settles whatever the calendar's temperature says.
+- **Tracks in the snow.** Snow lying on the open ground is snow underfoot: it crunches and takes the creatures' tracks, darker now so they read, and fresh snow fills them in (rain softens tracks in mud).
+- **Fireflies** on warm summer evenings over the grass and by the water.
+- **Bird shadows** cross the map on a clear day, over the roofs and the trees.
+- **Rain on water:** rings where the drops land, on water and on puddles.
+- **Wind for the scene.** Scene configuration → Animater wind sets how strong (calm, breeze, windy, gale, or sheltered to halve the weather's) and where it comes from, alongside Calendaria's.
+- **Leshies walk on roots.** Leshies and plant creatures leave root-tendril prints and shed a leaf every other stride.
+- **Holes in regions.** A hole drawn in a region is a hole for Animater's floors, surfaces and roofs too.
+- **Snow on creatures is a dusting.** "Dusted with snow" now settles soft snow on the top edges only, without frost veins.
+- **Shadows keep up with moving creatures,** and the window light no longer rebuilds while creatures walk about.
+
 ## 2.5.3 (2026-11-03)
 
 - **A hovering creature's shadow stays put.** A token set to Fly no longer has its shadow slide back and forth across the floor as it bobs; it keeps its place, as a striding creature's does, and only softens a little as the body rises.

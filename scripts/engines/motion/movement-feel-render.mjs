@@ -220,6 +220,39 @@ const PRINTS = {
     drawSoftEllipse(g, color, 0.36 * R, 0.4 * R, 2, -0.3 * R);
     toes(g, color, -0.15 * R, 0, [-1.15, -0.58, 0, 0.58, 1.15], 0.6 * R, 0.11 * R, 0.24 * R);
   },
+  // A walking plant's foot: a knot pressed into the ground, root tendrils splaying ahead and two trailing behind, each
+  // bending once and thinning to its tip.
+  roots(g, color) {
+    drawSoftEllipse(g, color, 0.3 * R, 0.27 * R, 2);
+    const root = (angle, length, width, bend) => {
+      const c = Math.cos(angle), s = Math.sin(angle), nx = -s, ny = c;
+      const pts = [[0, 0], [0.35, bend], [0.7, -bend * 0.5], [1, bend * 0.3]];
+      for (let i = 1; i < pts.length; i++) {
+        const [t0, o0] = pts[i - 1], [t1, o1] = pts[i];
+        g.lineStyle(width * (1.15 - 0.3 * i), color, 1);
+        g.moveTo(c * t0 * length + nx * o0 * R, s * t0 * length + ny * o0 * R);
+        g.lineTo(c * t1 * length + nx * o1 * R, s * t1 * length + ny * o1 * R);
+      }
+    };
+    root(-0.55, 0.85 * R, 0.13 * R, 0.08);
+    root(0.05, 0.95 * R, 0.14 * R, -0.07);
+    root(0.62, 0.8 * R, 0.13 * R, 0.09);
+    root(Math.PI - 0.4, 0.55 * R, 0.11 * R, -0.06);
+    root(Math.PI + 0.45, 0.5 * R, 0.11 * R, 0.06);
+    g.lineStyle(0);
+  },
+  // A fallen leaf along +x: a pointed blade with a darker midrib and a short stem.
+  leaf(g, color) {
+    g.beginFill(color, 1);
+    g.moveTo(-0.85 * R, 0);
+    g.quadraticCurveTo(0, -0.62 * R, 0.95 * R, 0);
+    g.quadraticCurveTo(0, 0.62 * R, -0.85 * R, 0);
+    g.endFill();
+    const dark = [16, 8, 0].reduce((n, sh) => n | (Math.round(((color >> sh) & 255) * 0.55) << sh), 0);
+    g.lineStyle(0.07 * R, dark, 0.9); g.moveTo(-0.85 * R, 0); g.lineTo(0.8 * R, 0);
+    g.lineStyle(0.06 * R, dark, 0.9); g.moveTo(-0.85 * R, 0); g.lineTo(-1.1 * R, 0.08 * R);
+    g.lineStyle(0);
+  },
   // Many legs: two rows of tiny dots.
   legs(g, color) {
     for (const [x, y] of [[-0.6, -0.5], [0, -0.62], [0.6, -0.5], [-0.6, 0.5], [0, 0.62], [0.6, 0.5]]) dot(g, color, x * R, y * R, 0.11 * R);

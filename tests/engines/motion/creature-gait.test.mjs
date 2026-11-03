@@ -98,3 +98,11 @@ test('creatureBulk: size category and heavy bodies for footstep weight', () => {
   assert.deepEqual(creatureBulk(dndActor), { size: 'lg', heavy: true });
   assert.equal(creatureBulk({ system: 'daggerheart', actor: { type: 'adversary', name: 'Stone Golem', system: {} }, name: 'Stone Golem' }).heavy, true);
 });
+
+test('leshies and plant creatures walk on roots; a dryad (fey) keeps boots', () => {
+  assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'character', system: { traits: { value: ['leshy', 'plant'] } } } }), 'roots', 'a leshy character');
+  assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'npc', system: { traits: { value: ['plant'] } } }, name: 'Awakened Shrub' }), 'roots');
+  assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'npc', system: { traits: { value: [] } } }, name: 'Treant' }), 'roots');
+  assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'npc', system: { traits: { value: ['fey'] } } }, name: 'Dryad' }), 'boots');
+  assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'character', system: { traits: { value: ['human'] } } } }), 'boots');
+});

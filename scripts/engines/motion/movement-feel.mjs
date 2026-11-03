@@ -61,10 +61,10 @@ export const FLOOR_LOOK = Object.freeze({
     { kind: 'streak', emit: 'burst', color: 0xe3cc98, count: 6, alpha: 0.7, size: 0.07, life: 550, speed: [0.35, 0.55], cone: 0.7, spread: 0.08, align: true, grow: [0.4, 0.8] },
     { kind: 'print', emit: 'print', color: 0x9a7a45, alpha: 0.45, size: 0.11, life: 6000, hold: 0.35 },
   ] },
-  // A white powder puff, and footprints that linger about 20 s.
+  // A white powder puff, and footprints that linger about 20 s: shadowed hollows, blue-grey on the white.
   snow: { kind: 'powder', parts: [
     { kind: 'puff', emit: 'burst', color: 0xf3f6fa, count: 6, alpha: 0.7, size: 0.11, life: 850, speed: [0.12, 0.3], cone: 1.6, spread: 0.18, grow: [1.2, 1.8] },
-    { kind: 'print', emit: 'print', color: 0xa9b8ca, alpha: 0.55, size: 0.11, life: 20000, hold: 0.6 },
+    { kind: 'print', emit: 'print', color: 0x6c7f97, alpha: 0.72, size: 0.11, life: 20000, hold: 0.6 },
   ] },
   // Ripples and droplets.
   water: { kind: 'ripple', parts: [
@@ -388,7 +388,20 @@ export const TRACKS = Object.freeze({
   legs: { feet: 'cluster', size: 1.5 },
   slither: { feet: 'groove' },
   ooze: { feet: 'smear' },
+  roots: { feet: 'biped', size: 1.1 },
 });
+// What a walking plant sheds (the 'roots' gait): a leaf every other stride, on any floor but water, in its own colour
+// (green to dry brown) whatever the ground, turned every which way; it lasts as a print does.
+export const LEAF_COLORS = Object.freeze([0x5f8a3b, 0x77983f, 0x4f7a34, 0x8a7a3a]);
+export function shedLeaf(floor, at, { width = 100, life = 15000 } = {}) {
+  const index = at.index ?? 0;
+  if (floor === 'water' || index % 2) return null;
+  const heading = at.heading ?? 0, across = heading + Math.PI / 2, turn = ((index * 0.6180339887) % 1);
+  const side = (index / 2) % 2 ? 1 : -1, d = -0.3 * width, a = (0.18 + 0.1 * turn) * width * side;
+  return { kind: 'print', gait: 'leaf', color: LEAF_COLORS[Math.floor(turn * LEAF_COLORS.length) % LEAF_COLORS.length], alpha: 0.9,
+    x: at.x + Math.cos(heading) * d + Math.cos(across) * a, y: at.y + Math.sin(heading) * d + Math.sin(across) * a,
+    radius: width * 0.08, rotation: heading + (turn - 0.5) * 5, vx: 0, vy: 0, delay: 0, spin: 0, grow: 0, life, hold: 0.5 };
+}
 const mod = (n, m) => ((n % m) + m) % m;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // One stride's tracks for `gait` from a floor's print part. Big creatures print less often (a Huge one every other
@@ -426,6 +439,7 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
   const look = FLOOR_LOOK[floor] ?? FLOOR_LOOK.stone;
   if (!(density > 0) || gait === 'none') return [];
   const index = at.index ?? 0, heading = at.heading ?? 0, back = heading + Math.PI, out = [];
+  if (gait === 'roots') { const leaf = shedLeaf(floor, at, { width }); if (leaf) out.push(leaf); }
   // The creature's size: its floor marks grow with it (a Huge splash, a Tiny one's little puff) and its spray flies a
   // little further; a big creature covers several strides per step, so it bursts every other stride (Large and Huge)
   // or every third (Gargantuan), as its prints and footsteps do. Prints and trampled grass are sized by their own rules.
@@ -625,6 +639,13 @@ export function rainFloor(floor, weather) {
   const wet = RAIN_TURNS[floor] ?? floor;
   return { floor: wet, splash: RAIN_SPLASHES.has(wet) };
 }
+// Snow lying on the ground (the ground's snow, 0–1, sky-light.mjs's snow cover): from a quarter of a cover on, the
+// open ground underfoot is snow (its sound and its prints: tracks across it). Water and ice stay as they are.
+export const SNOW_LIES = 0.25;
+const SNOW_COVERS = new Set(['stone', 'wood', 'dirt', 'grass', 'sand', 'mud']);
+export function snowFloor(floor, lying) {
+  return (Number(lying) || 0) >= SNOW_LIES && SNOW_COVERS.has(floor) ? 'snow' : floor;
+}
 // Spells change the floor (the ground marks, engines/marks/ground-marks.mjs): frost left by a cold spell is ice
 // underfoot, acid leaves the ground a sludge, a fire spell melts snow and ice to water and burns grass to bare earth,
 // and a force or sonic blast leaves cracked stone. The newest mark under the creature wins; others keep the floor.
@@ -647,7 +668,7 @@ export const RAIN_SPLASH_GAIN = 0.3;
 const MUFFLED_LOWPASS = 1400;
 const floorVariant = (floor) => (HARD_FLOORS.has(floor) ? 'hard' : WET_FLOORS.has(floor) ? 'wet' : 'soft');
 // The `n`th step of a creature with `gait` on `floor` by the token `seed`: { file, under?, underGain?, lowpass? }, or
-// null for a creature that makes no step sound. Boots and unknown feet step as people do (footstepFile); every other
+// null for a creature that makes no step sound. Boots, roots (a walking plant: its leafy rustle is its body's) and unknown feet step as people do (footstepFile); every other
 // gait plays its own family (the floor's variant, the same seeded no-repeat order), with the floor's own step `under`
 // it on mud, water, snow and sand.
 export function gaitStep(gait, floor, n, { seed = '', psfx = false } = {}) {
@@ -1057,7 +1078,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
   // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
@@ -1159,7 +1180,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     }
     return footprintLives.get(floor);
   };
-  let tracker = null, trackerGrid = 0, known = new Set();
+  let tracker = null, trackerGrid = 0, known = new Set(), lastFill = null;
   const particles = new Set(), prints = new Set(), shadows = new Map();
   const drop = (particle) => {
     particles.delete(particle);
@@ -1446,8 +1467,15 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     for (const id of known) if (!seen.has(id)) { tracker.forget(id); dropShadow(id); moves.delete(id); trails?.forget?.(id); }
     layOwner = null;
     known = seen;
+    // Prints filling in (fresh snow on snow prints, rain on mud): they age `fills(floor)` times as fast, once a frame.
+    const filling = new Map(), step = Math.max(0, Math.min(250, time - (lastFill ?? time)));
+    lastFill = time;
     for (const particle of [...particles]) {
       let state = null;
+      if (step > 0 && particle.floor && prints.has(particle)) {
+        if (!filling.has(particle.floor)) { const f = Number(fills(particle.floor)); filling.set(particle.floor, Number.isFinite(f) && f > 1 ? f : 1); }
+        particle.born -= (filling.get(particle.floor) - 1) * step;
+      }
       if (particle.nativeLife !== null) {
         const life = (particle.trailKind ? trailLife(particle.trailKind) : footprintLife(particle.floor)) || particle.nativeLife;
         if (particle.spec.life !== life) particle.spec = { ...particle.spec, life, motionLife:particle.nativeLife };

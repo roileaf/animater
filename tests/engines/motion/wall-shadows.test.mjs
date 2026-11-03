@@ -129,14 +129,14 @@ test('the layer bakes the shadows once into one soft picture under the creatures
 
 import { windowOpening, windowShafts, createWindowShafts, WINDOW_SHAFT_CAP } from '../../../scripts/engines/motion/wall-shadows.mjs';
 test('light through windows: a window between its sill and head, an open door from the floor, nothing through a solid wall or closed door', () => {
-  assert.deepEqual(windowOpening({ light: 30 }, 2), { bottom: 0.6000000000000001, top: 1.4000000000000001, alpha: 0.8 }, 'a 3 ft sill, a 7 ft head');
+  assert.deepEqual(windowOpening({ light: 30 }, 2), { bottom: 0.6000000000000001, top: 1.4000000000000001, alpha: 0.8, kind: 'glass' }, 'a 3 ft sill, a 7 ft head');
   assert.deepEqual(windowOpening({ light: 30, top: 4 }, 2), windowOpening({ light: 30 }, 2), 'a tall wall (a 20 ft ceiling) keeps the window its size');
   assert.ok(Math.abs(windowOpening({ light: 30 }, 2, 0.3048 / 1.5).top - 7 * 0.3048 / 1.5) < 1e-9, '1.5 m squares');
   assert.ok(windowOpening({ light: 40 }, 2), 'distance-limited window');
   assert.equal(windowOpening({ light: 20 }, 2), null, 'a solid wall');
   assert.equal(windowOpening({ light: 10 }, 2), null, 'foliage casts dappled shade, no shaft');
   assert.equal(windowOpening({ door: 1, ds: 0, light: 20 }, 2), null, 'closed door');
-  assert.deepEqual(windowOpening({ door: 1, ds: 1, light: 20 }, 2), { bottom: 0, top: 1.4000000000000001, alpha: 1 });
+  assert.deepEqual(windowOpening({ door: 1, ds: 1, light: 20 }, 2), { bottom: 0, top: 1.4000000000000001, alpha: 1, kind: 'open' });
 });
 test('window shafts land away from the sun, longer as it sinks, capped', () => {
   const walls = [{ c: [0, 0, 100, 0], light: 30 }];
@@ -165,4 +165,119 @@ test('glass drawn as a wall that lets light through but stops movement is a wind
   assert.ok(windowOpening({ light: 0, move: 20 }, 2), 'light none, movement normal');
   assert.equal(windowOpening({ light: 0, move: 0 }, 2), null, 'stops nothing');
   assert.equal(windowOpening({ light: 0 }, 2), null, 'no movement given');
+});
+
+test('a wall taller than a window, between it and the sun, keeps its light out; a low one or the house’s own walls do not', async () => {
+  const { wallShadowQuads: quadsOf } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // A window in the north wall of a house (its inside to the south), the sun in the north.
+  const sun = { angle: -90, height: 45, strength: 1 }, window = { c: [0, 0, 100, 0], light: 30 };
+  const house = [{ c: [-200, 0, 0, 0], light: 20, top: 4 }, { c: [100, 0, 300, 0], light: 20, top: 4 }];
+  const lit = (others) => {
+    const walls = [window, ...house, ...others];
+    return windowShafts({ walls, sun, grid: 100, shade: quadsOf({ walls, sun, grid: 100, height: 4 }) });
+  };
+  assert.equal(lit([]).length, 1, 'the house’s own walls cast their shadows inside, not on the window');
+  assert.equal(lit([{ c: [-100, -200, 200, -200], light: 20, top: 8 }]).length, 0, 'a 40 ft wall two squares out');
+  assert.equal(lit([{ c: [-100, -200, 200, -200], light: 20, top: 0.6 }]).length, 1, 'a garden wall below the sill');
+  assert.equal(lit([{ c: [-100, -900, 200, -900], light: 20, top: 8 }]).length, 1, 'too far off to shade it at this sun');
+  // A see-through fence lets some through.
+  const fence = lit([{ c: [-100, -200, 200, -200], light: 10, top: 8 }]);
+  assert.ok(fence.length === 0 || fence[0].alpha < 0.8, 'less through a fence');
+});
+
+test('a lit room spills its light out of its windows onto the ground outside; not between rooms, nor from a dark room', async () => {
+  const { windowGlows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // A room from y 0 to 400, its north wall at y 0 with a window from x 100 to 200; a lamp inside.
+  const room = [0, 0, 400, 0, 400, 400, 0, 400], window = { c: [100, 0, 200, 0], light: 30 };
+  const lamp = { x: 150, y: 150, radius: 600, color: 0xffaa55 };
+  const [glow] = windowGlows({ walls: [window], indoors: [room], lights: [lamp], grid: 100 });
+  assert.ok(glow, 'it glows');
+  assert.ok(glow.points[5] < 0 && glow.points[7] < 0, 'outward: north, out of the room');
+  assert.ok(glow.points[4] - glow.points[6] > 100, 'fanning out from the opening');
+  assert.equal(glow.color, 0xffaa55);
+  const dimmer = windowGlows({ walls: [window], indoors: [room], lights: [{ ...lamp, y: 380, radius: 500 }], grid: 100 })[0];
+  assert.ok(dimmer.alpha < glow.alpha && Math.abs(dimmer.points[5]) < Math.abs(glow.points[5]), 'a lamp further in: fainter and shorter');
+  assert.deepEqual(windowGlows({ walls: [window], indoors: [room], lights: [], grid: 100 }), [], 'a dark room');
+  assert.deepEqual(windowGlows({ walls: [window], indoors: [room], lights: [{ x: 150, y: -300, radius: 600 }], grid: 100 }), [], 'a light outside the room');
+  assert.deepEqual(windowGlows({ walls: [window], indoors: [room, [0, -400, 400, -400, 400, 0, 0, 0]], lights: [lamp], grid: 100 }), [], 'a window between two rooms');
+  assert.deepEqual(windowGlows({ walls: [{ c: [100, 0, 200, 0], light: 20 }], indoors: [room], lights: [lamp], grid: 100 }), [], 'a solid wall');
+  assert.equal(windowGlows({ walls: [{ c: [100, 0, 200, 0], door: 1, ds: 1, light: 20 }], indoors: [room], lights: [lamp], grid: 100 }).length, 1, 'an open door');
+});
+
+test('a creature standing in a window glow blocks its light: a wedge of shadow away from the window, to the glow\'s end', async () => {
+  const { windowGlows, glowShadows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // A room south of y 0, a window at y 0 from x 100 to 200: the glow spills north.
+  const room = [0, 0, 400, 0, 400, 400, 0, 400], window = { c: [100, 0, 200, 0], light: 30 };
+  const glows = windowGlows({ walls: [window], indoors: [room], lights: [{ x: 150, y: 100, radius: 600 }], grid: 100, foot: 0.2 });
+  const glow = glows[0], far = glow.reach * 1.25;
+  const casts = glowShadows(glows, [{ x: 150, y: -100, r: 30, height: 1.2 }]);
+  assert.equal(casts.length, 5, 'one from each point across the window, and the lamp\'s');
+  assert.ok(Math.abs(casts.reduce((n, c) => n + c.depth, 0) - 1) < 1e-9, 'whole where every point is hidden');
+  // Straight behind the creature every wedge covers the ground; off to the side only some do (the window's edge shows).
+  const covers = (pt) => casts.filter((c) => {
+    let hit = false; const q = c.points;
+    for (let i = 0, j = q.length - 2; i < q.length; j = i, i += 2) if ((q[i + 1] > pt.y) !== (q[j + 1] > pt.y) && pt.x < ((q[j] - q[i]) * (pt.y - q[i + 1])) / (q[j + 1] - q[i + 1]) + q[i]) hit = !hit;
+    return hit;
+  }).length;
+  assert.equal(covers({ x: 150, y: -200 }), 5, 'dark straight behind');
+  assert.ok(covers({ x: 215, y: -200 }) > 0 && covers({ x: 215, y: -200 }) < 5, 'half-shadow to the side');
+  const lampCast = casts[4];
+  assert.ok(Math.abs(lampCast.depth - 0.7) < 1e-9, 'most of it the lamp\'s, hard');
+  const cast = casts[1];
+  const [ax, ay, bx, by, cx, cy, ex, ey] = cast.points;
+  assert.ok(ay < 0 && by < 0 && cy < ay && ey < by, 'north, away from the window');
+  assert.ok(Math.abs(Math.hypot(cx - 137.5, cy) - far) < 1, 'out to the glow\'s end: the light is lower than the creature\'s top');
+  assert.ok(Math.abs(ex - cx) > Math.abs(ax - bx), 'widening away from the window');
+  const short = glowShadows(glows, [{ x: 150, y: -100, r: 15, height: 0.5 }])[1];
+  assert.ok(Math.hypot(short.points[4] - 150, short.points[5]) < far - 1, 'a small creature: the light passes over, a shorter shadow');
+  assert.deepEqual(glowShadows(glows, [{ x: 900, y: -100, r: 30, height: 1.2 }]), [], 'far from the glow and its lamp');
+  // Inside, between the lamp (150, 100) and the window: the lamp's shadow out through it; the one holding it casts none.
+  const between = glowShadows(glows, [{ x: 150, y: 40, r: 30, height: 1.2 }]);
+  assert.equal(between.length, 1, 'only the lamp\'s');
+  assert.ok(between[0].points[5] < -100, 'out through the window over the glow');
+  assert.deepEqual(glowShadows(glows, [{ x: 160, y: 110, r: 30, half: 50, height: 1.2 }]), [], 'holding the lamp');
+  const shaped = glowShadows(glows, [{ x: 150, y: -100, r: 30, height: 1.2, art: { texture: {} } }]);
+  assert.equal(shaped.length, 1, 'in its shape: one shadow, its lamp\'s, no ghosts');
+  assert.equal(shaped[0].depth, 1, 'whole');
+  assert.deepEqual(glowShadows(glows, [{ x: 150, y: 450, r: 30, height: 1.2 }]), [], 'behind a wall from the lamp: none');
+  assert.deepEqual(glowShadows([], [{ x: 150, y: -100, r: 30, height: 1.2 }]), [], 'no glow');
+});
+
+test('a hole drawn in a room lets the window glow out: a window onto the hole is a window onto the open air', async () => {
+  const { windowGlows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // A courtyard: a room from 0 to 400 with a hole from 100 to 300; a window in the courtyard's north wall at y 100.
+  const room = [0, 0, 400, 0, 400, 400, 0, 400];
+  room.holes = [[100, 100, 300, 100, 300, 300, 100, 300]];
+  const window = { c: [150, 100, 250, 100], light: 30 };
+  const [glow] = windowGlows({ walls: [window], indoors: [room], lights: [{ x: 200, y: 50, radius: 600 }], grid: 100 });
+  assert.ok(glow, 'it glows into the courtyard');
+  assert.ok(glow.points[5] > 100, 'south, into the hole');
+});
+
+test('what fills a window: glass by default, an open frame brighter, curtains dim and spread with faint shadows, shutters in bands', async () => {
+  const { windowGlows, windowOpening } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  const room = [0, 0, 400, 0, 400, 400, 0, 400], lamp = { x: 150, y: 150, radius: 600 };
+  const glowOf = (wall) => windowGlows({ walls: [wall], indoors: [room], lights: [lamp], grid: 100 })[0];
+  const glass = glowOf({ c: [100, 0, 200, 0], light: 30 }), open = glowOf({ c: [100, 0, 200, 0], light: 30, kind: 'open' });
+  const curtained = glowOf({ c: [100, 0, 200, 0], light: 30, kind: 'curtained' }), shuttered = glowOf({ c: [100, 0, 200, 0], light: 30, kind: 'shuttered' });
+  assert.equal(glass.kind, 'glass');
+  assert.ok(open.alpha > glass.alpha, 'an open frame lets more through');
+  assert.ok(curtained.alpha < glass.alpha && curtained.reach < glass.reach, 'curtains: dimmer, shorter');
+  const width = (g) => Math.hypot(g.points[4] - g.points[6], g.points[5] - g.points[7]) / g.reach;
+  assert.ok(width(curtained) > width(glass), 'curtains: spread wider');
+  assert.ok(curtained.shadow < 0.5 && glass.shadow === 1, 'curtains: faint shadows');
+  assert.ok(shuttered.slats >= 3 && glass.slats === 0, 'shutters: bands');
+  assert.equal(windowOpening({ c: [0, 0, 1, 0], light: 20 }), null, 'a solid wall is no window');
+  assert.equal(windowOpening({ c: [0, 0, 1, 0], light: 20, kind: 'shuttered' }).kind, 'shuttered', 'unless given a kind');
+});
+
+test('a lightning flash comes into a room through its windows: a patch fanning in from each, none between rooms', async () => {
+  const { windowFlashes } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  const room = [0, 0, 400, 0, 400, 400, 0, 400];
+  const [patch] = windowFlashes({ walls: [{ c: [100, 0, 200, 0], light: 30 }], indoors: [room], grid: 100 });
+  assert.ok(patch, 'a patch');
+  assert.ok(patch.points[5] > 0 && patch.points[7] > 0, 'into the room (south of its north wall)');
+  assert.ok(patch.points[4] - patch.points[6] > 100, 'fanning out');
+  assert.deepEqual(windowFlashes({ walls: [{ c: [100, 0, 200, 0], light: 20 }], indoors: [room], grid: 100 }), [], 'a solid wall');
+  assert.deepEqual(windowFlashes({ walls: [{ c: [100, 0, 200, 0], light: 30 }], indoors: [room, [0, -400, 400, -400, 400, 0, 0, 0]], grid: 100 }), [], 'between two rooms');
 });
