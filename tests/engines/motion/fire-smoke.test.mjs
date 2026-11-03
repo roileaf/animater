@@ -63,5 +63,7 @@ test('a hearth under a roof smokes out of its chimney, carried downwind; a carri
   assert.equal(chimneyOf({ choice: true, carried: true }), false, 'a carried torch');
   const plume = chimneyPlume({ key: 'h', x: 0, y: 0, size: 1 }, 1, 0);
   assert.ok(plume.size > 1 && plume.drift.x > 0.9, 'fuller, and carried east in a strong east wind');
+  const plain = smokePuff({ key: 'h', x: 0, y: 0, size: 1 }, { grid: 100, n: 1 }), pale = smokePuff(plume, { grid: 100, n: 1 });
+  assert.ok(pale.color > plain.color && pale.alpha > plain.alpha, 'paler and fuller, to read against the roof');
   assert.ok(smokePuff(plume, { grid: 100, n: 1 }).vx > smokePuff({ key: 'h', x: 0, y: 0, size: 1 }, { grid: 100, n: 1 }).vx, 'leaning downwind');
 });

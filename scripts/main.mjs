@@ -2535,8 +2535,11 @@ const listSmokeFires = () => {
     try {
       if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
       const d = source.data, token = source.object?.document?.documentName === "Token" ? source.object : null;
-      // A light a token carries burns as its torch (held in its square, smoking small) when it is drawn as one.
-      if (token ? lightKindOf(token, d) !== "torch" : !smokesLight(d, source.object?.document?.flags?.[ID] ?? {})) continue;
+      // A light a token carries burns as its torch (held in its square, smoking small) when it is drawn as one; a standing
+      // one smokes when it is a fire, or when it is set to smoke from its chimney (its own smoke off: a hearth whose smoke
+      // only shows above the roof).
+      const own = source.object?.document?.flags?.[ID] ?? {}, chimneyAlways = own.chimney === true || own.chimney === "true";
+      if (token ? lightKindOf(token, d) !== "torch" : !smokesLight(d, own) && !chimneyAlways) continue;
       if (d.x < view.x || d.y < view.y || d.x > view.x + view.w || d.y > view.y + view.h) continue;
       // Whether this screen sees a standing fire, tested with the list (twice a second), not every frame.
       let seen = true;
@@ -2666,20 +2669,23 @@ const smokeFiresNow = () => {
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
     const visible = torch ? torch.visible : seen;
     // A hearth under a roof drawn now smokes out of its chimney instead (looked at twice a second: the roof fades slowly).
-    let chimney = false;
+    // Its smoke shows only while that roof is drawn: looking into the room (the roof faded), none rises in it.
+    let chimney = false, roofGone = false;
     if (!token) {
       const had = chimneys.get(key);
-      if (had && time - had.at < 500) chimney = had.value;
+      if (had && time - had.at < 500) ({ chimney, roofGone } = had);
       else {
         try {
           const point = { x: source.data.x, y: source.data.y }, inside = indoorsNow().some((p) => pointInPolygon(point, p));
           const over = inside ? roofsNow().filter((r) => r.mesh && pointInRect(point, r)).reduce((m, r) => Math.max(m, tileShown(r.mesh)), 0) : 0;
           chimney = chimneyOf({ choice: source.object?.document?.flags?.[ID]?.chimney ?? null, indoors: inside, roofShown: over });
-        } catch { chimney = false; }
-        chimneys.set(key, { at: time, value: chimney });
+          roofGone = chimney && inside && over <= 0.5;
+        } catch { chimney = false; roofGone = false; }
+        chimneys.set(key, { at: time, chimney, roofGone });
       }
     }
-    return { key, size, visible, torch, chimney, ...at };
+    // A chimney's smoke shows above the roof whether or not the fire inside can be seen.
+    return { key, size, visible: chimney ? !roofGone : visible, torch, chimney, ...at };
   });
 };
 let smokeFrame = [];
@@ -6164,6 +6170,7 @@ Hooks.once("ready", () => {
       sinkState: () => ({ dirty: sinkDirty, level: sinkLevel, pending: [...sinkPending], moving: [...sinkMoving], poses: sinkPoses.size, tints: waterTints.size, hidden: sunkHidden.size }),
       fireHazes: () => fireHazes.size,
       smokePuffs: () => fireSmoke.size,
+      chimneyPuffs: () => chimneySmoke.size,
       heldTorches: () => heldTorches.size,
       lightOrbs: () => lightOrbs.size,
       heldLanterns: () => heldLanterns.size,

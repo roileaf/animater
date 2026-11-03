@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.6.2 (2026-11-03)
+
+- **Chimney smoke shows.** A light set to Chimney smoke: On now smokes from its chimney even with its own Smoke set to Off (a hearth that smokes only above the roof), and whether or not the fire inside can be seen from outside.
+- **No chimney smoke in the room.** While the roof is faded to look inside, its chimney's smoke is hidden with it.
+- **Paler chimney smoke.** A chimney's plume is lighter and fuller, so it reads against dark shingles, by night too.
+
 ## 2.6.1 (2026-11-03)
 
 More life on the map through the weather and the year. Each new effect has a world setting and an "on my screen" setting (Animater settings, Sky).

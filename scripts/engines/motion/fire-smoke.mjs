@@ -8,6 +8,8 @@ export const SMOKE_CAP = 320;
 export const SMOKE_FIRES = 24;
 // Mid greys, never black: on a bright daylight map a dark puff reads as a stain on the floor, not smoke in the air.
 const GREYS = [0x4e4c49, 0x585652, 0x625f5b, 0x6c6964];
+// A chimney's smoke over the roofs: paler and fuller, so it reads against dark shingles, by night too.
+const PALE_GREYS = [0x9c9893, 0xa8a49e, 0xb4b0aa, 0xc0bcb6];
 
 function rng(text) {
   let h = 2166136261;
@@ -40,7 +42,7 @@ export function smokeDue(key, fromMs, toMs, size = 1) {
 
 // The `n`th puff of a fire { key, x, y, size, drift? }: a small soft grey disc just above the flame that rises steadily,
 // drifts a little to one side, widens and fades over a few seconds. `drift` ({ x, y }, in rises): the wind carrying it
-// off (a chimney's plume above the roofs leans downwind).
+// off (a chimney's plume above the roofs leans downwind); `pale`: a chimney's paler, fuller smoke.
 export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
   const random = rng(`${fire.key}:${n}:smoke`), size = Math.min(2.5, Math.max(0.3, Number(fire.size) || 1));
   const unit = grid * Math.sqrt(size), rise = grid * (0.55 + random() * 0.25) * Math.sqrt(size);
@@ -48,10 +50,10 @@ export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
   const lean = Math.sin(n * 0.25 + phase(fire.key) * 6.28) * 0.2 + (random() - 0.5) * 0.08;
   const life = Math.round((2400 + random() * 1000) * Math.min(1.5, 0.8 + 0.3 * size));
   return {
-    kind: 'smoke', owner: fire.key, color: GREYS[Math.floor(random() * GREYS.length) % GREYS.length],
+    kind: 'smoke', owner: fire.key, color: (fire.pale ? PALE_GREYS : GREYS)[Math.floor(random() * GREYS.length) % GREYS.length],
     x: fire.x + (random() - 0.5) * unit * 0.06, y: fire.y - unit * 0.08,
     vx: (lean + (Number(fire.drift?.x) || 0)) * rise, vy: (-1 + (Number(fire.drift?.y) || 0)) * rise, radius: unit * (0.1 + random() * 0.03),
-    alpha: 0.3 + random() * 0.1, delay: 0, life,
+    alpha: (fire.pale ? 0.42 : 0.3) + random() * 0.1, delay: 0, life,
     // Still rising as it fades (its motion would only ease to a stop well after it is gone), so the plume stays a column.
     motionLife: life * 2.4,
     hold: 0.1, rotation: random() * Math.PI * 2, spin: (random() - 0.5) * 0.6, grow: 1.6 + random() * 0.8,
@@ -113,5 +115,5 @@ export function chimneyOf({ choice = null, indoors = false, roofShown = 0, carri
   return !!indoors && (Number(roofShown) || 0) > 0.5;
 }
 // A chimney's plume: fuller than an open fire's, carried downwind (`wind` 0–1 blowing toward `angle`, radians).
-export const chimneyPlume = (fire, wind = 0, angle = 0) => ({ ...fire, size: Math.max(1.2, (Number(fire.size) || 1) * 1.3),
+export const chimneyPlume = (fire, wind = 0, angle = 0) => ({ ...fire, pale: true, size: Math.max(1.2, (Number(fire.size) || 1) * 1.3),
   drift: { x: Math.cos(angle) * (0.15 + 0.85 * Math.min(1, Math.max(0, Number(wind) || 0))), y: Math.sin(angle) * (0.15 + 0.85 * Math.min(1, Math.max(0, Number(wind) || 0))) } });
