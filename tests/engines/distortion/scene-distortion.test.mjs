@@ -246,3 +246,13 @@ test('D&D: a Fireball plans one shock on its explosion, which camera shake reads
   assert.equal(tag.kind, 'shock');
   assert.equal(tag.radius, 1.5 * sq(4));
 });
+
+test('a shockwave always gets a slot, however many torches are hazing', () => {
+  const haze = (x) => ({ params: { centre: { x, y: 50 }, radius: 50 }, slot: { kind: 1 }, lasting: true });
+  const shock = { params: { centre: { x: 900, y: 900 }, radius: 100 }, slot: { kind: 0 }, lasting: false };
+  const view = { x: 0, y: 0, w: 1000, h: 1000 };
+  const chosen = chooseSlots([haze(100), haze(200), haze(300), haze(400), haze(500), shock], view);
+  assert.equal(chosen.length, 4);
+  assert.ok(chosen.includes(shock), 'the blast ripples');
+  assert.equal(chosen.filter((a) => a.lasting).length, 3, 'the hazes keep the rest');
+});

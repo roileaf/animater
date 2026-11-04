@@ -3596,3 +3596,22 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-sun.an-sun-inherits .an-sun-dial { cursor: default; opacity: 0.75; }
 .animater-sun .an-sun-clock { display: flex; align-items: center; gap: 10px; }
 .animater-sun .an-sun-clock select { flex: 1; }
+
+/* The energy blast picker: a tile for each kind, in its own colour. */
+.animater-blast-pick .window-content { gap: 0.6rem; }
+.animater-blast-pick .dialog-content p { margin: 0; color: var(--color-text-secondary, #bbb); text-align: center; }
+.animater-blast-pick .form-footer { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.45rem; margin: 0; padding: 0; }
+.animater-blast-pick .form-footer button { --blast: 255, 140, 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; min-width: 0; width: 100%; height: 5.2rem; padding: 0.5rem 0.2rem; font-size: 0.82rem; font-weight: 600; letter-spacing: 0.01em; color: rgb(var(--blast)); background: radial-gradient(circle at 50% 36%, rgba(var(--blast), 0.26), rgba(var(--blast), 0.04) 68%), rgba(10, 9, 12, 0.72); border: 1px solid rgba(var(--blast), 0.38); border-radius: 8px; box-shadow: none; transition: background-color 120ms, border-color 120ms, box-shadow 120ms, transform 120ms; }
+.animater-blast-pick .form-footer button i { margin: 0; font-size: 1.55rem; line-height: 1; filter: drop-shadow(0 0 5px rgba(var(--blast), 0.6)); }
+.animater-blast-pick .form-footer button span { color: var(--color-text-primary, #eee); white-space: nowrap; }
+.animater-blast-pick .form-footer button:hover, .animater-blast-pick .form-footer button:focus-visible { color: rgb(var(--blast)); border-color: rgb(var(--blast)); background: radial-gradient(circle at 50% 36%, rgba(var(--blast), 0.44), rgba(var(--blast), 0.1) 72%), rgba(10, 9, 12, 0.72); box-shadow: 0 0 14px rgba(var(--blast), 0.42); transform: translateY(-1px); outline: none; }
+.animater-blast-pick button[data-action="fire"] { --blast: 255, 138, 56; }
+.animater-blast-pick button[data-action="cold"] { --blast: 128, 196, 255; }
+.animater-blast-pick button[data-action="electricity"] { --blast: 158, 186, 255; }
+.animater-blast-pick button[data-action="acid"] { --blast: 150, 214, 62; }
+.animater-blast-pick button[data-action="force"] { --blast: 190, 180, 255; }
+.animater-blast-pick button[data-action="void"] { --blast: 176, 110, 240; }
+.animater-blast-pick button[data-action="radiant"] { --blast: 255, 214, 110; }
+.animater-blast-pick button[data-action="sonic"] { --blast: 206, 214, 228; }
+.animater-blast-pick button[data-action="poison"] { --blast: 176, 196, 66; }
+.animater-blast-pick button[data-action="psychic"] { --blast: 240, 96, 196; }

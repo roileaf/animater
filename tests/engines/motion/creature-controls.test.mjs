@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { creatureAmount, creatureSize, ratStep } from '../../../scripts/engines/motion/vermin.mjs';
+import { puffsFor } from '../../../scripts/engines/motion/movement-feel.mjs';
 
 test('a scene\'s creature amounts and sizes, the usual when unset', () => {
   assert.equal(creatureAmount(''), 1);
@@ -26,4 +27,38 @@ test('a rat in the dark still turns back from the light', () => {
   const lit = (x) => (x > 10 ? 1 : 0);
   const r = ratStep({ x: 9, y: 0, angle: 0, speed: 100, wait: 1 }, { dt: 0.02, grid: 100, lit, random: () => 0.5 });
   assert.equal(r.x, 9, 'did not step into the light');
+});
+
+test('how much a step kicks up: fewer and fainter below the usual, none at nothing, footprints stay', () => {
+  const at = { x: 0, y: 0, heading: 0, index: 2 }, bits = (floor, amount) => puffsFor(floor, at, { seed: 'k', grid: 100, amount }).filter((p) => p.kind !== 'print');
+  assert.ok(bits('stone', 0.5).length < bits('stone', 1).length);
+  assert.ok(bits('stone', 1.5).length > bits('stone', 1).length);
+  const peak = (list) => Math.max(...list.map((p) => p.alpha));
+  assert.ok(peak(bits('stone', 0.25)) < peak(bits('stone', 1)), 'fainter');
+  assert.equal(bits('stone', 0).length, 0);
+  assert.ok(puffsFor('snow', at, { seed: 'k', grid: 100, amount: 0 }).some((p) => p.kind === 'print'), 'prints stay');
+});
+
+// How much a rat's heading swings frame to frame: a shake is many big swings.
+const swings = (rat, opts, frames = 180) => { let r = rat, n = 0, moved = 0; for (let i = 0; i < frames; i++) { const was = r; r = ratStep(r, { dt: 1 / 60, grid: 100, ...opts }); if (Math.abs(r.angle - was.angle) > 0.5) n++; moved = Math.max(moved, Math.hypot(r.x - rat.x, r.y - rat.y)); } return { n, moved, r }; };
+let seed = 11; const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+test('a rat between a creature and a wall runs along the wall, it does not shake', () => {
+  const wall = (a, b) => (a.x < 100) !== (b.x < 100), near = [{ x: 0, y: 0 }];
+  const { n, moved } = swings({ x: 80, y: 0, angle: 0, speed: 0, wait: 1 }, { near, blocked: wall, random });
+  assert.ok(n <= 8, `${n} swings in three seconds`);
+  assert.ok(moved > 150, 'it got away');
+});
+
+test('a rat with no way out at all cowers, still', () => {
+  const { n, moved, r } = swings({ x: 80, y: 0, angle: 0, speed: 0, wait: 1 }, { near: [{ x: 0, y: 0 }], blocked: () => true, random });
+  assert.equal(moved, 0);
+  assert.equal(n, 0, 'not turning on the spot');
+  assert.equal(r.speed, 0);
+});
+
+test('a rat left alone in a corner stops and turns, it does not spin', () => {
+  const corner = (a, b) => b.x > 100 || b.y > 100;
+  const { n } = swings({ x: 90, y: 90, angle: 0.7, speed: 200, wait: 2 }, { blocked: corner, random }, 120);
+  assert.ok(n <= 12, `${n} swings in two seconds`);
 });

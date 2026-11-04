@@ -63,6 +63,10 @@ test('the scene’s own wind sets how hard it blows and where from, over the wea
   assert.ok(Math.abs(weatherOf({ calendaria, own: { wind: 'sheltered' } }).wind - 0.4) < 1e-9, 'half of a force 4');
   assert.equal(weatherOf({ calendaria, own: { wind: '' } }).wind, 0.8, 'from the weather');
   assert.equal(weatherOf({ own: { wind: 'breeze' } }).wind, 0.3, 'no calendar: still the scene’s');
+  // A weather's least wind (a blizzard's gale) only when nobody said.
+  assert.equal(weatherOf({ own: { wind: 'calm' } }).windStated, true);
+  assert.equal(weatherOf({ calendaria: { id: 'blizzard', wind: { speed: 0 } } }).windStated, true);
+  assert.equal(weatherOf({ calendaria: { id: 'blizzard' } }).windStated, false);
   // An east wind (Calendaria’s 90) blows west, left on the map; the scene’s own "from the south" blows north, up it.
   const east = weatherOf({ calendaria }).windAngle, south = weatherOf({ calendaria, own: { windFrom: 's' } }).windAngle;
   assert.ok(Math.cos(east) < -0.99, 'from the east: blows west');

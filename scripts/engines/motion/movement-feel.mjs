@@ -460,7 +460,7 @@ export function tracksFor(gait, part, base, at, { grid, width }) {
 // turns in radians. `width` is the token's width in pixels (prints are sized and spaced by it).
 // `gait` (creature-gait.mjs) shapes the tracks: boots by default; 'unknown' raises the floor's dust (and tramples
 // grass) but leaves no tracks; 'none' (incorporeal) leaves nothing at all, not even dust.
-export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width = grid, gait = 'boots' } = {}) {
+export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width = grid, gait = 'boots', amount = 1 } = {}) {
   const look = FLOOR_LOOK[floor] ?? FLOOR_LOOK.stone;
   if (!(density > 0) || gait === 'none') return [];
   const index = at.index ?? 0, heading = at.heading ?? 0, back = heading + Math.PI, out = [];
@@ -508,13 +508,15 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
     } else {
       // Some only now and then (`chance`).
       if (part.chance !== undefined && random() >= part.chance) return;
-      const count = Math.max(1, Math.round((part.count ?? 1) * Math.min(1, density)));
+      // "How much a step kicks up": fewer and fainter below the usual, more above it; nothing at none.
+      if (!(amount > 0)) return;
+      const count = Math.max(1, Math.round((part.count ?? 1) * Math.min(1, density) * amount)), faint = amount < 1 ? 0.5 + 0.5 * amount : 1;
       for (let i = 0; i < count; i++) {
         const angle = back + (random() - 0.5) * Math.PI * (part.cone ?? 1.4), speed = grid * reach * between(part.speed ?? [0.18, 0.4], random());
         const spec = {
           ...base, color: pick(), x: at.x + jitter(), y: at.y + jitter(),
           vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
-          radius: unit * part.size * (0.7 + random() * 0.6), alpha: part.alpha * (0.75 + random() * 0.25),
+          radius: unit * part.size * (0.7 + random() * 0.6), alpha: part.alpha * (0.75 + random() * 0.25) * faint,
           grow: between(part.grow, random()), delay: Math.round(random() * 60),
           life: Math.round(part.life * (0.8 + random() * 0.4)),
           rotation: part.align ? angle : random() * Math.PI * 2, spin: (random() - 0.5) * 2 * (part.spin ?? 0),
@@ -1122,7 +1124,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, kicks = null }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, kicks = null, kickAmount = () => 1 }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
   // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
@@ -1277,13 +1279,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   const lay = (specs, time, floor, trailKind = null) => {
     if (floor === NO_FLOOR) return;
     const limit = capOf(), printLimit = printCapOf();
-    let stroked = false;
     for (let spec of specs) {
       // A step into water rings it on the GPU (`ripples`, step-ripples.mjs) when that is drawn: the first ring only.
       if (ripples && spec.kind === 'ring' && floor === 'water') { if (!spec.delay) { try { ripples(spec); } catch { /* optional */ } } continue; }
-      // A swimmer's stroke rings the water too (once a stroke), under its wake's V: the V is still drawn, or a swim reads
-      // as a wading step's rings.
-      if (ripples && trailKind === 'swim' && spec.kind === 'wake' && !stroked) { stroked = true; try { ripples({ ...spec, radius: (Number(spec.radius) || 28) * 1.2 }); } catch { /* optional */ } }
       // Grooves, smears and a burrower's churned earth last as long as prints and share their budget.
       const print = spec.kind === 'print' || spec.kind === 'groove' || spec.lasting === true;
       if (print) {
@@ -1310,7 +1308,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     const feet = feetOf(token, at);
     const floor = floorOf(feet, token);
     if (floor === NO_FLOOR) return;
-    const opts = { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots' };
+    const opts = { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots', amount: kickAmount() };
     // A burrower churns the earth instead of stepping on it; a swimmer leaves a wake on water; a jumper marks nothing
     // until it lands; everything else (walk, climb, crawl) marks its floor as a walker does.
     let specs;
@@ -1337,7 +1335,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
       specs = [...specs, ...dripsFor(feet, { seed: token.id, grid: size, width: token.width || size, wet: (move.wetBy ?? 1) * (1 - (time - move.wetAt) / wetFor), n: move.drips })];
     }
     // A step can send a stone skittering (`kicks`, the caller decides where and how often).
-    if (token.visible && kicks && !trailKind && kind !== 'jump') { try { kicks({ x: feet.x, y: feet.y, floor, heading: Number(at.heading) || 0, size: token.width || size }); } catch { /* optional */ } }
+    if (token.visible && kicks && !trailKind && kind !== 'jump') { try { kicks({ x: feet.x, y: feet.y, floor, heading: Number(at.heading) || 0, size: token.width || size, token, index: at.index ?? 0, grid: size }); } catch { /* optional */ } }
     if (token.visible) lay(specs, time, floor, trailKind);
     move.index = at.index ?? 0; move.heading = at.heading ?? 0;
     if (kind !== 'jump') sound(floor, feet, token, kind);
@@ -1348,7 +1346,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     const at = { x: point.x, y: point.y, heading: move.heading ?? 0, index: (move.index ?? 0) + 1 }, feet = feetOf(token, at);
     const floor = floorOf(feet, token);
     if (floor === NO_FLOOR) return;
-    if (token.visible) lay(puffsFor(floor, feet, { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots' }), time, floor);
+    if (token.visible) lay(puffsFor(floor, feet, { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots', amount: kickAmount() }), time, floor);
     sound(floor, feet, token, 'land');
   };
   const tick = () => {
@@ -1377,7 +1375,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         const medium=movementEnvironment(token,token.floor??(below?floorOf(point,token):null));
         const under = medium.underground;
         const flying = !under && !medium.swimming && isFlying(token);
-        const kind = token.gait === 'none' ? null : under ? 'burrow' : medium.swimming ? 'swim' : movementSound(token.action, { gait: token.gait, statuses: token.statuses, flight: token.flight });
+        // Prone, whatever its movement action says, it drags itself along the floor (a flier that has fallen included).
+        const kind = token.gait === 'none' ? null : under ? 'burrow' : medium.swimming ? 'swim' : token.prone === true && !flying ? 'crawl' : movementSound(token.action, { gait: token.gait, statuses: token.statuses, flight: token.flight });
         // Seen or heard here (perceive): a creature only heard still steps, but leaves nothing to see.
         const present = token.visible || hears(token);
         if (!present || token.skip || kind === null) tracker.reset(id, point);

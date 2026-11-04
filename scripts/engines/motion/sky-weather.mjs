@@ -13,7 +13,7 @@ const FALL_COLORS = Object.freeze({
 // above ([r, g, b, how thick]), and the rest (light, aurora, sparks, wisps, static, meteors, a swirl), and: a closed grey
 // cloud deck (`deck`), mist lying low (`mist`), sheets of rain sweeping across (`curtains`), a hurricane's spiral cloud
 // bands (`bands`), freezing rain's glaze (`glaze`), frost creeping over all (`frost`), heat shimmering (`heat`), smoke
-// billowing (`smoke`), 0–1 each; `storm` how fierce its lightning (0 none), `windMin` the least wind it blows with.
+// billowing (`smoke`), 0–1 each; `storm` how fierce its lightning (0 none), `windMin` the least wind it blows with when neither the scene nor the calendar says how windy it is.
 const RECIPES = Object.freeze({
   clear: {},
   'partly-cloudy': {},
@@ -29,7 +29,7 @@ const RECIPES = Object.freeze({
   sleet: { fall: [['rain', 0.45, 0.8], ['snow', 0.4, 0.7]] },
   'heat-wave': { heat: 1 },
   thunderstorm: { fall: [['rain', 1, 1.2]], curtains: 0.5, storm: 0.75 },
-  blizzard: { fall: [['snow', 1, 1.1], ['snow', 0.7, 0.6]], fog: [0.92, 0.95, 1, 0.55], windMin: 0.85 },
+  blizzard: { fall: [['snow', 0.85, 0.9], ['snow', 0.5, 0.55]], fog: [0.92, 0.95, 1, 0.35], windMin: 0.85 },
   hail: { fall: [['hail', 0.7, 1], ['rain', 0.3, 0.8]] },
   tornado: { fall: [['rain', 0.6, 1.1], ['debris', 0.35, 1]], swirl: [1, 1], storm: 0.5, windMin: 0.7 },
   hurricane: { fall: [['rain', 1, 1.3]], bands: 1, curtains: 0.8, storm: 0.55, windMin: 1 },
@@ -41,7 +41,7 @@ const RECIPES = Object.freeze({
   'sakura-bloom': { fall: [['petal', 0.55, 1]] },
   'autumn-leaves': { fall: [['leaf', 0.5, 1]] },
   'rolling-fog': { fog: [0.82, 0.84, 0.86, 0.85] },
-  'wildfire-smoke': { fall: [['ember', 0.6, 1], ['ash', 0.4, 0.8]], smoke: 1, fog: [0.5, 0.38, 0.28, 0.25], clouds: [0.45, 0.36, 0.28, 1] },
+  'wildfire-smoke': { fall: [['ember', 0.35, 0.9], ['ash', 0.4, 0.8]], smoke: 1, fog: [0.5, 0.38, 0.28, 0.25], clouds: [0.45, 0.36, 0.28, 1] },
   'dust-devil': { fall: [['sand', 0.25, 0.8]], swirl: [2, 1] },
   'black-sun': { fog: [0.1, 0.05, 0.14, 0.45], glow: [0.06, 0.02, 0.1, 0.35], wisps: [0.08, 0.02, 0.12, 0.7] },
   'ley-surge': { sparks: [0.3, 0.66, 1, 0.8], aurora: [0.25, 0.6, 1, 0.35] },
@@ -52,7 +52,7 @@ const RECIPES = Object.freeze({
   veilfall: { fall: [['rain', 0.4, 0.8, [0.68, 0.58, 0.9]]], sparks: [0.72, 0.62, 1, 0.3] },
   'arcane-winds': { fall: [['gust', 0.6, 1, [0.78, 0.5, 1]]], sparks: [0.76, 0.38, 1, 0.7] },
   'acid-rain': { fall: [['rain', 0.6, 1, [0.55, 0.85, 0.3]]] },
-  'blood-rain': { fall: [['rain', 0.7, 1, [0.62, 0.06, 0.12]]] },
+  'blood-rain': { fall: [['rain', 0.85, 1.1, [0.8, 0.1, 0.14]]] },
   'meteor-shower': { meteors: 0.7 },
   'spore-cloud': { fall: [['spore', 0.7, 1]], fog: [0.53, 0.67, 0.27, 0.3] },
   'divine-light': { glow: [1, 0.86, 0.42, 0.22], rays: 0.7, sparks: [1, 0.86, 0.4, 0.3] },
@@ -85,8 +85,8 @@ export function weatherScene(preset = null) {
   const intensity = Number(preset?.precipitation?.intensity);
   const falls = (recipe.fall ?? []).slice(0, 2).map(([kind, amount, size, color], i) => ({
     kind: FALL_KINDS[kind] ?? 0,
-    // The first thing falling follows the preset's own intensity when it gives one.
-    amount: clamp01(i === 0 && Number.isFinite(intensity) && intensity > 0 && /rain|snow|hail/.test(kind) ? Math.max(amount * 0.5, intensity) : amount),
+    // The first thing falling follows the preset's own intensity when it gives one: from half the recipe's amount to all of it.
+    amount: clamp01(i === 0 && Number.isFinite(intensity) && intensity > 0 && /rain|snow|hail/.test(kind) ? amount * (0.5 + 0.5 * clamp01(intensity)) : amount),
     size: Number(size) || 1,
     color: color ?? FALL_COLORS[kind] ?? [1, 1, 1],
   }));

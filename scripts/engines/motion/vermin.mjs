@@ -18,8 +18,16 @@ export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = []
   const r = { ...rat };
   r.wait -= dt;
   const threat = near.find((c) => Math.hypot(c.x - r.x, c.y - r.y) < grid * 2);
-  if (threat) { r.angle = Math.atan2(r.y - threat.y, r.x - threat.x) + (random() - 0.5) * 0.6; r.speed = grid * 4; r.wait = 0.5; r.fleeing = true; }
-  else if (r.wait <= 0) {
+  if (threat) {
+    // Its way out is chosen and kept a moment: away if it can, else along the wall, else past whoever scared it. With no way
+    // at all it cowers, still. (Choosing afresh each frame shook it on the spot, turned back and forth by the wall.)
+    r.flee = (r.flee ?? 0) - dt; r.fleeing = true; r.wait = 0.5;
+    if (r.flee <= 0 || !r.speed) {
+      r.flee = 0.35; r.speed = 0;
+      const away = Math.atan2(r.y - threat.y, r.x - threat.x) + (random() - 0.5) * 0.6, side = random() < 0.5 ? -1 : 1, look = grid * 0.4;
+      for (const off of [0, 0.7, -0.7, 1.4, -1.4, 2.1, -2.1, 2.8, -2.8]) { const a = away + off * side; if (!blocked({ x: r.x, y: r.y }, { x: r.x + Math.cos(a) * look, y: r.y + Math.sin(a) * look })) { r.angle = a; r.speed = grid * 4; break; } }
+    }
+  } else if (r.wait <= 0) {
     r.fleeing = false;
     // Dart a little way or stop and sniff, turning as it goes.
     r.speed = r.speed > 0 && random() < 0.55 ? 0 : grid * (1.2 + 1.6 * random());
@@ -33,22 +41,29 @@ export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = []
     // Into the light or a wall: turn back (a fleeing rat runs through light rather than toward what scared it). Only into
     // brighter light: one caught in the light runs out of it, not round and round where it stands.
     const glare = !r.fleeing && lit(nx, ny) > 0.55 && lit(nx, ny) > lit(r.x, r.y);
-    if (blocked({ x: r.x, y: r.y }, snout) || glare) { r.angle += Math.PI * (0.6 + 0.8 * random()); r.speed *= 0.6; }
+    // It stops and turns, once, then sets off again in its own time (or, fleeing, chooses again at once).
+    if (blocked({ x: r.x, y: r.y }, snout) || glare) { r.angle += Math.PI * (0.6 + 0.8 * random()); r.speed = 0; if (r.fleeing) r.flee = 0; else r.wait = 0.15 + random() * 0.4; }
     else { r.x = nx; r.y = ny; }
   }
   return r;
 }
 
-// How wide a bat can circle round a spot (pure): its loop (`r` across, 0.6 r up and down, wandering `wobble` more) cut
-// down until no wall stands between the spot and anywhere on it (`blocked(a, b)`); at least half a square.
-export function batReach(at, { r = 200, grid = 100, blocked = () => false } = {}) {
-  let reach = r;
-  for (let tries = 0; tries < 8 && reach > grid * 0.5; tries++) {
-    const clear = Array.from({ length: 16 }, (_, i) => (i / 16) * TAU).every((a) => !blocked(at, { x: at.x + Math.sin(a) * (reach + grid * 0.4), y: at.y + Math.cos(a) * (reach * 0.6 + grid * 0.4) }));
-    if (clear) return reach;
-    reach *= 0.75;
+// One bat's next moment (pure): `bat` { x, y, angle, turn, speed, wait }. It flits, its turn and pace changing every moment,
+// looking a little ahead of itself; `check` false skips the looking (a wall is costly to ask about, and it cannot reach one
+// in a few frames), and `blocked(a, b)` turns it away to the first way that is open. It never moves into what blocks it.
+export function batStep(bat, { dt = 1 / 60, grid = 100, blocked = () => false, check = true, random = Math.random } = {}) {
+  const b = { ...bat }, look = grid * 0.4;
+  b.wait -= dt;
+  if (b.wait <= 0) { b.wait = 0.25 + random() * 0.7; b.turn = (random() - 0.5) * 5; b.speed = grid * (1.1 + random() * 1.4); }
+  b.angle += b.turn * dt;
+  if (check && blocked({ x: b.x, y: b.y }, { x: b.x + Math.cos(b.angle) * look, y: b.y + Math.sin(b.angle) * look })) {
+    const side = random() < 0.5 ? -1 : 1;
+    for (let i = 1; i <= 7; i++) { const a = b.angle + side * i * 0.9; if (!blocked({ x: b.x, y: b.y }, { x: b.x + Math.cos(a) * look, y: b.y + Math.sin(a) * look })) { b.angle = a; b.turn = -b.turn; return b; } }
+    // Hemmed in on every side: it hangs where it is.
+    return b;
   }
-  return Math.max(grid * 0.5, reach);
+  b.x += Math.cos(b.angle) * b.speed * dt; b.y += Math.sin(b.angle) * b.speed * dt;
+  return b;
 }
 
 // Where a few rats start (pure): dark spots near `spots` (candidate points, e.g. walls' ends), `count` at most.
@@ -160,38 +175,30 @@ function drawBat(ctx, span) {
  * draws them (only those in `view`), and the bats when `bats` is on, their shadows passing over the floor; clear().
  */
 export function createVermin({ PIXI, root, batsRoot = root }) {
-  let rats = [], bats = [], shapes = [], batShapes = [], grid = 100, size = 1, batSize = 1, time = 0, ratTex = null, batTex = null;
+  let rats = [], bats = [], shapes = [], batShapes = [], grid = 100, size = 1, batSize = 1, time = 0, frame = 0, ratTex = null, batTex = null;
   const frames = (w, h, n, paint) => Array.from({ length: n }, (_, i) => { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), i); return PIXI.Texture.from(c); });
   const ratFrames = () => (ratTex ??= frames(RAT_W, RAT_H, RAT_FRAMES, (ctx, i) => drawRat(ctx, i / RAT_FRAMES)));
   const batFrames = () => (batTex ??= frames(BAT_W, BAT_H, BAT_SPANS.length, (ctx, i) => drawBat(ctx, BAT_SPANS[i])));
   const sprite = (tex, parent) => { const sp = new PIXI.Sprite(tex); sp.anchor.set(0.5); sp.eventMode = 'none'; parent.addChild(sp); return sp; };
   const drop = () => { for (const s of [...shapes, ...batShapes]) { try { s.body?.destroy(); s.tail?.destroy(); s.shadow?.destroy(); } catch { /* gone */ } } shapes = []; batShapes = []; rats = []; bats = []; };
   return {
-    populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false, size: big = 1, batSize: wide = 1 } = {}) {
+    populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false, allowed = () => true, size: big = 1, batSize: wide = 1 } = {}) {
       drop(); grid = g; size = Number(big) > 0 ? Number(big) : 1; batSize = Number(wide) > 0 ? Number(wide) : 1;
       rats = ratsAt(spots, { count, lit }).map((r) => ({ ...r, stride: Math.random() }));
       // The tail first, then the body over its root.
       shapes = rats.map(() => { const shadow = sprite(ratFrames()[0], root()); shadow.tint = 0x000000; const t = new PIXI.Graphics(); t.eventMode = 'none'; root().addChild(t); return { shadow, tail: t, body: sprite(ratFrames()[0], root()) }; });
-      // Each bat circles a room (one of the spots, inside the walls), not over the rock; without spots, anywhere in `area`.
+      // Each bat starts out in a room near one of the spots (inside the walls), not over the rock; without spots, anywhere
+      // in `area` it may be.
       const home = () => spots.length ? spots[Math.floor(Math.random() * spots.length)] : area && { x: area.x + area.w * (0.2 + 0.6 * Math.random()), y: area.y + area.h * (0.2 + 0.6 * Math.random()) };
-      if (batCount > 0 && (spots.length || area)) bats = Array.from({ length: batCount }, (_, i) => {
-        // Out in the room near a spot (not by its wall): of a few tries, the one with the widest loop clear of walls.
-        const want = grid * (1.5 + 1.5 * Math.random());
-        let best = null;
-        for (let k = 0; k < 8; k++) {
-          const h = home(), c = { x: h.x + (Math.random() - 0.5) * grid * 4, y: h.y + (Math.random() - 0.5) * grid * 4 };
-          if (blocked(h, c)) continue;
-          const r = batReach(c, { r: want, grid, blocked });
-          if (!best || r > best.r) best = { c, r };
-          if (r >= want) break;
-        }
-        best ??= (() => { const h = home(); return { c: h, r: batReach(h, { r: want, grid, blocked }) }; })();
-        return { cx: best.c.x, cy: best.c.y, r: best.r, p: i * 1.7 };
-      });
+      if (batCount > 0 && (spots.length || area)) bats = Array.from({ length: batCount }, () => {
+        let at = null;
+        for (let k = 0; k < 10 && !at; k++) { const h = home(), c = { x: h.x + (Math.random() - 0.5) * grid * 3, y: h.y + (Math.random() - 0.5) * grid * 3 }; if (allowed(c) && !blocked(h, c)) at = c; else if (k === 9 && allowed(h)) at = { x: h.x, y: h.y }; }
+        return at && { x: at.x, y: at.y, angle: Math.random() * TAU, turn: 0, speed: grid, wait: 0, p: Math.random() * TAU };
+      }).filter(Boolean);
       // A bat flies high: its shadow on the floor (with the rats), the bat over everything.
       batShapes = bats.map(() => { const shadow = sprite(batFrames()[0], root()); shadow.tint = 0x000000; shadow.alpha = 0; return { body: sprite(batFrames()[0], batsRoot()), shadow }; });
     },
-    tick(seconds, { near = [], lit = () => 0, blocked = () => false, view = null, light = () => null } = {}) {
+    tick(seconds, { near = [], lit = () => 0, blocked = () => false, batBlocked = blocked, view = null, light = () => null } = {}) {
       time += seconds;
       const dt = Math.min(0.05, seconds), seen = (x, y) => !view || (x > view.x - grid && y > view.y - grid && x < view.x + view.w + grid && y < view.y + view.h + grid);
       const k = (grid / 100) * size, kb = (grid / 100) * batSize, rt = ratFrames(), bt = batFrames();
@@ -216,17 +223,20 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
         }
         return n;
       });
-      bats.forEach((b, i) => {
-        const at = (u) => ({ x: b.cx + Math.sin(u * 0.7 + b.p) * b.r + Math.sin(u * 2.3 + b.p * 3) * Math.min(grid * 0.4, b.r * 0.25), y: b.cy + Math.cos(u * 0.9 + b.p) * b.r * 0.6 });
-        const s = batShapes[i], p = at(time), ahead = at(time + 0.05), show = seen(p.x, p.y);
+      frame++;
+      bats = bats.map((was, i) => {
+        // Asked about the walls every third frame, in turn.
+        const b = batStep(was, { dt, grid, blocked: batBlocked, check: (frame + i) % 3 === 0 }), p = { x: b.x, y: b.y };
+        const s = batShapes[i], show = seen(p.x, p.y);
         const cast = show ? shadowFrom(light(p.x, p.y), p, { grid, high: 2 }) : null;
         s.body.visible = show; s.shadow.visible = !!cast;
-        if (!show) return;
-        const frame = bt[Math.floor((time * 11 + b.p * 3) % BAT_SPANS.length)], heading = Math.atan2(ahead.y - p.y, ahead.x - p.x) + Math.PI / 2;
-        for (const sp of [s.body, s.shadow]) { sp.texture = frame; sp.rotation = heading; sp.scale.set(kb * 0.42); }
+        if (!show) return b;
+        const shape = bt[Math.floor((time * 11 + b.p * 3) % BAT_SPANS.length)], heading = b.angle + Math.PI / 2;
+        for (const sp of [s.body, s.shadow]) { sp.texture = shape; sp.rotation = heading; sp.scale.set(kb * 0.42); }
         s.body.position.set(p.x, p.y);
         // Its shadow flitting over the floor, thrown away from the nearest light: bigger and fainter the nearer the light.
         if (cast) { s.shadow.position.set(cast.x, cast.y); s.shadow.scale.set(kb * 0.42 * cast.scale); s.shadow.alpha = cast.alpha; }
+        return b;
       });
     },
     clear: drop,

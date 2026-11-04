@@ -19,6 +19,8 @@ export function weatherOf({ calendaria = null, scene = '', fx = {}, fxFilters = 
   const speed = Number(calendaria?.wind?.speed);
   // Calendaria gives its wind as a force from 0 to 5, or a speed in km/h.
   let wind = Number.isFinite(speed) ? Math.min(1, speed <= 5 ? speed / 5 : speed / 60) : /storm|blizzard/i.test(scene) ? 0.8 : /rain|snow/i.test(scene) ? 0.4 : 0.2;
+  // Someone said how windy it is (the scene, or the calendar): a weather's least wind gives way to that.
+  const windStated = Number.isFinite(speed) || own?.wind in SCENE_WINDS || own?.wind === 'sheltered';
   if (own?.wind in SCENE_WINDS) wind = SCENE_WINDS[own.wind];
   else if (own?.wind === 'sheltered') wind /= 2;
   const toward = Number(calendaria?.wind?.direction);
@@ -30,7 +32,7 @@ export function weatherOf({ calendaria = null, scene = '', fx = {}, fxFilters = 
   const fxLightning = Object.values(fxFilters ?? {}).find((f) => /lightning/i.test(String(f?.type ?? '')));
   const storm = /thunder|lightning|storm/i.test(named) && !/sand|dust|snow|blizzard/i.test(calendaria?.id ?? '')
     || Object.values(fx ?? {}).some((e) => /lightning/i.test(String(e?.type ?? ''))) || !!fxLightning;
-  return { wind, windAngle, temperature, storm, severity: storm ? stormSeverity({ calendaria, wind, fxLightning }) : 0 };
+  return { wind, windStated, windAngle, temperature, storm, severity: storm ? stormSeverity({ calendaria, wind, fxLightning }) : 0 };
 }
 
 // How fierce a storm is (0.15 – 1): Calendaria's rain (its precipitation intensity, 0–1) and wind (0–1) when it gives
@@ -294,14 +296,14 @@ vec4 snowLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
     vec2 q = (px + eddy * uGrid * 0.8) / c - dir * t * uGrid * (0.9 + 2.8 * uWind * uWind) * (0.5 + 0.5 * near) / c + depth * vec2(11.7, 5.3);
     vec2 id = floor(q), fl = fract(q) - 0.5;
     float h = hash(id + depth * 2.9);
-    if (h > dense * (0.42 + 0.3 * near)) continue;
+    if (h > dense * (0.3 + 0.2 * near)) continue;
     fl -= (vec2(hash(id + 1.1), hash(id + 3.9)) - 0.5) * 0.6;
     fl += side * 0.15 * sin(t * (1.0 + h) + h * 30.0);
-    float r = (0.07 + 0.08 * hash(id + 5.5)) * (0.75 + 0.6 * near);
-    float d = length(vec2(dot(fl, dir) / smear, dot(fl, side)));
+    float r = (0.06 + 0.06 * hash(id + 5.5)) * (0.75 + 0.5 * near);
+    float d = length(vec2(dot(fl, dir) / smear, dot(fl, side) * (1.0 + 0.7 * uWind)));
     // Near flakes soft-edged and faint at the rim (out of focus); far ones crisp.
     float soft = 0.25 + 0.6 * near;
-    float a = (1.0 - smoothstep(r * (1.0 - soft), r, d)) * (0.72 + 0.28 * near) * (0.8 + 0.2 * hash(id + 7.7));
+    float a = (1.0 - smoothstep(r * (1.0 - soft), r, d)) * (0.5 + 0.2 * near) * (0.8 + 0.2 * hash(id + 7.7));
     p = overP(p, col, a * over);
   }
   return p;
@@ -324,9 +326,9 @@ vec4 sandLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
     p = overP(p, tone, billow * (0.4 + 0.12 * near) * amount * over);
   }
   // Fine grain racing through: specks flickering past, too quick to be lines.
-  vec2 g = vec2(along - t * uGrid * (9.0 + 9.0 * uWind), across) / (uGrid * 0.06 * size);
-  float grain = step(0.985 - 0.02 * amount * gust, hash(floor(g) + floor(t * 20.0)));
-  p = overP(p, col * 1.25, grain * 0.5 * amount * over);
+  vec2 g = vec2(along - t * uGrid * (9.0 + 9.0 * uWind), across) / (uGrid * 0.1 * size), gc = floor(g), gf = fract(g) - 0.5;
+  float grain = step(0.985 - 0.02 * amount * gust, hash(gc + floor(t * 20.0))) * (1.0 - smoothstep(0.08, 0.32, length(gf * vec2(0.6, 1.4))));
+  p = overP(p, col * 1.15, grain * 0.3 * amount * over);
   return p;
 }
 // Embers: sparks lifting off a fire on the hot air, each flaring and fading, with a short glowing trail and a soft bloom.
@@ -556,7 +558,7 @@ void main(){
       float lit = clamp(0.5 + (d - fbm3(lq)) * 4.0, 0.0, 1.0);
       float c = smoothstep(edge - 0.04, edge + 0.22, d) * (1.0 - 0.6 * smoothstep(0.75, 1.0, uCover));
       vec3 tone = mix(vec3(0.58, 0.62, 0.7), vec3(1.0), 0.35 + 0.65 * lit) * uCloudSky.rgb * (0.6 + 0.4 * sun);
-      pw = overP(pw, tone, c * 0.42 * uCloudSky.a * over);
+      pw = overP(pw, tone, c * 0.26 * uCloudSky.a * over);
     }
     // Fog drifting with the wind, in its colour: thicker in places.
     if (uFogW.a > 0.005) {
@@ -579,11 +581,11 @@ void main(){
     // hollows and over water; the ground shows through.
     if (uSky.y > 0.005) {
       vec2 side = vec2(-uWindDir.y, uWindDir.x);
-      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 6.0) - t * 0.03, dot(px, side) / (uGrid * 2.2));
+      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0) - t * 0.03, dot(px, side) / (uGrid * 5.0));
       vec2 warp = vec2(noise(q * 1.3 + t * 0.02), noise(q * 1.3 + 4.4)) - 0.5;
       float veil = smoothstep(0.3, 0.7, fbm4(q + warp * 0.9)), wisp = smoothstep(0.5, 0.78, fbm3(q * 2.3 + warp + 9.0));
       float hollow = 0.8 + 0.7 * texture2D(uLow, vUv).a;
-      pw = overP(pw, vec3(0.94, 0.96, 0.98), (0.12 + veil * 0.4 + wisp * 0.25) * hollow * uSky.y * over);
+      pw = overP(pw, vec3(0.94, 0.96, 0.98), (0.08 + veil * 0.26 + wisp * 0.1) * hollow * uSky.y * over);
     }
     pw = fallLayer(pw, px, t, uFallA, uFallAColor.rgb, over);
     pw = fallLayer(pw, px, t, uFallB, uFallBColor.rgb, over);
@@ -617,8 +619,8 @@ void main(){
       vec2 e = min(px, uSize - px) / uGrid;
       float reach = min(e.x, e.y), creep = 1.0 - smoothstep(2.0, 9.0, reach + (fbm3(px / (uGrid * 3.0)) - 0.5) * 6.0);
       float veins = 0.0, amp = 1.0, sc = 1.2;
-      for (int k = 0; k < 3; k++) { veins += amp * (1.0 - smoothstep(0.0, 0.06, abs(noise(px / (uGrid * sc) + float(k) * 7.0) - 0.5))); amp *= 0.6; sc *= 0.45; }
-      float rime = clamp(veins * 0.6, 0.0, 1.0) * creep + creep * 0.25;
+      for (int k = 0; k < 3; k++) { veins += amp * (1.0 - smoothstep(0.0, 0.022, abs(noise(px / (uGrid * sc) + float(k) * 7.0) - 0.5))); amp *= 0.6; sc *= 0.45; }
+      float rime = clamp(veins * 0.3, 0.0, 1.0) * creep + creep * (0.12 + 0.5 * smoothstep(0.35, 0.7, fbm3(px / (uGrid * 0.4))));
       pw = overP(pw, vec3(0.86, 0.94, 1.0), rime * 0.6 * uSky2.y * over);
       pw = overP(pw, vec3(1.0), twinkle(px, uGrid * 0.3, t, 1.5) * creep * 0.7 * uSky2.y * over);
     }
@@ -640,15 +642,15 @@ void main(){
     }
     // A light over all: a sunshower's warmth, the gold of divine light, a black sun's pall.
     if (uGlow.a > 0.005) pw = dot(uGlow.rgb, vec3(0.33)) > 0.3 ? addP(pw, uGlow.rgb, uGlow.a * over) : overP(pw, uGlow.rgb, uGlow.a * over);
-    // Wisps: pale ribbons streaming with the wind.
+    // Wisps: faint ribbons streaming with the wind.
     if (uWisps.a > 0.005) {
       vec2 side = vec2(-uWindDir.y, uWindDir.x);
-      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 4.0) - t * 0.6, dot(px, side) / (uGrid * 0.8));
-      // Spectral wisps: torn ribbons racing with the wind, brighter at their edges, faint trails behind them.
+      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0) - t * 0.4, dot(px, side) / (uGrid * 1.6));
+      // Spectral wisps: torn, soft ribbons racing with the wind, never a solid edge.
       vec2 warp = vec2(noise(q * 0.8 + t * 0.2), noise(q * 0.8 + 3.3)) - 0.5;
       float body = fbm4(q + warp * 1.4);
-      float wisp = smoothstep(0.58, 0.72, body) * (1.0 - smoothstep(0.72, 0.9, body)) * 1.4 + smoothstep(0.72, 0.9, body) * 0.5;
-      pw = overP(pw, uWisps.rgb, wisp * uWisps.a * 0.55 * over);
+      float wisp = smoothstep(0.5, 0.85, body) * (0.45 + 0.55 * noise(q * vec2(3.0, 7.0) + warp * 2.0));
+      pw = overP(pw, uWisps.rgb, wisp * uWisps.a * 0.42 * over);
     }
     // Static: the world's grain flickering, and now and then a band torn across it.
     if (uOdd.y > 0.005) {
@@ -663,25 +665,28 @@ void main(){
       bool twister = uOdd.w < 1.5;
       float radius = uGrid * (twister ? 6.0 : 2.5), r = length(d) / radius;
       if (r < 1.6) {
-      // The air turning: a cloud of dust whose pattern is wound round the middle, faster nearer it, so it swirls.
-      float turn = t * (twister ? 2.2 : 3.5) / (0.25 + r) ;
+      // The air turning: a cloud of dust whose pattern is wound once round the middle.
+      float turn = t * (twister ? 1.4 : 2.2) + 1.1 / (0.3 + r);
       vec2 sp = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * (d / radius);
       float dust = fbm4(sp * 2.8 + 11.0) * 0.6 + fbm3(sp * 6.5 - 3.0) * 0.4;
-      float body = smoothstep(0.32, 0.7, dust) * (1.0 - smoothstep(0.55, 1.15, r));
+      float body = smoothstep(0.3, 0.8, dust) * (1.0 - smoothstep(0.4, 1.15, r));
       // The funnel itself: dense and dark round a small eye, a skirt of dust thrown out where it meets the ground.
-      float wall = smoothstep(0.06, 0.18, r) * (1.0 - smoothstep(0.18, 0.42, r));
+      float wall = smoothstep(0.02, 0.2, r) * (1.0 - smoothstep(0.2, 0.6, r));
       float skirt = (1.0 - smoothstep(0.0, 0.3, abs(r - 0.95))) * smoothstep(0.3, 0.7, fbm3(sp * 4.0 + t * 0.2));
-      vec3 tone = twister ? vec3(0.2, 0.19, 0.17) : vec3(0.74, 0.6, 0.4);
+      vec3 tone = twister ? vec3(0.36, 0.34, 0.31) : vec3(0.74, 0.6, 0.4);
       // Its shadow on the ground, cast away from the sun.
       vec2 sd = (d - uCloudShift * 0.6) / radius;
       float shade = (1.0 - smoothstep(0.1, 0.8, length(sd))) * 0.35 * (twister ? 1.0 : 0.5);
       pw = overP(pw, vec3(0.03, 0.03, 0.04), shade * uSwirlAmount * over);
-      pw = overP(pw, tone * (0.85 + 0.3 * dust), clamp(body * 0.85 + wall * 0.9 + skirt * 0.5, 0.0, 1.0) * uSwirlAmount * over);
+      float mottled = smoothstep(0.3, 0.68, dust);
+      pw = overP(pw, tone * (0.5 + 1.0 * mottled), clamp(body * (twister ? 0.75 : 0.5) + wall * (twister ? 0.8 : 0.45) * (0.35 + 0.65 * mottled) + skirt * 0.3, 0.0, 1.0) * uSwirlAmount * over);
       // Debris flung round it.
       float ang = atan(d.y, d.x);
       vec2 pol = vec2(r * 7.0, (ang + t * 2.2 / (0.4 + r)) / 6.2832 * 18.0);
       vec2 oid = floor(pol), ofl = fract(pol) - 0.5;
-      if (r < 1.4 && hash(oid + 4.4) < (twister ? 0.3 : 0.15)) pw = overP(pw, tone * 0.5, (1.0 - smoothstep(0.1, 0.2, length(ofl))) * 0.9 * uSwirlAmount * over);
+      // Grit the same size however far out: the cells are wider there.
+      float grit = length(vec2(ofl.x * radius / 7.0, ofl.y * 6.2832 * r * radius / 18.0)) / uGrid, bit = (twister ? 0.05 : 0.025) * (0.5 + hash(oid + 8.8));
+      if (r < 1.4 && hash(oid + 4.4) < (twister ? 0.3 : 0.15)) pw = overP(pw, tone * 0.6, (1.0 - smoothstep(bit * 0.5, bit, grit)) * 0.75 * uSwirlAmount * over);
       }
     }
     gl_FragColor = pw;

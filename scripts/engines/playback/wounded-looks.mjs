@@ -31,6 +31,13 @@ export function woundTier(state, prev = 0) {
   return 0;
 }
 
+// How much a creature bleeds: 0 unhurt, 0.5 any wound at all (a drop now and then), else as its woundTier.
+export function bleedTier(state) {
+  const left = hpLeft(state);
+  if (left === null || left >= 1) return 0;
+  return woundTier(state) || 0.5;
+}
+
 // The look for a tier, made from the built-in 'Wounded' preset (cloned: the library is shared).
 // Hurt: one small stain and colour barely lowered. Badly hurt: both stains, colour drained more.
 export function woundedPreset(tier, base) {

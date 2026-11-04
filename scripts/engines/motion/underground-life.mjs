@@ -337,12 +337,11 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
   };
 }
 
-// A cave-in's stones (pure): gravel and rocks round a few real boulders piled at the middle, far bigger ones in a big fall
-// (from two and a half squares across); the same seed always gives the same heap. Each { x, y, size, seed }, those at the
-// back first.
+// A cave-in's stones (pure): gravel and rocks round a few real boulders piled at the middle, all of them growing with how wide
+// the fall is, the boulders most; the same seed always gives the same heap. Each { x, y, size, seed }, those at the back first.
 export function rubbleStones({ x, y, radius = 150, seed = 1 } = {}, { grid = 100 } = {}) {
-  const r = rng(`rubble:${seed}`), k = grid / 100, big = radius >= grid * 2.5, out = [];
+  const r = rng(`rubble:${seed}`), k = grid / 100, wide = radius / k, gravel = Math.sqrt(wide / 150), out = [];
   const add = (n, least, most, spread) => { for (let i = 0; i < n; i++) { const a = r() * TAU, d = Math.pow(r(), 0.8) * radius * spread; out.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.82, size: (least + (most - least) * Math.pow(r(), 1.6)) * k, seed: Math.floor(r() * 1000) }); } };
-  add(Math.round(radius / k / 4.5), 1.2, 3.4, 1.15); add(Math.round(radius / k / 9), 5, 10, 0.95); add(big ? 9 : 4, big ? 20 : 12, big ? 42 : 20, 0.55);
+  add(Math.min(150, Math.round(wide / 4.5)), 1.2 * gravel, 3.4 * gravel, 1.15); add(Math.min(60, Math.round(wide / 9)), wide * 0.03, wide * 0.065, 0.95); add(Math.min(14, Math.round(3 + wide / 50)), wide * 0.075, wide * 0.15, 0.55);
   return out.sort((a, b) => (a.y + a.size) - (b.y + b.size));
 }

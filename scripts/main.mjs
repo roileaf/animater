@@ -174,6 +174,8 @@ import { createVermin, creatureAmount, creatureSize } from "./engines/motion/ver
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom } from "./engines/motion/underground-sounds.mjs";
+import { createFloorBlood, hitMarks, bleedStep, standingDrip } from "./engines/motion/floor-blood.mjs";
+import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, blastRipple, aimSquares, stepSquares } from "./engines/motion/energy-blast.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples } from "./engines/motion/step-ripples.mjs";
 import { createLightFlames, flameUnit, fireKindOf } from "./engines/motion/light-flames.mjs";
@@ -203,7 +205,7 @@ import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDh
 import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
-import { WoundedLooks, tokenMoving, woundTier } from "./engines/playback/wounded-looks.mjs";
+import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
 import { builtinPreset } from "./engines/tokenshade/presets.mjs";
 let conditionBody;
 let idleLife;
@@ -1021,6 +1023,7 @@ const movementFeelBody = (d) => {
   return body;
 };
 Hooks.on("updateActor", () => feelGaits.clear());
+for (const hook of ["createActiveEffect", "updateActiveEffect", "deleteActiveEffect"]) Hooks.on(hook, (effect) => { if (effect?.parent?.documentName === "Actor") feelGaits.clear(); });
 // An ancestry, a race or an Incorporeal Movement feature can change the feet.
 for (const hook of ["createItem", "updateItem", "deleteItem"]) Hooks.on(hook, (item) => { if (item?.parent?.documentName === "Actor") feelGaits.clear(); });
 Hooks.on("updateToken", (doc, changes) => { if ("name" in changes || "actorId" in changes || "delta" in changes) feelGaits.clear(); });
@@ -1110,7 +1113,8 @@ const weatherAt = (point, elevation) => { const sky = sceneWeatherNow(); return 
 // paints it instead when Animater feeds it), and rain splashes or snow dusts each step ("Weather on the ground").
 const groundTrails = createGroundTrails({
   tracked: () => movementFeelSettingOn("trackedPrints"),
-  blood: () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC)),
+  // Blood goes on the floor by its own layer now (floorBlood, engines/motion/floor-blood.mjs).
+  blood: () => false,
   weather: (feet, token) => (movementFeelSettingOn("weatherOnGround") ? weatherAt(feet, token?.elevation ?? 0) : null),
 });
 // A token's blood (placeable or TokenDocument): Splatter's rules while it is active, else Animater's own Blood colours
@@ -1120,8 +1124,8 @@ const tokenBlood = (token) => creatureBlood(token, {
   active: game.modules.get(SPLATTER_ID)?.active === true, setting: (key) => game.settings.get(SPLATTER_ID, key),
   getProperty: (obj, path) => foundry.utils.getProperty(obj, path), system: game.system.id, table: bloodTable(),
 });
-// Whether a token is badly hurt (a quarter of its HP or less, engines/playback/wounded-looks.mjs woundTier) with blood
-// to lose, and its blood colour (tokenBlood); cached per token with the gaits (forgotten as an actor or a token
+// How much a token bleeds (any wound at all, engines/playback/wounded-looks.mjs bleedTier) with blood to lose, whether it
+// is badly hurt (a quarter of its HP or less), and its blood colour (tokenBlood); cached per token with the gaits (forgotten as an actor or a token
 // changes, a token's blood flags change or the Blood colours are saved).
 const movementFeelBlood = (d) => {
   const key = `blood|${d.id}`;
@@ -1130,8 +1134,12 @@ const movementFeelBlood = (d) => {
     try {
       const actor = d.actor;
       const own = tokenBlood(d);
-      blood = { bleeding: own.bleeds && woundTier(hpState(actor, game.system.id)) === 2, bloodColor: own.color };
-    } catch { blood = { bleeding: false }; }
+      // How badly: a little from any wound, 1 from half its HP, 2 from a quarter, and down counts as the worst. Prone: as the system says (PF2e's
+      // conditions are items), or crawling.
+      const hp = hpState(actor, game.system.id), tier = own.bleeds ? (hp?.down ? 2 : bleedTier(hp)) : 0;
+      const prone = actor?.statuses?.has?.("prone") === true || (actor?.itemTypes?.condition ?? []).some((c) => c?.slug === "prone");
+      blood = { bleeding: tier === 2, bloodTier: tier, prone, bloodColor: own.color };
+    } catch { blood = { bleeding: false, bloodTier: 0, prone: false }; }
     feelGaits.set(key, blood);
   }
   return blood;
@@ -1890,7 +1898,7 @@ const webs = createWebs({ PIXI: globalThis.PIXI, root: webRootOf });
 // crawlers at the walls' feet, pebbles kicked by a step, soot over the wall torches; wet walls, steam vents and bad air
 // where a region says so (Region configuration → Cavern); rubble a cave-in brought down (kept with the scene).
 const underLife = createUndergroundLife({ PIXI: globalThis.PIXI, floor: floorLayer("underFloor", 649), above: floorLayer("underAbove", 765), glow: glowRootOf });
-let foulPolygons = [], underWanted = false, underSpots = [], underCrawl = [], underLook = null, underLookAt = 0, rubbleSceneId = null;
+let foulPolygons = [], mothsSetOn = false, underWanted = false, underSpots = [], underCrawl = [], underLook = null, underLookAt = 0, rubbleSceneId = null;
 const rubblePlayed = new Set();
 const foulAt = (x, y) => foulPolygons.some((p) => pointInPolygon({ x, y }, p));
 // The underground's sounds (engines/motion/underground-sounds.mjs), each played where it happens on this screen and heard
@@ -1951,30 +1959,88 @@ const clearRubble = async () => { if (!game.user?.isGM || !canvas?.scene) return
 let caveInAim = null;
 const stopCaveInAim = () => {
   if (!caveInAim) return;
-  const { ring, move, down, key } = caveInAim; caveInAim = null;
-  window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key, true);
+  const { ring, move, down, key, up, wheel } = caveInAim; caveInAim = null;
+  window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key, true); window.removeEventListener("keyup", up, true); window.removeEventListener("wheel", wheel, true);
   try { ring.destroy(); } catch { /* gone with the canvas */ }
 };
-const aimCaveIn = () => {
+// Choosing where and how big (a cave-in, a blast): a ring on the map following the pointer, its size on it; the wheel grows
+// and shrinks it (and is remembered for next time), Shift doubles it while held, the click brings it.
+const aimOnMap = ({ squares, setSquares = () => {}, line = 0xb2a591, fill = 0x6e6252, fire }) => {
   stopCaveInAim();
-  if (!game.user?.isGM || !canvas?.ready) return;
-  const grid = canvas.grid.size, ring = new PIXI.Graphics(); ring.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(ring);
-  let big = false;
+  if (!game.user?.isGM || !canvas?.ready) return false;
+  const ring = new PIXI.Graphics(); ring.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(ring);
+  const grid = canvas.grid.size, label = new PIXI.Text("", { fontFamily: "Signika, sans-serif", fontSize: 26, fill: 0xffffff, stroke: 0x000000, strokeThickness: 5 }); label.anchor.set(0.5, 0); label.eventMode = "none"; ring.addChild(label);
+  let big = false, size = squares, last = null;
+  const reach = () => aimSquares(size, big);
   const at = (e) => canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
-  const draw = (p) => { const r = grid * (big ? 3 : 1.5); ring.clear(); ring.lineStyle(3, 0xb2a591, 0.9); ring.beginFill(0x6e6252, 0.18); ring.drawCircle(0, 0, r); ring.endFill(); ring.lineStyle(1, 0xb2a591, 0.5); ring.drawCircle(0, 0, r * 0.5); ring.position.set(p.x, p.y); };
+  const draw = (p) => { last = p; const r = reach() * grid; label.text = `${reach()} ${reach() === 1 ? "square" : "squares"}`; label.scale.set(1 / (canvas.stage.scale.x || 1)); label.position.set(0, r + 6 / (canvas.stage.scale.x || 1)); ring.clear(); ring.lineStyle(3, line, 0.9); ring.beginFill(fill, 0.18); ring.drawCircle(0, 0, r); ring.endFill(); ring.lineStyle(1, line, 0.5); ring.drawCircle(0, 0, r * 0.5); ring.position.set(p.x, p.y); };
   const onCanvas = (e) => e.target === canvas.app.view;
   const move = (e) => { big = e.shiftKey; if (onCanvas(e)) draw(at(e)); };
   // Taken before Foundry sees it (no selection box, no region drawn).
   const down = (e) => {
     if (!onCanvas(e)) return;
     e.stopImmediatePropagation(); e.preventDefault();
-    if (e.button === 0) { const p = at(e); bringCeilingDown({ x: p.x, y: p.y, radius: grid * (e.shiftKey ? 3 : 1.5) }); }
+    const p = e.button === 0 ? at(e) : null; big = e.shiftKey;
+    const radius = reach() * grid;
     stopCaveInAim();
+    if (p) fire(p, radius);
   };
-  const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); stopCaveInAim(); } else if (e.key === "Shift") big = true; };
-  caveInAim = { ring, move, down, key };
-  window.addEventListener("pointermove", move, true); window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
-  ui.notifications?.info("Cave-in: click where the ceiling comes down (Shift: a bigger fall). Escape or right click to cancel.");
+  const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); stopCaveInAim(); } else if (e.key === "Shift") { big = true; if (last) draw(last); } };
+  const up = (e) => { if (e.key === "Shift") { big = false; if (last) draw(last); } };
+  // The wheel is the ring's while aiming: not the map's zoom.
+  const wheel = (e) => { if (!onCanvas(e)) return; e.stopImmediatePropagation(); e.preventDefault(); size = stepSquares(size, e.deltaY < 0 ? 1 : -1); setSquares(size); if (last) draw(last); };
+  caveInAim = { ring, move, down, key, up, wheel };
+  window.addEventListener("pointermove", move, true); window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("keyup", up, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
+  return true;
+};
+let caveInSquares = 1.5;
+const aimCaveIn = () => {
+  if (aimOnMap({ squares: caveInSquares, setSquares: (s) => { caveInSquares = s; }, fire: (p, radius) => bringCeilingDown({ x: p.x, y: p.y, radius }) }))
+    ui.notifications?.info("Cave-in: click where the ceiling comes down. Scroll to change its size, Shift to double it. Escape or right click to cancel.");
+};
+// An energy blast (engines/motion/energy-blast.mjs): the GM picks its kind and where, it goes off on every screen. Only a
+// show: no one is hurt, and nothing is saved.
+const blastsOn = () => bothSettingsOn("energyBlast");
+const energyBlasts = createEnergyBlasts({ PIXI: globalThis.PIXI, floor: floorLayer("blastFloor", 490), above: floorLayer("blastAbove", 770), glow: glowRootOf, map: () => mapFloor(), render: (mesh, options) => canvas.app.renderer.render(mesh, options), markSeconds: () => { try { return Number(hotSetting("floorBloodSeconds")) || 120; } catch { return 120; } } });
+Hooks.on("canvasTearDown", () => { energyBlasts.clear(); });
+const BLAST_MESSAGE = "energy-blast";
+const playBlast = ({ x, y, radius, kind, seed }) => {
+  if (!canvas?.ready || !blastsOn()) return;
+  const grid = canvas.grid.size;
+  energyBlasts.play({ x, y, radius, kind, seed, grid });
+  // Its ring bends everything, the creatures too (the map's own shockwave, as a big spell's: "Map distortion").
+  const ripple = blastRipple({ x, y, radius, kind, grid, level: canvas.level?.id ?? null });
+  if (ripple) { try { distortionHost.onEffect({ data: { animaterWarp: ripple, moduleName: "animater", sceneId: canvas.scene?.id }, destroyed: false, ended: false, worldPosition: { x, y } }); } catch { /* the floor still bends */ } }
+  const big = radius >= grid * 3, reach = Math.round((radius / grid) * 12);
+  for (const s of blastSounds(kind, { big })) setTimeout(() => playUnder(s.thud ? "thud" : s.wind ? "wind" : "blast", { x, y }, { file: s.file ?? (s.thud ? THUD_FILES[Math.floor(Math.random() * THUD_FILES.length)] : undefined), volume: s.volume, reach, rate: s.rate, gmAlways: true, room: 1, ...(s.thud ? { lowpass: big ? 380 : 600, bass: 12 } : {}) }).then((sound) => {
+    if (!sound || !s.holds) return;
+    setTimeout(() => { try { sound.fade(0, { duration: s.fades }); } catch { /* gone */ } }, s.holds);
+    setTimeout(() => { try { sound.stop(); } catch { /* gone */ } }, s.holds + s.fades + 50);
+  }), s.wait);
+  for (const [n, wave] of blastShake(kind, big).entries()) setTimeout(() => { try { cameraShake.tremor({ at: { x, y }, weight: wave.weight, sceneId: canvas.scene?.id, seed: `blast:${seed}:${n}`, scale: wave.scale }); } catch { /* no shake */ } }, wave.at);
+};
+const fireBlast = (p, kind, radius) => {
+  const blast = { x: Math.round(p.x), y: Math.round(p.y), radius, kind, seed: Math.floor(Math.random() * 1e6), sceneId: canvas.scene?.id };
+  playBlast(blast);
+  game.socket?.emit(`module.${ID}`, { type: BLAST_MESSAGE, blast });
+};
+let blastSquares = 2;
+const aimBlast = (kind) => {
+  const type = blastType(kind), tone = (c) => (Math.round(c[0] * 255) << 16) | (Math.round(c[1] * 255) << 8) | Math.round(c[2] * 255);
+  if (aimOnMap({ squares: blastSquares, setSquares: (s) => { blastSquares = s; }, line: tone(type.b), fill: tone(type.a), fire: (p, radius) => fireBlast(p, kind, radius) }))
+    ui.notifications?.info(`${type.name} blast: click where it goes off. Scroll to change its size, Shift to double it. Escape or right click to cancel.`);
+};
+// Which kind: a button each, then where.
+let blastAsking = false;
+const askBlast = async () => {
+  if (blastAsking || !canvas?.ready) return;
+  if (!blastsOn()) { ui.notifications?.info("Energy blasts are off in the Animater settings."); return; }
+  blastAsking = true;
+  try {
+    const kind = await foundry.applications.api.DialogV2.wait({ window: { title: "Energy blast (Animater)" }, content: "<p>Pick one, then click the map. Scroll to size it. Visual only: no one is hurt.</p>", classes: ["animater-blast-pick"], rejectClose: false,
+      buttons: BLAST_TYPES.map((t) => ({ action: t.id, label: t.name, icon: `fa-solid ${t.icon}` })), position: { width: 520 } });
+    if (BLAST_TYPES.some((t) => t.id === kind)) aimBlast(kind);
+  } catch { /* closed */ } finally { blastAsking = false; }
 };
 Hooks.on("canvasTearDown", stopCaveInAim);
 // Lighting controls → Flames (GM): one light's Animater flame settings given to many at once, the lights selected or, with
@@ -1989,11 +2055,12 @@ const setFlamesAsk = async () => {
   const content = `<p>${chosen.length ? `The ${lights.length} selected light(s)` : `All ${lights.length} light(s) in this scene (none selected)`}:</p>
     ${select("flame", "Flame", [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])}
     ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]])}
-    ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}`;
+    ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}
+    ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}`;
   flamesAsking = true;
   try {
     const picked = await foundry.applications.api.DialogV2.prompt({ window: { title: "Flames (Animater)" }, content,
-      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize"].map((k) => [k, button.form.elements[k].value])) } });
+      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths"].map((k) => [k, button.form.elements[k].value])) } });
     const change = Object.fromEntries(Object.entries(picked ?? {}).filter(([, v]) => v !== "keep").map(([k, v]) => [`flags.${ID}.${k}`, v]));
     if (!Object.keys(change).length) return;
     await canvas.scene.updateEmbeddedDocuments("AmbientLight", lights.map((l) => ({ _id: l.id, ...change })));
@@ -2019,10 +2086,18 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { if (Array.isArray(tools)) tools.push(tool); else tools[tool.name] = tool; };
     add({ name: "animaterCaveIn", title: "Cave-in (Animater): click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: true,
       onChange: () => aimCaveIn() });
+    add({ name: "animaterEnergyBlast", title: "Energy blast (Animater): pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: true,
+      onChange: () => askBlast() });
     add({ name: "animaterClearRubble", title: "Clear rubble (Animater): take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: true,
       onChange: () => clearRubbleAsk() });
+    add({ name: "animaterClearBlood", title: "Clear blood (Animater): wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: true,
+      onChange: () => clearBloodEverywhere() });
+    add({ name: "animaterClouds", title: "Clouds over the map (Animater): on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: true, active: game.settings.get(ID, "weatherClouds") !== false,
+      onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
   } catch { /* another layout of the controls */ }
 });
+// Changed in the settings window: the button in the Token controls follows.
+Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.weatherClouds` && game.user?.isGM) ui.controls?.render({ reset: true }); });
 let rubbleAsking = false;
 const clearRubbleAsk = async () => {
   if (rubbleAsking || !sceneRubble().length) { if (!sceneRubble().length) ui.notifications?.info("No rubble in this scene."); return; }
@@ -2054,6 +2129,39 @@ const refoulLights = () => {
   const key = JSON.stringify(foulPolygons); if (key === foulKey) return; foulKey = key;
   try { for (const l of canvas.lighting?.placeables ?? []) l.initializeLightSource?.(); canvas.perception.update({ refreshLighting: true, refreshVision: true }); } catch { /* not ready */ }
 };
+// Blood on the floor (engines/motion/floor-blood.mjs): where Splatter paints it, Splatter's alone.
+const floorBloodOn = () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC));
+const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorLayer("floorBlood", 648), glow: glowRootOf, lightAt: (x, y) => nearestLamp(x, y), life: () => { try { return Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
+Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedNext.clear(); });
+const bleedRuns = new Map(), bleedNext = new Map();
+// The GM wipes the floor: each screen draws its own blood, so each is told to.
+const CLEAR_BLOOD_MESSAGE = "clear-blood";
+const clearBloodEverywhere = () => { floorBlood.clear(); game.socket?.emit(`module.${ID}`, { type: CLEAR_BLOOD_MESSAGE, sceneId: canvas?.scene?.id }); };
+// A stride of a wounded creature: drops on its feet, a dragged trail prone or crawling.
+const bleedAlong = ({ x, y, heading, size, token, index, grid }) => {
+  if (!token?.bloodTier || !floorBloodOn()) return;
+  const prone = token.prone === true || String(token.action ?? "").toLowerCase() === "crawl";
+  let run = bleedRuns.get(token.id); if (!run) bleedRuns.set(token.id, run = {});
+  floorBlood.add(bleedStep({ at: { x, y }, heading, index, tier: token.bloodTier, prone, width: size, grid, seed: token.id, run }), token.bloodColor);
+};
+// The wounded standing still: a drop now and then under them. Looked at a few times a second.
+let bleedLook = 0;
+const tickFloorBlood = (seconds) => {
+  floorBlood.tick(seconds);
+  bleedLook += seconds; if (bleedLook < 0.25) return;
+  const step = bleedLook; bleedLook = 0;
+  if (!floorBloodOn()) return;
+  for (const t of canvas.tokens?.placeables ?? []) {
+    try {
+      const d = t.document; if (!t.visible || d.hidden || !t.actor) continue;
+      const blood = movementFeelBlood(d); if (!blood?.bloodTier) { bleedNext.delete(d.id); continue; }
+      const c = t.mesh?.position ?? t.center, now = bleedNext.get(d.id) ?? { wait: Math.random() * 2, x: c.x, y: c.y };
+      const still = Math.hypot(c.x - now.x, c.y - now.y) < 1; now.x = c.x; now.y = c.y; now.wait -= step;
+      if (still && now.wait <= 0) { const drip = standingDrip({ at: { x: c.x, y: c.y }, tier: blood.bloodTier, width: t.w, grid: canvas.grid.size }); floorBlood.add([drip.mark], blood.bloodColor); now.wait = drip.nextIn; }
+      bleedNext.set(d.id, now);
+    } catch { /* never stop the canvas */ }
+  }
+};
 // A step on stone or earth underground now and then kicks a pebble skittering ahead.
 // A floor of pebbles crunches under every step (a stone or two skittering), wherever it is, and kicks them often.
 const kickPebble = ({ x, y, floor, heading, size }) => {
@@ -2080,7 +2188,7 @@ const tickUnderLife = (seconds) => {
     const many = sceneCreatures();
     underLook = {
       eyes: dark.length ? dark : null, eyeRate, mothCount: 3 * many.moths, crawlCount: 4 * many.crawlers, mothSize: many.mothsSize, crawlSize: many.crawlersSize,
-      moths: deep && bothSettingsOn("caveMoths") && many.moths > 0 ? lampLights.filter((l) => (l.moths ?? l.fire) && near(l, grid * 2) && !keptOut("moths", l)).sort((a, b) => Math.hypot(a.x - view.x - view.w / 2, a.y - view.y - view.h / 2) - Math.hypot(b.x - view.x - view.w / 2, b.y - view.y - view.h / 2)) : null,
+      moths: bothSettingsOn("caveMoths") && many.moths > 0 ? lampLights.filter((l) => (l.moths ?? (deep && l.fire)) && near(l, grid * 2) && !keptOut("moths", l)).sort((a, b) => Math.hypot(a.x - view.x - view.w / 2, a.y - view.y - view.h / 2) - Math.hypot(b.x - view.x - view.w / 2, b.y - view.y - view.h / 2)) : null,
       crawl: deep && bothSettingsOn("caveMoths") && many.crawlers > 0 ? underCrawl.filter((c) => near(c.a, grid * 2) && !keptOut("crawlers", { x: (c.a.x + c.b.x) / 2, y: (c.a.y + c.b.y) / 2 })).slice(0, 40) : null,
     };
     if (underLook.moths && !underLook.moths.length) underLook.moths = null;
@@ -2126,6 +2234,7 @@ const rebuildCavern = () => {
     if (rubbleSceneId !== canvas.scene?.id) { rubbleSceneId = canvas.scene?.id; for (const r of rubble) rubblePlayed.add(r.seed); }
     underLife.build({ soot: sootSpots(fires, walls, { grid }), wet: wetRuns(flat("wet", "caveWet"), walls, { grid, floor }), vents: ventsIn(flat("steam", "caveSteam"), { grid, seed }), foul: foulPolygons, rubble, grid });
     underWanted = deep && (bothSettingsOn("caveEyes") || bothSettingsOn("caveMoths"));
+    mothsSetOn = bothSettingsOn("caveMoths") && lampLights.some((l) => l.moths === true);
     // Where eyes may glint: by the walls, at the dim edge of the lights or beyond them (the lights don't move often;
     // worked out with the rest).
     const glowAt = (p) => { let best = 0; for (const l of lampLights) { const d = Math.hypot(p.x - l.x, p.y - l.y); if (d < l.radius && 1 - d / l.radius > best && (!l.shape || pointInPolygon(p, l.shape))) best = 1 - d / l.radius; } return best; };
@@ -2209,7 +2318,7 @@ const nearestLamp = (x, y) => {
   let best = null, strength = 0;
   for (const l of lampLights) { const d = Math.hypot(x - l.x, y - l.y); if (d >= l.radius) continue; const s = 1 - d / l.radius; if (s > strength) { strength = s; best = l; } }
   if (!best || (Array.isArray(best.shape) && best.shape.length >= 6 && !pointInPolygon({ x, y }, best.shape))) return null;
-  return { x: best.x, y: best.y, strength: Math.min(1, strength * 1.6) };
+  return { x: best.x, y: best.y, strength: Math.min(1, strength * 1.6), color: best.color };
 };
 const ratSpots = () => {
   const grid = canvas.grid.size, spots = [];
@@ -2250,7 +2359,7 @@ const rebuildLife = () => {
     const grid = canvas.grid.size, b = canvas.dimensions.sceneRect, many = sceneCreatures();
     if (verminOn() && underCeiling({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) && (canvas.scene?.flags?.[ID]?.underground || ["cave", "hall"].includes(canvas.scene?.flags?.[ID]?.acoustics))) {
       const spots = ratSpots().filter((p) => !keptOut("rats", p) && !keptOut("bats", p));
-      vermin.populate({ spots, count: Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats), lit: litForRats, grid, bats: Math.round(3 * many.bats), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, size: many.ratsSize, batSize: many.batsSize });
+      vermin.populate({ spots, count: Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats), lit: litForRats, grid, bats: Math.round(3 * many.bats), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
     }
     if (dripsOn()) {
       const areas = [];
@@ -2293,7 +2402,7 @@ const tickPools = () => {
   })().catch(() => {}).finally(() => { poolStarting = false; });
 };
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
-Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
+Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 }));
 const surfaceLight = createSurfaceLight({ PIXI: globalThis.PIXI, root: skyRootOf, above: birdRootOf, glowing: glowRootOf, render: bakeInto, renderAt: (o, rt, transform) => canvas.app.renderer.render(o, { renderTexture: rt, clear: true, transform }) });
@@ -2399,7 +2508,7 @@ const lightningOn = () => outdoorOn("lightningFlashes");
 const leavesOn = () => outdoorOn("fallingLeaves"), mistOn = () => outdoorOn("morningMist");
 const wetOn = () => outdoorOn("wetGround"), snowCoverOn = () => outdoorOn("snowCover"), firefliesOn = () => outdoorOn("fireflies");
 const birdsOn = () => outdoorOn("birdShadows"), rainRingsOn = () => outdoorOn("rainRings");
-const weatherLightOn = () => outdoorOn("weatherLight"), weatherMapOn = () => outdoorOn("weatherOnMap");
+const weatherLightOn = () => outdoorOn("weatherLight"), weatherMapOn = () => outdoorOn("weatherOnMap"), weatherCloudsOn = () => outdoorOn("weatherClouds");
 const frozenWaterOn = () => outdoorOn("frozenWater"), seasonGroundOn = () => outdoorOn("seasonGround"), rainbowOn = () => outdoorOn("rainbows");
 const surfaceLifeOn = () => cloudsOn() || glintsOn() || mistOn() || wetOn() || snowCoverOn() || firefliesOn() || birdsOn() || rainRingsOn() || frozenWaterOn() || seasonGroundOn() || rainbowOn() || weatherLightOn() || weatherMapOn() || (hotSetting("moonLight") !== false && !undergroundScene());
 // The season: Calendaria's, else Simple Calendar Reborn's, else unknown.
@@ -2521,8 +2630,9 @@ const lookSky = () => {
     // The weather Animater draws now (a preview's, the scene's own, else Calendaria's), and what it asks of the rest.
     const drawnId = weatherPreview?.preset || sceneOwn || calendaria?.id || null;
     const drawn = weatherMapOn() && (weatherPreview?.preset || sceneOwn || calendaria) ? weatherScene(weatherPreview?.preset ? { id: weatherPreview.preset } : sceneOwn ? { id: sceneOwn } : calendaria) : null;
+    if (drawn && !weatherCloudsOn()) drawn.deck = 0;
     drawnNow = drawn;
-    const windNow = Math.max(drawn?.windMin ?? 0, weatherPreview?.wind ?? fxCloud?.speed ?? weather.wind);
+    const windAsked = weatherPreview?.wind ?? fxCloud?.speed ?? weather.wind, windNow = weather.windStated || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked);
     surfaceLight.look({
       // The cloud shadows drift with FXMaster's clouds when it draws some (then cast from their very shapes, in skyTick).
       light: fall ? fall.light : 0, clouds: weatherPreview?.clouds ?? (cloudsOn() ? cloudCover(sky) : 0), color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle,
@@ -2541,7 +2651,7 @@ const lookSky = () => {
       // The weather drawn on the map (Calendaria's, as it sets it): clouds from above with their shadows, what falls, fog.
       // (A scene's own Weather Effect, when one of Animater's, comes before Calendaria's.)
       weather: drawn,
-      cover: weatherPreview?.clouds ?? (sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky)), cloudShift: cloudShiftNow(),
+      cover: weatherPreview?.clouds ?? (!weatherCloudsOn() ? 0 : sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky)), cloudShift: cloudShiftNow(),
       // The year on the ground: its colour and the fallen leaves (none under snow lying deep).
       ...(seasonGroundOn() ? (({ tint, litter }) => ({ season: tint, litter: litter * (1 - ground.snow) }))(seasonGround(season, { wind: weather.wind })) : {}),
     });
@@ -2646,14 +2756,16 @@ function skyTick() {
   if (surfaceLight.shown) surfaceLight.tick(seconds);
   if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) lampAir.tick(seconds); }
   if (ceilingDust.busy) ceilingDust.tick(seconds);
-  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, view: viewNow(), light: nearestLamp });
+  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp });
+  tickFloorBlood(seconds);
+  if (energyBlasts.busy) energyBlasts.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
   else if (poolSound) tickPools();
   { const now = performance.now(); if (now - lightFlamesAt > (now - gustAt < 8000 ? 100 : 500)) { lightFlamesAt = now; syncLightFlames(); } if (lightFlames.count) lightFlames.tick(now / 1000); }
   if (stepRipples.busy) stepRipples.tick(seconds);
   if (cavern.busy) tickCavern(seconds, performance.now());
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
-  if (underWanted || underLife.busy) tickUnderLife(seconds);
+  if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.
   if (glowShadowsDirty && windowGlowLayer.built) glowShadowsDirty = windowGlowLayer.shadows(glowCreatures(), wallsHere()) === true;
@@ -2734,7 +2846,8 @@ const feelLayer = createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movemen
 const movementFeel = createMovementFeel({
   trails: groundTrails,
   ripples: rippleStep,
-  kicks: kickPebble,
+  kicks: (step) => { kickPebble(step); bleedAlong(step); },
+  kickAmount: () => { try { const n = Number(hotSetting("stepKickAmount")); return Number.isFinite(n) ? n : 1; } catch { return 1; } },
   // "Shadows under every token": standing creatures cast their shadows too, not only fliers.
   groundShadows: () => { try { return hotSetting("groundShadows") === true && hotSetting("groundShadowsLocal") !== false; } catch { return false; } },
   // "Shadows in creatures' shapes" and "A shadow for each light", each with its "on my screen" setting.
@@ -5501,13 +5614,14 @@ Hooks.once("init", () => {
   skyPair("caveSkylight", "caveSkylightLocal", "Light through openings to the sky", "In an underground scene, where a region is marked as open to the sky (Region configuration → Animater → Open to the sky: a hole in the ceiling, a shaft, a cave mouth), daylight falls in as a pool on the floor with a faint shaft of light and dust turning in it, away from the sun and longer when it is low; golden at dawn and dusk, silver moonlight at night. Nowhere else underground does the sun or moon reach.");
   skyPair("caveWebs", "caveWebsLocal", "Cobwebs", "Where a region is marked as cobwebs (Region configuration → Cavern), dusty, torn webs hang in the corners of its walls and stir in the draft; now and then a spider lowers itself on a thread and climbs back.");
   skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
-  skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light.");
+  skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light. On any other map, moths come to a light set to them (Light configuration → Animater → Moths: On).");
   skyPair("caveWet", "caveWetLocal", "Wet walls", "Where a region is marked as wet walls (Region configuration → Cavern), water seeps down the walls: a dark wet band at their foot, with runs out from it, glistening where the light catches it.");
   skyPair("caveSteam", "caveSteamLocal", "Steam vents", "Where a region is marked as steam vents (Region configuration → Cavern), steam breathes up from cracks in the floor, warm-lit, now and then puffing out in a burst, and drifts off on the draft.");
   skyPair("caveFoul", "caveFoulLocal", "Bad air", "Where a region is marked as bad air (Region configuration → Cavern), a sickly haze hangs, swelling and thinning, leaning down the draft; the fires in it burn low, their light reaching less far.");
   skyPair("caveSoot", "caveSootLocal", "Soot over torches", "In an underground scene, the wall behind each fire light standing against a wall is blackened with soot, spreading along it.");
   skyPair("cavePebbles", "cavePebblesLocal", "Pebbles underfoot", "In an underground scene, now and then a step on stone or earth kicks a pebble skittering ahead, bouncing and rolling to a stop.");
-  skyPair("caveRubble", "caveRubbleLocal", "Cave-ins", "The GM can bring a ceiling down (Region configuration → Animater → Cave-in): the view shakes, rocks fall and bounce, dust rolls out on the air, and the rubble stays where it fell.");
+  skyPair("energyBlast", "energyBlastLocal", "Energy blasts", "The GM can set off a blast of fire, cold, lightning, acid, force, void, radiance, sound, poison or the mind (the Energy blast button in the Token controls; scroll to size it): a flash, a shockwave bending the floor, the energy, and a mark left behind. A show only: no one is hurt. Heavy on the graphics card for the few seconds it plays.");
+  skyPair("caveRubble", "caveRubbleLocal", "Cave-ins", "The GM can bring a ceiling down (the Cave-in button in the Token controls, scroll to size it; or Region configuration → Animater → Cave-in): the view shakes, rocks fall and bounce, dust rolls out on the air, and the rubble stays where it fell.");
   skyPair("ceilingDust", "ceilingDustLocal", "Dust from the ceiling", "Under a ceiling (an underground scene, or a room under a roof), a heavy creature's step shakes grit and dust down around it, settling on the floor: more and wider the bigger it is.");
   skyPair("lampEmbers", "lampEmbersLocal", "Sparks from fires", "Every fire light (a light animated as a torch, flame or fire, or set to on in its Animater options) throws sparks now and then, rising on the heat, flaring and dying out; brightest in the dark.");
   skyPair("lampMotes", "lampMotesLocal", "Dust in the light", "In dim and dark scenes, fine dust turns slowly in the air where the lights reach, a soft sparkle inside each light's glow that stops at the walls.");
@@ -5521,6 +5635,7 @@ Hooks.once("init", () => {
   skyPair("wetGround", "wetGroundLocal", "Wet ground after rain", "Rain darkens the open ground and leaves puddles that catch the sky; it dries over a few hours of game time, faster in sun and heat. Kept on each screen per scene.");
   skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground, first in patches; it melts over a few hours of game time once it is above freezing. Kept on each screen per scene.");
   skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. FXMaster\u2019s effects for Calendaria\u2019s weather are hidden on your screen while this is on (its settings are never changed).");
+  skyPair("weatherClouds", "weatherCloudsLocal", "Clouds over the map", "The clouds themselves, seen from above, drifting over the map with the weather, and an overcast sky's grey deck. Turn off for the weather without them; what falls, the fog and the rest stay (their shadows are Cloud shadows).");
   skyPair("weatherLight", "weatherLightLocal", "Weather light", "The weather lights the outdoors its own way: a grey sky's flat, cool light, rain's grey-blue, a thunderstorm's dark green-grey (deeper the fiercer), falling snow's pale cold, a sandstorm's dusty amber; over the roofs too, while a room you look into keeps its own light. Stands in for Calendaria's \u201cSync Scene Ambience with Weather\u201d, which colours the whole scene one hue (turned off while this is on).");
   skyPair("rainbows", "rainbowsLocal", "Rainbows", "When the rain stops and the sun comes out under a clearing sky, a soft rainbow arcs over the map away from the sun, fading as the ground dries.");
   skyPair("seasonGround", "seasonGroundLocal", "The ground through the seasons", "The open ground takes the season's colour, most on grass: fresh green in spring, sun-bleached in summer, brown in autumn, dull and grey in winter; and fallen leaves lie under the trees in autumn, blown off in a wind. The season from Calendaria or Simple Calendar Reborn.");
@@ -5661,10 +5776,12 @@ Hooks.once("init", () => {
     scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting("bloodTrail", {
-    name: "Wounded creatures leave blood drops",
-    hint: "A badly hurt creature (a quarter of its HP or less) now and then drips blood as it moves, lasting about 20 seconds. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead.",
+    name: "Blood on the floor",
+    hint: "A hit throws blood on the floor, away from the attacker and shaped by the wound; a killing blow leaves a pool. A wounded creature drops blood, standing or walking, more from a quarter of its HP; one that is prone and moving drags a trail. Drawn on each screen and never saved. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead.",
     scope: "world", config: true, type: Boolean, default: true,
   });
+  registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
+  registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds; it fades over the last quarter of that.", scope: "world", config: true, type: Number, default: 180, range: { min: 20, max: 600, step: 10 } });
   registerSetting("weatherOnGround", {
     name: "Weather on the ground",
     hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes, dirt turns to mud (its sound and prints), stone, wood, grass and sand get puddles under each step, and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
@@ -6236,7 +6353,7 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
   const sizes = [["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]];
   const flameSize = `<div class="form-group"><label>Flame size</label><div class="form-fields"><select name="flags.${ID}.flameSize">${sizes.map(([o, l]) => `<option value="${o}"${o === String(flags.flameSize ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
   set.innerHTML = `<legend>Animater</legend>${pick("flame", "Flame")}${fireKind}${flameSize}${pick("moths", "Moths")}${pick("soot", "Soot")}${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}${pick("chimney", "Chimney smoke")}
-    <p class="hint">A flame burning where this light stands ("Flames on fire lights": Off where the map already draws its fire); Fire: one tongue for a torch, a bed of them across a brazier's bowl or a campfire; Flame size: bigger or smaller than its light makes it, to fit the sconce or bowl the map draws. Moths: in an underground scene, moths loop round it ("Moths and crawlers"); Auto: every fire light. Soot: the wall behind it blackened ("Soot over torches"); Auto: a fire light against a wall in an underground scene, On any light against a wall, anywhere. Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both. Chimney smoke: a hearth in a room smokes from the roof above it while the roof is drawn (Auto); On always smokes above the roofs (a forge), Off never.</p>`;
+    <p class="hint">A flame burning where this light stands ("Flames on fire lights": Off where the map already draws its fire); Fire: one tongue for a torch, a bed of them across a brazier's bowl or a campfire; Flame size: bigger or smaller than its light makes it, to fit the sconce or bowl the map draws. Moths: moths loop round it ("Moths and crawlers"); On: this light, on any map (a castle ruin's torches); Auto: every fire light in an underground scene. Soot: the wall behind it blackened ("Soot over torches"); Auto: a fire light against a wall in an underground scene, On any light against a wall, anywhere. Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both. Chimney smoke: a hearth in a room smokes from the roof above it while the roof is drawn (Auto); On always smokes above the roofs (a forge), Off never.</p>`;
   const tab = root.querySelector('.tab[data-tab="animation"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });
@@ -6716,6 +6833,8 @@ Hooks.once("ready", () => {
     trace:(status,detail)=>runtime?.trace(status,detail)});
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
+    if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
+    if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) floorBlood.clear(); return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
     if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
     if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveAreaMark(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
@@ -7133,6 +7252,11 @@ Hooks.once("ready", () => {
       // What the underground's life has to go on: eye spots, crawler paths, what it shows near the view now.
       underground: () => ({ wanted: underWanted, vermin: vermin.count, keepOut: Object.fromEntries(Object.entries(keepOut).map(([k, v]) => [k, v.length])), spots: underSpots.length, firstSpot: underSpots[0] ?? null, crawl: underCrawl.length, air: !!airField, foul: foulPolygons.length, look: underLook ? { eyes: underLook.eyes?.length ?? 0, moths: underLook.moths?.length ?? 0, crawl: underLook.crawl?.length ?? 0 } : null }),
       // Where eyes may glint, and eyes showing now rather than after their wait (previews).
+      // Blood on the floor without a hit (a preview): hit marks there, or a wounded creature's stride.
+      floorBlood: { hit: (opts = {}, color = 0x7a0d0d) => { floorBlood.add(hitMarks({ grid: canvas.grid.size, width: canvas.grid.size, seed: `dbg:${Date.now()}`, ...opts }), color); return floorBlood.count; }, step: (opts = {}, color = 0x7a0d0d) => { floorBlood.add(bleedStep({ grid: canvas.grid.size, width: canvas.grid.size, seed: "dbg", ...opts }), color); return floorBlood.count; }, count: () => floorBlood.count, clear: () => floorBlood.clear() },
+      // A blast here (a preview on this screen only); how many are playing.
+      blast: (kind = "fire", x = canvas.stage.pivot.x, y = canvas.stage.pivot.y, big = false) => { playBlast({ x, y, kind, radius: blastRadius(big, canvas.grid.size), seed: Math.floor(Math.random() * 1e6) }); return energyBlasts.playing; },
+      blasts: () => ({ playing: energyBlasts.playing, marks: energyBlasts.marks, types: BLAST_TYPES.map((t) => t.id) }),
       eyeSpots: () => underSpots.map((p) => ({ x: p.x, y: p.y })),
       rouseEyes: () => { underLife.rouse(); return true; },
       kickHere: (x, y, heading = 0) => { underLife.kick({ x, y }, heading); return underLife.busy; },
@@ -7621,6 +7745,23 @@ Hooks.once("ready", () => {
     woundSoon = setTimeout(lensRefresh, 60);
   };
   for (const hook of ["createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "updateItem", "deleteItem"]) Hooks.on(hook, woundChanged);
+  // A hit leaves blood on the floor on every screen, the GM's too (each draws its own, never saved).
+  const floorBloodFor = (actor, before) => {
+    if (!canvas?.ready || !floorBloodOn()) return;
+    const after = hpOf(actor);
+    if (!before || !after || !hpChange(before, after)) return;
+    const lost = (Number(before.value) || 0) - (Number(after.value) || 0), marked = actor.system?.resources?.hitPoints !== undefined;
+    if (!marked && !(lost > 0)) return;
+    const since = Date.now() - 15000, log = damageLog.filter((d) => d.at >= since), level = canvas.level?.id ?? undefined;
+    for (const token of (actor.getActiveTokens?.() ?? []).filter((t) => t.document?.parent?.id === canvas.scene?.id)) {
+      const blood = tokenBlood(token); if (!blood.bleeds) continue;
+      if (movementPerception(token, token.document, level).visible !== true || token.document.hidden) continue;
+      const ids = { actorId: actor.id, tokenId: token.id }, damage = recallDamage(log, ids), by = recallAttribution(log, ids);
+      const attacker = by?.sourceTokenId && by.sourceTokenId !== token.id ? canvas.tokens.get(by.sourceTokenId) ?? null : null;
+      const facts = damage ?? by ?? {}, known = facts.type || facts.types?.length, type = known ? woundOf(facts) ?? facts.type ?? facts.types?.[0] : null, kill = after.down === true || (Number(after.value) || 0) <= 0;
+      floorBlood.add(hitMarks({ at: token.center, from: attacker?.center ?? null, type, crit: damage?.crit === true || by?.crit === true, kill, share: lost / (Number(after.max) || Number(before.max) || 1), width: token.w, grid: canvas.grid.size, seed: `${token.id}:${Date.now()}` }), blood.color);
+    }
+  };
   const lensBloodFor = (actor, before) => {
     if (game.user.isGM || !canvas?.ready || (!lensWorldOn() && !effectsWorldOn())) return;
     const after = hpOf(actor);
@@ -7719,6 +7860,7 @@ Hooks.once("ready", () => {
   Hooks.on("updateActor", (actor, changes, options) => {
     const before = (actor?.uuid && lensHp.get(actor.uuid)) ?? options?.animaterHpBefore ?? null;
     try { creatureVoiceFor(actor, before); } catch (error) { runtime.trace("Blocked", `Creature voice: ${error.message}`); }
+    try { floorBloodFor(actor, before); } catch (error) { runtime.trace("Blocked", `Floor blood: ${error.message}`); }
     lensKeep(actor);
     if (game.user.isGM) return;
     try { lensBloodFor(actor, before); } catch (error) { runtime.trace("Blocked", `Lens blood: ${error.message}`); }

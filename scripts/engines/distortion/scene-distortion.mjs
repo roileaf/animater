@@ -190,9 +190,11 @@ export function slotParams(tag, tMs, { zoom = 1 } = {}) {
 
 /**
  * The distortions that get a slot: those whose circle (centre +- radius) touches
- * `view` ({x, y, w, h}), at most `max`. Over that, one-shots go first, then the
- * farthest from the view's centre. Kept in their given order.
+ * `view` ({x, y, w, h}), at most `max`. Over that, a shockwave always stays (it is the moment of a blast and over in a
+ * second; on a map full of torches their hazes would otherwise take every slot, and no blast ever rippled), then other
+ * one-shots go first, then the farthest from the view's centre. Kept in their given order.
  */
+const shockFirst = (a) => (a.slot?.kind === KINDS.shock ? 1 : 0);
 export function chooseSlots(active, view, max = 4) {
   const seen = (active ?? []).filter(a => {
     const { centre, radius } = a.params;
@@ -200,6 +202,6 @@ export function chooseSlots(active, view, max = 4) {
   });
   if (seen.length <= max) return seen;
   const middle = { x: view.x + view.w / 2, y: view.y + view.h / 2 };
-  const keep = new Set([...seen].sort((a, b) => (b.lasting - a.lasting) || (distance(a.params.centre, middle) - distance(b.params.centre, middle))).slice(0, max));
+  const keep = new Set([...seen].sort((a, b) => (shockFirst(b) - shockFirst(a)) || (b.lasting - a.lasting) || (distance(a.params.centre, middle) - distance(b.params.centre, middle))).slice(0, max));
   return seen.filter(a => keep.has(a));
 }

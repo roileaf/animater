@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.9.0 (2026-11-04)
+
+Blood on the floor, energy blasts, and every weather gone over so the map stays readable.
+
+- **Blood on the floor.** A hit sprays blood away from the blow, shaped by its damage, and a killing blow leaves a pool. Any wound drips a little as the creature walks or stands, more at half its HP and freely at a quarter; prone and crawling, it drags a trail. Pools catch the light near them, and blood fades after a time you set (How long blood stays on the floor). Every screen draws its own, the GM's too; a new Clear blood button in the Token controls wipes it for everyone.
+- **Energy Blast.** A new button in the Token controls: choose fire, cold, electricity, acid, force, void, radiant, sonic, poison or psychic, then click where it goes off. A flash, a shockwave that ripples the floor and the tokens, the energy itself and a mark left behind, each kind with its own look and sound. Several kinds still borrow a pitched wind sound for now.
+- **Size it with the wheel.** Aiming a blast or a cave-in, scroll to change its size from half a square to ten; Shift doubles it. A cave-in's stones and boulders grow with the circle.
+- **Crawling sounds.** A prone creature that moves now drags itself along the floor, with its own sound.
+- **How much a step kicks up.** A new setting for the bits thrown up by footsteps, down to none.
+- **Moths anywhere.** A light with Moths set to On draws them on any scene; Auto keeps them to fire lights underground. The Flames button on the Lighting controls sets Moths too.
+- **Clouds on demand.** A new button in the Token controls, and the Clouds over the map setting, turn the white clouds and an overcast sky's grey deck off and on, leaving the rain, snow and the rest. The clouds are also much thinner than before.
+- **A gentler blizzard.** Far fewer and smaller flakes, and thinner fog, so you can still see the map. Calm wind now means calm: a blizzard or a storm only forces a strong wind when neither the scene nor the calendar says how windy it is. A preset's intensity can no longer make a weather thicker than its usual amount.
+- **Other weathers softened.** Mist is broad and soft instead of long streaks; Gravewind and Black Sun lose their solid blades; tornadoes and dust devils are see-through dust and fine grit; Permafrost Surge creeps in as patchy frost; sandstorm grains are soft specks; Wildfire Smoke has fewer embers; Blood Rain is clearly red.
+- **Fixes.**
+  - Shockwaves, from blasts and spells alike, went missing on maps with many fires, whose heat hazes took every slot. A shockwave always gets one now.
+  - A swimmer leaves only its wake, with no stroke rings on top.
+  - Bats no longer fly through walls or into Keep out regions.
+  - Rats near a token and a wall no longer shake on the spot: they pick an open way and run, or cower.
+
 ## 2.8.1 (2026-11-04)
 
 Underground gets its sounds, new floors, and much better looks for what walkers kick up and what comes down in a cave-in. Plus a round of fixes from the community.

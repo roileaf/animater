@@ -20,6 +20,12 @@ test('rain falls as rain, snow as snow, sleet as both; a heavier preset rains ha
   assert.ok(weatherScene({ id: 'rain', precipitation: { type: 'rain', intensity: 1 } }).falls[0].amount > weatherScene({ id: 'rain', precipitation: { type: 'rain', intensity: 0.3 } }).falls[0].amount);
 });
 
+test('a preset\'s intensity never falls thicker than the weather\'s own recipe', () => {
+  const recipe = weatherScene({ id: 'blizzard' }).falls[0].amount;
+  assert.equal(weatherScene({ id: 'blizzard', precipitation: { type: 'snow', intensity: 1 } }).falls[0].amount, recipe);
+  assert.ok(weatherScene({ id: 'blizzard', precipitation: { type: 'snow', intensity: 0.2 } }).falls[0].amount < recipe);
+});
+
 test('blood rain is red, acid rain green; a custom preset falls by its precipitation', () => {
   const blood = weatherScene({ id: 'blood-rain' }).falls[0].color, acid = weatherScene({ id: 'acid-rain' }).falls[0].color;
   assert.ok(blood[0] > blood[1] && acid[1] > acid[0]);

@@ -419,3 +419,13 @@ test('controller: the Burrow holes setting off leaves the trail but no holes', (
   assert.equal(h.kinds().filter((k) => k === 'hole').length, 0);
   assert.ok(h.kinds().includes('mound'), 'the churned trail stays');
 });
+
+test('controller: a prone creature crawls, whatever its movement action says', () => {
+  const tok = { id: 'p', x: 0, y: 0, width: 100, elevation: 0, base: 0, action: 'walk', prone: true, visible: true };
+  const h = harness({ tokens: [tok], floor: 'dirt' });
+  h.feel.tick(); h.walk(tok, 12);
+  assert.ok(h.sounds.length > 0 && h.sounds.every(([, kind]) => kind === 'crawl'), JSON.stringify(h.sounds.slice(0, 3)));
+  const up = { ...tok, id: 'u', x: 0, prone: false }, hu = harness({ tokens: [up], floor: 'dirt' });
+  hu.feel.tick(); hu.walk(up, 12);
+  assert.ok(hu.sounds.every(([, kind]) => kind === 'step'), 'on its feet it steps');
+});

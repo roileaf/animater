@@ -58,6 +58,10 @@ test('a cave-in\'s heap lies round its middle, mostly gravel, the same for the s
   assert.ok(a.some((s) => s.size > 160 * 0.07), 'a few big ones');
   const biggest = (list) => Math.max(...list.map((s) => s.size));
   assert.ok(biggest(rubbleStones({ x: 0, y: 0, radius: 300, seed: 7 })) > biggest(a) * 1.5, 'boulders in a big fall');
+  // Far wider, far bigger: a boulder keeps its share of the circle.
+  const share = (radius) => biggest(rubbleStones({ x: 0, y: 0, radius, seed: 7 })) / radius;
+  assert.ok(share(800) > share(160) * 0.75, `${share(800)} against ${share(160)}`);
+  assert.ok(rubbleStones({ x: 0, y: 0, radius: 1000, seed: 7 }).length <= 224, 'never more than a floor can draw');
   assert.ok(Math.abs(biggest(rubbleStones({ x: 0, y: 0, radius: 600, seed: 7 }, { grid: 200 })) - 2 * biggest(rubbleStones({ x: 0, y: 0, radius: 300, seed: 7 }))) < 1e-6, 'scaled to the grid');
   assert.notDeepEqual(rubbleStones({ x: 500, y: 500, radius: 160, seed: 8 }), a);
 });
