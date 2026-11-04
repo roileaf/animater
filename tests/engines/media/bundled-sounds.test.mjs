@@ -15,7 +15,7 @@ test("every sound Animater ships is in the media library, and only those", () =>
   const items = mergeMedia(sounds);
   assert.equal(items.length, sounds.length, "every file is a valid library entry with its own id");
   assert.ok(items.every((i) => i.type === "audio" && i.source === "Animater" && i.label && !/\d{4,}/.test(i.label)));
-  assert.deepEqual([...new Set(items.map((i) => i.category))].sort(), ["Creature movement", "Creature voices", "Hits & surfaces", "Underground", "Weather", "Wildlife"]);
+  assert.deepEqual([...new Set(items.map((i) => i.category))].sort(), ["Creature movement", "Creature voices", "Hits & surfaces", "Places", "Underground", "Weather", "Wildlife"]);
   // Takes of one sound are one card.
   assert.ok(mediaGroups(items, { type: "audio" }).groups.length < sounds.length / 5);
 });

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.12.3 (2026-11-04)
+
+**Wildlife is now chosen scene by scene: to bring your animals back, turn on Outdoor life in Scene configuration → Animater.** Also new: what a fight leaves behind, coasts and waterfalls, reflections, town life, old tracks, and the sound of places.
+
+- **Outdoor life is now your choice for each scene.** Animals, their calls, the night crickets, fireflies and the dawn chorus no longer start by themselves. Every scene starts with it off, including your existing ones.
+- **What a fight leaves behind.** Arrows and bolts stay stuck in the walls, floors and shields they struck, until the scene changes. A body left on the map draws flies, then crows or a vulture, who scatter when anyone comes near.
+- **The coast.** Mark a water region as the sea (Region configuration → Floor and water) for waves, wet sand that moves with the tide over the game's day, crabs and the sound of surf.
+- **Waterfalls.** Mark a water region as a waterfall for falling water, foam, mist on the wind, a faint rainbow in the spray and the roar of it.
+- **Reflections.** Still water mirrors creatures on its banks, nearby fires and the moon.
+- **Town life.** Choose Quiet or Busy for a scene (Scene configuration → Animater) for pigeons, chickens, a cat on the walls and a stray dog, with their calls. Windows go dark one by one through the night. Off until you choose.
+- **Old tracks.** Choose for a scene whether only the GM or everyone sees prints that stay and age by the game's clock, and how many game hours they last. Mud keeps them longest and stone hardly at all. Tracks of hidden or sneaking creatures show only to the GM. Off until you choose.
+- **Tavern murmur.** Mark a region as a tavern for a crowd's voices: loud inside, faint through its walls, spilling out when a door opens.
+- **Dawn and dusk.** Birds sing all around at first light and go quiet at sunset, then a hush falls before the crickets start.
+- **Flames in the wind.** Out of doors, flames, torches and their smoke lean with the wind and swell in the gusts. The light itself never changes.
+- **Choose your immersion.** The new features are offered after this update, each with an example on the open scene, and the GM can set Outdoor life, Town life and Old tracks for that scene right there.
+- **Fixed: the Choose your immersion rows looked wrong.** They are compact again, with each checkbox beside its name.
+
 ## 2.12.2 (2026-11-04)
 
 D&D 5e in other languages: the catalog speaks your compendium's language, and translated items find their animations.

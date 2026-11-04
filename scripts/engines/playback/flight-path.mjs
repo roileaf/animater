@@ -43,6 +43,23 @@ export function missLine(from, to, { seed, gridPx, angle = 12, overshoot = 2 }) 
   return { x: from.x + Math.cos(theta) * length, y: from.y + Math.sin(theta) * length };
 }
 
+// The arrows and bolts of a plan that stay where they land (pure), for the aftermath (engines/motion/aftermath.mjs): in a wall, in the
+// floor past a miss, or in a shield that stopped them. A bolt of fire or lightning leaves nothing to stick.
+const SHOT_NAME = /(?:^|[^a-z])(arrow|bolt|quarrel)/i, NOT_A_SHAFT = /lightning|fire|flame|frost|ice|acid|poison|ray|eldritch|magic|force|witch|shock|necro|radiant|storm|thunder|chaos|sound|spell/i;
+export function stuckShotsOf(plan = []) {
+  const out = [];
+  for (const s of plan) {
+    if (!FLIGHTS.includes(s.kind) || !s.flightFrom || !s.flightTo) continue;
+    const named = JSON.stringify(s.asset ?? '') ?? '', match = named.match(SHOT_NAME);
+    if (!match || NOT_A_SHAFT.test(named)) continue;
+    const into = s.shieldBlock ? 'shield' : s.flightOutcome === 'wall' ? 'wall' : s.flightOutcome === 'past' ? 'floor' : null;
+    if (!into) continue;
+    const { x, y } = s.flightTo, angle = Math.atan2(y - s.flightFrom.y, x - s.flightFrom.x);
+    out.push({ x: Math.round(x), y: Math.round(y), angle: Math.round(angle * 100) / 100, into, kind: /arrow/i.test(match[1]) ? 'arrow' : 'bolt', after: Math.max(0, Number(s.delay) || 0) + Math.round(distance(s.flightFrom, s.flightTo) * 0.6), ...(into === 'shield' ? { token: tokenId(s.endpoint) ?? null } : {}) });
+  }
+  return out;
+}
+
 // The path of one flight. role: 'attack-hit' | 'attack-miss' | 'other' | 'fixed'.
 export function planFlight({ from, targetRect, to, role, seed, gridPx, collides, shieldBlock }) {
   const aim = to ?? footprintPoints(targetRect)[0];

@@ -1,0 +1,13 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. The sounds of places: the sea, waterfalls, flies at a body, a tavern. Thank you to each author.
+
+surf-325197-0.ogg: "Relaxing Beach Waves" by ClubsHeartsSpadesDiamonds, https://freesound.org/people/ClubsHeartsSpadesDiamonds/sounds/325197/ (CC0 1.0). Changes: cut 10.00-34.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -6.2 dB.
+waterfall-344380-0.ogg: "Waterfall close.wav" by orion1001, https://freesound.org/people/orion1001/sounds/344380/ (CC0 1.0). Changes: cut 4.00-28.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -4.4 dB.
+waterfall-476162-0.ogg: "Artist Point Waterfall, Yellowstone.m4a" by maroonhorizon34, https://freesound.org/people/maroonhorizon34/sounds/476162/ (CC0 1.0). Changes: cut 1.00-24.50 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -0.1 dB.
+flies-198278-0.ogg: "Flies" by miklovan, https://freesound.org/people/miklovan/sounds/198278/ (CC0 1.0). Changes: cut 64.00-88.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -9.5 dB.
+flies-484363-0.ogg: "flies.WAV" by Funkton, https://freesound.org/people/Funkton/sounds/484363/ (CC0 1.0). Changes: cut 45.00-69.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain +5 dB.
+tavern-455732-0.ogg: "crowd int murmur bar pub comedy club roomy NYC.flac" by kyles, https://freesound.org/people/kyles/sounds/455732/ (CC0 1.0). Changes: cut 4.00-28.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -5.2 dB.
+tavern-267496-0.ogg: "crowd indoors bar.mp3" by impulse94, https://freesound.org/people/impulse94/sounds/267496/ (CC0 1.0). Changes: cut 5.00-29.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -14.7 dB.
+tavern-394290-0.ogg: "Bar Crowd in Belgrade" by EpicWizard, https://freesound.org/people/EpicWizard/sounds/394290/ (CC0 1.0). Changes: cut 12.00-36.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain +0.2 dB.
+tavern-376456-0.ogg: "Pub in Cambridge" by domasmo, https://freesound.org/people/domasmo/sounds/376456/ (CC0 1.0). Changes: cut 56.00-80.00 s, its end crossfaded into its start to loop, high-pass 55 Hz, mixed to mono, gain -4.7 dB.

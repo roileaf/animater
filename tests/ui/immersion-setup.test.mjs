@@ -1,11 +1,42 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { IMMERSION_FEATURES, featureKeys, featureOn, featureShown, choiceWrites, newFeatures, immersionHTML } from '../../scripts/ui/immersion-setup.mjs';
+import { IMMERSION_FEATURES, featureKeys, featureOn, featureShown, choiceWrites, newFeatures, immersionHTML, sceneValue, sceneWrites } from '../../scripts/ui/immersion-setup.mjs';
 import { SETTINGS_TABS } from '../../scripts/ui/settings-window.mjs';
 
 const fish = { id: 'fish', name: 'Fish', short: 's', about: 'a', keys: ['pond', 'river', 'worldOnly'] };
 const ctx = (values, isGM = true) => ({ get: (key) => values[key], has: (key) => key in values, isGM });
 const both = { pond: true, pondLocal: true, river: true, riverLocal: true, worldOnly: true };
+
+test('what this update added asks everyone again, under new groups', () => {
+  const seenBefore = ['wildlife', 'vermin', 'light', 'weather', 'fire', 'feet', 'creatures', 'caves', 'sound', 'blood'];
+  const fresh = newFeatures(IMMERSION_FEATURES, seenBefore).map((f) => f.id);
+  for (const id of ['outdoors', 'windflames', 'tavern', 'aftermath', 'shores', 'dayshift', 'town', 'tracks']) assert.ok(fresh.includes(id), id);
+  for (const id of seenBefore.filter((s) => s !== 'wildlife')) assert.ok(!fresh.includes(id), id);
+});
+
+test('a scene switch reads what the scene says, and Off for anything else', () => {
+  const town = IMMERSION_FEATURES.find((f) => f.id === 'town'), tracks = IMMERSION_FEATURES.find((f) => f.id === 'tracks');
+  assert.equal(sceneValue(town, {}), '');
+  assert.equal(sceneValue(town, { townLife: 'busy' }), 'busy');
+  assert.equal(sceneValue(town, { townLife: 'nonsense' }), '');
+  assert.equal(sceneValue(tracks, {}), 'off');
+});
+
+test('only scene switches that changed are written', () => {
+  const features = IMMERSION_FEATURES.filter((f) => f.scene);
+  const before = new Map([['town', ''], ['outdoors', 'on'], ['tracks', 'off']]);
+  assert.deepEqual(sceneWrites(features, before, new Map(before), 'animater'), {});
+  assert.deepEqual(sceneWrites(features, before, new Map(before).set('town', 'quiet'), 'animater'), { 'flags.animater.townLife': 'quiet' });
+});
+
+test('only the GM gets a scene switch, in the open row, naming the scene', () => {
+  const town = IMMERSION_FEATURES.find((f) => f.id === 'town'), args = { features: [town], choices: new Map([['town', true]]), selected: 'town', sceneValues: new Map([['town', 'busy']]), sceneName: 'Oleg\'s <Post>' };
+  const gm = immersionHTML({ ...args, isGM: true });
+  assert.ok(gm.includes('data-scene="town"') && gm.includes('Oleg\'s &lt;Post&gt;') && /value="busy" selected/.test(gm));
+  assert.ok(!immersionHTML({ ...args, isGM: false }).includes('data-scene'));
+  assert.ok(!immersionHTML({ ...args, isGM: true, selected: null }).includes('data-scene'));
+  assert.ok(!immersionHTML({ ...args, isGM: true, sceneName: '' }).includes('data-scene'));
+});
 
 test('every setting a feature names is one the settings window knows', () => {
   const known = new Set(SETTINGS_TABS.flatMap((tab) => tab.rows.flatMap((row) => [row.world, row.local, ...(row.extras ?? [])])).filter(Boolean));

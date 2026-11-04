@@ -23,9 +23,14 @@ export const WILD_SOUNDS = Object.freeze({
   cricketChirp: ['521129-0', '521129-1', '521129-2', '353073-0'].map((n) => `${SOUND_DIR}/cricket/cricket-${n}.ogg`),
   foxBark: ['546948-0', '546948-1'].map((n) => `${SOUND_DIR}/fox/fox-${n}.ogg`),
   dragonBuzz: ['447319-0', '447319-1', '447319-2'].map((n) => `${SOUND_DIR}/dragonfly/dragonfly-${n}.ogg`),
+  // Town life (town-life.mjs).
+  henCluck: ['233097-0', '724216-0'].map((n) => `${SOUND_DIR}/town/hen-${n}.ogg`),
+  catMeow: ['110011-0', '584895-0', '584895-1'].map((n) => `${SOUND_DIR}/town/cat-${n}.ogg`),
+  dogBark: ['277058-0', '832435-1'].map((n) => `${SOUND_DIR}/town/dog-${n}.ogg`),
+  pigeonCoo: ['517683-0'].map((n) => `${SOUND_DIR}/town/pigeon-${n}.ogg`),
 });
 // How long each kind waits [least, most seconds] after it sounds, whatever their number (underground-sounds.mjs critterVoices).
-export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], dragonBuzz: [5, 12] });
+export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], dragonBuzz: [5, 12], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14] });
 // One of a kind's recordings (pure), never the one just played when there are others.
 const lastSound = {};
 export function wildSound(kind, random = Math.random) {

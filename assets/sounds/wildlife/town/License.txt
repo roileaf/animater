@@ -1,0 +1,12 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. The calls of town animals. Thank you to each author.
+
+hen-233097-0.ogg: "Chicken - Buck 2 - 96kHz.wav" by JarredGibb, https://freesound.org/people/JarredGibb/sounds/233097/ (CC0 1.0). Changes: cut 0.40-1.36 s, high-pass 55 Hz, mixed to mono, gain -2.1 dB.
+hen-724216-0.ogg: "Chickens_waiting_to_be_fed_farm_light_wind_bird_song" by nickmaysoundmusic, https://freesound.org/people/nickmaysoundmusic/sounds/724216/ (CC0 1.0). Changes: cut 0.07-1.52 s, high-pass 55 Hz, mixed to mono, gain +5.2 dB.
+cat-110011-0.ogg: "cat meow" by tuberatanka, https://freesound.org/people/tuberatanka/sounds/110011/ (CC0 1.0). Changes: cut 0.17-1.28 s, high-pass 55 Hz, mixed to mono, gain -14.1 dB.
+cat-584895-0.ogg: "Cat Meows 7x" by Kinoton, https://freesound.org/people/Kinoton/sounds/584895/ (CC0 1.0). Changes: cut 0.47-1.13 s, high-pass 55 Hz, mixed to mono, gain -5.8 dB.
+cat-584895-1.ogg: "Cat Meows 7x" by Kinoton, https://freesound.org/people/Kinoton/sounds/584895/ (CC0 1.0). Changes: cut 2.23-2.88 s, high-pass 55 Hz, mixed to mono, gain -3.6 dB.
+dog-277058-0.ogg: "Single Dog Bark" by kwahmah_02, https://freesound.org/people/kwahmah_02/sounds/277058/ (CC0 1.0). Changes: cut 0.00-0.26 s, high-pass 55 Hz, mixed to mono, gain -12.4 dB.
+dog-832435-1.ogg: "Dog barking" by felix.blume, https://freesound.org/people/felix.blume/sounds/832435/ (CC0 1.0). Changes: cut 8.95-9.23 s, high-pass 55 Hz, mixed to mono, gain -13.8 dB.
+pigeon-517683-0.ogg: "bird birds cooing dove nature pigeon Dove Callling" by idreesbari, https://freesound.org/people/idreesbari/sounds/517683/ (CC0 1.0). Changes: cut 72.99-73.59 s, high-pass 55 Hz, mixed to mono, gain +9.4 dB.

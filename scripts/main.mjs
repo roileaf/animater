@@ -91,6 +91,15 @@ import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { IMMERSION_FEATURES, immersionWindow, newFeatures } from "./ui/immersion-setup.mjs";
+import { createCoast, tideLevel } from "./engines/motion/coast.mjs";
+import { PLACE_VOLUME, THROUGH_WALL, placeHeard, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
+import { createWaterfalls } from "./engines/motion/waterfall.mjs";
+import { createWaterMirror } from "./engines/motion/water-mirror.mjs";
+import { createAftermath, bodyStage } from "./engines/motion/aftermath.mjs";
+import { createTownLife, lightsOutAt } from "./engines/motion/town-life.mjs";
+import { dayShift, chorusGap, chorusSpot } from "./engines/motion/day-shift.mjs";
+import { flameWind } from "./engines/motion/flame-wind.mjs";
+import { createOldTracks, trackMode, trackHours, stepsAlong, pruneTracks } from "./engines/motion/old-tracks.mjs";
 import { LOCK_TOOLS, listedClientSettings, organizeConfigCategory } from "./ui/settings-config-listing.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
@@ -183,7 +192,7 @@ import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/m
 import { weatherShelter, createWildlife, wildSound, WILD_GAPS } from "./engines/motion/wildlife.mjs";
 import { createPondLife } from "./engines/motion/pond-life.mjs";
 import { createFieldLife } from "./engines/motion/field-life.mjs";
-import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile } from "./engines/motion/river-sound.mjs";
+import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
 import { weatherLevels, weatherIsOurs, thunderFor, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip } from "./engines/motion/floor-blood.mjs";
@@ -1552,7 +1561,9 @@ const rebuildGlows = () => {
         if (d.radius > 0) lights.push({ x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null });
       } catch { /* a broken light never breaks the rest */ }
     }
-    const glows = windowGlows({ walls: wallsHere(), indoors, lights, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares() });
+    // In a scene with Town life on, the town goes to bed: its windows go dark one by one through the night.
+    const town = bothSettingsOn("townLife") && townLevel(), hourNow = town ? (clockNow()?.day ?? 0.75) * 24 : 0;
+    const glows = windowGlows({ walls: wallsHere(), indoors, lights, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares() }).filter((g) => !town || !lightsOutAt(g.points.slice(0, 2).map(Math.round).join(), hourNow));
     // Hidden under the trees' leaves (whether or not they cast their own shade) and the roofs' eaves: the light comes
     // out from under them.
     const { tree, roof } = sunlitTiles(), covers = [...tree, ...roof];
@@ -1717,6 +1728,17 @@ const airLeanAt = (x, y) => {
 // animation quickened on this screen only (the light itself unchanged), eased back as the gust settles.
 const torchDraftOn = () => bothSettingsOn("torchDraft");
 const flameBase = new WeakMap();
+// The wind on a fire out of doors (engines/motion/flame-wind.mjs). Whether it is sheltered is looked at once a second a fire: a roof or a room stops the wind.
+const fireShelter = new Map();
+const windOnFire = (key, x, y) => {
+  try {
+    if (!bothSettingsOn("windFlames")) return flameWind();
+    const now = performance.now(), had = fireShelter.get(key);
+    let shelter = had?.shelter ?? 0;
+    if (!had || now - had.at > 1000 || Math.hypot(had.x - x, had.y - y) > canvas.grid.size) { shelter = undergroundScene() || underCeiling({ x, y }) || wildOpen?.closed?.(x, y) ? 1 : 0; fireShelter.set(key, { at: now, x, y, shelter }); }
+    return flameWind({ wind: skyWindNow, angle: skyWindAngle, t: now / 1000, key, shelter });
+  } catch { return flameWind(); }
+};
 const gutterFlames = (on) => {
   for (const light of canvas?.lighting?.placeables ?? []) {
     const anim = light.lightSource?.animation; if (!anim || !light.lightSource?.active || !/torch|flame|fire/i.test(String(anim.type ?? ""))) continue;
@@ -1731,7 +1753,9 @@ const gutterFlames = (on) => {
       const t = ((anim.time - anim.seed) * 5000) / anim.speed;
       anim.seed += ((anim.speed - speed) * t) / 5000;
     }
-    anim.speed = speed; anim.intensity = Math.min(10, base.intensity + 5 * Math.max(0, moving - 0.3));
+    // A strong gust out of doors whips it too; the light's own settings stay as they are.
+    const pressed = windOnFire(light.id, light.center.x, light.center.y).dip;
+    anim.speed = speed; anim.intensity = Math.min(10, base.intensity + 5 * Math.max(0, moving - 0.3) + 4 * pressed);
   }
 };
 // What the lamps' air shows now: the fires near the view, and the dust in the dark (bright day washes it out).
@@ -1772,6 +1796,9 @@ const bothSettingsOn = (key) => { try { return hotSetting(key) !== false && hotS
 // The open sky's effects (sun through trees and roofs, clouds, birds, rain, snow, lightning, the moon on the ground...)
 // never show in an underground scene.
 const outdoorOn = (key) => bothSettingsOn(key) && !undergroundScene();
+// Outdoor life is the GM's for each scene, as Town life is (Scene configuration → Animater → Outdoor life): animals, their calls, the crickets and the dawn chorus, only where it is on.
+let outdoorLifePreview = false; // "Choose your immersion" showing it on a scene that has it off, on this screen only.
+const outdoorLifeHere = () => outdoorLifePreview || canvas?.scene?.flags?.[ID]?.outdoorLife === "on", wildHere = () => outdoorOn("wildlife") && outdoorLifeHere();
 const canopyOn = () => outdoorOn("canopyLight");
 const roofLightOn = () => outdoorOn("roofLight");
 // How solid each tile picture is (canopy-light.mjs solidShare), read once, small, per picture.
@@ -1950,7 +1977,54 @@ const lowFlierRoot = floorLayer("lowFliers", 750);
 const pondLife = createPondLife({ PIXI: globalThis.PIXI, floor: floorLayer("pondLife", 662), sky: lowFlierRoot, high: highSkyOf, highShadow: highFloorOf });
 // A loud noise sends everything out there running, the bigger the bang the further, spreading out from it.
 const fieldLife = createFieldLife({ PIXI: globalThis.PIXI, floor: floorLayer("fieldLife", 660), sky: lowFlierRoot, glow: glowRootOf, high: highSkyOf, highShadow: highFloorOf });
-const noiseScares = ({ x, y, radius }) => { try { const grid = canvas.grid.size, far = Math.max(grid * 12, (Number(radius) || grid) * 4); wildlife.noise({ x, y, radius: far }); pondLife.noise({ x, y, radius: far }); fieldLife.noise({ x, y, radius: far }); } catch { /* the canvas mid-change */ } };
+const noiseScares = ({ x, y, radius }) => { try { const grid = canvas.grid.size, far = Math.max(grid * 12, (Number(radius) || grid) * 4); wildlife.noise({ x, y, radius: far }); pondLife.noise({ x, y, radius: far }); fieldLife.noise({ x, y, radius: far }); aftermath.noise({ x, y, radius: far }); townLife.noise({ x, y, radius: far }); } catch { /* the canvas mid-change */ } };
+// What a fight leaves behind (engines/motion/aftermath.mjs): shots stuck where they landed, flies and crows at the bodies. Every screen has its own, never saved.
+const aftermath = createAftermath({ PIXI: globalThis.PIXI, floor: floorLayer("aftermath", 650), sky: lowFlierRoot, cap: 40 });
+const SHOTS_MESSAGE = "stuck-shots";
+const landShots = (shots) => {
+  if (!bothSettingsOn("stuckShots")) return;
+  const scene = canvas?.scene?.id;
+  for (const shot of shots) setTimeout(() => {
+    try {
+      if (canvas?.scene?.id !== scene) return;
+      if (shot.into !== "shield") return void aftermath.stick({ x: shot.x, y: shot.y, angle: shot.angle, kind: shot.kind, into: shot.into, seed: `${shot.x},${shot.y}` });
+      const t = canvas.tokens?.get(shot.token); if (!t) return;
+      // In the side that faced the shot.
+      aftermath.stickInto(t.id, { dx: -Math.cos(shot.angle) * t.w * 0.32, dy: -Math.sin(shot.angle) * t.h * 0.32, angle: shot.angle, kind: shot.kind, seed: `${t.id}:${shot.x},${shot.y}` });
+    } catch { /* the canvas mid-change */ }
+  }, Math.min(5000, Number(shot.after) || 0));
+};
+// A shot's end goes to every screen that may see it: a private roll's only to its audience (core/privacy.mjs).
+const shareShots = (shots, context) => {
+  if (!canvas?.ready) return;
+  const audience = Array.isArray(context?.audience) ? context.audience : null;
+  try { game.socket.emit(`module.${ID}`, { type: SHOTS_MESSAGE, sceneId: canvas.scene?.id, shots: shots.slice(0, 12), ...(audience ? { audience } : {}) }); } catch { /* only for looks */ }
+  landShots(shots.slice(0, 12));
+};
+const shotsHeard = (data) => { if (data.sceneId === canvas?.scene?.id && Array.isArray(data.shots) && (!Array.isArray(data.audience) || data.audience.includes(game.user.id))) landShots(data.shots.slice(0, 12).filter((s) => Number.isFinite(s?.x) && Number.isFinite(s?.y) && Number.isFinite(s?.angle))); };
+// Who lies dead here, looked at every couple of seconds: an NPC at no HP, or anyone marked Defeated, left on the map; not the bloodless, and not one the GM hid.
+let bodiesAt = 0;
+const bodiesKnown = new Map();
+const lookForBodies = () => {
+  const now = performance.now(); if (now - bodiesAt < 2000) return; bodiesAt = now;
+  const here = new Set();
+  if (bothSettingsOn("carrion") && !undergroundScene()) for (const t of canvas.tokens?.placeables ?? []) {
+    try {
+      const actor = t.actor; if (!actor || t.document.hidden || !t.visible) continue;
+      const hp = hpState(actor, game.system.id), dead = actor.statuses?.has?.(defeatedStatusId()) || (isNpcActor(actor) && hp && (hp.down === true || (Number(hp.max) > 0 && Number(hp.value) <= 0)));
+      if (!dead || !tokenBlood(t).bleeds) continue;
+      here.add(t.id);
+      if (!bodiesKnown.has(t.id)) { const x = t.x + t.w / 2, y = t.y + t.h / 2, outdoors = !underCeiling({ x, y }) && !wildOpen?.closed?.(x, y); bodiesKnown.set(t.id, { x, y, outdoors, since: now }); aftermath.body({ id: t.id, x, y, size: Number(t.document.width) || 1, outdoors }); }
+    } catch { /* a token mid-change */ }
+  }
+  for (const id of [...bodiesKnown.keys()]) if (!here.has(id)) { bodiesKnown.delete(id); aftermath.bodyGone(id); }
+};
+const tickAftermath = (seconds) => {
+  lookForBodies();
+  if (!aftermath.busy) return;
+  aftermath.tick(seconds, { near: creaturesNow(), day: wildDay(), cold: groundOf().now.snow > 0 ? 1 : 0, rain: skyFalling.rain, view: viewNow(), seen: wildSeen, cast: wildCast, grid: canvas.grid.size, sound: (kind, at) => wildVoice(kind, at, false), tokens: (id) => { const t = canvas.tokens?.get(id); return t && !t.destroyed ? { x: t.x, y: t.y, w: t.w, h: t.h, visible: t.visible } : null; } });
+};
+Hooks.on("canvasTearDown", () => { aftermath.clear(); bodiesKnown.clear(); });
 Hooks.on("canvasTearDown", () => { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; });
 const doorBursts = createDoorBursts({ PIXI: globalThis.PIXI, root: (kind) => (kind === "rats" ? ratRootOf() : birdRootOf()), floor: ratRootOf });
 Hooks.on("canvasTearDown", () => { doorBursts.clear(); });
@@ -1999,6 +2073,53 @@ const tickSwimmers = () => {
   }
 };
 Hooks.on("canvasTearDown", () => { stepRipples.clear(); stepRipplesFloorFor = null; wakeRipples.clear(); wakeFloorFor = null; swimmers.clear(); });
+// Old tracks (engines/motion/old-tracks.mjs): only where the GM asks for it in Scene configuration. The active GM's screen writes what was walked to the scene,
+// at most twice a minute; every screen draws what it may see, again as the list or the game's clock moves on.
+const oldTracks = createOldTracks({ PIXI: globalThis.PIXI, root: floorLayer("oldTracks", 644) });
+const trackGait = new Map();
+let trackWaiting = [], trackWriteTimer = null, trackDrawnAt = -Infinity, trackDrawnKey = null;
+const tracksOf = (scene) => { const f = scene?.flags?.[ID] ?? {}; return { mode: trackMode(f.oldTracks), hours: trackHours(f.oldTrackHours), steps: Array.isArray(f.tracks) ? f.tracks : [] }; };
+const drawTracks = (force = false) => {
+  try {
+    if (!canvas?.ready) return;
+    const { mode, hours, steps } = tracksOf(canvas.scene), now = game.time?.worldTime ?? 0, on = bothSettingsOn("oldTracks") && mode !== "off" && steps.length > 0;
+    if (!on) { if (oldTracks.count) oldTracks.clear(); trackDrawnKey = null; return; }
+    // The game's clock moves on by jumps or by the minute; a redraw every few game minutes is plenty for a fade over hours.
+    const key = `${canvas.scene.id}|${mode}|${hours}|${steps.length}|${steps.at(-1)?.[5] ?? 0}`;
+    if (!force && key === trackDrawnKey && Math.abs(now - trackDrawnAt) < 300) return;
+    trackDrawnKey = key; trackDrawnAt = now;
+    oldTracks.draw(steps, { now, hours, mode, viewer: game.user?.isGM ? "gm" : "player", grid: canvas.grid.size });
+  } catch { oldTracks.clear(); }
+};
+const writeTracks = async () => {
+  trackWriteTimer = null;
+  const scene = canvas?.scene, fresh = trackWaiting; trackWaiting = [];
+  if (!scene || !fresh.length || !game.user?.isActiveGM) return;
+  const { mode, hours, steps } = tracksOf(scene); if (mode === "off") return;
+  try { await scene.setFlag(ID, "tracks", pruneTracks([...steps, ...fresh], game.time?.worldTime ?? 0, hours)); } catch (e) { console.warn("Animater old tracks:", e.message); }
+};
+Hooks.on("moveToken", (doc, movement) => {
+  try {
+    if (!game.user?.isActiveGM || !canvas?.ready || doc.parent?.id !== canvas.scene?.id || !doc.actor) return;
+    const { mode } = tracksOf(canvas.scene); if (mode === "off" || !hotSetting("oldTracks")) return;
+    const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0, size = Math.max(0.5, Number(doc.width) || 1), mid = (w) => ({ x: w.x + ((w.width ?? doc.width) * grid) / 2, y: w.y + ((w.height ?? doc.height) * grid) / 2 });
+    let from = movement?.origin, gait = trackGait.get(doc.id) ?? { left: 0, side: 1 };
+    const secret = doc.hidden === true || movementSneaking(doc.id) === true;
+    for (const way of movement?.passed?.waypoints ?? []) {
+      // Flying, burrowing, swimming and blinking across leave nothing on the floor.
+      const walked = from && !["fly", "burrow", "swim", "displace"].includes(way.action) && !way.teleport && Number(way.elevation ?? base) === base;
+      if (walked) {
+        const out = stepsAlong(mid(from), mid(way), { grid, size, worldTime: game.time?.worldTime ?? 0, secret, left: gait.left, side: gait.side, floorAt: (p) => movementFeelFloor(p, doc) });
+        gait = { left: out.left, side: out.side }; trackWaiting.push(...out.steps);
+      }
+      from = way;
+    }
+    trackGait.set(doc.id, gait);
+    if (trackWaiting.length && !trackWriteTimer) trackWriteTimer = setTimeout(() => void writeTracks(), 30000);
+  } catch { /* a token mid-change */ }
+});
+for (const hook of ["canvasReady", "updateScene", "updateWorldTime", "clientSettingChanged", "updateSetting"]) Hooks.on(hook, () => { drawTracks(hook !== "updateWorldTime" && hook !== "updateScene"); });
+Hooks.on("canvasTearDown", () => { if (trackWriteTimer) { clearTimeout(trackWriteTimer); void writeTracks(); } oldTracks.clear(); trackGait.clear(); trackDrawnKey = null; });
 const verminOn = () => bothSettingsOn("vermin"), dripsOn = () => bothSettingsOn("drips");
 // The map's own picture and where it lies (seen through a puddle's water, bent by its ripples).
 const mapFloor = () => {
@@ -2518,7 +2639,7 @@ const ratSpots = () => {
 const wallBlocks = (a, b) => { try { return !!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" }); } catch { return false; } };
 // Regions creatures keep out of (Region configuration â†’ Animater â†’ Keep out): a sealed room with no rats, a shrine with no
 // moths. Each kind's areas, looked at with the rest of the life.
-const KEEP_OUT = ["rats", "bats", "moths", "crawlers", "eyes", "rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"];
+const KEEP_OUT = ["rats", "bats", "moths", "crawlers", "eyes", "rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "town"];
 let keepOut = {};
 const readKeepOut = () => {
   keepOut = {};
@@ -2602,7 +2723,7 @@ const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
   for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", regionAreas(r)]); }
-  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, outdoorOn("wildlife"), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors]) };
+  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors]) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
 // or water the map has by a good part.
@@ -2623,7 +2744,7 @@ const rebuildWildlife = () => {
   wildKey = all; wildRegions = regions;
   wildCalls.settle();
   wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null;
-  if (!canvas?.ready || !outdoorOn("wildlife")) return;
+  if (!canvas?.ready || !wildHere()) return;
   const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, many = sceneCreatures(), ground = wildGround(grid, area);
   wildOpen = ground;
   populatePond(ground, grid, many);
@@ -2645,12 +2766,33 @@ const wildOk = (kind, x, y) => {
 };
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });
-const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.86, 1.14] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, frogPlop: { volume: 0.26, reach: 8, rates: [0.94, 1.18] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] }, gullCry: { volume: 0.25, reach: 25, rates: [0.92, 1.08] }, owlHoot: { volume: 0.3, reach: 30, rates: [0.95, 1.05] }, cricketChirp: { volume: 0.14, reach: 8, rates: [0.96, 1.06] }, foxBark: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, dragonBuzz: { volume: 0.16, reach: 5, rates: [0.9, 1.15] } };
+const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.86, 1.14] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, frogPlop: { volume: 0.26, reach: 8, rates: [0.94, 1.18] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] }, gullCry: { volume: 0.25, reach: 25, rates: [0.92, 1.08] }, owlHoot: { volume: 0.3, reach: 30, rates: [0.95, 1.05] }, cricketChirp: { volume: 0.14, reach: 8, rates: [0.96, 1.06] }, foxBark: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, dragonBuzz: { volume: 0.16, reach: 5, rates: [0.9, 1.15] }, henCluck: { volume: 0.22, reach: 7, rates: [0.92, 1.1] }, catMeow: { volume: 0.2, reach: 8, rates: [0.95, 1.08] }, dogBark: { volume: 0.32, reach: 22, rates: [0.92, 1.08] }, pigeonCoo: { volume: 0.2, reach: 7, rates: [0.88, 1.14] } };
+// The change of shift at dawn and dusk (engines/motion/day-shift.mjs), read every couple of seconds. Off: the day's birds and the night's crickets as they always were.
+const SHIFT_OFF = Object.freeze({ chorus: 0, birds: 1, crickets: 1, hush: 0 });
+let shiftAt = 0, shiftWas = SHIFT_OFF, chorusIn = 0;
+const shiftNow = () => {
+  const now = performance.now(); if (now - shiftAt < 2000) return shiftWas; shiftAt = now;
+  try { shiftWas = bothSettingsOn("dawnChorus") && !undergroundScene() ? dayShift(clockNow()) : SHIFT_OFF; } catch { shiftWas = SHIFT_OFF; }
+  return shiftWas;
+};
+// The dawn chorus: birds singing one over another round whoever listens, more at its fullest, none in the rain or where nobody is out of doors.
+const tickChorus = (seconds) => {
+  if ((chorusIn -= seconds) > 0) return;
+  const { chorus } = shiftNow();
+  if (!(chorus > 0.02) || game.audio?.locked || !wildOpen || wildOpen.share < 0.2 || !bothSettingsOn("wildlifeSounds") || skyFalling.rain > 0.3 || skyStorm || canvas.scene?.flags?.[ID]?.wildBirds === "none") { chorusIn = 2; return; }
+  chorusIn = chorusGap(chorus);
+  const v = viewNow(), ears = canvas.sounds?.getListenerPositions?.() ?? [], ear = ears[Math.floor(Math.random() * ears.length)] ?? (game.user?.isGM ? { x: v.x + v.w / 2, y: v.y + v.h / 2 } : null);
+  if (!ear) return;
+  const at = chorusSpot(ear, canvas.grid.size), s = WILD_SOUND.songChirp, heard = earsNow(at, 14);
+  if (!(heard.volume > 0)) return;
+  playUnder("songChirp", at, { file: wildSound("songChirp"), volume: s.volume * 1.3 * chorus * heard.volume * (0.5 + Math.random() * 0.6), reach: 14, rate: 0.85 + Math.random() * 0.4, walls: true, gmAlways: heard.gmAlways, room: 0.1 });
+};
 const wildVoice = (kind, at, urgent) => {
   if (CRITTER_SOUND[kind]) { critterSound(kind, at, urgent); return; }
   if (!bothSettingsOn("wildlifeSounds")) return;
   const s = WILD_SOUND[kind], ears = earsNow(at, s.reach);
   if (!(ears.volume > 0)) return;
+  if (kind === "songChirp" && Math.random() > shiftNow().birds) return;
   if (!wildCalls.wanted(kind, urgent)) return;
   playUnder(kind, at, { file: wildSound(kind), volume: s.volume * ears.volume * (0.75 + Math.random() * 0.4), reach: s.reach, rate: s.rates[0] + Math.random() * (s.rates[1] - s.rates[0]), walls: true, gmAlways: ears.gmAlways, room: 0.15 });
 };
@@ -2706,6 +2848,111 @@ const wildTick = (seconds) => {
     if (fieldLife.busy) fieldLife.tick(step, { near, ok: wildOk, blocked: wallBlocks, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps });
   }
 };
+// The water's bigger shapes: the sea's shore (engines/motion/coast.mjs), waterfalls (waterfall.mjs), and what still water mirrors (water-mirror.mjs). Which is which is the region's
+// (Region configuration → Floor and water). A waterfall with a way to flow is heard as swift or gentle water already (river-sound.mjs); the sea has no sound until one passes audition.
+const coast = createCoast({ PIXI: globalThis.PIXI, floor: floorLayer("coast", 643) });
+const waterfalls = createWaterfalls({ PIXI: globalThis.PIXI, floor: floorLayer("waterfalls", 645), above: floorLayer("fallMist", 760) });
+const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 645), grid: () => canvas.grid.size });
+let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0;
+// The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
+const placeAreas = { surf: [], waterfall: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
+let placeLookAt = 0;
+const tickPlaces = () => {
+  const now = performance.now(); if (now - placeLookAt < 400) return; placeLookAt = now;
+  if (game.audio?.locked) return;
+  let ears = canvas.sounds?.getListenerPositions?.() ?? [];
+  if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
+  const grid = canvas.grid.size, water = bothSettingsOn("riverSounds"), frozen = frozenWaterOn() && groundOf().now.ice > 0.5, day = wildDay(), cold = groundOf().now.snow > 0 ? 1 : 0, rain = skyFalling.rain;
+  const flies = bothSettingsOn("carrion") ? [...bodiesKnown.values()].map((b) => ({ x: b.x, y: b.y, strength: bodyStage((now - b.since) / 1000, { outdoors: b.outdoors, day, cold, rain }).flies })) : [];
+  const heard = {
+    surf: water && !frozen ? placeHeard("surf", placeAreas.surf, ears, { grid }) : null,
+    waterfall: water && !frozen ? placeHeard("waterfall", placeAreas.waterfall, ears, { grid }) : null,
+    flies: spotsHeard("flies", flies, ears, { grid }),
+    tavern: bothSettingsOn("tavernMurmur") ? placeHeard("tavern", placeAreas.tavern, ears, { grid }) : null,
+  };
+  for (const [kind, voice] of Object.entries(placeVoices)) {
+    const h = heard[kind]; let through = 1;
+    try { if (h?.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = kind === "tavern" ? THROUGH_WALL : 0.35; } catch { /* no wall test */ }
+    const volume = PLACE_VOLUME[kind] * (h?.level ?? 0) * through;
+    if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
+    const file = placeFile(kind, canvas.scene?.id);
+    if (volume <= 0.004 || voice.starting || !file) continue;
+    voice.starting = true;
+    (async () => {
+      const sound = new foundry.audio.Sound(file, { context: game.audio.environment });
+      await sound.load(); await sound.play({ loop: true, volume: 0 });
+      voice.sound = sound; sound.fade(volume, { duration: 1500 });
+    })().catch(() => {}).finally(() => { voice.starting = false; });
+  }
+};
+Hooks.on("canvasTearDown", () => { for (const voice of Object.values(placeVoices)) stopVoice(voice); placeAreas.surf = []; placeAreas.waterfall = []; placeAreas.tavern = []; });
+const rebuildWater = () => {
+  const seas = [], falls = [], calm = [], rough = [];
+  placeAreas.tavern = [];
+  if (canvas?.ready) for (const region of regionsHere()) {
+    try {
+      const own = region.flags?.[ID] ?? {};
+      if (own.tavern) placeAreas.tavern.push(...regionAreas(region).map((a) => Array.from(a)));
+      if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
+      const areas = regionAreas(region);
+      if (own.waterfall) for (const area of areas) falls.push({ area: Array.from(area), flowTo: own.flowTo || "s", swift: own.current === "swift" });
+      else if (own.sea) seas.push(...areas.map((a) => Array.from(a)));
+      if (own.waterfall || own.sea || own.current === "swift") rough.push(...areas.map((a) => Array.from(a))); else calm.push(...areas.map((a) => Array.from(a)));
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror");
+  placeAreas.surf = useSea ? seas : []; placeAreas.waterfall = useFalls ? falls.map((f) => f.area) : [];
+  const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm]);
+  if (key === waterKey) return; waterKey = key;
+  coast.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0;
+  if (!canvas?.ready) return;
+  const grid = canvas.grid.size;
+  if (useSea && seas.length) coast.build({ seas, grid, bounds: canvas.dimensions.sceneRect });
+  if (useFalls && falls.length) waterfalls.build({ falls, grid });
+  if (calmWater.length) waterMirror.water(calmWater, { rough });
+};
+const tickWater = (seconds) => {
+  const now = performance.now(), view = viewNow(), frozen = frozenWaterOn() && groundOf().now.ice > 0.5;
+  if (now - waterLookAt > 1000) {
+    waterLookAt = now;
+    const dark = Number(canvas.environment?.darknessLevel) || 0, light = 1 - 0.75 * dark;
+    if (coast.busy) coast.look({ tide: tideLevel(game.time?.worldTime ?? 0, { seed: canvas.scene?.id }), wind: skyWindNow, windAngle: skyWindAngle, light, frozen });
+    if (waterfalls.busy) waterfalls.look({ sun: sunNow, light, frozen, wind: skyWindNow, windAngle: skyWindAngle });
+  }
+  if (calmWater.length && now - mirrorLookAt > 50) {
+    mirrorLookAt = now;
+    const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => ({ id: t.id, texture: t.mesh.texture, x: t.mesh.position.x, y: t.mesh.position.y, w: t.w, h: t.h, rotation: (Number(t.document.rotation) || 0) * Math.PI / 180, alpha: t.mesh.alpha }));
+    const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05, middle = { x: view.x + view.w / 2, y: view.y + view.h / 2 };
+    const near = moonOut ? calmWater.map((area) => nearestOfArea(middle, area)).sort((a, b) => a.d - b.d)[0] : null;
+    waterMirror.look({ tokens, lamps: lampLights.map((l) => ({ x: l.x, y: l.y, color: l.color, radius: l.radius })), moon: near ? { x: near.x, y: near.y, strength: Number(sunNow.strength) } : null, sunny: !!sunNow && !sunNow.moon && Number(sunNow.strength) > 0.3 });
+  }
+  if (coast.busy) coast.tick(seconds, { near: creaturesNow(), view, seen: wildSeen, cast: wildCast, sound: (kind, at, urgent) => { if (WILD_SOUND[kind]) wildVoice(kind, at, urgent); } });
+  if (waterfalls.busy) waterfalls.tick(seconds, { view });
+  if (waterMirror.busy) waterMirror.tick(seconds, { view, wind: skyWindNow });
+};
+Hooks.on("canvasTearDown", () => { coast.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; });
+// Town life (engines/motion/town-life.mjs): only on a scene the GM set it for (Scene configuration → Animater → Town life). Its streets are any open ground, stone too, not water and not in a room.
+const townLife = createTownLife({ PIXI: globalThis.PIXI, floor: floorLayer("townLife", 659), sky: lowFlierRoot, high: highSkyOf });
+let townKey = null, townOpen = null, townPreview = null;
+const townLevel = () => { const v = canvas?.scene?.flags?.[ID]?.townLife; return v === "quiet" || v === "busy" ? v : null; };
+const rebuildTown = () => {
+  const level = townPreview ?? (canvas?.ready && outdoorOn("townLife") ? townLevel() : null);
+  const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, level, keepOut.town ?? []]);
+  if (key === townKey) return; townKey = key;
+  townLife.clear(); townOpen = null;
+  if (!level) return;
+  const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, ground = wildGround(grid, area), spots = [], cell = ground.cell;
+  for (let y = area.y + cell / 2; y < area.y + area.height; y += cell) for (let x = area.x + cell / 2; x < area.x + area.width; x += cell) if (!ground.closed(x, y) && !ground.inWater(x, y) && !keptOut("town", { x, y })) spots.push({ x, y });
+  const wallTops = wallsHere().filter((w) => !Number(w.door) && Math.hypot(w.c[2] - w.c[0], w.c[3] - w.c[1]) >= grid).slice(0, 200).map((w) => ({ ax: w.c[0], ay: w.c[1], bx: w.c[2], by: w.c[3] }));
+  townOpen = { ok: (x, y) => x >= area.x && y >= area.y && x < area.x + area.width && y < area.y + area.height && !ground.closed(x, y) && !ground.inWater(x, y), closed: ground.closed };
+  const v = viewNow();
+  townLife.populate({ spots, wallTops, grid, size: 1, busy: level, blocked: wallBlocks, focus: { x: v.x + v.w / 2, y: v.y + v.h / 2 } });
+};
+const tickTown = (seconds) => {
+  const near = creaturesNow(), view = viewNow();
+  townLife.tick(Math.min(seconds, 0.1), { near, view, ok: (kind, x, y) => !!townOpen?.ok(x, y) && !keptOut("town", { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut("town", { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+};
+Hooks.on("canvasTearDown", () => { townLife.clear(); townKey = null; townOpen = null; });
 const rebuildLife = () => {
   lifeTimer = null;
   try {
@@ -2731,6 +2978,8 @@ const rebuildLife = () => {
     }
   } catch { vermin.clear(); drips.clear(); verminKey = null; }
   try { rebuildWildlife(); } catch { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildKey = null; }
+  try { rebuildTown(); } catch (e) { console.warn("Animater town life:", e); townLife.clear(); townKey = null; townOpen = null; }
+  try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, () => { lifeSoon(); });
@@ -2772,7 +3021,7 @@ const readRivers = () => {
   for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") water.push(...regionAreas(region)); } catch { /* a broken region never breaks the rest */ } }
   wakeRipples.water(water);
   for (const region of regionsHere()) {
-    try { const own = region.flags?.[ID] ?? {}; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
+    try { const own = region.flags?.[ID] ?? {}; if (own.waterfall && bothSettingsOn("waterfalls")) continue; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
 };
 // The night out of doors, constant (river-sound.mjs nightLevel): on a map with open ground, with Wildlife sounds on. Heard from the listener.
@@ -2784,7 +3033,7 @@ const tickNight = () => {
   const outside = !!wildOpen && wildOpen.share >= 0.2 && bothSettingsOn("wildlifeSounds") && !undergroundScene();
   let ears = canvas.sounds?.getListenerPositions?.() ?? [];
   if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
-  const volume = outside && ears.length ? nightLevel({ night: wildNight(), warm: !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.5), quiet: canvas.scene?.flags?.[ID]?.nightSounds === "off", inside: ears.every((e) => wildOpen.closed(e.x, e.y)) }) : 0;
+  const volume = outside && ears.length ? nightLevel({ night: wildNight() * shiftNow().crickets, warm: !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.5), quiet: canvas.scene?.flags?.[ID]?.nightSounds === "off", inside: ears.every((e) => wildOpen.closed(e.x, e.y)) }) : 0;
   if (nightVoice.sound) { try { if (volume > 0.004) nightVoice.sound.fade(volume, { duration: 1500 }); else stopVoice(nightVoice, 2500); } catch { nightVoice.sound = null; } return; }
   if (volume <= 0.004 || nightVoice.starting) return;
   nightVoice.starting = true;
@@ -2962,7 +3211,7 @@ const cloudsOn = () => outdoorOn("cloudShadows"), glintsOn = () => outdoorOn("su
 const shimmerOn = () => { try { return hotSetting("heatShimmer") !== false && canDistort(localQuality(), hotSetting("heatShimmerLocal")); } catch { return false; } };
 const lightningOn = () => outdoorOn("lightningFlashes");
 const leavesOn = () => outdoorOn("fallingLeaves"), mistOn = () => outdoorOn("morningMist");
-const wetOn = () => outdoorOn("wetGround"), snowCoverOn = () => outdoorOn("snowCover"), firefliesOn = () => outdoorOn("fireflies");
+const wetOn = () => outdoorOn("wetGround"), snowCoverOn = () => outdoorOn("snowCover"), firefliesOn = () => outdoorOn("fireflies") && outdoorLifeHere();
 const rainRingsOn = () => outdoorOn("rainRings");
 const weatherLightOn = () => outdoorOn("weatherLight"), weatherMapOn = () => outdoorOn("weatherOnMap"), weatherCloudsOn = () => outdoorOn("weatherClouds");
 const frozenWaterOn = () => outdoorOn("frozenWater"), seasonGroundOn = () => outdoorOn("seasonGround"), rainbowOn = () => outdoorOn("rainbows");
@@ -3199,6 +3448,11 @@ function skyTick() {
   else if (poolSound) tickPools();
   if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound) tickRivers();
   if (wildOpen || nightVoice.sound) tickNight();
+  if (wildOpen) tickChorus(seconds);
+  tickAftermath(seconds);
+  if (townLife.busy) tickTown(seconds);
+  if (coast.busy || waterfalls.busy || calmWater.length) tickWater(seconds);
+  tickPlaces();
   tickWeatherSound();
   { const now = performance.now(); if (now - lightFlamesAt > (now - gustAt < 8000 ? 100 : 500)) { lightFlamesAt = now; syncLightFlames(); } if (lightFlames.count) lightFlames.tick(now / 1000); }
   if (swimmers.size) tickSwimmers();
@@ -3969,7 +4223,7 @@ const syncLightFlames = () => {
     }
   }
   lightFlames.sync(list);
-  lightFlames.look((key) => { const l = canvas.lighting?.get?.(key); if (!l || !torchDraftOn()) return 0; const a = airLeanAt(l.center.x, l.center.y); return Math.sign(a) * 0.8 * Math.min(1, Math.sqrt(Math.abs(a) * 1.6)); });
+  lightFlames.look((key) => { const l = canvas.lighting?.get?.(key); if (!l) return 0; const a = torchDraftOn() ? airLeanAt(l.center.x, l.center.y) : 0, draft = Math.sign(a) * 0.8 * Math.min(1, Math.sqrt(Math.abs(a) * 1.6)); return Math.max(-1, Math.min(1, draft + windOnFire(key, l.center.x, l.center.y).lean)); });
 };
 const torchLightRootOf = () => {
   if (!torchLightRoot || torchLightRoot.destroyed) {
@@ -4082,7 +4336,7 @@ const smokeFiresNow = () => {
       const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
       const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
       torchLean.set(key, { x, lean });
-      torch = { key, x, y, width: token.w ?? grid, side, lean, color: source.data.color, visible: token.visible === true && !token.document.hidden };
+      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden };
       at = torchPose(torch, grid).top;
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
@@ -4104,7 +4358,8 @@ const smokeFiresNow = () => {
       }
     }
     // A chimney's smoke shows above the roof whether or not the fire inside can be seen.
-    return { key, size, visible: chimney ? !roofGone : visible, torch, chimney, shape: token ? null : source.shape?.points ?? null, ...at };
+    const blown = chimney ? null : windOnFire(key, at.x, at.y).drift;
+    return { key, size, visible: chimney ? !roofGone : visible, torch, chimney, shape: token ? null : source.shape?.points ?? null, ...at, ...(blown && (blown.x || blown.y) ? { drift: blown } : {}) };
   });
 };
 let smokeFrame = [];
@@ -5165,11 +5420,65 @@ const immersionPreview = (values) => {
   hotSettings.invalidate();
   try { wildKey = null; rebuildWildlife(); verminKey = null; lookSky(); rebuildSky(); } catch (e) { console.warn("Animater immersion preview:", e); }
 };
+const demoWaterRoot = floorLayer("demoWater", 642);
 const IMMERSION_DEMOS = {
-  wildlife: () => {
-    wildKey = null; rebuildWildlife();
-    const n = immersionCount(wildlife.counts, pondLife.counts, fieldLife.counts);
-    return { note: n ? `${n} animals are in this scene now. Scroll around the map to find them.` : "None here: this scene has no open ground or water for them, or is underground. Try it on an outdoor scene." };
+  // A body and its visitors a few minutes on at once, with shots in the floor beside it. Ending it clears this screen's stuck shots too; a real body is found again within seconds.
+  aftermath: () => {
+    const grid = canvas.grid.size, at = immersionSpot(), view = viewNow();
+    for (const [dx, dy, angle, kind] of [[-1.6, 0.4, 0.5, "arrow"], [-1.1, -0.7, 2.2, "bolt"], [1.5, 0.6, -0.8, "arrow"]]) aftermath.stick({ x: at.x + dx * grid, y: at.y + dy * grid, angle, kind, into: "floor", seed: `demo:${dx}` });
+    aftermath.body({ id: "immersion-demo", x: at.x, y: at.y, size: 1, outdoors: true });
+    for (let i = 0; i < 640; i++) aftermath.tick(0.5, { near: [], day: 1, cold: 0, rain: 0, view, seen: () => true, tokens: () => null, grid, sound: () => {} });
+    return { note: "Near the middle of your view: arrows in the floor, and flies and crows where a body would lie. Fast-forwarded: in play the flies take half a minute and the crows a few.", undo: () => { aftermath.clear(); bodiesKnown.clear(); } };
+  },
+  // A patch of sea, a pond and a fall drawn on this screen for as long as it is shown, for whichever of them the scene has none of.
+  shores: () => {
+    const grid = canvas.grid.size, at = immersionSpot(), rect = (dx, dy, w, h) => { const x = at.x + dx * grid, y = at.y + dy * grid; return [x, y, x + w * grid, y, x + w * grid, y + h * grid, x, y + h * grid]; };
+    const paint = new PIXI.Graphics(), bounds = canvas.dimensions.sceneRect;
+    demoWaterRoot().addChild(paint);
+    const water = (points) => { paint.beginFill(0x2f5f74, 0.92); paint.drawPolygon(points); paint.endFill(); return points; };
+    if (!coast.busy) coast.build({ seas: [water(rect(-6, 3, 12, 3))], grid, bounds });
+    if (!waterfalls.busy) waterfalls.build({ falls: [{ area: water(rect(3, -3, 1.6, 3)), flowTo: "s", swift: true }], grid });
+    if (!calmWater.length) { calmWater = [water(rect(-3.5, -1.5, 3, 2.5))]; waterMirror.water(calmWater, { rough: [] }); }
+    waterLookAt = 0;
+    return { note: "An example near the middle of your view, on your screen only. In play, mark a water region as the sea or a waterfall in Region configuration; ponds mirror by themselves.", undo: () => { paint.destroy(); waterKey = null; rebuildWater(); } };
+  },
+  dayshift: () => {
+    const v = viewNow(), ear = { x: v.x + v.w / 2, y: v.y + v.h / 2 }, grid = canvas.grid.size, s = WILD_SOUND.songChirp, timers = [];
+    for (let i = 0; i < 14; i++) timers.push(setTimeout(() => { const at = chorusSpot(ear, grid); playUnder("songChirp", at, { file: wildSound("songChirp"), volume: s.volume * 1.4, reach: 40, rate: 0.85 + Math.random() * 0.4, gmAlways: true, room: 0.1 }); }, i * 450 + Math.random() * 300));
+    return { note: "Listen: the dawn chorus, a few seconds of it. In play it comes at first light on scenes with Outdoor life on, and a hush falls at dusk before the crickets.", undo: () => { for (const t of timers) clearTimeout(t); } };
+  },
+  windflames: () => {
+    if (undergroundScene()) return { note: "Nothing here: no wind underground. Try it on an outdoor scene with a fire." };
+    const fires = (canvas.lighting?.placeables ?? []).length;
+    weatherPreview = { clouds: 0.3, wind: 1, windAngle: 0.3 }; lookSky(); rebuildSky();
+    return { note: fires ? "A gale on your screen only: look at the fires out of doors and their smoke. Your scene's real weather is untouched." : "No lights here to lean. Try it on a scene with a fire or a torch.", undo: () => { weatherPreview = null; lookSky(); rebuildSky(); } };
+  },
+  tavern: () => {
+    let sound = null, ended = false;
+    (async () => {
+      const playing = new foundry.audio.Sound(placeFile("tavern", canvas.scene?.id), { context: game.audio.environment });
+      await playing.load(); await playing.play({ loop: true, volume: 0 });
+      if (ended) return void playing.stop();
+      sound = playing; playing.fade(PLACE_VOLUME.tavern, { duration: 800 });
+    })().catch(() => {});
+    return { note: "Listen: a crowd as if you stood among them. In play, tick This is a tavern on a region: faint through its walls, spilling out when a door opens.", undo: () => { ended = true; const s = sound; sound = null; try { s?.fade(0, { duration: 300 }); setTimeout(() => { try { s?.stop(); } catch { /* gone */ } }, 350); } catch { /* gone */ } } };
+  },
+  town: () => {
+    if (undergroundScene()) return { note: "Nothing here: no town underground. Try it on an outdoor scene." };
+    townPreview = "busy"; townKey = null; rebuildTown();
+    const c = townLife.counts, day = wildDay() > 0.3;
+    return { note: `A busy town near the middle of your view, on your screen only: ${day ? `${c.pigeons} pigeons, ${c.chickens} hens, ` : "the birds are in for the night, "}${c.cat ? "a cat on the walls, " : ""}${c.dog ? "a dog" : "no dog"}. Choose for this scene above.`, undo: () => { townPreview = null; townKey = null; rebuildTown(); } };
+  },
+  tracks: () => {
+    const grid = canvas.grid.size, at = immersionSpot(), now = game.time?.worldTime ?? 0, trail = (y, hoursAgo, floor) => stepsAlong({ x: at.x - grid * 3, y: at.y + y * grid }, { x: at.x + grid * 3, y: at.y + y * grid }, { grid, worldTime: now - hoursAgo * 3600, floorAt: () => floor }).steps;
+    oldTracks.draw([...trail(-0.8, 1, "mud"), ...trail(0, 8, "mud"), ...trail(0.8, 18, "mud")], { now, hours: 24, mode: "gm", viewer: "gm", grid });
+    return { note: "Three trails near the middle of your view: an hour old, eight hours and eighteen, on your screen only. Choose for this scene above.", undo: () => { oldTracks.clear(); trackDrawnKey = null; drawTracks(true); } };
+  },
+  outdoors: () => {
+    outdoorLifePreview = true; wildKey = null; rebuildWildlife();
+    const n = immersionCount(wildlife.counts, pondLife.counts, fieldLife.counts), off = canvas.scene?.flags?.[ID]?.outdoorLife !== "on";
+    const undo = () => { outdoorLifePreview = false; wildKey = null; rebuildWildlife(); };
+    return { note: n ? `${n} animals are in this scene ${off ? "for now, on your screen only" : "now"}. Scroll around the map to find them. Choose for this scene above.` : "None here: this scene has no open ground or water for them, or is underground. Try it on an outdoor scene.", undo };
   },
   vermin: () => {
     const b = canvas.dimensions.sceneRect, spots = ratSpots();
@@ -6162,7 +6471,7 @@ Hooks.once("init", () => {
   skyPair("caveSkylight", "caveSkylightLocal", "Light through openings to the sky", "In an underground scene, where a region is marked as open to the sky (Region configuration → Animater → Open to the sky: a hole in the ceiling, a shaft, a cave mouth), daylight falls in as a pool on the floor with a faint shaft of light and dust turning in it, away from the sun and longer when it is low; golden at dawn and dusk, silver moonlight at night. Nowhere else underground does the sun or moon reach.");
   skyPair("caveWebs", "caveWebsLocal", "Cobwebs", "Where a region is marked as cobwebs (Region configuration → Cavern), dusty, torn webs hang in the corners of its walls and stir in the draft; now and then a spider lowers itself on a thread and climbs back.");
   skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
-  skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over wide water, frogs on lily pads croak and leap in, deer graze and bound away, a fox stalks the rabbits, and butterflies and dragonflies fly by day. At night, fireflies blink, an owl glides over and bats hunt round the lamps. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater → Creatures), and regions can keep them out.");
+  skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "Only in scenes with Outdoor life on (Scene configuration → Animater). On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over wide water, frogs on lily pads croak and leap in, deer graze and bound away, a fox stalks the rabbits, and butterflies and dragonflies fly by day. At night, fireflies blink, an owl glides over and bats hunt round the lamps. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater → Creatures), and regions can keep them out.");
   skyPair("wildlifeSounds", "wildlifeSoundsLocal", "Wildlife sounds", "The hawk's cry, crows passing, songbirds chirping and their wings as they burst up, a rabbit's thump when it bolts, a fish's splash as it darts, ducks quacking, gulls crying, frogs croaking and plopping in, a fox's bark, dragonflies, and by night an owl and a constant bed of crickets. A few at a time, only near enough to be heard. With Birds, rabbits and fish on.", "");
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
   skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (Region configuration → Flows toward): loudest at the bank, fading with distance, silent while frozen.", "");
@@ -6199,6 +6508,16 @@ Hooks.once("init", () => {
   skyPair("fireflies", "firefliesLocal", "Fireflies", "On warm summer evenings fireflies glow over the grass and by the water from sunset into the first hours of the night (none in winter, autumn or under 15 °C).");
   skyPair("rainRings", "rainRingsLocal", "Rain on water", "While it rains (Calendaria's weather or the scene's), rings spread where the drops land on water and on the puddles of wet ground, more the harder it rains.");
   skyPair("windowGlow", "windowGlowLocal", "Warm light from windows", "At night a lit room's light spills out of its windows and open doors onto the ground outside, in the light's colour, further the brighter the room. A room is a region that keeps the weather out; any light inside it that reaches the window lights it.");
+  skyPair("dawnChorus", "dawnChorusLocal", "Dawn chorus and night shift", "Birds sing all around at first light and go quiet as the sun sets; a hush falls, and the crickets take over once it is dark. Needs Wildlife sounds on.");
+  skyPair("windFlames", "windFlamesLocal", "Flames in the wind", "Out of doors, flames, torches and their smoke lean with the wind, swelling in the gusts and pressed low by the strongest. Under a roof or in a room they feel none of it. Never changes the light itself.");
+  skyPair("oldTracks", "oldTracksLocal", "Old tracks", "Where a scene asks for it (Scene configuration → Animater → Old tracks; off otherwise), prints stay and age by the game's clock, softer and fainter the older they are, so you can read who passed and how long ago. Mud and dirt keep them longest, stone hardly at all. The GM chooses for each scene whether only the GM or everyone sees them, and how long they last.");
+  skyPair("stuckShots", "stuckShotsLocal", "Shots stick where they land", "Arrows and bolts that hit a wall stay stuck in it, and those that miss stay in the floor, until the scene changes. Never saved.");
+  skyPair("carrion", "carrionLocal", "Bodies draw flies and crows", "After a while a body on the map draws flies, and out of doors by day crows come down to it (a vulture for a big one). They scatter when anyone comes near. Not for bloodless creatures. Never saved.");
+  skyPair("townLife", "townLifeLocal", "Town life", "Where a scene asks for it (Scene configuration → Animater → Town life; off otherwise): pigeons, chickens, a cat on the walls and a stray dog, who run from noise and from your creatures.");
+  skyPair("tavernMurmur", "tavernMurmurLocal", "Tavern murmur", "A region marked as a tavern (Region configuration → Animater) is full of voices: loud inside, a far-off murmur through its walls, spilling out when a door opens.", "Played at Balanced quality or better.");
+  skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (Region configuration → Floor and water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
+  skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (Region configuration → Floor and water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
+  skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures on the bank mirror in still water, nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
   skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
     hint: "How tall walls stand for their shadows, when neither the Wall Height module nor the scene's level gives a height.",
@@ -6830,6 +7149,22 @@ Hooks.on("renderSceneConfig", (app, html) => {
   night.className = "form-group";
   night.innerHTML = `<label>Night sounds</label><div class="form-fields"><select name="flags.${ID}.nightSounds">${[["", "On"], ["off", "Off (a quiet night on this map)"]].map(([v, l]) => `<option value="${v}"${v === nightNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">The constant bed of crickets out of doors after dark ("Wildlife sounds"). Off leaves this map's nights quiet; its other animals still call now and then.</p>`;
   life.append(night);
+  // Outdoor life: only where the GM asks for it.
+  const outdoors = document.createElement("div"), outdoorsNow = app.document?.getFlag?.(ID, "outdoorLife") === "on" ? "on" : "";
+  outdoors.className = "form-group";
+  outdoors.innerHTML = `<label>Outdoor life</label><div class="form-fields"><select name="flags.${ID}.outdoorLife">${[["", "Off"], ["on", "On"]].map(([v, l]) => `<option value="${v}"${v === outdoorsNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Birds, rabbits, deer, foxes, fish, ducks, frogs and insects, with their calls, the crickets at night and the dawn chorus ("Animals in the wild"). Off on every scene until you choose. How many of each are set in the rows above.</p>`;
+  life.append(outdoors);
+  // Town life: only where the GM asks for it.
+  const town = document.createElement("div"), townNow = String(app.document?.getFlag?.(ID, "townLife") ?? "");
+  town.className = "form-group";
+  town.innerHTML = `<label>Town life</label><div class="form-fields"><select name="flags.${ID}.townLife">${[["", "Off"], ["quiet", "Quiet (a village, a back street)"], ["busy", "Busy (a market town)"]].map(([v, l]) => `<option value="${v}"${v === townNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Pigeons and chickens by day, a cat on the walls and, when busy, a stray dog day and night ("Town life"); a big map has several flocks. Off on every scene until you choose. Needs open ground: nothing shows in a scene marked underground or with cave or hall acoustics. To keep them out of one place, draw a region over it (Region configuration → Animater → Keep out).</p>`;
+  life.append(town);
+  // Old tracks: the GM's for each scene, and off until asked for.
+  const tracks = document.createElement("div"), tracksNow = trackMode(app.document?.getFlag?.(ID, "oldTracks")), hoursNow = trackHours(app.document?.getFlag?.(ID, "oldTrackHours")), kept = app.document?.getFlag?.(ID, "tracks")?.length ?? 0;
+  tracks.className = "form-group";
+  tracks.innerHTML = `<label>Old tracks</label><div class="form-fields"><select name="flags.${ID}.oldTracks">${[["off", "Off"], ["gm", "The GM sees them"], ["everyone", "Everyone sees them"]].map(([v, l]) => `<option value="${v}"${v === tracksNow ? " selected" : ""}>${l}</option>`).join("")}</select><input type="number" min="1" step="1" name="flags.${ID}.oldTrackHours" value="${hoursNow}" aria-label="Hours they last" style="max-width:5em"><span>game hours</span><button type="button" data-animater-clear-tracks${kept ? "" : " disabled"}>Clear ${kept}</button></div><p class="hint">Prints stay here and age by the game's clock ("Old tracks"), so someone can read who passed and how long ago. The GM sees them: for you to describe, or to switch on for everyone when a character finds the trail. Everyone sees them: except those of creatures that were hidden or sneaking, which only the GM sees. Off keeps none. Clear wipes this scene's tracks at once.</p>`;
+  tracks.querySelector("[data-animater-clear-tracks]").addEventListener("click", async (event) => { event.preventDefault(); event.currentTarget.disabled = true; event.currentTarget.textContent = "Clear 0"; await app.document?.unsetFlag?.(ID, "tracks"); });
+  life.append(tracks);
   // How many creatures and how big, a row each.
   const flag = (k) => String(app.document?.getFlag?.(ID, k) ?? "");
   const pick = (k, options) => `<select name="flags.${ID}.${k}">${options.map(([v, l]) => `<option value="${v}"${v === flag(k) ? " selected" : ""}>${l}</option>`).join("")}</select>`;
@@ -7180,6 +7515,9 @@ Hooks.on("renderRegionConfig", (app, html) => {
   tab.append(section("Floor and water",
     floorSelect(own.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's. The sun glitters on water and sparkles on snow and ice here, and the air shimmers over sand at a hot midday."),
     field("Never freezes", box("noFreeze"), 'Water here stays open in a hard frost ("Water freezes"): a hot spring, a fast river.'),
+    field("This is the sea", box("sea"), 'Waves wash in on its shores, the wet sand moves with the tide, and crabs keep to the shore ("The coast").'),
+    field("This is a tavern", box("tavern"), 'The murmur of a crowd inside: loud in here, faint through the walls, and spilling out of an open door ("Tavern murmur"). Works on any floor.'),
+    field("This is a waterfall", box("waterfall"), 'The water here falls the way "Flows toward" points, with foam at its foot, mist and a rainbow in the spray ("Waterfalls").'),
     field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind.")));
   // Water dripping from the ceiling: its pace and the pool it falls into show only when it drips.
   const pace = field("Drip pace", select("dripPace", own.dripPace ?? "", [["slow", "Slow (a drop now and then)"], ["", "Steady"], ["fast", "Fast"], ["faster", "Very fast (a steady trickle)"]]), "How often the drops fall here (each spot keeps its own rhythm).");
@@ -7196,7 +7534,7 @@ Hooks.on("renderRegionConfig", (app, html) => {
     field("Opens to the outside", box("opensOutside"), 'A way out to the open air here: stairs up, a cave mouth, an air shaft, a collapsed ceiling. The air indoors flows toward it through every open door ("Drafts"). Doors on the scene\'s edge standing open, and regions that lead elsewhere (teleport, change level), count without this.')));
   // Creatures kept out of this region.
   const kept = own.keepOut ?? {}, keepBox = (kind, label) => `<label class="checkbox"><input type="checkbox" name="flags.${ID}.keepOut.${kind}"${kept[kind] ? " checked" : ""}> ${label}</label>`;
-  tab.querySelector("fieldset:last-of-type")?.append(field("Keep out", keepBox("rats", "Rats") + keepBox("bats", "Bats") + keepBox("moths", "Moths") + keepBox("crawlers", "Crawlers") + keepBox("eyes", "Eyes") + keepBox("rabbits", "Rabbits") + keepBox("songbirds", "Songbirds") + keepBox("fish", "Fish") + keepBox("waterBirds", "Water birds") + keepBox("frogs", "Frogs") + keepBox("deer", "Deer") + keepBox("foxes", "Foxes") + keepBox("insects", "Insects"), "The creatures ticked never come in here: a sealed room, a shrine, a well-kept hall, a garden. One already inside runs out."));
+  tab.querySelector("fieldset:last-of-type")?.append(field("Keep out", keepBox("rats", "Rats") + keepBox("bats", "Bats") + keepBox("moths", "Moths") + keepBox("crawlers", "Crawlers") + keepBox("eyes", "Eyes") + keepBox("rabbits", "Rabbits") + keepBox("songbirds", "Songbirds") + keepBox("fish", "Fish") + keepBox("waterBirds", "Water birds") + keepBox("frogs", "Frogs") + keepBox("deer", "Deer") + keepBox("foxes", "Foxes") + keepBox("insects", "Insects") + keepBox("town", "Town animals"), "The creatures ticked never come in here: a sealed room, a shrine, a well-kept hall, a garden. One already inside runs out."));
   // A cave-in (GM): the ceiling comes down over this region, its rubble kept with the scene.
   if (game.user?.isGM && app.document?.parent?.id === canvas?.scene?.id) {
     const caveIn = field("Cave-in", `<button type="button" data-animater-cavein><i class="fa-solid fa-person-falling-burst"></i> Bring the ceiling down</button><button type="button" data-animater-clearrubble><i class="fa-solid fa-broom"></i> Clear all rubble</button>`, 'The ceiling over this region collapses now, for everyone: the view shakes, rocks fall and bounce, dust rolls out, and the rubble stays ("Cave-ins"). Clearing takes away every cave-in\'s rubble in the scene. The Token controls have the same two buttons, to bring the ceiling down wherever you click.');
@@ -7419,6 +7757,7 @@ Hooks.once("ready", () => {
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
+    if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
     if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) floorBlood.clear(); return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
     if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
@@ -7485,6 +7824,7 @@ Hooks.once("ready", () => {
       && (hotSetting("effectLightingDaylight") !== false || (canvas?.environment?.darknessLevel ?? 0) > 0),
     // Shots stop at walls (world setting); on while the setting is not registered.
     projectileWalls: () => { try { return hotSetting("projectileWalls") !== false; } catch { return true; } },
+    shotsLanded: shareShots,
     // Harmful plays leave ground marks (world setting).
     groundMarks: () => hotSetting("groundMarks") !== false,
     // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
@@ -7835,6 +8175,7 @@ Hooks.once("ready", () => {
       clearRubble: () => clearRubble(),
       // A pebble kicked from here toward a heading (radians), on this screen only.
       // What the underground's life has to go on: eye spots, crawler paths, what it shows near the view now.
+      town: () => ({ level: townLevel(), on: outdoorOn("townLife"), world: hotSetting("townLife"), screen: hotSetting("townLifeLocal"), quality: localQuality(), underground: undergroundScene(), day: wildDay(), night: wildNight(), sun: !!sunNow, counts: townLife.counts }),
       underground: () => ({ wanted: underWanted, vermin: vermin.count, keepOut: Object.fromEntries(Object.entries(keepOut).map(([k, v]) => [k, v.length])), spots: underSpots.length, firstSpot: underSpots[0] ?? null, crawl: underCrawl.length, air: !!airField, foul: foulPolygons.length, look: underLook ? { eyes: underLook.eyes?.length ?? 0, moths: underLook.moths?.length ?? 0, crawl: underLook.crawl?.length ?? 0 } : null }),
       // Where eyes may glint, and eyes showing now rather than after their wait (previews).
       // Blood on the floor without a hit (a preview): hit marks there, or a wounded creature's stride.
