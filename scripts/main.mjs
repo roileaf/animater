@@ -2488,7 +2488,21 @@ const populatePond = (ground, grid, many) => {
   const flocks = many.waterBirds > 0 ? birds.length : 0;
   pondLife.populate({ waters: birds, shore, pads, ducks: flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0, herons: flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0, gulls: flocks >= 30 ? 3 : 0, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
 };
+// What they were placed from. Life is looked over on any scene, setting or light change, most of them nothing to do with it
+// (a scene's wet ground saved, another module's setting): only a change here sends the ones out there away and brings new ones.
+let wildKey = null, verminKey = null;
+Hooks.on("canvasTearDown", () => { wildKey = null; verminKey = null; });
+const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`]]);
+const wildKeyOf = () => {
+  const many = sceneCreatures(), floors = [];
+  for (const r of canvas.scene?.regions ?? []) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", regionAreas(r)]); }
+  return JSON.stringify([canvas.scene?.id, canvas.level?.id, outdoorOn("wildlife"), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs"), ["rabbits", "songbirds", "fish", "waterBirds", "frogs"].map((k) => keepOut[k] ?? []), floors]);
+};
 const rebuildWildlife = () => {
+  if (!canvas?.ready) { wildlife.clear(); pondLife.clear(); wildOpen = null; wildKey = null; return; }
+  const key = wildKeyOf();
+  if (key === wildKey) return;
+  wildKey = key;
   wildlife.clear(); pondLife.clear(); wildOpen = null;
   if (!canvas?.ready || !outdoorOn("wildlife")) return;
   const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, many = sceneCreatures(), ground = wildGround(grid, area);
@@ -2522,11 +2536,14 @@ const wildTick = (seconds) => {
 const rebuildLife = () => {
   lifeTimer = null;
   try {
-    vermin.clear(); drips.clear();
-    if (!canvas?.ready) return;
+    drips.clear();
+    if (!canvas?.ready) { vermin.clear(); verminKey = null; return; }
     readKeepOut();
     const grid = canvas.grid.size, b = canvas.dimensions.sceneRect, many = sceneCreatures();
-    if (verminOn() && underCeiling({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) && (canvas.scene?.flags?.[ID]?.underground || ["cave", "hall"].includes(canvas.scene?.flags?.[ID]?.acoustics))) {
+    const own = canvas.scene?.flags?.[ID] ?? {}, wanted = verminOn() && underCeiling({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) && !!(own.underground || ["cave", "hall"].includes(own.acoustics));
+    const key = JSON.stringify([canvas.scene?.id, canvas.level?.id, wanted, kinds(many, "rats", "bats"), keepOut.rats ?? [], keepOut.bats ?? [], lampLightsKey]), changed = key !== verminKey;
+    if (changed) { verminKey = key; vermin.clear(); }
+    if (changed && wanted) {
       const spots = ratSpots().filter((p) => !keptOut("rats", p) && !keptOut("bats", p));
       vermin.populate({ spots, count: Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats), lit: litForRats, grid, bats: Math.round(3 * many.bats), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
     }
@@ -2538,8 +2555,8 @@ const rebuildLife = () => {
       for (const region of canvas.scene?.regions ?? []) { try { if (!region.flags?.[ID]?.drips && regionFloor({ name: region.name, flag: region.flags?.[ID]?.floor }) === "water") water.push(...regionAreas(region)); } catch { /* skip */ } }
       if (areas.length) drips.build({ areas, grid, water, floor: mapFloor() });
     }
-  } catch { vermin.clear(); drips.clear(); }
-  try { rebuildWildlife(); } catch { wildlife.clear(); pondLife.clear(); }
+  } catch { vermin.clear(); drips.clear(); verminKey = null; }
+  try { rebuildWildlife(); } catch { wildlife.clear(); pondLife.clear(); wildKey = null; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, () => { lifeSoon(); });
@@ -7462,7 +7479,7 @@ Hooks.once("ready", () => {
       kickHere: (x, y, heading = 0) => { underLife.kick({ x, y }, heading); return underLife.busy; },
       // Smoke let run on for this long at once; how much is in the air.
       doorBursts: () => doorBursts.count,
-      wildlife: { voice: (kind, at) => wildVoice(kind, at ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, true), counts: () => wildlife.counts, pond: () => pondLife.counts, scare: () => { wildlife.scare(); pondLife.scare(); }, rebuild: () => { rebuildWildlife(); return wildlife.counts; }, hunt: () => wildlife.hunt(), day: () => wildDay(), open: () => wildOpen?.share ?? 0 },
+      wildlife: { voice: (kind, at) => wildVoice(kind, at ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, true), counts: () => wildlife.counts, pond: () => pondLife.counts, scare: () => { wildlife.scare(); pondLife.scare(); }, rebuild: () => { wildKey = null; rebuildWildlife(); return wildlife.counts; }, hunt: () => wildlife.hunt(), day: () => wildDay(), open: () => wildOpen?.share ?? 0 },
       mistAir: { ahead: (seconds = 10) => { for (let left = seconds; left > 0; left -= 0.5) mistAir?.step(0.5); if (mistAir) cavern.air(mistAir.pixels); return mistAir?.held ?? 0; }, held: () => mistAir?.held ?? 0, at: (x, y) => { if (!mistAir || !airField) return 0; return mistAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
       smokeAir: { ahead: (seconds = 60) => { for (let left = seconds; left > 0; left -= 1) smokeAir?.step(1); if (smokeAir && airField) lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows); return smokeAir?.held ?? 0; }, held: () => smokeAir?.held ?? 0, at: (x, y) => { if (!smokeAir || !airField) return 0; return smokeAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
       cavernHere: (...parts) => { cavePreview = parts.filter(Boolean); rebuildCavern(); return cavern.busy || webs.count > 0; },

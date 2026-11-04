@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { rabbitStep, songStep, crowFlock, fishStep, preyFor, preyCaught, WILD_SOUNDS, WILD_GAPS, wildSound } from '../../../scripts/engines/motion/wildlife.mjs';
+import { rabbitStep, songStep, crowFlock, fishStep, preyFor, preyCaught, thumpsNow, WILD_SOUNDS, WILD_GAPS, wildSound } from '../../../scripts/engines/motion/wildlife.mjs';
 import { critterVoices } from '../../../scripts/engines/motion/underground-sounds.mjs';
 
 const seq = (values) => { let i = 0; return () => values[i++ % values.length]; };
@@ -65,6 +65,12 @@ test('a wildlife sound is never the same file twice running, and a flock is hear
   t = 2.6; assert.equal(v.wanted('crowCaw'), true);
 });
 
+test('a rabbit thumps when first startled, not on every run while chased', () => {
+  assert.equal(thumpsNow(Infinity), true);
+  assert.equal(thumpsNow(20), true);
+  assert.equal(thumpsNow(2), false);
+});
+
 test('songbirds peck, take to the air from anyone close, and land somewhere they can stand', () => {
   const up = songStep(song(), { grid: 100, near: [{ x: 50, y: 0 }], random: () => 0.5 });
   assert.equal(up.mode, 'up');
@@ -95,13 +101,13 @@ test('a fish stays in the water, drifting, and darts from anyone close', () => {
   assert.ok(Math.abs(scared.a) < 0.1, 'away, up the map');
 });
 
-test('a hawk stoops on a rabbit it can see, not one already running, and catches about half under its talons', () => {
+test('a hawk stoops on a rabbit it can see, not one already running, and catches most under its talons', () => {
   const near = { x: 100, y: 0, mode: 'sit' }, far = { x: 900, y: 0, mode: 'sit' }, running = { x: 10, y: 0, mode: 'bolt' };
   assert.equal(preyFor({ x: 0, y: 0 }, [far, running, near]), near);
   assert.equal(preyFor({ x: 0, y: 0 }, [far, near], { seen: (x) => x > 500 }), far, 'out of sight is no use');
   assert.equal(preyFor({ x: 0, y: 0 }, [running]), null);
   assert.equal(preyFor({ x: 0, y: 0 }, []), null);
-  assert.equal(preyCaught({ x: 0, y: 0 }, { x: 10, y: 0 }, { grid: 100, luck: 0.2 }), true);
+  assert.equal(preyCaught({ x: 0, y: 0 }, { x: 10, y: 0 }, { grid: 100, luck: 0.7 }), true);
   assert.equal(preyCaught({ x: 0, y: 0 }, { x: 10, y: 0 }, { grid: 100, luck: 0.9 }), false, 'it got away');
   assert.equal(preyCaught({ x: 0, y: 0 }, { x: 200, y: 0 }, { grid: 100, luck: 0.1 }), false, 'too far off');
 });

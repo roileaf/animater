@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.10.1 (2026-11-04)
+
+Animals stay where they are, and rabbits calm down.
+
+- **Animals no longer vanish and reappear.** Wildlife, pond life, rats and bats were thrown away and placed anew whenever a scene, a light or any module's setting changed, which happened often. Now they only change when something they depend on does: the scene, how many you set, or a water, floor or Keep out region.
+- **Rabbit thumps.** A rabbit thumps once as it is first startled, not on every run while it is chased.
+- **The hawk catches more.** It now misses one stoop in five instead of nearly half.
+
 ## 2.10.0 (2026-11-04)
 
 The open air comes alive: birds, rabbits, fish, ducks, herons, gulls and frogs. Underground, smoke and mist now move with the air, and a door can burst with bats or rats.

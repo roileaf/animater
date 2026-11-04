@@ -18,7 +18,7 @@ export const WILD_SOUNDS = Object.freeze({
   frogCroak: ['467958-0', '573584-0', '573584-1', '745965-0'].map((n) => `${SOUND_DIR}/frog/frog-${n}.ogg`),
 });
 // How long each kind waits [least, most seconds] after it sounds, whatever their number (underground-sounds.mjs critterVoices).
-export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [2.5, 7], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [2, 5], fishSplash: [5, 12], duckQuack: [3, 8], frogCroak: [3, 9] });
+export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [2.5, 7], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], duckQuack: [3, 8], frogCroak: [3, 9] });
 // One of a kind's recordings (pure), never the one just played when there are others.
 const lastSound = {};
 export function wildSound(kind, random = Math.random) {
@@ -112,8 +112,11 @@ export function preyFor(from, rabbits = [], { seen = () => true } = {}) {
   for (const r of rabbits) { if (r.mode === 'bolt' || !seen(r.x, r.y)) continue; const d = Math.hypot(r.x - from.x, r.y - from.y); if (d < near) { near = d; best = r; } }
   return best;
 }
-// Whether the stoop takes it (pure): it must be under the talons as they arrive, and even then about half get away.
-export const preyCaught = (at, rabbit, { grid = 100, luck = Math.random() } = {}) => Math.hypot(at.x - rabbit.x, at.y - rabbit.y) < grid * 0.55 && luck < 0.55;
+// Whether the stoop takes it (pure): it must be under the talons as they arrive, and even then one in five gets away.
+export const preyCaught = (at, rabbit, { grid = 100, luck = Math.random() } = {}) => Math.hypot(at.x - rabbit.x, at.y - rabbit.y) < grid * 0.55 && luck < 0.8;
+// Whether a rabbit bolting now thumps (pure): a warning as it is first startled, not every run while it is being chased. `calm`
+// the seconds since it last bolted.
+export const thumpsNow = (calm) => calm > 8;
 
 // Where the crows cross (pure): a loose group in from beyond one side of `area` { x, y, width, height } and out past the
 // other, wherever its `way` (radians) takes it. Each { x, y, vx, vy, a, phase, size }.
@@ -249,7 +252,7 @@ export function createWildlife({ PIXI, floor, sky }) {
       const can = (o, x, y) => { if (looking) { try { o.seen = seen(x, y) !== false; } catch { o.seen = true; } } return o.seen !== false && inView(x, y) && alpha > 0.01; };
       if (alpha > 0.01) rabbits = rabbits.map((r0) => {
         const r = rabbitStep(r0, { dt, grid, near, blocked, scare, ok: (x, y) => ok('rabbits', x, y) }); r.view = r0.view; r.seen = r0.seen;
-        if (r.mode === 'bolt' && r0.mode !== 'bolt') sound('rabbitThump', r, true);
+        if (r.mode === 'bolt' && r0.mode !== 'bolt') { if (thumpsNow(time - (r0.boltAt ?? -Infinity))) sound('rabbitThump', r, false); r.boltAt = time; }
         if (!can(r, r.x, r.y)) { hide(r.view); return r; }
         const air = r.mode === 'sit' ? 0 : Math.sin(Math.min(1, r.hop) * Math.PI), frame = r.mode === 'sit' ? 0 : air > 0.45 ? 2 : 1, size = 0.58 * k * r.size * rabbitSize, off = grid * (0.02 + air * 0.06);
         put(r.view, t.rabbit[r.coat][frame], r.x, r.y - air * grid * 0.045, r.a, size * (1 + air * 0.05), alpha, r.x + off * sun.x, r.y + off * sun.y, 0.42 - air * 0.12);
@@ -296,7 +299,7 @@ export function createWildlife({ PIXI, floor, sky }) {
           // Falling faster and faster, wings pulled in; the rabbit only sees it at the last moment.
           const u = Math.min(1, h.t), e = u * u, to = h.prey;
           x = h.from.x + (to.x - h.from.x) * e; y = h.from.y + (to.y - h.from.y) * e; height = 1 - e; angle = Math.atan2(to.y - h.from.y, to.x - h.from.x) + Math.PI / 2; frame = 3;
-          if (u > 0.72 && !h.warned && prey) { h.warned = true; const r = rabbits.indexOf(prey); rabbits[r] = { ...prey, mode: 'bolt', bolts: 5, hop: 0, a: Math.random() * TAU }; h.prey = rabbits[r]; sound('rabbitThump', prey, true); }
+          if (u > 0.72 && !h.warned && prey) { h.warned = true; const r = rabbits.indexOf(prey); rabbits[r] = { ...prey, mode: 'bolt', bolts: 5, hop: 0, a: Math.random() * TAU }; h.prey = rabbits[r]; }
           if (u >= 1) {
             h.at = { x, y }; h.t = 0; h.mode = 'lift'; h.way = Math.random() * TAU; h.from = { x, y };
             if (prey && preyCaught({ x, y }, prey, { grid })) { rabbits = rabbits.filter((r) => r !== prey); dropPair(prey); h.carry = sprite(sky(), t.rabbit[prey.coat][0]); spareIn = between(Math.random, 45, 120); }
