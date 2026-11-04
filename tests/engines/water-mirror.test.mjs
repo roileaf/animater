@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mirrorOf, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER } from '../../scripts/engines/motion/water-mirror.mjs';
+import { mirrorOf, mirrorWay, tileMirrors, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER } from '../../scripts/engines/motion/water-mirror.mjs';
 
 const square = (x, y, s) => [x, y, x + s, y, x + s, y + s, x, y + s];
 const pond = square(1000, 1000, 600);
@@ -18,27 +18,67 @@ test('someone on the bank mirrors into the pond from their feet', () => {
   assert.ok(spot.alpha > 0 && spot.alpha < 1);
 });
 
-test('no mirror from further than 2 squares from water', () => {
-  assert.ok(mirrorOf(token({ y: 1000 - 190 - 50 }), [pond], { grid: 100 }), 'just within');
-  assert.equal(mirrorOf(token({ y: 1000 - 210 - 50 }), [pond], { grid: 100 }), null);
+test('how far off a creature reflects goes by its own length', () => {
+  assert.ok(mirrorOf(token({ y: 1000 - 100 - 50 }), [pond], { grid: 100 }).wet > 0, 'its head still reaches the water');
+  assert.equal(mirrorOf(token({ y: 1000 - 130 - 50 }), [pond], { grid: 100 }).wet, 0, 'its length falls short');
+  assert.equal(mirrorOf(token({ y: 1000 - 300 - 50 }), [pond], { grid: 100 }), null, 'too far to matter');
   assert.equal(mirrorOf(token(), [], { grid: 100 }), null, 'no water');
-  const big = mirrorOf(token({ y: 1000 - 210 - 50 }), [pond], { grid: 200 });
-  assert.ok(big, 'counted in squares');
+  const big = mirrorOf(token({ y: 1000 - 300 - 150, h: 300, w: 300 }), [pond], { grid: 100 });
+  assert.ok(big.wet > 0, 'a big creature reaches from further off');
+});
+
+test('the further from the edge, the less shows and the fainter it is', () => {
+  const at = (gap) => mirrorOf(token({ y: 1000 - gap - 50 }), [pond], { grid: 100 });
+  assert.equal(at(0).down, 0);
+  assert.ok(Math.abs(at(50).down - 50) < 4, String(at(50).down));
+  assert.ok(at(0).wet > at(50).wet && at(50).wet > at(100).wet);
+  assert.ok(at(0).alpha > at(50).alpha && at(50).alpha > at(100).alpha);
+});
+
+test('tiles by the water show in it; hidden, map-sized and far ones do not', () => {
+  const tile = (over = {}) => ({ id: 'tile:a', texture: { valid: true, width: 200, height: 200 }, x: 1300, y: 900, w: 100, h: 100, rotation: 0, alpha: 1, ...over });
+  const [tree] = tileMirrors([tile()], [pond], { grid: 100 });
+  assert.ok(tree.wet > 0); assert.equal(tree.h, 100, 'not stretched'); assert.ok(tree.texture);
+  assert.deepEqual(tileMirrors([tile({ hidden: true })], [pond], { grid: 100 }), []);
+  assert.deepEqual(tileMirrors([tile({ w: 1300, h: 1300 })], [pond], { grid: 100 }), [], 'a map overlay');
+  assert.deepEqual(tileMirrors([tile({ y: 300 })], [pond], { grid: 100 }), [], 'too far');
+  assert.deepEqual(tileMirrors([tile()], [], { grid: 100 }), []);
+});
+
+test('a copy falls out across the water from whichever bank is nearest', () => {
+  const near = (x, y) => { const s = mirrorOf(token({ x, y }), [pond], { grid: 100 }); return { s, x: Math.round(s.way.x), y: Math.round(s.way.y) }; };
+  const north = near(1300, 950), south = near(1300, 1650), west = near(950, 1300), east = near(1650, 1300);
+  assert.deepEqual([north.x, north.y], [0, 1]); assert.deepEqual([south.x, south.y], [0, -1]);
+  assert.deepEqual([west.x, west.y], [1, 0]); assert.deepEqual([east.x, east.y], [-1, 0]);
+  for (const side of [north, south, west, east]) assert.ok(side.s.wet > 0.5, JSON.stringify(side.s.way));
+  assert.ok(Math.abs(north.s.rotation) < 1e-9, 'down the map needs no turn');
+  assert.ok(south.s.y < south.s.foot, 'from the south it runs up the map');
+  assert.equal(west.s.footX, 1000, 'from the side it starts at the edge facing the water');
+});
+
+test('in the water a copy falls away from the nearest bank', () => {
+  const near = mirrorWay({ x: 1100, y: 1300 }, [pond]);
+  assert.ok(Math.abs(near.x - 1) < 1e-9 && Math.abs(near.y) < 1e-9, JSON.stringify(near));
+  const up = mirrorWay({ x: 1300, y: 1550 }, [pond]);
+  assert.ok(Math.abs(up.x) < 1e-9 && Math.abs(up.y + 1) < 1e-9, JSON.stringify(up));
+});
+
+test('an island counts as a bank, and water with no shore falls down the map', () => {
+  const ring = Object.assign([...pond], { holes: [square(1200, 1200, 200)] });
+  assert.deepEqual(mirrorWay({ x: 1180, y: 1300 }, [ring]).x < 0, true, 'away from the island');
+  assert.deepEqual(mirrorWay({ x: 0, y: 0 }, []), { x: 0, y: 1 });
 });
 
 test('no mirror in rough water', () => {
   const race = square(1200, 1200, 200);
   assert.equal(mirrorOf(token({ y: 1300 }), [pond], { grid: 100, rough: [race] }), null, 'standing in it');
-  const beside = mirrorOf(token({ x: 1100, y: 1300 }), [pond], { grid: 100, rough: [race] });
+  const beside = mirrorOf(token({ x: 1300, y: 1130 }), [pond], { grid: 100, rough: [square(1200, 1400, 200)] });
   assert.ok(beside, 'calm next to it');
-  assert.equal(beside.distance, 0); assert.equal(beside.wet, 1);
-  const above = mirrorOf(token({ y: 1100 }), [pond], { grid: 100, rough: [race] });
-  assert.ok(above.wet < 1, 'what lands on the rough shows nothing');
-});
-
-test('standing below the water, nothing of the copy lands on it', () => {
-  const spot = mirrorOf(token({ y: 1650 }), [pond], { grid: 100 });
-  assert.equal(spot.wet, 0);
+  assert.equal(beside.distance, 0); assert.ok(beside.wet > 0.5);
+  const above = mirrorOf(token({ x: 1300, y: 1100 }), [pond], { grid: 100, rough: [square(1200, 1000, 200)] });
+  assert.equal(above, null, 'nearest bank is the race itself: its feet stand in it');
+  const facing = mirrorOf(token({ x: 1130, y: 1300 }), [pond], { grid: 100, rough: [race] });
+  assert.ok(facing.wet < 1, 'what lands on the rough shows nothing');
 });
 
 test('the copy turns the other way, and fades with distance and with its token', () => {
@@ -188,4 +228,15 @@ test('the shader is written for WebGL1', () => {
   assert.ok(!/#version|\btexture\s*\(|\bout vec4\b/.test(WATER_MIRROR_SHADER.frag));
   assert.ok(WATER_MIRROR_SHADER.vert.includes('attribute vec4 aBand'));
   assert.equal(WATER_MIRROR_SHADER.frag.split('{').length, WATER_MIRROR_SHADER.frag.split('}').length);
+});
+
+test('dripping pools mirror on any floor; plain ground, the sea, falls and swift water do not', async () => {
+  const { waterStillness } = await import('../../scripts/engines/motion/water-mirror.mjs');
+  assert.equal(waterStillness({}, false), null);
+  assert.equal(waterStillness({ drips: true }, false), 'calm');
+  assert.equal(waterStillness({}, true), 'calm');
+  assert.equal(waterStillness({ current: 'swift' }, true), 'rough');
+  assert.equal(waterStillness({ sea: true }, true), 'rough');
+  assert.equal(waterStillness({ waterfall: true }, true), 'rough');
+  assert.equal(waterStillness({ drips: true, current: 'swift' }, true), 'rough');
 });

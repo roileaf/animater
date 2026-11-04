@@ -34,6 +34,25 @@ export const EVENTS = {
 // A recipe's colour when none was picked (its card accent).
 export const DEFAULT_RECIPE_COLOR = "#9e8aff";
 export const STRIKE_SCOPES = { melee: 'All melee strikes', ranged: 'All ranged strikes' };
+// A scope can also be one of the system's own weapon categories (systems/weapon-categories.mjs): 'group:sword', 'category:martial' (PF2e, SF2e), 'type:simpleM' (D&D 5e),
+// 'slot:primary', 'burden:twoHanded', 'range:far', 'trait:agility' (Daggerheart), 'keyword:weapon' (Draw Steel). null: it is not one.
+const WEAPON_CLASS_READERS = Object.freeze({
+  group: (s) => s?.group, category: (s) => s?.category, type: (s) => s?.type?.value,
+  slot: (s) => (s ? (s.secondary ? 'secondary' : 'primary') : null), burden: (s) => s?.burden, range: (s) => s?.attack?.range, trait: (s) => s?.attack?.roll?.trait,
+});
+export const weaponClassOf = (scope) => { const m = /^([a-z]+):([\w-]{1,40})$/.exec(String(scope ?? '')); return m && (m[1] === 'keyword' || Object.hasOwn(WEAPON_CLASS_READERS, m[1])) ? { field: m[1], id: m[2] } : null; };
+// A scope that names no item: every strike of a kind or of a category.
+export const isWideScope = (scope) => Object.hasOwn(STRIKE_SCOPES, scope ?? '') || !!weaponClassOf(scope);
+const inWeaponClass = (scope, item) => {
+  const { field, id } = weaponClassOf(scope), system = item?.system;
+  // Draw Steel's strikes are abilities with keywords; everywhere else a category is a weapon's or an NPC strike's.
+  if (field === 'keyword') return item?.type === 'ability' && Array.from(system?.keywords ?? []).includes(id);
+  return ['weapon', 'melee'].includes(item?.type) && WEAPON_CLASS_READERS[field](system) === id;
+};
+// What all melee or all ranged count as a strike: a weapon or NPC strike, or a Draw Steel ability with such a use.
+const isStrikeItem = (event) => ['weapon', 'melee'].includes(event.item?.type) || (event.systemId === 'draw-steel' && event.item?.type === 'ability');
+// What a wide scope is called when the system's own name is not at hand.
+export const wideScopeName = (scope) => STRIKE_SCOPES[scope] ?? (weaponClassOf(scope) ? `All ${weaponClassOf(scope).id} strikes` : '');
 // Finishers: recipes that play on the real token for assigned items (scripts/engines/finishers/finisher-model.mjs).
 export const FINISHER_ON = { kill: "Killing blow", use: "Every successful use", critical: "Critical hit", criticalOrKill: "Critical hit or killing blow" };
 export const FINISHER_ENDINGS = { vanish: "Vanish (fade, then hidden)", body: "Body (stays, Defeated)", stay: "Stay" };
@@ -141,7 +160,8 @@ export function validateRecipe(input) {
     input.stages.length > MAX_STAGES
   )
     throw Error(`Recipes need 1–${MAX_STAGES} stages.`);
-  const strikeScope = Object.hasOwn(STRIKE_SCOPES, input.matchScope ?? '') && ['attack', 'damage'].includes(input.trigger) ? input.matchScope : null;
+  const wideScope = isWideScope(input.matchScope) && ['attack', 'damage'].includes(input.trigger) ? input.matchScope : null;
+  const strikeScope = wideScope && Object.hasOwn(STRIKE_SCOPES, wideScope) ? wideScope : null;
   for (const field of ['teleportOut', 'teleportIn']) {
     if (input[field] && input[field] !== 'none' && !visualReference(input[field]))
       throw Error('Teleport effect needs a database key or relative visual media file.');
@@ -157,8 +177,8 @@ export function validateRecipe(input) {
     enabled: input.enabled !== false,
     trigger: input.trigger,
     match: text(input.match, 1000),
-    itemUuid: strikeScope ? '' : text(input.itemUuid, 300),
-    ...(strikeScope ? { matchScope: strikeScope } : {}),
+    itemUuid: wideScope ? '' : text(input.itemUuid, 300),
+    ...(wideScope ? { matchScope: wideScope } : {}),
     // A flash screen shown to everyone right before this animation plays.
     ...(/^[A-Za-z0-9-]{1,40}$/.test(input.flash ?? "") ? { flash: input.flash } : {}),
     // Teleport: the caster or first target moves to a spot the one who cast clicks (see teleport.mjs).
@@ -170,12 +190,12 @@ export function validateRecipe(input) {
     ...(/^#[\da-f]{6}$/i.test(input.teleportTint ?? '') ? { teleportTint: input.teleportTint } : {}),
     ...(Number(input.teleportScale) > 0 ? { teleportScale: number(input.teleportScale, .1, 5, 1.8) } : {}),
     ...(['pf2e','sf2e','dnd5e','daggerheart','draw-steel'].includes(input.systemId)?{systemId:input.systemId}:/^Compendium\.(pf2e|sf2e|dnd5e|daggerheart|draw-steel)\./.test(input.itemUuid??'')?{systemId:input.itemUuid.split('.')[1]}:{}),
-    ...(!strikeScope&&text(input.catalogEntry,100)?{catalogEntry:text(input.catalogEntry,100)}:{}),
-    ...(!strikeScope&&text(input.activityId,100)?{activityId:text(input.activityId,100)}:{}),
+    ...(!wideScope&&text(input.catalogEntry,100)?{catalogEntry:text(input.catalogEntry,100)}:{}),
+    ...(!wideScope&&text(input.activityId,100)?{activityId:text(input.activityId,100)}:{}),
     // The activity's kind and name (a D&D 5e spell's Save, Attack, Heal...): the same activity on a copy of the item from
     // another book, whose activities have ids of their own.
-    ...(!strikeScope&&text(input.activityId,100)&&/^[a-z-]{1,30}$/i.test(input.activityType??'')?{activityType:input.activityType}:{}),
-    ...(!strikeScope&&text(input.activityId,100)&&text(input.activityName,100)?{activityName:text(input.activityName,100)}:{}),
+    ...(!wideScope&&text(input.activityId,100)&&/^[a-z-]{1,30}$/i.test(input.activityType??'')?{activityType:input.activityType}:{}),
+    ...(!wideScope&&text(input.activityId,100)&&text(input.activityName,100)?{activityName:text(input.activityName,100)}:{}),
     ...(normalizePlaybackRoles(input.playbackRoles)?{playbackRoles:normalizePlaybackRoles(input.playbackRoles)}:{}),
     ...(input.lifecycle === "document" && input.trigger === "effect"
       ? { lifecycle: "document", stateEntry: text(input.stateEntry, 100),
@@ -484,12 +504,15 @@ export function matchRecipe(recipes, event) {
           (!r.weaponMode || r.weaponMode === event.weaponMode) &&
           r.trigger === event.type &&
           (Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')
-            ? event.weaponMode === r.matchScope && ['weapon', 'melee'].includes(event.item?.type)
-            : exact(r) || (!owned(r) && named(r))),
+            ? event.weaponMode === r.matchScope && isStrikeItem(event)
+            : weaponClassOf(r.matchScope)
+              ? inWeaponClass(r.matchScope, event.item)
+              : exact(r) || (!owned(r) && named(r))),
       )
       .sort(
         (a, b) =>
-          Number(Object.hasOwn(STRIKE_SCOPES, a.matchScope ?? '')) - Number(Object.hasOwn(STRIKE_SCOPES, b.matchScope ?? '')) ||
+          // The narrower wins: a named item, then a weapon category, then all melee or all ranged.
+          (Object.hasOwn(STRIKE_SCOPES, a.matchScope ?? '') ? 2 : weaponClassOf(a.matchScope) ? 1 : 0) - (Object.hasOwn(STRIKE_SCOPES, b.matchScope ?? '') ? 2 : weaponClassOf(b.matchScope) ? 1 : 0) ||
           Number(exact(b)) - Number(exact(a)) ||
           Number(Boolean(b.itemUuid)) - Number(Boolean(a.itemUuid)) ||
           a.id.localeCompare(b.id),
@@ -498,7 +521,7 @@ export function matchRecipe(recipes, event) {
 }
 // A deliberate strike-wide override also preserves more specific saved exceptions.
 export function matchStrikeOverride(recipes, event) {
-  return matchRecipe(recipes.filter(r => Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')), event)
+  return matchRecipe(recipes.filter(r => isWideScope(r.matchScope)), event)
     ? matchRecipe(recipes, event) : null;
 }
 export function resolveAsset(stage, catalog) {

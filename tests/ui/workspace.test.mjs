@@ -911,6 +911,11 @@ test("a GM whose table plays nothing yet starts on Setup; the guide starts with 
   assert.ok(html.indexOf("Turn every catalog on") < html.indexOf("Get started"), "turning the catalogs on comes first");
   assert.match(html, /<li><b>Turn on the catalogs\.<\/b>/);
   assert.ok(html.indexOf("Fine-tuning") < html.indexOf("Play my own recipes automatically"));
+  assert.ok(!html.includes('data-action="open-settings"'), "no settings button without a window to open");
+  idle.host = { ...host(false), openSettings: () => {} };
+  const withSettings = idle.setupHTML(host(false).environment());
+  assert.ok(withSettings.includes('data-action="open-settings"'));
+  assert.ok(withSettings.indexOf("Open settings") < withSettings.indexOf("Turn every catalog on"), "at the top of the page");
 });
 
 test("a persistent damage customization picks its damage type in the editor", async () => {

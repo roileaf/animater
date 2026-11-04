@@ -1,11 +1,11 @@
-import { normalize, STRIKE_SCOPES } from "./model.mjs";
+import { normalize, isWideScope, wideScopeName } from "./model.mjs";
 
 // What a recipe is linked to, as comparable keys: the bound item, or each
 // name it matches (a catalog copy also matches its condition or effect name).
 // Persistent damage copies for different damage types never meet: each plays only for its own.
 function linkKeys(r, entryName) {
   const kind = [r.trigger, r.lifecycle ?? "", r.weaponMode ?? "", r.activityId ?? "", r.stateDamageType ?? ""].join("|");
-  if (Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')) return [`${kind}|name:${STRIKE_SCOPES[r.matchScope].toLowerCase()}`];
+  if (isWideScope(r.matchScope)) return [`${kind}|name:${r.matchScope.includes(":") ? r.matchScope : wideScopeName(r.matchScope).toLowerCase()}`];
   if (r.itemUuid) return [`${kind}|item:${r.itemUuid}`];
   const names = String(r.match ?? "").split(",").map((n) => normalize(n)).filter(Boolean);
   const entry = r.stateEntry && entryName?.(r.stateEntry);
@@ -40,4 +40,4 @@ export function recipeConflicts(recipes, { entryName } = {}) {
   return out;
 }
 // A saved recipe that can never play because nothing links it.
-export const unlinked = (r) => !Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '') && !r.itemUuid && !r.stateEntry && !String(r.match ?? "").trim() && ["effect", "use", "attack", "damage", "template"].includes(r.trigger);
+export const unlinked = (r) => !isWideScope(r.matchScope) && !r.itemUuid && !r.stateEntry && !String(r.match ?? "").trim() && ["effect", "use", "attack", "damage", "template"].includes(r.trigger);

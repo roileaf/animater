@@ -5,7 +5,7 @@ import { uuid } from "../core/uuid.mjs";
 // not overlap share a lane. Saved recipe data is unchanged: tracks, lanes,
 // playhead and zoom are presentation only.
 import { finisherChipText } from "../engines/finishers/finisher-model.mjs";
-import { KINDS, EVENTS, STRIKE_SCOPES, MAX_STAGES, TELEPORT_GONE_MS, validateRecipe, clone } from "../core/model.mjs";
+import { KINDS, EVENTS, wideScopeName, MAX_STAGES, TELEPORT_GONE_MS, validateRecipe, clone } from "../core/model.mjs";
 import { timelineLayout, packLanes, linkStartModes } from "../engines/playback/choreography.mjs";
 import { sampleRecipe, timedStages, previewVariants, variantMembers } from "../engines/playback/composition.mjs";
 import { canvasToSquares, keyframesOf, scrubPoint, keyframeDeleteApplies, pathPoints } from "./keyframe-ui.mjs";
@@ -145,7 +145,7 @@ export function studioHTML(w, r) {
 }
 function triggerChipHTML(w, r) {
   const bound = r.itemUuid ? w.host.itemSummary?.(r.itemUuid)?.name : "";
-  const what = STRIKE_SCOPES[r.matchScope] || bound || r.match?.split(",")[0]?.trim() || "";
+  const what = w.scopeLabel?.(r.matchScope) || wideScopeName(r.matchScope) || bound || r.match?.split(",")[0]?.trim() || "";
   const lasting = w.lastingLabel?.(r);
   const when = r.enabled === false ? "Disabled" : r.finisher ? finisherChipText(r) : lasting ? `${lasting} · while on token` : EVENTS[r.trigger] ?? r.trigger;
   return `<button class="an-st-trigger${r.enabled === false ? " is-off" : ""}${w.studioSettings ? " is-open" : ""}" data-action="studio-settings" aria-expanded="${!!w.studioSettings}" data-tooltip="${r.finisher ? "Finisher settings: what it applies to, when it plays, how it ends" : "Recipe settings: trigger, item binding, description, category"}">⚙ <span>${esc(when)}</span>${what ? `<small>${esc(what)}</small>` : ""}</button>`;

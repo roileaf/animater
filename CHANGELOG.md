@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.12.4 (2026-11-04)
+
+Reflections from every bank and of every tile, recipes for a whole weapon category, and flames that stay under the roof.
+
+- **Reflections fall from the nearest bank.** A creature on any side of still water now reflects, out across the water from where it stands, not only from the north.
+- **Tiles reflect too.** Trees, statues, rocks and any other tile near still water show in it. Tiles bigger than 12 squares are left out, since those are usually overlays for the whole map.
+- **Dripping pools reflect.** A region marked as dripping mirrors what stands by it, whatever the floor around it.
+- **More natural reflections.** Someone at the water's edge reflects from the part of them over it, and the further from the shore, the less of the reflection shows and the fainter it is.
+- **Recipes for a weapon category.** A recipe's Applies to now lists the system's own categories: weapon categories and groups in PF2e and SF2e, weapon types in D&D 5e, slot, burden, range and trait in Daggerheart, and ability keywords in Draw Steel. A recipe for a specific item still wins over a category, and a category wins over all melee or all ranged. PF2e and SF2e NPC natural attacks have no group or category, so all melee or all ranged still covers those.
+- **A Settings button on the Setup page.** It opens Animater settings from the main window.
+- **Fixed: flames showed through roofs.** Light flames, held torches, lanterns and embers now hide under a roof, a tile or the map's foreground art while it is drawn. They come back as the roof fades for someone inside.
+- **Fixed: all melee and all ranged never played in Draw Steel.** They now match its abilities.
+
 ## 2.12.3 (2026-11-04)
 
 **Wildlife is now chosen scene by scene: to bring your animals back, turn on Outdoor life in Scene configuration → Animater.** Also new: what a fight leaves behind, coasts and waterfalls, reflections, town life, old tracks, and the sound of places.

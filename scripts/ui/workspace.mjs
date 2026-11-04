@@ -11,6 +11,9 @@ import { OPTIONAL_FX_KINDS, fxAvailability } from '../engines/playback/optional-
 import {
   EVENTS,
   STRIKE_SCOPES,
+  isWideScope,
+  weaponClassOf,
+  wideScopeName,
   KINDS,
   clone,
   validateRecipe,
@@ -1557,15 +1560,23 @@ export class Workspace {
     const only = types.length ? `<label>Damage type<select data-field="stateDamageType">${options({ "": "Every damage type", ...Object.fromEntries(types.map((t) => [t, title(t)])) }, r.stateDamageType ?? "")}</select></label><p class="an-hint">${r.stateDamageType ? `Plays only for persistent ${esc(r.stateDamageType)} damage. Other damage types keep the catalog version.` : "Plays for every persistent damage type you have not customized on its own."} Changing it keeps this animation's look.</p>` : "";
     return `${only}<label>Lasting animation<select data-field="lasting">${options({ "": "Follow the catalog setting", ...LASTING_CHOICES }, r.lasting ?? "")}</select></label><p class="an-hint">Just this animation: stay on the token, play once when applied, or also replay briefly at the creature's turn start. Each player's own Lasting condition animations setting still applies on their screen.</p>`;
   }
+  // A wide scope's name in the system's own words (the studio's trigger chip).
+  scopeLabel(scope) {
+    for (const group of this.host.weaponCategories?.() ?? []) if (Object.hasOwn(group.entries, scope ?? '')) return `All ${group.entries[scope]}`;
+    return '';
+  }
   recipeSettingsHTML(r) {
     if (r.finisher) return finisherSettingsHTML(r, { itemSummary: (uuid) => this.host.itemSummary?.(uuid), players: this.host.players?.() ?? [], playerPicks: this.host.playerPicks?.() === true });
     const linked = r.lifecycle === "document";
-    const scope = Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '') ? r.matchScope : null;
-    const binding = !linked && ['attack', 'damage'].includes(r.trigger) ? `<label>Applies to<select data-field="matchScope">${options({ '': 'Item names / slugs', ...STRIKE_SCOPES }, r.matchScope ?? '')}</select></label>` : '';
-    const scopeHint = scope === 'melee' ? 'every melee weapon, unarmed or NPC strike' : 'every ranged weapon or NPC ranged strike';
-    const otherUses = scope === 'melee' ? 'Ranged, thrown and spell attacks' : 'Melee, thrown and spell attacks';
+    const scope = isWideScope(r.matchScope) ? r.matchScope : null, weaponClass = weaponClassOf(scope);
+    // The system's own weapon categories, each list under its name; one saved in another system's terms stays listed, not lost.
+    const classes = this.host.weaponCategories?.() ?? [], known = classes.some((g) => Object.hasOwn(g.entries, r.matchScope ?? ''));
+    const classOptions = classes.map((g) => `<optgroup label="${esc(g.label)}">${options(g.entries, r.matchScope ?? '')}</optgroup>`).join('') + (weaponClass && !known ? options({ [scope]: wideScopeName(scope) }, scope) : '');
+    const binding = !linked && ['attack', 'damage'].includes(r.trigger) ? `<label>Applies to<select data-field="matchScope">${options({ '': 'Item names / slugs', ...STRIKE_SCOPES }, r.matchScope ?? '')}${classOptions}</select></label>` : '';
+    const scopeHint = weaponClass?.field === 'keyword' ? 'every ability with this keyword' : weaponClass ? 'every weapon of this kind, whichever way it is used' : scope === 'melee' ? 'every melee weapon, unarmed or NPC strike' : 'every ranged weapon or NPC ranged strike';
+    const otherUses = weaponClass ? 'Other weapons and spell attacks' : scope === 'melee' ? 'Ranged, thrown and spell attacks' : 'Melee, thrown and spell attacks';
     return `<div class="an-editor-section an-binding"><div class="an-section-title"><b>When it plays</b><label class="an-check"><input type="checkbox" data-field="enabled" ${r.enabled ? "checked" : ""}>Enabled</label></div><label>Description<textarea aria-label="Description" data-field="description" rows="2" class="an-description">${esc(r.description)}</textarea></label>${linked ? "" : `<label>Trigger<select data-field="trigger">${options(EVENTS, r.trigger)}</select></label>`}${binding}${scope ? `<p class="an-hint">Uses this recipe for ${scopeHint}, overriding built-in weapon animations. No weapon names needed. ${otherUses} keep their own animations. Specific saved bindings take priority.</p>` : `<label>${linked ? "Condition or effect names" : "Item names / slugs"}<input data-field="match" placeholder="${linked ? "frightened, spell effect: shield" : "fire bolt, ignition"}" value="${esc(r.match)}"></label><p class="an-hint">${linked ? "Plays while any of these is on a token. Exact names; commas separate alternatives. Drop a condition or effect here to bind only that one." : "Exact matches. Commas separate alternatives. Drop an item here to bind only that item."}</p>${r.itemUuid ? this.boundItemHTML(r.itemUuid) : ""}`}${linked ? this.lastingChoiceHTML(r) : ""}${this.host.flashScreens ? this.flashLinkHTML(r) : ""}${this.teleportHTML(r)}
-      ${!scope && (r.weaponMode || r.category === "Weapons") ? `<label>Weapon use<select data-field="weaponMode">${options({ "": "Any usage", melee: "Melee Strike", ranged: "Ranged Strike", thrown: "Thrown Strike" }, r.weaponMode ?? "")}</select></label><p class="an-hint">The rolled usage selects this customization. Other uses keep their own animation.</p>` : ""}<div class="an-field-row"><label>Category<input data-field="category" value="${esc(r.category)}"></label><label>Accent<input type="color" aria-label="Recipe accent color" data-field="color" value="${esc(r.color)}"></label></div></div>`;
+      ${weaponClass || (!scope && (r.weaponMode || r.category === "Weapons")) ? `<label>Weapon use<select data-field="weaponMode">${options({ "": "Any usage", melee: "Melee Strike", ranged: "Ranged Strike", thrown: "Thrown Strike" }, r.weaponMode ?? "")}</select></label><p class="an-hint">The rolled usage selects this customization. Other uses keep their own animation.</p>` : ""}<div class="an-field-row"><label>Category<input data-field="category" value="${esc(r.category)}"></label><label>Accent<input type="color" aria-label="Recipe accent color" data-field="color" value="${esc(r.color)}"></label></div></div>`;
   }
   inspectorHTML(r) {
     const linked = r.lifecycle === "document";
@@ -2047,7 +2058,7 @@ export class Workspace {
     const deps = env.dependencies.map((d) => `<div class="an-dependency"><span class="${d.ok ? "an-ok" : "an-missing"}">${d.ok ? "✓" : "!"}</span><div><h3>${esc(d.name)}</h3><p>${esc(d.detail)}</p></div></div>`).join("");
     const ownRecipes = `<section class="an-settings-card"><div><h3>Play my own recipes automatically</h3><p>${env.conflicts.length ? `Other animation modules are on: ${esc(env.conflicts.join(", "))}. Things they animate may play twice.` : "Your saved recipes play when their spell, attack, damage or area happens. The catalogs play on their own."}</p></div><button data-action="automation" class="an-toggle ${this.host.enabled() ? "is-on" : ""}" role="switch" aria-checked="${this.host.enabled()}" ${env.demo || !env.ready ? "disabled" : ""}>${this.host.enabled() ? "On" : "Off"}</button></section>`;
     const guide = `<div class="an-guide"><h3>Get started</h3><ol><li><b>Turn on the catalogs.</b> Use <i>Turn every catalog on</i> above, or open one catalog and switch on its Plug &amp; play.</li><li><b>Try one.</b> Select a token on the canvas (and target another), open any catalog entry and press <i>On canvas</i>.</li><li><b>Make it yours.</b> Press <i>Customize</i> on any entry, or start a <i>New recipe</i> from a template.</li></ol><p>Area spells place a temporary area for previews and remove it afterward. Rerolls and private PF2e messages never animate, and D&amp;D 5e hits and misses are not guessed from armor class.</p><button data-action="restore-starters">Add missing starter recipes</button></div>`;
-    return `<div class="an-setup"><section class="an-setup-hero"><span>✧</span><h2>From dice roll to spectacle.</h2><p>Turn on the catalogs and every spell, strike and condition animates. Change any of them later.</p></section><div class="an-setup-grid">${deps}</div>${this.everyCatalogHTML(env)}${guide}<h3 class="an-setup-subtitle">Fine-tuning</h3>${this.catalogFxControlsHTML(env)}${ownRecipes}</div>`;
+    return `<div class="an-setup"><section class="an-setup-hero"><span>✧</span><h2>From dice roll to spectacle.</h2><p>Turn on the catalogs and every spell, strike and condition animates. Change any of them later.</p></section>${this.host.openSettings ? `<section class="an-settings-card"><div><h3>Animater settings</h3><p>Every switch in one window: light, motion, the world's life and sound, combat drama and more.</p></div><button type="button" data-action="open-settings"><i class="fa-solid fa-sliders" inert></i> Open settings</button></section>` : ""}<div class="an-setup-grid">${deps}</div>${this.everyCatalogHTML(env)}${guide}<h3 class="an-setup-subtitle">Fine-tuning</h3>${this.catalogFxControlsHTML(env)}${ownRecipes}</div>`;
   }
   catalogFxControlsHTML(env) {
     const state=this.host.catalogFxSettings?.()??{token:true,scene:true},fx=this.host.fxCatalog?.()??{};
@@ -2297,9 +2308,11 @@ export class Workspace {
                 .filter(Boolean)
             : t.value;
     if (key === 'matchScope') {
-      if (Object.hasOwn(STRIKE_SCOPES, s.matchScope)) {
+      if (isWideScope(s.matchScope)) {
         s.itemUuid = '';
-        s.weaponMode = s.matchScope;
+        // All melee or all ranged is its own weapon use; a category leaves it free.
+        if (Object.hasOwn(STRIKE_SCOPES, s.matchScope)) s.weaponMode = s.matchScope;
+        else if (Object.hasOwn(STRIKE_SCOPES, previous ?? '')) delete s.weaponMode;
         delete s.activityId;
         delete s.catalogEntry;
       } else {
@@ -2307,9 +2320,9 @@ export class Workspace {
         if (Object.hasOwn(STRIKE_SCOPES, previous ?? '')) delete s.weaponMode;
       }
     }
-    if (key === 'trigger' && Object.hasOwn(STRIKE_SCOPES, s.matchScope ?? '') && !['attack', 'damage'].includes(s.trigger)) {
+    if (key === 'trigger' && isWideScope(s.matchScope) && !['attack', 'damage'].includes(s.trigger)) {
+      if (Object.hasOwn(STRIKE_SCOPES, s.matchScope)) delete s.weaponMode;
       delete s.matchScope;
-      delete s.weaponMode;
     }
     if (key === "volume" && t.type === "range") {
       const field = t.closest(".an-volume-field");
@@ -2919,6 +2932,7 @@ export class Workspace {
       }
       if (action === "catalog-left-out") { this.leftOutView = this.leftOutView === this.page ? null : this.page; this.render(); return; }
       if (action === "dismiss-message") { this.message = ""; this.messageError = null; this.render(); return; }
+      if (action === "open-settings") { this.host.openSettings?.(); return; }
       if (action === "activity-filter") { this.activityFilter = b.dataset.filter; this.render(); return; }
       if (action === "activity-fix") {
         if (b.dataset.fixAction === "new") { this.page = "recipes"; this.newChooser = true; this.render(); return; }

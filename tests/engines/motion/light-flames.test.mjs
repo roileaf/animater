@@ -1,6 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fireKindOf, fireTongues } from '../../../scripts/engines/motion/light-flames.mjs';
+import { fireKindOf, fireTongues, underTile } from '../../../scripts/engines/motion/light-flames.mjs';
+
+test('a flame under a roof drawn now is hidden; a faded roof, a low tile or a gap in it hides nothing', () => {
+  const roof = (over = {}) => ({ elevation: 20, alpha: 1, visible: true, covers: () => true, ...over }), at = { x: 5, y: 5 };
+  assert.equal(underTile([roof()], at, 0), true);
+  assert.equal(underTile([roof({ alpha: 0.1 })], at, 0), false, 'faded for someone inside');
+  assert.equal(underTile([roof({ visible: false })], at, 0), false);
+  assert.equal(underTile([roof({ elevation: 0 })], at, 0), false, 'a floor tile');
+  assert.equal(underTile([roof()], at, 30), false, 'flying above the roof');
+  assert.equal(underTile([roof({ covers: () => false })], at, 0), false, 'a gap in the leaves');
+  assert.equal(underTile([], at, 0), false);
+});
 
 test('a torch light burns as a torch, a flame or fire light as a brazier, unless the light says', () => {
   assert.equal(fireKindOf('', 'torch'), 'torch');

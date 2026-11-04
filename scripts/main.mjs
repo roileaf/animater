@@ -91,10 +91,11 @@ import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { IMMERSION_FEATURES, immersionWindow, newFeatures } from "./ui/immersion-setup.mjs";
+import { weaponCategories } from "./systems/weapon-categories.mjs";
 import { createCoast, tideLevel } from "./engines/motion/coast.mjs";
 import { PLACE_VOLUME, THROUGH_WALL, placeHeard, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
 import { createWaterfalls } from "./engines/motion/waterfall.mjs";
-import { createWaterMirror } from "./engines/motion/water-mirror.mjs";
+import { createWaterMirror, waterStillness } from "./engines/motion/water-mirror.mjs";
 import { createAftermath, bodyStage } from "./engines/motion/aftermath.mjs";
 import { createTownLife, lightsOutAt } from "./engines/motion/town-life.mjs";
 import { dayShift, chorusGap, chorusSpot } from "./engines/motion/day-shift.mjs";
@@ -200,7 +201,7 @@ import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, bl
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
 import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
-import { createLightFlames, flameUnit, fireKindOf } from "./engines/motion/light-flames.mjs";
+import { createLightFlames, flameUnit, fireKindOf, underTile } from "./engines/motion/light-flames.mjs";
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
@@ -1728,6 +1729,26 @@ const airLeanAt = (x, y) => {
 // animation quickened on this screen only (the light itself unchanged), eased back as the gust settles.
 const torchDraftOn = () => bothSettingsOn("torchDraft");
 const flameBase = new WeakMap();
+// A flame under a roof or tree drawn now shows nothing (engines/motion/light-flames.mjs underTile): looked at five times a second a fire, and again as soon as it has moved.
+const flameCover = new Map();
+const flameCovered = (key, at, elevation = 0) => {
+  try {
+    const now = performance.now(), had = flameCover.get(key);
+    if (had && now - had.at < 200 && had.x === at.x && had.y === at.y) return had.covered;
+    // Tiles and the map's foreground picture alike; a creature flying overhead hides no fire.
+    const tiles = [];
+    for (const mesh of canvas.primary?.children ?? []) {
+      if (!mesh.containsCanvasPoint || mesh.destroyed) continue;
+      const doc = mesh.object?.document;
+      if (doc?.documentName === "Token" || doc?.hidden) continue;
+      tiles.push({ elevation: mesh.elevation, alpha: mesh.alpha, visible: mesh.visible, covers: (p) => mesh.containsCanvasPoint(p, 0.5) === true });
+    }
+    const covered = underTile(tiles, at, Number(elevation) || 0);
+    flameCover.set(key, { at: now, x: at.x, y: at.y, covered });
+    return covered;
+  } catch { return false; }
+};
+Hooks.on("canvasTearDown", () => { flameCover.clear(); });
 // The wind on a fire out of doors (engines/motion/flame-wind.mjs). Whether it is sheltered is looked at once a second a fire: a roof or a room stops the wind.
 const fireShelter = new Map();
 const windOnFire = (key, x, y) => {
@@ -1769,7 +1790,7 @@ const lookLampAir = (now) => {
     const lean = torchDraftOn() && !lightFlamesOn() ? 1 : 0;
     // Only the fires this screen sees throw sparks (drawn over the darkness, nothing else hides one behind a wall or in
     // the fog); looked at with the list, a few times a second.
-    const grid = canvas.grid.size, seen = (l) => { try { return canvas.visibility?.testVisibility?.({ x: l.x, y: l.y }, { tolerance: grid * 0.1 }) !== false; } catch { return true; } };
+    const grid = canvas.grid.size, seen = (l) => { try { return canvas.visibility?.testVisibility?.({ x: l.x, y: l.y }, { tolerance: grid * 0.1 }) !== false && !flameCovered(`spark:${l.x},${l.y}`, l, canvas.level?.elevation?.base ?? 0); } catch { return true; } };
     lampAir.look({ fires: embersOn() || lean ? fireSparksOf(lampLights, view, grid).filter(seen) : [], embers: embersOn() ? 0.6 + 0.4 * dark : 0, motes: motesOn() ? dark : 0, wind: { x: 0.02, y: -0.01 },
       air: airLive, since: (now - gustAt) / 1000, smoke: roomSmokeOn() && undergroundScene() ? 0.85 : 0, lean });
     gutterFlames(torchDraftOn() ? 1 : 0);
@@ -2852,8 +2873,9 @@ const wildTick = (seconds) => {
 // (Region configuration → Floor and water). A waterfall with a way to flow is heard as swift or gentle water already (river-sound.mjs); the sea has no sound until one passes audition.
 const coast = createCoast({ PIXI: globalThis.PIXI, floor: floorLayer("coast", 643) });
 const waterfalls = createWaterfalls({ PIXI: globalThis.PIXI, floor: floorLayer("waterfalls", 645), above: floorLayer("fallMist", 760) });
-const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 645), grid: () => canvas.grid.size });
-let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0;
+// Over the dripping regions' pools (646), which would hide it, and under the creatures.
+const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 647), grid: () => canvas.grid.size });
+let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
 // The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
 const placeAreas = { surf: [], waterfall: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
 let placeLookAt = 0;
@@ -2893,18 +2915,19 @@ const rebuildWater = () => {
     try {
       const own = region.flags?.[ID] ?? {};
       if (own.tavern) placeAreas.tavern.push(...regionAreas(region).map((a) => Array.from(a)));
-      if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
+      const isWater = regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water", still = waterStillness(own, isWater);
+      if (!still) continue;
       const areas = regionAreas(region);
-      if (own.waterfall) for (const area of areas) falls.push({ area: Array.from(area), flowTo: own.flowTo || "s", swift: own.current === "swift" });
-      else if (own.sea) seas.push(...areas.map((a) => Array.from(a)));
-      if (own.waterfall || own.sea || own.current === "swift") rough.push(...areas.map((a) => Array.from(a))); else calm.push(...areas.map((a) => Array.from(a)));
+      if (isWater && own.waterfall) for (const area of areas) falls.push({ area: Array.from(area), flowTo: own.flowTo || "s", swift: own.current === "swift" });
+      else if (isWater && own.sea) seas.push(...areas.map((a) => Array.from(a)));
+      (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }
   const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror");
   placeAreas.surf = useSea ? seas : []; placeAreas.waterfall = useFalls ? falls.map((f) => f.area) : [];
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm]);
   if (key === waterKey) return; waterKey = key;
-  coast.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0;
+  coast.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
   if (!canvas?.ready) return;
   const grid = canvas.grid.size;
   if (useSea && seas.length) coast.build({ seas, grid, bounds: canvas.dimensions.sceneRect });
@@ -2918,6 +2941,18 @@ const tickWater = (seconds) => {
     const dark = Number(canvas.environment?.darknessLevel) || 0, light = 1 - 0.75 * dark;
     if (coast.busy) coast.look({ tide: tideLevel(game.time?.worldTime ?? 0, { seed: canvas.scene?.id }), wind: skyWindNow, windAngle: skyWindAngle, light, frozen });
     if (waterfalls.busy) waterfalls.look({ sun: sunNow, light, frozen, wind: skyWindNow, windAngle: skyWindAngle });
+  }
+  // The tiles by the water, looked at once a second and told only when one has changed.
+  if (calmWater.length && now - mirrorTilesAt > 1000) {
+    mirrorTilesAt = now;
+    const level = canvas.level, tiles = [];
+    for (const t of canvas.tiles?.placeables ?? []) {
+      const d = t.document, texture = t.mesh?.texture;
+      if (!texture?.valid || d.hidden || (level && d.includedInLevel?.(level) === false)) continue;
+      tiles.push({ id: `tile:${t.id}`, texture, x: d.x + d.width / 2, y: d.y + d.height / 2, w: d.width, h: d.height, rotation: (Number(d.rotation) || 0) * Math.PI / 180, alpha: Number(d.alpha) || 1 });
+    }
+    const key = `${calmWater.length}|${tiles.map((t) => `${t.id},${t.x},${t.y},${t.w},${t.h},${t.rotation},${t.alpha},${t.texture.baseTexture?.uid}`).join(";")}`;
+    if (key !== mirrorTilesKey) { mirrorTilesKey = key; waterMirror.tiles(tiles); }
   }
   if (calmWater.length && now - mirrorLookAt > 50) {
     mirrorLookAt = now;
@@ -4218,6 +4253,7 @@ const syncLightFlames = () => {
         // drawn. Its point nudged a little each way, so a sconce standing on its wall's line still shows from the room.
         let visible = true;
         try { visible = canvas.visibility?.testVisibility?.(light.center, { tolerance: grid * 0.1, object: light }) !== false; } catch { /* shown */ }
+        if (visible && flameCovered(`light:${light.id}`, light.center, light.document.elevation)) visible = false;
         list.push({ key: light.id, visible, x: light.center.x, y: light.center.y, unit: Math.round(flameUnit(fireSize(src.data, grid), grid) * low * (Number(own.flameSize) > 0 ? Math.min(3, Number(own.flameSize)) : 1)), color: src.data?.color ?? null, kind, grid });
       } catch { /* a light mid-change */ }
     }
@@ -4336,7 +4372,7 @@ const smokeFiresNow = () => {
       const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
       const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
       torchLean.set(key, { x, lean });
-      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden };
+      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) };
       at = torchPose(torch, grid).top;
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
@@ -4418,7 +4454,7 @@ const tickOrbs = () => {
     const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
     torchLean.set(`carry:${key}`, { x, lean });
     return { kind, key, x, y: token.mesh.position.y, width: token.w ?? grid, side: torchSide(token.document.flags?.[ID]?.torchHand), lean,
-      color: source.data.color, visible: token.visible === true && !token.document.hidden };
+      color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`carry:${key}`, { x, y: token.mesh.position.y }, token.document.elevation) };
   });
   lightOrbs.sync(orbsHere ? carried.filter((c) => c.kind === "orb").flatMap((c) => {
     const n = wispsOf(canvas.tokens.get(c.key));
@@ -6016,6 +6052,14 @@ function workspaceHost() {
         callback,
       }).browse(),
     pickMedia: (type,current,callback)=>new foundry.applications.apps.FilePicker.implementation({type,current,callback}).browse(),
+    // The system's own weapon categories for a recipe's Applies to.
+    weaponCategories: () => weaponCategories(game.system.id, { PF2E: CONFIG.PF2E, DND5E: CONFIG.DND5E, DH: CONFIG.DH, DS: globalThis.ds?.CONFIG }, (key) => game.i18n.localize(key)),
+    // Animater settings, the same window as Configure Settings opens; brought forward if it is already open.
+    openSettings: () => {
+      const Menu = game.settings.menus.get(`${ID}.settingsWindow`)?.type; if (!Menu) return;
+      const open = [...(foundry.applications.instances?.values?.() ?? [])].find((app) => app instanceof Menu);
+      if (open) open.bringToFront?.(); else new Menu().render({ force: true });
+    },
     pickMediaFolder:callback=>new foundry.applications.apps.FilePicker.implementation({type:'folder',activeSource:'data',callback:(path,picker)=>{
       if(picker.activeSource!=='data'){ui.notifications.warn('Choose a folder in User Data.');return;}
       void Promise.resolve(callback(path)).catch(error=>ui.notifications.error(error.message));
@@ -6517,7 +6561,7 @@ Hooks.once("init", () => {
   skyPair("tavernMurmur", "tavernMurmurLocal", "Tavern murmur", "A region marked as a tavern (Region configuration → Animater) is full of voices: loud inside, a far-off murmur through its walls, spilling out when a door opens.", "Played at Balanced quality or better.");
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (Region configuration → Floor and water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
   skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (Region configuration → Floor and water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
-  skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures on the bank mirror in still water, nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
+  skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
   skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
     hint: "How tall walls stand for their shadows, when neither the Wall Height module nor the scene's level gives a height.",

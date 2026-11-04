@@ -6,6 +6,9 @@
 
 import { flameMesh, flicker, flameTint, tintFlame } from './held-torch.mjs';
 
+// Whether a tile drawn now covers a place (pure): flames are drawn over the darkness, so nothing else hides one under a roof or a tree. `tiles` [{ elevation, alpha, visible, covers(point) }], by the tile's own picture so a gap in the leaves is open; a roof that has faded for someone inside hides nothing, nor does one below the fire.
+export const underTile = (tiles, point, elevation = 0) => tiles.some((t) => t.visible !== false && Number(t.elevation) > Number(elevation) && (t.alpha ?? 1) >= 0.3 && t.covers(point));
+
 // How big a light's flame is (pure, px of the flame's height unit): by the fire's size (fire-smoke.mjs fireSize, 0.3–2.5),
 // a torch's about a third of a square, a big brazier's half again as tall.
 export const flameUnit = (size = 1, grid = 100) => grid * 0.22 * Math.sqrt(Math.min(2.5, Math.max(0.3, size)) * 2) * 0.75;
