@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.11.0 (2026-11-04)
+
+The open air gets louder and fuller: weather, rivers and a night you can hear, deer and a fox, and creatures that scatter at a loud bang.
+
+- **Weather sounds.** Light and heavy rain, light and strong wind and hail, as loops that grow and fade with the weather and the scene's wind and are muffled under a roof. Thunder follows each lightning flash: a near clap almost at once, or a far rumble a few seconds later. For the weathers Animater sounds itself, Calendaria's own loop stands down on each screen; your Calendaria settings are not changed, and its fantasy weathers keep their sound. A new Weather sounds setting turns this off.
+- **River sounds.** Any water region with a Flows toward direction plays running water, gentle or swift to match its setting, loudest at the bank, fading with distance, quieter through walls and silent while frozen. A new River sounds setting turns this off.
+- **Crickets all night.** A constant bed of night sound out of doors, fading in with the dark, gone in a storm or with snow on the ground, and muffled indoors. It goes with Wildlife sounds.
+- **Deer.** A small herd on big open maps grazes, lifts its heads, walks and bounds away, turning along a bank or wall instead of running into it.
+- **A fox.** It trots about, creeps up on the rabbits in bursts, coils and pounces, and sometimes carries one off.
+- **Butterflies and dragonflies.** Butterflies wander and glide by day; dragonflies hover, lean and dart over the water.
+- **Night life.** Fireflies blink on warm nights, an owl glides over now and then, and bats hunt round the lamps out of doors.
+- **Noise scares them.** Energy blasts, cave-ins and big spell shockwaves send birds up, rabbits and deer running and frogs into the water, spreading out from the bang.
+- **Animals use the shadow and light engines.** Their shadows follow the sun's height, the moon and nearby lamps, drop away in a wall's shade, and day animals go in when a scene turns dark.
+- **More voices.** Gulls call, crows caw and rustle as a flock passes, and every frog going in makes its own splash. Each sound varies a little in volume as well as pitch.
+- **An Animater tab in Scene configuration.** All of Animater's scene settings now live in one tab: This place, Sun and Creatures. New rows set how many deer, foxes, insects and owls a scene has, and regions can keep out deer, foxes and insects.
+- **Rabbits turn** smoothly instead of snapping round.
+- **Fixes.**
+  - The GM heard creatures' sounds at full volume however far away. Everyone now hears by distance; a GM with no creature selected listens from the middle of the view.
+  - Every sound asked for before the first click played at once on that click. Those sounds are now dropped, and a scene's animals ease in.
+  - Birds no longer show inside rooms. High fliers stay over a drawn roof and are cut out of a room seen into, as the weather is. Low fliers turn back at walls, closed rooms and Keep out regions, and a walled room with no region now counts as closed.
+  - Low fliers fly under trees and roofs, and fireflies hide beneath them.
+  - Region edits no longer replace all the animals unless they change a good part of the ground or water.
+  - Animals no longer crawl at a low frame rate.
+
 ## 2.10.1 (2026-11-04)
 
 Animals stay where they are, and rabbits calm down.

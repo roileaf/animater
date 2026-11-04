@@ -1,0 +1,7 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+fox-546948-0.ogg: "urban fox call" by timsc, https://freesound.org/people/timsc/sounds/546948/ (CC0 1.0). Changes: cut 23.04-23.43 s, faded, gain -10.4 dB.
+fox-546948-1.ogg: "urban fox call" by timsc, https://freesound.org/people/timsc/sounds/546948/ (CC0 1.0). Changes: cut 34.91-36.02 s, faded, gain -10.6 dB.

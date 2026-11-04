@@ -5,3 +5,5 @@ Thank you to each author.
 
 wings-651753-0.ogg: "Large bird wing flutter.wav" by anebulafont, https://freesound.org/people/anebulafont/sounds/651753/ (CC0 1.0). Changes: cut 0.99-2.65 s, faded, gain -7.9 dB.
 wings-701283-0.ogg: "pigeons flying wings noise.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/701283/ (CC0 1.0). Changes: cut 2.42-3.50 s, faded, gain -16.8 dB.
+wings-19295-0.ogg: "wing flaps layered.wav" by martian, https://freesound.org/people/martian/sounds/19295/ (CC0 1.0). Changes: cut 4.50-6.14 s, faded, gain +9.2 dB.
+wings-19295-1.ogg: "wing flaps layered.wav" by martian, https://freesound.org/people/martian/sounds/19295/ (CC0 1.0). Changes: cut 6.10-7.75 s, faded, gain +8.7 dB.

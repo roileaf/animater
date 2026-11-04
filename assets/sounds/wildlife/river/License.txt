@@ -1,0 +1,14 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+river-gentle-180732-0.ogg: "Location Stream 1.WAV" by jamesrodavidson, https://freesound.org/people/jamesrodavidson/sounds/180732/ (CC0 1.0). Changes: cut 8.00-30.00 s, its end crossfaded into its start to loop, gain -9.5 dB.
+river-gentle-180732-1.ogg: "Location Stream 1.WAV" by jamesrodavidson, https://freesound.org/people/jamesrodavidson/sounds/180732/ (CC0 1.0). Changes: cut 61.00-83.00 s, its end crossfaded into its start to loop, gain -9.3 dB.
+river-gentle-637831-0.ogg: "stream gentle nearby.flac" by kyles, https://freesound.org/people/kyles/sounds/637831/ (CC0 1.0). Changes: cut 24.00-46.00 s, its end crossfaded into its start to loop, gain +14.2 dB.
+river-gentle-826598-1.ogg: "Brook In The Park" by pepasystem, https://freesound.org/people/pepasystem/sounds/826598/ (CC0 1.0). Changes: cut 0.00-22.00 s, its end crossfaded into its start to loop, gain -6.6 dB.
+river-swift-323458-0.ogg: "stream.wav" by humansalad, https://freesound.org/people/humansalad/sounds/323458/ (CC0 1.0). Changes: cut 19.00-41.00 s, its end crossfaded into its start to loop, gain +8.6 dB.
+river-swift-588180-0.ogg: "Mountain River, Large 001.wav" by Auxide_Audio, https://freesound.org/people/Auxide_Audio/sounds/588180/ (CC0 1.0). Changes: cut 0.00-22.00 s, its end crossfaded into its start to loop, gain +17.4 dB.
+river-swift-588180-1.ogg: "Mountain River, Large 001.wav" by Auxide_Audio, https://freesound.org/people/Auxide_Audio/sounds/588180/ (CC0 1.0). Changes: cut 27.00-49.00 s, its end crossfaded into its start to loop, gain +17.6 dB.
+river-swift-642774-1.ogg: "RIVER gurgling small rapids.wav" by nicoproson, https://freesound.org/people/nicoproson/sounds/642774/ (CC0 1.0). Changes: cut 8.00-30.00 s, its end crossfaded into its start to loop, gain +4.3 dB.
+river-swift-718556-0.ogg: "river_rapids" by NistuGgner, https://freesound.org/people/NistuGgner/sounds/718556/ (CC0 1.0). Changes: cut 18.00-40.00 s, its end crossfaded into its start to loop, gain -1.5 dB.

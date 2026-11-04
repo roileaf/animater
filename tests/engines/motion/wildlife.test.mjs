@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { rabbitStep, songStep, crowFlock, fishStep, preyFor, preyCaught, thumpsNow, WILD_SOUNDS, WILD_GAPS, wildSound } from '../../../scripts/engines/motion/wildlife.mjs';
+import { rabbitStep, songStep, crowFlock, fishStep, preyFor, preyCaught, thumpsNow, noiseReaching, NOISE_SPEED, overOpen, WILD_SOUNDS, WILD_GAPS, wildSound } from '../../../scripts/engines/motion/wildlife.mjs';
 import { critterVoices } from '../../../scripts/engines/motion/underground-sounds.mjs';
 
 const seq = (values) => { let i = 0; return () => values[i++ % values.length]; };
@@ -58,7 +58,7 @@ test('every wildlife sound is there, credited, and has its wait', () => {
 
 test('a wildlife sound is never the same file twice running, and a flock is heard no more often than its wait', () => {
   let was = null; for (let i = 0; i < 50; i++) { const f = wildSound('hawkCry'); assert.notEqual(f, was); was = f; }
-  assert.equal(wildSound('fishSplash'), WILD_SOUNDS.fishSplash[0]);
+  assert.ok(WILD_SOUNDS.fishSplash.includes(wildSound('fishSplash')));
   assert.equal(wildSound('nothing'), null);
   let t = 0; const v = critterVoices({ gaps: WILD_GAPS, now: () => t, random: () => 0 });
   assert.equal(v.wanted('crowCaw'), true); assert.equal(v.wanted('crowCaw'), false);
@@ -69,6 +69,48 @@ test('a rabbit thumps when first startled, not on every run while chased', () =>
   assert.equal(thumpsNow(Infinity), true);
   assert.equal(thumpsNow(20), true);
   assert.equal(thumpsNow(2), false);
+});
+
+test('a noise reaches each place in turn, once, as far as it carries', () => {
+  const at = (t) => [{ x: 0, y: 0, r: 2000, t }];
+  assert.equal(noiseReaching(at(0.1), 1000, 0, { grid: 100 }), null, 'not there yet');
+  const when = 1000 / (NOISE_SPEED * 100) + 0.01;
+  assert.ok(noiseReaching(at(when), 1000, 0, { grid: 100 }), 'there now');
+  assert.equal(noiseReaching(at(when + 1), 1000, 0, { grid: 100 }), null, 'gone past');
+  assert.equal(noiseReaching([{ x: 0, y: 0, r: 500, t: when }], 1000, 0, { grid: 100 }), null, 'too far off to hear');
+});
+
+test('a noise sends them all off, away from it', () => {
+  const noise = { x: 0, y: 500 };
+  const r = rabbitStep(rabbit({ wait: 5 }), { grid: 100, noise, random: () => 0.5 });
+  assert.equal(r.mode, 'bolt'); assert.ok(Math.abs(r.a) < 0.1, 'up the map, away');
+  const s = songStep(song(), { grid: 100, noise, random: () => 0.5 });
+  assert.equal(s.mode, 'up'); assert.ok(s.vy < 0);
+  assert.ok(fishStep({ x: 0, y: 0, a: 2, wait: 5, turn: 0, dart: 0 }, { grid: 100, noise, random: () => 0.5 }).dart > 0);
+});
+
+test('a fish left on dry ground makes for the water', () => {
+  const pool = (x, y) => y < -100; let f = { x: 0, y: 0, a: 3, wait: 0, turn: 0, dart: 0 };
+  for (let i = 0; i < 400 && !pool(f.x, f.y); i++) f = fishStep(f, { dt: 1 / 60, grid: 100, ok: pool });
+  assert.ok(pool(f.x, f.y), `at ${f.x}, ${f.y}`);
+});
+
+test('a songbird in flight turns back at a wall and from a closed place, and can leave one it is in', () => {
+  const blocked = (a, b) => (a.x - 303.3) * (b.x - 303.3) < 0;
+  let s = { ...song(), mode: 'up', vx: 400, vy: 0, t: 0, flight: 30, tries: 0 };
+  for (let i = 0; i < 1200; i++) { s = songStep(s, { dt: 1 / 60, grid: 100, blocked, random: Math.random }); assert.ok(s.x < 303.3, `through the wall at ${s.x}`); }
+  const barred = (x) => x > 300; let b = { ...song(), mode: 'up', vx: 400, vy: 0, t: 0, flight: 30, tries: 0 };
+  for (let i = 0; i < 1200; i++) { b = songStep(b, { dt: 1 / 60, grid: 100, barred, random: Math.random }); assert.ok(b.x <= 300, `in the closed place at ${b.x}`); }
+  const out = songStep({ ...song({ x: 500 }), mode: 'up', vx: -400, vy: 0, t: 0, flight: 30, tries: 0 }, { dt: 1 / 60, grid: 100, barred, random: () => 0.5 });
+  assert.ok(out.x < 500, 'leaving is allowed');
+});
+
+test('a high flier fades out over a closed place and back, never popping', () => {
+  let open = overOpen(undefined, false, 1 / 60); assert.equal(open, 1);
+  open = overOpen(open, true, 1 / 60); assert.ok(open > 0.8 && open < 1, 'easing out');
+  for (let i = 0; i < 30; i++) open = overOpen(open, true, 1 / 60);
+  assert.equal(open, 0);
+  open = overOpen(open, false, 1 / 60); assert.ok(open > 0 && open < 0.2, 'easing back');
 });
 
 test('songbirds peck, take to the air from anyone close, and land somewhere they can stand', () => {

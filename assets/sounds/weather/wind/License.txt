@@ -1,0 +1,9 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+weather-windLight-181250-0.ogg: "a gentle breeze, wind 1" by mario1298, https://freesound.org/people/mario1298/sounds/181250/ (CC0 1.0). Changes: cut 130.00-152.00 s, its end crossfaded into its start to loop, gain +2.3 dB.
+weather-windLight-181254-0.ogg: "a gentle breeze, wind 5" by mario1298, https://freesound.org/people/mario1298/sounds/181254/ (CC0 1.0). Changes: cut 54.00-76.00 s, its end crossfaded into its start to loop, gain -3.1 dB.
+weather-windLight-181254-1.ogg: "a gentle breeze, wind 5" by mario1298, https://freesound.org/people/mario1298/sounds/181254/ (CC0 1.0). Changes: cut 81.00-103.00 s, its end crossfaded into its start to loop, gain -6.6 dB.
+weather-windStrong-708746-0.ogg: "Strong wind interior bedroom" by xkeril, https://freesound.org/people/xkeril/sounds/708746/ (CC0 1.0). Changes: cut 86.00-108.00 s, its end crossfaded into its start to loop, gain +9.6 dB.

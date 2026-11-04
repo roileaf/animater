@@ -1,0 +1,9 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+owl-450214-0.ogg: "Tawny Owl in Molkom, Sweden." by Marcuspepsi, https://freesound.org/people/Marcuspepsi/sounds/450214/ (CC0 1.0). Changes: cut 2.01-2.94 s, faded, gain +8.4 dB.
+owl-450214-1.ogg: "Tawny Owl in Molkom, Sweden." by Marcuspepsi, https://freesound.org/people/Marcuspepsi/sounds/450214/ (CC0 1.0). Changes: cut 7.40-8.53 s, faded, gain +8.7 dB.
+owl-558396-0.ogg: "owl_hooting_000102_0145S3 002-070 000-002 068-074.wav" by Gerent, https://freesound.org/people/Gerent/sounds/558396/ (CC0 1.0). Changes: cut 1.03-1.60 s, faded, gain -19.5 dB.
+owl-558396-1.ogg: "owl_hooting_000102_0145S3 002-070 000-002 068-074.wav" by Gerent, https://freesound.org/people/Gerent/sounds/558396/ (CC0 1.0). Changes: cut 1.79-3.02 s, faded, gain -19.0 dB.

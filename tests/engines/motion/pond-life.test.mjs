@@ -54,6 +54,14 @@ test('a frog puffs on its pad, leaps into water from anyone near, and climbs bac
   assert.equal(f.mode, 'sit'); assert.deepEqual([f.x, f.y], [0, 0]);
 });
 
+test('ducks and herons in flight stay out of walled and closed places', () => {
+  const barred = (x, y) => y < -300;
+  let q = duckStep(duck(), { grid: 100, near: [{ x: 0, y: 100 }], random: () => 0.5 });
+  for (let i = 0; i < 2000 && q.mode === 'fly' && !q.gone; i++) { q = duckStep(q, { dt: 1 / 60, grid: 100, barred, ok: pond }); assert.ok(q.y >= -300, `at ${q.y}`); }
+  let b = heronStep(heron(), { grid: 100, near: [{ x: 0, y: 200 }] });
+  for (let i = 0; i < 2000 && b.mode === 'fly'; i++) { b = heronStep(b, { dt: 1 / 60, grid: 100, barred }); assert.ok(b.y >= -300, `at ${b.y}`); }
+});
+
 test('a frog with no water to leap into stays where it is', () => {
   const f = frogStep(frog(), { grid: 100, near: [{ x: 0, y: 150 }], ok: () => false, random: () => 0.5 });
   assert.equal(f.mode, 'sit');

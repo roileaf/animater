@@ -4,3 +4,9 @@ mixed to mono, trimmed, faded, loudness-matched within its family and encoded as
 Thank you to each author.
 
 splash-398039-0.ogg: "water splash 2" by swordofkings128, https://freesound.org/people/swordofkings128/sounds/398039/ (CC0 1.0). Changes: cut 0.01-0.72 s, faded, gain +0.9 dB.
+splash-364700-0.ogg: "Water Splash" by alegemaate, https://freesound.org/people/alegemaate/sounds/364700/ (CC0 1.0). Changes: cut 0.01-0.70 s, faded, gain -7.4 dB.
+splash-398032-0.ogg: "Splash" by swordofkings128, https://freesound.org/people/swordofkings128/sounds/398032/ (CC0 1.0). Changes: cut 0.04-0.79 s, faded, gain -12.5 dB.
+plop-272392-0.ogg: "Object Drops In Water.wav" by danhelbling, https://freesound.org/people/danhelbling/sounds/272392/ (CC0 1.0). Changes: cut 0.42-0.81 s, faded, gain -7.5 dB.
+plop-692839-0.ogg: "shinny frog coaching.wav" by bruno.auzet, https://freesound.org/people/bruno.auzet/sounds/692839/ (CC0 1.0). Changes: cut 8.20-8.54 s, faded, gain -12.4 dB.
+plop-692839-1.ogg: "shinny frog coaching.wav" by bruno.auzet, https://freesound.org/people/bruno.auzet/sounds/692839/ (CC0 1.0). Changes: cut 7.67-8.07 s, faded, gain -11.4 dB.
+plop-692839-2.ogg: "shinny frog coaching.wav" by bruno.auzet, https://freesound.org/people/bruno.auzet/sounds/692839/ (CC0 1.0). Changes: cut 16.07-16.50 s, faded, gain -12.8 dB.

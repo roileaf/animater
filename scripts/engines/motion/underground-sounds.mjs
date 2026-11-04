@@ -30,12 +30,24 @@ export function undergroundSound(kind, random = Math.random) {
 export const CRITTER_GAPS = Object.freeze({ ratSqueak: [4, 11], ratSkitter: [1.2, 3], batWing: [1.5, 3.5], batChirp: [4, 10] });
 export function critterVoices({ gaps = CRITTER_GAPS, now = () => performance.now() / 1000, random = Math.random } = {}) {
   const next = {};
-  return { wanted(kind, urgent = false) {
+  return {
+    // A scene just opened: nothing for `quiet` seconds, then each kind in its own time, so they never all start together.
+    settle(quiet = 6) { const t = now(); for (const [kind, gap] of Object.entries(gaps)) next[kind] = t + quiet + gap[0] + random() * gap[1]; },
+    wanted(kind, urgent = false) {
     const t = now(), gap = gaps[kind]; if (!gap) return false;
     if (t < (next[kind] ?? 0) - (urgent ? gap[0] - 1 : 0)) return false;
     next[kind] = t + gap[0] + random() * (gap[1] - gap[0]);
     return true;
   } };
+}
+
+// Who hears a creature's sound, and how (pure). Foundry fades it for its `listeners` (`volume` 1, or 0 when none is in `reach`
+// px). A GM with no creature to listen with hears from the middle of the view (`centre`), the sound fading with the distance:
+// Foundry's gmAlways would play it at full volume wherever it is, so it is given only here, with the volume already faded.
+export function earsFor(at, { listeners = [], isGM = false, centre = null, reach = 500 } = {}) {
+  if (listeners.length) return { volume: heardFrom(at, listeners, reach) > 0 ? 1 : 0, gmAlways: false };
+  if (isGM && centre) return { volume: heardFrom(at, [centre], reach), gmAlways: true };
+  return { volume: 0, gmAlways: false };
 }
 
 // How loud a sound from a place is for whoever is nearest (pure): `from` { x, y } or a box { x, y, w, h } (heard from its

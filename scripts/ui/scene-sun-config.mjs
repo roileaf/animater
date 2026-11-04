@@ -1,4 +1,4 @@
-// The sun for creatures' shadows, set on a picture instead of lists: in Scene configuration → Environment → Animater
+// The sun for creatures' shadows, set on a picture instead of lists: in Scene configuration → Animater →
 // sun for one scene, and in Animater settings → Sun for the world's default. Buttons pick how the sun behaves (the
 // world default, scenes only; the time of day; fixed; none). A dial shows the
 // map from above with a creature and its shadow: for a fixed sun, drag the sun round the dial (nearer the middle is

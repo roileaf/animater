@@ -11,14 +11,21 @@ export const WILD_SOUNDS = Object.freeze({
   hawkCry: ['575524-0', '575524-1', '575524-2', '616926-0', '683743-0', '683743-1'].map((n) => `${SOUND_DIR}/hawk/hawk-${n}.ogg`),
   crowCaw: ['536732-0', '536732-1', '741366-0'].map((n) => `${SOUND_DIR}/crow/crow-${n}.ogg`),
   songChirp: ['165527-0', '165527-1', '570198-0', '570198-1'].map((n) => `${SOUND_DIR}/songbird/songbird-${n}.ogg`),
-  wingsUp: ['651753-0', '701283-0'].map((n) => `${SOUND_DIR}/wings/wings-${n}.ogg`),
+  wingsUp: ['651753-0', '701283-0', '19295-0', '19295-1'].map((n) => `${SOUND_DIR}/wings/wings-${n}.ogg`),
   rabbitThump: ['431204-0', '386007-1'].map((n) => `${SOUND_DIR}/thump/thump-${n}.ogg`),
-  fishSplash: ['398039-0'].map((n) => `${SOUND_DIR}/splash/splash-${n}.ogg`),
+  fishSplash: ['398039-0', '364700-0', '398032-0'].map((n) => `${SOUND_DIR}/splash/splash-${n}.ogg`),
+  // A frog going in: hardly any wait, so each one of a group is heard.
+  frogPlop: ['272392-0', '692839-0', '692839-1', '692839-2'].map((n) => `${SOUND_DIR}/splash/plop-${n}.ogg`),
   duckQuack: ['456770-0', '456770-1', '456770-2'].map((n) => `${SOUND_DIR}/duck/duck-${n}.ogg`),
   frogCroak: ['467958-0', '573584-0', '573584-1', '745965-0'].map((n) => `${SOUND_DIR}/frog/frog-${n}.ogg`),
+  gullCry: ['538015-0', '538015-1', '538015-2', '538016-0', '538016-1', '538016-2'].map((n) => `${SOUND_DIR}/gull/gull-${n}.ogg`),
+  owlHoot: ['450214-0', '450214-1', '558396-0', '558396-1'].map((n) => `${SOUND_DIR}/owl/owl-${n}.ogg`),
+  cricketChirp: ['521129-0', '521129-1', '521129-2', '353073-0'].map((n) => `${SOUND_DIR}/cricket/cricket-${n}.ogg`),
+  foxBark: ['546948-0', '546948-1'].map((n) => `${SOUND_DIR}/fox/fox-${n}.ogg`),
+  dragonBuzz: ['447319-0', '447319-1', '447319-2'].map((n) => `${SOUND_DIR}/dragonfly/dragonfly-${n}.ogg`),
 });
 // How long each kind waits [least, most seconds] after it sounds, whatever their number (underground-sounds.mjs critterVoices).
-export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [2.5, 7], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], duckQuack: [3, 8], frogCroak: [3, 9] });
+export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], dragonBuzz: [5, 12] });
 // One of a kind's recordings (pure), never the one just played when there are others.
 const lastSound = {};
 export function wildSound(kind, random = Math.random) {
@@ -30,8 +37,27 @@ export function wildSound(kind, random = Math.random) {
 }
 
 // ---- What they do ------------------------------------------------------------------------------------------------------
+// A loud noise (a blast, a cave-in, a big spell) reaching a place (pure): it spreads out from { x, y } at a run of squares a
+// second, `t` seconds in, as far as `r` px, startling each creature as its front passes. The noise there now, or null.
+export const NOISE_SPEED = 14;
+export function noiseReaching(noises, x, y, { grid = 100 } = {}) {
+  for (const n of noises) { const d = Math.hypot(n.x - x, n.y - y), front = n.t * NOISE_SPEED * grid; if (d <= n.r && d <= front && d > front - grid * 3) return n; }
+  return null;
+}
+
+// A creature's shadow, as the creatures' own (main.mjs wildCast, movement-feel.mjs shadowFalls), looked up a few at a time and kept
+// a moment on the creature (`fall` { dx, dy, alpha }): sun, moon and lamps change slowly against a rabbit's hop.
+export const shadowKeeper = (cast, now, budget = 6) => (o, x, y, opts) => {
+  if (!o.fall || (now >= (o.fallAt ?? 0) && budget-- > 0)) { o.fall = cast(x, y, opts) ?? { dx: 0, dy: 0, alpha: 0 }; o.fallAt = now + 0.35 + Math.random() * 0.2; }
+  return o.fall;
+};
+
+// How much of a high flier shows over a walled room with no region or roof (pure), easing in and out; `was` what it was. Rooms with a
+// region are cut out of the fliers' layer (main.mjs), as the weather is.
+export const overOpen = (was, closed, dt) => Math.max(0, Math.min(1, (was ?? 1) + (closed ? -dt : dt) * 8));
+
 // Which way to the nearest good ground from where it stands, looking further and further round; null if none is near.
-function wayOut(from, grid, ok) {
+export function wayOut(from, grid, ok) {
   for (const reach of [0.5, 1, 2, 4, 8]) for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU; if (ok(from.x + Math.sin(a) * grid * reach, from.y - Math.cos(a) * grid * reach)) return a; }
   return null;
 }
@@ -39,9 +65,9 @@ function wayOut(from, grid, ok) {
 // One step of a rabbit (pure): sits a while and looks about, hops a few times on open ground, bolts in long bounds from anyone
 // near. `ok(x, y)` ground it can be on, looked at a body's length ahead so it stops on the bank, fleeing or not; `blocked(a, b)` a
 // wall between. One that finds itself on the wrong ground (a region drawn under it) hops off. It faces `a` (0 up the map, clockwise).
-export function rabbitStep(rabbit, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, scare = false, random = Math.random } = {}) {
+export function rabbitStep(rabbit, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, scare = false, noise = null, random = Math.random } = {}) {
   const r = { ...rabbit }; r.wait -= dt;
-  const close = near.find((t) => Math.hypot(t.x - r.x, t.y - r.y) < grid * 3.2);
+  const close = noise ?? near.find((t) => Math.hypot(t.x - r.x, t.y - r.y) < grid * 3.2);
   if ((close || scare) && r.mode !== 'bolt') { r.mode = 'bolt'; r.bolts = 5 + Math.floor(random() * 4); r.hop = 0; r.a = close ? Math.atan2(r.x - close.x, -(r.y - close.y)) + between(random, -0.5, 0.5) : random() * TAU; }
   const moving = r.mode === 'bolt' || r.mode === 'hop';
   if (moving) {
@@ -66,10 +92,10 @@ export function rabbitStep(rabbit, { dt = 1 / 60, grid = 100, near = [], ok = ()
 
 // One step of a songbird (pure): on the ground it pecks and takes small hops; anyone near sends it up, off and down again
 // somewhere it can stand (`ok`; the flight goes on till it finds one, a while at most).
-export function songStep(bird, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, scare = false, random = Math.random } = {}) {
+export function songStep(bird, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, barred = () => false, scare = false, noise = null, random = Math.random } = {}) {
   const s = { ...bird };
   if (s.mode === 'ground') {
-    const close = near.find((t) => Math.hypot(t.x - s.x, t.y - s.y) < grid * 2.4);
+    const close = noise ?? near.find((t) => Math.hypot(t.x - s.x, t.y - s.y) < grid * 2.4);
     if (close || scare) {
       const away = close ? Math.atan2(s.y - close.y, s.x - close.x) + between(random, -0.8, 0.8) : random() * TAU;
       return { ...s, mode: 'up', vx: Math.cos(away) * grid * 4, vy: Math.sin(away) * grid * 4, t: 0, flight: between(random, 1.6, 2.6), tries: 0, a: away + Math.PI / 2 };
@@ -84,7 +110,11 @@ export function songStep(bird, { dt = 1 / 60, grid = 100, near = [], ok = () => 
     }
     return s;
   }
-  s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt;
+  s.t += dt;
+  // Low enough that walls stop it, and it will not fly into a closed place (`barred`), though it may fly out of one.
+  const nx = s.x + s.vx * dt, ny = s.y + s.vy * dt;
+  if (blocked({ x: s.x, y: s.y }, { x: nx, y: ny }) || (barred(nx, ny) && !barred(s.x, s.y))) { const turn = between(random, 2, 4.2), c = Math.cos(turn), n = Math.sin(turn), vx = s.vx * c - s.vy * n; s.vy = s.vx * n + s.vy * c; s.vx = vx; s.a = Math.atan2(s.vy, s.vx) + Math.PI / 2; }
+  else { s.x = nx; s.y = ny; }
   const u = s.t / s.flight; s.h = Math.sin(Math.min(1, u) * Math.PI) * 0.6;
   if (u >= 1) {
     if (ok(s.x, s.y) || s.tries >= 3) { s.mode = 'ground'; s.h = 0; s.a = Math.atan2(s.vy, s.vx) + Math.PI / 2; s.wait = between(random, 0.6, 2); s.gone = !ok(s.x, s.y); }
@@ -95,11 +125,11 @@ export function songStep(bird, { dt = 1 / 60, grid = 100, near = [], ok = () => 
 
 // One step of a fish (pure): drifts, turning slowly, keeping to the water (`ok`); darts off from anyone close. It heads `a`
 // (0 up the map, clockwise), and `dart` is the seconds of its dash left.
-export function fishStep(fish, { dt = 1 / 60, grid = 100, near = [], ok = () => true, random = Math.random } = {}) {
+export function fishStep(fish, { dt = 1 / 60, grid = 100, near = [], ok = () => true, noise = null, random = Math.random } = {}) {
   const f = { ...fish }; f.wait -= dt; f.dart = Math.max(0, (f.dart ?? 0) - dt);
-  const close = near.find((t) => Math.hypot(t.x - f.x, t.y - f.y) < grid * 1.7);
+  const close = noise ?? near.find((t) => Math.hypot(t.x - f.x, t.y - f.y) < grid * 1.7);
   if (close && f.dart <= 0) { f.dart = 0.55; f.a = Math.atan2(f.x - close.x, -(f.y - close.y)) + between(random, -0.5, 0.5); f.turn = 0; }
-  if (f.wait <= 0) { f.wait = between(random, 0.8, 3); f.turn = between(random, -0.9, 0.9); if (random() < 0.12) f.dart = 0.3; }
+  if (f.wait <= 0) { f.wait = between(random, 0.8, 3); f.turn = between(random, -0.9, 0.9); if (random() < 0.12) f.dart = 0.3; const out = ok(f.x, f.y) ? null : wayOut(f, grid, ok); if (out !== null) { f.a = out; f.turn = 0; f.dart = 0.3; } }
   f.a += (f.turn ?? 0) * dt;
   const speed = grid * (f.dart > 0 ? 2.6 : 0.28), nx = f.x + Math.sin(f.a) * speed * dt, ny = f.y - Math.cos(f.a) * speed * dt;
   if (ok(nx + Math.sin(f.a) * grid * 0.12, ny - Math.cos(f.a) * grid * 0.12) || !ok(f.x, f.y)) { f.x = nx; f.y = ny; } else { f.a += Math.PI * between(random, 0.7, 1.3); f.dart = 0; f.turn = 0; }
@@ -207,8 +237,8 @@ function rabbitPicture(pose, base, dark, light) {
  * ground { x, y }); tick(seconds, { near, ok(kind, x, y), blocked, seen(x, y), day (0–1, they come and go with it), sun
  * ({ x, y } the way shadows fall), wind (radians), view }); scare(); clear(). `floor()` under the creatures, `sky()` over all.
  */
-export function createWildlife({ PIXI, floor, sky }) {
-  let fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
+export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
+  let noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
   const art = () => {
     if (textures && !textures.hawk[0].baseTexture?.destroyed) return textures;
     const tex = (c) => PIXI.Texture.from(c);
@@ -216,6 +246,8 @@ export function createWildlife({ PIXI, floor, sky }) {
   };
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
   const pair = (bodyRoot, tex) => ({ shadow: sprite(floor(), tex, true), body: sprite(bodyRoot, tex) });
+  // The high fliers' pair: on the layers kept out of a room seen into.
+  const high = (tex) => ({ shadow: sprite(skyShadow(), tex, true), body: sprite(sky(), tex) });
   const dropPair = (o) => { try { o.view.body.destroy(); o.view.shadow.destroy(); } catch { /* gone */ } };
   const drop = () => { for (const o of [...fish, ...rabbits, ...songs, ...crows, ...(hawk ? [hawk] : [])]) dropPair(o); try { hawk?.carry?.destroy(); } catch { /* gone */ } fish = []; spare = []; rabbits = []; songs = []; crows = []; hawk = null; };
   const put = (view, tex, x, y, angle, size, alpha, sx, sy, shadowAlpha, shadowSize = size) => {
@@ -225,7 +257,7 @@ export function createWildlife({ PIXI, floor, sky }) {
   };
   const hide = (view) => { view.body.visible = view.shadow.visible = false; };
   return {
-    populate({ waters = [], fish: nFish = 0, fishSize = 1, spots = [], rabbits: nRabbits = 0, songbirds = 0, hawk: hasHawk = false, crows: nCrows = 0, grid: g = 100, area: a = null, rabbitSize: rs = 1, birdSize: bs = 1, random = Math.random } = {}) {
+    populate({ waters = [], fish: nFish = 0, fishSize = 1, spots = [], rabbits: nRabbits = 0, songbirds = 0, hawk: hasHawk = false, crows: nCrows = 0, grid: g = 100, area: a = null, rabbitSize: rs = 1, birdSize: bs = 1, blocked = () => false, random = Math.random } = {}) {
       drop(); grid = g; area = a; rabbitSize = rs; birdSize = bs; wantCrows = nCrows; nextCrows = between(random, 5, 12); shown = 0;
       if (!spots.length && !hasHawk && !nCrows && !(waters.length && nFish)) return;
       const t = art(), at = () => spots[Math.floor(random() * spots.length)];
@@ -234,43 +266,51 @@ export function createWildlife({ PIXI, floor, sky }) {
       if (spots.length) {
         rabbits = Array.from({ length: nRabbits }, (_, i) => ({ ...at(), a: random() * TAU, coat: i % COATS.length, wait: random() * 3, mode: 'sit', hop: 0, size: between(random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }));
         // Songbirds keep together: a flock pecking about one place.
-        const home = at(); songs = Array.from({ length: songbirds }, () => ({ x: home.x + between(random, -1, 1) * grid * 0.85, y: home.y + between(random, -1, 1) * grid * 0.6, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, view: pair(floor(), t.song[0]) }));
+        const home = at(); songs = Array.from({ length: songbirds }, () => { const x = home.x + between(random, -1, 1) * grid * 0.85, y = home.y + between(random, -1, 1) * grid * 0.6, clear = !blocked(home, { x, y }); return { x: clear ? x : home.x, y: clear ? y : home.y }; }).map((p) => ({ ...p, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, view: pair(floor(), t.song[0]) }));
       }
-      if (hasHawk && area) hawk = { cx: area.x + area.width * between(random, 0.3, 0.7), cy: area.y + area.height * between(random, 0.3, 0.7), r: Math.min(area.width, area.height) * 0.2, a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110), view: pair(sky(), t.hawk[0]) };
+      if (hasHawk && area) hawk = { cx: area.x + area.width * between(random, 0.3, 0.7), cy: area.y + area.height * between(random, 0.3, 0.7), r: Math.min(area.width, area.height) * 0.2, a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110), view: high(t.hawk[0]) };
     },
+    // The rabbits to a fox: where they are; one startled by it (`from` where it springs); one taken, its picture given back.
+    get list() { return rabbits; },
+    spook(at, from) { const i = rabbits.findIndex((r) => Math.hypot(r.x - at.x, r.y - at.y) < grid * 0.3); if (i >= 0) rabbits[i] = { ...rabbits[i], mode: 'bolt', bolts: 5, hop: 0, a: Math.atan2(rabbits[i].x - from.x, -(rabbits[i].y - from.y)) + between(Math.random, -0.7, 0.7) }; },
+    take(rabbit) { const r = rabbits.find((o) => o.view === rabbit.view); if (!r) return null; const tex = textures?.rabbit[r.coat][0]; rabbits = rabbits.filter((o) => o !== r); dropPair(r); spareIn = between(Math.random, 45, 120); return tex; },
     scare() { scared = 0.3; },
+    noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
     // Sends the hawk after a rabbit now, if there is one to see.
     hunt() { if (hawk?.mode === 'soar') hawk.huntIn = 0; return !!hawk; },
-    tick(seconds, { near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {} } = {}) {
+    tick(seconds, { near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {}, barred = () => false, indoors = () => false, cast = null } = {}) {
       if (!this.busy && !wantCrows) return;
       const dt = Math.min(0.05, seconds); time += dt; scared = Math.max(0, scared - dt);
+      if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
+      const heard = (o) => (noises.length ? noiseReaching(noises, o.x, o.y, { grid }) : null);
       // They come out and go in with the daylight, never popping.
       shown += Math.max(-dt, Math.min(dt, (day - shown) * 2)); const alpha = Math.max(0, Math.min(1, shown));
-      const t = art(), k = grid / 100, scare = scared > 0;
+      const t = art(), k = grid / 100, scare = scared > 0, fall = shadowKeeper(cast ?? (() => ({ dx: sun.x * grid * 0.03, dy: sun.y * grid * 0.03, alpha: 0.5 })), time);
       look -= dt; const looking = look <= 0; if (looking) look = 0.2;
       const inView = (x, y, m = grid) => !view || (x > view.x - m && y > view.y - m && x < view.x + view.w + m && y < view.y + view.h + m);
       const can = (o, x, y) => { if (looking) { try { o.seen = seen(x, y) !== false; } catch { o.seen = true; } } return o.seen !== false && inView(x, y) && alpha > 0.01; };
       if (alpha > 0.01) rabbits = rabbits.map((r0) => {
-        const r = rabbitStep(r0, { dt, grid, near, blocked, scare, ok: (x, y) => ok('rabbits', x, y) }); r.view = r0.view; r.seen = r0.seen;
+        const r = rabbitStep(r0, { dt, grid, near, blocked, scare, noise: heard(r0), ok: (x, y) => ok('rabbits', x, y) }); r.view = r0.view; r.seen = r0.seen;
         if (r.mode === 'bolt' && r0.mode !== 'bolt') { if (thumpsNow(time - (r0.boltAt ?? -Infinity))) sound('rabbitThump', r, false); r.boltAt = time; }
         if (!can(r, r.x, r.y)) { hide(r.view); return r; }
-        const air = r.mode === 'sit' ? 0 : Math.sin(Math.min(1, r.hop) * Math.PI), frame = r.mode === 'sit' ? 0 : air > 0.45 ? 2 : 1, size = 0.58 * k * r.size * rabbitSize, off = grid * (0.02 + air * 0.06);
-        put(r.view, t.rabbit[r.coat][frame], r.x, r.y - air * grid * 0.045, r.a, size * (1 + air * 0.05), alpha, r.x + off * sun.x, r.y + off * sun.y, 0.42 - air * 0.12);
+        const air = r.mode === 'sit' ? 0 : Math.sin(Math.min(1, r.hop) * Math.PI), frame = r.mode === 'sit' ? 0 : air > 0.45 ? 2 : 1, size = 0.58 * k * r.size * rabbitSize, off = grid * air * 0.06, c = fall(r, r.x, r.y, { width: grid * 0.4, body: 0.3, grounded: true });
+        r.face = r0.face === undefined ? r.a : r0.face + Math.max(-dt * 10, Math.min(dt * 10, ((r.a - r0.face + Math.PI) % TAU + TAU) % TAU - Math.PI));
+        put(r.view, t.rabbit[r.coat][frame], r.x, r.y - air * grid * 0.045, r.face, size * (1 + air * 0.05), alpha, r.x + c.dx + off * sun.x, r.y + c.dy + off * sun.y, Math.min(0.55, c.alpha * 0.6) * (1 - air * 0.3));
         return r;
       });
       if (alpha > 0.01) songs = songs.map((s0) => {
-        const s = songStep(s0, { dt, grid, near, blocked, scare, ok: (x, y) => ok('songbirds', x, y) }); s.view = s0.view; s.seen = s0.seen;
+        const s = songStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), barred: (x, y) => barred('songbirds', x, y), ok: (x, y) => ok('songbirds', x, y) }); s.view = s0.view; s.seen = s0.seen;
         if (s.mode === 'up' && s0.mode === 'ground') sound('wingsUp', s, true); else if (s.mode === 'ground' && !s.gone && Math.random() < dt * 0.04) sound('songChirp', s, false);
         if (s.gone || !can(s, s.x, s.y)) { hide(s.view); return s; }
-        if (s.mode === 'ground') { const size = 0.42 * k * birdSize, off = grid * 0.02; put(s.view, t.song[s.peck > 0 ? 1 : 0], s.x, s.y, s.a, size, alpha, s.x + off * sun.x, s.y + off * sun.y, 0.4); }
-        else { const size = 0.2 * k * birdSize * (1 + s.h * 0.4), o = s.h * grid * 0.75; put(s.view, t.songFly[Math.floor(time * 26 + s.phase) % SPANS.length], s.x, s.y, s.a, size, alpha, s.x + sun.x * o, s.y + sun.y * o, 0.3, size * 0.95); }
+        if (s.mode === 'ground') { const size = 0.42 * k * birdSize, c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true }); put(s.view, t.song[s.peck > 0 ? 1 : 0], s.x, s.y, s.a, size, alpha, s.x + c.dx, s.y + c.dy, Math.min(0.5, c.alpha * 0.55)); }
+        else { const size = 0.2 * k * birdSize * (1 + s.h * 0.4), c = fall(s, s.x, s.y, { width: grid * 0.2, lift: 0.8 }), g = s.h / 0.6; put(s.view, t.songFly[Math.floor(time * 26 + s.phase) % SPANS.length], s.x, s.y, s.a, size, alpha, s.x + c.dx * g, s.y + c.dy * g, Math.min(0.35, c.alpha * 0.4), size * 0.95); s.shade = overOpen(s.shade, indoors(s.x + c.dx * g, s.y + c.dy * g), dt); s.view.shadow.alpha *= s.shade; }
         return s;
       });
       if (fish.length) {
         // Seen through the water, a little dim, and fainter still by night; they stay out when the rest go in.
         const fishAlpha = 0.28 + 0.4 * alpha;
         fish = fish.map((f0) => {
-          const f = fishStep(f0, { dt, grid, near, ok: (x, y) => ok('fish', x, y) }); f.view = f0.view; f.seen = f0.seen;
+          const f = fishStep(f0, { dt, grid, near, noise: heard(f0), ok: (x, y) => ok('fish', x, y) }); f.view = f0.view; f.seen = f0.seen;
           // Only the dash from someone close breaks the surface.
           if (f.dart >= 0.5 && f0.dart <= 0) sound('fishSplash', f, false);
           if (looking) { try { f.seen = seen(f.x, f.y) !== false; } catch { f.seen = true; } }
@@ -284,7 +324,7 @@ export function createWildlife({ PIXI, floor, sky }) {
       // A rabbit taken: another comes along in a while.
       if (spareIn > 0 && (spareIn -= dt) <= 0 && spare.length) { const p = spare[Math.floor(Math.random() * spare.length)]; rabbits.push({ ...p, a: Math.random() * TAU, coat: Math.floor(Math.random() * COATS.length), wait: 2, mode: 'sit', hop: 0, size: between(Math.random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }); }
       if (hawk) {
-        const h = hawk, base = 0.62 * k * birdSize, up = grid * 2.1;
+        const h = hawk, base = 0.62 * k * birdSize;
         let x = h.cx + Math.cos(h.a) * h.r, y = h.cy + Math.sin(h.a) * h.r * 0.8, angle = h.a + Math.PI, height = 1, frame = Math.floor(time * 1.4) % 7 === 0 ? Math.floor(time * 12) % SPANS.length : 0;
         if (h.mode === 'soar') {
           h.a += dt * 0.26; h.huntIn -= dt;
@@ -315,23 +355,26 @@ export function createWildlife({ PIXI, floor, sky }) {
         } else { h.t += dt; if (h.t > 25) h.mode = 'soar'; }
         // Lower is bigger, its shadow closing in beneath it until they meet.
         if (h.mode === 'away') hide(h.view);
-        else if (can(h, x, y)) put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4), alpha, x + sun.x * up * height, y + sun.y * up * height, 0.24 + (1 - height) * 0.2, 0.72 * k * birdSize * (0.85 + 0.15 * height)); else hide(h.view);
+        else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 2.2 }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4), alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.45, c.alpha * (0.3 + (1 - height) * 0.25)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
       }
       nextCrows -= dt;
-      if (wantCrows > 0 && !crows.length && nextCrows <= 0 && area && day > 0.3) crows = crowFlock(area, wind, { grid, count: wantCrows }).map((c) => ({ ...c, view: pair(sky(), t.crow[0]) }));
+      if (wantCrows > 0 && !crows.length && nextCrows <= 0 && area && day > 0.3) crows = crowFlock(area, wind, { grid, count: wantCrows }).map((c) => ({ ...c, view: high(t.crow[0]) }));
       if (crows.length) {
-        if (day > 0.3 && Math.random() < dt * 0.5) sound('crowCaw', crows[Math.floor(Math.random() * crows.length)], false);
-        const far = area ? Math.hypot(area.width, area.height) / 2 + grid * 6 : Infinity, cx = area ? area.x + area.width / 2 : 0, cy = area ? area.y + area.height / 2 : 0, up = grid * 1.05;
+        // A flock going over: caws from one or another of them, and their wings when it is close overhead (the wings carry only a
+        // little way, so they are heard as it passes, the caws swelling and fading with it).
+        if (day > 0.3 && Math.random() < dt * 1.4) sound('crowCaw', crows[Math.floor(Math.random() * crows.length)], false);
+        if (day > 0.3 && Math.random() < dt * 0.5) sound('wingsUp', crows[Math.floor(Math.random() * crows.length)], false);
+        const far = area ? Math.hypot(area.width, area.height) / 2 + grid * 6 : Infinity, cx = area ? area.x + area.width / 2 : 0, cy = area ? area.y + area.height / 2 : 0;
         crows = crows.filter((c) => {
           c.x += c.vx * dt; c.y += c.vy * dt;
           if (Math.hypot(c.x - cx, c.y - cy) > far && (c.x - cx) * c.vx + (c.y - cy) * c.vy > 0) { dropPair(c); return false; }
-          if (can(c, c.x, c.y)) put(c.view, t.crow[Math.floor(time * 9 + c.phase) % SPANS.length], c.x, c.y, c.a, 0.42 * k * birdSize * c.size, alpha, c.x + sun.x * up, c.y + sun.y * up, 0.26, 0.46 * k * birdSize * c.size); else hide(c.view);
+          if (can(c, c.x, c.y)) { const f = fall(c, c.x, c.y, { width: grid * 0.6, lift: 1.1 }); c.open = overOpen(c.open, indoors(c.x, c.y), dt); put(c.view, t.crow[Math.floor(time * 9 + c.phase) % SPANS.length], c.x, c.y, c.a, 0.42 * k * birdSize * c.size, alpha * c.open, c.x + f.dx, c.y + f.dy, Math.min(0.32, f.alpha * 0.34), 0.46 * k * birdSize * c.size); c.shade = overOpen(c.shade, indoors(c.x + f.dx, c.y + f.dy), dt); c.view.shadow.alpha *= c.shade; } else hide(c.view);
           return true;
         });
         if (!crows.length) nextCrows = 9 + Math.random() * 12;
       }
     },
-    clear() { drop(); wantCrows = 0; },
+    clear() { drop(); wantCrows = 0; noises = []; },
     get busy() { return fish.length + rabbits.length + songs.length + crows.length + (hawk ? 1 : 0) > 0; },
     get counts() { return { fish: fish.length, rabbits: rabbits.length, songbirds: songs.length, crows: crows.length, hawk: hawk?.mode ?? null }; },
   };

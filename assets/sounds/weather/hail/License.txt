@@ -1,0 +1,8 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+weather-hail-240295-0.ogg: "PARIS_Hailstorm 2014-06-09@1am.wav" by davidmenke, https://freesound.org/people/davidmenke/sounds/240295/ (CC0 1.0). Changes: cut 392.00-414.00 s, its end crossfaded into its start to loop, gain -9.2 dB.
+weather-hail-240295-1.ogg: "PARIS_Hailstorm 2014-06-09@1am.wav" by davidmenke, https://freesound.org/people/davidmenke/sounds/240295/ (CC0 1.0). Changes: cut 444.00-466.00 s, its end crossfaded into its start to loop, gain -6.5 dB.
+weather-hail-413729-0.ogg: "Thunder rolling and hail.m4a" by kreationz_100, https://freesound.org/people/kreationz_100/sounds/413729/ (CC0 1.0). Changes: cut 30.00-52.00 s, its end crossfaded into its start to loop, gain +9.7 dB.
