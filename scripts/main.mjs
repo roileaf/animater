@@ -173,13 +173,16 @@ import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
 import { createVermin, creatureAmount, creatureSize } from "./engines/motion/vermin.mjs";
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
-import { undergroundSound, heardFrom } from "./engines/motion/underground-sounds.mjs";
+import { undergroundSound, heardFrom, critterVoices } from "./engines/motion/underground-sounds.mjs";
+import { createWildlife, wildSound, WILD_GAPS } from "./engines/motion/wildlife.mjs";
+import { createPondLife } from "./engines/motion/pond-life.mjs";
+import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip } from "./engines/motion/floor-blood.mjs";
 import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, blastRipple, aimSquares, stepSquares } from "./engines/motion/energy-blast.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples } from "./engines/motion/step-ripples.mjs";
 import { createLightFlames, flameUnit, fireKindOf } from "./engines/motion/light-flames.mjs";
-import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays } from "./engines/motion/indoor-air.mjs";
+import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, seasonGround, groundInputs, groundStep, groundMoved } from "./engines/motion/ambient-life.mjs";
@@ -1055,13 +1058,16 @@ const movementFeelSettingOn = (key) => { try { return hotSetting(key) !== false;
 const WET_MUDDY = 0.3;
 // A region's floor as set (its flag), else water where it drips into a pool or deep water.
 const floorFlagOf = (region) => { const own = region?.flags?.[ID] ?? {}; return own.floor || (own.drips && (own.dripDepth === "pool" || own.dripDepth === "deep") ? "water" : own.floor); };
-const movementFeelFloor = (point, token) => {
+const sceneFloorNow = () => {
   const scene = canvas?.scene;
-  const base = sceneFloor({
+  return sceneFloor({
     flag: scene?.flags?.[ID]?.floor, globalLight: scene?.environment?.globalLight?.enabled === true, name: scene?.name,
     // v14 keeps the backdrop on the level (Scene#background is deprecated and warns).
     background: canvas.level?.background?.src ?? "",
   });
+};
+const movementFeelFloor = (point, token) => {
+  const scene = canvas?.scene, base = sceneFloorNow();
   const regions = Array.from(scene?.regions ?? [], (doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc }));
   const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
   const ground = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }) });
@@ -1501,7 +1507,7 @@ const glowsOn = () => { try { return hotSetting("windowGlow") !== false && hotSe
 // The creatures that can stand in a glow, or between its lamp and its window, and cast a shadow in it: on the floor (a flier is above the window's light),
 // seen; each { x, y (where it is drawn now, moving or not), r (its body, a little inside its square), height (squares) }.
 // Looked at only after a creature moved, came or went, or the glows were rebuilt: nothing a frame while all stand still.
-let glowShadowsDirty = true;
+let glowShadowsDirty = true, glowBobAt = 0;
 Hooks.on("refreshToken", (token, flags) => { if (flags?.refreshPosition || flags?.refreshVisibility || flags?.refreshSize) glowShadowsDirty = true; });
 for (const hook of ["createToken", "deleteToken", "updateToken"]) Hooks.on(hook, () => { glowShadowsDirty = true; });
 const glowCreatures = () => {
@@ -1512,7 +1518,7 @@ const glowCreatures = () => {
       const size = Math.max(0.25, Math.min(Number(t.document?.width) || 1, Number(t.document?.height) || 1));
       // Its art (a ring's subject), for a shadow in its shape when "Shadows in creatures' shapes" is on.
       const art = movementFeelSettingOn("shadowShapes") && movementFeelSettingOn("shadowShapesLocal") ? tokenArt(t) : null;
-      out.push({ x: t.x + t.w / 2, y: t.y + t.h / 2, r: Math.min(t.w, t.h) * 0.32, half: Math.min(t.w, t.h) / 2, height: 1.2 * size, art });
+      out.push({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, bob: bodyLift.get(t.id) ?? 0, r: Math.min(t.w, t.h) * 0.32, half: Math.min(t.w, t.h) / 2, height: 1.2 * size, art });
     } catch { /* a broken token never breaks the rest */ }
   }
   return out;
@@ -1557,6 +1563,25 @@ const lampAir = createLampAir({ PIXI: globalThis.PIXI, root: glowRootOf, smokeRo
 const embersOn = () => bothSettingsOn("lampEmbers"), motesOn = () => bothSettingsOn("lampMotes");
 let lampTimer = null, lampLights = [], lampLookAt = 0, lampLightsKey = "";
 const lampSoon = () => { if (!lampTimer) lampTimer = setTimeout(rebuildLampAir, 400); };
+// The fires' smoke building up in the air (indoor-air.mjs createSmokeAir): told again when the lights or the doors change,
+// keeping what is in the air, and moved on a few times a second. It starts clear when the scene loads.
+let smokeAir = null, smokeWait = 0;
+const fillSmoke = () => {
+  try {
+    if (!airField || !roomSmokeOn() || !undergroundScene()) { smokeAir = null; lampAir.smokeFill(null); return; }
+    smokeAir ??= createSmokeAir();
+    smokeAir.setup(airField, lampLights.filter((l) => l.fire).map((l) => l.smokeFrom));
+    lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows);
+  } catch { smokeAir = null; lampAir.smokeFill(null); }
+};
+const tickSmoke = (seconds) => {
+  if (!smokeAir?.busy || !airField) return;
+  smokeWait += seconds; if (smokeWait < 0.25) return;
+  const step = Math.min(1, smokeWait); smokeWait = 0;
+  smokeAir.step(step);
+  lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows);
+};
+Hooks.on("canvasTearDown", () => { smokeAir = null; smokeWait = 0; });
 const rebuildLampAir = () => {
   lampTimer = null;
   try {
@@ -1570,8 +1595,9 @@ const rebuildLampAir = () => {
         const own = source.object?.document?.flags?.[ID] ?? {}, color = d.color === null || d.color === undefined ? null : Number(d.color);
         const fire = source.object?.document?.documentName !== "Token" && isFireLight(d, own), shapePoints = source.shape?.points ? Array.from(source.shape.points) : null;
         // A fire on a wall: what it throws stays on its own side, its smoke's room too.
-        const onWall = fire && shapePoints ? wallSide({ x: d.x, y: d.y }, wallsHere(), { grid: canvas.grid.size, home: mothHome({ x: d.x, y: d.y, shape: shapePoints }, { grid: canvas.grid.size }) }) : null;
-        lampLights.push({ x: d.x, y: d.y, radius, reach: fire ? fireReach(d.x, d.y, shapePoints) : null, smokeShape: onWall ? clipToSide(shapePoints, { x: d.x, y: d.y }, onWall.nx, onWall.ny) : null, color: Number.isFinite(color) ? color : null, shape: source.shape?.points ? Array.from(source.shape.points) : null,
+        const home = fire && shapePoints ? mothHome({ x: d.x, y: d.y, shape: shapePoints }, { grid: canvas.grid.size }) : null;
+        const onWall = home ? wallSide({ x: d.x, y: d.y }, wallsHere(), { grid: canvas.grid.size, home }) : null;
+        lampLights.push({ x: d.x, y: d.y, radius, smokeFrom: onWall && home ? { x: home.x, y: home.y } : { x: d.x, y: d.y }, reach: fire ? fireReach(d.x, d.y, shapePoints) : null, smokeShape: onWall ? clipToSide(shapePoints, { x: d.x, y: d.y }, onWall.nx, onWall.ny) : null, color: Number.isFinite(color) ? color : null, shape: source.shape?.points ? Array.from(source.shape.points) : null,
           fire: source.object?.document?.documentName !== "Token" && isFireLight(d, own),
           // Moths round it (Light configuration → Animater → Moths): Auto a fire light underground, On or Off this one.
           moths: own.moths === true || own.moths === "true" ? true : own.moths === false || own.moths === "false" ? false : null,
@@ -1580,6 +1606,7 @@ const rebuildLampAir = () => {
       } catch { /* a broken light never breaks the rest */ }
     }
     lampAir.build({ lights: lampLights, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size });
+    fillSmoke();
     const lightsKey = lampLights.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.radius)},${l.fire ? 1 : 0},${l.soot},${l.moths}`).join(";");
     if (lightsKey !== lampLightsKey) { lampLightsKey = lightsKey; lifeSoon(); }
     lampLookAt = 0;
@@ -1617,7 +1644,7 @@ const rebuildDraft = () => {
       } catch { /* skip */ }
     }
     airLive = !!canvas?.ready && draftsOn() && (undergroundScene() || regions.some((r) => r.outside));
-    if (!airLive) { airField = null; lampAir.draft(null); cavern.draft(null); return; }
+    if (!airLive) { airField = null; lampAir.draft(null); fillSmoke(); cavern.draft(null); fillMist(); return; }
     const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ c: d.c, move: d.move, door: d.door, ds: d.ds }));
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size;
     const openings = [...sceneOpenings({ walls, regions, bounds, grid }), ...previewOpenings];
@@ -1628,22 +1655,36 @@ const rebuildDraft = () => {
     airField = field;
     const pixels = draftPixels(field, field.delays);
     lampAir.draft(pixels, field.cols, field.rows);
+    fillSmoke();
     cavern.draft(pixels, field);
+    fillMist();
+    doorWindNow();
   } catch { airField = null; lampAir.draft(null); }
 };
 for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { draftSoon(); });
 // A door opening: the air rushes for the way out.
+// The wind sighs through a door as it swells and dies away, only where this door opens onto the air's way out: a door to
+// another closed room stirs nothing to hear.
+let windDoor = null;
+const doorWindNow = () => {
+  const at = windDoor; windDoor = null; if (!at || !airField) return;
+  const i = Math.floor((at.x - airField.x) / airField.cell), j = Math.floor((at.y - airField.y) / airField.cell);
+  let moving = false;
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const a = i + di, b = j + dj; if (a >= 0 && b >= 0 && a < airField.cols && b < airField.rows && airField.dist[b * airField.cols + a] >= 0) moving = true; }
+  if (!moving) return;
+  playUnder("wind", at, { volume: 0.45, reach: 8, rate: 0.9 + Math.random() * 0.2, walls: true, room: 0.8 }).then((sound) => {
+    if (!sound) return;
+    const v = sound.volume;
+    try { sound.fade(v, { from: 0, duration: 700 }); } catch { /* as it is */ }
+    setTimeout(() => { try { sound.fade(0, { duration: 2200 }); } catch { /* gone */ } }, 2600);
+    setTimeout(() => { try { sound.stop(); } catch { /* gone */ } }, 5000);
+  });
+};
 Hooks.on("updateWall", (wall, change) => {
   if (change?.ds === 1 && wall?.parent?.id === canvas?.scene?.id) {
     const [x1, y1, x2, y2] = wall.c; gustAt = performance.now(); gustFrom = { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
-    // Where the air moves, the wind sighs through the doorway as it swells and dies away.
-    if (airLive) playUnder("wind", gustFrom, { volume: 0.45, reach: 8, rate: 0.9 + Math.random() * 0.2, walls: true, room: 0.8 }).then((sound) => {
-      if (!sound) return;
-      const v = sound.volume;
-      try { sound.fade(v, { from: 0, duration: 700 }); } catch { /* as it is */ }
-      setTimeout(() => { try { sound.fade(0, { duration: 2200 }); } catch { /* gone */ } }, 2600);
-      setTimeout(() => { try { sound.stop(); } catch { /* gone */ } }, 5000);
-    });
+    // Told when the air has been worked out with this door open (rebuildDraft): whether wind comes through it, and the push.
+    windDoor = gustFrom; mistDoor = doorPlace(wall.c);
   }
   draftSoon();
 });
@@ -1868,6 +1909,11 @@ const floorLayer = (key, sortLayer) => {
 };
 const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646), smokeRootOf = floorLayer("roomSmoke", 760);
 const vermin = createVermin({ PIXI: globalThis.PIXI, root: ratRootOf, batsRoot: birdRootOf });
+const wildlife = createWildlife({ PIXI: globalThis.PIXI, floor: floorLayer("wildlife", 661), sky: birdRootOf });
+const pondLife = createPondLife({ PIXI: globalThis.PIXI, floor: floorLayer("pondLife", 662), sky: birdRootOf });
+Hooks.on("canvasTearDown", () => { wildlife.clear(); pondLife.clear(); wildOpen = null; });
+const doorBursts = createDoorBursts({ PIXI: globalThis.PIXI, root: (kind) => (kind === "rats" ? ratRootOf() : birdRootOf()), floor: ratRootOf });
+Hooks.on("canvasTearDown", () => { doorBursts.clear(); });
 const drips = createDrips({ PIXI: globalThis.PIXI, root: dripRootOf });
 // A step into water rings it as a drop does (engines/motion/step-ripples.mjs): over the floor, under the creatures.
 const stepRipples = createStepRipples({ PIXI: globalThis.PIXI, root: floorLayer("stepRipples", 647), grid: () => canvas?.grid?.size ?? 100 });
@@ -1913,6 +1959,45 @@ const playUnder = (kind, at, { volume = 0.5, reach = 6, rate = 1, walls = false,
       .then((sound) => { const node = sound?.sourceNode?.playbackRate; if (node && node.value !== rate) node.value = rate; return sound ?? null; }).catch(() => null);
   } catch { return Promise.resolve(null); }
 };
+// The rats and bats heard: quietly, a few at a time, and only one someone is near enough to hear. A GM with no creature
+// selected has no ears of their own on the map, and hears them too (Foundry's gmAlways), as they do the cave-ins.
+const critterCalls = critterVoices();
+const CRITTER_SOUND = { ratSqueak: { volume: 0.2, reach: 7, rates: [0.9, 1.25] }, ratSkitter: { volume: 0.13, reach: 5, rates: [1, 1.4] }, batWing: { volume: 0.13, reach: 6, rates: [0.85, 1.25] }, batChirp: { volume: 0.1, reach: 9, rates: [0.9, 1.2] } };
+const critterSound = (kind, at, urgent) => {
+  if (!bothSettingsOn("verminSounds")) return;
+  const s = CRITTER_SOUND[kind], grid = canvas.grid.size, ears = creaturesNow();
+  if (ears.length && !(heardFrom(at, ears, s.reach * grid) > 0)) return;
+  if (!critterCalls.wanted(kind, urgent)) return;
+  playUnder(kind, at, { volume: urgent ? s.volume * 1.5 : s.volume, reach: s.reach, rate: s.rates[0] + Math.random() * (s.rates[1] - s.rates[0]), walls: true, gmAlways: true, room: 0.5 });
+};
+// A door set to send bats or rats (Wall configuration → Animater door) as it opens: seen on every screen, the same flock on
+// each (seeded by the door and the moment the server saved it), at the nearest creature on the side it was opened from.
+const DOOR_BURST_SOUND = { bats: { rush: "batWing", calls: "batChirp", rushVolume: 0.6, callVolume: 0.45 }, rats: { rush: "ratSkitter", calls: "ratSqueak", rushVolume: 0.55, callVolume: 0.5 } };
+const playDoorBurst = (wall, kind) => {
+  if (!canvas?.ready || !bothSettingsOn("doorBurst")) return;
+  const grid = canvas.grid.size, door = doorPlace(wall.c), blocked = kind === "rats" ? ratBlocks : batBlocks, own = wall.flags?.[ID] ?? {}, count = flockSize(own.doorBurstSize), many = sceneCreatures();
+  const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.actor && !t.document.hidden).map((t) => ({ x: t.document.x + t.w / 2, y: t.document.y + t.h / 2 })).sort((a, b) => a.x - b.x || a.y - b.y);
+  const target = burstTarget(door, tokens, { grid, blocked }), paths = flockPaths({ door, target, count, grid, blocked, kind, seed: `${wall.id}:${wall._stats?.modifiedTime ?? 0}` });
+  doorBursts.play({ kind, paths, grid, size: kind === "rats" ? many.ratsSize : many.batsSize });
+  // A rush of them and a few calls over it, moving from the door to whoever they come at.
+  const s = DOOR_BURST_SOUND[kind], end = target ?? door, at = (u) => ({ x: door.x + (end.x - door.x) * u, y: door.y + (end.y - door.y) * u });
+  const sound = (file, u, wait, volume, rate) => setTimeout(() => playUnder(file, at(u), { volume, reach: 14, rate, walls: true, gmAlways: true, room: 0.7 }), wait);
+  // Dying away as they scatter: the later ones quieter, and a last few further off, so the rush thins out and never stops dead.
+  const dying = (wait) => 1 - 0.75 * Math.min(1, wait / 2600);
+  for (let i = 0, n = Math.round(6 + count / 2); i < n; i++) { const wait = Math.pow(Math.random(), 1.5) * 2600; sound(s.rush, Math.min(1, wait / 1400), wait, s.rushVolume * dying(wait) * (0.7 + Math.random() * 0.3), 0.9 + Math.random() * 0.6); }
+  for (let i = 0, n = Math.round(2 + count / 8); i < n; i++) { const wait = 100 + Math.random() * 2000; sound(s.calls, Math.min(1, wait / 1400), wait, s.callVolume * dying(wait) * (0.7 + Math.random() * 0.3), 0.9 + Math.random() * 0.35); }
+};
+Hooks.on("updateWall", (wall, change) => {
+  try {
+    const own = wall?.flags?.[ID] ?? {}, set = change?.flags?.[ID] ?? {}, gm = game.users?.activeGM?.isSelf === true;
+    // Set again in its configuration: a door set to go once is ready to go again.
+    if (gm && own.burstFired && ("doorBurst" in set || "doorBurstWhen" in set)) { void wall.update({ [`flags.${ID}.burstFired`]: false }); return; }
+    if (change?.ds !== 1) return;
+    const kind = doorSends(own); if (!kind || game.settings.get(ID, "doorBurst") === false) return;
+    if (gm && own.doorBurstWhen !== "always") void wall.update({ [`flags.${ID}.burstFired`]: true });
+    if (wall.parent?.id === canvas?.scene?.id) playDoorBurst(wall, kind);
+  } catch (error) { runtime.trace("Blocked", `Door burst: ${error.message}`); }
+});
 // The rubble of the cave-ins in this scene ({ x, y, radius, seed, at }).
 const sceneRubble = () => (canvas.scene?.flags?.[ID]?.rubble ?? []).filter((r) => r && Number.isFinite(Number(r.x)) && Number.isFinite(Number(r.y)));
 // A cave-in comes down on every screen that has the scene open as the GM saves it: the view shakes, the stones fall and
@@ -2003,6 +2088,7 @@ const aimCaveIn = () => {
 const blastsOn = () => bothSettingsOn("energyBlast");
 const energyBlasts = createEnergyBlasts({ PIXI: globalThis.PIXI, floor: floorLayer("blastFloor", 490), above: floorLayer("blastAbove", 770), glow: glowRootOf, map: () => mapFloor(), render: (mesh, options) => canvas.app.renderer.render(mesh, options), markSeconds: () => { try { return Number(hotSetting("floorBloodSeconds")) || 120; } catch { return 120; } } });
 Hooks.on("canvasTearDown", () => { energyBlasts.clear(); });
+Hooks.on("canvasReady", () => { try { if (blastsOn()) energyBlasts.warm(); } catch { /* the first blast prepares it */ } });
 const BLAST_MESSAGE = "energy-blast";
 const playBlast = ({ x, y, radius, kind, seed }) => {
   if (!canvas?.ready || !blastsOn()) return;
@@ -2056,23 +2142,26 @@ const setFlamesAsk = async () => {
     ${select("flame", "Flame", [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])}
     ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]])}
     ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}
-    ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}`;
+    ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}
+    ${[["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
   flamesAsking = true;
   try {
     const picked = await foundry.applications.api.DialogV2.prompt({ window: { title: "Flames (Animater)" }, content,
-      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths"].map((k) => [k, button.form.elements[k].value])) } });
+      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "soot", "smoke", "heatHaze", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
     const change = Object.fromEntries(Object.entries(picked ?? {}).filter(([, v]) => v !== "keep").map(([k, v]) => [`flags.${ID}.${k}`, v]));
     if (!Object.keys(change).length) return;
     await canvas.scene.updateEmbeddedDocuments("AmbientLight", lights.map((l) => ({ _id: l.id, ...change })));
     ui.notifications?.info(`Flames set on ${lights.length} light(s).`);
   } catch { /* closed */ } finally { flamesAsking = false; }
 };
+// Each GM picks which of Animater's buttons they keep (Animater settings → Interface & performance).
+const toolShown = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
 Hooks.on("getSceneControlButtons", (controls) => {
   try {
     if (!game.user?.isGM) return;
     const lighting = Array.isArray(controls) ? controls.find((c) => c.name === "lighting") : controls?.lighting;
     if (!lighting?.tools) return;
-    const tools = lighting.tools, tool = { name: "animaterFlames", title: "Flames (Animater): set the flame of the selected lights, or of all of them", icon: "fa-solid fa-fire", order: Object.keys(tools).length + 10, button: true, visible: true,
+    const tools = lighting.tools, tool = { name: "animaterFlames", title: "Flames (Animater): set the flame of the selected lights, or of all of them", icon: "fa-solid fa-fire", order: Object.keys(tools).length + 10, button: true, visible: toolShown("toolFlames"),
       onChange: () => setFlamesAsk() };
     if (Array.isArray(tools)) tools.push(tool); else tools[tool.name] = tool;
   } catch { /* another layout of the controls */ }
@@ -2084,15 +2173,15 @@ Hooks.on("getSceneControlButtons", (controls) => {
     if (!tokens?.tools) return;
     const tools = tokens.tools, order = Object.keys(tools).length + 10;
     const add = (tool) => { if (Array.isArray(tools)) tools.push(tool); else tools[tool.name] = tool; };
-    add({ name: "animaterCaveIn", title: "Cave-in (Animater): click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: true,
+    add({ name: "animaterCaveIn", title: "Cave-in (Animater): click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
-    add({ name: "animaterEnergyBlast", title: "Energy blast (Animater): pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: true,
+    add({ name: "animaterEnergyBlast", title: "Energy blast (Animater): pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: toolShown("toolEnergyBlast"),
       onChange: () => askBlast() });
-    add({ name: "animaterClearRubble", title: "Clear rubble (Animater): take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: true,
+    add({ name: "animaterClearRubble", title: "Clear rubble (Animater): take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
       onChange: () => clearRubbleAsk() });
-    add({ name: "animaterClearBlood", title: "Clear blood (Animater): wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: true,
+    add({ name: "animaterClearBlood", title: "Clear blood (Animater): wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
-    add({ name: "animaterClouds", title: "Clouds over the map (Animater): on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: true, active: game.settings.get(ID, "weatherClouds") !== false,
+    add({ name: "animaterClouds", title: "Clouds over the map (Animater): on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
   } catch { /* another layout of the controls */ }
 });
@@ -2208,6 +2297,23 @@ const cavernRegions = () => {
   for (const p of cavePreview) { const [what, tone] = String(p.kind).split("-"); out.push({ kind: what, tone, areas: [[p.x, p.y, p.x + p.w, p.y, p.x + p.w, p.y + p.h, p.x, p.y + p.h]] }); }
   return out;
 };
+// The cavern mist in the air (indoor-air.mjs createSmokeAir, MIST_AIR): every cell of its regions keeps it topped up, and the
+// draft draws it out through whatever doors stand open. Told again when the air changes, keeping what it holds.
+let mistAir = null, mistDoor = null;
+Hooks.on("canvasTearDown", () => { mistAir = null; mistDoor = null; cavern.restart(); });
+const fillMist = () => {
+  try {
+    const areas = cavernRegions().filter((p) => p.kind === "mist").flatMap((p) => p.areas);
+    if (!airField || !areas.length || !cavern.wantsFeet) { mistAir = null; cavern.air(null); return; }
+    const field = airField, cells = [];
+    for (let j = 0; j < field.rows; j++) for (let i = 0; i < field.cols; i++) { const p = { x: field.x + (i + 0.5) * field.cell, y: field.y + (j + 0.5) * field.cell }; if (areas.some((a) => pointInPolygon(p, a))) cells.push(p); }
+    mistAir ??= createSmokeAir(MIST_AIR);
+    mistAir.setup(field, cells);
+    // The door that just opened pushes it through, draft or no draft.
+    if (mistDoor) { const way = mistAir.push(mistDoor); if (way) cavern.pull(mistDoor, way); mistDoor = null; }
+    cavern.air(mistAir.pixels, { cols: field.cols, rows: field.rows, rect: canvas.dimensions.sceneRect });
+  } catch { mistAir = null; cavern.air(null); }
+};
 const rebuildCavern = () => {
   cavern.clear(); webs.clear();
   const had = lavaPolygons.length; lavaPolygons = [];
@@ -2220,7 +2326,8 @@ const rebuildCavern = () => {
   // Floor, not the solid rock between the rooms: somewhere a lamp lights (as for the rats).
   const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
   skyOpenings = sky.flat();
-  cavern.build({ fungus, crystals, lava, mist, sky, walls, grid, seed, isFloor: floor });
+  cavern.build({ fungus, crystals, lava, mist, sky, walls, grid, seed, isFloor: floor, bounds: canvas.dimensions.sceneRect });
+  fillMist();
   lavaPolygons = lava.flat();
   const webAreas = of("webs", "caveWebs").flatMap((p) => p.areas);
   if (webAreas.length) webs.build({ corners: webCorners({ walls, areas: webAreas, grid, seed, floor }), grid, seed });
@@ -2277,7 +2384,7 @@ const tickCavern = (seconds, now) => {
     const view = viewNow(), grid = canvas.grid.size;
     if (cavern.wantsTouches || cavern.wantsFeet) {
       const here = creaturesNow();
-      if (cavern.wantsFeet) cavern.feet(here);
+      if (cavern.wantsFeet) { cavern.feet(here); if (mistAir?.busy) { mistAir.step(0.12); cavern.air(mistAir.pixels); } }
       if (cavern.wantsTouches) {
         for (const c of here) { const last = caveTouches.findLast?.((t) => Math.hypot(t.x - c.x, t.y - c.y) < grid * 0.3); if (!last || now - last.at > 1500) caveTouches.push({ x: c.x, y: c.y, at: now }); }
         caveTouches = caveTouches.filter((t) => now - t.at < 4000).slice(-12);
@@ -2333,7 +2440,7 @@ const ratSpots = () => {
 const wallBlocks = (a, b) => { try { return !!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" }); } catch { return false; } };
 // Regions creatures keep out of (Region configuration â†’ Animater â†’ Keep out): a sealed room with no rats, a shrine with no
 // moths. Each kind's areas, looked at with the rest of the life.
-const KEEP_OUT = ["rats", "bats", "moths", "crawlers", "eyes"];
+const KEEP_OUT = ["rats", "bats", "moths", "crawlers", "eyes", "rabbits", "songbirds", "fish", "waterBirds", "frogs"];
 let keepOut = {};
 const readKeepOut = () => {
   keepOut = {};
@@ -2347,9 +2454,71 @@ const keptOut = (kind, p) => !!keepOut[kind]?.some((area) => pointInPolygon(p, a
 const ratBlocks = (a, b) => wallBlocks(a, b) || (keptOut("rats", b) && !keptOut("rats", a));
 const batBlocks = (a, b) => wallBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
 // How many of each creature this scene has, and how big (Scene configuration â†’ Animater â†’ Creatures).
-const sceneCreatures = () => { const f = canvas.scene?.flags?.[ID] ?? {}, out = {}; for (const kind of ["rats", "bats", "moths", "crawlers"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`]); } return out; };
+const sceneCreatures = () => { const f = canvas.scene?.flags?.[ID] ?? {}, out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`]); } return out; };
 let lifeTimer = null;
 const lifeSoon = () => { if (!lifeTimer) lifeTimer = setTimeout(rebuildLife, 600); };
+// The open ground by day (engines/motion/wildlife.mjs): where a rabbit or a songbird can be, looked at once from the floors,
+// the indoors and the regions, a square at a time; a map that is mostly neither has none of them.
+const WILD_FLOORS = new Set(["grass", "dirt", "snow", "mud", "sand"]);
+let wildOpen = null;
+const wildGround = (grid, area) => {
+  const cell = Math.max(grid, Math.ceil(Math.max(area.width, area.height) / 120)), cols = Math.ceil(area.width / cell), rows = Math.ceil(area.height / cell), roofed = new Uint8Array(cols * rows), spots = [], waters = [];
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const p = { x: area.x + (i + 0.5) * cell, y: area.y + (j + 0.5) * cell };
+    try { const here = movementFeelFloor(p); if (underCeiling(p)) { roofed[j * cols + i] = 1; continue; } if (WILD_FLOORS.has(here)) spots.push(p); else if (here === "water") waters.push(p); } catch { /* not there */ }
+  }
+  // Where they may go is the exact floor under that very point, not its square: a square of bank is part river.
+  const sceneBase = sceneFloorNow(), regions = Array.from(canvas.scene?.regions ?? [], (doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })), elevation = canvas.level?.elevation?.base ?? 0;
+  const testPoint = (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }), floorHere = (x, y) => floorAt({ x, y }, { sceneFloor: sceneBase, regions, testPoint });
+  const outside = (x, y) => { const i = Math.floor((x - area.x) / cell), j = Math.floor((y - area.y) / cell); return i >= 0 && j >= 0 && i < cols && j < rows && roofed[j * cols + i] === 0; };
+  return { cell, spots, waters, share: spots.length / (cols * rows), at: (x, y) => outside(x, y) && WILD_FLOORS.has(floorHere(x, y)), inWater: (x, y) => outside(x, y) && floorHere(x, y) === "water" };
+};
+// What lives on the water (engines/motion/pond-life.mjs), going by how much of it the map has: ducks and a heron on any pond,
+// gulls only over wide water. A frog's lily pad is near the bank, never where one already floats.
+const populatePond = (ground, grid, many) => {
+  const birds = ground.waters.filter((p) => !keptOut("waterBirds", p)), cell = ground.cell, waters = ground.waters;
+  const shoreOf = (list) => list.filter((p) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([i, j]) => ground.at(p.x + i * cell, p.y + j * cell)));
+  const shore = shoreOf(birds), banks = shoreOf(waters).filter((p) => !keptOut("frogs", p)).sort(() => Math.random() - 0.5), pads = [];
+  const wanted = waters.length >= 3 ? Math.round(Math.min(9, Math.max(3, waters.length / 6)) * many.frogs) : 0;
+  for (const p of banks) {
+    if (pads.length >= wanted) break;
+    const x = p.x + (Math.random() - 0.5) * 0.6 * cell, y = p.y + (Math.random() - 0.5) * 0.6 * cell;
+    if (ground.inWater(x, y) && pads.every((q) => Math.hypot(q.x - x, q.y - y) > grid * 0.8)) pads.push({ x, y });
+  }
+  const flocks = many.waterBirds > 0 ? birds.length : 0;
+  pondLife.populate({ waters: birds, shore, pads, ducks: flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0, herons: flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0, gulls: flocks >= 30 ? 3 : 0, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
+};
+const rebuildWildlife = () => {
+  wildlife.clear(); pondLife.clear(); wildOpen = null;
+  if (!canvas?.ready || !outdoorOn("wildlife")) return;
+  const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, many = sceneCreatures(), ground = wildGround(grid, area);
+  wildOpen = ground;
+  populatePond(ground, grid, many);
+  const fish = ground.waters.filter((p) => !keptOut("fish", p)), fishOf = { waters: fish, fish: fish.length >= 2 ? Math.round(Math.min(14, Math.max(3, fish.length / 8)) * many.fish) : 0, fishSize: many.fishSize };
+  // An indoor or stone map is no place for the rest (fish keep to whatever water there is); a hawk wants open sky too.
+  if (ground.share < 0.2) { wildlife.populate({ ...fishOf, grid, area }); return; }
+  const spots = ground.spots.filter((p) => !keptOut("rabbits", p)), songSpots = ground.spots.filter((p) => !keptOut("songbirds", p)), squares = spots.length;
+  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: spots.length ? Math.round(Math.min(10, Math.max(3, squares / 80)) * many.rabbits) : 0, songbirds: songSpots.length ? Math.round(9 * many.wildBirds) : 0, hawk: many.wildBirds > 0 && ground.share > 0.4, crows: Math.round(6 * many.wildBirds), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
+};
+// How much they are out now: by day under an open sky, none at night or in a storm.
+const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) - 0.12) / 0.2)); };
+const wildSeen = (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false;
+const wildOk = (kind, x, y) => !!(kind === "fish" || kind === "waterBirds" || kind === "frogs" ? wildOpen?.inWater(x, y) : wildOpen?.at(x, y)) && !keptOut(kind, { x, y });
+// Heard where they are, the hawk and the crows from far off; a GM with no creature selected hears them too (as with the rats).
+const wildCalls = critterVoices({ gaps: WILD_GAPS });
+const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.92, 1.08] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] } };
+const wildVoice = (kind, at, urgent) => {
+  if (!bothSettingsOn("wildlifeSounds")) return;
+  const s = WILD_SOUND[kind], ears = creaturesNow();
+  if (ears.length && !(heardFrom(at, ears, s.reach * canvas.grid.size) > 0)) return;
+  if (!wildCalls.wanted(kind, urgent)) return;
+  playUnder(kind, at, { file: wildSound(kind), volume: s.volume, reach: s.reach, rate: s.rates[0] + Math.random() * (s.rates[1] - s.rates[0]), walls: true, gmAlways: true, room: 0.15 });
+};
+const wildTick = (seconds) => {
+  const away = (((Number(sunNow?.angle) || 51) + 180) * Math.PI) / 180;
+  wildlife.tick(seconds, { near: creaturesNow(), ok: wildOk, blocked: wallBlocks, seen: wildSeen, day: wildDay(), sun: { x: Math.cos(away), y: Math.sin(away) }, wind: skyWindAngle ?? 0.6, view: viewNow(), sound: wildVoice });
+  if (pondLife.busy) pondLife.tick(seconds, { near: creaturesNow(), ok: wildOk, seen: wildSeen, day: wildDay(), sun: { x: Math.cos(away), y: Math.sin(away) }, view: viewNow(), sound: wildVoice });
+};
 const rebuildLife = () => {
   lifeTimer = null;
   try {
@@ -2370,6 +2539,7 @@ const rebuildLife = () => {
       if (areas.length) drips.build({ areas, grid, water, floor: mapFloor() });
     }
   } catch { vermin.clear(); drips.clear(); }
+  try { rebuildWildlife(); } catch { wildlife.clear(); pondLife.clear(); }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, () => { lifeSoon(); });
@@ -2404,7 +2574,7 @@ const tickPools = () => {
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
 Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
-const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 }));
+const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 const surfaceLight = createSurfaceLight({ PIXI: globalThis.PIXI, root: skyRootOf, above: birdRootOf, glowing: glowRootOf, render: bakeInto, renderAt: (o, rt, transform) => canvas.app.renderer.render(o, { renderTexture: rt, clear: true, transform }) });
 // Snow lying on the roofs and in the trees (sky-light.mjs createTileSnow): just over the highest overhead tile, under the
 // birds' shadows.
@@ -2754,9 +2924,11 @@ function skyTick() {
   // A roof fading for a creature inside takes its snow with it.
   if (tileSnow.showing) tileSnow.shown(snowTiles.map(tileShown));
   if (surfaceLight.shown) surfaceLight.tick(seconds);
-  if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) lampAir.tick(seconds); }
+  if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) { lampAir.tick(seconds); tickSmoke(seconds); } }
   if (ceilingDust.busy) ceilingDust.tick(seconds);
-  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp });
+  if (wildlife.busy || pondLife.busy) wildTick(seconds);
+  if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
+  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound });
   tickFloorBlood(seconds);
   if (energyBlasts.busy) energyBlasts.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
@@ -2768,6 +2940,8 @@ function skyTick() {
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.
+  // A creature hovering in a glow: its shadow moves with it, drawn a dozen times a second.
+  if (!glowShadowsDirty && bodyLift.size && windowGlowLayer.built && performance.now() - glowBobAt > 80) { for (const id of bodyLift.keys()) if (windowGlowLayer.casts(id)) { glowShadowsDirty = true; glowBobAt = performance.now(); break; } }
   if (glowShadowsDirty && windowGlowLayer.built) glowShadowsDirty = windowGlowLayer.shadows(glowCreatures(), wallsHere()) === true;
   if (skyHeat > 0) {
     const t = canvas.stage.transform;
@@ -5225,7 +5399,15 @@ Hooks.once("init", () => {
     scope:'world',config:game.system.id==='pf2e',type:Boolean,default:true});
   registerSetting('showControlButton',{name:'Show Animater scene control button',
     hint:'Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater.',
-    scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render()});
+    scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
+  for (const [key,name,hint] of [
+    ['toolCaveIn','Show the Cave-in button','In the token controls. Hidden, a Region can still bring a ceiling down.'],
+    ['toolEnergyBlast','Show the Energy Blast button','In the token controls.'],
+    ['toolClearRubble','Show the Clear rubble button','In the token controls.'],
+    ['toolClearBlood','Show the Clear blood button','In the token controls. Blood still fades by itself.'],
+    ['toolClouds','Show the Clouds button','In the token controls. Hidden, the Clouds over the map setting still turns them off and on.'],
+    ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
+  ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   // On for GMs, off for players: game.user does not exist yet at init, the world's user data does.
   registerSetting('hoverExplain',{name:'Explain animations on hover',
     hint:'Hovering a token shows what Animater is playing on it right now: each animation\'s name, whether it comes from a catalog or a recipe, and whether it lasts. Hold Shift while it shows for buttons to hide a lasting look, leave it out of its catalog, or flag it for a new look.',
@@ -5605,7 +5787,7 @@ Hooks.once("init", () => {
     registerSetting(local, { name: `${name} on my screen`, hint: `Turn off to never draw ${name.toLowerCase()} on this screen (the world setting decides for everyone).`, scope: "client", config: true, type: Boolean, default: true });
   };
   skyPair("drafts", "draftsLocal", "Drafts", "In an underground scene (or one with a region marked as open to the outside), the air flows through every open door toward the way out: dust streams with it, sparks are carried along, smoke drains out. Opening a door sends a gust that settles into a steady draft; a sealed room's air stands still.");
-  skyPair("roomSmoke", "roomSmokeLocal", "Smoke in the air", "In an underground scene, the fires' smoke gathers in their rooms in slow rolling layers, lit by the fires, and streams out along the draft toward the way out.");
+  skyPair("roomSmoke", "roomSmokeLocal", "Smoke in the air", "In an underground scene, the fires' smoke gathers in their rooms in slow rolling layers, lit by the fires, never through a wall or a shut door, and streams out through the open doors along the draft toward the way out.");
   skyPair("vermin", "verminLocal", "Rats and bats", "In an underground scene (Scene configuration → Animater: underground, or cave or hall acoustics), rats scurry along the walls, keeping out of the light and scattering from anyone who comes close, and a few bats flit high overhead.");
   skyPair("drips", "dripsLocal", "Dripping water", "Where a region is marked as dripping (Region configuration → Drips from the ceiling), water drips into dark, glistening puddles, each drop sending out a ring.");
   skyPair("torchDraft", "torchDraftLocal", "Flames in the draft", "Where the air moves (\"Drafts\"), the flames of fire lights lean with it and flicker harder; when a door opens on their way out they gutter for a few seconds, then settle.");
@@ -5617,6 +5799,10 @@ Hooks.once("init", () => {
   skyPair("caveSkylight", "caveSkylightLocal", "Light through openings to the sky", "In an underground scene, where a region is marked as open to the sky (Region configuration → Animater → Open to the sky: a hole in the ceiling, a shaft, a cave mouth), daylight falls in as a pool on the floor with a faint shaft of light and dust turning in it, away from the sun and longer when it is low; golden at dawn and dusk, silver moonlight at night. Nowhere else underground does the sun or moon reach.");
   skyPair("caveWebs", "caveWebsLocal", "Cobwebs", "Where a region is marked as cobwebs (Region configuration → Cavern), dusty, torn webs hang in the corners of its walls and stir in the draft; now and then a spider lowers itself on a thread and climbs back.");
   skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
+  skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over wide water, and frogs on lily pads croak and leap in. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater creatures), and regions can keep them out.");
+  skyPair("wildlifeSounds", "wildlifeSoundsLocal", "Wildlife sounds", "The hawk's cry, crows passing, songbirds chirping and their wings as they burst up, a rabbit's thump when it bolts, a fish's splash as it darts, ducks quacking, frogs croaking and plopping in. A few at a time, only near enough to be heard. With Birds, rabbits and fish on.", "");
+  skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
+  skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
   skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light. On any other map, moths come to a light set to them (Light configuration → Animater → Moths: On).");
   skyPair("caveWet", "caveWetLocal", "Wet walls", "Where a region is marked as wet walls (Region configuration → Cavern), water seeps down the walls: a dark wet band at their foot, with runs out from it, glistening where the light catches it.");
   skyPair("caveSteam", "caveSteamLocal", "Steam vents", "Where a region is marked as steam vents (Region configuration → Cavern), steam breathes up from cracks in the floor, warm-lit, now and then puffing out in a burst, and drifts off on the draft.");
@@ -6266,7 +6452,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const amounts = [["none", "None"], ["few", "Few"], ["", "Usual number"], ["more", "More"], ["many", "Many"]], sizes = [["small", "Small"], ["", "Usual size"], ["big", "Big"], ["huge", "Huge"]];
   const row = (k, label) => `<div class="form-group"><label>${label}</label><div class="form-fields">${pick(k, amounts)}${pick(`${k}Size`, sizes)}</div></div>`;
   const creatures = document.createElement("fieldset");
-  creatures.innerHTML = `<legend>Animater creatures</legend>${row("rats", "Rats")}${row("bats", "Bats")}${row("moths", "Moths")}${row("crawlers", "Crawlers")}<p class="hint">In an underground scene, how many of each this map has and how big they are: few is half the usual, more twice, many three times; moths are counted round each fire. To keep them out of one room, draw a region over it (Region configuration → Animater → Keep out).</p>`;
+  creatures.innerHTML = `<legend>Animater creatures</legend>${row("rats", "Rats")}${row("bats", "Bats")}${row("moths", "Moths")}${row("crawlers", "Crawlers")}${row("rabbits", "Rabbits")}${row("wildBirds", "Birds")}${row("fish", "Fish")}${row("waterBirds", "Water birds")}${row("frogs", "Frogs")}<p class="hint">How many of each this map has and how big they are: few is half the usual, more twice, many three times. Rats, bats, moths and crawlers are for underground scenes (moths counted round each fire); rabbits and birds for open ground by day, fish, water birds and frogs for water. To keep them out of one place, draw a region over it (Region configuration → Animater → Keep out).</p>`;
   tab.append(creatures);
   group.innerHTML = `<label>Animater acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);
@@ -6325,6 +6511,17 @@ Hooks.on("renderWallConfig", (app, html) => {
     <div class="form-group"><label>Shadow bottom${units ? ` (${units})` : ""}</label><div class="form-fields"><input type="number" step="any" name="flags.${ID}.shadowBottom" value="${value(flags.shadowBottom)}" placeholder="The floor"></div></div>
     <p class="hint">How tall this wall stands for the shadow it casts in sunlight ("Walls cast shadows in sunlight"). A bottom above the floor (a rail, a high window) leaves a lit gap beside the wall. Empty: the level's ceiling, else Animater's Wall height setting.</p>`;
   // After the window's last section, inside its scrolling part (before the footer it left pinned under the rest).
+  const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
+  if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
+});
+// Wall configuration: what bursts through this door as it opens (engines/motion/door-burst.mjs).
+Hooks.on("renderWallConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.doorBurst"]`)) return;
+  const own = (app.document ?? app.object)?.flags?.[ID] ?? {}, select = (name, value, options) => `<select name="flags.${ID}.${name}">${options.map(([o, l]) => `<option value="${o}"${o === value ? " selected" : ""}>${l}</option>`).join("")}</select>`;
+  const set = document.createElement("fieldset");
+  set.innerHTML = `<legend>Animater door</legend><div class="form-group"><label>Bursting through</label><div class="form-fields">${select("doorBurst", own.doorBurst ?? "", [["", "Nothing"], ["bats", "A flock of bats"], ["rats", "A run of rats"]])}${select("doorBurstWhen", own.doorBurstWhen ?? "once", [["once", "The first time it opens"], ["always", "Every time it opens"]])}${select("doorBurstSize", own.doorBurstSize ?? "medium", [["small", "Few"], ["medium", "Some"], ["big", "Many"]])}</div></div>
+    <p class="hint">When this door opens, they burst through from the far side, over whoever is nearest on the side it was opened from, then scatter.${own.burstFired && own.doorBurstWhen !== "always" ? " This door's have already gone: set it to Nothing and back, or to Every time, to send them again." : ""}</p>`;
   const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
   if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
 });
@@ -6614,7 +6811,7 @@ Hooks.on("renderRegionConfig", (app, html) => {
     field("Opens to the outside", box("opensOutside"), 'A way out to the open air here: stairs up, a cave mouth, an air shaft, a collapsed ceiling. The air indoors flows toward it through every open door ("Drafts"). Doors on the scene\'s edge standing open, and regions that lead elsewhere (teleport, change level), count without this.')));
   // Creatures kept out of this region.
   const kept = own.keepOut ?? {}, keepBox = (kind, label) => `<label class="checkbox"><input type="checkbox" name="flags.${ID}.keepOut.${kind}"${kept[kind] ? " checked" : ""}> ${label}</label>`;
-  tab.querySelector("fieldset:last-of-type")?.append(field("Keep out", keepBox("rats", "Rats") + keepBox("bats", "Bats") + keepBox("moths", "Moths") + keepBox("crawlers", "Crawlers") + keepBox("eyes", "Eyes"), "In an underground scene, the creatures ticked never come in here: a sealed room, a shrine, a well-kept hall. One already inside runs out."));
+  tab.querySelector("fieldset:last-of-type")?.append(field("Keep out", keepBox("rats", "Rats") + keepBox("bats", "Bats") + keepBox("moths", "Moths") + keepBox("crawlers", "Crawlers") + keepBox("eyes", "Eyes") + keepBox("rabbits", "Rabbits") + keepBox("songbirds", "Songbirds") + keepBox("fish", "Fish") + keepBox("waterBirds", "Water birds") + keepBox("frogs", "Frogs"), "The creatures ticked never come in here: a sealed room, a shrine, a well-kept hall, a garden. One already inside runs out."));
   // A cave-in (GM): the ceiling comes down over this region, its rubble kept with the scene.
   if (game.user?.isGM && app.document?.parent?.id === canvas?.scene?.id) {
     const caveIn = field("Cave-in", `<button type="button" data-animater-cavein><i class="fa-solid fa-person-falling-burst"></i> Bring the ceiling down</button><button type="button" data-animater-clearrubble><i class="fa-solid fa-broom"></i> Clear all rubble</button>`, 'The ceiling over this region collapses now, for everyone: the view shakes, rocks fall and bounce, dust rolls out, and the rubble stays ("Cave-ins"). Clearing takes away every cave-in\'s rubble in the scene. The Token controls have the same two buttons, to bring the ceiling down wherever you click.');
@@ -7263,6 +7460,11 @@ Hooks.once("ready", () => {
       eyeSpots: () => underSpots.map((p) => ({ x: p.x, y: p.y })),
       rouseEyes: () => { underLife.rouse(); return true; },
       kickHere: (x, y, heading = 0) => { underLife.kick({ x, y }, heading); return underLife.busy; },
+      // Smoke let run on for this long at once; how much is in the air.
+      doorBursts: () => doorBursts.count,
+      wildlife: { voice: (kind, at) => wildVoice(kind, at ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, true), counts: () => wildlife.counts, pond: () => pondLife.counts, scare: () => { wildlife.scare(); pondLife.scare(); }, rebuild: () => { rebuildWildlife(); return wildlife.counts; }, hunt: () => wildlife.hunt(), day: () => wildDay(), open: () => wildOpen?.share ?? 0 },
+      mistAir: { ahead: (seconds = 10) => { for (let left = seconds; left > 0; left -= 0.5) mistAir?.step(0.5); if (mistAir) cavern.air(mistAir.pixels); return mistAir?.held ?? 0; }, held: () => mistAir?.held ?? 0, at: (x, y) => { if (!mistAir || !airField) return 0; return mistAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
+      smokeAir: { ahead: (seconds = 60) => { for (let left = seconds; left > 0; left -= 1) smokeAir?.step(1); if (smokeAir && airField) lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows); return smokeAir?.held ?? 0; }, held: () => smokeAir?.held ?? 0, at: (x, y) => { if (!smokeAir || !airField) return 0; return smokeAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
       cavernHere: (...parts) => { cavePreview = parts.filter(Boolean); rebuildCavern(); return cavern.busy || webs.count > 0; },
       // A step into water here (as a creature wading makes).
       // A footprint laid here as a step would ({ hollow: "snow" | "mud" } or { wet: true }, gait, heading); returns a remover.

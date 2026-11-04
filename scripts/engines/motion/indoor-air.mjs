@@ -124,7 +124,7 @@ export function draftField({ walls = [], bounds, grid = 100, openings = [], res 
   // opening runs as its neighbours do.
   const carried = order.map((k) => Math.sqrt(flow[k])).sort((a, b) => a - b), top = carried[Math.floor(carried.length * 0.95)] || 1;
   for (const k of order) speed[k] = Math.min(1, Math.sqrt(flow[k]) / top);
-  return { cols, rows, x: bounds.x, y: bounds.y, cell, dist, dir, speed, cells };
+  return { cols, rows, x: bounds.x, y: bounds.y, cell, grid, dist, dir, speed, cells };
 }
 
 // How long after a door opens the gust reaches each cell (pure, seconds; −1 where the air from that door cannot go):
@@ -160,6 +160,123 @@ export function sceneOpenings({ walls = [], regions = [], bounds, grid = 100 } =
 // The gust swells in over a second as it reaches a place and dies away over a few: no sharp front sweeping the rooms.
 const swell = (s) => { const k = Math.min(1, Math.max(0, s / 1.2)); return k * k * (3 - 2 * k); };
 export const draftStrength = (since = Infinity) => (since < 0 ? 0.3 : 0.3 + 0.3 * swell(since) * Math.exp(-Math.max(0, since - 1.2) / 3));
+
+// The fires' smoke as it builds up (its own state, no Foundry): each fire keeps adding to the air round it, the smoke spreads
+// to the cells it shares air with (never through a wall or a shut door), and the draft carries it downhill, through the
+// doorways and out at the way out, where it is gone. So a room fills as time passes, a sealed one furthest and thickest,
+// and one with a way out streams it away. setup(field, fires) keeps what is in the air when a door changes; step(seconds)
+// moves it on and writes `pixels` (alpha per cell, for the GPU). Only cells holding smoke are looked at.
+const SMOKE_STEP = 0.125;
+const SMOKE_AIR = { spread: 1.5, run: 2.6, fade: 0.012, made: 0.25, gain: 1.6, wide: 1 };
+// Mist the same way: a region keeps it full while the air stands still, and open a door and the draft draws it out through
+// the doorway, thinning the room, fading as it goes. Every cell of its region is a source (`wide` 0). Slowly: a door's
+// new air takes hold over `ease` seconds and a room drains over half a minute. With no draft, an open door still lets it
+// spread some squares into the next room, and the door's swing pushes it through (push()).
+export const MIST_AIR = { spread: 1, run: 0.9, fade: 0.012, made: 0.04, gain: 1, wide: 0, ease: 6, shove: 2 };
+// How hard a door just opened pushes the air (pure, 0–1), `t` seconds after: easing in, holding, easing off.
+export const doorPushAt = (t) => (t < 0 ? 0 : t < 2 ? t / 2 : t < 6 ? 1 : t < 12 ? (12 - t) / 6 : 0);
+const PUSH_REACH = 6;
+export function createSmokeAir({ spread: SMOKE_SPREAD, run: SMOKE_RUN, fade: SMOKE_FADE, made: SMOKE_MADE, gain: SMOKE_GAIN, wide: SMOKE_WIDE, ease: SMOKE_EASE = 0, shove: SMOKE_SHOVE = 0 } = SMOKE_AIR) {
+  // A door's swing, for the seconds it lasts: how far each cell is from the door, which side holds what it pushes, its age.
+  let pushed = null;
+  // How much of the draft has taken hold since the air last changed.
+  let flowing = 1;
+  let field = null, value = null, delta = null, seen = null, making = null, active = [], sources = [], pixels = null;
+  const wake = (k) => { if (!seen[k]) { seen[k] = 1; active.push(k); } };
+  const once = (dt) => {
+    const { cols, dist, speed, cells } = field, open = cells.open;
+    if (flowing < 1) flowing = Math.min(1, flowing + dt / SMOKE_EASE);
+    if (pushed && (pushed.age += dt) > 12) pushed = null;
+    for (const k of sources) { delta[k] += SMOKE_MADE * dt * (1 - value[k]); wake(k); }
+    const count = active.length;
+    for (let n = 0; n < count; n++) {
+      const k = active[n], v = value[k]; if (v <= 0) continue;
+      const i = k % cols, j = (k - i) / cols;
+      // Spreading: from each cell to its neighbours holding less.
+      for (let s = 0; s < 4; s++) {
+        if (!open(k, s)) continue;
+        const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]), move = SMOKE_SPREAD * dt * (v - value[nk]);
+        if (move > 0) { delta[k] -= move; delta[nk] += move; wake(nk); }
+      }
+      // It fades away from where it is made, not where it is being made.
+      if (!making[k]) delta[k] -= v * SMOKE_FADE * dt;
+      // A door just opened: toward it on the side it holds, on away from it beyond.
+      if (pushed && pushed.dist[k] >= 0 && pushed.dist[k] < pushed.reach) {
+        const c = cells.at(i, j), mine = (c.x - pushed.door.x) * pushed.door.nx + (c.y - pushed.door.y) * pushed.door.ny, toward = mine * pushed.side > 0;
+        let total = 0;
+        const fall = (nk, len) => {
+          const d = pushed.dist[nk]; if (d < 0) return 0;
+          // In the doorway itself: straight across it.
+          if (toward && pushed.dist[k] === 0) { const o = cells.at(nk % cols, (nk - (nk % cols)) / cols); return ((o.x - pushed.door.x) * pushed.door.nx + (o.y - pushed.door.y) * pushed.door.ny) * pushed.side < 0 ? 1 / len : 0; }
+          const step = toward ? pushed.dist[k] - d : d - pushed.dist[k]; return step > 0 ? step / len : 0;
+        };
+        for (let s = 0; s < 8; s++) { if (open(k, s)) total += fall((j + STEPS[s][1]) * cols + (i + STEPS[s][0]), STEPS[s][2]); }
+        if (total > 0) {
+          const moved = v * Math.min(0.3, SMOKE_SHOVE * doorPushAt(pushed.age) * (1 - pushed.dist[k] / pushed.reach) * dt);
+          delta[k] -= moved;
+          for (let s = 0; s < 8; s++) { if (!open(k, s)) continue; const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]), w = fall(nk, STEPS[s][2]); if (w > 0) { delta[nk] += (moved * w) / total; wake(nk); } }
+        }
+      }
+      // The draft: a share of it carried to the cells lower toward the way out, by how fast the air runs here.
+      if (dist[k] === 0) { delta[k] -= v * Math.min(1, 2 * dt); continue; }
+      if (!(dist[k] > 0)) continue;
+      let total = 0;
+      for (let s = 0; s < 8; s++) { if (!open(k, s)) continue; const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]); if (dist[nk] >= 0 && dist[nk] < dist[k]) total += (dist[k] - dist[nk]) / STEPS[s][2]; }
+      if (!total) continue;
+      const carried = v * Math.min(0.45, speed[k] * SMOKE_RUN * flowing * dt);
+      delta[k] -= carried;
+      for (let s = 0; s < 8; s++) { if (!open(k, s)) continue; const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]); if (dist[nk] >= 0 && dist[nk] < dist[k]) { delta[nk] += (carried * (dist[k] - dist[nk])) / STEPS[s][2] / total; wake(nk); } }
+    }
+    const kept = [];
+    for (const k of active) {
+      const v = Math.min(1, Math.max(0, value[k] + delta[k])); delta[k] = 0;
+      value[k] = v < 0.002 ? 0 : v;
+      if (value[k] > 0) kept.push(k); else seen[k] = 0;
+    }
+    active = kept;
+  };
+  return {
+    setup(next, fires = []) {
+      const size = next.cols * next.rows;
+      if (!value || value.length !== size || field?.cols !== next.cols) { value = new Float32Array(size); delta = new Float32Array(size); seen = new Uint8Array(size); making = new Uint8Array(size); pixels = new Uint8Array(size * 4); active = []; }
+      if (field && next !== field && SMOKE_EASE > 0) flowing = 0;
+      field = next; for (const k of sources) making[k] = 0; sources = [];
+      for (const f of fires) {
+        const fi = Math.floor((f.x - next.x) / next.cell), fj = Math.floor((f.y - next.y) / next.cell);
+        for (let dj = -SMOKE_WIDE; dj <= SMOKE_WIDE; dj++) for (let di = -SMOKE_WIDE; di <= SMOKE_WIDE; di++) {
+          const i = fi + di, j = fj + dj; if (i < 0 || j < 0 || i >= next.cols || j >= next.rows) continue;
+          sources.push(j * next.cols + i); making[j * next.cols + i] = 1;
+        }
+      }
+    },
+    step(seconds) {
+      if (!field) return false;
+      for (let left = seconds; left > 1e-6; left -= SMOKE_STEP) once(Math.min(left, SMOKE_STEP));
+      for (let k = 0; k < value.length; k++) pixels[k * 4 + 3] = Math.round(Math.min(1, value[k] * SMOKE_GAIN) * 255);
+      return true;
+    },
+    // A door just opened (doorPlace's: x, y, nx, ny) pushes what it holds through. Returns the way it pushes ({ x, y }), or
+    // null when neither side holds any.
+    push(door) {
+      if (!field || !SMOKE_SHOVE) return null;
+      const { x, y, cols, rows, cell, cells } = field, res = (field.grid ?? cell * 2) / cell;
+      const here = (sign) => { let sum = 0; for (let a = -1; a <= 1; a++) for (const reach of [1, 2]) { const i = Math.floor((door.x + door.nx * sign * cell * reach + (door.ax ?? 0) * cell * a - x) / cell), j = Math.floor((door.y + door.ny * sign * cell * reach + (door.ay ?? 0) * cell * a - y) / cell); if (i >= 0 && j >= 0 && i < cols && j < rows) sum += value[j * cols + i]; } return sum; };
+      const a = here(1), b = here(-1); if (a < 0.01 && b < 0.01) return null;
+      // The doorway: the cells along it, on both sides.
+      const side = a >= b ? 1 : -1, seeds = [], half = Number(door.half) || cell;
+      for (const over of [-0.5, 0.5]) for (let along = -half; along <= half; along += cell / 2) { const i = Math.floor((door.x + door.nx * cell * over + (door.ax ?? 0) * along - x) / cell), j = Math.floor((door.y + door.ny * cell * over + (door.ay ?? 0) * along - y) / cell); if (i >= 0 && j >= 0 && i < cols && j < rows && !seeds.includes(j * cols + i)) seeds.push(j * cols + i); }
+      if (!seeds.length) return null;
+      pushed = { door, side, age: 0, reach: res * PUSH_REACH, dist: walkOut(cells, seeds) };
+      return { x: -door.nx * side, y: -door.ny * side };
+    },
+    // Its sources full at once (mist already lying there when the scene loads).
+    fill() { for (const k of sources) { value[k] = 1; wake(k); } this.step(0); },
+    at(k) { return value?.[k] ?? 0; },
+    get pixels() { return pixels; },
+    get busy() { return sources.length > 0 || active.length > 0; },
+    get held() { let sum = 0; for (const k of active) sum += value[k]; return sum; },
+  };
+}
 
 // The field as a picture for the GPU (rgba per cell): red and green the way the air flows (0.5 still), blue how fast
 // (0 sealed), alpha how long the last gust takes to reach it (0–255 for 0–6 s; 255 too where it never comes).

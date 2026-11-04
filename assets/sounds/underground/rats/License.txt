@@ -1,0 +1,14 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+rat-squeak-217767-3.ogg: "ratty squeaks.wav" by Reitanna, https://freesound.org/people/Reitanna/sounds/217767/ (CC0 1.0). Changes: cut 10.20-10.54 s, faded in and out, gain -5.5 dB.
+rat-squeak-463789-0.ogg: "Mouse Squeaks.wav" by shyguy014, https://freesound.org/people/shyguy014/sounds/463789/ (CC0 1.0). Changes: cut 21.27-21.55 s, faded in and out, gain -1.3 dB.
+rat-squeak-463789-1.ogg: "Mouse Squeaks.wav" by shyguy014, https://freesound.org/people/shyguy014/sounds/463789/ (CC0 1.0). Changes: cut 17.71-18.09 s, faded in and out, gain -2.0 dB.
+rat-squeak-463789-2.ogg: "Mouse Squeaks.wav" by shyguy014, https://freesound.org/people/shyguy014/sounds/463789/ (CC0 1.0). Changes: cut 25.73-26.07 s, faded in and out, gain -0.6 dB.
+rat-squeak-463789-3.ogg: "Mouse Squeaks.wav" by shyguy014, https://freesound.org/people/shyguy014/sounds/463789/ (CC0 1.0). Changes: cut 18.06-18.34 s, faded in and out, gain -1.0 dB.
+rat-skitter-415203-1.ogg: "Small Animal Scurrying Through Leaves.mp3" by Yin_Yang_Jake007, https://freesound.org/people/Yin_Yang_Jake007/sounds/415203/ (CC0 1.0). Changes: cut 5.50-6.50 s, faded in and out, gain -8.7 dB.
+rat-skitter-415203-2.ogg: "Small Animal Scurrying Through Leaves.mp3" by Yin_Yang_Jake007, https://freesound.org/people/Yin_Yang_Jake007/sounds/415203/ (CC0 1.0). Changes: cut 0.58-1.58 s, faded in and out, gain -9.4 dB.
+rat-skitter-415203-3.ogg: "Small Animal Scurrying Through Leaves.mp3" by Yin_Yang_Jake007, https://freesound.org/people/Yin_Yang_Jake007/sounds/415203/ (CC0 1.0). Changes: cut 6.50-7.50 s, faded in and out, gain -8.8 dB.
+rat-skitter-415203-4.ogg: "Small Animal Scurrying Through Leaves.mp3" by Yin_Yang_Jake007, https://freesound.org/people/Yin_Yang_Jake007/sounds/415203/ (CC0 1.0). Changes: cut 3.48-4.48 s, faded in and out, gain -4.3 dB.

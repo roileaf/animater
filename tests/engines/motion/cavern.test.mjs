@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fungusIn, crystalsIn, crystalFaces } from '../../../scripts/engines/motion/cavern.mjs';
+import { fungusIn, crystalsIn, crystalFaces, pathPoints } from '../../../scripts/engines/motion/cavern.mjs';
 import { webCorners, webStrands } from '../../../scripts/engines/motion/webs.mjs';
 import { dripsIn } from '../../../scripts/engines/motion/drips.mjs';
 
@@ -43,4 +43,12 @@ test('drops fall all over a dripping area, each its own pace and size; open wate
   assert.ok(new Set(drops.map((d) => d.every.toFixed(2))).size > 5 && Math.max(...drops.map((d) => d.size)) - Math.min(...drops.map((d) => d.size)) > 0.3);
   assert.ok(dripsIn([0, 0, 100, 0, 100, 100, 0, 100], { grid: 100 }).drops.length >= 2, 'at least two, even in one square');
   assert.equal(dripsIn(room, { grid: 100, water: [room] }).water, true);
+});
+
+test('a walker clears its whole path through the mist, however far it got between looks', () => {
+  const path = pathPoints({ x: 0, y: 0 }, { x: 100, y: 0 }, { step: 25 });
+  assert.equal(path.length, 4);
+  assert.deepEqual(path.at(-1), { x: 100, y: 0 });
+  assert.equal(pathPoints({ x: 0, y: 0 }, { x: 0, y: 0 }).length, 1, 'standing still: where it stands');
+  assert.deepEqual(pathPoints({ x: 0, y: 0 }, { x: 5000, y: 0 }, { most: 800 }), [{ x: 5000, y: 0 }], 'a jump clears only where it landed');
 });

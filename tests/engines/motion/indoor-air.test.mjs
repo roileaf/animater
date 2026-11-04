@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { draftField, sceneOpenings, draftStrength, gustDelays, GUST_SPEED } from '../../../scripts/engines/motion/indoor-air.mjs';
+import { draftField, sceneOpenings, draftStrength, gustDelays, GUST_SPEED, createSmokeAir, MIST_AIR, doorPushAt } from '../../../scripts/engines/motion/indoor-air.mjs';
 
 // Two rooms side by side (0–300 and 300–600), a door between them at x 300; the left room opens to the outside at x 0.
 const bounds = { x: 0, y: 0, width: 600, height: 300 };
@@ -83,3 +83,80 @@ test('a door opening sends a gust that swells in, then settles into a steady dra
   assert.ok(draftStrength(1.2) > 0.55 && draftStrength(1.2) <= 0.6);
   assert.ok(draftStrength(12) < 0.32 && draftStrength(12) >= 0.3);
 });
+
+test('smoke gathers as time passes, stops at a shut door, and leaves through an open one along the draft', () => {
+  // Two rooms side by side, a wall between them with a door; the way out on the far side of the right room.
+  const bounds = { x: 0, y: 0, width: 2000, height: 1000 }, grid = 100, way = [{ x: 1950, y: 500 }];
+  const walls = (ds) => [{ c: [1000, 0, 1000, 450], move: 20 }, { c: [1000, 550, 1000, 1000], move: 20 }, { c: [1000, 450, 1000, 550], move: 20, door: 1, ds }];
+  const at = (field, smoke, x, y) => smoke.at(Math.floor(y / field.cell) * field.cols + Math.floor(x / field.cell));
+  const fire = [{ x: 500, y: 500 }];
+  const shut = draftField({ walls: walls(0), bounds, grid, openings: way }), smoke = createSmokeAir();
+  smoke.setup(shut, fire);
+  smoke.step(5); const early = at(shut, smoke, 800, 500), heldEarly = smoke.held;
+  smoke.step(55);
+  assert.ok(smoke.held > heldEarly * 3, `it builds up: ${heldEarly} then ${smoke.held}`);
+  assert.ok(at(shut, smoke, 800, 500) > early, 'reaching further across the room');
+  assert.ok(at(shut, smoke, 500, 500) > at(shut, smoke, 800, 500), 'thickest by the fire');
+  for (let y = 25; y < 1000; y += 50) for (let x = 1025; x < 2000; x += 50) assert.equal(at(shut, smoke, x, y), 0, 'none past the shut door');
+  const before = smoke.held;
+  // The door opens: what has gathered stays in the air, and the draft draws it out.
+  const open = draftField({ walls: walls(1), bounds, grid, openings: way });
+  smoke.setup(open, []);
+  smoke.step(4);
+  assert.ok(smoke.held > before * 0.5, 'nothing vanishes when the door changes');
+  smoke.step(20);
+  assert.ok(at(open, smoke, 1050, 500) > 0.01, 'through the door');
+  assert.ok(at(open, smoke, 1500, 500) > 0, 'on along the draft');
+  smoke.step(300);
+  assert.ok(smoke.held < before * 0.5, `and away out of the room: ${before} then ${smoke.held}`);
+  // With no way out it stays: the same smoke, sealed, keeps more.
+  const sealed = draftField({ walls: walls(0), bounds, grid, openings: [] }), kept = createSmokeAir();
+  kept.setup(sealed, fire); kept.step(60); const made = kept.held;
+  const drained = draftField({ walls: walls(1), bounds, grid, openings: way }), lost = createSmokeAir();
+  lost.setup(drained, fire); lost.step(120); kept.step(60);
+  assert.ok(kept.held > lost.held, `${kept.held} against ${lost.held}; ${made}`);
+  assert.ok(smoke.pixels.length === shut.cols * shut.rows * 4);
+});
+
+test('mist fills its region and stays there until a door opens, then the draft draws it out past the region', () => {
+  const bounds = { x: 0, y: 0, width: 2000, height: 1000 }, grid = 100, way = [{ x: 50, y: 500 }];
+  // The mist's room on the right, a door on its left, the way out beyond it.
+  const walls = (ds) => [{ c: [1000, 0, 1000, 450], move: 20 }, { c: [1000, 550, 1000, 1000], move: 20 }, { c: [1000, 450, 1000, 550], move: 20, door: 1, ds }];
+  const at = (field, air, x, y) => air.at(Math.floor(y / field.cell) * field.cols + Math.floor(x / field.cell));
+  const room = []; for (let y = 25; y < 1000; y += 50) for (let x = 1025; x < 2000; x += 50) room.push({ x, y });
+  const shut = draftField({ walls: walls(0), bounds, grid, openings: way }), mist = createSmokeAir(MIST_AIR);
+  mist.setup(shut, room); mist.fill();
+  assert.equal(at(shut, mist, 1500, 500), 1, 'full from the start');
+  mist.step(30);
+  assert.ok(at(shut, mist, 1500, 500) > 0.8, 'it stays while the door is shut');
+  assert.equal(at(shut, mist, 900, 500), 0, 'none past the shut door');
+  const open = draftField({ walls: walls(1), bounds, grid, openings: way });
+  mist.setup(open, room);
+  mist.step(1);
+  const atOnce = at(open, mist, 1100, 500);
+  assert.ok(atOnce > 0.95, `nothing changes on the spot: ${atOnce}`);
+  mist.step(5);
+  assert.ok(at(open, mist, 950, 500) > 0.05, `out through the door within seconds: ${at(open, mist, 950, 500)}`);
+  const inRoom = () => room.reduce((sum, p) => sum + at(open, mist, p.x, p.y), 0) / room.length, full = inRoom();
+  mist.step(20);
+  assert.ok(at(open, mist, 500, 500) > 0.005, `on along the draft: ${at(open, mist, 500, 500)}`);
+  assert.ok(inRoom() < full, `the room thins: ${inRoom()} from ${full}`);
+  mist.step(40);
+  assert.ok(inRoom() < full * 0.85, `more as time passes: ${inRoom()} from ${full}`);
+  // A door to a room with no way out: no draft, but the door's swing pushes it through, it spreads some squares and stops.
+  const sealed = draftField({ walls: walls(1), bounds, grid, openings: [] });
+  const quiet = createSmokeAir(MIST_AIR), shoved = createSmokeAir(MIST_AIR), door = { x: 1000, y: 500, nx: -1, ny: 0, ax: 0, ay: 1, half: 50 };
+  for (const air of [quiet, shoved]) { air.setup(shut, room); air.fill(); air.setup(sealed, room); }
+  assert.deepEqual(shoved.push(door), { x: -1, y: 0 }, 'from the side that holds it, through the door');
+  quiet.step(8); shoved.step(8);
+  assert.ok(at(sealed, shoved, 850, 500) > at(sealed, quiet, 850, 500) * 1.5, `the push carries it through: ${at(sealed, shoved, 850, 500)} against ${at(sealed, quiet, 850, 500)}`);
+  shoved.step(120);
+  assert.ok(at(sealed, shoved, 600, 500) > 0.03, `four squares into the next room: ${at(sealed, shoved, 600, 500)}`);
+  assert.ok(at(sealed, shoved, 25, 500) < 0.03, `and it never fills the room: ${at(sealed, shoved, 25, 500)}`);
+  // Nothing either side of a door: nothing to push.
+  assert.equal(createSmokeAirEmpty(sealed).push({ x: 300, y: 300, nx: 1, ny: 0, ax: 0, ay: 1 }), null);
+  assert.equal(doorPushAt(-1), 0); assert.equal(doorPushAt(4), 1); assert.equal(doorPushAt(20), 0);
+  assert.ok(mist.pixels[(Math.floor(500 / open.cell) * open.cols + Math.floor(1950 / open.cell)) * 4 + 3] > 0);
+});
+
+function createSmokeAirEmpty(field) { const air = createSmokeAir(MIST_AIR); air.setup(field, []); return air; }

@@ -158,6 +158,13 @@ const glintCanvas = () => canvasOf(16, 16, (g, n) => { const gr = g.createRadial
  * the living; kick(at, heading) sends a pebble; caveIn({ x, y, radius, seed }) brings the ceiling down here (falling
  * rubble and its dust); clear().
  */
+// A moth's shadow by how far it is from its flame (pure): bigger and further the nearer it flies, but no nearer than a third
+// of a square counts: one crossing right over the flame would otherwise throw a shadow as big as a room.
+export function mothShadow(d, { grid = 100 } = {}) {
+  const near = Math.max(Number(d) || 0, grid * 0.35);
+  return { far: grid * 0.6 + (grid * grid * 0.24) / near, size: grid * (0.15 + (0.08 * grid) / near), alpha: Math.min(0.35, (grid * 0.12) / near) };
+}
+
 export function createUndergroundLife({ PIXI, floor, above, glow }) {
   const tex = {};
   const T = (key, make) => (tex[key] ??= PIXI.Texture.from(make()));
@@ -305,9 +312,9 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
           const { x, y } = keepInside({ x: home.x + Math.cos(m.a) * rr + Math.sin(time * 7 + m.p) * grid * 0.03, y: home.y + Math.sin(m.a) * rr * 0.8 + Math.cos(time * 6 + m.p) * grid * 0.03 }, home, home.shape);
           const open = 0.35 + 0.65 * Math.abs(Math.sin(time * 38 + m.p)), frame = T(`moth:${Math.round(open * 3)}`, () => mothCanvas(Math.round(open * 3) / 3));
           m.s.texture = frame; m.s.position.set(x, y); m.s.rotation = m.a + Math.PI; m.s.width = m.s.height = grid * 0.15 * mothSize;
-          const dx = x - l.x, dy = y - l.y, d = Math.hypot(dx, dy) + 1, far = grid * 0.6 + (grid * grid * 0.24) / d;
-          const fall = keepInside({ x: l.x + (dx / d) * (d + far * m.z), y: l.y + (dy / d) * (d + far * m.z) }, { x, y }, home.shape);
-          m.shadow.texture = frame; m.shadow.position.set(fall.x, fall.y); m.shadow.rotation = m.s.rotation; m.shadow.width = m.shadow.height = grid * (0.15 + (8 * grid) / (d * 100)) * mothSize; m.shadow.alpha = Math.min(0.35, (grid * 0.12) / d);
+          const dx = x - l.x, dy = y - l.y, d = Math.hypot(dx, dy) + 1, thrown = mothShadow(d, { grid });
+          const fall = keepInside({ x: l.x + (dx / d) * (d + thrown.far * m.z), y: l.y + (dy / d) * (d + thrown.far * m.z) }, { x, y }, home.shape);
+          m.shadow.texture = frame; m.shadow.position.set(fall.x, fall.y); m.shadow.rotation = m.s.rotation; m.shadow.width = m.shadow.height = thrown.size * mothSize; m.shadow.alpha = thrown.alpha;
         });
       } else if (moths.length) { kill(moths.map((m) => m.s)); kill(moths.map((m) => m.shadow)); moths = []; }
       // Crawlers along the foot of the walls, in the dark: run, freeze, run.

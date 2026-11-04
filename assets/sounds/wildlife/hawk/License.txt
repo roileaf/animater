@@ -1,0 +1,11 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+hawk-575524-0.ogg: "red-tailed-hawk.wav" by 1888software, https://freesound.org/people/1888software/sounds/575524/ (CC0 1.0). Changes: cut 6.16-7.16 s, faded, gain -10.0 dB.
+hawk-575524-1.ogg: "red-tailed-hawk.wav" by 1888software, https://freesound.org/people/1888software/sounds/575524/ (CC0 1.0). Changes: cut 13.85-14.92 s, faded, gain -9.1 dB.
+hawk-575524-2.ogg: "red-tailed-hawk.wav" by 1888software, https://freesound.org/people/1888software/sounds/575524/ (CC0 1.0). Changes: cut 0.03-0.91 s, faded, gain -5.7 dB.
+hawk-616926-0.ogg: "210227 Red Tailed Hawk, eq isolated calls, roof 77mel 10am.wav" by TRP, https://freesound.org/people/TRP/sounds/616926/ (CC0 1.0). Changes: cut 4.57-5.26 s, faded, gain -2.2 dB.
+hawk-683743-0.ogg: "Red Shouldered Hawk cry D100 APRIL 10 2023.WAV" by kvgarlic, https://freesound.org/people/kvgarlic/sounds/683743/ (CC0 1.0). Changes: cut 16.77-17.45 s, faded, gain -11.0 dB.
+hawk-683743-1.ogg: "Red Shouldered Hawk cry D100 APRIL 10 2023.WAV" by kvgarlic, https://freesound.org/people/kvgarlic/sounds/683743/ (CC0 1.0). Changes: cut 17.70-18.18 s, faded, gain -8.2 dB.

@@ -164,7 +164,9 @@ void main(){
 const SMOKE_FRAG = `
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D uSmoke;   // where the fires' smoke fills (a), from the fires' reach, walls and all
+uniform sampler2D uSmoke;   // the fires' reach (a), walls and all, and their colour: lights the smoke, and where it fills with no air worked out
+uniform sampler2D uFill;    // where the smoke is in the air now (a; indoor-air.mjs createSmokeAir)
+uniform float uFillOn;
 uniform sampler2D uDraft, uDraftWas;
 uniform float uDraftMix;
 uniform vec2 uSize;
@@ -179,26 +181,32 @@ float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a 
 void main(){
   vec2 px = vUv * uSize;
   vec4 lit = texture2D(uSmoke, vUv);
-  // Thickest near the fires, thinning out across their reach (not a fog over the whole room).
-  float fill = lit.a * lit.a;
+  // As much as has gathered there by now: thickest near the fires, and out along the draft through the doors.
+  float fill = uFillOn > 0.5 ? texture2D(uFill, vUv).a : lit.a * lit.a;
   if (fill < 0.02 || uAmount < 0.01) { gl_FragColor = vec4(0.0); return; }
   vec4 d = mix(texture2D(uDraftWas, vUv), texture2D(uDraft, vUv), uDraftMix);
-  // Only air running fast (a doorway, a gust) draws the smoke out into streaks; a closed room's slow drift leaves it
-  // rolling in soft layers.
-  float moving = smoothstep(0.35, 0.9, min(1.0, airHere(d) * 1.8));
+  // Where the air runs (a doorway, a gust) the smoke's billows drift along with it; a closed room's slow drift leaves them
+  // rolling where they are.
+  float moving = smoothstep(0.12, 0.55, min(1.0, airHere(d) * 1.8));
   vec2 flow = (d.rg * 2.0 - 1.0) * moving;
-  // Still air: slow rolling layers. Moving air: the smoke drawn out into streaks along the draft, thinning as it drains.
-  vec2 dir = normalize(flow + vec2(1e-4)), side = vec2(-dir.y, dir.x);
   vec2 q = px / (uGrid * 4.0);
-  // The streaks drift at a steady pace: one that followed the air would throw them far along whenever it changed.
-  vec2 streak = vec2(dot(px, dir) / (uGrid * 7.0), dot(px, side) / (uGrid * 2.0)) - vec2(uTime * 0.35, 0.0);
   vec2 warp = vec2(noise(q * 0.7 + uTime * 0.03), noise(q * 0.7 + 5.1 - uTime * 0.025)) - 0.5;
-  float roll = fbm(mix(q + warp * 1.2 + vec2(uTime * 0.02, -uTime * 0.015), streak, moving));
-  float density = fill * smoothstep(0.3, 0.75, roll) * (1.0 - 0.45 * moving);
-  // A faint haze hanging in the firelight, never a fog hiding the floor.
-  float a = density * 0.1 * uAmount;
-  // Dark grey smoke, warmed where the fire lights it from below (pale, it washed out the floor and everyone on it).
-  vec3 col = mix(vec3(0.32, 0.3, 0.29), lit.rgb / max(lit.a, 0.01), 0.22 * lit.a);
+  vec2 rolling = q + warp * 1.2 + vec2(uTime * 0.02, -uTime * 0.015);
+  // Drifting: the same billows, carried along the air and handed over between two phases as each runs out, so they flow on
+  // without ever jumping back or being drawn out into lines.
+  float roll;
+  if (moving > 0.01) {
+    float p1 = fract(uTime * 0.1), p2 = fract(uTime * 0.1 + 0.5);
+    roll = mix(fbm(rolling - flow * 1.6 * p1), fbm(rolling - flow * 1.6 * p2), abs(1.0 - 2.0 * p1));
+  } else roll = fbm(rolling);
+  // Billows with clear air between them; the more has gathered, the more of the air they take.
+  float density = fill * smoothstep(0.62 - 0.22 * fill, 0.72 - 0.1 * fill, roll) * (1.0 - 0.25 * moving);
+  float a = density * 0.5 * uAmount;
+  // Smoke with a body: lit pale and warm on the side the fire catches, dark in its folds. One grey would vanish on a dark
+  // floor, and all pale washed out the floor and everyone on it.
+  float folds = smoothstep(0.3, 0.7, noise(q * 1.7 + warp * 2.0 + uTime * 0.02));
+  vec3 pale = mix(vec3(0.62, 0.58, 0.54), lit.rgb / max(lit.a, 0.01), 0.4 * lit.a);
+  vec3 col = mix(vec3(0.12, 0.11, 0.1), pale, folds);
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -217,6 +225,10 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
   // The air before it last changed and how far the fade to the new is (a door opening swaps the whole field at once; the
   // dust, wisps and smoke would jump with it): kept through a rebuild too.
   let draftWas = null, draftMix = 1;
+  // Where the smoke is now (smokeFill): kept through a rebuild.
+  let fill = null, lastFill = null;
+  const fillTexture = (at) => (at ? PIXI.Texture.fromBuffer(at.pixels, at.cols, at.rows, { scaleMode: PIXI.SCALE_MODES.LINEAR }) : still());
+  const dropFills = () => { try { fill?.destroy(true); } catch { /* gone */ } fill = null; };
   const dropDrafts = () => { for (const t of new Set([draftTex, draftWas])) { try { t?.destroy(true); } catch { /* gone */ } } draftTex = null; draftWas = null; draftMix = 1; };
   const draftTexture = () => (lastDraft ? PIXI.Texture.fromBuffer(lastDraft.pixels, lastDraft.cols, lastDraft.rows, { scaleMode: PIXI.SCALE_MODES.LINEAR }) : still());
   const smokeMesh = () => smoke;
@@ -231,7 +243,7 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
       if (own) showing = { uGust: own.uGust, uLean: own.uLean, uEmbers: own.uEmbers, uMotes: own.uMotes, uCount: own.uCount, uWind: own.uWind, uFires: own.uFires, uReachA: own.uReachA, uReachB: own.uReachB, visible: !!mesh?.visible };
       if (smokeOwn) smokeShowing = { uAmount: smokeOwn.uAmount, uGust: smokeOwn.uGust, visible: !!smoke?.visible };
       drop();
-      if (!b || !lights.length) { dropDrafts(); return; }
+      if (!b || !lights.length) { dropDrafts(); dropFills(); return; }
       bounds = b;
       const k = Math.min(0.25, 2048 / Math.max(1, b.width, b.height)), w = Math.max(1, Math.ceil(b.width * k)), h = Math.max(1, Math.ceil(b.height * k));
       // Each light's reach: a soft disc in its colour, cut to the area it lights (walls stop it).
@@ -270,7 +282,8 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
       if (smokeRoot && fires.length) {
         // A torch on a wall lights both sides of it, but smokes only its own (Light: smokeShape).
         smokeMask = reach(fires.map((l) => (l.smokeShape ? { ...l, shape: l.smokeShape } : l)), 1.15);
-        smokeOwn = { uSmoke: smokeMask, uDraft: draftTex, uDraftWas: draftWas, uDraftMix: draftMix, uSize: [b.width, b.height], uTime: clock, uGrid: grid, uAmount: smokeShowing?.uAmount ?? 0, uGust: smokeShowing?.uGust ?? 1e3 };
+        if (!fill) fill = fillTexture(lastFill);
+        smokeOwn = { uSmoke: smokeMask, uFill: fill, uFillOn: lastFill ? 1 : 0, uDraft: draftTex, uDraftWas: draftWas, uDraftMix: draftMix, uSize: [b.width, b.height], uTime: clock, uGrid: grid, uAmount: smokeShowing?.uAmount ?? 0, uGust: smokeShowing?.uGust ?? 1e3 };
         smoke = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, SMOKE_FRAG, smokeOwn));
         smoke.eventMode = 'none'; smoke.visible = !!smokeShowing?.visible;
         smokeRoot().addChild(smoke);
@@ -287,6 +300,16 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
       draftWas = draftTex ?? next; draftTex = next; draftMix = 0;
       for (const u of [own, smokeOwn]) if (u) { u.uDraft = draftTex; u.uDraftWas = draftWas; u.uDraftMix = 0; }
     },
+    // Where the smoke is now (indoor-air.mjs createSmokeAir's pixels, over the same rectangle, changing in place); null: by
+    // the fires' reach. Called as often as it changes: the same pixels are only sent again.
+    smokeFill(pixels = null, cols = 1, rows = 1) {
+      const same = pixels && lastFill?.pixels === pixels && fill;
+      lastFill = pixels ? { pixels, cols, rows } : null;
+      if (!smokeOwn) { dropFills(); return; }
+      if (same) { fill.baseTexture.update(); return; }
+      dropFills(); fill = fillTexture(lastFill);
+      smokeOwn.uFill = fill; smokeOwn.uFillOn = lastFill ? 1 : 0;
+    },
     look({ fires = [], embers = 0, motes = 0, wind = { x: 0, y: 0 }, air = false, since = 1e3, smoke = 0, lean = 0 } = {}) {
       if (!own) return;
       const list = fires.slice(0, MAX_FIRES);
@@ -302,7 +325,7 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
       if (draftMix < 1) draftMix = Math.min(1, draftMix + seconds / 2);
       for (const u of [own, smokeOwn]) if (u) { u.uTime = clock; u.uDraftMix = draftMix; }
     },
-    clear() { drop(); dropDrafts(); showing = null; smokeShowing = null; },
+    clear() { drop(); dropDrafts(); dropFills(); lastFill = null; showing = null; smokeShowing = null; },
     get shown() { return !!mesh?.visible || !!smoke?.visible; },
   };
 }

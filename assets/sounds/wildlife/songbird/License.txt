@@ -1,0 +1,9 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+songbird-165527-0.ogg: "Robin alarm call.wav" by inchadney, https://freesound.org/people/inchadney/sounds/165527/ (CC0 1.0). Changes: cut 16.71-17.30 s, faded, gain -12.1 dB.
+songbird-165527-1.ogg: "Robin alarm call.wav" by inchadney, https://freesound.org/people/inchadney/sounds/165527/ (CC0 1.0). Changes: cut 12.70-13.36 s, faded, gain -12.3 dB.
+songbird-570198-0.ogg: "singing robin.wav" by bruno.auzet, https://freesound.org/people/bruno.auzet/sounds/570198/ (CC0 1.0). Changes: cut 44.49-45.35 s, faded, gain -12.1 dB.
+songbird-570198-1.ogg: "singing robin.wav" by bruno.auzet, https://freesound.org/people/bruno.auzet/sounds/570198/ (CC0 1.0). Changes: cut 64.91-65.83 s, faded, gain -10.7 dB.

@@ -1262,6 +1262,20 @@ test('a hovering flier’s shadow breathes with its bob: wider, softer and faint
   assert.ok(low.rx < rest.rx && low.alpha > rest.alpha);
   assert.equal(high.x, rest.x, 'it stays on the floor');
 });
+test('a hovering flier’s light shadow moves with its bob: away from the light as it rises, back as it dips',async()=>{
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const seen = [];
+  const layer = { addParticle: () => ({}), updateParticle() {}, removeParticle() {}, addShadow: () => ({}), updateShadow: (h, g) => seen.push(g), removeShadow() {}, clear() {} };
+  let up = 0;
+  // The light to the left of it (angle 180 from the creature): its shadow falls to the right.
+  const flier = { id: 'f', x: 500, y: 500, width: 100, elevation: 20, base: 0, visible: true, gait: 'none', action: 'fly', bob: () => up, light: () => ({ lights: [{ key: 'a', angle: 0, distance: 300, strength: 1, shine: 1, brightness: 1, elevation: 60 }], darkness: 1 }) };
+  const feel = createMovementFeel({ tokens: () => [flier], floorAt: () => 'stone', enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => 0, layer, footstep() {} });
+  feel.tick(); const rest = Math.hypot(seen.at(-1).fall.x - 500, seen.at(-1).fall.y - 500);
+  up = 5; feel.tick(); const high = Math.hypot(seen.at(-1).fall.x - 500, seen.at(-1).fall.y - 500);
+  up = -5; feel.tick(); const low = Math.hypot(seen.at(-1).fall.x - 500, seen.at(-1).fall.y - 500);
+  assert.ok(high > rest + 5, `${high} from ${rest}`);
+  assert.ok(low < rest - 5, `${low} from ${rest}`);
+});
 test('in a light’s bright radius the shadow is dark and crisp; out in its dim light, faint and soft',async()=>{
   const { shadowFall } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const at = (brightness) => shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.6, angle: 0, distance: 100, brightness } });
@@ -1367,7 +1381,7 @@ test('"Shadows in creatures’ shapes" off draws round shadows; "A shadow for ea
   assert.equal(one.length, 1, 'one shadow, from the stronger light');
 });
 
-test('a hovering creature’s shadow keeps its place as it bobs; only its softness and size breathe',async()=>{
+test('a hovering creature’s light shadow moves only along its fall as it bobs, by twice the bob',async()=>{
   const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
   let last = null;
@@ -1384,7 +1398,7 @@ test('a hovering creature’s shadow keeps its place as it bobs; only its softne
   for (const b of [5, -5, 3]) {
     bob = b;
     const now = settle();
-    assert.ok(Math.hypot(now.x - still.x, now.y - still.y) < 0.5, `bob ${b}: ${JSON.stringify(now)} vs ${JSON.stringify(still)}`);
+    assert.ok(Math.abs(Math.hypot(now.x - still.x, now.y - still.y) - Math.abs(b) * 2) < 0.5, `bob ${b}: ${JSON.stringify(now)} vs ${JSON.stringify(still)}`);
   }
 });
 

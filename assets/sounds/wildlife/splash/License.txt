@@ -1,0 +1,6 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+splash-398039-0.ogg: "water splash 2" by swordofkings128, https://freesound.org/people/swordofkings128/sounds/398039/ (CC0 1.0). Changes: cut 0.01-0.72 s, faded, gain +0.9 dB.

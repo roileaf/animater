@@ -7,6 +7,7 @@
 const rng = (seed) => { let h = 2166136261; for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; }; };
 const inside = ({ x, y }, p) => { let hit = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit; return hit; };
 const inArea = (pt, p) => inside(pt, p) && !(p.holes ?? []).some((h) => inside(pt, h));
+import { doorPushAt } from './indoor-air.mjs';
 const boxOf = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); } return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; };
 
 // Each colour: the glow, its pale heart, and the cap's own flesh as ordinary light shows it.
@@ -260,8 +261,15 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D uMask;    // a: the mist's region (soft edged)
 uniform sampler2D uTrail;   // r: where feet have parted it lately (1 just now)
-uniform sampler2D uDraft;   // the air's flow (indoor-air.mjs draftPixels): rg the way, b how fast
+uniform sampler2D uDraft, uDraftWas;   // the air's flow (indoor-air.mjs draftPixels): rg the way, b how fast; and as it was
+uniform float uDraftMix;
 uniform vec4 uBox, uField;  // the quad; where the draft lies (x, y, w, h)
+uniform vec2 uCell;         // one cell of the trail, in uv
+uniform sampler2D uAir;     // a: how much of it the air holds here (indoor-air.mjs createSmokeAir), where it is told
+uniform vec4 uAirRect;
+uniform vec2 uPull;         // a door just opened: the way and how hard the banks lean through it
+uniform vec3 uPullAt;       // where it is, and how far off it is felt
+uniform float uAirOn;
 uniform float uTime, uGrid, uThick;
 ${NOISE}
 float banksAt(vec2 px, vec2 drift){
@@ -271,17 +279,59 @@ float banksAt(vec2 px, vec2 drift){
 void main(){
   vec2 px = uBox.xy + vUv * uBox.zw;
   float m = texture2D(uMask, vUv).a;
+  if (uAirOn > 0.5) m *= texture2D(uAir, (px - uAirRect.xy) / uAirRect.zw).a;
   if (m < 0.01) { gl_FragColor = vec4(0.0); return; }
   // Banks of mist drifting slowly, wisps through them; thinning toward the region's edge. Where the air moves they
   // stream with it (two phases of the drift crossfaded, so it flows on without tearing).
   vec2 still = vec2(uTime * 0.05, -uTime * 0.02);
-  vec4 d = texture2D(uDraft, (px - uField.xy) / uField.zw);
-  vec2 flow = (d.rg * 2.0 - 1.0) * d.b * 1.4;
+  vec2 fieldUv = (px - uField.xy) / uField.zw;
+  vec4 d = mix(texture2D(uDraftWas, fieldUv), texture2D(uDraft, fieldUv), uDraftMix);
+  // Even the slow air of an open room carries it along visibly, fastest through a doorway.
+  vec2 flow = (d.rg * 2.0 - 1.0) * sqrt(d.b) * 2.6 + uPull * exp(-distance(px, uPullAt.xy) / uPullAt.z);
   float p1 = fract(uTime * 0.12), p2 = fract(uTime * 0.12 + 0.5), w = abs(1.0 - 2.0 * p1);
-  float banks = mix(banksAt(px, still - flow * p1), banksAt(px, still - flow * p2), 1.0 - w);
+  // Pushed aside where feet passed: the banks bend away from the path, and pile up thicker along its edges.
   float part = texture2D(uTrail, vUv).r;
-  float dense = m * m * (0.25 + 0.75 * banks) * uThick * (1.0 - 0.92 * part);
+  vec2 push = vec2(texture2D(uTrail, vUv + vec2(uCell.x * 2.0, 0.0)).r - texture2D(uTrail, vUv - vec2(uCell.x * 2.0, 0.0)).r, texture2D(uTrail, vUv + vec2(0.0, uCell.y * 2.0)).r - texture2D(uTrail, vUv - vec2(0.0, uCell.y * 2.0)).r) * uGrid * 0.7;
+  float banks = mix(banksAt(px + push, still - flow * p1), banksAt(px + push, still - flow * p2), w);
+  float dense = m * m * (0.25 + 0.75 * banks) * uThick * (1.0 - 0.92 * part) * (1.0 + 1.6 * part * (1.0 - part));
   float a = clamp(dense, 0.0, 0.85);
+  gl_FragColor = vec4(vec3(0.8, 0.83, 0.87) * a, a);
+}`;
+
+// The points along the way from one place to another (pure), about `step` apart, ending where it is now: a walker clears
+// its whole path, however far it got between looks. Further than `most` it jumped there, and only the end counts.
+export function pathPoints(from, to, { step = 25, most = 800 } = {}) {
+  const dx = to.x - from.x, dy = to.y - from.y, far = Math.hypot(dx, dy);
+  if (far < 0.5 || far > most) return [{ x: to.x, y: to.y }];
+  const n = Math.max(1, Math.ceil(far / step));
+  return Array.from({ length: n }, (_, i) => ({ x: from.x + (dx * (i + 1)) / n, y: from.y + (dy * (i + 1)) / n }));
+}
+
+// The mist the draft has drawn out past its regions' edges: as the mist, over the whole map, less what its regions draw.
+const MIST_OUT_FRAG = `
+precision highp float;
+varying vec2 vUv;
+uniform sampler2D uAir, uInside, uDraft, uDraftWas;
+uniform float uDraftMix;
+uniform vec2 uPull;
+uniform vec3 uPullAt;
+uniform vec4 uBox, uField;
+uniform float uTime, uGrid, uThick;
+${NOISE}
+float banksAt(vec2 px, vec2 drift){
+  float n = fbm(px / (uGrid * 2.0) + drift + 0.3 * vec2(fbm(px / (uGrid * 3.0) - drift), 0.0)), n2 = fbm(px / (uGrid * 0.7) - drift * 1.6);
+  return smoothstep(0.28, 0.72, n * 0.75 + n2 * 0.25);
+}
+void main(){
+  float m = texture2D(uAir, vUv).a * (1.0 - texture2D(uInside, vUv).a);
+  if (m < 0.01) { gl_FragColor = vec4(0.0); return; }
+  vec2 px = uBox.xy + vUv * uBox.zw, still = vec2(uTime * 0.05, -uTime * 0.02);
+  vec2 fieldUv = (px - uField.xy) / uField.zw;
+  vec4 d = mix(texture2D(uDraftWas, fieldUv), texture2D(uDraft, fieldUv), uDraftMix);
+  vec2 flow = (d.rg * 2.0 - 1.0) * sqrt(d.b) * 2.6 + uPull * exp(-distance(px, uPullAt.xy) / uPullAt.z);
+  float p1 = fract(uTime * 0.12), p2 = fract(uTime * 0.12 + 0.5);
+  float banks = mix(banksAt(px, still - flow * p1), banksAt(px, still - flow * p2), abs(1.0 - 2.0 * p1));
+  float a = clamp(m * (0.25 + 0.75 * banks) * uThick, 0.0, 0.85);
   gl_FragColor = vec4(vec3(0.8, 0.83, 0.87) * a, a);
 }`;
 
@@ -339,19 +389,19 @@ const maskOf = (PIXI, render, polygons, box, { soft = 0 } = {}) => {
  * a second; feet([{ x, y }]) parts the mist; tick(seconds); clear().
  */
 export function createCavern({ PIXI, floor, glow, render }) {
-  let meshes = [], textures = [], graphics = [], fungus = [], crystals = [], lavas = [], mists = [], skies = [], grid = 100, time = 0;
+  let meshes = [], textures = [], graphics = [], fungus = [], crystals = [], lavas = [], mists = [], skies = [], grid = 100, time = 0, walkers = new Map(), mistOut = null, mistOutMesh = null, airTex = null, airPixels = null, pull = null;
   // The air's flow (draft()), for the mist to stream with: none, a still texture.
-  let draft = null, draftField = [0, 0, 1, 1];
+  let draft = null, draftField = [0, 0, 1, 1], draftWas = null, draftMix = 1;
   let still = null;
   const draftTex = () => draft ?? (still ??= PIXI.Texture.fromBuffer(new Uint8Array([128, 128, 0, 255]), 1, 1));
   const drop = () => {
     for (const m of [...meshes, ...graphics]) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone */ } }
     for (const t of textures) { try { t.destroy(true); } catch { /* gone */ } }
-    meshes = []; textures = []; graphics = []; fungus = []; crystals = []; lavas = []; mists = []; skies = [];
+    meshes = []; textures = []; graphics = []; fungus = []; crystals = []; lavas = []; mists = []; skies = []; walkers = new Map(); mistOut = null; mistOutMesh = null; pull = null; try { airTex?.destroy(true); } catch { /* gone */ } airTex = null; airPixels = null;
   };
   const add = (mesh, root, blend) => { mesh.eventMode = 'none'; if (blend) mesh.blendMode = blend; root().addChild(mesh); meshes.push(mesh); return mesh; };
   return {
-    build({ fungus: fungusAreas = [], crystals: crystalAreas = [], lava = [], mist = [], sky = [], walls = [], grid: g = 100, seed = 'cave', isFloor = () => true } = {}) {
+    build({ fungus: fungusAreas = [], crystals: crystalAreas = [], lava = [], mist = [], sky = [], walls = [], grid: g = 100, seed = 'cave', isFloor = () => true, bounds = null } = {}) {
       drop(); grid = g;
       // Openings to the sky: a quad over each, wide enough for the pool its light casts (as far as a low sun throws it).
       for (const areas of sky) for (const p of areas) {
@@ -419,9 +469,15 @@ export function createCavern({ PIXI, floor, glow, render }) {
         const mask = maskOf(PIXI, render, [p], box, { soft: grid * 0.5 }); textures.push(mask);
         const cols = Math.max(1, Math.ceil(box.w / (grid / 4))), rows = Math.max(1, Math.ceil(box.h / (grid / 4))), cells = new Float32Array(cols * rows), px = new Uint8Array(cols * rows * 4);
         const trail = PIXI.Texture.fromBuffer(px, cols, rows, { scaleMode: PIXI.SCALE_MODES.LINEAR }); textures.push(trail);
-        const own = { uMask: mask, uTrail: trail, uDraft: draftTex(), uField: draftField, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uThick: 1.1 };
+        const own = { uMask: mask, uTrail: trail, uDraft: draftTex(), uDraftWas: draftWas ?? draftTex(), uDraftMix: draftMix, uField: draftField, uCell: [1 / cols, 1 / rows], uAir: PIXI.Texture.WHITE, uAirRect: [0, 0, 1, 1], uAirOn: 0, uPull: [0, 0], uPullAt: [0, 0, 1], uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uThick: 1.1 };
         add(new PIXI.Mesh(quad(PIXI, box), PIXI.Shader.from(AREA_VERT, MIST_FRAG, own)), floor);
-        mists.push({ own, box, cols, rows, cells, px, trail, dirty: false });
+        mists.push({ own, box, cols, rows, cells, px, trail, dirty: false, since: 0 });
+      }
+      // What the draft draws out of them, over the whole map; shown once the air is told (air()).
+      if (mist.length && bounds) {
+        const box = { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height }, inside = maskOf(PIXI, render, mist.flat(), box, { soft: grid * 0.5 }); textures.push(inside);
+        mistOut = { uAir: PIXI.Texture.WHITE, uPull: [0, 0], uPullAt: [0, 0, 1], uInside: inside, uDraft: draftTex(), uDraftWas: draftWas ?? draftTex(), uDraftMix: draftMix, uField: draftField, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uThick: 1.1 };
+        mistOutMesh = new PIXI.Mesh(quad(PIXI, box), PIXI.Shader.from(AREA_VERT, MIST_OUT_FRAG, mistOut)); add(mistOutMesh, floor); mistOutMesh.visible = false;
       }
     },
     look({ touches = [], lights = [], dark = 1, sky = null } = {}) {
@@ -435,36 +491,71 @@ export function createCavern({ PIXI, floor, glow, render }) {
     },
     // The air's flow (indoor-air.mjs draftPixels, cols x rows of `cell` px from (x, y)); null: still.
     draft(pixels = null, { cols = 1, rows = 1, x = 0, y = 0, cell = 100 } = {}) {
-      try { draft?.destroy(true); } catch { /* gone */ }
+      // A door opening swaps the whole field at once: the mist's drift eases over to the new air, so nothing jumps.
+      if (draftWas && draftWas !== draft) { try { draftWas.destroy(true); } catch { /* gone */ } }
+      draftWas = draftTex(); draftMix = 0;
       draft = pixels ? PIXI.Texture.fromBuffer(pixels, cols, rows, { scaleMode: PIXI.SCALE_MODES.LINEAR }) : null;
       draftField = [x, y, cols * cell, rows * cell];
-      for (const m of mists) { m.own.uDraft = draftTex(); m.own.uField = draftField; }
+      for (const own of [...mists.map((m) => m.own), ...(mistOut ? [mistOut] : [])]) { own.uDraft = draftTex(); own.uDraftWas = draftWas; own.uDraftMix = 0; own.uField = draftField; }
     },
-    // Feet part the mist: each creature on it clears a little round patch, which closes again over several seconds.
+    // How much mist the air holds (indoor-air.mjs createSmokeAir's pixels, changing in place, cols x rows over `rect`
+    // { x, y, width, height }); null: it stays as its regions draw it.
+    air(pixels = null, { cols = 1, rows = 1, rect = null } = {}) {
+      if (pixels && pixels === airPixels && airTex) { airTex.baseTexture.update(); return; }
+      try { airTex?.destroy(true); } catch { /* gone */ }
+      airPixels = pixels; airTex = pixels ? PIXI.Texture.fromBuffer(pixels, cols, rows, { scaleMode: PIXI.SCALE_MODES.LINEAR }) : null;
+      const on = airTex && rect;
+      for (const m of mists) { m.own.uAirOn = on ? 1 : 0; m.own.uAir = airTex ?? PIXI.Texture.WHITE; if (on) m.own.uAirRect = [rect.x, rect.y, rect.width, rect.height]; }
+      if (mistOut) { mistOut.uAir = airTex ?? PIXI.Texture.WHITE; mistOutMesh.visible = !!on; }
+    },
+    // A door just opened (at { x, y }, `way` { x, y } through it): the banks near it lean through for a few seconds.
+    pull(at, way) { pull = { at, way, age: 0 }; for (const own of [...mists.map((m) => m.own), ...(mistOut ? [mistOut] : [])]) own.uPullAt = [at.x, at.y, grid * 5]; },
+    // Feet part the mist: each creature on it ({ id, x, y, width }) clears a patch its own size, all along the way it has
+    // come since last looked at, which closes again over several seconds.
     feet(list = []) {
-      for (const m of mists) for (const f of list) {
-        const ci = (f.x - m.box.x) / (grid / 4), cj = (f.y - m.box.y) / (grid / 4), rad = 2.2;
-        if (ci < -rad || cj < -rad || ci > m.cols + rad || cj > m.rows + rad) continue;
-        for (let j = Math.floor(cj - rad); j <= Math.ceil(cj + rad); j++) for (let i = Math.floor(ci - rad); i <= Math.ceil(ci + rad); i++) {
-          if (i < 0 || j < 0 || i >= m.cols || j >= m.rows) continue;
-          const d = Math.hypot(i - ci, j - cj) / rad; if (d < 1) { const k = j * m.cols + i; m.cells[k] = Math.max(m.cells[k], 1 - d * d); m.dirty = true; }
+      const seen = new Map();
+      for (const f of list) {
+        const from = walkers.get(f.id) ?? f, rad = Math.max(2.2, ((Number(f.width) || grid) / (grid / 4)) * 0.55);
+        seen.set(f.id, { x: f.x, y: f.y });
+        for (const p of pathPoints(from, f, { step: (rad * (grid / 4)) / 2, most: grid * 8 })) for (const m of mists) {
+          const ci = (p.x - m.box.x) / (grid / 4), cj = (p.y - m.box.y) / (grid / 4);
+          if (ci < -rad || cj < -rad || ci > m.cols + rad || cj > m.rows + rad) continue;
+          for (let j = Math.floor(cj - rad); j <= Math.ceil(cj + rad); j++) for (let i = Math.floor(ci - rad); i <= Math.ceil(ci + rad); i++) {
+            if (i < 0 || j < 0 || i >= m.cols || j >= m.rows) continue;
+            const d = Math.hypot(i - ci, j - cj) / rad; if (d < 1) { const k = j * m.cols + i; m.cells[k] = Math.max(m.cells[k], 1 - d * d); m.dirty = true; }
+          }
         }
       }
+      walkers = seen;
     },
     tick(seconds) {
       time += seconds;
       for (const o of fungus) o.uTime = time;
       for (const o of lavas) o.uTime = time;
       for (const o of skies) o.uTime = time;
+      if (mistOut) mistOut.uTime = time;
+      if (pull) {
+        pull.age += seconds; const k = doorPushAt(pull.age) * 1.8, value = [pull.way.x * k, pull.way.y * k];
+        for (const own of [...mists.map((m) => m.own), ...(mistOut ? [mistOut] : [])]) own.uPull = value;
+        if (pull.age > 12) pull = null;
+      }
+      if (draftMix < 1) { draftMix = Math.min(1, draftMix + seconds / 5); for (const m of mists) m.own.uDraftMix = draftMix; if (mistOut) mistOut.uDraftMix = draftMix; }
       for (const m of mists) {
         m.own.uTime = time;
+        // With no air worked out to carry it (above ground), it gathers by itself as the scene opens.
+        m.own.uThick = 1.1 * (m.own.uAirOn > 0.5 ? 1 : Math.min(1, time / 40));
         if (!m.dirty) continue;
+        // Its picture sent a dozen times a second: the patches close slowly, and a big bank has many cells.
+        m.since += seconds; if (m.since < 0.08) continue;
+        const gone = m.since; m.since = 0;
         let any = false;
-        for (let k = 0; k < m.cells.length; k++) { const v = Math.max(0, m.cells[k] - seconds * 0.12); m.cells[k] = v; m.px[k * 4] = v * 255; if (v > 0) any = true; }
+        for (let k = 0; k < m.cells.length; k++) { const v = Math.max(0, m.cells[k] - gone * 0.12); m.cells[k] = v; m.px[k * 4] = v * 255; if (v > 0) any = true; }
         m.trail.baseTexture.update(); m.dirty = any;
       }
     },
     clear: drop,
+    // A new scene: its mist has yet to gather.
+    restart() { time = 0; },
     get busy() { return meshes.length > 0; },
     get wantsLights() { return crystals.length > 0; },
     get wantsSky() { return skies.length > 0; },

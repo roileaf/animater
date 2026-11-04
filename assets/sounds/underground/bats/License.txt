@@ -1,0 +1,11 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+bat-wing-546823-0.ogg: "Bat wings" by Gammelsmurfen778, https://freesound.org/people/Gammelsmurfen778/sounds/546823/ (CC0 1.0). Changes: cut 6.29-7.11 s, faded in and out, gain +10.4 dB.
+bat-wing-546823-1.ogg: "Bat wings" by Gammelsmurfen778, https://freesound.org/people/Gammelsmurfen778/sounds/546823/ (CC0 1.0). Changes: cut 2.32-3.14 s, faded in and out, gain +11.2 dB.
+bat-chirp-404152-1.ogg: "Bats squeak in the small cave" by Selector, https://freesound.org/people/Selector/sounds/404152/ (CC0 1.0). Changes: cut 66.88-67.27 s, faded in and out, gain -2.5 dB.
+bat-chirp-455593-0.ogg: "Bat chirp (close-up)" by coelhoigor, https://freesound.org/people/coelhoigor/sounds/455593/ (CC0 1.0). Changes: cut 4.08-4.23 s, faded in and out, gain -1.8 dB.
+bat-chirp-455593-1.ogg: "Bat chirp (close-up)" by coelhoigor, https://freesound.org/people/coelhoigor/sounds/455593/ (CC0 1.0). Changes: cut 3.98-4.13 s, faded in and out, gain -3.5 dB.
+bat-chirp-455593-2.ogg: "Bat chirp (close-up)" by coelhoigor, https://freesound.org/people/coelhoigor/sounds/455593/ (CC0 1.0). Changes: cut 3.88-4.03 s, faded in and out, gain -1.2 dB.

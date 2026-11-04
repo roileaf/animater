@@ -1,0 +1,8 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+crow-536732-0.ogg: "Caw.ogg" by egomassive, https://freesound.org/people/egomassive/sounds/536732/ (CC0 1.0). Changes: cut 0.10-1.05 s, faded, gain -8.9 dB.
+crow-536732-1.ogg: "Caw.ogg" by egomassive, https://freesound.org/people/egomassive/sounds/536732/ (CC0 1.0). Changes: cut 1.18-1.97 s, faded, gain -5.8 dB.
+crow-741366-0.ogg: "Hooded Crow: Cawing" by Mish7913, https://freesound.org/people/Mish7913/sounds/741366/ (CC0 1.0). Changes: cut 2.27-2.76 s, faded, gain -13.3 dB.

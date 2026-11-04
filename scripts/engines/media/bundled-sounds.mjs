@@ -8,7 +8,7 @@ const USES = new Set(["attack", "hurt", "death", "idle", "alert", "roar", "growl
 const title = (text) => text.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
 // A file's name without its take number (attack-03) or source id (acid-fizz-713705-0).
 const stem = (name) => name.replace(/\.[^.]+$/, "").replace(/(?:[-_ ]\d+)+$/, "").replace(/[-_]\d{4,}$/, "");
-const CATEGORY = { voices: "Creature voices", creatures: "Creature movement", surfaces: "Hits & surfaces", underground: "Underground" };
+const CATEGORY = { voices: "Creature voices", creatures: "Creature movement", surfaces: "Hits & surfaces", underground: "Underground", wildlife: "Wildlife" };
 
 // family: the take group; label: what it is, in words ("Ghoul Male · Hurt").
 export function describeBundledSound(dir, name) {

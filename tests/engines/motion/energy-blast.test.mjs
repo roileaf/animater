@@ -54,3 +54,15 @@ test('a blast\'s ring bends the whole map past its reach, harder for force; a cl
   assert.equal(blastRipple({ radius: 200, kind: 'poison', grid: 100 }), null);
   assert.equal(blastRipple({ radius: 200, kind: 'fire', grid: 100, level: 'L1' }).level, 'L1');
 });
+
+test('its shader is drawn once ahead of the first blast, once only, and a failure there breaks nothing', async () => {
+  const { createEnergyBlasts } = await import('../../../scripts/engines/motion/energy-blast.mjs');
+  class Thing { addAttribute() { return this; } addIndex() { return this; } destroy() {} }
+  const PIXI = { Geometry: Thing, Mesh: class { constructor(g, s) { this.shader = s; } destroy() {} }, Shader: { from: (v, f, u) => ({ uniforms: u }) }, RenderTexture: { create: () => new Thing() }, Texture: { WHITE: {} } };
+  let drawn = 0;
+  const blasts = createEnergyBlasts({ PIXI, floor: () => null, above: () => null, glow: () => null, map: () => null, render: () => { drawn++; } });
+  blasts.warm(); blasts.warm();
+  assert.equal(drawn, 1);
+  const failing = createEnergyBlasts({ PIXI, floor: () => null, above: () => null, glow: () => null, map: () => null, render: () => { throw new Error('no context'); } });
+  assert.doesNotThrow(() => failing.warm());
+});

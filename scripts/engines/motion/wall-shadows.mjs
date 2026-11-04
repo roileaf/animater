@@ -207,10 +207,14 @@ const firstWall = (a, b, walls) => {
 };
 const lightBlocked = (a, b, walls) => firstWall(a, b, walls) < 0.999;
 export const LAMP_SHARE = 0.7;
+const GLOW_BOB = 2;
 export function glowShadows(glows = [], creatures = [], { walls = [] } = {}) {
   const out = [];
   // A wedge from the light at `L` past the creature, `far` from the light at most.
-  const wedge = (c, L, far, lh, depth, hard = false) => {
+  const wedge = (who, L, far, lh, depth, hard = false) => {
+    const off = Math.hypot(who.x - L.x, who.y - L.y) || 1, lift = (Number(who.bob) || 0) * GLOW_BOB;
+    // Hovering (`bob`, px up): its shadow moves along the light with it, away as it rises, back as it dips.
+    const c = lift ? { ...who, x: who.x + ((who.x - L.x) / off) * lift, y: who.y + ((who.y - L.y) / off) * lift } : who;
     const r = Number(c.r) || 0, hc = Number(c.height) || 1, d = Math.hypot(c.x - L.x, c.y - L.y);
     if (d <= r * 1.05) return;
     let reach = hc >= lh ? far : Math.min(far, (d * lh) / (lh - hc));
@@ -223,7 +227,7 @@ export function glowShadows(glows = [], creatures = [], { walls = [] } = {}) {
       const tx = c.x + r * Math.cos(back + sgn * turn), ty = c.y + r * Math.sin(back + sgn * turn), td = Math.hypot(tx - L.x, ty - L.y);
       side.push([tx, ty, L.x + ((tx - L.x) / td) * reach, L.y + ((ty - L.y) / td) * reach]);
     }
-    out.push({ points: [side[0][0], side[0][1], side[1][0], side[1][1], side[1][2], side[1][3], side[0][2], side[0][3]], body: { x: c.x, y: c.y, r: (Number(c.half) || r / 0.64) * 0.95 }, depth, hard, art: c.art ?? null });
+    out.push({ points: [side[0][0], side[0][1], side[1][0], side[1][1], side[1][2], side[1][3], side[0][2], side[0][3]], body: { x: c.x, y: c.y, r: (Number(c.half) || r / 0.64) * 0.95 }, depth, hard, art: c.art ?? null, id: who.id ?? null });
   };
   const live = creatures.filter((c) => Number(c?.r) > 0);
   // The window's own soft fill, for the creatures standing in its glow.
@@ -302,6 +306,7 @@ export function windowFlashes({ walls = [], indoors = [], grid = 100, height = 2
 // The longest a creature's shaped shadow is drawn, in its own lengths.
 const SHAPE_STRETCH = 2.5;
 export function createWindowGlow({ PIXI, root, render }) {
+  let casting = new Set();
   let sprite = null, texture = null, shade = null, built = [], frame = null, shadowKey = '', made = null;
   // The creatures' silhouettes, made once per art and kept (made on first use: PIXI is not up when this loads).
   const silhouettes = () => (made ??= typeof PIXI?.Sprite === 'function' && typeof document !== 'undefined' ? createSilhouettes({ PIXI }) : null);
@@ -375,9 +380,12 @@ export function createWindowGlow({ PIXI, root, render }) {
     },
     // The creatures standing about ([{ x, y, r, height }], glowShadows, and the walls between them and the lamps): their shadows cut out of the glows, redrawn
     // only when one in a glow has moved.
+    // Does this creature cast a shadow here now? One hovering must be drawn again as it bobs; one elsewhere costs nothing.
+    casts(id) { return casting.has(id); },
     shadows(creatures = [], walls = []) {
       if (!shade || !frame) return;
       const cast = glowShadows(built, creatures, { walls }), store = silhouettes();
+      casting = new Set(cast.map((s) => s.id).filter(Boolean));
       const shapes = cast.map((s) => (s.art?.texture && store ? store.get(s.art.texture, SILHOUETTE_SIZE) : null));
       const waiting = cast.some((s) => s.art?.texture && store && !store.known(s.art.texture, SILHOUETTE_SIZE));
       const key = cast.map((s, i) => `${s.points.map((v) => Math.round(v)).join(',')}${shapes[i] ? '*' : ''}`).join(';');

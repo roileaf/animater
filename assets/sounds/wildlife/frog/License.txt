@@ -1,0 +1,9 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+frog-467958-0.ogg: "Frogs Croaking.wav" by JPBILLINGSLEYJR, https://freesound.org/people/JPBILLINGSLEYJR/sounds/467958/ (CC0 1.0). Changes: cut 87.44-88.60 s, faded, gain -15.7 dB.
+frog-573584-0.ogg: "Croaking Frogs" by Breviceps, https://freesound.org/people/Breviceps/sounds/573584/ (CC0 1.0). Changes: cut 0.71-1.48 s, faded, gain -13.5 dB.
+frog-573584-1.ogg: "Croaking Frogs" by Breviceps, https://freesound.org/people/Breviceps/sounds/573584/ (CC0 1.0). Changes: cut 1.78-2.29 s, faded, gain -11.9 dB.
+frog-745965-0.ogg: "Frogs croaking" by Uliah, https://freesound.org/people/Uliah/sounds/745965/ (CC0 1.0). Changes: cut 5.44-5.82 s, faded, gain -16.8 dB.

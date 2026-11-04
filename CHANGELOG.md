@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.10.0 (2026-11-04)
+
+The open air comes alive: birds, rabbits, fish, ducks, herons, gulls and frogs. Underground, smoke and mist now move with the air, and a door can burst with bats or rats.
+
+- **Wildlife.** On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, sometimes carrying it off. Crows pass over, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near. Fish drift in the water and dart away. Rabbits and birds keep to grass, dirt, sand, mud or snow, and never go into water, even when fleeing.
+- **Pond life.** Ducks paddle, tip up to feed and clatter away, a heron stands in the shallows and lifts off on slow wings, gulls wheel over wide water, and frogs on lily pads puff their throats and leap in with a plop. Frogs stay out at night; the rest go in. They need a region with its floor set to water.
+- **Wildlife sounds.** A hawk's cry, crows, songbirds, wings, a rabbit's thump, a fish's splash, ducks and frogs, a few at a time and only near enough to be heard. Herons and gulls stay silent for now: no recording passed our checks or an audition. A new Wildlife sounds setting turns them off.
+- **How many, and where.** Scene configuration → Animater creatures sets how many and how big, for each of rabbits, birds, fish, water birds and frogs. A region's Keep out holds any of them out of it.
+- **Door bursts.** Wall configuration → Animater door can send a flock of bats or a rush of rats at whoever opens that door, with its size, and whether it happens every time or only once.
+- **Rat and bat sounds.** Claws and squeaks, sharper when a rat bolts, and wings and chirps from the bats, muffled by walls. A new Rat and bat sounds setting turns them off.
+- **Smoke gathers.** Underground, smoke from a fire now fills the room little by little, and leaves through open doors toward the way out. It drifts in soft billows rather than streams.
+- **Mist moves with the air.** A mist region's mist drifts along the airflow as it builds up, instead of being there all at once. Opening a door lets it spread through gently, even when no way outside is open.
+- **Door wind.** A door only makes its rush of wind if it really connects to the outside air.
+- **Shadows bob.** A flying creature's shadows now bob with it, both its sun shadow and the ones cast by nearby lights.
+- **Hide Animater's buttons.** Each GM can hide the Cave-in, Energy Blast, Clear rubble, Clear blood, Clouds and Flames buttons from Animater settings → Interface & performance.
+- **Flames button.** It now also sets soot, smoke, heat haze and chimney smoke, for the selected lights or all of them.
+- **Fixes.**
+  - The first energy blast of a session no longer freezes the screen.
+  - Moth shadows no longer grow huge when a moth flies close to a light.
+
 ## 2.9.1 (2026-11-04)
 
 A new way to fall down, and blood that actually shines.

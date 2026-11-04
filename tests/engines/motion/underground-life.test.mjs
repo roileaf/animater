@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { sootSpots, ventsIn, wetRuns, rubbleStones, mothHome, keepInside } from '../../../scripts/engines/motion/underground-life.mjs';
+import { sootSpots, ventsIn, wetRuns, rubbleStones, mothHome, keepInside, mothShadow } from '../../../scripts/engines/motion/underground-life.mjs';
 
 test('moths round a torch on a wall loop on the room side, never through the wall', () => {
   // A torch just below a wall at y 0: its light reaches only y > 0.
@@ -64,4 +64,12 @@ test('a cave-in\'s heap lies round its middle, mostly gravel, the same for the s
   assert.ok(rubbleStones({ x: 0, y: 0, radius: 1000, seed: 7 }).length <= 224, 'never more than a floor can draw');
   assert.ok(Math.abs(biggest(rubbleStones({ x: 0, y: 0, radius: 600, seed: 7 }, { grid: 200 })) - 2 * biggest(rubbleStones({ x: 0, y: 0, radius: 300, seed: 7 }))) < 1e-6, 'scaled to the grid');
   assert.notDeepEqual(rubbleStones({ x: 500, y: 500, radius: 160, seed: 8 }), a);
+});
+
+test('a moth over the flame never throws a shadow bigger than one a little way off', () => {
+  const close = mothShadow(1, { grid: 100 }), off = mothShadow(35, { grid: 100 }), far = mothShadow(200, { grid: 100 });
+  assert.deepEqual(close, off, 'right over the flame: no bigger');
+  assert.ok(close.size < 100 * 0.45, `${close.size} under half a square`);
+  assert.ok(close.far < 100 * 1.4, 'and not thrown across the room');
+  assert.ok(far.size < close.size && far.alpha < close.alpha, 'smaller and fainter further off');
 });

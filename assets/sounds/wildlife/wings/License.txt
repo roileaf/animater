@@ -1,0 +1,7 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+wings-651753-0.ogg: "Large bird wing flutter.wav" by anebulafont, https://freesound.org/people/anebulafont/sounds/651753/ (CC0 1.0). Changes: cut 0.99-2.65 s, faded, gain -7.9 dB.
+wings-701283-0.ogg: "pigeons flying wings noise.wav" by 5ro4, https://freesound.org/people/5ro4/sounds/701283/ (CC0 1.0). Changes: cut 2.42-3.50 s, faded, gain -16.8 dB.

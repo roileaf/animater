@@ -303,3 +303,12 @@ test('a lamp\u2019s shadow ends at its room\u2019s wall, not running on outside 
   const free = glowShadows(glows, creature)[0], cut = glowShadows(glows, creature, { walls: [wall] })[0];
   assert.ok(free.points[4] > 400 && cut.points[4] <= 301, 'stops at the wall');
 });
+
+import { glowShadows } from '../../../scripts/engines/motion/wall-shadows.mjs';
+test('a creature hovering in a glow moves its shadow with its bob, along the light', () => {
+  const glow = { from: { x: 0, y: 0 }, lamp: { x: 0, y: 0 }, points: [0, 0, 0, 100, 600, 100, 600, 0], reach: 600, up: 3, shadow: 1, room: null };
+  const cast = (bob) => glowShadows([glow], [{ id: 'f', x: 200, y: 50, r: 30, half: 50, height: 1, bob }]).at(-1);
+  assert.equal(cast(0).id, 'f');
+  assert.ok(cast(5).body.x > cast(0).body.x + 5, 'rising: further from the light');
+  assert.ok(cast(-5).body.x < cast(0).body.x - 5, 'dipping: closer');
+});

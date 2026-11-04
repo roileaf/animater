@@ -186,7 +186,22 @@ export function createEnergyBlasts({ PIXI, floor, above, glow, map, render, mark
     marks.push({ s, tex, age: 0 }); while (marks.length > 12) dropMark(marks.shift());
   };
   const end = (b) => { for (const m of [b.floor, b.cover, b.light]) { try { m?.destroy(); } catch { /* gone */ } } try { b.geometry.destroy(); } catch { /* gone */ } };
+  let warmed = false;
   return {
+    // The graphics driver takes up to a second to prepare this shader the first time it draws, all at once: drawn here
+    // once out of sight (as a scene loads, when a moment more goes unnoticed), so the first blast is as quick as the rest.
+    warm() {
+      if (warmed) return; warmed = true;
+      let geometry = null, mesh = null, tex = null;
+      try {
+        const type = blastType('fire');
+        geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [0, 0, 4, 0, 4, 4, 0, 4], 2).addIndex([0, 1, 2, 0, 2, 3]);
+        mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, { uT: 0.5, uSeed: 1, uR: 2, uGridR: 1, uCenter: [2, 2], uType: type.shader, uA: type.a, uB: type.b, uFloor: PIXI.Texture.WHITE, uRect: [0, 0, 4, 4], uPass: 1 }));
+        tex = PIXI.RenderTexture.create({ width: 4, height: 4 });
+        render(mesh, { renderTexture: tex, clear: true });
+      } catch { /* the first blast prepares it, then */ }
+      try { mesh?.destroy(); geometry?.destroy(); tex?.destroy(true); } catch { /* gone */ }
+    },
     play({ x, y, radius, kind = 'fire', grid = 100, seed = Math.random() * 100 } = {}) {
       const type = blastType(kind), half = radius * 1.65, ground = map();
       const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [x - half, y - half, x + half, y - half, x + half, y + half, x - half, y + half], 2).addIndex([0, 1, 2, 0, 2, 3]);

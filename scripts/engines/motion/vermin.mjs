@@ -93,6 +93,16 @@ export function shadowFrom(from, at, { grid = 100, high = 0 } = {}) {
 // The rat and the bat as pictures, drawn once (several frames each) with shading, fur and shadow, then only moved,
 // turned and swapped. A rat faces +x; a bat faces -y. Both lit from the upper left, as the map's own art usually is.
 const RAT_W = 96, RAT_H = 48, RAT_FRAMES = 4, BAT_W = 128, BAT_H = 96, BAT_SPANS = [1, 0.86, 0.6, 0.34, 0.6, 0.86];
+// The bat's wingbeat and the rat's stride as pictures, one canvas a frame, for door bursts (door-burst.mjs).
+export const batWingbeat = () => BAT_SPANS.map((span) => { const c = document.createElement('canvas'); c.width = BAT_W; c.height = BAT_H; drawBat(c.getContext('2d'), span); return c; });
+export const ratStride = () => Array.from({ length: RAT_FRAMES }, (_, i) => { const c = document.createElement('canvas'); c.width = RAT_W; c.height = RAT_H; drawRat(c.getContext('2d'), i / RAT_FRAMES); return c; });
+// A rat's tail: long, tapering, swinging behind it, quicker as it runs. `t` a Graphics, `n` the rat, `k` its scale.
+export function drawRatTail(t, n, k, time, i) {
+  const swing = Math.sin(time * (n.speed ? 14 : 2.5) + i) * (n.speed ? 5 : 2.5);
+  t.clear(); t.position.set(n.x, n.y); t.rotation = n.angle;
+  const pts = []; for (let s = 0; s <= 10; s++) { const f = s / 10; pts.push([(-11 - 22 * f) * k, Math.sin(f * 3 + time * (n.speed ? 14 : 2.5) + i) * swing * f * k * 0.6]); }
+  for (let s = 0; s < 10; s++) { t.lineStyle((1.9 - 1.5 * (s / 10)) * k, 0x8a6d66, 0.95); t.moveTo(...pts[s]); t.lineTo(...pts[s + 1]); }
+}
 const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
 
 // One rat frame: its four feet at `step` (0–1 of a stride), then its body over them.
@@ -198,7 +208,7 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
       // A bat flies high: its shadow on the floor (with the rats), the bat over everything.
       batShapes = bats.map(() => { const shadow = sprite(batFrames()[0], root()); shadow.tint = 0x000000; shadow.alpha = 0; return { body: sprite(batFrames()[0], batsRoot()), shadow }; });
     },
-    tick(seconds, { near = [], lit = () => 0, blocked = () => false, batBlocked = blocked, view = null, light = () => null } = {}) {
+    tick(seconds, { near = [], lit = () => 0, blocked = () => false, batBlocked = blocked, view = null, light = () => null, sound = () => {} } = {}) {
       time += seconds;
       const dt = Math.min(0.05, seconds), seen = (x, y) => !view || (x > view.x - grid && y > view.y - grid && x < view.x + view.w + grid && y < view.y + view.h + grid);
       const k = (grid / 100) * size, kb = (grid / 100) * batSize, rt = ratFrames(), bt = batFrames();
@@ -211,15 +221,15 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
         const cast = show ? shadowFrom(light(n.x, n.y), n, { grid }) : null;
         shadow.visible = !!cast;
         if (show) {
+          // What it might be heard doing (the caller decides whether anyone hears): bolting, running, a squeak now and then.
+          if (n.fleeing && !r.fleeing) sound('ratSqueak', n, true);
+          else if (Math.random() < dt * 0.05) sound('ratSqueak', n, false);
+          if (n.speed > 0) sound('ratSkitter', n, false);
           body.texture = rt[Math.floor(n.stride * RAT_FRAMES) % RAT_FRAMES];
           body.position.set(n.x, n.y); body.rotation = n.angle; body.scale.set(k * 0.5);
           // Its shadow on the floor, away from the nearest light.
           if (cast) { shadow.texture = body.texture; shadow.position.set(cast.x, cast.y); shadow.rotation = n.angle; shadow.scale.set(k * 0.5 * cast.scale); shadow.alpha = cast.alpha; }
-          // The tail: long, tapering, swinging behind it, quicker as it runs.
-          const swing = Math.sin(time * (n.speed ? 14 : 2.5) + i) * (n.speed ? 5 : 2.5);
-          t.clear(); t.position.set(n.x, n.y); t.rotation = n.angle;
-          const pts = []; for (let s = 0; s <= 10; s++) { const f = s / 10; pts.push([(-11 - 22 * f) * k, Math.sin(f * 3 + time * (n.speed ? 14 : 2.5) + i) * swing * f * k * 0.6]); }
-          for (let s = 0; s < 10; s++) { t.lineStyle((1.9 - 1.5 * (s / 10)) * k, 0x8a6d66, 0.95); t.moveTo(...pts[s]); t.lineTo(...pts[s + 1]); }
+          drawRatTail(t, n, k, time, i);
         }
         return n;
       });
@@ -231,6 +241,8 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
         const cast = show ? shadowFrom(light(p.x, p.y), p, { grid, high: 2 }) : null;
         s.body.visible = show; s.shadow.visible = !!cast;
         if (!show) return b;
+        sound('batWing', p, false);
+        if (Math.random() < dt * 0.08) sound('batChirp', p, false);
         const shape = bt[Math.floor((time * 11 + b.p * 3) % BAT_SPANS.length)], heading = b.angle + Math.PI / 2;
         for (const sp of [s.body, s.shadow]) { sp.texture = shape; sp.rotation = heading; sp.scale.set(kb * 0.42); }
         s.body.position.set(p.x, p.y);

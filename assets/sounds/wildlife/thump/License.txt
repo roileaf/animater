@@ -1,0 +1,7 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+thump-431204-0.ogg: "rabbit-thump-on-soil-edited.wav" by bunnyluvvid, https://freesound.org/people/bunnyluvvid/sounds/431204/ (CC0 1.0). Changes: cut 0.01-0.18 s, faded, gain -1.6 dB.
+thump-386007-1.ogg: "Rabbit Thump on Soil" by kessir, https://freesound.org/people/kessir/sounds/386007/ (CC0 1.0). Changes: cut 3.86-4.05 s, faded, gain -4.9 dB.
