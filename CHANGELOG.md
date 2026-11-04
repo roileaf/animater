@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.12.6 (2026-11-04)
+
+Reflections stop at walls, and you choose where water reflects.
+
+- **Fixed: reflections came through walls.** Tiles, creatures and fires inside a building no longer show in water on the other side of its wall. Reflections stop at whatever blocks sight, so a closed door hides them, and an open door or a window lets them through.
+- **Reflections can be turned off for a scene or a region.** Scene configuration → Animater → Reflections on still water covers the whole map, and Region configuration → Animater → Reflections covers one body of water. Both are on by default.
+- **Fixed: a reflection could stay on the water** after the last thing reflected had gone.
+
 ## 2.12.5 (2026-11-04)
 
 Flames burn indoors again.

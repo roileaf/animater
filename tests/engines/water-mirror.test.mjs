@@ -6,6 +6,54 @@ const square = (x, y, s) => [x, y, x + s, y, x + s, y + s, x, y + s];
 const pond = square(1000, 1000, 600);
 const token = (over = {}) => ({ id: 'a', texture: { valid: true, width: 200, height: 200 }, x: 1300, y: 900, w: 100, h: 100, rotation: 0, alpha: 1, ...over });
 
+test('a wall between something and the water hides its reflection', () => {
+  const wallAt = (y) => (a, b) => Math.min(a.y, b.y) < y && Math.max(a.y, b.y) > y;
+  assert.equal(mirrorOf(token(), [pond], { grid: 100, blocked: wallAt(975) }), null, 'a wall between them');
+  assert.ok(mirrorOf(token(), [pond], { grid: 100, blocked: wallAt(800) }).wet > 0, 'a wall behind them');
+  assert.ok(mirrorOf(token(), [pond], { grid: 100, blocked: () => false }).wet > 0);
+  const blood = token({ id: 'tile:blood' });
+  assert.deepEqual(tileMirrors([blood], [pond], { grid: 100, blocked: wallAt(975) }), [], 'blood on the floor indoors');
+  assert.equal(tileMirrors([blood], [pond], { grid: 100, blocked: wallAt(800) }).length, 1);
+});
+
+test('the wall test starts just off a thing that stands on the wall line, and ends on the water', () => {
+  const lines = [];
+  mirrorOf(token(), [pond], { grid: 100, blocked: (a, b) => { lines.push([a, b]); return false; } });
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0][0].y, 901, 'off its own middle');
+  assert.ok(Math.abs(lines[0][1].y - 1000) < 2, 'at the shore');
+});
+
+test('nothing asks about walls when no water would show', () => {
+  let asked = 0;
+  mirrorOf(token({ y: 1000 - 130 - 50 }), [pond], { grid: 100, blocked: () => { asked++; return true; } });
+  assert.equal(asked, 0);
+});
+
+test('a lamp behind a wall throws no light on the water', () => {
+  const lamp = { x: 1300, y: 900, color: 0xff0000, radius: 200 };
+  assert.ok(lampColumn(lamp, [pond], { grid: 100 }).wet > 0);
+  assert.equal(lampColumn(lamp, [pond], { grid: 100, blocked: () => true }).wet, 0);
+  assert.ok(lampColumn(lamp, [pond], { grid: 100, blocked: () => false }).wet > 0);
+});
+
+test('a door opening shows again what it hid, without anything moving', () => {
+  let shut = true;
+  const added = [];
+  const PIXI = { Container: class { addChild() {} addChildAt(c) { added.push(c); } destroy() {} }, Graphics: class { clear() {} beginFill() {} drawPolygon() {} endFill() {} beginHole() {} endHole() {} }, Sprite: class { constructor(t) { this.texture = t; this.anchor = { set() {} }; this.scale = { set() {} }; this.position = { set() {} }; this.skew = {}; } }, Mesh: class { constructor(g) { this.geometry = g; } }, Geometry: class { addAttribute() { return this; } addIndex() { return this; } getBuffer() { return { update() {} }; } }, Buffer: class {}, Shader: { from: () => ({}) } };
+  const mirror = createWaterMirror({ PIXI, root: () => ({ addChild() {} }), grid: () => 100, blocked: () => shut });
+  mirror.water([pond]);
+  mirror.tiles([token({ id: 'tile:blood' })]);
+  assert.equal(mirror.busy, false, 'behind the wall');
+  shut = false; mirror.walls();
+  assert.equal(mirror.busy, true, 'the door is open');
+  mirror.tick(0.016, { view: { x: 900, y: 500, w: 1000, h: 1000 } });
+  shut = true; mirror.walls();
+  assert.equal(mirror.busy, true, 'still drawn: the next tick must clear what the door now hides');
+  mirror.tick(0.016, { view: { x: 900, y: 500, w: 1000, h: 1000 } });
+  assert.equal(mirror.busy, false, 'cleared, and nothing left to do');
+});
+
 test('someone on the bank mirrors into the pond from their feet', () => {
   const spot = mirrorOf(token(), [pond], { grid: 100 });
   assert.equal(spot.foot, 950);
@@ -239,4 +287,8 @@ test('dripping pools mirror on any floor; plain ground, the sea, falls and swift
   assert.equal(waterStillness({ sea: true }, true), 'rough');
   assert.equal(waterStillness({ waterfall: true }, true), 'rough');
   assert.equal(waterStillness({ drips: true, current: 'swift' }, true), 'rough');
+  assert.equal(waterStillness({ reflections: 'off' }, true), 'rough', 'this water asked for none');
+  assert.equal(waterStillness({ reflections: 'off', drips: true }, false), 'rough');
+  assert.equal(waterStillness({ reflections: 'off' }, false), null, 'no water at all');
+  assert.equal(waterStillness({ reflections: '' }, true), 'calm');
 });

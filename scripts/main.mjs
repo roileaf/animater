@@ -2880,7 +2880,10 @@ const wildTick = (seconds) => {
 const coast = createCoast({ PIXI: globalThis.PIXI, floor: floorLayer("coast", 643) });
 const waterfalls = createWaterfalls({ PIXI: globalThis.PIXI, floor: floorLayer("waterfalls", 645), above: floorLayer("fallMist", 760) });
 // Over the dripping regions' pools (646), which would hide it, and under the creatures.
-const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 647), grid: () => canvas.grid.size });
+// Reflections stop at what stops sight: a window shows through, a shut door does not, an open one does.
+const sightBlocks = (a, b) => { try { const level = canvas.level; return CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, { type: "sight", mode: "any", ...(level ? { level } : {}) }) === true; } catch { return false; } };
+const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 647), grid: () => canvas.grid.size, blocked: sightBlocks });
+for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (wall) => { if (wall?.parent?.id === canvas?.scene?.id) { try { waterMirror.walls(); } catch { /* the canvas mid-change */ } } });
 let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
 // The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
 const placeAreas = { surf: [], waterfall: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
@@ -2929,7 +2932,7 @@ const rebuildWater = () => {
       (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }
-  const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror");
+  const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror") && canvas?.scene?.flags?.[ID]?.reflections !== "off";
   placeAreas.surf = useSea ? seas : []; placeAreas.waterfall = useFalls ? falls.map((f) => f.area) : [];
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm]);
   if (key === waterKey) return; waterKey = key;
@@ -7199,6 +7202,10 @@ Hooks.on("renderSceneConfig", (app, html) => {
   night.className = "form-group";
   night.innerHTML = `<label>Night sounds</label><div class="form-fields"><select name="flags.${ID}.nightSounds">${[["", "On"], ["off", "Off (a quiet night on this map)"]].map(([v, l]) => `<option value="${v}"${v === nightNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">The constant bed of crickets out of doors after dark ("Wildlife sounds"). Off leaves this map's nights quiet; its other animals still call now and then.</p>`;
   life.append(night);
+  const mirror = document.createElement("div"), mirrorNow = String(app.document?.getFlag?.(ID, "reflections") ?? "");
+  mirror.className = "form-group";
+  mirror.innerHTML = `<label>Reflections on still water</label><div class="form-fields"><select name="flags.${ID}.reflections">${[["", "On"], ["off", "Off (no reflections on this map)"]].map(([v, l]) => `<option value="${v}"${v === mirrorNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Creatures, tiles, fires and the moon mirrored in this map's still water and dripping pools. For a map that paints its own water.</p>`;
+  life.append(mirror);
   // Outdoor life: only where the GM asks for it.
   const outdoors = document.createElement("div"), outdoorsNow = app.document?.getFlag?.(ID, "outdoorLife") === "on" ? "on" : "";
   outdoors.className = "form-group";
@@ -7568,7 +7575,8 @@ Hooks.on("renderRegionConfig", (app, html) => {
     field("This is the sea", box("sea"), 'Waves wash in on its shores, the wet sand moves with the tide, and crabs keep to the shore ("The coast").'),
     field("This is a tavern", box("tavern"), 'The murmur of a crowd inside: loud in here, faint through the walls, and spilling out of an open door ("Tavern murmur"). Works on any floor.'),
     field("This is a waterfall", box("waterfall"), 'The water here falls the way "Flows toward" points, with foam at its foot, mist and a rainbow in the spray ("Waterfalls").'),
-    field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind.")));
+    field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind."),
+    field("Reflections", select("reflections", own.reflections ?? "", [["", "On"], ["off", "Off"]]), 'Whether still water or a dripping pool here mirrors creatures, tiles, fires and the moon ("Reflections on still water"). Off in Scene configuration turns them off for every region.')));
   // Water dripping from the ceiling: its pace and the pool it falls into show only when it drips.
   const pace = field("Drip pace", select("dripPace", own.dripPace ?? "", [["slow", "Slow (a drop now and then)"], ["", "Steady"], ["fast", "Fast"], ["faster", "Very fast (a steady trickle)"]]), "How often the drops fall here (each spot keeps its own rhythm).");
   const depth = field("Pool depth", select("dripDepth", own.dripDepth ?? "", [["", "A puddle (the floor plain through it)"], ["pool", "A pool"], ["deep", "Deep water (dark, the floor barely seen)"]]), "How deep the water the drops fall into: shallow shows the floor through it; deeper is darker, the floor fading, the ripples bending it more. A pool or deep water is a water floor for creatures walking through (splashes, wet steps), unless the floor above says otherwise.");

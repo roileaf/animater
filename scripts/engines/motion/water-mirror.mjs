@@ -23,10 +23,10 @@ const wetDown = (x, y, len, areas, rough, samples = 6) => {
   return hit / samples;
 };
 
-// What a region's water is to a mirror (pure): `own` its Animater flags, `isWater` whether its floor is water. 'calm' mirrors and 'rough' does not; null is no water at all. A dripping region's pool is still water whatever the floor around it.
+// What a region's water is to a mirror (pure): `own` its Animater flags, `isWater` whether its floor is water. 'calm' mirrors and 'rough' does not; null is no water at all. A dripping region's pool is still water whatever the floor around it. A region can ask for no reflections.
 export function waterStillness(own = {}, isWater = false) {
   if (!isWater && !own.drips) return null;
-  return own.waterfall || own.sea || own.current === 'swift' ? 'rough' : 'calm';
+  return own.waterfall || own.sea || own.current === 'swift' || own.reflections === 'off' ? 'rough' : 'calm';
 }
 
 // What of a copy lands on calm water (pure): sampled across the token's whole width, so someone at the water's edge reflects from the part of them over it. { wet 0-1, down (px from the feet to the first water under any of them; the copy's length if none) }.
@@ -62,7 +62,8 @@ export function mirrorWay(p, areas = []) {
 // Where a token's mirrored copy goes (pure). `x`, `y` its middle and `w`, `h` its size in px, `rotation` radians. null: it stands in rough water, or no water lies within its own length of it, so a big creature reflects from further off than a small one.
 // Else { id, x, y (the copy's middle), footX, foot (where the copy starts, on the token's side facing the water), way { x, y } the way it falls, w, h (stretched), rotation, alpha, distance (px, its edge to the nearest water), down (px, its edge to the water along that way), wet (0-1 how much of the copy lands on the water; none: nothing shows) }.
 // The copy runs from that edge and the water cuts it, so the further from the shore, the less of it shows: the head alone, then nothing; and what is left is fainter.
-export function mirrorOf(token, areas = [], { grid = 100, rough = [], stretch = 1.12 } = {}) {
+// `blocked(from, to)`: whether a wall stands between two places; one between it and the water it would land on hides it. From just off its middle, so a tile standing on a wall's line still shows.
+export function mirrorOf(token, areas = [], { grid = 100, rough = [], stretch = 1.12, blocked = null } = {}) {
   if (!token || !areas.length) return null;
   const w = token.w ?? grid, h = token.h ?? grid, centre = { x: token.x, y: token.y }, way = mirrorWay(centre, areas);
   // How far its edge lies from its middle that way: a tall token's foot is further than a wide one's side.
@@ -71,17 +72,18 @@ export function mirrorOf(token, areas = [], { grid = 100, rough = [], stretch = 
   const tall = h * stretch, distance = nearestWater(foot, areas);
   if (distance > tall + w / 2) return null;
   const { wet, down } = copyOnWater(foot, way, w, tall, areas, rough), showing = Math.max(0, 1 - down / tall);
+  if (wet > 0 && blocked?.({ x: centre.x + way.x, y: centre.y + way.y }, { x: foot.x + way.x * down, y: foot.y + way.y * down })) return null;
   // The picture's top falls away from the token; a copy running down the map needs no turn.
   const turn = Math.atan2(way.y, way.x) - Math.PI / 2;
   return { id: token.id, x: foot.x + way.x * tall / 2, y: foot.y + way.y * tall / 2, footX: foot.x, foot: foot.y, way, w, h: tall, rotation: turn - (Number(token.rotation) || 0), alpha: (token.alpha ?? 1) * 0.62 * (0.45 + 0.55 * showing), distance, down, wet };
 }
 
 // The tiles that show in the water (pure): `tiles` as tokens are, with their `texture`; a hidden one, one the size of a map, or one with none of it landing on calm water shows nothing. Tiles are not stretched.
-export function tileMirrors(tiles = [], areas = [], { grid = 100, rough = [] } = {}) {
+export function tileMirrors(tiles = [], areas = [], { grid = 100, rough = [], blocked = null } = {}) {
   const out = [];
   for (const tile of tiles) {
     if (tile.hidden || Math.max(tile.w ?? 0, tile.h ?? 0) > BIGGEST_TILE * grid) continue;
-    const spot = mirrorOf(tile, areas, { grid, rough, stretch: 1 });
+    const spot = mirrorOf(tile, areas, { grid, rough, stretch: 1, blocked });
     if (spot && spot.wet > 0) out.push({ ...spot, texture: tile.texture });
   }
   return out;
@@ -107,13 +109,15 @@ export function colorOf(color) {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
-// The column a fire or lamp throws (pure). null: more than 4 squares from water. Else { x, y, len, width, color, strength 0-1, wet (0-1 how much of it lands on calm water) }. A lamp below the water throws nowhere: wet 0.
-export function lampColumn(lamp, areas = [], { grid = 100, rough = [], sunny = false } = {}) {
+// The column a fire or lamp throws (pure). null: more than 4 squares from water. Else { x, y, len, width, color, strength 0-1, wet (0-1 how much of it lands on calm water) }. A lamp below the water throws nowhere, nor one with a wall (`blocked(from, to)`) between it and the water: wet 0.
+export function lampColumn(lamp, areas = [], { grid = 100, rough = [], sunny = false, blocked = null } = {}) {
   if (!lamp || !areas.length) return null;
   const distance = nearestWater(lamp, areas);
   if (distance > LAMP_REACH * grid) return null;
   const radius = Number(lamp.radius) || grid * 2, len = Math.min(grid * 9, Math.max(grid * 4, distance + radius * 1.1));
-  return { x: lamp.x, y: lamp.y, len, width: Math.min(grid * 1.1, grid * 0.4 + radius * 0.08), color: colorOf(lamp.color), strength: (0.4 + 0.6 * (1 - distance / (LAMP_REACH * grid))) * (sunny ? 0.2 : 1), wet: wetDown(lamp.x, lamp.y, len, areas, rough) };
+  let wet = wetDown(lamp.x, lamp.y, len, areas, rough);
+  if (wet > 0 && blocked) { let along = 0; for (let i = 0; i < 6; i++) { along = (len * (i + 0.5)) / 6; if (calmAt({ x: lamp.x, y: lamp.y + along }, areas, rough)) break; } if (blocked({ x: lamp.x, y: lamp.y }, { x: lamp.x, y: lamp.y + along })) wet = 0; }
+  return { x: lamp.x, y: lamp.y, len, width: Math.min(grid * 1.1, grid * 0.4 + radius * 0.08), color: colorOf(lamp.color), strength: (0.4 + 0.6 * (1 - distance / (LAMP_REACH * grid))) * (sunny ? 0.2 : 1), wet };
 }
 
 // The moon's path on the water (pure), from where it comes down on it to the bottom of the view. null: no moon, or none to see. Else { x, y, len, width, strength 0-1 }.
@@ -165,16 +169,16 @@ export const WATER_MIRROR_SHADER = Object.freeze({ vert: VERT, frag: FRAG });
 
 /**
  * The layer: water(areas (flat points, each with its `holes`), { rough: [flat points] }) where it shows, and where it does not; look({ tokens: [{ id, texture, x, y (its middle), w, h, rotation (radians), alpha }],
- * lamps: [{ x, y, color, radius }], moon: { x, y, strength } | null, sunny }); tick(seconds, { view { x, y, w, h }, wind 0-1 }); clear(). `root()` the container it goes in, `grid()` px a square (the scene's if left out).
+ * lamps: [{ x, y, color, radius }], moon: { x, y, strength } | null, sunny }); tick(seconds, { view { x, y, w, h }, wind 0-1 }); walls() when a wall or door has changed; clear(). `root()` the container it goes in, `grid()` px a square (the scene's if left out), `blocked(from, to)` whether a wall stands between two places.
  * Rough water inside calm water is cut out of the mask only when all its corners lie in it; rough water beside it needs nothing.
  */
-export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.canvas?.grid?.size ?? 100 }) {
+export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.canvas?.grid?.size ?? 100, blocked = null }) {
   let holder = null, layer = null, mask = null, mesh = null, uniforms = null, pos = null, band = null, tint = null;
   let areas = [], rough = [], grid = 100, box = null, tokens = [], lampsNow = [], moonNow = null, sunny = false, time = 0, refresh = 0, viewKey = '', lightKey = '', lightDirty = true;
   const sprites = [], shown = new Map(), cache = new Map();
   let copies = [], tilesNow = [], tileCopies = [];
   // Tiles stand still, so this is only worked out when they or the water change.
-  const placeTiles = () => { tileCopies = tileMirrors(tilesNow, areas, { grid: gridOf(), rough }).map((c) => ({ ...c, phase: hashPhase(c.id) })); refresh = 0; };
+  const placeTiles = () => { tileCopies = tileMirrors(tilesNow, areas, { grid: gridOf(), rough, blocked }).map((c) => ({ ...c, phase: hashPhase(c.id) })); refresh = 0; };
   const make = () => {
     holder = new PIXI.Container(); holder.eventMode = 'none';
     layer = new PIXI.Container(); layer.eventMode = 'none';
@@ -208,7 +212,7 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     for (const t of tokens) {
       const key = `${t.x}|${t.y}|${t.w}|${t.h}|${t.rotation}|${t.alpha}`; seen.add(t.id);
       let was = cache.get(t.id);
-      if (!was || was.key !== key) { was = { key, spot: mirrorOf(t, areas, { grid: g, rough }) }; cache.set(t.id, was); }
+      if (!was || was.key !== key) { was = { key, spot: mirrorOf(t, areas, { grid: g, rough, blocked }) }; cache.set(t.id, was); }
       if (was.spot && was.spot.wet > 0) copies.push({ ...was.spot, texture: t.texture, phase: hashPhase(t.id) });
     }
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
@@ -221,7 +225,7 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     for (let k = 0; k < 4; k++) tint.set(color, (i * 4 + k) * 3);
   };
   const paintLight = (view) => {
-    const g = gridOf(), columns = nearestFirst(lampsNow.map((l) => lampColumn(l, areas, { grid: g, rough, sunny })).filter((c) => c && c.wet > 0), view, MAX_COLUMNS);
+    const g = gridOf(), columns = nearestFirst(lampsNow.map((l) => lampColumn(l, areas, { grid: g, rough, sunny, blocked })).filter((c) => c && c.wet > 0), view, MAX_COLUMNS);
     let i = 0;
     for (const c of columns) quad(i++, c, c.color, c.strength, 0);
     const path = sunny ? null : moonPath(moonNow, view, { grid: g });
@@ -261,6 +265,8 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     },
     // What stands by the water besides the creatures: [{ id, texture, x, y (its middle), w, h, rotation (radians), alpha, hidden }].
     tiles(list = []) { tilesNow = list; placeTiles(); },
+    // A wall or door changed: what it hid or showed, though nothing has moved.
+    walls() { cache.clear(); lightDirty = true; place(); placeTiles(); },
     look({ tokens: list = [], lamps = [], moon = null, sunny: day = false } = {}) {
       tokens = list; lampsNow = lamps; moonNow = moon; sunny = !!day;
       // Called as often as the tokens move: the lamps are only worked out again when they have changed.
@@ -291,6 +297,7 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
       }
     },
     clear() { dropAll(); areas = []; rough = []; box = null; tokens = []; lampsNow = []; moonNow = null; copies = []; tilesNow = []; tileCopies = []; cache.clear(); lightDirty = true; viewKey = ''; },
-    get busy() { return !!box && (copies.length > 0 || tileCopies.length > 0 || lampsNow.length > 0 || !!moonNow); },
+    // Still drawn with nothing left to show counts too: the next tick is what clears it.
+    get busy() { return !!box && (copies.length > 0 || tileCopies.length > 0 || lampsNow.length > 0 || !!moonNow || holder?.visible === true); },
   };
 }
