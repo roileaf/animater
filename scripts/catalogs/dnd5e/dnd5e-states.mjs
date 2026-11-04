@@ -1,5 +1,5 @@
 import {dndEntries,dndRecipe,dndEntryEnabled,normalizeDndCatalogState} from './dnd5e-catalog.mjs';
-import {matchRecipe} from '../../core/model.mjs';
+import {matchRecipe,effectSources,originalName} from '../../core/model.mjs';
 const byCondition=new Map(dndEntries('condition').map(e=>[e.statusId,e]));
 const effects=dndEntries('effect');
 export function findDndState(state){
@@ -8,8 +8,13 @@ export function findDndState(state){
  let found=effects.find(e=>ids.includes(e.uuid));if(found)return found;
  const parent=effect.parent?.documentName==='Item'?effect.parent:effect.actor?.items?.get?.(String(effect.origin??'').split('.Item.')[1]?.split('.')[0]);
  const source=parent?._stats?.compendiumSource??parent?.flags?.core?.sourceId;
- if(source){found=effects.find(e=>e.parentUuid===source&&(e.documentId===effect._id||e.name===effect.name));if(found)return found;}
- const named=effects.filter(e=>e.name===effect.name);return named.length===1?named[0]:null;
+ // A translation renames the effect (flags.babele.originalName keeps the catalog's name).
+ const name=originalName(effect)??effect.name;
+ if(source){found=effects.find(e=>e.parentUuid===source&&(e.documentId===effect._id||e.name===name));if(found)return found;}
+ // Applied to a target it is a copy that only records the caster's: follow that to the spell's own effect.
+ const linked=effectSources(effect).uuids;
+ found=effects.find(e=>linked.includes(e.uuid));if(found)return found;
+ const named=effects.filter(e=>e.name===name);return named.length===1?named[0]:null;
 }
 export function dndActorStates(actor){
  const applicable=actor?.appliedEffects??(actor?.allApplicableEffects?Array.from(actor.allApplicableEffects()).filter(e=>e.active):[]);

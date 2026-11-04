@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.12.2 (2026-11-04)
+
+D&D 5e in other languages: the catalog speaks your compendium's language, and translated items find their animations.
+
+- **The D&D 5e catalog shows translated names.** In a world that isn't in English, with a translation such as Babele and the Russian translation module, spells, features, weapons and items show the names your compendiums use, and search finds them. English names still search too. Conditions and effects keep their English names for now.
+- **Translated items find their animation more often.** An item that lost its compendium link and identifier is now recognized by the English name Babele keeps on it, or by its translated name. Custom recipes named in English match translated items the same way, and so do NPC abilities on imported creatures.
+- **Fixed: some spell effects on a target showed no lasting animation.** An effect a spell applies to a target now follows its source back to the spell, in any language. Effects that share a name, such as each level of Acid Arrow, now find the right one.
+
 ## 2.12.1 (2026-11-04)
 
 Regions keep to their floor, rain ripples like a pool, and the gulls go fishing.

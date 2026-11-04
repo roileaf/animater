@@ -2,7 +2,7 @@ import {catalogDataNeeded} from '../shared/catalog-data.mjs';
 const {DND_NPC_ACTIONS,DND_NPC_ACTION_SOURCE}=catalogDataNeeded('dnd5e')?await import('../../../data/dnd5e-npc-actions.mjs'):{DND_NPC_ACTIONS:[],DND_NPC_ACTION_SOURCE:{}};
 import {buildNpcActionRecipe} from '../shared/npc-system-actions.mjs';
 import {dndEntry,dndRecipe} from './dnd5e-catalog.mjs';
-import {matchRecipe,matchStrikeOverride,normalize,validateRecipe} from '../../core/model.mjs';
+import {matchRecipe,matchStrikeOverride,normalize,originalName,validateRecipe} from '../../core/model.mjs';
 export {DND_NPC_ACTIONS,DND_NPC_ACTION_SOURCE};
 const byId=new Map(DND_NPC_ACTIONS.map(a=>[a.id,a])),bySource=new Map(),byName=new Map();
 for(const action of DND_NPC_ACTIONS){const name=normalize(action.name);if(!byName.has(name))byName.set(name,[]);byName.get(name).push(action);}
@@ -21,8 +21,9 @@ export function findDndNpcAction(event){
  for(const source of sources){const candidates=bySource.get(source);if(candidates){const action=select(candidates,event);if(action)return action;}}
  // Imported NPCs preserve their native name even when a migration regenerates
  // embedded ids. Require both creature and feature plus unambiguous activity.
- const edition=item.system?.source?.rules;
- return select((byName.get(normalize(item.name))??[]).filter(a=>a.creatures.some(n=>normalize(n)===normalize(actor.name))&&(!edition||a.edition===edition)).map(action=>({action,activityId:action.activityId})),event);
+ // Translated, that native name is the one the translation kept aside.
+ const edition=item.system?.source?.rules,creature=originalName(actor)??actor.name;
+ return select((byName.get(normalize(originalName(item)??item.name))??[]).filter(a=>a.creatures.some(n=>normalize(n)===normalize(creature))&&(!edition||a.edition===edition)).map(action=>({action,activityId:action.activityId})),event);
 }
 export function dndNpcActionPreview(id,options={}){
  const action=typeof id==='string'?byId.get(id):id;if(!action)return null;

@@ -1,6 +1,6 @@
 import {catalogDataNeeded} from '../shared/catalog-data.mjs';
 const {DND5E_ENTRIES, DND5E_SOURCE} = catalogDataNeeded('dnd5e') ? await import('../../../data/dnd5e-catalog.mjs') : {DND5E_ENTRIES: [], DND5E_SOURCE: {}};
-import {clone,normalize,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
+import {clone,normalize,originalName,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
 import {addSpellSounds} from '../../engines/sound/spell-sounds.mjs';
 import {addAbilitySounds} from '../../engines/sound/ability-sounds.mjs';
 import {applyCatalogMotion,dndMotionReview,withoutCatalogMotion} from '../shared/catalog-motion.mjs';
@@ -93,17 +93,34 @@ export function findDndEntry(event){
   const old=byUuid.get(canonicalUuid(uuid));if(old&&old.kind===kind)return old;legacy??=old;
  }
  const edition=item.system?.source?.rules==='2014'?'2014':item.system?.source?.rules==='2024'?'2024':null;
- const byName=(name,k=kind)=>dndEntries(k).filter(e=>normalize(e.name)===normalize(name)||item.system?.identifier&&e.identifier===item.system.identifier);
- let matches=byName(item.name);
+ // A translated copy still carries its English name (flags.babele.originalName).
+ const name=originalName(item)??item.name,other=kind==='feat'?'weapon':kind==='weapon'?'feat':null;
+ const byName=(n,k=kind)=>dndEntries(k).filter(e=>normalize(e.name)===normalize(n)||item.system?.identifier&&e.identifier===item.system.identifier);
+ let matches=byName(name);
  // Official books keep the wizard's name the SRD drops ("Evard's Black Tentacles",
  // "Bigby's Hand" → Black Tentacles, Arcane Hand).
- if(!matches.length&&kind==='spell')matches=byName(srdSpellName(item.name));
+ if(!matches.length&&kind==='spell')matches=byName(srdSpellName(name));
  // Statblocks disagree on whether a natural attack is a feature or a weapon (2014 Bite and
  // Claw are features, the catalog's are weapons; Constrict and Stomp the other way round).
  if(!matches.length&&legacy)return legacy;
- if(!matches.length&&(kind==='feat'||kind==='weapon'))matches=byName(item.name,kind==='feat'?'weapon':'feat');
+ if(!matches.length&&other)matches=byName(name,other);
+ // Only its translated name left (typed by hand, a translated module's own copy).
+ const inPack=k=>dndEntries(k).filter(e=>{const n=packName(e);return n&&normalize(n)===normalize(item.name);});
+ if(!matches.length)matches=inPack(kind);
+ if(!matches.length&&other)matches=inPack(other);
  return matches.find(e=>e.edition===edition)??matches.find(e=>e.edition==='2024')??matches[0]??null;
 }
+// What a non-English world's compendium calls an entry, where a translation renamed it: Babele renames the packs'
+// indexes in place. Read live, since Babele finishes after Foundry's ready and can reload its translations.
+// Embedded effects and condition pages have no index entry of their own, so they keep the catalog's name.
+function packName(e){
+ const game=globalThis.game,lang=game?.i18n?.lang;
+ if(!lang||/^en\b/.test(lang)||!e.uuid||['condition','effect'].includes(e.kind))return null;
+ const [,scope,pack,,id]=e.uuid.split('.'),name=game.packs?.get(`${scope}.${pack}`)?.index?.get(id)?.name;
+ return name&&normalize(name)!==normalize(e.name)?name:null;
+}
+// The name to show. Other systems' catalogs share the UI that calls this and keep their own names.
+export const dndDisplayName=e=>byId.get(e.id)===e?packName(e)??e.name:e.name;
 const BOOK_SPELL_NAMES={"bigby's hand":'Arcane Hand',"mordenkainen's sword":'Arcane Sword',"nystul's magic aura":"Arcanist's Magic Aura"};
 export function srdSpellName(name){
  const lower=String(name??'').toLowerCase().replace(/[’]/g,"'");
@@ -165,6 +182,7 @@ export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled
 }
 export function filterDndEntries(kind,{search='',edition='all',level='all',theme='all'}={}){
  const query=normalize(search);
- const score=e=>normalize(e.name)===query?3:normalize(e.name).startsWith(query)?2:normalize(e.name).includes(query)?1:0;
- return dndEntries(kind).filter(e=>(edition==='all'||e.edition==='both'||e.edition===edition)&&(level==='all'||e.level===Number(level))&&(theme==='all'||e.theme===theme)&&(!query||normalize(`${e.name} ${e.identifier??''} ${e.descriptionText??''} ${e.group??''}`).includes(query))).sort((a,b)=>query?score(b)-score(a):0);
+ const scoreName=name=>normalize(name)===query?3:normalize(name).startsWith(query)?2:normalize(name).includes(query)?1:0;
+ const score=e=>Math.max(scoreName(e.name),scoreName(packName(e)??e.name));
+ return dndEntries(kind).filter(e=>(edition==='all'||e.edition==='both'||e.edition===edition)&&(level==='all'||e.level===Number(level))&&(theme==='all'||e.theme===theme)&&(!query||normalize(`${e.name} ${packName(e)??''} ${e.identifier??''} ${e.descriptionText??''} ${e.group??''}`).includes(query))).sort((a,b)=>query?score(b)-score(a):0);
 }

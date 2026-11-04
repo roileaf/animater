@@ -118,6 +118,9 @@ export const normalize = (value) =>
     .toLowerCase()
     .trim()
     .replace(/[\s_-]+/g, " ");
+// The name a document had before a translation renamed it: Babele keeps it on every document it translates, and it
+// stays on copies dragged out of the compendium.
+export const originalName = (doc) => doc?.flags?.babele?.originalName ?? null;
 export function validateRecipe(input) {
   if (!input || typeof input !== "object")
     throw Error("Recipe must be an object.");
@@ -443,6 +446,7 @@ export function matchRecipe(recipes, event) {
   const names = new Set(
     [
       event.item?.name,
+      originalName(event.item),
       event.item?.slug,
       event.item?.system?.slug,
       // D&D 5e's identifier ("fireball") stays the same in every language and every book, unlike the name.
