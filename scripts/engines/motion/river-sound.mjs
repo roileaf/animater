@@ -42,8 +42,8 @@ export function riverHeard(rivers = [], ears = [], { grid = 100 } = {}) {
 // The night out of doors, constant: crickets and the rest, a loop for as long as it is dark and warm, low behind everything.
 export const NIGHT_SOUNDS = Object.freeze(['320227-0', '320227-1'].map((n) => `modules/animater/assets/sounds/wildlife/night/night-${n}.ogg`));
 export const NIGHT_VOLUME = 0.2;
-// How loud it is now (pure): `night` 0-1, none when it is cold, about a third from inside a room.
-export const nightLevel = ({ night = 0, warm = true, inside = false } = {}) => (warm ? NIGHT_VOLUME * Math.max(0, Math.min(1, night)) * (inside ? 0.33 : 1) : 0);
+// How loud it is now (pure): `night` 0-1, none when it is cold or the scene wants its nights `quiet`, about a third from inside a room.
+export const nightLevel = ({ night = 0, warm = true, inside = false, quiet = false } = {}) => (warm && !quiet ? NIGHT_VOLUME * Math.max(0, Math.min(1, night)) * (inside ? 0.33 : 1) : 0);
 export function nightFile(seed = '') { let h = 0; for (const c of String(seed)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return NIGHT_SOUNDS[h % NIGHT_SOUNDS.length]; }
 
 // One recording for a scene (pure), the same on every visit: `seed` its id. A river keeps its voice.

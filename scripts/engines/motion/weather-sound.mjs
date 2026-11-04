@@ -38,6 +38,8 @@ export const weatherIsOurs = (id) => OURS.has(String(id ?? '').toLowerCase());
 
 // Thunder after a flash (pure): near now and then, a clap almost at once, loud; else far, a rumble some seconds later, quiet. `random` 0-1 twice.
 // Far strikes use the far recording, or a close one slowed and softened. { file, wait ms, volume, rate }.
+// Whether a flash is heard at all (pure): lightning far off is often silent, less so in the thick of a storm.
+export const thunderHeard = ({ storm = 0.5, random = Math.random } = {}) => random() < 0.45 + clamp(storm) * 0.35;
 export function thunderFor({ storm = 0.5, random = Math.random } = {}) {
   const near = random() < 0.25 + clamp(storm) * 0.25, pick = (list) => list[Math.floor(random() * list.length) % list.length];
   if (near) return { file: pick(THUNDER.close), wait: 150 + random() * 700, volume: 0.62 + random() * 0.2, rate: 0.92 + random() * 0.16, near: true };

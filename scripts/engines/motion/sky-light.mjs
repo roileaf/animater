@@ -271,15 +271,14 @@ vec4 rainLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
     a *= (0.25 + 0.35 * near) * (0.6 + 0.4 * hash(id + 2.2)) * (0.45 + 0.55 * min(size, 1.0));
     p = overP(p, mix(col, vec3(1.0), 0.2 * near), a * over);
   }
-  // Splashes: rings spreading where drops land, each a quarter of a second.
+  // Splashes: a soft burst of spray where each drop lands, gone in a moment. (On water the drops' ripples do the rest.)
   float sc = uGrid * 0.45;
   vec2 sq = px / sc, sid = floor(sq), sf = fract(sq) - 0.5;
   float sh = hash(sid + 9.1), life = fract(t * 2.2 + sh * 7.0);
   if (sh < dense * 0.7 * min(1.0, size * size)) {
     vec2 at = (vec2(hash(sid + 3.3), hash(sid + 6.6)) - 0.5) * 0.6;
-    float r = length(sf - at), radius = life * 0.16;
-    float ring = (1.0 - smoothstep(0.008, 0.025, abs(r - radius))) * (1.0 - life) * 0.45;
-    p = overP(p, mix(col, vec3(1.0), 0.4), ring * over);
+    float r = length(sf - at), spray = exp(-pow(r / (0.025 + life * 0.05), 2.0)) * (1.0 - life) * (1.0 - life) * 0.22;
+    p = overP(p, mix(col, vec3(1.0), 0.4), spray * over);
   }
   return p;
 }
@@ -829,23 +828,30 @@ void main(){
     if (uWet > 0.05) light += uWet * smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * outside * (1.0 - water) * 0.1;
     col += uColor * light * outside * uStrength;
   }
+  float rainDim = 0.0;
   if (uRain > 0.01) {
-    // Rain on water and on the puddles: a ring spreading where each drop lands, more the harder it rains.
+    // Rain on water and on the puddles: where each drop lands a short train of waves runs out as on a pool (drips.mjs), lit on the side facing the light and dark in its troughs, more the harder it rains.
     float puddle = uWet > 0.05 ? smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * (1.0 - water) : 0.0;
     float pool = max(water, puddle) * outside;
     if (pool > 0.01) {
-      float cell = uGrid * 0.28, rings = 0.0;
-      vec2 c0 = floor(px / cell);
+      float cell = uGrid * 0.42, gs = cell * 0.55, wid = gs * 0.33, waves = 0.0;
+      vec2 c0 = floor(px / cell), slope = vec2(0.0);
       for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) {
         vec2 c = c0 + vec2(float(i), float(j));
         float h = hash(c + 11.3);
         if (h > uRain) continue;
         float age = fract(t * (0.9 + 0.6 * h) + h * 17.0);
         vec2 drop = (c + 0.5 + (vec2(hash(c + 1.9), hash(c + 4.7)) - 0.5) * 0.7) * cell;
-        float d = length(px - drop);
-        rings += (1.0 - smoothstep(0.0, cell * 0.06, abs(d - age * cell * 0.9))) * (1.0 - age);
+        vec2 p = px - drop; float d = length(p), off = d - age * cell * 0.9;
+        float env = exp(-pow((off + gs * 0.27) / wid, 2.0)) * (1.0 - age) * (1.0 - age);
+        waves += env; slope += -env * sin(off * 18.0 / gs) * 0.42 * p / max(d, 0.001);
       }
-      col += vec3(0.8, 0.85, 0.9) * rings * pool * 0.35;
+      if (waves > 0.002) {
+        vec3 L = normalize(vec3(-0.55, -0.45, 0.7)), H = normalize(L + vec3(0.0, 0.0, 1.0)), n = normalize(vec3(-slope, 1.0));
+        float spec = pow(max(0.0, dot(n, H)), 220.0) * 1.2, shade = (-slope.x * L.x - slope.y * L.y) * 1.6;
+        col += (vec3(0.27, 0.24, 0.22) * max(0.0, shade) + vec3(1.0, 0.85, 0.63) * spec) * pool;
+        rainDim = clamp(-shade * 0.55, 0.0, 0.5) * pool;
+      }
     }
   }
   if (uMoon > 0.01) {
@@ -872,7 +878,7 @@ void main(){
     }
     col += vec3(0.75, 1.0, 0.35) * glow * place * uFireflies;
   }
-  float a = max(col.r, max(col.g, col.b));
+  float a = max(max(col.r, max(col.g, col.b)), rainDim);
   gl_FragColor = vec4(col, a);
 }`;
 

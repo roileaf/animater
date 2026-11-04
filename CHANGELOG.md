@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.12.1 (2026-11-04)
+
+Regions keep to their floor, rain ripples like a pool, and the gulls go fishing.
+
+- **Fixed: a region on one level reached every level.** A Suppress Weather region on the basement took the weather off every floor, and a Keep out region kept animals off every floor. Animater now reads only the regions on the level in view, for everything it takes from regions.
+- **Night sounds, scene by scene.** A new choice in Scene configuration, Animater, turns off the constant crickets on a map whose nights should be quiet. Its other animals still call now and then.
+- **Rain on water ripples like a pool.** The flat white circles are gone: drops send out small lit waves with dark troughs, and on land they throw a soft bit of spray.
+- **Weather moves the animals.** A downpour or heavy snowfall sends the birds, rabbits, deer, foxes, insects, owls and bats in; ducks, herons, gulls and frogs stay out. Any real rain puts out the fireflies, and heavy rain stops the crickets.
+- **Gulls and herons fish.** A gull folds into a dive at a fish, splashes in and sometimes climbs away carrying it. A heron turns to a fish in reach and stabs, and may hold it in its bill a moment. Another fish swims up in a while.
+- **Not every lightning flash thunders.** Far-off flashes are often silent, fewer of them in the thick of a storm.
+- **Bird shadows removed.** Real birds cast their own shadows now, so the setting and the scene choice are gone.
+
 ## 2.12.0 (2026-11-04)
 
 Choose how much of it you want, and swimmers leave a real wake.

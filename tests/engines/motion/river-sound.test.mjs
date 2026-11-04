@@ -47,3 +47,8 @@ test('a scene keeps its recording', () => {
   assert.ok(RIVER_SOUNDS.swift.includes(riverFile('swift', 'abc')));
   assert.equal(riverFile('nothing', 'abc'), null);
 });
+
+test('a scene can keep its nights quiet', () => {
+  assert.ok(nightLevel({ night: 1 }) > 0);
+  assert.equal(nightLevel({ night: 1, quiet: true }), 0);
+});

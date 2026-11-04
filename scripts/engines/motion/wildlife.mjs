@@ -232,13 +232,16 @@ function rabbitPicture(pose, base, dark, light) {
   });
 }
 
+// How much of the open-air life stays out in this weather (pure): all of it in a light shower, none in a downpour or a heavy snowfall. `rain`, `snow` 0-1.
+export const weatherShelter = ({ rain = 0, snow = 0 } = {}) => { const k = Math.max(0, Math.min(1, (Math.max(rain, snow) - 0.35) / 0.35)); return 1 - k * k * (3 - 2 * k); };
+
 /**
  * The layer: populate({ spots, rabbits, songbirds, hawk, crows, grid, area, rabbitSize, birdSize }) places them (`spots` open
  * ground { x, y }); tick(seconds, { near, ok(kind, x, y), blocked, seen(x, y), day (0–1, they come and go with it), sun
  * ({ x, y } the way shadows fall), wind (radians), view }); scare(); clear(). `floor()` under the creatures, `sky()` over all.
  */
 export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
-  let noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
+  let fishWaters = [], fishScale = 1, fishLost = 0, fishIn = 0, noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
   const art = () => {
     if (textures && !textures.hawk[0].baseTexture?.destroyed) return textures;
     const tex = (c) => PIXI.Texture.from(c);
@@ -249,6 +252,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
   // The high fliers' pair: on the layers kept out of a room seen into.
   const high = (tex) => ({ shadow: sprite(skyShadow(), tex, true), body: sprite(sky(), tex) });
   const dropPair = (o) => { try { o.view.body.destroy(); o.view.shadow.destroy(); } catch { /* gone */ } };
+  const newFish = (t, i, random = Math.random) => { const w = fishWaters[Math.floor(random() * fishWaters.length)]; return { x: w.x + between(random, -0.3, 0.3) * grid, y: w.y + between(random, -0.3, 0.3) * grid, a: random() * TAU, wait: random() * 2, turn: 0, dart: 0, kind: i % SCALES.length, phase: random() * 8, beat: between(random, 3, 5), size: between(random, 0.75, 1.1) * fishScale, view: pair(floor(), t.fish[0][0]) }; };
   const drop = () => { for (const o of [...fish, ...rabbits, ...songs, ...crows, ...(hawk ? [hawk] : [])]) dropPair(o); try { hawk?.carry?.destroy(); } catch { /* gone */ } fish = []; spare = []; rabbits = []; songs = []; crows = []; hawk = null; };
   const put = (view, tex, x, y, angle, size, alpha, sx, sy, shadowAlpha, shadowSize = size) => {
     view.body.visible = view.shadow.visible = true;
@@ -262,7 +266,8 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
       if (!spots.length && !hasHawk && !nCrows && !(waters.length && nFish)) return;
       const t = art(), at = () => spots[Math.floor(random() * spots.length)];
       spare = spots;
-      if (waters.length) fish = Array.from({ length: nFish }, (_, i) => { const w = waters[Math.floor(random() * waters.length)]; return { x: w.x + between(random, -0.3, 0.3) * grid, y: w.y + between(random, -0.3, 0.3) * grid, a: random() * TAU, wait: random() * 2, turn: 0, dart: 0, kind: i % SCALES.length, phase: random() * 8, beat: between(random, 3, 5), size: between(random, 0.75, 1.1) * fishSize, view: pair(floor(), t.fish[0][0]) }; });
+      fishWaters = waters; fishScale = fishSize; fishLost = 0;
+      if (waters.length) fish = Array.from({ length: nFish }, (_, i) => newFish(t, i, random));
       if (spots.length) {
         rabbits = Array.from({ length: nRabbits }, (_, i) => ({ ...at(), a: random() * TAU, coat: i % COATS.length, wait: random() * 3, mode: 'sit', hop: 0, size: between(random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }));
         // Songbirds keep together: a flock pecking about one place.
@@ -274,6 +279,9 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
     get list() { return rabbits; },
     spook(at, from) { const i = rabbits.findIndex((r) => Math.hypot(r.x - at.x, r.y - at.y) < grid * 0.3); if (i >= 0) rabbits[i] = { ...rabbits[i], mode: 'bolt', bolts: 5, hop: 0, a: Math.atan2(rabbits[i].x - from.x, -(rabbits[i].y - from.y)) + between(Math.random, -0.7, 0.7) }; },
     take(rabbit) { const r = rabbits.find((o) => o.view === rabbit.view); if (!r) return null; const tex = textures?.rabbit[r.coat][0]; rabbits = rabbits.filter((o) => o !== r); dropPair(r); spareIn = between(Math.random, 45, 120); return tex; },
+    // The fish to whatever fishes (pond-life.mjs): where they are; one caught, its picture and size given back, and another swims up in a while.
+    get fishList() { return fish; },
+    takeFish(caught) { const f = fish.find((o) => o.view === caught.view); if (!f) return null; fish = fish.filter((o) => o !== f); dropPair(f); fishLost += 1; fishIn = between(Math.random, 45, 120); return { texture: textures?.fish[f.kind][0], size: f.size }; },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
     // Sends the hawk after a rabbit now, if there is one to see.
@@ -321,6 +329,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
           return f;
         });
       }
+      if (fishLost > 0 && fishWaters.length && (fishIn -= dt) <= 0) { fish.push(newFish(t, fish.length)); fishLost -= 1; fishIn = between(Math.random, 45, 120); }
       // A rabbit taken: another comes along in a while.
       if (spareIn > 0 && (spareIn -= dt) <= 0 && spare.length) { const p = spare[Math.floor(Math.random() * spare.length)]; rabbits.push({ ...p, a: Math.random() * TAU, coat: Math.floor(Math.random() * COATS.length), wait: 2, mode: 'sit', hop: 0, size: between(Math.random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }); }
       if (hawk) {

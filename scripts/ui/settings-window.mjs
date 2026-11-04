@@ -121,7 +121,6 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "lightFlames", local: "lightFlamesLocal" },
     { world: "roomSmoke", local: "roomSmokeLocal" },
     { world: "fireflies", local: "firefliesLocal" },
-    { world: "birdShadows", local: "birdShadowsLocal" },
     { world: "rainRings", local: "rainRingsLocal" },
     { world: "windowGlow", local: "windowGlowLocal" },
     { menu: "sunMenu" },

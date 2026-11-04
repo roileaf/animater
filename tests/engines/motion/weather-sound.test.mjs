@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { WEATHER_LOOPS, THUNDER, weatherLevels, weatherIsOurs, thunderFor, weatherFile } from '../../../scripts/engines/motion/weather-sound.mjs';
+import { thunderHeard, WEATHER_LOOPS, THUNDER, weatherLevels, weatherIsOurs, thunderFor, weatherFile } from '../../../scripts/engines/motion/weather-sound.mjs';
 
 test('every weather sound is there and credited', () => {
   for (const f of [...Object.values(WEATHER_LOOPS).flat(), ...Object.values(THUNDER).flat()]) {
@@ -49,4 +49,10 @@ test('a scene keeps its recording', () => {
   assert.equal(weatherFile('hail', 'abc'), weatherFile('hail', 'abc'));
   assert.ok(WEATHER_LOOPS.hail.includes(weatherFile('hail', 'abc')));
   assert.equal(weatherFile('nothing'), null);
+});
+
+test('not every flash is heard, more of them in the thick of a storm', () => {
+  assert.equal(thunderHeard({ storm: 0, random: () => 0.6 }), false, 'far off, silent');
+  assert.equal(thunderHeard({ storm: 1, random: () => 0.6 }), true);
+  assert.equal(thunderHeard({ storm: 1, random: () => 0.9 }), false, 'even then, not every one');
 });
