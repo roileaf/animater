@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {carriedPrints,bloodDrop} from '../../../scripts/engines/motion/ground-trails.mjs';
 
 test('floors: every choice has a look, and the select starts with From the scene', () => {
-  assert.deepEqual(FLOORS, ['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud']);
+  assert.deepEqual(FLOORS, ['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud', 'pebbles', 'glass', 'metal']);
   assert.equal(FLOOR_CHOICES[0][0], '');
   assert.match(FLOOR_CHOICES[0][1], /From the scene/);
   for (const floor of FLOORS) {
@@ -31,8 +31,8 @@ const kindsOf = (floor, strides = 16) => {
 
 test('puffsFor: every floor has its own look', () => {
   const expected = {
-    stone: ['chip', 'scuff'], wood: ['fleck', 'scuff'], dirt: ['puff'], grass: ['blade', 'trample', 'tuft'], sand: ['print', 'streak'],
-    snow: ['print', 'puff'], water: ['drop', 'ring'], ice: ['crack', 'spark', 'streak'], mud: ['blob', 'print'],
+    stone: ['chip', 'puff'], wood: ['chip', 'fleck'], dirt: ['chip', 'puff'], grass: ['blade', 'fleck', 'trample', 'tuft'], sand: ['chip', 'print', 'puff'],
+    snow: ['chip', 'print', 'puff'], water: ['drop', 'ring'], ice: ['chip', 'crack', 'spark', 'streak'], mud: ['blob', 'print'], pebbles: ['chip', 'puff'], glass: ['puff', 'spark'], metal: ['chip', 'spark'],
   };
   const signatures = new Set();
   for (const floor of FLOORS) {
@@ -214,10 +214,12 @@ test('particleState: spins, hops, sways back and twinkles out', () => {
   assert.ok(chip.spin !== 0 && chip.hop > 0);
   const c0 = particleState(chip, chip.delay), c1 = particleState(chip, chip.delay + chip.life * 0.15);
   assert.notEqual(c1.rotation, c0.rotation);
-  // Mid-hop it is lifted off its ground path; landed, it rests and only fades.
-  const groundY = chip.y + chip.vy * (chip.life * (1 - (1 - 0.15 / 0.35) ** 2)) / 1000;
-  assert.ok(c1.y < groundY - 0.5);
-  const l1 = particleState(chip, chip.delay + chip.life * 0.5), l2 = particleState(chip, chip.delay + chip.life * 0.8);
+  // Mid-hop it is lifted off its ground path; it bounces lower; then it rests and only fades.
+  assert.ok(c1.lift > 0.5);
+  assert.ok(particleState(chip, chip.delay + chip.life * 0.44).lift < chip.hop * chip.bounce + 1e-6, 'its bounce is lower');
+  assert.ok(particleState(chip, chip.delay + chip.life * 0.44).lift > 0, 'it does bounce');
+  const l1 = particleState(chip, chip.delay + chip.life * 0.6), l2 = particleState(chip, chip.delay + chip.life * 0.8);
+  assert.equal(l1.lift, 0, 'lying on the floor');
   assert.ok(Math.abs(l1.x - l2.x) < 1e-6 && Math.abs(l1.y - l2.y) < 1e-6 && l1.rotation === l2.rotation);
   const tuft = puffsFor('grass', at, { seed: 'r', grid: 100 }).find((p) => p.kind === 'tuft');
   const bent = particleState(tuft, tuft.delay + 1), end = particleState(tuft, tuft.delay + tuft.life - 1);
@@ -357,15 +359,18 @@ test('puffsFor: deterministic dust by floor, ripples on water, a faint scuff wit
   const b = puffsFor('dirt', at, { seed: 'tok', grid: 100 });
   assert.deepEqual(a, b);
   assert.ok(a.length >= 3);
-  assert.ok(a.every((p) => p.kind === 'puff' && p.color === FLOOR_LOOK.dirt.parts[0].color && p.life > 0));
+  assert.ok(a.filter((p) => p.kind === 'puff').every((p) => p.color === FLOOR_LOOK.dirt.parts[0].color && p.life > 0));
+  assert.ok(a.some((p) => p.kind === 'chip' && p.art === 'clod' && p.shadow), 'clods thrown out of it, with their shadows');
   assert.notDeepEqual(puffsFor('dirt', { ...at, index: 4 }, { seed: 'tok', grid: 100 }), a);
   assert.ok(puffsFor('snow', at, { seed: 'tok', grid: 100 }).length > puffsFor('stone', at, { seed: 'tok', grid: 100 }).length);
   const water = puffsFor('water', at, { seed: 'tok', grid: 100 });
   assert.ok(water.some((p) => p.kind === 'ring'));
   const stone = puffsFor('stone', at, { seed: 'tok', grid: 100 });
-  const scuff = stone.filter((p) => p.kind === 'scuff');
-  assert.equal(scuff.length, 1);
-  assert.ok(scuff[0].alpha <= 0.35, "a scuff stays a light mark");
+  const dust = stone.filter((p) => p.kind === 'puff');
+  assert.ok(dust.length >= 1 && dust.every((p) => p.alpha <= 0.35), 'its dust stays faint');
+  assert.ok(stone.filter((p) => p.kind === 'chip').every((p) => p.art === 'stone' && p.shadow === true), 'its chips are painted, with shadows');
+  assert.equal(stone.filter((p) => p.kind === 'chip' && p.thin).length, 0);
+  assert.ok(puffsFor('wood', at, { seed: 'tok', grid: 100 }).some((p) => p.thin === true), 'a splinter has a long thin shadow');
   // Half density keeps half the dust (at least one).
   assert.ok(puffsFor('dirt', at, { seed: 'tok', grid: 100, density: 0.5 }).length < a.length);
   assert.equal(puffsFor('dirt', at, { seed: 'tok', grid: 100, density: 0 }).length, 0);
@@ -465,7 +470,8 @@ test('footstep families: no two floors share a recording', () => {
 test('footstepFile: every floor has its own bundled steps, varied by n, that exist on disk', () => {
   const own = { stone: /freesound\/stone-step-/, wood: /freesound\/wood-step-/, grass: /freesound\/grass-step-/,
     dirt: /freesound\/dirt-step-/, snow: /kenney\/snowstep_/, sand: /freesound\/sand-step-/,
-    water: /freesound\/water-step-/, mud: /freesound\/mud-step-/, ice: /freesound\/ice-step-/ };
+    water: /freesound\/water-step-/, mud: /freesound\/mud-step-/, ice: /freesound\/ice-step-/,
+    pebbles: /freesound\/gravel-step-/, glass: /freesound\/glass-step-/, metal: /freesound\/metal-step-/ };
   for (const floor of FLOORS) {
     assert.ok(own[floor], `no expectation for ${floor}`);
     const files = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((n) => footstepFile(floor, n)));
@@ -687,11 +693,11 @@ const luma = (c) => 0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114
 test('grass: big bright blades with a dark edge, a bigger springy tuft, and trampled grass under each foot', () => {
   const at = { x: 500, y: 500, heading: 0, index: 3 };
   const full = puffsFor('grass', at, { seed: 'g', grid: 100 });
-  // Blades: 6-8 per stride, ~0.08-0.12 squares long, yellow-green with a darker green edge so they read on grass art.
+  // Blades: 6-8 per stride, ~0.09-0.16 squares long, yellow-green with a darker green edge so they read on grass art.
   const blades = full.filter((p) => p.kind === 'blade');
   assert.ok(blades.length >= 6 && blades.length <= 8, `${blades.length} blades`);
   const length = blades.reduce((sum, p) => sum + 2 * p.radius, 0) / blades.length;
-  assert.ok(length >= 8 && length <= 12, `blades ${length.toFixed(1)} px long on a 100 px grid`);
+  assert.ok(length >= 9 && length <= 16, `blades ${length.toFixed(1)} px long on a 100 px grid`);
   for (const b of blades) {
     assert.ok(luma(b.color) > luma(0x87ae4f), `blade ${b.color.toString(16)} brighter than before`);
     assert.ok(Number.isFinite(b.edge) && luma(b.edge) < luma(b.color) - 60, 'a darker edge');

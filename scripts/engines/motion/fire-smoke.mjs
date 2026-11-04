@@ -2,6 +2,7 @@
 // see distortion/fire-haze.mjs isFireLight) sends up a thin, steady trail of grey smoke, as a burning torch does: puffs
 // leave just above the flame, rise (north on the map, as heat rises off the board), sway, widen and thin out. A bigger
 // fire smokes more and wider; a candle barely. Drawn on this screen only, through movement-feel's particle layer.
+import { reachToward } from './wall-reach.mjs';
 import { particleState } from './movement-feel.mjs';
 
 export const SMOKE_CAP = 320;
@@ -40,7 +41,7 @@ export function smokeDue(key, fromMs, toMs, size = 1) {
   return Math.max(0, Math.floor(toMs * rate + p) - Math.floor(fromMs * rate + p));
 }
 
-// The `n`th puff of a fire { key, x, y, size, drift? }: a small soft grey disc just above the flame that rises steadily,
+// The `n`th puff of a fire { key, x, y, size, drift?, reach? }: a small soft grey disc just above the flame that rises steadily,
 // drifts a little to one side, widens and fades over a few seconds. `drift` ({ x, y }, in rises): the wind carrying it
 // off (a chimney's plume above the roofs leans downwind); `pale`: a chimney's paler, fuller smoke.
 export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
@@ -49,10 +50,13 @@ export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
   // A slow sideways lean that changes puff to puff, so the column sways.
   const lean = Math.sin(n * 0.25 + phase(fire.key) * 6.28) * 0.2 + (random() - 0.5) * 0.08;
   const life = Math.round((2400 + random() * 1000) * Math.min(1.5, 0.8 + 0.3 * size));
+  // A wall in its way (`reach`, wall-reach.mjs): it goes no further than the wall, however long it lasts.
+  let vx = (lean + (Number(fire.drift?.x) || 0)) * rise, vy = (-1 + (Number(fire.drift?.y) || 0)) * rise;
+  if (fire.reach) { const went = Math.hypot(vx, vy) * 1.58 * (life / 1000), open = Math.max(0, reachToward(fire.reach, vx, vy) - unit * 0.3); if (went > open) { const k = Math.max(0.05, open / went); vx *= k; vy *= k; } }
   return {
     kind: 'smoke', owner: fire.key, color: (fire.pale ? PALE_GREYS : GREYS)[Math.floor(random() * GREYS.length) % GREYS.length],
     x: fire.x + (random() - 0.5) * unit * 0.06, y: fire.y - unit * 0.08,
-    vx: (lean + (Number(fire.drift?.x) || 0)) * rise, vy: (-1 + (Number(fire.drift?.y) || 0)) * rise, radius: unit * (0.1 + random() * 0.03),
+    vx, vy, radius: unit * (0.1 + random() * 0.03),
     alpha: (fire.pale ? 0.42 : 0.3) + random() * 0.1, delay: 0, life,
     // Still rising as it fades (its motion would only ease to a stop well after it is gone), so the plume stays a column.
     motionLife: life * 2.4,

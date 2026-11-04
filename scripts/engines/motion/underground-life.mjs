@@ -4,6 +4,7 @@
 // soot blackening the wall over a torch that has burned there for years; water seeping at the foot of wet walls,
 // glistening; steam breathing from vents in the floor; and rubble brought down from the ceiling, with its dust.
 
+import { kickArt, boulderArt, shadowArt, scarArt } from './kick-art.mjs';
 const TAU = Math.PI * 2;
 const rng = (seed) => { let h = 2166136261; for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; }; };
 const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -172,7 +173,15 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
   const kill = (list) => { for (const s of list) { try { (s.sprite ?? s.s ?? s).destroy?.(); s.shadow?.destroy?.(); s.a?.destroy?.(); s.b?.destroy?.(); } catch { /* gone */ } } };
   const clearLasting = () => { kill(lasting); kill(glints); kill(vents.map((v) => v.glow).filter(Boolean)); kill(puffs); kill(haze); for (const k of Object.keys(tex)) if (k.startsWith('foul:')) { tex[k].destroy(true); delete tex[k]; } lasting = []; glints = []; vents = []; puffs = []; haze = []; };
   const clearLiving = () => { kill(eyes); kill(moths); kill(crawlers); kill(stones); kill(dust); kill(falling); eyes = []; moths = []; crawlers = []; stones = []; dust = []; falling = []; };
-  const rubbleSprite = (r, parent) => { const s = sprite(T(`stone:${r.seed % 12}`, () => stoneCanvas(r.seed % 12)), parent); s.width = s.height = r.size * 2; s.rotation = 0; return s; };
+  // A stone of the heap: boulders with faces, gravel plain rounded stones (faces would be lost at that size).
+  const rubbleSprite = (r, parent) => { const small = r.size < grid * 0.05, s = sprite(small ? T(`pebble:${r.seed % 6}`, () => kickArt('pebble', r.seed)) : T(`boulder:${r.seed % 16}`, () => boulderArt(r.seed % 16)), parent); s.width = s.height = r.size * 2; s.rotation = 0; return s; };
+  // Its shadow on the floor, away from the light from above: close and dark as it lies, far off and faint while it falls.
+  const placeShadow = (s, st, x, y, h = 0) => { const r = st.size, small = r < grid * 0.05, far = (grid / 100) * h, sr = r * (small ? 1.1 : 1.35 + h * 0.5); s.position.set(x + r * 0.28 + far * 60, y + r * 0.4 + far * 80); s.width = sr * 2; s.height = sr * 1.6; s.alpha = (small ? 0.45 : 0.9) * (1 - Math.min(0.75, h * 0.6)); };
+  // A heap on the floor: the scar where it hit, under the shadows, under the stones in the order they stand.
+  const heapOf = (r) => { const box = new PIXI.Container(), shadows = new PIXI.Container(), pile = new PIXI.Container(); box.eventMode = shadows.eventMode = pile.eventMode = 'none'; pile.sortableChildren = true; floor().addChild(box);
+    const scar = sprite(T(`scar:${r.seed % 4}`, () => scarArt(r.seed % 4)), box); scar.position.set(r.x, r.y); scar.width = scar.height = r.radius * 2.8; box.addChild(shadows, pile);
+    return { box, shadows, pile, scar, destroy() { if (!box.destroyed) box.destroy({ children: true }); } }; };
+  const shadowSprite = (parent) => sprite(T('rockShadow', shadowArt), parent);
   return {
     build({ soot = [], wet = [], vents: ventList = [], rubble = [], foul = [], grid: g = 100, soothe = 1 } = {}) {
       clearLasting(); grid = g;
@@ -210,13 +219,13 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
       }
       const keep = new Set(rubble.map((r) => r.seed));
       for (const [seed, list] of fallen) if (!keep.has(seed)) { kill(list); fallen.delete(seed); }
-      for (const r of rubble) if (!fallen.has(r.seed)) for (const st of rubbleStones(r)) lasting.push(rubbleSprite(st, floor()));
+      for (const r of rubble) if (!fallen.has(r.seed)) { const heap = heapOf(r); lasting.push(heap); for (const st of rubbleStones(r, { grid })) { placeShadow(shadowSprite(heap.shadows), st, st.x, st.y); const s = rubbleSprite(st, heap.pile); s.position.set(st.x, st.y); s.zIndex = st.y + st.size; } }
     },
     // A cave-in here: the stones fall and bounce before they settle (then the lasting rubble takes over), dust billows.
     caveIn(r) {
-      const list = rubbleStones(r), cloud = (i) => T(`cloud:${i % 4}`, () => cloudCanvas(i % 4));
-      kill(fallen.get(r.seed) ?? []); fallen.set(r.seed, []);
-      list.forEach((st, i) => { const s = rubbleSprite(st, above()); const a = Math.atan2(st.y - r.y, st.x - r.x); falling.push({ s, st, seed: r.seed, h: 1 + (i % 7) * 0.12, vh: 0, vx: Math.cos(a) * grid * 0.5, vy: Math.sin(a) * grid * 0.4, x: st.x - Math.cos(a) * grid * 0.4, y: st.y - Math.sin(a) * grid * 0.3 }); });
+      const list = rubbleStones(r, { grid }), cloud = (i) => T(`cloud:${i % 4}`, () => cloudCanvas(i % 4));
+      kill(fallen.get(r.seed) ?? []); const heap = heapOf(r); heap.scar.alpha = 0; fallen.set(r.seed, [heap]);
+      list.forEach((st, i) => { const s = rubbleSprite(st, above()); const a = Math.atan2(st.y - r.y, st.x - r.x); falling.push({ s, st, heap, shadow: shadowSprite(heap.shadows), seed: r.seed, h: 1 + (i % 7) * 0.12, vh: 0, vx: Math.cos(a) * grid * 0.5, vy: Math.sin(a) * grid * 0.4, x: st.x - Math.cos(a) * grid * 0.4, y: st.y - Math.sin(a) * grid * 0.3 }); });
       for (let i = 0; i < 22; i++) { const a = (i / 22) * TAU, s = sprite(cloud(i), above()); s.tint = 0xb2a591; s.alpha = 0; dust.push({ s, x: r.x + Math.cos(a) * r.radius * 0.3, y: r.y + Math.sin(a) * r.radius * 0.3, vx: Math.cos(a) * grid * 0.7, vy: Math.sin(a) * grid * 0.6, age: -i * 0.03, life: 6 + (i % 5), rot: a }); }
     },
     kick(at, heading = 0) {
@@ -225,7 +234,7 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
       const s = sprite(T(`stone:${seed % 12}`, () => stoneCanvas(seed % 12)), floor()); const size = grid * (0.025 + Math.random() * 0.03); s.width = s.height = size * 2;
       stones.push({ s, x: at.x, y: at.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, h: 0, vh: 1.2 + Math.random(), spin: (Math.random() - 0.5) * 20, rot: Math.random() * TAU, age: 0 });
     },
-    tick(seconds, { view = null, eyes: eyeSpots = null, eyeRate = '', moths: mothLights = null, crawl = null, lit = () => 0, creatures = [], air = () => ({ x: 0, y: 0 }) } = {}) {
+    tick(seconds, { view = null, eyes: eyeSpots = null, eyeRate = '', moths: mothLights = null, crawl = null, mothCount = 3, crawlCount = 4, mothSize = 1, crawlSize = 1, lit = () => 0, creatures = [], air = () => ({ x: 0, y: 0 }) } = {}) {
       time += seconds;
       const dt = Math.min(0.05, seconds), seen = (x, y, pad = grid) => !view || (x > view.x - pad && y > view.y - pad && x < view.x + view.w + pad && y < view.y + view.h + pad);
       // Bad air swells and thins, leaning a little down the draft.
@@ -255,8 +264,11 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
       // Rubble falling, bouncing, settling (then it lies with the lasting rubble).
       falling = falling.filter((f) => { if (f.h > 0 || f.vh) { f.vh -= dt * 6; f.h = Math.max(0, f.h + f.vh * dt); if (f.h === 0 && f.vh < -0.5) f.vh = -f.vh * 0.3; else if (f.h === 0) f.vh = 0; }
         if (f.h === 0) { f.x += (f.st.x - f.x) * Math.min(1, dt * 4); f.y += (f.st.y - f.y) * Math.min(1, dt * 4); }
+        // The floor darkens where it hits as the first of them land.
+        if (!f.heap.box.destroyed && f.heap.scar.alpha < 1) f.heap.scar.alpha = Math.min(1, f.heap.scar.alpha + dt * 1.2);
         f.s.position.set(f.x, f.y - f.h * grid * 0.4); const k = 1 + f.h * 0.6; f.s.width = f.s.height = f.st.size * 2 * k;
-        if (f.h === 0 && Math.hypot(f.st.x - f.x, f.st.y - f.y) < 1) { const heap = fallen.get(f.seed); if (heap) { floor().addChild(f.s); heap.push(f.s); } else f.s.destroy(); return false; } return true; });
+        if (!f.heap.box.destroyed) placeShadow(f.shadow, f.st, f.x, f.y, f.h);
+        if (f.h === 0 && Math.hypot(f.st.x - f.x, f.st.y - f.y) < 1) { if (!f.heap.box.destroyed) { f.s.position.set(f.st.x, f.st.y); f.s.zIndex = f.st.y + f.st.size; f.heap.pile.addChild(f.s); } else f.s.destroy(); return false; } return true; });
       dust = dust.filter((p) => { p.age += dt; if (p.age < 0) return true; const k = p.age / p.life; if (k > 1) { p.s.destroy(); return false; }
         const w = air(p.x, p.y); p.vx = p.vx * Math.pow(0.3, dt) + w.x * grid * 0.6 * dt; p.vy = p.vy * Math.pow(0.3, dt) + w.y * grid * 0.6 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
         const r = grid * (0.4 + 1.6 * Math.sqrt(k)); p.s.position.set(p.x, p.y); p.s.width = p.s.height = r * 2; p.s.rotation = p.rot + k; p.s.alpha = 0.3 * Math.sin(Math.min(1, k * 6) * 1.5708) * (1 - k); return true; });
@@ -282,7 +294,8 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
       } else if (eyes.length) { kill(eyes); eyes = []; }
       // Moths round the fires near the view: loops, flutter, their shadows thrown away from the flame.
       if (mothLights) {
-        const want = mothLights.slice(0, 5).flatMap((l) => [0, 1, 2].map((i) => ({ l, i })));
+        // How many a fire and how big: the scene's choice (mothCount a fire, mothSize times the usual).
+        const want = mothLights.slice(0, 5).flatMap((l) => Array.from({ length: Math.max(0, Math.round(mothCount)) }, (_, i) => ({ l, i })));
         while (moths.length > want.length) { const m = moths.pop(); m.s.destroy(); m.shadow.destroy(); }
         while (moths.length < want.length) { const s = sprite(T('moth:3', () => mothCanvas(1)), above()), shadow = sprite(T('moth:3', () => mothCanvas(1)), floor()); shadow.tint = 0x000000; moths.push({ s, shadow, a: Math.random() * TAU, rad: 0.5 + Math.random() * 0.45, sp: 2.5 + Math.random() * 3, p: Math.random() * TAU, z: 0.3 + Math.random() * 0.7 }); }
         moths.forEach((m, n) => {
@@ -291,15 +304,17 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
           const home = homes.get(l) ?? homes.set(l, mothHome(l, { grid })).get(l);
           const { x, y } = keepInside({ x: home.x + Math.cos(m.a) * rr + Math.sin(time * 7 + m.p) * grid * 0.03, y: home.y + Math.sin(m.a) * rr * 0.8 + Math.cos(time * 6 + m.p) * grid * 0.03 }, home, home.shape);
           const open = 0.35 + 0.65 * Math.abs(Math.sin(time * 38 + m.p)), frame = T(`moth:${Math.round(open * 3)}`, () => mothCanvas(Math.round(open * 3) / 3));
-          m.s.texture = frame; m.s.position.set(x, y); m.s.rotation = m.a + Math.PI; m.s.width = m.s.height = grid * 0.15;
+          m.s.texture = frame; m.s.position.set(x, y); m.s.rotation = m.a + Math.PI; m.s.width = m.s.height = grid * 0.15 * mothSize;
           const dx = x - l.x, dy = y - l.y, d = Math.hypot(dx, dy) + 1, far = grid * 0.6 + (grid * grid * 0.24) / d;
           const fall = keepInside({ x: l.x + (dx / d) * (d + far * m.z), y: l.y + (dy / d) * (d + far * m.z) }, { x, y }, home.shape);
-          m.shadow.texture = frame; m.shadow.position.set(fall.x, fall.y); m.shadow.rotation = m.s.rotation; m.shadow.width = m.shadow.height = grid * (0.15 + (8 * grid) / (d * 100)); m.shadow.alpha = Math.min(0.35, (grid * 0.12) / d);
+          m.shadow.texture = frame; m.shadow.position.set(fall.x, fall.y); m.shadow.rotation = m.s.rotation; m.shadow.width = m.shadow.height = grid * (0.15 + (8 * grid) / (d * 100)) * mothSize; m.shadow.alpha = Math.min(0.35, (grid * 0.12) / d);
         });
       } else if (moths.length) { kill(moths.map((m) => m.s)); kill(moths.map((m) => m.shadow)); moths = []; }
       // Crawlers along the foot of the walls, in the dark: run, freeze, run.
       if (crawl) {
-        while (crawlers.length < Math.min(4, crawl.length)) { const path = crawl[Math.floor(Math.random() * crawl.length)], kind = crawlers.length === 0 ? 'centipede' : 'beetle';
+        const most = Math.min(Math.max(0, Math.round(crawlCount)), crawl.length);
+        while (crawlers.length > most) crawlers.pop().s.destroy();
+        while (crawlers.length < most) { const path = crawl[Math.floor(Math.random() * crawl.length)], kind = crawlers.length === 0 ? 'centipede' : 'beetle';
           crawlers.push({ s: sprite(T(`${kind}:0`, () => crawlerCanvas(kind, 0)), floor()), kind, path, k: Math.random(), v: 0, wait: Math.random() * 2, step: 0 }); }
         for (const c of crawlers) {
           // Gone from the view: it turns up again by a wall in sight.
@@ -311,19 +326,23 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
           if (lit(x, y) > 0.45 && c.v) c.v = -c.v;
           c.step = (c.step + Math.abs(c.v) * dt * 6) % 1;
           c.s.texture = T(`${c.kind}:${Math.floor(c.step * 4)}`, () => crawlerCanvas(c.kind, Math.floor(c.step * 4) / 4));
-          c.s.position.set(x, y); c.s.rotation = Math.atan2(c.path.b.y - c.path.a.y, c.path.b.x - c.path.a.x) + (c.v < 0 ? Math.PI : 0); c.s.scale.set(grid / 160); c.s.visible = seen(x, y);
+          c.s.position.set(x, y); c.s.rotation = Math.atan2(c.path.b.y - c.path.a.y, c.path.b.x - c.path.a.x) + (c.v < 0 ? Math.PI : 0); c.s.scale.set((grid / 160) * crawlSize); c.s.visible = seen(x, y);
         }
       } else if (crawlers.length) { kill(crawlers.map((c) => c.s)); crawlers = []; }
     },
+    // The next eyes show at once (a preview), not after their quiet wait.
+    rouse() { eyeWait = 0; },
     clear() { clearLasting(); clearLiving(); for (const list of fallen.values()) kill(list); fallen.clear(); },
     get busy() { return fallen.size + haze.length + lasting.length + glints.length + vents.length + puffs.length + stones.length + eyes.length + moths.length + crawlers.length + dust.length + falling.length > 0; },
   };
 }
 
-// A cave-in's stones (pure): a heap round its middle, mostly gravel, a few big blocks; the same seed always gives the
-// same heap. Each { x, y, size, seed }.
-export function rubbleStones({ x, y, radius = 150, seed = 1 } = {}) {
-  const r = rng(`rubble:${seed}`), n = Math.round(30 + radius / 4), out = [];
-  for (let i = 0; i < n; i++) { const a = r() * TAU, d = Math.pow(r(), 0.7) * radius, big = Math.pow(r(), 3.2); out.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.85, size: radius * (0.02 + big * 0.16) * (1 - 0.4 * (d / radius)), seed: Math.floor(r() * 1000) }); }
-  return out.sort((a, b) => a.size - b.size);
+// A cave-in's stones (pure): gravel and rocks round a few real boulders piled at the middle, far bigger ones in a big fall
+// (from two and a half squares across); the same seed always gives the same heap. Each { x, y, size, seed }, those at the
+// back first.
+export function rubbleStones({ x, y, radius = 150, seed = 1 } = {}, { grid = 100 } = {}) {
+  const r = rng(`rubble:${seed}`), k = grid / 100, big = radius >= grid * 2.5, out = [];
+  const add = (n, least, most, spread) => { for (let i = 0; i < n; i++) { const a = r() * TAU, d = Math.pow(r(), 0.8) * radius * spread; out.push({ x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.82, size: (least + (most - least) * Math.pow(r(), 1.6)) * k, seed: Math.floor(r() * 1000) }); } };
+  add(Math.round(radius / k / 4.5), 1.2, 3.4, 1.15); add(Math.round(radius / k / 9), 5, 10, 0.95); add(big ? 9 : 4, big ? 20 : 12, big ? 42 : 20, 0.55);
+  return out.sort((a, b) => (a.y + a.size) - (b.y + b.size));
 }

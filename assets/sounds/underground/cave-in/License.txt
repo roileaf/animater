@@ -1,0 +1,13 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+cave-in-336023-0.ogg: "Rocks.wav" by adamgryu, https://freesound.org/people/adamgryu/sounds/336023/ (CC0 1.0). Changes: cut 0.20-5.20 s, faded, gain -6.0 dB.
+cave-in-567249-0.ogg: "Bricks/Stones/Rocks/Gravel Falling" by iwanPlays, https://freesound.org/people/iwanPlays/sounds/567249/ (CC0 1.0). Changes: cut 0.00-4.20 s, faded, gain -8.2 dB.
+cave-in-567250-0.ogg: "Dropping Rocks" by iwanPlays, https://freesound.org/people/iwanPlays/sounds/567250/ (CC0 1.0). Changes: cut 0.00-4.20 s, faded, gain -7.4 dB.
+cave-in-567251-0.ogg: "Stones Falling" by iwanPlays, https://freesound.org/people/iwanPlays/sounds/567251/ (CC0 1.0). Changes: cut 0.00-4.20 s, faded, gain -9.9 dB.
+cave-in-655368-0.ogg: "rock slide.wav" by 21100495, https://freesound.org/people/21100495/sounds/655368/ (CC0 1.0). Changes: cut 1.90-6.40 s, faded, gain -5.3 dB.
+
+cave-in-5672xx files are iwanPlays' CC0 mix of adamgryu 336023, AlanCat 389303 and spookymodem 202098 (all CC0).
+cave-in-336023 files are adamgryu's CC0 mix of gfrog 190505, oscaraudiogeek 328934 and ALLANZ10D 155934 (all CC0).

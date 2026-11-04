@@ -4,10 +4,11 @@ import { fireKindOf, fireTongues } from '../../../scripts/engines/motion/light-f
 
 test('a torch light burns as a torch, a flame or fire light as a brazier, unless the light says', () => {
   assert.equal(fireKindOf('', 'torch'), 'torch');
-  assert.equal(fireKindOf('', 'flame'), 'brazier');
-  assert.equal(fireKindOf(undefined, 'fire'), 'brazier');
+  assert.equal(fireKindOf('', 'flame'), 'torch');
+  assert.equal(fireKindOf(undefined, 'fire'), 'torch');
+  assert.equal(fireKindOf('brazier', 'flame'), 'brazier');
   assert.equal(fireKindOf('bonfire', 'torch'), 'bonfire');
-  assert.equal(fireKindOf('nonsense', 'flame'), 'brazier');
+  assert.equal(fireKindOf('nonsense', 'flame'), 'torch');
 });
 
 test('a torch is one tongue; a brazier one big flame with smaller ones pressed to it, drawn in front; a bonfire wider and taller', () => {

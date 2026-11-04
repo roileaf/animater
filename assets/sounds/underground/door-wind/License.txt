@@ -1,0 +1,8 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+door-wind-575272-0.ogg: "Nfld wind int moans 09.flac" by TRP, https://freesound.org/people/TRP/sounds/575272/ (CC0 1.0). Changes: cut 40.00-55.00 s, made loopable with a 1.5 s equal-power crossfade of its tail into its head, gain -5.0 dB.
+door-wind-576970-0.ogg: "Wind, interior, very slow howling, window, winter, cold, 10.mp3" by TRP, https://freesound.org/people/TRP/sounds/576970/ (CC0 1.0). Changes: cut 5.00-20.00 s, made loopable with a 1.5 s equal-power crossfade of its tail into its head, gain +3.3 dB.
+door-wind-864395-0.ogg: "whistling wind" by ondrosik, https://freesound.org/people/ondrosik/sounds/864395/ (CC0 1.0). Changes: cut 2.00-14.00 s, made loopable with a 1.5 s equal-power crossfade of its tail into its head, gain -10.3 dB.

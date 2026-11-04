@@ -6,10 +6,10 @@ import { DEFAULT_SUN, sunReach } from './sun.mjs';
 
 // One puff every this many squares of travel.
 export const STRIDE = 0.6;
-export const FLOORS = Object.freeze(['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud']);
+export const FLOORS = Object.freeze(['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud', 'pebbles', 'glass', 'metal']);
 export const FLOOR_CHOICES = Object.freeze([
-  ['', 'From the scene (auto)'], ['stone', 'Stone'], ['wood', 'Wood'], ['dirt', 'Dirt'], ['grass', 'Grass'],
-  ['sand', 'Sand'], ['snow', 'Snow'], ['water', 'Water'], ['ice', 'Ice'], ['mud', 'Mud'],
+  ['', 'From the scene (auto)'], ['stone', 'Stone'], ['pebbles', 'Pebbles (loose stones, gravel)'], ['wood', 'Wood'], ['dirt', 'Dirt'], ['grass', 'Grass'],
+  ['sand', 'Sand'], ['snow', 'Snow'], ['water', 'Water'], ['ice', 'Ice'], ['mud', 'Mud'], ['glass', 'Glass'], ['metal', 'Metal (plates, grates, a ship\'s deck)'],
   ['none', 'None (no step sounds, no marks)'],
 ]);
 // A floor that makes nothing: no step sounds and no marks on it (a wing beat still sounds over it).
@@ -33,40 +33,51 @@ export const PARTICLE_KINDS = Object.freeze(['puff', 'ring', 'drop', 'scuff', 'c
 // shrinks), `hold` the share of its life it stays at full strength before fading, `twinkle` flickers per life, `edge`
 // a darker outline colour.
 export const FLOOR_LOOK = Object.freeze({
-  // Grey grit chips that hop out and settle, and a faint scuff.
+  // Broken stone with lit and shaded faces, hopping, bouncing and settling, each with its shadow; a little dust.
   stone: { kind: 'grit', parts: [
-    { kind: 'chip', emit: 'burst', colors: [0x7d7b76, 0x5f5d59, 0x9a9892], count: 5, alpha: 0.9, size: 0.03, life: 1000,
-      speed: [0.12, 0.24], cone: 1.5, spread: 0.1, spin: 9, hop: 0.07, hold: 0.45, grow: 0 },
-    { kind: 'scuff', emit: 'foot', color: 0x5a5a5a, alpha: 0.3, size: 0.1, life: 420, spread: 0.06, grow: 0.3 },
+    { kind: 'chip', emit: 'burst', art: 'stone', colors: [0x7d7b76, 0x5f5d59, 0x9a9892], count: 5, alpha: 1, size: 0.026, life: 1300,
+      speed: [0.25, 0.6], cone: 1.5, spread: 0.12, spin: 11, hop: 0.09, bounce: 0.34, shadow: true, hold: 0.55, grow: 0 },
+    { kind: 'puff', emit: 'burst', art: 'stoneDust', color: 0xb2afa8, count: 2, alpha: 0.32, size: 0.13, life: 800, speed: [0.1, 0.3], cone: 1.4, spread: 0.12, spin: 0.3, hold: 0.05, grow: [0.9, 1.3] },
   ] },
-  // Fine light sawdust drifting low, and a faint scuff.
+  // Loose stones: rounded, rolling on when they land, more of them and further; a little dust.
+  pebbles: { kind: 'gravel', parts: [
+    { kind: 'chip', emit: 'burst', art: 'pebble', colors: [0x8a8178, 0x6e665d, 0xa39a8e, 0x7a6a58], count: 6, alpha: 1, size: 0.037, life: 1700,
+      speed: [0.3, 0.8], cone: 1.7, spread: 0.14, spin: 9, hop: 0.07, bounce: 0.4, roll: 0.6, shadow: true, hold: 0.65, grow: 0 },
+    { kind: 'puff', emit: 'burst', art: 'stoneDust', color: 0xb2afa8, count: 2, alpha: 0.3, size: 0.13, life: 800, speed: [0.1, 0.3], cone: 1.4, spread: 0.12, spin: 0.3, hold: 0.05, grow: [0.9, 1.3] },
+  ] },
+  // Splinters with grain along them, and fine sawdust.
   wood: { kind: 'sawdust', parts: [
-    { kind: 'fleck', emit: 'burst', colors: [0xc9a877, 0xd8bc8e, 0xb08d5c], count: 6, alpha: 0.85, size: 0.035, life: 1300,
-      speed: [0.05, 0.13], cone: 1.8, spread: 0.12, spin: 2, hold: 0.25, grow: 0 },
-    { kind: 'scuff', emit: 'foot', color: 0x5a4630, alpha: 0.28, size: 0.1, life: 420, spread: 0.06, grow: 0.3 },
+    { kind: 'chip', emit: 'burst', art: 'splinter', colors: [0xc9a877, 0xd8bc8e, 0xb08d5c], count: 3, alpha: 1, size: 0.05, life: 1100,
+      speed: [0.2, 0.45], cone: 1.5, spread: 0.1, spin: 9, hop: 0.07, bounce: 0.25, shadow: true, thin: true, hold: 0.5, grow: 0 },
+    { kind: 'fleck', emit: 'burst', art: 'sawdust', colors: [0xc9a877, 0xd8bc8e, 0xb08d5c], count: 5, alpha: 0.9, size: 0.012, life: 1300,
+      speed: [0.1, 0.34], cone: 1.8, spread: 0.12, spin: 2, hop: 0.03, hold: 0.35, grow: 0 },
   ] },
-  // A brown dust puff.
+  // A soft dust cloud with an uneven edge, and clods thrown out of it.
   dirt: { kind: 'dust', parts: [
-    { kind: 'puff', emit: 'burst', color: 0x7a5c3a, count: 5, alpha: 0.55, size: 0.13, life: 750, speed: [0.18, 0.4], cone: 1.4, spread: 0.2, grow: [1.4, 2] },
+    { kind: 'puff', emit: 'burst', art: 'dirtDust', color: 0x7a5c3a, count: 3, alpha: 0.5, size: 0.165, life: 950, speed: [0.18, 0.42], cone: 1.4, spread: 0.2, spin: 0.3, hold: 0.05, grow: [1.1, 1.5] },
+    { kind: 'chip', emit: 'burst', art: 'clod', colors: [0x584431, 0x6a543c], count: 4, alpha: 1, size: 0.022, life: 1100, speed: [0.25, 0.6], cone: 1.5, spread: 0.12, spin: 8, hop: 0.07, bounce: 0.2, shadow: true, hold: 0.5, grow: 0 },
   ] },
-  // Bright yellow-green blades with a dark green edge (so they read on green map art) flicked up and back, a tuft at
-  // the foot that bends and springs back, and the grass trampled flat under each foot: darker streaks along the
-  // heading with a few lighter flattened blades, held about 2 s, then springing back up over about 4 s.
+  // Curved blades, deep at the root and bright at the tip, fluttering down with thin shadows; a few seeds; a tuft at the
+  // foot that bends and springs back; and the grass trampled flat under each foot: darker streaks along the heading with a
+  // few lighter flattened blades, held about 2 s, then springing back up over about 4 s.
   grass: { kind: 'blades', parts: [
-    { kind: 'blade', emit: 'burst', colors: [0xb4dc58, 0xc6e86c, 0xa2cf45], edge: 0x2a4a14, count: 7, alpha: 0.95, size: 0.05,
-      life: 800, speed: [0.2, 0.36], cone: 1.2, spread: 0.14, spin: 10, hop: 0.12, hold: 0.3, grow: 0 },
+    { kind: 'blade', emit: 'burst', art: 'blade', colors: [0xb4dc58, 0xc6e86c, 0xa2cf45], edge: 0x2a4a14, count: 6, alpha: 1, size: 0.062,
+      life: 1000, speed: [0.18, 0.4], cone: 1.3, spread: 0.14, spin: 8, hop: 0.1, flutter: 0.1, shadow: true, thin: true, hold: 0.4, grow: 0 },
+    { kind: 'fleck', emit: 'burst', art: 'seed', colors: [0xd6d28a], count: 2, alpha: 1, size: 0.01, life: 800, speed: [0.15, 0.4], cone: 1.5, spread: 0.1, spin: 3, hop: 0.05, hold: 0.3, grow: 0 },
     { kind: 'tuft', emit: 'foot', color: 0xa8d64e, edge: 0x2a4a14, alpha: 0.9, size: 0.13, life: 950, spread: 0.04, sway: 0.8, grow: 0 },
     { kind: 'trample', emit: 'trample', color: 0x3e5a24, light: 0xb8d47a, alpha: 0.55, size: 0.17, life: 6000, hold: 1 / 3,
       spring: 0.35, streaks: 7 },
   ] },
-  // Low pale spray thrown backwards, and shallow footprints that fade over about 6 s.
+  // Fine grains sprayed back in an arc over a low soft plume, and shallow footprints that fade over about 6 s.
   sand: { kind: 'spray', parts: [
-    { kind: 'streak', emit: 'burst', color: 0xe3cc98, count: 6, alpha: 0.7, size: 0.07, life: 550, speed: [0.35, 0.55], cone: 0.7, spread: 0.08, align: true, grow: [0.4, 0.8] },
+    { kind: 'puff', emit: 'burst', art: 'sandDust', color: 0xe3cc98, count: 2, alpha: 0.45, size: 0.14, life: 700, speed: [0.28, 0.58], cone: 0.9, spread: 0.1, spin: 0.3, hold: 0.05, grow: [0.8, 1.2] },
+    { kind: 'chip', emit: 'burst', art: 'grain', colors: [0xe3cc98], count: 12, alpha: 1, size: 0.009, life: 650, speed: [0.4, 0.92], cone: 0.9, spread: 0.1, spin: 0, hop: 0.04, hold: 0.45, grow: 0 },
     { kind: 'print', emit: 'print', color: 0x9a7a45, alpha: 0.45, size: 0.11, life: 6000, hold: 0.35 },
   ] },
-  // A white powder puff, and footprints that linger about 20 s: shadowed hollows, blue-grey on the white.
+  // A powder plume, clumps with blue-grey undersides, and footprints that linger about 20 s: shadowed hollows on the white.
   snow: { kind: 'powder', parts: [
-    { kind: 'puff', emit: 'burst', color: 0xf3f6fa, count: 6, alpha: 0.7, size: 0.11, life: 850, speed: [0.12, 0.3], cone: 1.6, spread: 0.18, grow: [1.2, 1.8] },
+    { kind: 'puff', emit: 'burst', art: 'snowDust', color: 0xf3f6fa, count: 3, alpha: 0.75, size: 0.14, life: 950, speed: [0.12, 0.32], cone: 1.6, spread: 0.18, spin: 0.3, hold: 0.05, grow: [0.8, 1.2] },
+    { kind: 'chip', emit: 'burst', art: 'snowClod', colors: [0xeaf0f6], count: 4, alpha: 1, size: 0.023, life: 1050, speed: [0.18, 0.45], cone: 1.5, spread: 0.12, spin: 3, hop: 0.07, bounce: 0.05, shadow: true, hold: 0.45, grow: 0 },
     { kind: 'print', emit: 'print', color: 0x6c7f97, alpha: 0.72, size: 0.11, life: 20000, hold: 0.6 },
   ] },
   // Ripples and droplets.
@@ -74,17 +85,28 @@ export const FLOOR_LOOK = Object.freeze({
     { kind: 'ring', emit: 'rings', color: 0xd4e9f7, count: 2, alpha: 0.6, size: 0.28, life: 900, stagger: 160, grow: 1.6 },
     { kind: 'drop', emit: 'burst', color: 0xd4e9f7, count: 4, alpha: 0.65, size: 0.06, life: 900, speed: [0.18, 0.4], cone: 1.4, spread: 0.2, grow: 0.2 },
   ] },
-  // Cold glints that twinkle out, a thin skid along the heading, and now and then a hairline crack.
+  // Frost shards, cold glints that twinkle out, a thin skid along the heading, and now and then a hairline crack.
   ice: { kind: 'glint', parts: [
-    { kind: 'spark', emit: 'burst', colors: [0xffffff, 0xdff3ff, 0xc6e8ff], count: 4, alpha: 0.95, size: 0.05, life: 520, speed: [0.02, 0.06], cone: 2, spread: 0.22, twinkle: 2.5, grow: -0.7 },
+    { kind: 'chip', emit: 'burst', art: 'ice', colors: [0xcbe6f4], count: 3, alpha: 0.95, size: 0.019, life: 850, speed: [0.15, 0.4], cone: 1.6, spread: 0.12, spin: 8, hop: 0.04, bounce: 0.3, shadow: true, hold: 0.45, grow: 0 },
+    { kind: 'spark', emit: 'burst', art: 'glint', colors: [0xffffff, 0xdff3ff, 0xc6e8ff], count: 3, alpha: 0.95, size: 0.05, life: 500, speed: [0.02, 0.08], cone: 2, spread: 0.22, twinkle: 2.5, grow: -0.6 },
     { kind: 'streak', emit: 'foot', color: 0xffffff, alpha: 0.55, size: 0.18, life: 700, back: 0.1, align: true, grow: 0.25 },
     { kind: 'crack', emit: 'crack', color: 0xe4f2ff, alpha: 0.8, size: 0.22, life: 2600, chance: 1 / 8, hold: 0.45, grow: 0 },
   ] },
-  // Dark splatter flung short, and wet footprints that linger about 12 s.
+  // Wet clods flung short, lumpy with a highlight, and wet footprints that linger about 12 s.
   mud: { kind: 'splatter', parts: [
-    { kind: 'blob', emit: 'burst', colors: [0x4a3420, 0x3b2a1a, 0x5a4128], count: 4, alpha: 0.8, size: 0.035, life: 850,
-      speed: [0.1, 0.2], cone: 1.4, spread: 0.1, hop: 0.03, hold: 0.45, grow: 0.15 },
+    { kind: 'blob', emit: 'burst', art: 'mud', colors: [0x4a3420, 0x3b2a1a, 0x5a4128], count: 5, alpha: 1, size: 0.03, life: 1600,
+      speed: [0.2, 0.5], cone: 1.4, spread: 0.1, spin: 4, hop: 0.09, shadow: true, hold: 0.6, grow: 0.1 },
     { kind: 'print', emit: 'print', color: 0x2c1f13, alpha: 0.5, size: 0.11, life: 12000, hold: 0.55 },
+  ] },
+  // A bright glint where the foot comes down and a faint smudge that fades (nothing thrown).
+  glass: { kind: 'gleam', parts: [
+    { kind: 'spark', emit: 'burst', art: 'glint', colors: [0xffffff, 0xe8f6ff], count: 2, alpha: 0.95, size: 0.055, life: 420, speed: [0, 0.04], cone: 2, spread: 0.12, twinkle: 1.5, grow: -0.5 },
+    { kind: 'puff', emit: 'burst', art: 'smear', color: 0xcfe4f0, count: 1, alpha: 0.2, size: 0.115, life: 950, speed: [0, 0.03], cone: 2, spread: 0.02, hold: 0.2, grow: 0.15 },
+  ] },
+  // Bright flecks off the plates, bouncing high, and now and then a spark from a nailed boot.
+  metal: { kind: 'grime', parts: [
+    { kind: 'chip', emit: 'burst', art: 'metal', colors: [0x55595e, 0x6b6f74, 0x3f4247], count: 3, alpha: 1, size: 0.014, life: 750, speed: [0.2, 0.5], cone: 1.6, spread: 0.1, spin: 9, hop: 0.05, bounce: 0.45, shadow: true, hold: 0.45, grow: 0 },
+    { kind: 'spark', emit: 'burst', art: 'metalSpark', colors: [0xffd9a0], count: 1, chance: 0.5, alpha: 1, size: 0.035, life: 240, speed: [0.08, 0.2], cone: 1.6, spread: 0.06, hold: 0.1, grow: -0.6 },
   ] },
 });
 const isFloor = (value) => FLOORS.includes(value) || value === NO_FLOOR;
@@ -484,6 +506,8 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
       out.push({ ...base, color: part.color, x: at.x, y: at.y, radius: unit * part.size * (0.8 + random() * 0.4),
         rotation: heading + (random() - 0.5) * 1.2, points: crackLines(random) });
     } else {
+      // Some only now and then (`chance`).
+      if (part.chance !== undefined && random() >= part.chance) return;
       const count = Math.max(1, Math.round((part.count ?? 1) * Math.min(1, density)));
       for (let i = 0; i < count; i++) {
         const angle = back + (random() - 0.5) * Math.PI * (part.cone ?? 1.4), speed = grid * reach * between(part.speed ?? [0.18, 0.4], random());
@@ -496,6 +520,10 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
           rotation: part.align ? angle : random() * Math.PI * 2, spin: (random() - 0.5) * 2 * (part.spin ?? 0),
         };
         if (part.hop) spec.hop = unit * part.hop * (0.6 + random() * 0.8);
+        // A painted bit (kick-art.mjs: which family, which of them) and how it lands.
+        if (part.art) { spec.art = part.art; spec.artN = Math.floor(random() * 1000); }
+        for (const key of ['bounce', 'roll', 'shadow', 'thin']) if (part[key]) spec[key] = part[key];
+        if (part.flutter) { spec.flutter = unit * part.flutter; spec.phase = random() * Math.PI * 2; }
         if (part.twinkle) spec.twinkle = part.twinkle * (0.8 + random() * 0.4);
         if (part.edge) spec.edge = part.edge;
         out.push(spec);
@@ -515,8 +543,12 @@ export function particleState(p, age) {
   const t = (age - p.delay) / p.life, ease = 1 - (1 - t) * (1 - t);
   // A hopper travels (and tumbles) only until it lands; everything else slows to a stop over its life.
     const motionLife=p.motionLife??p.life,motionT=Math.min(1,(age-p.delay)/motionLife);
-    const u = p.hop ? Math.min(1, motionT / LAND) : motionT, travel = 1 - (1 - u) * (1 - u), seconds = (motionLife * travel) / 1000;
-  const lift = p.hop ? p.hop * 4 * u * (1 - u) : 0;
+    // It lands, then bounces lower (`bounce`), rolls on (`roll`) or takes its time down (`flutter`), and only then lies still.
+    const down = LAND * (p.flutter ? 1.8 : 1), bounced = p.bounce ? 0.5 * LAND : 0, stop = down + bounced + LAND * (p.roll ?? 0);
+    const u = p.hop ? Math.min(1, motionT / stop) : motionT, travel = 1 - (1 - u) * (1 - u), seconds = (motionLife * travel) / 1000;
+    const arc = (k) => 4 * k * (1 - k), first = Math.min(1, motionT / down), second = bounced ? Math.min(1, Math.max(0, (motionT - down) / bounced)) : 1;
+  const lift = !p.hop ? 0 : motionT < down ? p.hop * arc(first) : p.hop * (p.bounce ?? 0) * arc(second);
+  const sway = p.flutter && lift > 0 ? Math.sin((age - p.delay) / 90 + (p.phase ?? 0)) * p.flutter * (1 - first) : 0;
   const fade = p.hold ? Math.max(0, (t - p.hold) / (1 - p.hold)) : t;
   let alpha = p.alpha * Math.pow(1 - fade, 1.5);
   if (p.twinkle) alpha *= 0.6 + 0.4 * Math.cos(2 * Math.PI * p.twinkle * t);
@@ -525,7 +557,7 @@ export function particleState(p, age) {
   if (p.sway) rotation += p.sway * Math.exp(-4 * t) * Math.cos(3 * Math.PI * t);
   // Trampled grass springs back up as it fades: the flattened patch shrinks by `spring` of its size.
   const scale = (1 + p.grow * ease) * (p.spring ? 1 - p.spring * fade : 1);
-  return { x: p.x + p.vx * seconds, y: p.y + p.vy * seconds - lift, scale, alpha, rotation };
+  return { x: p.x + p.vx * seconds + sway, y: p.y + p.vy * seconds - lift, scale, alpha, rotation, lift };
 }
 
 // Balanced and above draw every puff; Low draws half; Off none.
@@ -548,6 +580,9 @@ export const FOOTSTEP_FILES = Object.freeze({
   water: freesound(['water-step-861369-0', 'water-step-861369-1', 'water-step-861369-2', 'water-step-861369-3']),
   mud: freesound(['mud-step-488068-0', 'mud-step-349082-0', 'mud-step-349082-1', 'mud-step-349082-2']),
   ice: freesound(['ice-step-732880-0', 'ice-step-732880-1', 'ice-step-732880-2', 'ice-step-732880-3', 'ice-step-416939-0']),
+  pebbles: freesound(['gravel-step-521588-0', 'gravel-step-521588-1', 'gravel-step-521588-2', 'gravel-step-556002-0', 'gravel-step-556002-1', 'gravel-step-556002-2']),
+  glass: freesound(['glass-step-223152-0', 'glass-step-583068-1', 'glass-step-813392-2']),
+  metal: freesound(['metal-step-698697-0', 'metal-step-698697-1', 'metal-step-698697-2', 'metal-step-208101-0', 'metal-step-208101-1', 'metal-step-398937-0', 'metal-step-398937-1']),
 });
 // Which of `count` recordings the `n`th step plays: a seeded shuffle that never repeats the step before it, so a walk
 // does not cycle 1-2-3-4-5 and two tokens walking side by side do not step in unison. Same on every screen.
@@ -623,7 +658,7 @@ export const MIN_FAMILY_FILES = 3;
 const GAIT_FAMILY = { dragon: 'dragon', claws: 'paws', paws: 'paws', padded: 'padded', webbed: 'webbed', hooves: 'hooves', talons: 'talons', ooze: 'ooze', legs: 'legs', slither: 'slither' };
 const SILENT_GAITS = new Set(['none']);
 const FOREST_FLOORS = new Set(['dirt', 'grass']);
-const HARD_FLOORS = new Set(['stone', 'wood', 'ice']);
+const HARD_FLOORS = new Set(['stone', 'pebbles', 'wood', 'ice', 'glass', 'metal']);
 const WET_FLOORS = new Set(['mud', 'water']);
 // Floors whose own sound is part of any footfall on them: a hoof in mud squelches, a paw in snow crunches. That floor's
 // step plays under the creature's, at this share of its level and the same pitch.
@@ -638,7 +673,7 @@ export function footstepReach(range, weight = 2) {
 // Rain on a floor: soil turns to mud (its sound and its prints), and a hard or open floor (stone, wood, grass, sand)
 // gets puddles, a quiet splash under every step. { floor, splash }. Water, mud, snow and ice stay as they are.
 const RAIN_TURNS = { dirt: 'mud' };
-const RAIN_SPLASHES = new Set(['stone', 'wood', 'grass', 'sand']);
+const RAIN_SPLASHES = new Set(['stone', 'pebbles', 'wood', 'grass', 'sand', 'glass', 'metal']);
 export function rainFloor(floor, weather) {
   if (weather !== 'rain') return { floor, splash: false };
   const wet = RAIN_TURNS[floor] ?? floor;
@@ -651,7 +686,7 @@ export const frozenFloor = (floor, ice, freezes = true) => (floor === 'water' &&
 // Snow lying on the ground (the ground's snow, 0–1, sky-light.mjs's snow cover): from a quarter of a cover on, the
 // open ground underfoot is snow (its sound and its prints: tracks across it). Water and ice stay as they are.
 export const SNOW_LIES = 0.25;
-const SNOW_COVERS = new Set(['stone', 'wood', 'dirt', 'grass', 'sand', 'mud']);
+const SNOW_COVERS = new Set(['stone', 'pebbles', 'wood', 'dirt', 'grass', 'sand', 'mud']);
 export function snowFloor(floor, lying) {
   return (Number(lying) || 0) >= SNOW_LIES && SNOW_COVERS.has(floor) ? 'snow' : floor;
 }
@@ -1097,7 +1132,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     const heightOf = (l) => ((Number(l?.elevation) || 0) - (Number(token.base) || 0)) / (distance() || 5);
     const lights = Array.isArray(lit.lights) ? lit.lights.map((l) => ({ ...l, height: heightOf(l) })) : lit.light ? [{ ...lit.light, height: heightOf(lit.light) }] : [];
     // In a wall's shade (lit.shade, 0–1: wall-shadows.mjs inWallShade) the sun reaches it that much less.
-    const sky = sun(), shade = Math.min(1, Math.max(0, Number(lit.shade) || 0));
+    // Where the sky comes in through an opening underground (lit.sky), that light is its sun.
+    const sky = lit.sky ?? sun(), shade = Math.min(1, Math.max(0, Number(lit.shade) || 0));
     const aims = shadowFalls({ width: token.width, lift, body, lights, darkness: lit.darkness, sun: sky && shade ? { ...sky, strength: (Number(sky.strength) || 0) * (1 - shade) } : sky, grid: grid() || 100, grounded });
     const time = now(), falls = move.falls ?? (move.falls = {});
     const want = new Map([['sun', aims.sun], ...aims.lamps.map((f) => [`lamp:${f.key}`, f])]);
@@ -1245,8 +1281,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     for (let spec of specs) {
       // A step into water rings it on the GPU (`ripples`, step-ripples.mjs) when that is drawn: the first ring only.
       if (ripples && spec.kind === 'ring' && floor === 'water') { if (!spec.delay) { try { ripples(spec); } catch { /* optional */ } } continue; }
-      // A swimmer's stroke rings the water too: its rings falling behind it open into the wake's V by themselves.
-      if (ripples && trailKind === 'swim' && spec.kind === 'wake') { if (!stroked) { stroked = true; try { ripples({ ...spec, radius: (Number(spec.radius) || 28) * 1.2 }); } catch { /* optional */ } } continue; }
+      // A swimmer's stroke rings the water too (once a stroke), under its wake's V: the V is still drawn, or a swim reads
+      // as a wading step's rings.
+      if (ripples && trailKind === 'swim' && spec.kind === 'wake' && !stroked) { stroked = true; try { ripples({ ...spec, radius: (Number(spec.radius) || 28) * 1.2 }); } catch { /* optional */ } }
       // Grooves, smears and a burrower's churned earth last as long as prints and share their budget.
       const print = spec.kind === 'print' || spec.kind === 'groove' || spec.lasting === true;
       if (print) {

@@ -1,0 +1,8 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+pool-234554-0.ogg: "Dripping water" by Electroviolence, https://freesound.org/people/Electroviolence/sounds/234554/ (CC0 1.0). Changes: cut 2.00-24.00 s, made loopable with a 2.0 s equal-power crossfade of its tail into its head, gain +6.6 dB.
+pool-343742-0.ogg: "cave 01" by rucisko, https://freesound.org/people/rucisko/sounds/343742/ (CC0 1.0). Changes: cut 2.00-27.00 s, made loopable with a 2.0 s equal-power crossfade of its tail into its head, gain +17.8 dB.
+pool-392668-0.ogg: "Ambience INT water drip dropping cave grotto spooky (quinta da regaleira portugal).flac" by corkob, https://freesound.org/people/corkob/sounds/392668/ (CC0 1.0). Changes: cut 1.00-17.00 s, made loopable with a 2.0 s equal-power crossfade of its tail into its head, gain +11.1 dB.

@@ -4,6 +4,13 @@
 
 const TAU = Math.PI * 2;
 
+// How many of a kind of creature a scene has, and how big they are (pure): the scene's choice (Scene configuration â†’
+// Animater) as times the usual. Anything unknown is the usual.
+export const CREATURE_AMOUNTS = Object.freeze({ none: 0, few: 0.5, '': 1, more: 2, many: 3 });
+export const CREATURE_SIZES = Object.freeze({ small: 0.7, '': 1, big: 1.4, huge: 1.8 });
+export const creatureAmount = (v) => CREATURE_AMOUNTS[String(v ?? '')] ?? 1;
+export const creatureSize = (v) => CREATURE_SIZES[String(v ?? '')] ?? 1;
+
 // One rat's next step (pure): `rat` { x, y, angle, speed, wait }; `dt` seconds; `grid` pixels a square. `lit(x, y)` says
 // how lit a spot is (0 dark – 1 bright); `near` the creatures ([{ x, y }]); `blocked(a, b)` whether a wall stands between
 // two points; `random()`. Rats dart and freeze, turn away from light and walls, and flee whoever comes within two squares.
@@ -23,8 +30,10 @@ export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = []
     const nx = r.x + Math.cos(r.angle) * r.speed * dt, ny = r.y + Math.sin(r.angle) * r.speed * dt;
     // Its snout a quarter square ahead of its middle: it turns before its head would go into the wall, not after.
     const snout = { x: nx + Math.cos(r.angle) * grid * 0.25, y: ny + Math.sin(r.angle) * grid * 0.25 };
-    // Into the light or a wall: turn back (a fleeing rat runs through light rather than toward what scared it).
-    if (blocked({ x: r.x, y: r.y }, snout) || (!r.fleeing && lit(nx, ny) > 0.55)) { r.angle += Math.PI * (0.6 + 0.8 * random()); r.speed *= 0.6; }
+    // Into the light or a wall: turn back (a fleeing rat runs through light rather than toward what scared it). Only into
+    // brighter light: one caught in the light runs out of it, not round and round where it stands.
+    const glare = !r.fleeing && lit(nx, ny) > 0.55 && lit(nx, ny) > lit(r.x, r.y);
+    if (blocked({ x: r.x, y: r.y }, snout) || glare) { r.angle += Math.PI * (0.6 + 0.8 * random()); r.speed *= 0.6; }
     else { r.x = nx; r.y = ny; }
   }
   return r;
@@ -147,19 +156,19 @@ function drawBat(ctx, span) {
 }
 
 /**
- * The layer: populate({ spots, count, lit, grid }) places the rats; tick(seconds, { near, lit, blocked, view }) moves and
+ * The layer: populate({ spots, count, lit, grid, size, batSize }) places the rats (sizes: times their usual); tick(seconds, { near, lit, blocked, view }) moves and
  * draws them (only those in `view`), and the bats when `bats` is on, their shadows passing over the floor; clear().
  */
 export function createVermin({ PIXI, root, batsRoot = root }) {
-  let rats = [], bats = [], shapes = [], batShapes = [], grid = 100, time = 0, ratTex = null, batTex = null;
+  let rats = [], bats = [], shapes = [], batShapes = [], grid = 100, size = 1, batSize = 1, time = 0, ratTex = null, batTex = null;
   const frames = (w, h, n, paint) => Array.from({ length: n }, (_, i) => { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), i); return PIXI.Texture.from(c); });
   const ratFrames = () => (ratTex ??= frames(RAT_W, RAT_H, RAT_FRAMES, (ctx, i) => drawRat(ctx, i / RAT_FRAMES)));
   const batFrames = () => (batTex ??= frames(BAT_W, BAT_H, BAT_SPANS.length, (ctx, i) => drawBat(ctx, BAT_SPANS[i])));
   const sprite = (tex, parent) => { const sp = new PIXI.Sprite(tex); sp.anchor.set(0.5); sp.eventMode = 'none'; parent.addChild(sp); return sp; };
   const drop = () => { for (const s of [...shapes, ...batShapes]) { try { s.body?.destroy(); s.tail?.destroy(); s.shadow?.destroy(); } catch { /* gone */ } } shapes = []; batShapes = []; rats = []; bats = []; };
   return {
-    populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false } = {}) {
-      drop(); grid = g;
+    populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false, size: big = 1, batSize: wide = 1 } = {}) {
+      drop(); grid = g; size = Number(big) > 0 ? Number(big) : 1; batSize = Number(wide) > 0 ? Number(wide) : 1;
       rats = ratsAt(spots, { count, lit }).map((r) => ({ ...r, stride: Math.random() }));
       // The tail first, then the body over its root.
       shapes = rats.map(() => { const shadow = sprite(ratFrames()[0], root()); shadow.tint = 0x000000; const t = new PIXI.Graphics(); t.eventMode = 'none'; root().addChild(t); return { shadow, tail: t, body: sprite(ratFrames()[0], root()) }; });
@@ -185,7 +194,7 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
     tick(seconds, { near = [], lit = () => 0, blocked = () => false, view = null, light = () => null } = {}) {
       time += seconds;
       const dt = Math.min(0.05, seconds), seen = (x, y) => !view || (x > view.x - grid && y > view.y - grid && x < view.x + view.w + grid && y < view.y + view.h + grid);
-      const k = grid / 100, rt = ratFrames(), bt = batFrames();
+      const k = (grid / 100) * size, kb = (grid / 100) * batSize, rt = ratFrames(), bt = batFrames();
       rats = rats.map((r, i) => {
         const n = ratStep(r, { dt, grid, lit, near, blocked });
         // Its feet step with how far it runs.
@@ -214,10 +223,10 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
         s.body.visible = show; s.shadow.visible = !!cast;
         if (!show) return;
         const frame = bt[Math.floor((time * 11 + b.p * 3) % BAT_SPANS.length)], heading = Math.atan2(ahead.y - p.y, ahead.x - p.x) + Math.PI / 2;
-        for (const sp of [s.body, s.shadow]) { sp.texture = frame; sp.rotation = heading; sp.scale.set(k * 0.42); }
+        for (const sp of [s.body, s.shadow]) { sp.texture = frame; sp.rotation = heading; sp.scale.set(kb * 0.42); }
         s.body.position.set(p.x, p.y);
         // Its shadow flitting over the floor, thrown away from the nearest light: bigger and fainter the nearer the light.
-        if (cast) { s.shadow.position.set(cast.x, cast.y); s.shadow.scale.set(k * 0.42 * cast.scale); s.shadow.alpha = cast.alpha; }
+        if (cast) { s.shadow.position.set(cast.x, cast.y); s.shadow.scale.set(kb * 0.42 * cast.scale); s.shadow.alpha = cast.alpha; }
       });
     },
     clear: drop,

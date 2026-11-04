@@ -51,10 +51,13 @@ test('wet runs follow the walls through the area, wet on the floor side, a squar
 test('a cave-in\'s heap lies round its middle, mostly gravel, the same for the same seed', () => {
   const a = rubbleStones({ x: 500, y: 500, radius: 160, seed: 7 }), b = rubbleStones({ x: 500, y: 500, radius: 160, seed: 7 });
   assert.deepEqual(a, b);
-  assert.ok(a.length >= 60);
-  assert.ok(a.every((s) => Math.hypot(s.x - 500, s.y - 500) <= 160.001));
+  assert.ok(a.length >= 50);
+  assert.ok(a.every((s) => Math.hypot(s.x - 500, s.y - 500) <= 160 * 1.15 + 0.001));
   const small = a.filter((s) => s.size < 160 * 0.06).length;
   assert.ok(small > a.length * 0.6, 'mostly small stones');
-  assert.ok(a.some((s) => s.size > 160 * 0.08), 'a few big ones');
+  assert.ok(a.some((s) => s.size > 160 * 0.07), 'a few big ones');
+  const biggest = (list) => Math.max(...list.map((s) => s.size));
+  assert.ok(biggest(rubbleStones({ x: 0, y: 0, radius: 300, seed: 7 })) > biggest(a) * 1.5, 'boulders in a big fall');
+  assert.ok(Math.abs(biggest(rubbleStones({ x: 0, y: 0, radius: 600, seed: 7 }, { grid: 200 })) - 2 * biggest(rubbleStones({ x: 0, y: 0, radius: 300, seed: 7 }))) < 1e-6, 'scaled to the grid');
   assert.notDeepEqual(rubbleStones({ x: 500, y: 500, radius: 160, seed: 8 }), a);
 });

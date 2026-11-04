@@ -1,0 +1,10 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+pebble-364711-0.ogg: "Stone dropping" by alegemaate, https://freesound.org/people/alegemaate/sounds/364711/ (CC0 1.0). Changes: cut 0.00-0.42 s, faded, gain -5.5 dB.
+pebble-475287-1.ogg: "Peeble_On_Peeble.wav" by Kragnour, https://freesound.org/people/Kragnour/sounds/475287/ (CC0 1.0). Changes: cut 3.69-4.27 s, faded, gain -11.7 dB.
+pebble-569510-0.ogg: "Stone Impact Rubble Debris 14" by Sheyvan, https://freesound.org/people/Sheyvan/sounds/569510/ (CC0 1.0). Changes: cut 0.00-0.36 s, faded, gain -2.5 dB.
+pebble-576103-0.ogg: "S_O_1_Rocks_Falling_04.wav" by Tim_Verberne, https://freesound.org/people/Tim_Verberne/sounds/576103/ (CC0 1.0). Changes: cut 0.15-0.70 s, faded, gain -1.9 dB.
+pebble-576105-0.ogg: "S_O_1_Rocks_Falling_02.wav" by Tim_Verberne, https://freesound.org/people/Tim_Verberne/sounds/576105/ (CC0 1.0). Changes: cut 0.25-0.80 s, faded, gain -2.0 dB.

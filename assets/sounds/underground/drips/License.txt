@@ -1,0 +1,9 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview (Ogg Vorbis),
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+drip-580931-0.ogg: "cave dripping.mp3" by AKkingStudio, https://freesound.org/people/AKkingStudio/sounds/580931/ (CC0 1.0). Changes: cut 0.70-1.30 s, faded, gain -5.6 dB.
+drip-580931-1.ogg: "cave dripping.mp3" by AKkingStudio, https://freesound.org/people/AKkingStudio/sounds/580931/ (CC0 1.0). Changes: cut 5.31-5.91 s, faded, gain -1.0 dB.
+drip-580931-2.ogg: "cave dripping.mp3" by AKkingStudio, https://freesound.org/people/AKkingStudio/sounds/580931/ (CC0 1.0). Changes: cut 9.98-10.58 s, faded, gain +0.5 dB.
+drip-580931-3.ogg: "cave dripping.mp3" by AKkingStudio, https://freesound.org/people/AKkingStudio/sounds/580931/ (CC0 1.0). Changes: cut 11.09-11.69 s, faded, gain +1.4 dB.

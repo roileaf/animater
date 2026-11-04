@@ -299,7 +299,7 @@ test('controller: explicit swimming leaves wakes, never ground footprints, and r
     const c = { ...tok, id: action, x: 0, action };
     const hc = harness({ tokens: [c], floor: 'dirt' });
     hc.feel.tick(); hc.walk(c, 12);
-    assert.deepEqual([...new Set(hc.kinds())], ['puff'], action);
+    assert.deepEqual([...new Set(hc.kinds())].sort(), ['chip', 'puff'], action);
     assert.ok(hc.sounds.length > 0 && hc.sounds.every(([, kind]) => kind === action), action);
   }
 });

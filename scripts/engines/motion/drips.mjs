@@ -137,7 +137,8 @@ void main(){
 }`;
 
 /** The layer: build({ areas, grid, water, floor: { texture, rect } }) lays a pool in each area (its `pace` and `depth`,
- * keys of DRIP_PACES and DRIP_DEPTHS; `water`, polygons of open water, ripple instead; `floor` the map's picture and where it lies, seen through the water); tick(seconds);
+ * keys of DRIP_PACES and DRIP_DEPTHS; `water`, polygons of open water, ripple instead; `floor` the map's picture and where it lies, seen through the water);
+ * tick(seconds, landed) (landed({ x, y, size, open }) for each drop that hits the water this frame); pools, each pool's box;
  * clear(). */
 export function createDrips({ PIXI, root }) {
   let meshes = [], owns = [], count = 0;
@@ -159,7 +160,7 @@ export function createDrips({ PIXI, root }) {
         for (let i = 0; i < points.length / 2 && corners < MAX_POINTS; i += step) { poly[corners * 2] = points[i * 2]; poly[corners * 2 + 1] = points[i * 2 + 1]; corners++; }
         const own = { uPoly: poly, uPolyN: corners, uFloor: hasFloor ? floor.texture : PIXI.Texture.WHITE, uBox: [box.x, box.y, box.w, box.h], uRect: hasFloor ? [floor.rect.x, floor.rect.y, floor.rect.width, floor.rect.height] : [0, 0, 1, 1],
           uDrops: new Float32Array(MAX_DROPS * 4), uDrops2: new Float32Array(MAX_DROPS * 4), uCount: drops.length, uTime: 0, uGrid: grid, uHasFloor: hasFloor ? 1 : 0, uOpen: open ? 1 : 0, uDeep: 0,
-          uSteps: new Float32Array(MAX_STEPS * 4).fill(-1e4), area, nextStep: 0 };
+          uSteps: new Float32Array(MAX_STEPS * 4).fill(-1e4), area, list: drops.slice(0, MAX_DROPS), nextStep: 0 };
         own.uDeep = DRIP_DEPTHS[area.depth ?? ''] ?? 0;
         drops.forEach((d, i) => { own.uDrops.set([d.x, d.y, d.every, d.offset], i * 4); own.uDrops2.set([d.size, d.seed, 0, 0], i * 4); });
         const geometry = new PIXI.Geometry()
@@ -169,7 +170,14 @@ export function createDrips({ PIXI, root }) {
         root().addChild(mesh); meshes.push(mesh); owns.push(own); count += drops.length;
       });
     },
-    tick(seconds) { for (const o of owns) o.uTime += seconds; },
+    tick(seconds, landed = null) {
+      for (const o of owns) {
+        const was = o.uTime; o.uTime += seconds;
+        // A drop hits the water as its rhythm comes round (as the shader draws it: since its last drop back to nothing).
+        if (landed) for (const d of o.list) if (Math.floor((o.uTime + d.offset) / d.every) !== Math.floor((was + d.offset) / d.every)) landed({ x: d.x, y: d.y, size: d.size, open: !!o.uOpen });
+      }
+    },
+    get pools() { return owns.filter((o) => !o.uOpen).map((o) => ({ x: o.uBox[0], y: o.uBox[1], w: o.uBox[2], h: o.uBox[3] })); },
     // A creature steps into a pool here ({ x, y, size }): its water rings (true), or there is no pool here (false).
     step({ x, y, size = 1 } = {}) {
       const own = owns.find((o) => !o.uOpen && inside({ x, y }, o.area) && !(o.area.holes ?? []).some((h) => inside({ x, y }, h)));

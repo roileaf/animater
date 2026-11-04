@@ -28,6 +28,7 @@ uniform vec2 uSize;         // the scene rectangle, pixels
 uniform float uTime, uGrid, uEmbers, uMotes, uCount;
 uniform vec2 uWind;         // a draft or the air's own drift, squares a second
 uniform vec4 uFires[${MAX_FIRES}];  // each fire: x, y (scene pixels from the rectangle's corner), size (squares), seed
+uniform vec4 uReachA[${MAX_FIRES}], uReachB[${MAX_FIRES}];  // how far each fire's eight ways are open (wall-reach.mjs), px
 uniform sampler2D uDraft;   // the air's flow per square: rg the way (0.5 still), b whether it moves
 uniform sampler2D uDraftWas; // the air before it last changed (a door opened or shut), faded out over uDraftMix 0–1
 uniform float uDraftMix;
@@ -143,6 +144,12 @@ void main(){
         float ang = hash(vec2(seed, fs + 9.0)) * 6.2832, travel = (1.0 - (1.0 - life) * (1.0 - life)) * uGrid * (0.5 + 0.7 * seed) * (0.8 + 0.4 * fire.z);
         vec2 dir = vec2(cos(ang), sin(ang)), side = vec2(-dir.y, dir.x);
         vec2 at = fire.xy + dir * travel + side * sin(life * 5.0 + seed * 20.0) * uGrid * 0.06 + (uWind + fireDraft.xy) * life * uGrid * 1.5;
+        // A wall stops it: gone before it would pass through, into the next room.
+        vec2 off = at - fire.xy;
+        float way = mod(atan(off.y, off.x) / 6.2832 * 8.0 + 8.5, 8.0);
+        vec4 inA = step(vec4(0.0, 1.0, 2.0, 3.0), vec4(way)) * (1.0 - step(vec4(1.0, 2.0, 3.0, 4.0), vec4(way)));
+        vec4 inB = step(vec4(4.0, 5.0, 6.0, 7.0), vec4(way)) * (1.0 - step(vec4(5.0, 6.0, 7.0, 8.0), vec4(way)));
+        if (length(off) > dot(inA, uReachA[k]) + dot(inB, uReachB[k])) continue;
         float r = length(px - at), size = uGrid * (0.012 + 0.008 * seed);
         float flicker = 0.6 + 0.4 * sin(uTime * 23.0 + seed * 50.0);
         float fade = (1.0 - life) * smoothstep(0.0, 0.08, life);
@@ -189,9 +196,9 @@ void main(){
   float roll = fbm(mix(q + warp * 1.2 + vec2(uTime * 0.02, -uTime * 0.015), streak, moving));
   float density = fill * smoothstep(0.3, 0.75, roll) * (1.0 - 0.45 * moving);
   // A faint haze hanging in the firelight, never a fog hiding the floor.
-  float a = density * 0.22 * uAmount;
-  // Grey smoke, warmed where the fire lights it from below.
-  vec3 col = mix(vec3(0.5, 0.48, 0.46), lit.rgb / max(lit.a, 0.01), 0.3 * lit.a);
+  float a = density * 0.1 * uAmount;
+  // Dark grey smoke, warmed where the fire lights it from below (pale, it washed out the floor and everyone on it).
+  vec3 col = mix(vec3(0.32, 0.3, 0.29), lit.rgb / max(lit.a, 0.01), 0.22 * lit.a);
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -221,7 +228,7 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
   };
   return {
     build({ lights = [], bounds: b, grid = 100 } = {}) {
-      if (own) showing = { uGust: own.uGust, uLean: own.uLean, uEmbers: own.uEmbers, uMotes: own.uMotes, uCount: own.uCount, uWind: own.uWind, uFires: own.uFires, visible: !!mesh?.visible };
+      if (own) showing = { uGust: own.uGust, uLean: own.uLean, uEmbers: own.uEmbers, uMotes: own.uMotes, uCount: own.uCount, uWind: own.uWind, uFires: own.uFires, uReachA: own.uReachA, uReachB: own.uReachB, visible: !!mesh?.visible };
       if (smokeOwn) smokeShowing = { uAmount: smokeOwn.uAmount, uGust: smokeOwn.uGust, visible: !!smoke?.visible };
       drop();
       if (!b || !lights.length) { dropDrafts(); return; }
@@ -247,7 +254,7 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
       };
       mask = reach(lights);
       if (!draftTex) { draftTex = draftTexture(); draftWas = draftTex; draftMix = 1; }
-      own = { uLit: mask, uDraft: draftTex, uDraftWas: draftWas, uDraftMix: draftMix, uGust: 1e3, uLean: 0, uSize: [b.width, b.height], uTime: clock, uGrid: grid, uEmbers: 0, uMotes: 0, uCount: 0, uWind: [0, 0], uFires: new Float32Array(MAX_FIRES * 4) };
+      own = { uLit: mask, uDraft: draftTex, uDraftWas: draftWas, uDraftMix: draftMix, uGust: 1e3, uLean: 0, uSize: [b.width, b.height], uTime: clock, uGrid: grid, uEmbers: 0, uMotes: 0, uCount: 0, uWind: [0, 0], uFires: new Float32Array(MAX_FIRES * 4), uReachA: new Float32Array(MAX_FIRES * 4).fill(1e5), uReachB: new Float32Array(MAX_FIRES * 4).fill(1e5) };
       const was = showing; showing = null;
       if (was) { const { visible, ...u } = was; Object.assign(own, u); }
       const geometry = new PIXI.Geometry()
@@ -261,7 +268,8 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
       // The smoke: where the fires' smoke fills (their reach, a little further, walls and all).
       const fires = lights.filter((l) => l.fire);
       if (smokeRoot && fires.length) {
-        smokeMask = reach(fires, 1.15);
+        // A torch on a wall lights both sides of it, but smokes only its own (Light: smokeShape).
+        smokeMask = reach(fires.map((l) => (l.smokeShape ? { ...l, shape: l.smokeShape } : l)), 1.15);
         smokeOwn = { uSmoke: smokeMask, uDraft: draftTex, uDraftWas: draftWas, uDraftMix: draftMix, uSize: [b.width, b.height], uTime: clock, uGrid: grid, uAmount: smokeShowing?.uAmount ?? 0, uGust: smokeShowing?.uGust ?? 1e3 };
         smoke = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, SMOKE_FRAG, smokeOwn));
         smoke.eventMode = 'none'; smoke.visible = !!smokeShowing?.visible;
@@ -282,7 +290,8 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
     look({ fires = [], embers = 0, motes = 0, wind = { x: 0, y: 0 }, air = false, since = 1e3, smoke = 0, lean = 0 } = {}) {
       if (!own) return;
       const list = fires.slice(0, MAX_FIRES);
-      list.forEach((f, i) => { own.uFires[i * 4] = f.x - bounds.x; own.uFires[i * 4 + 1] = f.y - bounds.y; own.uFires[i * 4 + 2] = Number(f.size) || 1; own.uFires[i * 4 + 3] = (f.seed ?? ((Math.abs(f.x * 0.0137 + f.y * 0.0071) * 97) % 97)); });
+      list.forEach((f, i) => { own.uFires[i * 4] = f.x - bounds.x; own.uFires[i * 4 + 1] = f.y - bounds.y; own.uFires[i * 4 + 2] = Number(f.size) || 1; own.uFires[i * 4 + 3] = (f.seed ?? ((Math.abs(f.x * 0.0137 + f.y * 0.0071) * 97) % 97));
+        for (let w = 0; w < 4; w++) { own.uReachA[i * 4 + w] = f.reach?.[w] ?? 1e5; own.uReachB[i * 4 + w] = f.reach?.[w + 4] ?? 1e5; } });
       own.uCount = list.length; own.uEmbers = list.length ? embers : 0; own.uMotes = motes; own.uWind = [Number(wind.x) || 0, Number(wind.y) || 0];
       own.uGust = since; own.uLean = list.length && air ? lean : 0;
       mesh.visible = own.uEmbers > 0.01 || motes > 0.01 || air;
@@ -306,5 +315,5 @@ export function fireSparksOf(lights = [], view = null, grid = 100) {
   return lights.filter((l) => l.fire && inView(l))
     .sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y))
     .slice(0, MAX_FIRES)
-    .map((l) => ({ x: l.x, y: l.y, size: Math.min(2, Math.max(0.4, (Number(l.radius) || grid * 3) / (grid * 5))) }));
+    .map((l) => ({ x: l.x, y: l.y, reach: l.reach, size: Math.min(2, Math.max(0.4, (Number(l.radius) || grid * 3) / (grid * 5))) }));
 }

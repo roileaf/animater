@@ -15,7 +15,7 @@ test("every sound Animater ships is in the media library, and only those", () =>
   const items = mergeMedia(sounds);
   assert.equal(items.length, sounds.length, "every file is a valid library entry with its own id");
   assert.ok(items.every((i) => i.type === "audio" && i.source === "Animater" && i.label && !/\d{4,}/.test(i.label)));
-  assert.deepEqual([...new Set(items.map((i) => i.category))].sort(), ["Creature movement", "Creature voices", "Hits & surfaces"]);
+  assert.deepEqual([...new Set(items.map((i) => i.category))].sort(), ["Creature movement", "Creature voices", "Hits & surfaces", "Underground"]);
   // Takes of one sound are one card.
   assert.ok(mediaGroups(items, { type: "audio" }).groups.length < sounds.length / 5);
 });
@@ -27,4 +27,5 @@ test("bundled sounds read as what they are", () => {
   assert.equal(describeBundledSound("surfaces/freesound", "acid-fizz-713705-0.ogg").label, "Acid Fizz");
   assert.equal(describeBundledSound("surfaces/kenney", "footstep_concrete_000.ogg").label, "Footstep Concrete");
   assert.equal(describeBundledSound("creatures/completed", "flight-any-862337-0.ogg").label, "Flight");
+  assert.equal(describeBundledSound("underground/cave-in", "cave-in-567249-0.ogg").label, "Cave In");
 });

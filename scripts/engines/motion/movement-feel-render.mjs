@@ -3,6 +3,7 @@
 // faded; a flier's shadow is its art's soft silhouette laid on the floor (flier-silhouette.mjs), else a stack of faint
 // ellipses, no blur.
 // `root()` returns (and makes, when needed) the container on the viewed level's floor.
+import { kickArt, shadowArt } from './kick-art.mjs';
 import { createSilhouettes, silhouettePose, silhouetteScale, silhouetteSize, isMoving, SHARP_BLUR, SOFT_BLUR } from './flier-silhouette.mjs';
 
 const DRAW = 100;
@@ -313,7 +314,18 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     }
     return g;
   };
-  const remove = (g) => { live.delete(g); try { g.destroy(); } catch { /* already gone */ } };
+  const remove = (g) => { live.delete(g); if (g.__animaterShadow) remove(g.__animaterShadow); try { g.destroy(); } catch { /* already gone */ } };
+  // A painted bit: one of kick-art.mjs's pictures, shared, every bit a sprite of it (with its shadow, on the floor under
+  // it, in its own shape). They batch into one draw where a vector shape each would cost far more.
+  const artTextures = new Map();
+  const artTexture = (family, n) => {
+    const canvas = kickArt(family, n); if (!canvas) return null;
+    let tex = artTextures.get(canvas);
+    if (!tex || tex.baseTexture?.destroyed) artTextures.set(canvas, tex = PIXI.Texture.from(canvas));
+    return tex;
+  };
+  let bitShadowCanvas = null, bitShadowTex = null;
+  const bitShadow = () => { if (!bitShadowTex || bitShadowTex.baseTexture?.destroyed) bitShadowTex = PIXI.Texture.from(bitShadowCanvas ??= shadowArt()); return bitShadowTex; };
   // Shadows in the flier's own shape: its art as a soft black silhouette, sharp low and soft high, laid flat.
   // Made on first use: the module loads before PIXI is up (and in tests, without it).
   let made = given;
@@ -470,6 +482,17 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
   };
   return {
     addParticle(spec) {
+      if (spec.art && typeof PIXI.Sprite === 'function' && typeof document !== 'undefined') {
+        const tex = artTexture(spec.art, spec.artN);
+        if (tex) {
+          let shadow = null;
+          if (spec.shadow) { shadow = new PIXI.Sprite(bitShadow()); shadow.anchor.set(0.5); shadow.alpha = 0; shadow.__animaterThin = spec.thin === true; add(shadow); }
+          const sp = new PIXI.Sprite(tex);
+          sp.anchor.set(0.5); sp.position.set(spec.x, spec.y); sp.rotation = spec.rotation ?? 0; sp.alpha = 0;
+          sp.__animaterRadius = spec.radius; sp.__animaterUnit = DRAW / (tex.width || DRAW); sp.__animaterShadow = shadow;
+          return add(sp);
+        }
+      }
       if (spec.cloud && typeof PIXI.Sprite === 'function' && typeof document !== 'undefined') {
         const sp = new PIXI.Sprite(cloudTexture());
         sp.anchor.set(0.5); sp.tint = spec.color; sp.position.set(spec.x, spec.y); sp.rotation = spec.rotation ?? 0; sp.alpha = 0;
@@ -510,6 +533,15 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       g.scale.set(s, s);
       g.rotation = state.rotation ?? 0;
       g.alpha = state.alpha;
+      // Its shadow on the floor under it: off to the side and fainter the higher it is, long and thin under a thin thing.
+      const shadow = g.__animaterShadow;
+      if (shadow && !shadow.destroyed) {
+        const up = Number(state.lift) || 0, high = Math.min(1, up / 22), r = g.__animaterRadius * state.scale, across = shadow.__animaterThin ? 0.11 : 0.58, unit = 1 / (shadow.texture.width / 2);
+        shadow.position.set(state.x + 0.5 + up * 0.28, state.y + up + 0.7 + up * 0.38);
+        shadow.rotation = shadow.__animaterThin ? (state.rotation ?? 0) : 0;
+        shadow.scale.set(r * 1.25 * unit, r * across * 2 * unit);
+        shadow.alpha = state.alpha * (0.62 - 0.38 * high);
+      }
     },
     removeParticle: remove,
     addShadow() {

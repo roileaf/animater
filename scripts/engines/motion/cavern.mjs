@@ -280,8 +280,8 @@ void main(){
   float p1 = fract(uTime * 0.12), p2 = fract(uTime * 0.12 + 0.5), w = abs(1.0 - 2.0 * p1);
   float banks = mix(banksAt(px, still - flow * p1), banksAt(px, still - flow * p2), 1.0 - w);
   float part = texture2D(uTrail, vUv).r;
-  float d = m * m * (0.25 + 0.75 * banks) * uThick * (1.0 - 0.92 * part);
-  float a = clamp(d, 0.0, 0.85);
+  float dense = m * m * (0.25 + 0.75 * banks) * uThick * (1.0 - 0.92 * part);
+  float a = clamp(dense, 0.0, 0.85);
   gl_FragColor = vec4(vec3(0.8, 0.83, 0.87) * a, a);
 }`;
 
@@ -471,4 +471,15 @@ export function createCavern({ PIXI, floor, glow, render }) {
     get wantsTouches() { return fungus.length > 0; },
     get wantsFeet() { return mists.length > 0; },
   };
+}
+
+// How much of a skylight's pool of light falls on a point (pure, 0–1): `openings` the holes to the sky (flat x, y polygons),
+// `shift` where their light lands from them (as the sky shader draws it, away from the sun); soft across half a square at
+// its edge, as the pool is. `inside(point, polygon)` tests a point.
+export function skylightShare(point, openings = [], shift = [0, 0], { grid = 100, inside = () => false } = {}) {
+  if (!openings.length) return 0;
+  const near = grid * 0.25, at = [[0, 0], [near, 0], [-near, 0], [0, near], [0, -near]];
+  let lit = 0;
+  for (const [dx, dy] of at) if (openings.some((p) => inside({ x: point.x + dx - shift[0], y: point.y + dy - shift[1] }, p))) lit++;
+  return lit / at.length;
 }

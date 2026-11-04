@@ -2,6 +2,8 @@
 // hanging. They stir in the air (the loose strands most), and now and then a small spider lowers itself on a line, hangs a
 // while and climbs back. Laid out once from the walls; a frame moves only the loose strands and the spider.
 
+import { spiderArt, shadowArt } from './kick-art.mjs';
+
 const rng = (seed) => { let h = 2166136261; for (const c of String(seed)) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return ((h >>> 0) % 100000) / 100000; }; };
 const inside = ({ x, y }, p) => { let hit = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit; return hit; };
 const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -45,10 +47,22 @@ export function webStrands(c, { grid = 100, seed = 'web' } = {}) {
   return s;
 }
 
+// How much of the web shows: threads bright and fine enough to read on a dark floor, the gauze thick.
+const WEB_THICK = 2.1, WEB_BRIGHT = 2.2, WEB_WIDTH = 1.25;
+
 /** The webs' layer. build({ corners, grid, seed }); tick(seconds, { view, air: (x, y) => 0–1 how the air moves there }); clear(). */
 export function createWebs({ PIXI, root }) {
-  let webs = [], time = 0, grid = 100, spider = null;
-  const drop = () => { for (const w of webs) { try { w.box.destroy({ children: true }); w.tex?.destroy(true); } catch { /* gone */ } } try { spider?.g.destroy(); } catch { /* gone */ } webs = []; spider = null; };
+  let webs = [], time = 0, grid = 100, spider = null, spiderTex = null, shadowTex = null;
+  const drop = () => { for (const w of webs) { try { w.box.destroy({ children: true }); w.tex?.destroy(true); } catch { /* gone */ } } try { spider?.box.destroy({ children: true }); } catch { /* gone */ } webs = []; spider = null; };
+  // Three poses painted once, the spider a sprite of one of them; its line a thin strip, its shadow on the floor below it.
+  const makeSpider = (web) => {
+    spiderTex ??= [0, 2, 4].map((pose) => PIXI.Texture.from(spiderArt(pose)));
+    shadowTex ??= PIXI.Texture.from(shadowArt());
+    const box = new PIXI.Container(), shadow = new PIXI.Sprite(shadowTex), line = new PIXI.Sprite(PIXI.Texture.WHITE), body = new PIXI.Sprite(spiderTex[0]);
+    box.eventMode = 'none'; shadow.anchor.set(0.5); body.anchor.set(0.5); line.anchor.set(0, 0.5); line.tint = 0xebe8de; line.alpha = 0.5; shadow.alpha = 0.32;
+    box.addChild(shadow, line, body); box.visible = false; root().addChild(box);
+    return { box, shadow, line, body, web, phase: 0 };
+  };
   // The gauze: a thin, torn, dusty sheet over the tightest part of the corner, as a picture (once per web).
   const gauze = (c, seed) => {
     const n = Math.ceil(c.L), size = n * 2, cv = document.createElement('canvas'); cv.width = cv.height = size; const g = cv.getContext('2d'), im = g.createImageData(size, size), off = (seed % 97) * 3.1;
@@ -56,7 +70,7 @@ export function createWebs({ PIXI, root }) {
       const dx = x - n, dy = y - n, a = dx * c.u[0] + dy * c.u[1], b = dx * c.v[0] + dy * c.v[1]; if (a < 0 || b < 0) continue;
       const reach = (a + b) / (c.L * 0.75); if (reach > 1) continue;
       const tear = fbm(x / (c.L / 10) + off, y / (c.L / 10), 4), fib = fbm(x / 3 + a * 0.2, y / 3, 2), k = (y * size + x) * 4;
-      im.data[k] = 205; im.data[k + 1] = 202; im.data[k + 2] = 195; im.data[k + 3] = 255 * Math.max(0, tear - 0.42) * 1.4 * (1 - reach) * (0.5 + 0.5 * fib) * 0.5;
+      im.data[k] = 205; im.data[k + 1] = 202; im.data[k + 2] = 195; im.data[k + 3] = Math.min(255, 255 * Math.max(0, tear - 0.42) * 1.4 * (1 - reach) * (0.5 + 0.5 * fib) * 0.5 * WEB_THICK);
     }
     g.putImageData(im, 0, 0);
     return PIXI.Texture.from(cv);
@@ -72,13 +86,13 @@ export function createWebs({ PIXI, root }) {
         const fixed = new PIXI.Graphics(), loose = new PIXI.Graphics();
         for (const s of strands.filter((t) => !t.loose)) {
           const mx = (s.p[0] + s.q[0]) / 2, my = (s.p[1] + s.q[1]) / 2, dx = s.q[0] - s.p[0], dy = s.q[1] - s.p[1], len = Math.hypot(dx, dy) + 1;
-          fixed.lineStyle(s.w, 0xc8c5be, s.a); fixed.moveTo(s.p[0], s.p[1]); fixed.quadraticCurveTo(mx - (dy / len) * s.sag, my + (dx / len) * s.sag, s.q[0], s.q[1]);
+          fixed.lineStyle(s.w * WEB_WIDTH, 0xd8d6ce, Math.min(1, s.a * WEB_BRIGHT)); fixed.moveTo(s.p[0], s.p[1]); fixed.quadraticCurveTo(mx - (dy / len) * s.sag, my + (dx / len) * s.sag, s.q[0], s.q[1]);
         }
         box.addChild(fixed, loose); root().addChild(box);
         webs.push({ c, box, tex, loose, strands: strands.filter((t) => t.loose), seen: false });
       });
       // A spider, in one of the webs.
-      if (webs.length) { const g2 = new PIXI.Graphics(); g2.eventMode = 'none'; root().addChild(g2); spider = { g: g2, web: webs[Math.floor(webs.length / 2)], phase: 0 }; }
+      if (webs.length) spider = makeSpider(webs[Math.floor(webs.length / 2)]);
     },
     tick(seconds, { view = null, air = () => 0 } = {}) {
       time += seconds;
@@ -91,23 +105,22 @@ export function createWebs({ PIXI, root }) {
         for (const s of w.strands) {
           const sway = (Math.sin(time * (0.7 + 2.2 * pull) + s.ph) * 0.6 + breathe) * (3 + 14 * pull) * grid / 100;
           const mx = (s.p[0] + s.q[0]) / 2, my = (s.p[1] + s.q[1]) / 2, dx = s.q[0] - s.p[0], dy = s.q[1] - s.p[1], len = Math.hypot(dx, dy) + 1;
-          g.lineStyle(s.w, 0xc8c5be, s.a); g.moveTo(s.p[0], s.p[1]); g.quadraticCurveTo(mx - (dy / len) * (s.sag + sway), my + (dx / len) * (s.sag + sway), s.q[0] + sway, s.q[1] + sway * 0.4);
+          g.lineStyle(s.w * WEB_WIDTH, 0xd8d6ce, Math.min(1, s.a * WEB_BRIGHT)); g.moveTo(s.p[0], s.p[1]); g.quadraticCurveTo(mx - (dy / len) * (s.sag + sway), my + (dx / len) * (s.sag + sway), s.q[0] + sway, s.q[1] + sway * 0.4);
         }
       }
       // The spider: down on its line, a pause, back up; a long wait in between.
       if (spider) {
-        const g = spider.g; g.clear(); spider.phase += seconds;
+        spider.phase += seconds;
         const { c } = spider.web, cyc = spider.phase % 14, drop = cyc < 3 ? (1 - Math.cos((cyc / 3) * Math.PI)) / 2 : cyc < 5.5 ? 1 : cyc < 8.5 ? (1 + Math.cos(((cyc - 5.5) / 3) * Math.PI)) / 2 : 0;
-        if (drop > 0.01 && spider.web.box.visible) {
+        const shows = drop > 0.01 && spider.web.box.visible; spider.box.visible = shows;
+        if (shows) {
           const k = grid / 100, ax = c.x + (c.u[0] + c.v[0]) * c.L * 0.3, ay = c.y + (c.u[1] + c.v[1]) * c.L * 0.3, d = [c.u[0] + c.v[0], c.u[1] + c.v[1]], dl = Math.hypot(...d) || 1;
-          const x = ax + (d[0] / dl) * grid * 0.9 * drop + Math.sin(time * 1.1) * 2 * k * drop, y = ay + (d[1] / dl) * grid * 0.9 * drop;
-          g.lineStyle(0.5 * k, 0xd2d0c8, 0.3); g.moveTo(ax, ay); g.lineTo(x, y);
-          // Eight jointed legs, twitching a little; the body over them.
-          g.lineStyle(0.9 * k, 0x16110f, 0.92);
-          for (const side of [-1, 1]) for (let i = 0; i < 4; i++) { const ang = -0.9 + i * 0.6, tw = Math.sin(time * 6 + i * 1.7 + side) * 0.08, kx = side * (5 + 1.5 * Math.cos(ang)) * k, ky = (-3 + i * 2 + Math.sin(ang) * 3) * k;
-            g.moveTo(x + side * 1.5 * k, y + (-1 + i * 1.2) * k); g.lineTo(x + kx, y + ky - 3 * k); g.lineTo(x + kx + side * (3 + Math.abs(Math.cos(ang + tw)) * 2) * k, y + ky + (3 + (i - 1.5) * 1.5) * k); }
-          g.lineStyle(0); g.beginFill(0x1a1310, 0.97); g.drawEllipse(x, y + 4 * k, 3.4 * k, 4.4 * k); g.endFill();
-          g.beginFill(0x221914, 0.97); g.drawEllipse(x, y - 1.5 * k, 2.3 * k, 2.6 * k); g.endFill();
+          const x = ax + (d[0] / dl) * grid * 0.9 * drop + Math.sin(time * 1.1) * 4 * k * drop, y = ay + (d[1] / dl) * grid * 0.9 * drop, R = 19 * k;
+          // Its line from the web to its back; it swings a little, and its legs work while it moves.
+          const { line, body, shadow } = spider; line.position.set(ax, ay); line.rotation = Math.atan2(y - 5 * k - ay, x - ax); line.width = Math.max(0, Math.hypot(x - ax, y - 5 * k - ay)); line.height = 0.7 * k;
+          const moving = cyc < 3 || (cyc >= 5.5 && cyc < 8.5);
+          body.texture = spiderTex[Math.floor(time * (moving ? 7 : 2)) % 3]; body.position.set(x, y); body.rotation = Math.sin(time * 1.1) * 0.07 * drop; body.width = body.height = R * 2;
+          shadow.position.set(x + 12 * k, y + 16 * k); shadow.width = R * 1.6; shadow.height = R * 1.2;
         }
       }
     },

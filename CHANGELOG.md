@@ -1,5 +1,29 @@
 # Changelog
 
+## 2.8.1 (2026-11-04)
+
+Underground gets its sounds, new floors, and much better looks for what walkers kick up and what comes down in a cave-in. Plus a round of fixes from the community.
+
+- **Clearer rooms.** The fires' smoke was laying a pale fog over the floor and everyone on it, washing out the map. It is now thin and dark, and the rooms are visibly crisper.
+- **What a step kicks up.** Painted bits instead of flat shapes, most with a shadow of their own: broken stone with lit and shaded faces, bouncing and settling; splinters and sawdust on wood; soft dust and clods on dirt; curved blades of grass that flutter down; grains of sand; clumps of snow; frost shards; wet clods of mud.
+- **New floors.** Pebbles, Glass and Metal, for scenes and regions, each with its own footsteps and marks. Pebbles crunch and scatter on every step, in any scene.
+- **Underground sounds.** A cave-in roars with a deep thud under it. Drops plip into pools, pools lap softly as you come near, the wind sighs through a door as it opens. Each rings in its room and is muffled behind walls, with its take and pitch varied.
+- **Cave-ins.** Real boulders with faces, each with a dark shadow that closes in as it falls, and the floor stained and cracked where they hit. Shift brings down far bigger boulders, much louder, thud after thud, with a harder and longer shake.
+- **Spiders and cobwebs.** A shaded spider with jointed legs and a shadow, that shows on a dark floor, and webs twice as bright and thick.
+- **How many, how big.** Scene configuration → Animater creatures: how many rats, bats, moths and crawlers a map has, and how big each is.
+- **Keep them out.** Region configuration → Animater → Underground → Keep out: tick rats, bats, moths, crawlers or eyes to keep them out of a room.
+- **Flames on many lights at once.** A new Flames button on the Lighting controls sets Flame, Fire and Flame size on the lights you have selected, or on every light in the scene.
+- **Shadows under the sky.** A creature standing in the pool of light under an opening to the sky casts a sun or moon shadow, even underground.
+- **Bird shadows are now off by default.** Scene configuration → Animater → bird shadows: choose a size for a map that should have them.
+- **Fixes.**
+  - Flames and sparks no longer show through walls or fog of war, and a flame only shows on its light's own level.
+  - Sparks, smoke and heat shimmer stay out of the next room, including from a torch on a wall.
+  - Candles and lanterns get one flame instead of a brazier's three (choose Brazier or Campfire on the light for a bigger fire).
+  - A swimmer leaves its wake again, not a wading step's rings.
+  - A rat caught in the light runs out of it instead of spinning on the spot.
+  - Cavern mist draws again.
+  - The stutter from the flames' glow is gone.
+
 ## 2.8.0 (2026-11-03)
 
 Underground scenes come alive. Every new effect has a world setting and an "on my screen" setting (Animater settings); most are set per region on the new **Animater tab of Region configuration**, or per light under Light configuration → Animater.
