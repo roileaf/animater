@@ -40,7 +40,18 @@ export function bodyTreatment(name = '') {
   const key = String(name).toLowerCase().replace(/^(?:condition|effect)\s*:\s*/, '').replace(/\s+\d+$/, '').trim();
   return BY_NAME[key] ?? null;
 }
-const RISE = 400;
+const RISE = 400, TIP_RISE = 900;
+// How far over a fallen creature is, 0 standing to 1 lying (pure). `t` seconds since it fell: gravity takes it, then a small
+// bounce. `leaving` seconds since it began to get up: it gathers itself, pushes halfway, a beat, then the rest.
+export function proneTip(t, leaving = null) {
+  const fall = 0.36, ease = (x) => 1 - (1 - x) ** 2;
+  const down = t < fall ? (Math.max(0, t) / fall) ** 2 : 1 - Math.exp(-7 * (t - fall)) * Math.abs(Math.sin((t - fall) * 15)) * 0.09;
+  if (leaving === null) return down;
+  if (leaving < 0.18) return down;
+  if (leaving < 0.48) return down * (1 - 0.55 * ease((leaving - 0.18) / 0.3));
+  if (leaving < 0.62) return down * 0.45;
+  return leaving < TIP_RISE / 1000 ? down * 0.45 * (1 - ease((leaving - 0.62) / 0.28)) : 0;
+}
 const TAU = Math.PI * 2, wave = (t, period) => Math.sin((TAU * t) / period);
 // Pose deltas: x/y in token widths, rotation in degrees, sy as a scale factor.
 export function bodyPose(kind, t, strength = 1, { period } = {}) {
@@ -55,6 +66,8 @@ export function bodyPose(kind, t, strength = 1, { period } = {}) {
     case 'breathe': return { sy: 1 - 0.025 * k * (0.5 + 0.5 * wave(t, 4)) };
     // Knocked down: the token lies on its side, a little lower, still breathing.
     case 'prone': { const f = Math.min(1, t / 0.4), fall = 1 - (1 - f) ** 3; return { r: 80 * fall, y: 0.06 * fall, sy: 1 - 0.02 * (0.5 + 0.5 * wave(t, 4)) }; }
+    // Knocked down and tipped over (proneTip, the 'tip' filter): only its breath moves the sprite.
+    case 'prone-tip': { const breath = 1 - 0.012 * (0.5 + 0.5 * wave(t, 4.5)); return { sx: breath, sy: breath }; }
     // Knocked down, seen from above (top-down art): turning it would only spin it, so it drops flat where it is,
     // settling smaller with a little bounce, and breathes slowly in place.
     case 'prone-top': {
@@ -109,6 +122,13 @@ export class ConditionBody {
         token.mesh.tint = 0xa39e94;
       }
     }
+    if (kind === 'prone' && this.enabled()) {
+      // Tips over like a cutout laid on the floor; with no shader engine it lies on its side instead.
+      const api = this.tokenFx?.();
+      try { record.tip = api?.apply?.(token, { name: `animater-tip-${name}`, library: 'animater', params: [{ filterType: 'tip', amount: 0 }] }, { always: true, blend: false }) ?? null; }
+      catch { record.tip = null; }
+      record.tipFilter = record.tip?.filters?.[0] ?? null;
+    }
     this.records.set(name, record);
     if (!this.handle) this.handle = this.frame(() => this.tick());
   }
@@ -125,6 +145,7 @@ export class ConditionBody {
     this.records.delete(name);
     if (![...this.records.values()].some(o => o.token === r.token)) this.restore(r.token);
     if (r.stone) { try { r.stone(); } catch { /* the canvas already went away */ } }
+    if (r.tip) { try { r.tip(); } catch { /* the canvas already went away */ } }
     if (r.tint !== undefined && r.token.mesh && !r.token.mesh.destroyed) r.token.mesh.tint = r.tint;
     if (!this.records.size && this.handle) { this.cancel(this.handle); this.handle = null; }
   }
@@ -137,6 +158,7 @@ export class ConditionBody {
     const mesh = token?.mesh, a = this.poses.get(token);
     this.poses.delete(token);
     if (!a || !mesh || mesh.destroyed) return;
+    this.layFlat(mesh, a, false);
     const center=token.center;
     if(Number.isFinite(center?.x)&&Number.isFinite(center?.y)) {
       mesh.position.x=center.x;mesh.position.y=center.y;
@@ -149,11 +171,19 @@ export class ConditionBody {
     if (mesh.scale.x === a.setSX) mesh.scale.x = a.baseSX;
     try { this.follow(token, 0, 0); } catch { /* optional */ }
   }
+  // Lying on the floor it draws under anyone standing there; whatever else sets its order since is its new place.
+  layFlat(mesh, was, down) {
+    if (!down) { if (was?.lowSort !== undefined && mesh.sort === was.lowSort) { mesh.sort = was.baseSort; if (mesh.parent) mesh.parent.sortDirty = true; } return null; }
+    if (was?.lowSort !== undefined && mesh.sort === was.lowSort) return { lowSort: was.lowSort, baseSort: was.baseSort };
+    const baseSort = Number(mesh.sort) || 0, lowSort = baseSort - 1000;
+    mesh.sort = lowSort; if (mesh.parent) mesh.parent.sortDirty = true;
+    return { lowSort, baseSort };
+  }
   tick() {
     this.handle = null;
     if (!this.records.size) return;
     const time = this.now(), on = this.enabled();
-    for (const [name, r] of [...this.records]) if (r.leaving !== undefined && time - r.leaving >= RISE) this.remove(name, { immediate: true });
+    for (const [name, r] of [...this.records]) if (r.leaving !== undefined && time - r.leaving >= (r.tipFilter ? TIP_RISE : RISE)) this.remove(name, { immediate: true });
     if (!this.records.size) return;
     // Each token shows its highest-priority treatment (see BODY_PRIORITY); stone or
     // stillness anywhere on the token holds it in its natural pose.
@@ -164,6 +194,8 @@ export class ConditionBody {
       const kind = shownTreatment(list.map((r) => r.kind));
       if (kind) shown.set(token, list.findLast((r) => r.kind === kind));
     }
+    // A fallen creature not shown fallen (still, stone, an animation playing) stands as it was.
+    for (const r of this.records.values()) if (r.tipFilter && (shown.get(r.token) !== r || !on || this.busy(r.token))) r.tipFilter.current.amount = 0;
     for (const token of new Set([...this.records.values()].map(r => r.token))) if (!shown.has(token)) this.restore(token);
     for (const [token, r] of shown) {
       const mesh = token?.mesh;
@@ -184,10 +216,11 @@ export class ConditionBody {
       const baseSX = a && mesh.scale.x === a.setSX ? a.baseSX : mesh.scale.x;
       let flat = false;
       if (r.kind === 'prone') { try { flat = this.cutOut(token) === true; } catch { /* lies on its side */ } }
-      const full = bodyPose(flat ? 'prone-top' : r.kind, (time - r.start) / 1000, r.strength, { period: r.period }), w = token.w ?? 100;
+      if (r.tipFilter) r.tipFilter.current.amount = proneTip((time - r.start) / 1000, r.leaving === undefined ? null : (time - r.leaving) / 1000);
+      const full = bodyPose(r.tipFilter ? 'prone-tip' : flat ? 'prone-top' : r.kind, (time - r.start) / 1000, r.strength, { period: r.period }), w = token.w ?? 100;
       if (full.yh) full.y = (full.y ?? 0) + (full.yh * (token.h ?? w)) / w;
       // Standing back up: the pose eases away.
-      const f = r.leaving === undefined ? 1 : (1 - Math.min(1, (time - r.leaving) / RISE)) ** 2;
+      const f = r.leaving === undefined ? 1 : (1 - Math.min(1, (time - r.leaving) / (r.tipFilter ? TIP_RISE : RISE))) ** 2;
       const pose = { x: (full.x ?? 0) * f, y: (full.y ?? 0) * f, r: (full.r ?? 0) * f, sy: 1 - (1 - (full.sy ?? 1)) * f, sx: 1 - (1 - (full.sx ?? 1)) * f };
       mesh.position.x = baseX + (pose.x ?? 0) * w;
       mesh.position.y = baseY + (pose.y ?? 0) * w;
@@ -195,8 +228,9 @@ export class ConditionBody {
       mesh.scale.y = baseSY * (pose.sy ?? 1);
       mesh.scale.x = baseSX * pose.sx;
       try { this.follow(token, mesh.position.x - baseX, mesh.position.y - baseY); } catch { /* optional */ }
-      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone'&&!flat,docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y,
-        baseSX, setSX: mesh.scale.x });
+      const order = this.layFlat(mesh, a, !!r.tipFilter && r.leaving === undefined);
+      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone'&&!flat&&!r.tipFilter,docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y,
+        baseSX, setSX: mesh.scale.x, ...(order ?? {}) });
     }
     if (this.records.size) this.handle = this.frame(() => this.tick());
   }

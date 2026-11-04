@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ConditionBody, bodyTreatment, bodyPose, shownTreatment, BODY_PRIORITY } from "../../../scripts/engines/motion/condition-body.mjs";
+import { ConditionBody, bodyTreatment, bodyPose, shownTreatment, BODY_PRIORITY, proneTip } from "../../../scripts/engines/motion/condition-body.mjs";
 
 const token = () => ({ w: 100, mesh: { position: { x: 500, y: 300 }, rotation: 0, scale: { x: 1, y: 1 }, filters: null } });
 function runner(extra = {}) {
@@ -268,4 +268,34 @@ test("what rides on the body is told how far it moved, and that it is back in pl
   assert.equal(Math.round(dy * 1000) / 1000, Math.round((t.mesh.position.y - 300) * 1000) / 1000);
   body.remove("h1");
   assert.deepEqual(moved.at(-1), [0, 0]);
+});
+
+test('a fallen creature tips over with a bounce and pushes itself up in two moves', () => {
+  assert.equal(proneTip(0), 0);
+  assert.ok(proneTip(0.18) < 0.5, 'gravity: slow at first');
+  assert.ok(proneTip(0.45) < 1 && proneTip(0.45) > 0.85, 'a small bounce');
+  assert.ok(Math.abs(proneTip(5) - 1) < 1e-3);
+  assert.equal(proneTip(5, 0.1), proneTip(5), 'it gathers itself');
+  assert.ok(Math.abs(proneTip(5, 0.55) - 0.45) < 1e-3, 'a beat, halfway up');
+  assert.equal(proneTip(5, 1), 0);
+  assert.ok(proneTip(0.1, 0.55) < proneTip(0.1), 'caught mid-fall it rises from there');
+});
+
+test('with the shader engine a fallen creature tips over without turning, lies under others and stands back', () => {
+  let now = 0; const queue = []; const removed = []; const filter = { current: { amount: 0 } };
+  const remove = () => removed.push(true); remove.filters = [filter];
+  const parent = { sortDirty: false };
+  const t = { w: 100, h: 100, center: { x: 50, y: 50 }, mesh: { destroyed: false, parent, sort: 5, rotation: 0, position: { x: 50, y: 50 }, scale: { x: 1, y: 1 } } };
+  const body = new ConditionBody({ now: () => now, frame: (f) => { queue.push(f); return queue.length; }, cancel: () => {}, tokenFx: () => ({ apply: remove && (() => remove) }) });
+  const step = (ms) => { now += ms; const q = queue.splice(0); for (const f of q) f(); };
+  body.add('prone', t, 'prone'); step(16); step(800);
+  assert.equal(t.mesh.rotation, 0, 'no quarter turn');
+  assert.ok(filter.current.amount > 0.9, 'lying');
+  assert.ok(t.mesh.sort < 5 && parent.sortDirty, 'under anyone standing');
+  body.remove('prone'); step(16);
+  assert.ok(filter.current.amount > 0, 'still getting up');
+  step(1000); step(16);
+  assert.equal(removed.length, 1, 'its filter goes when it is up');
+  assert.equal(t.mesh.sort, 5, 'back in its place');
+  assert.ok(Math.abs(t.mesh.scale.y - 1) < 1e-9);
 });

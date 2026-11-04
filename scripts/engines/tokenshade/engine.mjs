@@ -62,7 +62,10 @@ export class TokenFxEngine {
     this.attach(entry);
     this.listen();
     this.pace(token);
-    return () => this.remove(entry);
+    const remove = () => this.remove(entry);
+    // Whoever applied it can drive its filters (condition-body.mjs tips a fallen creature over).
+    remove.filters = filters;
+    return remove;
   }
   // The token's animated art (a Tokener video) plays at the pace its looks ask: held still while it is paralyzed or
   // turned to stone, slower while slowed or worn out, faster while quickened; as it was once none ask.
@@ -113,7 +116,9 @@ export class TokenFxEngine {
     entry.mesh = mesh;
     const ours = new Set(entry.filters);
     const others = (mesh.filters ?? []).filter(f => !ours.has(f));
-    mesh.filters = [...others, ...entry.filters];
+    const all = [...others, ...entry.filters];
+    // A creature tipped over takes all the rest with it (a stain stays on its chest): the tip draws last.
+    mesh.filters = [...all.filter(f => f.spec?.type !== 'tip'), ...all.filter(f => f.spec?.type === 'tip')];
   }
   detach(entry) {
     const mesh = entry.mesh;

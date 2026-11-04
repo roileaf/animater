@@ -335,8 +335,8 @@ export const PRESETS = [
   token('Rooted', timed('bindings', 0.4, { bindType: 1, thickness: 0.9, density: 0.6, tightness: 0.3 }), F('shadow', { rotation: 90, distance: 4, blur: 3, alpha: 0.6, color: 0x0a0806 })),
   // Exposed (vulnerable, marked, surprised): its guard down, an amber caution ring blinking round it.
   token('Exposed', timed('base', 1, { baseType: 6, color: 0xffb020, radius: 0.53, alpha: 0.9 }), F('outline', { thickness: 1.2, color: 0xffb020 }, { alpha: cos(0.25, 0.7, 1400) })),
-  // Prone: flat on the ground, a wide shadow round it.
-  token('Prone', F('transform', { pivotX: 0.5, pivotY: 1, scaleY: 0.8, scaleX: 1.05 }), F('shadow', { rotation: 90, distance: 2, blur: 6, alpha: 0.75, color: 0x0a0806 }), F('adjustment', { brightness: 0.86 })),
+  // Prone: a little dimmer, and a puff of dust spreads low round it and settles (condition-body.mjs tips the creature over).
+  token('Prone', F('adjustment', { brightness: 0.8, saturation: 0.85 }), F('smoke', { color: 0xa08a6a, blend: 2, ground: true, dimX: 1.4, dimY: 1.4, animated: { time: { animType: 'move', speed: 0.0004 }, alpha: { animType: 'once', val1: 0.8, val2: 0, loopDuration: 1600, pauseBetweenDuration: 250 } } })),
   // Dazed (stunned): stars circling its head, seeing double.
   token('Dazed', timed('orbit', 1, { glyph: 1, color: 0xffe14a, count: 4 }), timed('images', 0.5, { nbImage: 2, alphaImg: 0.3, alphaChr: 0.25, ampX: 0.025, ampY: 0.015 }),
     F('adjustment', { saturation: 0.75 }, { brightness: cos(0.85, 1, 2400, false) })),

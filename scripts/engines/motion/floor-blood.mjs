@@ -63,8 +63,17 @@ export const POOL_DRIES = 120;
 export function poolGleam(pool, light, age = 0) {
   const wet = 1 - Math.min(1, Math.max(0, age) / POOL_DRIES), strength = Math.min(1, Math.max(0, Number(light?.strength) || 0)) * wet;
   if (!light || strength < 0.03) return null;
-  const a = Math.atan2(light.y - pool.y, light.x - pool.x), off = pool.r * 0.32;
-  return { x: pool.x + Math.cos(a) * off, y: pool.y + Math.sin(a) * off * 0.88, rotation: a + Math.PI / 2, width: pool.r * 1.05, height: pool.r * 0.42, alpha: strength * 0.34 };
+  const a = Math.atan2(light.y - pool.y, light.x - pool.x), off = pool.r * 0.2;
+  return { x: pool.x + Math.cos(a) * off, y: pool.y + Math.sin(a) * off * 0.88, rotation: a + Math.PI / 2, width: pool.r * 0.8, height: pool.r * 0.3, alpha: strength * 0.42 };
+}
+
+// Wet blood lit (pure): how strongly a stain shines in its own shape, by the light on it and how far it has dried. Every
+// stain of any size shines; a drop or a drip is too small to matter.
+const SHINES = new Set(['slash', 'pierce', 'blunt', 'patch', 'pool']);
+export const bloodShines = (art) => SHINES.has(art);
+export function bloodSheen(light, age = 0) {
+  const shine = Math.min(1, Math.max(0, Number(light?.strength) || 0)) * (1 - Math.min(1, Math.max(0, age) / POOL_DRIES));
+  return shine < 0.03 ? 0 : shine * 0.32;
 }
 
 /** The layer: add(marks, color) lays them (a drop in flight lands first); tick(seconds); clear(). `root()` the floor layer; `life` seconds a mark lasts; `most` marks at once, the oldest going first. */
@@ -74,13 +83,22 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
   // The light on a pool: one soft white oval, shared, tinted by the light. Added to the light, over the darkness.
   const gleamTexture = () => { if (gleamTex && !gleamTex.baseTexture?.destroyed) return gleamTex; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), f = g.createRadialGradient(32, 32, 0, 32, 32, 32); f.addColorStop(0, 'rgba(255,255,255,1)'); f.addColorStop(0.5, 'rgba(255,255,255,0.35)'); f.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = f; g.fillRect(0, 0, 64, 64); return (gleamTex = PIXI.Texture.from(c)); };
   const lookAtLight = (m, age) => {
-    const shown = poolGleam({ x: m.mark.x, y: m.mark.y, r: m.r }, lightAt(m.mark.x, m.mark.y), age);
+    const l = lightAt(m.mark.x, m.mark.y), tint = Number.isFinite(l?.color) ? l.color : 0xffc890, sheen = bloodSheen(l, age);
+    // The stain itself shining where the light falls on it, in its own shape.
+    if (!sheen) { if (m.sheen) m.sheen.visible = false; }
+    else if (glow) {
+      if (!m.sheen) { m.sheen = new PIXI.Sprite(m.s.texture); m.sheen.anchor.set(0.5); m.sheen.eventMode = 'none'; m.sheen.blendMode = PIXI.BLEND_MODES.ADD; m.sheen.position.copyFrom(m.s.position); m.sheen.rotation = m.s.rotation; m.sheen.width = m.s.width; m.sheen.height = m.s.height; glow().addChild(m.sheen); }
+      m.sheen.visible = true; m.sheen.alpha = sheen * m.s.alpha; m.sheen.tint = tint;
+    }
+    // A pool or a smear lying wet also holds the light's reflection.
+    if (m.mark.art !== 'pool' && m.mark.art !== 'patch') return;
+    const shown = poolGleam({ x: m.mark.x, y: m.mark.y, r: m.r }, l, age);
     if (!shown) { if (m.gleam) m.gleam.visible = false; return; }
     if (!m.gleam) { if (!glow) return; m.gleam = new PIXI.Sprite(gleamTexture()); m.gleam.anchor.set(0.5); m.gleam.eventMode = 'none'; m.gleam.blendMode = PIXI.BLEND_MODES.ADD; glow().addChild(m.gleam); }
-    const l = lightAt(m.mark.x, m.mark.y); m.gleam.visible = true; m.gleam.position.set(shown.x, shown.y); m.gleam.rotation = shown.rotation; m.gleam.width = shown.width; m.gleam.height = shown.height; m.gleam.alpha = shown.alpha * Math.min(1, m.s.alpha * 1.5); m.gleam.tint = Number.isFinite(l?.color) ? l.color : 0xffc890;
+    m.gleam.visible = true; m.gleam.position.set(shown.x, shown.y); m.gleam.rotation = shown.rotation; m.gleam.width = shown.width; m.gleam.height = shown.height; m.gleam.alpha = shown.alpha * Math.min(1, m.s.alpha * 1.5); m.gleam.tint = tint;
   };
   const textureOf = (art, n, color) => { const canvas = bloodArt(art, n, color); if (!canvas) return null; let tex = textures.get(canvas); if (!tex || tex.baseTexture?.destroyed) textures.set(canvas, tex = PIXI.Texture.from(canvas)); return tex; };
-  const gone = (m) => { try { m.s.destroy(); m.gleam?.destroy(); } catch { /* gone */ } };
+  const gone = (m) => { try { m.s.destroy(); m.gleam?.destroy(); m.sheen?.destroy(); } catch { /* gone */ } };
   const layDown = (m) => { lying.push(m); while (lying.length > most) gone(lying.shift()); };
   return {
     add(marks = [], color = 0x7a0d0d) {
@@ -105,7 +123,7 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
       // The marks fade over the last part of their life; looked at twice a second, not every frame.
       if (clock - fadeLook < 0.5) return; fadeLook = clock;
       const last = Math.max(10, Number(life()) || 180), fade = last * 0.25;
-      lying = lying.filter((m) => { if (m.s.destroyed) return false; const age = clock - m.born; if (age >= last) { gone(m); return false; } if (age > last - fade) m.s.alpha = m.alpha * ((last - age) / fade); if (m.mark.art === 'pool') lookAtLight(m, age); return true; });
+      lying = lying.filter((m) => { if (m.s.destroyed) return false; const age = clock - m.born; if (age >= last) { gone(m); return false; } if (age > last - fade) m.s.alpha = m.alpha * ((last - age) / fade); if (bloodShines(m.mark.art)) lookAtLight(m, age); return true; });
     },
     clear() { for (const m of [...lying, ...moving]) gone(m); lying = []; moving = []; },
     get count() { return lying.length + moving.length; },

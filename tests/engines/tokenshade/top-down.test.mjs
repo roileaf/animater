@@ -21,7 +21,8 @@ test('a condition look takes its top-down form on cut-out art', () => {
 
   const prone = forArt(builtinPreset('Prone'), true);
   assert.ok(!prone.params.some((p) => p.filterType === 'transform'), 'not squashed from the bottom (condition-body.mjs lays it flat)');
-  assert.ok(prone.params.some((p) => p.filterType === 'flatten'), 'pressed flat into a drawing');
+  assert.ok(!prone.params.some((p) => p.filterType === 'flatten'), 'its art stays itself, not a posterised drawing');
+  assert.ok(prone.params.some((p) => p.filterType === 'adjustment' && p.brightness < 1), 'a little dimmer, lying low');
   assert.ok(prone.params.some((p) => p.filterType === 'smoke' && p.ground), 'dust settling round it');
 });
 

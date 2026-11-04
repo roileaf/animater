@@ -2131,7 +2131,7 @@ const refoulLights = () => {
 };
 // Blood on the floor (engines/motion/floor-blood.mjs): where Splatter paints it, Splatter's alone.
 const floorBloodOn = () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC));
-const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorLayer("floorBlood", 648), glow: glowRootOf, lightAt: (x, y) => nearestLamp(x, y), life: () => { try { return Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
+const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorLayer("floorBlood", 648), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
 Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedNext.clear(); });
 const bleedRuns = new Map(), bleedNext = new Map();
 // The GM wipes the floor: each screen draws its own blood, so each is told to.
@@ -2907,6 +2907,8 @@ const movementFeel = createMovementFeel({
         skip, gone,
         // Set to cast no shadow (Animater casts no shadow, on its token or prototype token).
         ...(d.flags?.[ID]?.noShadow === true ? { shadow: false } : {}),
+        // Fallen over it lies on the floor: its upright shape would throw a shadow where it no longer stands.
+        ...(movementFeelBlood(d).prone === true ? { shadow: false } : {}),
         // Not drawn on this screen (out of the selected token's sight, in the dark): no shadow either, whatever the GM
         // perceives (its marks and sounds still go by what this screen perceives).
         ...(t.visible !== true ? { shadow: false } : {}),
@@ -3419,7 +3421,8 @@ const breathVapor = createBreathVapor({
     for (const { t, cold } of vaporList) {
       if (!t || t.destroyed || !t.document) continue;
       const d = t.document, c = d.getCenterPoint();
-      out.push({ id: d.id, x: c.x, y: c.y, width: t.w ?? 100, rotation: d.rotation ?? 0, visible: t.visible === true && !d.hidden, breathes: true, cold,
+      // Fallen over, its mouth lies lower down.
+      out.push({ id: d.id, x: c.x, y: c.y + (movementFeelBlood(d).prone === true ? (t.w ?? 100) * 0.12 : 0), width: t.w ?? 100, rotation: d.rotation ?? 0, visible: t.visible === true && !d.hidden, breathes: true, cold,
         // Portrait or top-down art decides where the mouth is.
         art: vaporArt({ ring: d.ring?.enabled === true, lockRotation: d.lockRotation === true, rotation: d.rotation ?? 0 }),
         // Token configuration's Breath from: where this token's art has its mouth.

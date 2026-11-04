@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hitMarks, bleedStep, standingDrip, woundShape, poolGleam, POOL_DRIES } from '../../../scripts/engines/motion/floor-blood.mjs';
+import { hitMarks, bleedStep, standingDrip, woundShape, poolGleam, POOL_DRIES, bloodSheen, bloodShines } from '../../../scripts/engines/motion/floor-blood.mjs';
 import { bloodTones } from '../../../scripts/engines/motion/blood-art.mjs';
 
 const at = { x: 500, y: 500 }, from = { x: 300, y: 500 };
@@ -86,4 +86,12 @@ test('any wound bleeds a little: a scratch drops less than a hurt creature and w
   assert.ok(marks(0.5) < marks(1) && marks(1) < marks(2));
   const wait = (tier) => standingDrip({ at: { x: 0, y: 0 }, tier, random: () => 0.5 }).nextIn;
   assert.ok(wait(0.5) > wait(1) && wait(1) > wait(2));
+});
+
+test('wet stains shine by the light on them and stop as they dry; drops do not', () => {
+  assert.ok(bloodShines('slash') && bloodShines('pool') && !bloodShines('drop'));
+  assert.equal(bloodSheen(null), 0, 'no light');
+  assert.ok(bloodSheen({ strength: 1 }) > bloodSheen({ strength: 0.3 }));
+  assert.ok(bloodSheen({ strength: 1 }, POOL_DRIES / 2) < bloodSheen({ strength: 1 }));
+  assert.equal(bloodSheen({ strength: 1 }, POOL_DRIES), 0, 'dry');
 });

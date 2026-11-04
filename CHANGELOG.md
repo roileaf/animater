@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.9.1 (2026-11-04)
+
+A new way to fall down, and blood that actually shines.
+
+- **Prone.** A creature knocked down now tips over backwards like a cutout laid on the floor, in perspective, with a small bounce and a puff of dust, and comes to rest in the middle of its square. It lies under anyone standing there, with a dark edge where it meets the ground instead of an upright shadow, and pushes itself back up in two moves. This replaces both the quarter turn and the flat drawing look on top-down art.
+- **Blood shines in the light.** Every large stain now picks up the colour of the light on it, not only the pool from a killing blow, and pools and trails hold a small reflection. It fades as the blood dries, and blood you cannot see no longer shines through fog of war.
+- **Breath.** A creature lying down breathes from where its mouth now is.
+
 ## 2.9.0 (2026-11-04)
 
 Blood on the floor, energy blasts, and every weather gone over so the map stays readable.

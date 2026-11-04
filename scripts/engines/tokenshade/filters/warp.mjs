@@ -208,4 +208,33 @@ void main() {
 }`,
 };
 
-export const WARP_SPECS = [twist, bulgepinch, shockwave, wave, distortion, zoomblur, blur, images, transform];
+// Fallen over backwards, seen from above: the art tips about the bottom of its token like a cutout laid on the floor, ending
+// in the middle of its square, its far edge narrowing in perspective, with a dark edge where it meets the ground. Always on the screen's up, whichever
+// way the token faces. `amount` 0 standing, 1 lying.
+const tip = {
+  type: 'tip', order: 950,
+  defaults: { amount: 0 },
+  uniforms: { uTip: ['float', p => clamp(p.amount, 0, 1)] },
+  reach: (p, c) => c.size * 0.25 + 8,
+  glsl: `
+vec2 fxTipped(vec2 p, float s, float c, float f, float foot) {
+  // Where on the upright art this fragment shows, undoing the perspective: Y up from the foot, r along the art.
+  float y = p.y - foot, under = c * f + y * s;
+  if (under < 1.0) return vec2(1e6);
+  float r = -y * f / under, q = f / (f + r * s);
+  return vec2(p.x / q, foot - r);
+}
+void main() {
+  vec2 p = fxCanvas();
+  if (uTip < 0.002) { gl_FragColor = fxSample(vTextureCoord); return; }
+  float a = uTip * 1.187, s = sin(a), c = cos(a), f = max(uArtSize.x, uArtSize.y) * 2.6, foot = uTokenSize.y * (0.5 - 0.3 * uTip);
+  vec4 art = fxAt(fxTipped(p, s, c, f, foot) - p);
+  if (art.a > 0.99) { gl_FragColor = art; return; }
+  // The shadow where it lies: the same shape, a little down and to the sides, only under what is not art.
+  float d = max(uTokenSize.x, uTokenSize.y) * 0.02;
+  float near = max(fxAlphaAt(fxTipped(p + vec2(0.0, -d), s, c, f, foot) - p), max(fxAlphaAt(fxTipped(p + vec2(d, -d * 0.4), s, c, f, foot) - p), fxAlphaAt(fxTipped(p + vec2(-d, -d * 0.4), s, c, f, foot) - p)));
+  gl_FragColor = vec4(art.rgb, art.a + (1.0 - art.a) * near * 0.7 * smoothstep(0.3, 1.0, uTip));
+}`,
+};
+
+export const WARP_SPECS = [twist, bulgepinch, shockwave, wave, distortion, zoomblur, blur, images, transform, tip];

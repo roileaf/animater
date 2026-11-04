@@ -6,22 +6,11 @@
 // - glyphs (stars, question marks, drops) go round the middle of the body on a circle seen from above, not round a
 //   head at the top of the square;
 // - no drop shadow is added below it;
-// - a creature lying prone lies low (a little smaller and darker), it is not squashed from the bottom.
 // The art's own motion (a Tokener video) carries the rest: still when held rigid, slower when slowed or worn out.
 
 // Looks whose ground disc, gradient or shadow is the point (markers, rings, a levitating creature's shadow).
 const KEEP = /^(?:Marker: |Channel: |Rune Circle$|Tropical Gradient$|Grounded Shadow$|Levitate$)/;
-// Prone from above: pressed flat to the floor. As it falls (condition-body.mjs drops it smaller where it lies) the art
-// flattens into a drawing, a few flat tones under dark ink, and a puff of dust spreads low round it and settles.
-const once = (a, b, ms, delay = 0) => ({ animType: 'once', val1: a, val2: b, loopDuration: ms, pauseBetweenDuration: delay });
-const PRONE = [
-  { filterType: 'flatten', tones: 4, saturation: 0.7, ink: 2, inkAlpha: 0.85, animated: { amount: once(0, 1, 450) } },
-  { filterType: 'adjustment', brightness: 0.9 },
-  { filterType: 'smoke', color: 0xa08a6a, blend: 2, ground: true, dimX: 1.4, dimY: 1.4, animated: { time: { animType: 'move', speed: 0.0004 }, alpha: once(0.8, 0, 1600, 250) } },
-];
-
 function topDownParams(preset) {
-  if (preset.name === 'Prone') return PRONE;
   const out = [];
   for (const p of preset.params ?? []) {
     if (p?.filterType === 'base') continue;
