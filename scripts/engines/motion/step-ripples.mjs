@@ -40,6 +40,9 @@ void main(){
   gl_FragColor = vec4(col * a, a);
 }`;
 
+// Whether something moving through the water has come far enough for its next ripple (pure): `from` where the last was, `at` where it is now, `spacing` px.
+export const rippleDue = (from, at, spacing) => !from || Math.hypot(at.x - from.x, at.y - from.y) >= spacing;
+
 /** The layer: add({ x, y, size }) rings the water there now; floor({ texture, rect }) the map's picture; tick(seconds); clear(). */
 export function createStepRipples({ PIXI, root, grid = () => 100 }) {
   let mesh = null, own = null, pos = null, info = null, next = 0, live = 0;

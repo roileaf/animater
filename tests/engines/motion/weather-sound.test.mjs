@@ -20,7 +20,7 @@ test('light rain gives way to heavy as it comes down harder, and a storm rains h
 });
 
 test('a breeze gives way to a gale, and calm is silent', () => {
-  assert.equal(weatherLevels({ wind: 0.05 }).windLight, 0);
+  for (const calm of [0, 0.2, 0.3]) assert.equal(weatherLevels({ wind: calm }).windLight, 0, `calm, light and a breeze are silent: ${calm}`);
   const breeze = weatherLevels({ wind: 0.4 }), gale = weatherLevels({ wind: 1 });
   assert.ok(breeze.windLight > 0); assert.equal(breeze.windStrong, 0);
   assert.equal(gale.windLight, 0); assert.ok(gale.windStrong > 0);

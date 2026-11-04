@@ -18,10 +18,10 @@ const ramp = (v, from, to) => clamp((v - from) / (to - from));
 export const WEATHER_VOLUME = Object.freeze({ rainLight: 0.3, rainHeavy: 0.45, windLight: 0.2, windStrong: 0.36, hail: 0.4 });
 
 // How loud each loop is now (pure): `rain`, `wind` 0-1, `storm` how fierce (a storm's rain is heavy), `words` the weather's names (for hail), `inside`
-// under a roof (a third). Volumes to fade to: light rain gives way to heavy, a breeze to a gale.
+// under a roof (a third). Volumes to fade to: light rain gives way to heavy, a breeze to a gale. Wind is only heard from moderate (Calendaria's 0.4) up.
 export function weatherLevels({ rain = 0, wind = 0, storm = 0, words = '', inside = false } = {}) {
   const wet = clamp(rain), hard = Math.max(ramp(wet, 0.45, 0.85), storm > 0 ? 0.7 : 0), hailing = /hail|sleet/i.test(words) ? 1 : 0;
-  const gale = ramp(wind, 0.55, 0.85), breeze = ramp(wind, 0.1, 0.3) * (1 - gale), roof = inside ? 0.33 : 1;
+  const gale = ramp(wind, 0.55, 0.85), breeze = ramp(wind, 0.3, 0.4) * (1 - gale), roof = inside ? 0.33 : 1;
   const raining = hailing ? wet * 0.5 : wet;
   return {
     rainLight: WEATHER_VOLUME.rainLight * raining * (1 - hard) * roof,

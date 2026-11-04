@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.12.0 (2026-11-04)
+
+Choose how much of it you want, and swimmers leave a real wake.
+
+- **Choose your immersion.** Once after this update a window lists Animater's immersion features in ten plain groups: animals, vermin, sun and shadows, weather on the map, fire and lamplight, feet on the floor, living creatures, caves, sounds of the world, and blood and impact. Click one to see it explained and shown on the scene you have open, on your screen only and with nothing saved. Tick what you want, or just press Use all or Use none. The GM chooses for the table; each player chooses for their own screen from what the GM left on. A feature you leave alone keeps its settings as they were. Open it again any time from Animater settings, Floor & world, and later versions only ask about what is new.
+- **A swimmer's wake.** Swimmers, ducks and frogs now leave a wake drawn with the pool's own ripples, in place of the old V: one narrow V opening to the angle real wakes have, gently curved, made of a few bowed crests with fainter ones across the water between. Each piece stays where it was made, spreads and fades, so nothing bends with the swimmer, and nothing goes ahead of it. It stays in the water.
+- **Ducks and frogs ripple the water.** A feeding duck and a standing heron send out rings now and then, and taking off, striking or jumping in splashes properly.
+- **Wind sounds start at Moderate.** Calm, Light and a scene's Breeze are now silent.
+
 ## 2.11.0 (2026-11-04)
 
 The open air gets louder and fuller: weather, rivers and a night you can hear, deer and a fox, and creatures that scatter at a loud bang.

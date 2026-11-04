@@ -3615,3 +3615,23 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-blast-pick button[data-action="sonic"] { --blast: 206, 214, 228; }
 .animater-blast-pick button[data-action="poison"] { --blast: 176, 196, 66; }
 .animater-blast-pick button[data-action="psychic"] { --blast: 240, 96, 196; }
+
+/* Choose your immersion */
+.application.animater.animater-immersion { min-width: 340px; }
+.animater-immersion .window-content { padding: 0; }
+.an-imm { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.an-imm-intro { margin: 0; padding: 10px 12px; font-size: 13px; line-height: 1.4; border-bottom: 1px solid var(--color-border-light-tertiary, #4a4438); }
+.an-imm-list { flex: 1; min-height: 0; overflow-y: auto; }
+.an-imm-row { border-bottom: 1px solid var(--color-border-light-tertiary, #4a4438); cursor: pointer; }
+.an-imm-row:hover { background: rgba(255, 255, 255, 0.04); }
+.an-imm-row.open { background: rgba(255, 255, 255, 0.07); box-shadow: inset 3px 0 0 var(--color-warm-1, #d9a441); }
+.an-imm-head { display: flex; gap: 10px; align-items: flex-start; padding: 8px 12px; cursor: pointer; }
+.an-imm-head input { flex: none; margin: 2px 0 0; }
+.an-imm-name { font-weight: 600; }
+.an-imm-name small { display: block; font-weight: 400; opacity: 0.7; }
+.an-imm-more { padding: 0 12px 10px 38px; font-size: 13px; line-height: 1.4; }
+.an-imm-more p { margin: 0 0 6px; }
+.an-imm-note { font-style: italic; color: var(--color-warm-1, #d9a441); min-height: 1.4em; }
+.an-imm-foot { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--color-border-light-tertiary, #4a4438); }
+.an-imm-foot button { flex: none; width: auto; }
+.an-imm-count { font-size: 12px; opacity: 0.7; margin-right: auto; padding-left: 4px; white-space: nowrap; }

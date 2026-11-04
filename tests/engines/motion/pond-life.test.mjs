@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { duckStep, heronStep, frogStep } from '../../../scripts/engines/motion/pond-life.mjs';
+import { rippleDue } from '../../../scripts/engines/motion/step-ripples.mjs';
 
 const duck = (over = {}) => ({ x: 0, y: 0, a: 0, wait: 5, turn: 0, mode: 'swim', up: 0, h: 0, ...over });
 const heron = (over = {}) => ({ x: 0, y: 0, hx: 0, hy: 0, a: 0, mode: 'stand', wait: 5, strike: 0, h: 0, t: 0, vx: 0, vy: 0, ...over });
@@ -60,6 +61,12 @@ test('ducks and herons in flight stay out of walled and closed places', () => {
   for (let i = 0; i < 2000 && q.mode === 'fly' && !q.gone; i++) { q = duckStep(q, { dt: 1 / 60, grid: 100, barred, ok: pond }); assert.ok(q.y >= -300, `at ${q.y}`); }
   let b = heronStep(heron(), { grid: 100, near: [{ x: 0, y: 200 }] });
   for (let i = 0; i < 2000 && b.mode === 'fly'; i++) { b = heronStep(b, { dt: 1 / 60, grid: 100, barred }); assert.ok(b.y >= -300, `at ${b.y}`); }
+});
+
+test('a ripple comes only when something has moved far enough since the last', () => {
+  assert.equal(rippleDue(null, { x: 0, y: 0 }, 50), true, 'the first');
+  assert.equal(rippleDue({ x: 0, y: 0 }, { x: 30, y: 0 }, 50), false);
+  assert.equal(rippleDue({ x: 0, y: 0 }, { x: 30, y: 40 }, 50), true);
 });
 
 test('a frog with no water to leap into stays where it is', () => {

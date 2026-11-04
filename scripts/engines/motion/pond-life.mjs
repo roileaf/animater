@@ -4,6 +4,7 @@
 // and nothing drawn where nobody looks. Every screen has its own: nothing here is saved or shared.
 
 import { noiseReaching, wayOut, shadowKeeper, overOpen, NOISE_SPEED } from './wildlife.mjs';
+import { rippleDue } from './step-ripples.mjs';
 
 const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
@@ -238,7 +239,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null } = {}) {
+    tick(seconds, { near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -259,12 +260,19 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         if (q.gone || !can(q, q.x, q.y)) { q.body.visible = q.shadow.visible = q.ripple.visible = false; return q; }
         if (q.mode === 'swim') {
           const feeding = q.up > 0, tex = t.duck[(q.hen ? 2 : 0) + (feeding ? 1 : 0)], size = 0.85 * k * birdSize;
-          if (feeding) put(q.ripple, t.ring[Math.floor(time * 4 + q.phase) % t.ring.length], q.x, q.y, 0, 0.55 * k * birdSize, alpha);
+          if (ripple) {
+            q.ripple.visible = false;
+            // Paddling, its wake as it goes; tipped up to feed, a ring where it is now and then.
+            if (feeding) { if ((q.ringIn = (q.ringIn ?? 0) - dt) <= 0) { q.ringIn = 1.1; if (inView(q.x, q.y)) ripple(q.x, q.y, 0.3 * birdSize, true); } }
+            else if ((q.x !== q0.x || q.y !== q0.y) && inView(q.x, q.y)) ripple(q.x, q.y, 0.3 * birdSize, true, { x: Math.sin(q.a), y: -Math.cos(q.a) }, q.body);
+          } else if (feeding) put(q.ripple, t.ring[Math.floor(time * 4 + q.phase) % t.ring.length], q.x, q.y, 0, 0.55 * k * birdSize, alpha);
           else put(q.ripple, t.wake[Math.floor(time * 6 + q.phase) % t.wake.length], q.x, q.y, q.a, 0.75 * k * birdSize, alpha);
           const c = fall(q, q.x, q.y, { width: grid * 0.3, body: 0.22, grounded: true }); shadowOf(q, tex, q.x + c.dx, q.y + c.dy, q.a, size, Math.min(0.32, c.alpha * 0.36) * alpha); put(q.body, tex, q.x, q.y, q.a, size, alpha);
         } else {
           const c = fall(q, q.x, q.y, { width: grid * 0.3, lift: 0.8 }), tex = t.duckFly[Math.floor(time * 22 + q.phase) % SPANS.length], size = 0.6 * k * birdSize * (1 + q.h * 0.15);
-          if (q.h < 0.3) put(q.ripple, t.ring[Math.min(t.ring.length - 1, Math.floor((q.t ?? 0) * 7))], q.x, q.y, 0, 0.55 * k * birdSize, alpha); else q.ripple.visible = false;
+          // Pattering off the water, a splash at each beat.
+          if (ripple) { q.ripple.visible = false; if (q.h < 0.45 && rippleDue(q.ringAt, q, grid * 0.5)) { q.ringAt = { x: q.x, y: q.y }; ripple(q.x, q.y, 0.34 * birdSize, false); } }
+          else if (q.h < 0.3) put(q.ripple, t.ring[Math.min(t.ring.length - 1, Math.floor((q.t ?? 0) * 7))], q.x, q.y, 0, 0.55 * k * birdSize, alpha); else q.ripple.visible = false;
           shadowOf(q, tex, q.x + c.dx * q.h, q.y + c.dy * q.h, q.a, size * 0.95, Math.min(0.32, c.alpha * 0.38) * alpha); put(q.body, tex, q.x, q.y, q.a, size, alpha);
         }
         return q;
@@ -277,7 +285,8 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         if (!can(b, b.x, b.y)) { b.body.visible = b.shadow.visible = b.ripple.visible = false; return b; }
         if (b.mode === 'stand') {
           const tex = t.heron[b.strike > 0 ? 1 : 0], size = 0.52 * k * birdSize;
-          put(b.ripple, t.ring[Math.floor(time * 1.4 + b.phase) % t.ring.length], b.x, b.y, 0, 0.7 * k * birdSize, alpha);
+          if (ripple) { b.ripple.visible = false; if (b.strike > 0 && !(b0.strike > 0)) ripple(b.x + Math.sin(b.a) * grid * 0.3, b.y - Math.cos(b.a) * grid * 0.3, 0.3 * birdSize, false); else if ((b.ringIn = (b0.ringIn ?? b.phase) - dt) <= 0) { b.ringIn = 3 + Math.random() * 3; ripple(b.x, b.y, 0.24 * birdSize, true); } }
+          else put(b.ripple, t.ring[Math.floor(time * 1.4 + b.phase) % t.ring.length], b.x, b.y, 0, 0.7 * k * birdSize, alpha);
           const c = fall(b, b.x, b.y, { width: grid * 0.28, body: 0.75, grounded: true }); shadowOf(b, tex, b.x + c.dx, b.y + c.dy, b.a, size, Math.min(0.45, c.alpha * 0.5) * alpha); put(b.body, tex, b.x, b.y, b.a, size, alpha);
         } else {
           const c = fall(b, b.x, b.y, { width: grid * 0.7, lift: 1.5 }), tex = t.heronFly[Math.floor(time * 5.5 + b.phase) % SPANS.length], size = 0.68 * k * birdSize;
@@ -297,7 +306,8 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       frogs = frogs.map((f0) => {
         const f = frogStep(f0, { dt, grid, near, scare, noise: heard(f0), ok: (x, y) => ok('frogs', x, y) });
         if (f.puff > 0 && f0.puff <= 0) sound('frogCroak', f, false);
-        if (f0.mode === 'leap' && f.mode === 'swim') { sound('frogPlop', f, false); plops.push({ x: f.x, y: f.y, t: 0, view: sprite(floor(), t.ring[0]) }); }
+        if (f0.mode === 'leap' && f.mode === 'swim') { sound('frogPlop', f, false); if (ripple) ripple(f.x, f.y, 0.4 * frogSize, false); else plops.push({ x: f.x, y: f.y, t: 0, view: sprite(floor(), t.ring[0]) }); }
+        if (ripple && f.mode === 'swim' && (f.x !== f0.x || f.y !== f0.y) && inView(f.x, f.y)) ripple(f.x, f.y, 0.2 * frogSize, true, { x: Math.sin(f.a), y: -Math.cos(f.a) }, f.body);
         const padShows = inView(f.hx, f.hy);
         if (padShows) put(f.pad, f.pad.texture, f.hx, f.hy, f.a * 0.3, 0.72 * k * frogSize, 0.95); else f.pad.visible = false;
         if (!can(f, f.x, f.y)) { f.body.visible = f.shadow.visible = false; return f; }

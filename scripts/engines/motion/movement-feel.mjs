@@ -1127,7 +1127,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, kicks = null, kickAmount = () => 1 }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, swimRipples = null, kicks = null, kickAmount = () => 1 }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
   // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
@@ -1322,7 +1322,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
       specs = medium.underground && medium.relative <= cutoff ? [] : burrowTrail(feet, opts);
       trailKind='burrow';
     }
-    else if (kind === 'swim') { trailKind=medium.submerged?'underwater':'swim';specs=medium.submerged?underwaterBubbles(at,opts):swimWake(at,opts); }
+    else if (kind === 'swim') { trailKind=medium.submerged?'underwater':'swim';specs=medium.submerged?underwaterBubbles(at,opts):floor==='water'&&swimRipples?.(token)?[]:swimWake(at,opts); }
     else if (kind === 'jump') specs = [];
     else specs = puffsFor(floor, feet, opts);
     if (trails) { try {

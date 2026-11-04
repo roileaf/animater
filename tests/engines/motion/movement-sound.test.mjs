@@ -179,7 +179,7 @@ test('render: mounds and wake arms draw', () => {
 });
 
 // A controller over plain token views; `sounds` records [floor, kind] per host call.
-function harness({ tokens, floor = 'dirt', holes, burrowDepth, trailLifetime } = {}) {
+function harness({ tokens, floor = 'dirt', holes, burrowDepth, trailLifetime, swimRipples } = {}) {
   let time = 0;
   const live = new Set(), sounds = [], log = { added: 0, shadows: 0 };
   const layer = {
@@ -191,6 +191,7 @@ function harness({ tokens, floor = 'dirt', holes, burrowDepth, trailLifetime } =
     tokens: () => tokens, floorAt: () => (typeof floor === 'function' ? floor() : floor), enabled: () => true, density: () => 1,
     grid: () => 100, distance: () => 5, now: () => time, layer, footstep: (f, at, t, kind) => sounds.push([f, kind ?? 'step']),
     ...(holes ? { holes } : {}),
+    ...(swimRipples ? { swimRipples } : {}),
     ...(burrowDepth?{burrowDepth}:{}),...(trailLifetime?{trailLifetime}:{}),
   });
   const walk = (tok, frames, dx = 20) => { for (let i = 0; i < frames; i++) { tok.x += dx; time += 16; feel.tick(); } };
@@ -282,6 +283,21 @@ test('controller: a burrower churns a lasting earth trail and no dust or prints'
   assert.ok(!kinds.has('print') && !kinds.has('puff'), [...kinds].join());
   assert.ok(h.feel.prints > 0, 'in the long-lived budget');
   assert.ok(h.sounds.length > 0 && h.sounds.every(([, kind]) => kind === 'burrow'));
+});
+
+test('controller: a swimmer on water leaves the water\'s own ripples when they are drawn, the drawn V only when not', () => {
+  const tok = { id: 's', x: 0, y: 0, width: 100, elevation: 0, base: 0, action: 'swim', visible: true }, asked = [];
+  const h = harness({ tokens: [tok], floor: 'water', swimRipples: (t) => { asked.push(t.id); return true; } });
+  h.feel.tick(); h.walk(tok, 12);
+  assert.ok(asked.length > 0 && asked.every((id) => id === 's'));
+  assert.deepEqual(h.kinds().filter((k) => k === 'wake'), []);
+  assert.ok(h.sounds.every(([, kind]) => kind === 'swim'), 'its sound stays');
+  const off = { ...tok, id: 's2', x: 0 }, hOff = harness({ tokens: [off], floor: 'water', swimRipples: () => false });
+  hOff.feel.tick(); hOff.walk(off, 12);
+  assert.deepEqual([...new Set(hOff.kinds())], ['wake']);
+  const dry = { ...tok, id: 's3', x: 0 }, asks = [], hDry = harness({ tokens: [dry], floor: 'dirt', swimRipples: (t) => { asks.push(t.id); return true; } });
+  hDry.feel.tick(); hDry.walk(dry, 12);
+  assert.deepEqual(asks, [], 'no water, no ripples');
 });
 
 test('controller: explicit swimming leaves wakes, never ground footprints, and retains swim sounds', () => {

@@ -89,10 +89,13 @@ import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acous
 import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
+import { IMMERSION_FEATURES, immersionWindow, newFeatures } from "./ui/immersion-setup.mjs";
 import { LOCK_TOOLS, listedClientSettings, organizeConfigCategory } from "./ui/settings-config-listing.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
-const hotSettings = frameSettings({ get: key => game.settings.get(ID, key) });
+// What "choose your immersion" is showing (ui/immersion-setup.mjs): values that count on this screen while it is open, never saved.
+const settingPreview = new Map();
+const hotSettings = frameSettings({ get: key => (settingPreview.has(key) ? settingPreview.get(key) : game.settings.get(ID, key)) });
 const hotSetting = key => hotSettings.get(key);
 // Any setting written (this world's, this screen's, by Animater or another module): read afresh.
 for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged"]) Hooks.on(hook, () => hotSettings.invalidate());
@@ -183,7 +186,8 @@ import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockS
 import { createFloorBlood, hitMarks, bleedStep, standingDrip } from "./engines/motion/floor-blood.mjs";
 import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, blastRipple, aimSquares, stepSquares } from "./engines/motion/energy-blast.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
-import { createStepRipples } from "./engines/motion/step-ripples.mjs";
+import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
+import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
 import { createLightFlames, flameUnit, fireKindOf } from "./engines/motion/light-flames.mjs";
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
@@ -1958,7 +1962,40 @@ const rippleStep = (spec) => {
   if (stepRipplesFloorFor !== canvas.scene?.id) { stepRipplesFloorFor = canvas.scene?.id; stepRipples.floor(mapFloor()); }
   stepRipples.add({ x: spec.x, y: spec.y, size });
 };
-Hooks.on("canvasTearDown", () => { stepRipples.clear(); stepRipplesFloorFor = null; });
+// A swimmer's wake (engines/motion/wake-ripples.mjs): rings let go behind it at its live place as it goes, adding into one surface as a pool's do, clipped to the
+// water. Running faster than they spread they open into a V by themselves. Kept going a moment after each stroke (movement-feel.mjs swimRipples), and stopping as it stops.
+const wakeRipples = createWakeRipples({ PIXI: globalThis.PIXI, root: floorLayer("wakeRipples", 646), grid: () => canvas?.grid?.size ?? 100, render: (o, rt, transform) => canvas.app.renderer.render(o, { renderTexture: rt, clear: true, transform }) });
+let wakeFloorFor = null;
+const swimmers = new Map();
+const rippleWater = (x, y, size, quiet, dir = null, key = null) => {
+  if (quiet) {
+    if (wakeFloorFor !== canvas.scene?.id) { wakeFloorFor = canvas.scene?.id; wakeRipples.floor(mapFloor()); }
+    if (dir) wakeRipples.drive(key, { x, y, size, dir, keep: typeof key === "string" }); else wakeRipples.add({ x, y, size });
+    return;
+  }
+  if (stepRipplesFloorFor !== canvas.scene?.id) { stepRipplesFloorFor = canvas.scene?.id; stepRipples.floor(mapFloor()); }
+  stepRipples.add({ x, y, size });
+};
+const swimRipples = (token) => {
+  try {
+    if (!canvas?.ready) return false;
+    const had = swimmers.get(token.id); swimmers.set(token.id, { until: performance.now() + 1000, at: had?.at ?? null });
+    return true;
+  } catch { return false; }
+};
+const tickSwimmers = () => {
+  const now = performance.now(), grid = canvas.grid.size;
+  for (const [id, swimmer] of swimmers) {
+    const t = canvas.tokens?.get(id);
+    if (!t || now > swimmer.until) { swimmers.delete(id); continue; }
+    const at = { x: t.x + t.w / 2, y: t.y + t.h / 2 }, size = Math.max(0.42, Math.min(1.5, (t.w / grid) * 0.62));
+    if (!swimmer.at) { swimmer.at = at; continue; }
+    const dir = wakeAim(swimmer.at, at, grid * 0.02); if (!dir) continue;
+    swimmer.at = at;
+    if (t.visible && movementFeelFloor(at, t.document) === "water") rippleWater(at.x, at.y, size, true, dir, id);
+  }
+};
+Hooks.on("canvasTearDown", () => { stepRipples.clear(); stepRipplesFloorFor = null; wakeRipples.clear(); wakeFloorFor = null; swimmers.clear(); });
 const verminOn = () => bothSettingsOn("vermin"), dripsOn = () => bothSettingsOn("drips");
 // The map's own picture and where it lies (seen through a puddle's water, bent by its ripples).
 const mapFloor = () => {
@@ -2660,7 +2697,7 @@ const wildTick = (seconds) => {
   for (let left = Math.min(seconds, 0.25); left > 0.0001; left -= 0.05) {
     const step = Math.min(left, 0.05);
     wildlife.tick(step, { near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, wind, view, sound: wildVoice });
-    if (pondLife.busy) pondLife.tick(step, { near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
+    if (pondLife.busy) pondLife.tick(step, { ripple: rippleWater, near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
     if (fieldLife.busy) fieldLife.tick(step, { near, ok: wildOk, blocked: wallBlocks, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps });
   }
 };
@@ -2726,6 +2763,9 @@ let riverRegions = [], riverLookAt = 0;
 const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false } };
 const readRivers = () => {
   riverRegions = [];
+  const water = [];
+  for (const region of canvas?.scene?.regions ?? []) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") water.push(...regionAreas(region)); } catch { /* a broken region never breaks the rest */ } }
+  wakeRipples.water(water);
   for (const region of canvas?.scene?.regions ?? []) {
     try { const own = region.flags?.[ID] ?? {}; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
@@ -3179,7 +3219,9 @@ function skyTick() {
   if (wildOpen || nightVoice.sound) tickNight();
   tickWeatherSound();
   { const now = performance.now(); if (now - lightFlamesAt > (now - gustAt < 8000 ? 100 : 500)) { lightFlamesAt = now; syncLightFlames(); } if (lightFlames.count) lightFlames.tick(now / 1000); }
+  if (swimmers.size) tickSwimmers();
   if (stepRipples.busy) stepRipples.tick(seconds);
+  if (wakeRipples.busy) wakeRipples.tick(seconds);
   if (cavern.busy) tickCavern(seconds, performance.now());
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
@@ -3265,6 +3307,7 @@ const feelLayer = createMovementFeelLayer({ PIXI: globalThis.PIXI, root: movemen
 const movementFeel = createMovementFeel({
   trails: groundTrails,
   ripples: rippleStep,
+  swimRipples,
   kicks: (step) => { kickPebble(step); bleedAlong(step); },
   kickAmount: () => { try { const n = Number(hotSetting("stepKickAmount")); return Number.isFinite(n) ? n : 1; } catch { return 1; } },
   // "Shadows under every token": standing creatures cast their shadows too, not only fliers.
@@ -5123,6 +5166,100 @@ async function useEveryCatalog() {
   persistentStates?.schedule();
   return catalogsOn();
 }
+// "Choose your immersion": each feature shown on the scene that is open, on this screen only. An example says what to look for, and why there may be nothing to see here.
+const immersionView = () => ({ x: canvas.stage.pivot.x, y: canvas.stage.pivot.y });
+// The nearest open ground to the middle of the view, so an example is not lost under a roof.
+const immersionSpot = () => {
+  const at = immersionView(), grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0;
+  for (let ring = 0; ring <= 6; ring++) for (let i = 0; i < Math.max(1, ring * 8); i++) {
+    const a = (i / Math.max(1, ring * 8)) * Math.PI * 2, p = { x: at.x + Math.cos(a) * ring * grid, y: at.y + Math.sin(a) * ring * grid };
+    try { if (!shelteredAt(p, base)) return p; } catch { return at; }
+  }
+  return at;
+};
+const immersionCount = (...lists) => lists.reduce((total, list) => total + Object.values(list ?? {}).reduce((t, v) => t + (typeof v === "number" ? v : 0), 0), 0);
+const immersionPreview = (values) => {
+  settingPreview.clear();
+  for (const [key, value] of values ?? []) settingPreview.set(key, value);
+  hotSettings.invalidate();
+  try { wildKey = null; rebuildWildlife(); verminKey = null; lookSky(); rebuildSky(); } catch (e) { console.warn("Animater immersion preview:", e); }
+};
+const IMMERSION_DEMOS = {
+  wildlife: () => {
+    wildKey = null; rebuildWildlife();
+    const n = immersionCount(wildlife.counts, pondLife.counts, fieldLife.counts);
+    return { note: n ? `${n} animals are in this scene now. Scroll around the map to find them.` : "None here: this scene has no open ground or water for them, or is underground. Try it on an outdoor scene." };
+  },
+  vermin: () => {
+    const b = canvas.dimensions.sceneRect, spots = ratSpots();
+    if (!spots?.length) return { note: "No walls for rats to run along here. Try it on an indoor or underground scene." };
+    vermin.populate({ spots, count: 10, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } });
+    return { note: `${vermin.count} rats are out along the walls of this scene, and bats overhead.`, undo: () => { verminKey = null; vermin.clear(); } };
+  },
+  light: () => ({ note: undergroundScene() ? "Nothing here: there is no sun underground. Try it on an outdoor scene." : "Look at the creatures, walls and roofs in view: their shadows fall from the sun at this scene's hour." }),
+  weather: () => {
+    if (undergroundScene()) return { note: "Nothing here: no weather underground. Try it on an outdoor scene." };
+    const kinds = [{ rain: 0.8, clouds: 1, wind: 0.5, windAngle: 0.8 }, { snow: 0.7, clouds: 0.8, wind: 0.3, windAngle: 0.6 }, { clouds: 0.4, wind: 1, windAngle: 0.3 }];
+    const show = (i) => { weatherPreview = kinds[i]; lookSky(); rebuildSky(); };
+    let i = 0; show(0);
+    const turn = setInterval(() => { i = (i + 1) % kinds.length; show(i); }, 7000);
+    return { note: "Rain, then snow, then wind, a few seconds each, on your screen only. Your scene's real weather is untouched.", undo: () => { clearInterval(turn); weatherPreview = null; lookSky(); rebuildSky(); } };
+  },
+  fire: () => {
+    const fires = (canvas.lighting?.placeables ?? []).length;
+    return { note: fires ? `This scene has ${fires} lights. Go near a fire or lamp to see its flames, embers and smoke.` : "No lights here for it to work on. Try it on a scene with fires or lamps." };
+  },
+  feet: () => {
+    const grid = canvas.grid.size, at = immersionSpot(), removers = [];
+    for (let i = 0; i < 8; i++) removers.push(debugPrint(at.x - grid * 1.4 + i * grid * 0.4, at.y + (i % 2 ? grid * 0.1 : -grid * 0.1), Math.PI / 2));
+    const floor = movementFeelFloor(at, { elevation: 0, width: 1, height: 1 });
+    let moved = 0, timer = null;
+    if (floor === "water") {
+      const dir = { x: 1, y: 0 }, size = 0.62;
+      timer = setInterval(() => { moved += grid * 0.08; rippleWater(at.x - grid * 2 + moved, at.y + grid, size, true, dir, "immersion-demo"); if (moved > grid * 4) { clearInterval(timer); timer = null; } }, 30);
+    }
+    const gone = setTimeout(() => { for (const remove of removers) remove(); removers.length = 0; }, 8000);
+    return { note: floor === "water" ? "A line of prints near the middle of your view, and a wake just below them. Move a creature to see the real thing." : "A line of prints near the middle of your view. Move a creature to see what this floor does.", undo: () => { clearTimeout(gone); if (timer) clearInterval(timer); for (const remove of removers) remove(); } };
+  },
+  creatures: () => {
+    const seen = (canvas.tokens?.placeables ?? []).filter((t) => t.visible).length;
+    return { note: seen ? "Watch the creatures in this scene: they breathe and shift as they wait." : "No creatures in view. Place one and watch it wait." };
+  },
+  caves: () => {
+    const grid = canvas.grid.size, at = immersionSpot(), box = (kind, dx) => ({ kind, x: at.x + dx * grid - grid * 1.5, y: at.y - grid * 1.5, w: grid * 3, h: grid * 3 });
+    cavePreview = [box("mist", -3.5), box("fungus-blue", 0), box("webs", 3.5)];
+    rebuildCavern();
+    return { note: "Mist, fungus and webs near the middle of your view, as an example. The full set only plays in scenes marked underground.", undo: () => { cavePreview = []; rebuildCavern(); } };
+  },
+  sound: () => {
+    if (undergroundScene()) return { note: "No weather can be heard underground. Try it on an outdoor scene." };
+    weatherTest = { rain: 0.7, wind: 0.6, storm: 0, words: "" };
+    return { note: "Listen: rain and wind, on your screen only. Rivers and footsteps play as creatures come near or move.", undo: () => { weatherTest = null; } };
+  },
+  blood: () => {
+    const grid = canvas.grid.size, at = immersionSpot();
+    floorBlood.add(hitMarks({ at, type: "slashing", share: 0.5, width: grid, grid, seed: `demo:${Date.now()}` }), 0x7a0d0d);
+    return { note: "A hit's blood on the floor near the middle of your view (it fades by itself). Screen blood and shaking come when creatures are really hit." };
+  },
+};
+const immersionDemo = (id) => IMMERSION_DEMOS[id]?.() ?? {};
+function debugPrint(x, y, heading) {
+  const radius = canvas.grid.size * 0.11, handle = feelLayer.addParticle({ kind: "print", x, y, radius, rotation: heading, gait: "boots", hollow: "mud", wet: false, color: 0x6c7f97 });
+  feelLayer.updateParticle(handle, { x, y, scale: 1, rotation: heading, alpha: 1 });
+  return () => feelLayer.removeParticle(handle);
+}
+const immersionMenuWindow = () => immersionWindow(foundry.applications.api.ApplicationV2, { id: ID, demo: immersionDemo, preview: immersionPreview });
+// Once for each feature, on first load after it arrives: the GM (the active one) for the table, each player for their screen.
+async function offerImmersion() {
+  if (!canvas?.ready) return void Hooks.once("canvasReady", () => { setTimeout(() => void offerImmersion().catch((e) => console.warn("Animater immersion:", e.message)), 1500); });
+  if (game.user.isGM && !(game.users.activeGM?.isSelf ?? true)) return;
+  const key = game.user.isGM ? "immersionSeen" : "immersionSeenLocal", fresh = newFeatures(IMMERSION_FEATURES, hotSetting(key));
+  if (!fresh.length) return;
+  await game.settings.set(ID, key, IMMERSION_FEATURES.map((f) => f.id));
+  const Window = immersionMenuWindow(), win = new Window({ only: fresh.map((f) => f.id) });
+  win.prepare();
+  if (win.features.length) win.render({ force: true });
+}
 // Once per world, on first load as the active GM: offer to turn every catalog on (only when
 // none is on yet, so a table that already chose its catalogs is never asked).
 async function welcome() {
@@ -6491,6 +6628,9 @@ Hooks.once("init", () => {
     scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting("welcomed", { scope: "world", config: false, type: Boolean, default: false });
+  registerSetting("immersionSeen", { scope: "world", config: false, type: Array, default: [] });
+  registerSetting("immersionSeenLocal", { scope: "client", config: false, type: Array, default: [] });
+  game.settings.registerMenu(ID, "immersionMenu", { name: "Choose your immersion", label: "Show and choose", icon: "fa-solid fa-leaf", hint: "Each immersion feature explained and shown on the scene that is open, to choose which to use.", type: immersionMenuWindow(), restricted: false });
   registerSetting(DRAMATIC_DEATHS, {
     name: "Damage-typed knockouts",
     hint: "A creature dropping to 0 HP goes down in the look of the damage that dropped it: burned to ash, frozen and shattered, fried by lightning. Off: a plain collapse.",
@@ -7164,7 +7304,7 @@ Hooks.once("ready", () => {
     },
   });
   void loadDndBooks();
-  setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)), 1500);
+  setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)).then(offerImmersion).catch((e) => console.warn("Animater immersion:", e.message)), 1500);
   // Item sheets (GM): a shortcut to the item's animation. AppV1 sheets get a header button;
   // AppV2 sheets (D&D 5e) get an entry in the header's menu.
   if (game.user.isGM) {
@@ -7738,7 +7878,7 @@ Hooks.once("ready", () => {
         feelLayer.updateParticle(handle, { x, y, scale: 1, rotation: heading, alpha: 1 });
         return () => feelLayer.removeParticle(handle);
       },
-      rippleHere: (x, y, size = 1) => { rippleStep({ x, y, radius: canvas.grid.size * 0.28 * size }); return stepRipples.busy; },
+      wakeRings: () => wakeRipples.count, swimHere: (token) => { swimRipples(token); return swimmers.size; }, rippleHere: (x, y, size = 1) => { rippleStep({ x, y, radius: canvas.grid.size * 0.28 * size }); return stepRipples.busy; },
       dripsHere: (area, water = []) => { drips.build({ areas: area ? [area] : [], grid: canvas.grid.size, water, floor: mapFloor() }); return drips.count; },
       // The air as if this scene were underground (drafts and smoke on this screen), and a gust now.
       previewAir: (on = true, openings = []) => { for (const flags of [canvas.scene.flags, canvas.scene._source.flags]) (flags[ID] ??= {}).underground = on; previewOpenings = on ? openings : []; draftSoon(); lampLookAt = 0; return on; },
