@@ -201,7 +201,7 @@ import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, bl
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
 import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
-import { createLightFlames, flameUnit, fireKindOf, underTile } from "./engines/motion/light-flames.mjs";
+import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from "./engines/motion/light-flames.mjs";
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
@@ -1731,17 +1731,23 @@ const torchDraftOn = () => bothSettingsOn("torchDraft");
 const flameBase = new WeakMap();
 // A flame under a roof or tree drawn now shows nothing (engines/motion/light-flames.mjs underTile): looked at five times a second a fire, and again as soon as it has moved.
 const flameCover = new Map();
+// Where each creature opens a radial or vision roof: as Foundry draws its occlusion mask.
+const occlusionReaches = () => (canvas.tokens?._getOccludableTokens?.() ?? []).map((t) => {
+  const { x, y } = t.center, r = Math.max(t.externalRadius, t.getLightRadius(t.document.occludable?.radius ?? 0));
+  const near = (p) => Math.hypot(p.x - x, p.y - y) <= r;
+  return { elevation: t.document.elevation, radial: near, vision: t.vision?.active ? (p) => t.vision.los?.contains(p.x, p.y) === true : near };
+});
 const flameCovered = (key, at, elevation = 0) => {
   try {
     const now = performance.now(), had = flameCover.get(key);
     if (had && now - had.at < 200 && had.x === at.x && had.y === at.y) return had.covered;
     // Tiles and the map's foreground picture alike; a creature flying overhead hides no fire.
-    const tiles = [];
+    const tiles = [], reaches = occlusionReaches();
     for (const mesh of canvas.primary?.children ?? []) {
       if (!mesh.containsCanvasPoint || mesh.destroyed) continue;
       const doc = mesh.object?.document;
       if (doc?.documentName === "Token" || doc?.hidden) continue;
-      tiles.push({ elevation: mesh.elevation, alpha: mesh.alpha, visible: mesh.visible, covers: (p) => mesh.containsCanvasPoint(p, 0.5) === true });
+      tiles.push({ elevation: mesh.elevation, alpha: tileDrawnAt({ alpha: mesh.alpha, unoccludedAlpha: mesh.unoccludedAlpha, occludedAlpha: mesh.occludedAlpha, elevation: mesh.elevation, state: mesh._occlusionState }, reaches, at), visible: mesh.visible, covers: (p) => mesh.containsCanvasPoint(p, 0.5) === true });
     }
     const covered = underTile(tiles, at, Number(elevation) || 0);
     flameCover.set(key, { at: now, x: at.x, y: at.y, covered });

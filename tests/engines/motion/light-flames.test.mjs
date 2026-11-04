@@ -1,6 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fireKindOf, fireTongues, underTile } from '../../../scripts/engines/motion/light-flames.mjs';
+import { fireKindOf, fireTongues, underTile, tileDrawnAt } from '../../../scripts/engines/motion/light-flames.mjs';
+
+test('a roof faded for a creature inside is not drawn, though its own alpha stays whole', () => {
+  const at = { x: 5, y: 5 }, roof = { alpha: 1, elevation: 20 };
+  assert.equal(tileDrawnAt(roof, [], at), 1, 'nobody under it');
+  assert.equal(tileDrawnAt({ ...roof, state: { fade: 1 } }, [], at), 0, 'the fade Foundry does in its shader');
+  assert.equal(tileDrawnAt({ ...roof, occludedAlpha: 0.25, state: { fade: 1 } }, [], at), 0.25, 'the tile says how far it fades');
+  assert.equal(tileDrawnAt({ ...roof, alpha: 0.5 }, [], at), 0.5);
+});
+
+test('a radial or vision roof opens only where a creature below it reaches', () => {
+  const at = { x: 5, y: 5 }, roof = { alpha: 1, elevation: 20 };
+  const near = { elevation: 0, radial: () => true, vision: () => false }, sees = { elevation: 0, radial: () => false, vision: () => true };
+  const far = { elevation: 0, radial: () => false, vision: () => false };
+  assert.equal(tileDrawnAt({ ...roof, state: { radial: 1 } }, [near], at), 0);
+  assert.equal(tileDrawnAt({ ...roof, state: { radial: 1 } }, [far], at), 1, 'out of reach, still drawn');
+  assert.equal(tileDrawnAt({ ...roof, state: { vision: 1 } }, [sees], at), 0);
+  assert.equal(tileDrawnAt({ ...roof, state: { vision: 1 } }, [far], at), 1);
+  assert.equal(tileDrawnAt({ ...roof, state: { radial: 1 } }, [{ ...near, elevation: 30 }], at), 1, 'above the roof');
+  assert.equal(tileDrawnAt({ ...roof, state: { radial: 1 } }, [near], null), 1, 'no place asked about');
+});
 
 test('a flame under a roof drawn now is hidden; a faded roof, a low tile or a gap in it hides nothing', () => {
   const roof = (over = {}) => ({ elevation: 20, alpha: 1, visible: true, covers: () => true, ...over }), at = { x: 5, y: 5 };

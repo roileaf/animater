@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.12.5 (2026-11-04)
+
+Flames burn indoors again.
+
+- **Fixed: flames vanished indoors.** Since 2.12.4, light flames, held torches, lanterns and embers stayed hidden under a roof even after it faded for a creature inside. They now show as soon as the roof fades, and hide again when it comes back. Roofs that open only around a creature or within its sight show flames only there.
+
 ## 2.12.4 (2026-11-04)
 
 Reflections from every bank and of every tile, recipes for a whole weapon category, and flames that stay under the roof.
