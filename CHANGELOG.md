@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.3 (unreleased)
+
+### Fixes
+
+- Daggerheart: the Defeated, Unconscious and Dead catalog entries now say where the Defeated look setting really is, and that Animater effect is the choice that animates them.
+
 ## 3.0.2 (2026-11-05)
 
 ### Fixes
