@@ -136,7 +136,7 @@ export function waterRowHTML(proposal, { checked = proposal.preselected, waterKi
   const warning = proposal.clicked && proposal.share > WATER_TUNING.clickWarnShare
     ? ` <span class="an-water-warn">${percent(proposal.share)} of the map. Is this water?</span>` : "";
   return `<div class="an-water-row" data-id="${id}">
-  <label class="an-water-pick"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""}> <span class="an-water-share">${percent(proposal.share)}</span> <span class="an-water-vertices">${proposal.vertices} vertices</span>${warning}</label>
+  <label class="an-water-pick"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""}> <strong>Area ${esc(String(proposal.id).replace("water-", ""))}</strong> <span class="an-water-share">${percent(proposal.share)} of map</span> <span class="an-water-vertices">${proposal.vertices} vertices</span>${warning}</label>
   <label>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
   <label data-flow-field${flows ? "" : " hidden"}>Flows toward ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
   <label data-current-field${kind === "river" ? "" : " hidden"}>Current ${optionsHTML(CURRENT_OPTIONS, `data-current="${id}"`, cur)}</label>
@@ -149,19 +149,32 @@ export function waterRowHTML(proposal, { checked = proposal.preselected, waterKi
 export function waterWindowHTML({ proposals, width, height, reason = "", picked = [], shared = {} }) {
   const rows = [...proposals].sort((a, b) => b.share - a.share || String(a.id).localeCompare(String(b.id)));
   const choices = new Map(picked.map((choice) => [choice.id, choice]));
+  const selected = rows.filter((proposal) => choices.get(proposal.id)?.checked ?? proposal.preselected).length;
   return `<div class="an-water">
+  <header class="an-water-heading"><h2>Review water areas</h2><p>Experimental. Click water to add an area. Review your selection before creating regions.</p></header>
   ${reason ? `<p class="an-water-reason">${esc(noneMessage(reason))}</p>` : ""}
-  <p class="an-water-intro">Experimental. Click water on the map to add it. Untick or remove anything that is not water, set the kind and flow, then create the regions.</p>
-  <label>Click colour range ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide, includes more similar colours"]], "data-click-range", shared.range ?? "narrow")}</label>
-  <p class="an-water-range-note">Wide can join touching grass, banks or other similar colours. Review the preview before creating regions.</p>
-  <div class="an-water-frame"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div>
-  <div class="an-water-all">
-    <label>Kind, for every ticked piece ${optionsHTML(WATER_KINDS, 'data-all-kind=""', shared.waterKind ?? "still")}</label>
-    <label>Flows toward, for every ticked piece ${optionsHTML(FLOW_OPTIONS, 'data-all-flow=""', shared.flowTo || "s")}</label>
-    <label>Current, for every ticked piece ${optionsHTML(CURRENT_OPTIONS, 'data-all-current=""', shared.current ?? "")}</label>
+  <div class="an-water-workspace">
+    <section class="an-water-map" aria-label="Map preview">
+      <div class="an-water-toolbar"><h3>Map preview</h3><div class="an-water-zoom">
+        <button type="button" data-zoom="out" aria-label="Zoom out">−</button><output data-zoom-label aria-live="polite">Fit</output><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="fit">Fit map</button>
+      </div></div>
+      <div class="an-water-frame" tabindex="0" aria-label="Water preview. Scroll to zoom. Drag to pan. Click to add water."><div class="an-water-stage"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div></div>
+      <p class="an-water-help">Scroll to zoom · Drag to pan · Click to add water</p>
+      <div class="an-water-range"><label>Click colour range ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide"]], "data-click-range", shared.range ?? "narrow")}</label>
+      <p class="an-water-range-note">Wide can join touching grass, banks or other similar colours. Review the preview before creating regions.</p></div>
+    </section>
+    <section class="an-water-review" aria-label="Water areas">
+      <div class="an-water-toolbar"><h3>Water areas</h3><span data-area-count>${rows.length} found · ${selected} selected</span></div>
+      <details class="an-water-all" open><summary>Settings for selected areas</summary><p>Changes below apply to every ticked area.</p><div class="an-water-shared-fields">
+        <label>Kind ${optionsHTML(WATER_KINDS, 'data-all-kind=""', shared.waterKind ?? "still")}</label>
+        <label data-shared-flow>Flows toward ${optionsHTML(FLOW_OPTIONS, 'data-all-flow=""', shared.flowTo || "s")}</label>
+        <label data-shared-current>Current ${optionsHTML(CURRENT_OPTIONS, 'data-all-current=""', shared.current ?? "")}</label>
+      </div></details>
+      <div class="an-water-list">${rows.map((proposal) => waterRowHTML(proposal, choices.get(proposal.id))).join("")}</div>
+      <p class="an-water-empty" data-area-empty${rows.length ? " hidden" : ""}>No areas yet. Click water on the map to add one.</p>
+    </section>
   </div>
-  <div class="an-water-list">${rows.map((proposal) => waterRowHTML(proposal, choices.get(proposal.id))).join("")}</div>
-  <footer class="an-water-foot"><button type="button" data-create>Create water regions</button></footer>
+  <footer class="an-water-foot"><span data-selection-count aria-live="polite">${selected} of ${rows.length} areas selected</span><button type="button" data-create${selected ? "" : " disabled"}>Create ${selected} water region${selected === 1 ? "" : "s"}</button></footer>
 </div>`;
 }
 
@@ -293,7 +306,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       id: "animater-water-detect",
       classes: ["animater", "animater-water"],
       window: { title: "Experimental: detect water regions", icon: "fa-solid fa-water", resizable: true },
-      position: { width: 560, height: 720 },
+      position: { width: 1000, height: 760 },
     };
 
     async _renderHTML() {
@@ -305,6 +318,8 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const before = choicesFromElement(content);
       content.innerHTML = before.length ? waterWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, shared: sharedChoices(content) }) : html;
       this.paint();
+      this.updateSummary();
+      this.zoomMap(this.zoom ?? 1);
     }
 
     paint() {
@@ -312,6 +327,46 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const { detect } = this;
       if (!canvas || !detect) return;
       paintWaterPreview(canvas.getContext("2d", { willReadFrequently: true }), detect.rgba, detect.width, detect.height, detect.proposals, this.highlight ?? "");
+    }
+
+    updateSummary() {
+      const kind = sharedChoices(this.element).waterKind;
+      const flowField = this.element.querySelector("[data-shared-flow]");
+      const currentField = this.element.querySelector("[data-shared-current]");
+      if (flowField) flowField.hidden = !waterFlows(kind);
+      if (currentField) currentField.hidden = kind !== "river";
+      const total = this.detect.proposals.length;
+      const selected = choicesFromElement(this.element).filter((row) => row.checked).length;
+      const setText = (selector, text) => { const node = this.element.querySelector(selector); if (node) node.textContent = text; };
+      setText("[data-area-count]", `${total} found · ${selected} selected`);
+      setText("[data-selection-count]", `${selected} of ${total} areas selected`);
+      const button = this.element.querySelector("[data-create]");
+      if (button) { button.textContent = this.saving ? "Creating regions…" : `Create ${selected} water region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
+      const empty = this.element.querySelector("[data-area-empty]");
+      if (empty) empty.hidden = total > 0;
+    }
+
+    zoomMap(value, pointer) {
+      const frame = this.element.querySelector(".an-water-frame");
+      const canvas = this.element.querySelector("canvas.an-water-preview");
+      if (!frame || !canvas || !frame.clientWidth || !frame.clientHeight) return;
+      const fit = Math.min(frame.clientWidth / this.detect.width, frame.clientHeight / this.detect.height);
+      const oldWidth = canvas.getBoundingClientRect().width;
+      const oldHeight = canvas.getBoundingClientRect().height;
+      const rect = canvas.getBoundingClientRect();
+      const bounds = frame.getBoundingClientRect();
+      const anchor = pointer ?? { x: bounds.left + frame.clientWidth / 2, y: bounds.top + frame.clientHeight / 2 };
+      const x = oldWidth ? (anchor.x - rect.left) / oldWidth : 0.5;
+      const y = oldHeight ? (anchor.y - rect.top) / oldHeight : 0.5;
+      this.zoom = Math.max(1, Math.min(8, value));
+      const width = this.detect.width * fit * this.zoom;
+      const height = this.detect.height * fit * this.zoom;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      frame.scrollLeft = Math.max(0, x * width - (anchor.x - bounds.left) + Math.max(0, (frame.clientWidth - width) / 2));
+      frame.scrollTop = Math.max(0, y * height - (anchor.y - bounds.top) + Math.max(0, (frame.clientHeight - height) / 2));
+      const label = this.element.querySelector("[data-zoom-label]");
+      if (label) label.textContent = `${Math.round(this.zoom * 100)}%`;
     }
 
     setHighlight(id) {
@@ -323,6 +378,36 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
 
     // Listeners live on the frame, which a re-render keeps. A closed window comes back with a new frame.
     _onRender() {
+      this.resizeObserver?.disconnect();
+      const frame = this.element.querySelector(".an-water-frame");
+      if (frame) {
+        frame.addEventListener("wheel", (event) => {
+          event.preventDefault();
+          this.zoomMap((this.zoom ?? 1) * (event.deltaY < 0 ? 1.2 : 1 / 1.2), { x: event.clientX, y: event.clientY });
+        }, { passive: false });
+        frame.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0 && event.button !== 1) return;
+          this.pan = { x: event.clientX, y: event.clientY, left: frame.scrollLeft, top: frame.scrollTop, moved: false };
+          this.suppressClick = false;
+        });
+        frame.addEventListener("pointermove", (event) => {
+          if (!this.pan) return;
+          const dx = event.clientX - this.pan.x, dy = event.clientY - this.pan.y;
+          if (!this.pan.moved && Math.hypot(dx, dy) < 5) return;
+          this.pan.moved = true;
+          frame.setPointerCapture(event.pointerId);
+          frame.scrollLeft = this.pan.left - dx;
+          frame.scrollTop = this.pan.top - dy;
+          event.preventDefault();
+        });
+        const finishPan = () => { this.suppressClick = this.pan?.moved === true; this.pan = null; };
+        frame.addEventListener("pointerup", finishPan);
+        frame.addEventListener("pointercancel", finishPan);
+        frame.addEventListener("pointerleave", () => { if (!this.pan?.moved) this.pan = null; });
+        this.resizeObserver = new ResizeObserver(() => this.zoomMap(this.zoom ?? 1));
+        this.resizeObserver.observe(frame);
+        this.zoomMap(this.zoom ?? 1);
+      }
       if (this.wiredTo === this.element) return;
       this.wiredTo = this.element;
       this.element.addEventListener("mouseover", (event) => this.setHighlight(event.target.closest?.("[data-id]")?.dataset.id ?? ""));
@@ -335,8 +420,11 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         if (event.target.closest?.("[data-all-flow]")) applyShared(this.element, "data-flow", event.target.value);
         if (event.target.closest?.("[data-all-current]")) applyShared(this.element, "data-current", event.target.value);
         if (event.target.closest?.("select[data-kind]")) updateKindFields(event.target.closest("[data-id]"));
+        this.updateSummary();
       });
       this.element.addEventListener("click", (event) => {
+        const zoom = event.target.closest?.("[data-zoom]");
+        if (zoom) return this.zoomMap(zoom.dataset.zoom === "fit" ? 1 : (this.zoom ?? 1) * (zoom.dataset.zoom === "in" ? 1.5 : 1 / 1.5));
         const remove = event.target.closest?.("[data-remove]");
         if (remove) return this.removeRow(remove.dataset.remove);
         if (event.target.closest?.("[data-create]")) return void this.create();
@@ -346,12 +434,14 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
 
     async close(options) {
       const out = await super.close(options);
+      this.resizeObserver?.disconnect();
       if (openWindow === this) openWindow = null;
       this.detect = null;
       return out;
     }
 
     clickPreview(event) {
+      if (this.suppressClick) { this.suppressClick = false; return; }
       const { detect } = this;
       const at = previewPixel(event, event.target.getBoundingClientRect(), detect.width, detect.height);
       const shared = sharedChoices(this.element);
@@ -365,6 +455,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       this.element.querySelector(".an-water-list").insertAdjacentHTML("afterbegin", waterRowHTML(picked.proposal, shared));
       this.element.querySelector(".an-water-list").scrollTop = 0;
       this.paint();
+      this.updateSummary();
     }
 
     removeRow(id) {
@@ -373,11 +464,13 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       for (const row of this.element.querySelectorAll(".an-water-row")) if (row.dataset.id === id) row.remove();
       if (this.highlight === id) this.highlight = "";
       this.paint();
+      this.updateSummary();
     }
 
     async create() {
       if (this.saving) return;
       this.saving = true;
+      this.updateSummary();
       try {
         const { detect } = this;
         const plan = planWaterCreate({
@@ -390,12 +483,16 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
           regions: detect.scene.regions,
         });
         const outcome = await commitWaterPlan(plan, { scene: detect.scene, confirm: hooks.confirm, notify: hooks.notify });
-        if (!outcome.cancelled && outcome.created + outcome.deleted > 0) await this.close();
+        if (!outcome.cancelled && outcome.created + outcome.deleted > 0) {
+          hooks.notify?.(`Created ${outcome.created} water region${outcome.created === 1 ? "" : "s"}.${outcome.deleted ? ` Replaced ${outcome.deleted} previously generated region${outcome.deleted === 1 ? "" : "s"}.` : ""}`);
+          await this.close();
+        }
       } catch (error) {
         hooks.warn?.("Experimental. The water regions could not be saved.");
         console.warn("Animater water regions:", error);
       } finally {
         this.saving = false;
+        if (this.detect) this.updateSummary();
       }
     }
   };

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, waterWindowHTML, waterRowHTML,
-  readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
+  waterDetectWindow, readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
 } from "../../scripts/ui/water-detect-ui.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -317,7 +317,9 @@ function waterApp() {
   let hasReason = false;
   const shared = { kind: { value: "still" }, flow: { value: "s" }, current: { value: "" }, range: { value: "narrow" } };
   const list = { scrollTop: 0, insertAdjacentHTML: (_where, html) => { rows.unshift(...parseRows(html)); } };
+  const status = Object.fromEntries(["data-area-count", "data-selection-count", "data-create", "data-area-empty"].map((key) => [key, {}]));
   const query = (selector) => {
+    if (status[selector.slice(1, -1)]) return status[selector.slice(1, -1)];
     if (selector === ".an-water-list") return list;
     if (selector === ".an-water-reason") return hasReason ? { remove: () => { hasReason = false; } } : null;
     if (selector === "[data-all-kind]") return shared.kind;
@@ -355,7 +357,7 @@ function waterApp() {
     getBoundingClientRect: () => ({ left: 10, top: 10, width: 40, height: 20 }),
   };
   const setShared = (flow, current, kind = "river", range = "narrow") => { shared.kind.value = kind; shared.flow.value = flow; shared.current.value = current; shared.range.value = range; };
-  return { App, fire, button, preview, rows: () => rows, hasReason: () => hasReason, listeners, setShared };
+  return { App, fire, button, preview, status, rows: () => rows, hasReason: () => hasReason, listeners, setShared };
 }
 
 const pieces = (over = {}) => ({ id: "water-1", share: 0.3, preselected: true, vertices: 3, loops: [{ points: [0, 0, 10, 0, 10, 5], hole: false }], pixels: new Int32Array(), ...over });
@@ -647,4 +649,78 @@ test("a scene superseded while the previous window closes never renders", async 
   assert.equal(prior.app.detect, null, "closed windows release their pixels and proposal lists");
   await final.app.close();
   assert.equal(final.app.detect, null);
+});
+
+
+test("counts and create action follow checked, added, and removed areas", async () => {
+  const ui = waterApp();
+  const notes = [];
+  const { app } = await openWaterDetect(opening({ scene: fakeScene(), Application: ui.App,
+    detect: () => ({ status: "found", proposals: [pieces(), pieces({ id: "water-2", preselected: false })], width: 10, height: 1 }),
+    select: () => ({ status: "found", proposal: pieces({ id: "water-3", clicked: true }) }),
+    notify: (message) => notes.push(message),
+  }));
+  assert.equal(ui.status["data-selection-count"].textContent, "1 of 2 areas selected");
+  assert.equal(ui.status["data-create"].textContent, "Create 1 water region");
+  const box = ui.rows()[0].querySelector("[data-pick]");
+  box.checked = false;
+  ui.fire("change", { closest: () => null });
+  assert.equal(ui.status["data-create"].disabled, true);
+  ui.fire("click", ui.preview);
+  assert.equal(ui.status["data-selection-count"].textContent, "1 of 3 areas selected");
+  app.removeRow("water-2");
+  assert.equal(ui.status["data-area-count"].textContent, "2 found · 1 selected");
+  await app.create();
+  assert.equal(notes.at(-1), "Created 1 water region.");
+});
+
+test("zoom enlarges the preview, keeps click coordinates accurate, and fits again", () => {
+  const frame = { clientWidth: 500, clientHeight: 400, scrollLeft: 0, scrollTop: 0,
+    getBoundingClientRect: () => ({ left: 0, top: 0 }) };
+  const style = { width: "400px", height: "400px" };
+  const canvas = { style, getBoundingClientRect: () => ({ left: Math.max(0, (500 - parseFloat(style.width)) / 2) - frame.scrollLeft,
+    top: -frame.scrollTop, width: parseFloat(style.width), height: parseFloat(style.height) }) };
+  const label = {};
+  const Window = waterDetectWindow(class {});
+  const app = new Window();
+  app.detect = { width: 1000, height: 1000 };
+  app.element = { querySelector: (selector) => ({ ".an-water-frame": frame, "canvas.an-water-preview": canvas, "[data-zoom-label]": label })[selector] };
+  app.zoomMap(2, { x: 250, y: 200 });
+  assert.equal(style.width, "800px");
+  assert.equal(label.textContent, "200%");
+  assert.deepEqual(previewPixel({ clientX: 250, clientY: 200 }, canvas.getBoundingClientRect(), 1000, 1000), { x: 500, y: 500 });
+  app.zoomMap(100);
+  assert.equal(app.zoom, 8);
+  app.zoomMap(1);
+  assert.equal(style.width, "400px");
+  assert.equal(frame.scrollLeft, 0);
+  assert.equal(frame.scrollTop, 0);
+});
+
+test("dragging the map pans without adding an area, and a later click still selects", (t) => {
+  const original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+  t.after(() => { if (original) globalThis.ResizeObserver = original; else delete globalThis.ResizeObserver; });
+  const frameEvents = {}, rootEvents = {};
+  const frame = { scrollLeft: 150, scrollTop: 100, setPointerCapture() {}, addEventListener: (name, fn) => { frameEvents[name] = fn; } };
+  let clicks = 0;
+  const Window = waterDetectWindow(class {}, { select: () => { clicks++; return { status: "none", reason: "no-colour" }; } });
+  const app = new Window();
+  app.detect = { rgba: new Uint8Array(400), width: 10, height: 10, proposals: [] };
+  app.element = { querySelector: (selector) => selector === ".an-water-frame" ? frame : null,
+    addEventListener: (name, fn) => { rootEvents[name] = fn; } };
+  app._onRender();
+  frameEvents.pointerdown({ button: 0, clientX: 50, clientY: 50 });
+  frameEvents.pointermove({ clientX: 80, clientY: 70, pointerId: 1, preventDefault() {} });
+  frameEvents.pointerup();
+  assert.equal(frame.scrollLeft, 120);
+  assert.equal(frame.scrollTop, 80);
+  const preview = { closest: (selector) => selector === "canvas.an-water-preview" ? preview : null,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) };
+  rootEvents.click({ target: preview, clientX: 50, clientY: 50 });
+  assert.equal(clicks, 0);
+  frameEvents.pointerdown({ button: 0, clientX: 50, clientY: 50 });
+  frameEvents.pointerup();
+  rootEvents.click({ target: preview, clientX: 50, clientY: 50 });
+  assert.equal(clicks, 1);
 });

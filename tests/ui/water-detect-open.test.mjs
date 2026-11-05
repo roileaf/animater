@@ -51,6 +51,7 @@ test("a scene switch during the first click's module load still writes to the sc
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.ok(renderedApp, "a moved level B map would have refused to open");
   renderedApp.element = {
+    querySelector: () => null,
     querySelectorAll: (selector) => (selector === "[data-id]" ? [{
       dataset: { id: "water-1" },
       querySelector: (inner) => (inner === "[data-pick]" ? { checked: true } : { value: "" }),
