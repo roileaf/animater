@@ -1523,9 +1523,8 @@ const rebuildShafts = () => {
     // they are not drawn).
     const shade = indoors.length ? (wallQuads.length ? wallQuads : wallShadowQuads({ walls, sun: sunNow, grid, height })) : [];
     const shafts = indoors.length ? windowShafts({ walls, sun: sunNow, grid, height, indoors, foot: footInSquares(), shade }) : [];
-    const glow = sunNow.moon ? null : sunGlow(clockNow()), warm = [1, 0.95, 0.84];
-    const rgb = sunNow.moon ? [0.75, 0.83, 1] : glow ? warm.map((v, i) => v + (glow.color[i] - v) * glow.amount) : warm;
-    const strength = Number(sunNow.strength) || 0;
+    // The colour the sun or moon has on the floors and the water.
+    const rgb = skyForFloors(sunNow).color, strength = Number(sunNow.strength) || 0;
     windowShaftLayer.build({ shafts, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size, indoors, color: new PIXI.Color(rgb).toNumber(), alpha: sunNow.moon ? 0.55 * Math.min(1, strength / 0.2) : 0.6 * strength });
   } catch { windowShaftLayer.clear(); }
 };
@@ -3018,7 +3017,9 @@ const rebuildWildlife = () => {
     const now = wildGround(canvas.grid.size, canvas.dimensions.sceneRect);
     const regionsChanged = regions !== wildRegions;
     // (Ground that has turned bad or come good again is no reason to start the animals over: those there run off, and come back in their own time.)
-    if (!muchChanged(wildOpen.waters.length, now.waters.length) && (!muchChanged(wildOpen.spots.length, now.spots.length) || (regionsChanged && walls === wildWalls && wildOpen.spots.length > 0 && now.spots.length > 0))) {
+    const regionsOnly = regionsChanged && walls === wildWalls, waterWaiting = wildOpen.waters.length > 0 || pondLife.residents > 0 || wildlife.fishWaiting;
+    if ((!muchChanged(wildOpen.waters.length, now.waters.length) || (regionsOnly && waterWaiting)) && (!muchChanged(wildOpen.spots.length, now.spots.length) || (regionsOnly && wildOpen.spots.length > 0 && now.spots.length > 0))) {
+      const freshOf = (g) => g.waters.filter((p) => { try { return !g.seaAt(p.x, p.y); } catch { return true; } }), wasFresh = freshOf(wildOpen).length;
       wildOpen = now; wildRegions = regions;
       // A wall drawn round one: it could never walk out, so it is set down on the open ground, and none comes back inside. Ground that has just turned bad it runs from.
       if (walls !== wildWalls || regionsChanged) {
@@ -3032,6 +3033,11 @@ const rebuildWildlife = () => {
         }
         wildlife.runOff({ spots: land, bad: now.flooded });
         fieldLife.runOff({ spots: foxSpots.length ? foxSpots : now.spots, bad: now.flooded });
+        const fresh = freshOf(now), birdWater = fresh.filter((p) => !keptOut("waterBirds", p));
+        // A pond that was bad from the start and has come good has nobody on it yet.
+        if (wasFresh === 0 && fresh.length > 0 && pondLife.residents === 0) populatePond(now, canvas.grid.size, many);
+        else pondLife.runOff({ waters: birdWater.length ? birdWater : now.waters.filter((p) => !fresh.includes(p) && !keptOut("waterBirds", p)), frogWaters: fresh.filter((p) => !keptOut("frogs", p)), home: birdWater.length > 0, bad: now.flooded, swims: (x, y) => now.inWater(x, y) || now.flooded(x, y) });
+        wildlife.fishWater(now.waters.filter((p) => !keptOut("fish", p)));
       }
       return;
     }

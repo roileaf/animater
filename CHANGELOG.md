@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.0.2 (unreleased)
+
+### Fixes
+
+- Ducks, herons and frogs now leave water a region step has just turned bad, instead of staying on it or vanishing. Ducks and herons fly to the nearest good water, and a frog dives and swims to a new lily pad while its old one sinks. With no good water left they go until it comes back, and ducks and herons driven onto the sea fly home when their pond clears.
+- A region step that changes a lot of a map's water no longer starts all its animals over.
+- Light through windows and open doors now has the sun's current colour, the same as on floors and water, instead of staying pale when the sun is low.
+
 ## 3.0.1 (2026-11-05)
 
 ### Fixes
