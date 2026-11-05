@@ -191,6 +191,7 @@ import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
 import { weatherShelter, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
+import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife } from "./engines/motion/pond-life.mjs";
 import { createFieldLife } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
@@ -7306,8 +7307,7 @@ Hooks.on("renderWallConfig", (app, html) => {
   set.innerHTML = `<legend>Animater shadow</legend>
     <div class="form-group"><label>Casts no shadow</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadow"${flags.noShadow === true ? " checked" : ""}></div><p class="hint">This wall casts no shadow in sunlight: for a wall round the map's edge or one that only stops movement.</p></div>${heights}`;
   // After the window's last section, inside its scrolling part (before the footer it left pinned under the rest).
-  const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
-  if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
+  appendWallSection(root, set);
 });
 // Wall configuration: what bursts through this door as it opens (engines/motion/door-burst.mjs).
 Hooks.on("renderWallConfig", (app, html) => {
@@ -7317,8 +7317,7 @@ Hooks.on("renderWallConfig", (app, html) => {
   const set = document.createElement("fieldset");
   set.innerHTML = `<legend>Animater door</legend><div class="form-group"><label>Bursting through</label><div class="form-fields">${select("doorBurst", own.doorBurst ?? "", [["", "Nothing"], ["bats", "A flock of bats"], ["rats", "A run of rats"]])}${select("doorBurstWhen", own.doorBurstWhen ?? "once", [["once", "The first time it opens"], ["always", "Every time it opens"]])}${select("doorBurstSize", own.doorBurstSize ?? "medium", [["small", "Few"], ["medium", "Some"], ["big", "Many"]])}</div></div>
     <p class="hint">When this door opens, they burst through from the far side, over whoever is nearest on the side it was opened from, then scatter.${own.burstFired && own.doorBurstWhen !== "always" ? " This door's have already gone: set it to Nothing and back, or to Every time, to send them again." : ""}</p>`;
-  const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
-  if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
+  appendWallSection(root, set);
 });
 // Wall configuration: what fills this wall's window (wall-shadows.mjs windowOpening), for the light through it by day and
 // the room's glow out of it by night. Auto: Foundry's window is glass.
@@ -7329,8 +7328,7 @@ Hooks.on("renderWallConfig", (app, html) => {
   const set = document.createElement("fieldset");
   set.innerHTML = `<legend>Animater window</legend><div class="form-group"><label>Window</label><div class="form-fields"><select name="flags.${ID}.window">${[["", "Auto (Foundry's window: glass)"], ["glass", "Glass"], ["open", "Open: an empty frame"], ["curtained", "Curtained: a dim, soft light"], ["shuttered", "Shuttered: light in bands"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <p class="hint">What fills this window, for the sunlight through it by day and a lit room's warm glow out of it by night. Glass takes a little of the light; an open frame lets it all through; curtains let a dim light through, spread wide and short, in which creatures cast only faint shadows; shutters let it through in bands. Setting one makes any wall a window, a solid one too (shutters drawn as a wall). Auto: Foundry's window walls are glass; other walls are not windows.</p>`;
-  const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
-  if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);
+  appendWallSection(root, set);
 });
 // Ambient Light configuration → Light Animation: whether this light smokes and shimmers with heat. Auto follows its
 // animation (a torch, flame or fire does); On and Off choose for this light alone.
