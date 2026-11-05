@@ -67,6 +67,58 @@ export function wayOut(from, grid, ok) {
   return null;
 }
 
+// How the walls divide the ground (pure), a square `cell` at a time: only the biggest stretch is the open air. `cells` the squares
+// walled off from it. A square speaks only for what its middle can reach, and a wall may cut across it: `cellAt(x, y)` is the square
+// a point really goes with, the next one when a wall parts it from its own middle, -1 for a pocket with no square's middle in it.
+// `walls` [{ x1, y1, x2, y2 }]; `roofed` the squares to leave out, already closed.
+export function closedGround({ cols, rows, cell, area, walls: given = [], roofed }) {
+  const own = (x, y) => Math.floor((y - area.y) / cell) * cols + Math.floor((x - area.x) / cell);
+  if (!given.length) return { cells: [], cellAt: own };
+  const walls = given.map((w) => ({ ...w, a: Math.min(w.x1, w.x2), b: Math.max(w.x1, w.x2), c: Math.min(w.y1, w.y2), d: Math.max(w.y1, w.y2) }));
+  const across = (w, ax, ay, bx, by) => { const s1 = (bx - ax) * (w.y1 - ay) - (by - ay) * (w.x1 - ax), s2 = (bx - ax) * (w.y2 - ay) - (by - ay) * (w.x2 - ax), s3 = (w.x2 - w.x1) * (ay - w.y1) - (w.y2 - w.y1) * (ax - w.x1), s4 = (w.x2 - w.x1) * (by - w.y1) - (w.y2 - w.y1) * (bx - w.x1); return s1 * s2 <= 0 && s3 * s4 <= 0; };
+  const crosses = (ax, ay, bx, by) => { const minx = Math.min(ax, bx), maxx = Math.max(ax, bx), miny = Math.min(ay, by), maxy = Math.max(ay, by); for (const w of walls) { if (w.b < minx || w.a > maxx || w.d < miny || w.c > maxy) continue; if (across(w, ax, ay, bx, by)) return true; } return false; };
+  const group = new Int32Array(cols * rows).fill(-1), sizes = [];
+  for (let start = 0; start < group.length; start++) {
+    if (roofed[start] || group[start] >= 0) continue;
+    const id = sizes.length, queue = [start]; group[start] = id; let size = 0;
+    while (queue.length) {
+      const c = queue.pop(), i = c % cols, j = (c - i) / cols, ax = area.x + (i + 0.5) * cell, ay = area.y + (j + 0.5) * cell; size++;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue; const n = nj * cols + ni; if (roofed[n] || group[n] >= 0 || crosses(ax, ay, ax + di * cell, ay + dj * cell)) continue; group[n] = id; queue.push(n); }
+    }
+    sizes.push(size);
+  }
+  const biggest = sizes.indexOf(Math.max(...sizes)), cells = [];
+  for (let c = 0; c < group.length; c++) if (group[c] >= 0 && group[c] !== biggest) cells.push(c);
+  // Which walls run through which square, so that all the ground no wall touches is answered at once: this is asked every frame.
+  const through = new Map();
+  for (const w of walls) {
+    const i0 = Math.max(0, Math.floor((w.a - area.x) / cell)), i1 = Math.min(cols - 1, Math.floor((w.b - area.x) / cell)), j0 = Math.max(0, Math.floor((w.c - area.y) / cell)), j1 = Math.min(rows - 1, Math.floor((w.d - area.y) / cell));
+    const side = (x, y) => (w.x2 - w.x1) * (y - w.y1) - (w.y2 - w.y1) * (x - w.x1);
+    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+      const x = area.x + i * cell, y = area.y + j * cell, s = [side(x, y), side(x + cell, y), side(x, y + cell), side(x + cell, y + cell)];
+      if (s.every((v) => v > 0) || s.every((v) => v < 0)) continue;
+      const c = j * cols + i; if (through.has(c)) through.get(c).push(w); else through.set(c, [w]);
+    }
+  }
+  const cellAt = (x, y) => {
+    const c = own(x, y), here = through.get(c);
+    if (!here) return c;
+    const i = Math.floor((x - area.x) / cell), j = Math.floor((y - area.y) / cell), middle = (ni, nj) => [area.x + (ni + 0.5) * cell, area.y + (nj + 0.5) * cell];
+    const [mx, my] = middle(i, j);
+    if (!here.some((w) => across(w, x, y, mx, my))) return c;
+    const round = [];
+    for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ni = i + di, nj = j + dj; if ((di || dj) && ni >= 0 && nj >= 0 && ni < cols && nj < rows) { const [nx, ny] = middle(ni, nj); round.push({ n: nj * cols + ni, nx, ny, far: Math.hypot(nx - x, ny - y) }); } }
+    round.sort((p, q) => p.far - q.far);
+    for (const { n, nx, ny } of round) if (!crosses(x, y, nx, ny)) return n;
+    return -1;
+  };
+  return { cells, cellAt };
+}
+
+// Ones a wall has just shut in (pure) go to open ground, the same creature picked up and set down; walls stop them, so they could
+// never walk out. The rest are not touched. No `spots`: nowhere to send them, they stay.
+export const resettled = (list, { spots = [], closed = () => false, random = Math.random } = {}) => list.map((o) => (spots.length && closed(o.x, o.y) ? { ...o, ...spots[Math.floor(random() * spots.length)] } : o));
+
 // One step of a rabbit (pure): sits a while and looks about, hops a few times on open ground, bolts in long bounds from anyone
 // near. `ok(x, y)` ground it can be on, looked at a body's length ahead so it stops on the bank, fleeing or not; `blocked(a, b)` a
 // wall between. One that finds itself on the wrong ground (a region drawn under it) hops off. It faces `a` (0 up the map, clockwise).
@@ -279,6 +331,11 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         const home = at(); songs = Array.from({ length: songbirds }, () => { const x = home.x + between(random, -1, 1) * grid * 0.85, y = home.y + between(random, -1, 1) * grid * 0.6, clear = !blocked(home, { x, y }); return { x: clear ? x : home.x, y: clear ? y : home.y }; }).map((p) => ({ ...p, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, view: pair(floor(), t.song[0]) }));
       }
       if (hasHawk && area) hawk = { cx: area.x + area.width * between(random, 0.3, 0.7), cy: area.y + area.height * between(random, 0.3, 0.7), r: Math.min(area.width, area.height) * 0.2, a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110), view: high(t.hawk[0]) };
+    },
+    // The walls changed: new places to come back to, and any shut in go there, the flock together.
+    resettle({ spots = [], closed = () => false, random = Math.random } = {}) {
+      spare = spots; rabbits = resettled(rabbits, { spots, closed, random });
+      if (spots.length) songs = resettled(songs, { spots: [spots[Math.floor(random() * spots.length)]], closed, random });
     },
     // The rabbits to a fox: where they are; one startled by it (`from` where it springs); one taken, its picture given back.
     get list() { return rabbits; },

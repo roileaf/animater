@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { rabbitStep, songStep, crowFlock, fishStep, preyFor, preyCaught, thumpsNow, noiseReaching, NOISE_SPEED, overOpen, WILD_SOUNDS, WILD_GAPS, wildSound } from '../../../scripts/engines/motion/wildlife.mjs';
+import { rabbitStep, songStep, crowFlock, fishStep, preyFor, preyCaught, thumpsNow, noiseReaching, NOISE_SPEED, overOpen, WILD_SOUNDS, WILD_GAPS, wildSound, closedGround, resettled } from '../../../scripts/engines/motion/wildlife.mjs';
+import { foxStep } from '../../../scripts/engines/motion/field-life.mjs';
 import { critterVoices } from '../../../scripts/engines/motion/underground-sounds.mjs';
 
 const seq = (values) => { let i = 0; return () => values[i++ % values.length]; };
@@ -152,4 +153,63 @@ test('a hawk stoops on a rabbit it can see, not one already running, and catches
   assert.equal(preyCaught({ x: 0, y: 0 }, { x: 10, y: 0 }, { grid: 100, luck: 0.7 }), true);
   assert.equal(preyCaught({ x: 0, y: 0 }, { x: 10, y: 0 }, { grid: 100, luck: 0.9 }), false, 'it got away');
   assert.equal(preyCaught({ x: 0, y: 0 }, { x: 200, y: 0 }, { grid: 100, luck: 0.1 }), false, 'too far off');
+});
+
+// A map of 2000px at 50px squares, as the scene is read: a ring of seven walls round a tree, with no way out.
+const groundWith = (walls) => {
+  const cols = 40, rows = 40, cell = 50, ground = closedGround({ cols, rows, cell, area: { x: 0, y: 0 }, walls, roofed: new Uint8Array(cols * rows) }), shut = new Set(ground.cells);
+  return { ...ground, closed: (x, y) => { const c = ground.cellAt(x, y); return c < 0 || shut.has(c); } };
+};
+const ringOf = (cx, cy, r, sides = 7) => Array.from({ length: sides }, (_, k) => { const a = (k / sides) * Math.PI * 2 + 0.4, b = ((k + 1) / sides) * Math.PI * 2 + 0.4; return { x1: cx + Math.cos(a) * r, y1: cy + Math.sin(a) * r, x2: cx + Math.cos(b) * r, y2: cy + Math.sin(b) * r }; });
+const inRing = (ring, x, y) => { let c = false; for (const w of ring) if ((w.y1 > y) !== (w.y2 > y) && x < w.x1 + ((y - w.y1) / (w.y2 - w.y1)) * (w.x2 - w.x1)) c = !c; return c; };
+const rings = Array.from({ length: 40 }, (_, n) => ringOf(700 + n * 13.7, 800 + n * 9.1, 190 + n * 2));
+
+test('no point inside a sealed ring reads as open ground, whichever side of it its square lies', () => {
+  for (const ring of rings) {
+    const { closed } = groundWith(ring);
+    // Every 100px square's middle (where creatures are placed), and a finer sweep besides.
+    for (let y = 450; y < 1500; y += 25) for (let x = 450; x < 1500; x += 25) assert.equal(closed(x, y), inRing(ring, x, y), `${x}, ${y} against ${JSON.stringify(ring[0])}`);
+  }
+});
+
+test('a pocket too small to hold the middle of any square is still closed', () => {
+  const { closed } = groundWith(ringOf(510, 510, 12));
+  assert.equal(closed(510, 510), true);
+  assert.equal(closed(560, 560), false);
+});
+
+test('ground with no walls has nothing closed', () => {
+  const { cells, closed, cellAt } = groundWith([]);
+  assert.deepEqual(cells, []);
+  assert.equal(closed(510, 510), false);
+  assert.equal(cellAt(510, 510), 10 * 40 + 10);
+});
+
+test('a wall drawn round a creature sends it to open ground, and leaves the rest where they are', () => {
+  const { closed } = groundWith(ringOf(1000, 1000, 200)), view = {};
+  const inside = { x: 1000, y: 1000, mode: 'sit', view }, outside = { x: 300, y: 300, mode: 'sit', view };
+  const [moved, stayed] = resettled([inside, outside], { spots: [{ x: 500, y: 500 }], closed });
+  assert.deepEqual([moved.x, moved.y], [500, 500]);
+  assert.equal(moved.view, view, 'the same picture, moved');
+  assert.equal(stayed, outside, 'untouched');
+  assert.equal(closed(moved.x, moved.y), false);
+  // Nowhere to send it: it stays and makes do.
+  const [left] = resettled([inside], { spots: [], closed });
+  assert.equal(left, inside);
+});
+
+test('a fox placed anywhere reckoned open is never walled into a pocket', () => {
+  for (const ring of rings.filter((_, n) => n % 8 === 0)) {
+    const { closed } = groundWith(ring), crosses = (a, b, w) => { const s = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x), c = { x: w.x1, y: w.y1 }, d = { x: w.x2, y: w.y2 }; return s(a, b, c) * s(a, b, d) <= 0 && s(c, d, a) * s(c, d, b) <= 0; };
+    const ok = (x, y) => x >= 0 && y >= 0 && x < 2000 && y < 2000 && !closed(x, y), blocked = (a, b) => ring.some((w) => crosses(a, b, w));
+    for (let j = 0; j < 20; j++) for (let i = 0; i < 20; i++) {
+      const p = { x: (i + 0.5) * 100, y: (j + 0.5) * 100 };
+      if (closed(p.x, p.y)) continue;
+      assert.equal(inRing(ring, p.x, p.y), false, `placed inside the ring at ${p.x}, ${p.y}`);
+      if (Math.hypot(p.x - 800, p.y - 850) > 500) continue;
+      let f = { ...p, a: 1, want: 1, mode: 'trot', t: 0, wait: 1e9, v: 0, gait: 0, way: 0, h: 0 }, far = 0;
+      for (let t = 0; t < 1200; t++) { f = foxStep(f, { dt: 1 / 60, grid: 100, ok, blocked, time: t / 60 }); far = Math.max(far, Math.hypot(f.x - p.x, f.y - p.y)); }
+      assert.ok(far > 100, `stuck near ${p.x}, ${p.y}: got ${far.toFixed(1)}px`);
+    }
+  }
 });

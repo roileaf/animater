@@ -190,7 +190,7 @@ import { createVermin, creatureAmount, creatureSize } from "./engines/motion/ver
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
-import { weatherShelter, createWildlife, wildSound, WILD_GAPS } from "./engines/motion/wildlife.mjs";
+import { weatherShelter, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
 import { createPondLife } from "./engines/motion/pond-life.mjs";
 import { createFieldLife } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
@@ -2689,25 +2689,12 @@ const lifeSoon = () => { if (!lifeTimer) lifeTimer = setTimeout(rebuildLife, 600
 // the indoors and the regions, a square at a time; a map that is mostly neither has none of them.
 const WILD_FLOORS = new Set(["grass", "dirt", "snow", "mud", "sand"]);
 let wildOpen = null;
-const closedCells = (cols, rows, cell, area, roofed) => {
+const groundWalls = () => {
   const walls = [];
-  for (const w of canvas.walls?.placeables ?? []) { const d = w.document; if (!(Number(d?.move) > 0) || (Number(d?.door) > 0 && Number(d?.ds) === 1)) continue; const [x1, y1, x2, y2] = d.c; walls.push({ x1, y1, x2, y2, a: Math.min(x1, x2), b: Math.max(x1, x2), c: Math.min(y1, y2), d: Math.max(y1, y2) }); }
-  if (!walls.length) return [];
-  const crosses = (ax, ay, bx, by) => { const minx = Math.min(ax, bx), maxx = Math.max(ax, bx), miny = Math.min(ay, by), maxy = Math.max(ay, by); for (const w of walls) { if (w.b < minx || w.a > maxx || w.d < miny || w.c > maxy) continue; const s1 = (bx - ax) * (w.y1 - ay) - (by - ay) * (w.x1 - ax), s2 = (bx - ax) * (w.y2 - ay) - (by - ay) * (w.x2 - ax), s3 = (w.x2 - w.x1) * (ay - w.y1) - (w.y2 - w.y1) * (ax - w.x1), s4 = (w.x2 - w.x1) * (by - w.y1) - (w.y2 - w.y1) * (bx - w.x1); if (s1 * s2 <= 0 && s3 * s4 <= 0) return true; } return false; };
-  const group = new Int32Array(cols * rows).fill(-1), sizes = [];
-  for (let start = 0; start < group.length; start++) {
-    if (roofed[start] || group[start] >= 0) continue;
-    const id = sizes.length, queue = [start]; group[start] = id; let size = 0;
-    while (queue.length) {
-      const c = queue.pop(), i = c % cols, j = (c - i) / cols, ax = area.x + (i + 0.5) * cell, ay = area.y + (j + 0.5) * cell; size++;
-      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= cols || nj >= rows) continue; const n = nj * cols + ni; if (roofed[n] || group[n] >= 0 || crosses(ax, ay, ax + di * cell, ay + dj * cell)) continue; group[n] = id; queue.push(n); }
-    }
-    sizes.push(size);
-  }
-  const biggest = sizes.indexOf(Math.max(...sizes)), out = [];
-  for (let c = 0; c < group.length; c++) if (group[c] >= 0 && group[c] !== biggest) out.push(c);
-  return out;
+  for (const w of canvas.walls?.placeables ?? []) { const d = w.document; if (!(Number(d?.move) > 0) || (Number(d?.door) > 0 && Number(d?.ds) === 1)) continue; const [x1, y1, x2, y2] = d.c; walls.push({ x1, y1, x2, y2 }); }
+  return walls;
 };
+const closedOf = (cols, rows, cell, area, roofed) => closedGround({ cols, rows, cell, area, walls: groundWalls(), roofed });
 const wildGround = (grid, area) => {
   const cell = Math.max(grid, Math.ceil(Math.max(area.width, area.height) / 120)), cols = Math.ceil(area.width / cell), rows = Math.ceil(area.height / cell), roofed = new Uint8Array(cols * rows), kind = new Uint8Array(cols * rows), middle = (i, j) => ({ x: area.x + (i + 0.5) * cell, y: area.y + (j + 0.5) * cell }), spots = [], waters = [];
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
@@ -2718,9 +2705,12 @@ const wildGround = (grid, area) => {
   // divide it, is the open air.
   const fine = Math.max(grid / 2, Math.ceil(Math.max(area.width, area.height) / 240)), fineCols = Math.ceil(area.width / fine), fineRows = Math.ceil(area.height / fine), inside = new Uint8Array(fineCols * fineRows);
   for (let j = 0; j < fineRows; j++) for (let i = 0; i < fineCols; i++) { try { if (underCeiling({ x: area.x + (i + 0.5) * fine, y: area.y + (j + 0.5) * fine })) inside[j * fineCols + i] = 1; } catch { /* not there */ } }
-  for (const c of closedCells(fineCols, fineRows, fine, area, inside)) inside[c] = 2;
-  const closed = (x, y) => { const i = Math.floor((x - area.x) / fine), j = Math.floor((y - area.y) / fine); return i >= 0 && j >= 0 && i < fineCols && j < fineRows && inside[j * fineCols + i] > 0; };
-  const walled = (x, y) => { const i = Math.floor((x - area.x) / fine), j = Math.floor((y - area.y) / fine); return i >= 0 && j >= 0 && i < fineCols && j < fineRows && inside[j * fineCols + i] === 2; };
+  const walledOff = closedOf(fineCols, fineRows, fine, area, inside);
+  for (const c of walledOff.cells) inside[c] = 2;
+  // The square a point really goes with, not just the one it is in: a wall may cut across that, with its middle on the far side.
+  const onMap = (x, y) => x >= area.x && y >= area.y && x < area.x + fineCols * fine && y < area.y + fineRows * fine;
+  const closed = (x, y) => { if (!onMap(x, y)) return false; const c = walledOff.cellAt(x, y); return c < 0 || inside[c] > 0; };
+  const walled = (x, y) => { if (!onMap(x, y)) return false; const c = walledOff.cellAt(x, y); return c < 0 || inside[c] === 2; };
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const p = middle(i, j); if (closed(p.x, p.y)) roofed[j * cols + i] = 1; }
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const c = j * cols + i; if (roofed[c]) continue; if (kind[c] === 1) spots.push(middle(i, j)); else if (kind[c] === 2) waters.push(middle(i, j)); }
   // Where they may go is the exact floor under that very point, not its square: a square of bank is part river.
@@ -2746,13 +2736,13 @@ const populatePond = (ground, grid, many) => {
 };
 // What they were placed from. Life is looked over on any scene, setting or light change, most of them nothing to do with it
 // (a scene's wet ground saved, another module's setting): only a change here sends the ones out there away and brings new ones.
-let wildKey = null, wildRegions = null, verminKey = null;
-Hooks.on("canvasTearDown", () => { wildKey = null; wildRegions = null; verminKey = null; });
+let wildKey = null, wildRegions = null, wildWalls = null, verminKey = null;
+Hooks.on("canvasTearDown", () => { wildKey = null; wildRegions = null; wildWalls = null; verminKey = null; });
 const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`]]);
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
   for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", regionAreas(r)]); }
-  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors]) };
+  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
 // or water the map has by a good part.
@@ -2764,13 +2754,23 @@ const populateField = (ground, grid, area, many) => {
 };
 const rebuildWildlife = () => {
   if (!canvas?.ready) { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; wildKey = null; return; }
-  const { all, regions } = wildKeyOf();
-  if (all === wildKey && regions === wildRegions) return;
+  const { all, regions, walls } = wildKeyOf();
+  if (all === wildKey && regions === wildRegions && walls === wildWalls) return;
   if (all === wildKey && wildOpen) {
     const now = wildGround(canvas.grid.size, canvas.dimensions.sceneRect);
-    if (!muchChanged(wildOpen.waters.length, now.waters.length) && !muchChanged(wildOpen.spots.length, now.spots.length)) { wildOpen = now; wildRegions = regions; return; }
+    if (!muchChanged(wildOpen.waters.length, now.waters.length) && !muchChanged(wildOpen.spots.length, now.spots.length)) {
+      wildOpen = now; wildRegions = regions;
+      // A wall drawn round one: it could never walk out, so it is set down on the open ground, and none comes back inside.
+      if (walls !== wildWalls) {
+        wildWalls = walls;
+        const many = sceneCreatures(), rabbitSpots = now.spots.filter((p) => !keptOut("rabbits", p)), foxSpots = now.spots.filter((p) => !keptOut("foxes", p));
+        wildlife.resettle({ spots: now.share >= 0.2 && (many.rabbits > 0 || many.wildBirds > 0) ? (rabbitSpots.length ? rabbitSpots : now.spots.filter((p) => !keptOut("songbirds", p))) : [], closed: now.closed });
+        fieldLife.resettle({ spots: foxSpots.length ? foxSpots : now.spots, closed: now.closed });
+      }
+      return;
+    }
   }
-  wildKey = all; wildRegions = regions;
+  wildKey = all; wildRegions = regions; wildWalls = walls;
   wildCalls.settle();
   wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null;
   if (!canvas?.ready || !wildHere()) return;
@@ -3029,6 +3029,7 @@ const rebuildLife = () => {
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, () => { lifeSoon(); });
+Hooks.on("updateWall", (wall, change) => { if (change && ("c" in change || "move" in change || "door" in change)) lifeSoon(); });
 // A drop landing in a pool near the view plips (a few a second at most, however many fall).
 let dripHeardAt = 0;
 const dripLanded = (d) => {

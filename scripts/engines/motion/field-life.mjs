@@ -3,7 +3,7 @@
 // from above, then only moved, turned and swapped; every gait runs by the ground covered, so no foot slides. A few dozen small
 // shapes on the CPU at most, and nothing drawn where nobody looks. Every screen has its own: nothing here is saved or shared.
 
-import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED } from './wildlife.mjs';
+import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED, resettled } from './wildlife.mjs';
 import { batWingbeat } from './vermin.mjs';
 
 const TAU = Math.PI * 2;
@@ -248,6 +248,14 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       if (dragonflies && waters.length) { const t = dragTex(); drags = Array.from({ length: dragonflies }, (_, i) => ({ ...pick(waters), a: random() * TAU, hover: random() * 2, c: i % t.length, p: random() * 6, ...pair(sky(), t[0][0]) })); }
       if (fireflies && (land.length || waters.length)) { const t = glowTex(), from = land.concat(waters); lights = Array.from({ length: fireflies }, () => { const s = sprite(glow(), t[0]); s.blendMode = PIXI.BLEND_MODES.ADD; return { ...jitter(pick(from), 0.45), a: random() * TAU, p: random() * 9, every: between(random, 1.8, 3.6), body: s }; }); }
       if (hasOwl && a) { const t = owlTex(); owl = { t: 1, wait: between(random, 8, 30), way: 0, cx: 0, cy: 0, far: 0, body: sprite(high(), t[0]), shadow: sprite(highShadow(), t[0], true) }; }
+    },
+    // The walls changed: new places to come back to, and any shut in go there, a herd near one place. A fox set down mid-hunt
+    // forgets it: its spring was aimed from where it was.
+    resettle({ spots: land = [], closed = () => false, random = Math.random } = {}) {
+      spots = land; if (!land.length) return;
+      const home = land[Math.floor(random() * land.length)], near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < grid * 5);
+      deer = resettled(deer, { spots: near, closed, random });
+      foxes = foxes.map((f) => { const [o] = resettled([f], { spots: land, closed, random }); return o === f || f.mode === 'flee' || f.mode === 'carry' || f.mode === 'away' ? o : { ...o, mode: 'trot', t: 0, h: 0, wait: 5, v: 0, want: o.a }; });
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
