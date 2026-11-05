@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, regionsToReplace, fitSize } from "../../../scripts/engines/regions/water-detect.mjs";
+import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, editableWaterRegionIds, fitSize } from "../../../scripts/engines/regions/water-detect.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));
@@ -224,8 +224,8 @@ test("toRegionData maps pixel corners into scene space and writes water flags", 
   assert.equal(badStill.flags.animater.current, "");
 });
 
-test("regionsToReplace deletes only generated regions on exactly this level", () => {
-  const ids = regionsToReplace([
+test("editableWaterRegionIds selects only generated regions on exactly this level", () => {
+  const ids = editableWaterRegionIds([
     { id: "hand", flags: { animater: { floor: "water" } } },
     { id: "old", levels: ["level-a"], flags: { animater: { floor: "water", generated: "water-detect" } } },
     { id: "other", flags: { animater: { generated: "something-else" } } },
@@ -233,8 +233,8 @@ test("regionsToReplace deletes only generated regions on exactly this level", ()
     null,
   ], "level-a");
   assert.deepEqual(ids, ["old"]);
-  assert.deepEqual(regionsToReplace(null, "level-a"), []);
-  assert.deepEqual(regionsToReplace({ contents: [{ id: "kept" }, { id: "again", levels: ["b"], flags: { animater: { generated: "water-detect" } } }] }, "b"), ["again"]);
+  assert.deepEqual(editableWaterRegionIds(null, "level-a"), []);
+  assert.deepEqual(editableWaterRegionIds({ contents: [{ id: "kept" }, { id: "again", levels: ["b"], flags: { animater: { generated: "water-detect" } } }] }, "b"), ["again"]);
 });
 
 test("two runs on the same pixels return the same proposals and the same mask", () => {
@@ -246,10 +246,10 @@ test("two runs on the same pixels return the same proposals and the same mask", 
   assert.deepEqual(a.mask, b.mask);
 });
 
-test("regionsToReplace keeps shared, all-level, and other-level generated regions", () => {
+test("editableWaterRegionIds keeps shared, all-level, and other-level generated regions", () => {
   const made = (id, levels) => ({ id, levels: new Set(levels), flags: { animater: { generated: "water-detect" } } });
   const regions = [made("here", ["cellar"]), made("upstairs", ["attic"]), made("everywhere", []), made("both", ["cellar", "attic"])];
-  assert.deepEqual(regionsToReplace(regions, "cellar"), ["here"]);
+  assert.deepEqual(editableWaterRegionIds(regions, "cellar"), ["here"]);
 });
 
 test("fitSize keeps the aspect ratio and stops at the long edge", () => {
@@ -907,4 +907,17 @@ test("combining areas settles diagonal contacts without entering another claimed
   const combined = mergeWaterProposals([first, next], width, height, { claimed });
   assert.equal(new Set(combined.pixels).has(19), false);
   for (const loop of combined.loops) assert.equal(isSimple(loop.points), true);
+});
+
+
+test("extending saved water retains its existing overlap without claiming more of another region", () => {
+  const target = { id: "water-1", pixels: new Int32Array([0, 1, 10, 11]) };
+  const added = { pixels: new Int32Array([2, 3, 12, 13]) };
+  const claimed = [{ pixels: new Int32Array([1, 3, 11, 13]) }];
+  const merged = mergeWaterProposals([target, added], 10, 10, { claimed, preserveTarget: true });
+  const pixels = new Set(merged.pixels);
+  assert.equal(pixels.has(1), true);
+  assert.equal(pixels.has(11), true);
+  assert.equal(pixels.has(3), false);
+  assert.equal(pixels.has(13), false);
 });

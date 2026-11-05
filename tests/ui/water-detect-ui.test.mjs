@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, waterWindowHTML, waterRowHTML,
-  waterDetectWindow, readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
+  waterDetectWindow, savedWaterProposals, readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
 } from "../../scripts/ui/water-detect-ui.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -95,8 +95,7 @@ test("create keeps the ticked pieces, maps them onto the scene, and leaves hand-
       ],
     },
   });
-  assert.deepEqual(plan.deleteIds, ["old"]);
-  assert.equal(plan.needsConfirm, true);
+  assert.deepEqual(plan.updates, []);
   assert.deepEqual(plan.creates.map((region) => region.name), ["Water 1", "Water 2"]);
   const river = plan.creates[0];
   assert.equal(river.color, "#2c7da0");
@@ -119,8 +118,7 @@ test("create keeps the ticked pieces, maps them onto the scene, and leaves hand-
     imageHeight: 5,
     regions: [{ id: "hand", flags: { animater: { floor: "water" } } }],
   });
-  assert.equal(quiet.needsConfirm, false);
-  assert.deepEqual(quiet.deleteIds, []);
+  assert.deepEqual(quiet.updates, []);
   assert.equal(quiet.creates[0].name, "Water");
   assert.deepEqual(quiet.creates[0].levels, []);
   assert.equal(quiet.creates[0].flags.animater.flowTo, "");
@@ -133,38 +131,16 @@ function fakeScene(regions = []) {
     calls,
     regions: { contents: regions },
     createEmbeddedDocuments: async (type, data) => { calls.push(["create", type, data.length]); },
+    updateEmbeddedDocuments: async (type, data) => { calls.push(["update", type, data]); },
     deleteEmbeddedDocuments: async (type, ids) => { calls.push(["delete", type, ids]); },
   };
 }
 
-test("creating replaces generated regions only after the GM agrees, and a cancel changes nothing", async () => {
-  const plan = { creates: [{ name: "Water" }], deleteIds: ["old"], needsConfirm: true };
-  const scene = fakeScene();
-  const cancelled = await commitWaterPlan(plan, { scene, confirm: async () => false });
-  assert.equal(cancelled.cancelled, true);
-  assert.deepEqual(scene.calls, []);
-  const titles = [];
-  const done = await commitWaterPlan(plan, { scene, confirm: async (options) => { titles.push(options.window.title); return true; } });
-  assert.deepEqual(titles, ["Experimental: detect water regions"]);
-  assert.deepEqual(scene.calls, [["create", "Region", 1], ["delete", "Region", ["old"]]]);
-  assert.equal(done.deleted, 1);
-  assert.equal(done.created, 1);
-  let asked = false;
-  const quiet = fakeScene();
-  const fresh = await commitWaterPlan({ creates: [{ name: "Water" }], deleteIds: [], needsConfirm: false }, { scene: quiet, confirm: async () => { asked = true; return false; } });
-  assert.equal(asked, false);
-  assert.equal(fresh.created, 1);
-  assert.deepEqual(quiet.calls, [["create", "Region", 1]]);
-});
-
-test("the confirm dialog says the flow and current on the replaced regions are reset", async () => {
-  const seen = [];
-  const confirm = async (options) => { seen.push(options.content); return false; };
-  await commitWaterPlan({ creates: [{}], deleteIds: ["a"], needsConfirm: true }, { scene: fakeScene(), confirm });
-  await commitWaterPlan({ creates: [{}], deleteIds: ["a", "b"], needsConfirm: true }, { scene: fakeScene(), confirm });
-  assert.match(seen[0], /Every change you made to that region since it was generated is lost/);
-  assert.match(seen[1], /Every change you made to those regions since they were generated is lost/);
-  assert.match(seen[0], /water kind, flow, steps, beach, behaviors, and edited shapes/);
+test("saving creates new regions without deleting previously generated regions", async () => {
+  const scene = fakeScene([{ id: "old", levels: ["level-1"], flags: { animater: { generated: "water-detect" } } }]);
+  const done = await commitWaterPlan({ creates: [{ name: "Water" }], updates: [] }, { scene });
+  assert.deepEqual(scene.calls, [["create", "Region", 1]]);
+  assert.deepEqual(done, { created: 1, updated: 0 });
 });
 
 test("created water kinds follow the upstream engine contract", () => {
@@ -193,9 +169,9 @@ test("with nothing ticked, create says so and the regions the tool made stay", a
   });
   const notes = [];
   const outcome = await commitWaterPlan(plan, { scene, confirm: async () => true, notify: (message) => notes.push(message) });
-  assert.deepEqual(outcome, { created: 0, deleted: 0 });
+  assert.deepEqual(outcome, { created: 0, updated: 0 });
   assert.deepEqual(scene.calls, []);
-  assert.match(notes[0], /Tick a piece of water first/);
+  assert.match(notes[0], /Tick an edited or new area first/);
 });
 
 test("the map is read once, resized on the long edge, and a bad image becomes a reason", async () => {
@@ -535,7 +511,7 @@ test("the window writes to the scene it opened on and reads its regions at commi
   opened.regions.contents.push({ id: "made-since", levels: ["level-1"], flags: { animater: { generated: "water-detect" } } });
   fire("click", button("create", ""));
   await new Promise((resolve) => setTimeout(resolve));
-  assert.deepEqual(opened.calls, [["create", "Region", 1], ["delete", "Region", ["made-since"]]]);
+  assert.deepEqual(opened.calls, [["create", "Region", 1]]);
   assert.deepEqual(other.calls, []);
 });
 
@@ -812,5 +788,108 @@ test("Add water ignores checkbox state and leaves save selection unchanged", asy
   assert.equal(app.detect.proposals[0].pixels.length, 12, "an unchecked target can still gain missed water");
   assert.equal(ui.rows()[0].querySelector("[data-pick]").checked, false);
   assert.equal(ui.status["data-selection-count"].textContent, "1 of 2 areas selected");
+  await app.close();
+});
+
+
+function savedRegion(id, x = 100) {
+  return { id, name: `Saved ${id}`, color: "#abcdef", levels: ["level-1"],
+    shapes: [{ type: "polygon", points: [x, 200, x + 80, 200, x + 80, 280, x, 280], hole: false }],
+    behaviors: [{ type: "executeScript", name: "GM behavior" }],
+    flags: { animater: { generated: "water-detect", floor: "water", waterKind: "sea", waveTo: "ne", seaBeach: "off", steps: [{ name: "Frozen" }], step: 0 }, custom: { keep: true } },
+  };
+}
+const editRect = { x: 100, y: 200, width: 200, height: 200 };
+
+test("saved water reloads its ID, settings, exact outlines and hole coverage", () => {
+  const region = savedRegion("ocean");
+  region.shapes.push({ type: "polygon", points: [120, 220, 140, 220, 140, 240, 120, 240], hole: true });
+  const [proposal] = savedWaterProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  assert.equal(proposal.regionId, "ocean");
+  assert.equal(proposal.preselected, false);
+  assert.equal(proposal.savedChoices.waterKind, "sea");
+  assert.equal(proposal.savedChoices.waveTo, "ne");
+  assert.equal(proposal.savedChoices.seaBeach, "off");
+  assert.equal(proposal.pixels.length, 60);
+  assert.equal(new Set(proposal.pixels).has(2 * 20 + 2), false);
+  assert.deepEqual(proposal.loops[0].points, [0, 0, 8, 0, 8, 8, 0, 8]);
+});
+
+test("editing one saved region updates only changed fields and never replaces other documents", async () => {
+  const ocean = savedRegion("ocean"), river = savedRegion("river", 220);
+  const regions = [ocean, river];
+  const before = JSON.stringify(regions);
+  const proposals = savedWaterProposals(regions, { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  const picked = proposals.map((p, i) => ({ id: p.id, checked: true, ...p.savedChoices, ...(i === 0 ? { waveTo: "s" } : {}) }));
+  const plan = planWaterCreate({ proposals, picked, regions, levelId: "level-1", sceneRect: editRect, imageWidth: 20, imageHeight: 20 });
+  assert.deepEqual(plan.creates, []);
+  assert.deepEqual(plan.updates, [{ _id: "ocean", "flags.animater.waveTo": "s" }]);
+  const scene = fakeScene(regions);
+  const result = await commitWaterPlan(plan, { scene });
+  assert.deepEqual(scene.calls, [["update", "Region", [{ _id: "ocean", "flags.animater.waveTo": "s" }]]]);
+  assert.deepEqual(result, { created: 0, updated: 1 });
+  assert.equal(JSON.stringify(regions), before, "no source geometry, behavior, steps or other flags are mutated by planning");
+});
+
+test("saved regions reopen without duplicate automatic proposals and extend by updating their original ID", async () => {
+  const ui = waterApp();
+  const ocean = savedRegion("ocean"), other = savedRegion("other", 220);
+  const scene = fakeScene([ocean, other]);
+  const initial = savedWaterProposals([ocean], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 })[0];
+  const { app } = await openWaterDetect(opening({ scene, sceneRect: editRect, Application: ui.App,
+    load: async () => ({ ok: true, rgba: new Uint8Array(1600), width: 20, height: 20 }),
+    detect: () => ({ status: "found", proposals: [{ ...initial, regionId: undefined }] }),
+    select: () => ({ status: "found", proposal: pieces({ pixels: new Int32Array([8,9,28,29,48,49,68,69]) }) }),
+  }));
+  assert.equal(app.detect.proposals.length, 2, "only the two saved regions, no duplicate detection");
+  app.setAddTarget("water-1");
+  ui.fire("click", ui.preview);
+  assert.equal(ui.rows().find((r) => r.dataset.id === "water-1").querySelector("[data-pick]").checked, false);
+  const row = ui.rows().find((r) => r.dataset.id === "water-1");
+  row.querySelector("[data-pick]").checked = true;
+  await app.create();
+  assert.equal(scene.calls.length, 1);
+  assert.equal(scene.calls[0][0], "update");
+  assert.equal(scene.calls[0][2].length, 1);
+  assert.equal(scene.calls[0][2][0]._id, "ocean");
+  assert.ok(scene.calls[0][2][0].shapes.length > 0);
+  assert.deepEqual(Object.keys(scene.calls[0][2][0]).sort(), ["_id", "shapes"]);
+});
+
+test("ticking unchanged saved water does not rewrite shapes or unrelated settings", () => {
+  const region = savedRegion("still");
+  region.flags.animater.waterKind = "still";
+  const proposals = savedWaterProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  const picked = [{ id: proposals[0].id, checked: true, waterKind: "still", flowTo: "s", current: "", waveTo: "ne", seaBeach: "off" }];
+  const plan = planWaterCreate({ proposals, picked, regions: [region], levelId: "level-1", sceneRect: editRect, imageWidth: 20, imageHeight: 20 });
+  assert.deepEqual(plan, { creates: [], updates: [] });
+});
+
+
+test("saved geometry uses Foundry's resolved polygon tree for edited shape types", () => {
+  const region = savedRegion("shaped");
+  region.shapes = [{ type: "rectangle", x: 100, y: 200, width: 80, height: 80 }];
+  region.polygonTree = { children: [{ points: [100, 200, 180, 200, 180, 280, 100, 280], isHole: false, children: [
+    { points: [120, 220, 140, 220, 140, 240, 120, 240], isHole: true, children: [] },
+  ] }] };
+  const [proposal] = savedWaterProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  assert.equal(proposal.pixels.length, 60);
+  assert.equal(proposal.loops[1].hole, true);
+});
+
+test("reopening saved water leaves fresh suggestions unticked and Leave unchanged writes nothing", async () => {
+  const ui = waterApp();
+  const scene = fakeScene([savedRegion("ocean")]);
+  const { app } = await openWaterDetect(opening({ scene, sceneRect: editRect, Application: ui.App,
+    load: async () => ({ ok: true, rgba: new Uint8Array(1600), width: 20, height: 20 }),
+    detect: () => ({ status: "found", proposals: [pieces({ pixels: new Int32Array([210,211,230,231]) })] }),
+  }));
+  assert.equal(app.detect.proposals.length, 2);
+  assert.equal(ui.rows().every((row) => !row.querySelector("[data-pick]").checked), true);
+  ui.rows()[0].querySelector("[data-pick]").checked = true;
+  app.removeRow("water-1");
+  assert.equal(app.detect.proposals[0].regionId, "ocean", "saved row stays available");
+  await app.create();
+  assert.deepEqual(scene.calls, []);
   await app.close();
 });
