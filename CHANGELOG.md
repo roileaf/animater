@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.4 (unreleased)
+## 3.0.4 (2026-11-05)
 
 ### New
 
