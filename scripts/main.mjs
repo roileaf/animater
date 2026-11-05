@@ -1426,7 +1426,7 @@ const wallSpanOf = (doc) => wallSpan(doc.flags, { floor: Number(canvas.level?.el
 const wallsHere = () => {
   const level = canvas.level?.id;
   return (canvas.walls?.placeables ?? []).map((w) => w.document).filter((d) => !d.levels?.size || !level || d.levels.has(level))
-    .map((d) => ({ c: d.c, light: d.light, move: d.move, door: d.door, ds: d.ds, kind: d.flags?.[ID]?.window || null, ...wallSpanOf(d) }));
+    .map((d) => ({ c: d.c, light: d.light, move: d.move, door: d.door, ds: d.ds, kind: d.flags?.[ID]?.window || null, noShadow: d.flags?.[ID]?.noShadow === true, ...wallSpanOf(d) }));
 };
 // A region's areas as flat x, y pairs, each with its `holes` (the hole shapes drawn in it, cut out of it), from Foundry's
 // polygon tree; an island drawn inside a hole is an area of its own.
@@ -7291,14 +7291,17 @@ Hooks.on("renderSceneConfig", (app, html) => {
 // fields when it is on.
 Hooks.on("renderWallConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
-  if (!root || root.querySelector(`[name="flags.${ID}.shadowTop"]`) || game.modules.get("wall-height")?.active) return;
+  if (!root || root.querySelector(`[name="flags.${ID}.noShadow"]`)) return;
   const doc = app.document ?? app.object, flags = doc?.flags?.[ID] ?? {}, units = doc?.parent?.grid?.units || canvas.scene?.grid?.units || "";
   const value = (v) => (v === null || v === undefined || v === "" ? "" : String(v));
   const set = document.createElement("fieldset");
-  set.innerHTML = `<legend>Animater shadow</legend>
+  // With the Wall Height module, its top and bottom set the height: only the switch is Animater's.
+  const heights = game.modules.get("wall-height")?.active ? "" : `
     <div class="form-group"><label>Shadow top${units ? ` (${units})` : ""}</label><div class="form-fields"><input type="number" step="any" name="flags.${ID}.shadowTop" value="${value(flags.shadowTop)}" placeholder="Level ceiling or world height"></div></div>
     <div class="form-group"><label>Shadow bottom${units ? ` (${units})` : ""}</label><div class="form-fields"><input type="number" step="any" name="flags.${ID}.shadowBottom" value="${value(flags.shadowBottom)}" placeholder="The floor"></div></div>
     <p class="hint">How tall this wall stands for the shadow it casts in sunlight ("Walls cast shadows in sunlight"). A bottom above the floor (a rail, a high window) leaves a lit gap beside the wall. Empty: the level's ceiling, else Animater's Wall height setting.</p>`;
+  set.innerHTML = `<legend>Animater shadow</legend>
+    <div class="form-group"><label>Casts no shadow</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadow"${flags.noShadow === true ? " checked" : ""}></div><p class="hint">This wall casts no shadow in sunlight: for a wall round the map's edge or one that only stops movement.</p></div>${heights}`;
   // After the window's last section, inside its scrolling part (before the footer it left pinned under the rest).
   const last = [...root.querySelectorAll("fieldset")].filter((f) => f !== set).at(-1);
   if (last) last.after(set); else (root.querySelector(".scrollable, .window-content, form") ?? root).append(set);

@@ -312,3 +312,11 @@ test('a creature hovering in a glow moves its shadow with its bob, along the lig
   assert.ok(cast(5).body.x > cast(0).body.x + 5, 'rising: further from the light');
   assert.ok(cast(-5).body.x < cast(0).body.x - 5, 'dipping: closer');
 });
+
+test('a wall marked to cast no shadow throws none; the others still do', () => {
+  const sun = { angle: 0, height: 30, strength: 1 }, wall = (noShadow) => ({ c: [100, 100, 100, 900], light: 20, noShadow });
+  assert.equal(wallShadowQuads({ walls: [wall(true)], sun, grid: 100, height: 2 }).length, 0);
+  assert.equal(wallShadowQuads({ walls: [wall(false)], sun, grid: 100, height: 2 }).length, 1);
+  assert.equal(wallShadowQuads({ walls: [{ c: [100, 100, 100, 900], light: 20 }], sun, grid: 100, height: 2 }).length, 1, 'unset: as before');
+  assert.equal(wallShadowQuads({ walls: [wall(true), { ...wall(false), c: [500, 100, 500, 900] }], sun, grid: 100, height: 2 }).length, 1);
+});

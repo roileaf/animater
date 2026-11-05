@@ -42,7 +42,7 @@ export function wallShadowReach(height, sunHeight) {
 }
 
 // Each wall's shadow: { points (a quadrilateral, flat x, y pairs), alpha, top, bottom (its height and where it starts,
-// squares) }. `walls`: [{ c: [x1, y1, x2, y2], light, door, ds, top?, bottom? (its own, in squares up from the floor:
+// squares) }. A wall with `noShadow` (Wall configuration → Animater shadow) throws none. `walls`: [{ c: [x1, y1, x2, y2], light, door, ds, top?, bottom? (its own, in squares up from the floor:
 // Wall Height's, a level's) }]; `sun` sun.mjs's ({ angle, height, strength }, null none); `grid` the square in pixels;
 // `height` how tall a wall stands (squares) when it gives no top of its own. A wall raised off the floor (a rail, a
 // high window) throws its shadow from its bottom's to its top's, lit beside it.
@@ -53,7 +53,7 @@ export function wallShadowQuads({ walls = [], sun = null, grid = 100, height = 2
   const out = [];
   for (const wall of walls) {
     const alpha = wallShadowStrength(wall), c = wall?.c;
-    if (!(alpha > 0) || !Array.isArray(c) || c.length < 4) continue;
+    if (wall?.noShadow || !(alpha > 0) || !Array.isArray(c) || c.length < 4) continue;
     const bottom = given(wall.bottom) ? Math.max(0, Number(wall.bottom)) : 0;
     const top = given(wall.top) && Number(wall.top) > 0 ? Number(wall.top) : bottom + height;
     if (!(top > bottom)) continue;
