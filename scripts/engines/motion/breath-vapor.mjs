@@ -96,7 +96,8 @@ export function createBreathVapor({ tokens, enabled, grid, now, layer, cap = VAP
     for (const token of tokens() ?? []) {
       if (count >= cap) break;
       try {
-        if (!token?.visible || !token.breathes || !token.cold) continue;
+        // Breath from "None": this token never shows breath, and leaves its place under the cap to another.
+        if (!token?.visible || !token.breathes || !token.cold || token.mouth === 'none') continue;
         count++;
         seen.add(token.id);
         const from = last.get(token.id) ?? time;

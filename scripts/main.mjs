@@ -2890,6 +2890,8 @@ let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTi
 // The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
 const placeAreas = { surf: [], waterfall: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
 let placeLookAt = 0;
+// This screen's own slider for a water sound (River volume, Waterfall volume): 1 as recorded.
+const waterLoudness = (key) => { try { const level = Number(hotSetting(key)); return level >= 0 ? level : 1; } catch { return 1; } };
 const tickPlaces = () => {
   const now = performance.now(); if (now - placeLookAt < 400) return; placeLookAt = now;
   if (game.audio?.locked) return;
@@ -2906,7 +2908,7 @@ const tickPlaces = () => {
   for (const [kind, voice] of Object.entries(placeVoices)) {
     const h = heard[kind]; let through = 1;
     try { if (h?.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = kind === "tavern" ? THROUGH_WALL : 0.35; } catch { /* no wall test */ }
-    const volume = PLACE_VOLUME[kind] * (h?.level ?? 0) * through;
+    const volume = PLACE_VOLUME[kind] * (h?.level ?? 0) * through * (kind === "waterfall" ? waterLoudness("waterfallVolume") : 1);
     if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
     const file = placeFile(kind, canvas.scene?.id);
     if (volume <= 0.004 || voice.starting || !file) continue;
@@ -3141,7 +3143,7 @@ const tickRivers = () => {
   for (const [speed, voice] of Object.entries(riverVoices)) {
     let through = 1;
     try { const h = heard[speed]; if (h.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
-    const volume = RIVER_VOLUME[speed] * heard[speed].level * through;
+    const volume = RIVER_VOLUME[speed] * heard[speed].level * through * waterLoudness("riverVolume");
     if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
     if (volume <= 0.004 || voice.starting) continue;
     voice.starting = true;
@@ -6531,6 +6533,7 @@ Hooks.once("init", () => {
   skyPair("wildlifeSounds", "wildlifeSoundsLocal", "Wildlife sounds", "The hawk's cry, crows passing, songbirds chirping and their wings as they burst up, a rabbit's thump when it bolts, a fish's splash as it darts, ducks quacking, gulls crying, frogs croaking and plopping in, a fox's bark, dragonflies, and by night an owl and a constant bed of crickets. A few at a time, only near enough to be heard. With Birds, rabbits and fish on.", "");
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
   skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (Region configuration → Flows toward): loudest at the bank, fading with distance, silent while frozen.", "");
+  registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
   skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light. On any other map, moths come to a light set to them (Light configuration → Animater → Moths: On).");
@@ -6573,6 +6576,7 @@ Hooks.once("init", () => {
   skyPair("tavernMurmur", "tavernMurmurLocal", "Tavern murmur", "A region marked as a tavern (Region configuration → Animater) is full of voices: loud inside, a far-off murmur through its walls, spilling out when a door opens.", "Played at Balanced quality or better.");
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (Region configuration → Floor and water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
   skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (Region configuration → Floor and water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
+  registerSetting("waterfallVolume", { name: "Waterfall volume", hint: "How loud waterfalls are for you: 0 silent, 1 as recorded, 2 twice as loud. Heard while River sounds are on; with Waterfalls off, a fall sounds as a river and River volume applies.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
   skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
@@ -7372,7 +7376,7 @@ onTokenConfig((app, html) => {
   const doc = app.document ?? app.token ?? app.object, value = doc?.flags?.[ID]?.breathFrom ?? "";
   const group = document.createElement("div");
   group.className = "form-group";
-  group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
+  group.innerHTML = `<label>Animater breath from</label><div class="form-fields"><select name="flags.${ID}.breathFrom">${[["", "Auto (portrait: the mouth, above the centre; turned top-down art: where it faces)"], ["none", "None (no breath shows)"], ["top", "Top"], ["right", "Right"], ["bottom", "Bottom"], ["left", "Left"], ["facing", "Where it faces (top-down art)"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Where this creature's breath shows in the cold, for art whose head is not in the middle (a dragon drawn side-on, its head on the right).</p>`;
   tab.append(group);
 });
 // Token configuration: this token casts no shadow (flags.animater.noShadow), for a ghost, a marker or art with its

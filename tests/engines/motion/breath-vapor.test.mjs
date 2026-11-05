@@ -127,3 +127,15 @@ test('breath from: a token can say where its mouth is (its art may face any way)
   // 'facing' is top-down art: where it faces.
   assert.ok(vaporPuff({ id: 'm', x: 500, y: 500, width: 100, mouth: 'facing', rotation: 270 }, { grid: 100, n: 1 }).every((p) => p.x > 500));
 });
+
+test('breath from none: the token shows no breath and takes no place under the cap', () => {
+  const owners = new Set();
+  let time = 0;
+  const view = (id, mouth) => ({ id, x: 0, y: 0, width: 100, visible: true, breathes: true, cold: true, mouth });
+  const vapor = createBreathVapor({
+    tokens: () => [view('silent', 'none'), view('breather', 'auto')], enabled: () => true, grid: () => 100, now: () => time, cap: 1,
+    layer: { addParticle: (spec) => { owners.add(spec.owner); return {}; }, updateParticle() {}, removeParticle() {}, clear() {} },
+  });
+  for (; time < 60000; time += 100) vapor.tick();
+  assert.deepEqual([...owners], ['breather']);
+});

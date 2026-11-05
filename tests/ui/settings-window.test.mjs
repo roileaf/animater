@@ -117,6 +117,13 @@ test('swimming and burrow path controls accept independent lifetimes and a negat
  assert.equal(extras.length,4);const depth=extras.find(e=>e.key==='burrowTrailDepth');assert.equal(depth.value,-10);
  assert.equal(parseSettingValue(depth,'-20'),-20);assert.equal(parseSettingValue(depth,'0'),0);assert.equal(parseSettingValue(depth,'5'),0);
 });
+test('river and waterfall volume are each player\'s own sliders, under their features',()=>{
+ const volume=(key)=>reg(key,'client',Number,{range:{min:0,max:2,step:.05}});
+ const records=new Map([reg('riverSounds','world',Boolean),reg('riverSoundsLocal','client',Boolean),volume('riverVolume'),reg('waterfalls','world',Boolean),reg('waterfallsLocal','client',Boolean),volume('waterfallVolume')]);
+ const rows=settingsModel({registry:records,get:()=>1,isGM:false}).tabs.flatMap(t=>t.rows),extra=(id)=>rows.find(r=>r.id===id).extras[0];
+ assert.equal(extra('riverSounds').key,'riverVolume');assert.equal(extra('riverSounds').kind,'range');
+ assert.equal(extra('waterfalls').key,'waterfallVolume');assert.equal(extra('waterfalls').kind,'range');
+});
 
 test("every setting the window lists is registered by Animater, and Configure Settings keeps only the quality", () => {
   const sources = ["scripts/main.mjs", "scripts/engines/flash/flash-combat.mjs",
