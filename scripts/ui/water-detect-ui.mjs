@@ -160,7 +160,6 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
         <button type="button" data-zoom="out" aria-label="Zoom out">−</button><output data-zoom-label aria-live="polite">Fit</output><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="fit">Fit map</button>
       </div></div>
       <div class="an-water-add-status" data-add-status hidden><p data-add-message></p><div>
-        <button type="button" data-merge-selected>Combine selected areas</button>
         <button type="button" data-undo-add disabled>Undo last addition</button>
         <button type="button" data-add-done>Finish adding</button>
       </div></div>
@@ -353,11 +352,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const status = this.element.querySelector("[data-add-status]");
       if (status) {
         status.hidden = !this.addTarget;
-        const otherSelected = choicesFromElement(this.element).filter((row) => row.checked && row.id !== this.addTarget).length;
-        this.element.querySelector("[data-add-message]").textContent = `Adding to Area ${this.addTarget?.replace("water-", "")}. Click missed water on the map. Combined areas use this area's settings.`;
-        const combine = this.element.querySelector("[data-merge-selected]");
-        combine.textContent = `Combine ${otherSelected} selected area${otherSelected === 1 ? "" : "s"} into it`;
-        combine.disabled = otherSelected === 0;
+        this.element.querySelector("[data-add-message]").textContent = `Adding to Area ${this.addTarget?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which regions to create.`;
         this.element.querySelector("[data-undo-add]").disabled = !this.undoAddition;
         for (const button of this.element.querySelectorAll("[data-add-to]")) {
           const active = button.dataset.addTo === this.addTarget;
@@ -370,10 +365,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
     setAddTarget(id) {
       this.addTarget = id;
       this.undoAddition = null;
-      if (id) {
-        const row = [...this.element.querySelectorAll("[data-id]")].find((row) => row.dataset.id === id);
-        row.querySelector("[data-pick]").checked = true;
-      }
       this.updateSummary();
       this.setHighlight(id);
     }
@@ -397,12 +388,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       this.element.querySelector(".an-water-list").innerHTML = this.detect.proposals.map((proposal) => waterRowHTML(proposal, byId.get(proposal.id))).join("");
       this.updateSummary();
       this.paint();
-    }
-
-    combineSelected() {
-      const selected = new Set(choicesFromElement(this.element).filter((row) => row.checked && row.id !== this.addTarget).map((row) => row.id));
-      const additions = this.detect.proposals.filter((proposal) => selected.has(proposal.id));
-      if (this.addTarget && additions.length) this.combineAreas(additions);
     }
 
     undoAdd() {
@@ -487,8 +472,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         if (event.target.closest?.("[data-all-flow]")) applyShared(this.element, "data-flow", event.target.value);
         if (event.target.closest?.("[data-all-current]")) applyShared(this.element, "data-current", event.target.value);
         if (event.target.closest?.("select[data-kind]")) updateKindFields(event.target.closest("[data-id]"));
-        const pick = event.target.closest?.("[data-pick]");
-        if (pick && pick.dataset.pick === this.addTarget && !pick.checked) this.setAddTarget(null);
         this.updateSummary();
       });
       this.element.addEventListener("click", (event) => {
@@ -497,7 +480,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         const add = event.target.closest?.("[data-add-to]");
         if (add) return this.setAddTarget(add.dataset.addTo);
         if (event.target.closest?.("[data-add-done]")) return this.setAddTarget(null);
-        if (event.target.closest?.("[data-merge-selected]")) return this.combineSelected();
         if (event.target.closest?.("[data-undo-add]")) return this.undoAdd();
         const remove = event.target.closest?.("[data-remove]");
         if (remove) return this.removeRow(remove.dataset.remove);
@@ -521,6 +503,11 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const at = previewPixel(event, event.target.getBoundingClientRect(), detect.width, detect.height);
       const shared = sharedChoices(this.element);
       const target = detect.proposals.find((proposal) => proposal.id === this.addTarget);
+      if (target) {
+        const pixel = Math.floor(at.y) * detect.width + Math.floor(at.x);
+        const source = detect.proposals.find((proposal) => proposal !== target && proposal.pixels.includes(pixel));
+        if (source) return this.combineAreas([source]);
+      }
       const claimed = target ? detect.proposals.filter((proposal) => proposal !== target) : detect.proposals;
       const picked = hooks.select(detect.rgba, detect.width, detect.height, at, { claimed, broad: shared.range === "wide" });
       if (picked.status !== "found") {
