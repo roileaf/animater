@@ -293,6 +293,9 @@ export function shadowFall(args = {}) {
   return (sun && (!lamp || sun.alpha >= lamp.alpha) ? sun : lamp) ?? { dx: 0, dy: 0, alpha: 0, soft: 1 };
 }
 
+// Where a copy of a standing animal goes as its shadow (pure). shadowFall gives the middle of a shadow stretched from the feet along the light; a copy keeps its own length, and that far off it would come away from its feet.
+export const standingCopyFall = (fall) => (fall ? { ...fall, dx: fall.dx / 2, dy: fall.dy / 2 } : fall);
+
 // Dripping out of the water (the "Creatures drip out of the water" setting): for DRIP_MS after it leaves deep water
 // (half that, more lightly, after wading through a water floor), each stride drops a few drops around the creature,
 // fewer as it dries. Wet footprints are the floor's own (ground trails);

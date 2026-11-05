@@ -39,10 +39,26 @@ test('several sections keep their order: each goes after the one before', () => 
 });
 
 test('with no fieldset at all it goes into the scrolling body, else the root', () => {
-  const body = { append(section) { this.appended = section; } }, section = {};
+  const body = { querySelector: () => null, append(section) { this.appended = section; } }, section = {};
   appendWallSection(formWith([], body), section);
   assert.equal(body.appended, section);
   const bare = formWith([]);
   appendWallSection(bare, section);
   assert.equal(bare.appended, section);
+});
+
+test("another module's section outside the scrolling part does not draw it out of there", () => {
+  const inner = fieldset(), outside = fieldset(), section = {};
+  const scroller = { querySelector: () => null, querySelectorAll: () => [inner] };
+  appendWallSection({ querySelector: (s) => (s === '.scrollable' ? scroller : null), querySelectorAll: () => [inner, outside] }, section);
+  assert.equal(inner.followedBy, section);
+  assert.equal(outside.followedBy, undefined);
+});
+
+test('in a tabbed form it goes in the open tab, not after a hidden one', () => {
+  const open = fieldset(), hidden = fieldset(), section = {};
+  const tab = { querySelectorAll: () => [open] }, scroller = { querySelector: (s) => (s === '.tab.active' ? tab : null), querySelectorAll: () => [open, hidden] };
+  appendWallSection({ querySelector: (s) => (s === '.scrollable' ? scroller : null), querySelectorAll: () => [open, hidden] }, section);
+  assert.equal(open.followedBy, section);
+  assert.equal(hidden.followedBy, undefined);
 });

@@ -78,13 +78,10 @@ test('foam follows how strong the stream is', () => {
   assert.ok(Number.isFinite(waterFoam('nonsense', 'much')));
 });
 
-test('a creature rings the water more often than an animal, each from its first stroke', () => {
-  assert.equal(wakeRingDue(undefined, 5, true), true);
-  assert.equal(wakeRingDue(undefined, 5, false), true);
-  assert.equal(wakeRingDue(5, 5.2, true), false);
-  assert.equal(wakeRingDue(5, 5.4, true), true);
-  assert.equal(wakeRingDue(5, 5.4, false), false);
-  assert.equal(wakeRingDue(5, 6, false), true);
+test('an animal rings the water now and then, from its first stroke', () => {
+  assert.equal(wakeRingDue(undefined, 5), true);
+  assert.equal(wakeRingDue(5, 5.4), false);
+  assert.equal(wakeRingDue(5, 6), true);
 });
 
 test('an animal never takes the place of a creature\'s ring still spreading', () => {
@@ -171,4 +168,8 @@ test('a beach drawn inside the water keeps its crabs on its sand, inside the sho
   assert.equal(onSand(20), true);
   assert.equal(onSand(-10), false, 'not out on the land');
   assert.equal(onSand(60), false, 'not in the water');
+});
+
+test('a fish in the water has no line running out past its nose', () => {
+  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) assert.match(frag, /smoothstep\(0\.9, 1\.05, abs\(along\)\)/);
 });

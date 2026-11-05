@@ -424,7 +424,7 @@ export function createTownLife({ PIXI, floor, sky, high = sky }) {
   const catTex = (i) => lazily(`cat${i}`, (a) => a.sit, () => { const c = CATS[i]; return { sit: texOf(catSitting(c, {})), wash: [-3, 3].map((head) => texOf(catSitting(c, { head, paw: true }))), walk: Array.from({ length: 8 }, (_, n) => texOf(catGoing(c, n / 8, false))), slink: Array.from({ length: 8 }, (_, n) => texOf(catGoing(c, n / 8, true))) }; });
   const dogTex = (i) => lazily(`dog${i}`, (a) => a.stand, () => { const c = DOGS[i]; return { stand: texOf(dogPicture(c, { reach: 0 })), bark: texOf(dogPicture(c, { reach: 0, bark: true })), trot: Array.from({ length: 8 }, (_, n) => texOf(dogPicture(c, { p: n / 8 }))), nose: Array.from({ length: 8 }, (_, n) => texOf(dogPicture(c, { p: n / 8, reach: 4, nose: true }))) }; });
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
-  const pair = (parent, tex) => ({ body: sprite(parent, tex), shadow: sprite(floor(), tex, true) });
+  const pair = (parent, tex) => ({ shadow: sprite(floor(), tex, true), body: sprite(parent, tex) });
   const gone = (...list) => { for (const s of list) { try { s?.destroy(); } catch { /* gone */ } } };
   const drop = () => {
     for (const o of [...pigeons, ...chickens, ...(cat ? [cat] : []), ...(dog ? [dog] : [])]) gone(o.body, o.shadow);

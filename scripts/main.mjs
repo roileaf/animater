@@ -24,7 +24,7 @@ import {underwaterPose,underwaterTint} from './engines/motion/underwater-appeara
 import { creatureGait, creatureBulk, creatureBody, creatureFlight } from "./engines/motion/creature-gait.mjs";
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
-import { movementSound, movementEnvironment, shadowFall } from "./engines/motion/movement-feel.mjs";
+import { movementSound, movementEnvironment, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
@@ -2218,19 +2218,19 @@ const rippleStep = (spec) => {
 const wakeRipples = createWakeRipples({ PIXI: globalThis.PIXI, root: floorLayer("wakeRipples", 646), grid: () => canvas?.grid?.size ?? 100, render: (o, rt, transform) => canvas.app.renderer.render(o, { renderTexture: rt, clear: true, transform }) });
 let wakeFloorFor = null;
 const swimmers = new Map();
-// What swims or paddles rings the moving water itself, as well as drawing its wake. A token's own key is its id (a string); those come before the animals.
+// An animal paddling rings the moving water itself, as well as drawing its wake. A creature swimming leaves only its wake: it has no strokes to ring with.
 const wakeRingAt = new Map();
 const ringMovingWater = (x, y, size, key) => {
   if (!waterEngine.busy) return;
-  const keep = typeof key === "string", at = performance.now() / 1000, id = key ?? `${Math.round(x / 100)},${Math.round(y / 100)}`;
-  if (!wakeRingDue(wakeRingAt.get(id), at, keep)) return;
+  const at = performance.now() / 1000, id = key ?? `${Math.round(x / 100)},${Math.round(y / 100)}`;
+  if (!wakeRingDue(wakeRingAt.get(id), at)) return;
   if (wakeRingAt.size > 200) wakeRingAt.clear();
   wakeRingAt.set(id, at);
-  waterEngine.addRing({ x, y, size: size * (keep ? 0.55 : 0.4), keep });
+  waterEngine.addRing({ x, y, size: size * 0.4, keep: false });
 };
 const rippleWater = (x, y, size, quiet, dir = null, key = null) => {
   if (quiet) {
-    ringMovingWater(x, y, size, key);
+    if (typeof key !== "string") ringMovingWater(x, y, size, key);
     if (wakeFloorFor !== canvas.scene?.id) { wakeFloorFor = canvas.scene?.id; wakeRipples.floor(mapFloor()); }
     if (dir) wakeRipples.drive(key, { x, y, size, dir, keep: typeof key === "string" }); else wakeRipples.add({ x, y, size });
     return;
@@ -3062,7 +3062,7 @@ const rebuildWildlife = () => {
   wildOpen = ground;
   populatePond(ground, grid, many);
   populateField(ground, grid, area, many);
-  const fish = ground.waters.filter((p) => !keptOut("fish", p)), fishOf = { waters: fish, fish: fish.length >= 2 ? Math.round(Math.min(14, Math.max(3, fish.length / 8)) * many.fish) : 0, fishSize: many.fishSize };
+  const fish = ground.waters.filter((p) => !keptOut("fish", p)), fishOf = { waters: fish, fish: fish.length >= 2 ? Math.round(Math.min(14, Math.max(3, fish.length / 4)) * many.fish) : 0, fishSize: many.fishSize };
   // An indoor or stone map is no place for the rest (fish keep to whatever water there is); a hawk wants open sky too.
   if (ground.share < 0.2) { wildlife.populate({ ...fishOf, grid, area }); return; }
   const spots = ground.spots.filter((p) => !keptOut("rabbits", p)), songSpots = ground.spots.filter((p) => !keptOut("songbirds", p)), squares = spots.length;
@@ -3142,7 +3142,8 @@ const wildCast = (x, y, { width = 40, lift = 0, body = 0, grounded = false } = {
     const reaching = lightsReaching({ id: null, center: point, x, y, w: width, h: width, document: { elevation, width: width / grid, height: width / grid } }, { own: false });
     const lights = reaching.map((l) => { const one = lightAround(point, [l], 1); return one && { ...one, key: l.key }; }).filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, 2);
     const shade = wallQuads.length ? shadeAcross(point, width, wallQuads, { elevation: lift }) : 0, sun = sunNow && shade > 0 ? { ...sunNow, strength: (Number(sunNow.strength) || 0) * (1 - shade) } : sunNow;
-    return shadowFall({ width, lift, body, grounded, lights, darkness, sun, grid });
+    const fall = shadowFall({ width, lift, body, grounded, lights, darkness, sun, grid });
+    return grounded ? standingCopyFall(fall) : fall;
   } catch { return null; }
 };
 let highLook = 0;

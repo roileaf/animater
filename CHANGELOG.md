@@ -4,6 +4,10 @@
 
 ### Fixes
 
+- A wall's configuration keeps its own settings in view when another module adds a section of its own: Animater's sections now scroll with the rest.
+- Fish in moving water are easier to see: a little bigger and darker, each with its shadow on the bed, and about twice as many on smaller waters. The faint line that ran out from their nose and tail is gone.
+- Deer, foxes, ducks, herons and town animals no longer have their shadow drawn over them, and animals' shadows on the ground stay closer to their feet.
+- A creature swimming on moving water leaves only its wake again, without the rings that looked like wading steps.
 - Daggerheart: the Defeated, Unconscious and Dead catalog entries now say where the Defeated look setting really is, and that Animater effect is the choice that animates them.
 
 ## 3.0.2 (2026-11-05)

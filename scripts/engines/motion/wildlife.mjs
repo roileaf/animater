@@ -408,7 +408,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
           f.view.shadow.visible = false;
           if (f.seen === false || !inView(f.x, f.y)) { f.view.body.visible = false; return f; }
           const frames = t.fish[f.kind], beat = f.beat * (f.dart > 0 ? 4 : 1);
-          if (beneath(f.x, f.y)) { f.view.body.visible = false; under.push({ x: f.x, y: f.y, a: f.a, scale: 0.42 * k * f.size, swing: Math.sin(time * beat * 1.6 + f.phase) }); return f; }
+          if (beneath(f.x, f.y)) { f.view.body.visible = false; under.push({ x: f.x, y: f.y, a: f.a, scale: 0.42 * 1.35 * k * f.size, swing: Math.sin(time * beat * 1.6 + f.phase) }); return f; }
           f.view.body.visible = true; f.view.body.texture = frames[Math.floor(time * beat + f.phase) % frames.length]; f.view.body.position.set(f.x, f.y); f.view.body.rotation = f.a; f.view.body.scale.set(0.42 * k * f.size); f.view.body.alpha = fishAlpha;
           return f;
         });

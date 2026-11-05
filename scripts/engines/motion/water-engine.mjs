@@ -110,6 +110,14 @@ vec2 waves(float size, vec2 drift, float pa, float pb, float wa, float wb, float
   else { base = vWorld / (uGrid * size) + seed; run = drift / (uGrid * size); }
   return (texture2D(uWaves, base - run * pa).xy * 2.0 - 1.0) * wa + (texture2D(uWaves, base - run * pb + 0.37).xy * 2.0 - 1.0) * wb;
 }
+// The shape of a fish at off from it, heading z, one unit w world pixels. Its body stops at its nose and tail: past them it has no width, and the soft edge alone would still draw a line.
+float fishShape(vec2 off, vec4 fish, float swing, float soft){
+  float turnC = cos(fish.z), turnS = sin(fish.z); vec2 q = vec2(turnC * off.x + turnS * off.y, turnC * off.y - turnS * off.x) / fish.w;
+  float bendAt = max(q.y + 20.0, 0.0) / 52.0; q.x -= swing * bendAt * bendAt * 7.0;
+  float along = (q.y + 4.0) / (q.y < -4.0 ? 16.0 : 24.0), wide = 5.4 * sqrt(max(0.0, 1.0 - along * along)), fin = clamp((q.y - 18.0) / 14.0, 0.0, 1.0);
+  float body = (1.0 - smoothstep(wide - soft, wide + soft, abs(q.x))) * (1.0 - smoothstep(0.9, 1.05, abs(along))), tail = (1.0 - smoothstep(1.4 + 4.4 * fin * fin - soft, 1.4 + 4.4 * fin * fin + soft, abs(q.x))) * smoothstep(15.0, 18.0, q.y) * (1.0 - smoothstep(30.0, 33.0, q.y));
+  return max(body, tail);
+}
 void main(){
   vec2 uv = (vWorld - uBox.xy) / uBox.zw;
   vec4 mask = texture2D(uMask, uv);
@@ -203,16 +211,14 @@ void main(){
     col = mix(col, mix(vec3(0.02, 0.11, 0.17), vec3(0.09, 0.4, 0.41), shallow * shallow), 0.62 * calm);
     col *= 1.0 + (min(swell, 1.0) * 0.28 * (1.0 - shallow) - 0.06 + surfCrest * 0.2) * calm;
   }
-  // Fish, under it all: bent by the waves as the bed is, dim and soft, fainter the deeper; the light, the glare and the foam all go over them.
+  // Fish, under it all: bent by the waves as the bed is, soft, fainter the deeper, each with its shadow on the bed just off it; the light, the glare and the foam all go over them.
   for (int i = 0; i < ${MOST_FISH}; i++) {
     if (float(i) >= uFishCount) break;
     vec4 fish = uFish[i]; vec2 off = seen - fish.xy;
-    if (dot(off, off) > fish.w * fish.w * 1300.0) continue;
-    float turnC = cos(fish.z), turnS = sin(fish.z); vec2 q = vec2(turnC * off.x + turnS * off.y, turnC * off.y - turnS * off.x) / fish.w;
-    float bendAt = max(q.y + 20.0, 0.0) / 52.0; q.x -= uFishSwing[i] * bendAt * bendAt * 7.0;
-    float along = (q.y + 4.0) / (q.y < -4.0 ? 16.0 : 24.0), wide = 5.4 * sqrt(max(0.0, 1.0 - along * along)), hazy = uSea > 0.5 ? depth : deep, soft = 1.2 + 1.6 * hazy, fin = clamp((q.y - 18.0) / 14.0, 0.0, 1.0);
-    float body = 1.0 - smoothstep(wide - soft, wide + soft, abs(q.x)), tail = (1.0 - smoothstep(1.4 + 4.4 * fin * fin - soft, 1.4 + 4.4 * fin * fin + soft, abs(q.x))) * smoothstep(15.0, 18.0, q.y) * (1.0 - smoothstep(30.0, 33.0, q.y));
-    col = mix(col, col * vec3(0.36, 0.44, 0.48), max(body, tail) * uFishDim * (1.0 - 0.45 * hazy) * calm);
+    if (dot(off, off) > fish.w * fish.w * 2300.0) continue;
+    float hazy = uSea > 0.5 ? depth : deep, soft = 1.2 + 1.6 * hazy;
+    col *= 1.0 - 0.34 * fishShape(off - vec2(0.055, 0.075) * uGrid, fish, uFishSwing[i], soft + 2.6) * uFishDim * calm;
+    col = mix(col, col * vec3(0.24, 0.3, 0.32), fishShape(off, fish, uFishSwing[i], soft) * uFishDim * (1.0 - 0.45 * hazy) * calm);
   }
   // How much sun or moon gets here, past walls, roofs and trees.
   float sunHere = uSun * sunReach(vWorld);
@@ -403,7 +409,7 @@ export function ringSlot(keeps, rings, now, next, keep, life = 1.5) {
   return -1;
 }
 // Whether what moves in water is due its next ring (pure): a creature every third of a second, an animal less often, as there may be many.
-export const wakeRingDue = (last, now, keep) => !(last >= 0) || now - last >= (keep ? 0.3 : 0.9);
+export const wakeRingDue = (last, now) => !(last >= 0) || now - last >= 0.9;
 // A tiling sheet of wave slopes, red and green, made here, not stored (pure).
 export function waveSheet(size = 512) {
   const height = new Float32Array(size * size), wrap = (v, f) => ((v % f) + f) % f, spot = (x, y, f, seed) => { const v = Math.sin(wrap(x, f) * 127.1 + wrap(y, f) * 311.7 + seed * 74.7) * 43758.5453; return v - Math.floor(v); };

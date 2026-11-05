@@ -236,7 +236,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
   const glowTex = () => lazily('glow', () => [texOf(fireflyPicture())]);
   const batTex = () => lazily('bat', () => batWingbeat().map(texOf));
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
-  const pair = (root, tex) => ({ body: sprite(root, tex), shadow: sprite(floor(), tex, true) });
+  const pair = (root, tex) => ({ shadow: sprite(floor(), tex, true), body: sprite(root, tex) });
   const gone = (...list) => { for (const s of list) { try { s?.destroy(); } catch { /* gone */ } } };
   const drop = () => {
     for (const o of [...deer, ...foxes, ...flies, ...drags, ...bats, ...(owl ? [owl] : [])]) gone(o.body, o.shadow, o.carry);

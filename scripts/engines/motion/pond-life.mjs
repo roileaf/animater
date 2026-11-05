@@ -341,7 +341,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     ducks = []; herons = []; gulls = []; frogs = []; plops = []; waterSpots = [];
   };
   const put = (s, tex, x, y, angle, size, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(size); s.alpha = alpha; };
-  const newDuck = (t, spot, i, random) => ({ x: spot.x, y: spot.y, a: random() * TAU, turn: 0, wait: random() * 2, hen: i % 2 === 1, mode: 'swim', up: 0, h: 0, phase: random() * 6, body: sprite(floor(), t.duck[0]), shadow: sprite(floor(), t.duck[0], true), ripple: sprite(floor(), t.wake[0]) });
+  const newDuck = (t, spot, i, random) => ({ x: spot.x, y: spot.y, a: random() * TAU, turn: 0, wait: random() * 2, hen: i % 2 === 1, mode: 'swim', up: 0, h: 0, phase: random() * 6, shadow: sprite(floor(), t.duck[0], true), body: sprite(floor(), t.duck[0]), ripple: sprite(floor(), t.wake[0]) });
   return {
     populate({ waters = [], shore = [], pads = [], ducks: nDucks = 0, herons: nHerons = 0, gulls: nGulls = 0, gullWaters = waters, grid: g = 100, birdSize: bs = 1, frogSize: fs = 1, random = Math.random } = {}) {
       drop(); grid = g; birdSize = bs; frogSize = fs; shown = 0; waterSpots = waters;
@@ -351,7 +351,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       // Ducks keep together, a raft of them round one place.
       if (nDucks) { const home = pick(waters), near = waters.filter((w) => Math.hypot(w.x - home.x, w.y - home.y) < grid * 4); ducks = Array.from({ length: nDucks }, (_, i) => newDuck(t, pick(near), i, random)); }
       const stands = shore.length ? shore : waters;
-      herons = Array.from({ length: nHerons }, () => { const s = pick(stands); return { x: s.x, y: s.y, hx: s.x, hy: s.y, a: random() * TAU, mode: 'stand', wait: between(random, 2, 6), strike: 0, h: 0, t: 0, vx: 0, vy: 0, phase: random() * 6, body: sprite(floor(), t.heron[0]), shadow: sprite(floor(), t.heron[0], true), ripple: sprite(floor(), t.ring[0]) }; });
+      herons = Array.from({ length: nHerons }, () => { const s = pick(stands); return { x: s.x, y: s.y, hx: s.x, hy: s.y, a: random() * TAU, mode: 'stand', wait: between(random, 2, 6), strike: 0, h: 0, t: 0, vx: 0, vy: 0, phase: random() * 6, shadow: sprite(floor(), t.heron[0], true), body: sprite(floor(), t.heron[0]), ripple: sprite(floor(), t.ring[0]) }; });
       // The gulls wheel over their own stretch of water: the sea, where there is one as well as a pond.
       const over = gullWaters.length ? gullWaters : waters, cx = over.reduce((n, w) => n + w.x, 0) / over.length, cy = over.reduce((n, w) => n + w.y, 0) / over.length;
       // (It starts its turn back while still over the water, so the turn itself doesn't carry it off the map.)
