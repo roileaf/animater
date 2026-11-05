@@ -137,12 +137,14 @@ export function lensSplashFor({ isGM = false, worldOn = true, localOn = true, qu
   const blood = (v) => Math.round(clamp01(v * scale) * 1000) / 1000;
   // Low quality: the blood's reaction to its damage type keeps only its static parts (no live marks or motion).
   const still = qualityRank(quality) <= 1 ? { still: true } : {};
+  // Amount 'none': no blood on the glass, the tunnel (and so the heartbeat) as ever. Others' blood is all a hit next to the player would bring.
+  const noBlood = amount === 'none';
   if (role === 'victim') {
     const from = attackerScreen && Number.isFinite(attackerScreen.x) ? { x: attackerScreen.x, y: attackerScreen.y } : null;
-    return { kind: 'self', strength: bleeds ? blood(hitStrength(hit)) : 0, tunnel: tunnelLevel(hit, look), crit: hit.crit, wound,
+    return { kind: 'self', strength: bleeds && !noBlood ? blood(hitStrength(hit)) : 0, tunnel: tunnelLevel(hit, look), crit: hit.crit, wound,
       fromScreen: from, edge: from ? edgeToward(from, view, screen) ?? edgeToward(from, view) : null, amount: look, ...still };
   }
-  if (!bleeds) return null;
+  if (!bleeds || noBlood) return null;
   const at = screen && Number.isFinite(screen.x) ? { x: screen.x, y: screen.y } : null;
   return { kind: 'dealt', strength: blood(dealtStrength(hit)), tunnel: 0, crit: hit.crit, wound, fromScreen: at,
     edge: at ? edgeToward(at, view, attackerScreen) ?? edgeToward(at, view) : null, amount: look, ...still };

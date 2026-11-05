@@ -506,3 +506,13 @@ test('Enemy blood reaches: adjacent by default, reach one square further, or the
   assert.equal(lensReach('attacker'), 'attacker');
   assert.deepEqual({ ...LENS_REACH }, { adjacent: 0, reach: 1 });
 });
+
+test('amount none: no blood on the glass, the tunnel still closes in on a hit to your own creature', () => {
+  const hit = { isGM: false, worldOn: true, localOn: true, quality: 'full', gore: 'full', before: { value: 40, max: 40 }, after: { value: 10, max: 40 }, screen: { x: 1, y: 1 }, view: { width: 100, height: 100 } };
+  const none = lensSplashFor({ ...hit, amount: 'none', role: 'victim' }), heavy = lensSplashFor({ ...hit, amount: 'heavy', role: 'victim' });
+  assert.equal(none.strength, 0);
+  assert.equal(none.tunnel, heavy.tunnel, 'as hard as ever');
+  assert.ok(none.tunnel > 0);
+  assert.equal(none.amount, 'heavy');
+  assert.equal(lensSplashFor({ ...hit, amount: 'none', role: 'attacker' }), null, 'and nothing from creatures hurt next to it');
+});

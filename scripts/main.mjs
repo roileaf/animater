@@ -7254,8 +7254,8 @@ Hooks.once("init", () => {
   });
   registerSetting("lensBloodAmount", {
     name: "Damage lens amount",
-    hint: "Heavy: bigger splats that drip and stay about four and a half seconds for a big hit. Subtle: a few small splats near the edges for about three seconds, and a lighter tunnel vision. Low animation quality always draws Subtle. How long it stays is set with Damage lens duration.",
-    scope: "client", config: true, type: String, choices: { heavy: "Heavy", subtle: "Subtle" }, default: "heavy",
+    hint: "Heavy: bigger splats that drip and stay about four and a half seconds for a big hit. Subtle: a few small splats near the edges for about three seconds, and a lighter tunnel vision. None: no blood on the screen, with tunnel vision and the heartbeat kept by their own switches. Low animation quality draws Subtle in place of Heavy. How long it stays is set with Damage lens duration.",
+    scope: "client", config: true, type: String, choices: { heavy: "Heavy", subtle: "Subtle", none: "None (no blood)" }, default: "heavy",
   });
   registerSetting("lensDuration", {
     name: "Damage lens duration (seconds)",
@@ -9084,7 +9084,7 @@ Hooks.once("ready", () => {
   // A hit taken while hurt leaves a stain or two on the lens edges, in the creature's own blood.
   const woundHit = (splash) => {
     const now = woundNow(), amount = now ? lensAmount(now.look) : null;
-    if (!now?.bleeds || !now.life) return;
+    if (!now?.bleeds || !now.life || now.look.amount === "none") return;
     const view = woundedView({ ...now, ...woundGate(now) }, { amount, quality: now.look.quality });
     if (!view.stains) return;
     woundStains = stainsAfterHit(woundStains, { left: isDown(now.life) ? 0 : now.life.left, seed: `wound:${Date.now()}:${woundStains.length}`, now: performance.now(),

@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.4 (unreleased)
+
+### New
+
+- **Damage lens without the blood.** Damage lens amount has a new None choice: no blood on the screen, while tunnel vision and the heartbeat keep working by their own switches.
+
 ## 3.0.3 (2026-11-05)
 
 ### New
