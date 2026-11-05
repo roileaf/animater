@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Add water to an existing draft.** Extend a selected area with shoreline clicks or combine ticked pieces into one region. Its water settings stay, and the last addition can be undone.
+
 - **Water review window.** Separate map and area panels, zoom and pan controls, live selection counts, and a confirmation of how many regions were created.
 
 - **Experimental: detect water regions.** Off until you turn it on in the Floor & world tab of Animater settings. The Regions controls can propose blue and teal water from this level's map. Review the pieces, choose a water kind and its flow or sea settings, then create them. Reruns ask before replacing generated regions limited to this level. Replacement discards all edits to those regions. Hand-drawn, shared, and all-level regions stay.
