@@ -586,7 +586,7 @@ export const FOOTSTEP_FILES = Object.freeze({
   mud: freesound(['mud-step-488068-0', 'mud-step-349082-0', 'mud-step-349082-1', 'mud-step-349082-2']),
   ice: freesound(['ice-step-732880-0', 'ice-step-732880-1', 'ice-step-732880-2', 'ice-step-732880-3', 'ice-step-416939-0']),
   pebbles: freesound(['gravel-step-521588-0', 'gravel-step-521588-1', 'gravel-step-521588-2', 'gravel-step-556002-0', 'gravel-step-556002-1', 'gravel-step-556002-2']),
-  glass: freesound(['glass-step-223152-0', 'glass-step-583068-1', 'glass-step-813392-2']),
+  glass: freesound(['glass-step-223152-0', 'glass-step-813392-2']),
   metal: freesound(['metal-step-698697-0', 'metal-step-698697-1', 'metal-step-698697-2', 'metal-step-208101-0', 'metal-step-208101-1', 'metal-step-398937-0', 'metal-step-398937-1']),
 });
 // Which of `count` recordings the `n`th step plays: a seeded shuffle that never repeats the step before it, so a walk

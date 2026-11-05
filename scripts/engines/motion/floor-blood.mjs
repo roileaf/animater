@@ -93,7 +93,7 @@ export function poolGleam(pool, light, age = 0) {
   const wet = 1 - Math.min(1, Math.max(0, age) / POOL_DRIES), strength = Math.min(1, Math.max(0, Number(light?.strength) || 0)) * wet;
   if (!light || strength < 0.03) return null;
   const a = Math.atan2(light.y - pool.y, light.x - pool.x), off = pool.r * 0.2;
-  return { x: pool.x + Math.cos(a) * off, y: pool.y + Math.sin(a) * off * 0.88, rotation: a + Math.PI / 2, width: pool.r * 0.8, height: pool.r * 0.3, alpha: strength * 0.42 };
+  return { x: pool.x + Math.cos(a) * off, y: pool.y + Math.sin(a) * off * 0.88, rotation: a + Math.PI / 2, width: pool.r * 0.5, height: pool.r * 0.18, alpha: strength * 0.2 };
 }
 
 // Wet blood lit (pure): how strongly a stain shines in its own shape, by the light on it and how far it has dried. Every
@@ -102,7 +102,7 @@ const SHINES = new Set(['slash', 'pierce', 'blunt', 'patch', 'pool']);
 export const bloodShines = (art) => SHINES.has(art);
 export function bloodSheen(light, age = 0) {
   const shine = Math.min(1, Math.max(0, Number(light?.strength) || 0)) * (1 - Math.min(1, Math.max(0, age) / POOL_DRIES));
-  return shine < 0.03 ? 0 : shine * 0.32;
+  return shine < 0.03 ? 0 : shine * 0.1;
 }
 
 // Blood drying (pure): the tint its stain has at `age` seconds, white when wet (as painted), a dull brown-black when dry.
@@ -147,8 +147,8 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
       if (!m.sheen) { m.sheen = new PIXI.Sprite(m.s.texture); m.sheen.anchor.set(0.5); m.sheen.eventMode = 'none'; m.sheen.blendMode = PIXI.BLEND_MODES.ADD; m.sheen.position.copyFrom(m.s.position); m.sheen.rotation = m.s.rotation; m.sheen.width = m.s.width; m.sheen.height = m.s.height; glow().addChild(m.sheen); }
       m.sheen.visible = true; m.sheen.alpha = sheen * m.s.alpha; m.sheen.tint = tint;
     }
-    // A pool or a smear lying wet also holds the light's reflection.
-    if (m.mark.art !== 'pool' && m.mark.art !== 'patch') return;
+    // A pool lying wet also holds a small reflection of the light.
+    if (m.mark.art !== 'pool') return;
     const shown = poolGleam({ x: m.mark.x, y: m.mark.y, r: m.r }, l, age);
     if (!shown) { if (m.gleam) m.gleam.visible = false; return; }
     if (!m.gleam) { if (!glow) return; m.gleam = new PIXI.Sprite(gleamTexture()); m.gleam.anchor.set(0.5); m.gleam.eventMode = 'none'; m.gleam.blendMode = PIXI.BLEND_MODES.ADD; glow().addChild(m.gleam); }

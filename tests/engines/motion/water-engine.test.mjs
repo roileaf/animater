@@ -97,7 +97,7 @@ test('an animal never takes the place of a creature\'s ring still spreading', ()
 });
 
 test('a fall has foam only at its foot, and nothing times the clock by where it is', () => {
-  const frag = WATER_SHADERS.full, part = frag.slice(frag.indexOf('float clots, foam;'), frag.indexOf('} else {', frag.indexOf('float clots, foam;')));
+  const frag = WATER_SHADERS.full, part = frag.slice(frag.indexOf('float clots, foam'), frag.indexOf('} else {', frag.indexOf('float clots, foam')));
   assert.ok(part.includes('band = way < land'), 'foam where it lands');
   assert.ok(part.includes('crest'), 'and on the rings it throws out');
   assert.ok(frag.includes('float land = mix(0.78, 0.86, uStrength)'), 'a stronger fall lands no further up');
@@ -114,6 +114,47 @@ test('the timing of the flow never bends the pattern into arcs, even at its swif
   assert.ok(flowBend(0.4) < flowBend(1));
 });
 
+test('the sea has swells of its own and foam only from its surf and crests', () => {
+  assert.equal(WATER_MOTION.sea.sea, 1);
+  assert.equal(WATER_MOTION.river.sea, undefined);
+  const frag = WATER_SHADERS.full;
+  assert.ok(frag.includes('if (uSea > 0.5) {') && frag.includes('swashRun(u)'), 'waves that run up the shore and draw back');
+  assert.ok(!frag.includes('foamLace'), 'foam is not a sheet with holes in it');
+  assert.ok(!frag.includes('float fine ='), 'no grain pinned in place');
+  assert.ok(frag.includes('merged = waveJoin(merged, front'), 'waves that meet become one front');
+  assert.ok(!frag.includes('wash +='), 'no wave drawn over another');
+  assert.ok(frag.includes('shoal * 26.0') && frag.includes('breaking = (1.0 - smoothstep(0.34, 0.62, depth))'), 'waves shoal in along the shore and break in the shallows');
+  assert.ok(frag.includes('float depth = flowed.x'), 'colour and waves go by depth');
+  assert.ok(frag.includes('texture2D(uSand, tile)'), 'the beach is the sand floor\'s own painted tile');
+  assert.ok(frag.includes('float line = shoreLine(w, mask.b)') && frag.includes('float shoreAway = shoreLine(w, mask.b)'), 'the waves and the sand share one smooth line');
+  assert.ok(frag.includes('float shoreLine(vec2 w, float away)'), 'the water and a look on it share one waterline');
+  assert.ok(frag.includes('else seaEdge = smoothstep(lap - 0.008'), 'with no beach the water still ends at that line, not at the side of its region');
+  assert.ok(frag.includes('uBedColour > 0.5 ? 7.0 : 0.0'), 'a painted water floor gives its colour, not its baked waves');
+  assert.ok(frag.includes('mask.b + mask.b * '), 'the beach fades to nothing at the region\'s very edge, whatever the noise');
+  assert.ok(frag.includes('0.09 * uSoft'), 'as wide as its edge softness');
+  assert.ok(frag.includes('(1.0 - smoothstep(0.62, 0.86, mask.b))'), 'no shore wash out in open water');
+  assert.ok(/vec2 foamWeb[\s\S]*?bubbles\(p \* 5\.5, uTime[\s\S]*?\)\.y/.test(frag), 'old foam is threads between the cells, not holes in a film');
+  assert.ok(frag.includes('float thick = clamp(fresh * 1.2'), 'new foam is solid, old foam is thin: it goes by thinning, not by fading to grey');
+  assert.ok(frag.includes('float fresh = 1.0 - (1.0 - min(caps, 1.0))'), 'all the foam is one web');
+  assert.ok(frag.includes('if (fresh > 0.01)'), 'worked out only where there is foam');
+  assert.ok(frag.includes('float sunHere = uSun * sunReach(vWorld)'), 'no glare from a sun a wall or a tree is shading');
+  assert.ok(frag.indexOf('uFishSwing[i]') > 0 && frag.indexOf('uFishSwing[i]') < frag.indexOf('The sky on what tilts') && frag.indexOf('The sky on what tilts') < frag.indexOf('foamWeb(w, fresh)'.replace('foamWeb', 'vec2 web = foamWeb')), 'fish are drawn under the light and the foam');
+  assert.ok(/vec2 off = seen - fish\.xy/.test(frag), 'and bent by the waves as the bed is');
+  assert.ok(frag.includes('strike *= (1.0 - smoothstep(waterline + 0.02'), 'a wave splashes only where it reaches the shore');
+  assert.ok(frag.includes('if (strike > 0.01)') && frag.includes('spray = max(spray, strike * 0.3)'), 'with droplets, and spray going off with the wind');
+  assert.ok(frag.includes('caps *= offshore; wash *= swashed; bore *= afloat; spray *= afloat;'), 'no foam starts on the sand: waves only run up it from the water');
+  assert.ok(frag.includes('smoothstep(0.0, 0.3, fresh) - 0.12'), 'no clumps of foam out where there is hardly any');
+  assert.ok(frag.includes('noise(p * 8.0 + 41.0)'), 'threads have gaps, so they do not close into cells');
+  assert.ok(frag.includes('float blown = dot(uWindDir, toDeep)') && frag.includes('if (spray > 0.01)'), 'spray goes off the crest with the wind');
+  assert.ok(frag.includes('1.0 / max(uPix, 1.0)'), 'threads too fine for the zoom are left out, so they do not shimmer');
+  assert.ok(frag.includes('uBeach > 0.5') && frag.includes('calm * seaEdge'), 'a beach, whose edge hides the shape of the region');
+  assert.ok(frag.includes('smoothstep(0.2, 0.45, rough) * smoothstep(0.42, 0.62, clots)'), 'river foam needs rough water, not just noise');
+  assert.ok(!frag.includes('clots + rough'));
+  assert.ok(frag.includes('max(uWind, 0.45)'), 'never still, wind or none');
+  assert.ok(frag.includes('one = uSwellDir'), 'its waves can be set their own way');
+  assert.ok(/float face = normalize\(vec3\(-slope/.test(frag) && !/float face[^;]*heave/.test(frag), 'a swell is too broad to glint, or a whole crest would flash');
+});
+
 test('foam is drawn last, after the light on the waves', () => {
   for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) { assert.ok(frag.indexOf('float clots') > frag.indexOf('A flame near')); assert.ok(frag.indexOf('float clots') < frag.indexOf('Where it has frozen')); }
 });
@@ -122,4 +163,12 @@ test('the shaders are whole, and the simple one lacks the costly parts', () => {
   for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) assert.ok(!frag.includes('${'));
   assert.ok(WATER_SHADERS.full.includes('#define FULL 1'));
   assert.ok(WATER_SHADERS.simple.includes('#define FULL 0'));
+});
+
+test('a beach drawn inside the water keeps its crabs on its sand, inside the shore', async () => {
+  const { beachBand } = await import('../../../scripts/engines/motion/coast.mjs');
+  const band = beachBand(100), onSand = (fromEdge) => { const on = fromEdge + band.line; return on < 0 && on > -band.width; };
+  assert.equal(onSand(20), true);
+  assert.equal(onSand(-10), false, 'not out on the land');
+  assert.equal(onSand(60), false, 'not in the water');
 });

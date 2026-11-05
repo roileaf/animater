@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOORS } from '../../../scripts/engines/motion/movement-feel.mjs';
-import { STEP_EFFECTS, STEP_LOOKS, TEXTURE_STYLES, textureStyleOf, activeStep, changeStep, defaultSteps, noLifeOnWater, WATER_KINDS, waterFlows, waterKindFlags, waterKindOf, floodedByStep, paintsOverWater, setStepSpeed, setStepStrength, stepStrength, STEP_STRENGTH, showsTexture, spreadFrom, stepEdge, stepFlags, takesSeason, stepLook, stepMenu, textureFloor } from '../../../scripts/engines/motion/region-steps.mjs';
+import { STEP_EFFECTS, STEP_LOOKS, TEXTURE_STYLES, textureStyleOf, activeStep, changeStep, defaultSteps, STEP_SCALE, stepScale, fallWindAngle, flowChoices, noLifeOnWater, WATER_KINDS, waterFlows, waterKindFlags, waterKindOf, floodedByStep, unfitForLife, paintsOverWater, setStepSpeed, setStepStrength, stepStrength, STEP_STRENGTH, showsTexture, spreadFrom, stepEdge, stepFlags, takesSeason, stepLook, stepMenu, textureFloor } from '../../../scripts/engines/motion/region-steps.mjs';
 
 test('a step\'s look strength is kept to its range, as painted when unset or nonsense', () => {
   assert.equal(stepStrength({}), STEP_STRENGTH.usual);
@@ -304,4 +304,35 @@ test('a list the GM edited stays as they made it', () => {
   assert.deepEqual(stepMenu(own, 'stone').steps, ['Mine', 'Bloodied']);
   assert.equal(changeStep(own, 'stone', 1).steps[1].look, 'wet');
   assert.equal(changeStep(own, 'stone', 1).steps.length, 2);
+});
+
+test('a region can make its pattern bigger or smaller, within reason', () => {
+  assert.equal(stepScale({}), 1);
+  assert.equal(stepScale({ stepScale: 0.5 }), 0.5);
+  assert.equal(stepScale({ stepScale: 99 }), STEP_SCALE.max);
+  assert.equal(stepScale({ stepScale: 0 }), STEP_SCALE.min);
+  assert.equal(stepScale({ stepScale: 'x' }), 1);
+  assert.equal(stepMenu({ stepScale: 2 }, 'glass').scale, 2);
+});
+
+test('any flowing water can follow the wind, and a fall turns only as the wind really turns', () => {
+  assert.equal(flowChoices('river')[0][0], 'wind');
+  assert.equal(flowChoices('river')[0][1], 'Follows the wind');
+  assert.equal(flowChoices('rapids')[0][0], 'wind');
+  assert.equal(flowChoices('falls')[0][0], 'wind');
+  assert.ok(Math.abs(fallWindAngle(0.1)) < 1e-9, 'a small shift changes nothing');
+  assert.ok(Math.abs(fallWindAngle(Math.PI / 2 + 0.2) - Math.PI / 2) < 1e-9);
+  assert.equal(fallWindAngle(undefined), 0);
+  assert.equal(waterKindFlags({ flowTo: 'wind' }, 'river').flowTo, 'wind');
+  assert.equal(waterKindFlags({ flowTo: 'wind' }, 'falls').flowTo, 'wind');
+  assert.equal(waterKindOf({ flowTo: 'wind' }), 'river');
+});
+
+test('animals keep off ground a step has made dangerous or foul, and not off what they would cross', () => {
+  const steps = (look) => ({ steps: [{ name: 'Fresh', look: 'none', walks: 'grass' }, { name: 'Now', look, walks: 'grass' }], step: 1 });
+  for (const look of ['burning', 'lavacracks', 'hot', 'boiling', 'acid', 'poison', 'electric', 'oil', 'burnt', 'ash', 'blight', 'cursed', 'deadmagic', 'withered', 'blood']) assert.equal(unfitForLife(steps(look)), true, look);
+  for (const look of ['none', 'wet', 'flowers', 'vines', 'moss', 'snowed', 'frost', 'misty', 'bones', 'dried', 'rubble']) assert.equal(unfitForLife(steps(look)), false, look);
+  assert.equal(unfitForLife({ steps: steps('burning').steps, step: 0 }), false, 'only the step it is on');
+  assert.equal(unfitForLife(undefined), false, 'a region with no steps');
+  for (const look of ['burning', 'blood', 'dried', 'bones']) assert.ok(look in STEP_LOOKS, look);
 });

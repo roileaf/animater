@@ -52,3 +52,16 @@ test('a torch is one tongue; a brazier one big flame with smaller ones pressed t
   assert.ok(Math.max(...big.map((t) => Math.abs(t.x))) > Math.max(...bed.map((t) => Math.abs(t.x))));
   assert.ok(big[big.length - 1].scale > middle.scale);
 });
+
+test('a sconce in the map\'s foreground picture leaves its flame showing, a roof does not', () => {
+  const at = { x: 500, y: 500 }, reach = 100;
+  // Its picture only within this far of the fire, and along one side as a wall would be.
+  const patch = (r, wall = false) => (p) => Math.hypot(p.x - at.x, p.y - at.y) <= r || (wall && p.x > at.x + 10);
+  const foreground = (covers) => [{ elevation: 20, covers, fixtureReach: reach }];
+  assert.equal(underTile(foreground(patch(30)), at), false, 'a sconce alone');
+  assert.equal(underTile(foreground(patch(30, true)), at), false, 'a sconce on a wall');
+  assert.equal(underTile(foreground(patch(1000)), at), true, 'a roof');
+  assert.equal(underTile(foreground(() => false), at), false, 'nothing drawn there');
+  assert.equal(underTile([{ elevation: 20, covers: patch(30) }], at), true, 'a small tile a GM placed still hides it');
+  assert.equal(underTile([{ elevation: 0, covers: patch(1000), fixtureReach: reach }], at, 5), false, 'nothing below the fire hides it');
+});

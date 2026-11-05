@@ -73,14 +73,14 @@ export const riverCurrent = (choice) => ({ swift: 1, slow: 0.2, slower: 0.1 })[c
  * Where the map's surfaces lie: { water, frozen, hot, grass } polygon lists (flat x, y pairs) from the regions with a
  * floor (movement-feel.mjs regionFloor), `bare` the regions with any other floor, and `whole`: the surface the scene's
  * own floor gives everywhere else ('frozen' for a snowy scene, 'hot' for a sandy one, else null), `grassAll` whether it
- * is grassy. `flows` the rivers ({ polygons, angle, speed }). `regions`: [{ floor, polygons, freezes, flow, current }]; a polygon's `holes` (flat x, y pairs each) the holes drawn in it.
+ * is grassy. `flows` the rivers ({ polygons, angle, speed }). `regions`: [{ floor, polygons, freezes, flow, current, painted (Animater paints this floor, sparkle and all) }]; a polygon's `holes` (flat x, y pairs each) the holes drawn in it.
  */
 export function surfacesOf({ sceneFloor = null, regions = [] } = {}) {
   const out = { water: [], freezes: [], flows: [], frozen: [], hot: [], grass: [], tinted: [], bare: [], whole: SURFACE_OF[sceneFloor] ?? null, grassAll: GRASSY.has(sceneFloor) };
   if (out.whole === 'water' || out.whole === 'grass') out.whole = null;
   for (const r of regions ?? []) {
     const kind = SURFACE_OF[r?.floor], polygons = (r?.polygons ?? []).filter((p) => p?.length >= 6);
-    if (kind) out[kind].push(...polygons);
+    if (kind && !(kind === 'frozen' && r.painted)) out[kind].push(...polygons);
     // Water that freezes in a hard frost: every water region but one that never does (`freezes` false: a hot spring).
     if (kind === 'water' && r.freezes !== false) out.freezes.push(...polygons);
     // A river: which way it flows (`flow`, radians on the map, the way the water goes) and how fast (`current` 0–1).
@@ -142,6 +142,7 @@ uniform vec4 uSeason;   // the season's colour over the open ground (rgb) and ho
 uniform float uMoon;    // moonlight on the open ground at night (0–1: how much of the moon is lit)
 uniform vec4 uBow;      // a rainbow: its centre (x, y, scene pixels), radius and strength
 uniform vec2 uBowDir;   // the way it faces: away from the sun
+uniform vec4 uAmbient;  // the open air's colour at this time of day (rgb), and how strongly (a)
 uniform vec4 uVeil;     // the weather's light outdoors (rgb), and how strongly (a): a dark wash in its colour over everything
 uniform sampler2D uFxClouds; // FXMaster's clouds as drawn now (their shapes), and where their shadows fall from them
 uniform vec2 uFxShift;
@@ -157,7 +158,7 @@ uniform float uCover, uSwirlAmount;
 uniform vec4 uSky, uSky2;
 uniform vec3 uColor;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s; }
 // Lighter stacks for the weather, which redraws every pixel every frame: three or four layers, rescaled to fbm's range.
@@ -166,7 +167,7 @@ float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a
 // Where snow lies in patches: the same pattern as snowPatchAt in this file (a hash without sine, so the GPU and the
 // creatures' tracks agree on it).
 float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
-float patchNoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+float patchNoise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(patchHash(i), patchHash(i + vec2(1, 0)), f.x), mix(patchHash(i + vec2(0, 1)), patchHash(i + vec2(1, 1)), f.x), f.y); }
 float snowPatch(vec2 px, float snow){
   vec2 p = px / (uGrid * 4.0); float s = 0.0, a = 0.5;
@@ -177,6 +178,11 @@ float twinkle(vec2 p, float cell, float t, float rate){
   vec2 c = floor(p / cell), f = fract(p / cell) - 0.5;
   float h = hash(c), on = pow(max(0.0, sin(t * rate * (0.6 + h) + h * 40.0)), 10.0);
   return on * (1.0 - smoothstep(0.04, 0.16, length(f - (vec2(hash(c + 3.1), hash(c + 7.7)) - 0.5) * 0.6)));
+}
+float frostGlint(vec2 p, float cell, float t, float rate){
+  vec2 c = floor(p / cell), f = fract(p / cell) - 0.5;
+  float h = hash(c), keep = step(0.8, hash(c + 5.9)), bright = hash(c + 1.7), on = pow(max(0.0, sin(t * rate * (0.6 + h) + h * 40.0)), 10.0);
+  return keep * on * (0.15 + 0.85 * bright * bright * bright) * (1.0 - smoothstep(0.02, 0.06 + 0.07 * bright, length(f - (vec2(hash(c + 3.1), hash(c + 7.7)) - 0.5) * 0.6)));
 }
 // The sun caught on wavelet crests: short bright streaks lying across the wind, each flashing for a moment and gone,
 // many at once when the wind ruffles the water. 0–1.
@@ -467,6 +473,12 @@ void main(){
   float water = texture2D(uWater, vUv).a;
   // Where grass grows: the fireflies' meadows.
   float meadow = max(texture2D(uGrass, vUv).a, uGrassAll * (1.0 - texture2D(uBare, vUv).a)) * (1.0 - water) * outside;
+  if (uMode > 5.5) {
+    // The colour of the open air at this time of day, multiplied into all below it, roofs too; a room seen into (its roof faded) keeps its own.
+    float roofed = texture2D(uIndoor, vUv).a;
+    gl_FragColor = vec4(mix(vec3(1.0), uAmbient.rgb, uAmbient.a * (1.0 - roofed + roofed * texture2D(uRoofShown, vUv).a)), 1.0);
+    return;
+  }
   if (uMode > 4.5) {
     // The weather's own light (uMode 5, drawn over the night's darkness, added): divine rays and the motes in them,
     // aurora, sparks along their currents, embers, meteors; a room seen into keeps its own light.
@@ -831,7 +843,7 @@ void main(){
       float glints = crestGlints(px, t) * (0.35 + 0.65 * sheen);
       light += water * sunny * (sheen * (0.14 - 0.06 * uWind) + crests * (0.03 + 0.04 * uWind) + glints * 3.0);
     }
-    if (frozen > 0.01) light += frozen * twinkle(px, uGrid * 0.12, t, 1.6) * 0.7;
+    if (frozen > 0.01) light += frozen * frostGlint(px, uGrid * 0.12, t, 1.6) * 0.7;
     if (iced > 0.01) light += iced * outside * twinkle(px, uGrid * 0.1, t, 1.4) * 0.8;
     // Puddles on wet ground catch the sky.
     if (uWet > 0.05) light += uWet * smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * outside * (1.0 - water) * 0.1;
@@ -907,7 +919,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
   // The rainbow comes and goes over some seconds, never at once: `bow` where it is now, `bowTo` where look wants it.
   let bow = 0, bowTo = 0;
   // The pass over the roofs: the weather's light (`casting`) and the clouds' shadows (`clouding`).
-  let casting = false, clouding = false, weathering = false, fxOn = false, fxShadow = null;
+  let casting = false, tinting = false, clouding = false, weathering = false, fxOn = false, fxShadow = null;
   const drop = () => {
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
@@ -976,22 +988,24 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: bake(freezes, 1), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
         .addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
-      own = [uniforms, { ...uniforms, uMode: 1 }, { ...uniforms, uMode: 2 }, { ...uniforms, uMode: 3 }, { ...uniforms, uMode: 4 }, { ...uniforms, uMode: 5 }];
+      own = [uniforms, { ...uniforms, uMode: 1 }, { ...uniforms, uMode: 2 }, { ...uniforms, uMode: 3 }, { ...uniforms, uMode: 4 }, { ...uniforms, uMode: 5 }, { ...uniforms, uMode: 6 }];
       const shade = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[0]));
       const light = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[1]));
       const pale = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[2]));
       const flock = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[3]));
       const veil = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[4]));
       const glow = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[5]));
+      const air = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[6]));
+      air.blendMode = PIXI.BLEND_MODES.MULTIPLY;
       glow.blendMode = PIXI.BLEND_MODES.ADD;
       light.blendMode = PIXI.BLEND_MODES.ADD;
-      meshes = [shade, light, pale, flock, veil, glow];
-      for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil ? above : root)().addChild(m); }
+      meshes = [shade, light, pale, flock, veil, glow, air];
+      for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil || m === air ? above : root)().addChild(m); }
     },
     look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 } } = {}) {
       if (!own.length) return;
@@ -1022,9 +1036,17 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     veil(cast = null, roofs = []) {
       if (!own.length) return;
       casting = !!cast && cast[3] > 0.01;
-      if (casting || clouding || weathering) drawRoofs(roofs);
+      if (casting || tinting || clouding || weathering) drawRoofs(roofs);
       for (const u of own) u.uVeil = casting ? cast : [1, 1, 1, 0];
       meshes[4].visible = casting || clouding || weathering;
+    },
+    // The open air's colour (skyTint's [r, g, b, how much], null none), over the open ground and `roofs` as drawn now.
+    tint(colour = null, roofs = []) {
+      if (!own.length) return;
+      tinting = !!colour && colour[3] > 0.002;
+      if (tinting) drawRoofs(roofs);
+      for (const u of own) u.uAmbient = tinting ? colour : [1, 1, 1, 0];
+      meshes[6].visible = tinting;
     },
     // FXMaster's clouds (`clouds` their particles' container, null none): drawn small into a picture of the map, their
     // shadows thrown `shift` ({ x, y } scene pixels) away from the sun. Called a few times a second while they show.
@@ -1060,8 +1082,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     },
     clear: drop,
     get shown() { return meshes.some((m) => m.visible); },
-    // Whether the pass over the roofs shows (so the roofs it reads are kept up as they fade).
-    get veiling() { return !!meshes[4]?.visible; },
+    // Whether a pass over the roofs shows (so the roofs it reads are kept up as they fade).
+    get veiling() { return !!meshes[4]?.visible || !!meshes[6]?.visible; },
+    // Whether its passes exist on this screen (not at low quality, or with everything of it turned off).
+    get built() { return own.length > 0; },
   };
 }
 
@@ -1075,7 +1099,7 @@ uniform vec3 uView;     // the stage's offset (x, y) and scale: screen = world *
 uniform vec4 uBounds;   // the scene's rectangle in world pixels
 uniform float uTime, uAmp, uHotAll;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 void main(){
   vec2 screen = vTextureCoord * inputSize.xy + outputFrame.xy;
@@ -1268,7 +1292,7 @@ varying vec2 vUv, vWorld;
 uniform sampler2D uTile;
 uniform float uAmount, uShown, uTree, uGrid;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
 void main(){
   vec4 c = texture2D(uTile, vUv);

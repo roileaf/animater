@@ -431,16 +431,23 @@ test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks
   assert.equal(f.bindings.find((b) => b.name === "Clear ground marks").restricted, true);
   const controls = { tokens: { tools: {} } };
   await f.fire("getSceneControlButtons", controls);
-  assert.equal(controls.tokens.tools.animater.visible, true);
+  // The GM's controls are in Animater's own group, on the token layer, with tokens still selectable; none are left on the Token controls.
+  assert.equal(controls.animater.tools.animater.visible, true);
+  assert.equal(controls.animater.layer, "tokens");
+  assert.equal(controls.animater.activeTool, "select");
+  assert.equal(controls.animater.tools.select.control, true, "Foundry only lets a tool with this select tokens");
+  for (const tool of ["animaterCaveIn", "animaterEnergyBlast", "animaterClearRubble", "animaterClearBlood", "animaterSplatBlood", "animaterBakeBlood", "animaterClouds"]) assert.ok(controls.animater.tools[tool], tool);
+  assert.deepEqual(Object.keys(controls.tokens.tools), []);
   game.user.isGM = false;
   const playerControls = { tokens: { tools: {} } };
   await f.fire("getSceneControlButtons", playerControls);
   assert.equal(playerControls.tokens.tools.animater.visible, true);
+  assert.equal(playerControls.animater, undefined);
   game.user.isGM = true;
   await f.settings.set("showControlButton", false);
   const hiddenControls = { tokens: { tools: {} } };
   await f.fire("getSceneControlButtons", hiddenControls);
-  assert.equal(hiddenControls.tokens.tools.animater.visible, false);
+  assert.equal(hiddenControls.animater.tools.animater.visible, false);
   await f.settings.set("showControlButton", true);
   const ember = f.api.recipes()[0];
   ember.stages.forEach((s) => (s.delay = 0));

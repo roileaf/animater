@@ -107,3 +107,16 @@ test('clouds hide the sun and the moon: fainter under clouds, none under a storm
   assert.equal(sunGlow({ day: 0, sunrise: 0.25, sunset: 0.75, moon: 1, sky: 0 }), null, 'no moonlit tint either');
   assert.ok(sunGlow({ day: 0.74, sunrise: 0.25, sunset: 0.75, sky: 0.35 }).amount < sunGlow({ day: 0.74, sunrise: 0.25, sunset: 0.75 }).amount, 'a greyer dusk');
 });
+
+test('the air takes the glow by the world\'s strength, and a scene has the last word', async () => {
+  const { skyAir } = await import('../../../scripts/engines/motion/sun.mjs');
+  const glow = { color: [1, 0.58, 0.36], amount: 1 };
+  assert.equal(skyAir(null), null, 'no glow at midday');
+  assert.deepEqual(skyAir(glow, 0.5).slice(0, 3), glow.color);
+  assert.ok(skyAir(glow, 1)[3] > skyAir(glow, 0.5)[3], 'by the world\'s strength');
+  assert.ok(skyAir(glow, 1)[3] < 1, 'never all of it');
+  assert.equal(skyAir(glow, 1, 'off'), null, 'a scene can say no');
+  assert.ok(skyAir(glow, 0.1, 'full')[3] > skyAir(glow, 0.1, '')[3], 'or more than the world');
+  assert.ok(skyAir(glow, 1, 'soft')[3] < skyAir(glow, 1, '')[3], 'or less');
+  assert.equal(skyAir({ color: [1, 1, 1], amount: 0.001 }, 0.5), null, 'too faint to bother');
+});

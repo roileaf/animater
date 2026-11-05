@@ -225,7 +225,6 @@ gravel-step-556002-0.ogg: "Footsteps_Mountain_Boots_Gravel_Mono.wav" by Nox_Soun
 gravel-step-556002-1.ogg: "Footsteps_Mountain_Boots_Gravel_Mono.wav" by Nox_Sound, https://freesound.org/people/Nox_Sound/sounds/556002/
 gravel-step-556002-2.ogg: "Footsteps_Mountain_Boots_Gravel_Mono.wav" by Nox_Sound, https://freesound.org/people/Nox_Sound/sounds/556002/
 glass-step-223152-0.ogg: "glass footstep 1" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/223152/
-glass-step-583068-1.ogg: "FX SaSc Soft Impact Stone Glass Tiles Jump Walk Footstep.wav" by Profispiesser, https://freesound.org/people/Profispiesser/sounds/583068/
 glass-step-813392-2.ogg: "Steps on glass" by Luisa_Sanchez, https://freesound.org/people/Luisa_Sanchez/sounds/813392/
 metal-step-698697-0.ogg: "Footsteps on Metal" by IENBA, https://freesound.org/people/IENBA/sounds/698697/
 metal-step-698697-1.ogg: "Footsteps on Metal" by IENBA, https://freesound.org/people/IENBA/sounds/698697/

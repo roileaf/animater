@@ -73,7 +73,7 @@ test('a wet pool catches the light on its near side, less as it dries, none in t
   const pool = { x: 0, y: 0, r: 50 }, light = { x: 300, y: 0, strength: 0.8 };
   const fresh = poolGleam(pool, light, 0);
   assert.ok(fresh.x > 0, 'toward the light');
-  assert.ok(fresh.alpha > 0.2);
+  assert.ok(fresh.alpha > 0.1 && fresh.alpha <= 0.2, 'faint: a wet glint, not a raised shine');
   assert.ok(poolGleam(pool, light, POOL_DRIES / 2).alpha < fresh.alpha, 'drying');
   assert.equal(poolGleam(pool, light, POOL_DRIES), null, 'dry');
   assert.equal(poolGleam(pool, null, 0), null, 'no light');
@@ -91,6 +91,7 @@ test('any wound bleeds a little: a scratch drops less than a hurt creature and w
 test('wet stains shine by the light on them and stop as they dry; drops do not', () => {
   assert.ok(bloodShines('slash') && bloodShines('pool') && !bloodShines('drop'));
   assert.equal(bloodSheen(null), 0, 'no light');
+  assert.ok(bloodSheen({ strength: 1 }) <= 0.1, 'a faint wet look, not lit up in the colour of the flame');
   assert.ok(bloodSheen({ strength: 1 }) > bloodSheen({ strength: 0.3 }));
   assert.ok(bloodSheen({ strength: 1 }, POOL_DRIES / 2) < bloodSheen({ strength: 1 }));
   assert.equal(bloodSheen({ strength: 1 }, POOL_DRIES), 0, 'dry');

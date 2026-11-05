@@ -464,7 +464,8 @@ test('footstep families: no two floors share a recording', () => {
     assert.ok(!owner.has(file) || owner.get(file) === floor, `${file} is used by both ${owner.get(file)} and ${floor}`);
     owner.set(file, floor);
   }
-  for (const floor of FLOORS) assert.ok(FOOTSTEP_FILES[floor]?.length >= 3, `${floor} has its own family`);
+  // (Glass has two: a recording that didn't sound like glass was taken out, and it waits for a better one.)
+  for (const floor of FLOORS) assert.ok(FOOTSTEP_FILES[floor]?.length >= (floor === 'glass' ? 2 : 3), `${floor} has its own family`);
 });
 
 test('footstepFile: every floor has its own bundled steps, varied by n, that exist on disk', () => {
@@ -475,7 +476,7 @@ test('footstepFile: every floor has its own bundled steps, varied by n, that exi
   for (const floor of FLOORS) {
     assert.ok(own[floor], `no expectation for ${floor}`);
     const files = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((n) => footstepFile(floor, n)));
-    assert.ok(files.size >= 3, `${floor} varies`);
+    assert.ok(files.size >= (floor === 'glass' ? 2 : 3), `${floor} varies`);
     for (const file of files) {
       assert.match(file, /^modules\/animater\/assets\/sounds\/surfaces\/(kenney|freesound)\/[\w-]+\.ogg$/, floor);
       assert.match(file, own[floor], floor);

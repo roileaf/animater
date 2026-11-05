@@ -21,6 +21,9 @@ export const STEP_SPEEDS = Object.freeze([['slower', 'Very slow'], ['slow', 'Slo
 export const STEP_SECONDS = 6;
 // How far a region's edge fades, in about squares: `stepEdge` in its flags.
 export const STEP_EDGE = Object.freeze({ min: 0.1, max: 3, usual: 1 });
+// How big a region's pattern is, its painted floor and its looks, 1 as painted, smaller for more of it: `stepScale` on the region.
+export const STEP_SCALE = Object.freeze({ min: 0.25, max: 3, usual: 1 });
+export const stepScale = (own) => { const v = own?.stepScale; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_SCALE.max, Math.max(STEP_SCALE.min, n)) : STEP_SCALE.usual; };
 // How much of its look a step puts down, 1 as painted: `strength` on the step.
 export const STEP_STRENGTH = Object.freeze({ min: 0.1, max: 2, usual: 1 });
 export const stepStrength = (step) => { const v = step?.strength; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_STRENGTH.max, Math.max(STEP_STRENGTH.min, n)) : STEP_STRENGTH.usual; };
@@ -100,11 +103,15 @@ export function stepLook(own, floor) {
     flowTo: own?.flowTo ?? '',
     edge: stepEdge(own),
     strength: stepStrength(step),
+    scale: stepScale(own),
   };
 }
 
 // Ground a step has put under water for now: it walks and sounds as water, but it is no pond and nothing lives there.
 export const floodedByStep = (own, floor) => activeStep(own)?.walks === 'water' && floor !== 'water';
+// Ground a step has made no place to live: what would hurt an animal, and what it would shun. Snow, frost, mist, bones and old blood are all ground they will still cross.
+const NO_HOME_LOOKS = new Set(['burning', 'lavacracks', 'hot', 'boiling', 'acid', 'poison', 'electric', 'oil', 'burnt', 'ash', 'blight', 'cursed', 'deadmagic', 'withered', 'blood']);
+export const unfitForLife = (own) => NO_HOME_LOOKS.has(activeStep(own)?.look);
 // Water with something painted over the map: what moves on it can't show the map's picture, which is not what is seen there.
 export const paintsOverWater = (own, floor, sceneChoice) => stepLook(own, floor).look !== 'none' || showsTexture(own, sceneChoice);
 
@@ -113,6 +120,10 @@ export const WATER_KINDS = Object.freeze([['still', 'Still pool'], ['river', 'Ri
 export const WATER_TOWARD = Object.freeze([['n', 'North'], ['ne', 'North-east'], ['e', 'East'], ['se', 'South-east'], ['s', 'South'], ['sw', 'South-west'], ['w', 'West'], ['nw', 'North-west']]);
 // What the water engine does with it. Region configuration's ticks for a waterfall and the sea are their own drawings, apart from this.
 export const waterKindOf = (own) => { const said = own?.waterKind; if (WATER_KINDS.some(([key]) => key === said)) return said; return own?.flowTo ? 'river' : 'still'; };
+// The ways water can be set to run: a compass point, or with the wind.
+export const flowChoices = () => [['wind', 'Follows the wind'], ...WATER_TOWARD];
+// The way a fall follows the wind (radians, pure): the nearest of eight, so that it only turns when the wind has really turned.
+export const fallWindAngle = (angle) => (Math.round((Number(angle) || 0) / (Math.PI / 4)) * Math.PI) / 4;
 export const waterFlows = (kind) => kind === 'river' || kind === 'rapids' || kind === 'falls';
 // Water nothing lives on: too fast to swim, nest or float a lily pad on.
 export const noLifeOnWater = (own) => { const kind = waterKindOf(own); return !!own?.waterfall || kind === 'falls' || kind === 'rapids'; };
@@ -153,6 +164,7 @@ export function stepMenu(own, floor) {
     hidden: !!own?.stepHidden,
     grassy: (shown?.floor ?? floor) === 'grass',
     edge: stepEdge(own),
+    scale: stepScale(own),
     strength: list[current]?.look && list[current].look !== 'none' ? stepStrength(list[current]) : null,
     speed: wet && own?.flowTo ? (shown.current || 'gentle') : null,
     reflections: wet ? own?.reflections !== 'off' : null,

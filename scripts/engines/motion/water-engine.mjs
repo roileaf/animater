@@ -2,7 +2,7 @@
 // sun, the moon and any flame near glint on them. It lies on the map under the floor layers, so what a region paints (floor-looks.mjs) covers it,
 // and the shadows, the creatures and the darkness all fall on it as on the map. One quad a region, drawn only while it is in view.
 
-import { floorLights, glareAt, skyForFloors } from './floor-looks.mjs';
+import { floorLights, glareAt, SHORE_LINE, skyForFloors, SUN_REACH, sunUniforms } from './floor-looks.mjs';
 
 // How each kind of water moves: rough how big its waves, pace how fast it runs, foam how white it breaks, swell how long its waves, streak (a fall) drawn out the way it falls.
 export const WATER_MOTION = Object.freeze({
@@ -10,7 +10,7 @@ export const WATER_MOTION = Object.freeze({
   river: { rough: 1, pace: 1, foam: 0, swell: 1, streak: 0 },
   rapids: { rough: 2.1, pace: 2.2, foam: 0.75, swell: 0.75, streak: 0 },
   falls: { rough: 1.5, pace: 4.5, foam: 1, swell: 1, streak: 1 },
-  sea: { rough: 1.6, pace: 0, foam: 0.25, swell: 1.7, streak: 0 },
+  sea: { rough: 1.2, pace: 0, foam: 0.8, swell: 1.4, streak: 0, sea: 1 },
 });
 // How much foam water carries (pure): by its kind, as its stream is strong (`current` 0–1). A river only breaks when it runs hard.
 export function waterFoam(kind, current = 0.4) {
@@ -24,7 +24,7 @@ const FLOW_CYCLE = 1.6;
 const FLOW_PHASE = Object.freeze({ span: 7, amount: 0.5 });
 // How much the timing bends the pattern (pure): the stretch across it at the fastest it runs, 0 none. Much over a quarter draws arcs in the water.
 export const flowBend = (current = 1) => (FLOW_PHASE.amount / FLOW_PHASE.span) * current * 1.4 * 0.9 * FLOW_CYCLE * 1.5;
-const MOST_LIGHTS = 6, MOST_RINGS = 16, RING_LIFE = 3, SKY_EVERY = 0.5, LIGHTS_EVERY = 0.2;
+const MOST_FISH = 14, MOST_LIGHTS = 6, MOST_RINGS = 16, RING_LIFE = 3, SKY_EVERY = 0.5, LIGHTS_EVERY = 0.2;
 
 const VERT = `precision highp float;
 attribute vec2 aVertexPosition;
@@ -36,17 +36,22 @@ void main(){ vWorld = aVertexPosition; gl_Position = vec4((projectionMatrix * tr
 const fragOf = (full) => `precision highp float;
 #define FULL ${full ? 1 : 0}
 varying vec2 vWorld;
+uniform sampler2D uSand; // the beach: the sand floor's own painted tile
+uniform float uSandSize;
 uniform sampler2D uMap, uMask, uFlow, uWaves, uBed; // uBed: a painted floor seen through it instead of the map, one every uBedSize px
 uniform vec4 uMapRect, uBox;
-uniform float uTime, uWind, uGrid, uCurrent, uSun, uFrozen, uLightCount, uStill, uRough, uFoam, uSwell, uStreak, uBedSize, uStrength;
-uniform vec2 uWindDir, uToSun, uGlare, uDown, uRun; // uRun: where a fall starts and ends, along uDown
+uniform float uPix; // how many screen pixels a grid square is right now
+uniform vec4 uFish[${MOST_FISH}]; // x, y, heading, world pixels to one unit of a fish
+uniform float uFishSwing[${MOST_FISH}], uFishCount, uFishDim;
+uniform float uTime, uWind, uGrid, uCurrent, uSun, uFrozen, uLightCount, uStill, uRough, uFoam, uSwell, uStreak, uBedSize, uStrength, uSea, uBeach, uSoft, uBedColour;
+uniform vec2 uWindDir, uSwellDir, uToSun, uGlare, uDown, uRun; // uRun: where a fall starts and ends, along uDown
 uniform vec3 uSunColor;
 uniform vec4 uLights[${MOST_LIGHTS}];
 uniform vec3 uLightColors[${MOST_LIGHTS}];
 #if FULL
 uniform vec4 uRings[${MOST_RINGS}];
 #endif
-float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5), b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5), c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5), d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5); return mix(mix(a, b, f.x), mix(c, d, f.x), f.y); }
+float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f); float a = fract(sin(dot(i, vec2(127.1, 311.7))) * 43758.5), b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(127.1, 311.7))) * 43758.5), c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(127.1, 311.7))) * 43758.5), d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(127.1, 311.7))) * 43758.5); return mix(mix(a, b, f.x), mix(c, d, f.x), f.y); }
 // Bubbles packed together, each jostling about its own place: how far from the nearest one's middle, and how near the wall between it and the next.
 vec2 bubbles(vec2 p, float t){
   vec2 cell = floor(p), inner = fract(p); float near = 8.0, next = 8.0;
@@ -58,6 +63,46 @@ vec2 bubbles(vec2 p, float t){
   near = sqrt(near);
   return vec2(near, sqrt(next) - near);
 }
+${SHORE_LINE}
+${SUN_REACH}
+// Sea foam, one field from new to old. Fresh it is a dense white rope, its edge broken up by the bubbles; as it ages it draws back into clumps and strings, then threads around wide patches of dark water, then nothing. It goes by getting thinner, never by going see-through, so there is no grey film. Three sizes of bubble, bent so no wall runs straight, carried slowly along and always jostling.
+vec2 foamWeb(vec2 w, float fresh){
+  vec2 at = vec2(dot(w, vec2(-uSwellDir.y, uSwellDir.x)), dot(w, uSwellDir) * 0.8 - uTime * 0.07);
+  vec2 bend = vec2(noise(at * 1.1 + uTime * 0.04), noise(at * 1.1 + 9.0 - uTime * 0.03)) - 0.5, curl = vec2(noise(at * 4.1 + 2.0), noise(at * 4.1 + 17.0)) - 0.5, wob = vec2(noise(at * 11.0 + 5.0), noise(at * 11.0 + 29.0)) - 0.5;
+  vec2 hair = vec2(noise(at * 27.0 + 3.0), noise(at * 27.0 + 37.0)) - 0.5;
+  vec2 p = at + bend * 0.5 + curl * 0.11 + wob * 0.055 + hair * 0.014;
+  // How thick it is here: new foam is thick all over, old foam only in clumps and strings, and with next to none left there is nothing to clump.
+  vec2 q = at * 1.9 + bend * 1.2 + 31.0;
+  float lumps = noise(q) * 0.5 + noise(q * 2.1 + 3.1) * 0.3 + noise(q * 4.3 + 7.7) * 0.2;
+  float thick = clamp(fresh * 1.2 + (lumps - 0.5) * 1.5 * (1.0 - 0.45 * fresh) * smoothstep(0.0, 0.3, fresh) - 0.12, 0.0, 1.0);
+  if (thick <= 0.0) return vec2(0.0, 1.0);
+  // Each size of thread gets at least a pixel's softness, and goes altogether once its bubbles are too small to see, or it would shimmer as the view moves.
+  float px = 1.0 / max(uPix, 1.0), fill = thick * thick;
+  float wide = bubbles(p * 5.5, uTime * 0.3).y, small = bubbles(p * 15.0 + 3.0, uTime * 0.5).y;
+  float wideAt = 0.015 + 0.95 * fill, smallAt = 0.02 + 0.8 * fill;
+  float big = (1.0 - smoothstep(wideAt, wideAt + max(0.045 + 0.05 * fill, 8.0 * px), wide)) * smoothstep(0.015, 0.2, thick) * smoothstep(0.2, 0.48, noise(p * 8.0 + 41.0) + thick * 1.2);
+  float mid = (1.0 - smoothstep(smallAt, smallAt + max(0.07, 22.0 * px), small)) * smoothstep(0.03, 0.3, thick) * 0.8 * smoothstep(0.22, 0.5, noise(p * 19.0 + 13.0) + thick * 1.2) * (1.0 - smoothstep(0.2, 0.45, 15.0 * px));
+  float cover = max(big, mid), glint = 0.0;
+#if FULL
+  float seen = 1.0 - smoothstep(0.2, 0.45, 37.0 * px);
+  if (seen > 0.0) {
+    float tiny = bubbles(p * 37.0 + 8.0, uTime * 0.7).y;
+    cover = max(cover, (1.0 - smoothstep(0.05 + 0.7 * fill, 0.16 + 0.7 * fill, tiny)) * smoothstep(0.2, 0.6, thick) * 0.55 * seen);
+    glint = 0.06 * smoothstep(0.0, 0.3, tiny) * seen;
+  }
+#endif
+  cover = max(cover, smoothstep(0.6, 0.86, thick + (small - 0.25) * 0.35));
+  // How it catches the light: billows tumbling along with the wave, churned by others going another way, with soft shade between them.
+  vec2 b = p * 6.0 + 21.0 + vec2(0.0, -uTime * 1.1), c = p * 13.0 + 4.0 + uTime * vec2(0.5, 0.75);
+  float billow = noise(b) * 0.6 + noise(b * 2.1 + 3.1) * 0.4, churn = noise(c);
+  return vec2(cover, 0.78 + 0.2 * smoothstep(0.25, 0.75, billow) + 0.09 * smoothstep(0.3, 0.7, churn) + glint);
+}
+// Two wave fronts, as one: the nearer shore wins, and they run together smoothly where they meet.
+float waveJoin(float a, float b, float k){ float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0); return mix(b, a, h) - k * h * (1.0 - h); }
+// How far up its run a wave is over its life, 0-1: in quickly, then a long slow draw back.
+float swashRun(float u){ if (u < 0.4) { float k = u / 0.4; return k * (2.0 - k); } float k = (u - 0.4) / 0.6; return 1.0 - k * k * (3.0 - 2.0 * k); }
+// How much foam it still has: all of it coming in, thinning away going back.
+float swashFoam(float u){ return min(1.0, u / 0.08) * (u < 0.4 ? 1.0 : pow(1.0 - (u - 0.4) / 0.6, 1.4)); }
 // One size of wave: the sheet slid along the way the water goes, twice, each fading out before it has slid too far, so it never stretches.
 vec2 waves(float size, vec2 drift, float pa, float pb, float wa, float wb, float seed){
   vec2 base, run;
@@ -74,14 +119,16 @@ void main(){
   // Along the current, before the wind. A river slower than its usual slows everything on it.
   vec2 along = (flowed.xy * 2.0 - 1.0) * flowed.z;
   // (A short cycle and a small slide: it never goes far enough for a bend in the river to shear the pattern. Each place has its own part of the cycle, so nothing pulses.)
-  vec2 drift = (along * uCurrent * uGrid * 0.9 + uWindDir * uGrid * (0.04 + 0.3 * uWind) * uStill) * ${FLOW_CYCLE.toFixed(2)};
+  // (The sea is never still, wind or none, and its waves may go their own way.)
+  float windy = uSea > 0.5 ? max(uWind, 0.45) : uWind;
+  vec2 drift = (along * uCurrent * uGrid * 0.9 + (uSea > 0.5 ? uSwellDir : uWindDir) * uGrid * (0.04 + 0.3 * windy) * uStill) * ${FLOW_CYCLE.toFixed(2)};
   float phase = noise(vWorld / (uGrid * ${FLOW_PHASE.span.toFixed(1)})) * ${FLOW_PHASE.amount.toFixed(2)}, pa = fract(uTime / ${FLOW_CYCLE.toFixed(2)} + phase), pb = fract(pa + 0.5), wa = 1.0 - abs(2.0 * pa - 1.0), wb = 1.0 - wa;
   // A fall: it comes down to the line where it lands, near its foot, a strong one thrown a little further out; below that is the pool it lands in.
   float land = mix(0.78, 0.86, uStrength), way = 0.0, landed = 0.0;
   if (uStreak > 0.5) { way = clamp((dot(vWorld, uDown) - uRun.x) / max(1.0, uRun.y - uRun.x), 0.0, 1.0) + (noise(vWorld / (uGrid * 0.7)) - 0.5) * 0.06; landed = smoothstep(land - 0.025, land + 0.05, way); }
-  vec2 slope = waves(4.6 * uSwell, drift * 0.55, pa, pb, wa, wb, 0.0) * (0.035 + 0.09 * uWind) + waves(1.5 * uSwell, drift, pa, pb, wa, wb, 0.61) * (0.05 + 0.16 * uWind);
+  vec2 slope = waves(4.6 * uSwell, drift * 0.55, pa, pb, wa, wb, 0.0) * (0.035 + 0.09 * windy) + waves(1.5 * uSwell, drift, pa, pb, wa, wb, 0.61) * (0.05 + 0.16 * windy);
 #if FULL
-  slope += waves(0.48 * uSwell, drift * 1.5, pa, pb, wa, wb, 0.23) * (0.025 + 0.2 * uWind);
+  slope += waves(0.48 * uSwell, drift * 1.5, pa, pb, wa, wb, 0.23) * (0.025 + 0.2 * windy);
 #endif
   if (landed > 0.0) {
     // The pool's own waves, round and slow, carried gently on from where it lands.
@@ -92,7 +139,33 @@ void main(){
     slope = mix(slope, pool, landed);
   }
   slope *= (1.0 + 0.7 * flowed.z * min(uCurrent, 2.0) * (1.0 - landed)) * (0.45 + 0.55 * smoothstep(0.0, 0.5, deep)) * calm * uRough;
-  float rough = length(slope), crest = 0.0;
+  float rough = length(slope), crest = 0.0, swell = 0.0;
+  float depth = flowed.x, bore = 0.0, spray = 0.0, surfCrest = 0.0;
+  vec2 heave = vec2(0.0); // a swell's tilt: it shades the water and bends what is under it, but is too broad to glint, or a whole crest would flash
+  if (uSea > 0.5) {
+    // The sea: long swells rolling before the wind, shorter ones crossing them, their lines bent a little so none runs straight. Each only ever moves its own way, so nothing shears.
+    vec2 w = vWorld / uGrid, one = uSwellDir, two = normalize(uSwellDir + vec2(0.7, -0.4)), three = normalize(uSwellDir + vec2(-0.5, 0.6));
+    float bent = noise(w * 0.35) * 3.5, lift = (0.09 + 0.16 * windy) * calm;
+    float a1 = dot(w, one) * 1.1 - uTime * 1.05 + bent, a2 = dot(w, two) * 1.9 - uTime * 1.4 + bent * 0.7, a3 = dot(w, three) * 3.1 - uTime * 1.8 + bent * 0.4;
+    heave = (one * cos(a1) + two * cos(a2) * 0.6 + three * cos(a3) * 0.35) * lift * (0.35 + 0.65 * smoothstep(0.0, 0.8, mask.b));
+    swell = pow(0.5 + 0.5 * sin(a1), 8.0) + 0.5 * pow(0.5 + 0.5 * sin(a2), 10.0);
+    // Coming in over the shallows, as real waves do. Slowed by them, the crests swing round to lie along the shore. They crowd and steepen as it shoals, in sets, one surface, so where they meet they are simply one.
+    vec2 e = vec2(uGrid * 0.3) / uBox.zw, toDeep = vec2(texture2D(uFlow, uv + vec2(e.x, 0.0)).r - texture2D(uFlow, uv - vec2(e.x, 0.0)).r, texture2D(uFlow, uv + vec2(0.0, e.y)).r - texture2D(uFlow, uv - vec2(0.0, e.y)).r);
+    float grade = length(toDeep), surf = (1.0 - smoothstep(0.55, 0.95, depth)) * smoothstep(0.002, 0.02, grade); toDeep /= max(grade, 0.001);
+    heave *= 1.0 - surf;
+    // (All of this turned off the grid and bent: noise on the grid runs in straight lines, which would cut a wave off square.)
+    vec2 turnA = vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8), turnB = vec2(w.x * 0.38 + w.y * 0.92, w.y * 0.38 - w.x * 0.92), bentA = turnA + (noise(turnB * 1.1) - 0.5) * 0.6;
+    float shoal = sqrt(depth + 0.02), wander = noise(turnA * 0.22) * 2.2 + noise(turnB * 0.7 + 4.0) * 0.6, phase = shoal * 26.0 + uTime * 1.25 + wander;
+    float sets = 0.55 + 0.45 * sin(uTime * 0.19 - shoal * 2.0 + noise(w * 0.16) * 4.0), rip = smoothstep(0.2, 0.62, noise(vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8) * 0.28 + 7.0));
+    heave -= toDeep * sin(phase) * (0.05 + 0.13 * (1.0 - depth)) * (0.6 + 0.4 * windy) * surf * sets * calm;
+    surfCrest = pow(0.5 + 0.5 * cos(phase), 1.0 + 3.0 * (1.0 - depth)) * surf * sets;
+    // Where it gets too shallow they break: foam along the wave's front, running in with it, trailing away behind.
+    float behind = fract((phase + (noise(bentA * 2.4) - 0.5) * 0.85 + (noise(turnB * 6.5 + bentA) - 0.5) * 0.5 + (noise(bentA * 17.0) - 0.5) * 0.28) / 6.28318), breaking = (1.0 - smoothstep(0.34, 0.62, depth)) * smoothstep(0.02, 0.1, depth);
+    bore = max(pow(1.0 - smoothstep(0.0, 0.72, behind), 1.5), smoothstep(0.965, 1.0, behind)) * breaking * (0.45 + 0.55 * sets) * (0.5 + 0.5 * rip) * calm;
+    // Spray torn off the crest, on whichever side of it the wind blows to: seawards behind it, or ashore ahead of it.
+    float blown = dot(uWindDir, toDeep);
+    spray = max(exp(-behind * 5.0) * max(blown, 0.25), smoothstep(0.86, 0.985, behind) * max(-blown, 0.25)) * breaking * (0.45 + 0.55 * sets) * (0.5 + 0.5 * rip) * calm * (0.35 + 0.65 * windy);
+  }
 #if FULL
   if (landed > 0.0) {
     // Where it hits, each stretch of the fall throws out rings across the pool, in the water's real surface, so they bend what is under them and catch the light.
@@ -114,26 +187,67 @@ void main(){
   }
 #endif
   // The map seen through it, bent; deep water holds less of its bed and more of its own colour.
-  vec2 seen = vWorld + slope * uGrid * 0.55 * (0.4 + 0.6 * deep);
+  vec2 seen = vWorld + (slope + heave) * uGrid * 0.55 * (0.4 + 0.6 * deep);
   vec3 col;
   if (uBedSize > 0.0) {
-    // Its painted floor, sampled twice so it does not read as a repeat.
-    vec2 tile = seen / uBedSize;
-    col = mix(texture2D(uBed, tile).rgb, texture2D(uBed, vec2(tile.y, -tile.x) * 0.93 + 0.37).rgb, smoothstep(0.38, 0.62, noise(seen / (uGrid * 3.0))));
+    // Its painted floor, sampled twice so it does not read as a repeat. A painted water floor gives only its colour (the blurred picture): its waves are drawn in it, and these are the real ones. A floor under the water keeps its detail.
+    vec2 tile = seen / uBedSize; float blur = uBedColour > 0.5 ? 7.0 : 0.0;
+    col = mix(texture2D(uBed, tile, blur).rgb, texture2D(uBed, vec2(tile.y, -tile.x) * 0.93 + 0.37, blur).rgb, smoothstep(0.38, 0.62, noise(seen / (uGrid * 3.0))));
   } else {
     col = texture2D(uMap, clamp((seen - uMapRect.xy) / uMapRect.zw, 0.0, 1.0)).rgb;
     col = mix(col, col * vec3(0.72, 0.86, 0.9) + vec3(0.004, 0.016, 0.022), deep * 0.55 * calm);
   }
+  if (uSea > 0.5) {
+    // Sea water: its own colour over what lies under it, paler over the shallows, dark in its troughs and lit along its crests.
+    float shallow = 1.0 - smoothstep(0.08, 0.85, depth);
+    col = mix(col, mix(vec3(0.02, 0.11, 0.17), vec3(0.09, 0.4, 0.41), shallow * shallow), 0.62 * calm);
+    col *= 1.0 + (min(swell, 1.0) * 0.28 * (1.0 - shallow) - 0.06 + surfCrest * 0.2) * calm;
+  }
+  // Fish, under it all: bent by the waves as the bed is, dim and soft, fainter the deeper; the light, the glare and the foam all go over them.
+  for (int i = 0; i < ${MOST_FISH}; i++) {
+    if (float(i) >= uFishCount) break;
+    vec4 fish = uFish[i]; vec2 off = seen - fish.xy;
+    if (dot(off, off) > fish.w * fish.w * 1300.0) continue;
+    float turnC = cos(fish.z), turnS = sin(fish.z); vec2 q = vec2(turnC * off.x + turnS * off.y, turnC * off.y - turnS * off.x) / fish.w;
+    float bendAt = max(q.y + 20.0, 0.0) / 52.0; q.x -= uFishSwing[i] * bendAt * bendAt * 7.0;
+    float along = (q.y + 4.0) / (q.y < -4.0 ? 16.0 : 24.0), wide = 5.4 * sqrt(max(0.0, 1.0 - along * along)), hazy = uSea > 0.5 ? depth : deep, soft = 1.2 + 1.6 * hazy, fin = clamp((q.y - 18.0) / 14.0, 0.0, 1.0);
+    float body = 1.0 - smoothstep(wide - soft, wide + soft, abs(q.x)), tail = (1.0 - smoothstep(1.4 + 4.4 * fin * fin - soft, 1.4 + 4.4 * fin * fin + soft, abs(q.x))) * smoothstep(15.0, 18.0, q.y) * (1.0 - smoothstep(30.0, 33.0, q.y));
+    col = mix(col, col * vec3(0.36, 0.44, 0.48), max(body, tail) * uFishDim * (1.0 - 0.45 * hazy) * calm);
+  }
+  // How much sun or moon gets here, past walls, roofs and trees.
+  float sunHere = uSun * sunReach(vWorld);
+  // A low sun's sky lying on the water: warmer the lower it stands.
+  float evening = clamp((0.62 - uSunColor.b) / 0.45, 0.0, 1.0) * sunHere;
+  col = mix(col, col * vec3(1.3, 0.95, 0.74) + vec3(0.075, 0.03, 0.0), evening * 0.4);
   // The sky on what tilts away from the eye.
   vec3 n = normalize(vec3(-slope, 1.0));
-  col += mix(vec3(0.4, 0.46, 0.5), uSunColor, 0.35) * smoothstep(0.02, 0.24, rough) * 0.1 * (0.25 + 0.75 * uSun);
+  col += mix(vec3(0.4, 0.46, 0.5), uSunColor, 0.35) * smoothstep(0.02, 0.24, rough) * 0.1 * (0.25 + 0.75 * sunHere);
   // Each wave lit on the side toward the light and dark on the other, so it can be seen moving wherever the glare is not.
-  col *= 1.0 + clamp(dot(slope, uToSun) * 2.0, -0.26, 0.26) * (0.3 + 0.7 * uSun) * (uStreak > 0.5 ? 0.3 : 1.0);
+  col *= 1.0 + clamp(dot(slope + heave * (uSea > 0.5 ? 0.55 : 1.6), uToSun) * 2.4, -0.34, 0.34) * (0.3 + 0.7 * sunHere) * (uStreak > 0.5 ? 0.3 : 1.0);
   // Glare: a long path lying toward the light, tightest across it; what the waves tilt into that path flashes.
   vec2 rel = (vWorld - uGlare) / (uGrid * 5.0), across = vec2(-uToSun.y, uToSun.x);
-  float face = normalize(vec3(-slope * 1.5 - uToSun * dot(rel, uToSun) * 0.28 - across * dot(rel, across) * 1.4, 1.0)).z;
+  float face = normalize(vec3(-slope * 1.5 - uToSun * dot(rel, uToSun) * 0.28 - across * dot(rel, across) * (uSea > 0.5 ? 2.6 : 1.4), 1.0)).z;
   // (Falling water is too broken to hold a long glare.)
-  col += uSunColor * (pow(face, 520.0) * 0.6 + pow(face, 27.0) * 0.012) * uSun * (uStreak > 0.5 ? 0.35 : 1.0);
+  if (uSea > 0.5) {
+    // Glitter is the waves themselves: a wavelet flashes while it is tilted just so, sending the sun to the eye. Wavelets lie across the way to the sun, so the flashes are slivers lying across its path, of every size. Mid-path most faces do it and they run together into one bright sheet; further out only the steep ones, so it breaks into ribbons, then single flecks. Calm gathers it tight, a gale throws it wide.
+    float gust = clamp(uWind, 0.0, 1.0);
+    vec2 away = uToSun * dot(rel, uToSun) * 0.22 + across * dot(rel, across) * (1.6 - 0.5 * gust);
+    if (length(away) < 1.2 + gust && sunHere > 0.0) {
+    vec2 lying = vec2(dot(vWorld, uToSun), dot(vWorld, across)) / uGrid, drifted = vec2(dot(uWindDir, uToSun), dot(uWindDir, across)) * uTime;
+    // (Bent, and at sizes that never line up, or the wave map's repeats show as rows.)
+    vec2 bent_ = lying + (vec2(noise(lying * 0.7), noise(lying * 0.7 + 9.0)) - 0.5) * 0.55 + (vec2(noise(lying * 2.3 + 4.0), noise(lying * 2.3 + 13.0)) - 0.5) * 0.12;
+    vec2 broad = bent_ * vec2(1.9, 0.83) + drifted * vec2(0.8, 0.3), fine_ = bent_ * vec2(5.1, 2.2) - drifted * vec2(1.6, 0.6) + 0.37;
+    vec2 wavelet = ((texture2D(uWaves, broad).xy * 2.0 - 1.0) + (texture2D(uWaves, fine_).xy * 2.0 - 1.0) * 0.6) * (0.5 + 0.75 * gust) * calm;
+    float core = 1.0 - smoothstep(0.0, 0.3 + 0.2 * gust, length(away));
+    // Some stretches of water are catching it and some not, so it comes in drifts.
+    float catching = smoothstep(0.3, 0.7, noise(lying * 0.9 + drifted * 0.08) * 0.6 + noise(lying * 2.7 - drifted * 0.15) * 0.4);
+    float reach = (0.036 + 0.075 * catching + 0.13 * core * core) * (1.0 + 0.6 * gust);
+    float miss = length(slope * (1.3 - 0.7 * gust) + heave * 0.55 + wavelet + away), flash = smoothstep(reach, reach * 0.15, miss); flash *= sqrt(flash);
+    // White where it burns, the sun's own colour as it thins, so a low sun lays down gold. Soft to its bright middle, not cut out.
+    col = mix(col, mix(uSunColor, vec3(1.0), (0.1 + 0.55 * core) * uSunColor.b), min(1.0, flash * (0.8 + 0.35 * core) * sqrt(sunHere)));
+    }
+    col += mix(uSunColor, vec3(0.62, 0.8, 1.0), 0.45 * uSunColor.b) * (pow(face, 60.0) * 0.11 + pow(face, 27.0) * 0.035) * sunHere;
+  } else col += uSunColor * (pow(face, 520.0) * 0.28 + pow(face, 27.0) * 0.012) * sunHere * (uStreak > 0.5 ? 0.35 : 1.0);
   // A flame near: glints on the waves, the way it lies.
   for (int i = 0; i < ${MOST_LIGHTS}; i++) {
     if (float(i) >= uLightCount) break;
@@ -145,12 +259,40 @@ void main(){
 #if FULL
   // Small water lapping at the bank.
   float lap = (sin(deep * 26.0 + uTime * (1.1 + 1.6 * uWind) + noise(vWorld / (uGrid * 0.5)) * 9.0) * 0.5 + 0.5) * smoothstep(0.45, 0.7, noise(vWorld / (uGrid * 0.7) + uTime * 0.05));
-  col += vec3(0.5, 0.54, 0.55) * smoothstep(0.7, 1.0, lap) * (1.0 - smoothstep(0.1, 0.75, deep)) * mask.r * 0.07 * (0.25 + 0.75 * max(uSun, min(1.0, uLightCount))) * calm;
+  col += vec3(0.5, 0.54, 0.55) * smoothstep(0.7, 1.0, lap) * (1.0 - smoothstep(0.1, 0.75, deep)) * mask.r * 0.07 * (0.25 + 0.75 * max(sunHere, min(1.0, uLightCount))) * calm;
 #endif
+  // The sea's own shore: a waterline that wanders in from the region's edge, so no straight side of the region shows, with a tide that breathes a little. With a beach there is sand up to it, darkening as it nears the water; without one the map's own ground.
+  float seaEdge = 1.0, afloat = 1.0, offshore = 1.0, swashed = 1.0, waterline = 0.04;
+  if (uSea > 0.5) {
+    vec2 w = vWorld / uGrid;
+    float line = shoreLine(w, mask.b), tide = 0.19 + sin(uTime * 0.22) * 0.012;
+    float lap = tide + sin(uTime * 0.7 + noise(w * 1.1) * 6.0) * 0.012, under = smoothstep(lap, lap + 0.2, line);
+    // What foam may be where. Breakers and spray only on the water, whitecaps only out past the shallows; only a wave already running in goes on up the wet sand, and never onto the dry.
+    waterline = lap; afloat = smoothstep(lap, lap + 0.05, line); offshore = smoothstep(lap + 0.25, lap + 0.55, line); swashed = smoothstep(lap - 0.08, lap - 0.03, line);
+    if (uBeach > 0.5) {
+    // Dry sand: soft drifts of paler and darker, with only the faintest fine grain, turned off the grid so it can't weave.
+    vec2 turned = vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8);
+    float drift = noise(turned * 0.9) * 0.5 + noise(turned * 2.6 + 4.0) * 0.32 + noise(turned * 7.0 + 9.0) * 0.18, fineSand = noise(turned * 17.0) * 0.6 + noise(turned.yx * 39.0 + 2.0) * 0.4;
+    vec3 sand = mix(vec3(0.54, 0.46, 0.33), vec3(0.73, 0.64, 0.47), drift) * (0.965 + 0.07 * fineSand);
+    if (uSandSize > 0.0) { vec2 tile = vWorld / uSandSize; sand = mix(texture2D(uSand, tile).rgb, texture2D(uSand, vec2(tile.y, -tile.x) * 0.93 + 0.37).rgb, smoothstep(0.38, 0.62, noise(turned * 0.8))) * (0.86 + 0.28 * drift); }
+    // Wet near the water: dark and a little glossy, the sky's blue in it.
+    float wet = smoothstep(tide + 0.0, tide - 0.1 - 0.05 * noise(w * 2.2), line);
+    sand = mix(sand * vec3(0.5, 0.49, 0.47) + vec3(0.01, 0.018, 0.025), sand, wet);
+    // Over the shallows the sand shows through, fading out as the water deepens.
+    vec3 shallows = mix(sand * vec3(0.72, 0.9, 0.9) + vec3(0.01, 0.04, 0.045), col, under);
+    col = mix(sand, shallows, smoothstep(lap - 0.008, lap + 0.012, line));
+    }
+    // The thin lip of the water, always coming and going.
+    col = mix(col, vec3(0.84, 0.88, 0.88), (1.0 - smoothstep(0.0, 0.011, abs(line - lap - 0.005))) * (0.35 + 0.5 * smoothstep(0.3, 0.6, noise(w * 7.0 + uTime * 0.25))) * calm);
+    // Into the land: broken up, not a line.
+    if (uBeach > 0.5) { vec2 turned = vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8); seaEdge = smoothstep(0.0, (0.06 + 0.09 * uSoft) * (0.65 + 0.7 * noise(turned * 1.4)), mask.b + mask.b * (noise(turned * 6.0) - 0.5) * 0.5); }
+    // No beach: the water simply ends at its waterline, as soft as its edge softness, the map's ground showing through the shallows.
+    else seaEdge = smoothstep(lap - 0.008 - 0.04 * uSoft, lap + 0.012 + 0.04 * uSoft, line) * (0.4 + 0.6 * under);
+  }
   // Where it runs hard it breaks white: flat on top of the water, after its light, as foam has no waves of its own.
   if (uFoam > 0.0) {
     // Foam: soft clots of bubbles. A fall has it only at its foot, where it lands, boiling in place; the stronger the stream the further up it reaches.
-    float clots, foam;
+    float clots, foam = 0.0, foamTone = 1.0;
     if (uStreak > 0.5) {
       vec2 at = vWorld / (uGrid * 0.22);
       clots = noise(at + uTime * vec2(0.3, 0.2)) * 0.55 + noise(at * 2.2 + 11.0 - uTime * vec2(0.25, 0.4)) * 0.3 + noise(at * 4.9 + 23.0 + uTime * vec2(-0.4, 0.3)) * 0.15;
@@ -174,12 +316,56 @@ void main(){
     } else {
       vec2 at = vWorld / (uGrid * 0.2), byA = at - drift * pa / (uGrid * 0.2), byB = at - drift * pb / (uGrid * 0.2) + 7.3;
       clots = (noise(byA) * 0.6 + noise(byA * 2.3 + 11.0) * 0.4) * wa + (noise(byB) * 0.6 + noise(byB * 2.3 + 11.0) * 0.4) * wb;
-      foam = smoothstep(0.62 - 0.14 * uFoam, 0.82, clots + rough * 1.1) * uFoam * 0.85;
+      if (uSea > 0.5) {
+        // Surf: lines running in to the shore, breaking as they come, and whitecaps on the swells as the wind rises.
+        float surf = sin(mask.b * 20.0 + uTime * (1.0 + 0.8 * windy) + noise(vWorld / (uGrid * 1.3)) * 6.0) * 0.5 + 0.5;
+        vec2 w = vWorld / uGrid; float run = dot(w, uSwellDir), wide = dot(w, vec2(-uSwellDir.y, uSwellDir.x));
+        // Whitecaps: short streaks along the crests, here and there.
+        float streak = noise(vec2(run * 9.0 - uTime * 1.2, wide * 1.9)), here = smoothstep(0.5, 0.68, noise(vec2(wide * 0.9 + 3.0, run * 0.5 - uTime * 0.15)));
+        float caps = smoothstep(0.7, 0.86, streak) * here * smoothstep(0.55, 1.05, swell) * (0.1 + 0.2 * uWind);
+        // Waves up the shore: each comes in whole and draws back, a stretch of shore at a time, its foam going with it, breaking up into lace behind its front. The distance from the shore wanders, so no line follows the region's edge.
+        float shoreAway = shoreLine(w, mask.b), merged = 1.25, power = 0.0, strike = 0.0;
+        // All the waves make one surface: where they meet, their fronts run together into one line, and so does their foam, nothing drawn over anything.
+        for (float i = 0.0; i < 2.5; i += 1.0) {
+          float every = (9.0 + i * 4.0) / (0.75 + 0.5 * uWind), at = uTime / every + i * 0.37, u = fract(at), seed = floor(at) + i * 7.0, size = 0.55 + 0.45 * fract(sin(seed * 12.9) * 437.5), left = swashFoam(u);
+          float lobe = smoothstep(0.22, 0.78, noise(w * 0.42 + seed * 3.1)), front = mix(1.25, mix(1.0, 0.12, swashRun(u) * size * (0.35 + 0.65 * lobe)), smoothstep(0.0, 0.25, left));
+          merged = waveJoin(merged, front, 0.16);
+          power = 1.0 - (1.0 - power) * (1.0 - left * exp(-pow((shoreAway - front) / 0.32, 2.0)));
+          // Where a wave reaches the shore it strikes: late in its run, along its front, in bursts here and there, different ones each wave.
+          float rush = smoothstep(0.12, 0.3, u) * (1.0 - smoothstep(0.42, 0.6, u)) * smoothstep(0.35, 0.65, noise(vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8) * 1.3 + seed * 5.3));
+          strike = max(strike, rush * size * exp(-pow((shoreAway - front) / 0.08, 2.0)));
+        }
+        float off = shoreAway - merged, wash = 0.0;
+        if (off >= -0.03 && power > 0.002) {
+          float gaps = smoothstep(0.3, 0.62, noise(w * 1.1 + uTime * vec2(0.03, -0.02)) + 0.2 * power), reach = noise(w * 0.42 + 9.0);
+          // (Well out, the distance from the shore stops counting: no wash there, only near land.)
+          wash = power * gaps * smoothstep(-0.03, 0.0, off) * pow(1.0 - smoothstep(0.0, 0.26 + 0.24 * reach, off), 1.4) * (1.0 - smoothstep(0.62, 0.86, mask.b));
+        }
+        // All of it is one foam: however many waves made it, it is one web, only as new as the newest of them. The water it has just churned stays paler for a while.
+        caps *= offshore; wash *= swashed; bore *= afloat; spray *= afloat;
+        // Only at the very waterline: out on the water nothing has hit anything yet.
+        strike *= (1.0 - smoothstep(waterline + 0.02, waterline + 0.15, shoreAway)) * smoothstep(waterline - 0.15, waterline - 0.07, shoreAway);
+        spray = max(spray, strike * 0.3);
+        float fresh = 1.0 - (1.0 - min(caps, 1.0)) * (1.0 - min(wash, 1.0)) * (1.0 - min(bore, 1.0)) * (1.0 - min(strike, 1.0) * 0.5);
+        if (fresh > 0.01) { col = mix(col, col * 0.7 + vec3(0.16, 0.2, 0.2), fresh * 0.5 * min(uFoam, 1.0) * calm); vec2 web = foamWeb(w, fresh); foam = web.x * 0.97 * uFoam; foamTone = web.y; }
+        if (strike > 0.01) {
+          // The splash: droplets thrown off it, in and out in a moment, and a little mist over it.
+          float cells = 24.0 / max(uPix, 1.0), reach = (0.04 + 0.11 * noise(w * 5.0 + uTime * 0.8)) * min(strike * 1.4, 1.0);
+          float drops = (1.0 - smoothstep(reach, reach + max(0.05, cells), bubbles(w * 24.0 + 3.0, uTime * 2.6).x)) * (1.0 - smoothstep(0.3, 0.6, cells));
+          foam = 1.0 - (1.0 - foam) * (1.0 - drops * min(strike * 1.6, 1.0) * 0.75 * uFoam) * (1.0 - strike * 0.08 * noise(w * 2.1 + uTime * vec2(0.5, -0.4)) * uFoam);
+        }
+        if (spray > 0.01) {
+          // Fine strands running with the wind, going faster than the water, each only for a moment; a little mist among them.
+          float down = dot(w, uWindDir), across = dot(w, vec2(-uWindDir.y, uWindDir.x)) + (noise(w * 1.2 + 3.0) - 0.5) * 0.5;
+          float strands = noise(vec2(down * 1.3 - uTime * 1.6, across * 26.0)) * noise(vec2(down * 0.5 - uTime * 0.7 + 3.0, across * 9.0 + 9.0));
+          foam = 1.0 - (1.0 - foam) * (1.0 - min(spray, 1.0) * smoothstep(0.3, 0.5, strands) * 0.55 * uFoam);
+        }
+      } else foam = smoothstep(0.2, 0.45, rough) * smoothstep(0.42, 0.62, clots) * uFoam * 0.85;
     }
-    col = mix(col, vec3(0.86, 0.9, 0.92) * (0.93 + 0.1 * clots), min(1.0, foam) * calm);
+    col = mix(col, uSea > 0.5 ? vec3(0.93, 0.96, 0.97) * foamTone : vec3(0.86, 0.9, 0.92) * (0.93 + 0.1 * clots), min(1.0, foam) * calm);
   }
   // Where it has frozen, the map's own water is under the ice; this stops and fades.
-  float a = smoothstep(0.0, 0.5, mask.r) * calm;
+  float a = smoothstep(0.0, 0.5, mask.r) * calm * seaEdge;
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -232,16 +418,23 @@ export function waveSheet(size = 512) {
 const runOf = (areas, angle) => { const cx = Math.cos(angle), cy = Math.sin(angle); let lo = Infinity, hi = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { const d = area[i] * cx + area[i + 1] * cy; lo = Math.min(lo, d); hi = Math.max(hi, d); } return [lo, hi]; };
 const boxOf = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return Number.isFinite(x0) ? { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) } : null; };
 // The region's shape on a small canvas, its holes left out, blurred by `blur` px; its coverage, one number a pixel.
-const shapeOf = (areas, box, k, blur) => {
-  const w = Math.max(2, Math.ceil(box.w * k)), h = Math.max(2, Math.ceil(box.h * k)), canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+const shapeOf = (areas, box, k, blur, beyond = null) => {
+  const w = Math.max(2, Math.ceil(box.w * k)), h = Math.max(2, Math.ceil(box.h * k)), room = Math.ceil(blur * 3), canvas = document.createElement('canvas'); canvas.width = w + room * 2; canvas.height = h + room * 2; // (Room round it: a blur stops at the edge of what it is drawn on, which would make a shore of the map's edge.)
   const x = canvas.getContext('2d', { willReadFrequently: true }); x.filter = blur > 0 ? `blur(${blur}px)` : 'none'; x.fillStyle = '#fff'; x.beginPath();
-  const trace = (points) => { x.moveTo((points[0] - box.x) * k, (points[1] - box.y) * k); for (let i = 2; i + 1 < points.length; i += 2) x.lineTo((points[i] - box.x) * k, (points[i + 1] - box.y) * k); x.closePath(); };
+  const trace = (points) => { x.moveTo((points[0] - box.x) * k + room, (points[1] - box.y) * k + room); for (let i = 2; i + 1 < points.length; i += 2) x.lineTo((points[i] - box.x) * k + room, (points[i + 1] - box.y) * k + room); x.closePath(); };
   for (const area of areas) { trace(area); for (const hole of area.holes ?? []) trace(hole); }
   x.fill('evenodd');
-  const data = x.getImageData(0, 0, w, h).data, one = new Uint8Array(w * h);
+  if (beyond) { const far = Math.max(w, h) * 4; x.beginPath(); x.rect(-far, -far, w + far * 2, h + far * 2); x.rect((beyond.x - box.x) * k + room, (beyond.y - box.y) * k + room, beyond.width * k, beyond.height * k); x.fill('evenodd'); }
+  const data = x.getImageData(room, room, w, h).data, one = new Uint8Array(w * h);
   for (let i = 0; i < one.length; i++) one[i] = data[i * 4 + 3];
   return { w, h, data: one };
 };
+// How far from its shore a sea is, as a picture of a box, in its blue, for a look to stop at its waterline. (No shore past the map's edge, `map`.)
+export function seaShore(PIXI, areas, box, grid, map = null) {
+  const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), shore = shapeOf(areas, box, k, grid * k * 1.5, map), pixels = new Uint8ClampedArray(shore.w * shore.h * 4);
+  for (let i = 0; i < shore.data.length; i++) { const away = (shore.data[i] - 128) * 2; pixels[i * 4 + 2] = away; pixels[i * 4 + 3] = 255; }
+  return textureOf(PIXI, pixels, shore.w, shore.h);
+}
 const textureOf = (PIXI, pixels, w, h, options = {}) => {
   const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
   canvas.getContext('2d').putImageData(new ImageData(pixels, w, h), 0, 0);
@@ -249,47 +442,57 @@ const textureOf = (PIXI, pixels, w, h, options = {}) => {
 };
 
 /**
- * The layer. sync(list, { floor, quality }): `list` the water to move as [{ id, areas, kind, angle, current, roofed, keeps, bed: { texture, key, edge } }], `floor` the map's picture
+ * The layer. sync(list, { floor, quality }): `list` the water to move as [{ id, areas, kind, angle, followsWind (no way of its own: the wind carries it, as fast as `current`), waves (the way a sea's waves go, radians; none: with the wind), map (a sea has no shore past the map's edge, { x, y, width, height }), current, roofed, keeps, bed: { texture, key, edge } }], `floor` the map's picture
  * { texture, rect }, `quality` 'full' or 'simple'. tick(seconds, { sky, view, lights, weather, flash, wind, angle, mostLights }) while `busy`.
  * addRing({ x, y, size }) for what steps in it; has(id); clear().
  */
 export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
-  const known = new Map(), rings = new Float32Array(MOST_RINGS * 4).fill(-99), ringKeeps = new Array(MOST_RINGS).fill(false);
+  const known = new Map(), fishes = new Float32Array(MOST_FISH * 4), swings = new Float32Array(MOST_FISH), rings = new Float32Array(MOST_RINGS * 4).fill(-99), ringKeeps = new Array(MOST_RINGS).fill(false);
   let sheet = null, clock = 0, skyAt = 0, lightsAt = 0, nextRing = 0, flashing = false, lights = floorLights(), floorNow = null, qualityNow = 'full';
+  // A scene with no map picture still has water: deep water's own colour under the waves.
+  let plainWater = null;
+  const plainFloor = () => { if (!plainWater || plainWater.baseTexture?.destroyed) plainWater = textureOf(PIXI, new Uint8ClampedArray([16, 58, 72, 255]), 1, 1); return { texture: plainWater, rect: { x: 0, y: 0, width: 1, height: 1 } }; };
   const sheetOf = () => { if (!sheet || sheet.baseTexture?.destroyed) sheet = textureOf(PIXI, waveSheet(512), 512, 512, { wrapMode: PIXI.WRAP_MODES.REPEAT, mipmap: PIXI.MIPMAP_MODES.ON }); return sheet; };
   const drop = (entry) => { try { entry.mesh.parent?.removeChild(entry.mesh); entry.mesh.destroy(); entry.mask.destroy(true); entry.flow.destroy(true); } catch { /* gone with the canvas */ } };
   const make = (spec) => {
     const size = grid() || 100, box = boxOf(spec.areas), motion = WATER_MOTION[spec.kind] ?? WATER_MOTION.still;
     if (!box) return null;
-    // Where it is (red) and how far in from its bank (green).
+    // Where it is (red), how far in from its bank (green), and for the sea how far from its shore (blue).
     const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), crisp = shapeOf(spec.areas, box, k, spec.bed ? Math.max(2, size * k * (spec.bed.edge ?? 1) * 0.35) : 2), wide = shapeOf(spec.areas, box, k, size * k * 0.36), pixels = new Uint8ClampedArray(crisp.w * crisp.h * 4);
-    for (let i = 0; i < crisp.data.length; i++) { pixels[i * 4] = crisp.data[i]; pixels[i * 4 + 1] = (wide.data[i] - 128) * 2; pixels[i * 4 + 3] = 255; }
+    const shore = motion.sea ? shapeOf(spec.areas, box, k, size * k * 1.5, spec.map) : null;
+    for (let i = 0; i < crisp.data.length; i++) { pixels[i * 4] = crisp.data[i]; pixels[i * 4 + 1] = (wide.data[i] - 128) * 2; pixels[i * 4 + 2] = shore ? (shore.data[i] - 128) * 2 : 255; pixels[i * 4 + 3] = 255; }
     const mask = textureOf(PIXI, pixels, crisp.w, crisp.h);
-    const f = Math.min(0.05, 256 / Math.max(box.w, box.h)), soft = shapeOf(spec.areas, box, f, size * f * 0.9), flow = textureOf(PIXI, flowField(motion.streak ? soft.data.fill(255) : soft.data, soft.w, soft.h, spec.angle), soft.w, soft.h);
+    const f = Math.min(0.05, 256 / Math.max(box.w, box.h)), soft = shapeOf(spec.areas, box, f, size * f * 0.9), flowPixels = flowField(motion.streak ? soft.data.fill(255) : soft.data, soft.w, soft.h, spec.angle);
+    // A sea keeps in its red how deep it is: how far from a real shore, up to some squares out.
+    if (motion.sea) { const deep = shapeOf(spec.areas, box, f, size * f * 3.5, spec.map); for (let i = 0; i < deep.data.length; i++) flowPixels[i * 4] = (deep.data[i] - 128) * 2; }
+    const flow = textureOf(PIXI, flowPixels, soft.w, soft.h);
     const points = [box.x, box.y, box.x + box.w, box.y, box.x + box.w, box.y + box.h, box.x, box.y + box.h];
     const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', new PIXI.Buffer(new Float32Array(points), true), 2).addIndex(new Uint16Array([0, 1, 2, 0, 2, 3]));
-    const uniforms = { uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uBedSize: spec.bed?.texture ? size * 4 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, uStill: motion.streak ? 0 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
+    const uniforms = { uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
     const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, fragOf(qualityNow === 'full'), uniforms));
     mesh.eventMode = 'none'; root().addChild(mesh);
     skyAt = 0;
-    return { mesh, mask, flow, box, roofed: !!spec.roofed, keeps: !!spec.keeps };
+    return { mesh, mask, flow, box, roofed: !!spec.roofed, keeps: !!spec.keeps, waves: Number.isFinite(spec.waves) ? [Math.cos(spec.waves), Math.sin(spec.waves)] : null };
   };
   return {
     sync(list = [], { floor = null, quality = 'full' } = {}) {
-      const wanted = floor?.texture?.valid ? list : [], changedLook = quality !== qualityNow || floor?.texture !== floorNow?.texture;
-      qualityNow = quality; floorNow = floor;
+      const picture = floor?.texture?.valid ? floor : list.length ? plainFloor() : null, wanted = picture ? list : [], changedLook = quality !== qualityNow || picture?.texture !== floorNow?.texture;
+      qualityNow = quality; floorNow = picture;
       const seen = new Set();
       for (const spec of wanted) {
         seen.add(spec.id);
-        const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), spec.angle, spec.current, spec.kind, spec.bed?.key ?? null, spec.bed?.edge ?? null, !!spec.bed?.texture, quality]), had = known.get(spec.id);
+        const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), spec.angle, spec.current, spec.kind, !!spec.followsWind, spec.waves ?? null, spec.map ?? null, spec.beach !== false, !!spec.sand, spec.edge ?? 1, spec.bed?.key ?? null, spec.bed?.edge ?? null, !!spec.bed?.texture, quality]), had = known.get(spec.id);
         if (had && had.key === key && !changedLook) { had.roofed = !!spec.roofed; had.keeps = !!spec.keeps; continue; }
         if (had) { drop(had); known.delete(spec.id); }
-        try { const entry = make(spec); if (entry) { entry.key = key; known.set(spec.id, entry); } } catch (error) { console.warn('Animater | moving water', error); }
+        try { const entry = make(spec); if (entry) { entry.key = key; entry.areas = spec.areas; known.set(spec.id, entry); } } catch (error) { console.warn('Animater | moving water', error); }
       }
       for (const [id, entry] of known) if (!seen.has(id)) { drop(entry); known.delete(id); }
     },
-    tick(seconds, { sky = () => null, view = () => null, lights: sources = () => [], weather = () => null, flash = () => null, wind = 0, angle = 0.6, mostLights = MOST_LIGHTS } = {}) {
+    tick(seconds, { sky = () => null, view = () => null, lights: sources = () => [], weather = () => null, flash = () => null, wind = 0, angle = 0.6, mostLights = MOST_LIGHTS, fish = () => null, shade = () => null } = {}) {
       clock += seconds;
+      const shadeNow = shade();
+      const swimming = fish(), fishCount = Math.min(MOST_FISH, swimming?.list?.length ?? 0);
+      for (let i = 0; i < fishCount; i++) { const o = swimming.list[i]; fishes[i * 4] = o.x; fishes[i * 4 + 1] = o.y; fishes[i * 4 + 2] = o.a; fishes[i * 4 + 3] = o.scale; swings[i] = o.swing; }
       const struck = flash(), lookUp = clock >= skyAt || !!struck || flashing; flashing = !!struck;
       if (lookUp) skyAt = clock + SKY_EVERY;
       const seen = view(), sky_ = lookUp ? (weather() ?? {}) : null, light = lookUp ? (struck ? { ...skyForFloors(struck), color: [0.85, 0.9, 1] } : skyForFloors(sky(), sky_.clouds)) : null;
@@ -302,7 +505,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
         const w = entry.mesh.shader.uniforms;
         if (light) { w.uSun = entry.roofed ? 0 : light.shine; w.uToSun = light.toSun; w.uSunColor = light.color; w.uGlare = glareAt(box, light); w.uFrozen = entry.keeps ? 0 : Math.min(1, Math.max(0, (Number(sky_.ice) || 0) * 2 - 0.2)); }
         if (!entry.mesh.visible) continue;
-        w.uTime = clock; w.uWind = entry.roofed ? 0.02 : wind; w.uWindDir = dir; w.uLights = lights.lights; w.uLightColors = lights.colors; w.uLightCount = lights.count;
+        if (shadeNow) { w.uSunlit = shadeNow.sunlit; w.uTreeShade = shadeNow.trees; w.uSceneRect = shadeNow.rect; } w.uFishCount = fishCount; w.uFishDim = swimming?.dim ?? 1; w.uPix = w.uGrid * (entry.mesh.worldTransform?.a || 1); w.uTime = clock; w.uWind = entry.roofed ? 0.02 : wind; w.uWindDir = dir; w.uSwellDir = entry.waves ?? dir; w.uLights = lights.lights; w.uLightColors = lights.colors; w.uLightCount = lights.count;
       }
     },
     addRing({ x, y, size = 0.7, keep = true } = {}) {
@@ -313,6 +516,12 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
     },
     has: (id) => known.has(id),
     clear() { for (const entry of known.values()) drop(entry); known.clear(); floorNow = null; rings.fill(-99); },
+    // Whether this draws the water at a point, so that what swims there is drawn in it, under the surface, rather than on top.
+    holds(x, y) {
+      const within = (p) => { let on = false; for (let i = 0, j = p.length - 2; i + 1 < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) on = !on; return on; };
+      for (const { box, areas } of known.values()) { if (x < box.x || y < box.y || x > box.x + box.w || y > box.y + box.h) continue; if (areas?.some((a) => within(a) && !(a.holes ?? []).some(within))) return true; }
+      return false;
+    },
     get busy() { return known.size > 0; },
     get count() { return known.size; },
   };

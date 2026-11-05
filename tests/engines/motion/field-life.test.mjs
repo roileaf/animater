@@ -1,9 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deerStep, foxStep, butterflyStep, dragonflyStep, owlPlace, turnToward, clearWay } from '../../../scripts/engines/motion/field-life.mjs';
+import { deerStep, foxStep, butterflyStep, dragonflyStep, owlPlace, turnToward, clearWay, batLamps } from '../../../scripts/engines/motion/field-life.mjs';
 
 const deer = (over = {}) => ({ x: 0, y: 0, a: 0, mode: 'graze', wait: 5, t: 0, way: 0, want: 0, v: 0, gait: 0, lift: 0, h: 0, ...over });
 const fox = (over = {}) => ({ x: 0, y: 0, a: 0, want: 0, mode: 'trot', t: 0, wait: 5, v: 0, gait: 0, way: 0, h: 0, ...over });
+
+test('bats gather at a lamp out of doors, never at a light someone carries', () => {
+  const post = { x: 100, y: 100, carried: false }, torch = { x: 300, y: 100, carried: true }, hearth = { x: 500, y: 100, carried: false };
+  const open = (l) => l.x < 400;
+  assert.deepEqual(batLamps([post, torch, hearth], open), [post], 'the lamp in the open only: not the torch, not the one indoors');
+  assert.deepEqual(batLamps([torch], open), [], 'a torch alone draws none');
+  assert.deepEqual(batLamps([post, torch]), [post], 'open everywhere when nothing says otherwise');
+});
 
 test('a turn goes the short way and only so far', () => {
   assert.ok(Math.abs(turnToward(0, 1, 0.1) - 0.1) < 1e-9);

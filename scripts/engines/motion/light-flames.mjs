@@ -6,8 +6,11 @@
 
 import { flameMesh, flicker, flameTint, tintFlame } from './held-torch.mjs';
 
-// Whether a tile drawn now covers a place (pure): flames are drawn over the darkness, so nothing else hides one under a roof or a tree. `tiles` [{ elevation, alpha, visible, covers(point) }], by the tile's own picture so a gap in the leaves is open; a roof that has faded for someone inside hides nothing, nor does one below the fire.
-export const underTile = (tiles, point, elevation = 0) => tiles.some((t) => t.visible !== false && Number(t.elevation) > Number(elevation) && (t.alpha ?? 1) >= 0.3 && t.covers(point));
+// Whether a tile drawn now covers a place (pure): flames are drawn over the darkness, so nothing else hides one under a roof or a tree. `tiles` [{ elevation, alpha, visible, covers(point), fixtureReach? }], by the tile's own picture so a gap in the leaves is open; a roof that has faded for someone inside hides nothing, nor does one below the fire.
+// A map's foreground picture holds wall sconces as well as roofs, and a torch light stands right on its sconce. With `fixtureReach` (px) it hides a fire only if it also covers most of the ground around it, as a roof does and a sconce on a wall does not. A tile a GM has placed is taken at its word, however small.
+const FIXTURE_AROUND = 6;
+const coversAround = (t, { x, y }, reach) => { let n = 0; for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4; if (t.covers({ x: x + Math.cos(a) * reach, y: y + Math.sin(a) * reach })) n++; } return n >= FIXTURE_AROUND; };
+export const underTile = (tiles, point, elevation = 0) => tiles.some((t) => t.visible !== false && Number(t.elevation) > Number(elevation) && (t.alpha ?? 1) >= 0.3 && t.covers(point) && (!(t.fixtureReach > 0) || coversAround(t, point, t.fixtureReach)));
 
 // How much of a tile is drawn at a place (pure). Foundry fades a roof in its shader and leaves the tile's own alpha alone, so this reads what the shader does: `state` the tile's occlusion amounts { fade, radial, vision }, whole for a fade, and for the other two only where a creature below the tile reaches: `reaches` [{ elevation, radial(point), vision(point) }].
 export const tileDrawnAt = ({ alpha = 1, unoccludedAlpha = 1, occludedAlpha = 0, elevation = 0, state = {} } = {}, reaches = [], point = null) => {

@@ -151,7 +151,7 @@ export function shorePixels(field) {
 // ---- The crabs --------------------------------------------------------------------------------------------------------
 // One step of a crab (pure): stands (`still`), then scuttles sideways (`scuttle`) along its `side`, facing `a` (0 up the map, clockwise); `ok(x, y)` the wet sand it keeps to.
 // Anyone within 2 squares and it digs in (`dive`, `hide` 0-1 how far under), stays down (`under`) until they have gone 3 squares off, and comes back up (`up`).
-export function crabStep(crab, { dt = 1 / 60, grid = 100, near = [], ok = () => true, random = Math.random } = {}) {
+export function crabStep(crab, { dt = 1 / 60, grid = 100, near = [], ok = () => true, random = Math.random, along = null } = {}) {
   const c = { ...crab }, within = (r) => near.some((t) => Math.hypot(t.x - c.x, t.y - c.y) < grid * r);
   if (c.mode === 'under') {
     c.hide = 1; c.left -= dt;
@@ -171,16 +171,20 @@ export function crabStep(crab, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   }
   c.left -= dt;
   if (c.mode === 'still') {
-    if (c.left <= 0) { c.mode = 'scuttle'; c.side = random() < 0.5 ? -1 : 1; c.left = between(random, 0.5, 1.6); c.a += between(random, -0.5, 0.5); }
+    if (c.left <= 0) { c.mode = 'scuttle'; c.side = random() < 0.5 ? -1 : 1; c.left = between(random, 0.5, 1.6); c.a = along ? along(c.x, c.y) + between(random, -0.35, 0.35) : c.a + between(random, -0.5, 0.5); }
     return c;
   }
   // Left where the sand is by the tide going out: over to where it is now.
   if (!ok(c.x, c.y)) { const out = wayOut(c, grid * 0.5, ok); if (out !== null) { c.a = out - Math.PI / 2; c.side = 1; } }
   const speed = grid * 0.9, wayX = Math.cos(c.a) * c.side, wayY = Math.sin(c.a) * c.side, nx = c.x + wayX * speed * dt, ny = c.y + wayY * speed * dt;
-  if (ok(nx + wayX * grid * 0.1, ny + wayY * grid * 0.1) || !ok(c.x, c.y)) { c.x = nx; c.y = ny; } else c.side = -c.side;
+  if (ok(nx + wayX * grid * 0.1, ny + wayY * grid * 0.1) || !ok(c.x, c.y)) { c.x = nx; c.y = ny; } else { c.side = -c.side; if (along) c.a = along(c.x, c.y); } // met the edge of its sand: off along the shore the other way
   if (c.left <= 0) { c.mode = 'still'; c.left = between(random, 0.6, 3); }
   return c;
 }
+// Where the crabs keep on a beach drawn inside the water's own region (water-engine.mjs): its sand, by distance from the edge (pure), in the terms of tideBand.
+export const beachBand = (grid = 100) => ({ line: -0.4 * grid, width: 0.34 * grid });
+// How far from the edge of such a region the water really starts, for what lives in it: past the sand and the shallows, however far the waterline wanders.
+export const beachKeepOff = (grid = 100) => 0.75 * grid;
 // Where the crabs start (pure): on the shore's stretches by length, up on the land side into the wet.
 export function crabSpots(field, edges, { count = 3, line = 0, width = 60, grid = 100, random = Math.random } = {}) {
   const out = []; let total = 0;
@@ -289,13 +293,13 @@ function crabPicture(step) {
 }
 
 /**
- * The layer: build({ seas (flat points, each with its `holes`), grid, bounds (the scene's rect; a sea drawn up to it has no shore there), crabs (how many; a few by the shore's length if left out) });
+ * The layer: build({ seas (flat points, each with its `holes`), grid, bounds (the scene's rect; a sea drawn up to it has no shore there), crabs (how many; a few by the shore's length if left out), creaturesOnly (only the crabs, on a beach another layer draws) });
  * look({ tide -1..1, wind 0-1, windAngle radians, light 0-1, frozen }); tick(seconds, { near [{ x, y }], view { x, y, w, h }, seen(x, y), sound(kind, { x, y }, urgent), cast(x, y, opts) }); clear().
  * `floor()` the container it goes in. `render` is taken for the same shape as the other water layers; the shore's picture is worked on the CPU, so it is not called.
  */
 export function createCoast({ PIXI, floor, render = () => {} }) {
   void render;
-  let mesh = null, uniforms = null, texture = null, field = null, grid = 100, asked = null, swell = null, crabs = [], time = 0, look = 0, art = null;
+  let mesh = null, uniforms = null, texture = null, field = null, grid = 100, asked = null, swell = null, crabs = [], time = 0, look = 0, art = null, creaturesOnly = false;
   let state = { tide: 0, wind: 0.3, windAngle: 0, light: 1, frozen: false }, drift = [0, 0];
   const textures = () => {
     if (art && !art[0].baseTexture?.destroyed) return art;
@@ -316,9 +320,11 @@ export function createCoast({ PIXI, floor, render = () => {} }) {
     try { mesh?.parent?.removeChild(mesh); mesh?.destroy(); texture?.destroy(true); } catch { /* gone */ }
     mesh = uniforms = texture = field = swell = null; crabs = []; drift = [0, 0];
   };
+  // The crabs' strip: the tide's wet sand, or a beach another layer draws.
+  const bandNow = () => (creaturesOnly ? beachBand(grid) : tideBand(state.tide, grid));
   const hideCrabs = () => { for (const c of crabs) c.body.visible = c.shadow.visible = false; };
-  const build = ({ seas = [], grid: g = 100, bounds = null, crabs: wanted, random = Math.random } = {}) => {
-    clear(); grid = g; asked = { seas, grid: g, bounds, crabs: wanted, random };
+  const build = ({ seas = [], grid: g = 100, bounds = null, crabs: wanted, random = Math.random, creaturesOnly: only = false } = {}) => {
+    clear(); grid = g; creaturesOnly = only; asked = { seas, grid: g, bounds, crabs: wanted, random, creaturesOnly: only };
     if (!seas.length) return;
     field = shoreField(seas, { bounds, grid });
     if (!field) return;
@@ -333,7 +339,7 @@ export function createCoast({ PIXI, floor, render = () => {} }) {
     dress(); dressWaves();
     const edges = shoreEdges(seas, { bounds, grid }); let shore = 0;
     for (let i = 0; i < edges.length; i += 4) shore += Math.hypot(edges[i + 2] - edges[i], edges[i + 3] - edges[i + 1]);
-    const count = wanted ?? Math.min(6, Math.max(2, Math.round(shore / (grid * 18)))), band = tideBand(state.tide, grid);
+    const count = wanted ?? Math.min(6, Math.max(2, Math.round(shore / (grid * 18)))), band = bandNow();
     if (count > 0) { const t = textures(); crabs = crabSpots(field, edges, { count, line: band.line, width: band.width, grid, random }).map((c) => ({ ...c, body: null, shadow: sprite(t[0], true), phase: random() * 6 })); for (const c of crabs) c.body = sprite(t[0]); }
   };
   return {
@@ -343,19 +349,21 @@ export function createCoast({ PIXI, floor, render = () => {} }) {
       if (mesh?.destroyed && asked) build(asked);
       if (!mesh) return;
       const { x, y, w, h } = field.rect, shows = !view || (x < view.x + view.w && x + w > view.x && y < view.y + view.h && y + h > view.y);
-      mesh.visible = shows;
+      mesh.visible = shows && !creaturesOnly;
       if (!shows) { hideCrabs(); return; }
       if (state.frozen) { hideCrabs(); return; }
       const dt = Math.min(0.1, seconds); time += dt; uniforms.uTime = time;
       swell = swellStep(swell, { dt, wind: state.wind }); dressWaves();
       drift[0] += (Math.cos(state.windAngle) * (0.02 + state.wind * 0.08) * dt); drift[1] += (Math.sin(state.windAngle) * (0.02 + state.wind * 0.08) * dt); uniforms.uDrift = drift;
       if (!crabs.length) return;
-      const band = tideBand(state.tide, grid), t = textures(), k = grid / 100;
+      const band = bandNow(), t = textures(), k = grid / 100;
       const ok = (cx, cy) => { const on = shoreAt(field, cx, cy) + band.line; return on < -grid * 0.05 && on > -band.width + grid * 0.05; };
+      // The way the shore runs here: across how its distance changes. A crab goes along it, not up and down the beach.
+      const shoreWay = (cx, cy) => { const e = grid * 0.25; return Math.atan2(shoreAt(field, cx + e, cy) - shoreAt(field, cx - e, cy), -(shoreAt(field, cx, cy + e) - shoreAt(field, cx, cy - e))); };
       const fall = shadowKeeper(cast ?? (() => ({ dx: grid * 0.015, dy: grid * 0.025, alpha: 0.5 })), time);
       look -= dt; const looking = look <= 0; if (looking) look = 0.2;
       crabs = crabs.map((c0) => {
-        const c = crabStep(c0, { dt, grid, near, ok });
+        const c = crabStep(c0, { dt, grid, near, ok, along: shoreWay });
         if (c.mode === 'dive' && c0.mode !== 'dive') sound('crabDive', { x: c.x, y: c.y }, false);
         if (looking) { try { c.seen = seen(c.x, c.y) !== false; } catch { c.seen = true; } }
         const inView = !view || (c.x > view.x && c.y > view.y && c.x < view.x + view.w && c.y < view.y + view.h);

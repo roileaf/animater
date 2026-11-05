@@ -212,6 +212,10 @@ function owlPicture(span) {
 const fireflyPicture = () => picture(64, 64, (x) => { const g = x.createRadialGradient(0, 0, 0, 0, 0, 32); g.addColorStop(0, 'rgba(232,245,130,1)'); g.addColorStop(0.22, 'rgba(190,222,80,0.55)'); g.addColorStop(1, 'rgba(140,190,40,0)'); x.fillStyle = g; x.fillRect(-32, -32, 64, 64); });
 const WINGS = [['#c9702e', '#a9591f', '#2a1c12'], ['#dcd9c6', '#c9c5ae', '#4f4b3e'], ['#c9b24a', '#ad9636', '#3e3518']];
 
+// The lights the bats hunt round (pure): a lamp that stays put and draws insects, out in the open (`open(light)`, indoors false);
+// never a light someone carries (`carried`: a token's torch), which walks off before anything gathers at it.
+export const batLamps = (lights = [], open = () => true) => lights.filter((l) => !l.carried && open(l));
+
 /**
  * The layer: populate({ spots, waters, deer, foxes, butterflies, dragonflies, fireflies, owl, grid, area, deerSize, foxSize, insectSize, birdSize });
  * tick(seconds, { near, ok(kind, x, y), blocked, seen(x, y), day, night, warm, sun, view, sound(kind, at, urgent), cast, prey, lamps() });
@@ -339,7 +343,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           if (dark > 0.3 && Math.random() < dt * 0.1) sound('owlHoot', p, false);
         } else { hide(o); if (dark > 0.5 && area && (o.wait -= dt) <= 0) { o.t = 0; o.wait = 40 + Math.random() * 60; o.way = Math.random() * TAU; o.cx = area.x + area.width * (0.3 + Math.random() * 0.4); o.cy = area.y + area.height * (0.3 + Math.random() * 0.4); o.far = Math.hypot(area.width, area.height) * 1.1; sound('owlHoot', { x: o.cx, y: o.cy }, false); } }
       }
-      // Bats round the lamps out of doors, by night: one of the lights nearest the view holds up to three of them.
+      // Bats round the lamps out of doors, by night (batLamps: no carried light): one of the lights nearest the view holds up to three of them.
       const wantBats = dark > 0.3 ? lamps() : [];
       if (wantBats.length && !bats.length) { const t2 = batTex(); bats = Array.from({ length: Math.min(6, wantBats.length * 3) }, (_, i) => ({ lamp: Math.floor(i / 3), a: Math.random() * TAU, r: between(Math.random, 0.5, 1.05), v: between(Math.random, 1.2, 2.2) * (i % 2 ? 1 : -1), w: Math.random() * 6, body: sprite(high(), t2[0]), shadow: sprite(highShadow(), t2[0], true) })); }
       for (const b of bats) {

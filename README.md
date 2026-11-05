@@ -30,7 +30,7 @@ Animater combines visual effects, cosmetic token movement, optional sound and **
    `https://github.com/roileaf/animater/releases/latest/download/module.json`
    For a specific version, use the manifest attached to that version on the [releases page](https://github.com/roileaf/animater/releases).
 2. Activate Sequencer, a JB2A pack and Animater in your world.
-3. Open **Game Settings → Animater → Open Animater** (or the wand in Token Controls, or **Alt+Shift+A**).
+3. Open **Game Settings → Animater → Open Animater** (or the wand in the Animater controls, or **Alt+Shift+A**).
 4. Open a catalog and enable it with **Use entire catalog** or the corresponding **Use … catalog** button. To enable one entry, select it and choose **Use animation**. Automatic playback is off until you enable it.
 5. Cast, attack or use the enabled ability normally. For a canvas preview, select a caster token first and target any affected creatures.
 
@@ -235,7 +235,7 @@ Open **Configure Settings → Animater → Animater settings**. The window has a
 
 | Setting | Scope | What it does |
 |---|---|---|
-| Show Animater scene control button | Each player | Shows the Animater button in the token controls. Turn off to hide it; Alt+Shift+A still opens Animater (on by default) |
+| Show Animater scene control button | Each player | Shows the Animater button in the Animater controls (for players, in the Token controls). Turn off to hide it; Alt+Shift+A still opens Animater (on by default) |
 | Minimize Animater during canvas playback | Each player | Local preview and Play at table minimize the Animater window while the animation runs, then restore it (on by default) |
 | Explain animations on hover | Each player | Hovering a token shows what Animater is playing on it right now: each animation's name, whether it comes from a catalog or a recipe, and whether it lasts (on by default) |
 | Faster animations (this device) | Each player | Makes animations cheaper for your computer to draw, with no change in how they look. Covers every module that plays animations through Sequencer, not only Animater. In combat it also loads the next creature’s animations ahead of its turn, and it skips tiny details you could not see at your current zoom. Only your screen is affected. Turn this off if an animation from any module looks wrong (on by default) |

@@ -1,5 +1,5 @@
 // Life on the water: ducks paddling and dabbling that clatter up from anyone near, a heron standing still in the shallows
-// until someone comes too close, gulls wheeling over open water, and frogs on lily pads that puff their throats and leap in
+// until someone comes too close, gulls gliding over open water, and frogs on lily pads that puff their throats and leap in
 // with a plop. Drawn once, seen from above, then only moved, turned and swapped; a few dozen small shapes on the CPU at most,
 // and nothing drawn where nobody looks. Every screen has its own: nothing here is saved or shared.
 
@@ -39,11 +39,14 @@ export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   return q;
 }
 
-// One step of a gull (pure): wheels over the water and now and then folds into a dive at a fish it can see, hits the water (`hit`, once) and has it or not (`got`), and climbs back to
-// its circle with it. `h` its height, 1 up there and 0 at the water; `x`, `y`, `angle` where it is and the way it heads. Fish are { x, y, view }, followed as they swim.
-export function gullStep(gull, { dt = 1 / 60, grid = 100, fish = [], random = Math.random } = {}) {
-  const g = { ...gull }; g.hit = false; g.a += g.v * dt;
-  const ox = g.cx + Math.cos(g.a) * g.r, oy = g.cy + Math.sin(g.a) * g.r * 0.75, wasX = g.x ?? ox, wasY = g.y ?? oy;
+// One step of a gull (pure): glides about over the water in long loose lines and wide uneven turns, now and then hangs on the wind facing into it, and stays over its own stretch of water
+// (`cx`, `cy`, `rx`, `ry`). Now and then it folds into a dive at a fish it can see, hits the water (`hit`, once) and has it or not (`got`), and climbs away with it. `air` is the wind: { angle, the way it blows, strength 0-1 }. `h` its height, 1 up there and 0 at the water; `x`, `y`, `angle` where it is and the way it heads. Fish are { x, y, view }, followed as they swim.
+export function gullStep(gull, { dt = 1 / 60, grid = 100, fish = [], air = null, random = Math.random } = {}) {
+  const g = { ...gull }; g.hit = false;
+  g.x ??= g.cx; g.y ??= g.cy; g.way ??= random() * Math.PI * 2; g.turn ??= 0; g.wantTurn ??= 0; g.turnIn ??= between(random, 2, 6); g.speed ??= grid * 0.9; g.hang ??= 0;
+  const wasX = g.x, wasY = g.y, ox = g.x, oy = g.y;
+  // On its way out of a dive it keeps flying the way it was, so there is nothing to climb back to.
+  const fly = () => { g.x += Math.cos(g.way) * g.speed * dt; g.y += Math.sin(g.way) * g.speed * dt; };
   if (g.mode === 'dive') {
     g.t += dt;
     const now = fish.find((f) => f.view === g.prey);
@@ -54,10 +57,25 @@ export function gullStep(gull, { dt = 1 / 60, grid = 100, fish = [], random = Ma
   } else if (g.mode === 'rise') {
     g.t += dt;
     const u = Math.min(1, g.t / 1.4), e = u * (2 - u);
-    g.x = g.at.x + (ox - g.at.x) * e; g.y = g.at.y + (oy - g.at.y) * e; g.h = e;
-    if (u >= 1) g.mode = 'wheel';
+    fly(); g.h = e;
+    if (u >= 1) g.mode = 'glide';
   } else {
-    g.mode = 'wheel'; g.x = ox; g.y = oy; g.h = 1; g.huntIn = (g.huntIn ?? between(random, 12, 40)) - dt;
+    g.mode = 'glide'; g.h = 1; g.huntIn = (g.huntIn ?? between(random, 12, 40)) - dt;
+    const blow = air?.strength ?? 0, turnTo = (aim, most) => { const off = Math.atan2(Math.sin(aim - g.way), Math.cos(aim - g.way)); g.way += Math.max(-most * dt, Math.min(most * dt, off)); };
+    // What it means to do next: a long easy curve, sometimes a wider bank, and in a wind sometimes to hang on it.
+    if ((g.turnIn -= dt) <= 0 && g.hang <= 0) {
+      g.turnIn = between(random, 3, 8);
+      if (air && random() < 0.08 + 0.3 * blow) g.hang = between(random, 3, 7);
+      else { const wide = random() < 0.25; g.wantTurn = between(random, wide ? 0.3 : 0.04, wide ? 0.55 : 0.2) * (random() < 0.5 ? -1 : 1); }
+    }
+    const rx = g.rx ?? g.r ?? grid * 4, ry = g.ry ?? g.r ?? grid * 4, out = Math.abs(g.x - g.cx) > rx || Math.abs(g.y - g.cy) > ry;
+    if (out) { g.hang = 0; turnTo(Math.atan2(g.cy - g.y, g.cx - g.x), 0.75); } // gone past its water: a turn back toward it
+    else if (g.hang > 0) { g.hang -= dt; turnTo((air?.angle ?? 0) + Math.PI, 0.6); }
+    else { g.turn += (g.wantTurn - g.turn) * Math.min(1, dt * 0.6); g.way += g.turn * dt; }
+    // Hanging it barely makes way over the water; gliding it goes along easily, the wind carrying it a little.
+    g.speed += ((g.hang > 0 ? 0.1 : 0.8 + 0.25 * Math.sin(g.way * 3 + g.turnIn)) * grid - g.speed) * Math.min(1, dt * 0.8);
+    fly();
+    if (air && g.hang <= 0) { g.x += Math.cos(air.angle) * blow * grid * 0.18 * dt; g.y += Math.sin(air.angle) * blow * grid * 0.18 * dt; }
     if (g.huntIn <= 0) {
       const seen = fish.filter((f) => Math.hypot(f.x - ox, f.y - oy) < grid * 7), prey = seen.reduce((best, f) => (!best || Math.hypot(f.x - ox, f.y - oy) < Math.hypot(best.x - ox, best.y - oy) ? f : best), null);
       g.huntIn = prey ? between(random, 18, 45) : between(random, 6, 14);
@@ -65,7 +83,7 @@ export function gullStep(gull, { dt = 1 / 60, grid = 100, fish = [], random = Ma
     }
   }
   // It turns to the way it is going rather than snapping round.
-  const dx = g.x - wasX, dy = g.y - wasY, want = Math.hypot(dx, dy) > 0.01 ? Math.atan2(dx, -dy) : (g.angle ?? 0), off = Math.atan2(Math.sin(want - (g.angle ?? want)), Math.cos(want - (g.angle ?? want)));
+  const dx = g.mode === 'glide' ? Math.cos(g.way) : g.x - wasX, dy = g.mode === 'glide' ? Math.sin(g.way) : g.y - wasY, want = Math.hypot(dx, dy) > 0.01 ? Math.atan2(dx, -dy) : (g.angle ?? 0), off = Math.atan2(Math.sin(want - (g.angle ?? want)), Math.cos(want - (g.angle ?? want)));
   g.angle = (g.angle ?? want) + off * Math.min(1, dt * 8);
   return g;
 }
@@ -132,7 +150,7 @@ export function frogStep(frog, { dt = 1 / 60, grid = 100, near = [], ok = () => 
 // ---- How they look ------------------------------------------------------------------------------------------------------
 const picture = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.translate(w / 2, h / 2); draw(x); return c; };
 const SPANS = [1, 0.9, 0.68, 0.42, 0.68, 0.9];
-const GULL = { reach: 78, chord: 21, feathers: 9, fw: 3, top: '#b4bac2', wing: '#a6adb6', feather: '#c5cbd2', tip: '#1d1f23', tail: '#eef0f2', body: 6, bodyLight: '#f6f7f8', bodyDark: '#cfd4d9', head: '#f4f5f6', beak: '#d2a53a', bill: 5, legs: null };
+const GULL = { reach: 58, chord: 19, feathers: 9, fw: 3, top: '#b4bac2', wing: '#a6adb6', feather: '#c5cbd2', tip: '#1d1f23', tail: '#eef0f2', body: 6, bodyLight: '#f6f7f8', bodyDark: '#cfd4d9', head: '#f4f5f6', beak: '#d2a53a', bill: 5, legs: null };
 const HERON = { reach: 84, chord: 30, feathers: 10, fw: 4.4, top: '#8a929b', wing: '#737c86', feather: '#7e8791', tip: '#2d3238', tail: '#6d757f', body: 7.5, bodyLight: '#a7aeb6', bodyDark: '#737b85', head: '#d7dadd', beak: '#b99a4c', bill: 11, legs: '#4b4e4a' };
 const DUCK = { reach: 46, chord: 15, feathers: 7, fw: 3, top: '#857a6a', wing: '#6e6557', feather: '#7a6f60', tip: '#2f2b26', tail: '#3d3a35', body: 8, bodyLight: '#a79c8b', bodyDark: '#6e6557', head: '#1f5a3c', beak: '#c8a73b', bill: 6, legs: null };
 const FROGS = [['#6f8a3c', '#2f4220', '#8d9561'], ['#8b8a44', '#44421f', '#a09a68'], ['#4f7a42', '#22391f', '#7f8f63']];
@@ -261,7 +279,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
   const put = (s, tex, x, y, angle, size, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(size); s.alpha = alpha; };
   const newDuck = (t, spot, i, random) => ({ x: spot.x, y: spot.y, a: random() * TAU, turn: 0, wait: random() * 2, hen: i % 2 === 1, mode: 'swim', up: 0, h: 0, phase: random() * 6, body: sprite(floor(), t.duck[0]), shadow: sprite(floor(), t.duck[0], true), ripple: sprite(floor(), t.wake[0]) });
   return {
-    populate({ waters = [], shore = [], pads = [], ducks: nDucks = 0, herons: nHerons = 0, gulls: nGulls = 0, grid: g = 100, birdSize: bs = 1, frogSize: fs = 1, random = Math.random } = {}) {
+    populate({ waters = [], shore = [], pads = [], ducks: nDucks = 0, herons: nHerons = 0, gulls: nGulls = 0, gullWaters = waters, grid: g = 100, birdSize: bs = 1, frogSize: fs = 1, random = Math.random } = {}) {
       drop(); grid = g; birdSize = bs; frogSize = fs; shown = 0; waterSpots = waters;
       if (!waters.length) return;
       if (!nDucks && !nHerons && !nGulls && !pads.length) return;
@@ -270,15 +288,18 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       if (nDucks) { const home = pick(waters), near = waters.filter((w) => Math.hypot(w.x - home.x, w.y - home.y) < grid * 4); ducks = Array.from({ length: nDucks }, (_, i) => newDuck(t, pick(near), i, random)); }
       const stands = shore.length ? shore : waters;
       herons = Array.from({ length: nHerons }, () => { const s = pick(stands); return { x: s.x, y: s.y, hx: s.x, hy: s.y, a: random() * TAU, mode: 'stand', wait: between(random, 2, 6), strike: 0, h: 0, t: 0, vx: 0, vy: 0, phase: random() * 6, body: sprite(floor(), t.heron[0]), shadow: sprite(floor(), t.heron[0], true), ripple: sprite(floor(), t.ring[0]) }; });
-      const cx = waters.reduce((n, w) => n + w.x, 0) / waters.length, cy = waters.reduce((n, w) => n + w.y, 0) / waters.length;
-      gulls = Array.from({ length: nGulls }, (_, i) => ({ cx: cx + between(random, -2, 2) * grid, cy: cy + between(random, -2, 2) * grid, r: grid * between(random, 2.2, 4), a: random() * TAU, v: between(random, 0.28, 0.42) * (i % 2 ? -1 : 1), phase: random() * 6, body: sprite(high(), t.gull[0]), shadow: sprite(highShadow(), t.gull[0], true) }));
+      // The gulls wheel over their own stretch of water: the sea, where there is one as well as a pond.
+      const over = gullWaters.length ? gullWaters : waters, cx = over.reduce((n, w) => n + w.x, 0) / over.length, cy = over.reduce((n, w) => n + w.y, 0) / over.length;
+      // (It starts its turn back while still over the water, so the turn itself doesn't carry it off the map.)
+      const rx = Math.max(grid, over.reduce((n, w) => Math.max(n, Math.abs(w.x - cx)), 0) - grid * 0.25), ry = Math.max(grid, over.reduce((n, w) => Math.max(n, Math.abs(w.y - cy)), 0) - grid * 0.25);
+      gulls = Array.from({ length: nGulls }, () => { const from = pick(over); return { cx, cy, rx, ry, x: from.x, y: from.y, way: random() * TAU, mode: 'glide', phase: random() * 6, body: sprite(high(), t.gull[0]), shadow: sprite(highShadow(), t.gull[0], true) }; });
       frogs = pads.map((p, i) => ({ x: p.x, y: p.y, hx: p.x, hy: p.y, a: between(random, -0.9, 0.9), coat: i % FROGS.length, mode: 'sit', wait: between(random, 1, 6), puff: 0, h: 0, t: 0, pad: sprite(floor(), t.pad[i % t.pad.length]), shadow: sprite(floor(), t.frog[0][0], true), body: sprite(floor(), t.frog[0][0]) }));
     },
     // Sends the gulls down at the nearest fish now, and the herons to look for one.
     fishNow() { gulls = gulls.map((g) => ({ ...g, huntIn: 0 })); herons = herons.map((b) => ({ ...b, wait: 0 })); return gulls.length + herons.length; },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null } = {}) {
+    tick(seconds, { air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -342,7 +363,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         return b;
       });
       gulls = gulls.map((g0) => {
-        const g = gullStep(g0, { dt, grid, fish: alpha > 0.5 ? fishNow : [] });
+        const g = gullStep(g0, { dt, grid, fish: alpha > 0.5 ? fishNow : [], air });
         const { x, y, angle } = g;
         if (g.mode === 'dive' && g0.mode !== 'dive') sound('gullCry', g, true);
         else if (alpha > 0.5 && Math.random() < dt * 0.1) sound('gullCry', g, false);
@@ -354,7 +375,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         }
         if (g.carry && (g.carryLeft -= dt) <= 0) { gone(g.carry); g.carry = null; }
         if (alpha <= 0.01 || !can(g, x, y)) { g.body.visible = g.shadow.visible = false; if (g.carry) g.carry.visible = false; return g; }
-        // Wings folded in the dive, beating hard climbing out, otherwise a wheel with a flap now and then.
+        // Wings folded in the dive, beating hard climbing out, otherwise a glide with a flap now and then.
         const frame = g.mode === 'dive' ? 0 : g.mode === 'rise' ? Math.floor(time * 12) % SPANS.length : (Math.floor(time * 1.6 + g.phase) % 5 === 0 ? Math.floor(time * 9) % SPANS.length : 0);
         const tex = t.gull[frame], c = fall(g, x, y, { width: grid * 0.6, lift: 1.7 * Math.max(0.04, g.h) }), near = 0.72 + 0.28 * g.h;
         g.open = overOpen(g.open, indoors(x, y), dt); g.shade = overOpen(g.shade, indoors(x + c.dx, y + c.dy), dt);

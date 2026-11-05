@@ -295,6 +295,22 @@ export function windowFlashes({ walls = [], indoors = [], grid = 100, height = 2
   return out;
 }
 
+// What light through windows is clipped to on this screen (pure): Foundry's own mask of what the viewer's vision reaches
+// past the walls (the shape it clips the lights to), while vision is in force. Null, all shown, for a GM with no token
+// selected or in a scene with persistent vision. The fog of war alone does not hide it: explored ground is only half covered.
+export function sightClip(cnv) {
+  const seen = cnv?.visibility;
+  if (!seen?.visible || cnv.visibilityOptions?.persistentVision) return null;
+  const mask = seen.vision?.light?.mask;
+  return mask && !mask.destroyed ? mask : null;
+}
+// Puts a layer behind that clip, or takes it out, as vision comes and goes.
+export function keepToSight(layer, cnv) {
+  if (!layer || layer.destroyed) return;
+  const clip = sightClip(cnv);
+  if (layer.mask !== clip) layer.mask = clip;
+}
+
 // The glows' layer: build({ glows, bounds, alpha, covers }) bakes them, brightest at the opening and fading over the
 // ground; its colour is the lights' (warm lamplight where they give none). `covers`: the tree and roof tiles over the
 // ground (each { texture, x, y, width, height, rotation, anchorX, anchorY, alpha }), where the glow does not show, their

@@ -2,7 +2,7 @@
 // list in Region configuration. Both save to the region's flags, which reach every screen.
 
 import { FLOORS } from '../engines/motion/movement-feel.mjs';
-import { WATER_KINDS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, STEP_EDGE, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
+import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
 
 const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -28,6 +28,8 @@ const slider_ = (label, range, value, words, change) => {
 const edgeSlider = (value, change) => slider_('Edge softness', STEP_EDGE, value, (v) => v.toFixed(1), change);
 // How much of the look this step puts down.
 const strengthSlider = (value, change) => slider_('Look strength', STEP_STRENGTH, value, (v) => `${Math.round(v * 100)}%`, change);
+// How big its pattern is: smaller for more of it, more panes of glass, more stones.
+const scaleSlider = (value, change) => slider_('Pattern size', STEP_SCALE, value, (v) => `${Math.round(v * 100)}%`, change);
 // A floor's texture styles, for the floor the region is on now.
 const styleChoice = (own, floor, save, make) => {
   const now = textureFloor(own, floor), row = element('label', 'an-step-slider', 'Texture style ');
@@ -82,13 +84,15 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
       const kind = waterKindOf(own), row = element('label', 'an-step-slider', 'Water '), toward = element('label', 'an-step-slider', 'Flows toward ');
       row.append(choice(WATER_KINDS, kind, 'Kind of water', (value) => act(waterKindFlags(own, value))));
       parts.push(row);
-      if (waterFlows(kind)) { toward.append(choice(WATER_TOWARD, own.flowTo || 's', 'Flows toward', (value) => act({ flowTo: value }))); parts.push(toward); }
+      if (kind === 'sea') { const waves = element('label', 'an-step-slider', 'Waves toward '); waves.append(choice([['', 'With the wind'], ...WATER_TOWARD], own.waveTo ?? '', 'Waves toward', (value) => act({ waveTo: value }))); parts.push(waves); parts.push(tick('Beach along the shore', own.seaBeach !== 'off', (on) => act({ seaBeach: on ? '' : 'off' }))); }
+      if (waterFlows(kind)) { toward.append(choice(flowChoices(kind), own.flowTo || 's', 'Flows toward', (value) => act({ flowTo: value }))); parts.push(toward); }
       if (movingWater(own) !== null) parts.push(tick('Moving water', movingWater(own), (on) => act({ movingWater: on ? '' : 'off' })));
     }
     if (activeStep(own) || own.stepHidden) parts.push(button(menu.hidden ? 'Show this step' : 'Hide this step', 'an-step-wide', () => act({ stepHidden: !menu.hidden })));
     parts.push(button(texture(own) ? 'Hide floor texture' : 'Show floor texture', 'an-step-wide', () => act({ texture: texture(own) ? 'off' : 'on' })));
     if (texture(own)) parts.push(styleChoice(own, floor, act, choice));
     if (menu.strength !== null) parts.push(strengthSlider(menu.strength, (value) => act(setStepStrength(own, floor, value))));
+    if (texture(own) || menu.strength !== null) parts.push(scaleSlider(menu.scale, (value) => act({ stepScale: value })));
     parts.push(edgeSlider(menu.edge, (value) => act({ stepEdge: value })));
     if (menu.grassy) parts.push(tick('Affected by season', season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(button('Edit steps…', 'an-step-wide', () => { close(); edit(doc); }));
@@ -139,7 +143,7 @@ export function stepsEditor({ doc, floor, flagsOf, save, season = () => false })
     takes.append(choice([['0', 'At once'], ['3', '3 seconds'], ['6', '6 seconds'], ['12', '12 seconds']], String(Number.isFinite(seconds) ? seconds : STEP_SECONDS), 'How long it takes', (v) => save(doc, { stepSeconds: Number(v) })));
     const painted = element('label', 'an-step-how', 'Floor texture ');
     painted.append(choice([['', 'As the scene says'], ['on', 'Paint it'], ['off', 'Don\'t paint it']], own.texture === 'on' || own.texture === 'off' ? own.texture : '', 'Floor texture', (v) => save(doc, { texture: v })));
-    const foot = element('div', 'an-step-foot'); foot.append(add, reset, how, takes, painted, styleChoice(own, floor, (flags) => Promise.resolve(save(doc, flags)).then(draw, draw), choice), edgeSlider(stepEdge(own), (value) => Promise.resolve(save(doc, { stepEdge: value })).then(draw, draw)));
+    const foot = element('div', 'an-step-foot'); foot.append(add, reset, how, takes, painted, styleChoice(own, floor, (flags) => Promise.resolve(save(doc, flags)).then(draw, draw), choice), scaleSlider(stepScale(own), (value) => Promise.resolve(save(doc, { stepScale: value })).then(draw, draw)), edgeSlider(stepEdge(own), (value) => Promise.resolve(save(doc, { stepEdge: value })).then(draw, draw)));
     if (list[current]?.look && list[current].look !== 'none') foot.append(strengthSlider(stepStrength(list[current]), (value) => Promise.resolve(save(doc, setStepStrength(own, floor, value))).then(draw, draw)));
     if (stepMenu(own, floor).grassy) foot.append(tick('Affected by season', season(own), (on) => Promise.resolve(save(doc, { season: on ? 'on' : 'off' })).then(draw, draw)));
     const heads = element('div', 'an-step-row an-step-heads');

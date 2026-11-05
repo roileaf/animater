@@ -204,3 +204,21 @@ test('the shader says what it uses', () => {
   const count = (s, c) => s.split(c).length - 1;
   assert.equal(count(COAST_SHADER.frag, '{'), count(COAST_SHADER.frag, '}'));
 });
+
+test('a crab goes along the shore when it can be told the way, and turns along it at the edge of its sand', async () => {
+  const { crabStep } = await import('../../scripts/engines/motion/coast.mjs');
+  const along = () => 0, still = { x: 0, y: 0, a: 1.5, side: 1, mode: 'still', left: 0, hide: 0 };
+  const off = crabStep(still, { dt: 0.01, along, random: () => 0.5 });
+  assert.equal(off.mode, 'scuttle');
+  assert.ok(Math.abs(off.a) < 0.4, 'heads along the shore');
+  const blocked = crabStep({ x: 0, y: 0, a: 1.5, side: 1, mode: 'scuttle', left: 1, hide: 0 }, { dt: 0.01, grid: 100, along, ok: (x, y) => y < 5 && (x !== 0 || y === 0) });
+  assert.equal(blocked.a, 0);
+  assert.equal(blocked.side, -1);
+});
+
+test('what lives in the water keeps well past the sand the crabs walk on', async () => {
+  const { beachBand, beachKeepOff } = await import('../../scripts/engines/motion/coast.mjs');
+  const band = beachBand(200);
+  assert.ok(beachKeepOff(200) > -band.line, 'beyond the far edge of the crabs\' sand');
+  assert.ok(beachKeepOff(200) >= 0.5 * 200, 'and beyond the furthest the waterline wanders');
+});

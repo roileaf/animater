@@ -208,3 +208,10 @@ test('the season colours a grass region only when it takes the season; fireflies
   assert.deepEqual(surfacesOf({ regions: [{ floor: 'grass', seasonal: true, polygons: [square] }] }).tinted, [square]);
   assert.equal(surfacesOf({ sceneFloor: 'grass' }).grassAll, true, 'a grassy scene is coloured whole, as ever');
 });
+
+test('snow or ice Animater paints has its own glints, so the map\'s sparkle leaves it alone', async () => {
+  const { surfacesOf } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const square = [0, 0, 100, 0, 100, 100, 0, 100];
+  assert.equal(surfacesOf({ regions: [{ floor: 'snow', polygons: [square] }] }).frozen.length, 1);
+  assert.equal(surfacesOf({ regions: [{ floor: 'ice', polygons: [square], painted: true }] }).frozen.length, 0);
+});

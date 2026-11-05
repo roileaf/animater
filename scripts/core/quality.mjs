@@ -45,10 +45,10 @@ export function lightenEffect(data, value, moduleName = 'animater') {
 }
 // Region floors at each level: painted looks and textures stay until Off; live light on them, then what moves on them, go first.
 const FLOOR_DETAIL = Object.freeze({
-  3: Object.freeze({ show: true, motion: true, blades: true, shine: true, sheen: true, lights: 6, water: 'full' }),
-  2: Object.freeze({ show: true, motion: false, blades: false, shine: true, sheen: false, lights: 2, water: 'simple' }),
-  1: Object.freeze({ show: true, motion: false, blades: false, shine: false, sheen: false, lights: 0, water: null }),
-  0: Object.freeze({ show: false, motion: false, blades: false, shine: false, sheen: false, lights: 0, water: null }),
+  3: Object.freeze({ show: true, motion: true, blades: true, shine: true, sheen: true, lights: 6, water: 'full', tile: 2048 }),
+  2: Object.freeze({ show: true, motion: false, blades: false, shine: true, sheen: false, lights: 2, water: 'simple', tile: 1024 }),
+  1: Object.freeze({ show: true, motion: false, blades: false, shine: false, sheen: false, lights: 0, water: null, tile: 1024 }),
+  0: Object.freeze({ show: false, motion: false, blades: false, shine: false, sheen: false, lights: 0, water: null, tile: 1024 }),
 });
 export const floorDetail = (value) => (value === 'light' ? { ...FLOOR_DETAIL[3], lights: 3 } : FLOOR_DETAIL[qualityRank(value)]);
 // Persistent state layers: how many states per token, and layers per state.

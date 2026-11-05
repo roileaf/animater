@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FLOOR_SHADERS, GRASS_BLADES, MOST_BLADES, MOST_PRESSES, bladeCount, createBladePresses, skyForFloors, swaysInWind } from '../../../scripts/engines/motion/floor-looks.mjs';
+import { BLADE_SHADERS, FLOOR_SHADERS, GRASS_BLADES, MOST_BLADES, MOST_PRESSES, bladeCount, createBladePresses, skyForFloors, swaysInWind } from '../../../scripts/engines/motion/floor-looks.mjs';
 import { STEP_LOOKS, TEXTURE_STYLES } from '../../../scripts/engines/motion/region-steps.mjs';
 
 test('every floor style has a painter of its own, with nothing left unfilled', () => {
@@ -33,6 +33,14 @@ test('every look has a painter of its own, with nothing left unfilled', () => {
 test('painted grass bends in the wind; hard floors do not', () => {
   assert.equal(swaysInWind('grass'), true);
   for (const floor of ['stone', 'wood', 'metal', 'glass', 'ice', 'pebbles']) assert.equal(swaysInWind(floor), false, floor);
+});
+
+test('a flame lights the blades facing it, in its colour, and throws their shadows away from it, even in the dark', () => {
+  const { BLADE_VERT, BLADE_FRAG, BLADE_SHADOW_VERT, BLADE_SHADOW_FRAG } = BLADE_SHADERS;
+  assert.ok(BLADE_VERT.includes('float flamesAt(out vec2 away, out vec3 glow)') && BLADE_VERT.includes('dot(across, away) * side'), 'lit on the side toward it');
+  assert.ok(BLADE_FRAG.includes('c *= 1.0 + vFlame'), 'in its colour');
+  assert.ok(BLADE_SHADOW_VERT.includes('mix(-uToSun * uReach, away, near)'), 'its shadow falls away from the flame');
+  assert.ok(BLADE_SHADOW_FRAG.includes('max(uStrength * sunReach(vWorld), vNear * 0.9)'), 'and shows with no sun');
 });
 
 test('every grass style has blades of its own', () => {
@@ -152,7 +160,13 @@ test('a floor answers the lit lights nearest the view, as many as it can take', 
 test('shiny looks say how they shine, the rest do not, and their shader is whole', async () => {
   const { lookShine } = await import('../../../scripts/engines/motion/floor-looks.mjs');
   for (const look of ['blood', 'oil', 'wet', 'frost', 'frozen', 'blackice', 'flooded', 'acid']) { assert.ok(look in STEP_LOOKS, look); const s = lookShine(look); assert.ok(s.gloss > 0 || s.glitter > 0, look); }
-  for (const look of ['moss', 'bones', 'burnt', 'none', 'constructor']) assert.equal(lookShine(look), null, look);
+  // Every look with a surface answers the light through its bumps, however dull; light and vapour have none, and nor does what is no look.
+  for (const look of ['moss', 'bones', 'burnt', 'ash']) { assert.ok(look in STEP_LOOKS, look); assert.ok(lookShine(look).relief > 0, look); }
+  // A stain lies flat: nothing raises it, however wet.
+  for (const look of ['blood', 'dried', 'oil']) { assert.equal(lookShine(look).relief, 0, look); assert.equal(lookShine(look).edge, 0, look); assert.equal(FLOOR_SHADERS.bodyOf(STEP_LOOKS[look]), 0, look); }
+  assert.equal(lookShine('moss').gloss, 0);
+  for (const look of ['burning', 'arcane', 'misty', 'none', 'constructor']) assert.equal(lookShine(look), null, look);
+  for (const frag of [FLOOR_SHADERS.SHOW_FRAG, FLOOR_SHADERS.SHEEN_FRAG, BLADE_SHADERS.BLADE_FRAG, BLADE_SHADERS.BLADE_SHADOW_FRAG]) assert.ok(frag.includes('sunReach(vWorld)'), 'the sun stops at walls, roofs and trees');
   assert.ok(!FLOOR_SHADERS.SHEEN_FRAG.includes('${'));
   assert.ok(FLOOR_SHADERS.SHEEN_FRAG.includes('uLights[' + FLOOR_SHADERS.MOST_FLOOR_LIGHTS + ']'));
 });
@@ -168,9 +182,11 @@ test('the moon is faint on what it lights, yet its reflection shows', () => {
 
 test('each quality level leaves less of the floors, cheapest last to go', async () => {
   const { floorDetail } = await import('../../../scripts/core/quality.mjs');
-  assert.deepEqual(floorDetail('full'), { show: true, motion: true, blades: true, shine: true, sheen: true, lights: 6, water: 'full' });
+  assert.deepEqual(floorDetail('full'), { show: true, motion: true, blades: true, shine: true, sheen: true, lights: 6, water: 'full', tile: 2048 });
   assert.equal(floorDetail('light').lights, 3);
   assert.ok(floorDetail('light').blades && floorDetail('light').sheen);
+  assert.equal(floorDetail('light').tile, 2048, 'floors stay sharp on Light');
+  assert.equal(floorDetail('balanced').tile, 1024, 'and take a quarter of the memory on Balanced');
   const balanced = floorDetail('balanced'); assert.ok(balanced.show && balanced.shine && !balanced.blades && !balanced.motion && !balanced.sheen && balanced.lights === 2);
   const low = floorDetail('low'); assert.ok(low.show && !low.shine && !low.sheen && !low.motion && low.lights === 0);
   assert.equal(floorDetail('off').show, false);
@@ -205,3 +221,14 @@ test('without that browser feature a shader is simply ready; one that fails says
   const warned = console.warn; console.warn = () => {};
   try { assert.equal(createBackgroundPrograms({ gl: fakeGl({ aside: false, links: false }), sourcesOf }).get('a'), false); } finally { console.warn = warned; }
 });
+
+test('the sun changes colour with its height, and the moon does not', async () => {
+  const { sunColour } = await import('../../../scripts/engines/motion/floor-looks.mjs');
+  const blue = (height) => skyForFloors({ strength: 1, angle: 0, height }).color[2];
+  assert.ok(blue(70) > blue(30) && blue(30) > blue(10) && blue(10) > blue(1), 'warmer the lower it stands');
+  assert.deepEqual(sunColour(90), sunColour(50), 'overhead it stops changing');
+  assert.deepEqual(sunColour(-5), sunColour(0), 'below the horizon it stays at its deepest');
+  assert.deepEqual(skyForFloors({ strength: 1, angle: 0, height: 5, moon: true }).color, [0.7, 0.8, 1]);
+  assert.deepEqual(skyForFloors({ strength: 1, angle: 0 }).color, sunColour(45), 'a sky with no height reads as mid-morning');
+});
+

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wallShadowQuads, wallShadowStrength, wallShadowReach, inWallShade, createWallShadows, WALL_SHADOW_CAP } from '../../../scripts/engines/motion/wall-shadows.mjs';
+import { wallShadowQuads, wallShadowStrength, wallShadowReach, inWallShade, createWallShadows, WALL_SHADOW_CAP, sightClip, keepToSight } from '../../../scripts/engines/motion/wall-shadows.mjs';
 
 const grid = 100;
 // A wall running north–south at x = 500, from y 0 to 400, blocking light normally.
@@ -319,4 +319,29 @@ test('a wall marked to cast no shadow throws none; the others still do', () => {
   assert.equal(wallShadowQuads({ walls: [wall(false)], sun, grid: 100, height: 2 }).length, 1);
   assert.equal(wallShadowQuads({ walls: [{ c: [100, 100, 100, 900], light: 20 }], sun, grid: 100, height: 2 }).length, 1, 'unset: as before');
   assert.equal(wallShadowQuads({ walls: [wall(true), { ...wall(false), c: [500, 100, 500, 900] }], sun, grid: 100, height: 2 }).length, 1);
+});
+
+// A canvas as far as the sight clip looks at it: `seeing` a token's vision in force on this screen.
+const sightCanvas = ({ seeing = true, persistent = false, mask = { destroyed: false } } = {}) => ({ visibility: { visible: seeing, vision: { light: { mask } } }, visibilityOptions: { persistentVision: persistent } });
+
+test('light through a window keeps to what the viewer sees: the vision mask while vision is in force', () => {
+  const mask = { destroyed: false };
+  assert.equal(sightClip(sightCanvas({ mask })), mask, 'a token selected, or a player: clipped to its sight');
+  assert.equal(sightClip(sightCanvas({ seeing: false, mask })), null, 'a GM with no token selected sees it all');
+  assert.equal(sightClip(sightCanvas({ persistent: true, mask })), null, 'a scene with persistent vision is not clipped');
+  assert.equal(sightClip(sightCanvas({ mask: { destroyed: true } })), null, 'never a mask gone with the last scene');
+  assert.equal(sightClip(sightCanvas({ mask: null })), null, 'no mask to use (the vision not drawn yet)');
+  assert.equal(sightClip(undefined), null, 'no canvas');
+});
+
+test('a layer is clipped as vision comes and goes, and a destroyed one is left alone', () => {
+  const mask = { destroyed: false }, layer = { mask: null, destroyed: false };
+  keepToSight(layer, sightCanvas({ mask }));
+  assert.equal(layer.mask, mask, 'selecting a token clips it');
+  keepToSight(layer, sightCanvas({ seeing: false, mask }));
+  assert.equal(layer.mask, null, 'releasing the token shows it all again');
+  const gone = { mask: null, destroyed: true };
+  keepToSight(gone, sightCanvas({ mask }));
+  assert.equal(gone.mask, null);
+  assert.doesNotThrow(() => keepToSight(null, sightCanvas({ mask })));
 });

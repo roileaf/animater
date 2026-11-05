@@ -34,6 +34,12 @@ export function sunGlow(clock) {
   const glow = clearGlow(clock), sky = clamp01(clock?.sky ?? 1);
   return glow && glow.amount * sky > 0.01 ? { ...glow, amount: glow.amount * sky } : null;
 }
+// That glow as the open air's colour, to multiply into what is under it (pure): [r, g, b, how much], or null for nothing. `strength` the world's colour strength, `scene` this scene's own say: '' as the world, 'off', 'soft' or 'full'.
+export function skyAir(glow, strength = 0.6, scene = '') {
+  if (!glow || scene === 'off') return null;
+  const by = scene === 'soft' ? 0.4 : scene === 'full' ? 1 : clamp01(Number(strength) || 0), much = clamp01(Number(glow.amount) || 0) * by * 0.9;
+  return much > 0.002 ? [...glow.color, +much.toFixed(3)] : null;
+}
 function clearGlow(clock) {
   if (!clock) return null;
   const f = ((Number(clock.day) % 1) + 1) % 1, { sunrise = 0.25, sunset = 0.75 } = clock;

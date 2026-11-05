@@ -1,5 +1,100 @@
 # Changelog
 
+## 3.0.0 (unreleased)
+
+Water that really moves, floors that change during play, and blood that stays. **Moving water is off until you turn it on: Scene configuration → Animater → Moving water.**
+
+### Moving water
+
+- **A live water surface.** Waves run along the current and before the wind, the map or painted floor bends beneath them, and the sun, the moon and flames glint on them.
+- **Choose the kind of water:** still, river, rapids, waterfall or sea. Any water region can opt out in its right-click menu.
+- **Flows toward.** A river, rapids or waterfall runs the way you set, or choose **Follows the wind**. A river's current follows its banks, so the direction mostly picks which way along them it goes. A waterfall takes the nearest compass direction of the wind, and turns when the wind really turns.
+- **Waterfalls.** Water drops into a pool, with foam and rings where it lands. It is as loud as its stream is strong.
+- **Works on any scene,** including one with no map image, where the water brings its own colour.
+- **Separate from the older checkboxes.** Choosing the Waterfall or Sea type no longer ticks "This is a waterfall" or "This is the sea".
+- **Water reacts to what's in it.** Swimmers, footsteps and animals send out rings.
+- **Painted water floors** give the water its colour, and the engine draws the waves.
+
+### The sea
+
+- **Waves that behave like waves.** They swing round to the shore, crowd and steepen in the shallows, arrive in sets, and merge where they meet. You can set the direction they travel.
+- **Realistic foam.** A dense white rope at the front breaks into clumps and thin threads behind it. Foam stays on the water, and only a wave already running in reaches the wet sand.
+- **Spray and splash.** Thin spray blows off the crests with the wind, and waves splash lightly where they reach the waterline.
+- **A natural shoreline.** The water ends along a wandering line, never at the straight sides of its region. With the beach on, sand runs up to it, using Animater's own sand floor and darkening near the water. With it off, the map's own ground shows through the shallows.
+- **Floor looks stop at the waterline,** so a bloody or oily sea leaves its shore alone.
+- **Crabs** walk along the shore rather than just up and down it.
+- **Gulls** glide and wander over the sea, hang on the wind and dive for fish, with more natural wing proportions.
+- **Fish** stay out in the water and are drawn beneath the surface, so waves, foam and glare pass over them.
+
+### Region steps and painted floors
+
+- **Region steps.** Right-click a region with a floor to move it through its steps, such as clear water turning bloody. Each step has its own look, walking feel and effect.
+- **Look strength.** A slider sets how strong a step's look is, such as how much blood.
+- **Pattern size.** A slider makes a region's floor and look pattern bigger or smaller, such as more panes of glass.
+- **Painted floors.** A region can paint its floor on a bare map, including grass blades that respond to wind, sun and whatever walks through them.
+- **New looks,** including a more realistic glass mosaic and bones. Blood lies flat on land as specks, streaks and a few big splashes, and spreads in soft red clouds on water.
+
+### Light, shadow and weather on floors and water
+
+Painted floors, shiny looks and moving water all respond to the world around them.
+
+- **The sun.** Glossy floors, shiny looks and water catch a highlight that sits toward the sun and moves only as the sun moves, not as you pan. Each surface answers in its own way: glass and polished stone flash sharply, snow and ice glitter, and rough ground only shows its relief.
+- **Sunset colour.** The sun now changes colour with its height: near white overhead, gold as it gets low, deep orange-red on the horizon, at dawn and dusk alike. Water, floors, looks and grass all read the same colour.
+- **Sun on the sea.** The glitter comes from the waves themselves: bright slivers lying across the sun's path, merging into a sheet at its heart and breaking into flecks at its edges. Calm water gathers it tight and a gale throws it wide. The moon lays a dim silver track.
+- **Sunrise and sunset colour goes deeper.** It now shifts the colours of everything outdoors, the map, floors, water, roofs, trees and tokens, and keeps the darks dark, with no film over the map. Rooms under a faded roof keep their own colour, and overall darkness stays with Foundry or your calendar. It is on by default, with its strength in the module's settings. A scene can now have its own say in its configuration: as the module's setting, off, subtle or strong.
+- **The moon.** At night the moon puts its own glare on water and shiny floors, and its light catches grass blades.
+- **Light sources.** Lit torches, lamps and other lights glint on nearby floors, looks and waves. Even rough floors and dull looks show their bumps lit on the side facing the flame. Grass blades light up on the side toward it, in its colour.
+- **Every look answers the light** unless it is light or vapour itself: burning, glowing and misty looks have no surface to catch it.
+- **Waves in the light.** Each wave is lit on the side facing the light and dark on the other. On the sea the glare breaks into points that come and go, and falling water is too broken to hold a long glare.
+- **Shadows.** Wall shadows fall across floors and water. Sun and moonlight stop in the shade of walls, roofs and trees, so nothing glares or casts a sun shadow there. Grass blades throw their own shadows away from the sun, the moon or a nearby flame. Sun flecks under trees barely show on water.
+- **Clouds** dim the sun and moon on every floor and on water.
+- **Rain** soaks rough floors, which darken and take on a wet shine.
+- **Wind** bends grass, pushes waves along and ruffles shiny looks such as oil and flooded floors.
+- **Lightning** flashes across floors and water like a burst of sun.
+- **Ice.** Freezing weather stills moving water, and a region can opt out of freezing.
+- **Roofs.** Under a roof a floor or body of water gets no sun or moon, and floors get no rain or wind. Water there barely stirs. Lights still glint on it.
+- **Animation quality** sets how much of this is drawn, including how many lights are counted.
+
+### Blood
+
+- **Separate amounts** for blood from hits, drips and blood on tokens: from none to twice as much.
+- **Wounded creatures drip blood** has its own setting: Always, Only in combat or Never.
+- **Blood stays until cleared.** It can stay with the scene instead of fading.
+- **Splat blood** dresses the ground around selected tokens with old blood.
+- **Bake blood** turns the blood on the floor into a tile.
+- **Rain washes blood away,** but not under a roof.
+- **Blood in water** clouds out and dissolves, carried along by any current. Frozen water holds it like a floor.
+- **Bloody footprints.** A creature stepping in wet blood leaves prints in that blood's colour for its next few strides.
+- **Blood dries** darker over about two minutes.
+
+### Other additions
+
+- **Animater has its own controls.** Its buttons (the workspace, cave-in, energy blast, blood and clouds) moved from the Token controls to their own group, and tokens stay selectable there. Flames stays with the Lighting controls, as it works on selected lights. Players keep their Studio button on the Token controls.
+- **River volume and Waterfall volume** sliders for each player.
+- **Animater breath from** gains None for individual tokens.
+- **Casts no shadow** option for walls.
+- **Aura accent under the token,** for the Tokenshade aura style.
+
+### Performance
+
+- **Animation quality** now also sets how much of the floor and water effects is drawn. Moving water is drawn in full on Full and Light, simpler on Balanced, and not at all on Low.
+- **No more freezes** while new floors and looks are prepared, because they now build in the background.
+- **Sharper floors.** Full and Light paint floors at twice the resolution, so they hold up when zoomed in. Balanced and Low keep the smaller size to save memory.
+- **Better floor textures.** Stone, dirt, sand, snow, mud, wood, metal, glass and ice all gained close-up detail: grain, crumbs, scratches, trapped bubbles and small cracks. Cobbles lost their twisted seams, and dirt, sand and snow lost their round blobs, black dots and blocky specks.
+
+### Fixes
+
+- Flames now show on torch lights standing on sconces drawn in a map's foreground picture. The picture was hiding them as if they were under a roof; real roofs still hide what is under them.
+- Animals no longer appear on flooded ground, waterfalls or rapids.
+- Animals stay off ground a region step has made dangerous or foul, such as burning, lava, acid, poison, cursed, burnt or freshly bloodied ground, and any standing on it move off when the step changes. Snow, frost, mist, bones and dried blood don't bother them.
+- Animals no longer get shut inside sealed wall rings, and any already trapped are moved to open ground.
+- Bats no longer gather around a light someone is carrying.
+- Window light no longer shows through walls the viewer can't see past.
+- The right-click menu opens only on a quick click, not when you right-click and hold to pan.
+- Wakes and ripples no longer redraw the map over painted water.
+- Sun flecks under trees barely show on water now.
+- Animater's wall sections show in the wall palette again.
+
 ## 2.12.6 (2026-11-04)
 
 Reflections stop at walls, and you choose where water reflects.
