@@ -14,8 +14,8 @@ test('stepping in wet blood carries it onto the next floors, in its colour, fadi
   assert.ok(first.length > 0);
   assert.ok(first.every((p) => p.color === 0x00aa00), 'its own colour');
   assert.ok(later[0].alpha < first[0].alpha, 'fading');
-  for (let i = 3; i < 7; i++) step('stone', i);
-  assert.deepEqual(step('stone', 7), [], 'worn off');
+  for (let i = 3; i < 9; i++) step('stone', i);
+  assert.deepEqual(step('stone', 9), [], 'worn off');
   wet = { color: 0x00aa00 };
   step('stone', 8);
   wet = null;

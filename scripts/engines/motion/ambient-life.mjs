@@ -99,7 +99,7 @@ export function fallingOf({ calendaria = null, scene = '' } = {}) {
   const named = `${calendaria?.id ?? ''} ${scene ?? ''}`.toLowerCase();
   // (A storm of sand, dust, snow or fire brings no rain.)
   const wetNamed = named.replace(/(sand|dust|snow|fire|blizzard)[- ]?storm/g, '');
-  return { rain: /rain|storm|drizzle|shower/.test(wetNamed) ? 0.7 : 0, snow: /snow|blizzard/.test(named) ? 0.7 : 0 };
+  return { rain: /rain|storm|shower/.test(wetNamed) ? 0.7 : /drizzle/.test(wetNamed) ? 0.25 : 0, snow: /snow|blizzard/.test(named) ? 0.7 : 0 };
 }
 
 // The temperature the falling snow meets: none known (null, so it settles) while snow falls, from Calendaria or the

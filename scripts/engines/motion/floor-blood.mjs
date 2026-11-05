@@ -88,7 +88,7 @@ export function standingDrip({ at, tier = 2, width = 100, grid = 100, random = M
 
 // A wet pool catching a light (pure): a soft reflection on the side toward the light, lying across the way to it, as bright
 // as the light is there and fading as the pool dries. `light` { x, y, strength 0–1 } or null. null when it would not show.
-export const POOL_DRIES = 120;
+export const POOL_DRIES = 45;
 export function poolGleam(pool, light, age = 0) {
   const wet = 1 - Math.min(1, Math.max(0, age) / POOL_DRIES), strength = Math.min(1, Math.max(0, Number(light?.strength) || 0)) * wet;
   if (!light || strength < 0.03) return null;
@@ -114,9 +114,9 @@ export function driedTint(age = 0, dries = POOL_DRIES) {
   return (r << 16) | (g << 8) | b;
 }
 
-// Rain on blood (pure): how much of it has gone (0–1) after `seconds` of `rain` (0–1). Hard rain clears it in about a minute;
+// Rain on blood (pure): how much of it has gone (0–1) after `seconds` of `rain` (0–1). Hard rain clears it in about three minutes;
 // a shower leaves it thinner, and what is left stays when the rain stops.
-export const WASH_SECONDS = 60;
+export const WASH_SECONDS = 180;
 export const washAfter = (washed = 0, rain = 0, seconds = 0) => Math.min(1, Math.max(0, Number(washed) || 0) + Math.max(0, Number(rain) || 0) * Math.max(0, Number(seconds) || 0) / WASH_SECONDS);
 
 // Blood in water (pure): it clouds out and thins until it is gone, carried along by a flowing river. `water` { flow (map
@@ -128,14 +128,19 @@ export function waterDrift(water, grid = 100) {
   return { vx: flows ? Math.cos(water.flow) * speed : 0, vy: flows ? Math.sin(water.flow) * speed : 0, grow: 0.09, life: flows && pace >= CURRENT.swift ? 11 : 22 };
 }
 
+// How blood in water looks as it goes (pure), `u` 0-1 of its life: never a whole pool's stain, a cloud at most a couple of squares across at first, drawn out along a current as it thins, spreading evenly in still water. Sizes as multiples of where it began.
+export const DRIFT_MOST = 2.2;
+export const driftLook = (u, flows = false) => { const t = Math.min(1, Math.max(0, Number(u) || 0)); return { along: 1 + (flows ? 3.2 : 1.3) * t, across: 1 + (flows ? 0.7 : 1.3) * t, alpha: 0.55 * (1 - t) * (1 - t * 0.35) }; };
+
 // A saved mark as few characters as will do (pure), and back; what bloody scenes keep in their flags.
 export const packMark = (m) => [m.art, m.n ?? 0, Math.round(m.x), Math.round(m.y), Math.round((m.rot ?? 0) * 100) / 100, Math.round((m.r ?? 0) * 10) / 10, Math.round((m.squash ?? 1) * 100) / 100, Math.round((m.alpha ?? 1) * 100) / 100, m.color ?? 0x7a0d0d];
 export const unpackMark = (p) => (Array.isArray(p) && typeof p[0] === 'string' ? { art: p[0], n: p[1], x: p[2], y: p[3], rot: p[4], r: p[5], squash: p[6], alpha: p[7], color: p[8] } : null);
 
-/** The layer: add(marks, color) lays them (a drop in flight lands first); tick(seconds); dress(saved marks) what a scene keeps; near(x, y) wet blood underfoot; clear(). `root()` the floor layer; `life` seconds a mark lasts (Infinity: until cleared); `most` marks at once (a number or a function), the oldest going first; `rain()` how hard it rains on the scene, `exposed(x, y)` whether it falls there; `waterAt(x, y)` the water there, for waterDrift, or null; `art` draws a mark. */
-export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null, life = () => 180, most = 320, rain = () => 0, exposed = () => true, waterAt = () => null, grid = () => 100, art = bloodArt }) {
+/** The layer: add(marks, color) lays them (a drop in flight lands first); tick(seconds); dress(saved marks) what a scene keeps; near(x, y) wet blood underfoot; clear(). `root()` the floor layer; `life` seconds a mark lasts (Infinity: until cleared); `most` marks at once (a number or a function), the oldest going first; `rain()` how hard it rains on the scene, `exposed(x, y)` whether it falls there; `waterAt(x, y)` the water there, for waterDrift, or null; `art` draws a mark; `now()` the time blood lying on the floor goes by, in seconds (the game clock: it dries, fades and washes as the game's time passes, and not at all while it stands still), else as the layer ticks. A spray landing and blood clouding in water are motion, and always go as the layer ticks. */
+export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null, life = () => 300, most = 320, rain = () => 0, exposed = () => true, waterAt = () => null, grid = () => 100, art = bloodArt, now = null }) {
   const textures = new Map();
-  let lying = [], moving = [], drifting = [], clock = 0, fadeLook = 0, gleamTex = null;
+  let lying = [], moving = [], drifting = [], clock = 0, fadeLook = 0, gleamTex = null, washLook = null;
+  const timeNow = () => { if (typeof now !== 'function') return clock; const t = Number(now()); return Number.isFinite(t) ? t : clock; };
   const dressed = new Map();
   // The light on a pool: one soft white oval, shared, tinted by the light. Added to the light, over the darkness.
   const gleamTexture = () => { if (gleamTex && !gleamTex.baseTexture?.destroyed) return gleamTex; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), f = g.createRadialGradient(32, 32, 0, 32, 32, 32); f.addColorStop(0, 'rgba(255,255,255,1)'); f.addColorStop(0.5, 'rgba(255,255,255,0.35)'); f.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = f; g.fillRect(0, 0, 64, 64); return (gleamTex = PIXI.Texture.from(c)); };
@@ -157,12 +162,34 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
   const textureOf = (kind, n, color) => { const canvas = art(kind, n, color); if (!canvas) return null; let tex = textures.get(canvas); if (!tex || tex.baseTexture?.destroyed) textures.set(canvas, tex = PIXI.Texture.from(canvas)); return tex; };
   const gone = (m) => { try { m.s.destroy(); m.gleam?.destroy(); m.sheen?.destroy(); } catch { /* gone */ } };
   const mostNow = () => { const n = typeof most === 'function' ? most() : most; return Number(n) > 0 ? Number(n) : 320; };
+  // Each water's blood drawn apart: kept to its shape (`water.areas`, nothing runs up the bank) and softened, a cloud in the water and not a stain on it. Only while some is there.
+  const clouds = new Map();
+  const cloudOf = (water) => {
+    if (!water?.areas?.length || !water.id || typeof PIXI.Container !== 'function' || typeof PIXI.Graphics !== 'function') return null;
+    let c = clouds.get(water.id);
+    if (c && !c.destroyed) return c;
+    c = new PIXI.Container(); c.eventMode = 'none';
+    const shape = new PIXI.Graphics(); shape.beginFill(0xffffff, 1);
+    for (const area of water.areas) { shape.drawPolygon(area); for (const hole of area.holes ?? []) { shape.beginHole(); shape.drawPolygon(hole); shape.endHole(); } }
+    shape.endFill(); c.addChild(shape); c.mask = shape;
+    if (typeof PIXI.BlurFilter === 'function') c.filters = [new PIXI.BlurFilter(Math.max(4, grid() * 0.05))];
+    root().addChild(c); clouds.set(water.id, c);
+    return c;
+  };
+  const dropClouds = (all = false) => { for (const [id, c] of clouds) if (all || !drifting.some((m) => m.drift.cloud === c)) { try { c.parent?.removeChild(c); c.destroy({ children: true }); } catch { /* gone */ } clouds.delete(id); } };
   // What lands on water does not lie there: it drifts off, clouding as it goes.
   const layDown = (m) => {
     let water = null;
     try { water = waterAt(m.mark.x, m.mark.y); } catch { /* the regions are being rebuilt */ }
-    if (water) { m.drift = { ...waterDrift(water, grid()), age: 0, x: m.mark.x, y: m.mark.y, width: m.s.width, height: m.s.height }; drifting.push(m); return; }
-    lying.push(m); const cap = mostNow(); while (lying.length > cap) gone(lying.shift());
+    if (water) {
+      // Not the stain's own shape: a soft cloud, turned to lie along the current.
+      const most = grid() * DRIFT_MOST, flows = Number.isFinite(water.flow), cloud = cloudOf(water), wide = Math.min(most, m.s.width), deep = Math.min(most, m.s.height);
+      m.drift = { ...waterDrift(water, grid()), age: 0, x: m.mark.x, y: m.mark.y, width: wide, height: deep, flows, cloud };
+      if (flows) m.s.rotation = water.flow;
+      if (cloud) cloud.addChild(m.s);
+      drifting.push(m); return;
+    }
+    m.laid = timeNow(); lying.push(m); const cap = mostNow(); while (lying.length > cap) gone(lying.shift());
   };
   const sprite = (mark, color) => {
     const tex = textureOf(mark.art, mark.n, color); if (!tex) return null;
@@ -180,8 +207,10 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
     // What the scene keeps (saved marks with their own colours): old and dry, costing nothing after this, and only the rest
     // of the list changes when it changes. Neither time nor rain takes it; Clear blood does.
     dress(saved = []) {
+      // (Old dry blood has long since gone from water: nothing lies on it, though what is saved stays saved for when it freezes or drains.)
+      const onWater = (mark) => { try { return !!waterAt(mark.x, mark.y); } catch { return false; } };
       const want = new Map();
-      for (const mark of saved) if (mark) want.set(packMark(mark).join(), mark);
+      for (const mark of saved) if (mark && !onWater(mark)) want.set(packMark(mark).join(), mark);
       for (const [id, m] of dressed) if (!want.has(id)) { gone(m); dressed.delete(id); }
       for (const [id, mark] of want) {
         if (dressed.has(id)) continue;
@@ -195,8 +224,8 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
     near(x, y) {
       for (let i = lying.length - 1; i >= 0; i--) {
         const m = lying[i]; if (!bloodShines(m.mark.art) || m.dry || m.washed > 0.5) continue;
-        if (Math.hypot(x - m.mark.x, y - m.mark.y) > m.r * 0.7) continue;
-        return { color: m.color, wet: Math.max(0, 1 - (clock - m.born) / POOL_DRIES) };
+        if (Math.hypot(x - m.mark.x, y - m.mark.y) > m.r * 0.9) continue;
+        return { color: m.color, wet: Math.max(0, 1 - (timeNow() - m.laid) / POOL_DRIES) };
       }
       return null;
     },
@@ -205,9 +234,10 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
       if (drifting.length) drifting = drifting.filter((m) => {
         if (m.s.destroyed) return false;
         const d = m.drift; d.age += seconds; if (d.age >= d.life) { gone(m); return false; }
-        const u = d.age / d.life, swell = 1 + d.grow * d.age; d.x += d.vx * seconds; d.y += d.vy * seconds;
-        m.s.position.set(d.x, d.y); m.s.width = d.width * swell; m.s.height = d.height * swell; m.s.alpha = m.alpha * 0.75 * (1 - u); return true;
+        const u = d.age / d.life, look = driftLook(u, d.flows); d.x += d.vx * seconds; d.y += d.vy * seconds;
+        m.s.position.set(d.x, d.y); m.s.width = d.width * look.along; m.s.height = d.height * look.across; m.s.alpha = m.alpha * look.alpha; return true;
       });
+      if (clouds.size) dropClouds();
       if (moving.length) moving = moving.filter((m) => {
         if (m.s.destroyed) return false;
         const age = clock - m.born; if (age < 0) return true;
@@ -218,12 +248,14 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
       });
       // The marks fade over the last part of their life; looked at twice a second, not every frame.
       if (clock - fadeLook < 0.5) return;
-      const since = clock - fadeLook; fadeLook = clock;
-      const last = Math.max(10, Number(life()) || 180), forever = last === Infinity, fade = last * 0.25, dries = Math.min(POOL_DRIES, last * 0.75);
+      fadeLook = clock;
+      // (The clock set back counts as no time gone, not as blood growing younger.)
+      const time = timeNow(), since = washLook === null ? 0 : Math.max(0, time - washLook); washLook = time;
+      const last = Math.max(10, Number(life()) || 300), forever = last === Infinity, fade = last * 0.25, dries = Math.min(POOL_DRIES, last * 0.75);
       let falling = 0; try { falling = Math.max(0, Number(rain()) || 0); } catch { /* no sky yet */ }
       lying = lying.filter((m) => {
         if (m.s.destroyed) return false;
-        const age = clock - m.born; if (age >= last) { gone(m); return false; }
+        const age = Math.max(0, time - m.laid); if (age >= last) { gone(m); return false; }
         // Rain thins what it falls on, under the open sky only; asked once a mark, as a mark stays where it is.
         if (falling > 0.02) { if (m.open === undefined) { try { m.open = exposed(m.mark.x, m.mark.y) !== false; } catch { m.open = true; } } if (m.open) { m.washed = washAfter(m.washed, falling, since); if (m.washed >= 1) { gone(m); return false; } } }
         if (m.washed > 0 || (!forever && age > last - fade)) m.s.alpha = m.alpha * (1 - m.washed) * (!forever && age > last - fade ? (last - age) / fade : 1);
@@ -235,7 +267,7 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
         return true;
       });
     },
-    clear() { for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) gone(m); lying = []; moving = []; drifting = []; dressed.clear(); },
+    clear() { for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) gone(m); lying = []; moving = []; drifting = []; dressed.clear(); dropClouds(true); },
     get count() { return lying.length + moving.length + drifting.length + dressed.size; },
   };
 }

@@ -6,6 +6,12 @@
 
 - **Damage lens without the blood.** Damage lens amount has a new None choice: no blood on the screen, while tunnel vision and the heartbeat keep working by their own switches.
 
+### Fixes
+
+- Bloody footprints are easier to see and last longer: stronger, for more strides, from anywhere on a wet stain.
+- Blood in water looks like it: a soft cloud kept to the water, drawn out along the current and thinning away, not a stain sliding over the banks. Splat blood and blood kept with a scene no longer lie on top of water.
+- Blood on the floor goes by the game clock, not real time: it waits while the clock stands still and is gone after a long rest. It dries visibly, in under a minute of game time, and stays longer: five minutes by default, for worlds that haven't set their own. Rain washes it by the game clock too: about three minutes of game time in hard rain, not one, and far longer in drizzle, which now counts as light rain when set as a scene's weather.
+
 ## 3.0.3 (2026-11-05)
 
 ### New

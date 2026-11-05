@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createFloorBlood, driedTint, washAfter, WASH_SECONDS, waterDrift, packMark, unpackMark, splatMarks, scaleMarks, POOL_DRIES } from '../../../scripts/engines/motion/floor-blood.mjs';
+import { createFloorBlood, driedTint, washAfter, WASH_SECONDS, waterDrift, packMark, unpackMark, splatMarks, scaleMarks, POOL_DRIES, driftLook } from '../../../scripts/engines/motion/floor-blood.mjs';
 
 // Enough of PIXI for the layer: sprites that can be counted and read.
 const fakeLayer = (options = {}) => {
@@ -15,13 +15,13 @@ const run = (layer, seconds) => { for (let t = 0; t < seconds; t += 0.5) layer.t
 
 test('blood darkens as it dries, and stays dark', () => {
   assert.equal(driedTint(0), 0xffffff);
-  assert.ok(driedTint(60) < 0xffffff && driedTint(60) > driedTint(POOL_DRIES));
+  assert.ok(driedTint(POOL_DRIES / 2) < 0xffffff && driedTint(POOL_DRIES / 2) > driedTint(POOL_DRIES));
   assert.equal(driedTint(POOL_DRIES), driedTint(POOL_DRIES * 3));
   const { layer, live } = fakeLayer({ life: () => 400 });
   layer.add([stain()]);
-  run(layer, 60);
-  assert.ok(live()[0].tint < 0xffffff, 'darker after a minute');
-  run(layer, 90);
+  run(layer, POOL_DRIES / 2);
+  assert.ok(live()[0].tint < 0xffffff, 'darker half way');
+  run(layer, POOL_DRIES);
   assert.equal(live()[0].tint, driedTint(POOL_DRIES), 'dry');
 });
 
@@ -32,7 +32,7 @@ test('rain washes away what it falls on, not what is under a roof; what is left 
   const { layer, live } = fakeLayer({ life: () => 900, rain: () => rain, exposed: (x) => x < 500 });
   layer.add([stain(), stain({ x: 600 })]);
   const out = live().find((s) => s.position.x < 500), under = live().find((s) => s.position.x > 500);
-  run(layer, 30);
+  run(layer, WASH_SECONDS / 2);
   assert.ok(out.alpha < 0.6 && out.alpha > 0.4, `half gone: ${out.alpha}`);
   assert.equal(under.alpha, 1);
   rain = 0;
@@ -40,7 +40,7 @@ test('rain washes away what it falls on, not what is under a roof; what is left 
   run(layer, 30);
   assert.equal(out.alpha, left, 'the rain has stopped');
   rain = 1;
-  run(layer, 40);
+  run(layer, WASH_SECONDS * 0.7);
   assert.equal(out.destroyed, true, 'washed away');
   assert.equal(under.destroyed, false);
 });
@@ -139,4 +139,52 @@ test('the amount scales blood: stains grow and shrink, drops come and go, 0 is n
   assert.ok(low[0].r < 50 && high[0].r > 50);
   assert.ok(low.length > 70 && low.length < 130, `about half the drops: ${low.length}`);
   assert.ok(high.length > 350, `about twice the drops: ${high.length}`);
+});
+
+test('what a scene keeps does not lie on water', () => {
+  const water = { flow: null };
+  const { layer, live } = fakeLayer({ life: () => 400, waterAt: (x) => (x > 500 ? water : null) });
+  layer.dress([stain(), stain({ x: 600 })]);
+  assert.equal(live().filter((s) => s.position.x > 500).length, 0, 'none on the water');
+  assert.equal(live().filter((s) => s.position.x < 500).length, 1, 'kept on the ground');
+});
+
+test('blood in water thins away, drawn out along a current', () => {
+  const start = driftLook(0, true), mid = driftLook(0.5, true), still = driftLook(0.5, false);
+  assert.ok(start.alpha < 0.75 && mid.alpha < start.alpha);
+  assert.equal(driftLook(1, true).alpha, 0);
+  assert.ok(mid.along > mid.across, 'along the way it flows');
+  assert.equal(still.along, still.across, 'evenly where it does not');
+});
+
+test('blood on the floor goes by the game clock: it waits while the clock stands still', () => {
+  let time = 1000;
+  const { layer, live } = fakeLayer({ life: () => 300, now: () => time });
+  layer.add([stain()]);
+  run(layer, 600);
+  assert.equal(live().length, 1, 'real time alone takes none of it');
+  assert.equal(live()[0].tint, 0xffffff, 'nor dries it');
+  time += POOL_DRIES;
+  run(layer, 1);
+  assert.equal(live()[0].tint, driedTint(POOL_DRIES), 'dry as the game moves on');
+  time -= 500;
+  run(layer, 1);
+  assert.equal(live().length, 1, 'a clock set back does no harm');
+  time += 2000;
+  run(layer, 1);
+  assert.equal(live().length, 0, 'gone after a long rest');
+});
+
+test('rain washes blood by the game clock: none while it stands still', () => {
+  let time = 1000;
+  const { layer, live } = fakeLayer({ life: () => 900, now: () => time, rain: () => 1, exposed: () => true });
+  layer.add([stain()]);
+  run(layer, WASH_SECONDS);
+  assert.equal(live()[0].alpha, 1, 'the clock has not moved');
+  time += WASH_SECONDS / 2;
+  run(layer, 1);
+  assert.ok(live()[0].alpha < 0.6 && live()[0].alpha > 0.4, 'half gone as it moves');
+  time += WASH_SECONDS;
+  run(layer, 1);
+  assert.equal(live().length, 0);
 });

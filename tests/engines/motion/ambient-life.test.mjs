@@ -162,3 +162,9 @@ test('a storm of sand or snow brings no rain; a rainstorm and a thunderstorm do'
   assert.ok(fallingOf({ scene: 'rainStorm' }).rain > 0);
   assert.ok(fallingOf({ scene: 'animater.thunderstorm' }).rain > 0);
 });
+
+test('drizzle set on a scene is light rain, not rain', async () => {
+  const { fallingOf } = await import('../../../scripts/engines/motion/ambient-life.mjs');
+  assert.ok(fallingOf({ scene: 'animater.drizzle' }).rain < fallingOf({ scene: 'animater.rain' }).rain);
+  assert.ok(fallingOf({ scene: 'animater.drizzle' }).rain > 0.05);
+});

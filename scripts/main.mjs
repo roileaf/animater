@@ -2628,16 +2628,16 @@ const bloodWaterAt = (x, y) => {
     try {
       if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || !region.testPoint({ x, y, elevation })) continue;
       const own = region.flags?.[ID] ?? {};
-      return { flow: own.flowTo in WIND_FROM ? ((WIND_FROM[own.flowTo] - 90) * Math.PI) / 180 : null, current: own.current ?? "" };
+      return { id: region.id, areas: regionAreas(region), flow: own.flowTo in WIND_FROM ? ((WIND_FROM[own.flowTo] - 90) * Math.PI) / 180 : null, current: own.current ?? "" };
     } catch { /* a broken region never breaks the rest */ }
   }
   return null;
 };
 const floorBloodRoot = floorLayer("floorBlood", 648);
-const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorBloodRoot, grid: () => canvas?.grid?.size ?? 100, waterAt: bloodWaterAt,
+const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorBloodRoot, grid: () => canvas?.grid?.size ?? 100, waterAt: bloodWaterAt, now: () => game.time?.worldTime,
   // Rain washes it where the sky is open ("Rain washes blood away").
   rain: () => (movementFeelSettingOn("bloodWashes") ? skyFalling.rain : 0), exposed: (x, y) => !underCeiling({ x, y }) && !shelteredAt({ x, y }, canvas.level?.elevation?.base ?? 0),
-  most: () => (bloodKeptForever() ? 1500 : 320), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return bloodKeptForever() ? Infinity : Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
+  most: () => (bloodKeptForever() ? 1500 : 320), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return bloodKeptForever() ? Infinity : Number(hotSetting("floorBloodSeconds")) || 300; } catch { return 300; } } });
 Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedNext.clear(); bloodLoaded = []; bloodSavedKey = ""; });
 const bleedRuns = new Map(), bleedNext = new Map();
 // The GM wipes the floor: each screen draws its own blood, so each is told to.
@@ -2657,6 +2657,8 @@ const bloodFlag = (key) => { const list = canvas?.scene?.flags?.[ID]?.[key]; ret
 const dressBlood = () => { try { floorBlood.dress(floorBloodOn() ? [...bloodFlag(BLOOD_DRESSED), ...bloodLoaded] : []); } catch (error) { console.warn("Animater | the scene's blood", error); } };
 Hooks.on("canvasReady", () => { bloodLoaded = bloodKeptForever() && floorBloodOn() ? bloodFlag(BLOOD_KEPT) : []; dressBlood(); });
 Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && change?.flags?.[ID] && BLOOD_DRESSED in change.flags[ID]) dressBlood(); });
+// (A water region drawn, moved or changed: what is saved may now lie on it, or no longer.)
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { dressBlood(); });
 const saveKeptBlood = () => {
   const scene = canvas?.scene;
   if (!scene || !bloodKeptForever() || !floorBloodOn() || game.users?.activeGM?.id !== game.user?.id) return;
@@ -7071,12 +7073,12 @@ Hooks.once("init", () => {
   registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
   registerSetting("iceHoursLeast", { name: "Water freezes in at least (game hours)", hint: "How long water takes to freeze over, and to thaw, the whole way. Each scene takes its own time between this and the most below, by the game clock.", scope: "world", config: true, type: Number, default: 24, range: { min: 1, max: 240, step: 1 } });
   registerSetting("iceHoursMost", { name: "Water freezes in at most (game hours)", hint: "See above. The same as the least: every scene takes just that long.", scope: "world", config: true, type: Number, default: 48, range: { min: 1, max: 240, step: 1 } });
-  registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds; it fades over the last quarter of that. It darkens as it dries, in about two minutes.", scope: "world", config: true, type: Number, default: 180, range: { min: 20, max: 600, step: 10 } });
+  registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds of game time, so it waits while the clock stands still; it fades over the last quarter of that. It darkens as it dries, in under a minute of game time.", scope: "world", config: true, type: Number, default: 300, range: { min: 20, max: 600, step: 10 } });
   registerSetting("floorBloodForever", { name: "Blood stays until cleared", hint: "Blood never fades, and comes back with the scene, saved in it now and then by the GM's screen. Rain and water can still take it until the scene reloads; after that it is old blood they leave alone. Clear blood wipes it all; Bake blood turns it into a tile.", scope: "world", config: true, type: Boolean, default: false });
   registerSetting("floorBloodAmount", { name: "Blood from hits", hint: "How much blood hits, kills and Splat blood leave on the floor, against the usual: lower for less, 0 for none, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
   registerSetting("bloodDripAmount", { name: "Blood drips", hint: "How much wounded creatures drip and trail, against the usual: lower for less, 0 for none, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
   registerSetting("woundBloodAmount", { name: "Blood on tokens", hint: "How big the blood on a wounded creature's art grows, against the usual: lower for less, 0 for no wounded look on the art, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
-  registerSetting("bloodWashes", { name: "Rain washes blood away", hint: "Rain thins the blood it falls on until it is gone, about a minute in hard rain. Never under a roof, or a region that suppresses weather.", scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("bloodWashes", { name: "Rain washes blood away", hint: "Rain thins the blood it falls on until it is gone, by the game clock: about three minutes of game time in hard rain, far longer in a drizzle. Never under a roof, or a region that suppresses weather.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("bloodInWater", { name: "Blood in water", hint: "Blood landing in a water region clouds out and dissolves, carried along where the water has a way to flow (Region configuration → Flows toward). Frozen water holds it like any floor.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("bloodFootprints", { name: "Bloody footprints", hint: "A creature stepping in wet blood prints it, in that blood's colour, for its next few strides. Drops are too small to step in, and dried blood leaves nothing.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("weatherOnGround", {

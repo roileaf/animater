@@ -16,8 +16,8 @@ export const CARRY = Object.freeze({
   mud: Object.freeze({ strides: 8, color: 0x4a3420, alpha: 0.48, life: 12000, hold: 0.45 }),
   // Snow knocked off the feet: faint white, gone in about 5 s.
   snow: Object.freeze({ strides: 4, color: 0xf2f6fb, alpha: 0.4, life: 5000, hold: 0.3 }),
-  // Stepped in wet blood: prints in that blood's colour (the load carries it), fading out over a few strides, gone in about 14 s.
-  blood: Object.freeze({ strides: 6, color: BLOOD_PRINT, alpha: 0.62, life: 14000, hold: 0.45 }),
+  // Stepped in wet blood: prints in that blood's colour (the load carries it), plain to see at first, fading out over a few strides, gone in about 30 s.
+  blood: Object.freeze({ strides: 8, color: BLOOD_PRINT, alpha: 0.9, life: 30000, hold: 0.6 }),
 });
 // The gaits whose feet leave separate prints (movement-feel.mjs TRACKS); grooves, smears, unknown and incorporeal
 // creatures carry nothing.
