@@ -2569,7 +2569,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => clearRubbleAsk() });
     add({ name: "animaterClearBlood", title: "Clear blood: wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
-    add({ name: "animaterSplatBlood", title: "Splat blood: old blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
+    add({ name: "animaterSplatBlood", title: "Splat blood: fresh blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
       onChange: () => void splatBloodHere() });
     add({ name: "animaterBakeBlood", title: "Bake blood: turn the blood on the floor into a tile the scene keeps", icon: "fa-solid fa-stamp", order: order + 2.5, button: true, visible: toolShown("toolBakeBlood"),
       onChange: () => void bakeBloodHere() });
@@ -2679,7 +2679,7 @@ const splatBloodHere = async () => {
   for (const token of tokens) {
     const blood = tokenBlood(token); if (!blood.bleeds) continue;
     const seed = `${token.id}:${now}`;
-    for (const mark of scaleMarks(splatMarks({ at: token.center, width: token.w, grid: canvas.grid.size, seed }), much, seed)) marks.push(packMark({ ...mark, color: blood.color }));
+    for (const mark of scaleMarks(splatMarks({ at: token.center, width: token.w, grid: canvas.grid.size, seed }), much, seed)) marks.push(packMark({ ...mark, color: blood.color, at: Number(game.time?.worldTime) || 0 }));
   }
   if (!marks.length) { ui.notifications?.info("Animater: nothing selected bleeds, or Blood on the floor's amount is 0."); return; }
   const had = canvas.scene.flags?.[ID]?.[BLOOD_DRESSED];

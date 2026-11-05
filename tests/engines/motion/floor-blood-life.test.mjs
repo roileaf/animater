@@ -188,3 +188,26 @@ test('rain washes blood by the game clock: none while it stands still', () => {
   run(layer, 1);
   assert.equal(live().length, 0);
 });
+
+test('splat blood starts wet, dries by the game clock, and can be stepped in until then; older saved blood is dry', () => {
+  let time = 1000;
+  const { layer, live } = fakeLayer({ life: () => 300, now: () => time });
+  layer.dress([stain({ art: 'pool', x: 100, y: 100, r: 50, at: 1000, color: 0x00aa00 })]);
+  assert.equal(live()[0].tint, 0xffffff, 'wet');
+  assert.equal(layer.near(100, 100).color, 0x00aa00);
+  run(layer, 600);
+  assert.equal(live()[0].tint, 0xffffff, 'waits for the clock');
+  time += POOL_DRIES;
+  run(layer, 1);
+  assert.equal(live()[0].tint, driedTint(POOL_DRIES), 'dry');
+  assert.equal(layer.near(100, 100), null);
+  time += 100000;
+  run(layer, 1);
+  assert.equal(live().length, 1, 'and it stays');
+  const old = fakeLayer({ life: () => 300, now: () => time });
+  old.layer.dress([stain({ art: 'pool', x: 100, y: 100, r: 50, color: 0x00aa00 })]);
+  assert.equal(old.live()[0].tint, driedTint(POOL_DRIES));
+  assert.equal(old.layer.near(100, 100), null);
+  assert.equal(unpackMark(packMark({ art: 'pool', x: 1, y: 2, r: 3, at: 77 })).at, 77);
+  assert.equal(unpackMark(packMark({ art: 'pool', x: 1, y: 2, r: 3 })).at, undefined);
+});

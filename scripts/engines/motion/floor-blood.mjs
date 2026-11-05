@@ -132,9 +132,9 @@ export function waterDrift(water, grid = 100) {
 export const DRIFT_MOST = 2.2;
 export const driftLook = (u, flows = false) => { const t = Math.min(1, Math.max(0, Number(u) || 0)); return { along: 1 + (flows ? 3.2 : 1.3) * t, across: 1 + (flows ? 0.7 : 1.3) * t, alpha: 0.55 * (1 - t) * (1 - t * 0.35) }; };
 
-// A saved mark as few characters as will do (pure), and back; what bloody scenes keep in their flags.
-export const packMark = (m) => [m.art, m.n ?? 0, Math.round(m.x), Math.round(m.y), Math.round((m.rot ?? 0) * 100) / 100, Math.round((m.r ?? 0) * 10) / 10, Math.round((m.squash ?? 1) * 100) / 100, Math.round((m.alpha ?? 1) * 100) / 100, m.color ?? 0x7a0d0d];
-export const unpackMark = (p) => (Array.isArray(p) && typeof p[0] === 'string' ? { art: p[0], n: p[1], x: p[2], y: p[3], rot: p[4], r: p[5], squash: p[6], alpha: p[7], color: p[8] } : null);
+// A saved mark as few characters as will do (pure), and back; what bloody scenes keep in their flags. `at`: when it was made, for one that starts wet and dries; none: long dry.
+export const packMark = (m) => { const packed = [m.art, m.n ?? 0, Math.round(m.x), Math.round(m.y), Math.round((m.rot ?? 0) * 100) / 100, Math.round((m.r ?? 0) * 10) / 10, Math.round((m.squash ?? 1) * 100) / 100, Math.round((m.alpha ?? 1) * 100) / 100, m.color ?? 0x7a0d0d]; return Number.isFinite(m.at) ? [...packed, m.at] : packed; };
+export const unpackMark = (p) => (Array.isArray(p) && typeof p[0] === 'string' ? { art: p[0], n: p[1], x: p[2], y: p[3], rot: p[4], r: p[5], squash: p[6], alpha: p[7], color: p[8], ...(Number.isFinite(p[9]) ? { at: p[9] } : {}) } : null);
 
 /** The layer: add(marks, color) lays them (a drop in flight lands first); tick(seconds); dress(saved marks) what a scene keeps; near(x, y) wet blood underfoot; clear(). `root()` the floor layer; `life` seconds a mark lasts (Infinity: until cleared); `most` marks at once (a number or a function), the oldest going first; `rain()` how hard it rains on the scene, `exposed(x, y)` whether it falls there; `waterAt(x, y)` the water there, for waterDrift, or null; `art` draws a mark; `now()` the time blood lying on the floor goes by, in seconds (the game clock: it dries, fades and washes as the game's time passes, and not at all while it stands still), else as the layer ticks. A spray landing and blood clouding in water are motion, and always go as the layer ticks. */
 export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null, life = () => 300, most = 320, rain = () => 0, exposed = () => true, waterAt = () => null, grid = () => 100, art = bloodArt, now = null }) {
@@ -204,7 +204,7 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
         if (mark.wait || mark.fromX !== undefined || mark.spreads) moving.push(m); else { m.s.alpha = m.alpha; layDown(m); }
       }
     },
-    // What the scene keeps (saved marks with their own colours): old and dry, costing nothing after this, and only the rest
+    // What the scene keeps (saved marks with their own colours): wet at first if it says when it was made, then dry, costing nothing after that, and only the rest
     // of the list changes when it changes. Neither time nor rain takes it; Clear blood does.
     dress(saved = []) {
       // (Old dry blood has long since gone from water: nothing lies on it, though what is saved stays saved for when it freezes or drains.)
@@ -215,15 +215,18 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
       for (const [id, mark] of want) {
         if (dressed.has(id)) continue;
         const m = sprite(mark, mark.color); if (!m) continue;
-        m.s.alpha = m.alpha; m.s.tint = driedTint(POOL_DRIES); dressed.set(id, m);
+        const age = Number.isFinite(mark.at) ? Math.max(0, timeNow() - mark.at) : POOL_DRIES;
+        m.laid = Number.isFinite(mark.at) ? mark.at : -Infinity; m.dry = age >= POOL_DRIES;
+        m.s.alpha = m.alpha; m.s.tint = driedTint(age); dressed.set(id, m);
       }
     },
     // The marks lying now, to be kept.
     snapshot() { return lying.filter((m) => !m.s.destroyed && m.washed < 0.5).map((m) => ({ ...m.mark, color: m.color })); },
     // Wet blood at a place, for the feet that step in it: its colour and how wet (0–1), or null. Only what can be stepped in.
     near(x, y) {
-      for (let i = lying.length - 1; i >= 0; i--) {
-        const m = lying[i]; if (!bloodShines(m.mark.art) || m.dry || m.washed > 0.5) continue;
+      const all = [...dressed.values(), ...lying];
+      for (let i = all.length - 1; i >= 0; i--) {
+        const m = all[i]; if (!bloodShines(m.mark.art) || m.dry || m.washed > 0.5) continue;
         if (Math.hypot(x - m.mark.x, y - m.mark.y) > m.r * 0.9) continue;
         return { color: m.color, wet: Math.max(0, 1 - (timeNow() - m.laid) / POOL_DRIES) };
       }
@@ -251,6 +254,14 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
       fadeLook = clock;
       // (The clock set back counts as no time gone, not as blood growing younger.)
       const time = timeNow(), since = washLook === null ? 0 : Math.max(0, time - washLook); washLook = time;
+      // What the scene keeps dries as any blood does; it is only never taken away.
+      for (const m of dressed.values()) {
+        if (m.dry || m.s.destroyed) continue;
+        const age = Math.max(0, time - m.laid);
+        m.s.tint = driedTint(age);
+        if (bloodShines(m.mark.art)) lookAtLight(m, age);
+        if (age >= POOL_DRIES) m.dry = true;
+      }
       const last = Math.max(10, Number(life()) || 300), forever = last === Infinity, fade = last * 0.25, dries = Math.min(POOL_DRIES, last * 0.75);
       let falling = 0; try { falling = Math.max(0, Number(rain()) || 0); } catch { /* no sky yet */ }
       lying = lying.filter((m) => {
