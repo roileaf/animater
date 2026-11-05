@@ -174,7 +174,7 @@ const abilitySettingKey = item => item?.type === "action" ? "actionCatalog" : is
 import { PF2E_WEAPONS, PF2E_WEAPON_SOURCE, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { PF2E_CONDITIONS, PF2E_EFFECTS, PF2E_STATE_SOURCE, normalizeStateCatalogState, catalogStateEntry, stateRecipe } from "./catalogs/pf2e/state-catalog.mjs";
 import { PersistentStates, perceivedStates, LASTING_MODES, tokenLookChanged } from "./engines/playback/persistent-states.mjs";
-import { AURAS_OUTSIDE_COMBAT, STEPS_OUTSIDE_COMBAT, auraCalm, stepCalm } from "./engines/playback/outside-combat.mjs";
+import { AURAS_OUTSIDE_COMBAT, BLOOD_DROPS, STEPS_OUTSIDE_COMBAT, auraCalm, bloodDropsNow, stepCalm } from "./engines/playback/outside-combat.mjs";
 import { AURA_STYLES, createAuraFields } from "./engines/playback/aura-fields.mjs";
 import { cutOutArt } from "./engines/playback/art-crop.mjs";
 import { createTethers, createTetherPreview } from "./engines/playback/tethers.mjs";
@@ -2446,6 +2446,8 @@ const refoulLights = () => {
 };
 // Blood on the floor (engines/motion/floor-blood.mjs): where Splatter paints it, Splatter's alone.
 const floorBloodOn = () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC));
+// The drops of the wounded have their own say ("Wounded creatures drip blood"); a hit's blood keeps to "Blood on the floor".
+const bloodDropsOn = () => { if (!floorBloodOn()) return false; try { return bloodDropsNow(hotSetting("bloodDrops"), game.combat); } catch { return true; } };
 const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorLayer("floorBlood", 648), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
 Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedNext.clear(); });
 const bleedRuns = new Map(), bleedNext = new Map();
@@ -2454,7 +2456,7 @@ const CLEAR_BLOOD_MESSAGE = "clear-blood";
 const clearBloodEverywhere = () => { floorBlood.clear(); game.socket?.emit(`module.${ID}`, { type: CLEAR_BLOOD_MESSAGE, sceneId: canvas?.scene?.id }); };
 // A stride of a wounded creature: drops on its feet, a dragged trail prone or crawling.
 const bleedAlong = ({ x, y, heading, size, token, index, grid }) => {
-  if (!token?.bloodTier || !floorBloodOn()) return;
+  if (!token?.bloodTier || !bloodDropsOn()) return;
   const prone = token.prone === true || String(token.action ?? "").toLowerCase() === "crawl";
   let run = bleedRuns.get(token.id); if (!run) bleedRuns.set(token.id, run = {});
   floorBlood.add(bleedStep({ at: { x, y }, heading, index, tier: token.bloodTier, prone, width: size, grid, seed: token.id, run }), token.bloodColor);
@@ -2465,7 +2467,7 @@ const tickFloorBlood = (seconds) => {
   floorBlood.tick(seconds);
   bleedLook += seconds; if (bleedLook < 0.25) return;
   const step = bleedLook; bleedLook = 0;
-  if (!floorBloodOn()) return;
+  if (!bloodDropsOn()) return;
   for (const t of canvas.tokens?.placeables ?? []) {
     try {
       const d = t.document; if (!t.visible || d.hidden || !t.actor) continue;
@@ -6702,8 +6704,13 @@ Hooks.once("init", () => {
   });
   registerSetting("bloodTrail", {
     name: "Blood on the floor",
-    hint: "A hit throws blood on the floor, away from the attacker and shaped by the wound; a killing blow leaves a pool. A wounded creature drops blood, standing or walking, more from a quarter of its HP; one that is prone and moving drags a trail. Drawn on each screen and never saved. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead.",
+    hint: "A hit throws blood on the floor, away from the attacker and shaped by the wound; a killing blow leaves a pool. A wounded creature can drip blood too (Wounded creatures drip blood). Drawn on each screen and never saved. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead. Off turns off all of it.",
     scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("bloodDrops", {
+    name: "Wounded creatures drip blood",
+    hint: "A wounded creature drops blood, standing or walking: a little from any wound, more from half its HP, freely from a quarter. One that is prone and moving drags a trail. Only in combat keeps the floor clean while no combat has started on the scene. Hits still leave their blood (Blood on the floor).",
+    scope: "world", config: true, type: String, default: "always", choices: { ...BLOOD_DROPS },
   });
   registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
   registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds; it fades over the last quarter of that.", scope: "world", config: true, type: Number, default: 180, range: { min: 20, max: 600, step: 10 } });

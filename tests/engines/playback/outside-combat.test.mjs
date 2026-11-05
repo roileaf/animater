@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {auraCalm,stepCalm,isAuraLook} from '../../../scripts/engines/playback/outside-combat.mjs';
+import { bloodDropsNow,auraCalm,stepCalm,isAuraLook} from '../../../scripts/engines/playback/outside-combat.mjs';
 
 const fight={started:true},none=null,waiting={started:false};
 test('auras follow the outside-combat choice until combat starts',()=>{
@@ -22,4 +22,14 @@ test('an aura look is the emitter\'s ring, not an ally\'s token-sized copy',()=>
  assert.equal(isAuraLook({},ring),true);
  assert.equal(isAuraLook({},ring,{granted:true}),false);
  assert.equal(isAuraLook({},plain),false);
+});
+
+test("the wounded drip as the GM chose: always, only in combat, or never", () => {
+  const fight = { started: true }, waiting = { started: false };
+  for (const combat of [fight, waiting, null]) assert.equal(bloodDropsNow("always", combat), true);
+  for (const combat of [fight, waiting, null]) assert.equal(bloodDropsNow("never", combat), false);
+  assert.equal(bloodDropsNow("combat", fight), true);
+  assert.equal(bloodDropsNow("combat", waiting), false, "an encounter not yet begun is not combat");
+  assert.equal(bloodDropsNow("combat", null), false);
+  assert.equal(bloodDropsNow(undefined, null), true, "an unset choice drips as before");
 });
