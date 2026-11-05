@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **Add water to an existing draft.** Extend a selected area with shoreline clicks or combine ticked pieces into one region. Its water settings stay, and the last addition can be undone.
+- **Add water to an existing draft.** Extend a chosen area with shoreline clicks or click existing pieces into that region. Checkboxes only choose which regions to create. Its water settings stay, and the last addition can be undone.
 
 - **Water review window.** Separate map and area panels, zoom and pan controls, live selection counts, and a confirmation of how many regions were created.
 

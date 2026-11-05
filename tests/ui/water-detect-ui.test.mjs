@@ -726,7 +726,7 @@ test("dragging the map pans without adding an area, and a later click still sele
 });
 
 
-test("an ocean draft absorbs ticked areas, preserves Sea settings, and can undo", async () => {
+test("an ocean draft absorbs only the clicked area, preserves Sea settings, and can undo", async () => {
   const ui = waterApp();
   const proposals = [pieces({ id: "water-1", pixels: new Int32Array([0, 1, 10, 11]) }), pieces({ id: "water-2", pixels: new Int32Array([8, 9, 18, 19]) }), pieces({ id: "water-3", preselected: false, pixels: new Int32Array([50, 51, 60, 61]) })];
   const scene = fakeScene();
@@ -741,7 +741,7 @@ test("an ocean draft absorbs ticked areas, preserves Sea settings, and can undo"
   ocean.querySelector("[data-wave]").value = "ne";
   ocean.querySelector("[data-beach]").checked = false;
   ui.fire("click", ui.button("add-to", "water-1"));
-  app.combineSelected();
+  app.clickPreview({ target: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }, clientX: 85, clientY: 5 });
   assert.deepEqual(app.detect.proposals.map((p) => p.id), ["water-1", "water-3"]);
   const merged = ui.rows().find((row) => row.dataset.id === "water-1");
   assert.equal(merged.querySelector("[data-kind]").value, "sea");
@@ -753,7 +753,7 @@ test("an ocean draft absorbs ticked areas, preserves Sea settings, and can undo"
   app.undoAdd();
   assert.deepEqual(app.detect.proposals.map((p) => p.id), ["water-1", "water-2", "water-3"]);
   assert.equal(ui.status["data-selection-count"].textContent, "2 of 3 areas selected");
-  app.combineSelected();
+  app.clickPreview({ target: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }, clientX: 85, clientY: 5 });
   await app.create();
   assert.equal(created.length, 1);
   assert.equal(created[0].flags.animater.waterKind, "sea");
@@ -778,5 +778,39 @@ test("a shoreline click expands the active area instead of adding a new row", as
   ui.fire("click", ui.button("add-done", ""));
   assert.equal(app.addTarget, null);
   assert.equal(app.undoAddition, null);
+  await app.close();
+});
+
+
+test("Add water ignores checkbox state and leaves save selection unchanged", async () => {
+  const ui = waterApp();
+  let selectedCalls = 0;
+  const { app } = await openWaterDetect(opening({ scene: fakeScene(), Application: ui.App,
+    load: async () => ({ ok: true, rgba: new Uint8Array(400), width: 10, height: 10 }),
+    detect: () => ({ status: "found", proposals: [
+      pieces({ id: "water-1", preselected: false, pixels: new Int32Array([0, 1, 10, 11]) }),
+      pieces({ id: "water-2", preselected: false, pixels: new Int32Array([8, 9, 18, 19]) }),
+      pieces({ id: "water-3", pixels: new Int32Array([88, 89, 98, 99]) }),
+    ] }),
+    select: () => { selectedCalls++; return { status: "found", proposal: pieces({ pixels: new Int32Array([2, 3, 12, 13]) }) }; },
+  }));
+  app.setAddTarget("water-1");
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked, false, "choosing a target does not select it for saving");
+  app.clickPreview({ target: { getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }, clientX: 85, clientY: 5 });
+  assert.equal(selectedCalls, 0, "clicking an existing area adds its exact shape");
+  assert.deepEqual(app.detect.proposals.map((p) => p.id), ["water-1", "water-3"]);
+  assert.equal(app.detect.proposals[0].pixels.length, 8);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked, false);
+  assert.equal(ui.rows()[1].querySelector("[data-pick]").checked, true, "a different checked area is not merged");
+  const box = ui.rows()[0].querySelector("[data-pick]");
+  box.checked = true;
+  box.checked = false;
+  ui.fire("change", { ...box, closest: (selector) => selector === "[data-pick]" ? box : null });
+  assert.equal(app.addTarget, "water-1", "unticking the target does not stop Add water");
+  ui.fire("click", ui.preview);
+  assert.equal(selectedCalls, 1);
+  assert.equal(app.detect.proposals[0].pixels.length, 12, "an unchecked target can still gain missed water");
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked, false);
+  assert.equal(ui.status["data-selection-count"].textContent, "1 of 2 areas selected");
   await app.close();
 });
