@@ -71,6 +71,17 @@ export function wayOut(from, grid, ok) {
 // walled off from it. A square speaks only for what its middle can reach, and a wall may cut across it: `cellAt(x, y)` is the square
 // a point really goes with, the next one when a wall parts it from its own middle, -1 for a pocket with no square's middle in it.
 // `walls` [{ x1, y1, x2, y2 }]; `roofed` the squares to leave out, already closed.
+// Whether a line crosses any of these walls ({ x1, y1, x2, y2 }), pure.
+export function crossesWall(a, b, walls = []) {
+  const rx = b.x - a.x, ry = b.y - a.y;
+  for (const w of walls) {
+    const sx = w.x2 - w.x1, sy = w.y2 - w.y1, d = rx * sy - ry * sx;
+    if (d === 0) continue;
+    const t = ((w.x1 - a.x) * sy - (w.y1 - a.y) * sx) / d, u = ((w.x1 - a.x) * ry - (w.y1 - a.y) * rx) / d;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
+  }
+  return false;
+}
 export function closedGround({ cols, rows, cell, area, walls: given = [], roofed }) {
   const own = (x, y) => Math.floor((y - area.y) / cell) * cols + Math.floor((x - area.x) / cell);
   if (!given.length) return { cells: [], cellAt: own };
@@ -198,6 +209,8 @@ export function fishStep(fish, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   return f;
 }
 
+// Whether a fish has swum clear off the map (pure): a body's length past its edge, so it is seen to go. `area` the scene.
+export const fishOffMap = (f, area, grid = 100) => f.x < area.x - grid * 0.5 || f.y < area.y - grid * 0.5 || f.x > area.x + area.width + grid * 0.5 || f.y > area.y + area.height + grid * 0.5;
 // Which rabbit a hawk stoops on (pure): one on the ground that this screen can see, the nearest. null: none.
 export function preyFor(from, rabbits = [], { seen = () => true } = {}) {
   let best = null, near = Infinity;
@@ -421,6 +434,8 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
           return f;
         });
         fishBeneath = { list: under, dim: fishAlpha / 0.68 };
+        // Gone off the map's edge: out of the scene, and another swims up in a while.
+        if (area) { const left = fish.filter((f) => fishOffMap(f, area, grid)); if (left.length) { for (const f of left) dropPair(f); fish = fish.filter((f) => !left.includes(f)); fishLost += left.length; fishIn = fishIn > 0 ? fishIn : between(Math.random, 20, 60); } }
       }
       if (fishLost > 0 && fishWaters.length && (fishIn -= dt) <= 0) { fish.push(newFish(t, fish.length)); fishLost -= 1; fishIn = between(Math.random, 45, 120); }
       // A rabbit taken: another comes along in a while.

@@ -164,6 +164,8 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
   const mostNow = () => { const n = typeof most === 'function' ? most() : most; return Number(n) > 0 ? Number(n) : 320; };
   // Each water's blood drawn apart: kept to its shape (`water.areas`, nothing runs up the bank) and softened, a cloud in the water and not a stain on it. Only while some is there.
   const clouds = new Map();
+  // Fresh blood kept with the scene that lands on water: it clouds away once, as it arrives; what was already there as the scene loaded does not play again.
+  const seenOnWater = new Set(); let dressedOnce = false;
   const cloudOf = (water) => {
     if (!water?.areas?.length || !water.id || typeof PIXI.Container !== 'function' || typeof PIXI.Graphics !== 'function') return null;
     let c = clouds.get(water.id);
@@ -207,10 +209,18 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
     // What the scene keeps (saved marks with their own colours): wet at first if it says when it was made, then dry, costing nothing after that, and only the rest
     // of the list changes when it changes. Neither time nor rain takes it; Clear blood does.
     dress(saved = []) {
-      // (Old dry blood has long since gone from water: nothing lies on it, though what is saved stays saved for when it freezes or drains.)
+      // (Nothing lies on water, though what is saved stays saved for when it freezes or drains.)
       const onWater = (mark) => { try { return !!waterAt(mark.x, mark.y); } catch { return false; } };
       const want = new Map();
-      for (const mark of saved) if (mark && !onWater(mark)) want.set(packMark(mark).join(), mark);
+      for (const mark of saved) {
+        if (!mark) continue;
+        if (!onWater(mark)) { want.set(packMark(mark).join(), mark); continue; }
+        const id = packMark(mark).join();
+        if (seenOnWater.has(id)) continue;
+        seenOnWater.add(id);
+        if (dressedOnce && Number.isFinite(mark.at)) { const m = sprite(mark, mark.color); if (m) { m.s.alpha = m.alpha; layDown(m); } }
+      }
+      dressedOnce = true;
       for (const [id, m] of dressed) if (!want.has(id)) { gone(m); dressed.delete(id); }
       for (const [id, mark] of want) {
         if (dressed.has(id)) continue;
@@ -278,7 +288,7 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
         return true;
       });
     },
-    clear() { for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) gone(m); lying = []; moving = []; drifting = []; dressed.clear(); dropClouds(true); },
+    clear() { for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) gone(m); lying = []; moving = []; drifting = []; dressed.clear(); dropClouds(true); seenOnWater.clear(); dressedOnce = false; },
     get count() { return lying.length + moving.length + drifting.length + dressed.size; },
   };
 }

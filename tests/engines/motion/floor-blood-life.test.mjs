@@ -211,3 +211,21 @@ test('splat blood starts wet, dries by the game clock, and can be stepped in unt
   assert.equal(unpackMark(packMark({ art: 'pool', x: 1, y: 2, r: 3, at: 77 })).at, 77);
   assert.equal(unpackMark(packMark({ art: 'pool', x: 1, y: 2, r: 3 })).at, undefined);
 });
+
+test('fresh splat blood on water clouds away once; on a scene loading, it does not play again', () => {
+  const water = { flow: 0 };
+  const { layer, live } = fakeLayer({ life: () => 300, now: () => 1000, waterAt: (x) => (x > 500 ? water : null) });
+  const old = stain({ art: 'pool', x: 600, y: 100, r: 50, at: 900 }), fresh = stain({ art: 'pool', x: 700, y: 100, r: 50, at: 1000 }), dry = stain({ art: 'pool', x: 800, y: 100, r: 50 }), land = stain({ art: 'pool', x: 100, y: 100, r: 50, at: 1000 });
+  layer.dress([old]);
+  assert.equal(live().length, 0, 'there as it loaded: stays quiet');
+  layer.dress([old, fresh, dry, land]);
+  assert.equal(live().filter((s) => s.position.x === 700).length, 1, 'the new one on water plays');
+  assert.equal(live().filter((s) => s.position.x === 800).length, 0, 'long-dry blood does not');
+  assert.equal(live().filter((s) => s.position.x === 100).length, 1, 'land keeps its own');
+  const before = live().length;
+  layer.dress([old, fresh, dry, land]);
+  assert.equal(live().length, before, 'and once only');
+  run(layer, 30);
+  assert.equal(live().filter((s) => s.position.x > 500).length, 0, 'gone');
+  assert.equal(live().filter((s) => s.position.x === 100).length, 1, 'and the land stays');
+});

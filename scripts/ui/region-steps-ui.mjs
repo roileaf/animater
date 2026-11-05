@@ -87,8 +87,12 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
       if (kind === 'sea') { const waves = element('label', 'an-step-slider', 'Waves toward '); waves.append(choice([['', 'With the wind'], ...WATER_TOWARD], own.waveTo ?? '', 'Waves toward', (value) => act({ waveTo: value }))); parts.push(waves); parts.push(tick('Beach along the shore', own.seaBeach !== 'off', (on) => act({ seaBeach: on ? '' : 'off' }))); }
       if (waterFlows(kind)) { toward.append(choice(flowChoices(kind), own.flowTo || 's', 'Flows toward', (value) => act({ flowTo: value }))); parts.push(toward); }
       if (kind !== 'falls') { const depth = element('label', 'an-step-slider', 'Depth '); depth.append(choice(WATER_DEPTHS, own.waterDepth ?? '', 'How deep the water is', (value) => act({ waterDepth: value }))); parts.push(depth); }
+      parts.push(tick('Water sound', own.regionSound !== 'off', (on) => act({ regionSound: on ? '' : 'off' })));
       if (movingWater(own) !== null) parts.push(tick('Moving water', movingWater(own), (on) => act({ movingWater: on ? '' : 'off' })));
     }
+    // (A dripping region that is not water has no water section to sit in.)
+    if (menu.reflections === null && own.drips) parts.push(tick('Dripping sound', own.regionSound !== 'off', (on) => act({ regionSound: on ? '' : 'off' })));
+    parts.push(tick('Animal sounds', own.animalSound !== 'off', (on) => act({ animalSound: on ? '' : 'off' })));
     if (activeStep(own) || own.stepHidden) parts.push(button(menu.hidden ? 'Show this step' : 'Hide this step', 'an-step-wide', () => act({ stepHidden: !menu.hidden })));
     parts.push(button(texture(own) ? 'Hide floor texture' : 'Show floor texture', 'an-step-wide', () => act({ texture: texture(own) ? 'off' : 'on' })));
     if (texture(own)) parts.push(styleChoice(own, floor, act, choice));

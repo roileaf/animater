@@ -4,12 +4,15 @@
 
 ### New
 
+- **Sound switches on a region.** A region's right-click menu can turn off its water or dripping sound, and the sounds of animals inside it.
+- **Walls wildlife ignores.** Wall configuration has a new Wildlife passes through tick, for a thicket a character cannot get through. Creatures, sight and light are not changed.
+- **Fish can leave.** Where water reaches the map's edge, a fish can swim off it, and another comes back in a while.
 - **Damage lens without the blood.** Damage lens amount has a new None choice: no blood on the screen, while tunnel vision and the heartbeat keep working by their own switches.
 
 ### Fixes
 
 - Bloody footprints are easier to see and last longer: stronger, for more strides, from anywhere on a wet stain.
-- Splat blood starts wet and dries by the game clock, and can be stepped in while it is wet. It still stays until cleared; what was splatted before stays dry.
+- Splat blood starts wet and dries by the game clock, and can be stepped in while it is wet. It still stays until cleared; what was splatted before stays dry. What lands on water clouds and flows away.
 - Blood in water looks like it: a soft cloud kept to the water, drawn out along the current and thinning away, not a stain sliding over the banks. Splat blood and blood kept with a scene no longer lie on top of water.
 - Blood on the floor goes by the game clock, not real time: it waits while the clock stands still and is gone after a long rest. It dries visibly, in under a minute of game time, and stays longer: five minutes by default, for worlds that haven't set their own. Rain washes it by the game clock too: about three minutes of game time in hard rain, not one, and far longer in drizzle, which now counts as light rain when set as a scene's weather.
 

@@ -193,7 +193,7 @@ import { createVermin, creatureAmount, creatureSize } from "./engines/motion/ver
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
-import { weatherShelter, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
+import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
 import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
@@ -2929,7 +2929,12 @@ const ratSpots = () => {
   }
   return spots;
 };
-const wallBlocks = (a, b) => { try { return !!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" }); } catch { return false; } };
+// Walls the GM has let wildlife through (Wall configuration → "Wildlife passes through"). Nothing to work out on a scene with none of them.
+let wildWallNet = null;
+const wildWalls_ = () => (wildWallNet ??= { any: (canvas.walls?.placeables ?? []).some((w) => w.document?.flags?.[ID]?.wildlifePasses === true), walls: groundWalls() });
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall"]) Hooks.on(hook, () => { wildWallNet = null; });
+Hooks.on("updateWall", (wall, change) => { if (change?.flags?.[ID] && "wildlifePasses" in change.flags[ID]) { try { rebuildWildlife(); } catch { /* the next look sees to it */ } } });
+const wallBlocks = (a, b) => { try { if (!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" })) return false; const net = wildWalls_(); return !net.any || crossesWall(a, b, net.walls); } catch { return false; } };
 // Regions creatures keep out of (Region configuration â†’ Animater â†’ Keep out): a sealed room with no rats, a shrine with no
 // moths. Each kind's areas, looked at with the rest of the life.
 const KEEP_OUT = ["rats", "bats", "moths", "crawlers", "eyes", "rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "town"];
@@ -2955,7 +2960,7 @@ const WILD_FLOORS = new Set(["grass", "dirt", "snow", "mud", "sand"]);
 let wildOpen = null;
 const groundWalls = () => {
   const walls = [];
-  for (const w of canvas.walls?.placeables ?? []) { const d = w.document; if (!(Number(d?.move) > 0) || (Number(d?.door) > 0 && Number(d?.ds) === 1)) continue; const [x1, y1, x2, y2] = d.c; walls.push({ x1, y1, x2, y2 }); }
+  for (const w of canvas.walls?.placeables ?? []) { const d = w.document; if (!(Number(d?.move) > 0) || (Number(d?.door) > 0 && Number(d?.ds) === 1) || d.flags?.[ID]?.wildlifePasses === true) continue; const [x1, y1, x2, y2] = d.c; walls.push({ x1, y1, x2, y2 }); }
   return walls;
 };
 const closedOf = (cols, rows, cell, area, roofed) => closedGround({ cols, rows, cell, area, walls: groundWalls(), roofed });
@@ -3079,6 +3084,8 @@ const wildOk = (kind, x, y) => {
   // Insects go over ground and water alike; dragonflies keep to the water.
   if (kind === "butterflies") return !!wildOpen && !wildOpen.closed(x, y) && !keptOut("insects", { x, y });
   if (kind === "dragonflies") return !!wildOpen?.inWater(x, y) && !keptOut("insects", { x, y });
+  // Fish may go on past the map's edge where the water reaches it (wildlife.mjs: another comes back in a while).
+  if (kind === "fish") { const r = canvas.dimensions?.sceneRect; if (r && (x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height)) return true; }
   return !!(kind === "fish" || kind === "waterBirds" || kind === "frogs" ? wildOpen?.inWater(x, y) : wildOpen?.at(x, y)) && !keptOut(kind, { x, y });
 };
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
@@ -3104,7 +3111,15 @@ const tickChorus = (seconds) => {
   if (!(heard.volume > 0)) return;
   playUnder("songChirp", at, { file: wildSound("songChirp"), volume: s.volume * 1.3 * chorus * heard.volume * (0.5 + Math.random() * 0.6), reach: 14, rate: 0.85 + Math.random() * 0.4, walls: true, gmAlways: heard.gmAlways, room: 0.1 });
 };
+// Regions the GM has hushed (the region's menu: "Water sound", "Animal sounds"): whether a sound from this spot is one of them.
+const hushedAt = (at, flag) => {
+  if (!at || !canvas?.ready) return false;
+  const elevation = canvas.level?.elevation?.base ?? 0;
+  for (const region of regionsHere()) { try { if (region.flags?.[ID]?.[flag] === "off" && region.testPoint({ x: at.x, y: at.y, elevation })) return true; } catch { /* a broken region never breaks the rest */ } }
+  return false;
+};
 const wildVoice = (kind, at, urgent) => {
+  if (hushedAt(at, "animalSound")) return;
   if (CRITTER_SOUND[kind]) { critterSound(kind, at, urgent); return; }
   if (!bothSettingsOn("wildlifeSounds")) return;
   const s = WILD_SOUND[kind], ears = earsNow(at, s.reach);
@@ -3215,7 +3230,7 @@ const tickPlaces = () => {
 };
 Hooks.on("canvasTearDown", () => { for (const voice of Object.values(placeVoices)) stopVoice(voice); placeAreas.surf = []; placeAreas.waterfall = []; placeAreas.waterfallLouds = []; placeAreas.tavern = []; });
 const rebuildWater = () => {
-  const seas = [], falls = [], calm = [], rough = [], fallSounds = [], fallLouds = [], seaSounds = [], beaches = [];
+  const seas = [], falls = [], calm = [], rough = [], fallSounds = [], fallLouds = [], seaSounds = [], beaches = [], seasHeard = [], fallsHeard = [];
   placeAreas.tavern = [];
   if (canvas?.ready) for (const region of regionsHere()) {
     try {
@@ -3224,18 +3239,19 @@ const rebuildWater = () => {
       const isWater = regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water", still = waterStillness(engineFalls || engineSea ? { ...own, waterfall: true } : own, isWater);
       if (!still) continue;
       const areas = regionAreas(region);
-      if (isWater && own.waterfall) for (const area of areas) falls.push({ area: Array.from(area), flowTo: own.flowTo in WIND_FROM ? own.flowTo : "s", swift: own.current === "swift", loud: fallLoudness(riverCurrent(own.current)) });
-      else if (isWater && own.sea) seas.push(...areas.map((a) => Array.from(a)));
+      const heard = region.flags?.[ID]?.regionSound !== "off";
+      if (isWater && own.waterfall) for (const area of areas) { const fall = { area: Array.from(area), flowTo: own.flowTo in WIND_FROM ? own.flowTo : "s", swift: own.current === "swift", loud: fallLoudness(riverCurrent(own.current)) }; falls.push(fall); if (heard) fallsHeard.push(fall); }
+      else if (isWater && own.sea) { seas.push(...areas.map((a) => Array.from(a))); if (heard) seasHeard.push(...areas.map((a) => Array.from(a))); }
       // The type of water sounds as it is, with or without those drawings.
-      if (isWater && engineFalls) for (const area of areas) { fallSounds.push(Array.from(area)); fallLouds.push(fallLoudness(riverCurrent(own.current))); }
-      if (isWater && engineSea) seaSounds.push(...areas.map((a) => Array.from(a)));
+      if (isWater && engineFalls && heard) for (const area of areas) { fallSounds.push(Array.from(area)); fallLouds.push(fallLoudness(riverCurrent(own.current))); }
+      if (isWater && engineSea && heard) seaSounds.push(...areas.map((a) => Array.from(a)));
       // The crabs on the beach moving water draws.
       if (isWater && engineSea && movingWaterHere() && floorLevel.water && own.movingWater !== "off" && own.seaBeach !== "off") beaches.push(...areas);
       (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }
   const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror") && canvas?.scene?.flags?.[ID]?.reflections !== "off";
-  placeAreas.surf = [...(useSea ? seas : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? falls.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? falls.map((f) => f.loud) : []), ...fallLouds];
+  placeAreas.surf = [...(useSea ? seasHeard : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? fallsHeard.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? fallsHeard.map((f) => f.loud) : []), ...fallLouds];
   const useBeaches = bothSettingsOn("coast") && !undergroundScene();
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useBeaches && beaches]);
   if (key === waterKey) return; waterKey = key;
@@ -3340,7 +3356,7 @@ const dripLanded = (d) => {
   const now = performance.now(); if (now - dripHeardAt < 140) return;
   const v = viewNow(); if (d.x < v.x || d.y < v.y || d.x > v.x + v.w || d.y > v.y + v.h) return;
   dripHeardAt = now;
-  playUnder("drip", d, { volume: Math.min(0.5, 0.16 + 0.12 * (d.size ?? 1)), reach: 5, rate: 0.85 + Math.random() * 0.35, walls: true });
+  if (!hushedAt(d, "regionSound")) playUnder("drip", d, { volume: Math.min(0.5, 0.16 + 0.12 * (d.size ?? 1)), reach: 5, rate: 0.85 + Math.random() * 0.35, walls: true });
 };
 // The pools lap softly while someone is near one: one loop, louder the nearer the nearest listener stands to a pool.
 let poolSound = null, poolStarting = false, poolHeardAt = 0;
@@ -3348,7 +3364,7 @@ const tickPools = () => {
   const now = performance.now(); if (now - poolHeardAt < 400) return; poolHeardAt = now;
   let level = 0;
   let near = null;
-  try { const pools = drips.count ? drips.pools : [], ears = canvas.sounds?.getListenerPositions?.() ?? []; for (const p of pools) { const k = heardFrom(p, ears, canvas.grid.size * 6); if (k > level) { level = k; near = p; } } } catch { level = 0; }
+  try { const pools = drips.count ? drips.pools : [], ears = canvas.sounds?.getListenerPositions?.() ?? []; for (const p of pools) { if (hushedAt(p, "regionSound")) continue; const k = heardFrom(p, ears, canvas.grid.size * 6); if (k > level) { level = k; near = p; } } } catch { level = 0; }
   const volume = 0.28 * level;
   if (poolSound) { try { if (volume > 0.005) poolSound.fade(volume, { duration: 450 }); else { const s = poolSound; poolSound = null; s.fade(0, { duration: 600 }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, 700); } } catch { poolSound = null; } return; }
   if (volume <= 0.005 || poolStarting) return;
@@ -3372,7 +3388,7 @@ const readRivers = () => {
   for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") { const painted = waterPainted(region); for (const area of regionAreas(region)) { area.painted = painted; water.push(area); } } } catch { /* a broken region never breaks the rest */ } }
   wakeRipples.water(water);
   for (const region of regionsHere()) {
-    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
+    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
 };
 // The night out of doors, constant (river-sound.mjs nightLevel): on a map with open ground, with Wildlife sounds on. Heard from the listener.
@@ -7677,6 +7693,14 @@ Hooks.on("renderWallConfig", (app, html) => {
   set.innerHTML = `<legend>Animater shadow</legend>
     <div class="form-group"><label>Casts no shadow</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadow"${flags.noShadow === true ? " checked" : ""}></div><p class="hint">This wall casts no shadow in sunlight: for a wall round the map's edge or one that only stops movement.</p></div>${heights}`;
   // After the window's last section, inside its scrolling part (before the footer it left pinned under the rest).
+  appendWallSection(root, set);
+});
+// Wall configuration: whether animals ignore this wall (a thicket a character cannot pass, a garden fence).
+Hooks.on("renderWallConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.wildlifePasses"]`)) return;
+  const own = (app.document ?? app.object)?.flags?.[ID] ?? {}, set = document.createElement("fieldset");
+  set.innerHTML = `<legend>Animater wildlife</legend><div class="form-group"><label>Wildlife passes through</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.wildlifePasses"${own.wildlifePasses === true ? " checked" : ""}></div><p class="hint">Animals treat this wall as if it were not there: a thicket a character cannot get through, say. Creatures, sight and light are not changed.</p></div>`;
   appendWallSection(root, set);
 });
 // Wall configuration: what bursts through this door as it opens (engines/motion/door-burst.mjs).

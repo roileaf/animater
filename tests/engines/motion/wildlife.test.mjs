@@ -250,3 +250,22 @@ test('weather already there as a scene starts sends no one running', async () =>
   assert.deepEqual([cover.out, cover.flush], [0, false]);
   assert.equal(takeCover(cover, 0, 0.1).flush, false);
 });
+
+test('crossesWall tells whether a line crosses any of the walls', async () => {
+  const { crossesWall } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const wall = { x1: 50, y1: 0, x2: 50, y2: 100 };
+  assert.equal(crossesWall({ x: 0, y: 50 }, { x: 100, y: 50 }, [wall]), true);
+  assert.equal(crossesWall({ x: 0, y: 50 }, { x: 40, y: 50 }, [wall]), false, 'stops short');
+  assert.equal(crossesWall({ x: 0, y: 150 }, { x: 100, y: 150 }, [wall]), false, 'goes past its end');
+  assert.equal(crossesWall({ x: 0, y: 50 }, { x: 100, y: 50 }, []), false, 'none left to cross');
+  assert.equal(crossesWall({ x: 0, y: 50 }, { x: 100, y: 50 }, [{ x1: 0, y1: 0, x2: 100, y2: 0 }]), false, 'running alongside');
+});
+
+test('a fish has left the map only once clear of its edge', async () => {
+  const { fishOffMap } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const area = { x: 100, y: 100, width: 500, height: 500 };
+  assert.equal(fishOffMap({ x: 300, y: 300 }, area, 100), false);
+  assert.equal(fishOffMap({ x: 70, y: 300 }, area, 100), false, 'still crossing the edge');
+  assert.equal(fishOffMap({ x: 40, y: 300 }, area, 100), true);
+  assert.equal(fishOffMap({ x: 300, y: 660 }, area, 100), true);
+});
