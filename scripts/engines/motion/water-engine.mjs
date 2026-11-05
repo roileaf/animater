@@ -526,3 +526,6 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
     get count() { return known.size; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const waterShaderSources = (full = true) => [[VERT, fragOf(full)]];

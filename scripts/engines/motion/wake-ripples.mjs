@@ -269,3 +269,6 @@ export function createWakeRipples({ PIXI, root, grid = () => 100, render = () =>
     get count() { return ringList.filter((r) => r && time - r.when <= LIFE).length + pieces.trails.length; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const WAKE_SHADER_SOURCES = Object.freeze([[RING_VERT, RING_FRAG], [ARM_VERT, ARM_FRAG]]);

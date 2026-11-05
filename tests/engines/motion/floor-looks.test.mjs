@@ -232,3 +232,23 @@ test('the sun changes colour with its height, and the moon does not', async () =
   assert.deepEqual(skyForFloors({ strength: 1, angle: 0 }).color, sunColour(45), 'a sky with no height reads as mid-morning');
 });
 
+
+test('the shaders a scene draws at once are warmed in the background, as the very programs its meshes use, each once', async () => {
+  const { sceneShaderSources, sceneShaderPrograms } = await import('../../../scripts/engines/motion/scene-shaders.mjs');
+  const { warmPrograms } = await import('../../../scripts/engines/tokenshade/warmup.mjs');
+  const sources = sceneShaderSources();
+  assert.ok(sources.length >= 20);
+  for (const [vertex, fragment] of sources) { assert.equal(typeof vertex, 'string'); assert.ok(vertex.includes('void main')); assert.ok(fragment.includes('gl_FragColor')); }
+  assert.notEqual(sceneShaderSources({ fullWater: false }).map((s) => s[1]).join(), sources.map((s) => s[1]).join(), 'water follows the quality');
+  const cache = new Map();
+  class Program { constructor(v, f) { this.vertexSrc = v; this.fragmentSrc = f; this.glPrograms = {}; } static from(v, f) { const k = v + f; if (!cache.has(k)) cache.set(k, new Program(v, f)); return cache.get(k); } }
+  const programs = sceneShaderPrograms({ Program });
+  assert.equal(programs[0], Program.from(...sources[0]));
+  const gl = { VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, LINK_STATUS: 3, ACTIVE_ATTRIBUTES: 4, getExtension: (n) => (n === 'KHR_parallel_shader_compile' ? {} : null), isContextLost: () => false, createShader: () => ({}), shaderSource() {}, compileShader() {}, createProgram: () => ({}), attachShader() {}, linkProgram() {}, getProgramParameter: (p, k) => (k === 4 ? 1 : true), getActiveAttrib: () => ({ name: 'aVertexPosition' }), bindAttribLocation() {}, deleteShader() {}, deleteProgram() {} };
+  const built = [], renderer = { gl, CONTEXT_UID: 7, shader: { generateProgram: ({ program }) => { built.push(program); program.glPrograms[7] = {}; } } };
+  const few = [programs[0], programs[1], programs[0], programs[2]];
+  programs[2].glPrograms[7] = {};
+  assert.equal(await warmPrograms(renderer, few, { tick: 0 }), 2, 'once each, and not what is already built');
+  assert.deepEqual(built, [programs[0], programs[1]]);
+  assert.equal(await warmPrograms({ ...renderer, gl: { ...gl, getExtension: () => null } }, [programs[3]], { tick: 0 }), 0, 'nothing without background compiling: it would freeze the canvas just the same');
+});

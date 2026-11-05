@@ -381,3 +381,6 @@ export function createCoast({ PIXI, floor, render = () => {} }) {
     get count() { return crabs.length; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const COAST_SHADER_SOURCES = Object.freeze([[VERT, FRAG]]);

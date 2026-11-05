@@ -4,8 +4,10 @@
 
 ### Fixes
 
+- Fixed a WebGL warning that could fill the console after painted floors or looks were drawn.
 - Ducks, herons and frogs now leave water a region step has just turned bad, instead of staying on it or vanishing. Ducks and herons fly to the nearest good water, and a frog dives and swims to a new lily pad while its old one sinks. With no good water left they go until it comes back, and ducks and herons driven onto the sea fly home when their pond clears.
 - A region step that changes a lot of a map's water no longer starts all its animals over.
+- The first frame of a scene no longer holds for a few hundred milliseconds while Animater's floor, lamp, cave and water shaders compile: they now compile in the background as soon as there is a canvas.
 - Light through windows and open doors now has the sun's current colour, the same as on floors and water, instead of staying pale when the sun is low.
 
 ## 3.0.1 (2026-11-05)

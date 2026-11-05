@@ -300,3 +300,6 @@ export function createHeldTorches({ PIXI, root, lightRoot = root, grid = () => 1
     get size() { return torches.size; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const TORCH_SHADER_SOURCES = Object.freeze([[FLAME_VERT, FLAME_FRAG]]);

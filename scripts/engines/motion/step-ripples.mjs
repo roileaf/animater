@@ -74,3 +74,6 @@ export function createStepRipples({ PIXI, root, grid = () => 100 }) {
     get busy() { return live > 0; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const STEP_RIPPLE_SHADER_SOURCES = Object.freeze([[VERT, FRAG]]);

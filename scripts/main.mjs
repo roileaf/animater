@@ -132,7 +132,9 @@ import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
 import { libraryPreferences } from './ui/media-library.mjs';
 import {TokenFxPreview} from './engines/preview/token-fx-preview.mjs';
 import {tokenFx} from './engines/tokenshade/api.mjs';
-import {warmShaders,buildSceneWarpNow} from './engines/tokenshade/warmup.mjs';
+import {warmShaders,warmPrograms,buildSceneWarpNow} from './engines/tokenshade/warmup.mjs';
+import {sceneShaderPrograms} from './engines/motion/scene-shaders.mjs';
+import {sceneWarpProgram} from './engines/tokenshade/filters/scene-warp.mjs';
 import {normalizeLayers} from './engines/tokenshade/layers.mjs';
 import { SceneFxPreview } from "./engines/preview/scene-fx-preview.mjs";
 import {
@@ -342,6 +344,16 @@ const distortsHere = () => {
 // Builds or warms the shaders this client now needs (set once the canvas is up, in "ready"); the quality and
 // "Map distortion on my screen" settings call it when they change.
 let rewarmShaders = () => {};
+// The shaders a scene draws as soon as it appears, compiled in the background from the moment there is a canvas: otherwise each holds its first frame while it compiles.
+Hooks.once("canvasInit", () => {
+  try {
+    const renderer = canvas.app?.renderer, PIXI = globalThis.PIXI;
+    if (!renderer || !PIXI?.Program) return;
+    const programs = sceneShaderPrograms(PIXI, { fullWater: localQuality() === "full" });
+    if (distortsHere()) programs.unshift(sceneWarpProgram(PIXI));
+    warmPrograms(renderer, programs, { parallel: 4, tick: 20 }).catch((error) => console.warn("Animater scene shader warm-up:", error.message));
+  } catch (error) { console.warn("Animater scene shader warm-up:", error.message); }
+});
 const distortionHost = createDistortionHost({
   makeFilter: () => {
     const renderer = canvas.app.renderer, gl = renderer.gl, filter = sceneWarpFilter(globalThis.PIXI);

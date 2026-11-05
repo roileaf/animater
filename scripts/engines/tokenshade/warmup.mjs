@@ -45,11 +45,16 @@ export function buildSceneWarpNow(PIXI, renderer) {
 // first). Resolves with how many were warmed; `stop()` on the returned promise ends it early. A build that still takes long means the cache is
 // not helping on this machine, so warming stops rather than freezing the canvas itself.
 export function warmShaders(PIXI, renderer, { types, sceneWarp = false, parallel = 3, tick = 40, slowBuild = 120, now = () => performance.now() } = {}) {
+  return warmPrograms(renderer, [...(sceneWarp ? [sceneWarpProgram(PIXI)] : []), ...tokenshadePrograms(PIXI, types)], { parallel, tick, slowBuild, now });
+}
+
+// The same for any of PIXI's Program objects, in the order given.
+export function warmPrograms(renderer, programs = [], { parallel = 3, tick = 40, slowBuild = 120, now = () => performance.now() } = {}) {
   const gl = renderer?.gl, uid = renderer?.CONTEXT_UID;
   let stopped = false;
   const done = new Promise(resolve => {
     if (!gl?.getExtension?.('KHR_parallel_shader_compile') || gl.isContextLost?.()) return resolve(0);
-    const queue = [...(sceneWarp ? [sceneWarpProgram(PIXI)] : []), ...tokenshadePrograms(PIXI, types)].filter(p => !p.glPrograms[uid]);
+    const queue = programs.filter((p, i) => !p.glPrograms[uid] && programs.indexOf(p) === i);
     const active = [];
     let warmed = 0;
     const start = program => {

@@ -301,3 +301,6 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     get busy() { return !!box && (copies.length > 0 || tileCopies.length > 0 || lampsNow.length > 0 || !!moonNow || holder?.visible === true); },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const MIRROR_SHADER_SOURCES = Object.freeze([[VERT, FRAG]]);

@@ -709,6 +709,8 @@ export function createBackgroundPrograms({ gl, sourcesOf }) {
 const programsByGl = new WeakMap();
 const programsFor = (PIXI, renderer) => { const gl = renderer.gl; if (!programsByGl.has(gl)) programsByGl.set(gl, createBackgroundPrograms({ gl, sourcesOf: (frag) => PIXI.Program.from(VERT, frag) })); return programsByGl.get(gl); };
 // One such program over a box, into what is bound now, row 0 at the box's top. The caller resets the renderer after.
+// After drawing behind the renderer's back: its own program in use again, as it believes, before it sets anything on it.
+const handBack = (r) => { r.gl.useProgram(r.shader?.program?.glPrograms?.[r.CONTEXT_UID]?.program ?? null); r.reset(); };
 const drawPlain = (gl, program, box, width, height, set = () => {}) => {
   gl.bindVertexArray?.(null);
   gl.viewport(0, 0, width, height); gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.SCISSOR_TEST); gl.disable(gl.CULL_FACE); gl.colorMask(true, true, true, true);
@@ -1026,7 +1028,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     drawPlain(gl, program, { x: 0, y: 0, w: 1024, h: 1024 }, side, side);
     gl.readPixels(0, 0, side, side, gl.RGBA, gl.UNSIGNED_BYTE, data);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(frame); gl.deleteTexture(target);
-    r.reset();
+    handBack(r);
     return new PIXI.Texture(PIXI.BaseTexture.fromBuffer(data, side, side, { wrapMode: PIXI.WRAP_MODES.REPEAT, mipmap: PIXI.MIPMAP_MODES.ON, anisotropicLevel: 8, scaleMode: PIXI.SCALE_MODES.LINEAR, alphaMode: PIXI.ALPHA_MODES.NPM }));
   };
   let scaleNow = 1;
@@ -1144,7 +1146,7 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
     const r = renderer(), gl = r.gl;
     r.renderTexture.bind(paint.texture);
     drawPlain(gl, programsFor(PIXI, r).get(lookFrag(id)), box, paint.texture.baseTexture.realWidth, paint.texture.baseTexture.realHeight, (u) => { gl.uniform1f(u('uGrid'), size); gl.uniform1f(u('uSeed'), seedOf(entry.id)); gl.uniform1f(u('uTime'), 0); gl.uniform1f(u('uCover'), spec.cover ? 1 : 0); gl.uniform1f(u('uBias'), biasOf(spec.strength ?? 1)); gl.uniform1f(u('uScale'), spec.scale ?? 1); });
-    r.reset();
+    handBack(r);
     const finisher = quadOf(PIXI, box, FINISH_FRAG, { uPaint: paint.texture, uGrid: size, uBody: bodyOf(id), uWet: 0, uAmount: spec.strength ?? 1, uClip: shore ? 1 : 0, uShore: shore ?? PIXI.Texture.WHITE, uMask: mask, uPeak: peakOf(pixels, mask), uBox: [box.x, box.y, box.w, box.h] });
     render(finisher, done.texture, true, transform);
     finisher.destroy();
@@ -1237,3 +1239,6 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
     get count() { let n = 0; for (const entry of known.values()) if (entry.sprite || entry.mesh) n++; return n; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const FLOOR_SHADER_SOURCES = Object.freeze([[VERT, SHOW_FRAG], [VERT, SHEEN_FRAG], [VERT, FINISH_FRAG], [BLADE_VERT, BLADE_FRAG], [BLADE_SHADOW_VERT, BLADE_SHADOW_FRAG]]);

@@ -204,3 +204,6 @@ export function createWaterfalls({ PIXI, floor, above, render = () => {} }) {
     get busy() { return falls.length > 0; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const WATERFALL_SHADER_SOURCES = Object.freeze([[VERT, BODY_FRAG], [VERT, MIST_FRAG]]);

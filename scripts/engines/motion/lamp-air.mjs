@@ -340,3 +340,6 @@ export function fireSparksOf(lights = [], view = null, grid = 100) {
     .slice(0, MAX_FIRES)
     .map((l) => ({ x: l.x, y: l.y, reach: l.reach, size: Math.min(2, Math.max(0.4, (Number(l.radius) || grid * 3) / (grid * 5))) }));
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const LAMP_AIR_SHADER_SOURCES = Object.freeze([[VERT, FRAG], [VERT, SMOKE_FRAG]]);

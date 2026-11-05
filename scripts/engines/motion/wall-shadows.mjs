@@ -658,3 +658,6 @@ export function createWallShadows({ PIXI, root, render }) {
     get sunlit() { return sunlit; },
   };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const WINDOW_SHADER_SOURCES = Object.freeze([[MOTES_VERT, GLOW_FRAG], [MOTES_VERT, MOTES_FRAG]]);

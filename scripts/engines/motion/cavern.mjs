@@ -574,3 +574,6 @@ export function skylightShare(point, openings = [], shift = [0, 0], { grid = 100
   for (const [dx, dy] of at) if (openings.some((p) => inside({ x: point.x + dx - shift[0], y: point.y + dy - shift[1] }, p))) lit++;
   return lit / at.length;
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const CAVERN_SHADER_SOURCES = Object.freeze([[AREA_VERT, SKY_FRAG], [AREA_VERT, MIST_FRAG], [AREA_VERT, MIST_OUT_FRAG], [AREA_VERT, LAVA_FRAG], [FUNGUS_VERT, FUNGUS_FRAG], [CRYSTAL_VERT, CRYSTAL_FRAG]]);

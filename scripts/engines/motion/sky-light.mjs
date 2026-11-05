@@ -1442,3 +1442,6 @@ export function fxClouds(effects = {}) {
   const o = cloud.options ?? {}, num = (v, d) => (Number.isFinite(Number(v?.value ?? v)) ? Number(v?.value ?? v) : d);
   return { angle: (num(o.direction, 0) * Math.PI) / 180, speed: Math.min(1, Math.max(0, num(o.speed, 0.5))), shadows: (o.dropShadow?.value ?? o.dropShadow) === true };
 }
+
+// What it draws with, for warming ahead of the first frame (scene-shaders.mjs).
+export const SKY_SHADER_SOURCES = Object.freeze([[VERT, FRAG]]);
