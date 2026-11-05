@@ -37,6 +37,12 @@ test('bundled sound packaging excludes local catalogs, audit reports and source 
   }
 });
 
+test('water detection ships with the module', () => {
+  const files = new Set(releaseFiles());
+  assert.ok(files.has('scripts/engines/regions/water-detect.mjs'));
+  assert.ok(files.has('scripts/ui/water-detect-ui.mjs'));
+});
+
 test('release includes workers a module reaches through new URL(..., import.meta.url)', () => {
   const files = new Set(releaseFiles());
   assert.ok(files.has('scripts/engines/camera/lens-blood-paint-worker.mjs'), 'the lens blood paint worker ships');
