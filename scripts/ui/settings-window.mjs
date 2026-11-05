@@ -143,6 +143,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "quietSneaking" },
     { world: "projectileWalls" },
     { world: "dispelShatter", local: "dispelShatterLocal" },
+    { world: "experimentalWaterRegions" },
   ] },
   { id: "sound", label: "Sound", icon: "fa-solid fa-volume-high", rows: [
     { world: "animaterSounds", local: "animaterSoundsLocal" },

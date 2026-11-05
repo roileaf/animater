@@ -51,6 +51,16 @@ test("players see only their own switches: no world switch, world extras or worl
   assert.ok(rows.hitSoundsMenu, "the Hit sounds menu opens from the Sound tab");
 });
 
+test("the water detector's switch is a GM's row on the Floor and world tab, and so leaves Configure Settings", () => {
+  const withWater = new Map([...registry, reg("experimentalWaterRegions", "world", Boolean, { name: "Experimental: detect water regions" })]);
+  const gm = rowsOf(model({ isGM: true, registry: withWater }));
+  assert.equal(gm.experimentalWaterRegions.tab, "floor");
+  assert.equal(gm.experimentalWaterRegions.world.key, "experimentalWaterRegions");
+  assert.equal(gm.experimentalWaterRegions.local, null);
+  assert.equal(rowsOf(model({ isGM: false, registry: withWater })).experimentalWaterRegions, undefined);
+  assert.ok(WINDOW_SETTING_KEYS.includes("experimentalWaterRegions"));
+});
+
 test("rows only where their system or module applies; tabs without rows are left out", () => {
   const pf2e = rowsOf(model({ isGM: true })), dnd = rowsOf(model({ isGM: true, systemId: "dnd5e" }));
   assert.ok(pf2e.weaponRuneFlourishes && !dnd.weaponRuneFlourishes);
