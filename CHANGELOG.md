@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Water review window.** Separate map and area panels, zoom and pan controls, live selection counts, and a confirmation of how many regions were created.
+
 - **Experimental: detect water regions.** Off until you turn it on in the Floor & world tab of Animater settings. The Regions controls can propose blue and teal water from this level's map. Review the pieces, choose a water kind and its flow or sea settings, then create them. Reruns ask before replacing generated regions limited to this level. Replacement discards all edits to those regions. Hand-drawn, shared, and all-level regions stay.
 - **Click the water it missed.** The preview opens even when automatic detection finds nothing. Click water of any colour to add a selected piece. Narrow colour selection is the default. Wide follows more connected shades but can also include similarly coloured land. Contrasting floating objects stay as holes. Remove any incorrect piece before saving.
 - **What it leaves alone.** A saturated roof larger than the water can still fool the automatic read, so untick it and click the water instead. A lone pool under about a quarter of a percent of the map needs a click too. A video or SVG background, or a level background moved, scaled or rotated in its configuration, cannot be read, and it says so.

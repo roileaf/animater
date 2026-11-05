@@ -295,6 +295,8 @@ Animater reads that level's map and opens a window. It shows a preview of the ma
 
 **Click the water.** The automatic read finds only strongly coloured blue and teal water. If it found nothing, the window says why and stays open. Click water on the preview, and Animater follows that colour out from your click and adds a ticked row. This is how you get muted underground water, and water of any other colour. A bad click on stone is easy to undo. A clicked piece larger than a quarter of the map shows a warning, and **Remove** takes any row away. A click on a piece already in the list adds nothing, and neither does a click on a spot with no clear colour or a patch too small to be a region. You get a short message instead.
 
+**Review the map.** Use the zoom buttons or scroll over the preview to zoom in. Drag to pan, and choose **Fit map** to see the whole image again. The area list scrolls separately. Its heading shows the number of areas found and selected. The Create button shows how many regions it will save, and a notification confirms the number created and replaced.
+
 **Click colour range** starts at **Narrow**. Choose **Wide** to follow more shades through connected water. Wide can also join touching grass or banks of similar colour, so inspect its result before creating regions. Both ranges preserve contrasting floating objects as holes.
 
 Set **Kind** to still pool, river, rapids, waterfall, or sea. Flowing water supports compass directions or **Follows the wind**. Rivers can be gentle or swift. Rapids and waterfalls use a swift current. For the sea, choose the wave direction and whether to add a beach. These choices use the same water settings as Region configuration. Shared controls set kind, flow, or current for every ticked row.
