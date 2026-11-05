@@ -6180,6 +6180,9 @@ Hooks.once("init", () => {
   registerSetting("auraStyle",{name:'Aura style',
     hint:'How an aura’s reach is drawn. JB2A animations: looping JB2A footage across the reach. Tokenshade: drawn by Animater on the ground, a crisp line exactly at the reach with a pattern in the aura’s colour and theme (flame, frost, runes, vines and more) and nothing over the creatures inside; lighter on slower computers. Either way the aura’s small accent stays around its creature.',
     scope:'world',config:true,type:String,choices:{...AURA_STYLES},default:'jb2a',onChange:()=>persistentStates?.schedule()});
+  registerSetting("auraAccentUnder",{name:'On-token effect under the token',
+    hint:'With the Tokenshade aura style, draws the small effect an aura keeps on its creature under the token instead of over it. Art that fills its square hides whatever does not reach past its edge. Recipes you made yourself keep their own layering.',
+    scope:'world',config:true,type:Boolean,default:false,onChange:()=>persistentStates?.schedule()});
   registerSetting("conditionTransitions",{name:'Conditions transition in',
     hint:'A condition that has just landed plays a transition before its lasting look: stone creeping up a petrified creature, sickness spreading over the sickened, a curse taking hold of the doomed, life draining from the drained, poison spreading through the veins. Only as it lands, never on a reload. Needs the Tokenshade condition looks.',
     scope:'world',config:true,type:Boolean,default:true});
@@ -8089,6 +8092,7 @@ Hooks.once("ready", () => {
       subtle: () => hotSetting(SUBTLE_LASTING) === true,
       auraCalm: () => auraCalm(hotSetting("aurasOutsideCombat"), game.combat),
       auraStyle: () => hotSetting("auraStyle"),
+      auraAccentUnder: () => hotSetting("auraAccentUnder") === true,
       // "Conditions transition in": a condition that just landed plays its Tokenshade transition on this screen
       // (Turn to stone, Nausea takes hold…) and its lasting look waits that long. Returns { ms, release } (0 for none):
       // the transition plays at the lasting look's strength, ending as it starts, and release() crossfades it out as

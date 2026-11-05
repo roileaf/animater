@@ -125,6 +125,22 @@ test('river and waterfall volume are each player\'s own sliders, under their fea
  assert.equal(extra('waterfalls').key,'waterfallVolume');assert.equal(extra('waterfalls').kind,'range');
 });
 
+test("the aura's on-token checkbox shows only under the Tokenshade aura style", () => {
+  const records = new Map([
+    reg("auraStyle", "world", String, { name: "Aura style", choices: { jb2a: "JB2A", tokenshade: "Tokenshade" } }),
+    reg("auraAccentUnder", "world", Boolean, { name: "On-token effect under the token" }),
+  ]);
+  const row = (auraStyle, isGM = true) => rowsOf(settingsModel({ registry: records, get: (k) => (k === "auraStyle" ? auraStyle : false), isGM })).auraStyle;
+  assert.deepEqual(row("jb2a").extras, []);
+  const extra = row("tokenshade").extras[0];
+  assert.equal(extra.key, "auraAccentUnder");
+  assert.equal(extra.kind, "boolean");
+  assert.equal(extra.value, false);
+  assert.match(settingsWindowHTML(settingsModel({ registry: records, get: (k) => (k === "auraStyle" ? "tokenshade" : false), isGM: true })), /type="checkbox" data-setting="auraAccentUnder"/);
+  assert.ok(WINDOW_SETTING_KEYS.includes("auraAccentUnder"), "Configure Settings leaves it to this window");
+  assert.equal(row("tokenshade", false), undefined, "a player sees neither");
+});
+
 test("every setting the window lists is registered by Animater, and Configure Settings keeps only the quality", () => {
   const sources = ["scripts/main.mjs", "scripts/engines/flash/flash-combat.mjs",
     "scripts/engines/playback/defeated-look.mjs", "scripts/integrations/sequencer-turbo/index.mjs", "scripts/systems/twoe-crossover.mjs",

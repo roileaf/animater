@@ -208,7 +208,7 @@ export class PersistentStates{
      const calm=isAuraLook(item,recipe,{granted:grantedByOtherAura(item,token)})?(h.auraCalm?.()??'show'):'show';if(calm==='hidden')continue;
      // The world's Subtle switch softens every catalog look (a recipe of your own keeps what you made).
      const soft=!item.animaterRecipe&&(h.subtle?.()===true||calm==='subtle');
-     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':'')+(h.auraStyle?.()??''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!(this.gone.has(key)||justApplied(item))),...(fade&&saved.some(x=>x.id===recipe.id)?{fadeMs:ownFadeMs(recipe)}:{})});shown++;if(fade)this.played.add(key);}
+     if(!desired.has(key)){desired.set(key,{key,signature:signature+JSON.stringify(budget)+(state.motion===false?'still':'')+(fade?'fade':'')+(turn?'turn':'')+(soft?'soft':'')+(h.auraStyle?.()??'')+(h.auraAccentUnder?.()?'under':''),token,item,recipe,opacity:state.opacity,motion:state.motion!==false,fade,turn,soft,quiet:fade&&(this.played.has(key)||!(this.gone.has(key)||justApplied(item))),...(fade&&saved.some(x=>x.id===recipe.id)?{fadeMs:ownFadeMs(recipe)}:{})});shown++;if(fade)this.played.add(key);}
     }
    }
    // A state gone from the token (disabled or removed) that comes back is applied again: D&D 5e re-enables the
@@ -286,14 +286,16 @@ export class PersistentStates{
   // small accent around the creature stays. An ally's copy and a recipe of your own keep their footage.
   const reach=!granted&&!authored&&h.auraStyle?.()==='tokenshade'&&h.auraField?shown.find(s=>s.auraRadius>0):null;
   const drawn=reach?shown.filter(s=>!(s.auraRadius>0)):shown;
+  // The "On-token effect under the token" switch: that accent (an ally's copy too) goes under the art, whatever it is.
+  const accentUnder=!authored&&(reach||(granted&&h.auraStyle?.()==='tokenshade'))&&h.auraAccentUnder?.()===true;
   for(const s of drawn){
    if(layers++>=maxLayers)continue;
    const media=mediaForReference(catalog,s.asset);
    // Hollow rings (markers, rims, curse and glyph circles) go on top of any token: they frame the creature, while
    // under it a ring just outside the edge is hidden by art that reaches the edge. Filling footage (webs, smoke,
    // sparkles) stays under round art and goes on top of square art at half strength.
-   const hollow=hollowFootage(s.asset),under=s.below||(!authored&&coversToken(s,s.asset));
-   const lifted=!authored&&under&&(granted||!s.auraRadius)&&!s.maskToken&&!refractionFootage(s.asset)&&(hollow||squareArt||risingFlames(s.asset));
+   const hollow=hollowFootage(s.asset),under=accentUnder||s.below||(!authored&&coversToken(s,s.asset));
+   const lifted=!accentUnder&&!authored&&under&&(granted||!s.auraRadius)&&!s.maskToken&&!refractionFootage(s.asset)&&(hollow||squareArt||risingFlames(s.asset));
    const overArt=lifted&&!hollow?.5:1;
    // Subtle: smaller, fainter and calmer. An aura's ring keeps its size, since that shows how far it reaches.
    const soft=r.soft&&!authored?SUBTLE_LOOK:null,softScale=soft&&!s.auraRadius?soft.scale:1;
@@ -307,7 +309,7 @@ export class PersistentStates{
    if(documents.length)e.tieToDocuments(documents);
    applyEffectOptions(e,{...s,oneShot:false,playbackRate:(s.playbackRate??1)*level.rate*(soft?.rate??1)});
    // Under the token, it stays on the ground when the token flies (ground-elevation.mjs).
-   if(under&&!lifted)onGroundBelow(e,r.token);else if(s.above)e.elevation(1);if(s.maskToken)e.mask(r.token);
+   if(under&&!lifted)onGroundBelow(e,r.token);else if(s.above)e.elevation(1);if(s.maskToken&&!accentUnder)e.mask(r.token);
   }
   if(r.cancelled||this.closed)return;
   // A condition that has just landed plays its transition first (stone creeping up the creature, a curse washing

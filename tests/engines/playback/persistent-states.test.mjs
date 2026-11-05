@@ -577,6 +577,30 @@ test('Aura style Tokenshade draws the reach with a shader field; the accent stay
  f.actor.auras.clear();f.actor.items=[];await f.manager.reconcile();assert.ok(removed.includes(fields[0].key));
  await f.manager.destroy();
 });
+test('Aura style Tokenshade: the on-token accent goes under the token only when asked',async()=>{
+ const look=async({style='tokenshade',under,square=false,own=false,mask=false}={})=>{
+  const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Protective Wards'),item=native(entry),f=fixture([item]);
+  item.system.rules=[{key:'Aura',slug:'protective-wards',radius:15}];f.actor.auras=new Map([['protective-wards',{slug:'protective-wards',radius:15,effects:[]}]]);
+  f.manager.host.auraStyle=()=>style;f.manager.host.auraField={add(){},remove(){}};f.manager.host.opaqueArt=()=>square;
+  if(under!==undefined)f.manager.host.auraAccentUnder=()=>under;
+  if(own){f.states.effect={...useStateEntry({},entry.id),customized:[entry.id]};f.setSaved([stateRecipe(entry)]);}
+  if(mask)f.manager.host.resolveStateRecipe=()=>{const recipe=stateRecipe(entry);return{...recipe,stages:recipe.stages.map(s=>s.auraRadius?s:{...s,maskToken:true})};};
+  await f.manager.reconcile();await flush();
+  const count=name=>f.calls.filter(c=>c[0]===name).length,result={files:count('file'),below:count('belowTokens'),mask:count('mask')};
+  await f.manager.destroy();return result;
+ };
+ // Square art lifts its glyph over the token by default (its refraction always stays under).
+ const off=await look({square:true});assert.ok(off.files>0,'it has an accent');assert.ok(off.below<off.files,'default: over the token');
+ assert.deepEqual(await look({square:true,under:false}),off,'off is the default');
+ const on=await look({square:true,under:true});assert.equal(on.files,off.files,'the same layers');assert.equal(on.below,on.files,'on: every accent under the token');
+ const jb2a=await look({style:'jb2a',square:true,under:true});assert.ok(jb2a.below<jb2a.files,'JB2A style ignores it');
+ const masked=await look({under:true,mask:true});assert.equal(masked.below,masked.files);assert.equal(masked.mask,0,'cropped to the token it would be hidden whole');
+ const mine=await look({square:true,under:true,own:true});assert.ok(mine.below<mine.files,'a recipe of your own keeps its layering');
+ // An ally's copy of the aura follows the same switch.
+ const halo=PF2E_EFFECTS.find(e=>/Angelic Halo/.test(e.name)&&e.auraDesign);
+ const allyBelow=async(style,under)=>{const ally=fixture([{...native(halo),flags:{pf2e:{aura:{origin:'Actor.caster',slug:'angelic-halo'}}}}]);ally.actor.uuid='Actor.ally';ally.manager.host.auraStyle=()=>style;ally.manager.host.auraAccentUnder=()=>under;await ally.manager.reconcile();await flush();const below=ally.calls.some(c=>c[0]==='belowTokens');await ally.manager.destroy();return below;};
+ assert.equal(await allyBelow('tokenshade',true),true);assert.equal(await allyBelow('tokenshade',false),false);assert.equal(await allyBelow('jb2a',true),false);
+});
 test('auras outside combat hide or go subtle; other looks on the token stay',async()=>{
  const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Manifest Will'),aura=native(entry),f=fixture([aura,native(bless,'b')]);
  aura.system.rules=[{key:'Aura',slug:'manifest-will',radius:30}];

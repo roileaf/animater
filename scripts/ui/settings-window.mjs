@@ -16,13 +16,14 @@ const FULL_OR_LIGHT = [(q) => canShake(q, true), "Needs Full or Light animation 
 
 // Each row: `world` (the GM's setting), `local` (this screen's), `extras` (more settings under it), `when` (only
 // where it applies: a system or an active module, as its registration listed it), `gmOnly` (a client setting only
-// a GM has a use for), `menu` (a button opening another settings menu), `quality` (see FULL_ONLY).
+// a GM has a use for), `menu` (a button opening another settings menu), `quality` (see FULL_ONLY), `extrasWhen` (an
+// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window).
 export const SETTINGS_TABS = Object.freeze([
   { id: "look", label: "Look & light", icon: "fa-solid fa-palette", rows: [
     { local: "quality" },
     { world: "conditionLooks", extras: ["conditionTransitions"] },
     { world: "subtleLasting" },
-    { world: "auraStyle" },
+    { world: "auraStyle", extras: ["auraAccentUnder"], extrasWhen: { auraAccentUnder: (read) => read("auraStyle") === "tokenshade" } },
     { world: "tokenshadeLive", extras: ["tokenshadeLightWeather"] },
     { world: "weatherOnCreatures" },
     { world: "conditionValueLooks" },
@@ -238,7 +239,7 @@ export function settingsModel({ id = "animater", registry, get, menus = new Map(
       const lead = worldC ?? localC;
       if (!lead) continue;
       const world = mine(worldC) ? worldC : null, local = mine(localC) ? localC : null;
-      const extras = (row.extras ?? []).map(control).filter(mine);
+      const extras = (row.extras ?? []).filter((key) => row.extrasWhen?.[key]?.(read) ?? true).map(control).filter(mine);
       if (!world && !local && !extras.length) continue;
       rows.push({
         id: row.world ?? row.local, name: lead.name, hint: lead.hint, world, local, extras,
@@ -370,8 +371,9 @@ export function settingsWindow(ApplicationV2, {
       try {
         await settings().set(id, key, value);
         control.value = value;
-        // The quality decides which features this screen draws: their notes are redrawn.
-        if (key === "quality") this.render?.();
+        // The quality decides which features this screen draws: their notes are redrawn. The aura style shows or
+        // hides its extra.
+        if (key === "quality" || key === "auraStyle") this.render?.();
         if (control.reload) await reloadConfirm({ world: control.scope === "world" });
       } catch (error) {
         globalThis.ui?.notifications?.error(`Animater: could not save ${control.name}: ${error.message}`);
