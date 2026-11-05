@@ -765,10 +765,12 @@ const forgetWeatherLooks = () => { for (const look of weatherLooks.values()) { t
 for (const hook of ["canvasReady", "updateScene", "createToken", "deleteToken", "drawToken"]) Hooks.on(hook, () => { setTimeout(syncWeatherLooks, 50); });
 Hooks.on("canvasTearDown", forgetWeatherLooks);
 // Clear on demand (api.clearGroundMarks, the GM keybinding): a GM clears every screen, a player their own.
+// (A blast's scorch is a mark on the ground too, though its own engine keeps it.)
+const clearEveryMark = () => { clearMarks(); energyBlasts.clearMarks(); };
 const clearGroundMarksApi = (options) => clearGroundMarks(options, {
-  isGM: () => game.user.isGM, clear: clearMarks, emit: (data) => game.socket.emit(`module.${ID}`, data), sender: clientId, userId: game.user.id,
+  isGM: () => game.user.isGM, clear: clearEveryMark, emit: (data) => game.socket.emit(`module.${ID}`, data), sender: clientId, userId: game.user.id,
 });
-const receiveMarksClear = (data, senderId) => receiveClearMarks(data, senderId, { clear: clearMarks, isGMUser: (id) => game.users.get(id)?.isGM === true });
+const receiveMarksClear = (data, senderId) => receiveClearMarks(data, senderId, { clear: clearEveryMark, isGMUser: (id) => game.users.get(id)?.isGM === true });
 // A harmful area another module animates (Spell Arsenal) still marks the floor: planned on the client that placed
 // it, landed once Spell Arsenal's visual has played (integrations/spell-arsenal.mjs), and sent to every screen, as a
 // play's marks reach every screen on its effects.

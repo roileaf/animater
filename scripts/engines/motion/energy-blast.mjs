@@ -221,6 +221,8 @@ export function createEnergyBlasts({ PIXI, floor, above, glow, map, render, mark
       if (marks.length) { const last = Math.max(10, Number(markSeconds()) || 120), fade = last * 0.3; marks = marks.filter((m) => { m.age += seconds; if (m.age >= last) { dropMark(m); return false; } if (m.age > last - fade) m.s.alpha = (last - m.age) / fade; return true; }); }
     },
     clear() { for (const b of live) end(b); live = []; for (const m of marks) dropMark(m); marks = []; },
+    // Only what they have left on the floor: a blast still going carries on in the air, and leaves no mark of its own.
+    clearMarks() { for (const m of marks) dropMark(m); marks = []; for (const b of live) { try { b.floor?.destroy(); } catch { /* gone */ } b.floor = null; } },
     get busy() { return live.length + marks.length > 0; },
     get playing() { return live.length; },
     get marks() { return marks.length; },

@@ -66,3 +66,23 @@ test('its shader is drawn once ahead of the first blast, once only, and a failur
   const failing = createEnergyBlasts({ PIXI, floor: () => null, above: () => null, glow: () => null, map: () => null, render: () => { throw new Error('no context'); } });
   assert.doesNotThrow(() => failing.warm());
 });
+
+test('its marks can be cleared on their own, and a blast still going leaves none', async () => {
+  const { createEnergyBlasts } = await import('../../../scripts/engines/motion/energy-blast.mjs');
+  class Thing { addAttribute() { return this; } addIndex() { return this; } destroy() {} position = { set() {} }; }
+  const layer = { addChild(c) { c.parent = layer; }, removeChild() {} };
+  const PIXI = { Geometry: Thing, Mesh: class extends Thing { constructor(g, s) { super(); this.shader = s; } }, Sprite: class extends Thing {}, Matrix: class {}, Shader: { from: (v, f, u) => ({ uniforms: { ...u } }) }, RenderTexture: { create: () => new Thing() }, Texture: { WHITE: {} }, BLEND_MODES: { ADD: 1 } };
+  const blasts = createEnergyBlasts({ PIXI, floor: () => layer, above: () => layer, glow: () => layer, map: () => ({ texture: {}, rect: { x: 0, y: 0, width: 10, height: 10 } }), render: () => {} });
+  blasts.play({ x: 0, y: 0, radius: 100 });
+  blasts.tick(30);
+  assert.equal(blasts.marks, 1, 'a blast leaves its mark');
+  blasts.clearMarks();
+  assert.equal(blasts.marks, 0);
+  blasts.play({ x: 0, y: 0, radius: 100 });
+  blasts.tick(0.01);
+  blasts.clearMarks();
+  assert.equal(blasts.playing, 1, 'still going in the air');
+  blasts.tick(30);
+  assert.equal(blasts.marks, 0, 'and it leaves nothing behind');
+  assert.equal(blasts.playing, 0);
+});
