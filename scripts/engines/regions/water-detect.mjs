@@ -105,11 +105,12 @@ export function detectWater(rgba, width, height) {
   };
 }
 
-export function mergeWaterProposals(proposals, width, height, { claimed = [] } = {}) {
+export function mergeWaterProposals(proposals, width, height, { claimed = [], preserveTarget = false } = {}) {
   const mask = new Uint8Array(width * height);
   const blocked = new Uint8Array(mask.length);
   for (const proposal of proposals) for (const pixel of proposal.pixels) mask[pixel] = 1;
   for (const proposal of claimed) for (const pixel of proposal.pixels) blocked[pixel] = 1;
+  if (preserveTarget) for (const pixel of proposals[0].pixels) blocked[pixel] = 0;
   for (let p = 0; p < mask.length; p++) if (blocked[p]) mask[p] = 0;
   // A union can introduce diagonal contacts. Use the detector's existing one-pixel corner repair.
   removeSaddles(mask, width, height, blocked);
@@ -119,6 +120,26 @@ export function mergeWaterProposals(proposals, width, height, { claimed = [] } =
   for (const piece of pieces) { pixels.set(piece.pixels, offset); offset += piece.pixels.length; }
   const loops = pieces.flatMap((piece) => piece.loops);
   return { ...proposals[0], clicked: proposals.some((proposal) => proposal.clicked === true), pixels, loops, vertices: vertexCount(loops), share: pixels.length / mask.length };
+}
+
+export function waterProposalFromLoops(loops, width, height) {
+  const pixels = [];
+  for (let y = 0; y < height; y++) {
+    const intersections = [];
+    for (const { points } of loops) {
+      const n = points.length / 2;
+      for (let a = 0, b = n - 1; a < n; b = a++) {
+        const ax = points[a * 2], ay = points[a * 2 + 1], bx = points[b * 2], by = points[b * 2 + 1];
+        if ((ay > y + 0.5) !== (by > y + 0.5)) intersections.push(ax + (y + 0.5 - ay) * (bx - ax) / (by - ay));
+      }
+    }
+    intersections.sort((a, b) => a - b);
+    for (let i = 0; i + 1 < intersections.length; i += 2) {
+      const end = Math.min(width, Math.ceil(intersections[i + 1] - 0.5));
+      for (let x = Math.max(0, Math.ceil(intersections[i] - 0.5)); x < end; x++) pixels.push(y * width + x);
+    }
+  }
+  return { loops, pixels: new Int32Array(pixels), share: pixels.length / (width * height), vertices: vertexCount(loops) };
 }
 
 function none(reason) {
@@ -791,9 +812,9 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
   };
 }
 
-// Ids of this detector's regions on one level. A second click deletes these and writes the new set.
+// Only single-level generator regions are editable here. Other regions remain outside the save plan.
 // A region drawn by hand has no generated flag. A region on several levels, on all levels, or on another level stays.
-export function regionsToReplace(regions, levelId) {
+export function editableWaterRegionIds(regions, levelId) {
   const ids = [];
   const list = Array.isArray(regions) ? regions : regions?.contents;
   if (!list || !levelId) return ids;

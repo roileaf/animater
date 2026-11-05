@@ -1,8 +1,8 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectWaterAt, mergeWaterProposals, fitSize, toRegionData, regionsToReplace, WATER_TUNING } from "../engines/regions/water-detect.mjs";
-import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows } from "../engines/motion/region-steps.mjs";
+import { detectWater, selectWaterAt, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
+import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
 
 export const FLOW_OPTIONS = Object.freeze(flowChoices());
 export const CURRENT_OPTIONS = Object.freeze([
@@ -127,7 +127,8 @@ function currentDefault(kind, current) {
   return current ?? "";
 }
 
-export function waterRowHTML(proposal, { checked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = {}) {
+export function waterRowHTML(proposal, options = {}) {
+  const { checked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = { ...proposal.savedChoices, ...options };
   const id = esc(proposal.id);
   const kind = WATER_KINDS.some(([key]) => key === waterKind) ? waterKind : "still";
   const flows = waterFlows(kind);
@@ -136,23 +137,24 @@ export function waterRowHTML(proposal, { checked = proposal.preselected, waterKi
   const warning = proposal.clicked && proposal.share > WATER_TUNING.clickWarnShare
     ? ` <span class="an-water-warn">${percent(proposal.share)} of the map. Is this water?</span>` : "";
   return `<div class="an-water-row" data-id="${id}">
-  <label class="an-water-pick"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""}> <strong>Area ${esc(String(proposal.id).replace("water-", ""))}</strong> <span class="an-water-share">${percent(proposal.share)} of map</span> <span class="an-water-vertices">${proposal.vertices} vertices</span>${warning}</label>
+  <label class="an-water-pick"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""}> <strong>${proposal.regionId ? `Saved: ${esc(proposal.name)}` : `Area ${esc(String(proposal.id).replace("water-", ""))}`}</strong> <span class="an-water-share">${percent(proposal.share)} of map</span> <span class="an-water-vertices">${proposal.vertices} vertices</span>${warning}</label>
   <label>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
   <label data-flow-field${flows ? "" : " hidden"}>Flows toward ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
   <label data-current-field${kind === "river" ? "" : " hidden"}>Current ${optionsHTML(CURRENT_OPTIONS, `data-current="${id}"`, cur)}</label>
   <label data-sea-field${kind === "sea" ? "" : " hidden"}>Waves toward ${optionsHTML(WAVE_OPTIONS, `data-wave="${id}"`, waveTo)}</label>
   <label data-sea-field class="an-water-pick"${kind === "sea" ? "" : " hidden"}><input type="checkbox" data-beach="${id}"${seaBeach === "off" ? "" : " checked"}> Beach along the shore</label>
   <button type="button" class="an-water-add" data-add-to="${id}" aria-pressed="false">Add water</button>
-  <button type="button" class="an-water-remove" data-remove="${id}" >Remove</button>
+  <button type="button" class="an-water-remove" data-remove="${id}" >${proposal.regionId ? "Leave unchanged" : "Remove"}</button>
 </div>`;
 }
 
 export function waterWindowHTML({ proposals, width, height, reason = "", picked = [], shared = {} }) {
   const rows = [...proposals].sort((a, b) => b.share - a.share || String(a.id).localeCompare(String(b.id)));
   const choices = new Map(picked.map((choice) => [choice.id, choice]));
+  const verb = proposals.some((proposal) => proposal.regionId) ? "Save" : "Create";
   const selected = rows.filter((proposal) => choices.get(proposal.id)?.checked ?? proposal.preselected).length;
   return `<div class="an-water">
-  <header class="an-water-heading"><h2>Review water areas</h2><p>Experimental. Click water to add an area. Review your selection before creating regions.</p></header>
+  <header class="an-water-heading"><h2>Review water areas</h2><p>Experimental. Click water to add an area. Review your selection before saving.</p></header>
   ${reason ? `<p class="an-water-reason">${esc(noneMessage(reason))}</p>` : ""}
   <div class="an-water-workspace">
     <section class="an-water-map" aria-label="Map preview">
@@ -211,47 +213,63 @@ export function choicesFromElement(root) {
   return readWaterChoices(rows);
 }
 
-export function planWaterCreate({ proposals, picked, sceneRect, imageWidth, imageHeight, levelId, regions }) {
-  const byId = new Map((proposals ?? []).map((proposal) => [proposal.id, proposal]));
-  const chosen = [];
-  for (const row of picked ?? []) {
-    if (!row.checked) continue;
-    const proposal = byId.get(row.id);
-    if (proposal) chosen.push({ proposal, row });
-  }
-  chosen.sort((a, b) => b.proposal.share - a.proposal.share || String(a.proposal.id).localeCompare(String(b.proposal.id)));
-  const deleteIds = regionsToReplace(regions, levelId);
-  const creates = chosen.map(({ proposal, row }, index) => toRegionData(proposal, {
-    sceneRect,
-    imageWidth,
-    imageHeight,
-    levelId,
-    name: chosen.length === 1 ? "Water" : `Water ${index + 1}`,
-    waterKind: row.waterKind,
-    flowTo: row.flowTo,
-    current: row.current,
-    waveTo: row.waveTo,
-    seaBeach: row.seaBeach,
-  }));
-  return { creates, deleteIds, needsConfirm: deleteIds.length > 0 };
+export function savedWaterProposals(regions, { levelId, sceneRect, width, height }) {
+  const editable = new Set(editableWaterRegionIds(regions, levelId));
+  const list = Array.isArray(regions) ? regions : regions?.contents ?? [];
+  return list.filter((region) => editable.has(region.id)).map((region, index) => {
+    const loops = [];
+    const add = (points, hole) => loops.push({ hole, points: Array.from(points, (value, i) => (value - (i % 2 ? sceneRect.y : sceneRect.x)) * (i % 2 ? height / sceneRect.height : width / sceneRect.width)) });
+    if (region.polygonTree?.children) {
+      const visit = (node) => { for (const child of node.children ?? []) { add(child.points, child.isHole); visit(child); } };
+      visit(region.polygonTree);
+    } else {
+      for (const shape of region.shapes ?? []) {
+        if (shape.type !== "polygon") throw new Error("This saved region needs Foundry's region geometry to open.");
+        add(shape.points, shape.hole === true);
+      }
+    }
+    const own = region.flags?.animater ?? {};
+    const kind = waterKindOf(own);
+    const savedChoices = { waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "" };
+    return { ...waterProposalFromLoops(loops, width, height), id: `water-${index + 1}`, regionId: region.id, name: region.name ?? "Water", savedChoices, preselected: false };
+  }).filter((proposal) => proposal.loops.length).map((proposal, i) => ({ ...proposal, id: `water-${i + 1}` }));
 }
 
-export async function commitWaterPlan(plan, { scene, confirm, notify } = {}) {
-  if (!plan.creates.length) {
-    notify?.("Experimental. Tick a piece of water first.");
-    return { created: 0, deleted: 0 };
+export function planWaterCreate({ proposals, picked, sceneRect, imageWidth, imageHeight, levelId, regions }) {
+  const byId = new Map((proposals ?? []).map((proposal) => [proposal.id, proposal]));
+  const editable = new Set(editableWaterRegionIds(regions, levelId));
+  const creates = [], updates = [];
+  for (const pickedRow of [...(picked ?? [])].sort((a, b) => (byId.get(b.id)?.share ?? 0) - (byId.get(a.id)?.share ?? 0))) {
+    const row = { ...pickedRow, flowTo: flowDefault(pickedRow.waterKind, pickedRow.flowTo), current: currentDefault(pickedRow.waterKind, pickedRow.current) };
+    if (!row.checked) continue;
+    const proposal = byId.get(row.id);
+    if (!proposal) continue;
+    const data = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId,
+      waterKind: row.waterKind, flowTo: row.flowTo, current: row.current, waveTo: row.waveTo, seaBeach: row.seaBeach });
+    if (!proposal.regionId) { creates.push(data); continue; }
+    if (!editable.has(proposal.regionId)) throw new Error("The saved region is no longer editable on this level. Reopen the generator.");
+    const patch = { _id: proposal.regionId };
+    if (proposal.geometryChanged) patch.shapes = data.shapes;
+    const before = proposal.savedChoices;
+    const own = data.flags.animater;
+    const kindChanged = row.waterKind !== before.waterKind;
+    for (const key of ["waterKind", "flowTo", "current", "waveTo", "seaBeach"]) {
+      if (row[key] !== before[key] || (kindChanged && ["flowTo", "current"].includes(key))) patch[`flags.animater.${key}`] = own[key] ?? "";
+    }
+    if (Object.keys(patch).length > 1) updates.push(patch);
   }
-  if (plan.needsConfirm) {
-    const ok = await confirm?.({
-      window: { title: "Experimental: detect water regions" },
-      content: `<p>Experimental. Replace the ${plan.deleteIds.length} water region${plan.deleteIds.length === 1 ? "" : "s"} this tool already made on this level? Every change you made to ${plan.deleteIds.length === 1 ? "that region" : "those regions"} since ${plan.deleteIds.length === 1 ? "it was" : "they were"} generated is lost: water kind, flow, steps, beach, behaviors, and edited shapes. Water you drew by hand stays.</p>`,
-    });
-    if (!ok) return { created: 0, deleted: 0, cancelled: true };
+  creates.forEach((data, i) => { data.name = creates.length === 1 ? "Water" : `Water ${i + 1}`; });
+  return { creates, updates };
+}
+
+export async function commitWaterPlan(plan, { scene, notify } = {}) {
+  if (!plan.creates.length && !plan.updates.length) {
+    notify?.("No changes to save. Tick an edited or new area first.");
+    return { created: 0, updated: 0 };
   }
-  // New water first. A failed write then leaves the old regions in place, and the next run replaces both.
-  await scene.createEmbeddedDocuments("Region", plan.creates);
-  if (plan.deleteIds.length) await scene.deleteEmbeddedDocuments("Region", plan.deleteIds);
-  return { created: plan.creates.length, deleted: plan.deleteIds.length };
+  if (plan.updates.length) await scene.updateEmbeddedDocuments("Region", plan.updates);
+  if (plan.creates.length) await scene.createEmbeddedDocuments("Region", plan.creates);
+  return { created: plan.creates.length, updated: plan.updates.length };
 }
 
 export function paintWaterPreview(ctx, rgba, width, height, proposals, highlightId = "") {
@@ -345,14 +363,15 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const setText = (selector, text) => { const node = this.element.querySelector(selector); if (node) node.textContent = text; };
       setText("[data-area-count]", `${total} found · ${selected} selected`);
       setText("[data-selection-count]", `${selected} of ${total} areas selected`);
+      const verb = this.detect.proposals.some((proposal) => proposal.regionId) ? "Save" : "Create";
       const button = this.element.querySelector("[data-create]");
-      if (button) { button.textContent = this.saving ? "Creating regions…" : `Create ${selected} water region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
+      if (button) { button.textContent = this.saving ? "Creating regions…" : `${verb} ${selected} water region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
       const empty = this.element.querySelector("[data-area-empty]");
       if (empty) empty.hidden = total > 0;
       const status = this.element.querySelector("[data-add-status]");
       if (status) {
         status.hidden = !this.addTarget;
-        this.element.querySelector("[data-add-message]").textContent = `Adding to Area ${this.addTarget?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which regions to create.`;
+        this.element.querySelector("[data-add-message]").textContent = `Adding to Area ${this.addTarget?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which areas to save.`;
         this.element.querySelector("[data-undo-add]").disabled = !this.undoAddition;
         for (const button of this.element.querySelectorAll("[data-add-to]")) {
           const active = button.dataset.addTo === this.addTarget;
@@ -376,7 +395,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       this.undoAddition = { proposals: [...detect.proposals], choices };
       const mergedIds = new Set([target.id, ...additions.map((proposal) => proposal.id)]);
       const claimed = detect.proposals.filter((proposal) => !mergedIds.has(proposal.id));
-      const merged = mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed });
+      const merged = { ...mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed, preserveTarget: !!target.regionId }), geometryChanged: true };
       detect.proposals = detect.proposals.filter((proposal) => proposal.id === target.id || !mergedIds.has(proposal.id))
         .map((proposal) => proposal.id === target.id ? merged : proposal);
       this.drawRows(choices);
@@ -394,8 +413,9 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (!this.undoAddition) return;
       const { proposals, choices } = this.undoAddition;
       this.detect.proposals = proposals;
+      const current = new Map(choicesFromElement(this.element).map((choice) => [choice.id, choice]));
       this.undoAddition = null;
-      this.drawRows(choices);
+      this.drawRows(choices.map((choice) => current.get(choice.id) ?? choice));
     }
 
     zoomMap(value, pointer) {
@@ -506,6 +526,10 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (target) {
         const pixel = Math.floor(at.y) * detect.width + Math.floor(at.x);
         const source = detect.proposals.find((proposal) => proposal !== target && proposal.pixels.includes(pixel));
+        if (source?.regionId) {
+          hooks.notify?.("This area is already a saved region. Use its Add water button to edit it separately.");
+          return;
+        }
         if (source) return this.combineAreas([source]);
       }
       const claimed = target ? detect.proposals.filter((proposal) => proposal !== target) : detect.proposals;
@@ -534,6 +558,13 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
 
     removeRow(id) {
       const { detect } = this;
+      const proposal = detect.proposals.find((proposal) => proposal.id === id);
+      if (proposal?.regionId) {
+        const row = [...this.element.querySelectorAll("[data-id]")].find((row) => row.dataset.id === id);
+        row.querySelector("[data-pick]").checked = false;
+        this.updateSummary();
+        return;
+      }
       this.undoAddition = null;
       if (this.addTarget === id) this.addTarget = null;
       detect.proposals = detect.proposals.filter((proposal) => proposal.id !== id);
@@ -558,9 +589,9 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
           levelId: detect.levelId,
           regions: detect.scene.regions,
         });
-        const outcome = await commitWaterPlan(plan, { scene: detect.scene, confirm: hooks.confirm, notify: hooks.notify });
-        if (!outcome.cancelled && outcome.created + outcome.deleted > 0) {
-          hooks.notify?.(`Created ${outcome.created} water region${outcome.created === 1 ? "" : "s"}.${outcome.deleted ? ` Replaced ${outcome.deleted} previously generated region${outcome.deleted === 1 ? "" : "s"}.` : ""}`);
+        const outcome = await commitWaterPlan(plan, { scene: detect.scene, notify: hooks.notify });
+        if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
+          hooks.notify?.(`${outcome.created ? `Created ${outcome.created} water region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
           await this.close();
         }
       } catch (error) {
@@ -601,7 +632,6 @@ async function openOnce({
   textures,
   notify = (message) => globalThis.ui?.notifications?.info?.(message),
   warn = (message) => globalThis.ui?.notifications?.warn?.(message),
-  confirm = (options) => globalThis.foundry?.applications?.api?.DialogV2?.confirm?.(options),
   load = loadMapRgba,
   detect = detectWater,
   select = selectWaterAt,
@@ -626,10 +656,15 @@ async function openOnce({
     return { opened: false, reason: loaded.reason };
   }
   const result = detect(loaded.rgba, loaded.width, loaded.height);
-  const Window = waterDetectWindow(Application, { notify, warn, confirm, select });
+  const saved = savedWaterProposals(scene?.regions, { levelId, sceneRect, width: loaded.width, height: loaded.height });
+  const fresh = saved.length ? (result.proposals ?? []).map((proposal) => mergeWaterProposals([proposal], loaded.width, loaded.height, { claimed: saved }))
+    .filter((proposal) => proposal.share >= WATER_TUNING.componentMinShare)
+    .map((proposal, i) => ({ ...proposal, id: `water-${saved.length + i + 1}`, preselected: false })) : result.proposals ?? [];
+  const proposals = [...saved, ...fresh];
+  const Window = waterDetectWindow(Application, { notify, warn, select });
   const app = new Window();
   app.detect = {
-    proposals: result.status === "found" ? [...result.proposals] : [],
+    proposals,
     reason: result.reason ?? "",
     rgba: loaded.rgba,
     width: loaded.width,
