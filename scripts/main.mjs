@@ -197,7 +197,8 @@ import { createFieldLife } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
 import { weatherLevels, weatherIsOurs, thunderFor, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
-import { createFloorBlood, hitMarks, bleedStep, standingDrip } from "./engines/motion/floor-blood.mjs";
+import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
+import { bakeBlood } from "./engines/motion/blood-bake.mjs";
 import { noLifeOnWater, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
@@ -1151,6 +1152,8 @@ const groundTrails = createGroundTrails({
   tracked: () => movementFeelSettingOn("trackedPrints"),
   // Blood goes on the floor by its own layer now (floorBlood, engines/motion/floor-blood.mjs).
   blood: () => false,
+  // Stepping in wet blood ("Bloody footprints").
+  bloodUnder: (feet) => (movementFeelSettingOn("bloodFootprints") && floorBloodOn() ? floorBlood.near(feet.x, feet.y) : null),
   weather: (feet, token) => (movementFeelSettingOn("weatherOnGround") ? weatherAt(feet, token?.elevation ?? 0) : null),
 });
 // A token's blood (placeable or TokenDocument): Splatter's rules while it is active, else Animater's own Blood colours
@@ -2533,6 +2536,10 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => clearRubbleAsk() });
     add({ name: "animaterClearBlood", title: "Clear blood (Animater): wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
+    add({ name: "animaterSplatBlood", title: "Splat blood (Animater): old blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
+      onChange: () => void splatBloodHere() });
+    add({ name: "animaterBakeBlood", title: "Bake blood (Animater): turn the blood on the floor into a tile the scene keeps", icon: "fa-solid fa-stamp", order: order + 2.5, button: true, visible: toolShown("toolBakeBlood"),
+      onChange: () => void bakeBloodHere() });
     add({ name: "animaterClouds", title: "Clouds over the map (Animater): on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
   } catch { /* another layout of the controls */ }
@@ -2574,23 +2581,117 @@ const refoulLights = () => {
 const floorBloodOn = () => movementFeelSettingOn("bloodTrail") && !(splatterReady() && movementFeelSettingOn(SPLATTER_SYNC));
 // The drops of the wounded have their own say ("Wounded creatures drip blood"); a hit's blood keeps to "Blood on the floor".
 const bloodDropsOn = () => { if (!floorBloodOn()) return false; try { return bloodDropsNow(hotSetting("bloodDrops"), game.combat); } catch { return true; } };
-const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorLayer("floorBlood", 648), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
-Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedNext.clear(); });
+const bloodKeptForever = () => { try { return hotSetting("floorBloodForever") === true; } catch { return false; } };
+// How bloody the game is: its setting, 1 as drawn.
+const bloodAmount = (key) => { try { const much = Number(hotSetting(key)); return much >= 0 ? much : 1; } catch { return 1; } };
+// The water at a place, for blood landing in it ("Blood in water"); ice is a floor like any other.
+const bloodWaterAt = (x, y) => {
+  if (!movementFeelSettingOn("bloodInWater") || !canvas?.ready) return null;
+  if (frozenWaterOn() && groundOf().now.ice > 0.5) return null;
+  const elevation = canvas.level?.elevation?.base ?? 0;
+  for (const region of regionsHere()) {
+    try {
+      if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || !region.testPoint({ x, y, elevation })) continue;
+      const own = region.flags?.[ID] ?? {};
+      return { flow: own.flowTo in WIND_FROM ? ((WIND_FROM[own.flowTo] - 90) * Math.PI) / 180 : null, current: own.current ?? "" };
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  return null;
+};
+const floorBloodRoot = floorLayer("floorBlood", 648);
+const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorBloodRoot, grid: () => canvas?.grid?.size ?? 100, waterAt: bloodWaterAt,
+  // Rain washes it where the sky is open ("Rain washes blood away").
+  rain: () => (movementFeelSettingOn("bloodWashes") ? skyFalling.rain : 0), exposed: (x, y) => !underCeiling({ x, y }) && !shelteredAt({ x, y }, canvas.level?.elevation?.base ?? 0),
+  most: () => (bloodKeptForever() ? 1500 : 320), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return bloodKeptForever() ? Infinity : Number(hotSetting("floorBloodSeconds")) || 180; } catch { return 180; } } });
+Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedNext.clear(); bloodLoaded = []; bloodSavedKey = ""; });
 const bleedRuns = new Map(), bleedNext = new Map();
 // The GM wipes the floor: each screen draws its own blood, so each is told to.
 const CLEAR_BLOOD_MESSAGE = "clear-blood";
-const clearBloodEverywhere = () => { floorBlood.clear(); game.socket?.emit(`module.${ID}`, { type: CLEAR_BLOOD_MESSAGE, sceneId: canvas?.scene?.id }); };
+const clearBloodEverywhere = () => {
+  floorBlood.clear(); bloodLoaded = []; bloodSavedKey = "";
+  game.socket?.emit(`module.${ID}`, { type: CLEAR_BLOOD_MESSAGE, sceneId: canvas?.scene?.id });
+  // And what the scene keeps, which only the GM can change.
+  const own = canvas?.scene?.flags?.[ID] ?? {};
+  if (game.user?.isGM && (own[BLOOD_DRESSED]?.length || own[BLOOD_KEPT]?.length)) void canvas.scene.update({ flags: { [ID]: { [BLOOD_DRESSED]: [], [BLOOD_KEPT]: [] } } }).catch((error) => console.warn("Animater | clearing the scene's blood", error));
+};
+// What a scene keeps: the GM's dressing (Splat blood), which every screen shows at once, and with "Blood stays until cleared"
+// on what has lain on it so far, saved by one GM now and then and read when the scene loads (each screen draws its own until then).
+const BLOOD_DRESSED = "bloodDressed", BLOOD_KEPT = "bloodKept", BLOOD_KEPT_MOST = 1200, BLOOD_DRESSED_MOST = 1500, BLOOD_SAVE_SECONDS = 15;
+let bloodLoaded = [], bloodSavedKey = "", bloodSaveIn = BLOOD_SAVE_SECONDS;
+const bloodFlag = (key) => { const list = canvas?.scene?.flags?.[ID]?.[key]; return Array.isArray(list) ? list.map(unpackMark).filter(Boolean) : []; };
+const dressBlood = () => { try { floorBlood.dress(floorBloodOn() ? [...bloodFlag(BLOOD_DRESSED), ...bloodLoaded] : []); } catch (error) { console.warn("Animater | the scene's blood", error); } };
+Hooks.on("canvasReady", () => { bloodLoaded = bloodKeptForever() && floorBloodOn() ? bloodFlag(BLOOD_KEPT) : []; dressBlood(); });
+Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && change?.flags?.[ID] && BLOOD_DRESSED in change.flags[ID]) dressBlood(); });
+const saveKeptBlood = () => {
+  const scene = canvas?.scene;
+  if (!scene || !bloodKeptForever() || !floorBloodOn() || game.users?.activeGM?.id !== game.user?.id) return;
+  const list = [...bloodLoaded, ...floorBlood.snapshot()].slice(-BLOOD_KEPT_MOST).map(packMark), key = `${list.length}:${list.at(-1)?.join() ?? ""}`;
+  if (key === bloodSavedKey) return;
+  bloodSavedKey = key;
+  void scene.update({ flags: { [ID]: { [BLOOD_KEPT]: list } } }, { render: false }).catch((error) => console.warn("Animater | saving the scene's blood", error));
+};
+// Splat blood: the GM dresses the ground around the selected tokens, in each one's own blood, for good. Where Splatter paints the
+// blood it is Splatter's to paint.
+const splatBloodHere = async () => {
+  if (!game.user?.isGM || !canvas?.ready) return;
+  const tokens = canvas.tokens?.controlled ?? [];
+  if (!tokens.length) { ui.notifications?.info("Animater: select the tokens to splat blood around."); return; }
+  if (splatterReady() && movementFeelSettingOn(SPLATTER_SYNC)) { for (const token of tokens) { try { CONFIG.Splatter.splat(token, { scale: 1 }); } catch (error) { console.warn("Animater | Splatter", error); } } return; }
+  if (!floorBloodOn()) { ui.notifications?.info("Animater: Blood on the floor is off."); return; }
+  const marks = [], now = Date.now(), much = bloodAmount("floorBloodAmount");
+  for (const token of tokens) {
+    const blood = tokenBlood(token); if (!blood.bleeds) continue;
+    const seed = `${token.id}:${now}`;
+    for (const mark of scaleMarks(splatMarks({ at: token.center, width: token.w, grid: canvas.grid.size, seed }), much, seed)) marks.push(packMark({ ...mark, color: blood.color }));
+  }
+  if (!marks.length) { ui.notifications?.info("Animater: nothing selected bleeds, or Blood on the floor's amount is 0."); return; }
+  const had = canvas.scene.flags?.[ID]?.[BLOOD_DRESSED];
+  await canvas.scene.update({ flags: { [ID]: { [BLOOD_DRESSED]: [...(Array.isArray(had) ? had : []), ...marks].slice(-BLOOD_DRESSED_MOST) } } });
+};
+// Bake blood: what lies on the floor now becomes one tile the scene keeps, and leaves the floor.
+const bakeBloodHere = async () => {
+  if (!game.user?.isGM || !canvas?.ready) return;
+  if (!floorBlood.count) { ui.notifications?.info("Animater: there is no blood on the floor to bake."); return; }
+  const scene = canvas.scene, rect = canvas.dimensions.sceneRect, level = canvas.level?.id ?? null, renderer = canvas.app.renderer;
+  try {
+    const src = await bakeBlood({
+      root: floorBloodRoot(), rect, sceneId: scene.id, elevation: canvas.level?.elevation?.base ?? 0, levels: level ? [level] : null,
+      lowestSort: Math.min(0, ...(canvas.tiles?.placeables ?? []).map((t) => Number(t.document?.sort) || 0)),
+      draw: (root, size) => {
+        const texture = PIXI.RenderTexture.create({ width: size.width, height: size.height });
+        try {
+          renderer.render(root, { renderTexture: texture, clear: true, transform: new PIXI.Matrix(size.scale, 0, 0, size.scale, -rect.x * size.scale, -rect.y * size.scale) });
+          return renderer.extract.canvas(texture);
+        } finally { texture.destroy(true); }
+      },
+      store: async (picture, name) => {
+        const FilePicker = foundry.applications.apps.FilePicker.implementation, folder = `worlds/${game.world.id}/animater-blood`;
+        const blob = await new Promise((resolve) => picture.toBlob(resolve, "image/webp", 0.92));
+        if (!blob) return null;
+        try { await FilePicker.createDirectory("data", folder, { notify: false }); } catch { /* there already */ }
+        return (await FilePicker.upload("data", folder, new File([blob], name, { type: "image/webp" }), {}, { notify: false }))?.path ?? null;
+      },
+      lay: (tile) => scene.createEmbeddedDocuments("Tile", [tile]),
+    });
+    clearBloodEverywhere();
+    ui.notifications?.info(`Animater: the blood is baked into a tile (${src}).`);
+  } catch (error) {
+    console.warn("Animater | baking the blood", error);
+    ui.notifications?.error(`Animater: could not bake the blood: ${error?.message ?? error}`);
+  }
+};
 // A stride of a wounded creature: drops on its feet, a dragged trail prone or crawling.
 const bleedAlong = ({ x, y, heading, size, token, index, grid }) => {
   if (!token?.bloodTier || !bloodDropsOn()) return;
   const prone = token.prone === true || String(token.action ?? "").toLowerCase() === "crawl";
   let run = bleedRuns.get(token.id); if (!run) bleedRuns.set(token.id, run = {});
-  floorBlood.add(bleedStep({ at: { x, y }, heading, index, tier: token.bloodTier, prone, width: size, grid, seed: token.id, run }), token.bloodColor);
+  floorBlood.add(scaleMarks(bleedStep({ at: { x, y }, heading, index, tier: token.bloodTier, prone, width: size, grid, seed: token.id, run }), bloodAmount("bloodDripAmount"), `${token.id}:${index}`), token.bloodColor);
 };
 // The wounded standing still: a drop now and then under them. Looked at a few times a second.
 let bleedLook = 0;
 const tickFloorBlood = (seconds) => {
   floorBlood.tick(seconds);
+  bloodSaveIn -= seconds; if (bloodSaveIn <= 0) { bloodSaveIn = BLOOD_SAVE_SECONDS; saveKeptBlood(); }
   bleedLook += seconds; if (bleedLook < 0.25) return;
   const step = bleedLook; bleedLook = 0;
   if (!bloodDropsOn()) return;
@@ -2600,7 +2701,7 @@ const tickFloorBlood = (seconds) => {
       const blood = movementFeelBlood(d); if (!blood?.bloodTier) { bleedNext.delete(d.id); continue; }
       const c = t.mesh?.position ?? t.center, now = bleedNext.get(d.id) ?? { wait: Math.random() * 2, x: c.x, y: c.y };
       const still = Math.hypot(c.x - now.x, c.y - now.y) < 1; now.x = c.x; now.y = c.y; now.wait -= step;
-      if (still && now.wait <= 0) { const drip = standingDrip({ at: { x: c.x, y: c.y }, tier: blood.bloodTier, width: t.w, grid: canvas.grid.size }); floorBlood.add([drip.mark], blood.bloodColor); now.wait = drip.nextIn; }
+      if (still && now.wait <= 0) { const much = bloodAmount("bloodDripAmount"), drip = standingDrip({ at: { x: c.x, y: c.y }, tier: blood.bloodTier, width: t.w, grid: canvas.grid.size }); if (much > 0) floorBlood.add([{ ...drip.mark, r: drip.mark.r * Math.sqrt(much) }], blood.bloodColor); now.wait = drip.nextIn / Math.max(0.25, much); }
       bleedNext.set(d.id, now);
     } catch { /* never stop the canvas */ }
   }
@@ -6271,6 +6372,8 @@ Hooks.once("init", () => {
     ['toolEnergyBlast','Show the Energy Blast button','In the token controls.'],
     ['toolClearRubble','Show the Clear rubble button','In the token controls.'],
     ['toolClearBlood','Show the Clear blood button','In the token controls. Blood still fades by itself.'],
+    ['toolSplatBlood','Show the Splat blood button','In the token controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
+    ['toolBakeBlood','Show the Bake blood button','In the token controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
     ['toolClouds','Show the Clouds button','In the token controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
@@ -6850,7 +6953,7 @@ Hooks.once("init", () => {
   });
   registerSetting("bloodTrail", {
     name: "Blood on the floor",
-    hint: "A hit throws blood on the floor, away from the attacker and shaped by the wound; a killing blow leaves a pool. A wounded creature can drip blood too (Wounded creatures drip blood). Drawn on each screen and never saved. Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead. Off turns off all of it.",
+    hint: "A hit throws blood on the floor, away from the attacker and shaped by the wound; a killing blow leaves a pool. A wounded creature can drip blood too (Wounded creatures drip blood). It darkens as it dries. Each screen draws it, and only what a scene is told to keep is saved (Blood stays until cleared, the Splat blood button). Constructs, elementals, oozes and incorporeal creatures never bleed. With Splatter painting the blood (Splatter: blood follows the damage), Splatter's blood is used instead. Off turns off all of it.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting("bloodDrops", {
@@ -6859,7 +6962,14 @@ Hooks.once("init", () => {
     scope: "world", config: true, type: String, default: "always", choices: { ...BLOOD_DROPS },
   });
   registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
-  registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds; it fades over the last quarter of that.", scope: "world", config: true, type: Number, default: 180, range: { min: 20, max: 600, step: 10 } });
+  registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds; it fades over the last quarter of that. It darkens as it dries, in about two minutes.", scope: "world", config: true, type: Number, default: 180, range: { min: 20, max: 600, step: 10 } });
+  registerSetting("floorBloodForever", { name: "Blood stays until cleared", hint: "Blood never fades, and comes back with the scene, saved in it now and then by the GM's screen. Rain and water can still take it until the scene reloads; after that it is old blood they leave alone. Clear blood wipes it all; Bake blood turns it into a tile.", scope: "world", config: true, type: Boolean, default: false });
+  registerSetting("floorBloodAmount", { name: "Blood from hits", hint: "How much blood hits, kills and Splat blood leave on the floor, against the usual: lower for less, 0 for none, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
+  registerSetting("bloodDripAmount", { name: "Blood drips", hint: "How much wounded creatures drip and trail, against the usual: lower for less, 0 for none, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
+  registerSetting("woundBloodAmount", { name: "Blood on tokens", hint: "How big the blood on a wounded creature's art grows, against the usual: lower for less, 0 for no wounded look on the art, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
+  registerSetting("bloodWashes", { name: "Rain washes blood away", hint: "Rain thins the blood it falls on until it is gone, about a minute in hard rain. Never under a roof, or a region that suppresses weather.", scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("bloodInWater", { name: "Blood in water", hint: "Blood landing in a water region clouds out and dissolves, carried along where the water has a way to flow (Region configuration → Flows toward). Frozen water holds it like any floor.", scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("bloodFootprints", { name: "Bloody footprints", hint: "A creature stepping in wet blood prints it, in that blood's colour, for its next few strides. Drops are too small to step in, and dried blood leaves nothing.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("weatherOnGround", {
     name: "Weather on the ground",
     hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes, dirt turns to mud (its sound and prints), stone, wood, grass and sand get puddles under each step, and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
@@ -6917,7 +7027,7 @@ Hooks.once("init", () => {
   });
   registerSetting("woundedLooks", {
     name: "Wounded looks",
-    hint: "Creatures show how hurt they are. At half their HP or less they look wounded; at a quarter or less the look is stronger, they stand hunched and limp as they move. Healing takes it away, and a defeated creature shows the defeated look instead. Choose whether every creature shows it or only player characters.",
+    hint: "Creatures show how hurt they are. Blood builds on their art in stages from four fifths of their HP down, in their own blood's colour (none on a creature that does not bleed, whose colour only lowers); at a quarter or less they stand hunched and limp as they move. Healing takes it back the same way, and a defeated creature shows the defeated look instead. Blood on tokens sets how much. Choose whether every creature shows it or only player characters.",
     scope: "world", config: true, type: String, default: "all",
     choices: { all: "All creatures", pcs: "Player characters only", off: "Off" },
     onChange: () => woundedLooks?.sync(),
@@ -7950,6 +8060,7 @@ Hooks.once("ready", () => {
   // Wounded looks: every client reads the same HP and draws the look locally (a Tokenshade
   // look under its own key, beside any condition looks, and a hunch or limp through ConditionBody).
   woundedLooks = new WoundedLooks({ body: conditionBody, fx: () => tokenFx, preset: () => builtinPreset("Wounded"),
+    blood: (token) => tokenBlood(token), amount: () => bloodAmount("woundBloodAmount"),
     enabled: () => hotSetting("woundedLooks") !== "off" && hotSetting("woundedLooksLocal") !== false && !!canvas?.ready,
     mode: () => hotSetting("woundedLooks"),
     fxAllowed: () => allowsTokenFx(localQuality()) && tokenFx.ready(),
@@ -7986,7 +8097,7 @@ Hooks.once("ready", () => {
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
-    if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) floorBlood.clear(); return; }
+    if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(); bloodLoaded = []; } return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
     if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
     if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveAreaMark(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
@@ -8920,7 +9031,9 @@ Hooks.once("ready", () => {
       const ids = { actorId: actor.id, tokenId: token.id }, damage = recallDamage(log, ids), by = recallAttribution(log, ids);
       const attacker = by?.sourceTokenId && by.sourceTokenId !== token.id ? canvas.tokens.get(by.sourceTokenId) ?? null : null;
       const facts = damage ?? by ?? {}, known = facts.type || facts.types?.length, type = known ? woundOf(facts) ?? facts.type ?? facts.types?.[0] : null, kill = after.down === true || (Number(after.value) || 0) <= 0;
-      floorBlood.add(hitMarks({ at: token.center, from: attacker?.center ?? null, type, crit: damage?.crit === true || by?.crit === true, kill, share: lost / (Number(after.max) || Number(before.max) || 1), width: token.w, grid: canvas.grid.size, seed: `${token.id}:${Date.now()}` }), blood.color);
+      // The seed is the wound itself, so every screen draws the same blood for it.
+      const seed = `${token.id}:${before.value}:${after.value}`;
+      floorBlood.add(scaleMarks(hitMarks({ at: token.center, from: attacker?.center ?? null, type, crit: damage?.crit === true || by?.crit === true, kill, share: lost / (Number(after.max) || Number(before.max) || 1), width: token.w, grid: canvas.grid.size, seed }), bloodAmount("floorBloodAmount"), seed), blood.color);
     }
   };
   const lensBloodFor = (actor, before) => {

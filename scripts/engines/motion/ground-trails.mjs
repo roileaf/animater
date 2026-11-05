@@ -7,6 +7,7 @@
 import { tracksFor } from './movement-feel.mjs';
 import { DEFAULT_BLOOD, creatureBloodType } from './blood-colors.mjs';
 
+const BLOOD_PRINT = 0x5a0a0a;
 // What each floor leaves on the feet: how many strides it lasts on another floor, and the prints it makes there.
 export const CARRY = Object.freeze({
   // Wet prints: the floor darkened in a ragged stain of the print, drying from the edges in about 8 s.
@@ -15,6 +16,8 @@ export const CARRY = Object.freeze({
   mud: Object.freeze({ strides: 8, color: 0x4a3420, alpha: 0.48, life: 12000, hold: 0.45 }),
   // Snow knocked off the feet: faint white, gone in about 5 s.
   snow: Object.freeze({ strides: 4, color: 0xf2f6fb, alpha: 0.4, life: 5000, hold: 0.3 }),
+  // Stepped in wet blood: prints in that blood's colour (the load carries it), fading out over a few strides, gone in about 14 s.
+  blood: Object.freeze({ strides: 6, color: BLOOD_PRINT, alpha: 0.62, life: 14000, hold: 0.45 }),
 });
 // The gaits whose feet leave separate prints (movement-feel.mjs TRACKS); grooves, smears, unknown and incorporeal
 // creatures carry nothing.
@@ -27,8 +30,9 @@ const PRINT_SIZE = 0.085;
 export function carryStep(state, floor) {
   if (CARRY[floor]) return { state: { floor, left: CARRY[floor].strides }, print: null };
   if (!state || !(state.left > 0) || !CARRY[state.floor]) return { state: null, print: null };
-  const print = { floor: state.floor, strength: state.left / CARRY[state.floor].strides };
-  return { state: state.left > 1 ? { floor: state.floor, left: state.left - 1 } : null, print };
+  const tone = Number.isFinite(state.color) ? { color: state.color } : {};
+  const print = { floor: state.floor, strength: state.left / CARRY[state.floor].strides, ...tone };
+  return { state: state.left > 1 ? { floor: state.floor, left: state.left - 1, ...tone } : null, print };
 }
 
 const printPart = (look, alpha) => ({ color: look.color, alpha, size: PRINT_SIZE, life: look.life, hold: look.hold });
@@ -44,7 +48,7 @@ export function carriedPrints(print, at, { grid = 100, width = grid, gait = 'boo
   if (!look) return [];
   const alpha = look.alpha * Math.max(0, Math.min(1, print.strength ?? 1));
   // A wet print shrinks as it dries, its edges going first.
-  return prints(gait, printPart(look, alpha), at, { grid, width }).map((p) => ({ ...p, carried: print.floor, ...(look.wet ? { wet: true, grow: -0.4 } : {}) }));
+  return prints(gait, printPart(Number.isFinite(print.color) ? { ...look, color: print.color } : look, alpha), at, { grid, width }).map((p) => ({ ...p, carried: print.floor, ...(look.wet ? { wet: true, grow: -0.4 } : {}) }));
 }
 
 // Same text, same numbers.
@@ -152,8 +156,9 @@ export function isCold({ weather, floor, flag } = {}) {
 const walking = (kind, floor) => kind === 'step' || kind === 'crawl' || kind === 'climb' || (kind === 'swim' && floor !== 'water');
 // Per token what its feet carry, and each stride's extra marks. `tracked()`, `blood()` switch the carried prints and the
 // blood drops; `weather(feet, token)` is the weather where it walks ('rain', 'snow' or null). A token view carries
-// `bleeding` (badly hurt with blood to lose) and `bloodColor`.
-export function createGroundTrails({ tracked = () => true, blood = () => true, weather = () => null } = {}) {
+// `bleeding` (badly hurt with blood to lose) and `bloodColor`. `bloodUnder(feet)`: wet blood where it steps ({ color }), which
+// its feet then carry on any floor that does not fill them with something else.
+export function createGroundTrails({ tracked = () => true, blood = () => true, weather = () => null, bloodUnder = () => null } = {}) {
   const loads = new Map();
   return {
     marks(token, feet, floor, opts = {}, kind = 'step') {
@@ -161,6 +166,7 @@ export function createGroundTrails({ tracked = () => true, blood = () => true, w
       if (!walking(kind, floor)) { if (kind === 'burrow') loads.delete(id); return []; }
       const gait = opts.gait ?? token.gait ?? 'boots', out = [];
       const step = carryStep(loads.get(id) ?? null, floor);
+      if (!CARRY[floor] && PRINTING.has(gait)) { const wet = bloodUnder(feet, token); if (wet) step.state = { floor: 'blood', left: CARRY.blood.strides, color: wet.color }; }
       if (step.state) loads.set(id, step.state); else loads.delete(id);
       if (step.print && tracked() !== false) out.push(...carriedPrints(step.print, feet, { ...opts, gait }));
       if (token.bleeding && blood() !== false && bloodDue(opts.seed ?? id, feet.index)) {

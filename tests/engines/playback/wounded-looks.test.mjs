@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hpLeft, woundTier, woundedPreset, woundEligible, woundActions, tokenMoving, WoundedLooks } from "../../../scripts/engines/playback/wounded-looks.mjs";
+import { hpLeft, woundTier, woundStage, STAGE_LINES, woundedPreset, woundEligible, woundActions, tokenMoving, WoundedLooks } from "../../../scripts/engines/playback/wounded-looks.mjs";
 
 const BASE = { name: "Wounded", library: "tokenshade", params: [
-  { filterType: "splash", color: 0x4a0606, seed: 0.33, splashFactor: 2, spread: 3, cut: true, edge: 0.6 },
-  { filterType: "splash", color: 0x3a0404, seed: 0.79, splashFactor: 2, spread: 2, cut: true, edge: 0.75 },
+  { filterType: "stain", color: 0x5a0606, seed: 0.33, count: 1, size: 0.3, edge: 0.5, wet: 0.4, spatter: 0.6 },
   { filterType: "adjustment", saturation: 0.85, brightness: 0.93 },
 ] };
 
@@ -29,20 +28,66 @@ test("tiers: hurt at 50% or less, badly hurt at 25% or less, with a small margin
   assert.equal(woundTier(null, 2), 0);
 });
 
-test("the hurt look is the Wounded preset toned down; badly hurt is stronger; the shared preset is untouched", () => {
+test("blood builds by stages as HP falls and goes back as it heals, with a margin", () => {
+  const s = (value, max = 100) => ({ value, max, down: value <= 0, marked: false });
+  assert.equal(woundStage(s(100)), 0);
+  assert.equal(woundStage(s(81)), 0);
+  for (let i = 0; i < STAGE_LINES.length; i++) assert.equal(woundStage(s(STAGE_LINES[i] * 100)), i + 1);
+  assert.equal(woundStage(s(5)), STAGE_LINES.length);
+  assert.equal(woundStage(s(0)), 0, "down: the defeated look takes over");
+  assert.equal(woundStage(s(61), 2), 2, "just above the line keeps the stage");
+  assert.equal(woundStage(s(65), 2), 1, "healed clear of the line takes it back one");
+  assert.equal(woundStage(s(90), 4), 0, "healed well up takes it all back");
+  assert.equal(woundStage(null, 3), 0);
+});
+
+test("the Wounded preset grows by stage, in the creature's blood; the shared preset is untouched", () => {
   const before = structuredClone(BASE);
-  const hurt = woundedPreset(1, BASE), bad = woundedPreset(2, BASE);
+  const looks = [1, 2, 3, 4, 5].map((stage) => woundedPreset(stage, BASE));
   assert.deepEqual(BASE, before);
-  const adj = (p) => p.params.find((x) => x.filterType === "adjustment");
-  const splashes = (p) => p.params.filter((x) => x.filterType === "splash");
-  assert.ok(adj(hurt).saturation > adj(BASE).saturation && adj(hurt).saturation < 1);
-  assert.ok(adj(bad).saturation < adj(BASE).saturation, "badly hurt drains more colour");
-  assert.equal(splashes(hurt).length, 1, "one small stain");
-  assert.ok(splashes(hurt)[0].dimX < 1);
-  assert.equal(splashes(bad).length, 2);
-  assert.notEqual(hurt.name, bad.name);
+  const adj = (p) => p.params.find((x) => x.filterType === "adjustment"), stain = (p) => p.params.find((x) => x.filterType === "stain");
+  for (let i = 1; i < looks.length; i++) {
+    assert.ok(stain(looks[i]).size > stain(looks[i - 1]).size, "more blood each stage");
+    assert.ok(stain(looks[i]).count >= stain(looks[i - 1]).count);
+    assert.ok(adj(looks[i]).saturation < adj(looks[i - 1]).saturation, "the colour goes each stage");
+    assert.notEqual(looks[i].name, looks[i - 1].name);
+  }
+  assert.ok(stain(looks[4]).count <= 3, "the stain draws three at most");
+  assert.equal(stain(looks[0]).color, BASE.params[0].color, "no blood given: the preset's own");
+  assert.equal(stain(woundedPreset(3, BASE, { color: 0x204080 })).color, 0x183060, "its blood, soaked in and darker");
   assert.equal(woundedPreset(0, BASE), null);
   assert.equal(woundedPreset(1, null), null);
+});
+
+test("bloodless creatures get no stain, and the amount scales the blood or turns the look off", () => {
+  const stain = (p) => p.params.find((x) => x.filterType === "stain");
+  const construct = woundedPreset(3, BASE, { bleeds: false });
+  assert.equal(stain(construct), undefined);
+  assert.ok(construct.params.some((x) => x.filterType === "adjustment"), "its colour still lowers");
+  assert.ok(stain(woundedPreset(3, BASE, { amount: 2 })).size > stain(woundedPreset(3, BASE)).size);
+  assert.ok(stain(woundedPreset(3, BASE, { amount: 0.5 })).size < stain(woundedPreset(3, BASE)).size);
+  assert.equal(woundedPreset(3, BASE, { amount: 0 }), null);
+});
+
+test("a change of stage or blood swaps the look, and a look with nothing changed stays", () => {
+  const token = { id: "t", visible: true, mesh: {}, document: { id: "t" }, actor: { type: "npc" } }, applied = [];
+  let hp = { value: 70, max: 100, down: false }, color = 0xaa0000;
+  const looks = new WoundedLooks({ body: { add() {}, remove() {} }, fx: () => ({ apply: (t, preset) => { applied.push(preset); return () => {}; } }), preset: () => BASE, tokens: () => [token], hp: () => hp, blood: () => ({ color, bleeds: true }), motionAllowed: () => false });
+  looks.sync();
+  assert.equal(applied.length, 1);
+  looks.sync();
+  assert.equal(applied.length, 1, "nothing changed");
+  hp = { value: 50, max: 100, down: false };
+  looks.sync();
+  assert.equal(applied.length, 2, "worse");
+  hp = { value: 90, max: 100, down: false };
+  looks.sync();
+  assert.equal(looks.shown.size, 0, "healed: gone");
+  hp = { value: 50, max: 100, down: false };
+  looks.sync();
+  color = 0x00aa00;
+  looks.sync();
+  assert.equal(applied.at(-1).params[0].color, 0x008000, "a new blood colour redraws it");
 });
 
 test("who gets a look: all creatures, player characters only, or nobody", () => {
@@ -80,15 +125,15 @@ function rig({ hp = {}, moving = new Set(), defeated = new Set(), mode = "all", 
 }
 const hp = (value, max = 100) => ({ value, max, down: value <= 0, marked: false });
 
-test("a hurt token gets the toned-down look under its own key; badly hurt adds a hunch; healing removes both", () => {
+test("a hurt token gets its stage's look under its own key; badly hurt adds a hunch; healing removes both", () => {
   const h = { a: hp(40) };
   const r = rig({ hp: h });
   r.tokens.push(r.mk("a"));
   r.looks.sync();
-  assert.deepEqual(r.calls, [["fx+", "a", "animater-wounded-1", "animater-wound:a"]]);
+  assert.deepEqual(r.calls, [["fx+", "a", "animater-wounded-3", "animater-wound:a"]]);
   r.calls.length = 0;
   h.a = hp(20); r.looks.sync();
-  assert.deepEqual(r.calls, [["fx-", "a"], ["fx+", "a", "animater-wounded-2", "animater-wound:a"], ["body+", "animater-wound:a", "hunch"]]);
+  assert.deepEqual(r.calls, [["fx-", "a"], ["fx+", "a", "animater-wounded-4", "animater-wound:a"], ["body+", "animater-wound:a", "hunch"]]);
   r.calls.length = 0;
   r.looks.sync();
   assert.deepEqual(r.calls, [], "nothing changed: nothing done");
