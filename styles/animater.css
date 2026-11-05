@@ -3874,7 +3874,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-water-share, .an-water-vertices { font-size: 11px; color: var(--an-muted); }
 .an-water-vertices { margin-left: auto; }
 .an-water-warn { color: var(--an-accent); }
-.animater-water .an-water-remove { grid-column: 1 / -1; justify-self: end; min-height: 26px; padding: 4px 8px; font-size: 11px; }
+.animater-water .an-water-remove { grid-column: 2; justify-self: end; min-height: 26px; padding: 4px 8px; font-size: 11px; }
 .an-water-foot { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--an-line); background: var(--an-surface); }
 .animater-water .an-water-foot button { background: var(--an-accent); color: #17120c; font-weight: 600; }
 .an-water-empty, .an-water-reason { margin: 0; padding: 10px 14px; line-height: 1.4; color: var(--an-muted); }
@@ -3888,3 +3888,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
   .an-water-all { padding: 7px 12px; }
   .an-water-all p { display: none; }
 }
+.animater-water .an-water-add { grid-column: 1; justify-self: start; min-height: 26px; padding: 4px 8px; font-size: 11px; }
+.animater-water .an-water-add[aria-pressed="true"] { border-color: var(--an-accent); color: var(--an-accent); }
+.an-water-add-status { flex: none; padding: 10px 12px; border-bottom: 1px solid var(--an-accent); background: var(--an-surface); }
+.an-water-add-status p { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
+.an-water-add-status > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.animater-water .an-water-add-status button { min-height: 28px; padding: 5px 8px; font-size: 11px; }

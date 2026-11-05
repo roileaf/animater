@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WATER_TUNING, detectWater, selectWaterAt, contourLoops, isSimple, toRegionData, regionsToReplace, fitSize } from "../../../scripts/engines/regions/water-detect.mjs";
+import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, regionsToReplace, fitSize } from "../../../scripts/engines/regions/water-detect.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));
@@ -858,3 +858,53 @@ for (const [name, build, x, y] of [
     assert.ok(elapsed < 1000, `${elapsed.toFixed(0)} ms`);
   });
 }
+
+
+test("adding a pale shoreline to a draft keeps its existing water and boat holes", () => {
+  const width = 200, height = 200;
+  const rgba = blank(width, height, 40, 0.5, 190);
+  fill(rgba, width, 10, 10, 180, 180, 210, 0.85, 170);
+  fill(rgba, width, 10, 10, 180, 20, 202, 0.25, 170);
+  fill(rgba, width, 80, 60, 12, 12, 30, 0.75, 120);
+  const auto = detectWater(rgba, width, height);
+  assert.equal(auto.status, "found");
+  const target = auto.proposals[0];
+  assert.equal(new Set(target.pixels).has(20 * width + 30), false);
+  const clicked = selectWaterAt(rgba, width, height, { x: 30, y: 20 });
+  assert.equal(clicked.status, "found");
+  const merged = mergeWaterProposals([target, clicked.proposal], width, height);
+  const pixels = new Set(merged.pixels);
+  assert.equal(merged.id, target.id);
+  assert.equal(pixels.has(20 * width + 30), true, "pale shallows added");
+  assert.equal(pixels.has(150 * width + 150), true, "deep water retained");
+  assert.equal(pixels.has(65 * width + 85), false, "boat stays a hole");
+  assert.equal(pixels.has(5 * width + 5), false, "sand stays out");
+  assert.equal(merged.loops.filter((loop) => !loop.hole).length, 1);
+  for (const loop of merged.loops) assert.equal(isSimple(loop.points), true);
+});
+
+test("combining disconnected areas makes one region without water between them", () => {
+  const width = 200, height = 200;
+  const rgba = blank(width, height, 40, 0.5, 190);
+  fill(rgba, width, 10, 10, 50, 50, 210, 0.85, 170);
+  fill(rgba, width, 120, 120, 50, 50, 210, 0.85, 170);
+  const auto = detectWater(rgba, width, height);
+  assert.equal(auto.proposals.length, 2);
+  const combined = mergeWaterProposals(auto.proposals, width, height);
+  assert.equal(combined.loops.filter((loop) => !loop.hole).length, 2);
+  assert.equal(combined.pixels.length, 5000);
+  assert.equal(new Set(combined.pixels).has(90 * width + 90), false);
+  const data = toRegionData(combined, { sceneRect: { x: 0, y: 0, width, height }, imageWidth: width, imageHeight: height, waterKind: "sea" });
+  assert.equal(data.shapes.filter((shape) => !shape.hole).length, 2);
+  assert.equal(data.flags.animater.waterKind, "sea");
+});
+
+test("combining areas settles diagonal contacts without entering another claimed area", () => {
+  const width = 8, height = 8;
+  const first = { id: "water-1", pixels: new Int32Array([9, 10, 17, 18]) };
+  const next = { id: "water-2", pixels: new Int32Array([27, 28, 35, 36]) };
+  const claimed = [{ pixels: new Int32Array([19]) }];
+  const combined = mergeWaterProposals([first, next], width, height, { claimed });
+  assert.equal(new Set(combined.pixels).has(19), false);
+  for (const loop of combined.loops) assert.equal(isSimple(loop.points), true);
+});

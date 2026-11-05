@@ -316,7 +316,7 @@ function waterApp() {
   let rows = [];
   let hasReason = false;
   const shared = { kind: { value: "still" }, flow: { value: "s" }, current: { value: "" }, range: { value: "narrow" } };
-  const list = { scrollTop: 0, insertAdjacentHTML: (_where, html) => { rows.unshift(...parseRows(html)); } };
+  const list = { set innerHTML(html) { rows = parseRows(html); }, scrollTop: 0, insertAdjacentHTML: (_where, html) => { rows.unshift(...parseRows(html)); } };
   const status = Object.fromEntries(["data-area-count", "data-selection-count", "data-create", "data-area-empty"].map((key) => [key, {}]));
   const query = (selector) => {
     if (status[selector.slice(1, -1)]) return status[selector.slice(1, -1)];
@@ -351,7 +351,7 @@ function waterApp() {
     async close() { App.closed++; }
   }
   const fire = (type, target) => { for (const fn of listeners[type] ?? []) fn({ target, clientX: 30, clientY: 20 }); };
-  const button = (attr, value) => ({ dataset: { [attr]: value }, closest: (selector) => (selector === `[data-${attr}]` ? { dataset: { [attr]: value } } : null) });
+  const button = (attr, value) => { const dataset = { [attr.replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())]: value }; return { dataset, closest: (selector) => selector === `[data-${attr}]` ? { dataset } : null }; };
   const preview = {
     closest: (selector) => (selector === "canvas.an-water-preview" ? preview : null),
     getBoundingClientRect: () => ({ left: 10, top: 10, width: 40, height: 20 }),
@@ -723,4 +723,60 @@ test("dragging the map pans without adding an area, and a later click still sele
   frameEvents.pointerup();
   rootEvents.click({ target: preview, clientX: 50, clientY: 50 });
   assert.equal(clicks, 1);
+});
+
+
+test("an ocean draft absorbs ticked areas, preserves Sea settings, and can undo", async () => {
+  const ui = waterApp();
+  const proposals = [pieces({ id: "water-1", pixels: new Int32Array([0, 1, 10, 11]) }), pieces({ id: "water-2", pixels: new Int32Array([8, 9, 18, 19]) }), pieces({ id: "water-3", preselected: false, pixels: new Int32Array([50, 51, 60, 61]) })];
+  const scene = fakeScene();
+  let created;
+  scene.createEmbeddedDocuments = async (_type, data) => { created = data; };
+  const { app } = await openWaterDetect(opening({ scene, Application: ui.App,
+    load: async () => ({ ok: true, rgba: new Uint8Array(400), width: 10, height: 10 }),
+    detect: () => ({ status: "found", proposals }),
+  }));
+  const ocean = ui.rows()[0];
+  ocean.querySelector("[data-kind]").value = "sea";
+  ocean.querySelector("[data-wave]").value = "ne";
+  ocean.querySelector("[data-beach]").checked = false;
+  ui.fire("click", ui.button("add-to", "water-1"));
+  app.combineSelected();
+  assert.deepEqual(app.detect.proposals.map((p) => p.id), ["water-1", "water-3"]);
+  const merged = ui.rows().find((row) => row.dataset.id === "water-1");
+  assert.equal(merged.querySelector("[data-kind]").value, "sea");
+  assert.equal(merged.querySelector("[data-wave]").value, "ne");
+  assert.equal(merged.querySelector("[data-beach]").checked, false);
+  assert.equal(merged.querySelector("[data-pick]").checked, true);
+  assert.deepEqual([...app.detect.proposals[0].pixels].sort((a,b)=>a-b), [0, 1, 8, 9, 10, 11, 18, 19]);
+  assert.equal(ui.status["data-selection-count"].textContent, "1 of 2 areas selected");
+  app.undoAdd();
+  assert.deepEqual(app.detect.proposals.map((p) => p.id), ["water-1", "water-2", "water-3"]);
+  assert.equal(ui.status["data-selection-count"].textContent, "2 of 3 areas selected");
+  app.combineSelected();
+  await app.create();
+  assert.equal(created.length, 1);
+  assert.equal(created[0].flags.animater.waterKind, "sea");
+  assert.equal(created[0].flags.animater.waveTo, "ne");
+  assert.equal(created[0].flags.animater.seaBeach, "off");
+  assert.equal(created[0].shapes.filter((shape) => !shape.hole).length, 2);
+});
+
+test("a shoreline click expands the active area instead of adding a new row", async () => {
+  const ui = waterApp();
+  let claimed;
+  const { app } = await openWaterDetect(opening({ scene: fakeScene(), Application: ui.App,
+    load: async () => ({ ok: true, rgba: new Uint8Array(400), width: 10, height: 10 }),
+    detect: () => ({ status: "found", proposals: [pieces({ pixels: new Int32Array([0, 1, 10, 11]) }), pieces({ id: "water-2", pixels: new Int32Array([88, 89, 98, 99]) })] }),
+    select: (_rgba, _w, _h, _point, options) => { claimed = options.claimed; return { status: "found", proposal: pieces({ pixels: new Int32Array([2, 3, 12, 13]) }) }; },
+  }));
+  app.setAddTarget("water-1");
+  ui.fire("click", ui.preview);
+  assert.deepEqual(claimed.map((p) => p.id), ["water-2"]);
+  assert.equal(ui.rows().length, 2);
+  assert.equal(app.detect.proposals[0].pixels.length, 8);
+  ui.fire("click", ui.button("add-done", ""));
+  assert.equal(app.addTarget, null);
+  assert.equal(app.undoAddition, null);
+  await app.close();
 });
