@@ -69,7 +69,7 @@ Painted floors, shiny looks and moving water all respond to the world around the
 
 ### Other additions
 
-- **Animater has its own controls.** Its buttons (the workspace, cave-in, energy blast, blood and clouds) moved from the Token controls to their own group, and tokens stay selectable there. Flames stays with the Lighting controls, as it works on selected lights. Players keep their Studio button on the Token controls.
+- **Animater has its own controls.** Its buttons (the workspace, cave-in, energy blast, blood and clouds) moved from the Token controls to their own group, and tokens stay selectable there. A new Clear ground marks button joins them. Flames stays with the Lighting controls, as it works on selected lights. Players keep their Studio button on the Token controls.
 - **River volume and Waterfall volume** sliders for each player.
 - **Animater breath from** gains None for individual tokens.
 - **Casts no shadow** option for walls.

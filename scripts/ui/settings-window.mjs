@@ -186,6 +186,7 @@ export const SETTINGS_TABS = Object.freeze([
     { local: "toolClearBlood" },
     { local: "toolSplatBlood", gmOnly: true },
     { local: "toolBakeBlood", gmOnly: true },
+    { local: "toolClearGroundMarks", gmOnly: true },
     { local: "toolClouds" },
     { local: "toolFlames" },
     { local: "tuckDuringPlayback" },

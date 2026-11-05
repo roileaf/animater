@@ -436,7 +436,7 @@ test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks
   assert.equal(controls.animater.layer, "tokens");
   assert.equal(controls.animater.activeTool, "select");
   assert.equal(controls.animater.tools.select.control, true, "Foundry only lets a tool with this select tokens");
-  for (const tool of ["animaterCaveIn", "animaterEnergyBlast", "animaterClearRubble", "animaterClearBlood", "animaterSplatBlood", "animaterBakeBlood", "animaterClouds"]) assert.ok(controls.animater.tools[tool], tool);
+  for (const tool of ["animaterCaveIn", "animaterEnergyBlast", "animaterClearRubble", "animaterClearBlood", "animaterSplatBlood", "animaterBakeBlood", "animaterClearGroundMarks", "animaterClouds"]) assert.ok(controls.animater.tools[tool], tool);
   assert.deepEqual(Object.keys(controls.tokens.tools), []);
   game.user.isGM = false;
   const playerControls = { tokens: { tools: {} } };

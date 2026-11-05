@@ -2559,6 +2559,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => void splatBloodHere() });
     add({ name: "animaterBakeBlood", title: "Bake blood: turn the blood on the floor into a tile the scene keeps", icon: "fa-solid fa-stamp", order: order + 2.5, button: true, visible: toolShown("toolBakeBlood"),
       onChange: () => void bakeBloodHere() });
+    add({ name: "animaterClearGroundMarks", title: "Clear ground marks: wipe every ground mark from the floor, on every screen", icon: "fa-solid fa-shoe-prints", order: order + 2.75, button: true, visible: toolShown("toolClearGroundMarks"),
+      onChange: () => clearGroundMarksApi() });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
   } catch { /* another layout of the controls */ }
@@ -6417,6 +6419,7 @@ Hooks.once("init", () => {
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
     ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
+    ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, for the GM. Marks still fade by themselves.'],
     ['toolClouds','Show the Clouds button','In the Animater controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
