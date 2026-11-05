@@ -119,6 +119,11 @@ export function closedGround({ cols, rows, cell, area, walls: given = [], roofed
 // never walk out. The rest are not touched. No `spots`: nowhere to send them, they stay.
 export const resettled = (list, { spots = [], closed = () => false, random = Math.random } = {}) => list.map((o) => (spots.length && closed(o.x, o.y) ? { ...o, ...spots[Math.floor(random() * spots.length)] } : o));
 
+// The nearest of `spots` to a place (pure), null for none.
+export const nearestSpot = (x, y, spots = []) => { let best = null, far = Infinity; for (const p of spots) { const d = (p.x - x) ** 2 + (p.y - y) ** 2; if (d < far) { far = d; best = p; } } return best; };
+// A rabbit on ground that has just turned bad (pure): off in long bounds toward the nearest good ground, as many as it takes.
+export const rabbitRunsOff = (r, { spots = [], grid = 100 } = {}) => { const to = nearestSpot(r.x, r.y, spots); if (!to) return r; return { ...r, mode: 'bolt', hop: 0, bolts: Math.ceil(Math.hypot(to.x - r.x, to.y - r.y) / (grid * 1.09)) + 2, a: Math.atan2(to.x - r.x, -(to.y - r.y)) }; };
+
 // One step of a rabbit (pure): sits a while and looks about, hops a few times on open ground, bolts in long bounds from anyone
 // near. `ok(x, y)` ground it can be on, looked at a body's length ahead so it stops on the bank, fleeing or not; `blocked(a, b)` a
 // wall between. One that finds itself on the wrong ground (a region drawn under it) hops off. It faces `a` (0 up the map, clockwise).
@@ -131,7 +136,7 @@ export function rabbitStep(rabbit, { dt = 1 / 60, grid = 100, near = [], ok = ()
     r.hop += dt / (r.mode === 'bolt' ? 0.3 : 0.42);
     if (r.hop >= 1) {
       r.hop = 0;
-      if (r.mode === 'bolt') { r.bolts--; r.a += between(random, -0.3, 0.3); if (r.bolts <= 0) { r.mode = 'sit'; r.wait = between(random, 1.5, 4); } }
+      if (r.mode === 'bolt') { r.bolts--; r.a += between(random, -0.3, 0.3); if (r.bolts <= 0) { if (ok(r.x, r.y)) { r.mode = 'sit'; r.wait = between(random, 1.5, 4); } else { r.bolts = 2; const out = wayOut(r, grid, ok); if (out !== null) r.a = out; } } }
       else { r.hops--; if (r.hops <= 0) { r.mode = 'sit'; r.wait = between(random, 1.2, 5); } }
     }
     const speed = grid * (r.mode === 'bolt' ? 5.7 : 1.65) * Math.sin(r.hop * Math.PI), nx = r.x + Math.sin(r.a) * speed * dt, ny = r.y - Math.cos(r.a) * speed * dt;
@@ -336,6 +341,12 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
     resettle({ spots = [], closed = () => false, random = Math.random } = {}) {
       spare = spots; rabbits = resettled(rabbits, { spots, closed, random });
       if (spots.length) songs = resettled(songs, { spots: [spots[Math.floor(random() * spots.length)]], closed, random });
+    },
+    // Ground has just turned bad under them: the rabbits run for the nearest good ground, the birds go up and find some.
+    runOff({ spots = [], bad = () => false } = {}) {
+      if (!spots.length) return;
+      spare = spots; rabbits = rabbits.map((r) => (bad(r.x, r.y) ? rabbitRunsOff(r, { spots, grid }) : r));
+      songs = songs.map((s) => (s.mode === 'ground' && bad(s.x, s.y) ? { ...s, wait: 0 } : s));
     },
     // The rabbits to a fox: where they are; one startled by it (`from` where it springs); one taken, its picture given back.
     get list() { return rabbits; },

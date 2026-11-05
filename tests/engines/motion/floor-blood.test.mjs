@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hitMarks, bleedStep, standingDrip, woundShape, poolGleam, POOL_DRIES, bloodSheen, bloodShines } from '../../../scripts/engines/motion/floor-blood.mjs';
-import { bloodTones } from '../../../scripts/engines/motion/blood-art.mjs';
+import { bloodTones, stainInner } from '../../../scripts/engines/motion/blood-art.mjs';
 
 const at = { x: 500, y: 500 }, from = { x: 300, y: 500 };
 
@@ -95,4 +95,16 @@ test('wet stains shine by the light on them and stop as they dry; drops do not',
   assert.ok(bloodSheen({ strength: 1 }) > bloodSheen({ strength: 0.3 }));
   assert.ok(bloodSheen({ strength: 1 }, POOL_DRIES / 2) < bloodSheen({ strength: 1 }));
   assert.equal(bloodSheen({ strength: 1 }, POOL_DRIES), 0, 'dry');
+});
+
+test('a stain never reaches the edge of its picture, where it would be cut off in a straight line', () => {
+  // The widest and most off-centre of them: a slash's root, a blow's, a pool.
+  const shapes = [(u, v) => 0.3 - Math.hypot((u + 0.42) * 0.8, v * 1.1), (u, v) => 0.34 - Math.hypot(u * 0.8, v * 1.1), (u, v) => 0.74 - Math.hypot(u, v * 1.14) + Math.sin(Math.atan2(v, u) * 3 + 2) * 0.05];
+  const n = 96;
+  for (const shape of shapes) for (let off = 0; off < 977; off += 61) {
+    let inside = 0;
+    for (let i = 0; i < n; i++) for (const [x, y] of [[i, 0], [i, n - 1], [0, i], [n - 1, i]]) assert.ok(stainInner(shape, x, y, n, off) <= 0, `edge at ${x},${y}, seed ${off}`);
+    for (let y = 0; y < n; y += 4) for (let x = 0; x < n; x += 4) if (stainInner(shape, x, y, n, off) > 0) inside++;
+    assert.ok(inside > 0, 'and there is still a stain');
+  }
 });

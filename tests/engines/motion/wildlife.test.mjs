@@ -213,3 +213,18 @@ test('a fox placed anywhere reckoned open is never walled into a pocket', () => 
     }
   }
 });
+
+test('a rabbit on ground gone bad bolts for the nearest good ground, and keeps going till it is off', async () => {
+  const { rabbitRunsOff, rabbitStep, nearestSpot } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const spots = [{ x: 900, y: 0 }, { x: 0, y: -400 }], ok = (x, y) => y < -300, grid = 100;
+  assert.deepEqual(nearestSpot(0, 0, spots), spots[1]);
+  assert.equal(nearestSpot(0, 0, []), null);
+  let r = rabbitRunsOff({ x: 0, y: 0, a: 2, mode: 'sit', wait: 3, hop: 0 }, { spots, grid });
+  assert.equal(r.mode, 'bolt');
+  assert.ok(Math.abs(r.a) < 1e-9, 'facing up the map, toward the nearer');
+  assert.ok(r.bolts * grid * 1.09 >= 400, 'enough bounds to get there');
+  assert.equal(rabbitRunsOff({ x: 0, y: 0, mode: 'sit' }, { spots: [], grid }).mode, 'sit', 'nowhere to run to');
+  for (let i = 0; i < 1800 && !(r.mode === 'sit' && ok(r.x, r.y)); i++) r = rabbitStep(r, { dt: 1 / 60, grid, ok, random: () => 0.5 });
+  assert.ok(ok(r.x, r.y), `got off: ${Math.round(r.y)}`);
+  assert.equal(r.mode, 'sit', 'and settles there');
+});

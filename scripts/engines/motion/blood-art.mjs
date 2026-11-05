@@ -20,8 +20,13 @@ export function bloodTones(color = 0x7a0d0d) {
 
 // A stain soaked into the floor: `shape(u, v)` says how far inside a point is (above 0; u, v run -1..1); the edge torn by
 // noise, a thin darker rim where it dried first, its body uneven.
+// How far inside a stain a pixel is (pure; above 0 is stain). The tearing noise is turned off the grid, or its lumps come out boxy, and it dies away before the picture's edge: a stain that reached it would be cut off in a straight line.
+export const stainInner = (shape, x, y, n, off) => {
+  const u = (x / n) * 2 - 1, v = (y / n) * 2 - 1, tx = x * 0.8 - y * 0.6, ty = x * 0.6 + y * 0.8, near = Math.hypot(u, v);
+  return shape(u, v) + (fbm(tx / (n / 7) + off, ty / (n / 7)) - 0.5) * 0.55 + (noise(ty / (n / 26) + off, tx / (n / 26)) - 0.5) * 0.1 - smooth(0.72, 0.96, near) * 1.4;
+};
 const stain = (b, n, seed, shape, opacity = 0.9) => { const c = document.createElement('canvas'); c.width = c.height = n; const g = c.getContext('2d'), im = g.createImageData(n, n), off = hash(seed) % 977;
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const u = (x / n) * 2 - 1, v = (y / n) * 2 - 1, inner = shape(u, v) + (fbm(x / (n / 7) + off, y / (n / 7)) - 0.5) * 0.55 + (noise(x / (n / 26) + off, y / (n / 26)) - 0.5) * 0.1, k = (y * n + x) * 4; if (inner <= 0) continue;
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const inner = stainInner(shape, x, y, n, off), k = (y * n + x) * 4; if (inner <= 0) continue;
     const edge = smooth(0, 0.035, inner), rim = 1 - smooth(0.03, 0.14, inner), body = noise(x / (n / 8) + off * 2, y / (n / 8));
     for (let i = 0; i < 3; i++) { const v2 = b.deep[i] + (b.wet[i] - b.deep[i]) * smooth(0.3, 0.7, body); im.data[k + i] = v2 + (b.rim[i] - v2) * rim * 0.75; }
     im.data[k + 3] = 255 * edge * opacity * (0.78 + 0.22 * body); }

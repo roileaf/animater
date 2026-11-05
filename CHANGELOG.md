@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.1 (unreleased)
+
+### Fixes
+
+- Blood from slashing wounds no longer has straight, squared-off edges: its stain ran past the edge of its own picture and was cut off.
+- Animals now run from ground a region step has just turned bad, toward the nearest good ground, instead of vanishing and reappearing elsewhere. Birds fly off.
+
 ## 3.0.0 (2026-11-05)
 
 Water that really moves, floors that change during play, and blood that stays. **Moving water is off until you turn it on: Scene configuration → Animater → Moving water.**

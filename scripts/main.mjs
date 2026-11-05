@@ -3016,15 +3016,22 @@ const rebuildWildlife = () => {
   if (all === wildKey && regions === wildRegions && walls === wildWalls) return;
   if (all === wildKey && wildOpen) {
     const now = wildGround(canvas.grid.size, canvas.dimensions.sceneRect);
-    if (!muchChanged(wildOpen.waters.length, now.waters.length) && !muchChanged(wildOpen.spots.length, now.spots.length)) {
-      const regionsChanged = regions !== wildRegions;
+    const regionsChanged = regions !== wildRegions;
+    // (Ground that has turned bad or come good again is no reason to start the animals over: those there run off, and come back in their own time.)
+    if (!muchChanged(wildOpen.waters.length, now.waters.length) && (!muchChanged(wildOpen.spots.length, now.spots.length) || (regionsChanged && walls === wildWalls && wildOpen.spots.length > 0 && now.spots.length > 0))) {
       wildOpen = now; wildRegions = regions;
-      // A wall drawn round one: it could never walk out, so it is set down on the open ground, and none comes back inside. So too one on ground that has just turned bad.
+      // A wall drawn round one: it could never walk out, so it is set down on the open ground, and none comes back inside. Ground that has just turned bad it runs from.
       if (walls !== wildWalls || regionsChanged) {
+        const wallsChanged = walls !== wildWalls;
         wildWalls = walls;
-        const many = sceneCreatures(), rabbitSpots = now.spots.filter((p) => !keptOut("rabbits", p)), foxSpots = now.spots.filter((p) => !keptOut("foxes", p)), unfit = (x, y) => now.closed(x, y) || now.flooded(x, y);
-        wildlife.resettle({ spots: now.share >= 0.2 && (many.rabbits > 0 || many.wildBirds > 0) ? (rabbitSpots.length ? rabbitSpots : now.spots.filter((p) => !keptOut("songbirds", p))) : [], closed: unfit });
-        fieldLife.resettle({ spots: foxSpots.length ? foxSpots : now.spots, closed: unfit });
+        const many = sceneCreatures(), rabbitSpots = now.spots.filter((p) => !keptOut("rabbits", p)), foxSpots = now.spots.filter((p) => !keptOut("foxes", p));
+        const land = now.share >= 0.2 && (many.rabbits > 0 || many.wildBirds > 0) ? (rabbitSpots.length ? rabbitSpots : now.spots.filter((p) => !keptOut("songbirds", p))) : [];
+        if (wallsChanged) {
+        wildlife.resettle({ spots: land, closed: now.closed });
+        fieldLife.resettle({ spots: foxSpots.length ? foxSpots : now.spots, closed: now.closed });
+        }
+        wildlife.runOff({ spots: land, bad: now.flooded });
+        fieldLife.runOff({ spots: foxSpots.length ? foxSpots : now.spots, bad: now.flooded });
       }
       return;
     }

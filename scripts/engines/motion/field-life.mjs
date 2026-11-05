@@ -3,7 +3,7 @@
 // from above, then only moved, turned and swapped; every gait runs by the ground covered, so no foot slides. A few dozen small
 // shapes on the CPU at most, and nothing drawn where nobody looks. Every screen has its own: nothing here is saved or shared.
 
-import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED, resettled } from './wildlife.mjs';
+import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED, resettled, nearestSpot } from './wildlife.mjs';
 import { batWingbeat } from './vermin.mjs';
 
 const TAU = Math.PI * 2;
@@ -22,6 +22,9 @@ export function clearWay(x, y, want, reach, free) {
   return null;
 }
 
+// A deer or fox on ground that has just turned bad (pure): off at a run toward the nearest good ground. A fox carrying something, or gone, is not there to run.
+export const runsOff = (o, { spots = [] } = {}) => { if (o.mode === 'carry' || o.mode === 'away') return o; const to = nearestSpot(o.x, o.y, spots); if (!to) return o; return { ...o, mode: 'flee', t: 0, way: Math.atan2(to.y - o.y, to.x - o.x), v: 0, h: 0 }; };
+
 // One step of a deer (pure): grazes, lifts its head (`lift` 0-1) to look about, walks a little on open ground (`ok`), and from
 // anyone near or a loud noise bounds away (`mode` 'flee', `h` 0-1 how high in the bound, `gait` how far through its stride).
 export function deerStep(deer, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, scare = false, noise = null, random = Math.random } = {}) {
@@ -36,7 +39,7 @@ export function deerStep(deer, { dt = 1 / 60, grid = 100, near = [], ok = () => 
     const speed = grid * (2.4 + o.h * 4.4) * Math.min(1, 0.45 + o.t * 1.4), nx = o.x + Math.sin(o.a) * speed * dt, ny = o.y - Math.cos(o.a) * speed * dt;
     // Its head comes round first where it cannot yet go; it does not push its nose out over the water.
     if (free(nx + Math.sin(o.a) * grid * 0.45, ny - Math.cos(o.a) * grid * 0.45)) { o.x = nx; o.y = ny; o.gait += (speed * dt) / (grid * 1.9); } else o.a = turnToward(o.a, o.way + Math.PI / 2, dt * 9);
-    if (o.t > 3.8) { if (close) { o.t = 1.5; o.way = Math.atan2(o.y - close.y, o.x - close.x); } else { o.mode = 'look'; o.h = 0; o.lift = 1; o.wait = between(random, 2, 5); o.want = o.a; } }
+    if (o.t > 3.8) { if (!ok(o.x, o.y)) o.t = 1.5; else if (close) { o.t = 1.5; o.way = Math.atan2(o.y - close.y, o.x - close.x); } else { o.mode = 'look'; o.h = 0; o.lift = 1; o.wait = between(random, 2, 5); o.want = o.a; } }
     return o;
   }
   o.wait -= dt;
@@ -65,7 +68,7 @@ export function foxStep(fox, { dt = 1 / 60, grid = 100, near = [], ok = () => tr
   if (f.mode === 'flee') {
     f.t += dt; steer(); f.a = turnToward(f.a, f.way + Math.PI / 2, dt * 6); f.v = grid * (3 + Math.max(0, Math.sin(TAU * (f.gait % 1))) * 3);
     if (!forward(f.v, 1.3)) f.a = turnToward(f.a, f.way + Math.PI / 2, dt * 9);
-    if (f.t > 2.6) { f.mode = 'trot'; f.want = f.a; f.wait = between(random, 3, 7); }
+    if (f.t > 2.6) { if (!ok(f.x, f.y)) f.t = 1; else { f.mode = 'trot'; f.want = f.a; f.wait = between(random, 3, 7); } }
   } else if (f.mode === 'carry') {
     f.t += dt; steer(); f.a = turnToward(f.a, f.way + Math.PI / 2, dt * 3); f.v = grid * 1.6;
     if (!forward(f.v, 0.9)) f.a = turnToward(f.a, f.way + Math.PI / 2, dt * 9);
@@ -260,6 +263,11 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       const home = land[Math.floor(random() * land.length)], near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < grid * 5);
       deer = resettled(deer, { spots: near, closed, random });
       foxes = foxes.map((f) => { const [o] = resettled([f], { spots: land, closed, random }); return o === f || f.mode === 'flee' || f.mode === 'carry' || f.mode === 'away' ? o : { ...o, mode: 'trot', t: 0, h: 0, wait: 5, v: 0, want: o.a }; });
+    },
+    runOff({ spots: land = [], bad = () => false } = {}) {
+      if (!land.length) return;
+      spots = land; const off = (o) => (bad(o.x, o.y) ? runsOff(o, { spots: land }) : o);
+      deer = deer.map(off); foxes = foxes.map(off);
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },

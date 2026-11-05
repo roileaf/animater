@@ -103,3 +103,20 @@ test('an owl crosses on a bow, off the map at both ends', () => {
   assert.ok(at(0).x < -400 && at(1).x > 400);
   assert.ok(Math.abs(at(0.5).y) > 50, 'bowed in the middle');
 });
+
+test('a deer or fox on ground gone bad runs for the nearest good ground, and does not stop till it is off', async () => {
+  const { runsOff, deerStep, foxStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const spots = [{ x: 1000, y: 0 }, { x: -300, y: 0 }], ok = (x) => x < -200 || x > 200, grid = 100;
+  const start = { x: 0, y: 0, a: 0, mode: 'graze', wait: 5, gait: 0, lift: 0, v: 0, h: 0, t: 0 };
+  const deer = runsOff(start, { spots });
+  assert.equal(deer.mode, 'flee');
+  assert.ok(Math.abs(Math.abs(deer.way) - Math.PI) < 1e-9, 'toward the nearer');
+  assert.equal(runsOff({ ...start, mode: 'carry' }, { spots }).mode, 'carry');
+  assert.equal(runsOff({ ...start, mode: 'away' }, { spots }).mode, 'away');
+  assert.equal(runsOff(start, { spots: [] }).mode, 'graze', 'nowhere to run to');
+  const run = (step, o) => { let n = 0; while (n++ < 1200 && (o.mode === 'flee' || !ok(o.x, o.y))) { o = step(o, { dt: 1 / 60, grid, ok, random: () => 0.5 }); if (o.mode !== 'flee' && !ok(o.x, o.y)) return { ...o, stuck: true }; } return o; };
+  const d = run(deerStep, deer);
+  assert.ok(ok(d.x, d.y) && !d.stuck, `deer got off: ${Math.round(d.x)}`);
+  const f = run(foxStep, runsOff({ ...start, mode: 'trot' }, { spots }));
+  assert.ok(ok(f.x, f.y) && !f.stuck, `fox got off: ${Math.round(f.x)}`);
+});
