@@ -1,8 +1,10 @@
 # Changelog
 
-## 3.0.0 (unreleased)
+## 3.0.0 (2026-11-05)
 
 Water that really moves, floors that change during play, and blood that stays. **Moving water is off until you turn it on: Scene configuration → Animater → Moving water.**
+
+What you may notice first: GMs now find Animater's buttons under their own icon in the left bar instead of the Token controls, and the sun has real colour, whiter at noon and warmer at dawn and dusk.
 
 ### Moving water
 
@@ -26,12 +28,22 @@ Water that really moves, floors that change during play, and blood that stays. *
 - **Gulls** glide and wander over the sea, hang on the wind and dive for fish, with more natural wing proportions.
 - **Fish** stay out in the water and are drawn beneath the surface, so waves, foam and glare pass over them.
 
-### Region steps and painted floors
+### Right-click a region
 
-- **Region steps.** Right-click a region with a floor to move it through its steps, such as clear water turning bloody. Each step has its own look, walking feel and effect.
+Change the ground during play without opening a thing. As GM, with tokens selectable (the Token or Animater controls), quickly right-click any region that has a floor. Hold or drag and it pans as usual, and a token keeps its own right-click.
+
+- **Region steps.** The menu lists the region's steps: click one and the floor changes, spreading from where you clicked (or from upstream on a river). Clear water turns bloody, fresh grass burns, stone floods. Each step has its own look, footsteps and sounds, and can switch on an effect.
+- **On any floor:** hide the step, show or hide the painted floor and pick its texture style, and soften its edge.
 - **Look strength.** A slider sets how strong a step's look is, such as how much blood.
 - **Pattern size.** A slider makes a region's floor and look pattern bigger or smaller, such as more panes of glass.
+- **On water:** choose still, river, rapids, waterfall or sea, which way it flows or its waves travel, whether it moves at all, its reflections, and the beach along a sea.
+- **On grass:** whether the season colours it.
+- **Edit steps…** opens a window to name, add and remove steps, set what each looks like, walks as and switches on, and choose how a change happens: spreading or fading, at once or over up to 12 seconds. Every floor starts with a ready-made list.
+
+### Painted floors and looks
+
 - **Painted floors.** A region can paint its floor on a bare map, including grass blades that respond to wind, sun and whatever walks through them.
+- **Looks repainted.** Burning, burnt, ash, snow, drifts, withered, churned, flowers, vines, rust, oil, acid, poison, blight, cursed and more were redrawn, with torn edges instead of blurred clouds and a real mix of sizes.
 - **New looks,** including a more realistic glass mosaic and bones. Blood lies flat on land as specks, streaks and a few big splashes, and spreads in soft red clouds on water.
 
 ### Light, shadow and weather on floors and water
@@ -45,7 +57,7 @@ Painted floors, shiny looks and moving water all respond to the world around the
 - **The moon.** At night the moon puts its own glare on water and shiny floors, and its light catches grass blades.
 - **Light sources.** Lit torches, lamps and other lights glint on nearby floors, looks and waves. Even rough floors and dull looks show their bumps lit on the side facing the flame. Grass blades light up on the side toward it, in its colour.
 - **Every look answers the light** unless it is light or vapour itself: burning, glowing and misty looks have no surface to catch it.
-- **Waves in the light.** Each wave is lit on the side facing the light and dark on the other. On the sea the glare breaks into points that come and go, and falling water is too broken to hold a long glare.
+- **Waves in the light.** Each wave is lit on the side facing the light and dark on the other. Falling water is too broken to hold a long glare.
 - **Shadows.** Wall shadows fall across floors and water. Sun and moonlight stop in the shade of walls, roofs and trees, so nothing glares or casts a sun shadow there. Grass blades throw their own shadows away from the sun, the moon or a nearby flame. Sun flecks under trees barely show on water.
 - **Clouds** dim the sun and moon on every floor and on water.
 - **Rain** soaks rough floors, which darken and take on a wet shine.
@@ -85,6 +97,8 @@ Painted floors, shiny looks and moving water all respond to the world around the
 ### Fixes
 
 - Flames now show on torch lights standing on sconces drawn in a map's foreground picture. The picture was hiding them as if they were under a roof; real roofs still hide what is under them.
+- Clearing ground marks now also clears the scorches energy blasts leave.
+- Grass no longer shows a repeating pattern of dark patches, and a river's glare no longer looks like crinkled plastic.
 - Animals no longer appear on flooded ground, waterfalls or rapids.
 - Animals stay off ground a region step has made dangerous or foul, such as burning, lava, acid, poison, cursed, burnt or freshly bloodied ground, and any standing on it move off when the step changes. Snow, frost, mist, bones and dried blood don't bother them.
 - Animals no longer get shut inside sealed wall rings, and any already trapped are moved to open ground.
