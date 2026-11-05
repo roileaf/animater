@@ -66,6 +66,9 @@ const SURFACE_OF = { water: 'water', snow: 'frozen', ice: 'frozen', sand: 'hot',
 // A scene whose floor is grass is grass everywhere (fireflies, the season's colour). Not dirt: it is also the guess for
 // any outdoor or lit scene with no floor set, and painted every such map's streets and floors green, fireflies over them.
 const GRASSY = new Set(['grass']);
+// How fast a river runs, by its region's choice (0-1): what the water's look reads as its current. Unset is gentle.
+export const riverCurrent = (choice) => ({ swift: 1, slow: 0.2, slower: 0.1 })[choice] ?? 0.4;
+
 /**
  * Where the map's surfaces lie: { water, frozen, hot, grass } polygon lists (flat x, y pairs) from the regions with a
  * floor (movement-feel.mjs regionFloor), `bare` the regions with any other floor, and `whole`: the surface the scene's
@@ -73,7 +76,7 @@ const GRASSY = new Set(['grass']);
  * is grassy. `flows` the rivers ({ polygons, angle, speed }). `regions`: [{ floor, polygons, freezes, flow, current }]; a polygon's `holes` (flat x, y pairs each) the holes drawn in it.
  */
 export function surfacesOf({ sceneFloor = null, regions = [] } = {}) {
-  const out = { water: [], freezes: [], flows: [], frozen: [], hot: [], grass: [], bare: [], whole: SURFACE_OF[sceneFloor] ?? null, grassAll: GRASSY.has(sceneFloor) };
+  const out = { water: [], freezes: [], flows: [], frozen: [], hot: [], grass: [], tinted: [], bare: [], whole: SURFACE_OF[sceneFloor] ?? null, grassAll: GRASSY.has(sceneFloor) };
   if (out.whole === 'water' || out.whole === 'grass') out.whole = null;
   for (const r of regions ?? []) {
     const kind = SURFACE_OF[r?.floor], polygons = (r?.polygons ?? []).filter((p) => p?.length >= 6);
@@ -82,6 +85,9 @@ export function surfacesOf({ sceneFloor = null, regions = [] } = {}) {
     if (kind === 'water' && r.freezes !== false) out.freezes.push(...polygons);
     // A river: which way it flows (`flow`, radians on the map, the way the water goes) and how fast (`current` 0–1).
     if (kind === 'water' && Number.isFinite(r.flow) && polygons.length) out.flows.push({ polygons, angle: r.flow, speed: Math.min(1, Math.max(0, Number(r.current ?? 0.4))) });
+    // Grass the season colours: a region that takes it (region-steps.mjs takesSeason). One that only says what its floor is leaves
+    // the map's own paint alone, or it would show as a coloured patch on the map; fireflies still take it for a meadow.
+    if (r?.floor === 'grass' && r.seasonal) out.tinted.push(...polygons);
     if (r?.floor && r.floor !== 'grass') out.bare.push(...polygons);
   }
   return out;
@@ -127,7 +133,8 @@ void main(){ vUv = aUvs; gl_Position = vec4((projectionMatrix * translationMatri
 const FRAG = `
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D uWater, uBanks, uFrozen, uIndoor, uGrass, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns;
+uniform float uMovingWater; // moving water (water-engine.mjs) has its own glints
+uniform sampler2D uWater, uBanks, uFrozen, uIndoor, uGrass, uTinted, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns;
 uniform vec2 uSize, uWindDir;
 uniform vec4 uBird;     // a flock's centre (x, y), heading (radians) and its birds' size (w, 1 a square and a half each; 0 none)
 uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain, uIce, uLitter;
@@ -723,7 +730,7 @@ void main(){
     // green), in soft patches; and the leaves lying.
     vec3 under = vec3(0.0); float ua = 0.0;
     if (uSeason.a > 0.005) {
-      float grass = max(texture2D(uGrass, vUv).a, uGrassAll * (1.0 - texture2D(uBare, vUv).a));
+      float grass = max(texture2D(uTinted, vUv).a, uGrassAll * (1.0 - texture2D(uBare, vUv).a));
       float patch = 0.65 + 0.7 * fbm(px / (uGrid * 5.0));
       ua = uSeason.a * outside * (1.0 - water) * grass * patch;
       under = uSeason.rgb * ua;
@@ -801,21 +808,23 @@ void main(){
     float light = 0.0;
     // Where the sun reaches the water: not in a wall's shadow (the sunlit floor), not under the trees' shade.
     float sunny = texture2D(uSunlit, vUv).a * (1.0 - 0.9 * texture2D(uTreeShade, vUv).a);
-    if (water > 0.01 && sunny > 0.02) {
+    if (water > 0.01 && sunny > 0.02 && uMovingWater < 0.5) {
       // A river carries its wavelets, sheen and glints downstream; still water goes with the wind.
       vec4 fl = texture2D(uFlow, vUv);
       float flowing = fl.a, current = flowing > 0.01 ? fl.b / fl.a : 0.0;
+      // A river slower than gentle (0.4) slows everything on it, the wind's push too.
+      float calm = flowing > 0.01 ? clamp(current / 0.4, 0.0, 1.0) : 1.0;
       gDir = flowing > 0.01 ? normalize(fl.rg / fl.a * 2.0 - 1.0 + vec2(1e-4)) : uWindDir;
-      gPace = 0.15 + 0.35 * uWind + 1.1 * current;
+      gPace = (0.15 + 0.35 * uWind + 1.1 * current) * calm;
       vec2 side = vec2(-gDir.y, gDir.x);
       // Sheen: broad, soft brightness where the surface tilts toward the sun, drifting slowly; strongest on calm water,
       // where it mirrors the sky.
-      vec2 w = px / (uGrid * 4.0) + gDir * t * (0.02 + 0.06 * uWind + 0.25 * current);
+      vec2 w = px / (uGrid * 4.0) + gDir * t * (0.02 + 0.06 * uWind + 0.25 * current) * calm;
       float sheen = smoothstep(0.5, 0.85, fbm(w + vec2(t * 0.01, 0.0)));
       // The wavelets themselves: fine crests across the wind (or the current), travelling with it, faintly lit.
-      vec2 f = vec2(dot(px, gDir) / (uGrid * 0.12) - t * (1.5 + 3.0 * uWind + 6.0 * current), dot(px, side) / (uGrid * 0.5));
+      vec2 f = vec2(dot(px, gDir) / (uGrid * 0.12) - t * (1.5 + 3.0 * uWind + 6.0 * current) * calm, dot(px, side) / (uGrid * 0.5));
       // On a river, long streaks of foam carried downstream.
-      float foam = flowing > 0.01 ? smoothstep(0.76, 0.92, noise(vec2(dot(px, gDir) / (uGrid * 0.9) - t * (0.6 + 2.5 * current), dot(px, side) / (uGrid * 0.07)))) * flowing : 0.0;
+      float foam = flowing > 0.01 ? smoothstep(0.76, 0.92, noise(vec2(dot(px, gDir) / (uGrid * 0.9) - t * (0.6 + 2.5 * current) * calm, dot(px, side) / (uGrid * 0.07)))) * flowing : 0.0;
       light += water * foam * (0.06 + 0.1 * current);
       float crests = smoothstep(0.62, 0.8, noise(f) * 0.7 + noise(f * 2.3 + 3.1) * 0.3);
       // Glints gather where the sheen tilts the surface to the sun, and spread with the wind.
@@ -894,7 +903,7 @@ const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
  * it all.
  */
 export function createSurfaceLight({ PIXI, root, render, above = root, renderAt = null, glowing = above }) {
-  let masks = [], meshes = [], own = [], hasGlints = false, hasWater = false, origin = { x: 0, y: 0 }, area = null, roofShown = null;
+  let movingWater = false, masks = [], meshes = [], own = [], hasGlints = false, hasWater = false, origin = { x: 0, y: 0 }, area = null, roofShown = null;
   // The rainbow comes and goes over some seconds, never at once: `bow` where it is now, `bowTo` where look wants it.
   let bow = 0, bowTo = 0;
   // The pass over the roofs: the weather's light (`casting`) and the clouds' shadows (`clouding`).
@@ -926,7 +935,9 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
   };
   const set = (values) => { for (const u of own) Object.assign(u, values); };
   return {
-    build({ water = [], freezes = water, flows = [], frozen = [], frozenAll = false, grass = [], bare = [], grassAll = false, indoors = [], bounds, grid = 100 } = {}) {
+    // Moving water (water-engine.mjs) has its own glints, and takes these off the water.
+    movingWater(on) { movingWater = !!on; set({ uMovingWater: movingWater ? 1 : 0 }); },
+    build({ water = [], freezes = water, flows = [], frozen = [], frozenAll = false, grass = [], tinted = [], bare = [], grassAll = false, indoors = [], bounds, grid = 100 } = {}) {
       drop();
       if (!bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
@@ -963,9 +974,9 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       // ground the mist gathers on: wider still.
       const uniforms = {
         uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: bake(freezes, 1), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1),
-        uGrass: bake(grass, 2), uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
+        uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)

@@ -93,7 +93,7 @@ import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { IMMERSION_FEATURES, immersionWindow, newFeatures } from "./ui/immersion-setup.mjs";
 import { weaponCategories } from "./systems/weapon-categories.mjs";
 import { createCoast, tideLevel } from "./engines/motion/coast.mjs";
-import { PLACE_VOLUME, THROUGH_WALL, placeHeard, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
+import { PLACE_VOLUME, THROUGH_WALL, placeHeard, placeHeardLouds, fallLoudness, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
 import { createWaterfalls } from "./engines/motion/waterfall.mjs";
 import { createWaterMirror, waterStillness } from "./engines/motion/water-mirror.mjs";
 import { createAftermath, bodyStage } from "./engines/motion/aftermath.mjs";
@@ -182,7 +182,7 @@ import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
-import { weatherOf, cloudCover, heatOf, surfacesOf, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
+import { weatherOf, cloudCover, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
 import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
@@ -198,10 +198,15 @@ import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfAr
 import { weatherLevels, weatherIsOurs, thunderFor, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip } from "./engines/motion/floor-blood.mjs";
+import { noLifeOnWater, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf } from "./engines/motion/region-steps.mjs";
+import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
+import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
+import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, blastRipple, aimSquares, stepSquares } from "./engines/motion/energy-blast.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
 import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
+import { createWaterEngine, wakeRingDue } from "./engines/motion/water-engine.mjs";
 import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from "./engines/motion/light-flames.mjs";
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
@@ -226,7 +231,7 @@ import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState}
 import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
 import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingText, twoeCatalogRecipe, twoeSettingKey, seedBorrowedState, TWOE_KINDS } from "./systems/twoe-crossover.mjs";
 import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./catalogs/daggerheart/daggerheart-catalog.mjs";
-import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
+import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,floorDetail, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
@@ -1080,7 +1085,9 @@ const movementFeelSettingOn = (key) => { try { return hotSetting(key) !== false;
 // How wet the ground must still be after rain (0–1) for soil to stay mud underfoot.
 const WET_MUDDY = 0.3;
 // A region's floor as set (its flag), else water where it drips into a pool or deep water.
-const floorFlagOf = (region) => { const own = region?.flags?.[ID] ?? {}; return own.floor || (own.drips && (own.dripDepth === "pool" || own.dripDepth === "deep") ? "water" : own.floor); };
+const plainFloorFlag = (own) => own.floor || (own.drips && (own.dripDepth === "pool" || own.dripDepth === "deep") ? "water" : own.floor);
+// The floor as its current step has it (engines/motion/region-steps.mjs), else as set.
+const floorFlagOf = (region) => { const own = region?.flags?.[ID] ?? {}; return activeStep(own)?.walks || plainFloorFlag(own); };
 const sceneFloorNow = () => {
   const scene = canvas?.scene;
   return sceneFloor({
@@ -1922,7 +1929,8 @@ const rebuildCanopy = () => {
     const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? tree : [], roofs = roofLightOn() ? roof : [];
     canopyHeight = heightOf(trees, 3); roofHeight = heightOf(roofs, 4);
     canopySunKey = sunKeyOf(sunNow);
-    canopyLight.build({ trees, roofs, indoors: indoorPolygons(), bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size, sun: sunNow, treeShade: canopyOn() });
+    let water = []; try { water = surfacesHere().water; } catch { /* no flecks kept off */ }
+    canopyLight.build({ trees, roofs, indoors: indoorPolygons(), water, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size, sun: sunNow, treeShade: canopyOn() });
     lookCanopy();
     shadeWater();
   } catch { canopyLight.clear(); }
@@ -1975,6 +1983,107 @@ const floorLayer = (key, sortLayer) => {
   };
 };
 const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646), smokeRootOf = floorLayer("roomSmoke", 760);
+// A region's steps (engines/motion/region-steps.mjs): the look on its floor, and the GM's menu on a right-click on the map.
+// The floor layers lie on the map under its tiles (tiles sort at 500), so a bush or a tree stands over blood on the ground.
+const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorLayer("floorLooks", 410), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
+const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorLayer("floorTextures", 400), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { syncMovingWater(movingWaterList()); } });
+// Where the creatures are drawn now, for the grass they walk through.
+const tokensOnFloor = () => { const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } return out; };
+const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
+const plainFloorOf = (region) => regionFloor({ name: region.name, flag: plainFloorFlag(region.flags?.[ID] ?? {}) });
+// The lit lights the floors answer: what is out by day is not active, and the scene's overall light is no flame.
+const floorLightSources = () => { const out = []; for (const s of canvas.effects?.lightSources ?? []) { if (!s.active || s.sourceId === "globalLight" || s.isDarkness) continue; out.push({ x: s.x, y: s.y, radius: s.radius || s.data?.dim || 0, color: s.colorRGB ?? null, strength: 1 }); } return out; };
+// Whether a region's middle is under a roof, where the sun and moon don't reach.
+const roofedRegion = (areas) => { let x = 0, y = 0, n = 0; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x += area[i]; y += area[i + 1]; n++; } return n > 0 && underCeiling({ x: x / n, y: y / n }); };
+// What this screen's quality level (core/quality.mjs) leaves of the floors, kept for the frame's tick.
+let floorLevel = floorDetail("full");
+const regionStepsOn = () => { try { return hotSetting("regionSteps") !== false && hotSetting("regionStepsLocal") !== false; } catch { return false; } };
+const syncFloorLooks = () => {
+  if (!canvas?.ready) return;
+  floorLevel = floorDetail(localQuality());
+  const list = [];
+  if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
+    try { const own = region.flags?.[ID], floor = plainFloorOf(region); if (floor && Array.isArray(own?.steps)) list.push({ id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor) }); } catch { /* a broken region never breaks the rest */ }
+  }
+  floorLooks.sync(list);
+  // What moves on those looks: as this screen's quality level allows.
+  floorMotion.sync(floorLevel.motion ? list : []);
+  // A region whose water moves shows its painted floor through the waves, not over them.
+  const moving = movingWaterList(), movingIds = new Set(moving.map((m) => m.id));
+  const painted = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
+  if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
+    try { const own = region.flags?.[ID] ?? {}, floor = plainFloorOf(region); if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) painted.push({ id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) }); } catch { /* a broken region never breaks the rest */ }
+  }
+  floorTextures.sync(painted);
+  syncMovingWater(moving);
+};
+// Moving water (engines/motion/water-engine.mjs): the GM's for each scene, as a map may paint its water so it won't bend well, and each region's after that.
+const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
+const movingWaterHere = () => canvas?.scene?.flags?.[ID]?.movingWater === "on";
+const movingWaterList = () => {
+  const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
+  let on = false;
+  try { on = !!floorLevel.water && movingWaterHere() && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { /* not ready */ }
+  if (on) for (const region of regionsHere()) {
+    try {
+      const own = region.flags?.[ID] ?? {};
+      if (own.movingWater === "off" || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
+      const kind = waterKindOf(own);
+      // "This is a waterfall" has its own drawing (engines/motion/waterfall.mjs): the two together fight.
+      if (own.waterfall && bothSettingsOn("waterfalls")) continue;
+      const areas = regionAreas(region), toward = waterFlows(kind) ? own.flowTo || "s" : "", plain = plainFloorOf(region);
+      const under = plain && floorLevel.show && regionStepsOn() && showsTexture(own, sceneChoice) ? { floor: textureFloor(own, plain), edge: stepEdge(own) } : null;
+      const bed = under ? { texture: floorTextures.tile(under.floor, textureStyleOf(own, under.floor)), key: `${under.floor}/${textureStyleOf(own, under.floor)}`, edge: under.edge } : null;
+      list.push({ id: region.id, areas, bed, kind, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas) });
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  return list;
+};
+const syncMovingWater = (list) => {
+  waterEngine.sync(list, { floor: list.length ? mapFloor() : null, quality: floorLevel.water ?? "full" });
+  surfaceLight.movingWater(waterEngine.count > 0);
+};
+let floorLooksTimer = null;
+const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { floorLooksSoon(); });
+const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
+const regionTakesSeason = (own) => takesSeason(own, canvas.scene?.flags?.[ID]?.floorTextures);
+const openSteps = (doc) => openStepsWindow(foundry.applications.api.ApplicationV2, { id: ID, doc, floor: plainFloorOf(doc), flagsOf: stepFlagsOf, save: saveStepFlags, season: regionTakesSeason });
+const stepMenuBox = createStepMenu({ flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), movingWater: (own) => (movingWaterHere() ? own.movingWater !== "off" : null) });
+Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
+// The menu stands by the spot it was opened for: when the map moves under it, it goes.
+Hooks.on("canvasPan", () => { stepMenuBox.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); stepMenuBox.close(); });
+// The region with a floor under a point, the last listed as the floor's own lookup has it.
+const floorRegionAt = (point) => {
+  const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
+  for (let i = regions.length - 1; i >= 0; i--) { try { const region = regions[i]; if (plainFloorOf(region) && region.testPoint({ ...point, elevation })) return region; } catch { /* a broken region never breaks the rest */ } }
+  return null;
+};
+// How the right button went down and came up, seen before the canvas sees it.
+let rightPress = null;
+Hooks.once("canvasReady", () => {
+  window.addEventListener("pointerdown", (e) => { if (e.button === 2) rightPress = { x: e.clientX, y: e.clientY, at: performance.now(), done: null }; }, true);
+  window.addEventListener("pointerup", (e) => { if (e.button !== 2 || !rightPress) return; rightPress.quick = performance.now() - rightPress.at <= 350 && Math.hypot(e.clientX - rightPress.x, e.clientY - rightPress.y) <= 6; rightPress.up = true; const then = rightPress.done; rightPress.done = null; then?.(); }, true);
+});
+// A right-click on the open map (a token takes its own) opens the region's menu for the GM, when the button comes up: pressed and held or dragged, it is panning.
+const stepMenuClick = (event) => {
+  if (!game.user?.isGM || canvas.activeLayer !== canvas.tokens || canvas.controls?.ruler?.active || canvas.tokens?._draggedToken) return;
+  if (hotSetting("regionSteps") === false) return;
+  const at = event.getLocalPosition(canvas.stage), region = floorRegionAt({ x: at.x, y: at.y });
+  if (!region) return;
+  const native = event.nativeEvent ?? event;
+  const what = { doc: region, floor: plainFloorOf(region), client: { x: native.clientX ?? event.client?.x ?? 0, y: native.clientY ?? event.client?.y ?? 0 }, at: { x: Math.round(at.x), y: Math.round(at.y) } }, press = rightPress;
+  const open = () => { if (press.quick) stepMenuBox.open(what); };
+  if (!press) stepMenuBox.open(what); else if (press.up) open(); else press.done = open;
+};
+Hooks.on("canvasReady", () => {
+  const manager = canvas.mouseInteractionManager, before = manager?.callbacks?.clickRight;
+  if (!before || before.animaterSteps) return;
+  const wrapped = function (...args) { try { stepMenuClick(args[0]); } catch (error) { console.warn("Animater | region steps menu", error); } return before.apply(this, args); };
+  wrapped.animaterSteps = true;
+  manager.callbacks.clickRight = wrapped;
+});
 const vermin = createVermin({ PIXI: globalThis.PIXI, root: ratRootOf, batsRoot: birdRootOf });
 // The high fliers (hawk, crows, gulls, owl, bats) and their shadows on layers of their own, kept out of a room as the weather is: over the
 // open ground and over a roof as it is drawn now, never in a room seen into. (sky-light.mjs does the same for the flocks' shadows.)
@@ -2060,26 +2169,42 @@ const drips = createDrips({ PIXI: globalThis.PIXI, root: dripRootOf });
 // A step into water rings it as a drop does (engines/motion/step-ripples.mjs): over the floor, under the creatures.
 const stepRipples = createStepRipples({ PIXI: globalThis.PIXI, root: floorLayer("stepRipples", 647), grid: () => canvas?.grid?.size ?? 100 });
 let stepRipplesFloorFor = null;
+// Whether a region's water is painted over the map, or the map's own.
+const waterPainted = (region) => waterEngine.has(region.id) || (regionStepsOn() && paintsOverWater(region.flags?.[ID] ?? {}, plainFloorOf(region), canvas.scene?.flags?.[ID]?.floorTextures));
+const paintedWaterAt = (x, y) => { const elevation = canvas.level?.elevation?.base ?? 0; for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water" && region.testPoint({ x, y, elevation }) && waterPainted(region)) return true; } catch { /* a broken region never breaks the rest */ } } return false; };
 const rippleStep = (spec) => {
   const size = Math.max(0.5, (Number(spec.radius) || canvas.grid.size * 0.28) / (canvas.grid.size * 0.28));
   // In a dripping region's pool, its own water rings (the map under it is its floor, not the water's face).
   if (drips.step({ x: spec.x, y: spec.y, size })) return;
   if (stepRipplesFloorFor !== canvas.scene?.id) { stepRipplesFloorFor = canvas.scene?.id; stepRipples.floor(mapFloor()); }
-  stepRipples.add({ x: spec.x, y: spec.y, size });
+  stepRipples.add({ x: spec.x, y: spec.y, size, painted: paintedWaterAt(spec.x, spec.y) });
+  waterEngine.addRing({ x: spec.x, y: spec.y, size: size * 0.7 });
 };
 // A swimmer's wake (engines/motion/wake-ripples.mjs): rings let go behind it at its live place as it goes, adding into one surface as a pool's do, clipped to the
 // water. Running faster than they spread they open into a V by themselves. Kept going a moment after each stroke (movement-feel.mjs swimRipples), and stopping as it stops.
 const wakeRipples = createWakeRipples({ PIXI: globalThis.PIXI, root: floorLayer("wakeRipples", 646), grid: () => canvas?.grid?.size ?? 100, render: (o, rt, transform) => canvas.app.renderer.render(o, { renderTexture: rt, clear: true, transform }) });
 let wakeFloorFor = null;
 const swimmers = new Map();
+// What swims or paddles rings the moving water itself, as well as drawing its wake. A token's own key is its id (a string); those come before the animals.
+const wakeRingAt = new Map();
+const ringMovingWater = (x, y, size, key) => {
+  if (!waterEngine.busy) return;
+  const keep = typeof key === "string", at = performance.now() / 1000, id = key ?? `${Math.round(x / 100)},${Math.round(y / 100)}`;
+  if (!wakeRingDue(wakeRingAt.get(id), at, keep)) return;
+  if (wakeRingAt.size > 200) wakeRingAt.clear();
+  wakeRingAt.set(id, at);
+  waterEngine.addRing({ x, y, size: size * (keep ? 0.55 : 0.4), keep });
+};
 const rippleWater = (x, y, size, quiet, dir = null, key = null) => {
   if (quiet) {
+    ringMovingWater(x, y, size, key);
     if (wakeFloorFor !== canvas.scene?.id) { wakeFloorFor = canvas.scene?.id; wakeRipples.floor(mapFloor()); }
     if (dir) wakeRipples.drive(key, { x, y, size, dir, keep: typeof key === "string" }); else wakeRipples.add({ x, y, size });
     return;
   }
   if (stepRipplesFloorFor !== canvas.scene?.id) { stepRipplesFloorFor = canvas.scene?.id; stepRipples.floor(mapFloor()); }
-  stepRipples.add({ x, y, size });
+  stepRipples.add({ x, y, size, painted: paintedWaterAt(x, y) });
+  waterEngine.addRing({ x, y, size: size * 0.7 });
 };
 const swimRipples = (token) => {
   try {
@@ -2519,7 +2644,7 @@ let lavaPolygons = [], skyOpenings = [], cavePreview = [], caveTouches = [], cav
 const cavernRegions = () => {
   const out = [];
   for (const region of regionsHere()) {
-    const kind = String(region.flags?.[ID]?.cavern ?? ""); if (!kind) continue;
+    const kind = String(stepFlags(region.flags?.[ID])?.cavern ?? ""); if (!kind) continue;
     try { const [what, tone] = kind.split("-"); out.push({ kind: what, tone, areas: regionAreas(region) }); } catch { /* skip */ }
   }
   if (undergroundScene()) for (const region of regionsHere()) { if (!region.flags?.[ID]?.openSky) continue; try { out.push({ kind: "sky", areas: regionAreas(region) }); } catch { /* skip */ } }
@@ -2698,9 +2823,11 @@ const groundWalls = () => {
 const closedOf = (cols, rows, cell, area, roofed) => closedGround({ cols, rows, cell, area, walls: groundWalls(), roofed });
 const wildGround = (grid, area) => {
   const cell = Math.max(grid, Math.ceil(Math.max(area.width, area.height) / 120)), cols = Math.ceil(area.width / cell), rows = Math.ceil(area.height / cell), roofed = new Uint8Array(cols * rows), kind = new Uint8Array(cols * rows), middle = (i, j) => ({ x: area.x + (i + 0.5) * cell, y: area.y + (j + 0.5) * cell }), spots = [], waters = [];
+  // Ground a step has flooded for now is no home, on land or water; nor is a waterfall or rapids.
+  const floodLevel = canvas.level?.elevation?.base ?? 0, floods = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID]; return floodedByStep(own, plainFloorOf(doc)) || (regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && noLifeOnWater(own)); } catch { return false; } }), flooded = (x, y) => floods.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
     const p = middle(i, j);
-    try { const here = movementFeelFloor(p); if (underCeiling(p)) { roofed[j * cols + i] = 1; continue; } kind[j * cols + i] = WILD_FLOORS.has(here) ? 1 : here === "water" ? 2 : 0; } catch { /* not there */ }
+    try { const here = movementFeelFloor(p); if (underCeiling(p)) { roofed[j * cols + i] = 1; continue; } kind[j * cols + i] = flooded(p.x, p.y) ? 0 : WILD_FLOORS.has(here) ? 1 : here === "water" ? 2 : 0; } catch { /* not there */ }
   }
   // A room walled all round is as closed as one with a roof: only the biggest stretch of ground, the way the walls and shut doors
   // divide it, is the open air.
@@ -2718,7 +2845,7 @@ const wildGround = (grid, area) => {
   const sceneBase = sceneFloorNow(), regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })), elevation = canvas.level?.elevation?.base ?? 0;
   const testPoint = (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }), floorHere = (x, y) => floorAt({ x, y }, { sceneFloor: sceneBase, regions, testPoint });
   const outside = (x, y) => x >= area.x && y >= area.y && x < area.x + area.width && y < area.y + area.height && !closed(x, y);
-  return { cell, closed, walled, spots, waters, share: spots.length / (cols * rows), at: (x, y) => outside(x, y) && WILD_FLOORS.has(floorHere(x, y)), inWater: (x, y) => outside(x, y) && floorHere(x, y) === "water" };
+  return { cell, closed, walled, spots, waters, share: spots.length / (cols * rows), at: (x, y) => outside(x, y) && !flooded(x, y) && WILD_FLOORS.has(floorHere(x, y)), inWater: (x, y) => outside(x, y) && !flooded(x, y) && floorHere(x, y) === "water" };
 };
 // What lives on the water (engines/motion/pond-life.mjs), going by how much of it the map has: ducks and a heron on any pond,
 // gulls only over wide water. A frog's lily pad is near the bank, never where one already floats.
@@ -2742,7 +2869,7 @@ Hooks.on("canvasTearDown", () => { wildKey = null; wildRegions = null; wildWalls
 const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`]]);
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
-  for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", regionAreas(r)]); }
+  for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", noLifeOnWater(r.flags?.[ID]), regionAreas(r)]); }
   return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
@@ -2889,7 +3016,7 @@ const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer(
 for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (wall) => { if (wall?.parent?.id === canvas?.scene?.id) { try { waterMirror.walls(); } catch { /* the canvas mid-change */ } } });
 let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
 // The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
-const placeAreas = { surf: [], waterfall: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
+const placeAreas = { surf: [], waterfall: [], waterfallLouds: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
 let placeLookAt = 0;
 // This screen's own slider for a water sound (River volume, Waterfall volume): 1 as recorded.
 const waterLoudness = (key) => { try { const level = Number(hotSetting(key)); return level >= 0 ? level : 1; } catch { return 1; } };
@@ -2902,7 +3029,7 @@ const tickPlaces = () => {
   const flies = bothSettingsOn("carrion") ? [...bodiesKnown.values()].map((b) => ({ x: b.x, y: b.y, strength: bodyStage((now - b.since) / 1000, { outdoors: b.outdoors, day, cold, rain }).flies })) : [];
   const heard = {
     surf: water && !frozen ? placeHeard("surf", placeAreas.surf, ears, { grid }) : null,
-    waterfall: water && !frozen ? placeHeard("waterfall", placeAreas.waterfall, ears, { grid }) : null,
+    waterfall: water && !frozen ? placeHeardLouds("waterfall", placeAreas.waterfall, placeAreas.waterfallLouds, ears, { grid }) : null,
     flies: spotsHeard("flies", flies, ears, { grid }),
     tavern: bothSettingsOn("tavernMurmur") ? placeHeard("tavern", placeAreas.tavern, ears, { grid }) : null,
   };
@@ -2917,28 +3044,31 @@ const tickPlaces = () => {
     (async () => {
       const sound = new foundry.audio.Sound(file, { context: game.audio.environment });
       await sound.load(); await sound.play({ loop: true, volume: 0 });
-      voice.sound = sound; sound.fade(volume, { duration: 1500 });
+      voice.sound = sound; sound.fade(volume, { duration: kind === "waterfall" ? 500 : 1500 });
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
 };
-Hooks.on("canvasTearDown", () => { for (const voice of Object.values(placeVoices)) stopVoice(voice); placeAreas.surf = []; placeAreas.waterfall = []; placeAreas.tavern = []; });
+Hooks.on("canvasTearDown", () => { for (const voice of Object.values(placeVoices)) stopVoice(voice); placeAreas.surf = []; placeAreas.waterfall = []; placeAreas.waterfallLouds = []; placeAreas.tavern = []; });
 const rebuildWater = () => {
-  const seas = [], falls = [], calm = [], rough = [];
+  const seas = [], falls = [], calm = [], rough = [], fallSounds = [], fallLouds = [], seaSounds = [];
   placeAreas.tavern = [];
   if (canvas?.ready) for (const region of regionsHere()) {
     try {
-      const own = region.flags?.[ID] ?? {};
+      const own = stepFlags(region.flags?.[ID]) ?? {}, kind = waterKindOf(own), engineFalls = kind === "falls" && !own.waterfall, engineSea = kind === "sea" && !own.sea;
       if (own.tavern) placeAreas.tavern.push(...regionAreas(region).map((a) => Array.from(a)));
-      const isWater = regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water", still = waterStillness(own, isWater);
+      const isWater = regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water", still = waterStillness(engineFalls || engineSea ? { ...own, waterfall: true } : own, isWater);
       if (!still) continue;
       const areas = regionAreas(region);
-      if (isWater && own.waterfall) for (const area of areas) falls.push({ area: Array.from(area), flowTo: own.flowTo || "s", swift: own.current === "swift" });
+      if (isWater && own.waterfall) for (const area of areas) falls.push({ area: Array.from(area), flowTo: own.flowTo || "s", swift: own.current === "swift", loud: fallLoudness(riverCurrent(own.current)) });
       else if (isWater && own.sea) seas.push(...areas.map((a) => Array.from(a)));
+      // The type of water sounds as it is, with or without those drawings.
+      if (isWater && engineFalls) for (const area of areas) { fallSounds.push(Array.from(area)); fallLouds.push(fallLoudness(riverCurrent(own.current))); }
+      if (isWater && engineSea) seaSounds.push(...areas.map((a) => Array.from(a)));
       (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }
   const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror") && canvas?.scene?.flags?.[ID]?.reflections !== "off";
-  placeAreas.surf = useSea ? seas : []; placeAreas.waterfall = useFalls ? falls.map((f) => f.area) : [];
+  placeAreas.surf = [...(useSea ? seas : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? falls.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? falls.map((f) => f.loud) : []), ...fallLouds];
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm]);
   if (key === waterKey) return; waterKey = key;
   coast.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
@@ -3020,9 +3150,9 @@ const rebuildLife = () => {
     if (dripsOn()) {
       const areas = [];
       // Each region's drip pace and how deep its water lies.
-      for (const region of regionsHere()) if (region.flags?.[ID]?.drips) { try { const own = region.flags[ID]; areas.push(...regionAreas(region).map((a) => Object.assign(a, { pace: own.dripPace ?? "", depth: own.dripDepth ?? "" }))); } catch { /* skip */ } }
+      for (const region of regionsHere()) if (stepFlags(region.flags?.[ID])?.drips) { try { const own = stepFlags(region.flags[ID]); areas.push(...regionAreas(region).map((a) => Object.assign(a, { pace: own.dripPace ?? "", depth: own.dripDepth ?? "" }))); } catch { /* skip */ } }
       const water = [];
-      for (const region of regionsHere()) { try { if (!region.flags?.[ID]?.drips && regionFloor({ name: region.name, flag: region.flags?.[ID]?.floor }) === "water") water.push(...regionAreas(region)); } catch { /* skip */ } }
+      for (const region of regionsHere()) { try { if (!stepFlags(region.flags?.[ID])?.drips && regionFloor({ name: region.name, flag: activeStep(region.flags?.[ID])?.walks ?? region.flags?.[ID]?.floor }) === "water") water.push(...regionAreas(region)); } catch { /* skip */ } }
       if (areas.length) drips.build({ areas, grid, water, floor: mapFloor() });
     }
   } catch { vermin.clear(); drips.clear(); verminKey = null; }
@@ -3068,10 +3198,10 @@ const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: 
 const readRivers = () => {
   riverRegions = [];
   const water = [];
-  for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") water.push(...regionAreas(region)); } catch { /* a broken region never breaks the rest */ } }
+  for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") { const painted = waterPainted(region); for (const area of regionAreas(region)) { area.painted = painted; water.push(area); } } } catch { /* a broken region never breaks the rest */ } }
   wakeRipples.water(water);
   for (const region of regionsHere()) {
-    try { const own = region.flags?.[ID] ?? {}; if (own.waterfall && bothSettingsOn("waterfalls")) continue; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
+    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
 };
 // The night out of doors, constant (river-sound.mjs nightLevel): on a map with open ground, with Wildlife sounds on. Heard from the listener.
@@ -3349,7 +3479,7 @@ const surfacesHere = () => {
       const floor = regionFloor({ name: region.name, flag: floorFlagOf(region) });
       // A river's flow: the compass point it flows toward (as a map angle) and how swift.
       const toward = region.flags?.[ID]?.flowTo, flow = toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : null;
-      if (floor) regions.push({ floor, polygons: regionAreas(region), freezes: !region.flags?.[ID]?.noFreeze, flow, current: region.flags?.[ID]?.current === "swift" ? 1 : 0.4 });
+      if (floor) regions.push({ floor, polygons: regionAreas(region), freezes: !region.flags?.[ID]?.noFreeze, flow, current: riverCurrent(stepFlags(region.flags?.[ID])?.current), seasonal: takesSeason(region.flags?.[ID], scene?.flags?.[ID]?.floorTextures) });
     } catch { /* a broken region never breaks the rest */ }
   }
   const floor = sceneFloor({ flag: scene?.flags?.[ID]?.floor, globalLight: scene?.environment?.globalLight?.enabled === true, name: scene?.name, background: canvas.level?.background?.src ?? "" });
@@ -3388,6 +3518,7 @@ const lookSky = () => {
     if (drawn && !weatherCloudsOn()) drawn.deck = 0;
     drawnNow = drawn;
     const windAsked = weatherPreview?.wind ?? fxCloud?.speed ?? weather.wind, windNow = weather.windStated || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked);
+    floorWeather = { clouds: weatherPreview?.clouds ?? cloudCover(sky), wet: wetOn() ? ground.wet : 0, ice: frozenWaterOn() ? ground.ice : 0 };
     skyWindNow = windNow; skyWords = `${drawnId ?? ""} ${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}`;
     surfaceLight.look({
       // The cloud shadows drift with FXMaster's clouds when it draws some (then cast from their very shapes, in skyTick).
@@ -3425,14 +3556,14 @@ const lookSky = () => {
 };
 // The weather Animater draws now (sky-weather.mjs weatherScene), for the heat over the whole map.
 let drawnNow = null;
-let skyHeat = 0, skyStorm = 0, skyOpen = 1, skyWindAngle = 0, skyFalling = { rain: 0, snow: 0 }, skyWindNow = 0, skyWords = "";
+let floorWeather = null, skyHeat = 0, skyStorm = 0, skyOpen = 1, skyWindAngle = 0, skyFalling = { rain: 0, snow: 0 }, skyWindNow = 0, skyWords = "";
 const rebuildSky = () => {
   try {
     if (!canvas?.ready) return;
     skySurfaces = surfacesHere();
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size, glints = glintsOn();
     if (surfaceLifeOn()) surfaceLight.build({ water: glints || mistOn() || firefliesOn() || rainRingsOn() || frozenWaterOn() ? skySurfaces.water : [], freezes: skySurfaces.freezes, flows: skySurfaces.flows, frozen: glints ? skySurfaces.frozen : [], frozenAll: glints && skySurfaces.whole === "frozen",
-      grass: skySurfaces.grass, bare: skySurfaces.bare, grassAll: skySurfaces.grassAll, indoors: indoorPolygons(), bounds, grid });
+      grass: skySurfaces.grass, tinted: skySurfaces.tinted, bare: skySurfaces.bare, grassAll: skySurfaces.grassAll, indoors: indoorPolygons(), bounds, grid });
     else surfaceLight.clear();
     shadeWater();
     const weather = weatherNow();
@@ -3493,6 +3624,10 @@ function skyTick() {
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
   if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound });
   tickFloorBlood(seconds);
+  if (waterEngine.busy) waterEngine.tick(seconds, { sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights });
+  if (floorLooks.busy) floorLooks.tick(seconds, { sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, mostLights: floorLevel.lights });
+  if (floorMotion.busy) floorMotion.tick(seconds, viewNow(), skyForFloors(sunNow).strength);
+  if (floorTextures.busy) floorTextures.tick(seconds, { wind: skyWindNow, angle: skyWindAngle, sky: () => sunNow, tokens: tokensOnFloor, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, mostLights: floorLevel.lights });
   if (energyBlasts.busy) energyBlasts.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
   else if (poolSound) tickPools();
@@ -6581,6 +6716,8 @@ Hooks.once("init", () => {
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (Region configuration → Floor and water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
   skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (Region configuration → Floor and water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
   registerSetting("waterfallVolume", { name: "Waterfall volume", hint: "How loud waterfalls are for you: 0 silent, 1 as recorded, 2 twice as loud. Heard while River sounds are on; with Waterfalls off, a fall sounds as a river and River volume applies.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
+  skyPair("movingWater", "movingWaterLocal", "Moving water", "Water that moves: waves run along a river's current and before the wind, the map seen through them bends, and the sun, the moon and flames glint on them. Only on scenes that ask for it (Scene configuration → Animater → Moving water), and any water region can opt out in its right-click menu. Each screen's Animation quality sets how much is drawn: Full and Light in full, Balanced simpler, Low not at all.", "");
+  skyPair("regionSteps", "regionStepsLocal", "Region steps", "The GM right-clicks a region with a floor on the map to move it through its steps: grass goes from fresh to bloodied to burnt, a cave from dry to steam to lava. A region can also paint its floor for a bare map (Scene configuration, or its menu). A step can draw blood, wet or burnt on the floor, change what the floor walks as (its footsteps, sounds and prints), switch on a region effect such as mist or steam, and set a river's speed. The steps are set in Region configuration → Animater. Off stops the menu and the looks; steps already chosen keep their floor and effects. Each screen's Animation quality sets how much it draws: Full and Light keep grass blades, moving flames and bubbles and shine on every look, Light with fewer torches; Balanced keeps floors catching the sun, moon and two lights; Low draws them still.");
   skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
   skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
@@ -7222,6 +7359,14 @@ Hooks.on("renderSceneConfig", (app, html) => {
   mirror.className = "form-group";
   mirror.innerHTML = `<label>Reflections on still water</label><div class="form-fields"><select name="flags.${ID}.reflections">${[["", "On"], ["off", "Off (no reflections on this map)"]].map(([v, l]) => `<option value="${v}"${v === mirrorNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Creatures, tiles, fires and the moon mirrored in this map's still water and dripping pools. For a map that paints its own water.</p>`;
   life.append(mirror);
+  const moving = document.createElement("div"), movingNow = String(app.document?.getFlag?.(ID, "movingWater") ?? "");
+  moving.className = "form-group";
+  moving.innerHTML = `<label>Moving water</label><div class="form-fields"><select name="flags.${ID}.movingWater">${[["", "Off"], ["on", "On"]].map(([v, l]) => `<option value="${v}"${v === movingNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Waves on this map's water regions, the map bending under them, with glints from the sun, the moon and flames. Rivers follow their banks and Flows toward. A map with waves or foam painted on its water may look better without it.</p>`;
+  life.append(moving);
+  const painted = document.createElement("div"), paintedNow = String(app.document?.getFlag?.(ID, "floorTextures") ?? "");
+  painted.className = "form-group";
+  painted.innerHTML = `<label>Region floor textures</label><div class="form-fields"><select name="flags.${ID}.floorTextures">${[["", "Off (the map is already painted)"], ["on", "On (regions paint their floors)"]].map(([v, l]) => `<option value="${v}"${v === paintedNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Whether regions with a floor paint it over the map: grass, stone, water and the rest ("Region steps"). For a bare or blank map. A region can choose for itself from its right-click menu or its steps.</p>`;
+  life.append(painted);
   // Outdoor life: only where the GM asks for it.
   const outdoors = document.createElement("div"), outdoorsNow = app.document?.getFlag?.(ID, "outdoorLife") === "on" ? "on" : "";
   outdoors.className = "form-group";
@@ -7591,7 +7736,7 @@ Hooks.on("renderRegionConfig", (app, html) => {
     field("This is the sea", box("sea"), 'Waves wash in on its shores, the wet sand moves with the tide, and crabs keep to the shore ("The coast").'),
     field("This is a tavern", box("tavern"), 'The murmur of a crowd inside: loud in here, faint through the walls, and spilling out of an open door ("Tavern murmur"). Works on any floor.'),
     field("This is a waterfall", box("waterfall"), 'The water here falls the way "Flows toward" points, with foam at its foot, mist and a rainbow in the spray ("Waterfalls").'),
-    field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind."),
+    field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["slower", "Very slow"], ["slow", "Slow"], ["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind."),
     field("Reflections", select("reflections", own.reflections ?? "", [["", "On"], ["off", "Off"]]), 'Whether still water or a dripping pool here mirrors creatures, tiles, fires and the moon ("Reflections on still water"). Off in Scene configuration turns them off for every region.')));
   // Water dripping from the ceiling: its pace and the pool it falls into show only when it drips.
   const pace = field("Drip pace", select("dripPace", own.dripPace ?? "", [["slow", "Slow (a drop now and then)"], ["", "Steady"], ["fast", "Fast"], ["faster", "Very fast (a steady trickle)"]]), "How often the drops fall here (each spot keeps its own rhythm).");
@@ -7625,6 +7770,15 @@ Hooks.on("renderRegionConfig", (app, html) => {
     const value = own[REGION_LOOK_FLAG] ?? "";
     const names = tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b));
     tab.append(section("Creatures inside", field("Animater look", select(REGION_LOOK_FLAG, value, [["", "None"], ...names.map((n) => [n, n])]), "A Tokenshade look every creature inside this region shows (it fades in as they step in and out as they leave): haunted ground, a forge’s warmth, deep water. Make your own on Animater’s Tokenshade page.")));
+  }
+  // Steps: states the GM moves this region through in play.
+  if (game.user?.isGM && app.document) {
+    const stepFloor = plainFloorOf(app.document);
+    const stepField = stepFloor
+      ? field("Steps", `<button type="button" data-animater-steps><i class="fa-solid fa-layer-group"></i> Edit steps…</button>`, 'States the GM moves this region through in play, by right-clicking it on the map ("Region steps"). Each has a look on the floor, the floor it walks as, and a region effect it switches on.')
+      : field("Steps", "", "Give this region a floor above, or a water name, to give it steps.");
+    stepField.querySelector("[data-animater-steps]")?.addEventListener("click", () => openSteps(app.document));
+    tab.append(section("Steps", stepField));
   }
   // After the window's own tabs, before its footer (the Update button stays at the bottom).
   const tabs = root.querySelectorAll(`.tab[data-group="${group}"]`);
@@ -8254,6 +8408,7 @@ Hooks.once("ready", () => {
       underground: () => ({ wanted: underWanted, vermin: vermin.count, keepOut: Object.fromEntries(Object.entries(keepOut).map(([k, v]) => [k, v.length])), spots: underSpots.length, firstSpot: underSpots[0] ?? null, crawl: underCrawl.length, air: !!airField, foul: foulPolygons.length, look: underLook ? { eyes: underLook.eyes?.length ?? 0, moths: underLook.moths?.length ?? 0, crawl: underLook.crawl?.length ?? 0 } : null }),
       // Where eyes may glint, and eyes showing now rather than after their wait (previews).
       // Blood on the floor without a hit (a preview): hit marks there, or a wounded creature's stride.
+      floorLooks: { count: () => floorLooks.count, busy: () => floorLooks.busy, sync: syncFloorLooks, textures: () => floorTextures.count, moving: () => floorMotion.count, tileImage: (floor, style) => floorTextures.tileImage(floor, style) },
       floorBlood: { hit: (opts = {}, color = 0x7a0d0d) => { floorBlood.add(hitMarks({ grid: canvas.grid.size, width: canvas.grid.size, seed: `dbg:${Date.now()}`, ...opts }), color); return floorBlood.count; }, step: (opts = {}, color = 0x7a0d0d) => { floorBlood.add(bleedStep({ grid: canvas.grid.size, width: canvas.grid.size, seed: "dbg", ...opts }), color); return floorBlood.count; }, count: () => floorBlood.count, clear: () => floorBlood.clear() },
       // A blast here (a preview on this screen only); how many are playing.
       blast: (kind = "fire", x = canvas.stage.pivot.x, y = canvas.stage.pivot.y, big = false) => { playBlast({ x, y, kind, radius: blastRadius(big, canvas.grid.size), seed: Math.floor(Math.random() * 1e6) }); return energyBlasts.playing; },

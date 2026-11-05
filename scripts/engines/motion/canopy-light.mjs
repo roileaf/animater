@@ -112,7 +112,7 @@ void main(){ vUv = aUvs; gl_Position = vec4((projectionMatrix * translationMatri
 const FRAG = `
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D uTrees, uTreesAt, uRoofCast, uRoofs, uRoofArea, uIndoor;
+uniform sampler2D uTrees, uTreesAt, uRoofCast, uRoofs, uRoofArea, uIndoor, uWater;
 uniform vec2 uSize, uShift, uRoofShift, uDir, uWindDir;
 uniform float uTime, uWind, uStrength, uStretch, uGrid, uMode, uHasTrees, uHasRoofs, uRoofShade, uLeafRate;
 uniform vec3 uColor, uShade, uLeafA, uLeafB;
@@ -180,7 +180,8 @@ void main(){
     a *= uStrength;
     gl_FragColor = vec4(uShade * a, a);
   } else {
-    float a = (fleck * cover * 0.3 + hole * 0.35) * uStrength;
+    // Water has no surface for a fleck to land on: most of it goes through, so it barely shows.
+    float a = (fleck * cover * 0.3 * (1.0 - 0.85 * at(uWater, px)) + hole * 0.35) * uStrength;
     gl_FragColor = vec4(uColor * a, a);
   }
 }`;
@@ -189,7 +190,7 @@ void main(){
 const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
 
 /**
- * The sunlight past the overhead tiles. build({ trees, roofs, indoors, bounds, grid, sun }) bakes the tree and roof
+ * The sunlight past the overhead tiles. build({ trees, roofs, indoors, water, bounds, grid, sun }) bakes the tree and roof
  * tiles' pictures (each { texture, x, y, width, height, rotation, anchorX, anchorY, alpha, up (its height in squares),
  * leaves (a tree's, tileLeaves) }
  * in scene pixels), each tree's and roof's shade moved away from the sun (sun.mjs's) as far as its own height throws it,
@@ -208,7 +209,7 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
     meshes = []; masks = []; own = [];
   };
   return {
-    build({ trees = [], roofs = [], indoors = [], bounds, grid = 100, sun = null, treeShade = true } = {}) {
+    build({ trees = [], roofs = [], indoors = [], water = [], bounds, grid = 100, sun = null, treeShade = true } = {}) {
       drop();
       if ((!trees.length && !roofs.length) || !bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
@@ -248,7 +249,7 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
       const uniforms = {
         uTrees: bake(trees.length ? sprites(trees, false, true) : none), uTreesAt: bake(trees.length ? sprites(trees) : none, 1), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
         uRoofs: bake(roofs.length ? sprites(roofs) : none, 2),
-        uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1),
+        uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1), uWater: bake(water.length ? polygons(water) : none, 1),
         uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: 0, uWind: 0.35, uStrength: 0, uStretch: 1,
         uGrid: grid, uRoofShade: 0.45, uMode: 0, uHasTrees: treeShade && trees.length ? 1 : 0, uHasRoofs: roofs.length ? 1 : 0, uColor: [1, 0.95, 0.84], uShade: [0.06, 0.09, 0.07],
         uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uLeafRate: 0, uLeafA: [0.44, 0.6, 0.23], uLeafB: [0.56, 0.7, 0.29],

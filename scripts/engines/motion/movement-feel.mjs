@@ -61,11 +61,11 @@ export const FLOOR_LOOK = Object.freeze({
   // foot that bends and springs back; and the grass trampled flat under each foot: darker streaks along the heading with a
   // few lighter flattened blades, held about 2 s, then springing back up over about 4 s.
   grass: { kind: 'blades', parts: [
-    { kind: 'blade', emit: 'burst', art: 'blade', colors: [0xb4dc58, 0xc6e86c, 0xa2cf45], edge: 0x2a4a14, count: 6, alpha: 1, size: 0.062,
-      life: 1000, speed: [0.18, 0.4], cone: 1.3, spread: 0.14, spin: 8, hop: 0.1, flutter: 0.1, shadow: true, thin: true, hold: 0.4, grow: 0 },
-    { kind: 'fleck', emit: 'burst', art: 'seed', colors: [0xd6d28a], count: 2, alpha: 1, size: 0.01, life: 800, speed: [0.15, 0.4], cone: 1.5, spread: 0.1, spin: 3, hop: 0.05, hold: 0.3, grow: 0 },
-    { kind: 'tuft', emit: 'foot', color: 0xa8d64e, edge: 0x2a4a14, alpha: 0.9, size: 0.13, life: 950, spread: 0.04, sway: 0.8, grow: 0 },
-    { kind: 'trample', emit: 'trample', color: 0x3e5a24, light: 0xb8d47a, alpha: 0.55, size: 0.17, life: 6000, hold: 1 / 3,
+    { kind: 'blade', emit: 'burst', art: 'blade', colors: [0x667f30, 0x76903a, 0x566e28], edge: 0x1d2c0e, count: 3, alpha: 0.8, size: 0.04,
+      life: 800, speed: [0.12, 0.28], cone: 1.3, spread: 0.14, spin: 6, hop: 0.06, flutter: 0.08, shadow: true, thin: true, hold: 0.4, grow: 0 },
+    { kind: 'fleck', emit: 'burst', art: 'seed', colors: [0x9c9a64], count: 1, alpha: 0.8, size: 0.008, life: 700, speed: [0.15, 0.4], cone: 1.5, spread: 0.1, spin: 3, hop: 0.05, hold: 0.3, grow: 0 },
+    { kind: 'tuft', emit: 'foot', color: 0x56722a, edge: 0x1d2c0e, alpha: 0.5, size: 0.085, life: 700, spread: 0.04, sway: 0.8, grow: 0 },
+    { kind: 'trample', emit: 'trample', color: 0x34491e, light: 0x7a9148, alpha: 0.42, size: 0.17, life: 6000, hold: 1 / 3,
       spring: 0.35, streaks: 7 },
   ] },
   // Fine grains sprayed back in an arc over a low soft plume, and shallow footprints that fade over about 6 s.

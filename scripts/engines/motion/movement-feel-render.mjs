@@ -62,7 +62,7 @@ const SHAPES = {
   // A tuft: five outlined blades fanning up from its foot (about twice its radius tall), so turning it bends the whole
   // tuft about the root.
   tuft(g, spec) {
-    g.lineStyle(DRAW * 0.05, spec.edge ?? shade(spec.color, 0.4), 1);
+    g.lineStyle(DRAW * 0.02, spec.edge ?? shade(spec.color, 0.4), 0.7);
     for (const a of [-0.75, -0.38, 0, 0.38, 0.75]) {
       const h = 1.85 * R * (1 - 0.18 * Math.abs(a)), tx = Math.sin(a) * h, ty = -Math.cos(a) * h, bx = a * 0.3 * R;
       fillPolygon(g, spec.color, [bx - 0.13 * R, 0, (bx + tx) / 2 - 0.08 * R, ty / 2, tx, ty, (bx + tx) / 2 + 0.08 * R, ty / 2, bx + 0.13 * R, 0]);

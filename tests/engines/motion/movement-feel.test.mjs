@@ -690,21 +690,21 @@ test('thudLevel: the bass boost is paid for in level, so a Gargantuan thud keeps
 // Perceived brightness of a 0xRRGGBB colour (0-255).
 const luma = (c) => 0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255);
 
-test('grass: big bright blades with a dark edge, a bigger springy tuft, and trampled grass under each foot', () => {
+test('grass: a few small dull blades that do not read as pasted on, a small springy tuft, and trampled grass under each foot', () => {
   const at = { x: 500, y: 500, heading: 0, index: 3 };
   const full = puffsFor('grass', at, { seed: 'g', grid: 100 });
-  // Blades: 6-8 per stride, ~0.09-0.16 squares long, yellow-green with a darker green edge so they read on grass art.
+  // Blades: a few per stride, under about a tenth of a square long, a muted green with a darker edge.
   const blades = full.filter((p) => p.kind === 'blade');
-  assert.ok(blades.length >= 6 && blades.length <= 8, `${blades.length} blades`);
+  assert.ok(blades.length >= 2 && blades.length <= 5, `${blades.length} blades`);
   const length = blades.reduce((sum, p) => sum + 2 * p.radius, 0) / blades.length;
-  assert.ok(length >= 9 && length <= 16, `blades ${length.toFixed(1)} px long on a 100 px grid`);
+  assert.ok(length >= 5 && length <= 11, `blades ${length.toFixed(1)} px long on a 100 px grid`);
   for (const b of blades) {
-    assert.ok(luma(b.color) > luma(0x87ae4f), `blade ${b.color.toString(16)} brighter than before`);
-    assert.ok(Number.isFinite(b.edge) && luma(b.edge) < luma(b.color) - 60, 'a darker edge');
+    assert.ok(luma(b.color) < luma(0xa2cf45), `blade ${b.color.toString(16)} is not bright`);
+    assert.ok(Number.isFinite(b.edge) && luma(b.edge) < luma(b.color) - 30, 'a darker edge');
   }
-  // The tuft is about a quarter square, bends and springs back.
+  // The tuft is about a fifth of a square, bends and springs back.
   const tuft = full.find((p) => p.kind === 'tuft');
-  assert.ok(2 * tuft.radius >= 22 && 2 * tuft.radius <= 30, `tuft ${2 * tuft.radius}`);
+  assert.ok(2 * tuft.radius >= 13 && 2 * tuft.radius <= 22, `tuft ${2 * tuft.radius}`);
   assert.ok(tuft.sway > 0.5 && Number.isFinite(tuft.edge));
   // Trampled grass: one patch per foot, laid along the heading, darker streaks with lighter flattened highlights.
   const tramples = full.filter((p) => p.kind === 'trample');

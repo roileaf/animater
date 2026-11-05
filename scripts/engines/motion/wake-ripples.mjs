@@ -26,12 +26,15 @@ uniform float uTime, uGrid, uHasFloor, uHasWater;
 vec3 floorAt(vec2 at){ return uHasFloor > 0.5 ? texture2D(uFloor, clamp((at - uRect.xy) / uRect.zw, 0.0, 1.0)).rgb : vec3(0.2, 0.25, 0.3); }
 vec4 surface(vec2 slope, float waves){
   if (waves < 0.002) return vec4(0.0);
-  float inWater = uHasWater > 0.5 ? texture2D(uWater, (vPos - uWaterRect.xy) / uWaterRect.zw).r : 1.0;
+  vec4 where = uHasWater > 0.5 ? texture2D(uWater, (vPos - uWaterRect.xy) / uWaterRect.zw) : vec4(1.0);
+  float inWater = where.r;
   if (inWater < 0.01) return vec4(0.0);
   vec3 L = normalize(vec3(-0.55, -0.45, 0.7)), H = normalize(L + vec3(0.0, 0.0, 1.0)), n = normalize(vec3(-slope, 1.0));
   float spec = pow(max(0.0, dot(n, H)), 220.0) * 1.8, shade = (-slope.x * L.x - slope.y * L.y) * 1.6;
-  vec3 col = floorAt(vPos + slope * uGrid * 0.3) + vec3(0.27, 0.24, 0.22) * shade + vec3(1.0, 0.85, 0.63) * spec;
   float a = clamp(waves * 3.0, 0.0, 1.0) * inWater;
+  // Green: the map's own water. Elsewhere something is painted over the map, so only the light and dark of the waves go on it.
+  if (where.g < 0.5) return vec4((vec3(0.27, 0.24, 0.22) * max(0.0, shade) + vec3(1.0, 0.85, 0.63) * spec) * a, clamp(-shade * 0.55, 0.0, 0.5) * a);
+  vec3 col = floorAt(vPos + slope * uGrid * 0.3) + vec3(0.27, 0.24, 0.22) * shade + vec3(1.0, 0.85, 0.63) * spec;
   return vec4(col * a, a);
 }`;
 
@@ -151,7 +154,7 @@ export function createWakeTrails({ limit = MAX_POINTS } = {}) {
   };
 }
 
-/** The layer: drive(key, { x, y, size, dir, keep }) as something moves; add({ x, y, size }) a ring where it stays put; floor({ texture, rect }) the map's picture; water(areas) where it may show (flat points, each with its `holes`; none: anywhere), baked with `render(object, renderTexture, transform)`; tick(seconds); clear(). */
+/** The layer: drive(key, { x, y, size, dir, keep }) as something moves; add({ x, y, size }) a ring where it stays put; floor({ texture, rect }) the map's picture; water(areas) where it may show (flat points, each with its `holes`, `painted` where the map is covered; none: anywhere), baked with `render(object, renderTexture, transform)`; tick(seconds); clear(). */
 export function createWakeRipples({ PIXI, root, grid = () => 100, render = () => {} }) {
   let rings = null, arms = null, ringUniforms = null, armUniforms = null, ringPos = null, armPos = null, armOut = null, armBand = null, armKind = null, baked = null, next = 0, live = 0, time = 0, waterAreas = [], floorNow = null, drawn = 0;
   const ringList = [], pieces = createWakeTrails();
@@ -163,9 +166,8 @@ export function createWakeRipples({ PIXI, root, grid = () => 100, render = () =>
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const area of waterAreas) for (let i = 0; i < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); }
     const w = Math.max(1, x1 - x0), h = Math.max(1, y1 - y0), k = Math.min(1, 1024 / Math.max(w, h));
-    const shape = new PIXI.Graphics(); shape.beginFill(0xffffff);
-    for (const area of waterAreas) { shape.drawPolygon(area); for (const hole of area.holes ?? []) { shape.beginHole(); shape.drawPolygon(hole); shape.endHole(); } }
-    shape.endFill();
+    const shape = new PIXI.Graphics();
+    for (const area of waterAreas) { shape.beginFill(area.painted ? 0xff0000 : 0xffffff); shape.drawPolygon(area); for (const hole of area.holes ?? []) { shape.beginHole(); shape.drawPolygon(hole); shape.endHole(); } shape.endFill(); }
     baked = PIXI.RenderTexture.create({ width: Math.ceil(w * k), height: Math.ceil(h * k) });
     render(shape, baked, new PIXI.Matrix(k, 0, 0, k, -x0 * k, -y0 * k));
     shape.destroy();

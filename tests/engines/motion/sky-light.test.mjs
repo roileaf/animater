@@ -190,3 +190,21 @@ test('cloud shadows follow the FXMaster clouds: their direction and speed, and g
   assert.ok(Math.abs(c.angle - Math.PI / 2) < 1e-9 && c.speed === 0.29 && c.shadows === true);
   assert.equal(fxClouds({ p: { type: 'clouds', options: { direction: 0 } } }).shadows, false);
 });
+
+test('a river runs at the pace its region chose, gentle when unset', async () => {
+  const { riverCurrent } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(riverCurrent(undefined), 0.4);
+  assert.equal(riverCurrent(''), 0.4);
+  assert.equal(riverCurrent('swift'), 1);
+  assert.ok(riverCurrent('slower') < riverCurrent('slow') && riverCurrent('slow') < riverCurrent(''));
+  assert.ok(riverCurrent('slower') * 255 >= 1, 'still a current once baked to 8 bits');
+});
+
+test('the season colours a grass region only when it takes the season; fireflies take either for a meadow', () => {
+  const square = [0, 0, 100, 0, 100, 100, 0, 100];
+  const plain = surfacesOf({ regions: [{ floor: 'grass', polygons: [square] }] });
+  assert.deepEqual(plain.grass, [square]);
+  assert.deepEqual(plain.tinted, [], 'a region that only names its floor leaves the map alone');
+  assert.deepEqual(surfacesOf({ regions: [{ floor: 'grass', seasonal: true, polygons: [square] }] }).tinted, [square]);
+  assert.equal(surfacesOf({ sceneFloor: 'grass' }).grassAll, true, 'a grassy scene is coloured whole, as ever');
+});

@@ -83,6 +83,16 @@ export function keepInside(p, home, shape) {
 // ---- Pictures ------------------------------------------------------------------------------------------------------
 
 const canvasOf = (w, h, paint) => { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), w, h); return c; };
+// How dark a vent's fissure is at a point of its picture (pure): u along it and v across, -1 to 1, `tear` its wander 0-1. Nothing at or
+// beyond the circle the picture holds, so it shows no corner on any floor.
+export const ventShade = (u, v, tear = 0.5) => {
+  const fade = Math.max(0, 1 - Math.hypot(u, v)), slit = Math.max(0, 1 - Math.abs(v - (tear - 0.5) * 0.5) / (0.16 + 0.34 * tear));
+  return Math.min(1, fade * 2.4) * Math.min(1, slit * 1.5);
+};
+const ventCanvas = (seed = 0) => canvasOf(96, 96, (g, n) => { const im = g.createImageData(n, n);
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const u = (x - n / 2) / (n / 2), v = (y - n / 2) / (n / 2), k = (y * n + x) * 4, a = ventShade(u, v, fbm(x / 13 + seed * 5, y / 9 + seed * 3, 4));
+    im.data[k] = 20; im.data[k + 1] = 16; im.data[k + 2] = 14; im.data[k + 3] = a * 0.8 * 255; }
+  g.putImageData(im, 0, 0); });
 // A torn, soft cloud (steam, dust), white.
 const cloudCanvas = (seed = 0) => canvasOf(64, 64, (g, n) => { const im = g.createImageData(n, n);
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const dx = (x - n / 2) / (n / 2), dy = (y - n / 2) / (n / 2), r = Math.hypot(dx, dy), tear = fbm(x / 10 + seed * 7, y / 10 + seed * 3, 4), edge = 1 - Math.min(1, Math.max(0, (r - 0.15 - tear * 0.45) / 0.4)), k = (y * n + x) * 4;
@@ -220,8 +230,8 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
         for (let i = 0; i < 4; i++) { const f = r(), d = grid * (0.02 + r() * 0.12); const gs = sprite(T('glint', glintCanvas), glow()); gs.blendMode = PIXI.BLEND_MODES.ADD; gs.position.set(w.a.x + (w.b.x - w.a.x) * f + w.nx * d, w.a.y + (w.b.y - w.a.y) * f + w.ny * d); gs.width = gs.height = grid * 0.07; gs.alpha = 0; glints.push({ s: gs, p: r() * TAU }); }
       }
       for (const v of ventList) {
-        const gl = sprite(T('glint', glintCanvas), glow()); gl.blendMode = PIXI.BLEND_MODES.ADD; gl.tint = 0xff7a32; gl.position.set(v.x, v.y); gl.width = gl.height = grid * 0.5; gl.alpha = 0.25;
-        const crack = sprite(T('wet:0', () => wetCanvas(0)), floor(), 0.5); crack.position.set(v.x, v.y); crack.width = grid * 0.7; crack.height = grid * 0.45; crack.rotation = (v.x % 3); lasting.push(crack);
+        const gl = sprite(T('glint', glintCanvas), glow()); gl.blendMode = PIXI.BLEND_MODES.ADD; gl.tint = 0xff7a32; gl.position.set(v.x, v.y); gl.width = gl.height = grid * 0.34; gl.alpha = 0.16;
+        const crack = sprite(T('vent:0', () => ventCanvas(0)), floor(), 0.5); crack.position.set(v.x, v.y); crack.width = grid * 0.8; crack.height = grid * 0.5; crack.rotation = (v.x % 3); lasting.push(crack);
         vents.push({ ...v, glow: gl, burst: 0 });
       }
       const keep = new Set(rubble.map((r) => r.seed));
@@ -253,7 +263,7 @@ export function createUndergroundLife({ PIXI, floor, above, glow }) {
       // Steam: a steady wisp from each vent, and now and then a burst; carried off on the air.
       const cloud = (i) => T(`cloud:${i % 4}`, () => cloudCanvas(i % 4));
       for (const v of vents) {
-        v.glow.alpha = 0.18 + 0.06 * Math.sin(time * 2 + v.x);
+        v.glow.alpha = 0.12 + 0.05 * Math.sin(time * 2 + v.x);
         if (!seen(v.x, v.y, grid * 3)) continue;
         v.wait -= dt; if (v.wait < 0) { v.wait = v.every; v.burst = 1.2; }
         v.burst = Math.max(0, v.burst - dt);

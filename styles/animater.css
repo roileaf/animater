@@ -3638,3 +3638,41 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-imm-foot { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--color-border-light-tertiary, #4a4438); }
 .an-imm-foot button { flex: none; width: auto; }
 .an-imm-count { font-size: 12px; opacity: 0.7; margin-right: auto; padding-left: 4px; white-space: nowrap; }
+
+/* Region steps: the right-click menu on the map, and the list in Region configuration. */
+.an-step-menu { position: fixed; z-index: 1000; width: 270px; max-height: calc(100vh - 12px); overflow-y: auto; padding: 8px; color: #e8e4dc; background: #232127; border: 1px solid #48444f; border-radius: 6px; box-shadow: 0 8px 28px #000a; font-size: 13px; }
+.an-step-menu button { width: auto; min-height: 0; height: auto; line-height: 1.3; margin: 0; padding: 5px 6px; font-size: 12.5px; color: #e8e4dc; background: #2c2a31; border: 1px solid #48444f; border-radius: 4px; }
+.an-step-menu button:hover { border-color: #d9a35b; }
+.an-step-menu button.an-step-on { color: #1d1710; background: #d9a35b; border-color: #d9a35b; font-weight: 600; }
+.an-step-title { display: flex; justify-content: space-between; gap: 8px; padding: 2px 4px 7px; margin-bottom: 8px; border-bottom: 1px solid #48444f; font-weight: 600; }
+.an-step-title small { flex: none; font-weight: 400; opacity: 0.7; }
+.an-step-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.an-step-list button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-step-menu button.an-step-wide { display: block; width: 100%; margin-top: 5px; text-align: left; }
+.an-step-note { padding: 5px 4px 0; font-size: 12px; opacity: 0.75; }
+.an-step-label { margin: 9px 4px 4px; font-size: 12px; opacity: 0.75; }
+.an-step-chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.an-step-chips button { padding: 5px 1px; }
+.an-step-rows { display: grid; gap: 4px; margin-bottom: 6px; }
+.animater-steps-window .window-content { padding: 12px; }
+.an-step-intro { margin: 0 0 10px; font-size: 13px; opacity: 0.8; }
+.an-step-heads { padding-bottom: 0; font-size: 12px; opacity: 0.7; }
+.an-step-row { display: grid; grid-template-columns: 18px minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.3fr) 28px; gap: 6px; align-items: center; padding: 3px; border: 1px solid transparent; border-radius: 4px; }
+.an-step-row.an-step-current { border-color: #d9a35b; }
+.an-step-row select, .an-step-row input { width: 100%; min-width: 0; }
+.an-step-num { text-align: center; opacity: 0.7; }
+.an-step-row .an-step-remove { width: 28px; min-width: 0; padding: 0; margin: 0; }
+.an-step-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.an-step-foot button { flex: none; width: auto; margin: 0; }
+.an-step-how { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; }
+.an-step-how select { width: auto; }
+.an-step-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.an-step-menu .an-step-check { margin-top: 6px; padding: 2px 4px; }
+.an-step-check input { flex: none; margin: 0; }
+.an-step-slider { display: flex; align-items: center; gap: 6px; font-size: 12.5px; white-space: nowrap; }
+.an-step-slider input { flex: 1; min-width: 70px; margin: 0; }
+.an-step-menu .an-step-slider { margin-top: 7px; padding: 0 4px; }
+.an-step-value { flex: none; width: 2em; text-align: right; opacity: 0.8; }
+.an-step-slider select { flex: 1; min-width: 0; margin: 0; }
+.an-step-list { max-height: 300px; overflow-y: auto; padding-right: 2px; }
+.an-step-rows { max-height: 55vh; overflow-y: auto; padding-right: 3px; }

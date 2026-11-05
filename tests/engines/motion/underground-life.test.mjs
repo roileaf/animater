@@ -73,3 +73,13 @@ test('a moth over the flame never throws a shadow bigger than one a little way o
   assert.ok(close.far < 100 * 1.4, 'and not thrown across the room');
   assert.ok(far.size < close.size && far.alpha < close.alpha, 'smaller and fainter further off');
 });
+
+test('a vent fades to nothing before the edge of its picture, so it can never show a corner', async () => {
+  const { ventShade } = await import('../../../scripts/engines/motion/underground-life.mjs');
+  for (let i = 0; i <= 40; i++) {
+    const t = -1 + i / 20;
+    for (const tear of [0, 0.5, 1]) for (const [u, v] of [[t, -1], [t, 1], [-1, t], [1, t]]) assert.equal(ventShade(u, v, tear), 0, `${u},${v}`);
+  }
+  assert.ok(ventShade(0, 0, 0.5) > 0.5, 'dark along its middle');
+  assert.ok(ventShade(0, 0.8, 0.5) < ventShade(0, 0, 0.5), 'and lighter away from it');
+});

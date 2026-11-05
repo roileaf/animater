@@ -16,6 +16,14 @@ export const PLACE_VOLUME = Object.freeze({ surf: 0.4, waterfall: 0.42, flies: 0
 // How much of a place comes through a wall: a shut tavern is a far-off murmur, its open door lets the noise out.
 export const THROUGH_WALL = 0.22;
 
+// How loud a waterfall is for its stream (pure): `current` 0–1 (sky-light.mjs riverCurrent), a trickle quiet and a torrent all it has.
+export const fallLoudness = (current) => 0.3 + 0.7 * Math.min(1, Math.max(0, Number.isFinite(Number(current)) ? Number(current) : 0.4));
+// As placeHeard, each area as loud as `louds` says (pure): a strong fall further off can drown a weak one close by.
+export function placeHeardLouds(kind, areas = [], louds = [], ears = [], options = {}) {
+  let best = { level: 0, from: null, at: null };
+  areas.forEach((area, i) => { const heard = placeHeard(kind, [area], ears, options), level = heard.level * (louds[i] ?? 1); if (level > best.level) best = { ...heard, level }; });
+  return best;
+}
 // How much of a place is heard (pure): `areas` flat polygons, `ears` the listening points, `grid` px a square. { level 0-1, from, at }: `from` the listener nearest it, `at` the place nearest them.
 export function placeHeard(kind, areas = [], ears = [], { grid = 100 } = {}) {
   const reach = (PLACE_REACH[kind] ?? 0) * grid, out = { level: 0, from: null, at: null };
