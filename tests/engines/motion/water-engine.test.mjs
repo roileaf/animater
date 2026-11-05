@@ -123,9 +123,8 @@ test('the sea has swells of its own and foam only from its surf and crests', () 
   assert.ok(frag.includes('shoal * 26.0') && frag.includes('breaking = (1.0 - smoothstep(0.34, 0.62, depth))'), 'waves shoal in along the shore and break in the shallows');
   assert.ok(frag.includes('float depth = flowed.x'), 'colour and waves go by depth');
   assert.ok(frag.includes('texture2D(uSand, tile)'), 'the beach is the sand floor\'s own painted tile');
-  assert.ok(frag.includes('float line = shoreLine(w, mask.b)') && frag.includes('float shoreAway = shoreLine(w, mask.b)'), 'the waves and the sand share one smooth line');
+  assert.ok(frag.includes('float line = uBeach > 0.5 ? shoreLine(w, mask.b)') && frag.includes('float shoreAway = uBeach > 0.5 ? shoreLine(w, mask.b)'), 'the waves and the sand share one smooth line');
   assert.ok(frag.includes('float shoreLine(vec2 w, float away)'), 'the water and a look on it share one waterline');
-  assert.ok(frag.includes('else seaEdge = smoothstep(lap - 0.008'), 'with no beach the water still ends at that line, not at the side of its region');
   assert.ok(frag.includes('uBedColour > 0.5 ? 7.0 : 0.0'), 'a painted water floor gives its colour, not its baked waves');
   assert.ok(frag.includes('mask.b + mask.b * '), 'the beach fades to nothing at the region\'s very edge, whatever the noise');
   assert.ok(frag.includes('0.09 * uSoft'), 'as wide as its edge softness');
@@ -168,6 +167,11 @@ test('a beach drawn inside the water keeps its crabs on its sand, inside the sho
   assert.equal(onSand(20), true);
   assert.equal(onSand(-10), false, 'not out on the land');
   assert.equal(onSand(60), false, 'not in the water');
+});
+
+test('a sea with no beach has the edge of its region for a shore', () => {
+  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) assert.match(frag, /float line = uBeach > 0\.5 \? shoreLine\(w, mask\.b\) : mask\.b/);
+  assert.doesNotMatch(WATER_SHADERS.full, /else seaEdge/);
 });
 
 test('a fish in the water has no line running out past its nose', () => {

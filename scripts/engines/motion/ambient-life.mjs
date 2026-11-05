@@ -53,6 +53,8 @@ export function leavesOf({ season = null, wind = 0.3 } = {}) {
 }
 
 // How fast the ground wets and dries, whitens and melts, in game hours for the whole way.
+// (With the GM's time for water, `pace`, snow on the ground comes and goes in minutes.)
+const SNOW_LIES_HOURS = 10 / 60, SNOW_GOES_HOURS = 20 / 60;
 const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4, FREEZES_HOURS = 8, THAWS_HOURS = 5;
 /**
  * The ground's weather over time: { wet, snow } (0–1), carried on from one moment to the next by the game clock. Rain
@@ -63,7 +65,7 @@ const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4, FREEZ
  * temperature (null unknown: then snow lying deep for long freezes it slowly, and it thaws once the snow is gone and the
  * sun is out). `load()` gives what was kept ({ wet, snow, ice, at } or null), `save(state)` keeps it.
  */
-export function createGroundWeather({ load = () => null, save = () => {} } = {}) {
+export function createGroundWeather({ load = () => null, save = () => {}, pace = () => null } = {}) {
   let state = null;
   return {
     update({ now = 0, rain = 0, snow = 0, temperature = null, air = temperature, sun = 0 } = {}) {
@@ -75,12 +77,12 @@ export function createGroundWeather({ load = () => null, save = () => {} } = {})
       const heat = 1 + clamp01(sun) + (warm !== null ? clamp01((warm - 10) / 20) : 0);
       if (rain > 0.05) state.wet = clamp01(state.wet + hours * clamp01(rain) / WETS_HOURS * 2);
       else state.wet = clamp01(state.wet - hours * heat / DRIES_HOURS / 2);
-      const stays = warm === null || warm <= 2;
-      if (snow > 0.05 && stays) state.snow = clamp01(state.snow + hours * clamp01(snow) / SNOWS_HOURS * 2);
-      else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 2) state.snow = clamp01(state.snow - hours * (warm !== null ? 1 + clamp01((warm - 2) / 8) : 0.5) * (1 + clamp01(sun)) / MELTS_HOURS / 2);
+      const stays = warm === null || warm <= 2, timed = Number(pace()) > 0, way = timed ? hours / Number(pace()) : null;
+      if (snow > 0.05 && stays) state.snow = clamp01(state.snow + (timed ? hours / SNOW_LIES_HOURS : hours * clamp01(snow) / SNOWS_HOURS * 2));
+      else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 2) state.snow = clamp01(state.snow - (timed ? hours / SNOW_GOES_HOURS : hours * (warm !== null ? 1 + clamp01((warm - 2) / 8) : 0.5) * (1 + clamp01(sun)) / MELTS_HOURS / 2));
       const cold = air !== null && Number.isFinite(Number(air)) ? Number(air) : null;
-      if (cold !== null ? cold <= -3 : state.snow >= 0.6) state.ice = clamp01(state.ice + hours * (cold !== null ? 0.25 + clamp01((-3 - cold) / 12) : 0.15) / FREEZES_HOURS * 4);
-      else if (cold !== null ? cold > 1 : state.snow <= 0.05 && sun > 0.3) state.ice = clamp01(state.ice - hours * (cold !== null ? 1 + clamp01((cold - 1) / 8) : 0.5) * (1 + clamp01(sun)) / THAWS_HOURS / 2);
+      if (cold !== null ? cold <= -3 : state.snow >= 0.6) state.ice = clamp01(state.ice + (way ?? hours * (cold !== null ? 0.25 + clamp01((-3 - cold) / 12) : 0.15) / FREEZES_HOURS * 4));
+      else if (cold !== null ? cold > 1 : state.snow <= 0.05 && sun > 0.3) state.ice = clamp01(state.ice - (way ?? hours * (cold !== null ? 1 + clamp01((cold - 1) / 8) : 0.5) * (1 + clamp01(sun)) / THAWS_HOURS / 2));
       state.at = now;
       save({ ...state });
       return { wet: state.wet, snow: state.snow, ice: state.ice };
@@ -95,7 +97,9 @@ export function fallingOf({ calendaria = null, scene = '' } = {}) {
   // Sleet is both; hail and snow wet nothing as they fall.
   if (Number.isFinite(amount) && amount > 0) return { rain: /snow|hail|blizzard/.test(type) ? 0 : clamp01(amount), snow: /snow|sleet|blizzard/.test(type) ? clamp01(amount) : 0 };
   const named = `${calendaria?.id ?? ''} ${scene ?? ''}`.toLowerCase();
-  return { rain: /rain|storm|drizzle|shower/.test(named) ? 0.7 : 0, snow: /snow|blizzard/.test(named) ? 0.7 : 0 };
+  // (A storm of sand, dust, snow or fire brings no rain.)
+  const wetNamed = named.replace(/(sand|dust|snow|fire|blizzard)[- ]?storm/g, '');
+  return { rain: /rain|storm|drizzle|shower/.test(wetNamed) ? 0.7 : 0, snow: /snow|blizzard/.test(named) ? 0.7 : 0 };
 }
 
 // The temperature the falling snow meets: none known (null, so it settles) while snow falls, from Calendaria or the
@@ -146,11 +150,17 @@ export function groundInputs({ calendaria = null, scene = '', temperature = null
 // The ground of a scene nobody is looking at, carried on to `now` (game seconds) under the weather now (groundInputs'):
 // the river freezes on while the party is elsewhere. `kept` the scene's last ({ wet, snow, ice, at } or null: it starts
 // bare, from now).
-export function groundStep(kept, { now = 0, ...input } = {}) {
+export function groundStep(kept, { now = 0, pace = null, ...input } = {}) {
   let out = null;
-  createGroundWeather({ load: () => kept, save: (state) => { out = state; } }).update({ now, ...input });
+  createGroundWeather({ load: () => kept, save: (state) => { out = state; }, pace: () => pace }).update({ now, ...input });
   return out;
 }
 
+// How many game hours snow and ice take a scene, the whole way in or out (pure): somewhere from `least` to `most`, always the same for that scene, so one map's river goes before the next.
+export function iceHours(sceneId = '', least = 24, most = 48) {
+  const low = Math.max(1, Number(least) || 24), high = Math.max(low, Number(most) || 48);
+  let h = 7; for (const c of String(sceneId)) h = (h * 31 + c.charCodeAt(0)) % 1000003;
+  return low + (high - low) * (h % 1000) / 999;
+}
 // Whether a scene's kept ground has changed enough to write again: by a hundredth of anything, or a quarter hour on.
 export const groundMoved = (was, now) => !was || !now || ['wet', 'snow', 'ice'].some((k) => Math.abs((Number(was[k]) || 0) - (Number(now[k]) || 0)) >= 0.01) || Math.abs((Number(now.at) || 0) - (Number(was.at) || 0)) >= 900;

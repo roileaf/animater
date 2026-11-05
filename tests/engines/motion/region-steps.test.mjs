@@ -336,3 +336,13 @@ test('animals keep off ground a step has made dangerous or foul, and not off wha
   assert.equal(unfitForLife(undefined), false, 'a region with no steps');
   for (const look of ['burning', 'blood', 'dried', 'bones']) assert.ok(look in STEP_LOOKS, look);
 });
+
+test('water depth: medium is the look water always had, and each step down holds more of its own colour', async () => {
+  const { WATER_DEPTHS, waterDepthLook } = await import('../../../scripts/engines/motion/region-steps.mjs');
+  assert.deepEqual(waterDepthLook(''), { hold: 1, dark: 0 });
+  assert.deepEqual(waterDepthLook(undefined), { hold: 1, dark: 0 });
+  assert.deepEqual(waterDepthLook('nonsense'), { hold: 1, dark: 0 });
+  const looks = WATER_DEPTHS.map(([key]) => waterDepthLook(key));
+  for (let i = 1; i < looks.length; i++) assert.ok(looks[i].hold > looks[i - 1].hold, WATER_DEPTHS[i][1]);
+  assert.ok(waterDepthLook('abyss').dark > waterDepthLook('deep').dark);
+});

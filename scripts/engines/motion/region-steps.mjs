@@ -120,6 +120,10 @@ export const WATER_KINDS = Object.freeze([['still', 'Still pool'], ['river', 'Ri
 export const WATER_TOWARD = Object.freeze([['n', 'North'], ['ne', 'North-east'], ['e', 'East'], ['se', 'South-east'], ['s', 'South'], ['sw', 'South-west'], ['w', 'West'], ['nw', 'North-west']]);
 // What the water engine does with it. Region configuration's ticks for a waterfall and the sea are their own drawings, apart from this.
 export const waterKindOf = (own) => { const said = own?.waterKind; if (WATER_KINDS.some(([key]) => key === said)) return said; return own?.flowTo ? 'river' : 'still'; };
+// How deep a region's water is, for how it looks. `hold`: how soon its own colour takes over from its bed; `dark`: how much of it is the dark of deep water, over the fish too.
+export const WATER_DEPTHS = Object.freeze([['shallow', 'Shallow'], ['', 'Medium'], ['deep', 'Deep'], ['abyss', 'Very deep']]);
+const DEPTH_LOOKS = Object.freeze({ shallow: Object.freeze({ hold: 0.35, dark: 0 }), deep: Object.freeze({ hold: 1.35, dark: 0.4 }), abyss: Object.freeze({ hold: 1.6, dark: 0.72 }) });
+export const waterDepthLook = (key) => DEPTH_LOOKS[key] ?? { hold: 1, dark: 0 };
 // The ways water can be set to run: a compass point, or with the wind.
 export const flowChoices = () => [['wind', 'Follows the wind'], ...WATER_TOWARD];
 // The way a fall follows the wind (radians, pure): the nearest of eight, so that it only turns when the wind has really turned.

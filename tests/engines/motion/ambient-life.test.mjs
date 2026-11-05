@@ -126,3 +126,39 @@ test('a scene nobody is looking at freezes on in a frost, step by step, and thaw
   assert.ok(groundMoved({ wet: 0, snow: 0, ice: 0, at: 0 }, kept) && !groundMoved(kept, { ...kept }), 'written only when it moved');
   assert.equal(groundInputs({ scene: 'blizzard', temperature: 20 }).air, -5, 'a blizzard on the scene freezes whatever the calendar says');
 });
+
+test('water takes the GM\'s time to freeze, each scene its own; snow on the ground takes minutes', async () => {
+  const { createGroundWeather, iceHours, groundStep } = await import('../../../scripts/engines/motion/ambient-life.mjs');
+  let kept = { wet: 0, snow: 0, ice: 0, at: 0 };
+  const ground = createGroundWeather({ load: () => kept, save: (s) => { kept = s; }, pace: () => 24 });
+  const cold = { rain: 0, snow: 0.7, temperature: -10, air: -10, sun: 0 }, warm = { rain: 0, snow: 0, temperature: 12, air: 12, sun: 1 };
+  ground.update({ now: 300, ...cold });
+  assert.ok(Math.abs(kept.snow - 0.5) < 1e-9, 'half the snow in five minutes');
+  ground.update({ now: 12 * 3600, ...cold });
+  assert.equal(kept.snow, 1);
+  assert.ok(Math.abs(kept.ice - 0.5) < 1e-9, 'half the ice in 12 of 24 hours');
+  ground.update({ now: 24 * 3600, ...cold });
+  assert.equal(kept.ice, 1);
+  ground.update({ now: 24 * 3600 + 600, ...warm });
+  assert.ok(Math.abs(kept.snow - 0.5) < 1e-9, 'half melted in ten minutes');
+  ground.update({ now: 36 * 3600 + 600, ...warm });
+  assert.equal(kept.snow, 0);
+  assert.ok(kept.ice > 0.49 && kept.ice < 0.51, 'and the ice half way out in 12 hours');
+  const a = iceHours('scene-a'), b = iceHours('scene-b-other');
+  for (const h of [a, b]) assert.ok(h >= 24 && h <= 48, String(h));
+  assert.equal(iceHours('scene-a'), a, 'always the same for a scene');
+  assert.notEqual(a, b);
+  assert.equal(iceHours('x', 30, 30), 30);
+  assert.equal(iceHours('x', 50, 10), 50, 'a most under the least is the least');
+  assert.ok(Math.abs(groundStep({ wet: 0, snow: 0, ice: 0, at: 0 }, { now: 6 * 3600, pace: 24, ...cold }).ice - 0.25) < 1e-9, 'scenes away too');
+  assert.equal(groundStep({ wet: 0, snow: 0, ice: 0, at: 0 }, { now: 3600, pace: 24, rain: 1, snow: 0, temperature: 15, air: 15, sun: 0 }).wet, 1, 'rain is no slower');
+});
+
+test('a storm of sand or snow brings no rain; a rainstorm and a thunderstorm do', async () => {
+  const { fallingOf } = await import('../../../scripts/engines/motion/ambient-life.mjs');
+  assert.deepEqual(fallingOf({ scene: 'animater.sandstorm' }), { rain: 0, snow: 0 });
+  assert.equal(fallingOf({ scene: 'snowStorm' }).rain, 0);
+  assert.ok(fallingOf({ scene: 'snowStorm' }).snow > 0);
+  assert.ok(fallingOf({ scene: 'rainStorm' }).rain > 0);
+  assert.ok(fallingOf({ scene: 'animater.thunderstorm' }).rain > 0);
+});

@@ -2,8 +2,29 @@
 
 ## 3.0.3 (unreleased)
 
+### New
+
+- **A blizzard you can hear.** A blizzard or snowstorm has its own howling wind, one of three recordings for each scene, in place of the plain strong wind.
+- **Lightning strikes.** In a storm a bolt now hits somewhere on the scene now and then, about once a minute in a thunderstorm, while most flashes are far off. The closer it lands, the sooner and louder the thunder. Its flash throws shadows from where it struck.
+- **Water takes its time to freeze.** Water freezes and thaws over 24 to 48 game hours, different for each scene. The GM sets the range under Water freezes in Animater settings. Snow on the ground comes and goes within minutes of game time.
+- **Clouds that look like clouds.** They now show in what they do to the land instead of as a pale layer over it: firm shadows and warm sunlit patches under a broken sky, moving and stretching with the wind; a dim, cool sky with slow lighter patches once it closes over. Drizzle and rain are darker, with no morning mist, and overcast has no grey wash.
+- **Water depth.** A region's water menu has a Depth choice: Shallow shows more of the bed, Deep and Very deep darken it and hide what is under it. Medium is how water has always looked. It changes the look only.
+
 ### Fixes
 
+- Changing a scene's weather shows at once, without building the sky's layers again.
+- Ducks, herons, frogs and fish leave water that has frozen over, and come back when it thaws.
+- Sun shadows fade with the sky when rain, snow or cloud is set as the scene's own weather. The sun used to ignore it and shine at full strength.
+- A sandstorm no longer sounds like rain and thunder when set as the scene's weather: it is wind and sand.
+- A tornado spins much faster and travels across the map with the wind.
+- A hurricane shows as one: its eye on the map, a wall of cloud round it and spiral arms turning, instead of a single pale band.
+- Trees throw no sun flecks under an overcast or rainy sky, or where a cloud's shadow is passing.
+- Snow on roofs builds from patches into one thick blanket of Animater's own snow, with soft swells and shade, rounded at the eaves, instead of a flat sheet.
+- A heat wave is a pale drifting haze and shimmering air, without the bands.
+- A sunshower rains a quarter less.
+- Rabbits, songbirds, deer and foxes bolt when heavy rain or snow comes on, and only then go in, instead of simply fading away.
+- An energy blast's mark no longer covers floor textures with the map's own picture: it scorches the texture.
+- A sea with "Beach along the shore" off now fills its region right to the edge, with its shoreline there, and its animals and step looks go with it.
 - A wall's configuration keeps its own settings in view when another module adds a section of its own: Animater's sections now scroll with the rest.
 - Fish in moving water are easier to see: a little bigger and darker, each with its shadow on the bed, and about twice as many on smaller waters. The faint line that ran out from their nose and tail is gone.
 - Deer, foxes, ducks, herons and town animals no longer have their shadow drawn over them, and animals' shadows on the ground stay closer to their feet.

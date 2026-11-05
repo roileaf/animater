@@ -215,3 +215,32 @@ test('snow or ice Animater paints has its own glints, so the map\'s sparkle leav
   assert.equal(surfacesOf({ regions: [{ floor: 'snow', polygons: [square] }] }).frozen.length, 1);
   assert.equal(surfacesOf({ regions: [{ floor: 'ice', polygons: [square], painted: true }] }).frozen.length, 0);
 });
+
+test('the cloud deck: broken skies have sun between clouds, closed ones go dim and heavy, rain darkest', async () => {
+  const { cloudLook } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const partly = cloudLook(0.3), overcast = cloudLook(0.9), drizzle = cloudLook(0.8, true), rain = cloudLook(0.9, true);
+  assert.ok(Math.abs(partly[0] - 0.42) < 1e-9 && partly[1] === 0 && partly[3] === 1, 'sun between its clouds');
+  assert.ok(overcast[1] > cloudLook(0.65)[1], 'heavier');
+  assert.ok(rain[3] < drizzle[3], 'rain dimmer than drizzle (the rain\'s own wash does the rest)');
+  assert.ok(rain[0] > overcast[0], 'and most of the sky');
+  assert.deepEqual(cloudLook(0.2, true), cloudLook(0.2), 'a sunshower is not a rain deck');
+  for (const c of [0, 0.15, 0.5, 0.77, 1]) for (const wet of [false, true]) assert.ok(cloudLook(c, wet).every(Number.isFinite), String(c));
+  assert.ok(Math.abs(cloudLook(undefined)[0] - 0.1) < 1e-9);
+});
+
+test('only a real change to the scene builds the sky again; weather and darkness are only looked at', async () => {
+  const { skyNeedsBuilding } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(skyNeedsBuilding({ weather: 'animater.rain', _id: 'a', _stats: {} }), false);
+  assert.equal(skyNeedsBuilding({ environment: { darknessLevel: 0.2 } }), false);
+  assert.equal(skyNeedsBuilding({ flags: { animater: { ground: { at: 1 } } } }), false);
+  assert.equal(skyNeedsBuilding({ environment: { globalLight: {} } }), true);
+  assert.equal(skyNeedsBuilding({ flags: { animater: { floorTextures: 'on' } } }), true);
+  assert.equal(skyNeedsBuilding({ flags: { fxmaster: {} } }), true);
+  assert.equal(skyNeedsBuilding({ background: {} }), true);
+  assert.equal(skyNeedsBuilding({}), false);
+});
+
+test('a sandstorm on the scene is no thunderstorm', () => {
+  assert.equal(weatherOf({ scene: 'animater.sandstorm' }).storm, false);
+  assert.equal(weatherOf({ scene: 'animater.thunderstorm' }).storm, true);
+});

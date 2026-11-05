@@ -40,3 +40,10 @@ test('a scene can pick one of Animater\u2019s weathers itself', async () => {
   assert.equal(sceneWeatherId('animater.nothing'), null);
   assert.equal(weatherLabel('ice-storm'), 'Ice Storm');
 });
+
+test('the plain skies draw no cloud layer of their own, and a sunshower is light rain', async () => {
+  const { weatherScene } = await import('../../../scripts/engines/motion/sky-weather.mjs');
+  for (const id of ['partly-cloudy', 'cloudy', 'overcast', 'drizzle', 'rain']) { assert.equal(weatherScene({ id }).clouds[3], 0, id); assert.equal(weatherScene({ id }).deck, 0, id); assert.equal(weatherScene({ id }).fog[3], 0, id); }
+  assert.ok(weatherScene({ id: 'ashfall' }).clouds[3] > 0);
+  assert.equal(weatherScene({ id: 'sunshower' }).falls[0].amount, 0.3);
+});

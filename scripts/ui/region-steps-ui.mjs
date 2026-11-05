@@ -2,7 +2,7 @@
 // list in Region configuration. Both save to the region's flags, which reach every screen.
 
 import { FLOORS } from '../engines/motion/movement-feel.mjs';
-import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
+import { WATER_DEPTHS, WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
 
 const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -86,6 +86,7 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
       parts.push(row);
       if (kind === 'sea') { const waves = element('label', 'an-step-slider', 'Waves toward '); waves.append(choice([['', 'With the wind'], ...WATER_TOWARD], own.waveTo ?? '', 'Waves toward', (value) => act({ waveTo: value }))); parts.push(waves); parts.push(tick('Beach along the shore', own.seaBeach !== 'off', (on) => act({ seaBeach: on ? '' : 'off' }))); }
       if (waterFlows(kind)) { toward.append(choice(flowChoices(kind), own.flowTo || 's', 'Flows toward', (value) => act({ flowTo: value }))); parts.push(toward); }
+      if (kind !== 'falls') { const depth = element('label', 'an-step-slider', 'Depth '); depth.append(choice(WATER_DEPTHS, own.waterDepth ?? '', 'How deep the water is', (value) => act({ waterDepth: value }))); parts.push(depth); }
       if (movingWater(own) !== null) parts.push(tick('Moving water', movingWater(own), (on) => act({ movingWater: on ? '' : 'off' })));
     }
     if (activeStep(own) || own.stepHidden) parts.push(button(menu.hidden ? 'Show this step' : 'Hide this step', 'an-step-wide', () => act({ stepHidden: !menu.hidden })));

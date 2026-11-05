@@ -1,0 +1,7 @@
+These recordings come from Freesound (https://freesound.org), each under the licence named beside it; each source page
+was checked for it. Each file was cut from the sound's high-quality Freesound preview, mixed to mono, loudness-matched
+within its family and encoded as Ogg Vorbis 96 kb/s for Animater. Thank you to each author.
+
+weather-blizzard-521820-0.ogg: "Polar Wind" by Fission9, https://freesound.org/people/Fission9/sounds/521820/ (CC0 1.0). Changes: cut 8.00-53.00 s, its end crossfaded into its start to loop, normalised to -20 LUFS.
+weather-blizzard-243348-0.ogg: "Lumimyrsky, lumi pöllyää, kahisee tuulessa / Snowstorm, snow drifting in a whistling wind, mix" by YleArkisto, https://freesound.org/people/YleArkisto/sounds/243348/ (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/). Changes: cut 23.00-68.00 s, its end crossfaded into its start to loop, normalised to -20 LUFS.
+weather-blizzard-493680-0.ogg: "Wind - Snowstorm Sound Effect" by NicknameLarry, https://freesound.org/people/NicknameLarry/sounds/493680/ (CC0 1.0). Changes: cut 3.00-24.00 s, its end crossfaded into its start to loop, normalised to -20 LUFS.

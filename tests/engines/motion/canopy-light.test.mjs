@@ -96,3 +96,19 @@ test('trees sway with the wind: a little in still air, much more in a gale; the 
   sway.clear();
   assert.equal(mesh.filters.length, 0);
 });
+
+test('no sun flecks under a closed sky; all of them under broken cloud', async () => {
+  const { directSun } = await import('../../../scripts/engines/motion/canopy-light.mjs');
+  assert.equal(directSun(0.3), 1);
+  assert.equal(directSun(0.5), 1);
+  assert.ok(directSun(0.65) > 0.4 && directSun(0.65) < 0.6);
+  assert.equal(directSun(0.8), 0);
+  assert.equal(directSun(0.9), 0);
+  assert.equal(directSun(undefined), 1);
+});
+
+test('the sky and the trees share one pattern for where a cloud is', async () => {
+  const { CLOUD_DECK } = await import('../../../scripts/engines/motion/cloud-deck.mjs');
+  assert.match(CLOUD_DECK, /float cloudDeck\(vec2 px, float t, vec2 dir, float wind, float grid\)/);
+  assert.ok(!CLOUD_DECK.includes('`'));
+});

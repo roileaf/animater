@@ -183,8 +183,9 @@ import { createTethers, createTetherPreview } from "./engines/playback/tethers.m
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, keepToSight } from "./engines/motion/wall-shadows.mjs";
-import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
-import { weatherOf, cloudCover, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
+import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
+import { strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
+import { weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
 import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
@@ -192,16 +193,16 @@ import { createVermin, creatureAmount, creatureSize } from "./engines/motion/ver
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
-import { weatherShelter, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
+import { weatherShelter, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
 import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
-import { weatherLevels, weatherIsOurs, thunderFor, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
+import { weatherLevels, weatherIsOurs, thunderFor, thunderClose, strikeNearness, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf } from "./engines/motion/region-steps.mjs";
+import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
@@ -214,7 +215,7 @@ import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
-import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved } from "./engines/motion/ambient-life.mjs";
+import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
@@ -1296,8 +1297,8 @@ const clockNow = () => {
     }
     // Moonlight (Animater settings → Sunrise and sunset colour): Foundry's own clock knows no moon.
     try { if (hotSetting("moonLight") === false) moon = 0; } catch { /* not registered yet */ }
-    // Clouds: Calendaria's weather now, else the scene's own weather effect.
-    const sky = skyClear((calendaria && ask(() => calendaria.getCurrentWeather?.())) || canvas?.scene?.weather || null);
+    // Clouds: the scene's own weather (Animater's, by its bare name), else Calendaria's now, else whatever the scene has.
+    const sky = skyClear(sceneWeatherId(canvas?.scene?.weather) || (calendaria && ask(() => calendaria.getCurrentWeather?.())) || canvas?.scene?.weather || null);
     return { day, sunrise: rise, sunset: set, moon, sky };
   } catch { return null; }
 };
@@ -1941,7 +1942,7 @@ const lookCanopy = () => {
     const fall = canopyFall(sunNow, { height: canopyHeight, grid, darkness });
     const roofFall = canopyFall(sunNow, { height: roofHeight, grid, darkness });
     // Walls already shade the ground beside a building: its roof only adds the eaves' darker edge then.
-    canopyLight.look({ fall, roofFall, color: sunlightColor(), wind: weather.wind, windAngle: weather.windAngle, roofShade: wallShadowsOn() ? 0.2 : 0.45, leaves });
+    canopyLight.look({ fall, roofFall, color: sunlightColor(), wind: weather.wind, windAngle: weather.windAngle, roofShade: wallShadowsOn() ? 0.2 : 0.45, leaves, direct: directSun(skyCoverNow) });
   } catch { canopyLight.look({ fall: null }); }
 };
 // How high a set of tiles stands on the whole, in squares (for the flecks' drawn length and the holes in roofs).
@@ -2033,7 +2034,7 @@ const syncFloorLooks = () => {
   const list = [];
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
     try { const own = region.flags?.[ID], floor = plainFloorOf(region); if (floor && Array.isArray(own?.steps)) {
-        const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterHere() && floorLevel.water && flags.movingWater !== "off";
+        const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterHere() && floorLevel.water && flags.movingWater !== "off" && own.seaBeach !== "off";
         // A look on a sea moving water draws stops at its waterline, leaving the shore alone.
         list.push({ id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null });
       } } catch { /* a broken region never breaks the rest */ }
@@ -2067,7 +2068,7 @@ const movingWaterList = () => {
       const areas = regionAreas(region), toward = waterFlows(kind) ? own.flowTo || "s" : "", plain = plainFloorOf(region);
       const under = plain && floorLevel.show && regionStepsOn() && showsTexture(own, sceneChoice) ? { floor: textureFloor(own, plain), edge: stepEdge(own) } : null;
       const bed = under ? { texture: floorTextures.tile(under.floor, textureStyleOf(own, under.floor)), key: `${under.floor}/${textureStyleOf(own, under.floor)}`, edge: under.edge, colourOnly: under.floor === "water" } : null;
-      list.push({ id: region.id, areas, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas) });
+      list.push({ id: region.id, areas, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas) });
     } catch { /* a broken region never breaks the rest */ }
   }
   return list;
@@ -2956,13 +2957,14 @@ const groundWalls = () => {
   return walls;
 };
 const closedOf = (cols, rows, cell, area, roofed) => closedGround({ cols, rows, cell, area, walls: groundWalls(), roofed });
+const waterFrozenNow = () => frozenWaterOn() && groundOf().now.ice > 0.5;
 const wildGround = (grid, area) => {
   const cell = Math.max(grid, Math.ceil(Math.max(area.width, area.height) / 120)), cols = Math.ceil(area.width / cell), rows = Math.ceil(area.height / cell), roofed = new Uint8Array(cols * rows), kind = new Uint8Array(cols * rows), middle = (i, j) => ({ x: area.x + (i + 0.5) * cell, y: area.y + (j + 0.5) * cell }), spots = [], waters = [];
-  // Ground a step has flooded, burnt or fouled for now is no home, on land or water; nor is a waterfall or rapids.
-  const floodLevel = canvas.level?.elevation?.base ?? 0, floods = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID]; return floodedByStep(own, plainFloorOf(doc)) || unfitForLife(own) || (regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && noLifeOnWater(own)); } catch { return false; } }), flooded = (x, y) => floods.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
+  // Ground a step has flooded, burnt or fouled for now is no home, on land or water; nor is a waterfall or rapids, or water frozen over.
+  const floodLevel = canvas.level?.elevation?.base ?? 0, frozen = waterFrozenNow(), floods = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID]; return floodedByStep(own, plainFloorOf(doc)) || unfitForLife(own) || (regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && (noLifeOnWater(own) || (frozen && !own?.noFreeze))); } catch { return false; } }), flooded = (x, y) => floods.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   const seaRegions = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID] ?? {}; return regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && (own.sea || waterKindOf(own) === "sea"); } catch { return false; } }), seaAt = (x, y) => seaRegions.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   // A sea moving water draws has its waterline inside the region, with a beach or the map's own ground beyond it: nothing that lives in the water goes there.
-  const beachSeas = seaRegions.filter((doc) => { const own = stepFlags(doc.flags?.[ID]) ?? {}; return waterKindOf(own) === "sea" && !own.sea && movingWaterHere() && floorLevel.water && own.movingWater !== "off"; }), beachField = beachSeas.length ? shoreField(beachSeas.flatMap((doc) => regionAreas(doc)), { bounds: canvas.dimensions.sceneRect, grid }) : null, keepOff = beachKeepOff(grid);
+  const beachSeas = seaRegions.filter((doc) => { const own = stepFlags(doc.flags?.[ID]) ?? {}; return waterKindOf(own) === "sea" && !own.sea && movingWaterHere() && floorLevel.water && own.movingWater !== "off" && own.seaBeach !== "off"; }), beachField = beachSeas.length ? shoreField(beachSeas.flatMap((doc) => regionAreas(doc)), { bounds: canvas.dimensions.sceneRect, grid }) : null, keepOff = beachKeepOff(grid);
   const onBeach = (x, y, margin = keepOff) => !!beachField && beachSeas.some((doc) => doc.testPoint({ x, y, elevation: floodLevel })) && shoreAt(beachField, x, y) < margin;
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
     const p = middle(i, j);
@@ -3010,8 +3012,8 @@ Hooks.on("canvasTearDown", () => { wildKey = null; wildRegions = null; wildWalls
 const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`]]);
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
-  for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", unfitForLife(r.flags?.[ID]), noLifeOnWater(r.flags?.[ID]), waterKindOf(r.flags?.[ID]) === "sea" || !!r.flags?.[ID]?.sea, regionAreas(r)]); }
-  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, frozenWaterOn() && groundOf().now.ice > 0, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
+  for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", unfitForLife(r.flags?.[ID]), noLifeOnWater(r.flags?.[ID]), waterKindOf(r.flags?.[ID]) === "sea" || !!r.flags?.[ID]?.sea, r.flags?.[ID]?.seaBeach === "off", regionAreas(r)]); }
+  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
 // or water the map has by a good part.
@@ -3069,7 +3071,7 @@ const rebuildWildlife = () => {
   wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: spots.length ? Math.round(Math.min(10, Math.max(3, squares / 80)) * many.rabbits) : 0, blocked: wallBlocks, songbirds: songSpots.length ? Math.round(9 * many.wildBirds) : 0, hawk: many.wildBirds > 0 && ground.share > 0.4, crows: Math.round(6 * many.wildBirds), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
 };
 // How much they are out now: by day under an open sky, none at night or in a storm, nor in a scene made dark, whatever its sun.
-const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
+const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
 const wildSeen = (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false;
 const wildOk = (kind, x, y) => {
   // Insects go over ground and water alike; dragonflies keep to the water.
@@ -3146,14 +3148,17 @@ const wildCast = (x, y, { width = 40, lift = 0, body = 0, grounded = false } = {
     return grounded ? standingCopyFall(fall) : fall;
   } catch { return null; }
 };
-let highLook = 0;
+let highLook = 0, wildCover = null;
+Hooks.on("canvasTearDown", () => { wildCover = null; });
 const wildTick = (seconds) => {
   // As roofs fade and come back: a few times a second is quick enough.
   if ((highLook -= seconds) <= 0) { highLook = 0.2; try { refreshHighShape(); } catch { /* the tiles mid-change */ } }
   const away = (((Number(sunNow?.angle) || 51) + 180) * Math.PI) / 180;
-  // Heavy rain or snow sends the birds, the rabbits and the deer in; ducks, herons and frogs do not mind it. Any real rain or snow puts out the fireflies.
-  const out = weatherShelter(skyFalling);
-  const near = creaturesNow(), day = wildDay(), night = wildNight() * out, warm = !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.15), sun = { x: Math.cos(away), y: Math.sin(away) }, view = viewNow(), wind = skyWindAngle ?? 0.6;
+  // Heavy rain or snow sends the birds, the rabbits and the deer running, then in; ducks, herons and frogs do not mind it. Any real rain or snow puts out the fireflies.
+  const shelter = weatherShelter(skyFalling);
+  wildCover = takeCover(wildCover, shelter, seconds);
+  if (wildCover.flush) { wildlife.scare(); fieldLife.scare(); }
+  const out = wildCover.out, near = creaturesNow(), day = wildDay(), night = wildNight() * shelter, warm = !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.15), sun = { x: Math.cos(away), y: Math.sin(away) }, view = viewNow(), wind = skyWindAngle ?? 0.6;
   // A low frame rate never makes them crawl: several small steps a frame, down to four frames a second.
   for (let left = Math.min(seconds, 0.25); left > 0.0001; left -= 0.05) {
     const step = Math.min(left, 0.05);
@@ -3421,11 +3426,13 @@ const tickWeatherSound = () => {
 };
 // Thunder after a flash, from no place in particular: quieter from under a roof, a little time apart at the least.
 let thunderAt = 0;
-const thunderAfterFlash = (always = false) => {
+// (`near` how close the strike landed, 0-1: a close one is always heard, at once, and never waits out the last rumble.)
+const thunderAfterFlash = (always = false, near = 0) => {
   if (!bothSettingsOn("weatherSounds") || game.audio?.locked) return;
-  const now = performance.now(); if (now - thunderAt < 3500 || (!always && !thunderHeard({ storm: skyStorm }))) return; thunderAt = now;
-  const t = thunderFor({ storm: skyStorm }), inside = earsInside();
-  setTimeout(() => { (async () => { const sound = new foundry.audio.Sound(t.file, { context: game.audio.environment }); await sound.load(); await sound.play({ volume: t.volume * (inside ? 0.45 : 1) }); const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = t.rate; })().catch(() => {}); }, t.wait);
+  const now = performance.now(), close = near > 0.3; if ((!close && now - thunderAt < 3500) || (!always && !close && !thunderHeard({ storm: skyStorm }))) return; thunderAt = now;
+  const t = close ? thunderClose({ near }) : thunderFor({ storm: skyStorm }), hush = earsInside() ? 0.45 : 1;
+  const play = async (volume, playRate) => { const sound = new foundry.audio.Sound(t.file, { context: game.audio.environment }); await sound.load(); await sound.play({ volume: volume * hush }); const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = playRate; };
+  setTimeout(() => { play(t.volume, t.rate).catch(() => {}); if (t.under) play(t.under.volume, t.under.rate).catch(() => {}); }, t.wait);
 };
 const stopVoice = (voice, ms = 0) => { const s = voice.sound; voice.sound = null; try { if (s && ms) { s.fade(0, { duration: ms }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, ms + 100); } else s?.stop(); } catch { /* gone */ } };
 const tickRivers = () => {
@@ -3468,7 +3475,7 @@ const snowRootOf = () => {
   snowRoot.elevation = Math.max(Number(canvas.level?.elevation?.base) || 0, ...(canvas.tiles?.placeables ?? []).map((t) => Number(t.document?.elevation) || 0)) + 0.01;
   return snowRoot;
 };
-const tileSnow = createTileSnow({ PIXI: globalThis.PIXI, root: snowRootOf });
+const tileSnow = createTileSnow({ PIXI: globalThis.PIXI, root: snowRootOf, snowTile: () => floorTextures.tile("snow", "powder") });
 // The trees swaying in the wind (canopy-light.mjs createTreeSway): on the tree tiles themselves.
 const treeSway = createTreeSway({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 });
 const treeSwayOn = () => outdoorOn("treeSway");
@@ -3487,6 +3494,7 @@ const rebuildTileSnow = () => {
 const heatShimmer = createHeatShimmer({ PIXI: globalThis.PIXI, attach: (f) => attachFilter(canvas.primary, f, canvas.app.renderer.screen), detach: (f) => detachFilter(canvas?.primary, f), render: bakeInto });
 // The flash sits over the lighting, as the dawn and dusk colour does.
 // A flash lights the rooms only through their windows, a roof as drawn now flashing as the open map does.
+const lightningBolts = createLightningBolts({ PIXI: globalThis.PIXI, root: floorLayer("lightningBolts", 790) });
 const lightning = createLightningFlash({ PIXI: globalThis.PIXI, root: () => { const fx = canvas.effects; return fx; }, bounds: () => canvas.dimensions.sceneRect, render: bakeInto,
   cover: () => {
     const indoors = indoorPolygons();
@@ -3587,6 +3595,7 @@ const writeGroundSoon = (sceneId, state) => {
     if (updates.length) Scene.updateDocuments(updates, { animaterGround: true }).catch(() => { /* a scene gone */ });
   }, 2000);
 };
+const groundPace = (id) => { try { return iceHours(id, hotSetting("iceHoursLeast"), hotSetting("iceHoursMost")); } catch { return iceHours(id); } };
 const groundOf = () => {
   const id = canvas?.scene?.id;
   if (!groundWeather || groundScene !== id) {
@@ -3599,6 +3608,7 @@ const groundOf = () => {
         try { return JSON.parse(localStorage.getItem(key) ?? "null"); } catch { return null; }
       },
       save: (state) => { try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* storage refused */ } writeGroundSoon(id, state); },
+      pace: () => groundPace(id),
     });
   }
   return groundWeather;
@@ -3629,7 +3639,7 @@ const groundAway = () => {
         if (!kept) { try { kept = JSON.parse(localStorage.getItem(`${ID}.ground.${game.world?.id}.${scene.id}`) ?? "null"); } catch { kept = null; } }
         if (!kept && !scene.regions?.some((r) => { try { return regionFloor({ name: r.name, flag: floorFlagOf(r) }) === "water"; } catch { return false; } })) continue;
         const { calendaria, weather } = awayWeather(scene);
-        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, ...groundInputs({ calendaria, scene: scene.weather ?? "", temperature: weather.temperature, sun: daylight }) }));
+        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, pace: groundPace(scene.id), ...groundInputs({ calendaria, scene: scene.weather ?? "", temperature: weather.temperature, sun: daylight }) }));
       }
     } catch { /* never breaks the clock */ }
   }, 1500);
@@ -3681,14 +3691,16 @@ const lookSky = () => {
     const drawn = weatherMapOn() && (weatherPreview?.preset || sceneOwn || calendaria) ? weatherScene(weatherPreview?.preset ? { id: weatherPreview.preset } : sceneOwn ? { id: sceneOwn } : calendaria) : null;
     if (drawn && !weatherCloudsOn()) drawn.deck = 0;
     drawnNow = drawn;
-    const windAsked = weatherPreview?.wind ?? fxCloud?.speed ?? weather.wind, windNow = weather.windStated || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked);
+    const windAsked = weatherPreview?.wind ?? fxCloud?.speed ?? weather.wind, sceneSaysWind = !["", "calm", undefined].includes(canvas?.scene?.flags?.[ID]?.wind), windNow = (weather.windStated && (!sceneOwn || sceneSaysWind)) || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked);
+    // (A scene's own weather says how cloudy it is, whatever the clock's sky.)
+    skyCoverNow = weatherPreview?.clouds ?? Math.max(cloudCover(sky), sceneOwn ? cloudCover(skyClear(sceneOwn)) : 0);
     floorWeather = { clouds: weatherPreview?.clouds ?? cloudCover(sky), wet: wetOn() ? ground.wet : 0, ice: frozenWaterOn() ? ground.ice : 0 };
     skyWindNow = windNow; skyWords = `${drawnId ?? ""} ${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}`;
     surfaceLight.look({
       // The cloud shadows drift with FXMaster's clouds when it draws some (then cast from their very shapes, in skyTick).
-      light: fall ? fall.light : 0, clouds: weatherPreview?.clouds ?? (cloudsOn() ? cloudCover(sky) : 0), color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle,
+      light: fall ? fall.light : 0, clouds: cloudsOn() || weatherPreview?.clouds !== undefined ? skyCoverNow : 0, color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle,
       wet: wetOn() ? ground.wet : 0, snow: snowCoverOn() ? ground.snow : 0,
-      mist: mistOn() && clock ? mistOf({ day: clock.day, sunrise: clock.sunrise, sunset: clock.sunset, sun: sunNow, fog }) : 0,
+      mist: mistOn() && clock && (fog || !(falling.rain > 0.05)) ? mistOf({ day: clock.day, sunrise: clock.sunrise, sunset: clock.sunset, sun: sunNow, fog }) : 0,
       fireflies: firefliesOn() && clock ? firefliesOf({ day: clock.day, sunset: clock.sunset, season, temperature: weather.temperature }) : 0,
       // Rain rings on open water only: none under a roof (the regions keep the weather out).
       rain: rainRingsOn() ? falling.rain : 0,
@@ -3702,13 +3714,14 @@ const lookSky = () => {
       // The weather drawn on the map (Calendaria's, as it sets it): clouds from above with their shadows, what falls, fog.
       // (A scene's own Weather Effect, when one of Animater's, comes before Calendaria's.)
       weather: drawn,
-      cover: weatherPreview?.clouds ?? (!weatherCloudsOn() ? 0 : sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky)), cloudShift: cloudShiftNow(),
+      cover: weatherPreview?.clouds ?? (!weatherCloudsOn() ? 0 : sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky)), cloudShift: cloudShiftNow(), raining: falling.rain > 0.05,
       // The year on the ground: its colour and the fallen leaves (none under snow lying deep).
       ...(seasonGroundOn() ? (({ tint, litter }) => ({ season: tint, litter: litter * (1 - ground.snow) }))(seasonGround(season, { wind: weather.wind })) : {}),
     });
     // The weather's light outdoors (over the roofs too; a room seen into keeps its own).
     weatherCast = weatherLightOn() ? weatherLight({ kind: `${drawnId ?? ""} ${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}`, rain: falling.rain, snow: falling.snow, storm: weather.storm, severity: weather.severity, clouds: cloudCover(sky), day: sunNow && !sunNow.moon ? Math.min(1, (Number(sunNow.strength) || 0) / Math.max(0.1, Number.isFinite(sky) ? sky : 1)) : 0, ...(weatherPreview ?? {}) }) : null;
     surfaceLight.veil(weatherCast, weatherRoofs());
+    canopyLight.clouds({ deck: cloudLook(cloudsOn() || weatherPreview?.clouds !== undefined ? skyCoverNow : 0, falling.rain > 0.05), shift: cloudShiftNow(), angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, wind: windNow, clouds: cloudsOn() || weatherPreview?.clouds !== undefined ? skyCoverNow : 0 });
     refreshSunWash();
     // The roofs and trees hold the ground's snow (a tree less, and less in a wind).
     snowNow = { snow: tileSnowOn() ? ground.snow : 0, wind: weather.wind };
@@ -3723,7 +3736,7 @@ const lookSky = () => {
 };
 // The weather Animater draws now (sky-weather.mjs weatherScene), for the heat over the whole map.
 let drawnNow = null;
-let floorWeather = null, skyHeat = 0, skyStorm = 0, skyOpen = 1, skyWindAngle = 0, skyFalling = { rain: 0, snow: 0 }, skyWindNow = 0, skyWords = "";
+let skyCoverNow = 0, floorWeather = null, skyHeat = 0, skyStorm = 0, skyOpen = 1, skyWindAngle = 0, skyFalling = { rain: 0, snow: 0 }, skyWindNow = 0, skyWords = "";
 const rebuildSky = () => {
   try {
     if (!canvas?.ready) return;
@@ -3733,13 +3746,15 @@ const rebuildSky = () => {
       grass: skySurfaces.grass, tinted: skySurfaces.tinted, bare: skySurfaces.bare, grassAll: skySurfaces.grassAll, indoors: indoorPolygons(), bounds, grid });
     else surfaceLight.clear();
     shadeWater();
-    const weather = weatherNow();
-    // Hot: the sand, or the whole map in a heat wave (from 30 °C).
-    const hotAll = skySurfaces.whole === "hot" || (weather.temperature !== null && weather.temperature >= 30) || (drawnNow?.heat ?? 0) > 0.1;
-    if (shimmerOn()) heatShimmer.build({ hot: [...skySurfaces.hot, ...lavaPolygons], hotAll, bounds }); else heatShimmer.clear();
+    buildShimmer();
     lookSky();
   } catch { surfaceLight.clear(); heatShimmer.clear(); }
 };
+// Hot: the sand, or the whole map in a heat wave (from 30 °C).
+function buildShimmer() {
+  const weather = weatherNow(), hotAll = skySurfaces.whole === "hot" || (weather.temperature !== null && weather.temperature >= 30) || (drawnNow?.heat ?? 0) > 0.1;
+  if (shimmerOn()) heatShimmer.build({ hot: [...skySurfaces.hot, ...lavaPolygons], hotAll, bounds: canvas.dimensions.sceneRect }); else heatShimmer.clear();
+}
 // The water glints only where the sun reaches it: the wall shadows' sunlit floor and the trees' shade, as last built.
 function shadeWater() { try { surfaceLight.shade({ sunlit: wallShadows.sunlit?.texture ?? null, trees: canopyLight.treeShade, crowns: canopyLight.crowns }); } catch { /* not built */ } }
 let canopyTimer = null, skyTimer = null;
@@ -3753,9 +3768,25 @@ const calendariaColoursScene = (scene) => {
 const skySoon = () => { if (!skyTimer) skyTimer = setTimeout(() => { skyTimer = null; rebuildSky(); }, 250); };
 for (const hook of ["canvasReady", "drawTile", "createTile", "updateTile", "deleteTile", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { canopySoon(); glowsSoon(); });
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged", "updateWorldTime", "calendaria.weatherChange", "calendaria.ready", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { skySoon(); });
-Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) skySoon(); });
-// A lightning flash throws the creatures' shadows hard from where it struck, for as long as it lights the map.
-let flashSun = null, strikeAngle = 0;
+// (The sun's handler has already looked at the new weather by now: it shows at once, with nothing built again.)
+Hooks.on("updateScene", (scene, change) => {
+  if (scene?.id !== canvas?.scene?.id) return;
+  if (skyNeedsBuilding(change)) { skySoon(); return; }
+  if ("weather" in (change ?? {})) { try { buildShimmer(); } catch { heatShimmer.clear(); } }
+});
+// A lightning flash throws the creatures' shadows hard from where it struck, for as long as it lights the map. It lands somewhere on the scene, the bolt seen and its thunder sure to be heard, or off past an edge.
+let flashSun = null, strikeAngle = 0, lastBoltAt = -Infinity;
+const strikeNow = (level = 1, at = null) => {
+  const rect = canvas.dimensions.sceneRect, grid = canvas.grid.size, place = at ?? strikePlace(Math.random, rect, grid, boltDue(performance.now() - lastBoltAt, skyStorm) ? 1 : 0);
+  if (place.inside) lastBoltAt = performance.now();
+  strikeAngle = strikeFrom(place, rect);
+  if (place.inside) lightningBolts.strike({ x: place.x, y: place.y, grid, strength: level, steady: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true });
+  // Near whoever hears it: their creatures, else the middle of the view.
+  const ears = canvas.tokens?.controlled?.length ? canvas.tokens.controlled.map((t) => t.center) : [{ x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }];
+  const near = place.inside ? Math.max(...ears.map((e) => strikeNearness(e, place, grid))) : 0;
+  thunderAfterFlash(place.inside, near);
+  return place;
+};
 // The weather's light now (sky-light.mjs weatherLight), and when the roofs under it were last looked at.
 let weatherCast = null, weatherRoofsAt = 0, weatherPreview = null, fxCloudsAt = 0, fxCloudsHad = false;
 const castFxClouds = () => {
@@ -3791,6 +3822,7 @@ function skyTick() {
   // A roof fading for a creature inside takes its snow with it.
   if (tileSnow.showing) tileSnow.shown(snowTiles.map(tileShown));
   if (surfaceLight.shown) surfaceLight.tick(seconds);
+  if (canopyLight.shown) canopyLight.cloudClock(surfaceLight.clock);
   if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) { lampAir.tick(seconds); tickSmoke(seconds); } }
   if (ceilingDust.busy) ceilingDust.tick(seconds);
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
@@ -3832,9 +3864,10 @@ function skyTick() {
     heatShimmer.tick(seconds);
   } else if (heatShimmer.on) heatShimmer.set({ heat: 0 });
   syncFxLightning(performance.now());
+  if (lightningBolts.busy) lightningBolts.tick(seconds);
   syncFxWeather(performance.now());
   const level = lightning.tick(performance.now(), canvas.scene ? skyStorm : 0);
-  if (level > 0.3) { if (!flashSun) { strikeAngle = Math.random() * 360 - 180; thunderAfterFlash(); } flashSun = { angle: strikeAngle, height: 35, strength: level }; }
+  if (level > 0.3) { if (!flashSun) strikeNow(level); flashSun = { angle: strikeAngle, height: 35, strength: level }; }
   else flashSun = null;
 }
 const wallShadowsSoon = () => { if (!wallShadowTimer) wallShadowTimer = setTimeout(rebuildWallShadows, 150); };
@@ -3847,7 +3880,7 @@ Hooks.on("canvasTearDown", () => {
   try { glowRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
   glowRoot = null;
   clearTimeout(canopyTimer); canopyTimer = null; canopyLight.clear(); solidByTexture.clear();
-  clearTimeout(skyTimer); skyTimer = null; surfaceLight.clear(); heatShimmer.clear(); lightning.clear(); skySurfaces = null; skyHeat = 0; skyStorm = 0; flashSun = null;
+  clearTimeout(skyTimer); skyTimer = null; surfaceLight.clear(); heatShimmer.clear(); lightning.clear(); lightningBolts.clear(); skySurfaces = null; skyHeat = 0; skyStorm = 0; flashSun = null;
   try { canvas.app?.ticker?.remove(skyTick); } catch { /* gone */ }
   try { canopyRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
   try { skyRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
@@ -6871,7 +6904,7 @@ Hooks.once("init", () => {
   skyPair("fallingLeaves", "fallingLeavesLocal", "Falling leaves", "Now and then a leaf falls from the trees (the tree tiles) and drifts away on the wind: a few in summer, many and golden red in autumn, pale blossom in spring, none in winter. The season from Calendaria or Simple Calendar Reborn.");
   skyPair("morningMist", "morningMistLocal", "Morning mist", "Mist gathers before sunrise, thickest over water and low ground, and burns off as the sun climbs; in fog it lies all day.");
   skyPair("wetGround", "wetGroundLocal", "Wet ground after rain", "Rain darkens the open ground and leaves puddles that catch the sky; it dries over a few hours of game time, faster in sun and heat. Kept on each screen per scene.");
-  skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground, first in patches; it melts over a few hours of game time once it is above freezing. Kept on each screen per scene.");
+  skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground within minutes of game time, first in patches, and melts within minutes once it is above freezing. Kept per scene.");
   skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. FXMaster\u2019s effects for Calendaria\u2019s weather are hidden on your screen while this is on (its settings are never changed).");
   skyPair("weatherClouds", "weatherCloudsLocal", "Clouds over the map", "The clouds themselves, seen from above, drifting over the map with the weather, and an overcast sky's grey deck. Turn off for the weather without them; what falls, the fog and the rest stay (their shadows are Cloud shadows).");
   skyPair("weatherLight", "weatherLightLocal", "Weather light", "The weather lights the outdoors its own way: a grey sky's flat, cool light, rain's grey-blue, a thunderstorm's dark green-grey (deeper the fiercer), falling snow's pale cold, a sandstorm's dusty amber; over the roofs too, while a room you look into keeps its own light. Stands in for Calendaria's \u201cSync Scene Ambience with Weather\u201d, which colours the whole scene one hue (turned off while this is on).");
@@ -7036,6 +7069,8 @@ Hooks.once("init", () => {
     scope: "world", config: true, type: String, default: "always", choices: { ...BLOOD_DROPS },
   });
   registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
+  registerSetting("iceHoursLeast", { name: "Water freezes in at least (game hours)", hint: "How long water takes to freeze over, and to thaw, the whole way. Each scene takes its own time between this and the most below, by the game clock.", scope: "world", config: true, type: Number, default: 24, range: { min: 1, max: 240, step: 1 } });
+  registerSetting("iceHoursMost", { name: "Water freezes in at most (game hours)", hint: "See above. The same as the least: every scene takes just that long.", scope: "world", config: true, type: Number, default: 48, range: { min: 1, max: 240, step: 1 } });
   registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds; it fades over the last quarter of that. It darkens as it dries, in about two minutes.", scope: "world", config: true, type: Number, default: 180, range: { min: 20, max: 600, step: 10 } });
   registerSetting("floorBloodForever", { name: "Blood stays until cleared", hint: "Blood never fades, and comes back with the scene, saved in it now and then by the GM's screen. Rain and water can still take it until the scene reloads; after that it is old blood they leave alone. Clear blood wipes it all; Bake blood turns it into a tile.", scope: "world", config: true, type: Boolean, default: false });
   registerSetting("floorBloodAmount", { name: "Blood from hits", hint: "How much blood hits, kills and Splat blood leave on the floor, against the usual: lower for less, 0 for none, up to twice as much.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 2, step: 0.1 } });
@@ -8601,6 +8636,8 @@ Hooks.once("ready", () => {
       floorBlood: { hit: (opts = {}, color = 0x7a0d0d) => { floorBlood.add(hitMarks({ grid: canvas.grid.size, width: canvas.grid.size, seed: `dbg:${Date.now()}`, ...opts }), color); return floorBlood.count; }, step: (opts = {}, color = 0x7a0d0d) => { floorBlood.add(bleedStep({ grid: canvas.grid.size, width: canvas.grid.size, seed: "dbg", ...opts }), color); return floorBlood.count; }, count: () => floorBlood.count, clear: () => floorBlood.clear() },
       // A blast here (a preview on this screen only); how many are playing.
       blast: (kind = "fire", x = canvas.stage.pivot.x, y = canvas.stage.pivot.y, big = false) => { playBlast({ x, y, kind, radius: blastRadius(big, canvas.grid.size), seed: Math.floor(Math.random() * 1e6) }); return energyBlasts.playing; },
+      // A strike on this screen only: where it landed.
+      strike: (x, y) => strikeNow(1, Number.isFinite(x) ? { x, y, inside: true } : null),
       blasts: () => ({ playing: energyBlasts.playing, marks: energyBlasts.marks, types: BLAST_TYPES.map((t) => t.id) }),
       eyeSpots: () => underSpots.map((p) => ({ x: p.x, y: p.y })),
       rouseEyes: () => { underLife.rouse(); return true; },

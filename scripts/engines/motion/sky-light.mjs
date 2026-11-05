@@ -1,4 +1,5 @@
 import { weatherDrawn } from './sky-weather.mjs';
+import { CLOUD_DECK } from './cloud-deck.mjs';
 // The sky over the map: cloud shadows drifting with the wind, the sun glittering on water and rippling over its banks,
 // snow and ice sparkling, the air shimmering over hot ground at midday, and lightning flashing in a storm. What the
 // weather is and where each surface lies is pure; the light is drawn by one shader over the map (createSurfaceLight),
@@ -30,7 +31,7 @@ export function weatherOf({ calendaria = null, scene = '', fx = {}, fxFilters = 
   const temperature = Number.isFinite(Number(calendaria?.temperature)) && calendaria?.temperature !== null ? Number(calendaria.temperature) : null;
   const named = `${calendaria?.id ?? ''} ${calendaria?.label ?? ''} ${scene ?? ''}`;
   const fxLightning = Object.values(fxFilters ?? {}).find((f) => /lightning/i.test(String(f?.type ?? '')));
-  const storm = /thunder|lightning|storm/i.test(named) && !/sand|dust|snow|blizzard/i.test(calendaria?.id ?? '')
+  const storm = /thunder|lightning|storm/i.test(named.replace(/(sand|dust|snow|fire)[- ]?storm/gi, '')) && !/sand|dust|snow|blizzard/i.test(calendaria?.id ?? '')
     || Object.values(fx ?? {}).some((e) => /lightning/i.test(String(e?.type ?? ''))) || !!fxLightning;
   return { wind, windStated, windAngle, temperature, storm, severity: storm ? stormSeverity({ calendaria, wind, fxLightning }) : 0 };
 }
@@ -49,6 +50,27 @@ export function stormSeverity({ calendaria = null, wind = 0, fxLightning = null 
 
 // How cloudy (0 clear – 1 overcast) from the clock's sky (sun.mjs skyClear: 1 clear, 0 black).
 export const cloudCover = (sky) => (Number.isFinite(sky) ? Math.min(1, Math.max(0, 1 - sky)) : 0);
+// Whether a change to a scene means the sky's surfaces must be built again (pure). Its weather and the darkness only change how they are lit, which a look at the sky sees to at once; the ground's own record of rain and snow changes nothing here. `change` as updateScene gives it.
+export function skyNeedsBuilding(change = {}) {
+  for (const key of Object.keys(change ?? {})) {
+    if (key === '_id' || key === '_stats' || key === 'weather') continue;
+    if (key === 'environment') { if (Object.keys(change.environment ?? {}).some((k) => k !== 'darknessLevel')) return true; continue; }
+    if (key === 'flags') {
+      for (const [scope, own] of Object.entries(change.flags ?? {})) if (scope !== 'animater' || Object.keys(own ?? {}).some((k) => k !== 'ground')) return true;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+// How the cloud deck looks for a cover (pure), as [how much of the sky it takes, how heavy, how soft its gaps, how dim the whole scene]. It shows in what it does to the land: sunlit patches and firm shadows under a broken sky; dim and cool, with slow lighter patches, once it closes; darker again with rain falling from it.
+const DRY_DECK = [[0, [0.1, 0, 0, 1]], [0.3, [0.42, 0, 0, 1]], [0.65, [0.62, 0.2, 0.1, 0.96]], [0.9, [0.66, 0.75, 0.7, 0.97]], [1, [0.68, 0.8, 0.75, 0.96]]];
+const WET_DECK = [[0.5, [0.54, 0.1, 0.05, 0.98]], [0.8, [0.68, 0.55, 0.8, 0.98]], [0.9, [0.74, 0.7, 1, 0.97]], [1, [0.76, 0.75, 1, 0.95]]];
+export function cloudLook(clouds = 0, raining = false) {
+  const c = Math.min(1, Math.max(0, Number(clouds) || 0)), table = raining && c > 0.5 ? WET_DECK : DRY_DECK;
+  const after = table.findIndex(([at]) => at >= c), to = table[Math.max(0, after)], from = table[Math.max(0, after - 1)], k = to[0] > from[0] ? (c - from[0]) / (to[0] - from[0]) : 1;
+  return from[1].map((v, i) => v + (to[1][i] - v) * k);
+}
 
 /**
  * How strongly the air shimmers over hot ground (0 none – 1 a desert noon): a sun high and clear, and either the
@@ -153,6 +175,7 @@ uniform float uFxOn;
 uniform vec4 uFallA, uFallAColor, uFallB, uFallBColor, uFogW, uCloudSky, uGlow, uAurora, uSparks, uWisps, uOdd;
 uniform vec2 uCloudShift;
 uniform float uCover, uSwirlAmount;
+uniform vec4 uDeck; // the cloud deck's look (cloudLook): how much of the sky, how heavy, how soft its gaps, how dim
 // More of the weather (0–1 each): a closed cloud deck, mist lying low, sheets of rain, a hurricane's bands (uSky); freezing
 // rain's glaze, frost creeping, heat shimmering, smoke billowing (uSky2).
 uniform vec4 uSky, uSky2;
@@ -242,6 +265,7 @@ float birdShape(vec2 u, float beat){
 }
 // The clouds as seen from above (0–1, thicker higher): billows some five squares across, their edges torn into wisps by
 // a second, warping noise, drifting with the wind.
+${CLOUD_DECK}
 float cloudField(vec2 px, float t){
   vec2 q = px / (uGrid * 5.0) - uWindDir * t * (0.05 + 0.14 * uWind);
   vec2 warp = vec2(noise(q * 1.3 + vec2(1.7, 9.2) + t * 0.01), noise(q * 1.3 + vec2(8.3, 2.8) - t * 0.012)) - 0.5;
@@ -549,10 +573,9 @@ void main(){
     // (A dark wash in the light's colour, not a multiply: Foundry's canvas layer draws its children blended normally.)
     float over = (1.0 - inside) + inside * roof, s = uVeil.a * 0.5 * over;
     if (over < 0.01) { gl_FragColor = vec4(0.0); return; }
-    // The clouds' shadows, some five squares across, drifting the way the wind blows (and a little even on a still day:
-    // the wind aloft); more of them the cloudier: over the ground, the roofs and the trees alike. A sky closing over has
-    // no sun between its clouds: no shadows, only its flat light.
-    float cloud = 0.0;
+    // The clouds show in what they do to the land, over the ground, the roofs and the trees alike: firm shadows and warm
+    // sunlit patches sliding with the wind (a little even on a still day: the wind aloft); a closed sky is dim and cool, with slow lighter patches.
+    float cloud = 0.0, deckDark = 0.0; vec3 deckAdd = vec3(0.0);
     // (The sun between the clouds is the clear sky's: uStrength is already dimmed by the cover.)
     float sun = min(1.0, uStrength / max(0.1, 1.0 - uClouds));
     if (uFxOn > 0.5 && uStrength > 0.005) {
@@ -561,12 +584,17 @@ void main(){
       cloud = smoothstep(0.12, 0.3, texture2D(uFxClouds, vUv - uFxShift).a) * 0.5 * sun * over;
     } else if (uClouds > 0.05 && uStrength > 0.005) {
       // (A cloud's shadow lies uCloudShift away from it: the cloud drawn above it, where the sun throws it.)
-      float edge = 1.0 - uClouds;
-      cloud = smoothstep(edge - 0.06, edge + 0.1, cloudField(px - uCloudShift, t)) * 0.5 * sun * over * (1.0 - smoothstep(0.7, 0.95, uClouds));
+      float edge = mix(0.74, 0.3, uDeck.x), d = cloudDeck(px - uCloudShift, t, uWindDir, uWind, uGrid);
+      vec3 lit = vec3(1.1, 1.06, 0.97) * (1.0 - 0.38 * uDeck.y), under = mix(vec3(0.56, 0.6, 0.68), vec3(0.47, 0.5, 0.57), min(1.0, uDeck.y * 0.5 + smoothstep(edge, edge + 0.24, d) * (0.45 + 0.5 * uDeck.y)));
+      // What it does to the light, as a wash: normal blending only, so how much it darkens, and what light it adds back.
+      vec3 light = mix(vec3(1.0), mix(lit, under, deckShade(d, uDeck)) * uDeck.w, sun * over);
+      deckDark = 1.0 - min(1.0, min(light.r, min(light.g, light.b)));
+      deckAdd = max(light - (1.0 - deckDark), vec3(0.0)) * 0.38;
     }
     vec3 col = uVeil.rgb * 0.28 * s * (1.0 - cloud) + vec3(0.03, 0.04, 0.06) * cloud;
     vec4 pw = vec4(col, 1.0 - (1.0 - s) * (1.0 - cloud));
-    // The clouds themselves, seen from above: soft and white (sunlit, grey under a dark sky), drifting with the wind;
+    pw = vec4(deckAdd + pw.rgb * (1.0 - deckDark), deckDark + pw.a * (1.0 - deckDark));
+    // Clouds of their own colour seen from above, for the weathers that ask for them (ash, smoke); drifting with the wind,
     // thinner once the sky has closed over, so the map stays readable under it.
     if (uCloudSky.a > 0.005 && uCover > 0.05) {
       // Lit from the sun's side: brighter where the cloud thins toward the sun, grey-blue where it deepens away from it.
@@ -587,13 +615,6 @@ void main(){
       float hollow = 0.75 + 0.5 * texture2D(uLow, vUv).a;
       float n = 0.6 * smoothstep(0.25, 0.75, lowBank) + 0.4 * smoothstep(0.3, 0.7, highBank);
       pw = overP(pw, uFogW.rgb, uFogW.a * (0.3 + 0.7 * n) * hollow * 0.8 * over);
-    }
-    // Overcast: one low grey ceiling seen from above, unbroken, its underside rolling slowly; the ground dim beneath it.
-    if (uSky.x > 0.005) {
-      vec2 q = px / (uGrid * 9.0) - uWindDir * t * (0.02 + 0.06 * uWind);
-      float roll = fbm4(q + vec2(noise(q * 1.5 + t * 0.01), 0.0) * 0.8), fine = noise(q * 3.5 + 7.0);
-      vec3 tone = mix(vec3(0.5, 0.53, 0.58), vec3(0.78, 0.8, 0.84), roll * 0.8 + fine * 0.2);
-      pw = overP(pw, tone, (0.34 + 0.12 * roll) * uSky.x * over);
     }
     // Mist: thin white veils lying low over the ground, longer than they are wide, drifting slowly, gathering in the
     // hollows and over water; the ground shows through.
@@ -617,13 +638,18 @@ void main(){
       float pool = smoothstep(0.55, 0.75, fbm3(px / (uGrid * 2.5) + 3.3)) * outside * (1.0 - water);
       pw = overP(pw, vec3(0.36, 0.42, 0.5), pool * 0.18 * uSky.z * over);
     }
-    // A hurricane from above: great bands of cloud spiralling round its eye, far off the map's corner, turning slowly.
+    // A hurricane from above: its calm eye on the map, drifting with the wind, a thick wall of cloud round it and great arms spiralling out, turning.
     if (uSky.w > 0.005) {
-      vec2 eye = uSize * vec2(1.25, -0.35), d = px - eye;
-      float r = length(d) / max(uSize.x, uSize.y), ang = atan(d.y, d.x);
-      float arm = sin(ang * 2.0 - log(r + 0.05) * 7.0 + t * 0.12 + fbm3(vec2(ang * 2.0, r * 6.0)) * 2.5);
-      float band = smoothstep(0.0, 0.9, arm) * (0.6 + 0.4 * fbm3(px / (uGrid * 6.0) - uWindDir * t * 0.3));
-      pw = overP(pw, mix(vec3(0.42, 0.45, 0.5), vec3(0.75, 0.78, 0.82), band), band * 0.5 * uSky.w * over);
+      vec2 eye = uSize * 0.5 + vec2(sin(t * 0.017), cos(t * 0.013)) * uSize * 0.14 + uWindDir * sin(t * 0.009) * uGrid * 3.0, d = px - eye;
+      float size = min(uSize.x, uSize.y), r = length(d) / size, ang = atan(d.y, d.x);
+      // The cloud itself wound round the eye, tighter toward it: a turning pattern, soft and torn, with broad arms only leaning on it.
+      float turn = log(r + 0.06) * 2.8 + t * (0.16 + 0.3 * uWind), cs = cos(turn), sn = sin(turn);
+      vec2 q = mat2(cs, -sn, sn, cs) * d / size;
+      float cloud = fbm4(q * 3.4 + 7.0) * 0.68 + fbm3(q * 10.0 + 3.0) * 0.32, arm = 0.5 + 0.5 * sin(ang * 2.0 - log(r + 0.05) * 5.0 + t * (0.16 + 0.3 * uWind));
+      float calm = smoothstep(0.035, 0.085, r + (cloud - 0.5) * 0.04), wall = calm * (1.0 - smoothstep(0.08, 0.2, r));
+      float dense = max(smoothstep(0.42, 0.72, cloud * 0.78 + arm * 0.3), wall) * calm;
+      // Dark storm cloud, lighter only where it is thickest and the light catches it.
+      pw = overP(pw, mix(vec3(0.17, 0.19, 0.22), vec3(0.56, 0.59, 0.63), smoothstep(0.42, 0.72, cloud)), dense * (0.5 + 0.18 * wall) * uSky.w * over);
     }
     // Freezing rain's glaze: everything outdoors coated in clear ice, glossy and pale, catching hard points of light.
     if (uSky2.x > 0.005) {
@@ -642,12 +668,10 @@ void main(){
       pw = overP(pw, vec3(0.86, 0.94, 1.0), rime * 0.6 * uSky2.y * over);
       pw = overP(pw, vec3(1.0), twinkle(px, uGrid * 0.3, t, 1.5) * creep * 0.7 * uSky2.y * over);
     }
-    // Heat: a golden haze, and the air's ripples rising off the ground in fine, wavering bands.
+    // Heat: a pale, bleached haze in slow drifting banks. (What makes the air wobble is the shimmer on the map itself, createHeatShimmer.)
     if (uSky2.z > 0.005) {
-      pw = overP(pw, vec3(1.0, 0.86, 0.6), 0.08 * uSky2.z * over);
-      float rise = sin(px.y / (uGrid * 0.18) + t * 3.0 + noise(px / (uGrid * 0.8) + t * 0.5) * 6.0);
-      float ripple = smoothstep(0.75, 1.0, rise) * smoothstep(0.4, 0.8, noise(px / (uGrid * 3.0) - vec2(0.0, t * 0.3)));
-      pw = overP(pw, vec3(1.0, 0.93, 0.78), ripple * 0.1 * uSky2.z * outside * over);
+      float bank = fbm3(px / (uGrid * 11.0) - vec2(t * 0.012, t * 0.03));
+      pw = overP(pw, vec3(1.0, 0.92, 0.74), (0.16 + 0.2 * smoothstep(0.32, 0.72, bank)) * uSky2.z * over);
     }
     // Smoke: thick billows rolling with the wind, dark and brown, thinning to haze between them.
     if (uSky2.w > 0.005) {
@@ -678,13 +702,16 @@ void main(){
     }
     // A tornado (1) or a dust devil (2) wandering across the map: a spinning funnel of dust and debris.
     if (uSwirlAmount > 0.005) {
-      vec2 cen = uSize * vec2(0.5 + 0.22 * sin(t * 0.04), 0.5 + 0.18 * cos(t * 0.031));
+      // It goes the way the wind blows, weaving a little, and as it leaves past the far edge it comes in again at the near one.
+      float twisterWide = uOdd.w < 1.5 ? 6.0 : 2.5;
+      float span = abs(uWindDir.x) * uSize.x + abs(uWindDir.y) * uSize.y + uGrid * (twisterWide * 1.2), along = (fract(t * (0.01 + 0.035 * uWind) * uGrid * 8.0 / span + 0.31) - 0.5) * span;
+      vec2 cen = uSize * 0.5 + uWindDir * along + vec2(-uWindDir.y, uWindDir.x) * sin(t * 0.09) * uGrid * 3.5;
       vec2 d = px - cen;
       bool twister = uOdd.w < 1.5;
       float radius = uGrid * (twister ? 6.0 : 2.5), r = length(d) / radius;
       if (r < 1.6) {
       // The air turning: a cloud of dust whose pattern is wound once round the middle.
-      float turn = t * (twister ? 1.4 : 2.2) + 1.1 / (0.3 + r);
+      float turn = t * (twister ? 4.0 + 5.0 * uWind : 3.0 + 3.0 * uWind) + 1.1 / (0.3 + r);
       vec2 sp = mat2(cos(turn), -sin(turn), sin(turn), cos(turn)) * (d / radius);
       float dust = fbm4(sp * 2.8 + 11.0) * 0.6 + fbm3(sp * 6.5 - 3.0) * 0.4;
       float body = smoothstep(0.3, 0.8, dust) * (1.0 - smoothstep(0.4, 1.15, r));
@@ -700,7 +727,7 @@ void main(){
       pw = overP(pw, tone * (0.5 + 1.0 * mottled), clamp(body * (twister ? 0.75 : 0.5) + wall * (twister ? 0.8 : 0.45) * (0.35 + 0.65 * mottled) + skirt * 0.3, 0.0, 1.0) * uSwirlAmount * over);
       // Debris flung round it.
       float ang = atan(d.y, d.x);
-      vec2 pol = vec2(r * 7.0, (ang + t * 2.2 / (0.4 + r)) / 6.2832 * 18.0);
+      vec2 pol = vec2(r * 7.0, (ang + t * (5.0 + 4.0 * uWind) / (0.4 + r)) / 6.2832 * 18.0);
       vec2 oid = floor(pol), ofl = fract(pol) - 0.5;
       // Grit the same size however far out: the cells are wider there.
       float grit = length(vec2(ofl.x * radius / 7.0, ofl.y * 6.2832 * r * radius / 18.0)) / uGrid, bit = (twister ? 0.05 : 0.025) * (0.5 + hash(oid + 8.8));
@@ -988,7 +1015,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: bake(freezes, 1), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -1007,10 +1034,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       meshes = [shade, light, pale, flock, veil, glow, air];
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil || m === air ? above : root)().addChild(m); }
     },
-    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 } } = {}) {
+    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false } = {}) {
       if (!own.length) return;
       const sunny = light > 0.02;
-      set({ uStrength: sunny ? light : 0, uClouds: clouds, uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
+      set({ uStrength: sunny ? light : 0, uClouds: clouds, uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
         // The rainbow faces away from the sun: its centre off toward the sun, so the arc sweeps across the middle of the map.
         uBow: area ? [area.bounds.width / 2 + Math.cos(sunAngle) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(sunAngle) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45, bow] : [0, 0, 1, 0],
         uBowDir: [-Math.cos(sunAngle), -Math.sin(sunAngle)] });
@@ -1082,6 +1109,8 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     },
     clear: drop,
     get shown() { return meshes.some((m) => m.visible); },
+    // The clock its clouds run by, for anything that must agree on where they are.
+    get clock() { return own[0]?.uTime ?? 0; },
     // Whether a pass over the roofs shows (so the roofs it reads are kept up as they fade).
     get veiling() { return !!meshes[4]?.visible || !!meshes[6]?.visible; },
     // Whether its passes exist on this screen (not at low quality, or with everything of it turned off).
@@ -1141,7 +1170,7 @@ export function createHeatShimmer({ PIXI, attach, detach, render }) {
     },
     set({ heat = 0, view = null } = {}) {
       if (!filter || !mask || !(heat > 0.03) || !view) { off(); return; }
-      filter.uniforms.uAmp = 2.5 * heat;
+      filter.uniforms.uAmp = 5.5 * heat;
       filter.uniforms.uView = [view.x, view.y, view.scale];
       if (!attached) { try { attach(filter); attached = true; } catch { /* no canvas */ } }
     },
@@ -1290,10 +1319,19 @@ const TILE_SNOW_FRAG = `
 precision highp float;
 varying vec2 vUv, vWorld;
 uniform sampler2D uTile;
-uniform float uAmount, uShown, uTree, uGrid;
+uniform sampler2D uSnowTile;
+uniform float uAmount, uShown, uTree, uGrid, uHasSnowTile;
+uniform vec2 uTexel;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+// The blanket's surface: broad soft swells and smaller folds, and the roof's own ridges and valleys lifting and dipping it from under.
+float blanket(vec2 w, vec2 uv){
+  float swell = noise(w / (uGrid * 3.4)) * 0.6 + noise(w / (uGrid * 1.3) + 5.1) * 0.3 + noise(w / (uGrid * 0.5) + 2.3) * 0.1;
+  vec2 far = uTexel * 2.2;
+  vec3 under = (texture2D(uTile, uv + vec2(far.x, 0.0)).rgb + texture2D(uTile, uv - vec2(far.x, 0.0)).rgb + texture2D(uTile, uv + vec2(0.0, far.y)).rgb + texture2D(uTile, uv - vec2(0.0, far.y)).rgb) * 0.25;
+  return swell + dot(under, vec3(0.3, 0.59, 0.11)) * 0.32;
+}
 void main(){
   vec4 c = texture2D(uTile, vUv);
   if (c.a < 0.05 || uAmount < 0.01) { gl_FragColor = vec4(0.0); return; }
@@ -1311,15 +1349,22 @@ void main(){
     float tops = smoothstep(0.18, 0.5, luma + 0.2 * (drift - 0.5));
     cover = tops * smoothstep(0.05, 0.55, uAmount + 0.3 * (drift - 0.5) + 0.1 * (grain - 0.5));
   } else {
-    // A blanket that thins in places as it first falls; the roof's dark lines (ridges, the gaps between shingle rows)
-    // hold less, showing its shape, until a deep snow all but buries them (however dark the roof).
-    float deep = smoothstep(0.5, 1.0, uAmount);
-    cover = smoothstep(0.08, 0.55, uAmount + 0.35 * (drift - 0.5) + 0.08 * (grain - 0.5)) * mix(mix(0.45, 0.88, lit), mix(0.82, 0.96, lit), deep);
+    // It comes in patches as it first falls, joining into one thick blanket over the whole roof: rounded at the eaves, no roof left showing.
+    float patches = noise(vWorld / (uGrid * 1.7)) * 0.55 + noise(vWorld / (uGrid * 0.62) + 3.7) * 0.3 + noise(vWorld / (uGrid * 0.2) + 9.1) * 0.15;
+    float line = mix(0.9, 0.08, smoothstep(0.02, 0.6, uAmount));
+    cover = smoothstep(line - 0.05, line + 0.08, patches + 0.05 * (grain - 0.5));
   }
   float a = cover * c.a * uShown;
-  // Shaded by what it lies on: a little darker in the roof's grooves, less so as it deepens.
-  float depth = uTree > 0.5 ? 0.0 : smoothstep(0.5, 1.0, uAmount);
-  vec3 snow = vec3(0.9, 0.93, 0.98) * (0.86 + 0.1 * grain) * mix(mix(0.8, 1.0, lit), 0.97, depth);
+  vec3 snow;
+  if (uTree > 0.5) snow = vec3(0.9, 0.93, 0.98) * (0.86 + 0.1 * grain) * mix(0.8, 1.0, lit);
+  else {
+    // Its own painted snow, lit from one side off its swells: bright where they face the light, soft blue in their lee, and blue again as it rounds over the edge.
+    vec3 flake = uHasSnowTile > 0.5 ? mix(texture2D(uSnowTile, vWorld / (uGrid * 4.0)).rgb, texture2D(uSnowTile, vec2(vWorld.y, -vWorld.x) / (uGrid * 5.3) + 0.37).rgb, 0.5) : vec3(0.95, 0.96, 0.98) * (0.94 + 0.06 * grain);
+    vec2 toLight = vec2(-0.6, -0.8) * uGrid * 0.32;
+    float face = clamp(0.56 + (blanket(vWorld, vUv) - blanket(vWorld + toLight, vUv + toLight * uTexel / (uGrid * 0.14))) * 2.6, 0.0, 1.0);
+    float eaves = min(min(texture2D(uTile, vUv + vec2(uTexel.x, 0.0)).a, texture2D(uTile, vUv - vec2(uTexel.x, 0.0)).a), min(texture2D(uTile, vUv + vec2(0.0, uTexel.y)).a, texture2D(uTile, vUv - vec2(0.0, uTexel.y)).a));
+    snow = flake * mix(vec3(0.6, 0.67, 0.82), vec3(1.05, 1.04, 1.02), smoothstep(0.1, 0.85, face)) * mix(vec3(0.72, 0.78, 0.9), vec3(1.0), smoothstep(0.2, 0.95, eaves));
+  }
   gl_FragColor = vec4(snow * a, a);
 }`;
 
@@ -1328,7 +1373,7 @@ void main(){
 // anchorY, shown }], grid }) makes them; look({ snow, wind }) how much lies (the ground's snow, 0–1, and the wind 0–1);
 // shown(values) each tile as drawn now (a roof faded for a creature inside takes its snow with it); clear() drops them.
 // Hidden while no snow lies: nothing drawn.
-export function createTileSnow({ PIXI, root }) {
+export function createTileSnow({ PIXI, root, snowTile = () => null }) {
   let meshes = [];
   const drop = () => {
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
@@ -1349,7 +1394,7 @@ export function createTileSnow({ PIXI, root }) {
         const geometry = new PIXI.Geometry()
           .addAttribute('aVertexPosition', [...corner(0, 0), ...corner(1, 0), ...corner(1, 1), ...corner(0, 1)], 2)
           .addAttribute('aUvs', [uv.x0, uv.y0, uv.x1, uv.y1, uv.x2, uv.y2, uv.x3, uv.y3], 2).addIndex([0, 1, 2, 0, 2, 3]);
-        const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(TILE_SNOW_VERT, TILE_SNOW_FRAG, { uTile: t.texture, uAmount: 0, uShown: Number.isFinite(t.shown) ? t.shown : 1, uTree: t.kind === 'tree' ? 1 : 0, uGrid: grid }));
+        const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(TILE_SNOW_VERT, TILE_SNOW_FRAG, { uTile: t.texture, uAmount: 0, uShown: Number.isFinite(t.shown) ? t.shown : 1, uTree: t.kind === 'tree' ? 1 : 0, uGrid: grid, uSnowTile: PIXI.Texture?.WHITE, uHasSnowTile: 0, uTexel: [(Math.abs(uv.x1 - uv.x0) * grid * 0.14) / w, (Math.abs(uv.y2 - uv.y1) * grid * 0.14) / h] }));
         mesh.eventMode = 'none';
         mesh.visible = false;
         mesh.kind = t.kind;
@@ -1358,6 +1403,8 @@ export function createTileSnow({ PIXI, root }) {
       }
     },
     look({ snow = 0, wind = 0 } = {}) {
+      // (Its painted snow only once there is any: it takes a moment to make the first time.)
+      if (snow > 0.01 && meshes.length) { let tile = null; try { tile = snowTile(); } catch { /* none yet */ } if (tile) for (const m of meshes) { m.shader.uniforms.uSnowTile = tile; m.shader.uniforms.uHasSnowTile = 1; } }
       for (const m of meshes) {
         const amount = tileSnowOf(snow, { kind: m.kind, wind });
         m.shader.uniforms.uAmount = amount;

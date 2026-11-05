@@ -228,3 +228,25 @@ test('a rabbit on ground gone bad bolts for the nearest good ground, and keeps g
   assert.ok(ok(r.x, r.y), `got off: ${Math.round(r.y)}`);
   assert.equal(r.mode, 'sit', 'and settles there');
 });
+
+test('bad weather coming on: they bolt once, stay in sight while they run, then go in', async () => {
+  const { takeCover } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  let cover = takeCover(null, 1, 0.1);
+  assert.deepEqual([cover.out, cover.flush], [1, false]);
+  cover = takeCover(cover, 0.5, 0.1);
+  assert.deepEqual([cover.out, cover.flush], [1, true]);
+  cover = takeCover(cover, 0.2, 2);
+  assert.deepEqual([cover.out, cover.flush], [1, false]);
+  cover = takeCover(cover, 0.2, 2);
+  assert.deepEqual([cover.out, cover.flush], [0.2, false]);
+  cover = takeCover(cover, 1, 0.1);
+  assert.deepEqual([cover.out, cover.left], [1, false]);
+  assert.equal(takeCover(cover, 0.4, 0.1).flush, true, 'and again next time');
+});
+
+test('weather already there as a scene starts sends no one running', async () => {
+  const { takeCover } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const cover = takeCover(null, 0, 0.1);
+  assert.deepEqual([cover.out, cover.flush], [0, false]);
+  assert.equal(takeCover(cover, 0, 0.1).flush, false);
+});

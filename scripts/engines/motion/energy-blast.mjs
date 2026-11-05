@@ -160,8 +160,8 @@ void main(){
   if (uType != 4 && uType != 7) glow += uA * band * 0.07;
   float dusty = fbm(q * 5.0 + dir * t * 1.6) * exp(-pow((r - s * 0.86) / 0.17, 2.0)) * (1.0 - ss(0.35, 1.4, t)); col = mix(col, vec3(0.44, 0.4, 0.36), dusty * 0.5 * (uType == 4 ? 0.65 : 1.0));
   float edge = ss(1.62, 1.3, r);
-  // Only what it changed, faded by how much: the map itself stays the real map, crisp, wherever nothing happened to it.
-  if (uPass == 0) { vec3 was = texture2D(uFloor, (uCenter + q * uR - uRect.xy) / uRect.zw).rgb; gl_FragColor = vec4(col, 1.0) * edge * clamp(length(col - was) * 9.0, 0.0, 1.0); return; }
+  // Only what it changed, never the map's own picture: how much it darkens what is under it, and what light it adds. Over the map that comes to exactly what it worked out; over a floor texture it scorches the texture.
+  if (uPass == 0) { vec3 was = texture2D(uFloor, (uCenter + q * uR - uRect.xy) / uRect.zw).rgb, kept = col / max(was, vec3(0.02)); float dark = 1.0 - clamp(min(kept.r, min(kept.g, kept.b)), 0.0, 1.0); gl_FragColor = vec4(max(col - was * (1.0 - dark), vec3(0.0)), dark) * edge; return; }
   if (uPass == 1) { float c = clamp(cover, 0.0, 1.0) * edge; gl_FragColor = vec4(coverCol * c, c); return; }
   vec3 lit = glow * edge; lit = lit / (1.0 + max(0.0, max(lit.r, max(lit.g, lit.b)) - 1.0) * 0.55);
   gl_FragColor = vec4(lit, 0.0);

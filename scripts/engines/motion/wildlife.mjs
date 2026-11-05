@@ -296,6 +296,14 @@ function rabbitPicture(pose, base, dark, light) {
 
 // How much of the open-air life stays out in this weather (pure): all of it in a light shower, none in a downpour or a heavy snowfall. `rain`, `snow` 0-1.
 export const weatherShelter = ({ rain = 0, snow = 0 } = {}) => { const k = Math.max(0, Math.min(1, (Math.max(rain, snow) - 0.35) / 0.35)); return 1 - k * k * (3 - 2 * k); };
+// Bad weather coming on (pure): they bolt first (`flush`, once), staying in sight (`out` 1) for `runFor` seconds, and only then go in as the weather says, already on the run. `cover` what this gave last, none as a scene starts: weather already there has no one out in it to run.
+export function takeCover(cover, shelter = 1, dt = 0, runFor = 3) {
+  if (shelter >= 1) return { out: 1, run: 0, left: false, flush: false };
+  if (!cover) return { out: shelter, run: 0, left: true, flush: false };
+  if (!cover.left) return { out: 1, run: runFor, left: true, flush: true };
+  const run = Math.max(0, cover.run - dt);
+  return { out: run > 0 ? 1 : shelter, run, left: true, flush: false };
+}
 
 /**
  * The layer: populate({ spots, rabbits, songbirds, hawk, crows, grid, area, rabbitSize, birdSize }) places them (`spots` open

@@ -16,7 +16,7 @@ test('light rain gives way to heavy as it comes down harder, and a storm rains h
   assert.ok(light.rainLight > 0); assert.equal(light.rainHeavy, 0);
   assert.equal(heavy.rainLight, 0); assert.ok(heavy.rainHeavy > 0);
   const storm = weatherLevels({ rain: 0.4, storm: 0.6 }); assert.ok(storm.rainHeavy > storm.rainLight);
-  assert.deepEqual(Object.values(weatherLevels()), [0, 0, 0, 0, 0], 'a still dry day is silent');
+  assert.deepEqual(Object.values(weatherLevels()), [0, 0, 0, 0, 0, 0], 'a still dry day is silent');
 });
 
 test('a breeze gives way to a gale, and calm is silent', () => {
@@ -55,4 +55,27 @@ test('not every flash is heard, more of them in the thick of a storm', () => {
   assert.equal(thunderHeard({ storm: 0, random: () => 0.6 }), false, 'far off, silent');
   assert.equal(thunderHeard({ storm: 1, random: () => 0.6 }), true);
   assert.equal(thunderHeard({ storm: 1, random: () => 0.9 }), false, 'even then, not every one');
+});
+
+test('thunder goes by how near it struck: close is at once, as loud as it goes, with a boom under it', async () => {
+  const { strikeNearness, thunderClose } = await import('../../../scripts/engines/motion/weather-sound.mjs');
+  assert.equal(strikeNearness({ x: 0, y: 0 }, { x: 0, y: 0 }, 100), 1);
+  assert.equal(strikeNearness({ x: 0, y: 0 }, { x: 1400, y: 0 }, 100), 0);
+  assert.ok(Math.abs(strikeNearness({ x: 0, y: 0 }, { x: 700, y: 0 }, 100) - 0.5) < 1e-9);
+  const on = thunderClose({ near: 1 }), off = thunderClose({ near: 0.3 });
+  assert.equal(on.volume, 1);
+  assert.ok(on.wait < 30 && off.wait > on.wait);
+  assert.ok(on.file && on.under.volume === 1 && on.under.rate < 0.7);
+});
+
+test('a blizzard has its own howl in place of the wind, muffled under a roof; plain snow does not', () => {
+  const storm = weatherLevels({ wind: 1, words: 'animater.blizzard' }), inside = weatherLevels({ wind: 1, words: 'blizzard', inside: true }), snow = weatherLevels({ wind: 1, words: 'animater.snow' });
+  assert.ok(storm.blizzard > 0);
+  assert.equal(storm.windStrong, 0);
+  assert.equal(storm.windLight, 0);
+  assert.ok(inside.blizzard < storm.blizzard);
+  assert.ok(weatherLevels({ wind: 0, words: 'snowStorm' }).blizzard > 0, 'whatever the wind says');
+  assert.equal(snow.blizzard, 0);
+  assert.ok(snow.windStrong > 0);
+  assert.equal(WEATHER_LOOPS.blizzard.length, 3);
 });
