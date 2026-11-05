@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.0.2 (unreleased)
+## 3.0.2 (2026-11-05)
 
 ### Fixes
 
