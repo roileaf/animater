@@ -4,7 +4,7 @@
 
 // What can fall or blow across the map, and how each looks by default (its colour, rgb 0–1).
 export const FALL_KINDS = Object.freeze({ rain: 1, snow: 2, hail: 3, ash: 4, petal: 5, leaf: 6, spore: 7, sand: 8, ember: 9, gust: 10, debris: 11 });
-const FALL_COLORS = Object.freeze({
+export const FALL_COLORS = Object.freeze({
   rain: [0.74, 0.82, 0.92], snow: [1, 1, 1], hail: [0.9, 0.95, 1], ash: [0.46, 0.44, 0.42], petal: [1, 0.74, 0.82],
   leaf: [0.82, 0.46, 0.17], spore: [0.66, 0.86, 0.36], sand: [0.84, 0.68, 0.42], ember: [1, 0.56, 0.2], gust: [1, 1, 1], debris: [0.36, 0.31, 0.25],
 });

@@ -403,9 +403,9 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
           const c = fall(q, q.x, q.y, { width: grid * 0.3, body: 0.22, grounded: true }); shadowOf(q, tex, q.x + c.dx, q.y + c.dy, q.a, size, Math.min(0.32, c.alpha * 0.36) * alpha); put(q.body, tex, q.x, q.y, q.a, size, alpha);
         } else {
           const c = fall(q, q.x, q.y, { width: grid * 0.3, lift: 0.8 }), tex = t.duckFly[Math.floor(time * 22 + q.phase) % SPANS.length], size = 0.6 * k * birdSize * (1 + q.h * 0.15);
-          // Pattering off the water, a splash at each beat.
-          if (ripple) { q.ripple.visible = false; if (q.h < 0.45 && rippleDue(q.ringAt, q, grid * 0.5)) { q.ringAt = { x: q.x, y: q.y }; ripple(q.x, q.y, 0.34 * birdSize, false); } }
-          else if (q.h < 0.3) put(q.ripple, t.ring[Math.min(t.ring.length - 1, Math.floor((q.t ?? 0) * 7))], q.x, q.y, 0, 0.55 * k * birdSize, alpha); else q.ripple.visible = false;
+          // Pattering off the water, a splash at each beat, only until it is clear of it.
+          if (ripple) { q.ripple.visible = false; if (q.h < 0.15 && rippleDue(q.ringAt, q, grid * 0.5)) { q.ringAt = { x: q.x, y: q.y }; ripple(q.x, q.y, 0.34 * birdSize, false); } }
+          else if (q.h < 0.15) put(q.ripple, t.ring[Math.min(t.ring.length - 1, Math.floor((q.t ?? 0) * 7))], q.x, q.y, 0, 0.55 * k * birdSize, alpha); else q.ripple.visible = false;
           const fade = q.leaving ? Math.max(0, Math.min(1, (3.6 - q.t) / 1.2)) : 1; shadowOf(q, tex, q.x + c.dx * q.h, q.y + c.dy * q.h, q.a, size * 0.95, Math.min(0.32, c.alpha * 0.38) * alpha * fade); put(q.body, tex, q.x, q.y, q.a, size, alpha * fade);
         }
         return q;

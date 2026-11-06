@@ -3676,3 +3676,75 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-step-slider select { flex: 1; min-width: 0; margin: 0; }
 .an-step-list { max-height: 300px; overflow-y: auto; padding-right: 2px; }
 .an-step-rows { max-height: 55vh; overflow-y: auto; padding-right: 3px; }
+
+/* The Weather panel */
+.animater-weather-panel .window-content { max-height: calc(100vh - 70px); padding: 0; overflow-y: auto; }
+.animater-wx select option, .animater-wx select optgroup { background: #1d1b20; color: #ece8e1; }
+.animater-wx { --wx-accent: #d9a04a; --wx-line: color-mix(in srgb, currentColor 13%, transparent); --wx-track: color-mix(in srgb, currentColor 20%, transparent); --wx-soft: color-mix(in srgb, currentColor 62%, transparent); --wx-hover: color-mix(in srgb, currentColor 9%, transparent); font-size: 13px; line-height: 1.3; }
+.animater-wx button { width: auto; height: auto; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 5px; background: none; box-shadow: none; color: inherit; font: inherit; line-height: 1; cursor: pointer; }
+.animater-wx button:focus-visible, .animater-wx input:focus-visible, .animater-wx select:focus-visible { outline: 2px solid var(--wx-accent); outline-offset: 1px; box-shadow: none; }
+.animater-wx select, .animater-wx input[type="text"] { height: 30px; border: 1px solid var(--wx-line); border-radius: 5px; background: var(--wx-hover); color: inherit; font-size: 13px; }
+
+.animater-wx-note { display: flex; gap: 8px; align-items: baseline; margin: 0; padding: 8px 14px; background: color-mix(in srgb, var(--wx-accent) 18%, transparent); font-size: 12px; }
+.animater-wx-head { display: flex; flex-direction: column; gap: 5px; padding: 12px 14px; }
+.animater-wx-head label { color: var(--wx-soft); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.animater-wx-head select { width: 100%; height: 34px; font-size: 14px; font-weight: 600; }
+
+.animater-wx-section { padding: 10px 14px 12px; border-top: 1px solid var(--wx-line); }
+.animater-wx-section h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; padding: 0; border: 0; color: var(--wx-soft); font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.animater-wx-section h3 small { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+
+.animater-wx-row { display: grid; grid-template-columns: 78px 1fr 46px 20px; align-items: center; gap: 8px; min-height: 28px; }
+.animater-wx-row label { line-height: 1.2; }
+.animater-wx-row output { color: var(--wx-soft); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.animater-wx-row.is-set output { color: inherit; font-weight: 600; }
+.animater-wx-row.is-off { opacity: 0.4; }
+.animater-wx-reset { display: grid; width: 20px !important; height: 20px !important; place-items: center; color: var(--wx-soft) !important; font-size: 10px !important; visibility: hidden; }
+.animater-wx-row.is-set .animater-wx-reset { visibility: visible; }
+.animater-wx-reset:hover { background: var(--wx-hover) !important; color: inherit !important; }
+
+.animater-wx input[type="range"] { width: 100%; height: 18px; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.animater-wx input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--wx-soft) var(--fill, 0%), var(--wx-track) var(--fill, 0%)); }
+.animater-wx input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--wx-soft) var(--fill, 0%), var(--wx-track) var(--fill, 0%)); }
+.animater-wx input[type="range"]::-webkit-slider-thumb { width: 14px; height: 14px; margin-top: -5px; border: 0; border-radius: 50%; background: #e9e6e1; box-shadow: 0 1px 3px rgb(0 0 0 / 55%); appearance: none; -webkit-appearance: none; }
+.animater-wx input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: #e9e6e1; box-shadow: 0 1px 3px rgb(0 0 0 / 55%); }
+.animater-wx-row.is-set input[type="range"]::-webkit-slider-runnable-track { background: linear-gradient(to right, var(--wx-accent) var(--fill, 0%), var(--wx-track) var(--fill, 0%)); }
+.animater-wx-row.is-set input[type="range"]::-moz-range-track { background: linear-gradient(to right, var(--wx-accent) var(--fill, 0%), var(--wx-track) var(--fill, 0%)); }
+.animater-wx-row.is-set input[type="range"]::-webkit-slider-thumb { background: var(--wx-accent); }
+.animater-wx-row.is-set input[type="range"]::-moz-range-thumb { background: var(--wx-accent); }
+.animater-wx input[type="range"]:disabled { cursor: default; }
+
+.animater-wx-color { position: relative; display: block; width: 22px; height: 22px; }
+.animater-wx-color input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; opacity: 0; cursor: pointer; }
+.animater-wx-swatch { display: block; width: 100%; height: 100%; border: 1px solid var(--wx-track); border-radius: 50%; background: conic-gradient(from 45deg, var(--wx-track) 25%, transparent 0 50%, var(--wx-track) 0 75%, transparent 0) 0 0 / 8px 8px; pointer-events: none; }
+
+.animater-wx-pick { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 8px; margin: 2px 0 4px; }
+.animater-wx-pick select { width: 100%; }
+.animater-wx-row.is-sub label { padding-left: 10px; color: var(--wx-soft); }
+.animater-wx-from { margin-top: 6px; }
+.animater-wx-from { display: grid; grid-template-columns: 78px auto; gap: 8px; align-items: center; }
+.animater-wx-compass { display: grid; grid-template-columns: repeat(3, 34px); grid-auto-rows: 24px; gap: 2px; }
+.animater-wx-compass button { display: grid; place-items: center; background: var(--wx-hover); color: var(--wx-soft); font-size: 10px; font-weight: 600; }
+.animater-wx-compass button:hover { color: inherit; background: var(--wx-track); }
+.animater-wx-compass button.is-active { background: var(--wx-accent); color: #1b1712; }
+
+.animater-wx-ways { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 8px; padding: 2px; border-radius: 7px; background: var(--wx-hover); }
+.animater-wx-ways button { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 2px 6px; color: var(--wx-soft); font-size: 11px; white-space: nowrap; }
+.animater-wx-ways button i { font-size: 14px; }
+.animater-wx-ways button:hover { color: inherit; }
+.animater-wx-ways button.is-active { background: var(--wx-accent); color: #1b1712; font-weight: 600; }
+
+.animater-wx-line { display: flex; gap: 6px; margin-top: 6px; }
+.animater-wx-line:first-of-type { margin-top: 0; }
+.animater-wx-line + .animater-wx-line { margin-top: 6px; }
+.animater-wx-line select, .animater-wx-line input[type="text"] { flex: 1; min-width: 0; }
+.animater-wx-button { padding: 0 12px !important; height: 30px !important; background: var(--wx-track) !important; font-weight: 600 !important; }
+.animater-wx-button:hover { background: var(--wx-accent) !important; color: #1b1712 !important; }
+.animater-wx-icon { display: grid; width: 30px !important; height: 30px !important; place-items: center; color: var(--wx-soft) !important; }
+.animater-wx-icon:hover { background: var(--wx-hover) !important; color: inherit !important; }
+.animater-wx-empty { margin: 0 0 6px; color: var(--wx-soft); font-size: 12px; }
+
+.animater-wx-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 14px; border-top: 1px solid var(--wx-line); color: var(--wx-soft); font-size: 11px; }
+.animater-wx-link { flex: none; padding: 4px 6px !important; color: var(--wx-accent) !important; font-size: 12px !important; font-weight: 600 !important; }
+.animater-wx-link:hover:not(:disabled) { text-decoration: underline; }
+.animater-wx-link:disabled { color: var(--wx-soft) !important; opacity: 0.6; cursor: default; }

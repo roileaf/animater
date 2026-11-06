@@ -4,11 +4,16 @@
 
 ### Fixes
 
+- Ducks and other pond creatures only ripple open water, and a duck's splashes stop as soon as it leaves the water, instead of following it into the air and over ice.
 - Baked blood stays sharp: its tile covers only where the blood is, at the map's own resolution, instead of the whole scene shrunk to fit one picture.
 
 ### New
 
-- **Rain and snow fall down the map.** A new setting keeps them coming down the map, with the wind only leaning them, so they never go sideways or upward. Each scene can follow it or say yes or no for itself in Scene configuration. Off by default: the wind takes them as before.
+- **Weather panel.** A new Weather button in the Animater controls builds a scene's weather. Start from any weather or the calendar, choose what falls (rain, snow, hail, ash, petals, leaves, spores, sand, embers, gusts, debris, up to two at once) with its amount, size, speed and colour, and add any effect: temperature (a cold, sunny day: snow lies and water freezes under a clear sky), fog, mist, rain sheets, spiral clouds, tornado, dust devil, smoke, heat haze, frost, ice glaze, sun rays, glow, aurora, sparks, wisps, meteors, static, plus lightning, wind and cloud cover. Sliders show on the GM's screen as they move and reach everyone on letting go. What falls also drives the wet ground, lying snow, rain sound and blood wash. Save it as your own preset and pick it on any scene.
+- **Rain and snow from straight above.** For top-down maps: drops and flakes fall away from the eye and rain lands in rings, instead of streaks crossing the map. Chosen per scene in the panel or Scene configuration.
+- **Lying snow looks like snow.** It uses the snow floor's texture, with torn edges, drifts and small mounds gathered at random, instead of a pale wash. The sun and moon light its slopes from where they are now, its rises throw shadows, it sparkles on the slopes facing them, the trees' shade lies on it, and nearby lamps and fires catch the side of each rise that faces them. Snow on roofs and trees and frozen water follow the sun, moon and nearby lights the same way. An ice floor, such as a river's Frozen over look, only takes a dusting, so its look still shows. Wet ground darkens more where water stands.
+- **Weather through regions open to the sky.** A region marked Open to the sky now lets the weather in, on an underground scene or inside a region that suppresses weather. Rain and snow show over roofs and trees; wet ground, puddles and lying snow stay on the ground beneath them.
+- **Rain and snow fall down the map.** A new setting keeps them coming down the map, with the wind only leaning them, so they never go sideways or upward. Each scene can follow it or choose for itself. Off by default: the wind takes them as before.
 
 ## 3.0.4 (2026-11-05)
 

@@ -11,7 +11,8 @@ export function strikePlace(random, rect, grid = 100, onScene = 0.7) {
   return { x: r.x - out, y: r.y + along * r.height, inside: false };
 }
 // Whether this flash is the rare one that lands on the scene (pure): most lightning is off in the storm, a flash from afar. Never sooner than a while after the last, then one flash in a few. `sinceMs` since the last bolt; `storm` how fierce, 0-1.
-export const boltDue = (sinceMs, storm = 0.55, random = Math.random) => sinceMs >= 60000 - 40000 * Math.min(1, Math.max(0, Number(storm) || 0)) && random() < 0.4;
+// (`built`: a GM's own Lightning slider, whose top end means a bolt every few seconds and nearly every flash landing.)
+export const boltDue = (sinceMs, storm = 0.55, random = Math.random, built = false) => { const s = Math.min(1, Math.max(0, Number(storm) || 0)); return built ? sinceMs >= 60000 - 54000 * s && random() < 0.4 + 0.5 * s : sinceMs >= 60000 - 40000 * s && random() < 0.4; };
 // The way the light of a strike comes from (pure): degrees, from the scene's middle toward it, as a sun's angle.
 export const strikeAngle = (place, rect) => (Math.atan2(place.y - (rect.y + rect.height / 2), place.x - (rect.x + rect.width / 2)) * 180) / Math.PI;
 // A jagged line from one point to another (pure): each stretch split at its middle, pushed aside by less each time.

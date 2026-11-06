@@ -252,12 +252,32 @@ test('a scene can keep what falls coming down the map', () => {
   assert.equal(source.split('fallWay(vec2(').length - 1, 4, 'rain, snow, ash and the small falls all ask it');
 });
 
-test('a scene says whether what falls comes down the map, else the setting does', async () => {
-  const { fallsDownHere } = await import('../../../scripts/engines/motion/sky-light.mjs');
-  assert.equal(fallsDownHere('', true), true);
-  assert.equal(fallsDownHere(undefined, true), true);
-  assert.equal(fallsDownHere('', false), false);
-  assert.equal(fallsDownHere('off', true), false);
-  assert.equal(fallsDownHere('on', false), true);
-  assert.equal(fallsDownHere(true, false), true, 'the earlier tick still counts');
+test('a scene says which way what falls goes, else the setting does', async () => {
+  const { fallWayHere, skyNeedsBuilding } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(fallWayHere('', true), 1);
+  assert.equal(fallWayHere(undefined, true), 1);
+  assert.equal(fallWayHere('', false), 0);
+  assert.equal(fallWayHere('off', true), 0);
+  assert.equal(fallWayHere('on', false), 1);
+  assert.equal(fallWayHere('top', false), 2);
+  assert.equal(fallWayHere(true, false), 1, 'the earlier tick still counts');
+  assert.equal(skyNeedsBuilding({ flags: { animater: { weatherTune: {}, fallsDown: 'top' } } }), false, 'tuning the weather builds nothing again');
+  assert.equal(skyNeedsBuilding({ flags: { animater: { floor: 'x' } } }), true);
+});
+
+test('lying snow catches the nearest lights that give any', async () => {
+  const { nearestLights } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const lamps = [{ x: 900, y: 0, radius: 100 }, { x: 100, y: 0, radius: 50 }, { x: 0, y: 10, radius: 0 }, { x: 500, y: 0, radius: 600 }, { x: 300, y: 0, radius: 50 }, { x: 700, y: 0, radius: 50 }];
+  assert.deepEqual(nearestLights(lamps, { x: 0, y: 0 }, 2).map((l) => l.x), [500, 100], 'by how near its light reaches');
+  assert.equal(nearestLights(lamps, { x: 0, y: 0 }, 9).some((l) => l.radius === 0), false);
+  assert.equal(nearestLights([], { x: 0, y: 0 }).length, 0);
+});
+
+test('ice as a region\'s own floor is known apart, so snow only dusts it', async () => {
+  const { surfacesOf } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const square = [0, 0, 10, 0, 10, 10];
+  const out = surfacesOf({ regions: [{ floor: 'ice', polygons: [square] }, { floor: 'snow', polygons: [square] }, { floor: 'water', polygons: [square] }] });
+  assert.equal(out.icy.length, 1);
+  assert.equal(out.water.length, 1);
+  assert.equal(surfacesOf({ regions: [{ floor: 'ice', painted: true, polygons: [square] }] }).icy.length, 1, 'painted or not');
 });
