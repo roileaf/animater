@@ -89,7 +89,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "seasonGround", local: "seasonGroundLocal" },
     { world: "rainbows", local: "rainbowsLocal" },
     { world: "weatherLight", local: "weatherLightLocal" },
-    { world: "weatherOnMap", local: "weatherOnMapLocal" },
+    { world: "weatherOnMap", local: "weatherOnMapLocal", extras: ["weatherFallsDown"] },
     { world: "weatherClouds", local: "weatherCloudsLocal" },
     { world: "lampEmbers", local: "lampEmbersLocal" },
     { world: "lampMotes", local: "lampMotesLocal" },

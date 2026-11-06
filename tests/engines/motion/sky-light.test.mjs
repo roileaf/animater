@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { weatherOf, cloudCover, heatOf, surfacesOf, flashLevel, nextStrikeMs } from '../../../scripts/engines/motion/sky-light.mjs';
 
 test('weatherOf reads Calendaria’s wind, heat and storm, else the scene’s weather', () => {
@@ -243,4 +244,20 @@ test('only a real change to the scene builds the sky again; weather and darkness
 test('a sandstorm on the scene is no thunderstorm', () => {
   assert.equal(weatherOf({ scene: 'animater.sandstorm' }).storm, false);
   assert.equal(weatherOf({ scene: 'animater.thunderstorm' }).storm, true);
+});
+
+test('a scene can keep what falls coming down the map', () => {
+  const source = readFileSync(new URL('../../../scripts/engines/motion/sky-light.mjs', import.meta.url), 'utf8');
+  assert.ok(source.includes('vec2 fallWay(vec2 way)'));
+  assert.equal(source.split('fallWay(vec2(').length - 1, 4, 'rain, snow, ash and the small falls all ask it');
+});
+
+test('a scene says whether what falls comes down the map, else the setting does', async () => {
+  const { fallsDownHere } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(fallsDownHere('', true), true);
+  assert.equal(fallsDownHere(undefined, true), true);
+  assert.equal(fallsDownHere('', false), false);
+  assert.equal(fallsDownHere('off', true), false);
+  assert.equal(fallsDownHere('on', false), true);
+  assert.equal(fallsDownHere(true, false), true, 'the earlier tick still counts');
 });

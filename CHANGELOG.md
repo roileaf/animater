@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.5 (unreleased)
+
+### Fixes
+
+- Baked blood stays sharp: its tile covers only where the blood is, at the map's own resolution, instead of the whole scene shrunk to fit one picture.
+
+### New
+
+- **Rain and snow fall down the map.** A new setting keeps them coming down the map, with the wind only leaning them, so they never go sideways or upward. Each scene can follow it or say yes or no for itself in Scene configuration. Off by default: the wind takes them as before.
+
 ## 3.0.4 (2026-11-05)
 
 ### New

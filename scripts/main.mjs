@@ -185,7 +185,7 @@ import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/s
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
-import { weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
+import { fallsDownHere, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
 import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
@@ -2692,18 +2692,18 @@ const bakeBloodHere = async () => {
   const scene = canvas.scene, rect = canvas.dimensions.sceneRect, level = canvas.level?.id ?? null, renderer = canvas.app.renderer;
   try {
     const src = await bakeBlood({
-      root: floorBloodRoot(), rect, sceneId: scene.id, elevation: canvas.level?.elevation?.base ?? 0, levels: level ? [level] : null,
+      root: floorBloodRoot(), rect, marks: floorBloodRoot().children.flatMap((c) => (c.texture ? [c] : c.children)).filter((c) => c.texture && c.visible && c.alpha > 0).map((c) => ({ x: c.x, y: c.y, width: c.width, height: c.height })), sceneId: scene.id, elevation: canvas.level?.elevation?.base ?? 0, levels: level ? [level] : null,
       lowestSort: Math.min(0, ...(canvas.tiles?.placeables ?? []).map((t) => Number(t.document?.sort) || 0)),
-      draw: (root, size) => {
+      draw: (root, size, area) => {
         const texture = PIXI.RenderTexture.create({ width: size.width, height: size.height });
         try {
-          renderer.render(root, { renderTexture: texture, clear: true, transform: new PIXI.Matrix(size.scale, 0, 0, size.scale, -rect.x * size.scale, -rect.y * size.scale) });
+          renderer.render(root, { renderTexture: texture, clear: true, transform: new PIXI.Matrix(size.scale, 0, 0, size.scale, -area.x * size.scale, -area.y * size.scale) });
           return renderer.extract.canvas(texture);
         } finally { texture.destroy(true); }
       },
       store: async (picture, name) => {
         const FilePicker = foundry.applications.apps.FilePicker.implementation, folder = `worlds/${game.world.id}/animater-blood`;
-        const blob = await new Promise((resolve) => picture.toBlob(resolve, "image/webp", 0.92));
+        const blob = await new Promise((resolve) => picture.toBlob(resolve, "image/webp", 0.97));
         if (!blob) return null;
         try { await FilePicker.createDirectory("data", folder, { notify: false }); } catch { /* there already */ }
         return (await FilePicker.upload("data", folder, new File([blob], name, { type: "image/webp" }), {}, { notify: false }))?.path ?? null;
@@ -3732,7 +3732,7 @@ const lookSky = () => {
       // The weather drawn on the map (Calendaria's, as it sets it): clouds from above with their shadows, what falls, fog.
       // (A scene's own Weather Effect, when one of Animater's, comes before Calendaria's.)
       weather: drawn,
-      cover: weatherPreview?.clouds ?? (!weatherCloudsOn() ? 0 : sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky)), cloudShift: cloudShiftNow(), raining: falling.rain > 0.05,
+      cover: weatherPreview?.clouds ?? (!weatherCloudsOn() ? 0 : sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky)), cloudShift: cloudShiftNow(), raining: falling.rain > 0.05, fallsDown: fallsDownHere(canvas?.scene?.flags?.[ID]?.fallsDown, hotSetting("weatherFallsDown")),
       // The year on the ground: its colour and the fallen leaves (none under snow lying deep).
       ...(seasonGroundOn() ? (({ tint, litter }) => ({ season: tint, litter: litter * (1 - ground.snow) }))(seasonGround(season, { wind: weather.wind })) : {}),
     });
@@ -6924,6 +6924,7 @@ Hooks.once("init", () => {
   skyPair("wetGround", "wetGroundLocal", "Wet ground after rain", "Rain darkens the open ground and leaves puddles that catch the sky; it dries over a few hours of game time, faster in sun and heat. Kept on each screen per scene.");
   skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground within minutes of game time, first in patches, and melts within minutes once it is above freezing. Kept per scene.");
   skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. FXMaster\u2019s effects for Calendaria\u2019s weather are hidden on your screen while this is on (its settings are never changed).");
+  registerSetting("weatherFallsDown", { name: "Rain and snow fall down the map", hint: "They always come down the map, the wind only leaning them over a little, so they never go sideways or upward. Off: the wind takes them whichever way it blows, and a strong one can. Each scene can say otherwise in its own configuration.", scope: "world", config: true, type: Boolean, default: false });
   skyPair("weatherClouds", "weatherCloudsLocal", "Clouds over the map", "The clouds themselves, seen from above, drifting over the map with the weather, and an overcast sky's grey deck. Turn off for the weather without them; what falls, the fog and the rest stay (their shadows are Cloud shadows).");
   skyPair("weatherLight", "weatherLightLocal", "Weather light", "The weather lights the outdoors its own way: a grey sky's flat, cool light, rain's grey-blue, a thunderstorm's dark green-grey (deeper the fiercer), falling snow's pale cold, a sandstorm's dusty amber; over the roofs too, while a room you look into keeps its own light. Stands in for Calendaria's \u201cSync Scene Ambience with Weather\u201d, which colours the whole scene one hue (turned off while this is on).");
   skyPair("rainbows", "rainbowsLocal", "Rainbows", "When the rain stops and the sun comes out under a clearing sky, a soft rainbow arcs over the map away from the sun, fading as the ground dries.");
@@ -7660,6 +7661,10 @@ Hooks.on("renderSceneConfig", (app, html) => {
     wind.className = "form-group";
     wind.innerHTML = `<label>Wind</label><div class="form-fields">${select("wind", flags.wind, [["", "From the weather"], ["sheltered", "Sheltered: half the weather's"], ["calm", "Calm"], ["breeze", "Breeze"], ["windy", "Windy"], ["gale", "Gale"]])}${select("windFrom", flags.windFrom, [["", "From the weather's direction"], ["n", "From the north"], ["ne", "From the north-east"], ["e", "From the east"], ["se", "From the south-east"], ["s", "From the south"], ["sw", "From the south-west"], ["w", "From the west"], ["nw", "From the north-west"]])}</div><p class="hint">How hard the wind blows here and where it comes from (north up the map), for the clouds, the grass, the falling leaves, the mist and the water. From the weather: Calendaria's wind, else the scene's weather (a storm strong, rain or snow moderate, else light; from the north-west). Sheltered: a valley or a walled garden, half of it.</p>`;
     tab.append(wind);
+    const falls = document.createElement("div");
+    falls.className = "form-group";
+    falls.innerHTML = `<label>Rain and snow fall down the map</label><div class="form-fields">${select("fallsDown", flags.fallsDown === true ? "on" : flags.fallsDown, [["", "As the module's setting"], ["on", "Yes here"], ["off", "No here"]])}</div><p class="hint">Yes: they always come down the map, the wind only leaning them over a little, so they never go sideways or upward. No: the wind takes them whichever way it blows, and a strong one can.</p>`;
+    tab.append(falls);
     const air = document.createElement("div");
     air.className = "form-group";
     air.innerHTML = `<label>Sunrise and sunset colour</label><div class="form-fields">${select("skyColour", flags.skyColour, [["", "As the module's setting"], ["off", "Off here"], ["soft", "Subtle here"], ["full", "Strong here"]])}</div><p class="hint">This scene's say over the module's Sunrise and sunset colour, for a map it doesn't suit or one that wants more of it. It only shows where the sun follows the time of day.</p>`;

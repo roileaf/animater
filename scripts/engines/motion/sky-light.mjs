@@ -7,6 +7,8 @@ import { CLOUD_DECK } from './cloud-deck.mjs';
 
 // A scene's own wind (Scene configuration → Animater wind): how strong, against the weather's ('sheltered' halves it),
 // and where it blows from (compass points, as a weather report gives them: a north wind comes from the north).
+// Whether what falls keeps coming down the map here (pure): the scene's own say ("on", "off"), else the module's setting.
+export const fallsDownHere = (flag, setting) => (flag === 'on' || flag === true ? true : flag === 'off' ? false : setting === true);
 export const SCENE_WINDS = Object.freeze({ calm: 0, breeze: 0.3, windy: 0.6, gale: 1 });
 export const WIND_FROM = Object.freeze({ n: 0, ne: 45, e: 90, se: 135, s: 180, sw: 225, w: 270, nw: 315 });
 // Where a wind from `bearing` degrees (clockwise from north, up the map) blows toward, as an angle on the map (radians).
@@ -174,7 +176,7 @@ uniform float uFxOn;
 // it, a light over all, aurora, sparks, wisps (rgb, amount), and the odd ones: rays, static, meteors, a swirl (kind, amount).
 uniform vec4 uFallA, uFallAColor, uFallB, uFallBColor, uFogW, uCloudSky, uGlow, uAurora, uSparks, uWisps, uOdd;
 uniform vec2 uCloudShift;
-uniform float uCover, uSwirlAmount;
+uniform float uCover, uSwirlAmount, uFallsDown;
 uniform vec4 uDeck; // the cloud deck's look (cloudLook): how much of the sky, how heavy, how soft its gaps, how dim
 // More of the weather (0–1 each): a closed cloud deck, mist lying low, sheets of rain, a hurricane's bands (uSky); freezing
 // rain's glaze, frost creeping, heat shimmering, smoke billowing (uSky2).
@@ -285,8 +287,10 @@ float gustAt(vec2 px, float t){
 // Rain seen from above: four depths of thin streaks, each drop's length and brightness its own, brightest at its head
 // and fading along its tail (the near ones longer, from the blur of their speed); sheets of heavier rain sweep through;
 // drops land in small splash rings that spread and fade.
+// The way what falls goes. A scene can ask (Scene configuration: "Rain and snow fall down the map") that it always comes down the map, the wind only leaning it over a little; else the wind takes it wherever it blows.
+vec2 fallWay(vec2 way){ return uFallsDown > 0.5 ? normalize(vec2(clamp(way.x, -0.45, 0.45), 1.0)) : normalize(way); }
 vec4 rainLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, float over){
-  vec2 dir = normalize(vec2(0.18, 1.0) + uWindDir * (0.15 + 1.8 * uWind)), side = vec2(-dir.y, dir.x);
+  vec2 dir = fallWay(vec2(0.18, 1.0) + uWindDir * (0.15 + 1.8 * uWind)), side = vec2(-dir.y, dir.x);
   float gust = gustAt(px, t), dense = amount * gust;
   for (int i = 0; i < 4; i++) {
     float depth = float(i), near = 1.0 - depth * 0.24;
@@ -322,7 +326,7 @@ vec4 rainLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
 // Snow seen from above: four depths of flakes, each its own size, drifting on slow eddies rather than in lines, the near
 // ones big and soft (out of focus), the far ones small and crisp; flakes smear into streaks in a hard wind; gusts thicken.
 vec4 snowLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, float over){
-  vec2 dir = normalize(vec2(0.1, 1.0) * (1.0 - uWind) + uWindDir * (0.3 + 2.0 * uWind)), side = vec2(-dir.y, dir.x);
+  vec2 dir = fallWay(vec2(0.1, 1.0) * (1.0 - uWind) + uWindDir * (0.3 + 2.0 * uWind)), side = vec2(-dir.y, dir.x);
   float gust = gustAt(px, t), dense = min(1.0, amount * 1.1) * (0.5 + 0.5 * gust), smear = 1.0 + 3.5 * uWind * uWind;
   for (int i = 0; i < 4; i++) {
     float depth = float(i), near = 1.0 - depth * 0.24;
@@ -407,7 +411,7 @@ vec4 sporeLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, fl
 }
 // Ash: grey flakes drifting down slowly, fluttering and turning as they fall, some catching the light.
 vec4 ashLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, float over){
-  vec2 dir = normalize(vec2(0.15, 1.0) + uWindDir * (0.3 + uWind)), side = vec2(-dir.y, dir.x);
+  vec2 dir = fallWay(vec2(0.15, 1.0) + uWindDir * (0.3 + uWind)), side = vec2(-dir.y, dir.x);
   for (int i = 0; i < 3; i++) {
     float depth = float(i), near = 1.0 - depth * 0.3, c = uGrid * size * (0.35 + 0.25 * near);
     vec2 q = px / c - dir * t * uGrid * (0.35 + 0.8 * uWind) / c + depth * vec2(4.2, 8.8);
@@ -450,7 +454,7 @@ vec4 fallLayer(vec4 p, vec2 px, float t, vec4 f, vec3 col, float over){
   if (kind > 7.5 && kind < 8.5) return sandLayer(p, px, t, amount, size, col, over);
   if (kind > 8.5 && kind < 9.5) return p;
   if (kind > 9.5 && kind < 10.5) return gustLayer(p, px, t, amount, size, col, over);
-  vec2 lean = normalize(vec2(0.22, 1.0) + uWindDir * (0.2 + 1.6 * uWind));
+  vec2 lean = fallWay(vec2(0.22, 1.0) + uWindDir * (0.2 + 1.6 * uWind));
   for (int i = 0; i < 3; i++) {
     float depth = float(i), near = 1.0 - depth * 0.28;
     // The kind's cell (squares), speed (squares a second), the way it moves, and how often a cell holds one.
@@ -1015,7 +1019,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: bake(freezes, 1), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -1034,10 +1038,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       meshes = [shade, light, pale, flock, veil, glow, air];
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil || m === air ? above : root)().addChild(m); }
     },
-    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false } = {}) {
+    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false } = {}) {
       if (!own.length) return;
       const sunny = light > 0.02;
-      set({ uStrength: sunny ? light : 0, uClouds: clouds, uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
+      set({ uStrength: sunny ? light : 0, uClouds: clouds, uFallsDown: fallsDown ? 1 : 0, uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
         // The rainbow faces away from the sun: its centre off toward the sun, so the arc sweeps across the middle of the map.
         uBow: area ? [area.bounds.width / 2 + Math.cos(sunAngle) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(sunAngle) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45, bow] : [0, 0, 1, 0],
         uBowDir: [-Math.cos(sunAngle), -Math.sin(sunAngle)] });
