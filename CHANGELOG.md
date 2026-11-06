@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.3.0 (2026-11-06)
+
+### Fixes
+
+- Starter recipes no longer take over catalog animations. Fire nova played for Fireball, and turning it off stopped Fireball animating at all; the same went for Ember shot, Frost lance, Storm arc, Force volley, Mending light, Arcane ward, Arrow strike and Blade strike. A starter you haven't edited now only plays where nothing else would, and one you have edited still wins.
+- D&D 5e: spells with no roll to wait for, like Dragon's Breath, now play when cast with nobody targeted, on the caster.
+- D&D 5e: breath weapons and exhales from the catalog now draw breath first, with a sound pack that has an inhale.
+- Searches survive switching tabs. In Animater settings, clicking a tab keeps your words and shows that tab's matches; typing again looks through every tab. On the Tokenshade page, the search stays as you move between Token, Region and your own presets.
+
+### New
+
+- **Animals panel.** A new Animals button in the Animater controls sets how many of each animal a scene has and how big, with Quiet, Usual and Lively for the outdoors at once. These are the same settings as Scene configuration, so either place changes both. Outdoor life on this scene is here too.
+- **Squirrels.** They forage in quick bursts near trees and race under the leaves when anyone comes close, coming back out a while later. On maps whose trees are painted into the picture rather than drawn as tiles, they just bolt away. Set per scene and placeable by hand.
+- **Snakes.** They lie still in the open, slide on a little now and then, and go off quickly if anyone comes within a couple of squares. They stay out of sight in the cold. Set per scene and placeable by hand. Keep-out regions for rabbits apply to squirrels and snakes too.
+- **A balanced wild.** However many animals are asked for, a map only gets what its open ground has room for, so scenes no longer crowd. Animals you place by hand are extra.
+- **New animals walk in.** A rabbit or deer that gets caught is replaced in a while by another coming in from the edge of the map, instead of appearing out of nowhere.
+- **Wolves.** A pack that walks in from the edge of the map, keeps together behind its leader, trots about, lies up, and hunts deer: sometimes it brings one down, feeds, and hauls it off the map, coming back a good while later. Driven off a carcass, it comes back for it once things are quiet. It runs from people, noise and fires. Out by day and by night. None until you ask for them on a scene, in the Animals panel or Scene configuration. They have no sounds yet.
+- **Put animals down by hand.** Pick a rabbit, bird, deer, fox or wolf and click the map, as many as you like. They are kept with the scene and start there on every screen; after that each wanders its own way on each screen. Take the last one of a kind away from the panel.
+- **Fire melts snow.** An Energy blast of fire melts the lying snow where it lands, with an uneven edge. The snow creeps back over time. It is only a look, on every screen that sees it, and nothing is saved.
+- **Your own heroic moments.** A new recipe trigger, Heroic resource, plays your animation when a character gains or spends one: Hero Points in PF2e and SF2e, Mythic Points in PF2e, Heroic Inspiration in D&D 5e, Hope in Daggerheart, Victories in Draw Steel. It plays in place of the usual glow.
+- **Hope and Victory glow.** Daggerheart's Hope and Draw Steel's Victories now glow on the character's tokens as Hero Points do, each with its own setting.
+- **What's active on this scene.** The top of the Weather panel now lists what is at work and where it comes from: the calendar's weather, the scene's own, what you set in the panel, storm darkness, and FXMaster's effects. Anything set in Animater can be turned off from its row; Calendaria's and FXMaster's stay theirs to change. The list keeps up as they change.
+
 ## 3.2.2 (2026-11-06)
 
 ### Fixes
