@@ -50,7 +50,7 @@ test('a plain floor is the floor and its shadow: no sides, nothing against it', 
   const source = readFileSync(new URL('../../../scripts/engines/motion/floor-shadows.mjs', import.meta.url), 'utf8'), main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.ok(!source.includes('EDGE_FRAG'), 'no side, lip or rim');
   assert.ok(main.includes('contact: false, cut:'), 'no dark band on the water');
-  for (const frag of [SHADOW_FRAG, STRIP_FRAG, DECK_FRAG, PIECE_FRAG]) assert.ok(!frag.includes('\u0060'));
+  for (const frag of [SHADOW_FRAG, STRIP_FRAG, DECK_FRAG, PIECE_FRAG]) { assert.ok(!frag.includes('\u0060')); assert.ok(!/\b(packed|input|output|sample|filter|half|fixed|common|active|cast|long|short|flat)\b(?!\s*\()/.test(frag.replace(/\/\/.*$/gm, '')), 'no word GLSL keeps for itself'); }
 });
 
 const pier = [100, 0, 220, 0, 220, 1000, 100, 1000], inPier = (x, y) => x > 100 && x < 220 && y > 0 && y < 1000;

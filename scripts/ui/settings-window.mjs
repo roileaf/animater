@@ -145,6 +145,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "dispelShatter", local: "dispelShatterLocal" },
   ] },
   { id: "sound", label: "Sound", icon: "fa-solid fa-volume-high", rows: [
+    { world: "animaterSounds", local: "animaterSoundsLocal" },
     { world: "roomAcoustics", local: "roomReverbLocal" },
     { local: "muffleWalls" },
     { world: "footstepSounds", local: "footstepSoundsLocal" },

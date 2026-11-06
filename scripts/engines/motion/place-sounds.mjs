@@ -6,16 +6,19 @@ import { COAST_SOUNDS, COAST_REACH } from './coast.mjs';
 const DIR = 'modules/animater/assets/sounds/places';
 export const PLACE_SOUNDS = Object.freeze({
   surf: COAST_SOUNDS,
+  calmSea: [`${DIR}/calm-sea-699225-0.ogg`],
   waterfall: ['344380-0', '476162-0'].map((n) => `${DIR}/waterfall-${n}.ogg`),
   flies: ['198278-0', '484363-0'].map((n) => `${DIR}/flies-${n}.ogg`),
   tavern: ['455732-0', '267496-0', '394290-0', '376456-0'].map((n) => `${DIR}/tavern-${n}.ogg`),
 });
 // How far each carries (squares) and how loud close by.
-export const PLACE_REACH = Object.freeze({ surf: COAST_REACH, waterfall: 14, flies: 4, tavern: 7 });
-export const PLACE_VOLUME = Object.freeze({ surf: 0.4, waterfall: 0.42, flies: 0.3, tavern: 0.38 });
+export const PLACE_REACH = Object.freeze({ surf: COAST_REACH, calmSea: COAST_REACH, waterfall: 14, flies: 4, tavern: 7 });
+export const PLACE_VOLUME = Object.freeze({ surf: 0.4, calmSea: 0.4, waterfall: 0.42, flies: 0.3, tavern: 0.38 });
 // How much of a place comes through a wall: a shut tavern is a far-off murmur, its open door lets the noise out.
 export const THROUGH_WALL = 0.22;
 
+// How much of a sea's sound is its calm one (pure): all of it in a light air, none once the wind has got up; the surf takes the rest.
+export const calmSeaShare = (wind) => { const t = Math.min(1, Math.max(0, ((Number(wind) || 0) - 0.1) / 0.3)); return 1 - t * t * (3 - 2 * t); };
 // How loud a waterfall is for its stream (pure): `current` 0–1 (sky-light.mjs riverCurrent), a trickle quiet and a torrent all it has.
 export const fallLoudness = (current) => 0.3 + 0.7 * Math.min(1, Math.max(0, Number.isFinite(Number(current)) ? Number(current) : 0.4));
 // As placeHeard, each area as loud as `louds` says (pure): a strong fall further off can drown a weak one close by.

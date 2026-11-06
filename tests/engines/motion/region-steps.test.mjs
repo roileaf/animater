@@ -342,7 +342,9 @@ test('water depth: medium is the look water always had, and each step down holds
   assert.deepEqual(waterDepthLook(''), { hold: 1, dark: 0 });
   assert.deepEqual(waterDepthLook(undefined), { hold: 1, dark: 0 });
   assert.deepEqual(waterDepthLook('nonsense'), { hold: 1, dark: 0 });
-  const looks = WATER_DEPTHS.map(([key]) => waterDepthLook(key));
-  for (let i = 1; i < looks.length; i++) assert.ok(looks[i].hold > looks[i - 1].hold, WATER_DEPTHS[i][1]);
+  const deeper = WATER_DEPTHS.filter(([key]) => !waterDepthLook(key).tint), looks = deeper.map(([key]) => waterDepthLook(key));
+  for (let i = 1; i < looks.length; i++) assert.ok(looks[i].hold > looks[i - 1].hold, deeper[i][1]);
   assert.ok(waterDepthLook('abyss').dark > waterDepthLook('deep').dark);
+  assert.ok(WATER_DEPTHS.some(([key]) => key === 'turquoise'), 'a clear sea is among them');
+  assert.deepEqual(waterDepthLook('turquoise'), { hold: 1, dark: 0, tint: true }, 'its colour its own, no darker for it');
 });

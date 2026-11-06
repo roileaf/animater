@@ -16,7 +16,7 @@ function host({ tremorOn = false } = {}) {
   let time = 0;
   const dependencies = {
     ...movement, ...profiles, ID: 'animater', LATE_BEAT_MS: 1000, performance: { now: () => time },
-    stepPacer: movement.createStepPacer(), movementSneaking: () => false, movementFeelSettingOn: (key) => key === 'footfallTremor' && tremorOn,
+    stepPacer: movement.createStepPacer(), soundsOn: () => true, movementSneaking: () => false, movementFeelSettingOn: (key) => key === 'footfallTremor' && tremorOn,
     darker: (...values) => values.filter(Boolean).sort((a, b) => a - b)[0],
     game: { settings: { get: () => 1 }, modules: new Map() }, Hooks: { callAll: (hook, shape) => shapes.push(shape) },
     setTimeout: (fn) => timers.push(fn), cameraShake: { tremor: (step) => tremors.push(step) },

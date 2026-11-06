@@ -60,7 +60,7 @@ export function registerFlashSettings(ID) {
     scope: "client", config: true, type: Boolean, default: true, onChange: () => { ui.combat?.render(); for (const app of foundry.applications.instances?.values?.() ?? []) if (app.id === "pf2e-hud-tracker") app.render(); } });
 }
 
-// host: { ID, clientId, quietHere(), resolveMedia(src), trace(status, detail) }
+// host: { ID, clientId, quietHere(), silent(), resolveMedia(src), trace(status, detail) }
 export function flashScreens(host) {
   const { ID } = host;
   const screens = () => validateFlashes(game.settings.get(ID, FLASH_SETTING)?.screens);
@@ -86,7 +86,7 @@ export function flashScreens(host) {
   const trackerMenus = () => game.settings.get(ID, FLASH_TRACKER) !== false;
   // ms > 0: a sound layer trimmed in the editor stops there, with a short fade.
   const playSound = (src, volume, ms = 0) => {
-    if (!src || host.quietHere()) return;
+    if (!src || host.quietHere() || host.silent?.()) return;
     const playing = foundry.audio.AudioHelper.play({ src, volume, loop: false }, false);
     if (ms > 0) void Promise.resolve(playing).then((sound) => setTimeout(() => sound?.stop?.({ fade: 150 }), ms)).catch(() => {});
   };

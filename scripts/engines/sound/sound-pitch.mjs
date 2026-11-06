@@ -97,13 +97,15 @@ export function createSoundShapeQueue({now = () => Date.now(), max = 1024} = {})
   };
 }
 
-export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false } = {}) {
+export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false, silent = () => false } = {}) {
   if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch) return () => {};
   // Waiting shaping by file: Sequencer announces a sound just before Foundry loads and starts it.
   const pending = createSoundShapeQueue({now});
   const teardown = hooks.on('canvasTearDown', () => pending.clear());
   const id = hooks.on("createSequencerSound", (data) => {
     if (!data || typeof data !== "object") return;
+    // All of Animater's sounds off on this screen: another module's still play.
+    if (data.animaterSound && silent()) { data.volume = 0; return; }
     // This player turned the engine off: no surface hits, and Animater's other sounds play plain.
     if (!enabled()) { if (data.animaterSurface) data.volume = 0; return; }
     mixSurfaceSound(data, mix());

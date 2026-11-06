@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { PLACE_SOUNDS, PLACE_VOLUME, PLACE_REACH, placeHeard, spotsHeard, placeFile } from '../../scripts/engines/motion/place-sounds.mjs';
+import { PLACE_SOUNDS, PLACE_VOLUME, PLACE_REACH, calmSeaShare, placeHeard, spotsHeard, placeFile } from '../../scripts/engines/motion/place-sounds.mjs';
 import { wildSound } from '../../scripts/engines/motion/wildlife.mjs';
 
 const onDisk = (file) => existsSync(new URL(`../../${file.replace('modules/animater/', '')}`, import.meta.url));
@@ -36,4 +36,13 @@ test('flies are as loud as they are many, and only close by', () => {
 test('a scene keeps its recording from visit to visit', () => {
   assert.equal(placeFile('tavern', 'scene-a'), placeFile('tavern', 'scene-a'));
   assert.equal(placeFile('nothing', 'scene-a'), null);
+});
+
+test('a sea is calm in a light air and all surf once the wind is up, crossing smoothly', () => {
+  assert.equal(calmSeaShare(0), 1);
+  assert.equal(calmSeaShare(0.1), 1);
+  assert.equal(calmSeaShare(0.4), 0);
+  assert.equal(calmSeaShare(1), 0);
+  assert.equal(calmSeaShare(undefined), 1);
+  assert.ok(Math.abs(calmSeaShare(0.25) - 0.5) < 1e-9, 'an even mix midway');
 });

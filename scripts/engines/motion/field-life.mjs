@@ -103,6 +103,8 @@ export function foxStep(fox, { dt = 1 / 60, grid = 100, near = [], ok = () => tr
 }
 
 // One step of a wolf (pure). A pack keeps together behind its first (`leader`, none for the first itself): it walks in from the edge of the map ('arrive', to `tx`, `ty`), trots about, lies up a while, and goes after a deer it sees (`prey`) for a few seconds; fed (`full` seconds), it leaves them alone. A kill is hauled off the map ('drag', to `tx`, `ty`): the wolf `pulling` it backs away with it, the rest go along, and past the edge each is 'away' till the layer brings it back. Anyone near, a noise, or a fire (`fires`) sends it off at a run. Modes 'arrive', 'trot', 'rest', 'hunt', 'drag', 'away', 'flee'.
+// How far from a wolf's middle the deer it hauls lies (pure): its mouth to the deer's own middle, so they touch at any size. `grid` px a square, each size times the usual.
+export const wolfGrip = (grid, wolfSize = 1, deerSize = 1) => grid * (0.4 * wolfSize + 0.35 * deerSize);
 // Whether a pack's first wolf calls now, and how (pure): null, 'wolfHowl' or 'wolfPack'. On coming in from the edge it always does; at ease it does now and then, more by night. Never hunting, hauling or running, and one alone has no pack to join in.
 export const wolfCallNow = ({ was, mode, night = 0, pack = 1, dt = 1 / 60, random = Math.random } = {}) => {
   const together = () => (pack > 1 && random() < 0.5 ? 'wolfPack' : 'wolfHowl');
@@ -152,6 +154,18 @@ export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => 
     // Its first driven off: nothing to go along with.
     if (leader && leader !== wolf && leader.mode !== 'drag' && leader.mode !== 'away') { w.mode = 'trot'; w.want = w.a; w.wait = between(random, 8, 18); return w; }
     w.t = (w.t ?? 0) + dt;
+    // First it goes up to what it will haul. If it can't get there, it leaves it lying and goes on alone.
+    if (w.goingTo) {
+      const off = Math.hypot(w.goingTo.x - w.x, w.goingTo.y - w.y);
+      if (off > w.goingTo.reach && w.t < 12) {
+        const straight = Math.atan2(w.goingTo.y - w.y, w.goingTo.x - w.x), way = off < grid * 1.8 ? straight : round(straight), step = Math.min(grid * 0.95 * dt, off - w.goingTo.reach), nx = w.x + Math.cos(way) * step, ny = w.y + Math.sin(way) * step;
+        w.a = turnToward(w.a, way + Math.PI / 2, dt * 5); w.v = grid * 0.95;
+        if (walk(nx, ny)) { w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + step / (grid * 0.85); }
+        return w;
+      }
+      if (off > w.goingTo.reach) w.pulling = false;
+      w.goingTo = null; w.t = 0;
+    }
     // Round what is in the way; still at it after this long, it forces a way straight out.
     const forcing = w.t > 25, gap = Math.hypot(w.tx - w.x, w.ty - w.y), straight = Math.atan2(w.ty - w.y, w.tx - w.x), way = gap < grid * 1.8 || forcing ? straight : round(straight);
     w.a = turnToward(w.a, way + Math.PI / 2 + (w.pulling ? Math.PI : 0), dt * 3); w.v = grid * (w.pulling ? 0.7 : 0.95);
@@ -456,12 +470,12 @@ const WINGS = [['#c9702e', '#a9591f', '#2a1c12'], ['#dcd9c6', '#c9c5ae', '#4f4b3
 export const batLamps = (lights = [], open = () => true) => lights.filter((l) => !l.carried && open(l));
 
 /**
- * The layer: populate({ spots, waters, wolves, wolfSize, deer, foxes, butterflies, dragonflies, fireflies, owl, grid, area, deerSize, foxSize, insectSize, birdSize });
+ * The layer: populate({ spots, waters, wolves, wolfSize, deer, foxes, butterflies, dragonflies, fireflies, owl, grid, area, deerSize, foxSize, insectSize, birdSize, batSize });
  * tick(seconds, { near, ok(kind, x, y), blocked, seen(x, y), day, night, warm, sun, view, sound(kind, at, urgent), cast, prey, lamps() });
  * noise({ x, y, radius }); scare(); clear(). `prey`: the rabbits, { list, spook(rabbit, from), take(rabbit) } (wildlife.mjs).
  */
 export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, highShadow = floor }) {
-  let trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], homes = {}, area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
+  let trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], homes = {}, area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, batSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
   const texOf = (c) => PIXI.Texture.from(c), group = (o, f) => (Array.isArray(o) ? o.map(f) : Object.fromEntries(Object.entries(o).map(([k, v]) => [k, group2(v, f)]))), group2 = (v, f) => (Array.isArray(v) ? v.map(f) : f(v));
   const lazily = (key, make) => { const had = art[key]; const sample = had && (had.doe?.look?.[0] ?? had.trot?.[0] ?? had[0]?.[0] ?? had[0]); if (!had || sample?.baseTexture?.destroyed) art[key] = make(); return art[key]; };
   const herd = () => lazily('herd', () => ({ doe: group(herdArt(false), texOf), stag: group(herdArt(true), texOf) }));
@@ -490,8 +504,8 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
   // Where a wolf, squirrel or snake may be, by its own keep-out regions; anywhere else if none is left.
   const homeOf = (kind, land = spots) => (homes[kind]?.length ? homes[kind] : land);
   return {
-    populate({ spots: land = [], homes: own = {}, waters = [], glowWaters = waters, trees: treeList = [], squirrels: nSquirrels = 0, squirrelSize: qs = 1, snakes: nSnakes = 0, snakeSize: ss = 1, wolves: nWolves = 0, wolfSize: ws = 1, deer: nDeer = 0, foxes: nFoxes = 0, butterflies = 0, dragonflies = 0, fireflies = 0, owl: hasOwl = false, grid: g = 100, area: a = null, deerSize: ds = 1, foxSize: fs = 1, insectSize: is = 1, birdSize: bs = 1, blocked = () => false, random = Math.random } = {}) {
-      drop(); deerIn = 0; packFeeds = 0; homes = own; trees = treeList; squirrelSize = qs; snakeSize = ss; grid = g; area = a; spots = land; wolfSize = ws; deerSize = ds; foxSize = fs; insectSize = is; birdSize = bs; shownDay = 0;
+    populate({ spots: land = [], homes: own = {}, waters = [], glowWaters = waters, trees: treeList = [], squirrels: nSquirrels = 0, squirrelSize: qs = 1, snakes: nSnakes = 0, snakeSize: ss = 1, wolves: nWolves = 0, wolfSize: ws = 1, deer: nDeer = 0, foxes: nFoxes = 0, butterflies = 0, dragonflies = 0, fireflies = 0, owl: hasOwl = false, grid: g = 100, area: a = null, deerSize: ds = 1, foxSize: fs = 1, insectSize: is = 1, birdSize: bs = 1, batSize: bats_ = 1, blocked = () => false, random = Math.random } = {}) {
+      drop(); deerIn = 0; packFeeds = 0; homes = own; trees = treeList; squirrelSize = qs; snakeSize = ss; grid = g; area = a; spots = land; wolfSize = ws; deerSize = ds; foxSize = fs; insectSize = is; birdSize = bs; batSize = bats_; shownDay = 0;
       const pick = (list) => list[Math.floor(random() * list.length)], jitter = (p, r) => ({ x: p.x + between(random, -r, r) * g, y: p.y + between(random, -r, r) * g });
       if (nDeer && land.length) { const t = herd(), home = pick(land), near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < g * 5); deer = Array.from({ length: nDeer }, (_, i) => ({ ...pick(near), a: random() * TAU, mode: 'graze', wait: between(random, 1, 5), buck: i === 0, t: 0, way: 0, want: 0, v: 0, gait: random(), lift: random() < 0.5 ? 0 : 1, h: 0, step: random() * 6, ...pair(floor(), t.doe.look[0]) })); }
       if (nSquirrels && land.length) squirrels = Array.from({ length: nSquirrels }, (_, i) => { const tree = trees.length ? i % trees.length : -1, home = trees[tree], way = random() * TAU, at = home ? { x: home.x + Math.cos(way) * home.r * 1.2, y: home.y + Math.sin(way) * home.r * 1.2 } : pick(homeOf('squirrels', land)); return newSquirrel({ ...at, tree }, i, random); });
@@ -577,8 +591,8 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
         if (killed) { killed.mode = 'dead'; killed.t = 0; killed.h = 0; killed.v = 0; deerIn = between(Math.random, 60, 150); packFeeds = between(Math.random, 12, 20); killed.kill = true; wolves = [wolves[killer], ...wolves.filter((_, i) => i !== killer)].map((w) => ({ ...w, mode: 'rest', wait: 45, v: 0, full: 240 })); }
         // Fed, they haul it off the map if there is a way; walled in, it lies where it is.
         if (packFeeds > 0 && (packFeeds -= dt) <= 0 && wolves[0].mode === 'rest') {
-          const out = edgeExit(wolves[0], area, { grid, blocked });
-          if (out) { const back = between(Math.random, 90, 180); wolves = wolves.map((w, i) => ({ ...w, mode: 'drag', t: 0, tx: out.x + (i ? between(Math.random, -1, 1) * grid : 0), ty: out.y + (i ? between(Math.random, -1, 1) * grid : 0), pulling: i === 0, back })); }
+          const out = edgeExit(wolves[0], area, { grid, blocked }), carcass = deer.find((d) => d.mode === 'dead' && d.kill);
+          if (out) { const back = between(Math.random, 90, 180), reach = wolfGrip(grid, wolfSize, deerSize); wolves = wolves.map((w, i) => ({ ...w, mode: 'drag', t: 0, tx: out.x + (i ? between(Math.random, -1, 1) * grid : 0), ty: out.y + (i ? between(Math.random, -1, 1) * grid : 0), pulling: i === 0, goingTo: i === 0 && carcass ? { x: carcass.x, y: carcass.y, reach } : null, back })); }
         }
         // A carcass left lying, driven off it or walled in: once at peace they go back for it, and haul it off.
         fetchIn -= dt;
@@ -618,7 +632,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           if (o0.mode === 'dead') {
             const o = { ...o0, t: o0.t + dt }, puller = o.kill ? wolves[0] : null;
             if (puller?.mode === 'away') { gone(o.body, o.shadow); o.done = true; return o; }
-            if (puller?.pulling && puller.mode === 'drag') { const gx = puller.x + Math.sin(puller.a) * grid * 0.75, gy = puller.y - Math.cos(puller.a) * grid * 0.75, ease = Math.min(1, dt * 4); o.x += (gx - o.x) * ease; o.y += (gy - o.y) * ease; o.a = turnToward(o.a, puller.a, dt * 2); }
+            if (puller?.pulling && puller.mode === 'drag') { if (!puller.goingTo) { const reach = wolfGrip(grid, wolfSize, deerSize), gx = puller.x + Math.sin(puller.a) * reach, gy = puller.y - Math.cos(puller.a) * reach, ease = Math.min(1, dt * 4); o.x += (gx - o.x) * ease; o.y += (gy - o.y) * ease; o.a = turnToward(o.a, puller.a, dt * 4); } }
             else if (puller?.pulling) o.kill = false;
             if (!can(o, o.x, o.y)) { hide(o); return o; }
             const tex = (o.buck ? t.stag : t.doe).look[0], size = 0.62 * k * deerSize;
@@ -708,7 +722,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
         if (!l) { hide(b); continue; }
         b.a += b.v * dt; const r = grid * b.r, x = l.x + Math.cos(b.a) * r, y = l.y + Math.sin(b.a) * r * 0.8 + Math.sin(time * 7 + b.w) * grid * 0.11 + Math.sin(time * 13.3 + b.w * 2) * grid * 0.07;
         if (!can(b, x, y) || indoors(x, y)) { hide(b); continue; }
-        const t2 = batTex(), tex = t2[Math.floor(time * 20 + b.w) % t2.length], size = 0.3 * k * birdSize, c = fall(b, x, y, { width: grid * 0.3, lift: 0.7 }), angle = b.a + (b.v > 0 ? 0 : Math.PI);
+        const t2 = batTex(), tex = t2[Math.floor(time * 20 + b.w) % t2.length], size = 0.3 * k * batSize, c = fall(b, x, y, { width: grid * 0.3, lift: 0.7 }), angle = b.a + (b.v > 0 ? 0 : Math.PI);
         put(b.shadow, tex, x + c.dx, y + c.dy, angle, size, Math.min(0.32, c.alpha * 0.34) * dark); put(b.body, tex, x, y, angle, size, dark);
         if (Math.random() < dt * 0.05) sound('batChirp', { x, y }, false);
       }

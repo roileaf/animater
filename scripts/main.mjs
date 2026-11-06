@@ -93,7 +93,7 @@ import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
 import { IMMERSION_FEATURES, immersionWindow, newFeatures, stillToChoose } from "./ui/immersion-setup.mjs";
 import { weaponCategories } from "./systems/weapon-categories.mjs";
 import { beachKeepOff, createCoast, shoreAt, shoreField, tideLevel } from "./engines/motion/coast.mjs";
-import { PLACE_VOLUME, THROUGH_WALL, placeHeard, placeHeardLouds, fallLoudness, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
+import { PLACE_VOLUME, THROUGH_WALL, calmSeaShare, placeHeard, placeHeardLouds, fallLoudness, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
 import { createWaterfalls } from "./engines/motion/waterfall.mjs";
 import { createWaterMirror, waterStillness } from "./engines/motion/water-mirror.mjs";
 import { createAftermath, bodyStage } from "./engines/motion/aftermath.mjs";
@@ -1873,6 +1873,8 @@ const canopyRootOf = () => {
 const bakeInto = (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true });
 // Falling leaves lie under the tree tiles with the shade: hidden by the crown, seen as they drift out past it.
 const canopyLight = createCanopyLight({ PIXI: globalThis.PIXI, root: canopyRootOf, render: bakeInto });
+// Whether Animater may make any sound here: the table's switch and this screen's. Every sound it plays asks this (tests/engines/sound/master-switch.test.mjs holds it to that).
+const soundsOn = () => { try { return hotSetting("animaterSounds") !== false && hotSetting("animaterSoundsLocal") !== false; } catch { return true; } };
 const bothSettingsOn = (key) => { try { return hotSetting(key) !== false && hotSetting(`${key}Local`) !== false && qualityRank(localQuality()) >= 2; } catch { return false; } };
 // The open sky's effects (sun through trees and roofs, clouds, birds, rain, snow, lightning, the moon on the ground...)
 // never show in an underground scene.
@@ -2161,10 +2163,13 @@ Hooks.once("canvasReady", () => {
   window.addEventListener("pointerdown", (e) => { if (e.button === 2) rightPress = { x: e.clientX, y: e.clientY, at: performance.now(), done: null }; }, true);
   window.addEventListener("pointerup", (e) => { if (e.button !== 2 || !rightPress) return; rightPress.quick = performance.now() - rightPress.at <= 350 && Math.hypot(e.clientX - rightPress.x, e.clientY - rightPress.y) <= 6; rightPress.up = true; const then = rightPress.done; rightPress.done = null; then?.(); }, true);
 });
-// A right-click on the open map (a token takes its own) opens the region's menu for the GM, when the button comes up: pressed and held or dragged, it is panning.
+// Whether a screen point is on a window's or a door's icon: a click there is about that, not the floor under it.
+const overControlIcon = (point) => { if (!point) return false; for (const icons of [windowControlRoot, canvas.controls?.doors]) for (const icon of icons?.children ?? []) { try { if (icon.visible && icon.getBounds().contains(point.x, point.y)) return true; } catch { /* gone */ } } return false; };
+// A right-click on the open map (a token takes its own, and so does a window's or door's icon) opens the region's menu for the GM, when the button comes up: pressed and held or dragged, it is panning.
 const stepMenuClick = (event) => {
   if (!game.user?.isGM || canvas.activeLayer !== canvas.tokens || canvas.controls?.ruler?.active || canvas.tokens?._draggedToken) return;
   if (hotSetting("regionSteps") === false) return;
+  if (overControlIcon(event.global)) return;
   const at = event.getLocalPosition(canvas.stage), here = floorRegionsAt({ x: at.x, y: at.y }), region = floorRegionAt({ x: at.x, y: at.y }) ?? here.at(-1);
   if (!region) return;
   const native = event.nativeEvent ?? event;
@@ -2396,7 +2401,7 @@ const soundPlace = (at) => ({ x: at.x, y: at.y, elevation: canvas.level?.elevati
 const playUnder = (kind, at, { volume = 0.5, reach = 6, rate = 1, walls = false, gmAlways = false, room = 0.7, file: own = null, lowpass = null, bass = null } = {}) => {
   try {
     // Audio still locked (no click yet): Foundry would hold it and play everything asked for so far all at once on the first click.
-    if (game.audio?.locked) return Promise.resolve(null);
+    if (game.audio?.locked || !soundsOn()) return Promise.resolve(null);
     const file = own ?? undergroundSound(kind); if (!file || !canvas?.ready) return Promise.resolve(null);
     Hooks.callAll("animater.shapeSound", { file, rate, at: soundPlace(at), roomShare: room, ...(lowpass ? { lowpass } : {}), ...(bass ? { bass } : {}) });
     return Promise.resolve(canvas.sounds.playAtPosition(file, { x: at.x, y: at.y }, reach * (canvas.dimensions?.distance ?? 5), { volume, walls, gmAlways }))
@@ -3269,7 +3274,7 @@ let wildTreesTimer = null;
 for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, () => { clearTimeout(wildTreesTimer); wildTreesTimer = setTimeout(() => { try { if (canvas?.ready) fieldLife.setTrees(wildTrees()); } catch { /* the next look sees it */ } }, 500); });
 const populateField = (ground, grid, area, many) => {
   const open = ground.spots, deerSpots = open.filter((p) => !keptOut("deer", p)), foxSpots = open.filter((p) => !keptOut("foxes", p)), homes = fieldHomes(open), bugs = homes.butterflies, bugWater = ground.waters.filter((p) => !keptOut("dragonflies", p)), glowWater = ground.waters.filter((p) => !keptOut("fireflies", p)), roomy = ground.share > 0.4;
-  fieldLife.populate({ spots: foxSpots.length ? foxSpots : open, homes, waters: bugWater, glowWaters: glowWater, trees: wildTrees(), squirrels: wildNumbers(ground, many).squirrels, squirrelSize: many.squirrelsSize, snakes: wildNumbers(ground, many).snakes, snakeSize: many.snakesSize, wolves: wildNumbers(ground, many).wolves, wolfSize: many.wolvesSize, blocked: wallBlocks, deer: wildNumbers(ground, many).deer, foxes: wildNumbers(ground, many).foxes, butterflies: bugs.length ? Math.round(Math.min(8, Math.max(3, bugs.length / 8)) * many.insects) : 0, dragonflies: bugWater.length >= 4 ? Math.round(Math.min(6, Math.max(2, bugWater.length / 5)) * many.insects) : 0, fireflies: homes.fireflies.length + glowWater.length ? Math.round(Math.min(30, (homes.fireflies.length + glowWater.length) / 2) * many.insects) : 0, owl: many.owls > 0 && ground.share >= 0.2, grid, area, deerSize: many.deerSize, foxSize: many.foxesSize, insectSize: many.insectsSize, birdSize: many.owlsSize });
+  fieldLife.populate({ spots: foxSpots.length ? foxSpots : open, homes, waters: bugWater, glowWaters: glowWater, trees: wildTrees(), squirrels: wildNumbers(ground, many).squirrels, squirrelSize: many.squirrelsSize, snakes: wildNumbers(ground, many).snakes, snakeSize: many.snakesSize, wolves: wildNumbers(ground, many).wolves, wolfSize: many.wolvesSize, blocked: wallBlocks, deer: wildNumbers(ground, many).deer, foxes: wildNumbers(ground, many).foxes, butterflies: bugs.length ? Math.round(Math.min(8, Math.max(3, bugs.length / 8)) * many.insects) : 0, dragonflies: bugWater.length >= 4 ? Math.round(Math.min(6, Math.max(2, bugWater.length / 5)) * many.insects) : 0, fireflies: homes.fireflies.length + glowWater.length ? Math.round(Math.min(30, (homes.fireflies.length + glowWater.length) / 2) * many.insects) : 0, owl: many.owls > 0 && ground.share >= 0.2, grid, area, deerSize: many.deerSize, foxSize: many.foxesSize, insectSize: many.insectsSize, birdSize: many.owlsSize, batSize: many.batsSize });
 };
 const rebuildWildlife = () => {
   if (!canvas?.ready) { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; wildKey = null; placedShown.clear(); return; }
@@ -3437,7 +3442,7 @@ for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (w
 const beachLife = createCoast({ PIXI: globalThis.PIXI, floor: floorLayer("beachLife", 649) });
 let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
 // The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
-const placeAreas = { surf: [], waterfall: [], waterfallLouds: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
+const placeAreas = { surf: [], waterfall: [], waterfallLouds: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, calmSea: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
 let placeLookAt = 0;
 // This screen's own slider for a water sound (River volume, Waterfall volume): 1 as recorded.
 const waterLoudness = (key) => { try { const level = Number(hotSetting(key)); return level >= 0 ? level : 1; } catch { return 1; } };
@@ -3450,6 +3455,7 @@ const tickPlaces = () => {
   const flies = bothSettingsOn("carrion") ? [...bodiesKnown.values()].map((b) => ({ x: b.x, y: b.y, strength: bodyStage((now - b.since) / 1000, { outdoors: b.outdoors, day, cold, rain }).flies })) : [];
   const heard = {
     surf: water && !frozen ? placeHeard("surf", placeAreas.surf, ears, { grid }) : null,
+    calmSea: water && !frozen ? placeHeard("calmSea", placeAreas.surf, ears, { grid }) : null,
     waterfall: water && !frozen ? placeHeardLouds("waterfall", placeAreas.waterfall, placeAreas.waterfallLouds, ears, { grid }) : null,
     flies: spotsHeard("flies", flies, ears, { grid }),
     tavern: bothSettingsOn("tavernMurmur") ? placeHeard("tavern", placeAreas.tavern, ears, { grid }) : null,
@@ -3457,7 +3463,7 @@ const tickPlaces = () => {
   for (const [kind, voice] of Object.entries(placeVoices)) {
     const h = heard[kind]; let through = 1;
     try { if (h?.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = kind === "tavern" ? THROUGH_WALL : 0.35; } catch { /* no wall test */ }
-    const volume = PLACE_VOLUME[kind] * (h?.level ?? 0) * through * (kind === "waterfall" ? waterLoudness("waterfallVolume") : 1);
+    const volume = soundsOn() ? PLACE_VOLUME[kind] * (h?.level ?? 0) * through * (kind === "waterfall" ? waterLoudness("waterfallVolume") : kind === "calmSea" ? calmSeaShare(skyWindNow) : kind === "surf" ? 1 - calmSeaShare(skyWindNow) : 1) : 0;
     if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
     const file = placeFile(kind, canvas.scene?.id);
     if (volume <= 0.004 || voice.starting || !file) continue;
@@ -3608,7 +3614,7 @@ const tickPools = () => {
   let level = 0;
   let near = null;
   try { const pools = drips.count ? drips.pools : [], ears = canvas.sounds?.getListenerPositions?.() ?? []; for (const p of pools) { if (hushedAt(p, "regionSound")) continue; const k = heardFrom(p, ears, canvas.grid.size * 6); if (k > level) { level = k; near = p; } } } catch { level = 0; }
-  const volume = 0.28 * level;
+  const volume = soundsOn() ? 0.28 * level : 0;
   if (poolSound) { try { if (volume > 0.005) poolSound.fade(volume, { duration: 450 }); else { const s = poolSound; poolSound = null; s.fade(0, { duration: 600 }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, 700); } } catch { poolSound = null; } return; }
   if (volume <= 0.005 || poolStarting) return;
   poolStarting = true;
@@ -3640,7 +3646,7 @@ let nightLookAt = 0;
 const tickNight = () => {
   const now = performance.now(); if (now - nightLookAt < 500) return; nightLookAt = now;
   if (game.audio?.locked) return;
-  const outside = !!wildOpen && wildOpen.share >= 0.2 && bothSettingsOn("wildlifeSounds") && !undergroundScene();
+  const outside = soundsOn() && !!wildOpen && wildOpen.share >= 0.2 && bothSettingsOn("wildlifeSounds") && !undergroundScene();
   let ears = canvas.sounds?.getListenerPositions?.() ?? [];
   if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
   const volume = outside && ears.length ? nightLevel({ night: wildNight() * shiftNow().crickets, warm: !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.5), quiet: canvas.scene?.flags?.[ID]?.nightSounds === "off", inside: ears.every((e) => wildOpen.closed(e.x, e.y)) }) : 0;
@@ -3672,7 +3678,7 @@ const tickWeatherSound = () => {
   if (game.audio?.locked) return;
   const levels = weatherHeard() ?? {};
   for (const [kind, voice] of Object.entries(weatherVoices)) {
-    const volume = levels[kind] ?? 0; voice.volume = volume;
+    const volume = soundsOn() ? levels[kind] ?? 0 : 0; voice.volume = volume;
     if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 2500 }); else stopVoice(voice, 3000); } catch { voice.sound = null; } continue; }
     if (volume <= 0.004 || voice.starting) continue;
     voice.starting = true;
@@ -3693,7 +3699,7 @@ let thunderAt = 0;
 let thunderLoaded = false;
 const readyThunder = () => { if (thunderLoaded || game.audio?.locked) return; thunderLoaded = true; for (const file of [...THUNDER.close, ...THUNDER.far]) { try { void new foundry.audio.Sound(file, { context: game.audio.environment }).load().catch(() => {}); } catch { /* heard later, then */ } } };
 const thunderAfterFlash = (always = false, where = null) => {
-  if (!bothSettingsOn("weatherSounds") || game.audio?.locked) return;
+  if (!bothSettingsOn("weatherSounds") || !soundsOn() || game.audio?.locked) return;
   const rect = canvas.dimensions.sceneRect, span = Math.hypot(rect.width, rect.height) / canvas.grid.size, squares = where?.squares ?? span * 0.4;
   if (!always && !thunderReaches({ squares, span, storm: skyStorm })) return;
   const t = thunderShape({ squares, span }), now = performance.now(), onTop = thunderOnTopOf(squares), at = onTop ? now + t.wait : Math.max(now + t.wait, thunderAt + 1000);
@@ -3723,7 +3729,7 @@ const tickRivers = () => {
   for (const [speed, voice] of Object.entries(riverVoices)) {
     let through = 1;
     try { const h = heard[speed]; if (h.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
-    const volume = RIVER_VOLUME[speed] * heard[speed].level * through * waterLoudness("riverVolume");
+    const volume = soundsOn() ? RIVER_VOLUME[speed] * heard[speed].level * through * waterLoudness("riverVolume") : 0;
     if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
     if (volume <= 0.004 || voice.starting) continue;
     voice.starting = true;
@@ -4471,7 +4477,7 @@ const movementFeel = createMovementFeel({
     // just before it plays, so it is set as Foundry builds the sound (engines/sound/sound-pitch.mjs) and the very first
     // millisecond is already at that pitch; set again once it plays in case that hook is missing.
     const play = (file, rate, level, shape = {}) => {
-      if (!(level > 0) || (token.preview && !token.preview.active)) return Promise.resolve(null);
+      if (!(level > 0) || !soundsOn() || (token.preview && !token.preview.active)) return Promise.resolve(null);
       Hooks.callAll("animater.shapeSound", { file, rate, ...room, ...shape });
       const asked = performance.now();
       const playing = token.preview ? game.audio.play(file, { volume: level, context: game.audio.interface })
@@ -4808,7 +4814,7 @@ Hooks.on("updateCombat", (combat, changes) => {
       setTimeout(() => {
         if (!canvas?.ready || canvas.scene?.id !== d.parent?.id) return;
         Hooks.callAll("animater.shapeSound", { file, rate: shape.rate, ...room });
-        void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 12 * (canvas.dimensions?.distance ?? 5), { volume: level, walls: false, gmAlways: false }))
+        if (soundsOn()) void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 12 * (canvas.dimensions?.distance ?? 5), { volume: level, walls: false, gmAlways: false }))
           .then((sound) => {
             const node = sound?.sourceNode?.playbackRate;
             if (node && node.value !== shape.rate) node.value = shape.rate;
@@ -6235,6 +6241,7 @@ const IMMERSION_DEMOS = {
   tavern: () => {
     let sound = null, ended = false;
     (async () => {
+      if (!soundsOn()) return;
       const playing = new foundry.audio.Sound(placeFile("tavern", canvas.scene?.id), { context: game.audio.environment });
       await playing.load(); await playing.play({ loop: true, volume: 0 });
       if (ended) return void playing.stop();
@@ -7390,6 +7397,16 @@ Hooks.once("init", () => {
     // Off: every token comes straight back as Foundry draws it. On: tokens already under go down at once.
     onChange: () => clearBurrowSink(),
   });
+  registerSetting("animaterSounds", {
+    name: "All Animater sounds",
+    hint: "Every sound Animater makes: animations, footsteps, voices, weather, water, animals and the rest, for the whole table. Off: Animater is silent and everything else still plays. Your other sound settings stay as they are for when you turn it back on.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("animaterSoundsLocal", {
+    name: "All Animater sounds on my screen",
+    hint: "Turn off to hear nothing from Animater on this device. Other players keep theirs, and sound from other modules and the game carries on.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   registerSetting("footstepSounds", {
     name: "Footstep sounds",
     hint: "Moving tokens make their sounds: footsteps by floor and feet, wing beats, a burrower's churn, a swimmer's stroke, the thud of a landing. Off: tokens move silently; the view still shakes under giant footfalls (Giant footfalls shake the view).",
@@ -8469,7 +8486,7 @@ Hooks.once("ready", () => {
     view: { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y },
   });
   // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
-  installSoundPitch({
+  installSoundPitch({ silent: () => !soundsOn(),
     enabled: () => hotSetting("hitSounds") !== false,
     mix: () => ({ volume: hotSetting("surfaceVolume"), gore: hotSetting("surfaceGore"), echo: hotSetting("surfaceEcho") }),
     // Where this player hears from: their token, else the middle of their view.
@@ -9182,6 +9199,7 @@ Hooks.once("ready", () => {
   flash = flashScreens({
     ID, clientId,
     quietHere: () => qualityRank(localQuality()) === 0,
+    silent: () => !soundsOn(),
     killCamLength: (actor) => killCamWait(actor),
     killFinishing: (actor) => killsPlaying.get(actor?.uuid) ?? null,
     resolveMedia: (src) => (!src || /\.(webm|mp4|png|jpe?g|webp|gif|svg)$/i.test(src) ? src : runtime.getCatalog().find((i) => i.key === src || i.key.startsWith(`${src}.`))?.file ?? ""),
@@ -9412,7 +9430,7 @@ Hooks.once("ready", () => {
     if (!ctx || !plan?.length) return;
     if (ctx.state === "suspended") void Promise.resolve(ctx.resume?.()).catch(() => {});
     try { stopHeartbeat?.(); } catch { /* gone */ }
-    stopHeartbeat = playHeartbeat(ctx, ctx.gainNode ?? ctx.destination, plan, { volume: Number(shakeSetting("surfaceVolume", 1)) });
+    if (soundsOn()) stopHeartbeat = playHeartbeat(ctx, ctx.gainNode ?? ctx.destination, plan, { volume: Number(shakeSetting("surfaceVolume", 1)) });
     heartbeatUntil = Date.now() + (plan.at(-1)?.at ?? 0) + 600;
   };
   // Paints a splash (tunnel vision only with its switch on) and plays a victim's heartbeat (its own switch, so it
@@ -9651,7 +9669,7 @@ Hooks.once("ready", () => {
         try {
           if (!canvas?.ready || canvas.scene?.id !== d.parent?.id) return;
           Hooks.callAll("animater.shapeSound", { file, rate: shape.rate, ...room });
-          void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 15 * (canvas.dimensions?.distance ?? 5), { volume: shape.volume, walls: false, gmAlways: false }))
+          if (soundsOn()) void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 15 * (canvas.dimensions?.distance ?? 5), { volume: shape.volume, walls: false, gmAlways: false }))
             .then((sound) => {
               const node = sound?.sourceNode?.playbackRate;
               if (node && node.value !== shape.rate) node.value = shape.rate;

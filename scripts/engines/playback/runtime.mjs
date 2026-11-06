@@ -499,7 +499,7 @@ export class AnimaterRuntime {
           const from = s.subject === "source" ? context.source : s.destination ?? context.source, at = soundPlace(from);
           // ...and on which scene and level (its token's, else what this client views), so others hear its room's walls.
           const floor = at ? soundFloor(from, this.host) : null;
-          if ((s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(at ? { animaterAt: at } : {}), ...(floor?.scene ? { animaterScene: floor.scene } : {}), ...(floor?.level ? { animaterLevel: floor.level } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
+          if (!preview || (s.pitch > 0 && s.pitch !== 1) || s.echo || s.surfaceRole || at) sound.addOverride?.(async (_, data) => ({ ...data, ...(preview ? {} : { animaterSound: true }), ...(at ? { animaterAt: at } : {}), ...(floor?.scene ? { animaterScene: floor.scene } : {}), ...(floor?.level ? { animaterLevel: floor.level } : {}), ...(s.pitch > 0 && s.pitch !== 1 ? { animaterPitch: s.pitch } : {}), ...(s.echo ? { animaterEcho: { delay: s.echo.delay, wet: s.echo.wet, feedback: s.echo.feedback, tone: s.echo.tone } } : {}), ...(s.surfaceRole ? { animaterSurface: s.surfaceRole } : {}) }));
           applyMediaOptions(sound, s);
           if (s.fadeIn) sound.fadeInAudio(s.fadeIn, { ease: s.ease });
           if (s.fadeOut) sound.fadeOutAudio(s.fadeOut, { ease: s.ease });

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { WATER_MOTION, WATER_SHADERS, flowBend, flowField, ringSlot, wakeRingDue, waterFoam, waveSheet } from '../../../scripts/engines/motion/water-engine.mjs';
 import { floorDetail } from '../../../scripts/core/quality.mjs';
 
@@ -218,7 +219,24 @@ test('a sea keeps its usual long shore unless it is too narrow for it', async ()
   const narrow = seaBlurs(200, 100);
   assert.equal(narrow.shore, 100);
   assert.equal(narrow.deep, 120, 'its middle gets away from the shore');
-  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) if (frag.includes('float shoal')) { assert.ok(frag.includes('shoal * 26.0 * uFronts'), 'only the fronts that fit'); assert.ok(frag.includes('calm * smoothstep(0.2, 0.8, uFronts)'), 'too narrow for waves to break'); }
+  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) if (frag.includes('float shoal')) { assert.ok(!frag.includes('uFronts'), 'too narrow for waves all round: they come from one side'); }
+});
+
+test('a sea too small for an open sea of its own, or told which way, has its waves come from one side', () => {
+  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) if (frag.includes('float shoal =')) {
+    assert.ok(frag.includes('6.28318 * (uWaveClock - dot(w, one) / uWaveGap)'), 'fronts run the way the waves go, not out from its middle');
+    assert.ok(frag.includes('-dot(uSwellDir, toDeep)'), 'and break on the shore they run into');
+    assert.ok(frag.includes('void breaker(vec2 w, float from, vec2 dir'), 'fronts from one side');
+    assert.ok(frag.includes('smoothstep(0.03, 0.3, uSeaState)'), 'none in a light air: only ripples');
+    assert.ok(frag.includes('exp(-behind / combed)'), 'foam thinning behind its front');
+    assert.ok(frag.includes('1.0 - smoothstep(thin * 0.5, thin * 1.02 + 0.03, cellsSmall)'), 'opening from solid into lace as it thins');
+    assert.ok(frag.includes('float shoreAhead ='), 'and only where a shore lies ahead');
+    assert.ok(frag.includes('float gust = smoothstep') && frag.includes('float ripples ='), 'and air on the water even when it is calm');
+    assert.ok(frag.includes('* facing * swashed * uBeach'), 'no wash on a shore that is not drawn: it would float out on the water');
+    assert.ok(frag.includes('clamp(uGrid / 70.0, 1.0, 3.0)'), 'foam as fine on a map with big squares');
+  }
+  const source = readFileSync(new URL('../../../scripts/engines/motion/water-engine.mjs', import.meta.url), 'utf8');
+  assert.ok(source.includes('uAimed: blurs && (Number.isFinite(spec.waves) || blurs.deep < size * 3.5) ? 1 : 0'));
 });
 
 test('a dock throws its shadow by how far it stands above the water', async () => {
@@ -256,4 +274,36 @@ test('water runs a little way under a painted dock, and up to the edge of a plai
   assert.deepEqual([...takenOut(row(), cut, 7, 1, 0)], [255, 255, 0, 0, 0, 255, 255], 'to its very edge');
   assert.deepEqual([...takenOut(row(), cut, 7, 1, 1)], [255, 255, 255, 0, 255, 255, 255], 'a cell short on each side');
   assert.deepEqual([...takenOut(Uint8Array.from([0, 0, 0]), Uint8Array.from([0, 255, 0]), 3, 1, 0)], [0, 0, 0], 'never adds water');
+});
+
+test('waves from one side come as often as the wind says, and never faster for it', async () => {
+  const { wavePeriod } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  assert.equal(wavePeriod(0), 2.5, 'choppy in a light air');
+  assert.equal(wavePeriod(1), 8, 'long in a gale');
+  assert.ok(wavePeriod(0.5) > 4.5 && wavePeriod(0.5) < 6, 'a fresh breeze, about every five seconds');
+  assert.equal(wavePeriod(undefined), 2.5);
+  assert.equal(wavePeriod(9), 8);
+});
+
+test('foam cells repeat at their edges and come out the same on every screen', async () => {
+  const { foamCells } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  const size = 64, a = foamCells(size, 8);
+  assert.deepEqual(a, foamCells(size, 8), 'the same each time');
+  assert.equal(a.length, size * size * 4);
+  const red = (x, y) => a[(y * size + x) * 4];
+  let jump = 0, edge = 0; for (let y = 0; y < size; y += 1) { jump = Math.max(jump, Math.abs(red(0, y) - red(size - 1, y))); edge = Math.max(edge, Math.abs(red(0, y) - red(1, y))); }
+  assert.ok(jump <= edge * 2 + 8, 'no seam where the tile meets itself');
+  const walls = []; for (let i = 1; i < a.length; i += 4) walls.push(a[i]);
+  assert.ok(Math.min(...walls) < 20 && Math.max(...walls) > 100, 'walls and the room between them');
+});
+
+test('waves keep their pace on a small water, and turn slowly with the wind', async () => {
+  const { turnedToward, waveGap } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  assert.equal(waveGap(5, 100), 4.5, 'open water: by how often they come');
+  assert.ok(Math.abs(waveGap(8, 6) - 3.3) < 1e-9, 'a small water still sees them');
+  assert.equal(waveGap(8, 1), 1.5);
+  const turned = turnedToward([1, 0], [0, 1], 0.05);
+  assert.ok(turned[1] > 0 && turned[1] < 0.1, 'a little way');
+  assert.ok(Math.abs(Math.hypot(...turned) - 1) < 1e-9, 'a unit length');
+  assert.deepEqual(turnedToward([1, 0], [-1, 0], 0.5), [-1, 0], 'never nothing, turned right round');
 });
