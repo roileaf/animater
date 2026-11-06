@@ -103,6 +103,12 @@ export function windowOpening(wall = {}, height = 2, foot = 0.2) {
   const top = given(wall.top) && Number(wall.top) > bottom ? Number(wall.top) : bottom + height, ft = Number(foot) > 0 ? Number(foot) : 0.2;
   const upTo = (feet) => Math.min(top, bottom + feet * ft);
   if (Number(wall.door) > 0) return Number(wall.ds) === 1 ? { bottom, top: upTo(7), alpha: 1, kind: 'open' } : null;
+  // One that opens and closes (window-state.mjs): a shut wooden window lets nothing through, shut shutters or glass their share; open, an empty frame.
+  if (wall.kind === 'woodWindow' || wall.kind === 'shutterWindow' || wall.kind === 'glassWindow') {
+    if (!wall.open && (wall.kind === 'woodWindow' || (wall.kind === 'shutterWindow' && !wall.slats))) return null;
+    const shut = wall.kind === 'shutterWindow' ? 'shuttered' : 'glass';
+    return upTo(7) > upTo(3) ? { bottom: upTo(3), top: upTo(7), alpha: wall.open ? 1 : WINDOW_KINDS[shut], kind: wall.open ? 'open' : shut } : null;
+  }
   // A window: Foundry's Window (light proximity or distance), or glass drawn as a wall that lets the light through
   // freely (none) but stops movement; or any wall given a kind.
   const light = Number(wall.light) || 0, glass = light === 0 && Number(wall.move) > 0, kind = WINDOW_KINDS[wall.kind] ? wall.kind : null;
@@ -112,7 +118,7 @@ export function windowOpening(wall = {}, height = 2, foot = 0.2) {
 // edge), alpha }. As wallShadowQuads, for the same walls, sun and height. `indoors` the roofs: an opening whose sunward
 // side is under one too (a door between two rooms) lets no daylight through. `shade` the walls' shadows
 // (wallShadowQuads's): an opening another wall taller than it shades from the sun lets that much less through.
-export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, indoors = [], foot = 0.2, shade = [] } = {}) {
+export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, indoors = [], foot = 0.2, shade = [], blocked = () => false } = {}) {
   if (!sun || !(Number(sun.strength) > 0)) return [];
   const away = ((Number(sun.angle) || 0) + 180) * Math.PI / 180, dx = Math.cos(away), dy = Math.sin(away);
   const out = [];
@@ -126,11 +132,13 @@ export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, i
     const [ax, ay, bx, by] = c.map(Number);
     const sunward = { x: (ax + bx) / 2 - dx * grid * 0.5, y: (ay + by) / 2 - dy * grid * 0.5 };
     if (indoors.some((p) => inside(sunward, p))) continue;
+    // Another wall hard up against it, on the sun's side, stops light: none gets in.
+    if (blocked({ x: (ax + bx) / 2 - dx * 2, y: (ay + by) / 2 - dy * 2 }, sunward)) continue;
     // The sun on the opening: just outside it, halfway up it.
     const sill = { x: (ax + bx) / 2 - dx * grid * 0.15, y: (ay + by) / 2 - dy * grid * 0.15 };
     const alpha = open.alpha * (1 - shadedAbove(sill, shade, { elevation: (open.bottom + open.top) / 2, sun, grid, skip: [ax, ay, bx, by] }));
     if (!(alpha > 0.05)) continue;
-    out.push({ points: [ax + dx * near, ay + dy * near, bx + dx * near, by + dy * near, bx + dx * far, by + dy * far, ax + dx * far, ay + dy * far], alpha });
+    out.push({ points: [ax + dx * near, ay + dy * near, bx + dx * near, by + dy * near, bx + dx * far, by + dy * far, ax + dx * far, ay + dy * far], alpha, slats: open.kind === 'shuttered' ? Math.max(3, Math.round((far - near) / (grid * 0.3))) : 0 });
   }
   return out;
 }
@@ -138,13 +146,14 @@ export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, i
 // Warm light from windows at night: an opening between a lit room and the open air spills that room's light onto the
 // ground outside, fanning out from it. Each { points (a quadrilateral, flat x, y pairs; its first two points along the
 // opening), alpha, color (0xrrggbb, its brightest light's, null for warm lamplight), from (the opening's middle), up (its
-// middle's height, squares), reach (px), lamp ({ x, y }: the light inside lighting it most), room (its polygon), kind (windowOpening's), slats (bands of light through shutters, 0 none),
+// middle's height, squares), past (just outside it), reach (px), lamp ({ x, y }: the light inside lighting it most), room (its polygon), kind (windowOpening's), slats (bands of light through shutters, 0 none),
 // shadow (how dark a creature's shadow in it is: a curtain's spread light throws only a faint one) }. A curtain's glow
 // is dim, short and wide. `indoors` the rooms (the regions
 // that keep the weather out); `lights` the lights burning ({ x, y, radius px, color }): one inside the room, reaching the
 // opening, lights it, the nearer the brighter. A door between two rooms, or a window with the open air on both sides,
 // spills nothing.
-export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100, height = 2, foot = 0.2 } = {}) {
+// `blocked(from, to)`: whether walls stop light between two points. A window only shows a light that gets to it.
+export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100, height = 2, foot = 0.2, blocked = () => false } = {}) {
   const out = [];
   for (const wall of walls) {
     const open = windowOpening(wall, height, foot), c = wall?.c;
@@ -156,21 +165,21 @@ export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100,
     const step = grid * 0.3, sideA = { x: mid.x + nx * step, y: mid.y + ny * step }, sideB = { x: mid.x - nx * step, y: mid.y - ny * step };
     const roomA = indoors.find((poly) => inside(sideA, poly)), roomB = indoors.find((poly) => inside(sideB, poly));
     if (!roomA === !roomB) continue;
-    const room = roomA ?? roomB, away = roomA ? -1 : 1;
+    const room = roomA ?? roomB, away = roomA ? -1 : 1, within = roomA ? sideA : sideB;
     // How brightly the room is lit at the opening: its brightest light that reaches it.
     let best = 0, color = null, lamp = null;
     for (const l of lights) {
       const r = Number(l?.radius) || 0;
       if (!(r > 0) || !inside(l, room)) continue;
       const lit = 1 - Math.hypot(l.x - mid.x, l.y - mid.y) / r;
-      if (lit > best) { best = lit; color = Number.isFinite(l.color) ? l.color : null; lamp = { x: l.x, y: l.y }; }
+      if (lit > best && !blocked({ x: l.x, y: l.y }, within)) { best = lit; color = Number.isFinite(l.color) ? l.color : null; lamp = { x: l.x, y: l.y }; }
     }
     if (!(best > 0.05)) continue;
     const strength = Math.min(1, best * 1.6), curtained = open.kind === 'curtained';
     const reach = grid * (1 + 2 * strength) * (curtained ? 0.6 : 1), spread = reach * (curtained ? 0.7 : 0.35);
     const ox = nx * away * reach, oy = ny * away * reach;
     out.push({ points: [ax, ay, bx, by, bx + ox + ux * spread, by + oy + uy * spread, ax + ox - ux * spread, ay + oy - uy * spread], alpha: open.alpha * strength, color,
-      from: mid, up: (open.bottom + open.top) / 2, reach, kind: open.kind, lamp, room,
+      from: mid, past: { x: mid.x + nx * away * 2, y: mid.y + ny * away * 2 }, up: (open.bottom + open.top) / 2, reach, kind: open.kind, lamp, room,
       slats: open.kind === 'shuttered' ? Math.max(3, Math.round(reach / (grid * 0.3))) : 0, shadow: curtained ? 0.3 : open.kind === 'shuttered' ? 0.8 : 1 });
   }
   return out;
@@ -279,7 +288,18 @@ void main(){ gl_FragColor = texture2D(uGlow, vUv) * (1.0 - texture2D(uShade, vUv
 // each window or open door onto the floor (the sky's light comes in steeply: a short reach). Each { points (a
 // quadrilateral, flat x, y pairs; its first two points along the opening), alpha }. As windowGlows, for the same walls
 // and rooms, the other way round: an opening between two rooms, or with the open air on both sides, lets in nothing.
-export function windowFlashes({ walls = [], indoors = [], grid = 100, height = 2, foot = 0.2 } = {}) {
+// Of the windows' patches, the ones a strike at `place` lights (pure): a window looks out one way, and a flash behind the house reaches none of it. Each keeps its own, dimmer the more it looks away. No place known: all.
+export function windowsFacing(windows = [], place = null) {
+  if (!place) return windows;
+  const out = [];
+  for (const win of windows) {
+    const [ax, ay, bx, by, cx, cy, ex, ey] = win.points, mx = (ax + bx) / 2, my = (ay + by) / 2, ox = mx - (cx + ex) / 2, oy = my - (cy + ey) / 2, tx = place.x - mx, ty = place.y - my;
+    const facing = (ox * tx + oy * ty) / Math.max(1e-6, Math.hypot(ox, oy) * Math.hypot(tx, ty)), k = Math.min(1, Math.max(0, (facing + 0.1) / 0.6)), share = k * k * (3 - 2 * k);
+    if (share > 0.01) out.push({ ...win, alpha: (win.alpha ?? 1) * share });
+  }
+  return out;
+}
+export function windowFlashes({ walls = [], indoors = [], grid = 100, height = 2, foot = 0.2, blocked = () => false } = {}) {
   const out = [];
   for (const wall of walls) {
     const open = windowOpening(wall, height, foot), c = wall?.c;
@@ -290,6 +310,8 @@ export function windowFlashes({ walls = [], indoors = [], grid = 100, height = 2
     const step = grid * 0.3, inA = indoors.some((p) => inside({ x: mid.x + nx * step, y: mid.y + ny * step }, p)), inB = indoors.some((p) => inside({ x: mid.x - nx * step, y: mid.y - ny * step }, p));
     if (inA === inB) continue;
     const into = inA ? 1 : -1, reach = grid * 2, spread = reach * 0.3, ox = nx * into * reach, oy = ny * into * reach;
+    // (A wall hard up against it outside: no flash gets in.)
+    if (blocked({ x: mid.x - nx * into * 2, y: mid.y - ny * into * 2 }, { x: mid.x - nx * into * step * 1.6, y: mid.y - ny * into * step * 1.6 })) continue;
     out.push({ points: [ax, ay, bx, by, bx + ox + ux * spread, by + oy + uy * spread, ax + ox - ux * spread, ay + oy - uy * spread], alpha: open.alpha });
   }
   return out;
@@ -312,7 +334,7 @@ export function keepToSight(layer, cnv) {
 }
 
 // The glows' layer: build({ glows, bounds, alpha, covers }) bakes them, brightest at the opening and fading over the
-// ground; its colour is the lights' (warm lamplight where they give none). `covers`: the tree and roof tiles over the
+// ground; its colour is the light's own (warm lamplight where it has none). `covers`: the tree and roof tiles over the
 // ground (each { texture, x, y, width, height, rotation, anchorX, anchorY, alpha }), where the glow does not show, their
 // leaves and eaves hiding the ground it lies on. Added to `root()` over the lit scene; clear() drops it.
 // shadows(creatures) cuts the creatures' shadows out of it (glowShadows), sharp at their feet and softer further out,
@@ -345,12 +367,19 @@ export function createWindowGlow({ PIXI, root, render }) {
       soft.filters = [new PIXI.BlurFilter(SOFTNESS * 2)];
       bands.filters = [new PIXI.BlurFilter(SOFTNESS * 0.5)];
       for (const glow of glows) {
-        const [ax, ay, bx, by, cx, cy, ex, ey] = glow.points, lerp = (p, q, t) => p + (q - p) * t, g = glow.slats > 0 ? bands : soft;
-        // A lamp's light is warm whatever it is tinted; a coloured light only leans the glow its way.
-        const tint = glow.color === null || glow.color === undefined ? WARM : [16, 8, 0].reduce((n, shift) => {
-          const warm = (WARM >> shift) & 255, own = (glow.color >> shift) & 255;
-          return n | (Math.round(warm * (0.55 + 0.45 * own / 255)) << shift);
-        }, 0);
+        // Walls outside stop it as they stop any light: `clip` (flat x, y pairs) is all the light from the opening can reach, and it shows only there.
+        let g = glow.slats > 0 ? bands : soft;
+        if (glow.clip?.length >= 6) {
+          const kept = new PIXI.Container(), mask = new PIXI.Graphics();
+          g = new PIXI.Graphics();
+          g.filters = [new PIXI.BlurFilter(SOFTNESS * (glow.slats > 0 ? 0.5 : 2))];
+          mask.beginFill(0xffffff, 1); mask.drawPolygon(at(glow.clip)); mask.endFill();
+          kept.addChild(g, mask); kept.mask = mask;
+          stage.addChild(kept);
+        }
+        const [ax, ay, bx, by, cx, cy, ex, ey] = glow.points, lerp = (p, q, t) => p + (q - p) * t;
+        // The colour of its light; warm lamplight for one with none of its own.
+        const tint = glow.color === null || glow.color === undefined ? WARM : glow.color;
         // Through shutters: a band of light from each gap between the slats, with dark between.
         const n = glow.slats > 0 ? glow.slats : SLICES, lit = glow.slats > 0 ? 0.5 : 1;
         for (let i = 0; i < n; i++) {
@@ -527,9 +556,11 @@ export function createWindowShafts({ PIXI, root, render }) {
       // Each patch in slices from the opening out, fading as the light spreads.
       for (const s of shafts) {
         const [ax, ay, bx, by, cx, cy, ex, ey] = s.points, lerp = (p, q, t) => p + (q - p) * t;
-        for (let i = 0; i < SLICES; i++) {
-          const t0 = i / SLICES, t1 = (i + 1) / SLICES;
-          g.beginFill(0xffffff, s.alpha * (1 - 0.65 * (i + 0.5) / SLICES));
+        // (Through shutters: a band from each gap between the slats, with dark between.)
+        const n = s.slats > 0 ? s.slats : SLICES, lit = s.slats > 0 ? 0.5 : 1;
+        for (let i = 0; i < n; i++) {
+          const t0 = i / n, t1 = (i + lit) / n;
+          g.beginFill(0xffffff, s.alpha * (1 - 0.65 * (i + 0.5) / n));
           g.drawPolygon(at([lerp(ax, ex, t0), lerp(ay, ey, t0), lerp(bx, cx, t0), lerp(by, cy, t0), lerp(bx, cx, t1), lerp(by, cy, t1), lerp(ax, ex, t1), lerp(ay, ey, t1)]));
           g.endFill();
         }

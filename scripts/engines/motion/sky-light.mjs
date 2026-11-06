@@ -57,7 +57,12 @@ export const cloudCover = (sky) => (Number.isFinite(sky) ? Math.min(1, Math.max(
 export function nearestLights(lights = [], at = { x: 0, y: 0 }, most = 4) {
   return lights.filter((l) => l.radius > 0).map((l) => ({ l, d: Math.hypot(l.x - at.x, l.y - at.y) - l.radius })).sort((a, b) => a.d - b.d).slice(0, most).map((e) => e.l);
 }
-const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown']);
+// How dark a storm's sky makes the outdoors (pure, the strength of its wash): nothing even under plain overcast; only as the sky shuts altogether, to `most`, a little more in the rain. Only what daylight there is to lose: none at night, which is dark already. Only a look: it never touches the scene's darkness, so nobody's vision or the rules change.
+export function stormGloom({ cover = 0, rain = 0, darkness = 0, most = 0.5 } = {}) {
+  const k = Math.min(1, Math.max(0, (Number(cover) - 0.9) / 0.1)), day = 1 - Math.min(1, Math.max(0, Number(darkness) || 0));
+  return Math.min(0.85, Math.max(0, Number(most) || 0) * (k * k * (3 - 2 * k)) * (1 + 0.25 * Math.min(1, Math.max(0, Number(rain) || 0)))) * day;
+}
+const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff']);
 export function skyNeedsBuilding(change = {}) {
   for (const key of Object.keys(change ?? {})) {
     if (key === '_id' || key === '_stats' || key === 'weather') continue;
@@ -165,7 +170,8 @@ const FRAG = `
 precision highp float;
 varying vec2 vUv;
 uniform float uMovingWater; // moving water (water-engine.mjs) has its own glints
-uniform sampler2D uWater, uBanks, uFrozen, uIndoor, uGrass, uTinted, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns;
+// (uLow: the water widened, in its red for the banks and its green for the low ground. uLampReach: as far as each of the nearest three lights gets, walls and all, a colour each.)
+uniform sampler2D uWater, uFrozen, uIndoor, uGrass, uTinted, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns, uLampReach;
 uniform vec2 uSize, uWindDir;
 uniform vec4 uBird;     // a flock's centre (x, y), heading (radians) and its birds' size (w, 1 a square and a half each; 0 none)
 uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain, uIce, uLitter;
@@ -185,6 +191,8 @@ uniform vec4 uFallA, uFallAColor, uFallB, uFallBColor, uFogW, uCloudSky, uGlow, 
 uniform vec2 uCloudShift;
 uniform float uCover, uSwirlAmount, uFallsDown, uFallTime;
 uniform vec3 uEye;
+uniform float uGloom; // how dark a closed sky makes the outdoors, by day (stormGloom)
+uniform float uGloomLift; // how far a flash of lightning lifts it, this moment
 uniform sampler2D uSnowRelief; // the shape of the snow lying on the ground (this shader is at the 16 textures a card takes for sure: no more)
 uniform float uHasSnowGround;
 uniform vec4 uSnowSun;     // toward the sun or moon (x, y), how much of it reaches the ground, how low it is (0.35 high, 2.25 on the horizon)
@@ -208,15 +216,22 @@ float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a
 float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float patchNoise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(patchHash(i), patchHash(i + vec2(1, 0)), f.x), mix(patchHash(i + vec2(0, 1)), patchHash(i + vec2(1, 1)), f.x), f.y); }
+// Where water stands on wet ground (0-1): small pools at first, spreading and joining the wetter it gets, with an uneven edge.
+float puddleAt(vec2 px){
+  if (uWet <= 0.05) return 0.0;
+  float line = mix(0.68, 0.56, smoothstep(0.1, 1.0, uWet)) - 0.34 * texture2D(uFreeze, vUv).b * smoothstep(0.05, 0.5, uWet);
+  return smoothstep(line, line + 0.022, fbm(px / (uGrid * 0.62)) + (noise(px / (uGrid * 0.16)) - 0.5) * 0.03);
+}
 // Whether the air here is under a ceiling, for what is drawn in the air: rain and flakes, fog, the clouds' wash. An opening in a roof (uFreeze's blue marks one) lets the weather through to the floor, where it shows as what it leaves, wet ground and lying snow; the air of the room stays the room's.
 float indoorAir(vec2 uv){ vec4 marks = texture2D(uFreeze, uv); return max(texture2D(uIndoor, uv).a, marks.b); }
 // How much lamp and fire light a glossy surface here shows back (the nearest few, in their colours).
 vec3 lampsOn(vec2 px){
   vec3 got = vec3(0.0);
-  for (int li = 0; li < 4; li++) {
+  vec4 reach = texture2D(uLampReach, vUv);
+  for (int li = 0; li < 3; li++) {
     vec4 lamp = uSnowLights[li];
     if (lamp.z <= 0.0) continue;
-    float near = 1.0 - smoothstep(lamp.z * 0.1, lamp.z, length(px - lamp.xy));
+    float near = (1.0 - smoothstep(lamp.z * 0.1, lamp.z, length(px - lamp.xy))) * reach[li];
     got += uSnowLightColor[li] * near * near;
   }
   return got;
@@ -274,7 +289,7 @@ float crestGlints(vec2 px, float t){
 // thins out raggedly, so a region drawn a little off the painted banks leaves no ruled line.
 float iceOver(vec2 px, float water){
   if (uIce < 0.005 || water < 0.01) return 0.0;
-  float banks = texture2D(uBanks, vUv).a, deep = smoothstep(0.45, 0.98, banks), ragged = fbm(px / (uGrid * 0.9)) - 0.5;
+  float banks = texture2D(uLow, vUv).r, deep = smoothstep(0.45, 0.98, banks), ragged = fbm(px / (uGrid * 0.9)) - 0.5;
   float rim = smoothstep(0.32, 0.62, banks + ragged * 0.3);
   return water * rim * texture2D(uFreeze, vUv).a * smoothstep(0.0, 0.1, uIce * 1.3 - deep - ragged * 0.35);
 }
@@ -688,13 +703,20 @@ void main(){
       float edge = mix(0.74, 0.3, uDeck.x), d = cloudDeck(px - uCloudShift, t, uWindDir, uWind, uGrid);
       vec3 lit = vec3(1.1, 1.06, 0.97) * (1.0 - 0.38 * uDeck.y), under = mix(vec3(0.56, 0.6, 0.68), vec3(0.47, 0.5, 0.57), min(1.0, uDeck.y * 0.5 + smoothstep(edge, edge + 0.24, d) * (0.45 + 0.5 * uDeck.y)));
       // What it does to the light, as a wash: normal blending only, so how much it darkens, and what light it adds back.
-      vec3 light = mix(vec3(1.0), mix(lit, under, deckShade(d, uDeck)) * uDeck.w, sun * over);
+      // (Never most of the day's light: broken cloud only passing shade, a closed sky dull but plainly day.)
+      vec3 light = mix(vec3(1.0), mix(lit, under, deckShade(d, uDeck)) * uDeck.w, sun * over * (0.45 + 0.35 * uDeck.y));
       deckDark = 1.0 - min(1.0, min(light.r, min(light.g, light.b)));
       deckAdd = max(light - (1.0 - deckDark), vec3(0.0)) * 0.38;
     }
     vec3 col = uVeil.rgb * 0.28 * s * (1.0 - cloud) + vec3(0.03, 0.04, 0.06) * cloud;
     vec4 pw = vec4(col, 1.0 - (1.0 - s) * (1.0 - cloud));
     pw = vec4(deckAdd + pw.rgb * (1.0 - deckDark), deckDark + pw.a * (1.0 - deckDark));
+    // A closed sky makes a dull dusk of the day: a cool, dark wash, only as much more as the clouds and the weather's light have not done already, so uGloom is how dark it all comes to. All of it draws back around each lamp and fire, as far as its light gets past the walls, so they show up against it.
+    if (uGloom > 0.005) {
+      float need = uGloom * over;
+      if (need > pw.a) pw = overP(pw, vec3(0.035, 0.045, 0.07), (need - pw.a) / (1.0 - pw.a));
+      pw *= (1.0 - min(1.0, dot(lampsOn(px), vec3(0.6)))) * (1.0 - uGloomLift);
+    }
     // Clouds of their own colour seen from above, for the weathers that ask for them (ash, smoke); drifting with the wind,
     // thinner once the sky has closed over, so the map stays readable under it.
     if (uCloudSky.a > 0.005 && uCover > 0.05) {
@@ -715,7 +737,7 @@ void main(){
       vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0 * (1.0 + 1.6 * uWind)) - t * (0.02 + 0.13 * uWind), dot(px, across) / (uGrid * 7.0));
       vec2 warp = vec2(noise(q * 2.0 + t * 0.03), noise(q * 2.0 + 5.2 - t * 0.025)) - 0.5;
       float lowBank = fbm4(q + warp * 0.8), highBank = fbm3(q * 0.6 + vec2(3.1 - t * (0.02 + 0.05 * uWind), 7.4));
-      float hollow = 0.75 + 0.5 * texture2D(uLow, vUv).a;
+      float hollow = 0.75 + 0.5 * texture2D(uLow, vUv).g;
       float n = 0.6 * smoothstep(0.25, 0.75, lowBank) + 0.4 * smoothstep(0.3, 0.7, highBank);
       pw = overP(pw, uFogW.rgb, uFogW.a * (0.3 + 0.7 * n) * hollow * 0.8 * airOver);
     }
@@ -726,7 +748,7 @@ void main(){
       vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0 * (1.0 + 1.3 * uWind)) - t * (0.02 + 0.15 * uWind), dot(px, side) / (uGrid * 5.0));
       vec2 warp = vec2(noise(q * 1.3 + t * 0.02), noise(q * 1.3 + 4.4)) - 0.5;
       float veil = smoothstep(0.3, 0.7, fbm4(q + warp * 0.9)), wisp = smoothstep(0.5, 0.78, fbm3(q * 2.3 + warp + 9.0));
-      float hollow = 0.8 + 0.7 * texture2D(uLow, vUv).a;
+      float hollow = 0.8 + 0.7 * texture2D(uLow, vUv).g;
       pw = overP(pw, vec3(0.94, 0.96, 0.98), (0.08 + veil * 0.26 + wisp * 0.1) * hollow * uSky.y * airOver);
     }
     pw = fallLayer(pw, px, uFallTime, uFallA, uFallAColor.rgb, over);
@@ -867,9 +889,8 @@ void main(){
     // (The clouds' shadows are drawn over the roofs and trees, with the weather's light.)
     float a = 0.0;
     // Wet ground darkens.
-    // (And more where water stands: the same places as the puddles' shine and rings.)
-    float pooling = uWet > 0.05 ? smoothstep(0.62, 0.72, fbm(px / (uGrid * 1.4))) : 0.0;
-    a = 1.0 - (1.0 - a) * (1.0 - uWet * (0.2 + 0.28 * pooling) * outside * (1.0 - water));
+    // (And much more where water stands: a puddle is dark, the ground soaked under it.)
+    a = 1.0 - (1.0 - a) * (1.0 - min(1.0, uWet * 0.2 + puddleAt(px) * 0.34) * outside * (1.0 - water));
     // Under the shadows, the season's colour on the grass (never on bare stone, streets or sand: a city's paving tinted
     // green), in soft patches; and the leaves lying.
     vec3 under = vec3(0.0); float ua = 0.0;
@@ -939,10 +960,11 @@ void main(){
       // The trees' shade lies on it, blue, where the sun is out.
       tone = mix(tone, tone * vec3(0.62, 0.68, 0.82), texture2D(uTreeShade, vUv).a * uSnowSun.z * 0.9);
       // A lamp or fire nearby catches the side of each rise that faces it. (Most of the light itself is Foundry's, over all this.)
-      for (int li = 0; li < 4; li++) {
+      vec4 lampReach = texture2D(uLampReach, vUv);
+      for (int li = 0; li < 3; li++) {
         vec4 lamp = uSnowLights[li];
         if (lamp.z <= 0.0) continue;
-        vec2 away = px - lamp.xy; float far = length(away), near = 1.0 - smoothstep(lamp.z * 0.1, lamp.z, far);
+        vec2 away = px - lamp.xy; float far = length(away), near = (1.0 - smoothstep(lamp.z * 0.1, lamp.z, far)) * lampReach[li];
         if (near > 0.001) tone *= 1.0 + near * clamp(dot(slope, away / max(far, 1.0)) * 0.9, -0.35, 0.8) * mix(vec3(1.0), uSnowLightColor[li], 0.7) * (1.0 - 0.7 * uSnowSun.z);
       }
       // It lies thick on what rises and thins in the scoured low places, where the ground comes through in a soft dusting.
@@ -964,7 +986,7 @@ void main(){
     }
     if (uMist > 0.01) {
       // Mist lies thickest over water and low ground, thinner elsewhere, drifting slowly.
-      float low = texture2D(uLow, vUv).a;
+      float low = texture2D(uLow, vUv).g;
       float m = uMist * (0.45 + 0.55 * low) * smoothstep(0.25, 0.65, fbm(px / (uGrid * 6.0) + uWindDir * t * 0.015 + vec2(t * 0.004, 0.0))) * outside * 0.6;
       col = col * (1.0 - m) + vec3(0.86, 0.89, 0.92) * m; a = 1.0 - (1.0 - a) * (1.0 - m);
     }
@@ -972,7 +994,7 @@ void main(){
     return;
   }
   vec3 col = vec3(0.0);
-  float banks = texture2D(uBanks, vUv).a * (1.0 - water);
+  float banks = texture2D(uLow, vUv).r * (1.0 - water);
   // Frozen water is ice: no sheen, crests, glints or rain rings on it, but it sparkles.
   float iced = iceOver(px, water);
   water *= 1.0 - iced;
@@ -1017,13 +1039,16 @@ void main(){
     }
     if (iced > 0.01) light += iced * outside * twinkle(px, uGrid * 0.1, t, 1.4) * 0.8;
     // Puddles on wet ground catch the sky.
-    if (uWet > 0.05) light += uWet * smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * outside * (1.0 - water) * 0.1;
+    if (uWet > 0.05) light += puddleAt(px) * outside * (1.0 - water) * 0.16;
     col += uColor * light * outside * uStrength;
   }
+  // Standing water holds the sky: a pale, cool sheen, day or night (Foundry's own lighting dims it with the rest). And it mirrors a lamp or torch nearby, in its colour.
+  // (Never flat: the surface barely moves, so what it holds shimmers, breaking up toward the middle of the pool.)
+  if (uWet > 0.05) { float held = puddleAt(px); if (held > 0.001) { float shimmer = 0.55 + 0.45 * noise(px / (uGrid * 0.2) + vec2(t * 0.25, -t * 0.18)) * noise(px / (uGrid * 0.07) - vec2(t * 0.4, t * 0.3)) * 2.0; col += (vec3(0.34, 0.41, 0.5) * 0.09 + lampsOn(px) * 0.3) * shimmer * held * outside * (1.0 - water); } }
   float rainDim = 0.0;
   if (uRain > 0.01) {
     // Rain on water and on the puddles: where each drop lands a short train of waves runs out as on a pool (drips.mjs), lit on the side facing the light and dark in its troughs, more the harder it rains.
-    float puddle = uWet > 0.05 ? smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * (1.0 - water) : 0.0;
+    float puddle = puddleAt(px) * (1.0 - water);
     // (And faintly on any ground that is wet, where each drop lands: most of all on hard floors with no puddle to show it.)
     float film = uWet > 0.05 ? 0.6 * smoothstep(0.05, 0.45, uWet) : 0.0;
     float pool = max(max(water, puddle), film) * outside;
@@ -1034,7 +1059,9 @@ void main(){
         vec3 L = normalize(vec3(-0.55, -0.45, 0.7)), H = normalize(L + vec3(0.0, 0.0, 1.0)), n = normalize(vec3(-slope, 1.0));
         float spec = pow(max(0.0, dot(n, H)), 220.0) * 1.2, shade = (-slope.x * L.x - slope.y * L.y) * 1.6;
         col += (vec3(0.27, 0.24, 0.22) * max(0.0, shade) + vec3(1.0, 0.85, 0.63) * spec) * pool;
-        rainDim = clamp(-shade * 0.55, 0.0, 0.5) * pool;
+        // A puddle has no bright face of its own as open water does, so its rings must carry themselves: pale crests, dark troughs.
+        col += vec3(0.68, 0.76, 0.88) * max(0.0, shade) * puddle * outside * 1.5;
+        rainDim = clamp(-shade * (0.55 + 0.9 * puddle), 0.0, 0.6) * pool;
       }
     }
   }
@@ -1126,7 +1153,7 @@ void main(){
 }
 `;
 export function createSurfaceLight({ PIXI, root, render, above = root, renderAt = null, glowing = above }) {
-  let fallSpeed = 1, gridSize = 100, bakeMarks = null, seeping = false;
+  let fallSpeed = 1, gridSize = 100, bakeMarks = null, seeping = false, lampMask = null, lampKey = null, gloomy = false;
   let movingWater = false, masks = [], meshes = [], own = [], hasGlints = false, hasWater = false, origin = { x: 0, y: 0 }, area = null, roofShown = null;
   // The rainbow comes and goes over some seconds, never at once: `bow` where it is now, `bowTo` where look wants it.
   let bow = 0, bowTo = 0;
@@ -1137,7 +1164,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
     try { roofShown?.destroy(true); } catch { /* gone */ }
     try { fxShadow?.destroy(true); } catch { /* gone */ }
-    meshes = []; masks = []; own = []; area = null; roofShown = null; fxShadow = null; fxOn = false;
+    meshes = []; masks = []; own = []; area = null; roofShown = null; fxShadow = null; fxOn = false; lampMask = null; lampKey = null;
   };
   // The roofs as drawn now (each faded as far as Foundry fades it), into a small picture the birds' pass reads.
   const drawRoofs = (roofs) => {
@@ -1208,6 +1235,14 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         masks.push(texture);
         return texture;
       };
+      const bakeWidened = () => {
+        const stage = new PIXI.Container(), spread = (blur, color) => { const g = new PIXI.Graphics(), soft = new PIXI.BlurFilter(blur); for (const p of water) { const at = (q) => q.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k); g.beginFill(color, 1); g.drawPolygon(at(p)); for (const hole of p.holes ?? []) { g.beginHole(); g.drawPolygon(at(hole)); g.endHole(); } g.endFill(); } g.blendMode = PIXI.BLEND_MODES.ADD; soft.blendMode = PIXI.BLEND_MODES.ADD; g.filters = [soft]; g.filterArea = new PIXI.Rectangle(0, 0, w, h); stage.addChild(g); };
+        spread(6 + grid * k * 0.25, 0xff0000); spread(10 + grid * k * 1.5, 0x00ff00);
+        const texture = PIXI.RenderTexture.create({ width: w, height: h });
+        try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+        masks.push(texture);
+        return texture;
+      };
       origin = { x: bounds.x, y: bounds.y }; gridSize = grid;
       area = { k: k * 0.5, bounds, w: Math.max(1, Math.ceil(bounds.width * k * 0.5)), h: Math.max(1, Math.ceil(bounds.height * k * 0.5)) };
       hasGlints = water.length > 0 || frozen.length > 0 || frozenAll;
@@ -1215,10 +1250,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       // The banks: a wider, softer water, so the ripples' light spills a little onto the ground beside it; the low
       // ground the mist gathers on: wider still.
       const uniforms = {
-        uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
+        uWater: bake(water, 1), uLow: bakeWidened(), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: 0, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -1237,18 +1272,19 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       meshes = [shade, light, pale, flock, veil, glow, air];
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil || m === air ? above : root)().addChild(m); }
     },
-    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false, snowSun = null, bowAngle = null, bowSize = 1 } = {}) {
+    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false, snowSun = null, bowAngle = null, bowSize = 1, gloom = 0 } = {}) {
       if (!own.length) return;
       const sunny = light > 0.02, bowSun = bowAngle ?? sunAngle;
-      set({ uStrength: sunny ? light : 0, uClouds: clouds, uFallsDown: Number(fallsDown) || 0, uSnowSun: snowSun ? [snowSun.toSun[0], snowSun.toSun[1], Math.min(1, snowSun.shine), snowSun.reach] : [-0.6, -0.5, 0, 0.8], uSnowSunColor: snowSun?.color ?? [1, 0.97, 0.9], uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
+      set({ uStrength: sunny ? light : 0, uClouds: clouds, uFallsDown: Number(fallsDown) || 0, uGloom: gloom, uSnowSun: snowSun ? [snowSun.toSun[0], snowSun.toSun[1], Math.min(1, snowSun.shine), snowSun.reach] : [-0.6, -0.5, 0, 0.8], uSnowSunColor: snowSun?.color ?? [1, 0.97, 0.9], uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
         // The rainbow faces away from the sun: its centre off toward the sun, so the arc sweeps across the middle of the map.
         uBow: area ? [area.bounds.width / 2 + Math.cos(bowSun) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(bowSun) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45 * bowSize, bow] : [0, 0, 1, 0],
         uBowDir: [-Math.cos(bowSun), -Math.sin(bowSun)] });
       meshes[0].visible = wet > 0.02 || (season?.[3] ?? 0) > 0.005 || litter > 0.01;
       clouding = light > 0.005 && (clouds > 0.05 || fxOn);
-      meshes[4].visible = clouding || casting || weathering;
+      gloomy = gloom > 0.005;
+      meshes[4].visible = clouding || casting || weathering || gloomy;
       meshes[3].visible = sunny && own[0].uBird[3] > 0.01;
-      meshes[1].visible = (sunny && (hasGlints || wet > 0.05)) || fireflies > 0.01 || (rain > 0.01 && (hasWater || wet > 0.05)) || moon > 0.01 || (sunny && (snow > 0.05 || (hasWater && ice > 0.05)));
+      meshes[1].visible = (sunny && hasGlints) || wet > 0.05 || fireflies > 0.01 || (rain > 0.01 && (hasWater || wet > 0.05)) || moon > 0.01 || (sunny && (snow > 0.05 || (hasWater && ice > 0.05)));
       // The weather on the map (sky-weather.mjs weatherScene; null none), drawn over the roofs.
       fallSpeed = weather?.speed ?? 1;
       const fall = (f) => (f ? [f.kind, f.amount, f.size, 0] : [0, 0, 1, 0]), tint = (f) => (f ? [...f.color, 1] : [1, 1, 1, 1]);
@@ -1336,15 +1372,33 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       const at = masks.indexOf(old); if (at >= 0) masks.splice(at, 1);
       try { old.destroy(true); } catch { /* gone */ }
     },
+    // A flash of lightning, this moment (0-1): the gloom gives way to it.
+    flash(level) { if (!own.length || !(own[0].uGloom > 0.005)) return; const lift = Math.min(1, Math.max(0, level)) * 0.85; if (lift !== own[0].uGloomLift) for (const u of own) u.uGloomLift = lift; },
     // The nearest lights, for the snow lying on the ground to catch (only worth asking while it does). `at` where the view is, `lights` () => [{ x, y, radius, color }].
-    snowLights(lights, at, most = 4) {
-      if (!own.length || !(own[0].uSnow > 0.01 || own[0].uIce > 0.01)) return;
-      const near = nearestLights(lights(), at, Math.min(4, most)), where = own[0].uSnowLights, colors = own[0].uSnowLightColor;
+    // (`reachOf(light)`: how far it gets, a polygon in map pixels, walls and all; none: all round.)
+    lampsMoved() { lampKey = null; },
+    snowLights(lights, at, most = 3, reachOf = null) {
+      if (!own.length || !(own[0].uSnow > 0.01 || own[0].uIce > 0.01 || own[0].uWet > 0.05 || own[0].uGloom > 0.005)) return;
+      const near = nearestLights(lights(), at, Math.min(3, most)), where = own[0].uSnowLights, colors = own[0].uSnowLightColor;
       for (let i = 0; i < 4; i++) {
         const l = near[i], c = l?.color ?? [1, 0.82, 0.6];
         where[i * 4] = l ? l.x - origin.x : 0; where[i * 4 + 1] = l ? l.y - origin.y : 0; where[i * 4 + 2] = l?.radius ?? 0;
         colors[i * 3] = c[0]; colors[i * 3 + 1] = c[1]; colors[i * 3 + 2] = c[2];
       }
+      // Drawn again only when one has moved, or a wall or door has changed.
+      const key = near.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.radius)}`).join(';');
+      if (key === lampKey || !area) return;
+      lampKey = key;
+      const stage = new PIXI.Container(), { bounds, k: scale, w, h } = area, tints = [0xff0000, 0x00ff00, 0x0000ff];
+      near.forEach((l, i) => {
+        let points = null; try { points = reachOf?.(l) ?? null; } catch { /* no wall test */ }
+        const g = new PIXI.Graphics(); g.beginFill(tints[i], 1);
+        if (points) { if (points.length >= 6) g.drawPolygon(points.map((v, n) => (v - (n % 2 ? bounds.y : bounds.x)) * scale)); } else g.drawRect(0, 0, w, h);
+        g.endFill(); g.blendMode = PIXI.BLEND_MODES.ADD; stage.addChild(g);
+      });
+      if (!lampMask) { lampMask = PIXI.RenderTexture.create({ width: w, height: h }); masks.push(lampMask); }
+      try { render(stage, lampMask); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+      for (const u of own) u.uLampReach = lampMask;
     },
     // Where the camera is, for what is seen from straight above: { x, y } the view's middle on the map, `reach` how far its corners are. Only worth doing then.
     eye({ x, y, reach }) { if (!own.length || !(own[0].uFallsDown > 1.5)) return; const at = [x - origin.x, y - origin.y, Math.max(1, reach)]; for (const u of own) u.uEye = at; },
@@ -1440,7 +1494,11 @@ uniform float uAlpha;
 void main(){ float a = texture2D(uLit, vUv).a * uAlpha; gl_FragColor = vec4(uColor * a, a); }`;
 // How much of a flash reaches a room's floor away from its windows.
 const BOUNCED = 0.12;
-export function createLightningFlash({ PIXI, root, bounds, random = Math.random, render = null, cover = null }) {
+// How hard a flash that landed on the map hits (pure, its strength: 1 the plain flash, as FLASH_PEAK): near whoever sees it, it all but washes the map out, thinning to the plain flash across the map. `squares` how far off, `span` how far is far here.
+const FLASH_PEAK = 0.55;
+export const landedFlash = (squares = 0, span = 32) => { const k = Math.min(1, Math.max(0, squares / Math.max(14, span))); return (0.85 - 0.3 * k * (2 - k)) / FLASH_PEAK; };
+// `dim()`: this player's own say over how bright flashes are (1 as they come).
+export function createLightningFlash({ PIXI, root, bounds, random = Math.random, render = null, cover = null, dim = () => 1 }) {
   let sprite = null, lit = null, struckAt = null, nextAt = null, strength = 1;
   const drop = () => {
     try { sprite?.destroy(); } catch { /* gone with the canvas */ }
@@ -1531,13 +1589,16 @@ export function createLightningFlash({ PIXI, root, bounds, random = Math.random,
       const level = flashLevel(now - struckAt) * strength;
       const s = ensure(fresh || this.rebake === true);
       this.rebake = false;
-      if (s.lit) { s.shader.uniforms.uAlpha = 0.55 * level; s.alpha = 1; }
-      else { const r = bounds(); s.position.set(r.x, r.y); s.width = r.width; s.height = r.height; s.alpha = 0.55 * level; }
+      const bright = Math.min(1, FLASH_PEAK * level * Math.max(0, Number(dim()) || 0));
+      if (s.lit) { s.shader.uniforms.uAlpha = bright; s.alpha = 1; }
+      else { const r = bounds(); s.position.set(r.x, r.y); s.width = r.width; s.height = r.height; s.alpha = bright; }
       s.visible = level > 0;
       if (level <= 0 && now - struckAt > 600) struckAt = null;
       return level;
     },
     strike(now) { struckAt = now; strength = 1; this.rebake = true; },
+    // This flash landed on the map: as hard as it hits from here (landedFlash).
+    landed(power = 1) { strength = power; },
     clear() { drop(); struckAt = null; nextAt = null; },
   };
 }

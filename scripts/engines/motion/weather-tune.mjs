@@ -41,6 +41,7 @@ export const TUNE_SLIDERS = Object.freeze({
   temperature: { label: 'Temperature', min: -30, max: 45, step: 1, default: 15, unit: '°C', hint: 'How cold or hot it is here. Snow lies or melts by it and water freezes or thaws, by the game clock; breath shows in the cold, and the air shimmers in great heat. Works in any weather: a cold, sunny day.' },
   rainbowAngle: { label: 'Rotation', min: 0, max: 355, step: 5, default: 0, unit: '°', hint: 'Which way its arc faces: 0° up the map, turning clockwise. Auto: away from the sun.' },
   rainbowSize: { label: 'Size', min: 0.4, max: 1.6, step: 0.05, times: true, hint: 'How wide its arc is across the map.' },
+  gloom: { label: 'Storm darkness', min: 0, max: 1, step: 0.05, default: 0.5, hint: 'How dark the outdoors gets by day when a storm shuts the sky altogether, as far as dusk or further. Lights show up against it. Only a look: nobody sees less by the rules.' },
   fog: strength('Fog', 'How thick the fog is, in any weather.'),
   lightning: strength('Lightning', 'How fierce the storm is: how often lightning strikes and lands on the map, with its thunder. At full, a bolt every few seconds.'),
   wind: strength('Strength', 'How hard the wind blows, for the clouds, the grass, the leaves and the water too.'),

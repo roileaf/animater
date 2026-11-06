@@ -36,9 +36,9 @@ export function familyOf(weather) {
 }
 // One button, active or not. `data` its data attributes, as written.
 const chip = (action, data, label, { icon = '', active = false, tip = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
-function weatherButtons(weathers, now, family) {
-  const tabs = [chip('setFamily', 'data-family="calendar"', 'Calendar', { icon: 'fa-calendar-days', active: family === 'calendar', tip: "The calendar's weather, or none." }), ...FAMILIES.map(([id, label, icon]) => chip('setFamily', `data-family="${id}"`, label, { icon, active: family === id }))].join('');
-  const row = FAMILIES.find(([id]) => id === family);
+function weatherButtons(weathers, now, family, off = false) {
+  const tabs = [chip('setWeatherOff', '', 'No weather', { icon: 'fa-ban', active: off, tip: 'None on this scene, whatever the calendar says.' }), chip('setFamily', 'data-family="calendar"', 'Calendar', { icon: 'fa-calendar-days', active: !off && family === 'calendar', tip: "The calendar's weather, or none." }), ...FAMILIES.map(([id, label, icon]) => chip('setFamily', `data-family="${id}"`, label, { icon, active: !off && family === id }))].join('');
+  const row = off ? null : FAMILIES.find(([id]) => id === family);
   const own = !row ? [] : row[3] ? weathers.filter(([v]) => v && row[3].includes(bare(v))) : weathers.filter(([v]) => v && !FAMILIES.some(([, , , ids]) => ids?.includes(bare(v))));
   const list = own.length ? `<div class="animater-wx-chips is-words">${own.map(([v, l]) => chip('setWeather', `data-weather="${esc(v)}"`, l, { active: v === now })).join('')}</div>` : '';
   return `<div class="animater-wx-chips is-tabs">${tabs}</div>${list}`;
@@ -107,7 +107,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
   const presets = looks.length ? `<div class="animater-wx-presets">${looks.map((n) => `<span class="animater-wx-preset"><button type="button" data-action="applyLook" data-name="${esc(n)}" data-tooltip="Use this weather">${esc(n)}</button><button type="button" data-action="deleteLook" data-name="${esc(n)}" data-tooltip="Delete this preset" aria-label="Delete ${esc(n)}"><i class="fa-solid fa-xmark" inert></i></button></span>`).join('')}</div>` : '';
   return `<div class="animater-wx">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
-    <section class="animater-wx-section"><h3>Start from</h3>${weatherButtons(list, now, open)}</section>
+    <section class="animater-wx-section"><h3>Start from</h3>${weatherButtons(list, now, open, state?.off === true)}</section>
     <section class="animater-wx-section"><h3>Precipitation</h3>
       ${fallButtons('fall', tune.fall, [chip('setFall', 'data-slot="fall" data-kind=""', `Auto: ${ownNames.length ? ownNames.join(', ') : 'nothing'}`, { icon: 'fa-wand-magic-sparkles', active: !tune.fall, tip: 'What this weather has falling.' }), chip('setFall', 'data-slot="fall" data-kind="none"', 'Nothing', { icon: 'fa-ban', active: tune.fall === 'none' })])}
       ${controlRow('amount', tune, base, quiet)}${controlRow('size', tune, base, quiet)}${controlRow('speed', tune, base, quiet && !hasSecond)}${controlRow('color', tune, base, quiet)}
@@ -116,7 +116,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
       <h4>Direction</h4><div class="animater-wx-ways" role="group" aria-label="Which way it falls">${ways}</div>
     </section>
     <section class="animater-wx-section"><h3>Sky</h3>
-      ${controlRow('temperature', tune, base)}${controlRow('cover', tune, base)}${controlRow('fog', tune, base)}${controlRow('fogColor', tune, base)}${controlRow('lightning', tune, base)}
+      ${controlRow('temperature', tune, base)}${controlRow('cover', tune, base)}${controlRow('gloom', tune, base)}${controlRow('fog', tune, base)}${controlRow('fogColor', tune, base)}${controlRow('lightning', tune, base)}
     </section>
     <section class="animater-wx-section"><h3>Effects</h3>
       <div class="animater-wx-chips">${effectButtons}</div>
@@ -130,7 +130,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
       ${presets}
       <div class="animater-wx-line"><input type="text" data-look-name placeholder="Name this weather" aria-label="Name this weather" maxlength="60"><button type="button" class="animater-wx-button" data-action="saveLook">Save</button></div>
     </section>
-    <footer class="animater-wx-foot"><span>Previews as you drag. Players see it when you let go.</span><button type="button" class="animater-wx-link" data-action="resetAll" data-tooltip="Everything here back to Auto and the calendar's weather. Your presets stay."${tuneTouched(tune) || now || way || from ? '' : ' disabled'}>Clear all</button></footer>
+    <footer class="animater-wx-foot"><span>Previews as you drag. Players see it when you let go.</span><button type="button" class="animater-wx-link" data-action="resetAll" data-tooltip="Everything here back to Auto and the calendar's weather. Your presets stay."${tuneTouched(tune) || now || way || from || state?.off ? '' : ' disabled'}>Clear all</button></footer>
   </div>`;
 }
 
@@ -143,11 +143,12 @@ export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers
       window: { title: 'Weather', icon: 'fa-solid fa-cloud-sun-rain', resizable: true }, position: { width: 360, height: 'auto' },
       actions: {
         resetTune(_event, target) { const tune = { ...read().tune, [target.dataset.key]: null }; preview(null); void write({ tune }).then(() => this.render()); },
-        resetAll() { preview(null); this.family = null; this.second = false; void write({ weather: '', tune: cleanTune(), way: '', windFrom: '' }).then(() => this.render()); },
+        resetAll() { preview(null); this.family = null; this.second = false; void write({ off: false, weather: '', tune: cleanTune(), way: '', windFrom: '' }).then(() => this.render()); },
         setWay(_event, target) { void write({ way: target.dataset.way }).then(() => this.render()); },
         setFrom(_event, target) { void write({ windFrom: target.dataset.from }).then(() => this.render()); },
-        setFamily(_event, target) { this.family = target.dataset.family; if (target.dataset.family === 'calendar') void write({ weather: '' }).then(() => this.render()); else void this.render(); },
-        setWeather(_event, target) { void write({ weather: target.dataset.weather }).then(() => this.render()); },
+        setWeatherOff() { void write({ off: !read().off }).then(() => this.render()); },
+        setFamily(_event, target) { this.family = target.dataset.family; if (target.dataset.family === 'calendar') void write({ off: false, weather: '' }).then(() => this.render()); else if (read().off) void write({ off: false }).then(() => this.render()); else void this.render(); },
+        setWeather(_event, target) { void write({ off: false, weather: target.dataset.weather }).then(() => this.render()); },
         setFall(_event, target) { preview(null); void write({ tune: { ...read().tune, [target.dataset.slot]: target.dataset.kind || null } }).then(() => this.render()); },
         toggleEffect(_event, target) { const key = target.dataset.key, tune = read().tune; preview(null); void write({ tune: { ...tune, [key]: effectToggled(tune, key, base()) } }).then(() => this.render()); },
         showSecond() { this.second = true; void this.render(); },

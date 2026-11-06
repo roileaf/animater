@@ -79,3 +79,31 @@ test('a bolt throws sparks that slow and die away', async () => {
   assert.equal(sparkAt(s, 0.8), null, 'gone');
   assert.equal(sparkAt(s, 0).dx, 0, 'from the spot');
 });
+
+test('a flash lights the windows that look toward it', async () => {
+  const { windowsFacing } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // A window along y = 100, its patch reaching down into the room: it looks up the map.
+  const win = { points: [0, 100, 100, 100, 120, 300, -20, 300], alpha: 1 };
+  assert.equal(windowsFacing([win], { x: 50, y: -500 })[0].alpha, 1, 'in front of it: full');
+  assert.deepEqual(windowsFacing([win], { x: 50, y: 900 }), [], 'behind the house: none');
+  const aslant = windowsFacing([win], { x: 800, y: 0 })[0];
+  assert.ok(aslant.alpha > 0 && aslant.alpha < 1, 'aslant: some');
+  assert.deepEqual(windowsFacing([win], null), [win], 'not known yet: all');
+  assert.equal(win.alpha, 1, 'what it was given stays as it was');
+});
+
+test('a window only glows with a light that gets to it', async () => {
+  const { windowGlows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  // A room below y = 100, its window in that wall.
+  const room = [0, 100, 1000, 100, 1000, 1000, 0, 1000], walls = [{ c: [400, 100, 500, 100], light: 0, sight: 0, move: 20, kind: 'open' }];
+  const near = { x: 450, y: 400, radius: 900, color: 0xff0000 }, behind = { x: 900, y: 900, radius: 2000, color: 0x00ff00 };
+  const glows = (blocked, lights = [near]) => windowGlows({ walls, indoors: [room], lights, grid: 100, blocked });
+  const shown = glows(() => false);
+  if (shown.length) {
+    assert.equal(shown[0].color, 0xff0000);
+    assert.equal(glows(() => true).length, 0, 'walls between: no glow, however bright');
+    const which = glows((from) => from.x === 900, [near, behind]);
+    assert.equal(which[0].color, 0xff0000, 'only the light that gets there counts');
+    assert.equal(which[0].lamp.x, 450);
+  } else assert.fail('the window should glow in the plain case');
+});

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { thunderHeard, WEATHER_LOOPS, THUNDER, weatherLevels, weatherIsOurs, thunderFor, weatherFile } from '../../../scripts/engines/motion/weather-sound.mjs';
+import { WEATHER_LOOPS, THUNDER, weatherLevels, weatherIsOurs, thunderGain, thunderPan, thunderReaches, thunderShape, weatherFile } from '../../../scripts/engines/motion/weather-sound.mjs';
 
 test('every weather sound is there and credited', () => {
   for (const f of [...Object.values(WEATHER_LOOPS).flat(), ...Object.values(THUNDER).flat()]) {
@@ -38,34 +38,10 @@ test('Calendaria keeps its fantasy weathers', () => {
   for (const id of ['gravewind', 'black-sun', 'veilfall', 'clear', null]) assert.equal(weatherIsOurs(id), false, String(id));
 });
 
-test('near thunder is loud and quick, far thunder later and quieter', () => {
-  const seq = (values) => { let i = 0; return () => values[i++ % values.length]; };
-  const near = thunderFor({ storm: 1, random: seq([0.1, 0.5, 0.5, 0.5, 0.5]) }), far = thunderFor({ storm: 0, random: seq([0.9, 0.2, 0.5, 0.5, 0.5, 0.5]) });
-  assert.ok(near.near && !far.near); assert.ok(near.wait < 1000 && far.wait > 1500); assert.ok(near.volume > far.volume);
-  for (let i = 0; i < 200; i++) { const t = thunderFor({ storm: Math.random() }); assert.ok(t.file && t.volume > 0 && t.rate > 0.5, JSON.stringify(t)); }
-});
-
 test('a scene keeps its recording', () => {
   assert.equal(weatherFile('hail', 'abc'), weatherFile('hail', 'abc'));
   assert.ok(WEATHER_LOOPS.hail.includes(weatherFile('hail', 'abc')));
   assert.equal(weatherFile('nothing'), null);
-});
-
-test('not every flash is heard, more of them in the thick of a storm', () => {
-  assert.equal(thunderHeard({ storm: 0, random: () => 0.6 }), false, 'far off, silent');
-  assert.equal(thunderHeard({ storm: 1, random: () => 0.6 }), true);
-  assert.equal(thunderHeard({ storm: 1, random: () => 0.9 }), false, 'even then, not every one');
-});
-
-test('thunder goes by how near it struck: close is at once, as loud as it goes, with a boom under it', async () => {
-  const { strikeNearness, thunderClose } = await import('../../../scripts/engines/motion/weather-sound.mjs');
-  assert.equal(strikeNearness({ x: 0, y: 0 }, { x: 0, y: 0 }, 100), 1);
-  assert.equal(strikeNearness({ x: 0, y: 0 }, { x: 1400, y: 0 }, 100), 0);
-  assert.ok(Math.abs(strikeNearness({ x: 0, y: 0 }, { x: 700, y: 0 }, 100) - 0.5) < 1e-9);
-  const on = thunderClose({ near: 1 }), off = thunderClose({ near: 0.3 });
-  assert.equal(on.volume, 1);
-  assert.ok(on.wait < 30 && off.wait > on.wait);
-  assert.ok(on.file && on.under.volume === 1 && on.under.rate < 0.7);
 });
 
 test('a blizzard has its own howl in place of the wind, muffled under a roof; plain snow does not', () => {
@@ -80,19 +56,72 @@ test('a blizzard has its own howl in place of the wind, muffled under a roof; pl
   assert.equal(WEATHER_LOOPS.blizzard.length, 3);
 });
 
-test('thunder comes from where it struck: its side, and how far', async () => {
-  const { thunderPan, thunderFar } = await import('../../../scripts/engines/motion/weather-sound.mjs');
+test('thunder follows one curve by distance, nothing about it stepping', () => {
+  const at = (squares, span = 40) => thunderShape({ squares, span, random: () => 0.9 });
+  let last = null;
+  for (let squares = 0; squares <= 40; squares += 0.5) {
+    const now = at(squares);
+    if (last) {
+      assert.ok(now.level <= last.level + 1e-9, 'quieter');
+      assert.ok(last.level - now.level < 0.08, `no cliff at ${squares}: ${last.level} to ${now.level}`);
+      assert.ok(now.wait >= last.wait, 'later');
+      assert.ok(now.wait - last.wait < 150, `no jump in the wait at ${squares}`);
+      assert.ok((now.under?.volume ?? 0) <= (last.under?.volume ?? 0) + 1e-9, 'its boom fading');
+      assert.ok((now.cutoff ?? 18000) <= (last.cutoff ?? 18000) + 1e-9, 'duller');
+    }
+    last = now;
+  }
+  const over = at(0), far = at(40);
+  assert.ok(over.wait < 60, 'overhead: at once');
+  assert.ok(over.under.volume > 0.5, 'with a boom');
+  assert.equal(over.cutoff, null, 'and all its crack');
+  assert.equal(far.under, null, 'none far off');
+  assert.ok(far.level < over.level / 5, 'far off, much quieter');
+  assert.ok(far.level > 0.05, 'and still there');
+  assert.ok(thunderShape({ squares: 5000, span: 40, random: () => 0 }).wait <= 6500, 'not forever');
+});
+
+test('how far is far goes by the map', () => {
+  const small = thunderShape({ squares: 15, span: 16, random: () => 0.9 }), big = thunderShape({ squares: 15, span: 70, random: () => 0.9 });
+  assert.ok(small.level < big.level, 'across a small map is far; across a part of a big one is not');
+  assert.ok(thunderShape({ squares: 5, span: 2, random: () => 0.9 }).level > 0.1, 'a tiny map is not all far');
+});
+
+test('every thunder recording is evened out, and only distance says how loud', () => {
+  for (const file of [...THUNDER.close, ...THUNDER.far]) assert.ok(thunderGain(file) > 0.5, file);
+  assert.ok(thunderGain(THUNDER.far[0]) > 3, 'the far one is much the quietest as recorded');
+  assert.equal(thunderGain('thunderNew-1-0.ogg'), 1, 'one not yet measured plays as it is');
+  const seq = (values) => { let i = 0; return () => values[i++ % values.length]; };
+  const distant = thunderShape({ squares: 36, span: 40, random: seq([0, 0, 0.5, 0.5]) }), near = thunderShape({ squares: 36, span: 40, random: seq([0.99, 0, 0.5, 0.5]) });
+  assert.equal(distant.level, near.level, 'whichever recording it is');
+  assert.notEqual(distant.file, near.file);
+  assert.ok(Math.abs(distant.volume / thunderGain(distant.file) - near.volume / thunderGain(near.file)) < 1e-9);
+});
+
+test('it is heard from its direction, however far', () => {
   const ear = { x: 1000, y: 1000 };
-  assert.equal(thunderPan(ear, { x: 1000, y: 200 }, 100), 0, 'straight up the map: both ears');
-  assert.ok(thunderPan(ear, { x: 400, y: 1000 }, 100) < -0.4, 'to the left');
-  assert.ok(thunderPan(ear, { x: 1600, y: 1000 }, 100) > 0.4, 'to the right');
-  assert.equal(thunderPan(ear, { x: 90000, y: 1000 }, 100), 0.85, 'never wholly in one ear');
-  const still = () => 0;
-  const near = thunderFar({ squares: 12, random: still }), far = thunderFar({ squares: 60, random: still });
-  assert.ok(far.volume < near.volume, 'quieter');
-  assert.ok(far.wait > near.wait, 'later');
-  assert.ok(far.cutoff < near.cutoff, 'duller');
-  assert.ok(thunderFar({ squares: 5000, random: still }).wait <= 6500, 'not forever');
-  assert.ok(thunderFar({ squares: 5000, random: still }).volume > 0, 'still a rumble');
-  for (let i = 0; i < 100; i++) assert.ok(thunderFar({ squares: i }).file);
+  assert.equal(thunderPan(ear, { x: 1000, y: 200 }), 0, 'straight up the map: both ears');
+  assert.ok(Math.abs(thunderPan(ear, { x: 3000, y: 1000 }) - 0.8) < 1e-9, 'to the right');
+  assert.ok(Math.abs(thunderPan(ear, { x: -9000, y: 1000 }) + 0.8) < 1e-9, 'to the left, far or not');
+  assert.ok(Math.abs(thunderPan(ear, { x: 1200, y: 1000 }) - 0.8) < 1e-9, 'two squares to the right already is');
+  assert.ok(Math.abs(thunderPan(ear, { x: 1050, y: 1000 })) < 0.25, 'almost on top: both ears');
+  assert.equal(thunderPan(ear, ear), 0);
+});
+
+test('near thunder is always heard; far off, not always', () => {
+  assert.equal(thunderReaches({ squares: 10, span: 40, random: () => 0.99 }), true);
+  assert.equal(thunderReaches({ squares: 38, span: 40, storm: 0, random: () => 0.9 }), false);
+  assert.equal(thunderReaches({ squares: 38, span: 40, storm: 1, random: () => 0.9 }), true);
+});
+
+test('a strike beside you booms at once', async () => {
+  const { thunderOnTopOf } = await import('../../../scripts/engines/motion/weather-sound.mjs');
+  const wait = (squares) => thunderShape({ squares, span: 32, random: () => 0.99 }).wait;
+  assert.equal(wait(0), 20);
+  assert.equal(wait(1), 20, 'the next square: at once');
+  assert.ok(wait(1.5) < 100);
+  assert.ok(wait(2) <= 160, 'two squares: still all but at once');
+  assert.ok(wait(3) > wait(2) && wait(10) > wait(3), 'and further off, later');
+  assert.equal(thunderOnTopOf(3), true, 'nothing makes these wait');
+  assert.equal(thunderOnTopOf(4), false);
 });

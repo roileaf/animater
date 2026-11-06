@@ -12,7 +12,7 @@ export const WEATHER_LOOPS = Object.freeze({
 });
 export const THUNDER = Object.freeze({
   close: ['194364-0', '361772-0', '361772-1', '501745-0', '501745-1'].map((n) => `${DIR}/thunder/thunderClose-${n}.ogg`),
-  far: ['616987-1'].map((n) => `${DIR}/thunder/thunderFar-${n}.ogg`),
+  far: ['616987-1', '574386-0', '367702-0', '568969-1', '568969-0'].map((n) => `${DIR}/thunder/thunderFar-${n}.ogg`),
 });
 const clamp = (v) => Math.max(0, Math.min(1, Number(v) || 0));
 const ramp = (v, from, to) => clamp((v - from) / (to - from));
@@ -40,31 +40,31 @@ export function weatherLevels({ rain = 0, wind = 0, storm = 0, words = '', insid
 const OURS = new Set(['rain', 'drizzle', 'sunshower', 'acid-rain', 'blood-rain', 'windy', 'wind', 'snow', 'sleet', 'hail', 'thunderstorm', 'blizzard', 'ice-storm', 'sandstorm', 'dust-devil', 'hurricane', 'monsoon', 'tornado']);
 export const weatherIsOurs = (id) => OURS.has(String(id ?? '').toLowerCase());
 
-// Thunder after a flash (pure): near now and then, a clap almost at once, loud; else far, a rumble some seconds later, quiet. `random` 0-1 twice.
-// Far strikes use the far recording, or a close one slowed and softened. { file, wait ms, volume, rate }.
-// Whether a flash is heard at all (pure): lightning far off is often silent, less so in the thick of a storm.
-export const thunderHeard = ({ storm = 0.5, random = Math.random } = {}) => random() < 0.45 + clamp(storm) * 0.35;
-export function thunderFor({ storm = 0.5, random = Math.random } = {}) {
-  const near = random() < 0.25 + clamp(storm) * 0.25, pick = (list) => list[Math.floor(random() * list.length) % list.length];
-  if (near) return { file: pick(THUNDER.close), wait: 150 + random() * 700, volume: 0.62 + random() * 0.2, rate: 0.92 + random() * 0.16, near: true };
-  const own = random() < 0.5;
-  return { file: own ? pick(THUNDER.far) : pick(THUNDER.close), wait: 1800 + random() * 4500, volume: own ? 0.42 + random() * 0.2 : 0.2 + random() * 0.12, rate: own ? 0.9 + random() * 0.2 : 0.68 + random() * 0.12, near: false };
+// How to play each recording for them to be equally loud (measured, to -24 LUFS; the peaks stay under full scale): only how far off it struck should say how loud thunder is.
+const THUNDER_GAIN = Object.freeze({ '194364-0': 0.66, '361772-0': 1.1, '361772-1': 1, '501745-0': 1.66, '501745-1': 1.05, '616987-1': 4.4, '574386-0': 0.52, '367702-0': 0.72, '568969-1': 1.23, '568969-0': 1.07 });
+export const thunderGain = (file) => THUNDER_GAIN[String(file).match(/(\d+-\d+)\.ogg$/)?.[1]] ?? 1;
+const between = (v, from, to) => { const k = clamp((v - from) / (to - from)); return k * k * (3 - 2 * k); };
+// Thunder by how far off it struck (pure): one curve from a crack overhead, with a boom under it, to a low rumble at the far side of the map, nothing about it stepping. `squares` how far; `span` how far is far here, the map's own corner to corner, so distance tells on a small map too.
+// { file, wait ms, volume, rate, cutoff Hz (null: unfiltered), under { volume, rate } (the boom; null: none), level (its loudness before the recording's own correction) }.
+export function thunderShape({ squares = 10, span = 32, random = Math.random } = {}) {
+  const t = clamp(squares / Math.max(14, span)), distant = random() < between(t, 0.45, 0.9) * 0.6;
+  const list = distant ? THUNDER.far : THUNDER.close, file = list[Math.floor(random() * list.length) % list.length], gain = thunderGain(file);
+  const level = Math.pow(10, (-17 * Math.pow(t, 0.8)) / 20) * 0.95, boom = 0.9 * (1 - between(t, 0, 0.55)), drift = random();
+  return {
+    file, level, wait: Math.min(6500, 20 + Math.max(0, squares - 1) * 110) + (squares > 2 ? random() * 120 * t : 0), volume: level * gain,
+    rate: (distant ? 0.95 : 1 - 0.26 * between(t, 0, 0.7)) + (drift - 0.5) * 0.08,
+    cutoff: t < 0.12 ? null : 18000 * Math.pow(650 / 18000, t),
+    under: boom > 0.02 ? { volume: boom * gain, rate: 0.58 + drift * 0.08 } : null,
+  };
 }
-
-// How near a strike landed to whoever hears it (pure), 1 on top of them, 0 from `far` squares off.
-export const strikeNearness = (from, at, grid = 100, far = 14) => Math.max(0, Math.min(1, 1 - Math.hypot(at.x - from.x, at.y - from.y) / (grid * far)));
-// The crack of a strike close by (pure): almost at once, as loud as it goes, with a slowed copy of itself under it (`under`) for the boom you feel. `near` 0-1.
-export function thunderClose({ near = 1, random = Math.random } = {}) {
-  const n = clamp(near), file = THUNDER.close[Math.floor(random() * THUNDER.close.length) % THUNDER.close.length];
-  return { file, wait: 20 + (1 - n) * 500, volume: 0.8 + 0.2 * n, rate: 0.96 + random() * 0.08, under: { volume: 0.55 + 0.45 * n, rate: 0.58 + random() * 0.08 }, near: true };
-}
-
-// Which side a strike is heard from (pure, -1 left to 1 right): how far across from whoever hears it, never wholly in one ear.
-export const thunderPan = (from, at, grid = 100, wide = 12) => Math.max(-0.85, Math.min(0.85, (at.x - from.x) / (grid * wide) * 0.85));
-// A strike further off, by how far (pure, `squares`): quieter, later and duller the further it is. { file, wait ms, volume, rate, cutoff Hz }.
-export function thunderFar({ squares = 20, random = Math.random } = {}) {
-  const k = clamp((squares - 10) / 50), own = random() < 0.5, pick = (list) => list[Math.floor(random() * list.length) % list.length];
-  return { file: own ? pick(THUNDER.far) : pick(THUNDER.close), wait: Math.min(6500, 500 + squares * 110) + random() * 300, volume: (0.62 - 0.42 * k) * (own ? 1 : 0.7), rate: own ? 0.9 + random() * 0.2 : 0.68 + random() * 0.12, cutoff: 5000 - 4300 * k, near: false };
+// A strike right beside whoever hears it is on them at once (pure): it waits for nothing.
+export const thunderOnTopOf = (squares) => squares <= 3;
+// Whether it is heard at all (pure): always when it is anywhere near; further off now and then it is lost in the storm.
+export const thunderReaches = ({ squares = 10, span = 32, storm = 0.5, random = Math.random } = {}) => { const t = clamp(squares / Math.max(14, span)); return t < 0.6 || random() < 0.6 + 0.4 * clamp(storm); };
+// Which side a strike is heard from (pure, -1 left to 1 right): by its direction from whoever hears it, however far, moving to both ears only when it is almost on top of them. Never wholly in one ear.
+export function thunderPan(from, at, grid = 100) {
+  const dx = at.x - from.x, dy = at.y - from.y, far = Math.hypot(dx, dy);
+  return far > 0 ? (dx / far) * 0.8 * Math.min(1, far / (grid * 2)) : 0;
 }
 
 // One recording for a scene (pure), the same on every visit: `seed` its id.

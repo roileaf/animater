@@ -281,3 +281,38 @@ test('ice as a region\'s own floor is known apart, so snow only dusts it', async
   assert.equal(out.water.length, 1);
   assert.equal(surfacesOf({ regions: [{ floor: 'ice', painted: true, polygons: [square] }] }).icy.length, 1, 'painted or not');
 });
+
+test('only a storm darkens the day, by look alone, and never the night', async () => {
+  const { stormGloom } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(stormGloom({ cover: 0.3 }), 0, 'partly cloudy: nothing');
+  assert.equal(stormGloom({ cover: 0.65 }), 0, 'cloudy: nothing');
+  assert.equal(stormGloom({ cover: 0.9 }), 0, 'overcast: nothing');
+  assert.ok(Math.abs(stormGloom({ cover: 1 }) - 0.5) < 1e-9, 'shut altogether: all of it');
+  assert.ok(stormGloom({ cover: 0.95 }) > 0 && stormGloom({ cover: 0.95 }) < 0.5, 'on the way');
+  assert.ok(stormGloom({ cover: 1, rain: 1 }) > stormGloom({ cover: 1 }), 'darker in the rain');
+  assert.equal(stormGloom({ cover: 1, darkness: 1 }), 0, 'night is dark already');
+  assert.ok(stormGloom({ cover: 1, darkness: 0.5 }) < stormGloom({ cover: 1 }), 'dusk has less to lose');
+  assert.equal(stormGloom({ cover: 1, most: 0 }), 0, 'the GM can turn it off');
+  assert.ok(stormGloom({ cover: 1, rain: 1, most: 1 }) <= 0.85, 'the map always reads');
+});
+test('a flash hits harder the closer it landed, and a player can turn it down', async () => {
+  const { createLightningFlash, landedFlash } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.ok(Math.abs(landedFlash(0, 32) * 0.55 - 0.85) < 1e-9, 'beside you: 85%');
+  assert.ok(Math.abs(landedFlash(32, 32) * 0.55 - 0.55) < 1e-9, 'across the map: 55%');
+  assert.ok(landedFlash(5, 32) > landedFlash(15, 32));
+  assert.ok(landedFlash(15, 32) > landedFlash(30, 32));
+  assert.equal(landedFlash(500, 32), landedFlash(32, 32), 'no less than the plain flash');
+  const sprite = () => ({ anchor: { set() {} }, position: { set() {} }, destroy() {} });
+  class Sprite { constructor() { Object.assign(this, sprite()); } }
+  const added = [], flash = (dim) => createLightningFlash({ PIXI: { Sprite, Texture: { WHITE: {} }, BLEND_MODES: { ADD: 1 } }, root: () => ({ addChild: (s) => added.push(s), sortChildren() {} }), bounds: () => ({ x: 0, y: 0, width: 10, height: 10 }), dim });
+  const peak = (dim, power) => { const f = flash(dim); f.strike(0); if (power) f.landed(power); f.tick(60, 0); return added.at(-1).alpha; };
+  assert.ok(Math.abs(peak(() => 1) - 0.55) < 1e-9);
+  assert.ok(Math.abs(peak(() => 0.5) - 0.275) < 1e-9, 'turned down');
+  assert.equal(peak(() => 0), 0, 'or off');
+  assert.ok(Math.abs(peak(() => 1, landedFlash(0, 32)) - 0.85) < 1e-9, 'close by');
+});
+
+test('turning weather off on a scene builds nothing again', async () => {
+  const { skyNeedsBuilding } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(skyNeedsBuilding({ flags: { animater: { weatherOff: true } } }), false);
+});

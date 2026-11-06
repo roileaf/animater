@@ -7,7 +7,8 @@ export function airOpenings({ walls = [], rooms = [], grid = 100, inside = () =>
   const out = [];
   if (!rooms.length) return out;
   for (const w of walls) {
-    const open = Number(w.door) > 0 ? Number(w.ds) === 1 : Number(w.light) === 0;
+    // (A window that opens and closes goes by that: shut glass lets the light through, not the air.)
+    const open = Number(w.door) > 0 ? Number(w.ds) === 1 : w.kind === 'woodWindow' || w.kind === 'shutterWindow' || w.kind === 'glassWindow' ? w.open === true : Number(w.light) === 0;
     if (!open || !Array.isArray(w.c) || w.c.length < 4) continue;
     const [ax, ay, bx, by] = w.c.map(Number), len = Math.hypot(bx - ax, by - ay);
     if (!(len > 0)) continue;

@@ -69,6 +69,8 @@ export function sparkAt(spark, age) {
   return { dx: spark.vx * flown, dy: spark.vy * flown, speed: Math.hypot(spark.vx, spark.vy) * slowing, alpha: left * left };
 }
 
+// How far a strike's light reaches, in squares.
+export const STRIKE_LIGHT_SQUARES = 9;
 /** The layer: strike({ x, y, grid, strength, steady }) draws a bolt down to that spot, its sparks thrown out from it; tick(seconds); clear(). */
 export function createLightningBolts({ PIXI, root, random = Math.random }) {
   let live = [], flying = [], glowTexture = null;
@@ -93,7 +95,7 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
     flying.push({ view, each, age: 0, x, y });
   };
   return {
-    // (`burst`: it came down through an opening: a hard white core where it hits the floor, its light thrown round the room. `reach`: as far as that light gets, flat x, y pairs: the bolt comes from the sky, but what it lights stops at what stops light.)
+    // (`burst`: it came down through an opening: a hard white core where it hits the floor, its own light is round every strike. `reach`: as far as that light gets, flat x, y pairs: the bolt comes from the sky, but what it lights stops at what stops light.)
     strike({ x, y, grid = 100, strength = 1, steady = false, burst = false, reach = null } = {}) {
       const view = new PIXI.Container(), g = new PIXI.Graphics(), to = { x, y };
       // Down from high overhead, leaning a little, its top off beyond what is seen close to.
@@ -109,10 +111,9 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
       const glow = new PIXI.Sprite(glowOf()); glow.anchor.set(0.5); glow.position.set(x, y); glow.width = glow.height = grid * 5; glow.blendMode = PIXI.BLEND_MODES.ADD;
       const lit = new PIXI.Container();
       lit.addChild(glow);
-      if (burst) {
-        const spot = (size, alpha) => { const s = new PIXI.Sprite(glowOf()); s.anchor.set(0.5); s.position.set(x, y); s.width = s.height = grid * size; s.alpha = alpha; s.blendMode = PIXI.BLEND_MODES.ADD; lit.addChildAt(s, 0); };
-        spot(10, 0.5); spot(2.2, 1);
-      }
+      const spot = (size, alpha) => { const s = new PIXI.Sprite(glowOf()); s.anchor.set(0.5); s.position.set(x, y); s.width = s.height = grid * size; s.alpha = alpha; s.blendMode = PIXI.BLEND_MODES.ADD; lit.addChildAt(s, 0); };
+      spot(STRIKE_LIGHT_SQUARES * 2, 0.5);
+      if (burst) spot(2.2, 1);
       if (reach?.length >= 6) { const edge = new PIXI.Graphics(); edge.beginFill(0xffffff, 1); edge.drawPolygon(reach); edge.endFill(); lit.addChild(edge); lit.mask = edge; }
       else if (reach) lit.visible = false;
       view.addChild(lit, g);

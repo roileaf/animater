@@ -208,3 +208,12 @@ test('a rainbow can be turned and sized', () => {
   assert.equal(weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('data-row="rainbowAngle"'), false, 'not before');
   assert.equal(sliderText('rainbowAngle', 45), '45°');
 });
+
+test('the panel can say no weather here', () => {
+  const on = weatherPanelHtml({ state: { off: true, weather: 'animater.rain' }, weathers: [['animater.rain', 'Rain']], base: weatherScene({ id: 'rain' }) });
+  assert.ok(on.includes('class="is-active" data-action="setWeatherOff"'), 'it shows');
+  assert.equal(on.includes('class="is-active" data-action="setFamily"'), false, 'and no family with it');
+  assert.equal(on.includes('data-action="setWeather" '), false, 'nor a list of weathers');
+  assert.equal(/data-action="resetAll"[^>]* disabled>/.test(on), false, 'it can be cleared');
+  assert.equal(weatherPanelHtml({ state: {}, weathers: [] }).includes('class="is-active" data-action="setWeatherOff"'), false);
+});
