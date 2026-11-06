@@ -65,6 +65,12 @@ const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4, FREEZ
  * temperature (null unknown: then snow lying deep for long freezes it slowly, and it thaws once the snow is gone and the
  * sun is out). `load()` gives what was kept ({ wet, snow, ice, at } or null), `save(state)` keeps it.
  */
+// How much of the way snow lies each game hour in this weather (pure): 0 while none is falling, or it is too warm to stay. `pace` the GM's time for water, if any.
+const snowLiesRate = ({ snow = 0, temperature = null, pace = null } = {}) => {
+  const warm = temperature !== null && Number.isFinite(Number(temperature)) ? Number(temperature) : null;
+  if (!(snow > 0.05) || !(warm === null || warm <= 2)) return 0;
+  return Number(pace) > 0 ? 1 / SNOW_LIES_HOURS : clamp01(snow) / SNOWS_HOURS * 2;
+};
 // `wetMinutes()`: game minutes for the hardest rain to soak the ground, the GM's (lighter rain takes longer); none given: a quarter of an hour.
 export function createGroundWeather({ load = () => null, save = () => {}, pace = () => null, wetMinutes = () => null } = {}) {
   let state = null;
@@ -79,7 +85,7 @@ export function createGroundWeather({ load = () => null, save = () => {}, pace =
       if (rain > 0.05) { const minutes = Number(wetMinutes()); state.wet = clamp01(state.wet + hours * clamp01(rain) * (minutes > 0 ? 60 / minutes : 2 / WETS_HOURS)); }
       else state.wet = clamp01(state.wet - hours * heat / DRIES_HOURS / 2);
       const stays = warm === null || warm <= 2, timed = Number(pace()) > 0, way = timed ? hours / Number(pace()) : null;
-      if (snow > 0.05 && stays) state.snow = clamp01(state.snow + (timed ? hours / SNOW_LIES_HOURS : hours * clamp01(snow) / SNOWS_HOURS * 2));
+      if (snow > 0.05 && stays) state.snow = clamp01(state.snow + hours * snowLiesRate({ snow, temperature, pace: pace() }));
       else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 2) state.snow = clamp01(state.snow - (timed ? hours / SNOW_GOES_HOURS : hours * (warm !== null ? 1 + clamp01((warm - 2) / 8) : 0.5) * (1 + clamp01(sun)) / MELTS_HOURS / 2));
       const cold = air !== null && Number.isFinite(Number(air)) ? Number(air) : null;
       if (cold !== null ? cold <= -3 : state.snow >= 0.6) state.ice = clamp01(state.ice + (way ?? hours * (cold !== null ? 0.25 + clamp01((-3 - cold) / 12) : 0.15) / FREEZES_HOURS * 4));
@@ -88,6 +94,8 @@ export function createGroundWeather({ load = () => null, save = () => {}, pace =
       save({ ...state });
       return { wet: state.wet, snow: state.snow, ice: state.ice };
     },
+    // How much of the way snow lies each game hour in this weather (a melted patch fills in at the same rate).
+    snowRate({ snow = 0, temperature = null } = {}) { return snowLiesRate({ snow, temperature, pace: pace() }); },
     get now() { return state ? { wet: state.wet, snow: state.snow, ice: state.ice } : { wet: 0, snow: 0, ice: 0 }; },
   };
 }

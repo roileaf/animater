@@ -173,11 +173,10 @@ const SETTLED = 3.6, ENDS = 5.6, KEPT_MOST = 2048;
 
 // Which blasts melt lying snow.
 export const meltsSnow = (kind) => kind === 'fire';
-// What the snow shows of the blasts that melted it (pure): the latest four, each { x, y, radius, strength }: it clears in a second, holds, then the snow creeps back over the last fifth of `seconds`. `spots` { x, y, radius, at (ms) }.
-export function meltSpots(spots = [], now = 0, seconds = 120) {
-  const whole = Math.max(1, Number(seconds) || 120) * 1000;
-  return spots.filter((s) => now - s.at < whole).slice(-4).map((s) => { const age = now - s.at; return { x: s.x, y: s.y, radius: s.radius, strength: Math.min(1, age / 1000, (whole - age) / (whole * 0.2)) }; });
-}
+// What the snow shows of the blasts that melted it (pure): the latest four, each { x, y, radius, strength }: it clears in a second of real time, and stays as far melted as `left` says. `spots` { x, y, radius, at (ms), left (1 to 0) }.
+export const meltSpots = (spots = [], now = 0) => spots.slice(-4).map((s) => ({ x: s.x, y: s.y, radius: s.radius, strength: Math.max(0, Math.min(1, (now - s.at) / 1000, s.left ?? 1)) }));
+// Snow filling back over melted patches (pure): each game hour by `perHour`, the rate snow is lying at in this weather, so none while it has stopped or the clock stands still. Filled in, a patch is gone; wound back to before its blast, it never happened. `spots` also { world (game seconds), was (clock last seen), left }.
+export const meltsFilled = (spots = [], clock = 0, perHour = 0) => spots.filter((s) => clock >= s.world).map((s) => { const hours = Math.min(48, Math.max(0, (clock - (s.was ?? s.world)) / 3600)); return { ...s, was: clock, left: (s.left ?? 1) - hours * perHour }; }).filter((s) => s.left > 0);
 
 /** The layer: play({ x, y, radius, kind, seed }); tick(seconds); clear(). `floor()`, `above()` and `glow()` its layers; `map()` the map's picture and where it lies ({ texture, rect }; none: no bent floor, no mark); `render(mesh, options)` draws into a picture; `markSeconds()` how long a mark lasts. */
 export function createEnergyBlasts({ PIXI, floor, above, glow, map, render, markSeconds = () => 120 }) {

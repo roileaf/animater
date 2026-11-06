@@ -269,3 +269,19 @@ test('a fish has left the map only once clear of its edge', async () => {
   assert.equal(fishOffMap({ x: 40, y: 300 }, area, 100), true);
   assert.equal(fishOffMap({ x: 300, y: 660 }, area, 100), true);
 });
+
+test('a keep-out box of its own decides, then the old group, and All animals holds everything', async () => {
+  const { keepsOut, crossesKept } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  assert.equal(keepsOut({ ducks: true }, 'ducks'), true);
+  assert.equal(keepsOut({ ducks: true }, 'herons'), false);
+  assert.equal(keepsOut({ waterBirds: true }, 'gulls'), true, 'a region set before the split');
+  assert.equal(keepsOut({ waterBirds: true, gulls: false }, 'gulls'), false, 'unticked since');
+  assert.equal(keepsOut({ town: true }, 'cats'), true);
+  assert.equal(keepsOut({ insects: true }, 'fireflies'), true);
+  assert.equal(keepsOut({ waterBirds: true }, 'rabbits'), false);
+  assert.equal(keepsOut({ all: true }, 'owl'), true);
+  assert.equal(keepsOut(undefined, 'owl'), false);
+  const kept = (kind, x) => kind === 'crows' && x > 40 && x < 60, line = (u) => ({ x: u * 100, y: 0 });
+  assert.equal(crossesKept(line, 'crows', kept), true);
+  assert.equal(crossesKept(line, 'owl', kept), false, 'another kind');
+});

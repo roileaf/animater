@@ -1,0 +1,11 @@
+The recordings in this folder are from Freesound (https://freesound.org), CC0 1.0 (public domain) except the one marked CC BY 3.0 below;
+each source page was checked for its licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, trimmed, faded, loudness-matched within its family and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+howl-500646-0.ogg: "Cooper Creek 20160313_014852 solitary wolf howl very clear.wav" by betchkal, https://freesound.org/people/betchkal/sounds/500646/ (CC0 1.0). Changes: cut 1.50-11.60 s, faded, gain +2.3 dB.
+howl-500646-1.ogg: "Cooper Creek 20160313_014852 solitary wolf howl very clear.wav" by betchkal, https://freesound.org/people/betchkal/sounds/500646/ (CC0 1.0). Changes: cut 11.20-20.60 s, faded, gain +2.4 dB.
+howl-500646-3.ogg: "Cooper Creek 20160313_014852 solitary wolf howl very clear.wav" by betchkal, https://freesound.org/people/betchkal/sounds/500646/ (CC0 1.0). Changes: cut 40.30-49.40 s, faded, gain -0.5 dB.
+pack-158780-0.ogg: "wolves.wav" by Paresh, https://freesound.org/people/Paresh/sounds/158780/ (CC0 1.0). Changes: cut 1.30-6.70 s, faded, gain +4.2 dB.
+pack-158780-2.ogg: "wolves.wav" by Paresh, https://freesound.org/people/Paresh/sounds/158780/ (CC0 1.0). Changes: cut 19.10-23.60 s, faded, gain +5.1 dB.
+growl-260776-0.ogg: "ANGRY DOG BARK SNARL Flat.wav" by deleted_user_3424813, https://freesound.org/people/deleted_user_3424813/sounds/260776/ (CC BY 3.0, https://creativecommons.org/licenses/by/3.0/). Changes: cut 0.30-1.60 s, faded, gain -14.5 dB.

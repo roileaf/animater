@@ -91,12 +91,20 @@ test('fire melts snow, clears in a second, holds, then the snow creeps back', as
   const { meltsSnow, meltSpots } = await import('../../../scripts/engines/motion/energy-blast.mjs');
   assert.equal(meltsSnow('fire'), true);
   assert.equal(meltsSnow('cold'), false);
-  const at = (now) => meltSpots([{ x: 1, y: 2, radius: 3, at: 0 }], now, 100)[0]?.strength;
-  assert.equal(at(0), 0);
-  assert.equal(at(500), 0.5);
-  assert.equal(at(50000), 1);
-  assert.ok(Math.abs(at(90000) - 0.5) < 1e-9, 'halfway back over the last fifth');
-  assert.equal(at(100000), undefined, 'gone');
-  assert.equal(meltSpots(Array.from({ length: 6 }, (_, i) => ({ x: i, y: 0, radius: 1, at: 0 })), 500, 100).length, 4, 'the shader has room for four');
-  assert.equal(meltSpots(Array.from({ length: 6 }, (_, i) => ({ x: i, y: 0, radius: 1, at: 0 })), 500, 100)[0].x, 2, 'the latest');
+  const { meltsFilled } = await import('../../../scripts/engines/motion/energy-blast.mjs');
+  const spot = { x: 1, y: 2, radius: 3, at: 0, world: 1000, left: 1 }, shown = (s, now) => meltSpots([s], now)[0].strength;
+  assert.equal(shown(spot, 0), 0);
+  assert.equal(shown(spot, 500), 0.5, 'clears in real time');
+  assert.equal(shown(spot, 5000000), 1, 'real time alone never brings it back');
+  // Snow lying the whole way in an hour.
+  const half = meltsFilled([spot], 1000 + 1800, 1)[0];
+  assert.ok(Math.abs(half.left - 0.5) < 1e-9, 'half back in half the time snow takes to lie');
+  assert.equal(shown(half, 5000), half.left);
+  assert.equal(meltsFilled([half], 1000 + 3600, 1).length, 0, 'all back in the time snow takes to lie');
+  assert.equal(meltsFilled([spot], 1000 + 3600, 0)[0].left, 1, 'snow stopped: it stays melted');
+  assert.equal(meltsFilled([spot], 1000, 1)[0].left, 1, 'the clock standing still');
+  assert.equal(meltsFilled([spot], 999, 1).length, 0, 'the clock wound back to before it: it never happened');
+  const many = Array.from({ length: 6 }, (_, i) => ({ x: i, y: 0, radius: 1, at: 0 }));
+  assert.equal(meltSpots(many, 500).length, 4, 'the shader has room for four');
+  assert.equal(meltSpots(many, 500)[0].x, 2, 'the latest');
 });

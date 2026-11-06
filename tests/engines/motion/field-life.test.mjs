@@ -312,3 +312,47 @@ test('a wolf hauling forces a way out when it cannot get round', () => {
   const out = run(wolf({ x: 200, y: 0, a: -Math.PI / 2, mode: 'drag', tx: 800, ty: 0, pulling: true }), { blocked }, 90);
   assert.equal(out.mode, 'away');
 });
+
+test('wolves, squirrels and snakes each have their own keep-out', async () => {
+  const { readFileSync } = await import('node:fs');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8'), field = readFileSync(new URL('../../../scripts/engines/motion/field-life.mjs', import.meta.url), 'utf8');
+  for (const kind of ['wolves', 'squirrels', 'snakes']) {
+    assert.ok(new RegExp('const KEEP_OUT = \\[[^\\]]*"' + kind + '"').test(main), kind + ' is a kind');
+    assert.ok(main.includes('keepBox("' + kind + '",'), kind + ' has a box');
+    assert.ok(new RegExp('regions: JSON\\.stringify\\(\\[\\[[^\\]]*"' + kind + '"').test(main), kind + ' ticked is noticed at once');
+    assert.ok(field.includes("ok('" + kind + "', x, y)"), kind + ' asks after itself');
+  }
+  assert.ok(main.includes('keepBox("all", "All animals")'), 'an All animals box');
+  assert.ok(main.includes('if (keepsOut(own, kind))'), 'which counts for every kind');
+});
+
+test('a wolf hauling goes round a kept-out region, though it wades water', () => {
+  // Kept out: a block across the way. No wall.
+  const kept = (x, y) => x > 400 && x < 600 && Math.abs(y) < 300, wet = () => false;
+  let w = wolf({ x: 200, y: 0, a: -Math.PI / 2, mode: 'drag', tx: 1000, ty: 0, pulling: true }), inside = 0;
+  for (let i = 0; i < 30 * 24; i++) { w = wolfStep(w, { dt: 1 / 30, grid: 100, ok: wet, kept, random: () => 0.5 }); if (kept(w.x, w.y)) inside++; }
+  assert.equal(inside, 0, 'never in it');
+  assert.ok(w.mode === 'away' || w.x > 600, 'past it');
+});
+
+test('wolves howl at ease, more by night, and never on a hunt', async () => {
+  const { wolfCallNow } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const calls = (o, n = 200000) => { let c = 0; for (let i = 0; i < n; i++) if (wolfCallNow({ dt: 1 / 60, pack: 3, ...o })) c++; return c; };
+  assert.equal(wolfCallNow({ was: 'arrive', mode: 'trot', pack: 3 }), 'wolfPack', 'coming in');
+  assert.equal(wolfCallNow({ was: 'arrive', mode: 'trot', pack: 1 }), 'wolfHowl', 'alone');
+  assert.equal(wolfCallNow({ mode: 'rest', pack: 1, random: () => 0 }), 'wolfHowl', 'alone: no pack to join in');
+  for (const mode of ['hunt', 'drag', 'flee', 'away', 'arrive']) assert.equal(calls({ mode }, 2000), 0, mode);
+  assert.ok(calls({ mode: 'rest', night: 1 }) > calls({ mode: 'rest', night: 0 }) * 1.5, 'more by night');
+});
+
+test('a wolf growls once at someone coming close, and again only after they have gone', async () => {
+  const { wolfGrowlNow } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const at = (x) => [{ x, y: 0 }], w = { x: 0, y: 0, mode: 'trot' };
+  assert.deepEqual(wolfGrowlNow(w, at(900)), { growl: false, warned: false }, 'far off');
+  assert.deepEqual(wolfGrowlNow(w, at(400)), { growl: true, warned: true }, 'within five squares');
+  assert.deepEqual(wolfGrowlNow({ ...w, warned: true }, at(400)), { growl: false, warned: true }, 'not again');
+  assert.deepEqual(wolfGrowlNow({ ...w, warned: true }, at(650)), { growl: false, warned: true }, 'still about');
+  assert.deepEqual(wolfGrowlNow({ ...w, warned: true }, at(900)), { growl: false, warned: false }, 'gone: it can growl again');
+  for (const mode of ['hunt', 'arrive', 'away']) assert.equal(wolfGrowlNow({ ...w, mode }, at(100)).growl, false, mode);
+  assert.equal(wolfGrowlNow({ ...w, mode: 'drag' }, at(100)).growl, true, 'over its kill');
+});

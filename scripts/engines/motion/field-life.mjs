@@ -3,7 +3,7 @@
 // from above, then only moved, turned and swapped; every gait runs by the ground covered, so no foot slides. A few dozen small
 // shapes on the CPU at most, and nothing drawn where nobody looks. Every screen has its own: nothing here is saved or shared.
 
-import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED, resettled, nearestSpot, edgeArrival, edgeExit } from './wildlife.mjs';
+import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED, resettled, nearestSpot, edgeArrival, edgeExit, crossesKept } from './wildlife.mjs';
 import { batWingbeat } from './vermin.mjs';
 
 const TAU = Math.PI * 2;
@@ -103,15 +103,29 @@ export function foxStep(fox, { dt = 1 / 60, grid = 100, near = [], ok = () => tr
 }
 
 // One step of a wolf (pure). A pack keeps together behind its first (`leader`, none for the first itself): it walks in from the edge of the map ('arrive', to `tx`, `ty`), trots about, lies up a while, and goes after a deer it sees (`prey`) for a few seconds; fed (`full` seconds), it leaves them alone. A kill is hauled off the map ('drag', to `tx`, `ty`): the wolf `pulling` it backs away with it, the rest go along, and past the edge each is 'away' till the layer brings it back. Anyone near, a noise, or a fire (`fires`) sends it off at a run. Modes 'arrive', 'trot', 'rest', 'hunt', 'drag', 'away', 'flee'.
-export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, scare = false, noise = null, fires = [], prey = [], leader = null, time = 0, random = Math.random } = {}) {
+// Whether a pack's first wolf calls now, and how (pure): null, 'wolfHowl' or 'wolfPack'. On coming in from the edge it always does; at ease it does now and then, more by night. Never hunting, hauling or running, and one alone has no pack to join in.
+export const wolfCallNow = ({ was, mode, night = 0, pack = 1, dt = 1 / 60, random = Math.random } = {}) => {
+  const together = () => (pack > 1 && random() < 0.5 ? 'wolfPack' : 'wolfHowl');
+  if (was === 'arrive' && mode === 'trot') return pack > 1 ? 'wolfPack' : 'wolfHowl';
+  if ((mode === 'trot' || mode === 'rest') && random() < dt * (0.005 + 0.012 * night)) return together();
+  return null;
+};
+// Whether a wolf growls now (pure): at someone coming within five squares, once until they have gone well off again. { growl, warned }, `warned` what to remember. Not while it is hunting or on its way in.
+export const wolfGrowlNow = (wolf, near = [], grid = 100) => {
+  const within = (squares) => near.some((t) => Math.hypot(t.x - wolf.x, t.y - wolf.y) < grid * squares);
+  if (wolf.warned) return { growl: false, warned: within(7) };
+  return wolf.mode !== 'hunt' && wolf.mode !== 'arrive' && wolf.mode !== 'away' && within(5) ? { growl: true, warned: true } : { growl: false, warned: false };
+};
+export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, kept = () => false, scare = false, noise = null, fires = [], prey = [], leader = null, time = 0, random = Math.random } = {}) {
   const w = { ...wolf, full: Math.max(0, (wolf.full ?? 0) - dt) }, free = (nx, ny) => !blocked({ x: w.x, y: w.y }, { x: nx, y: ny }) && (ok(nx, ny) || !ok(w.x, w.y));
   let wading = false;
-  const forward = (speed, stride) => { const nx = w.x + Math.sin(w.a) * speed * dt, ny = w.y - Math.cos(w.a) * speed * dt, px = nx + Math.sin(w.a) * grid * 0.4, py = ny - Math.cos(w.a) * grid * 0.4; if (wading ? !blocked({ x: w.x, y: w.y }, { x: px, y: py }) : free(px, py)) { w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + (speed * dt) / (grid * stride); return true; } return false; };
+  const wades = (nx, ny) => !blocked({ x: w.x, y: w.y }, { x: nx, y: ny }) && (!kept(nx, ny) || kept(w.x, w.y));
+  const forward = (speed, stride) => { const nx = w.x + Math.sin(w.a) * speed * dt, ny = w.y - Math.cos(w.a) * speed * dt, px = nx + Math.sin(w.a) * grid * 0.4, py = ny - Math.cos(w.a) * grid * 0.4; if (wading ? wades(px, py) : free(px, py)) { w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + (speed * dt) / (grid * stride); return true; } return false; };
   const steer = () => { if (!free(w.x + Math.cos(w.way) * grid * 0.9, w.y + Math.sin(w.way) * grid * 0.9)) { const c = clearWay(w.x, w.y, w.way, grid * 1.3, free); if (c !== null) w.way = c; } };
   if (w.mode === 'away') { w.t = (w.t ?? 0) + dt; w.v = 0; return w; }
   const within = (o, squares) => Math.hypot(o.x - w.x, o.y - w.y) < grid * squares;
   // The way to go for `way` (radians, atan2): straight if it is clear, else round what is in the way, keeping to one side of it till it is past (no dithering at a wall). Walls stop it; water does not, on these errands.
-  const walk = (nx, ny) => !blocked({ x: w.x, y: w.y }, { x: nx, y: ny }), ahead = (a, far) => walk(w.x + Math.cos(a) * far, w.y + Math.sin(a) * far);
+  const walk = (nx, ny) => !blocked({ x: w.x, y: w.y }, { x: nx, y: ny }) && (!kept(nx, ny) || kept(w.x, w.y)), ahead = (a, far) => [grid * 1.3 * dt, far * 0.25, far * 0.5, far].every((d) => walk(w.x + Math.cos(a) * d, w.y + Math.sin(a) * d));
   const round = (way) => {
     if (ahead(way, grid * 0.7)) { if (ahead(way, grid * 3)) w.side = 0; return way; }
     const sides = w.side ? [w.side] : [1, -1];
@@ -129,7 +143,7 @@ export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   if (w.mode === 'arrive') {
     w.t = (w.t ?? 0) + dt; w.v = grid * 1.3; { const straight = Math.atan2(w.ty - w.y, w.tx - w.x); w.a = turnToward(w.a, (w.clear > 0 ? straight : round(straight)) + Math.PI / 2, dt * 3); }
     const nx = w.x + Math.sin(w.a) * w.v * dt, ny = w.y - Math.cos(w.a) * w.v * dt;
-    if (w.clear > 0 || !blocked({ x: w.x, y: w.y }, { x: nx, y: ny })) { w.clear = (w.clear ?? 0) - w.v * dt; w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + (w.v * dt) / (grid * 0.85); }
+    if (w.clear > 0 || walk(nx, ny)) { w.clear = (w.clear ?? 0) - w.v * dt; w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + (w.v * dt) / (grid * 0.85); }
     // Not done till it is really on the map.
     if ((Math.hypot(w.tx - w.x, w.ty - w.y) < grid * 0.6 && ok(w.x, w.y)) || w.t > 25) { w.mode = 'trot'; w.want = w.a; w.wait = between(random, 8, 18); }
     return w;
@@ -141,9 +155,12 @@ export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => 
     // Round what is in the way; still at it after this long, it forces a way straight out.
     const forcing = w.t > 25, gap = Math.hypot(w.tx - w.x, w.ty - w.y), straight = Math.atan2(w.ty - w.y, w.tx - w.x), way = gap < grid * 1.8 || forcing ? straight : round(straight);
     w.a = turnToward(w.a, way + Math.PI / 2 + (w.pulling ? Math.PI : 0), dt * 3); w.v = grid * (w.pulling ? 0.7 : 0.95);
-    const nx = w.x + Math.cos(way) * w.v * dt, ny = w.y + Math.sin(way) * w.v * dt;
+    let nx = w.x + Math.cos(way) * w.v * dt, ny = w.y + Math.sin(way) * w.v * dt;
     // (The map's own edge stops nothing going out by it.)
-    if (gap < grid * 1.8 || forcing || !blocked({ x: w.x, y: w.y }, { x: nx, y: ny })) { w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + (w.v * dt) / (grid * 0.85); }
+    const open = gap < grid * 1.8 || forcing;
+    // The way it chose clips a corner by a hair: it slides round on its side instead of standing there.
+    if (!open && !walk(nx, ny)) for (let i = 1; i <= 8; i++) { const a = way + ((w.side || 1) * i * Math.PI) / 8, sx = w.x + Math.cos(a) * w.v * dt, sy = w.y + Math.sin(a) * w.v * dt; if (walk(sx, sy)) { nx = sx; ny = sy; break; } }
+    if (open || walk(nx, ny)) { w.x = nx; w.y = ny; w.gait = (w.gait ?? 0) + (w.v * dt) / (grid * 0.85); }
     if (gap < grid * 0.25) { w.mode = 'away'; w.t = 0; w.v = 0; } else if (w.t > 120) { w.mode = 'trot'; w.want = w.a; w.wait = between(random, 8, 18); w.pulling = false; }
     return w;
   }
@@ -444,7 +461,7 @@ export const batLamps = (lights = [], open = () => true) => lights.filter((l) =>
  * noise({ x, y, radius }); scare(); clear(). `prey`: the rabbits, { list, spook(rabbit, from), take(rabbit) } (wildlife.mjs).
  */
 export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, highShadow = floor }) {
-  let trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
+  let trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], homes = {}, area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
   const texOf = (c) => PIXI.Texture.from(c), group = (o, f) => (Array.isArray(o) ? o.map(f) : Object.fromEntries(Object.entries(o).map(([k, v]) => [k, group2(v, f)]))), group2 = (v, f) => (Array.isArray(v) ? v.map(f) : f(v));
   const lazily = (key, make) => { const had = art[key]; const sample = had && (had.doe?.look?.[0] ?? had.trot?.[0] ?? had[0]?.[0] ?? had[0]); if (!had || sample?.baseTexture?.destroyed) art[key] = make(); return art[key]; };
   const herd = () => lazily('herd', () => ({ doe: group(herdArt(false), texOf), stag: group(herdArt(true), texOf) }));
@@ -470,19 +487,22 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
   };
   const put = (s, tex, x, y, angle, size, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(size); s.alpha = alpha; };
   const hide = (o) => { o.body.visible = false; o.shadow.visible = false; if (o.carry) o.carry.visible = false; };
+  // Where a wolf, squirrel or snake may be, by its own keep-out regions; anywhere else if none is left.
+  const homeOf = (kind, land = spots) => (homes[kind]?.length ? homes[kind] : land);
   return {
-    populate({ spots: land = [], waters = [], trees: treeList = [], squirrels: nSquirrels = 0, squirrelSize: qs = 1, snakes: nSnakes = 0, snakeSize: ss = 1, wolves: nWolves = 0, wolfSize: ws = 1, deer: nDeer = 0, foxes: nFoxes = 0, butterflies = 0, dragonflies = 0, fireflies = 0, owl: hasOwl = false, grid: g = 100, area: a = null, deerSize: ds = 1, foxSize: fs = 1, insectSize: is = 1, birdSize: bs = 1, blocked = () => false, random = Math.random } = {}) {
-      drop(); deerIn = 0; packFeeds = 0; trees = treeList; squirrelSize = qs; snakeSize = ss; grid = g; area = a; spots = land; wolfSize = ws; deerSize = ds; foxSize = fs; insectSize = is; birdSize = bs; shownDay = 0;
+    populate({ spots: land = [], homes: own = {}, waters = [], glowWaters = waters, trees: treeList = [], squirrels: nSquirrels = 0, squirrelSize: qs = 1, snakes: nSnakes = 0, snakeSize: ss = 1, wolves: nWolves = 0, wolfSize: ws = 1, deer: nDeer = 0, foxes: nFoxes = 0, butterflies = 0, dragonflies = 0, fireflies = 0, owl: hasOwl = false, grid: g = 100, area: a = null, deerSize: ds = 1, foxSize: fs = 1, insectSize: is = 1, birdSize: bs = 1, blocked = () => false, random = Math.random } = {}) {
+      drop(); deerIn = 0; packFeeds = 0; homes = own; trees = treeList; squirrelSize = qs; snakeSize = ss; grid = g; area = a; spots = land; wolfSize = ws; deerSize = ds; foxSize = fs; insectSize = is; birdSize = bs; shownDay = 0;
       const pick = (list) => list[Math.floor(random() * list.length)], jitter = (p, r) => ({ x: p.x + between(random, -r, r) * g, y: p.y + between(random, -r, r) * g });
       if (nDeer && land.length) { const t = herd(), home = pick(land), near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < g * 5); deer = Array.from({ length: nDeer }, (_, i) => ({ ...pick(near), a: random() * TAU, mode: 'graze', wait: between(random, 1, 5), buck: i === 0, t: 0, way: 0, want: 0, v: 0, gait: random(), lift: random() < 0.5 ? 0 : 1, h: 0, step: random() * 6, ...pair(floor(), t.doe.look[0]) })); }
-      if (nSquirrels && land.length) squirrels = Array.from({ length: nSquirrels }, (_, i) => { const tree = trees.length ? i % trees.length : -1, home = trees[tree], way = random() * TAU, at = home ? { x: home.x + Math.cos(way) * home.r * 1.2, y: home.y + Math.sin(way) * home.r * 1.2 } : pick(land); return newSquirrel({ ...at, tree }, i, random); });
-      if (nSnakes && land.length) snakes = Array.from({ length: nSnakes }, (_, i) => newSnake(pick(land), i, random));
+      if (nSquirrels && land.length) squirrels = Array.from({ length: nSquirrels }, (_, i) => { const tree = trees.length ? i % trees.length : -1, home = trees[tree], way = random() * TAU, at = home ? { x: home.x + Math.cos(way) * home.r * 1.2, y: home.y + Math.sin(way) * home.r * 1.2 } : pick(homeOf('squirrels', land)); return newSquirrel({ ...at, tree }, i, random); });
+      if (nSnakes && land.length) snakes = Array.from({ length: nSnakes }, (_, i) => newSnake(pick(homeOf('snakes', land)), i, random));
       const inside = (v, from, size) => Math.max(from + g, Math.min(from + size - g, v));
-      if (nWolves && land.length) { const home = pick(land), near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < g * 4); const way = edgeArrival(land, a, { grid: g, blocked, random }); wolves = Array.from({ length: nWolves }, (_, i) => (way ? { ...newWolf({ x: way.from.x + between(random, -0.8, 0.8) * g, y: way.from.y + between(random, -0.8, 0.8) * g }, i, random), mode: 'arrive', clear: g * 1.8, tx: inside(way.to.x + between(random, -1, 1) * g, a.x, a.width), ty: inside(way.to.y + between(random, -1, 1) * g, a.y, a.height) } : newWolf(pick(near), i, random))); }
+      if (nWolves && land.length) { const range = homeOf('wolves', land), home = pick(range), near = range.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < g * 4); const way = edgeArrival(range, a, { grid: g, blocked, random }); wolves = Array.from({ length: nWolves }, (_, i) => (way ? { ...newWolf({ x: way.from.x + between(random, -0.8, 0.8) * g, y: way.from.y + between(random, -0.8, 0.8) * g }, i, random), mode: 'arrive', clear: g * 1.8, tx: inside(way.to.x + between(random, -1, 1) * g, a.x, a.width), ty: inside(way.to.y + between(random, -1, 1) * g, a.y, a.height) } : newWolf(pick(near), i, random))); }
       if (nFoxes && land.length) { const t = foxTex(); foxes = Array.from({ length: nFoxes }, () => { const a0 = random() * TAU; return { ...pick(land), a: a0, want: a0, mode: 'trot', t: 0, wait: between(random, 3, 8), v: 0, gait: 0, way: 0, h: 0, seed: random() * 6, ...pair(floor(), t.look) }; }); }
-      if (butterflies && land.length) { const t = flyTex(); flies = Array.from({ length: butterflies }, (_, i) => ({ ...pick(land), a: random() * TAU, wait: 0, turn: 0, c: i % t.length, p: random() * 6, ...pair(sky(), t[0][0]) })); }
+      const bugLand = own.butterflies ?? land, glowLand = own.fireflies ?? land;
+      if (butterflies && bugLand.length) { const t = flyTex(); flies = Array.from({ length: butterflies }, (_, i) => ({ ...pick(bugLand), a: random() * TAU, wait: 0, turn: 0, c: i % t.length, p: random() * 6, ...pair(sky(), t[0][0]) })); }
       if (dragonflies && waters.length) { const t = dragTex(); drags = Array.from({ length: dragonflies }, (_, i) => ({ ...pick(waters), a: random() * TAU, hover: random() * 2, c: i % t.length, p: random() * 6, ...pair(sky(), t[0][0]) })); }
-      if (fireflies && (land.length || waters.length)) { const t = glowTex(), from = land.concat(waters); lights = Array.from({ length: fireflies }, () => { const s = sprite(glow(), t[0]); s.blendMode = PIXI.BLEND_MODES.ADD; return { ...jitter(pick(from), 0.45), a: random() * TAU, p: random() * 9, every: between(random, 1.8, 3.6), body: s }; }); }
+      if (fireflies && (glowLand.length || glowWaters.length)) { const t = glowTex(), from = glowLand.concat(glowWaters); lights = Array.from({ length: fireflies }, () => { const s = sprite(glow(), t[0]); s.blendMode = PIXI.BLEND_MODES.ADD; return { ...jitter(pick(from), 0.45), a: random() * TAU, p: random() * 9, every: between(random, 1.8, 3.6), body: s }; }); }
       if (hasOwl && a) { const t = owlTex(); owl = { t: 1, wait: between(random, 8, 30), way: 0, cx: 0, cy: 0, far: 0, body: sprite(high(), t[0]), shadow: sprite(highShadow(), t[0], true) }; }
     },
     // The walls changed: new places to come back to, and any shut in go there, a herd near one place. A fox set down mid-hunt
@@ -500,20 +520,21 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       const leave = (o) => { if (o.placed !== id) return true; gone(o.body, o.shadow, o.carry); return false; };
       deer = deer.filter(leave); foxes = foxes.filter(leave); wolves = wolves.filter(leave); squirrels = squirrels.filter(leave); snakes = snakes.filter(leave);
     },
-    resettle({ spots: land = [], closed = () => false, random = Math.random } = {}) {
-      spots = land; if (!land.length) return;
+    resettle({ spots: land = [], homes: own = {}, closed = () => false, random = Math.random } = {}) {
+      spots = land; homes = own; if (!land.length) return;
       const home = land[Math.floor(random() * land.length)], near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < grid * 5);
       deer = resettled(deer, { spots: near, closed, random });
-      wolves = resettled(wolves, { spots: near, closed, random });
-      snakes = resettled(snakes, { spots: land, closed, random });
-      squirrels = resettled(squirrels, { spots: land, closed, random });
+      const wolfLand = homeOf('wolves', land), wolfHome = wolfLand[Math.floor(random() * wolfLand.length)];
+      wolves = resettled(wolves, { spots: wolfLand.filter((p) => Math.hypot(p.x - wolfHome.x, p.y - wolfHome.y) < grid * 5), closed, random });
+      snakes = resettled(snakes, { spots: homeOf('snakes', land), closed, random });
+      squirrels = resettled(squirrels, { spots: homeOf('squirrels', land), closed, random });
       foxes = foxes.map((f) => { const [o] = resettled([f], { spots: land, closed, random }); return o === f || f.mode === 'flee' || f.mode === 'carry' || f.mode === 'away' ? o : { ...o, mode: 'trot', t: 0, h: 0, wait: 5, v: 0, want: o.a }; });
     },
-    runOff({ spots: land = [], bad = () => false } = {}) {
+    runOff({ spots: land = [], homes: own = {}, bad = () => false } = {}) {
       if (!land.length) return;
-      spots = land; const off = (o) => (bad(o.x, o.y) ? runsOff(o, { spots: land }) : o);
-      deer = deer.map((o) => (o.mode === 'dead' ? o : off(o))); foxes = foxes.map(off); wolves = wolves.map(off); snakes = snakes.map(off);
-      squirrels = squirrels.map((s) => { if (s.mode === 'hide' || !bad(s.x, s.y)) return s; const to = nearestSpot(s.x, s.y, land); return to ? { ...s, mode: 'dash', t: 0, tx: to.x, ty: to.y } : s; });
+      spots = land; homes = own; const off = (o, to = land) => (bad(o.x, o.y) ? runsOff(o, { spots: to }) : o);
+      deer = deer.map((o) => (o.mode === 'dead' ? o : off(o))); foxes = foxes.map((f) => off(f)); wolves = wolves.map((w) => off(w, homeOf('wolves', land))); snakes = snakes.map((s) => off(s, homeOf('snakes', land)));
+      squirrels = squirrels.map((s) => { if (s.mode === 'hide' || !bad(s.x, s.y)) return s; const to = nearestSpot(s.x, s.y, homeOf('squirrels', land)); return to ? { ...s, mode: 'dash', t: 0, tx: to.x, ty: to.y } : s; });
     },
     // The tree tiles changed: each squirrel keeps to the nearest tree now (none, and it is out in the open).
     setTrees(list = []) {
@@ -522,7 +543,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, night = 0, warm = true, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, indoors = () => false, canopy = () => false, cast = null, prey = null, lamps = () => [] } = {}) {
+    tick(seconds, { near = [], ok = () => true, blocked = () => false, kept = () => false, seen = () => true, day = 1, night = 0, warm = true, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, indoors = () => false, canopy = () => false, cast = null, prey = null, lamps = () => [] } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -539,8 +560,10 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
         const sets = wolfTex(), fires = lamps(), leaderBefore = wolves[0], prey2 = alpha > 0.01 && deer.filter((d) => d.mode === 'dead').length < 3 ? deer.filter((d) => d.mode !== 'dead') : []; let killed = null, killer = 0;
         wolves = wolves.map((w0, i) => {
           const off = area && (w0.x < area.x || w0.y < area.y || w0.x > area.x + area.width || w0.y > area.y + area.height);
-          if (off && ['trot', 'rest', 'flee'].includes(w0.mode)) { const to = nearestSpot(w0.x, w0.y, spots); if (to) { w0 = { ...w0, mode: 'arrive', t: 0, tx: to.x, ty: to.y }; } }
-          const w = wolfStep(w0, { dt, grid, near, blocked: off ? () => false : blocked, scare, noise: heard(w0), fires, prey: prey2, leader: i ? leaderBefore : null, time, ok: (x, y) => ok('foxes', x, y) });
+          if (off && ['trot', 'rest', 'flee'].includes(w0.mode)) { const to = nearestSpot(w0.x, w0.y, homeOf('wolves')); if (to) { w0 = { ...w0, mode: 'arrive', t: 0, tx: to.x, ty: to.y }; } }
+          const w = wolfStep(w0, { dt, grid, near, blocked: off ? () => false : blocked, kept: (x, y) => kept('wolves', x, y), scare, noise: heard(w0), fires, prey: prey2, leader: i ? leaderBefore : null, time, ok: (x, y) => ok('wolves', x, y) });
+          if (!i) { const call = wolfCallNow({ was: w0.mode, mode: w.mode, night, pack: wolves.length, dt }); if (call) sound(call, w, false); }
+          { const g = wolfGrowlNow(w, near, grid); w.warned = g.warned; if (g.growl) sound('wolfGrowl', w, true); }
           // Each wolf gets one try in a hunt, when it comes up with one.
           if (w.mode !== 'hunt') w.tried = false;
           else if (!w.tried) { const d = prey2.find((o) => Math.hypot(o.x - w.x, o.y - w.y) < grid); if (d) { w.tried = true; if (Math.random() < 0.4) { killed = d; killer = i; } } }
@@ -569,21 +592,21 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           }
         }
         // Gone a good while: they come back the way anything does, from the edge.
-        if (wolves[0].mode === 'away' && wolves[0].t > wolves[0].back && spots.length) {
-          const way = edgeArrival(spots, area, { grid, blocked });
+        if (wolves[0].mode === 'away' && wolves[0].t > wolves[0].back && homeOf('wolves').length) {
+          const way = edgeArrival(homeOf('wolves'), area, { grid, blocked });
           if (way) wolves = wolves.map((w) => (w.mode === 'away' ? { ...w, mode: 'arrive', t: 0, x: way.from.x + between(Math.random, -0.8, 0.8) * grid, y: way.from.y + between(Math.random, -0.8, 0.8) * grid, clear: grid * 1.8, tx: Math.max(area.x + grid, Math.min(area.x + area.width - grid, way.to.x + between(Math.random, -1, 1) * grid)), ty: Math.max(area.y + grid, Math.min(area.y + area.height - grid, way.to.y + between(Math.random, -1, 1) * grid)), pulling: false } : w));
         }
       }
       if (alpha > 0.01) {
         if (squirrels.length) { const sets = squirrelTex(); squirrels = squirrels.map((s0) => {
-          const s = squirrelStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), trees, ok: (x, y) => ok('rabbits', x, y) });
+          const s = squirrelStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), trees, ok: (x, y) => ok('squirrels', x, y) });
           if (s.mode === 'hide' || !can(s, s.x, s.y)) { hide(s); return s; }
           const set = sets[s.coat], tex = s.v > 3 ? set.run[Math.floor(((s.gait % 1) + 1) % 1 * 4)] : set.sit[Math.round(Math.sin(time * 1.4 + s.seed) * Math.max(0, Math.sin(time * 0.5 + s.seed)) + 1)], size = 0.55 * k * squirrelSize, c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true });
           put(s.shadow, tex, s.x + c.dx, s.y + c.dy, s.a, size, Math.min(0.5, c.alpha * 0.55) * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);
           return s;
         }); }
         if (snakes.length) { const sets = snakeTex(); snakes = snakes.map((s0) => {
-          const s = snakeStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), time, ok: (x, y) => ok('rabbits', x, y) });
+          const s = snakeStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), time, ok: (x, y) => ok('snakes', x, y) });
           if (!warm || !can(s, s.x, s.y)) { hide(s); return s; }
           const set = sets[s.coat], tex = s.v > 1 ? set.go[Math.floor(((s.gait % 1) + 1) % 1 * 8)] : set.lie[0], size = 0.5 * k * snakeSize;
           put(s.shadow, tex, s.x + sun.x * grid * 0.02, s.y + sun.y * grid * 0.02, s.a, size, 0.25 * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);
@@ -672,10 +695,13 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           const p = owlPlace(o);
           if (o.t < 1 && dark > 0.3 && can(o, p.x, p.y)) { const t2 = owlTex(), tex = t2[Math.floor(time * 1.1) % 6 === 0 ? Math.floor(time * 7) % 6 : 0], c = fall(o, p.x, p.y, { width: grid * 1, lift: 1.6 }); o.open = overOpen(o.open, indoors(p.x, p.y), dt); o.shade = overOpen(o.shade, indoors(p.x + c.dx, p.y + c.dy), dt); put(o.shadow, tex, p.x + c.dx, p.y + c.dy, p.a, 0.62 * k * birdSize, Math.min(0.3, c.alpha * 0.3) * dark * o.shade); put(o.body, tex, p.x, p.y, p.a, 0.55 * k * birdSize, dark * o.open); } else hide(o);
           if (dark > 0.3 && Math.random() < dt * 0.1) sound('owlHoot', p, false);
-        } else { hide(o); if (dark > 0.5 && area && (o.wait -= dt) <= 0) { o.t = 0; o.wait = 40 + Math.random() * 60; o.way = Math.random() * TAU; o.cx = area.x + area.width * (0.3 + Math.random() * 0.4); o.cy = area.y + area.height * (0.3 + Math.random() * 0.4); o.far = Math.hypot(area.width, area.height) * 1.1; sound('owlHoot', { x: o.cx, y: o.cy }, false); } }
+        } else { hide(o); if (dark > 0.5 && area && (o.wait -= dt) <= 0) { o.wait = 40 + Math.random() * 60;
+          // A line across the map that misses anywhere keeping owls out; none in a few tries, and it stays away this time.
+          for (let i = 0; i < 8; i++) { const line = { ...o, way: Math.random() * TAU, cx: area.x + area.width * (0.3 + Math.random() * 0.4), cy: area.y + area.height * (0.3 + Math.random() * 0.4), far: Math.hypot(area.width, area.height) * 1.1 }; if (crossesKept((t) => owlPlace({ ...line, t }), 'owl', kept)) continue; Object.assign(o, line, { t: 0 }); sound('owlHoot', { x: o.cx, y: o.cy }, false); break; }
+        } }
       }
       // Bats round the lamps out of doors, by night (batLamps: no carried light): one of the lights nearest the view holds up to three of them.
-      const wantBats = dark > 0.3 ? lamps() : [];
+      const wantBats = dark > 0.3 ? lamps().filter((l) => !kept('bats', l.x, l.y)) : [];
       if (wantBats.length && !bats.length) { const t2 = batTex(); bats = Array.from({ length: Math.min(6, wantBats.length * 3) }, (_, i) => ({ lamp: Math.floor(i / 3), a: Math.random() * TAU, r: between(Math.random, 0.5, 1.05), v: between(Math.random, 1.2, 2.2) * (i % 2 ? 1 : -1), w: Math.random() * 6, body: sprite(high(), t2[0]), shadow: sprite(highShadow(), t2[0], true) })); }
       for (const b of bats) {
         const l = wantBats[b.lamp % Math.max(1, wantBats.length)];

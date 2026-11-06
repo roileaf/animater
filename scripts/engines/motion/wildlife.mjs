@@ -22,6 +22,9 @@ export const WILD_SOUNDS = Object.freeze({
   owlHoot: ['450214-0', '450214-1', '558396-0', '558396-1'].map((n) => `${SOUND_DIR}/owl/owl-${n}.ogg`),
   cricketChirp: ['521129-0', '521129-1', '521129-2', '353073-0'].map((n) => `${SOUND_DIR}/cricket/cricket-${n}.ogg`),
   foxBark: ['546948-0', '546948-1'].map((n) => `${SOUND_DIR}/fox/fox-${n}.ogg`),
+  wolfHowl: ['500646-0', '500646-1', '500646-3'].map((n) => `${SOUND_DIR}/wolf/howl-${n}.ogg`),
+  wolfPack: ['158780-0', '158780-2'].map((n) => `${SOUND_DIR}/wolf/pack-${n}.ogg`),
+  wolfGrowl: ['260776-0'].map((n) => `${SOUND_DIR}/wolf/growl-${n}.ogg`),
   dragonBuzz: ['447319-0', '447319-1', '447319-2'].map((n) => `${SOUND_DIR}/dragonfly/dragonfly-${n}.ogg`),
   // Town life (town-life.mjs).
   henCluck: ['233097-0', '724216-0'].map((n) => `${SOUND_DIR}/town/hen-${n}.ogg`),
@@ -30,7 +33,10 @@ export const WILD_SOUNDS = Object.freeze({
   pigeonCoo: ['517683-0'].map((n) => `${SOUND_DIR}/town/pigeon-${n}.ogg`),
 });
 // How long each kind waits [least, most seconds] after it sounds, whatever their number (underground-sounds.mjs critterVoices).
-export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], dragonBuzz: [5, 12], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14] });
+export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], wolfHowl: [60, 150], wolfPack: [60, 150], wolfGrowl: [4, 10], dragonBuzz: [5, 12], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14] });
+// Whether a region's Keep out holds this kind (pure). A box of its own decides; one never saved goes by the older box that once covered it, so regions set before they were split keep working. All animals holds everything.
+const KEEP_GROUPS = Object.freeze({ ducks: 'waterBirds', herons: 'waterBirds', gulls: 'waterBirds', butterflies: 'insects', dragonflies: 'insects', fireflies: 'insects', pigeons: 'town', hens: 'town', cats: 'town', dogs: 'town' });
+export const keepsOut = (own, kind) => !!own && (own.all === true || !!(own[kind] ?? own[KEEP_GROUPS[kind]]));
 // One of a kind's recordings (pure), never the one just played when there are others.
 const lastSound = {};
 export function wildSound(kind, random = Math.random) {
@@ -227,6 +233,8 @@ export const thumpsNow = (calm) => calm > 8;
 
 // Where the crows cross (pure): a loose group in from beyond one side of `area` { x, y, width, height } and out past the
 // other, wherever its `way` (radians) takes it. Each { x, y, vx, vy, a, phase, size }.
+// Whether a flier's path comes over anywhere keeping its kind out (pure): `at(t)` where it is at t, 0 to 1.
+export const crossesKept = (at, kind, kept = () => false, samples = 24) => { for (let i = 0; i <= samples; i++) { const p = at(i / samples); if (kept(kind, p.x, p.y)) return true; } return false; };
 export function crowFlock(area, way, { grid = 100, count = 6, random = Math.random } = {}) {
   const cx = area.x + area.width / 2, cy = area.y + area.height / 2, far = Math.hypot(area.width, area.height) / 2 + grid * 2, off = between(random, -0.3, 0.3) * Math.min(area.width, area.height);
   const ux = Math.cos(way), uy = Math.sin(way), sx = -uy, sy = ux, speed = grid * 3.4;
@@ -428,7 +436,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
     // Sends the hawk after a rabbit now, if there is one to see.
     hunt() { if (hawk?.mode === 'soar') hawk.huntIn = 0; return !!hawk; },
-    tick(seconds, { near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {}, barred = () => false, indoors = () => false, cast = null, beneath = () => false } = {}) {
+    tick(seconds, { kept = () => false, near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {}, barred = () => false, indoors = () => false, cast = null, beneath = () => false } = {}) {
       if (!this.busy && !wantCrows) return;
       const dt = Math.min(0.05, seconds); time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -487,9 +495,13 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         let x = h.cx + Math.cos(h.a) * h.r, y = h.cy + Math.sin(h.a) * h.r * 0.8, angle = h.a + Math.PI, height = 1, frame = Math.floor(time * 1.4) % 7 === 0 ? Math.floor(time * 12) % SPANS.length : 0;
         if (h.mode === 'soar') {
           h.a += dt * 0.26; h.huntIn -= dt;
+          // Its circle kept clear of anywhere keeping hawks out: it drifts off to one that is, if there is one.
+          const ring = (cx, cy) => (t) => ({ x: cx + Math.cos(t * TAU) * h.r, y: cy + Math.sin(t * TAU) * h.r * 0.8 });
+          if ((h.lookIn = (h.lookIn ?? 0) - dt) <= 0) { h.lookIn = 3; if (crossesKept(ring(h.tx ?? h.cx, h.ty ?? h.cy), 'hawk', kept, 16)) for (let i = 0; i < 12; i++) { const tx = area.x + area.width * between(Math.random, 0.2, 0.8), ty = area.y + area.height * between(Math.random, 0.2, 0.8); if (!crossesKept(ring(tx, ty), 'hawk', kept, 16)) { h.tx = tx; h.ty = ty; break; } } }
+          if (h.tx !== undefined) { h.cx += (h.tx - h.cx) * Math.min(1, dt * 0.15); h.cy += (h.ty - h.cy) * Math.min(1, dt * 0.15); }
           if (day > 0.3 && Math.random() < dt * 0.06) sound('hawkCry', { x, y }, false);
           if (h.huntIn <= 0 && day > 0.5) {
-            const prey = preyFor({ x, y }, rabbits, { seen: (a, b) => { try { return inView(a, b, 0) && seen(a, b) !== false; } catch { return false; } } });
+            const prey = preyFor({ x, y }, rabbits.filter((r) => !kept('hawk', r.x, r.y)), { seen: (a, b) => { try { return inView(a, b, 0) && seen(a, b) !== false; } catch { return false; } } });
             if (prey) { sound('hawkCry', { x, y }, true); h.mode = 'stoop'; h.t = 0; h.prey = prey; h.from = { x, y }; h.len = Math.min(2.2, 0.9 + Math.hypot(prey.x - x, prey.y - y) / (grid * 9)); h.warned = false; } else h.huntIn = between(Math.random, 8, 20);
           }
         } else if (h.mode === 'stoop') {
@@ -517,7 +529,12 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 2.2 }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4), alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.45, c.alpha * (0.3 + (1 - height) * 0.25)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
       }
       nextCrows -= dt;
-      if (wantCrows > 0 && !crows.length && nextCrows <= 0 && area && day > 0.3) crows = crowFlock(area, wind, { grid, count: wantCrows }).map((c) => ({ ...c, view: high(t.crow[0]) }));
+      if (wantCrows > 0 && !crows.length && nextCrows <= 0 && area && day > 0.3) {
+        // A line over the map that misses anywhere keeping crows out, the wind's if it can be, else another; none, and they try later.
+        const span = (Math.hypot(area.width, area.height) + grid * 8) / (grid * 3.4);
+        for (let i = 0; i < 8 && !crows.length; i++) { const flock = crowFlock(area, i ? wind + between(Math.random, -Math.PI, Math.PI) : wind, { grid, count: wantCrows }); if (!flock.some((c) => crossesKept((u) => ({ x: c.x + c.vx * span * u, y: c.y + c.vy * span * u }), 'crows', kept))) crows = flock.map((c) => ({ ...c, view: high(t.crow[0]) })); }
+        if (!crows.length) nextCrows = 15;
+      }
       if (crows.length) {
         // A flock going over: caws from one or another of them, and their wings when it is close overhead (the wings carry only a
         // little way, so they are heard as it passes, the caws swelling and fading with it).

@@ -345,15 +345,16 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
   const put = (s, tex, x, y, angle, size, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(size); s.alpha = alpha; };
   const newDuck = (t, spot, i, random) => ({ x: spot.x, y: spot.y, a: random() * TAU, turn: 0, wait: random() * 2, hen: i % 2 === 1, mode: 'swim', up: 0, h: 0, phase: random() * 6, shadow: sprite(floor(), t.duck[0], true), body: sprite(floor(), t.duck[0]), ripple: sprite(floor(), t.wake[0]) });
   return {
-    populate({ waters = [], shore = [], pads = [], ducks: nDucks = 0, herons: nHerons = 0, gulls: nGulls = 0, gullWaters = waters, grid: g = 100, birdSize: bs = 1, frogSize: fs = 1, random = Math.random } = {}) {
+    populate({ kept = () => false, waters = [], shore = [], pads = [], ducks: nDucks = 0, herons: nHerons = 0, gulls: nGulls = 0, gullWaters = waters, grid: g = 100, birdSize: bs = 1, frogSize: fs = 1, random = Math.random } = {}) {
       drop(); grid = g; birdSize = bs; frogSize = fs; shown = 0; waterSpots = waters;
       if (!waters.length) return;
       if (!nDucks && !nHerons && !nGulls && !pads.length) return;
       const t = art(), pick = (list) => list[Math.floor(random() * list.length)];
       // Ducks keep together, a raft of them round one place.
-      if (nDucks) { const home = pick(waters), near = waters.filter((w) => Math.hypot(w.x - home.x, w.y - home.y) < grid * 4); ducks = Array.from({ length: nDucks }, (_, i) => newDuck(t, pick(near), i, random)); }
-      const stands = shore.length ? shore : waters;
-      herons = Array.from({ length: nHerons }, () => { const s = pick(stands); return { x: s.x, y: s.y, hx: s.x, hy: s.y, a: random() * TAU, mode: 'stand', wait: between(random, 2, 6), strike: 0, h: 0, t: 0, vx: 0, vy: 0, phase: random() * 6, shadow: sprite(floor(), t.heron[0], true), body: sprite(floor(), t.heron[0]), ripple: sprite(floor(), t.ring[0]) }; });
+      const duckWaters = waters.filter((w) => !kept('ducks', w.x, w.y));
+      if (nDucks && duckWaters.length) { const home = pick(duckWaters), near = duckWaters.filter((w) => Math.hypot(w.x - home.x, w.y - home.y) < grid * 4); ducks = Array.from({ length: nDucks }, (_, i) => newDuck(t, pick(near), i, random)); }
+      const standing = (shore.length ? shore : waters).filter((w) => !kept('herons', w.x, w.y)), stands = standing.length ? standing : waters.filter((w) => !kept('herons', w.x, w.y));
+      herons = Array.from({ length: stands.length ? nHerons : 0 }, () => { const s = pick(stands); return { x: s.x, y: s.y, hx: s.x, hy: s.y, a: random() * TAU, mode: 'stand', wait: between(random, 2, 6), strike: 0, h: 0, t: 0, vx: 0, vy: 0, phase: random() * 6, shadow: sprite(floor(), t.heron[0], true), body: sprite(floor(), t.heron[0]), ripple: sprite(floor(), t.ring[0]) }; });
       // The gulls wheel over their own stretch of water: the sea, where there is one as well as a pond.
       const over = gullWaters.length ? gullWaters : waters, cx = over.reduce((n, w) => n + w.x, 0) / over.length, cy = over.reduce((n, w) => n + w.y, 0) / over.length;
       // (It starts its turn back while still over the water, so the turn itself doesn't carry it off the map.)
@@ -364,16 +365,17 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     // Sends the gulls down at the nearest fish now, and the herons to look for one.
     fishNow() { gulls = gulls.map((g) => ({ ...g, huntIn: 0 })); herons = herons.map((b) => ({ ...b, wait: 0 })); return gulls.length + herons.length; },
     // Water has just turned bad or come good: those on bad water go for good water, and any that had nowhere to go come back to it.
-    runOff({ waters = [], frogWaters = waters, home = true, bad = () => false, swims = () => true, random = Math.random } = {}) {
+    runOff({ kept = () => false, waters = [], frogWaters = waters, home = true, bad = () => false, swims = () => true, random = Math.random } = {}) {
       waterSpots = waters;
-      ducks = ducks.map((q) => duckRunsOff(q, { spots: waters, bad, grid, home, random }));
-      herons = herons.map((b) => heronRunsOff(b, { spots: waters, bad, grid, home, random }));
+      const duckSpots = waters.filter((w) => !kept('ducks', w.x, w.y)), heronSpots = waters.filter((w) => !kept('herons', w.x, w.y));
+      ducks = ducks.map((q) => duckRunsOff(q, { spots: duckSpots, bad, grid, home, random }));
+      herons = herons.map((b) => heronRunsOff(b, { spots: heronSpots, bad, grid, home, random }));
       const taken = frogs.map((f) => ({ x: f.hx, y: f.hy }));
       frogs = frogs.map((f, i) => { const n = frogRunsOff(f, { spots: frogWaters, bad, grid, taken, swims }); taken[i] = { x: n.hx, y: n.hy }; return n; });
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null } = {}) {
+    tick(seconds, { kept = () => false, air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -388,7 +390,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       ducks = ducks.map((q0) => {
         if (q0.gone) { q0.back = (q0.back ?? between(Math.random, 30, 70)) - dt; if (q0.back > 0 || !waterSpots.length) return q0; const w = waterSpots[Math.floor(Math.random() * waterSpots.length)]; floor().addChild(q0.body); return { ...q0, x: w.x, y: w.y, gone: false, back: undefined, leaving: false, mode: 'swim', h: 0, up: 0, wait: 2 }; }
         if (alpha <= 0.01) { q0.body.visible = q0.shadow.visible = q0.ripple.visible = false; return q0; }
-        const q = duckStep(q0, { dt, grid, near, scare, noise: heard(q0), blocked, barred: (x, y) => barred('waterBirds', x, y), ok: (x, y) => ok('waterBirds', x, y) });
+        const q = duckStep(q0, { dt, grid, near, scare, noise: heard(q0), blocked, barred: (x, y) => barred('ducks', x, y), ok: (x, y) => ok('ducks', x, y) });
         if (q.mode === 'fly' && q0.mode === 'swim') { sound('wingsUp', q, true); sound('duckQuack', q, true); sky().addChild(q.body); }
         else if (q.mode === 'swim' && q0.mode === 'fly') { floor().addChild(q.body); }
         else if (q.mode === 'swim' && Math.random() < dt * 0.03) sound('duckQuack', q, false);
@@ -415,7 +417,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       herons = herons.map((b0) => {
         if (b0.gone) { if (!waterSpots.length) return b0; const w = waterSpots[Math.floor(Math.random() * waterSpots.length)]; return { ...b0, gone: false, leaving: false, hx: w.x, hy: w.y, mode: 'fly', t: 7, h: 1 }; }
         if (alpha <= 0.01) { b0.body.visible = b0.shadow.visible = b0.ripple.visible = false; return b0; }
-        const b = heronStep(b0, { dt, grid, near, scare, noise: heard(b0), blocked, barred: (x, y) => barred('waterBirds', x, y), fish: fishNow });
+        const b = heronStep(b0, { dt, grid, near, scare, noise: heard(b0), blocked, barred: (x, y) => barred('herons', x, y), fish: fishNow });
         if (b.mode === 'fly' && b0.mode === 'stand') { sound('wingsUp', b, true); sky().addChild(b.body); }
         else if (b.mode === 'stand' && b0.mode === 'fly') floor().addChild(b.body);
         if (b.gone || !can(b, b.x, b.y)) { b.body.visible = b.shadow.visible = b.ripple.visible = false; return b; }
@@ -438,7 +440,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         return b;
       });
       gulls = gulls.map((g0) => {
-        const g = gullStep(g0, { dt, grid, fish: alpha > 0.5 ? fishNow : [], air });
+        const g = gullStep(g0, { dt, grid, fish: alpha > 0.5 ? fishNow.filter((o) => !kept('gulls', o.x, o.y)) : [], air });
         const { x, y, angle } = g;
         if (g.mode === 'dive' && g0.mode !== 'dive') sound('gullCry', g, true);
         else if (alpha > 0.5 && Math.random() < dt * 0.1) sound('gullCry', g, false);
