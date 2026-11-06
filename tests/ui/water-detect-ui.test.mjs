@@ -285,6 +285,7 @@ function waterApp(map = null) {
       return options.match(/<option value="([^"]*)" selected>/)?.[1] ?? options.match(/<option value="([^"]*)"/)?.[1] ?? "";
     };
     const parsed = makeRow(id, Boolean(checked), chosen("data-kind") || "still", chosen("data-flow"), chosen("data-current"));
+    parsed.subtractButton = { dataset: { subtractFrom: id }, setAttribute(name, value) { this[name] = value; } };
     parsed.querySelector("[data-wave]").value = chosen("data-wave");
     parsed.querySelector("[data-beach]").checked = /data-beach="[^"]*" checked/.test(part);
     return parsed;
@@ -293,7 +294,7 @@ function waterApp(map = null) {
   let hasReason = false;
   const shared = { kind: { value: "still" }, flow: { value: "s" }, current: { value: "" }, range: { value: "narrow" } };
   const list = { set innerHTML(html) { rows = parseRows(html); }, scrollTop: 0, insertAdjacentHTML: (_where, html) => { rows.unshift(...parseRows(html)); } };
-  const status = Object.fromEntries(["data-area-count", "data-selection-count", "data-create", "data-area-empty"].map((key) => [key, {}]));
+  const status = Object.fromEntries(["data-area-count", "data-selection-count", "data-create", "data-area-empty", "data-add-status", "data-add-message", "data-undo-add"].map((key) => [key, {}]));
   const query = (selector) => {
     if (map && selector === ".an-water-frame") return map.frame;
     if (map && selector === "canvas.an-water-preview") return map.canvas;
@@ -307,6 +308,7 @@ function waterApp(map = null) {
     return null;
   };
   const queryAll = (selector) => {
+    if (selector === "[data-subtract-from]") return rows.map(row => row.subtractButton);
     if (selector === "[data-id]" || selector === ".an-water-row") return [...rows];
     if (selector === "[data-pick]:checked") return rows.filter((row) => row.querySelector("[data-pick]").checked).map((row) => row.querySelector("[data-pick]"));
     if (["[data-kind]", "[data-flow]", "[data-current]"].includes(selector)) return rows.map((row) => row.querySelector(selector));
@@ -904,7 +906,7 @@ function outlineMap(t) {
   const rect = { left: 10, top: 20, width: 200, height: 200 };
   const ctx = { clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, fillRect() {} };
   const canvas = { style: {}, getContext: () => ctx, getBoundingClientRect: () => rect };
-  const frame = { scrollLeft: 0, scrollTop: 0, focus() {}, setPointerCapture() {}, addEventListener: (name, fn) => { events[name] = fn; } };
+  const frame = { setAttribute() {}, scrollLeft: 0, scrollTop: 0, focus() {}, setPointerCapture() {}, addEventListener: (name, fn) => { events[name] = fn; } };
   const fire = (type, x, y, extra = {}) => events[type]({ clientX: rect.left + x * rect.width / 20, clientY: rect.top + y * rect.height / 20, button: 0, pointerId: 1, preventDefault() {}, ...extra });
   return { frame, canvas, rect, fire };
 }
@@ -1107,4 +1109,85 @@ test("second Add water with a diagonal touch", async () => {
   const p=app.detect.proposals[0];
   assert.ok(p.pixels.length>=47,"both additions are kept");
   await app.close();
+});
+
+test("Remove water edits reopened geometry by ID, preserves ticks, undoes, and saves shapes only", async () => {
+  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const region = savedRegion("edited");
+  region.shapes[0].points = [102.5,202.5,192.5,202.5,192.5,292.5,102.5,292.5];
+  const otherRegion = savedRegion("other",220);
+  const beforeDocs = structuredClone([region,otherRegion]);
+  const scene = fakeScene([region,otherRegion]), ui = waterApp(), notes = [];
+  const rgba = new Uint8Array(20*20*4);
+  for(let p=0;p<400;p++) rgba.set([144,180,90,255],p*4);
+  for(let y=3;y<5;y++) for(let x=3;x<5;x++) rgba.set([80,100,50,255],(y*20+x)*4);
+  const { app } = await openWaterDetect(opening({ Application:ui.App, scene, sceneRect:editRect,
+    load:async()=>({ok:true,rgba,width:20,height:20}), detect:()=>({proposals:[]}), notify:m=>notes.push(m),
+  }));
+  const original=app.detect.proposals[0], other=app.detect.proposals[1];
+  const click=(x,y)=>app.clickPreview({clientX:x,clientY:y,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
+  ui.fire("click",ui.button("subtract-from","water-1"));
+  assert.deepEqual(app.mode,{kind:"subtract",areaId:"water-1"});
+  assert.equal(ui.rows()[0].subtractButton.textContent,"Removing water here");
+  assert.equal(ui.rows()[0].subtractButton["aria-pressed"],"true");
+  assert.match(ui.status["data-add-message"].textContent,/Removing.*Checkboxes/);
+  click(3,3);
+  const trimmed=app.detect.proposals[0];
+  assert.equal(trimmed.pixels.length,77);
+  assert.equal(trimmed.loops.filter(l=>l.hole).length,1);
+  assert.deepEqual(trimmed.loops[0].points,original.loops[0].points);
+  assert.equal(trimmed.regionId,"edited");
+  assert.deepEqual(trimmed.savedChoices,original.savedChoices);
+  assert.strictEqual(app.detect.proposals[1],other);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,false);
+  assert.equal(app.history.length,1);
+  for(const at of [[3,3],[14,2],[19,19],[0,0]]) click(...at);
+  assert.strictEqual(app.detect.proposals[0],trimmed);
+  assert.equal(app.history.length,1,"holes, other rows, outside and whole-area removal are atomic");
+  const hole=waterProposalFromLoops([{points:[3,3,5,3,5,5,3,5],hole:false}],20,20);
+  assert.equal(app.subtractArea(trimmed,hole),false,"cut inside existing hole is a no-op");
+  assert.equal(app.history.length,1);
+  await app.create();
+  assert.deepEqual(scene.calls,[],"unticked saved draft sends nothing");
+  ui.rows()[0].querySelector("[data-pick]").checked=true;
+  app.undoAdd();
+  assert.strictEqual(app.detect.proposals[0],original);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,true);
+  click(3,3);
+  app.setAddTarget("water-1");
+  const addition=waterProposalFromLoops([{points:[2,12,5,12,5,15,2,15],hole:false}],20,20);
+  app.combineAreas([{...addition,id:"addition"}]);
+  assert.ok(app.detect.proposals[0].loops[0].points.includes(0.25));
+  assert.ok(app.detect.proposals[0].loops[0].points.includes(9.25));
+  assert.equal(app.detect.proposals[0].loops.filter(l=>l.hole).length,1);
+  assert.equal(app.detect.proposals[0].pixels.includes(63),false);
+  app.undoAdd();
+  await app.create();
+  assert.deepEqual(scene.calls.map(c=>c[0]),["update"]);
+  const [patch]=scene.calls[0][2];
+  assert.deepEqual(Object.keys(patch).sort(),["_id","shapes"]);
+  assert.equal(patch._id,"edited");
+  assert.equal(patch.shapes.filter(s=>s.hole).length,1);
+  assert.deepEqual([region,otherRegion],beforeDocs);
+  assert.ok(notes.some(m=>/Keep some water/.test(m)));
+});
+
+test("removal through the map edge trims a border and a full channel splits one row", async () => {
+  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  for(const channel of [false,true]) {
+    const ui=waterApp(),rgba=new Uint8Array(400*4);
+    for(let p=0;p<400;p++) rgba.set([144,180,90,255],p*4);
+    for(let y=0;y<(channel?10:4);y++) rgba.set([80,80,80,255],(y*20+4)*4);
+    const original={...waterProposalFromLoops([{points:[0,0,10,0,10,10,0,10],hole:false}],20,20),id:"water-1",preselected:true};
+    const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[original]})}));
+    app.setMode({kind:"subtract",areaId:"water-1"});
+    app.clickPreview({clientX:4,clientY:0,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
+    assert.equal(app.detect.proposals.length,1);
+    assert.equal(app.detect.proposals[0].id,original.id);
+    assert.equal(app.detect.proposals[0].pixels.length,channel?90:96);
+    assert.equal(app.detect.proposals[0].loops.filter(l=>!l.hole).length,channel?2:1);
+    assert.equal(app.detect.proposals[0].loops.filter(l=>l.hole).length,0);
+    assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,true);
+    await app.close();
+  }
 });
