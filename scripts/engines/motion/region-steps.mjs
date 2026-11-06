@@ -27,7 +27,7 @@ export const stepScale = (own) => { const v = own?.stepScale; const n = v === un
 // How much of its look a step puts down, 1 as painted: `strength` on the step.
 export const STEP_STRENGTH = Object.freeze({ min: 0.1, max: 2, usual: 1 });
 export const stepStrength = (step) => { const v = step?.strength; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_STRENGTH.max, Math.max(STEP_STRENGTH.min, n)) : STEP_STRENGTH.usual; };
-export const stepEdge = (own) => { const v = own?.stepEdge; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_EDGE.max, Math.max(STEP_EDGE.min, n)) : STEP_EDGE.usual; };
+export const stepEdge = (own) => { if (own?.stepEdgeOff === true) return 0; const v = own?.stepEdge; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_EDGE.max, Math.max(STEP_EDGE.min, n)) : STEP_EDGE.usual; };
 
 // [name, look, floor it walks as (its own when left out), effect]
 const LISTS = Object.freeze({

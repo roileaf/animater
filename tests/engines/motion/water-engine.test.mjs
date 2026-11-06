@@ -170,7 +170,7 @@ test('a beach drawn inside the water keeps its crabs on its sand, inside the sho
 });
 
 test('a sea with no beach has the edge of its region for a shore', () => {
-  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) assert.match(frag, /float line = uBeach > 0\.5 \? shoreLine\(w, mask\.b\) : mask\.b/);
+  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) assert.match(frag, /float line = uBeach > 0\.5 \? shoreLine\(w, mask\.b\) : mask\.g/);
   assert.doesNotMatch(WATER_SHADERS.full, /else seaEdge/);
 });
 
@@ -186,4 +186,37 @@ test('moving water stays inside its region and out of its holes, however soft it
   assert.equal(held.peak, 1);
   assert.ok(Math.abs(heldInside(Uint8Array.from([100, 128]), Uint8Array.from([255, 255])).peak - 128 / 255) < 1e-9, 'a stream narrower than its blur: as full as it gets');
   for (const frag of [S.full, S.simple]) { assert.match(frag, /uniform float uPeak;/); assert.match(frag, /smoothstep\(uPeak \* 0\.4, uPeak \* 0\.7, mask\.r\)/); }
+});
+
+test('a region standing over water is taken out of it, not made a hole in it', async () => {
+  const { readFileSync } = await import('node:fs');
+  const engine = readFileSync(new URL('../../../scripts/engines/motion/water-engine.mjs', import.meta.url), 'utf8'), main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(engine, /globalCompositeOperation = 'destination-out'/, 'a hole past the water\'s edge would fill in on the land beyond');
+  assert.equal((engine.match(/null, cuts\)/g) ?? []).length, 1, 'only what shows is cut: the water, its waves and its shores run on beneath');
+  assert.match(engine, /\(spec\.cuts \?\? \[\]\)\.map\(\(a\) => \[a, a\.holes \?\? null\]\)/, 'changing the dock redraws the water');
+  assert.ok(main.includes('box("overWater")'), 'the box');
+  assert.ok(main.includes('r.flags?.[ID]?.overWater === true'), 'off unless ticked');
+  assert.ok(main.includes('!onBeach(x, y) && !overDock(x, y)'), 'nothing swims under it');
+  assert.ok(main.includes('if (overWater || regionFloor('), 'ticking it is noticed at once');
+});
+
+test('how far the middle of a sea lies from its shore', async () => {
+  const { deepestInside } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  const full = (w, h) => new Uint8Array(w * h).fill(255);
+  assert.equal(deepestInside(full(9, 9), 9, 9), 5, 'the middle of a square, its sides all shore');
+  assert.equal(deepestInside(full(21, 5), 21, 5), 3, 'a long narrow one goes by its width');
+  assert.ok(deepestInside(full(9, 9), 9, 9, { left: true, right: true, top: true, bottom: true }) >= 18, 'all map: no shore at all');
+  assert.equal(deepestInside(full(5, 9), 5, 9, { top: true, bottom: true }), 3, 'open at both ends: still its width');
+  const cut = full(11, 11); for (let y = 0; y < 11; y++) cut[y * 11 + 5] = 0;
+  assert.equal(deepestInside(cut, 11, 11), 3, 'a dock across it halves it');
+  assert.equal(deepestInside(new Uint8Array(16), 4, 4), 0, 'nothing there');
+});
+
+test('a sea keeps its usual long shore unless it is too narrow for it', async () => {
+  const { seaBlurs } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  assert.deepEqual(seaBlurs(1000, 100), { shore: 150, deep: 350 }, 'wide water: as it always was');
+  const narrow = seaBlurs(200, 100);
+  assert.equal(narrow.shore, 100);
+  assert.equal(narrow.deep, 120, 'its middle gets away from the shore');
+  for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) if (frag.includes('float shoal')) { assert.ok(frag.includes('shoal * 26.0 * uFronts'), 'only the fronts that fit'); assert.ok(frag.includes('calm * smoothstep(0.2, 0.8, uFronts)'), 'too narrow for waves to break'); }
 });

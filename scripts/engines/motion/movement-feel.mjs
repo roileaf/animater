@@ -137,6 +137,9 @@ export function floorAt(point, { sceneFloor: base = 'stone', regions = [], testP
   return found ?? base;
 }
 
+// Whether a creature below a region standing over water is on it all the same (pure): whoever is not swimming is. Nobody walks about underneath a dock in the water; only a swimmer is down there.
+export const onWhatStandsOver = ({ elevation = 0, bottom = -Infinity, action = '' } = {}) => elevation < bottom && action !== 'swim';
+
 const FLY = new Set(['fly', 'flying', 'hover', 'hovering', 'levitating']);
 // Off the ground: moving by the fly movement action, or with a flying status. Height alone is not flight: a creature
 // on a ledge, balcony or raised platform stands there.

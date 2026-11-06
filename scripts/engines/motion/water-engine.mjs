@@ -39,6 +39,7 @@ varying vec2 vWorld;
 uniform sampler2D uSand; // the beach: the sand floor's own painted tile
 uniform float uSandSize;
 uniform float uPeak; // the most of the region's shape any point holds, as a narrow stream never reaches full
+uniform float uFronts; // how many of a sea's wave fronts fit it, 1 in open water
 uniform sampler2D uMap, uMask, uFlow, uWaves, uBed; // uBed: a painted floor seen through it instead of the map, one every uBedSize px
 uniform vec4 uMapRect, uBox;
 uniform float uPix; // how many screen pixels a grid square is right now
@@ -164,13 +165,13 @@ void main(){
     heave *= 1.0 - surf;
     // (All of this turned off the grid and bent: noise on the grid runs in straight lines, which would cut a wave off square.)
     vec2 turnA = vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8), turnB = vec2(w.x * 0.38 + w.y * 0.92, w.y * 0.38 - w.x * 0.92), bentA = turnA + (noise(turnB * 1.1) - 0.5) * 0.6;
-    float shoal = sqrt(depth + 0.02), wander = noise(turnA * 0.22) * 2.2 + noise(turnB * 0.7 + 4.0) * 0.6, phase = shoal * 26.0 + uTime * 1.25 + wander;
+    float shoal = sqrt(depth + 0.02), wander = noise(turnA * 0.22) * 2.2 + noise(turnB * 0.7 + 4.0) * 0.6, phase = shoal * 26.0 * uFronts + uTime * 1.25 + wander;
     float sets = 0.55 + 0.45 * sin(uTime * 0.19 - shoal * 2.0 + noise(w * 0.16) * 4.0), rip = smoothstep(0.2, 0.62, noise(vec2(w.x * 0.8 - w.y * 0.6, w.x * 0.6 + w.y * 0.8) * 0.28 + 7.0));
     heave -= toDeep * sin(phase) * (0.05 + 0.13 * (1.0 - depth)) * (0.6 + 0.4 * windy) * surf * sets * calm;
-    surfCrest = pow(0.5 + 0.5 * cos(phase), 1.0 + 3.0 * (1.0 - depth)) * surf * sets;
+    surfCrest = pow(0.5 + 0.5 * cos(phase), 1.0 + 3.0 * (1.0 - depth)) * surf * sets * smoothstep(0.2, 0.8, uFronts);
     // Where it gets too shallow they break: foam along the wave's front, running in with it, trailing away behind.
     float behind = fract((phase + (noise(bentA * 2.4) - 0.5) * 0.85 + (noise(turnB * 6.5 + bentA) - 0.5) * 0.5 + (noise(bentA * 17.0) - 0.5) * 0.28) / 6.28318), breaking = (1.0 - smoothstep(0.34, 0.62, depth)) * smoothstep(0.02, 0.1, depth);
-    bore = max(pow(1.0 - smoothstep(0.0, 0.72, behind), 1.5), smoothstep(0.965, 1.0, behind)) * breaking * (0.45 + 0.55 * sets) * (0.5 + 0.5 * rip) * calm;
+    bore = max(pow(1.0 - smoothstep(0.0, 0.72, behind), 1.5), smoothstep(0.965, 1.0, behind)) * breaking * (0.45 + 0.55 * sets) * (0.5 + 0.5 * rip) * calm * smoothstep(0.2, 0.8, uFronts);
     // Spray torn off the crest, on whichever side of it the wind blows to: seawards behind it, or ashore ahead of it.
     float blown = dot(uWindDir, toDeep);
     spray = max(exp(-behind * 5.0) * max(blown, 0.25), smoothstep(0.86, 0.985, behind) * max(-blown, 0.25)) * breaking * (0.45 + 0.55 * sets) * (0.5 + 0.5 * rip) * calm * (0.35 + 0.65 * windy);
@@ -274,7 +275,7 @@ void main(){
   float seaEdge = 1.0, afloat = 1.0, offshore = 1.0, swashed = 1.0, waterline = 0.04;
   if (uSea > 0.5) {
     vec2 w = vWorld / uGrid;
-    float line = uBeach > 0.5 ? shoreLine(w, mask.b) : mask.b, tide = uBeach > 0.5 ? 0.19 + sin(uTime * 0.22) * 0.012 : 0.02;
+    float line = uBeach > 0.5 ? shoreLine(w, mask.b) : mask.g, tide = uBeach > 0.5 ? 0.19 + sin(uTime * 0.22) * 0.012 : 0.02;
     float lap = tide + sin(uTime * 0.7 + noise(w * 1.1) * 6.0) * 0.012, under = smoothstep(lap, lap + 0.2, line);
     // What foam may be where. Breakers and spray only on the water, whitecaps only out past the shallows; only a wave already running in goes on up the wet sand, and never onto the dry.
     waterline = lap; afloat = smoothstep(lap, lap + 0.05, line); offshore = smoothstep(lap + 0.25, lap + 0.55, line); swashed = smoothstep(lap - 0.08, lap - 0.03, line);
@@ -426,21 +427,40 @@ const runOf = (areas, angle) => { const cx = Math.cos(angle), cy = Math.sin(angl
 const boxOf = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return Number.isFinite(x0) ? { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) } : null; };
 // A soft shape held inside the sharp one (pure): a blur spreads past a region's edge and over any hole narrower than itself, so each point has the less of the two. Gives its `data`, and `peak` (0-1) the most any point holds, as a narrow stream never reaches full.
 export const heldInside = (soft, sharp) => { const data = new Uint8Array(soft.length); let most = 0; for (let i = 0; i < soft.length; i++) { const v = Math.min(soft[i], sharp[i]); data[i] = v; if (v > most) most = v; } return { data, peak: Math.max(0.05, most / 255) }; };
-// The region's shape on a small canvas, its holes left out, blurred by `blur` px; its coverage, one number a pixel.
-const shapeOf = (areas, box, k, blur, beyond = null) => {
+// The region's shape on a small canvas, its holes left out, blurred by `blur` px; its coverage, one number a pixel. `cuts`: areas taken out wherever they overlap.
+const shapeOf = (areas, box, k, blur, beyond = null, cuts = []) => {
   const w = Math.max(2, Math.ceil(box.w * k)), h = Math.max(2, Math.ceil(box.h * k)), room = Math.ceil(blur * 3), canvas = document.createElement('canvas'); canvas.width = w + room * 2; canvas.height = h + room * 2; // (Room round it: a blur stops at the edge of what it is drawn on, which would make a shore of the map's edge.)
   const x = canvas.getContext('2d', { willReadFrequently: true }); x.filter = blur > 0 ? `blur(${blur}px)` : 'none'; x.fillStyle = '#fff'; x.beginPath();
   const trace = (points) => { x.moveTo((points[0] - box.x) * k + room, (points[1] - box.y) * k + room); for (let i = 2; i + 1 < points.length; i += 2) x.lineTo((points[i] - box.x) * k + room, (points[i + 1] - box.y) * k + room); x.closePath(); };
   for (const area of areas) { trace(area); for (const hole of area.holes ?? []) trace(hole); }
   x.fill('evenodd');
+  if (cuts.length) { x.globalCompositeOperation = 'destination-out'; for (const area of cuts) { x.beginPath(); trace(area); for (const hole of area.holes ?? []) trace(hole); x.fill('evenodd'); } x.globalCompositeOperation = 'source-over'; }
   if (beyond) { const far = Math.max(w, h) * 4; x.beginPath(); x.rect(-far, -far, w + far * 2, h + far * 2); x.rect((beyond.x - box.x) * k + room, (beyond.y - box.y) * k + room, beyond.width * k, beyond.height * k); x.fill('evenodd'); }
   const data = x.getImageData(room, room, w, h).data, one = new Uint8Array(w * h);
   for (let i = 0; i < one.length; i++) one[i] = data[i * 4 + 3];
   return { w, h, data: one };
 };
+// How far the middle of a shape lies from its nearest shore, in cells of its grid (pure). `data` its coverage 0-255, `w` by `h`; `open` { left, right, top, bottom }, the sides that are no shore, as the map ends there.
+export function deepestInside(data, w, h, open = {}) {
+  const far = w + h, d = new Float32Array(w * h), STEP = 1, DIAG = Math.SQRT2;
+  const look = (x, y, i, sign) => { let v = d[i]; const nx = x - sign, ny = y - sign, ax = x + sign; if (nx >= 0 && nx < w) v = Math.min(v, d[i - sign] + STEP); if (ny >= 0 && ny < h) { v = Math.min(v, d[i - sign * w] + STEP); if (nx >= 0 && nx < w) v = Math.min(v, d[i - sign * w - sign] + DIAG); if (ax >= 0 && ax < w) v = Math.min(v, d[i - sign * w + sign] + DIAG); } d[i] = v; };
+  for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) d[i] = data[i] < 128 ? 0 : (x === 0 && !open.left) || (x === w - 1 && !open.right) || (y === 0 && !open.top) || (y === h - 1 && !open.bottom) ? 1 : far;
+  for (let y = 0, i = 0; y < h; y++) for (let x = 0; x < w; x++, i++) look(x, y, i, 1);
+  let most = 0;
+  for (let y = h - 1, i = w * h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--, i--) { look(x, y, i, -1); if (d[i] > most) most = d[i]; }
+  return most;
+}
+// How far the middle of a sea lies from its shore, in px. Narrow water has its long blurs drawn in to suit (seaBlurs), or it would never get away from its shore: its middle would read as shallows, and break.
+export const seaBlurs = (middle, grid) => ({ shore: Math.min(grid * 1.5, middle * 0.5), deep: Math.min(grid * 3.5, middle * 0.6) });
+const shoreFits = (areas, grid, map = null) => {
+  const box = boxOf(areas); if (!box) return grid * 8;
+  const f = Math.min(0.05, 256 / Math.max(box.w, box.h)), shape = shapeOf(areas, box, f, 0, map);
+  const open = map ? { left: box.x <= map.x, top: box.y <= map.y, right: box.x + box.w >= map.x + map.width, bottom: box.y + box.h >= map.y + map.height } : {};
+  return Math.max(grid * 0.3, deepestInside(shape.data, shape.w, shape.h, open) / f);
+};
 // How far from its shore a sea is, as a picture of a box, in its blue, for a look to stop at its waterline. (No shore past the map's edge, `map`.)
 export function seaShore(PIXI, areas, box, grid, map = null) {
-  const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), shore = shapeOf(areas, box, k, grid * k * 1.5, map), pixels = new Uint8ClampedArray(shore.w * shore.h * 4);
+  const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), shore = shapeOf(areas, box, k, k * seaBlurs(shoreFits(areas, grid, map), grid).shore, map), pixels = new Uint8ClampedArray(shore.w * shore.h * 4);
   for (let i = 0; i < shore.data.length; i++) { const away = (shore.data[i] - 128) * 2; pixels[i * 4 + 2] = away; pixels[i * 4 + 3] = 255; }
   return textureOf(PIXI, pixels, shore.w, shore.h);
 }
@@ -451,7 +471,7 @@ const textureOf = (PIXI, pixels, w, h, options = {}) => {
 };
 
 /**
- * The layer. sync(list, { floor, quality }): `list` the water to move as [{ id, areas, kind, angle, followsWind (no way of its own: the wind carries it, as fast as `current`), waves (the way a sea's waves go, radians; none: with the wind), map (a sea has no shore past the map's edge, { x, y, width, height }), current, roofed, keeps, bed: { texture, key, edge } }], `floor` the map's picture
+ * The layer. sync(list, { floor, quality }): `list` the water to move as [{ id, areas, cuts (other regions' areas standing over it), kind, angle, followsWind (no way of its own: the wind carries it, as fast as `current`), waves (the way a sea's waves go, radians; none: with the wind), map (a sea has no shore past the map's edge, { x, y, width, height }), current, roofed, keeps, bed: { texture, key, edge } }], `floor` the map's picture
  * { texture, rect }, `quality` 'full' or 'simple'. tick(seconds, { sky, view, lights, weather, flash, wind, angle, mostLights }) while `busy`.
  * addRing({ x, y, size }) for what steps in it; has(id); clear().
  */
@@ -464,20 +484,21 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
   const sheetOf = () => { if (!sheet || sheet.baseTexture?.destroyed) sheet = textureOf(PIXI, waveSheet(512), 512, 512, { wrapMode: PIXI.WRAP_MODES.REPEAT, mipmap: PIXI.MIPMAP_MODES.ON }); return sheet; };
   const drop = (entry) => { try { entry.mesh.parent?.removeChild(entry.mesh); entry.mesh.destroy(); entry.mask.destroy(true); entry.flow.destroy(true); } catch { /* gone with the canvas */ } };
   const make = (spec) => {
-    const size = grid() || 100, box = boxOf(spec.areas), motion = WATER_MOTION[spec.kind] ?? WATER_MOTION.still;
+    const size = grid() || 100, box = boxOf(spec.areas), motion = WATER_MOTION[spec.kind] ?? WATER_MOTION.still, cuts = spec.cuts ?? [];
+    // (What stands over it only hides it, sharply: the water, its waves and its shores run on beneath as if nothing were there.)
     if (!box) return null;
     // Where it is (red), how far in from its bank (green), and for the sea how far from its shore (blue).
-    const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), crisp = shapeOf(spec.areas, box, k, spec.bed ? Math.max(2, size * k * (spec.bed.edge ?? 1) * 0.35) : 2), sharp = spec.bed ? shapeOf(spec.areas, box, k, 1) : crisp, held = heldInside(crisp.data, sharp.data), wide = shapeOf(spec.areas, box, k, size * k * 0.36), pixels = new Uint8ClampedArray(crisp.w * crisp.h * 4);
-    const shore = motion.sea ? shapeOf(spec.areas, box, k, size * k * 1.5, spec.map) : null;
+    const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), hard = spec.edge === 0, crisp = shapeOf(spec.areas, box, k, hard ? 0 : spec.bed ? Math.max(2, size * k * (spec.bed.edge ?? 1) * 0.35) : 2), sharp = spec.bed || cuts.length ? shapeOf(spec.areas, box, k, hard ? 0 : 1, null, cuts) : crisp, held = heldInside(crisp.data, sharp.data), wide = shapeOf(spec.areas, box, k, size * k * 0.36), pixels = new Uint8ClampedArray(crisp.w * crisp.h * 4);
+    const blurs = motion.sea ? seaBlurs(shoreFits(spec.areas, size, spec.map), size) : null, shore = motion.sea ? shapeOf(spec.areas, box, k, k * blurs.shore, spec.map) : null;
     for (let i = 0; i < crisp.data.length; i++) { pixels[i * 4] = held.data[i]; pixels[i * 4 + 1] = (wide.data[i] - 128) * 2; pixels[i * 4 + 2] = shore ? (shore.data[i] - 128) * 2 : 255; pixels[i * 4 + 3] = 255; }
     const mask = textureOf(PIXI, pixels, crisp.w, crisp.h);
     const f = Math.min(0.05, 256 / Math.max(box.w, box.h)), soft = shapeOf(spec.areas, box, f, size * f * 0.9), flowPixels = flowField(motion.streak ? soft.data.fill(255) : soft.data, soft.w, soft.h, spec.angle);
     // A sea keeps in its red how deep it is: how far from a real shore, up to some squares out.
-    if (motion.sea) { const deep = shapeOf(spec.areas, box, f, size * f * 3.5, spec.map); for (let i = 0; i < deep.data.length; i++) flowPixels[i * 4] = (deep.data[i] - 128) * 2; }
+    if (motion.sea) { const deep = shapeOf(spec.areas, box, f, f * blurs.deep, spec.map); for (let i = 0; i < deep.data.length; i++) flowPixels[i * 4] = (deep.data[i] - 128) * 2; }
     const flow = textureOf(PIXI, flowPixels, soft.w, soft.h);
     const points = [box.x, box.y, box.x + box.w, box.y, box.x + box.w, box.y + box.h, box.x, box.y + box.h];
     const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', new PIXI.Buffer(new Float32Array(points), true), 2).addIndex(new Uint16Array([0, 1, 2, 0, 2, 3]));
-    const uniforms = { uPeak: held.peak, uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uDepthHold: spec.depth?.hold ?? 1, uDepthDark: spec.depth?.dark ?? 0, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
+    const uniforms = { uPeak: held.peak, uFronts: blurs ? blurs.deep / (size * 3.5) : 1, uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uDepthHold: spec.depth?.hold ?? 1, uDepthDark: spec.depth?.dark ?? 0, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
     const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, fragOf(qualityNow === 'full'), uniforms));
     mesh.eventMode = 'none'; root().addChild(mesh);
     skyAt = 0;
@@ -490,7 +511,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
       const seen = new Set();
       for (const spec of wanted) {
         seen.add(spec.id);
-        const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), spec.angle, spec.current, spec.kind, !!spec.followsWind, spec.waves ?? null, spec.map ?? null, spec.beach !== false, !!spec.sand, spec.edge ?? 1, spec.depth?.hold ?? 1, spec.depth?.dark ?? 0, spec.bed?.key ?? null, spec.bed?.edge ?? null, !!spec.bed?.texture, quality]), had = known.get(spec.id);
+        const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), (spec.cuts ?? []).map((a) => [a, a.holes ?? null]), spec.angle, spec.current, spec.kind, !!spec.followsWind, spec.waves ?? null, spec.map ?? null, spec.beach !== false, !!spec.sand, spec.edge ?? 1, spec.depth?.hold ?? 1, spec.depth?.dark ?? 0, spec.bed?.key ?? null, spec.bed?.edge ?? null, !!spec.bed?.texture, quality]), had = known.get(spec.id);
         if (had && had.key === key && !changedLook) { had.roofed = !!spec.roofed; had.keeps = !!spec.keeps; continue; }
         if (had) { drop(had); known.delete(spec.id); }
         try { const entry = make(spec); if (entry) { entry.key = key; entry.areas = spec.areas; known.set(spec.id, entry); } } catch (error) { console.warn('Animater | moving water', error); }

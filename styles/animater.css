@@ -3790,3 +3790,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-wx-preset button { padding: 6px 9px !important; border-radius: 0 !important; font-size: 12px !important; }
 .animater-wx-preset button:last-child { padding: 6px 7px !important; color: var(--wx-soft) !important; }
 .animater-wx-preset button:hover { background: var(--wx-track) !important; }
+.an-step-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin: -2px 0 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.14); }
+.an-step-menu .an-step-tab { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 5px; max-width: 150px; padding: 4px 9px; border-radius: 5px 5px 0 0; font-size: 12px; color: rgba(255, 255, 255, 0.62); cursor: pointer; }
+.an-step-menu .an-step-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.an-step-menu .an-step-tab:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.an-step-menu .an-step-tab:focus-visible { outline: 1px solid #d9a35b; }
+.an-step-menu .an-step-tab-on { background: rgba(255, 255, 255, 0.11); color: #fff; box-shadow: inset 0 -2px 0 #d9a35b; }

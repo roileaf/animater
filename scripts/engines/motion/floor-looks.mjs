@@ -751,7 +751,7 @@ const maskOf = (PIXI, render, areas, box, grid, edge = 1) => {
   for (const area of areas) { g.beginFill(0xffffff, 1); g.drawPolygon(at(Array.from(area))); for (const hole of area.holes ?? []) { g.beginHole(); g.drawPolygon(at(Array.from(hole))); g.endHole(); } g.endFill(); }
   // The fade: `edge` squares or so, less on a narrow region so that it still reaches full.
   const raw = boxOf(areas, 0), feather = Math.min(grid * 0.42 * edge, Math.min(raw.w, raw.h) * 0.25);
-  g.filters = [new PIXI.BlurFilter(Math.max(1, feather * k))];
+  if (edge > 0) g.filters = [new PIXI.BlurFilter(Math.max(1, feather * k))];
   holder.addChild(g);
   render(holder, texture, true);
   holder.destroy({ children: true });
