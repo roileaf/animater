@@ -191,6 +191,46 @@ export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], bro
   return { status: "found", proposal: { ...traced, id: `water-${next}`, preselected: true, clicked: true }, seed };
 }
 
+// Exclusion follows the clicked surface, including small or neutral objects inside water.
+export function selectExcludedAreaAt(rgba, width, height, { x, y }, { targetPixels, broad = false } = {}) {
+  const count = width * height;
+  if (!rgba || rgba.length < count * 4) throw new Error("selectExcludedAreaAt: rgba is shorter than width * height * 4");
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= width || y >= height) return none("outside-target");
+  const clicked = Math.floor(y) * width + Math.floor(x);
+  const target = new Uint8Array(count);
+  for (const p of targetPixels ?? []) target[p] = 1;
+  if (!target[clicked]) return none("outside-target");
+  if (rgba[clicked * 4 + 3] < WATER_TUNING.alphaMin) return none("no-colour");
+  const hue = new Float32Array(count), sat = new Float64Array(count), val = new Uint8Array(count);
+  readColour(rgba, hue, sat, val, count);
+  const accepted = new Uint8Array(count), seeds = new Uint8Array(count), mask = new Uint8Array(count);
+  const hueLimit = broad ? 40 : 14, satLimit = broad ? 0.25 : 0.14, valueLimit = broad ? 56 : 32;
+  for (let p = 0; p < count; p++) {
+    if (!target[p] || rgba[p * 4 + 3] < WATER_TUNING.alphaMin) continue;
+    if (Math.abs(sat[p] - sat[clicked]) > satLimit || Math.abs(val[p] - val[clicked]) > valueLimit) continue;
+    if (sat[clicked] < 0.08) {
+      if (Math.max(...[0, 1, 2].map(c => Math.abs(rgba[p * 4 + c] - rgba[clicked * 4 + c]))) > (broad ? 40 : 24)) continue;
+    } else if (hue[p] < 0 || hueDistance(hue[p], hue[clicked]) > hueLimit) continue;
+    accepted[p] = 1;
+  }
+  seeds[clicked] = 1;
+  grow(seeds, accepted, mask, width, height);
+  const loops = contourLoops(mask, width, height);
+  const corners = new Set();
+  for (const loop of loops) {
+    if (!isSimple(loop.points)) return none("invalid-exclusion");
+    for (let i = 0; i < loop.points.length; i += 2) {
+      const key = `${loop.points[i]},${loop.points[i + 1]}`;
+      if (corners.has(key)) return none("invalid-exclusion");
+      corners.add(key);
+    }
+  }
+  const selected = [];
+  for (let p = 0; p < count; p++) if (mask[p]) selected.push(p);
+  const pixels = Int32Array.from(selected);
+  return { status: "found", proposal: { loops, pixels, vertices: vertexCount(loops), share: pixels.length / count } };
+}
+
 // A small patch read around the click, so a click on foam, a wave crest or a lamp's reflection still reads the water
 // around it. When enough of the patch shares the clicked pixel's hue, only those pixels vote, or the banks outvote a 3
 // pixel stream. Saturation is the patch's lower quartile: a median over the matching pixels sets the floor above the
