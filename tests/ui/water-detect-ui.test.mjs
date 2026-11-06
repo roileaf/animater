@@ -1203,6 +1203,9 @@ test("real Add picker preserves a removed same-hue dock and border", async () =>
     const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),sceneRect:{x:0,y:0,width:100,height:100},load:async()=>({ok:true,rgba,width:100,height:100}),detect:()=>({proposals:[initial]})}));
     const click=(x,y)=>app.clickPreview({clientX:x+.5,clientY:y+.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:100,height:100})}});
     ui.fire("click",ui.button("subtract-from","water-1"));click(x0,10);
+    app.setMode({kind:"vertices",areaId:"water-1"});
+    const edited=app.detect.proposals[0].loops.map(loop=>({...loop,points:loop.points.map((v,i)=>i===0?v+.25:v)}));
+    assert.equal(app.commitOutline(edited),true);
     ui.fire("click",ui.button("add-to","water-1"));click(70,50);
     assert.ok(app.detect.proposals[0].pixels.includes(5070),"new water is added");
     assert.equal(app.detect.proposals[0].pixels.includes(1000+x0),false,"the real selection cannot restore the dock");
@@ -1305,5 +1308,43 @@ test("a manual notch edit supersedes earlier cuts during later Add",async()=>{
   app.setAddTarget("water-1");
   app.combineAreas([{...waterProposalFromLoops([{points:[12,0,15,0,15,3,12,3],hole:false}],20,20),id:"addition"}]);
   assert.ok(app.detect.proposals[0].pixels.includes(4*20+8));
+  await app.close();
+});
+
+test("removal cannot notch a nearby sibling and a subpixel stream keeps its unclicked length",async()=>{
+  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
+  for(const thin of [false,true]) {
+    const sibling={points:thin?[10.2,0,10.45,0,10.45,15,10.2,15]:[10.6,0,19,0,19,15,10.6,15],hole:false};
+    const main={points:[0,0,10,0,10,15,0,15],hole:false};
+    const initial={...waterProposalFromLoops([main,sibling],20,20),id:"water-1"};
+    const ui=waterApp(),rgba=new Uint8Array(400*4);
+    for(let p=0;p<400;p++) rgba.set([40,90,160,255],p*4);
+    for(let y=4;y<7;y++) for(let x=8;x<11;x++) rgba.set([200,60,60,255],(y*20+x)*4);
+    const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[initial]})}));
+    app.setMode({kind:"subtract",areaId:"water-1"});
+    const click=(x,y)=>app.clickPreview({clientX:x+.5,clientY:y+.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
+    click(9,5);
+    assert.ok(app.detect.proposals[0].loops.some(loop=>JSON.stringify(loop.points)===JSON.stringify(sibling.points)));
+    if(thin) {
+      click(10,5);
+      const pieces=app.detect.proposals[0].loops.filter(loop=>!loop.hole&&loop.points.includes(10.2));
+      assert.equal(pieces.length,2);
+      assert.ok(pieces.some(loop=>loop.points.includes(0)));
+      assert.ok(pieces.some(loop=>loop.points.includes(15)));
+    }
+    await app.close();
+  }
+});
+
+test("a boundary-only click trims only its selected cell",async()=>{
+  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
+  const initial={...waterProposalFromLoops([{points:[.75,.75,9.25,.75,9.25,9.25,.75,9.25],hole:false}],20,20),id:"water-1"};
+  const ui=waterApp(),rgba=new Uint8Array(400*4);
+  for(let p=0;p<400;p++) rgba.set([40,90,160,255],p*4);rgba.set([200,60,60,255],80*4);
+  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[initial]})}));
+  app.setMode({kind:"subtract",areaId:"water-1"});app.clickPreview({clientX:.5,clientY:4.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
+  const points=app.detect.proposals[0].loops[0].points;
+  assert.ok(points.includes(4)&&points.includes(5));
+  assert.equal(points.includes(3),false);assert.equal(points.includes(6),false);
   await app.close();
 });

@@ -111,6 +111,16 @@ export function smoothOutline(loops, maxDriftPx = 2) {
   });
 }
 
+export function outlineComponents(loops) {
+  const components = loops.filter(loop => !loop.hole).map(outer => ({ outer, loops: [outer] }));
+  for (const hole of loops.filter(loop => loop.hole)) {
+    const parent = components.filter(component => inside(hole.points[0], hole.points[1], component.outer.points))
+      .sort((a, b) => Math.abs(area(a.outer.points)) - Math.abs(area(b.outer.points)))[0];
+    parent?.loops.push(hole);
+  }
+  return components;
+}
+
 export function unionOutlines(left, right) {
   return booleanOutlines(left, right, false);
 }

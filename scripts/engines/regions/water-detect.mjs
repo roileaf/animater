@@ -245,7 +245,7 @@ export function selectExcludedAreaAt(rgba, width, height, { x, y }, { targetPixe
     const x = p % width, y = Math.floor(p / width);
     for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
       const nx = x + dx, ny = y + dy;
-      if (nx >= 0 && nx < width && ny >= 0 && ny < height && selectedMask[ny * width + nx]) mask[p] = 1;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height && target[ny * width + nx] && selectedMask[ny * width + nx]) mask[p] = 1;
     }
   }
   const loops = contourLoops(mask, width, height);
