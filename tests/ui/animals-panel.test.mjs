@@ -41,7 +41,11 @@ test('the panel shows the scene settings as they are', () => {
   const html = animalsPanelHtml({ flags: { outdoorLife: 'on', rabbits: 'many', deerSize: 'huge', placedAnimals: [rabbit('a')] }, count: 12 });
   assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="rabbits" data-value="many"'));
   assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="foxes" data-value=""'), 'unset is Usual');
-  assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="deerSize" data-value="huge"'));
+  assert.ok(/data-size-key="deerSize"[^>]*value="180"/.test(html), 'a name saved before the sliders keeps its size');
+  assert.ok(/data-size-key="foxesSize"[^>]*value="100"/.test(html), 'unset is the usual size');
+  assert.ok(/data-size-key="animalScale"[^>]*value="100"/.test(html), 'and so is the whole map');
+  assert.ok(/data-size-key="frogsSize" min="10" max="300" step="5"/.test(animalsPanelHtml({ flags: {} })));
+  assert.ok(/data-size-key="wolvesSize"[^>]*value="35"/.test(animalsPanelHtml({ flags: { wolvesSize: 35 } })));
   assert.ok(html.includes('class="is-active" data-action="setLife" data-value="on"'));
   assert.ok(html.includes('12 about on your screen'));
   assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="wolves" data-value=""'), 'no wolves until chosen');

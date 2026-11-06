@@ -7,9 +7,13 @@ const TAU = Math.PI * 2;
 // How many of a kind of creature a scene has, and how big they are (pure): the scene's choice (Scene configuration â†’
 // Animater) as times the usual. Anything unknown is the usual.
 export const CREATURE_AMOUNTS = Object.freeze({ none: 0, few: 0.5, '': 1, more: 2, many: 3 });
-export const CREATURE_SIZES = Object.freeze({ small: 0.7, '': 1, big: 1.4, huge: 1.8 });
+// A size is a percent of the usual. Scenes saved before the sliders hold a name.
+export const CREATURE_SIZES = Object.freeze({ small: 70, big: 140, huge: 180 });
+export const SIZE_RANGE = Object.freeze({ min: 10, max: 300, step: 5 });
 export const creatureAmount = (v) => CREATURE_AMOUNTS[String(v ?? '')] ?? 1;
-export const creatureSize = (v) => CREATURE_SIZES[String(v ?? '')] ?? 1;
+export const sizePercent = (v) => { const named = CREATURE_SIZES[String(v ?? '')]; if (named) return named; const n = v === '' || v === null || v === undefined ? NaN : Number(v); return Number.isFinite(n) ? Math.min(SIZE_RANGE.max, Math.max(SIZE_RANGE.min, n)) : 100; };
+// How big a creature is, times the usual: its own size and the whole map's, kept to what can still be drawn.
+export const creatureSize = (v, all = 100) => Math.min(4, Math.max(0.05, (sizePercent(v) / 100) * (sizePercent(all) / 100)));
 
 // One rat's next step (pure): `rat` { x, y, angle, speed, wait }; `dt` seconds; `grid` pixels a square. `lit(x, y)` says
 // how lit a spot is (0 dark – 1 bright); `near` the creatures ([{ x, y }]); `blocked(a, b)` whether a wall stands between

@@ -1,3 +1,5 @@
+import { SIZE_RANGE, sizePercent } from '../engines/motion/vermin.mjs';
+
 // The Animals panel (Animater controls): how much life a scene has, quickly. Amounts and sizes are the same scene flags as
 // Scene configuration > Animater > Creatures, not a copy; the same with Outdoor life. Animals placed by hand are kept on the
 // scene (flags.animater.placedAnimals), so every screen adds them, though each screen's animals then go their own way.
@@ -12,7 +14,6 @@ export const ANIMAL_GROUPS = Object.freeze([
 const AMOUNTS = [['none', 'None'], ['few', 'Few'], ['', 'Usual'], ['more', 'More'], ['many', 'Many']];
 // Wolves are the GM's to ask for: none until chosen, on any scene.
 const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more', 'More'], ['many', 'Many']];
-const SIZES = [['small', 'S', 'Small'], ['', 'M', 'Usual size'], ['big', 'L', 'Big'], ['huge', 'XL', 'Huge']];
 // What can be placed by hand, and how it is kept.
 export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake']]);
 export const MOST_PLACED = 40;
@@ -45,10 +46,10 @@ export function placedChanges(shown, raw) {
 }
 
 const chip = (action, data, label, { active = false, tip = '', icon = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
+const sizeSlider = (key, label, value) => { const percent = sizePercent(value); return `<label class="animater-an-size"><input type="range" data-size-key="${key}" min="${SIZE_RANGE.min}" max="${SIZE_RANGE.max}" step="${SIZE_RANGE.step}" value="${percent}" aria-label="${esc(label)}"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
 const animalRow = (kind, label, flags) => {
   const amounts = (kind === 'wolves' ? WOLF_AMOUNTS : AMOUNTS).map(([v, l]) => chip('setAnimal', `data-key="${kind}" data-value="${v}"`, l, { active: String(flags[kind] ?? '') === v })).join('');
-  const sizes = SIZES.map(([v, l, tip]) => chip('setAnimal', `data-key="${kind}Size" data-value="${v}"`, l, { active: String(flags[`${kind}Size`] ?? '') === v, tip })).join('');
-  return `<div class="animater-an-row"><span>${esc(label)}</span><div class="animater-an-amounts">${amounts}</div><div class="animater-an-sizes">${sizes}</div></div>`;
+  return `<div class="animater-an-row"><span>${esc(label)}</span><div class="animater-an-amounts">${amounts}</div>${sizeSlider(`${kind}Size`, `${label}: size`, flags[`${kind}Size`])}</div>`;
 };
 
 // The panel's content (pure). `flags` the scene's Animater flags; `count` how many are about on this screen; `note` why none would show; `aiming` the kind being placed.
@@ -64,6 +65,7 @@ export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = ''
       <div class="animater-wx-chips animater-an-presets">${chip('presetAnimals', 'data-value="few"', 'Quiet', { tip: 'A few of everything outdoors.' })}${chip('presetAnimals', 'data-value=""', 'Usual', { tip: 'The usual number of everything outdoors.' })}${chip('presetAnimals', 'data-value="many"', 'Lively', { tip: 'Many of everything outdoors.' })}${chip('reshuffleAnimals', '', 'Reshuffle', { icon: 'fa-rotate', tip: 'Scatter them afresh, on your screen. Each screen scatters its own.' })}</div>
     </section>
     <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>
+    <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div></section>
     ${ANIMAL_GROUPS.map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags)).join('')}</section>`).join('')}
     <footer class="animater-wx-foot"><span>The same settings as Scene configuration. To keep them out of an area, use that region's Keep out.</span></footer>
   </div>`;
@@ -74,7 +76,7 @@ export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, 
   return class AnimalsPanel extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
       id: `${id}-animals`, classes: ['animater-weather-panel', 'animater-animals-panel'],
-      window: { title: 'Animals', icon: 'fa-solid fa-paw', resizable: true }, position: { width: 430, height: 'auto' },
+      window: { title: 'Animals', icon: 'fa-solid fa-paw', resizable: true }, position: { width: 500, height: 'auto' },
       actions: {
         setAnimal(_event, target) { void save({ [target.dataset.key]: target.dataset.value }).then(() => this.render()); },
         setLife(_event, target) { void save({ outdoorLife: target.dataset.value }).then(() => this.render()); },
@@ -92,6 +94,8 @@ export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, 
     };
     async _renderHTML() { return animalsPanelHtml({ flags: flags(), count: count(), note: note(), aiming: this.aiming ?? '' }); }
     _replaceHTML(html, content) { const top = content.scrollTop; content.innerHTML = html; content.scrollTop = top; }
+    // A slider says its size as it moves, and saves when let go: saving scatters the animals afresh.
+    _onRender() { for (const input of this.element.querySelectorAll('input[data-size-key]')) { const shown = input.parentElement.querySelector('output'); input.addEventListener('input', () => { shown.textContent = `${input.value}%`; shown.classList.toggle('is-changed', input.value !== '100'); }); input.addEventListener('change', () => { void save({ [input.dataset.sizeKey]: Number(input.value) }).then(() => this.render()); }); } }
     async close(options) { this.aiming = ''; stopAim(); return super.close(options); }
   };
 }

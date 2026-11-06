@@ -3692,11 +3692,18 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 
 .animater-wx-section { padding: 10px 14px 12px; border-top: 1px solid var(--wx-line); }
 .animater-wx-section h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; padding: 0; border: 0; color: var(--wx-soft); font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-.animater-an-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
-.animater-an-amounts, .animater-an-sizes { display: flex; gap: 2px; }
+.animater-an-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 150px; gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
+.animater-an-amounts { display: flex; gap: 2px; }
+.animater-an-size { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 6px; align-items: center; margin: 0; }
+.animater-an-size input[type="range"] { width: 100%; min-width: 0; height: 18px; margin: 0; accent-color: var(--wx-accent); }
+.animater-an-size output { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: var(--wx-soft); }
+.animater-an-size output.is-changed { color: var(--wx-accent); font-weight: 600; }
+.animater-an-all { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 10px; align-items: center; font-size: 12px; }
+.animater-an-all strong { display: block; }
+.animater-an-all small { color: var(--wx-soft); font-size: 11px; }
 .animater-an-amounts button { flex: 1; }
-.animater-an-amounts button, .animater-an-sizes button { min-height: 0; height: 24px; padding: 0 4px; font-size: 11px; line-height: 1; }
-.animater-an-amounts button.is-active, .animater-an-sizes button.is-active { background: var(--wx-accent); color: #1a1408; }
+.animater-an-amounts button { min-height: 0; height: 24px; padding: 0 4px; font-size: 11px; line-height: 1; }
+.animater-an-amounts button.is-active { background: var(--wx-accent); color: #1a1408; }
 .animater-an-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 12px; }
 .animater-an-top span strong { display: block; }
 .animater-an-top small { color: var(--wx-soft); font-size: 11px; }

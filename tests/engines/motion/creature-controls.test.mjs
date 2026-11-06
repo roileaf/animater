@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { creatureAmount, creatureSize, ratStep } from '../../../scripts/engines/motion/vermin.mjs';
+import { creatureAmount, creatureSize, sizePercent, ratStep } from '../../../scripts/engines/motion/vermin.mjs';
 import { puffsFor } from '../../../scripts/engines/motion/movement-feel.mjs';
 
 test('a scene\'s creature amounts and sizes, the usual when unset', () => {
@@ -13,6 +13,21 @@ test('a scene\'s creature amounts and sizes, the usual when unset', () => {
   assert.equal(creatureSize(''), 1);
   assert.equal(creatureSize('big'), 1.4);
   assert.equal(creatureSize('nonsense'), 1);
+});
+
+test('a size is a percent of the usual, and the whole map multiplies it', () => {
+  assert.equal(creatureSize(25), 0.25);
+  assert.equal(creatureSize('25'), 0.25, 'as a form saves it');
+  assert.equal(creatureSize('small'), 0.7, 'scenes saved before the sliders look the same');
+  assert.equal(creatureSize('huge'), 1.8);
+  assert.equal(sizePercent(0), 10, 'never nothing');
+  assert.equal(sizePercent(9999), 300);
+  assert.equal(sizePercent(undefined), 100);
+  assert.equal(sizePercent(null), 100);
+  assert.equal(creatureSize(50, 50), 0.25);
+  assert.equal(creatureSize('big', 50), 0.7);
+  assert.equal(creatureSize(10, 10), 0.05, 'small enough to still draw');
+  assert.equal(creatureSize(300, 300), 4, 'and no bigger than can');
 });
 
 test('a rat in the light runs out of it instead of turning on the spot', () => {
