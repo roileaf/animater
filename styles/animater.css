@@ -3894,3 +3894,5 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-water-add-status p { margin: 0 0 8px; font-size: 12px; line-height: 1.4; }
 .an-water-add-status > div { display: flex; flex-wrap: wrap; gap: 6px; }
 .animater-water .an-water-add-status button { min-height: 28px; padding: 5px 8px; font-size: 11px; }
+.animater-water [data-edit-outline] { grid-column: 2; min-height: 26px; padding: 4px 8px; font-size: 11px; }
+.animater-water [data-edit-outline][aria-pressed="true"] { border-color: var(--an-accent); color: var(--an-accent); }

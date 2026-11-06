@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Edit water outlines in the preview.** Move, insert, and delete polygon vertices, including holes. Smooth outer shores explicitly within two read pixels per action. Invalid geometry stays unchanged. Undo restores up to 20 edits and additions without resetting current save selections or water settings.
+
 - **Edit water without replacing other regions.** Reopening loads saved generator regions. Save updates only the edited, ticked regions by ID and creates new regions alongside them. Names, behaviors, steps, unrelated settings, and all other regions stay.
 
 - **Add water to an existing draft.** Extend a chosen area with shoreline clicks or click existing pieces into that region. Checkboxes only choose which areas to save. Its water settings stay, and the last addition can be undone.

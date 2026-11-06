@@ -3,6 +3,7 @@
 
 import { detectWater, selectWaterAt, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
+import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines } from "../engines/regions/water-outline.mjs";
 
 export const FLOW_OPTIONS = Object.freeze(flowChoices());
 export const CURRENT_OPTIONS = Object.freeze([
@@ -144,6 +145,7 @@ export function waterRowHTML(proposal, options = {}) {
   <label data-sea-field${kind === "sea" ? "" : " hidden"}>Waves toward ${optionsHTML(WAVE_OPTIONS, `data-wave="${id}"`, waveTo)}</label>
   <label data-sea-field class="an-water-pick"${kind === "sea" ? "" : " hidden"}><input type="checkbox" data-beach="${id}"${seaBeach === "off" ? "" : " checked"}> Beach along the shore</label>
   <button type="button" class="an-water-add" data-add-to="${id}" aria-pressed="false">Add water</button>
+  <button type="button" data-edit-outline="${id}" aria-pressed="false">Edit outline</button>
   <button type="button" class="an-water-remove" data-remove="${id}" >${proposal.regionId ? "Leave unchanged" : "Remove"}</button>
 </div>`;
 }
@@ -162,8 +164,10 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
         <button type="button" data-zoom="out" aria-label="Zoom out">−</button><output data-zoom-label aria-live="polite">Fit</output><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="fit">Fit map</button>
       </div></div>
       <div class="an-water-add-status" data-add-status hidden><p data-add-message></p><div>
-        <button type="button" data-undo-add disabled>Undo last addition</button>
-        <button type="button" data-add-done>Finish adding</button>
+        <button type="button" data-undo-add disabled>Undo last change</button>
+        <button type="button" data-add-done>Done</button>
+        <button type="button" data-smooth-outline title="Smooth outer shores within 2 read pixels per action. Holes stay unchanged." hidden>Smooth shore</button>
+        <button type="button" data-delete-vertex hidden>Delete vertex</button>
       </div></div>
       <div class="an-water-frame" tabindex="0" aria-label="Water preview. Scroll to zoom. Drag to pan. Click to add water."><div class="an-water-stage"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div></div>
       <p class="an-water-help">Scroll to zoom · Drag to pan · Click to add water</p>
@@ -325,6 +329,7 @@ function updateKindFields(row) {
 // `detect` is what the window works on: the pixels, the rows so far, and the scene and level as they were at open.
 export function waterDetectWindow(ApplicationV2, hooks = {}) {
   return class WaterDetect extends ApplicationV2 {
+    mode = { kind: "inspect" };
     static DEFAULT_OPTIONS = {
       id: "animater-water-detect",
       classes: ["animater", "animater-water"],
@@ -349,7 +354,28 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const canvas = this.element?.querySelector("canvas.an-water-preview");
       const { detect } = this;
       if (!canvas || !detect) return;
-      paintWaterPreview(canvas.getContext("2d", { willReadFrequently: true }), detect.rgba, detect.width, detect.height, detect.proposals, this.highlight || this.addTarget || "");
+      paintWaterPreview(canvas.getContext("2d", { willReadFrequently: true }), detect.rgba, detect.width, detect.height, detect.proposals, this.mode?.areaId || this.highlight || "");
+      if (this.mode?.kind !== "vertices") return;
+      const proposal = detect.proposals.find((p) => p.id === this.mode.areaId);
+      const loops = this.gesture?.kind === "vertex" ? this.gesture.loops : proposal?.loops;
+      if (!loops) return;
+      const ctx = canvas.getContext("2d");
+      const rect = canvas.getBoundingClientRect();
+      const sx = detect.width / rect.width, sy = detect.height / rect.height;
+      ctx.strokeStyle = "#ffd250";
+      ctx.lineWidth = 2 * sx;
+      for (const [ring, loop] of loops.entries()) {
+        ctx.beginPath();
+        for (let i = 0; i < loop.points.length; i += 2) {
+          if (i === 0) ctx.moveTo(loop.points[i], loop.points[i + 1]);
+          else ctx.lineTo(loop.points[i], loop.points[i + 1]);
+        }
+        ctx.closePath(); ctx.stroke();
+        for (let i = 0; i < loop.points.length; i += 2) {
+          ctx.fillStyle = this.selectedVertex?.ring === ring && this.selectedVertex.vertex === i / 2 ? "#ffd250" : "#ffffff";
+          ctx.fillRect(loop.points[i] - 3 * sx, loop.points[i + 1] - 3 * sy, 6 * sx, 6 * sy);
+        }
+      }
     }
 
     updateSummary() {
@@ -370,32 +396,75 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (empty) empty.hidden = total > 0;
       const status = this.element.querySelector("[data-add-status]");
       if (status) {
-        status.hidden = !this.addTarget;
-        this.element.querySelector("[data-add-message]").textContent = `Adding to Area ${this.addTarget?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which areas to save.`;
-        this.element.querySelector("[data-undo-add]").disabled = !this.undoAddition;
+        status.hidden = !this.mode?.areaId;
+        this.element.querySelector("[data-add-message]").textContent = this.mode?.kind === "vertices" ? "Drag a handle. Double-click an edge to insert. Select a handle to delete. Escape cancels a drag, then exits. Checkboxes only choose what to save." : `Adding to Area ${this.mode?.areaId?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which areas to save.`;
+        this.element.querySelector("[data-undo-add]").disabled = !this.history?.length;
         for (const button of this.element.querySelectorAll("[data-add-to]")) {
-          const active = button.dataset.addTo === this.addTarget;
+          const active = this.mode?.kind === "add" && button.dataset.addTo === this.mode.areaId;
           button.setAttribute("aria-pressed", String(active));
           button.textContent = active ? "Adding water here" : "Add water";
         }
+        for (const button of this.element.querySelectorAll("[data-edit-outline]")) button.setAttribute("aria-pressed", String(this.mode?.kind === "vertices" && button.dataset.editOutline === this.mode.areaId));
+        const smooth = this.element.querySelector("[data-smooth-outline]");
+        const remove = this.element.querySelector("[data-delete-vertex]");
+        if (smooth) smooth.hidden = this.mode?.kind !== "vertices";
+        if (remove) { remove.hidden = this.mode?.kind !== "vertices"; remove.disabled = !this.selectedVertex; }
       }
     }
 
-    setAddTarget(id) {
-      this.addTarget = id;
-      this.undoAddition = null;
+    setAddTarget(id) { this.setMode(id ? { kind: "add", areaId: id } : { kind: "inspect" }); }
+
+    setMode(mode) {
+      this.gesture = null;
+      this.selectedVertex = null;
+      this.mode = mode;
       this.updateSummary();
-      this.setHighlight(id);
+      this.setHighlight(mode.areaId ?? "");
+      this.paint();
+    }
+
+    remember() {
+      this.history ??= [];
+      this.history.push({ proposals: [...this.detect.proposals], choices: choicesFromElement(this.element) });
+      if (this.history.length > 20) this.history.shift();
+    }
+
+    commitOutline(loops) {
+      const { detect } = this;
+      const target = detect.proposals.find((p) => p.id === this.mode?.areaId);
+      if (!target) return false;
+      const error = validateOutline(target.loops, loops, detect.width, detect.height);
+      if (error) { hooks.notify?.(error); this.paint(); return false; }
+      if (JSON.stringify(target.loops) === JSON.stringify(loops)) return false;
+      this.remember();
+      const edited = { ...target, ...waterProposalFromLoops(loops, detect.width, detect.height), geometryChanged: true };
+      detect.proposals = detect.proposals.map((p) => p === target ? edited : p);
+      this.drawRows(choicesFromElement(this.element));
+      return true;
+    }
+
+    deleteVertex() {
+      if (!this.selectedVertex || this.mode?.kind !== "vertices") return;
+      const target = this.detect.proposals.find((p) => p.id === this.mode.areaId);
+      if (this.commitOutline(changeVertex(target.loops, { ...this.selectedVertex, action: "delete" }))) this.selectedVertex = null;
+      this.updateSummary(); this.paint();
     }
 
     combineAreas(additions) {
       const { detect } = this;
-      const target = detect.proposals.find((proposal) => proposal.id === this.addTarget);
+      const target = detect.proposals.find((proposal) => proposal.id === (this.mode?.kind === "add" ? this.mode.areaId : null));
       const choices = choicesFromElement(this.element);
-      this.undoAddition = { proposals: [...detect.proposals], choices };
       const mergedIds = new Set([target.id, ...additions.map((proposal) => proposal.id)]);
       const claimed = detect.proposals.filter((proposal) => !mergedIds.has(proposal.id));
-      const merged = { ...mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed, preserveTarget: !!target.regionId }), geometryChanged: true };
+      let merged;
+      if ([target, ...additions].some((proposal) => proposal.geometryChanged)) {
+        const addedLoops = additions.flatMap((proposal) => proposal.geometryChanged ? proposal.loops
+          : mergeWaterProposals([proposal], detect.width, detect.height, { claimed }).loops);
+        try {
+          merged = { ...target, ...waterProposalFromLoops(unionOutlines(target.loops, addedLoops), detect.width, detect.height), geometryChanged: true };
+        } catch (error) { hooks.notify?.(error.message); return; }
+      } else merged = { ...mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed, preserveTarget: !!target.regionId }), geometryChanged: true };
+      this.remember();
       detect.proposals = detect.proposals.filter((proposal) => proposal.id === target.id || !mergedIds.has(proposal.id))
         .map((proposal) => proposal.id === target.id ? merged : proposal);
       this.drawRows(choices);
@@ -410,11 +479,12 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
     }
 
     undoAdd() {
-      if (!this.undoAddition) return;
-      const { proposals, choices } = this.undoAddition;
+      if (!this.history?.length) return;
+      const { proposals, choices } = this.history.pop();
       this.detect.proposals = proposals;
+      this.selectedVertex = null;
       const current = new Map(choicesFromElement(this.element).map((choice) => [choice.id, choice]));
-      this.undoAddition = null;
+
       this.drawRows(choices.map((choice) => current.get(choice.id) ?? choice));
     }
 
@@ -439,6 +509,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       frame.scrollTop = Math.max(0, y * height - (anchor.y - bounds.top) + Math.max(0, (frame.clientHeight - height) / 2));
       const label = this.element.querySelector("[data-zoom-label]");
       if (label) label.textContent = `${Math.round(this.zoom * 100)}%`;
+      if (this.mode?.kind === "vertices") this.paint();
     }
 
     setHighlight(id) {
@@ -459,29 +530,71 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         }, { passive: false });
         frame.addEventListener("pointerdown", (event) => {
           if (event.button !== 0 && event.button !== 1) return;
-          this.pan = { x: event.clientX, y: event.clientY, left: frame.scrollLeft, top: frame.scrollTop, moved: false };
+          const canvas = this.element.querySelector("canvas.an-water-preview");
+          const target = this.mode?.kind === "vertices" && this.detect.proposals.find((p) => p.id === this.mode.areaId);
+          const hit = target && event.button === 0 && hitOutline(target.loops, event, canvas.getBoundingClientRect(), this.detect.width, this.detect.height);
           this.suppressClick = false;
+          if (hit?.vertex !== undefined) {
+            this.selectedVertex = hit;
+            this.gesture = { kind: "vertex", ...hit, loops: target.loops };
+            frame.focus();
+            frame.setPointerCapture(event.pointerId);
+            this.updateSummary(); this.paint(); event.preventDefault();
+          } else this.gesture = { kind: "pan", x: event.clientX, y: event.clientY, left: frame.scrollLeft, top: frame.scrollTop, moved: false };
         });
         frame.addEventListener("pointermove", (event) => {
-          if (!this.pan) return;
-          const dx = event.clientX - this.pan.x, dy = event.clientY - this.pan.y;
-          if (!this.pan.moved && Math.hypot(dx, dy) < 5) return;
-          this.pan.moved = true;
+          const gesture = this.gesture;
+          if (!gesture) return;
+          if (gesture.kind === "vertex") {
+            const canvas = this.element.querySelector("canvas.an-water-preview");
+            gesture.loops = changeVertex(gesture.loops, { ...gesture, ...outlinePoint(event, canvas.getBoundingClientRect(), this.detect.width, this.detect.height) });
+            this.paint(); event.preventDefault(); return;
+          }
+          const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y;
+          if (!gesture.moved && Math.hypot(dx, dy) < 5) return;
+          gesture.moved = true;
           frame.setPointerCapture(event.pointerId);
-          frame.scrollLeft = this.pan.left - dx;
-          frame.scrollTop = this.pan.top - dy;
+          frame.scrollLeft = gesture.left - dx;
+          frame.scrollTop = gesture.top - dy;
           event.preventDefault();
         });
-        const finishPan = () => { this.suppressClick = this.pan?.moved === true; this.pan = null; };
-        frame.addEventListener("pointerup", finishPan);
-        frame.addEventListener("pointercancel", finishPan);
-        frame.addEventListener("pointerleave", () => { if (!this.pan?.moved) this.pan = null; });
+        const finish = (cancel) => {
+          const gesture = this.gesture;
+          this.gesture = null;
+          this.suppressClick = gesture?.kind === "vertex" || gesture?.moved === true;
+          if (gesture?.kind === "vertex" && !cancel) this.commitOutline(gesture.loops);
+          this.paint();
+        };
+        frame.addEventListener("pointerup", () => finish(false));
+        frame.addEventListener("pointercancel", () => finish(true));
+        frame.addEventListener("pointerleave", () => { if (this.gesture?.kind === "pan" && !this.gesture.moved) this.gesture = null; });
+        frame.addEventListener("dblclick", (event) => {
+          if (this.mode?.kind !== "vertices") return;
+          const canvas = this.element.querySelector("canvas.an-water-preview");
+          const target = this.detect.proposals.find((p) => p.id === this.mode.areaId);
+          const hit = hitOutline(target.loops, event, canvas.getBoundingClientRect(), this.detect.width, this.detect.height);
+          if (hit?.edge !== undefined) {
+            this.selectedVertex = null;
+            this.commitOutline(changeVertex(target.loops, { ...hit, vertex: hit.edge, action: "insert" }));
+          }
+          event.preventDefault();
+        });
         this.resizeObserver = new ResizeObserver(() => this.zoomMap(this.zoom ?? 1));
         this.resizeObserver.observe(frame);
         this.zoomMap(this.zoom ?? 1);
       }
       if (this.wiredTo === this.element) return;
       this.wiredTo = this.element;
+      this.element.addEventListener("keydown", (event) => {
+        if (this.mode?.kind !== "vertices") return;
+        if (event.key !== "Escape" && event.target.closest?.("input, select, textarea")) return;
+        if (event.key === "Escape") {
+          event.preventDefault(); event.stopPropagation();
+          if (this.gesture) { this.gesture = null; this.suppressClick = true; this.paint(); }
+          else this.setMode({ kind: "inspect" });
+        }
+        if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); event.stopPropagation(); this.deleteVertex(); }
+      }, { capture: true });
       this.element.addEventListener("mouseover", (event) => this.setHighlight(event.target.closest?.("[data-id]")?.dataset.id ?? ""));
       this.element.addEventListener("mouseleave", () => this.setHighlight(""));
       this.element.addEventListener("change", (event) => {
@@ -497,6 +610,14 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       this.element.addEventListener("click", (event) => {
         const zoom = event.target.closest?.("[data-zoom]");
         if (zoom) return this.zoomMap(zoom.dataset.zoom === "fit" ? 1 : (this.zoom ?? 1) * (zoom.dataset.zoom === "in" ? 1.5 : 1 / 1.5));
+        const edit = event.target.closest?.("[data-edit-outline]");
+        if (edit) return this.setMode({ kind: "vertices", areaId: edit.dataset.editOutline });
+        if (event.target.closest?.("[data-delete-vertex]")) return this.deleteVertex();
+        if (event.target.closest?.("[data-smooth-outline]") && this.mode?.kind === "vertices") {
+          const target = this.detect.proposals.find((p) => p.id === this.mode.areaId);
+          this.selectedVertex = null;
+          return this.commitOutline(smoothOutline(target.loops));
+        }
         const add = event.target.closest?.("[data-add-to]");
         if (add) return this.setAddTarget(add.dataset.addTo);
         if (event.target.closest?.("[data-add-done]")) return this.setAddTarget(null);
@@ -513,16 +634,17 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       this.resizeObserver?.disconnect();
       if (openWindow === this) openWindow = null;
       this.detect = null;
-      this.undoAddition = null;
+      this.history = [];
       return out;
     }
 
     clickPreview(event) {
       if (this.suppressClick) { this.suppressClick = false; return; }
+      if (this.mode?.kind === "vertices") return;
       const { detect } = this;
       const at = previewPixel(event, event.target.getBoundingClientRect(), detect.width, detect.height);
       const shared = sharedChoices(this.element);
-      const target = detect.proposals.find((proposal) => proposal.id === this.addTarget);
+      const target = detect.proposals.find((proposal) => proposal.id === (this.mode?.kind === "add" ? this.mode.areaId : null));
       if (target) {
         const pixel = Math.floor(at.y) * detect.width + Math.floor(at.x);
         const source = detect.proposals.find((proposal) => proposal !== target && proposal.pixels.includes(pixel));
@@ -547,7 +669,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         }
         return this.combineAreas([{ ...picked.proposal, id: "addition" }]);
       }
-      this.undoAddition = null;
+      this.history = [];
       detect.proposals.push(picked.proposal);
       this.element.querySelector(".an-water-reason")?.remove();
       this.element.querySelector(".an-water-list").insertAdjacentHTML("afterbegin", waterRowHTML(picked.proposal, shared));
@@ -565,8 +687,8 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         this.updateSummary();
         return;
       }
-      this.undoAddition = null;
-      if (this.addTarget === id) this.addTarget = null;
+      this.history = [];
+      if (this.mode?.areaId === id) this.setMode({ kind: "inspect" });
       detect.proposals = detect.proposals.filter((proposal) => proposal.id !== id);
       for (const row of this.element.querySelectorAll(".an-water-row")) if (row.dataset.id === id) row.remove();
       if (this.highlight === id) this.highlight = "";

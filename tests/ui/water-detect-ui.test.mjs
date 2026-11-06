@@ -257,7 +257,7 @@ test("only a level map at Foundry's default placement is read", () => {
   }
 });
 
-function waterApp() {
+function waterApp(map = null) {
   const listeners = {};
   const makeRow = (id, checked, kind = "still", flowTo = "", currentTo = "") => {
     const box = { checked, dataset: { pick: id } }, kindSel = { value: kind }, flow = { value: flowTo }, current = { value: currentTo };
@@ -295,6 +295,8 @@ function waterApp() {
   const list = { set innerHTML(html) { rows = parseRows(html); }, scrollTop: 0, insertAdjacentHTML: (_where, html) => { rows.unshift(...parseRows(html)); } };
   const status = Object.fromEntries(["data-area-count", "data-selection-count", "data-create", "data-area-empty"].map((key) => [key, {}]));
   const query = (selector) => {
+    if (map && selector === ".an-water-frame") return map.frame;
+    if (map && selector === "canvas.an-water-preview") return map.canvas;
     if (status[selector.slice(1, -1)]) return status[selector.slice(1, -1)];
     if (selector === ".an-water-list") return list;
     if (selector === ".an-water-reason") return hasReason ? { remove: () => { hasReason = false; } } : null;
@@ -752,8 +754,8 @@ test("a shoreline click expands the active area instead of adding a new row", as
   assert.equal(ui.rows().length, 2);
   assert.equal(app.detect.proposals[0].pixels.length, 8);
   ui.fire("click", ui.button("add-done", ""));
-  assert.equal(app.addTarget, null);
-  assert.equal(app.undoAddition, null);
+  assert.deepEqual(app.mode, { kind: "inspect" });
+  assert.equal(app.history.length, 1);
   await app.close();
 });
 
@@ -782,7 +784,7 @@ test("Add water ignores checkbox state and leaves save selection unchanged", asy
   box.checked = true;
   box.checked = false;
   ui.fire("change", { ...box, closest: (selector) => selector === "[data-pick]" ? box : null });
-  assert.equal(app.addTarget, "water-1", "unticking the target does not stop Add water");
+  assert.equal(app.mode.areaId, "water-1", "unticking the target does not stop Add water");
   ui.fire("click", ui.preview);
   assert.equal(selectedCalls, 1);
   assert.equal(app.detect.proposals[0].pixels.length, 12, "an unchecked target can still gain missed water");
@@ -891,5 +893,139 @@ test("reopening saved water leaves fresh suggestions unticked and Leave unchange
   assert.equal(app.detect.proposals[0].regionId, "ocean", "saved row stays available");
   await app.create();
   assert.deepEqual(scene.calls, []);
+  await app.close();
+});
+
+function outlineMap(t) {
+  const original = globalThis.ResizeObserver;
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+  t.after(() => { if (original) globalThis.ResizeObserver = original; else delete globalThis.ResizeObserver; });
+  const events = {};
+  const rect = { left: 10, top: 20, width: 200, height: 200 };
+  const ctx = { clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {}, fillRect() {} };
+  const canvas = { style: {}, getContext: () => ctx, getBoundingClientRect: () => rect };
+  const frame = { scrollLeft: 0, scrollTop: 0, focus() {}, setPointerCapture() {}, addEventListener: (name, fn) => { events[name] = fn; } };
+  const fire = (type, x, y, extra = {}) => events[type]({ clientX: rect.left + x * rect.width / 20, clientY: rect.top + y * rect.height / 20, button: 0, pointerId: 1, preventDefault() {}, ...extra });
+  return { frame, canvas, rect, fire };
+}
+
+test("outline gestures commit once, cancel atomically, undo with current choices, and save only shapes by ID", async (t) => {
+  const map = outlineMap(t), ui = waterApp(map), scene = fakeScene([savedRegion("edited"), savedRegion("other",200)]);
+  let selects = 0;
+  const { app } = await openWaterDetect(opening({ Application: ui.App, scene, sceneRect: editRect,
+    load: async () => ({ ok: true, rgba: null, width: 20, height: 20 }),
+    detect: () => ({ proposals: [] }), select: () => { selects++; return { status: "none", reason: "too-small" }; },
+  }));
+  const before = app.detect.proposals[0], other = app.detect.proposals[1];
+  ui.fire("click", ui.button("edit-outline","water-1"));
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,false);
+  map.fire("pointerdown",8,0);
+  map.fire("pointermove",6.25,0);
+  assert.strictEqual(app.detect.proposals[0],before,"drag only paints a candidate");
+  map.fire("pointercancel",6.25,0);
+  assert.strictEqual(app.detect.proposals[0],before);
+  map.fire("pointerdown",8,0);
+  map.fire("pointermove",6.25,0);
+  map.fire("pointerup",6.25,0);
+  const moved = app.detect.proposals[0];
+  assert.equal(moved.loops[0].points[2],6.25);
+  assert.ok(moved.pixels.length < before.pixels.length);
+  assert.strictEqual(app.detect.proposals[1],other);
+  assert.equal(app.history.length,1);
+  ui.fire("click",ui.preview);
+  assert.equal(selects,0,"editing never samples colour");
+  ui.rows()[0].querySelector("[data-pick]").checked=true;
+  app.undoAdd();
+  assert.strictEqual(app.detect.proposals[0],before);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,true);
+  map.rect.width=400; map.rect.height=400;
+  map.fire("pointerdown",8,0); map.fire("pointermove",6.25,0); map.fire("pointerup",6.25,0);
+  assert.deepEqual(app.detect.proposals[0].loops,moved.loops,"same read coordinate at another zoom");
+  map.fire("dblclick",3,0);
+  assert.equal(app.detect.proposals[0].vertices,5);
+  map.fire("pointerdown",3,0); map.fire("pointerup",3,0);
+  ui.fire("click",ui.button("delete-vertex",""));
+  assert.equal(app.detect.proposals[0].vertices,4);
+  assert.equal(app.history.length,3);
+  const key = (key) => { let stopped=false; for (const fn of ui.listeners.keydown) fn({ key, target: {}, preventDefault() {}, stopPropagation() { stopped=true; } }); assert.ok(stopped); };
+  map.fire("pointerdown",6.25,0); map.fire("pointermove",5,1);
+  key("Escape");
+  assert.deepEqual(app.detect.proposals[0].loops,moved.loops);
+  assert.equal(app.mode.kind,"vertices"); key("Escape"); assert.equal(app.mode.kind,"inspect");
+  await app.create();
+  assert.deepEqual(scene.calls.map((c)=>c[0]),["update"]);
+  const [patch] = scene.calls[0][2];
+  assert.deepEqual(Object.keys(patch).sort(),["_id","shapes"]);
+  assert.equal(patch._id,"edited");
+  assert.ok(patch.shapes[0].points.includes(162.5));
+});
+
+test("trimmed pixel ownership feeds Add water and later additions preserve exact fractional shores", async (t) => {
+  const map=outlineMap(t),ui=waterApp(map);
+  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const original = { ...waterProposalFromLoops([{ points: [0,0,8,0,8,8,0,8],hole:false }],20,20),id:"water-1",preselected:false };
+  let claimed;
+  const { app } = await openWaterDetect(opening({ Application:ui.App,scene:fakeScene(),
+    load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[original]}),
+    select:(_rgba,_w,_h,_at,options)=>{ claimed=options.claimed; return { status:"none",reason:"too-small" }; },
+  }));
+  ui.fire("click",ui.button("edit-outline","water-1"));
+  map.fire("pointerdown",8,0);map.fire("pointermove",5.25,0);map.fire("pointerup",5.25,0);
+  const trimmed=app.detect.proposals[0];
+  app.setAddTarget(null);app.suppressClick=false;ui.fire("click",ui.preview);
+  assert.strictEqual(claimed[0],trimmed);
+  assert.ok(!claimed[0].pixels.includes(7));
+  app.setAddTarget("water-1");
+  const addition=waterProposalFromLoops([{ points:[12,0,16,0,16,4,12,4],hole:false }],20,20);
+  app.combineAreas([{...addition,id:"addition"}]);
+  assert.ok(app.detect.proposals[0].loops[0].points.includes(5.25));
+  assert.equal(app.detect.proposals[0].pixels.length,trimmed.pixels.length+16);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,false);
+  app.undoAdd(); app.undoAdd();
+  assert.strictEqual(app.detect.proposals[0],original);
+  const editedSource={...waterProposalFromLoops([{points:[12.25,0,16,0,16,4,12.25,4],hole:false}],20,20),id:"addition",geometryChanged:true};
+  app.combineAreas([editedSource]);
+  assert.ok(app.detect.proposals[0].loops.some((loop)=>loop.points.includes(12.25)),"absorbing an edited source also preserves its exact outline");
+  await app.close();
+});
+
+test("invalid drags and triangle deletion keep the proposal and history untouched with feedback", async (t) => {
+  const map=outlineMap(t),ui=waterApp(map),notes=[];
+  const { waterProposalFromLoops }=await import("../../scripts/engines/regions/water-detect.mjs");
+  const initial={...waterProposalFromLoops([{points:[0,0,12,0,12,12,0,12],hole:false},{points:[3,3,5,3,4,5],hole:true}],20,20),id:"water-1"};
+  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),notify:(message)=>notes.push(message),
+    load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[initial]})}));
+  ui.fire("click",ui.button("edit-outline","water-1"));
+  map.fire("pointerdown",12,0);map.fire("pointermove",0,14);map.fire("pointerup",0,14);
+  assert.strictEqual(app.detect.proposals[0],initial);
+  assert.ok(notes.length);
+  map.fire("pointerdown",4,5);map.fire("pointermove",4,15);map.fire("pointerup",4,15);
+  assert.strictEqual(app.detect.proposals[0],initial);
+  assert.match(notes.at(-1),/cross|touch|inside/);
+  map.fire("pointerdown",3,3);map.fire("pointerup",3,3);
+  ui.fire("click",ui.button("delete-vertex",""));
+  assert.strictEqual(app.detect.proposals[0],initial);
+  assert.match(notes.at(-1),/three/);
+  assert.equal(app.history?.length??0,0);
+  await app.close();
+});
+
+test("Smooth shore is explicit, preserves hole coordinates, and undo restores the original outline", async (t) => {
+  const map=outlineMap(t),ui=waterApp(map);
+  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
+  const points=[0,0,20,0,20,20];
+  for(let i=19;i>0;i--) points.push(i+1,i,i,i);
+  const hole={points:[14,3,16,3,16,5,14,5],hole:true};
+  const initial={...waterProposalFromLoops([{points,hole:false},hole],20,20),id:"water-1",preselected:false};
+  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),
+    load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[initial]})}));
+  ui.fire("click",ui.button("edit-outline","water-1"));
+  assert.strictEqual(app.detect.proposals[0],initial);
+  ui.fire("click",ui.button("smooth-outline",""));
+  assert.ok(app.detect.proposals[0].vertices<initial.vertices);
+  assert.strictEqual(app.detect.proposals[0].loops[1],hole);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,false);
+  ui.fire("click",ui.button("undo-add",""));
+  assert.strictEqual(app.detect.proposals[0],initial);
   await app.close();
 });
