@@ -454,7 +454,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const geometry = waterProposalFromLoops(loops, detect.width, detect.height);
       if (!geometry.pixels.length) { hooks.notify?.("Keep some water inside the outline."); this.paint(); return false; }
       this.remember();
-      const edited = { ...target, ...geometry, geometryChanged: true, outlineEdited: true };
+      const edited = { ...target, ...geometry, geometryChanged: true, outlineEdited: true, exclusions: [] };
       detect.proposals = detect.proposals.map((p) => p === target ? edited : p);
       this.drawRows(choicesFromElement(this.element));
       return true;
@@ -499,14 +499,34 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       let geometry;
       try {
         let loops = subtractOutlines(target.loops, exclusion.loops);
-        const empty = loops.filter(loop => !loop.hole && !waterProposalFromLoops([loop], detect.width, detect.height).pixels.length);
-        if (empty.length) loops = subtractOutlines(loops, empty);
+        const contains = (loop, x, y) => {
+          const p = loop.points;
+          let result = false;
+          for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+            if ((p[i + 1] > y) !== (p[j + 1] > y) && x < (p[j] - p[i]) * (y - p[i + 1]) / (p[j + 1] - p[i + 1]) + p[i]) result = !result;
+          }
+          return result;
+        };
+        const component = (outer, all) => [outer, ...all.filter(hole => hole.hole && contains(outer, hole.points[0], hole.points[1]))];
+        const sameRing = (a, b) => {
+          if (a.hole !== b.hole || a.points.length !== b.points.length) return false;
+          const vertices = new Set(Array.from({ length: a.points.length / 2 }, (_, i) => `${a.points[i * 2]},${a.points[i * 2 + 1]}`));
+          return b.points.every((v, i) => i % 2 || vertices.has(`${v},${b.points[i + 1]}`));
+        };
+        const empty = loops.filter(loop => {
+          if (loop.hole) return false;
+          const rings = component(loop, loops);
+          const old = target.loops.find(other => sameRing(loop, other));
+          const original = old ? component(old, target.loops) : [];
+          if (rings.length === original.length && rings.every(ring => original.some(other => sameRing(ring, other)))) return false;
+          return !waterProposalFromLoops(rings, detect.width, detect.height).pixels.length;
+        });
+        if (empty.length) loops = subtractOutlines(loops, empty.flatMap(loop => component(loop, loops)));
         if (!loops.length) { hooks.notify?.("Keep some water in this area. Use Remove or Leave unchanged for the entire row."); return false; }
         geometry = waterProposalFromLoops(loops, detect.width, detect.height);
       } catch (error) { hooks.notify?.(error.message); return false; }
       if (!geometry.pixels.length) { hooks.notify?.("Keep some water in this area."); return false; }
-      const remaining = new Set(geometry.pixels);
-      if (waterProposalFromLoops(target.loops, detect.width, detect.height).pixels.every(pixel => remaining.has(pixel))) return false;
+      if (JSON.stringify(target.loops) === JSON.stringify(geometry.loops)) { hooks.notify?.("That surface is already outside this area."); return false; }
       this.remember();
       detect.proposals = detect.proposals.map(p => p === target ? { ...target, ...geometry, geometryChanged: true, outlineEdited: true, exclusions: [...(target.exclusions ?? []), exclusion.loops] } : p);
       this.drawRows(choicesFromElement(this.element));
@@ -694,7 +714,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (this.mode?.kind === "subtract") {
         const target = detect.proposals.find(p => p.id === this.mode.areaId);
         if (!target) return;
-        const picked = selectExcludedAreaAt(detect.rgba, detect.width, detect.height, at, { targetPixels: waterSelectionPixels(target.loops, detect.width, detect.height), broad: shared.range === "wide" });
+        const picked = selectExcludedAreaAt(detect.rgba, detect.width, detect.height, at, { targetPixels: waterProposalFromLoops(target.loops, detect.width, detect.height).pixels, boundaryPixels: waterSelectionPixels(target.loops, detect.width, detect.height), broad: shared.range === "wide" });
         if (picked.status !== "found") { hooks.notify?.(clickMessage(picked.reason)); return; }
         return this.subtractArea(target, picked.proposal);
       }
