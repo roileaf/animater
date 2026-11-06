@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.4.1 (2026-11-06)
+
+### New
+
+- **A size slider for every animal.** In the Animals panel and Scene configuration, each animal now has a slider from 10% to 300% of its usual size, in place of Small, Big and Huge. Scenes that already chose one of those keep the same size. A new All animals on this map slider multiplies them all, for a map drawn at a different scale. Frogs' lily pads shrink and grow with them.
+
 ## 3.4.0 (2026-11-06)
 
 ### New
