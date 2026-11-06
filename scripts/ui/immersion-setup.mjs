@@ -73,6 +73,8 @@ export function sceneWrites(features, before, after, id) {
 }
 // The features this person has not been asked about yet (pure).
 export const newFeatures = (features, seen) => features.filter((feature) => !(seen ?? []).includes(feature.id));
+// What a player still has to choose (pure): not a feature whose every setting for their screen a GM has locked. `locks` is a settings-lock module's map by full setting id; a soft lock only recommends, so it leaves the choice with them.
+export const stillToChoose = (features, { has, locks = {}, id = "animater" }) => features.filter((feature) => { const { local } = featureKeys(feature, has); return !local.length || !local.every((key) => { const lock = locks[`${id}.${key}`]; return !!lock && !lock.soft; }); });
 
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 

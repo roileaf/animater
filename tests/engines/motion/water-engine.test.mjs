@@ -191,9 +191,9 @@ test('moving water stays inside its region and out of its holes, however soft it
 test('a region standing over water is taken out of it, not made a hole in it', async () => {
   const { readFileSync } = await import('node:fs');
   const engine = readFileSync(new URL('../../../scripts/engines/motion/water-engine.mjs', import.meta.url), 'utf8'), main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(engine, /globalCompositeOperation = 'destination-out'/, 'a hole past the water\'s edge would fill in on the land beyond');
-  assert.equal((engine.match(/null, cuts\)/g) ?? []).length, 1, 'only what shows is cut: the water, its waves and its shores run on beneath');
-  assert.match(engine, /\(spec\.cuts \?\? \[\]\)\.map\(\(a\) => \[a, a\.holes \?\? null\]\)/, 'changing the dock redraws the water');
+  assert.match(engine, /takenOut\(held\.data,/, 'taken out of what shows, not made a hole: one past the water\'s edge would fill in on the land beyond');
+  assert.ok(!/shapeOf\([^\n]*cuts\)/.test(engine), 'only what shows is cut: the water, its waves and its shores run on beneath');
+  assert.match(engine, /\(spec\.over \?\? \[\]\)\.map\(\(o\) => \[o\.areas,/, 'changing the dock redraws the water');
   assert.ok(main.includes('box("overWater")'), 'the box');
   assert.ok(main.includes('r.flags?.[ID]?.overWater === true'), 'off unless ticked');
   assert.ok(main.includes('!onBeach(x, y) && !overDock(x, y)'), 'nothing swims under it');
@@ -219,4 +219,41 @@ test('a sea keeps its usual long shore unless it is too narrow for it', async ()
   assert.equal(narrow.shore, 100);
   assert.equal(narrow.deep, 120, 'its middle gets away from the shore');
   for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) if (frag.includes('float shoal')) { assert.ok(frag.includes('shoal * 26.0 * uFronts'), 'only the fronts that fit'); assert.ok(frag.includes('calm * smoothstep(0.2, 0.8, uFronts)'), 'too narrow for waves to break'); }
+});
+
+test('a dock throws its shadow by how far it stands above the water', async () => {
+  const { overLiftOf, WATER_SHADERS: S } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  assert.equal(overLiftOf({ above: 5, water: 0, distance: 5, grid: 100 }), 45, 'a square up');
+  assert.ok(overLiftOf({ above: 10, water: 0, distance: 5, grid: 100 }) > overLiftOf({ above: 5, water: 0, distance: 5, grid: 100 }), 'higher, longer');
+  assert.equal(overLiftOf({ above: 10, water: 5, distance: 5, grid: 100 }), 45, 'the difference counts, not the height');
+  assert.equal(overLiftOf({ above: 0, water: 0, distance: 5, grid: 100 }), 15, 'right on the water: a little');
+  assert.equal(overLiftOf({ above: 0, water: 20, distance: 5, grid: 100 }), 15, 'below it: a little');
+  assert.equal(overLiftOf({ above: 500, water: 0, distance: 5, grid: 100 }), 300, 'a few squares at most');
+  assert.equal(overLiftOf({ above: -Infinity, water: 0, distance: 5, grid: 100 }), 15, 'no height set');
+  for (const frag of [S.full, S.simple]) { assert.match(frag, /sunHere \*= 1\.0 - min\(1\.0, overShade/, 'no sun, so no glitter, in its shadow'); assert.match(frag, /uToSun \* uOverLift/, 'away from the sun'); }
+});
+
+test('each floor has its own shadows over water, and a region keeps its choice for each', async () => {
+  const { OVER_SHADOWS, overShadowChoices, overShadowOf } = await import('../../../scripts/engines/motion/region-steps.mjs');
+  assert.deepEqual(overShadowChoices('wood').map(([k]) => k), ['planks', 'slats', 'beams', 'solid']);
+  assert.deepEqual(overShadowChoices('stone').map(([k]) => k), ['solid', 'arches']);
+  assert.deepEqual(overShadowChoices('glass').map(([k]) => k), ['stained', 'frosted', 'leaded']);
+  assert.deepEqual(overShadowChoices('unknown').map(([k]) => k), ['solid']);
+  for (const floor of ['wood', 'stone', 'metal', 'glass', 'ice', 'grass', 'dirt', 'mud', 'sand', 'pebbles', 'snow']) for (const [key, name] of overShadowChoices(floor)) { assert.ok(OVER_SHADOWS.includes(key), key); assert.ok(name, key); }
+  assert.equal(overShadowOf({}, 'wood').kind, 'planks', 'its usual');
+  const own = { overShadows: { wood: 'beams', stone: 'arches' } };
+  assert.equal(overShadowOf(own, 'wood').kind, 'beams');
+  assert.equal(overShadowOf(own, 'stone').kind, 'arches', 'a choice for each');
+  assert.equal(overShadowOf({ overShadows: { wood: 'arches' } }, 'wood').kind, 'planks', 'not one of this floor\'s');
+  assert.deepEqual([overShadowOf({ overShadowSoft: 9, overShadowDark: 0 }, 'wood').soft, overShadowOf({ overShadowSoft: 9, overShadowDark: 0 }, 'wood').dark], [1, 0.1], 'kept in range');
+  assert.equal(overShadowOf({}, 'wood').dark, 0.45);
+  assert.ok(OVER_SHADOWS.length <= 15, 'blue holds them with their way, in steps of 8');
+});
+
+test('water runs a little way under a painted dock, and up to the edge of a plain one', async () => {
+  const { takenOut } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  const row = () => Uint8Array.from([255, 255, 255, 255, 255, 255, 255]), cut = Uint8Array.from([0, 0, 255, 255, 255, 0, 0]);
+  assert.deepEqual([...takenOut(row(), cut, 7, 1, 0)], [255, 255, 0, 0, 0, 255, 255], 'to its very edge');
+  assert.deepEqual([...takenOut(row(), cut, 7, 1, 1)], [255, 255, 255, 0, 255, 255, 255], 'a cell short on each side');
+  assert.deepEqual([...takenOut(Uint8Array.from([0, 0, 0]), Uint8Array.from([0, 255, 0]), 3, 1, 0)], [0, 0, 0], 'never adds water');
 });

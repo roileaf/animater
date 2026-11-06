@@ -2,7 +2,8 @@
 // list in Region configuration. Both save to the region's flags, which reach every screen.
 
 import { FLOORS } from '../engines/motion/movement-feel.mjs';
-import { WATER_DEPTHS, WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
+import { floorBody } from '../engines/motion/floor-shadows.mjs';
+import { WATER_DEPTHS, WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, showsPosts, overShadowOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
 
 const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -115,6 +116,13 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
     if (menu.reflections === null && own.drips) parts.push(tick('Dripping sound', own.regionSound !== 'off', (on) => act({ regionSound: on ? '' : 'off' })));
     // A dock, a bridge: what isn't water can stand over it.
     if (menu.reflections === null) parts.push(tick('Stands over water', own.overWater === true, (on) => act({ overWater: on })));
+    if (menu.reflections === null) parts.push(tick('Casts a shadow', castsShadow(own), (on) => act({ castShadow: on })));
+    if (menu.reflections === null && castsShadow(own)) {
+      const shadow = overShadowOf(own, floor), row = element('label', 'an-step-slider', 'Its shadow ');
+      row.append(choice(overShadowChoices(floor), shadow.kind, 'Its shadow', (value) => act({ overShadows: { ...(own.overShadows ?? {}), [floor]: value } })));
+      if (floorBody(floor).post) { const built = element('label', 'an-step-slider', 'Built as '); built.append(choice(DOCK_STYLES, dockStyleOf(own), 'Built as', (value) => act({ dockStyle: value }))); parts.push(built); if (dockStyleOf(own)) parts.push(tick('Posts', showsPosts(own), (on) => act({ overPosts: on }))); }
+      parts.push(row, slider_('Shadow softness', OVER_SOFT, shadow.soft, (v) => `${Math.round(v * 100)}%`, (value) => act({ overShadowSoft: value }), 0.05), slider_('Shadow darkness', OVER_DARK, shadow.dark, (v) => `${Math.round(v * 100)}%`, (value) => act({ overShadowDark: value }), 0.05));
+    }
     parts.push(tick('Animal sounds', own.animalSound !== 'off', (on) => act({ animalSound: on ? '' : 'off' })));
     if (activeStep(own) || own.stepHidden) parts.push(button(menu.hidden ? 'Show this step' : 'Hide this step', 'an-step-wide', () => act({ stepHidden: !menu.hidden })));
     parts.push(button(texture(own) ? 'Hide floor texture' : 'Show floor texture', 'an-step-wide', () => act({ texture: texture(own) ? 'off' : 'on' })));

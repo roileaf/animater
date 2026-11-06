@@ -38,8 +38,9 @@ float shoreLine(vec2 w, float away){ vec2 t = vec2(w.x * 0.8 - w.y * 0.6, w.x * 
 const EDGE = `uniform sampler2D uMask;
 uniform vec4 uBox;
 uniform float uPeak;
-uniform float uTight; // 1: full close to the edge, for what should meet it (water); 0, unset: well in
+uniform float uTight; // 2: a hard edge, on the region's line; 1: full close to the edge, for what should meet it (water); 0, unset: well in
 float inside(vec2 world, float grid){
+  if (uTight > 1.5) return smoothstep(uPeak * 0.25, uPeak * 0.5, texture2D(uMask, (world - uBox.xy) / uBox.zw).a);
   float wobble = fbm(world / (grid * 0.7)) - 0.5 + (noise(world / (grid * 0.09)) - 0.5) * 0.35;
   // A shape narrower than its blur never reaches full: uPeak is as far as it gets, so it still fades to all of itself.
   return smoothstep(min(0.5, uPeak * 0.5), uPeak * (0.97 - 0.27 * uTight), texture2D(uMask, (world - uBox.xy) / uBox.zw).a + wobble * 0.14 * uPeak);
@@ -1047,7 +1048,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     // Four squares to a tile: a blade of grass, a board or a flagstone at its right size for the map, and sharp.
     const made = surfaceShine(floor, style), shine = shineOn ? made : { ...made, gloss: 0, glitter: 0, lift: 0, relief: 0, ripple: 0, wets: 0 }, answers = shine.gloss + shine.glitter + shine.lift + shine.relief > 0;
     skyAt = 0;
-    const mesh = quadOf(PIXI, box, SHOW_FRAG, { ...sunUniforms(PIXI), uTile: tileOf(floor, style), uTileSize: size * 4 * scaleNow, uGrid: size, uAlpha: 1, uShape: answers ? tileOf(floor, style, true) : PIXI.Texture.WHITE, uTwo: shine.still ? 0 : 1, uToSun: [1, 0], uSunColor: [1, 1, 1], uGlare: [0, 0], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uWet: 0, uRipple: shine.ripple, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uLift: shine.lift, uRelief: shine.relief, uSway: swaysInWind(floor) ? 1 : 0, uTime: 0, uWind: 0, uWindDir: [1, 0], uMask: mask, uPeak: peakOf(pixels, mask), uTight: floor === 'water' ? 1 : 0, uBox: [box.x, box.y, box.w, box.h] });
+    const mesh = quadOf(PIXI, box, SHOW_FRAG, { ...sunUniforms(PIXI), uTile: tileOf(floor, style), uTileSize: size * 4 * scaleNow, uGrid: size, uAlpha: 1, uShape: answers ? tileOf(floor, style, true) : PIXI.Texture.WHITE, uTwo: shine.still ? 0 : 1, uToSun: [1, 0], uSunColor: [1, 1, 1], uGlare: [0, 0], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uWet: 0, uRipple: shine.ripple, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uLift: shine.lift, uRelief: shine.relief, uSway: swaysInWind(floor) ? 1 : 0, uTime: 0, uWind: 0, uWindDir: [1, 0], uMask: mask, uPeak: peakOf(pixels, mask), uTight: edge === 0 ? 2 : floor === 'water' ? 1 : 0, uBox: [box.x, box.y, box.w, box.h] });
     mesh.animaterMask = mask; mesh.animaterWets = !!shine.wets;
     root().addChild(mesh);
     // Grass stands up off its ground, blade by blade.
@@ -1154,7 +1155,7 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
     r.renderTexture.bind(paint.texture);
     drawPlain(gl, programsFor(PIXI, r).get(lookFrag(id)), box, paint.texture.baseTexture.realWidth, paint.texture.baseTexture.realHeight, (u) => { gl.uniform1f(u('uGrid'), size); gl.uniform1f(u('uSeed'), seedOf(entry.id)); gl.uniform1f(u('uTime'), 0); gl.uniform1f(u('uCover'), spec.cover ? 1 : 0); gl.uniform1f(u('uBias'), biasOf(spec.strength ?? 1)); gl.uniform1f(u('uScale'), spec.scale ?? 1); });
     handBack(r);
-    const finisher = quadOf(PIXI, box, FINISH_FRAG, { uPaint: paint.texture, uGrid: size, uBody: bodyOf(id), uWet: 0, uAmount: spec.strength ?? 1, uClip: shore ? 1 : 0, uShore: shore ?? PIXI.Texture.WHITE, uMask: mask, uPeak: peakOf(pixels, mask), uBox: [box.x, box.y, box.w, box.h] });
+    const finisher = quadOf(PIXI, box, FINISH_FRAG, { uPaint: paint.texture, uGrid: size, uBody: bodyOf(id), uWet: 0, uAmount: spec.strength ?? 1, uClip: shore ? 1 : 0, uShore: shore ?? PIXI.Texture.WHITE, uMask: mask, uPeak: peakOf(pixels, mask), uTight: edge === 0 ? 2 : 0, uBox: [box.x, box.y, box.w, box.h] });
     render(finisher, done.texture, true, transform);
     finisher.destroy();
     paint.texture.destroy(true); mask.destroy(true); shore?.destroy(true);

@@ -176,6 +176,26 @@ export function stepMenu(own, floor) {
 }
 
 // The ways each floor can be painted: [key, name], the usual one first. The painters are in floor-looks.mjs.
+// The shadow what stands over water can throw, by its floor; the first is its usual. What the water engine knows them by: OVER_SHADOWS, in the shader's order.
+export const OVER_SHADOWS = Object.freeze(['solid', 'planks', 'slats', 'beams', 'dappled', 'arches', 'grate', 'stained', 'frosted', 'leaded', 'faint', 'cracked']);
+const SHADOW_NAMES = Object.freeze({ solid: 'Solid', planks: 'Planks', slats: 'Slats', beams: 'Beams', dappled: 'Dappled', arches: 'Arches', grate: 'Grate', stained: 'Coloured light', frosted: 'Frosted', leaded: 'Leaded', faint: 'Faint', cracked: 'Cracked' });
+const SHADOW_SETS = Object.freeze({ wood: ['planks', 'slats', 'beams', 'solid'], stone: ['solid', 'arches'], metal: ['solid', 'grate', 'beams'], glass: ['stained', 'frosted', 'leaded'], ice: ['faint', 'cracked'], grass: ['dappled', 'solid'], dirt: ['dappled', 'solid'], mud: ['dappled', 'solid'], sand: ['solid', 'dappled'], pebbles: ['solid', 'dappled'], snow: ['solid', 'dappled'] });
+export const OVER_SOFT = Object.freeze({ min: 0, max: 1, usual: 0 });
+export const OVER_DARK = Object.freeze({ min: 0.1, max: 0.9, usual: 0.45 });
+// Whether a region throws a shadow: its own say, else as what stands over water does.
+export const castsShadow = (own) => (typeof own?.castShadow === 'boolean' ? own.castShadow : own?.overWater === true);
+// How a raised floor is built, for a floor that has posts to offer. Plain is the floor itself; the others show what real docks show from above.
+export const DOCK_STYLES = Object.freeze([['', 'Plain'], ['old', 'Old boards'], ['railed', 'Railed pier']]);
+export const dockStyleOf = (own) => (DOCK_STYLES.some(([key]) => key && key === own?.dockStyle) ? own.dockStyle : '');
+// Whether a built floor shows its posts: yes until told not to.
+export const showsPosts = (own) => own?.overPosts !== false;
+// A floor's shadows, as [key, name]. (A marble floor is stone; anything unlisted, solid.)
+export const overShadowChoices = (floor) => (SHADOW_SETS[floor] ?? ['solid']).map((key) => [key, SHADOW_NAMES[key]]);
+// What a region throws on its floor now: it keeps a choice for each floor. { kind, soft, dark }.
+export const overShadowOf = (own, floor) => {
+  const set = SHADOW_SETS[floor] ?? ['solid'], chosen = own?.overShadows?.[floor], number = (value, range) => { const n = value === undefined || value === null || value === '' ? NaN : Number(value); return Number.isFinite(n) ? Math.min(range.max, Math.max(range.min, n)) : range.usual; };
+  return { kind: set.includes(chosen) ? chosen : dockStyleOf(own) && set.includes('solid') ? 'solid' : set[0], soft: number(own?.overShadowSoft, OVER_SOFT), dark: number(own?.overShadowDark, OVER_DARK) };
+};
 export const TEXTURE_STYLES = Object.freeze({
   grass: [['meadow', 'Meadow'], ['long', 'Long grass'], ['turf', 'Short turf'], ['dry', 'Dry straw'], ['clover', 'Clover'], ['forest', 'Forest floor']],
   stone: [['flagstones', 'Flagstones'], ['cobbles', 'Cobbles'], ['dungeon', 'Dungeon blocks'], ['cave', 'Cave rock'], ['marble', 'Marble'], ['crazy', 'Crazy paving']],

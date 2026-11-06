@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { IMMERSION_FEATURES, featureKeys, featureOn, featureShown, choiceWrites, newFeatures, immersionHTML, sceneValue, sceneWrites } from '../../scripts/ui/immersion-setup.mjs';
+import { IMMERSION_FEATURES, featureKeys, featureOn, featureShown, choiceWrites, newFeatures, stillToChoose, immersionHTML, sceneValue, sceneWrites } from '../../scripts/ui/immersion-setup.mjs';
 import { SETTINGS_TABS } from '../../scripts/ui/settings-window.mjs';
 
 const fish = { id: 'fish', name: 'Fish', short: 's', about: 'a', keys: ['pond', 'river', 'worldOnly'] };
@@ -95,4 +95,14 @@ test('the window offers use all, use none and save, and only the chosen row is o
   const html = immersionHTML({ features: [fish], choices: new Map([['fish', true]]), selected: 'fish', isGM: true, note: 'Look <here>' });
   for (const part of ['data-all="on"', 'data-all="off"', 'data-save', 'checked', 'Look &lt;here&gt;', '1 of 1 on']) assert.ok(html.includes(part), part);
   assert.ok(!immersionHTML({ features: [fish], choices: new Map(), selected: null, isGM: false }).includes('an-imm-more'));
+});
+
+test('a player is not asked about what a GM has locked for them', () => {
+  const fish = { id: 'fish', keys: ['fish'] }, birds = { id: 'birds', keys: ['birds', 'song'] }, has = () => true;
+  const ids = (locks) => stillToChoose([fish, birds], { has, locks }).map((f) => f.id);
+  assert.deepEqual(ids(undefined), ['fish', 'birds'], 'no locks, no change');
+  assert.deepEqual(ids({ 'animater.fishLocal': {} }), ['birds'], 'its one setting locked');
+  assert.deepEqual(ids({ 'animater.birdsLocal': {} }), ['fish', 'birds'], 'one of two locked leaves a choice');
+  assert.deepEqual(ids({ 'animater.birdsLocal': {}, 'animater.songLocal': {}, 'animater.fishLocal': {} }), [], 'nothing left: no popup');
+  assert.deepEqual(ids({ 'animater.fishLocal': { soft: true } }), ['fish', 'birds'], 'a soft lock only recommends');
 });

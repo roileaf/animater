@@ -63,6 +63,7 @@ export const SETTINGS_TABS = Object.freeze([
   ] },
   { id: "floor", label: "Floor & world", icon: "fa-solid fa-mountain-sun", rows: [
     { menu: "immersionMenu" },
+    { world: "immersionForPlayers" },
     { world: "groundMarks", local: "groundMarksLocal", extras: ["groundMarkMinutes"] },
     { world: "elementReactions", local: "elementReactionsLocal" },
     { world: "marksChangeFloor" },

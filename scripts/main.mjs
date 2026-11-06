@@ -90,7 +90,7 @@ import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acous
 import { createReverbBuses } from "./engines/sound/reverb-bus.mjs";
 import { hitSoundsMenu } from "./ui/hit-sounds-settings.mjs";
 import { settingsWindow, WINDOW_SETTING_KEYS } from "./ui/settings-window.mjs";
-import { IMMERSION_FEATURES, immersionWindow, newFeatures } from "./ui/immersion-setup.mjs";
+import { IMMERSION_FEATURES, immersionWindow, newFeatures, stillToChoose } from "./ui/immersion-setup.mjs";
 import { weaponCategories } from "./systems/weapon-categories.mjs";
 import { beachKeepOff, createCoast, shoreAt, shoreField, tideLevel } from "./engines/motion/coast.mjs";
 import { PLACE_VOLUME, THROUGH_WALL, placeHeard, placeHeardLouds, fallLoudness, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
@@ -208,7 +208,7 @@ import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, th
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf } from "./engines/motion/region-steps.mjs";
+import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, overShadowChoices, DOCK_STYLES, dockStyleOf, showsPosts } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
@@ -216,7 +216,8 @@ import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, bl
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
 import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
-import { createWaterEngine, seaShore, wakeRingDue } from "./engines/motion/water-engine.mjs";
+import { createWaterEngine, overLiftOf, seaShore, wakeRingDue } from "./engines/motion/water-engine.mjs";
+import { createFloorShadows, floorBody, longEdges, postSpots } from "./engines/motion/floor-shadows.mjs";
 import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from "./engines/motion/light-flames.mjs";
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, skylightShare } from "./engines/motion/cavern.mjs";
@@ -2038,7 +2039,7 @@ const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646)
 // A region's steps (engines/motion/region-steps.mjs): the look on its floor, and the GM's menu on a right-click on the map.
 // The floor layers lie on the map under its tiles (tiles sort at 500), so a bush or a tree stands over blood on the ground.
 const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorLayer("floorLooks", 410), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
-const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorLayer("floorTextures", 400), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { syncMovingWater(movingWaterList()); }, tileSize: () => floorLevel.tile ?? 1024 });
+const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorLayer("floorTextures", 400), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { const moving = movingWaterList(); syncMovingWater(moving); syncFloorShadows(moving); }, tileSize: () => floorLevel.tile ?? 1024 });
 // Where the creatures are drawn now, for the grass they walk through.
 const tokensOnFloor = () => { const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } return out; };
 const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
@@ -2075,16 +2076,21 @@ const syncFloorLooks = () => {
   }
   floorTextures.sync(painted);
   syncMovingWater(moving);
+  syncFloorShadows(moving);
 };
 // Moving water (engines/motion/water-engine.mjs): the GM's for each scene, as a map may paint its water so it won't bend well, and each region's after that.
 const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
+// What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
+const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorLayer("floorShadows", 405), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
 const movingWaterHere = () => canvas?.scene?.flags?.[ID]?.movingWater === "on";
+// Whether two sets of areas have boxes that overlap at all.
+const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
 const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   let on = false;
   try { on = !!floorLevel.water && movingWaterHere() && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { /* not ready */ }
-  // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them.
-  const over = on ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true) : [];
+  // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them; and what casts a shadow shades it, hidden or not.
+  const over = on ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
   if (on) for (const region of regionsHere()) {
     try {
       const own = region.flags?.[ID] ?? {};
@@ -2095,10 +2101,36 @@ const movingWaterList = () => {
       const areas = regionAreas(region), toward = waterFlows(kind) ? own.flowTo || "s" : "", plain = plainFloorOf(region);
       const under = plain && floorLevel.show && regionStepsOn() && showsTexture(own, sceneChoice) ? { floor: textureFloor(own, plain), edge: stepEdge(own) } : null;
       const bed = under ? { texture: floorTextures.tile(under.floor, textureStyleOf(own, under.floor)), key: `${under.floor}/${textureStyleOf(own, under.floor)}`, edge: under.edge, colourOnly: under.floor === "water" } : null;
-      list.push({ id: region.id, areas, cuts: over.filter((r) => r.id !== region.id).flatMap((r) => regionAreas(r)), bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas) });
+      // (Its shadow by how far above this water it stands; with several, the highest that reaches it.)
+      const above = over.filter((r) => r.id !== region.id && boxesMeet(regionAreas(r), areas));
+      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreas(r), xs = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1)); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas) });
     } catch { /* a broken region never breaks the rest */ }
   }
   return list;
+};
+// What of a raised floor shows from its own painted tile: plain, nothing but the floor; built, what it is built from, with its posts if it shows them, standing in the water or on what is lower.
+const floorBodyOf = (region, own, floor, areas, bottom, base) => {
+  const painted = showsTexture(own ?? {}, canvas.scene?.flags?.[ID]?.floorTextures), under = textureFloor(own ?? {}, floor), body = floorBody(floor), grid = canvas.grid.size, style = body.post ? dockStyleOf(own) : "";
+  const tile = style ? floorTextures.tile(under, textureStyleOf(own, under)) : null;
+  const inside = (x, y) => areas.some((a) => pointInPolygon({ x, y }, a)), overWater = (x, y) => { try { return waterEngine.holds(x, y); } catch { return false; } };
+  const posts = style && showsPosts(own) ? postSpots(areas, { grid, gap: body.post.gap, size: style === "old" ? body.post.size : body.post.slim, inside, where: (x, y) => overWater(x, y) || bottom > base }).map((p) => ({ ...p, water: overWater(p.x, p.y) })) : [];
+  return { floor, tile, tileSize: grid * 4 * stepScale(own), style, painted, posts, edges: style ? longEdges(areas, { grid, inside }) : [] };
+};
+// What casts a shadow on the ground and floors below it: by how far above them it stands, and never on itself, on what stands as high, or on moving water (the water draws its own).
+const syncFloorShadows = (moving) => {
+  const list = [], on = floorLevel.show && regionStepsOn(), here = regionsHere(), floors = here.filter((r) => plainFloorOf(r)), base = Number(canvas.level?.elevation?.base) || 0, bottomOf = (r) => { const n = Number(r.elevation?.bottom); return Number.isFinite(n) ? n : base; };
+  if (on) for (const region of here) {
+    try {
+      const own = region.flags?.[ID], floor = plainFloorOf(region);
+      if (!floor || floor === "water" || !castsShadow(own)) continue;
+      const areas = regionAreas(region);
+      if (roofedRegion(areas)) continue;
+      const bottom = bottomOf(region), beneath = floors.filter((r) => r !== region && bottomOf(r) < bottom && boxesMeet(regionAreas(r), areas)).map(bottomOf), xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
+      const high = floors.filter((r) => r !== region && bottomOf(r) >= bottom).map((r) => regionAreas(r));
+      list.push({ id: region.id, areas, ...overShadowOf(own, floor), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) });
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  floorShadows.sync(list);
 };
 const syncMovingWater = (list) => {
   waterEngine.sync(list, { floor: list.length ? mapFloor() : null, quality: floorLevel.water ?? "full" });
@@ -2114,7 +2146,7 @@ const stepMenuBox = createStepMenu({ flagsOf: stepFlagsOf, save: saveStepFlags, 
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { stepMenuBox.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); stepMenuBox.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); stepMenuBox.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
@@ -4183,6 +4215,7 @@ function skyTick() {
   if (waterEngine.busy) waterEngine.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights, fish: () => wildlife.fishBeneath });
   if (floorLooks.busy) floorLooks.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, mostLights: floorLevel.lights });
   if (floorMotion.busy) floorMotion.tick(seconds, viewNow(), skyForFloors(sunNow).strength);
+  if (floorShadows.busy) { floorShadows.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, weather: () => floorWeather }); for (const p of floorShadows.ripples(seconds)) waterEngine.addRing({ x: p.x, y: p.y, size: 0.4, keep: false }); }
   if (floorTextures.busy) floorTextures.tick(seconds, { shade: sunReachNow, wind: skyWindNow, angle: skyWindAngle, sky: () => sunNow, tokens: tokensOnFloor, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, mostLights: floorLevel.lights });
   if (energyBlasts.busy) energyBlasts.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
@@ -6285,11 +6318,14 @@ function debugPrint(x, y, heading) {
   return () => feelLayer.removeParticle(handle);
 }
 const immersionMenuWindow = () => immersionWindow(foundry.applications.api.ApplicationV2, { id: ID, demo: immersionDemo, preview: immersionPreview });
-// Once for each feature, on first load after it arrives: the GM (the active one) for the table, each player for their screen.
+// What a settings-lock module has locked for players, by full setting id: none without one, or with its locks turned off.
+const settingLocks = () => { try { return game.modules.get("bbmm")?.active && game.settings.get("bbmm", "enableUserSettingSync") !== false ? game.settings.get("bbmm", "userSettingSync") ?? {} : {}; } catch { return {}; } };
+// Once for each feature, on first load after it arrives: the GM (the active one) for the table; each player for their screen only if the GM asks for that, and not for what the GM has locked.
 async function offerImmersion() {
   if (!canvas?.ready) return void Hooks.once("canvasReady", () => { setTimeout(() => void offerImmersion().catch((e) => console.warn("Animater immersion:", e.message)), 1500); });
   if (game.user.isGM && !(game.users.activeGM?.isSelf ?? true)) return;
-  const key = game.user.isGM ? "immersionSeen" : "immersionSeenLocal", fresh = newFeatures(IMMERSION_FEATURES, hotSetting(key));
+  if (!game.user.isGM && hotSetting("immersionForPlayers") !== true) return;
+  const key = game.user.isGM ? "immersionSeen" : "immersionSeenLocal", arrived = newFeatures(IMMERSION_FEATURES, hotSetting(key)), fresh = game.user.isGM ? arrived : stillToChoose(arrived, { has: (name) => game.settings.settings.has(`${ID}.${name}`), locks: settingLocks(), id: ID });
   if (!fresh.length) return;
   await game.settings.set(ID, key, IMMERSION_FEATURES.map((f) => f.id));
   const Window = immersionMenuWindow(), win = new Window({ only: fresh.map((f) => f.id) });
@@ -7726,6 +7762,7 @@ Hooks.once("init", () => {
   registerSetting("welcomed", { scope: "world", config: false, type: Boolean, default: false });
   registerSetting("immersionSeen", { scope: "world", config: false, type: Array, default: [] });
   registerSetting("immersionSeenLocal", { scope: "client", config: false, type: Array, default: [] });
+  registerSetting("immersionForPlayers", { name: "Ask players to choose their immersion", hint: "On, players are shown Choose your immersion when new features arrive, except features you have locked for them with BBMM. Off, they aren't asked and keep what you set; they can still open it from their Animater settings.", scope: "world", config: false, type: Boolean, default: false });
   game.settings.registerMenu(ID, "immersionMenu", { name: "Choose your immersion", label: "Show and choose", icon: "fa-solid fa-leaf", hint: "Each immersion feature explained and shown on the scene that is open, to choose which to use.", type: immersionMenuWindow(), restricted: false });
   registerSetting(DRAMATIC_DEATHS, {
     name: "Damage-typed knockouts",
@@ -8350,6 +8387,7 @@ Hooks.on("renderRegionConfig", (app, html) => {
   tab.append(section("Floor and water",
     floorSelect(own.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's. The sun glitters on water and sparkles on snow and ice here, and the air shimmers over sand at a hot midday."),
     field("Stands over water", box("overWater"), 'A dock, a bridge, a raft: moving water and its waves run on underneath this region, unbroken, instead of over it, and its own floor is what creatures walk on. Give it an elevation and only a creature swimming below that is in the water. Off, a beach or sandbar laid over a sea stays as it is.'),
+    ...(() => { const floor = plainFloorOf(app.document), choices = overShadowChoices(floor ?? ""); return floor && floor !== "water" ? [field("Casts a shadow", `<input type="checkbox" name="flags.${ID}.castShadow"${castsShadow(own) ? " checked" : ""}>`, "This floor stands above what is below it, and throws a shadow on it, away from the sun and longer as the sun gets low. The higher above what is below it, by their elevations, the longer."), field("Its shadow", select(`overShadows.${floor}`, overShadowOf(own, floor).kind, choices), "Which shadow it throws, for this floor. Its softness and darkness are in its right-click menu."), ...(floorBody(floor).post ? [field("Built as", select("dockStyle", dockStyleOf(own), DOCK_STYLES), "Plain is just the floor and its shadow. Old boards and Railed pier show what real docks show from above: edge boards, planks, and beam ends; a railed pier has rails too, with their shadow."), ...(dockStyleOf(own) ? [field("Posts", `<input type="checkbox" name="flags.${ID}.overPosts"${showsPosts(own) ? " checked" : ""}>`, "What holds it up, along its long edges, made of its own floor: standing in the water, or on what is lower if it is raised. Off, it has no posts or beam ends.")] : [])] : [])] : []; })(),
     field("Never freezes", box("noFreeze"), 'Water here stays open in a hard frost ("Water freezes"): a hot spring, a fast river.'),
     field("This is the sea", box("sea"), 'Waves wash in on its shores, the wet sand moves with the tide, and crabs keep to the shore ("The coast").'),
     field("This is a tavern", box("tavern"), 'The murmur of a crowd inside: loud in here, faint through the walls, and spilling out of an open door ("Tavern murmur"). Works on any floor.'),
