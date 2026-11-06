@@ -285,7 +285,6 @@ function waterApp(map = null) {
       return options.match(/<option value="([^"]*)" selected>/)?.[1] ?? options.match(/<option value="([^"]*)"/)?.[1] ?? "";
     };
     const parsed = makeRow(id, Boolean(checked), chosen("data-kind") || "still", chosen("data-flow"), chosen("data-current"));
-    parsed.subtractButton = { dataset: { subtractFrom: id }, setAttribute(name, value) { this[name] = value; } };
     parsed.querySelector("[data-wave]").value = chosen("data-wave");
     parsed.querySelector("[data-beach]").checked = /data-beach="[^"]*" checked/.test(part);
     return parsed;
@@ -308,7 +307,6 @@ function waterApp(map = null) {
     return null;
   };
   const queryAll = (selector) => {
-    if (selector === "[data-subtract-from]") return rows.map(row => row.subtractButton);
     if (selector === "[data-id]" || selector === ".an-water-row") return [...rows];
     if (selector === "[data-pick]:checked") return rows.filter((row) => row.querySelector("[data-pick]").checked).map((row) => row.querySelector("[data-pick]"));
     if (["[data-kind]", "[data-flow]", "[data-current]"].includes(selector)) return rows.map((row) => row.querySelector(selector));
@@ -481,6 +479,9 @@ test("a clicked piece above a quarter of the map carries a warning, and only a c
   assert.doesNotMatch(waterRowHTML(pieces({ clicked: true, share: 0.2 })), /of the map/);
   assert.doesNotMatch(waterRowHTML(pieces({ share: 0.73 })), /of the map/);
   assert.match(waterRowHTML(pieces()), /data-remove="water-1"/);
+  assert.match(waterRowHTML(pieces()), /Add water/);
+  assert.match(waterRowHTML(pieces()), /Edit outline/);
+  assert.doesNotMatch(waterRowHTML(pieces()), /Remove water/);
 });
 
 test("a second render keeps the controls and the GM's choices", async () => {
@@ -1111,240 +1112,20 @@ test("second Add water with a diagonal touch", async () => {
   await app.close();
 });
 
-test("Remove water edits reopened geometry by ID, preserves ticks, undoes, and saves shapes only", async () => {
+test("a manual shore edit supersedes the outline cut it replaces during later Add", async () => {
   const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
-  const region = savedRegion("edited");
-  region.shapes[0].points = [102.5,202.5,192.5,202.5,192.5,292.5,102.5,292.5];
-  const otherRegion = savedRegion("other",220);
-  const beforeDocs = structuredClone([region,otherRegion]);
-  const scene = fakeScene([region,otherRegion]), ui = waterApp(), notes = [];
-  const rgba = new Uint8Array(20*20*4);
-  for(let p=0;p<400;p++) rgba.set([144,180,90,255],p*4);
-  for(let y=3;y<5;y++) for(let x=3;x<5;x++) rgba.set([80,100,50,255],(y*20+x)*4);
-  const { app } = await openWaterDetect(opening({ Application:ui.App, scene, sceneRect:editRect,
-    load:async()=>({ok:true,rgba,width:20,height:20}), detect:()=>({proposals:[]}), notify:m=>notes.push(m),
-  }));
-  const original=app.detect.proposals[0], other=app.detect.proposals[1];
-  const click=(x,y)=>app.clickPreview({clientX:x,clientY:y,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-  ui.fire("click",ui.button("subtract-from","water-1"));
-  assert.deepEqual(app.mode,{kind:"subtract",areaId:"water-1"});
-  assert.equal(ui.rows()[0].subtractButton.textContent,"Removing water here");
-  assert.equal(ui.rows()[0].subtractButton["aria-pressed"],"true");
-  assert.match(ui.status["data-add-message"].textContent,/Removing.*Checkboxes/);
-  click(3,3);
-  const trimmed=app.detect.proposals[0];
-  assert.equal(trimmed.pixels.length,77);
-  assert.equal(trimmed.loops.filter(l=>l.hole).length,1);
-  assert.deepEqual(trimmed.loops[0].points,original.loops[0].points);
-  assert.equal(trimmed.regionId,"edited");
-  assert.deepEqual(trimmed.savedChoices,original.savedChoices);
-  assert.strictEqual(app.detect.proposals[1],other);
-  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,false);
-  assert.equal(app.history.length,1);
-  for(const at of [[3,3],[14,2],[19,19],[0,0]]) click(...at);
-  assert.strictEqual(app.detect.proposals[0],trimmed);
-  assert.equal(app.history.length,1,"holes, other rows, outside and whole-area removal are atomic");
-  const hole=waterProposalFromLoops([{points:[3,3,5,3,5,5,3,5],hole:false}],20,20);
-  assert.equal(app.subtractArea(trimmed,hole),false,"cut inside existing hole is a no-op");
-  assert.equal(app.history.length,1);
-  await app.create();
-  assert.deepEqual(scene.calls,[],"unticked saved draft sends nothing");
-  ui.rows()[0].querySelector("[data-pick]").checked=true;
-  app.undoAdd();
-  assert.strictEqual(app.detect.proposals[0],original);
-  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,true);
-  click(3,3);
+  const ui = waterApp();
+  const initial = { ...waterProposalFromLoops([{ points: [0, 0, 10, 0, 10, 10, 0, 10], hole: false }], 20, 20), id: "water-1" };
+  const { app } = await openWaterDetect(opening({ Application: ui.App, scene: fakeScene(), load: async () => ({ ok: true, rgba: null, width: 20, height: 20 }), detect: () => ({ proposals: [initial] }) }));
+  app.setMode({ kind: "vertices", areaId: "water-1" });
+  const notched = [{ points: [0, 0, 10, 0, 10, 4, 8, 4, 8, 6, 10, 6, 10, 10, 0, 10], hole: false }];
+  assert.equal(app.commitOutline(notched), true);
+  assert.equal(app.detect.proposals[0].pixels.includes(4 * 20 + 8), false);
+  const pulled = app.detect.proposals[0].loops.map((loop) => ({ ...loop, points: loop.points.map((value, index) => index % 2 === 0 && value === 8 ? 9 : value) }));
+  assert.equal(app.commitOutline(pulled), true);
+  assert.equal(app.detect.proposals[0].pixels.includes(4 * 20 + 8), true);
   app.setAddTarget("water-1");
-  const addition=waterProposalFromLoops([{points:[2,12,5,12,5,15,2,15],hole:false}],20,20);
-  app.combineAreas([{...addition,id:"addition"}]);
-  assert.ok(app.detect.proposals[0].loops[0].points.includes(0.25));
-  assert.ok(app.detect.proposals[0].loops[0].points.includes(9.25));
-  assert.equal(app.detect.proposals[0].loops.filter(l=>l.hole).length,1);
-  assert.equal(app.detect.proposals[0].pixels.includes(63),false);
-  app.undoAdd();
-  await app.create();
-  assert.deepEqual(scene.calls.map(c=>c[0]),["update"]);
-  const [patch]=scene.calls[0][2];
-  assert.deepEqual(Object.keys(patch).sort(),["_id","shapes"]);
-  assert.equal(patch._id,"edited");
-  assert.equal(patch.shapes.filter(s=>s.hole).length,1);
-  assert.deepEqual([region,otherRegion],beforeDocs);
-  assert.ok(notes.some(m=>/Keep some water/.test(m)));
-});
-
-test("removal through the map edge trims a border and a full channel splits one row", async () => {
-  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
-  for(const channel of [false,true]) {
-    const ui=waterApp(),rgba=new Uint8Array(400*4);
-    for(let p=0;p<400;p++) rgba.set([144,180,90,255],p*4);
-    for(let y=0;y<(channel?10:4);y++) rgba.set([80,80,80,255],(y*20+4)*4);
-    const original={...waterProposalFromLoops([{points:[0,0,10,0,10,10,0,10],hole:false}],20,20),id:"water-1",preselected:true};
-    const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[original]})}));
-    app.setMode({kind:"subtract",areaId:"water-1"});
-    app.clickPreview({clientX:4,clientY:0,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-    assert.equal(app.detect.proposals.length,1);
-    assert.equal(app.detect.proposals[0].id,original.id);
-    assert.equal(app.detect.proposals[0].pixels.length,channel?90:96);
-    assert.equal(app.detect.proposals[0].loops.filter(l=>!l.hole).length,channel?2:1);
-    assert.equal(app.detect.proposals[0].loops.filter(l=>l.hole).length,0);
-    assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,true);
-    await app.close();
-  }
-});
-
-test("real Add picker preserves a removed same-hue dock and border", async () => {
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  for(const border of [false,true]) {
-    const ui=waterApp(),rgba=new Uint8Array(100*100*4);
-    for(let p=0;p<10000;p++) rgba.set([144,180,90,255],p*4);
-    const x0=border?0:10;
-    for(let y=10;y<14;y++) for(let x=x0;x<x0+4;x++) rgba.set([80,100,50,255],(y*100+x)*4);
-    const initial={...waterProposalFromLoops([{points:[0,0,50,0,50,100,0,100],hole:false}],100,100),id:"water-1",preselected:false};
-    const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),sceneRect:{x:0,y:0,width:100,height:100},load:async()=>({ok:true,rgba,width:100,height:100}),detect:()=>({proposals:[initial]})}));
-    const click=(x,y)=>app.clickPreview({clientX:x+.5,clientY:y+.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:100,height:100})}});
-    ui.fire("click",ui.button("subtract-from","water-1"));click(x0,10);
-    app.setMode({kind:"vertices",areaId:"water-1"});
-    const edited=app.detect.proposals[0].loops.map(loop=>({...loop,points:loop.points.map((v,i)=>i===0?v+.25:v)}));
-    assert.equal(app.commitOutline(edited),true);
-    ui.fire("click",ui.button("add-to","water-1"));click(70,50);
-    assert.ok(app.detect.proposals[0].pixels.includes(5070),"new water is added");
-    assert.equal(app.detect.proposals[0].pixels.includes(1000+x0),false,"the real selection cannot restore the dock");
-    assert.equal(ui.rows()[0].querySelector("[data-pick]").checked,false);
-    await app.close();
-  }
-});
-
-test("fractional border cuts reach the shore, split channels, and leave no empty shapes", async () => {
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  for(const channel of [false,true]) {
-    const ui=waterApp(),rgba=new Uint8Array(400*4);
-    for(let p=0;p<400;p++) rgba.set([144,180,90,255],p*4);
-    for(let y=channel?0:3;y<(channel?12:5);y++) for(let x=channel?4:6;x<(channel?5:12);x++) rgba.set([80,80,80,255],(y*20+x)*4);
-    const region=savedRegion("edited");region.shapes[0].points=[.25,.25,9.25,.25,9.25,9.25,.25,9.25];
-    const scene=fakeScene([region]);
-    const {app}=await openWaterDetect(opening({Application:ui.App,scene,sceneRect:{x:0,y:0,width:20,height:20},load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[]})}));
-    app.setMode({kind:"subtract",areaId:"water-1"});
-    app.clickPreview({clientX:channel?4.5:7.5,clientY:channel?.5:3.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-    const proposal=app.detect.proposals[0];
-    assert.equal(proposal.loops.filter(l=>l.hole).length,0);
-    assert.equal(proposal.loops.length,channel?2:1);
-    for(const loop of proposal.loops) assert.ok(waterProposalFromLoops([loop],20,20).pixels.length);
-    ui.rows()[0].querySelector("[data-pick]").checked=true;await app.create();
-    assert.equal(scene.calls[0][2][0].shapes.length,channel?2:1);
-  }
-});
-
-test("draft removal uses painted polygon coverage and the UI passes Narrow and Wide", async () => {
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  for(const range of ["narrow","wide"]) {
-    const ui=waterApp(),rgba=new Uint8Array(400*4);
-    for(let p=0;p<400;p++) rgba.set([180,210,160,255],p*4);
-    rgba.set([80,100,50,255],42*4);rgba.set([110,140,70,255],43*4);
-    const initial={...waterProposalFromLoops([{points:[0,0,10,0,10,10,0,10],hole:false}],20,20),id:"water-1"};
-    initial.pixels=initial.pixels.filter(p=>p!==42);
-    const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[initial]})}));
-    ui.setShared("s","","still",range);ui.fire("click",ui.button("subtract-from","water-1"));
-    app.clickPreview({clientX:2.5,clientY:2.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-    assert.equal(app.detect.proposals[0].pixels.includes(42),false);
-    assert.equal(app.detect.proposals[0].pixels.includes(43),range==="narrow");
-    assert.equal(app.history.length,1);await app.close();
-  }
-});
-
-test("invalid subtraction reports refusal without changing the draft or history", async () => {
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  const ui=waterApp(),notes=[];
-  const initial={...waterProposalFromLoops([{points:[.25,.25,9.25,.25,9.25,9.25,.25,9.25],hole:false}],20,20),id:"water-1",preselected:false};
-  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),notify:m=>notes.push(m),load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[initial]})}));
-  const cut={loops:[{points:[.25,.25,2.25,.25,2.25,2.25,.25,2.25],hole:false},{points:[2.25,2.25,4.25,2.25,4.25,4.25,2.25,4.25],hole:false}]};
-  assert.equal(app.subtractArea(initial,cut),false);
-  assert.strictEqual(app.detect.proposals[0],initial);
-  assert.equal(app.history?.length??0,0);
-  assert.match(notes.at(-1),/touch|invalid/);
-  await app.close();
-});
-
-test("bank-colored boundary cells cannot connect two unconnected docks", async () => {
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  const ui=waterApp(),rgba=new Uint8Array(400*4),land=[110,85,55,255],water=[40,90,160,255];
-  for(let y=0;y<20;y++) for(let x=0;x<20;x++) rgba.set(x>=3&&x<17&&y>=3&&y<17?water:land,(y*20+x)*4);
-  for(const x of [6,12]) for(let y=3;y<8;y++) rgba.set(land,(y*20+x)*4);
-  const initial={...waterProposalFromLoops([{points:[2.75,2.75,17.25,2.75,17.25,17.25,2.75,17.25],hole:false}],20,20),id:"water-1"};
-  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[initial]})}));
-  app.setMode({kind:"subtract",areaId:"water-1"});
-  app.clickPreview({clientX:6.5,clientY:5.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-  const result=app.detect.proposals[0];
-  assert.equal(result.pixels.includes(5*20+6),false);
-  assert.equal(result.pixels.includes(5*20+12),true);
-  assert.ok(result.loops[0].points.includes(2.75));assert.ok(result.loops[0].points.includes(17.25));
-  assert.equal(result.pixels.length,initial.pixels.length-5);
-  await app.close();
-});
-
-test("an unrelated cut preserves an existing subpixel component and saves it", async () => {
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  const tiny={points:[15.1,15.1,15.4,15.1,15.4,15.4,15.1,15.4],hole:false};
-  const region=savedRegion("edited");region.shapes=[{type:"polygon",points:[0,0,10,0,10,10,0,10],hole:false},{type:"polygon",...tiny}];
-  const ui=waterApp(),scene=fakeScene([region]),rgba=new Uint8Array(400*4);
-  for(let p=0;p<400;p++) rgba.set([40,90,160,255],p*4);
-  rgba.set([110,85,55,255],42*4);
-  const {app}=await openWaterDetect(opening({Application:ui.App,scene,sceneRect:{x:0,y:0,width:20,height:20},load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[]})}));
-  app.setMode({kind:"subtract",areaId:"water-1"});app.clickPreview({clientX:2.5,clientY:2.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-  assert.ok(app.detect.proposals[0].loops.some(loop=>JSON.stringify(loop.points)===JSON.stringify(tiny.points)));
-  ui.rows()[0].querySelector("[data-pick]").checked=true;await app.create();
-  assert.ok(scene.calls[0][2][0].shapes.some(shape=>JSON.stringify(shape.points)===JSON.stringify(tiny.points)));
-});
-
-test("a manual notch edit supersedes earlier cuts during later Add",async()=>{
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  const ui=waterApp();
-  const initial={...waterProposalFromLoops([{points:[0,0,10,0,10,10,0,10],hole:false}],20,20),id:"water-1"};
-  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[initial]})}));
-  const cut={loops:[{points:[8,4,11,4,11,6,8,6],hole:false}]};
-  app.subtractArea(initial,cut);app.setMode({kind:"vertices",areaId:"water-1"});
-  const edited=app.detect.proposals[0].loops.map(loop=>({...loop,points:loop.points.map((v,i)=>i%2===0&&v===8?9:v)}));
-  assert.equal(app.commitOutline(edited),true);
-  assert.ok(app.detect.proposals[0].pixels.includes(4*20+8));
-  app.setAddTarget("water-1");
-  app.combineAreas([{...waterProposalFromLoops([{points:[12,0,15,0,15,3,12,3],hole:false}],20,20),id:"addition"}]);
-  assert.ok(app.detect.proposals[0].pixels.includes(4*20+8));
-  await app.close();
-});
-
-test("removal cannot notch a nearby sibling and a subpixel stream keeps its unclicked length",async()=>{
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  for(const thin of [false,true]) {
-    const sibling={points:thin?[10.2,0,10.45,0,10.45,15,10.2,15]:[10.6,0,19,0,19,15,10.6,15],hole:false};
-    const main={points:[0,0,10,0,10,15,0,15],hole:false};
-    const initial={...waterProposalFromLoops([main,sibling],20,20),id:"water-1"};
-    const ui=waterApp(),rgba=new Uint8Array(400*4);
-    for(let p=0;p<400;p++) rgba.set([40,90,160,255],p*4);
-    for(let y=4;y<7;y++) for(let x=8;x<11;x++) rgba.set([200,60,60,255],(y*20+x)*4);
-    const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[initial]})}));
-    app.setMode({kind:"subtract",areaId:"water-1"});
-    const click=(x,y)=>app.clickPreview({clientX:x+.5,clientY:y+.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-    click(9,5);
-    assert.ok(app.detect.proposals[0].loops.some(loop=>JSON.stringify(loop.points)===JSON.stringify(sibling.points)));
-    if(thin) {
-      click(10,5);
-      const pieces=app.detect.proposals[0].loops.filter(loop=>!loop.hole&&loop.points.includes(10.2));
-      assert.equal(pieces.length,2);
-      assert.ok(pieces.some(loop=>loop.points.includes(0)));
-      assert.ok(pieces.some(loop=>loop.points.includes(15)));
-    }
-    await app.close();
-  }
-});
-
-test("a boundary-only click trims only its selected cell",async()=>{
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
-  const initial={...waterProposalFromLoops([{points:[.75,.75,9.25,.75,9.25,9.25,.75,9.25],hole:false}],20,20),id:"water-1"};
-  const ui=waterApp(),rgba=new Uint8Array(400*4);
-  for(let p=0;p<400;p++) rgba.set([40,90,160,255],p*4);rgba.set([200,60,60,255],80*4);
-  const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba,width:20,height:20}),detect:()=>({proposals:[initial]})}));
-  app.setMode({kind:"subtract",areaId:"water-1"});app.clickPreview({clientX:.5,clientY:4.5,target:{getBoundingClientRect:()=>({left:0,top:0,width:20,height:20})}});
-  const points=app.detect.proposals[0].loops[0].points;
-  assert.ok(points.includes(4)&&points.includes(5));
-  assert.equal(points.includes(3),false);assert.equal(points.includes(6),false);
+  app.combineAreas([{ ...waterProposalFromLoops([{ points: [12, 0, 15, 0, 15, 3, 12, 3], hole: false }], 20, 20), id: "addition" }]);
+  assert.equal(app.detect.proposals[0].pixels.includes(4 * 20 + 8), true);
   await app.close();
 });
