@@ -59,3 +59,29 @@ test("diagonal contacts refuse safely without filling extra excluded pixels",()=
   assert.equal(result.status,"none");
   assert.equal(result.reason,"invalid-exclusion");
 });
+
+test("hue and neutral color limits exclude distinct connected surfaces",()=>{
+  const cases=[
+    [[40,100,40],[40,40,100],false,false],
+    [[80,80,80],[110,110,110],false,false],
+    [[80,80,80],[110,110,110],true,true],
+    [[90,100,90],[95,95,95],false,false],
+    [[90,100,90],[95,95,95],true,false],
+  ];
+  for(const [seed,neighbor,broad,includes] of cases) {
+    const rgba=image([220,220,220],[[[26],seed],[[27],neighbor]]);
+    assert.equal(pick(rgba,2,2,{broad}).proposal.pixels.includes(27),includes);
+    rgba[27*4+3]=0;
+    assert.equal(pick(rgba,2,2,{broad}).proposal.pixels.includes(27),false);
+  }
+});
+
+test("selection coverage includes fractional boundary cells but leaves full hole cells clear",async()=>{
+  const {waterSelectionPixels}=await import("../../../scripts/engines/regions/water-detect.mjs");
+  const pixels=waterSelectionPixels([box(.25,.25,9,9),box(3,3,2,2,true)],12,12);
+  assert.equal(pixels.length,96);
+  assert.ok(pixels.includes(9*12+9));
+  assert.equal(pixels.includes(3*12+3),false);
+  const triangle=[{points:[.25,.25,2.25,.25,.25,2.25],hole:false}];
+  assert.deepEqual([...waterSelectionPixels(triangle,4,4)],[0,1,2,4,5,8]);
+});

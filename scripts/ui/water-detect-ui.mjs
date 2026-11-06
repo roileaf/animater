@@ -1,7 +1,7 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectWaterAt, selectExcludedAreaAt, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
+import { detectWater, selectWaterAt, selectExcludedAreaAt, waterSelectionPixels, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/water-outline.mjs";
 
@@ -474,14 +474,19 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const choices = choicesFromElement(this.element);
       const mergedIds = new Set([target.id, ...additions.map((proposal) => proposal.id)]);
       const claimed = detect.proposals.filter((proposal) => !mergedIds.has(proposal.id));
+      const exclusions = [target, ...additions].flatMap(proposal => proposal.exclusions ?? []);
       let merged;
       if ([target, ...additions].some((proposal) => proposal.outlineEdited)) {
         const addedLoops = additions.flatMap((proposal) => proposal.outlineEdited ? proposal.loops
           : mergeWaterProposals([proposal], detect.width, detect.height, { claimed }).loops);
         try {
-          merged = { ...target, ...waterProposalFromLoops(unionOutlines(target.loops, addedLoops), detect.width, detect.height), geometryChanged: true, outlineEdited: true };
+          merged = { ...target, ...waterProposalFromLoops(exclusions.reduce((loops, cut) => subtractOutlines(loops, cut), unionOutlines(target.loops, addedLoops)), detect.width, detect.height), geometryChanged: true, outlineEdited: true, exclusions };
         } catch (error) { hooks.notify?.(error.message); return; }
       } else merged = { ...mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed, preserveTarget: !!target.regionId }), geometryChanged: true };
+      const owned = new Set(target.pixels);
+      if (!additions.some(p => detect.proposals.includes(p)) && merged.pixels.length === owned.size && merged.pixels.every(pixel => owned.has(pixel))) {
+        hooks.notify?.("That water is already part of this area."); return;
+      }
       this.remember();
       detect.proposals = detect.proposals.filter((proposal) => proposal.id === target.id || !mergedIds.has(proposal.id))
         .map((proposal) => proposal.id === target.id ? merged : proposal);
@@ -493,15 +498,17 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const { detect } = this;
       let geometry;
       try {
-        const loops = subtractOutlines(target.loops, exclusion.loops);
+        let loops = subtractOutlines(target.loops, exclusion.loops);
+        const empty = loops.filter(loop => !loop.hole && !waterProposalFromLoops([loop], detect.width, detect.height).pixels.length);
+        if (empty.length) loops = subtractOutlines(loops, empty);
         if (!loops.length) { hooks.notify?.("Keep some water in this area. Use Remove or Leave unchanged for the entire row."); return false; }
         geometry = waterProposalFromLoops(loops, detect.width, detect.height);
       } catch (error) { hooks.notify?.(error.message); return false; }
       if (!geometry.pixels.length) { hooks.notify?.("Keep some water in this area."); return false; }
       const remaining = new Set(geometry.pixels);
-      if (target.pixels.every(pixel => remaining.has(pixel))) return false;
+      if (waterProposalFromLoops(target.loops, detect.width, detect.height).pixels.every(pixel => remaining.has(pixel))) return false;
       this.remember();
-      detect.proposals = detect.proposals.map(p => p === target ? { ...target, ...geometry, geometryChanged: true, outlineEdited: true } : p);
+      detect.proposals = detect.proposals.map(p => p === target ? { ...target, ...geometry, geometryChanged: true, outlineEdited: true, exclusions: [...(target.exclusions ?? []), exclusion.loops] } : p);
       this.drawRows(choicesFromElement(this.element));
       return true;
     }
@@ -687,7 +694,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (this.mode?.kind === "subtract") {
         const target = detect.proposals.find(p => p.id === this.mode.areaId);
         if (!target) return;
-        const picked = selectExcludedAreaAt(detect.rgba, detect.width, detect.height, at, { targetPixels: target.pixels, broad: shared.range === "wide" });
+        const picked = selectExcludedAreaAt(detect.rgba, detect.width, detect.height, at, { targetPixels: waterSelectionPixels(target.loops, detect.width, detect.height), broad: shared.range === "wide" });
         if (picked.status !== "found") { hooks.notify?.(clickMessage(picked.reason)); return; }
         return this.subtractArea(target, picked.proposal);
       }
@@ -702,6 +709,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         if (source) return this.combineAreas([source]);
       }
       const claimed = target ? detect.proposals.filter((proposal) => proposal !== target) : detect.proposals;
+      for (const loops of target?.exclusions ?? []) claimed.push({ id: "water-0", pixels: waterSelectionPixels(loops, detect.width, detect.height) });
       const picked = hooks.select(detect.rgba, detect.width, detect.height, at, { claimed, broad: shared.range === "wide" });
       if (picked.status !== "found") {
         hooks.notify?.(clickMessage(picked.reason));
