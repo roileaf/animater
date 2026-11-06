@@ -1,0 +1,97 @@
+// The Animals panel (Animater controls): how much life a scene has, quickly. Amounts and sizes are the same scene flags as
+// Scene configuration > Animater > Creatures, not a copy; the same with Outdoor life. Animals placed by hand are kept on the
+// scene (flags.animater.placedAnimals), so every screen adds them, though each screen's animals then go their own way.
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+export const ANIMAL_GROUPS = Object.freeze([
+  ['Open ground', [['rabbits', 'Rabbits'], ['wildBirds', 'Birds'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['insects', 'Insects'], ['owls', 'Owls']]],
+  ['Water', [['fish', 'Fish'], ['waterBirds', 'Water birds'], ['frogs', 'Frogs']]],
+  ['Dark places', [['rats', 'Rats'], ['bats', 'Bats'], ['moths', 'Moths'], ['crawlers', 'Crawlers']]],
+]);
+const AMOUNTS = [['none', 'None'], ['few', 'Few'], ['', 'Usual'], ['more', 'More'], ['many', 'Many']];
+// Wolves are the GM's to ask for: none until chosen, on any scene.
+const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more', 'More'], ['many', 'Many']];
+const SIZES = [['small', 'S', 'Small'], ['', 'M', 'Usual size'], ['big', 'L', 'Big'], ['huge', 'XL', 'Huge']];
+// What can be placed by hand, and how it is kept.
+export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake']]);
+export const MOST_PLACED = 40;
+const PLACEABLE_IDS = new Set(PLACEABLE.map(([id]) => id));
+
+// The scene flags a preset writes (pure): every outdoor kind at one amount; dark places are left alone, as those belong to underground scenes, and wolves, who come only when asked for.
+export function animalPreset(amount = '') {
+  const out = {};
+  for (const [group, kinds] of ANIMAL_GROUPS) if (group !== 'Dark places') for (const [kind] of kinds) if (kind !== 'wolves') out[kind] = amount;
+  return out;
+}
+// The list as saved, tidied (pure): only what can be placed, with numbers for where it stands.
+export function placedList(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((p) => PLACEABLE_IDS.has(p?.kind) && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)) && p.id).map((p) => ({ id: String(p.id), kind: p.kind, x: Number(p.x), y: Number(p.y) })).slice(-MOST_PLACED);
+}
+// One more on the list (pure). The oldest goes past the most a scene keeps.
+export const withPlaced = (raw, animal) => placedList([...placedList(raw), animal]);
+// The list without its latest of a kind, or without that kind altogether (pure).
+export function withoutPlaced(raw, kind, { all = false } = {}) {
+  const list = placedList(raw);
+  if (all) return list.filter((p) => p.kind !== kind);
+  const last = list.map((p) => p.kind).lastIndexOf(kind);
+  return last < 0 ? list : list.filter((_, i) => i !== last);
+}
+// What a screen has to do to match the list (pure): `shown` the ids it has added.
+export function placedChanges(shown, raw) {
+  const list = placedList(raw), ids = new Set(list.map((p) => p.id));
+  return { add: list.filter((p) => !shown.has(p.id)), remove: [...shown].filter((id) => !ids.has(id)) };
+}
+
+const chip = (action, data, label, { active = false, tip = '', icon = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
+const animalRow = (kind, label, flags) => {
+  const amounts = (kind === 'wolves' ? WOLF_AMOUNTS : AMOUNTS).map(([v, l]) => chip('setAnimal', `data-key="${kind}" data-value="${v}"`, l, { active: String(flags[kind] ?? '') === v })).join('');
+  const sizes = SIZES.map(([v, l, tip]) => chip('setAnimal', `data-key="${kind}Size" data-value="${v}"`, l, { active: String(flags[`${kind}Size`] ?? '') === v, tip })).join('');
+  return `<div class="animater-an-row"><span>${esc(label)}</span><div class="animater-an-amounts">${amounts}</div><div class="animater-an-sizes">${sizes}</div></div>`;
+};
+
+// The panel's content (pure). `flags` the scene's Animater flags; `count` how many are about on this screen; `note` why none would show; `aiming` the kind being placed.
+export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = '' } = {}) {
+  const on = flags.outdoorLife === 'on', placed = placedList(flags.placedAnimals);
+  const place = PLACEABLE.map(([id, label, icon]) => {
+    const n = placed.filter((p) => p.kind === id).length;
+    return `<div class="animater-an-place">${chip('placeAnimal', `data-kind="${id}"`, label, { active: aiming === id, icon, tip: `Click the map to put one down. Escape or right click to stop.` })}<output>${n}</output><button type="button" class="animater-wx-off" data-action="removeAnimal" data-kind="${id}" data-tooltip="Take away the last one"${n ? '' : ' disabled'} aria-label="Take away the last ${esc(label)}"><i class="fa-solid fa-minus" inert></i></button></div>`;
+  }).join('');
+  return `<div class="animater-wx animater-animals">
+    ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
+    <section class="animater-wx-section"><div class="animater-an-top"><span><strong>Outdoor life on this scene</strong><small>${on ? `${count} about on your screen` : 'Off: only placed by you once it is on'}</small></span><div class="animater-wx-chips">${chip('setLife', 'data-value=""', 'Off', { active: !on })}${chip('setLife', 'data-value="on"', 'On', { active: on })}</div></div>
+      <div class="animater-wx-chips animater-an-presets">${chip('presetAnimals', 'data-value="few"', 'Quiet', { tip: 'A few of everything outdoors.' })}${chip('presetAnimals', 'data-value=""', 'Usual', { tip: 'The usual number of everything outdoors.' })}${chip('presetAnimals', 'data-value="many"', 'Lively', { tip: 'Many of everything outdoors.' })}${chip('reshuffleAnimals', '', 'Reshuffle', { icon: 'fa-rotate', tip: 'Scatter them afresh, on your screen. Each screen scatters its own.' })}</div>
+    </section>
+    <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>
+    ${ANIMAL_GROUPS.map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags)).join('')}</section>`).join('')}
+    <footer class="animater-wx-foot"><span>The same settings as Scene configuration. To keep them out of an area, use that region's Keep out.</span></footer>
+  </div>`;
+}
+
+// `flags()` the scene's Animater flags; `save(changes)` saves those flags, for everyone; `count()` and `note()` as above; `aim(kind, onPlace)` starts placing, `stopAim()` ends it; `reshuffle()` scatters afresh on this screen.
+export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, note = () => '', aim = () => {}, stopAim = () => {}, reshuffle = () => {} }) {
+  return class AnimalsPanel extends ApplicationV2 {
+    static DEFAULT_OPTIONS = {
+      id: `${id}-animals`, classes: ['animater-weather-panel', 'animater-animals-panel'],
+      window: { title: 'Animals', icon: 'fa-solid fa-paw', resizable: true }, position: { width: 430, height: 'auto' },
+      actions: {
+        setAnimal(_event, target) { void save({ [target.dataset.key]: target.dataset.value }).then(() => this.render()); },
+        setLife(_event, target) { void save({ outdoorLife: target.dataset.value }).then(() => this.render()); },
+        presetAnimals(_event, target) { void save(animalPreset(target.dataset.value)).then(() => this.render()); },
+        reshuffleAnimals() { reshuffle(); },
+        placeAnimal(_event, target) {
+          const kind = target.dataset.kind;
+          if (this.aiming === kind) { this.aiming = ''; stopAim(); void this.render(); return; }
+          this.aiming = kind;
+          aim(kind, () => { this.aiming = ''; if (this.rendered) void this.render(); });
+          void this.render();
+        },
+        removeAnimal(_event, target) { void save({ placedAnimals: withoutPlaced(flags().placedAnimals, target.dataset.kind) }).then(() => this.render()); },
+      },
+    };
+    async _renderHTML() { return animalsPanelHtml({ flags: flags(), count: count(), note: note(), aiming: this.aiming ?? '' }); }
+    _replaceHTML(html, content) { const top = content.scrollTop; content.innerHTML = html; content.scrollTop = top; }
+    async close(options) { this.aiming = ''; stopAim(); return super.close(options); }
+  };
+}

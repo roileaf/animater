@@ -171,6 +171,14 @@ void main(){
 // pixel of it to a pixel of the map, so it is as sharp as the map).
 const SETTLED = 3.6, ENDS = 5.6, KEPT_MOST = 2048;
 
+// Which blasts melt lying snow.
+export const meltsSnow = (kind) => kind === 'fire';
+// What the snow shows of the blasts that melted it (pure): the latest four, each { x, y, radius, strength }: it clears in a second, holds, then the snow creeps back over the last fifth of `seconds`. `spots` { x, y, radius, at (ms) }.
+export function meltSpots(spots = [], now = 0, seconds = 120) {
+  const whole = Math.max(1, Number(seconds) || 120) * 1000;
+  return spots.filter((s) => now - s.at < whole).slice(-4).map((s) => { const age = now - s.at; return { x: s.x, y: s.y, radius: s.radius, strength: Math.min(1, age / 1000, (whole - age) / (whole * 0.2)) }; });
+}
+
 /** The layer: play({ x, y, radius, kind, seed }); tick(seconds); clear(). `floor()`, `above()` and `glow()` its layers; `map()` the map's picture and where it lies ({ texture, rect }; none: no bent floor, no mark); `render(mesh, options)` draws into a picture; `markSeconds()` how long a mark lasts. */
 export function createEnergyBlasts({ PIXI, floor, above, glow, map, render, markSeconds = () => 120 }) {
   let live = [], marks = [];

@@ -39,7 +39,25 @@ export const GLOW_RESOURCES = Object.freeze([
   { id: 'inspiration', systems: ['dnd5e'], setting: 'inspirationGlow', changed: (c) => c?.system?.attributes?.inspiration !== undefined || c?.['system.attributes.inspiration'] !== undefined,
     read: (a) => (typeof a?.system?.attributes?.inspiration === 'boolean' ? Number(a.system.attributes.inspiration) : null),
     gained: [HERO_GLOW, HERO_GLOW_MS], spent: [INSPIRATION_SPENT, INSPIRATION_SPENT_MS] },
+  { id: 'hope', systems: ['daggerheart'], setting: 'hopeGlow', changed: (c) => c?.system?.resources?.hope !== undefined || c?.['system.resources.hope.value'] !== undefined,
+    read: (a) => number(a?.system?.resources?.hope?.value), gained: [HERO_GLOW, HERO_GLOW_MS], spent: [INSPIRATION_SPENT, INSPIRATION_SPENT_MS] },
+  { id: 'victory', systems: ['draw-steel'], setting: 'victoryGlow', changed: (c) => c?.system?.hero?.victories !== undefined || c?.['system.hero.victories'] !== undefined,
+    read: (a) => number(a?.system?.hero?.victories), gained: [HERO_GLOW, HERO_GLOW_MS] },
 ]);
+// What a recipe's Heroic resource trigger can answer to in this system (pure): { 'hero:gained': 'Hero Point gained' }.
+const HEROIC_NAMES = { hero: 'Hero Point', mythic: 'Mythic Point', inspiration: 'Heroic Inspiration', hope: 'Hope', victory: 'Victory' };
+export function heroicChoices(systemId) {
+  const out = {};
+  for (const r of GLOW_RESOURCES.filter((g) => g.systems.includes(systemId))) for (const look of ['gained', 'spent']) if (r[look]) out[`${r.id}:${look}`] = `${HEROIC_NAMES[r.id]} ${look}`;
+  return out;
+}
+// The choice a recipe has made here (pure): its own if this system has it, else the system's first, as the list shows it. Null with none here.
+export function heroicChoiceOf(recipe, systemId) {
+  const choices = Object.keys(heroicChoices(systemId));
+  return choices.includes(recipe?.heroic) ? recipe.heroic : choices[0] ?? null;
+}
+// The recipe for this moment, if the GM has made one (pure): it plays in place of the glow.
+export const heroicRecipe = (recipes, systemId, key) => (recipes ?? []).find((r) => r?.trigger === 'heroic' && r.enabled !== false && !r.finisher && heroicChoiceOf(r, systemId) === key) ?? null;
 export const glowResources = (systemId) => GLOW_RESOURCES.filter((r) => r.systems.includes(systemId));
 export const GLOW_SYSTEMS = new Set(GLOW_RESOURCES.flatMap((r) => r.systems));
 

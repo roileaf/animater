@@ -34,6 +34,27 @@ export function familyOf(weather) {
   if (!weather) return 'calendar';
   return (FAMILIES.find(([, , , ids]) => ids?.includes(bare(weather))) ?? FAMILIES.at(-1))[0];
 }
+// A module's own word for an effect, for reading ("rainsimple" stays as it is; "heavy_fog" reads "Heavy fog").
+const wordsOf = (type) => { const text = String(type ?? '').replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase(); return text ? text[0].toUpperCase() + text.slice(1) : 'Effect'; };
+const AMOUNT_ROWS = [['cover', 'fa-cloud'], ['gloom', 'fa-moon'], ['fog', 'fa-smog'], ['lightning', 'fa-cloud-bolt'], ['wind', 'fa-wind'], ['temperature', 'fa-temperature-half']];
+// What is at work on this scene and who says so (pure): one row each, { key, icon, name, detail, source, action, data }. `action` is how to turn it off from here; other modules' effects have none, as they are theirs to turn off.
+export function activeWeather({ off = false, weather = '', weatherName = '', calendar = null, tune: raw = null, stormDark = null, fxEffects = null, fxFilters = null } = {}) {
+  const tune = cleanTune(raw), rows = [], own = String(weather).startsWith('animater.'), mine = 'Set in this panel', fx = [...Object.entries(fxEffects ?? {}), ...Object.entries(fxFilters ?? {})];
+  const others = fx.map(([id, effect]) => ({ key: `fx-${id}`, icon: 'fa-wand-magic-sparkles', name: wordsOf(effect?.type ?? id), detail: 'Turn off in FXMaster', source: 'FXMaster' }));
+  if (off) return [{ key: 'off', icon: 'fa-ban', name: 'No weather on this scene', detail: 'Whatever the calendar says', source: 'Animater', action: 'setWeatherOff' }, ...others];
+  if (weather) rows.push({ key: 'weather', icon: 'fa-cloud-sun-rain', name: weatherName || wordsOf(weather), detail: calendar?.name ? `The scene's own, in place of ${calendar.name}` : "The scene's own weather", source: own ? 'Animater' : 'Foundry', action: 'setWeather', data: 'data-weather=""' });
+  else if (calendar?.name) rows.push({ key: 'calendar', icon: 'fa-calendar-days', name: calendar.name, detail: "The calendar's weather", source: 'Calendaria' });
+  for (const slot of ['fall', 'fall2']) if (FALL_CHOICES[tune[slot]]) rows.push({ key: slot, icon: FALL_ICONS[tune[slot]], name: FALL_CHOICES[tune[slot]], detail: slot === 'fall' ? mine : 'Also falling, set in this panel', source: 'Animater', action: 'setFall', data: `data-slot="${slot}" data-kind=""` });
+  if (tune.fall === 'none') rows.push({ key: 'fall', icon: 'fa-ban', name: 'Nothing falling', detail: mine, source: 'Animater', action: 'setFall', data: 'data-slot="fall" data-kind=""' });
+  for (const [key, icon] of AMOUNT_ROWS) if (tune[key] !== null) rows.push({ key, icon, name: `${TUNE_SLIDERS[key].label} ${sliderText(key, tune[key])}`, detail: mine, source: 'Animater', action: 'resetTune', data: `data-key="${key}"` });
+  for (const [key, effect] of Object.entries(TUNE_EFFECTS)) if (tune[key] > 0) rows.push({ key, icon: EFFECT_ICONS[key], name: `${effect.label} ${sliderText(key, tune[key])}`, detail: mine, source: 'Animater', action: 'resetTune', data: `data-key="${key}"` });
+  if (stormDark) rows.push({ key: 'stormDark', icon: 'fa-moon', name: 'Storm darkness', detail: `Scene darkness raised to ${Math.round(Number(stormDark.target) * 100) / 100}`, source: 'Animater' });
+  return [...rows, ...others];
+}
+function activeSection(rows) {
+  const list = rows.map((r) => `<li class="animater-wx-active-row"><i class="fa-solid ${r.icon ?? 'fa-circle'}" inert></i><span class="animater-wx-active-text"><strong>${esc(r.name)}</strong><small>${esc(r.detail)}</small></span><span class="animater-wx-source" data-source="${esc(r.source)}">${esc(r.source)}</span>${r.action ? `<button type="button" class="animater-wx-off" data-action="${r.action}" ${r.data ?? ''} data-tooltip="Turn off" aria-label="Turn off ${esc(r.name)}"><i class="fa-solid fa-xmark" inert></i></button>` : '<span></span>'}</li>`).join('');
+  return `<section class="animater-wx-section animater-wx-active"><h3>What's active on this scene <small>${rows.length ? (rows.length === 1 ? '1 effect' : `${rows.length} effects`) : ''}</small></h3>${rows.length ? `<ul>${list}</ul>` : '<p class="animater-wx-none">No weather or effects on this scene.</p>'}</section>`;
+}
 // One button, active or not. `data` its data attributes, as written.
 const chip = (action, data, label, { icon = '', active = false, tip = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
 function weatherButtons(weathers, now, family, off = false) {
@@ -89,7 +110,7 @@ function fallButtons(slot, now, first) {
 }
 
 // The panel's content (pure). `state` { weather, tune, way, windFrom }; `weathers` [[value, label]]; `looks` the saved names; `base` the weather as it stands, before any of this (weatherScene's); `family` the tab open, else the weather's own; `second` whether a second thing falling is being chosen; `note` why it would not show.
-export function weatherPanelHtml({ state, weathers = [], looks = [], base = null, family = null, second = false, note = '' }) {
+export function weatherPanelHtml({ state, weathers = [], looks = [], base = null, family = null, second = false, note = '', active = {} }) {
   const tune = cleanTune(state?.tune), now = state?.weather ?? '', known = weathers.some(([v]) => v === now);
   const list = known ? weathers : [...weathers, [now, now]], open = family ?? familyOf(now);
   const own = base?.falls ?? [], ownNames = own.filter((f) => f.kind).map((f) => KIND_NAMES[f.kind]).filter(Boolean);
@@ -107,6 +128,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
   const presets = looks.length ? `<div class="animater-wx-presets">${looks.map((n) => `<span class="animater-wx-preset"><button type="button" data-action="applyLook" data-name="${esc(n)}" data-tooltip="Use this weather">${esc(n)}</button><button type="button" data-action="deleteLook" data-name="${esc(n)}" data-tooltip="Delete this preset" aria-label="Delete ${esc(n)}"><i class="fa-solid fa-xmark" inert></i></button></span>`).join('')}</div>` : '';
   return `<div class="animater-wx">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
+    ${activeSection(activeWeather({ ...active, off: state?.off === true, weather: now, weatherName: list.find(([v]) => v === now)?.[1] ?? '', tune }))}
     <section class="animater-wx-section"><h3>Start from</h3>${weatherButtons(list, now, open, state?.off === true)}</section>
     <section class="animater-wx-section"><h3>Precipitation</h3>
       ${fallButtons('fall', tune.fall, [chip('setFall', 'data-slot="fall" data-kind=""', `Auto: ${ownNames.length ? ownNames.join(', ') : 'nothing'}`, { icon: 'fa-wand-magic-sparkles', active: !tune.fall, tip: 'What this weather has falling.' }), chip('setFall', 'data-slot="fall" data-kind="none"', 'Nothing', { icon: 'fa-ban', active: tune.fall === 'none' })])}
@@ -135,8 +157,8 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
 }
 
 // `read()` the scene's { weather, tune, way, windFrom }; `write(changes)` saves those to the scene, for everyone;
-// `preview(tune | null)` shows a tune on this screen alone; `looks()`/`saveLooks(all)` the world's presets ({ name: state }); `base()` the weather as it stands before any of this.
-export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers, looks, saveLooks, base = () => null, note = () => '' }) {
+// `preview(tune | null)` shows a tune on this screen alone; `looks()`/`saveLooks(all)` the world's presets ({ name: state }); `base()` the weather as it stands before any of this; `active()` what else activeWeather needs to know ({ calendar, stormDark, fxEffects, fxFilters }).
+export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers, looks, saveLooks, base = () => null, note = () => '', active = () => ({}) }) {
   return class WeatherPanel extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
       id: `${id}-weather`, classes: ['animater-weather-panel'],
@@ -157,7 +179,7 @@ export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers
         saveLook() { const name = this.element.querySelector('[data-look-name]')?.value?.trim(); if (!name) return; void saveLooks({ ...looks(), [name]: read() }).then(() => this.render()); },
       },
     };
-    async _renderHTML() { this.dragged = null; return weatherPanelHtml({ state: read(), weathers: weathers(), looks: Object.keys(looks()).sort(), base: base(), family: this.family ?? null, second: this.second === true, note: note() }); }
+    async _renderHTML() { this.dragged = null; return weatherPanelHtml({ state: read(), weathers: weathers(), looks: Object.keys(looks()).sort(), base: base(), family: this.family ?? null, second: this.second === true, note: note(), active: active() }); }
     _replaceHTML(html, content) { const top = content.scrollTop; content.innerHTML = html; content.scrollTop = top; }
     _onFirstRender(context, options) {
       super._onFirstRender?.(context, options);

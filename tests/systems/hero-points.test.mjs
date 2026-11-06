@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resourceWatch, heroPointsOf, glowResources, HERO_GLOW, HERO_GLOW_MS, MYTHIC_GLOW, MYTHIC_GLOW_MS, MYTHIC_SPENT, INSPIRATION_SPENT, INSPIRATION_SPENT_MS } from '../../scripts/systems/hero-points.mjs';
+import { heroicChoiceOf, heroicChoices, heroicRecipe, resourceWatch, heroPointsOf, glowResources, HERO_GLOW, HERO_GLOW_MS, MYTHIC_GLOW, MYTHIC_GLOW_MS, MYTHIC_SPENT, INSPIRATION_SPENT, INSPIRATION_SPENT_MS } from '../../scripts/systems/hero-points.mjs';
 import { compileAnimations } from '../../scripts/engines/tokenshade/animation.mjs';
 
 const pc = (hero, uuid = 'Actor.a', mythic = 0) => ({ uuid, system: { resources: { heroPoints: { value: hero, max: 3 }, mythicPoints: { value: mythic, max: 3 } } } });
@@ -23,7 +23,9 @@ test('SF2e has Hero Points but no Mythic Points', () => {
   assert.deepEqual(glowResources('sf2e').map((r) => r.id), ['hero']);
   assert.deepEqual(glowResources('pf2e').map((r) => r.id), ['hero', 'mythic']);
   assert.deepEqual(glowResources('dnd5e').map((r) => r.id), ['inspiration']);
-  assert.deepEqual(glowResources('daggerheart'), []);
+  assert.deepEqual(glowResources('daggerheart').map((r) => r.id), ['hope']);
+  assert.deepEqual(glowResources('draw-steel').map((r) => r.id), ['victory']);
+  assert.deepEqual(glowResources('crucible'), []);
 });
 
 test('a Mythic Point gained pulses and one spent flares', () => {
@@ -69,4 +71,31 @@ test('each look swells from nothing and ends dark', () => {
     assert.ok(Math.abs(sample(preset, 0, 'outerStrength', ms + 500)) < 1e-9, `${preset.name} ends dark`);
   }
   assert.ok(Math.abs(sample(INSPIRATION_SPENT, 1, 'brightness', INSPIRATION_SPENT_MS + 500) - 1) < 1e-9, 'the flare leaves the art as it was');
+});
+
+test('Hope and Victories are read from each system\'s own fields', () => {
+  const hope = glowResources('daggerheart')[0], victory = glowResources('draw-steel')[0];
+  assert.equal(hope.read({ system: { resources: { hope: { value: 3 } } } }), 3);
+  assert.equal(hope.changed({ 'system.resources.hope.value': 2 }), true);
+  assert.equal(hope.changed({ system: { resources: { hope: { value: 2 } } } }), true);
+  assert.equal(victory.read({ system: { hero: { victories: 2 } } }), 2);
+  assert.equal(victory.changed({ system: { hero: { victories: 3 } } }), true);
+  assert.equal(victory.spent, undefined, 'Victories are not spent');
+});
+
+test('the recipe trigger offers what each system has', () => {
+  assert.deepEqual(heroicChoices('pf2e'), { 'hero:gained': 'Hero Point gained', 'mythic:gained': 'Mythic Point gained', 'mythic:spent': 'Mythic Point spent' });
+  assert.deepEqual(heroicChoices('dnd5e'), { 'inspiration:gained': 'Heroic Inspiration gained', 'inspiration:spent': 'Heroic Inspiration spent' });
+  assert.deepEqual(heroicChoices('draw-steel'), { 'victory:gained': 'Victory gained' });
+  assert.deepEqual(heroicChoices('crucible'), {});
+});
+
+test('a heroic recipe is found for its moment; one left unset means the first on the list', () => {
+  const on = { id: 'a', trigger: 'heroic', enabled: true, heroic: 'mythic:spent' }, unset = { id: 'b', trigger: 'heroic', enabled: true }, off = { id: 'c', trigger: 'heroic', enabled: false, heroic: 'hero:gained' };
+  assert.equal(heroicRecipe([on], 'pf2e', 'mythic:spent'), on);
+  assert.equal(heroicRecipe([on], 'pf2e', 'hero:gained'), null);
+  assert.equal(heroicRecipe([off, unset], 'pf2e', 'hero:gained'), unset, 'a disabled one is passed over');
+  assert.equal(heroicRecipe([{ id: 'd', trigger: 'use' }], 'pf2e', 'hero:gained'), null);
+  assert.equal(heroicChoiceOf({ heroic: 'hope:gained' }, 'dnd5e'), 'inspiration:gained', 'from another system: the first here');
+  assert.equal(heroicChoiceOf({}, 'crucible'), null);
 });

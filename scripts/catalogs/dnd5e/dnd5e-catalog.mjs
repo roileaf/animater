@@ -36,6 +36,8 @@ export function useDndEntry(state,id){
  state=normalizeDndCatalogState(state);
  return normalizeDndCatalogState({...state,enabled:true,independent:true,scope:state.enabled?state.scope:'selected',selected:state.enabled?[...state.selected,id]:[id],excluded:state.excluded.filter(v=>v!==id),customized:state.customized.filter(v=>v!==id)});
 }
+// Whether this is a breath being let out (pure): by its name, not the spell's cast on someone else.
+export const breathes=(entry,variant)=>/\bbreath\b|\bexhale/i.test(`${entry?.name??''} ${variant?.activityName??''}`)&&!(entry?.kind==='spell'&&variant?.activityType==='utility');
 export function dndRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,fx=true,fxCatalog}={}){
  if(!entry)throw Error('Choose a D&D catalog entry first.');
  const variant=entry.variants.find(v=>v.id===variantId)??entry.variants[0];
@@ -50,6 +52,8 @@ export function dndRecipe(entry,variantId,{motion=true,sounds,soundVolume=.35,fx
   const item={id:entry.id,slug:entry.slug,soundProfile:variant.soundProfile};
   const design={profile:variant.soundProfile,excludeRoles:variant.soundExcludeRoles};
   recipe.stages=variant.soundNamespace==='ability'?addAbilitySounds(item,recipe.stages,{sounds,soundVolume,mode:variant.weaponMode,design}):addSpellSounds(item,recipe.stages,{sounds,soundVolume,design});
+  // Breath weapons draw breath first, whatever they exhale (the sound packs' own inhales).
+  if(breathes(entry,variant)){const first=recipe.stages.find(s=>s.kind!=='sound');if(first?.stageId)recipe.stages=addAbilitySounds({...item,id:`${entry.id}-breath`},recipe.stages,{sounds,soundVolume,design:{profile:'breath-other',pinTo:{inhale:first.stageId}}});}
  }
  // The audited clips again after the hex dome gives way (its stand-in has a verdict of its own).
  return withAuditedLooks(validateRecipe(withoutHexDome(withCatalogFx(validateRecipe(recipe),entry,{fx,fxCatalog,variant,motion,sounds,soundVolume}))),entry,fx===false?{}:fxCatalog);
@@ -145,6 +149,19 @@ export function dndVariantForEvent(entry,event){
 }
 const awaitingTargets=new Map();
 // Creature-bound stages with nothing optional about them cannot play without a target.
+// Whether a roll is still to come for this cast, when its targets will be known (pure). Without one (Dragon's Breath, touching a willing creature) waiting would mean never playing.
+export const rollComesLater=(activity,variant)=>activity?activity.type==='attack'||activity.type==='heal'||activity.type==='damage'||(activity.damage?activity.damage.parts?.length>0:activity.type==='save'):['attack','damage','heal','save'].includes(variant?.activityType);
+// A recipe as it plays with nobody targeted (pure): what falls on the recipient falls on the caster, what flies or strikes at a target is left out.
+export function withoutTargets(recipe){
+ const gone=new Set(),stages=[];
+ for(const s of recipe.stages){
+  if(['aura','sound'].includes(s.kind)&&s.subject==='targets'&&!s.optionalTargets){stages.push({...s,subject:'source'});continue;}
+  if((['travel','projectile','impact'].includes(s.kind)||s.subject==='targets')&&!s.optionalTargets&&s.travelDestination!=='area'){gone.add(s.stageId);continue;}
+  stages.push(s.kind==='motion'?{...s,optionalTargets:true}:s);
+ }
+ if(!stages.length)return recipe;
+ return {...recipe,stages:stages.map(s=>gone.has(s.afterStage)?{...s,afterStage:''}:s)};
+}
 const needsTargets=recipe=>recipe.trigger!=='template'&&recipe.stages.some(s=>(['travel','projectile','impact'].includes(s.kind)||s.subject==='targets')&&!s.optionalTargets&&s.travelDestination!=='area');
 export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds,npcEnabled=true,npcExcluded=[]}={}){
  const entry=findDndEntry(event),state=normalizeDndCatalogState(stateFor(entry?.kind??'feat'));
@@ -163,9 +180,10 @@ export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled
  // targeted, it waits for that item's damage roll, when the targets are known.
  const key=event.item?.uuid??event.item?.id;
  if(!variant&&event.type==='damage'&&key&&awaitingTargets.has(key)){variant=entry.variants.find(v=>v.id===awaitingTargets.get(key));awaitingTargets.delete(key);}
- else if(variant&&event.type==='use'&&key&&!event.targets?.length&&needsTargets(variant.recipe)){awaitingTargets.set(key,variant.id);event.skipReason='no target yet; plays on its damage roll';if(awaitingTargets.size>50)awaitingTargets.delete(awaitingTargets.keys().next().value);return null;}
+ else if(variant&&event.type==='use'&&key&&!event.targets?.length&&needsTargets(variant.recipe)&&rollComesLater(event.activity,variant)){awaitingTargets.set(key,variant.id);event.skipReason='no target yet; plays on its damage roll';if(awaitingTargets.size>50)awaitingTargets.delete(awaitingTargets.keys().next().value);return null;}
  if(!variant)return npcFallback();
- const recipe=dndRecipe(entry,variant.id,{motion:state.motion,sounds:state.sound?sounds:null,soundVolume:state.soundVolume});
+ let recipe=dndRecipe(entry,variant.id,{motion:state.motion,sounds:state.sound?sounds:null,soundVolume:state.soundVolume});
+ if(event.type==='use'&&!event.targets?.length&&needsTargets(recipe))recipe=withoutTargets(recipe);
  // Native cast level supplies the dart count; separate attack-roll beams stay one.
  if(entry.slug==='magic-missile'){
   const count=Math.min(18,Math.max(3,2+(Number(event.spellLevel)||entry.level||1)));

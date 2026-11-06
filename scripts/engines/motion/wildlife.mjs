@@ -152,7 +152,9 @@ export function rabbitStep(rabbit, { dt = 1 / 60, grid = 100, near = [], ok = ()
     }
     const speed = grid * (r.mode === 'bolt' ? 5.7 : 1.65) * Math.sin(r.hop * Math.PI), nx = r.x + Math.sin(r.a) * speed * dt, ny = r.y - Math.cos(r.a) * speed * dt;
     // A wall or the wrong ground ahead: it turns and goes on.
-    if (blocked({ x: r.x, y: r.y }, { x: nx, y: ny }) || (!ok(nx + Math.sin(r.a) * grid * 0.2, ny - Math.cos(r.a) * grid * 0.2) && ok(r.x, r.y))) { r.a += Math.PI * between(random, 0.6, 1.4); if (r.mode === 'hop') { r.mode = 'sit'; r.hop = 0; r.wait = between(random, 0.6, 2); } }
+    // (A newcomer crosses the edge of the map first: `clear` px with nothing to stop it.)
+    if (r.clear > 0) { r.clear -= Math.abs(speed * dt); r.x = nx; r.y = ny; }
+    else if (blocked({ x: r.x, y: r.y }, { x: nx, y: ny }) || (!ok(nx + Math.sin(r.a) * grid * 0.2, ny - Math.cos(r.a) * grid * 0.2) && ok(r.x, r.y))) { r.a += Math.PI * between(random, 0.6, 1.4); if (r.mode === 'hop') { r.mode = 'sit'; r.hop = 0; r.wait = between(random, 0.6, 2); } }
     else { r.x = nx; r.y = ny; }
   } else if (r.wait <= 0) {
     const out = ok(r.x, r.y) ? null : wayOut(r, grid, ok);
@@ -308,6 +310,31 @@ function rabbitPicture(pose, base, dark, light) {
 }
 
 // How much of the open-air life stays out in this weather (pure): all of it in a light shower, none in a downpour or a heavy snowfall. `rain`, `snow` 0-1.
+// How many of each a scene has room for (pure), however many are asked for, so the map never crowds: `squares` its open ground. The hunters come first, then the rabbits and deer share what room is left, at least one of each asked for.
+export function balancedLife({ rabbits = 0, songbirds = 0, crows = 0, deer = 0, foxes = 0, wolves = 0, squirrels = 0, snakes = 0 } = {}, squares = 0) {
+  const room = Math.max(6, Math.min(24, Math.round(squares / 20))), w = Math.min(wolves, 5), f = Math.min(foxes, 2), left = Math.max(2, room - w - f);
+  let r = rabbits, d = Math.min(deer, 8);
+  if (r + d > left) { const k = left / (r + d); r = r ? Math.max(1, Math.round(r * k)) : 0; d = d ? Math.max(1, Math.round(d * k)) : 0; }
+  return { rabbits: r, deer: d, foxes: f, wolves: w, songbirds: Math.min(songbirds, 12), crows: Math.min(crows, 8), squirrels: Math.min(squirrels, 6), snakes: Math.min(snakes, 3) };
+}
+// Where a newcomer walks in from (pure): just off the nearest edge of the map, to open ground near that edge with no wall on the way, looked at from just inside the edge (the map's own boundary stops anything crossing it, so a newcomer's `clear`, px, lets it cross). { from, to, clear }, or null if there is no such way now.
+export function edgeArrival(spots = [], area = null, { grid = 100, blocked = () => false, random = Math.random } = {}) {
+  if (!spots.length || !area) return null;
+  let best = null, far = Infinity;
+  for (let i = 0; i < 12; i++) {
+    const p = spots[Math.floor(random() * spots.length)], m = grid * 0.6;
+    const [gap, from, inner] = [[p.y - area.y, { x: p.x, y: area.y - m }, { x: p.x, y: area.y + 3 }], [area.y + area.height - p.y, { x: p.x, y: area.y + area.height + m }, { x: p.x, y: area.y + area.height - 3 }], [p.x - area.x, { x: area.x - m, y: p.y }, { x: area.x + 3, y: p.y }], [area.x + area.width - p.x, { x: area.x + area.width + m, y: p.y }, { x: area.x + area.width - 3, y: p.y }]].sort((a, b) => a[0] - b[0])[0];
+    if (gap < far && !blocked(inner, p)) { far = gap; best = { from, to: { x: p.x, y: p.y }, clear: grid * 0.8 }; }
+  }
+  return best;
+}
+// The way off the map from `at` (pure): a point just past the nearest edge with a clear line to it, else just the nearest (whatever goes there finds its way round). Null with no map.
+export function edgeExit(at, area = null, { grid = 100, blocked = () => false } = {}) {
+  if (!area) return null;
+  const m = grid * 1.2, ways = [[at.y - area.y, { x: at.x, y: area.y - m }, { x: at.x, y: area.y + 3 }], [area.y + area.height - at.y, { x: at.x, y: area.y + area.height + m }, { x: at.x, y: area.y + area.height - 3 }], [at.x - area.x, { x: area.x - m, y: at.y }, { x: area.x + 3, y: at.y }], [area.x + area.width - at.x, { x: area.x + area.width + m, y: at.y }, { x: area.x + area.width - 3, y: at.y }]].sort((a, b) => a[0] - b[0]);
+  for (const [, out, inner] of ways) if (!blocked(at, inner)) return out;
+  return ways[0][1];
+}
 export const weatherShelter = ({ rain = 0, snow = 0 } = {}) => { const k = Math.max(0, Math.min(1, (Math.max(rain, snow) - 0.35) / 0.35)); return 1 - k * k * (3 - 2 * k); };
 // Bad weather coming on (pure): they bolt first (`flush`, once), staying in sight (`out` 1) for `runFor` seconds, and only then go in as the weather says, already on the run. `cover` what this gave last, none as a scene starts: weather already there has no one out in it to run.
 export function takeCover(cover, shelter = 1, dt = 0, runFor = 3) {
@@ -324,7 +351,7 @@ export function takeCover(cover, shelter = 1, dt = 0, runFor = 3) {
  * ({ x, y } the way shadows fall), wind (radians), view }); scare(); clear(). `floor()` under the creatures, `sky()` over all.
  */
 export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
-  let fishBeneath = { list: [], dim: 1 }, fishWaters = [], fishScale = 1, fishLost = 0, fishIn = 0, noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
+  let spareOwed = 0, fishBeneath = { list: [], dim: 1 }, fishWaters = [], fishScale = 1, fishLost = 0, fishIn = 0, noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
   const art = () => {
     if (textures && !textures.hawk[0].baseTexture?.destroyed) return textures;
     const tex = (c) => PIXI.Texture.from(c);
@@ -336,7 +363,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
   const high = (tex) => ({ shadow: sprite(skyShadow(), tex, true), body: sprite(sky(), tex) });
   const dropPair = (o) => { try { o.view.body.destroy(); o.view.shadow.destroy(); } catch { /* gone */ } };
   const newFish = (t, i, random = Math.random) => { const w = fishWaters[Math.floor(random() * fishWaters.length)]; return { x: w.x + between(random, -0.3, 0.3) * grid, y: w.y + between(random, -0.3, 0.3) * grid, a: random() * TAU, wait: random() * 2, turn: 0, dart: 0, kind: i % SCALES.length, phase: random() * 8, beat: between(random, 3, 5), size: between(random, 0.75, 1.1) * fishScale, view: pair(floor(), t.fish[0][0]) }; };
-  const drop = () => { for (const o of [...fish, ...rabbits, ...songs, ...crows, ...(hawk ? [hawk] : [])]) dropPair(o); try { hawk?.carry?.destroy(); } catch { /* gone */ } fish = []; fishLost = 0; fishBeneath = { list: [], dim: 1 }; spare = []; rabbits = []; songs = []; crows = []; hawk = null; };
+  const drop = () => { for (const o of [...fish, ...rabbits, ...songs, ...crows, ...(hawk ? [hawk] : [])]) dropPair(o); try { hawk?.carry?.destroy(); } catch { /* gone */ } fish = []; fishLost = 0; fishBeneath = { list: [], dim: 1 }; spare = []; spareOwed = 0; spareIn = 0; rabbits = []; songs = []; crows = []; hawk = null; };
   const put = (view, tex, x, y, angle, size, alpha, sx, sy, shadowAlpha, shadowSize = size) => {
     view.body.visible = view.shadow.visible = true;
     view.body.texture = tex; view.body.position.set(x, y); view.body.rotation = angle; view.body.scale.set(size); view.body.alpha = alpha;
@@ -357,6 +384,17 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         const home = at(); songs = Array.from({ length: songbirds }, () => { const x = home.x + between(random, -1, 1) * grid * 0.85, y = home.y + between(random, -1, 1) * grid * 0.6, clear = !blocked(home, { x, y }); return { x: clear ? x : home.x, y: clear ? y : home.y }; }).map((p) => ({ ...p, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, view: pair(floor(), t.song[0]) }));
       }
       if (hasHawk && area) hawk = { cx: area.x + area.width * between(random, 0.3, 0.7), cy: area.y + area.height * between(random, 0.3, 0.7), r: Math.min(area.width, area.height) * 0.2, a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110), view: high(t.hawk[0]) };
+    },
+    // One put down by hand: `kind` 'rabbit' or 'songbird', `id` to take it away by. False for any other kind.
+    add(kind, { x, y, id }, random = Math.random) {
+      const t = art();
+      if (kind === 'rabbit') { rabbits.push({ x, y, a: random() * TAU, coat: Math.floor(random() * COATS.length), wait: random() * 3, mode: 'sit', hop: 0, size: between(random, 0.9, 1.05), placed: id, view: pair(floor(), t.rabbit[0][0]) }); return true; }
+      if (kind === 'songbird') { songs.push({ x, y, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, placed: id, view: pair(floor(), t.song[0]) }); return true; }
+      return false;
+    },
+    removeAdded(id) {
+      const leave = (o) => { if (o.placed !== id) return true; dropPair(o); return false; };
+      rabbits = rabbits.filter(leave); songs = songs.filter(leave);
     },
     // The walls changed: new places to come back to, and any shut in go there, the flock together.
     resettle({ spots = [], closed = () => false, random = Math.random } = {}) {
@@ -380,7 +418,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
     // The rabbits to a fox: where they are; one startled by it (`from` where it springs); one taken, its picture given back.
     get list() { return rabbits; },
     spook(at, from) { const i = rabbits.findIndex((r) => Math.hypot(r.x - at.x, r.y - at.y) < grid * 0.3); if (i >= 0) rabbits[i] = { ...rabbits[i], mode: 'bolt', bolts: 5, hop: 0, a: Math.atan2(rabbits[i].x - from.x, -(rabbits[i].y - from.y)) + between(Math.random, -0.7, 0.7) }; },
-    take(rabbit) { const r = rabbits.find((o) => o.view === rabbit.view); if (!r) return null; const tex = textures?.rabbit[r.coat][0]; rabbits = rabbits.filter((o) => o !== r); dropPair(r); spareIn = between(Math.random, 45, 120); return tex; },
+    take(rabbit) { const r = rabbits.find((o) => o.view === rabbit.view); if (!r) return null; const tex = textures?.rabbit[r.coat][0]; rabbits = rabbits.filter((o) => o !== r); dropPair(r); spareOwed += 1; if (!(spareIn > 0)) spareIn = between(Math.random, 45, 120); return tex; },
     // The fish to whatever fishes (pond-life.mjs): where they are; one caught, its picture and size given back, and another swims up in a while.
     get fishList() { return fish; },
     // Those swimming where something else draws the water, for it to draw under its surface: { list: [{ x, y, a, scale, swing }], dim }.
@@ -402,7 +440,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
       const inView = (x, y, m = grid) => !view || (x > view.x - m && y > view.y - m && x < view.x + view.w + m && y < view.y + view.h + m);
       const can = (o, x, y) => { if (looking) { try { o.seen = seen(x, y) !== false; } catch { o.seen = true; } } return o.seen !== false && inView(x, y) && alpha > 0.01; };
       if (alpha > 0.01) rabbits = rabbits.map((r0) => {
-        const r = rabbitStep(r0, { dt, grid, near, blocked, scare, noise: heard(r0), ok: (x, y) => ok('rabbits', x, y) }); r.view = r0.view; r.seen = r0.seen;
+        const r = rabbitStep(r0, { dt, grid, near, blocked: area && (r0.x < area.x || r0.y < area.y || r0.x > area.x + area.width || r0.y > area.y + area.height) ? () => false : blocked, scare, noise: heard(r0), ok: (x, y) => ok('rabbits', x, y) }); r.view = r0.view; r.seen = r0.seen;
         if (r.mode === 'bolt' && r0.mode !== 'bolt') { if (thumpsNow(time - (r0.boltAt ?? -Infinity))) sound('rabbitThump', r, false); r.boltAt = time; }
         if (!can(r, r.x, r.y)) { hide(r.view); return r; }
         const air = r.mode === 'sit' ? 0 : Math.sin(Math.min(1, r.hop) * Math.PI), frame = r.mode === 'sit' ? 0 : air > 0.45 ? 2 : 1, size = 0.58 * k * r.size * rabbitSize, off = grid * air * 0.06, c = fall(r, r.x, r.y, { width: grid * 0.4, body: 0.3, grounded: true });
@@ -438,8 +476,12 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         if (area) { const left = fish.filter((f) => fishOffMap(f, area, grid)); if (left.length) { for (const f of left) dropPair(f); fish = fish.filter((f) => !left.includes(f)); fishLost += left.length; fishIn = fishIn > 0 ? fishIn : between(Math.random, 20, 60); } }
       }
       if (fishLost > 0 && fishWaters.length && (fishIn -= dt) <= 0) { fish.push(newFish(t, fish.length)); fishLost -= 1; fishIn = between(Math.random, 45, 120); }
-      // A rabbit taken: another comes along in a while.
-      if (spareIn > 0 && (spareIn -= dt) <= 0 && spare.length) { const p = spare[Math.floor(Math.random() * spare.length)]; rabbits.push({ ...p, a: Math.random() * TAU, coat: Math.floor(Math.random() * COATS.length), wait: 2, mode: 'sit', hop: 0, size: between(Math.random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }); }
+      // A rabbit taken: another comes hopping in from the edge of the map in a while.
+      if (spareIn > 0 && (spareIn -= dt) <= 0 && spare.length) {
+        const way = edgeArrival(spare, area, { grid, blocked });
+        if (!way) spareIn = 20;
+        else { spareOwed = Math.max(0, spareOwed - 1); if (spareOwed > 0) spareIn = between(Math.random, 20, 60); const dx = way.to.x - way.from.x, dy = way.to.y - way.from.y; rabbits.push({ ...way.from, clear: way.clear, a: Math.atan2(dx, -dy), coat: Math.floor(Math.random() * COATS.length), wait: 2, mode: 'hop', hops: Math.ceil(Math.hypot(dx, dy) / (grid * 0.44)) + 1, hop: 0, size: between(Math.random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }); }
+      }
       if (hawk) {
         const h = hawk, base = 0.62 * k * birdSize;
         let x = h.cx + Math.cos(h.a) * h.r, y = h.cy + Math.sin(h.a) * h.r * 0.8, angle = h.a + Math.PI, height = 1, frame = Math.floor(time * 1.4) % 7 === 0 ? Math.floor(time * 12) % SPANS.length : 0;
@@ -459,7 +501,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
           if (u > 0.72 && !h.warned && prey) { h.warned = true; const r = rabbits.indexOf(prey); rabbits[r] = { ...prey, mode: 'bolt', bolts: 5, hop: 0, a: Math.random() * TAU }; h.prey = rabbits[r]; }
           if (u >= 1) {
             h.at = { x, y }; h.t = 0; h.mode = 'lift'; h.way = Math.random() * TAU; h.from = { x, y };
-            if (prey && preyCaught({ x, y }, prey, { grid })) { rabbits = rabbits.filter((r) => r !== prey); dropPair(prey); h.carry = sprite(sky(), t.rabbit[prey.coat][0]); spareIn = between(Math.random, 45, 120); }
+            if (prey && preyCaught({ x, y }, prey, { grid })) { rabbits = rabbits.filter((r) => r !== prey); dropPair(prey); h.carry = sprite(sky(), t.rabbit[prey.coat][0]); spareOwed += 1; if (!(spareIn > 0)) spareIn = between(Math.random, 45, 120); }
           }
         } else if (h.mode === 'lift') {
           // Up and away, beating hard; with a rabbit it carries it right off the map and comes back later.

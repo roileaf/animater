@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanTune, rainbowAim, effectIn, tuneAdds, tuneFalling, tunedRainbow, tuneTouched, tuneWeather, tuneWords } from '../../../scripts/engines/motion/weather-tune.mjs';
 import { weatherScene } from '../../../scripts/engines/motion/sky-weather.mjs';
-import { effectToggled, familyOf, sliderText, weatherPanelHtml } from '../../../scripts/ui/weather-panel.mjs';
+import { activeWeather, effectToggled, familyOf, sliderText, weatherPanelHtml } from '../../../scripts/ui/weather-panel.mjs';
 
 test('a saved tune is made safe, with every key so a save replaces the last', () => {
   const none = cleanTune();
@@ -216,4 +216,46 @@ test('the panel can say no weather here', () => {
   assert.equal(on.includes('data-action="setWeather" '), false, 'nor a list of weathers');
   assert.equal(/data-action="resetAll"[^>]* disabled>/.test(on), false, 'it can be cleared');
   assert.equal(weatherPanelHtml({ state: {}, weathers: [] }).includes('class="is-active" data-action="setWeatherOff"'), false);
+});
+
+test('what is active names each thing and who says so', () => {
+  assert.deepEqual(activeWeather(), [], 'nothing at all');
+  const calendar = activeWeather({ calendar: { name: 'Rain' } });
+  assert.equal(calendar[0].source, 'Calendaria');
+  assert.equal(calendar[0].action, undefined, 'the calendar\'s to change, not ours');
+  const own = activeWeather({ weather: 'animater.thunderstorm', weatherName: 'Thunderstorm', calendar: { name: 'Rain' } });
+  assert.equal(own.length, 1, 'the scene\'s own stands in for the calendar');
+  assert.ok(own[0].detail.includes('Rain') && own[0].source === 'Animater' && own[0].action === 'setWeather');
+  assert.equal(activeWeather({ weather: 'rainStorm' })[0].source, 'Foundry');
+});
+
+test('what you set shows with its amount and can be turned off; other modules cannot', () => {
+  const rows = activeWeather({ tune: { cover: 0.9, rainbow: 0.5, fall: 'snow' }, stormDark: { base: 0.1, target: 0.6 }, fxEffects: { a: { type: 'heavy_fog' } }, fxFilters: { b: { type: 'lightning' } } });
+  const of = (key) => rows.find((r) => r.key === key);
+  assert.equal(of('cover').name, 'Cloud cover 90%');
+  assert.equal(of('cover').action, 'resetTune');
+  assert.ok(of('rainbow').name.startsWith('Rainbow'));
+  assert.equal(of('fall').name, 'Snow');
+  assert.equal(of('fall').action, 'setFall');
+  assert.equal(of('stormDark').detail, 'Scene darkness raised to 0.6');
+  assert.equal(of('stormDark').action, undefined);
+  assert.equal(of('fx-a').name, 'Heavy fog');
+  assert.equal(of('fx-a').source, 'FXMaster');
+  assert.equal(of('fx-a').action, undefined);
+  assert.equal(of('fx-b').name, 'Lightning');
+});
+
+test('no weather on the scene says so, and FXMaster still shows, being separate', () => {
+  const rows = activeWeather({ off: true, calendar: { name: 'Rain' }, tune: { cover: 1 }, fxEffects: { a: { type: 'rain' } } });
+  assert.deepEqual(rows.map((r) => r.key), ['off', 'fx-a']);
+  assert.equal(rows[0].action, 'setWeatherOff');
+});
+
+test('the panel lists it, escaped, with a button only where it can act', () => {
+  const html = weatherPanelHtml({ state: { tune: { cover: 0.5 } }, weathers: [], active: { calendar: { name: '<Rain>' }, fxEffects: { a: { type: 'fog' } } } });
+  assert.ok(html.includes("What's active on this scene"));
+  assert.ok(html.includes('&lt;Rain&gt;') && !html.includes('<Rain>'));
+  assert.ok(html.includes('3 effects'));
+  assert.equal(html.match(/class="animater-wx-off"/g).length, 1, 'only cloud cover is ours');
+  assert.ok(weatherPanelHtml({ state: {}, weathers: [] }).includes('No weather or effects on this scene.'));
 });

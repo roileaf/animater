@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { settingsModel, settingsWindowHTML, searchRows, parseSettingValue, SETTINGS_TABS, WINDOW_SETTING_KEYS } from "../../scripts/ui/settings-window.mjs";
+import { settingsModel, settingsWindowHTML, searchRows, searchedTabs, parseSettingValue, SETTINGS_TABS, WINDOW_SETTING_KEYS } from "../../scripts/ui/settings-window.mjs";
 
 const reg = (key, scope, type, extra = {}) => [`animater.${key}`, { key, namespace: "animater", scope, type, name: extra.name ?? key, hint: extra.hint ?? `${key} hint`, ...extra }];
 const registry = new Map([
@@ -182,4 +182,12 @@ test("the Blood colours menu sits beside lens blood in Combat drama, for the GM 
   assert.ok(drama, "the Combat drama tab");
   assert.equal(drama.rows.find((r) => r.id === "bloodColorsMenu")?.menu, "bloodColorsMenu");
   assert.equal(rowsOf(model({ isGM: false, menus: withBlood })).bloodColorsMenu, undefined, "restricted to the GM");
+});
+
+test("a search shows every tab with a match, or only the tab picked", () => {
+  const hits = [{ tab: "look", row: "a" }, { tab: "sound", row: "b" }, { tab: "sound", row: "c" }];
+  assert.deepEqual([...searchedTabs(hits)], ["look", "sound"]);
+  assert.deepEqual([...searchedTabs(hits, "sound")], ["sound"]);
+  assert.deepEqual([...searchedTabs(hits, "motion")], [], "nothing there: the empty note shows, and the words stay");
+  assert.deepEqual([...searchedTabs([])], []);
 });

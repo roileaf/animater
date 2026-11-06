@@ -3256,7 +3256,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-settings .an-set-nav .an-set-tab:hover { background: var(--an-surface); color: var(--an-text); }
 .animater-settings .an-set-nav .an-set-tab.active { border-color: var(--an-accent); background: var(--an-surface); color: var(--an-text); }
 .animater-settings .an-set-nav .an-set-tab i { width: 18px; color: var(--an-accent); }
-.animater-settings .an-set-searching .an-set-nav .an-set-tab.active { border-color: transparent; background: transparent; color: var(--an-muted); }
+.animater-settings .an-set-searching:not(.an-set-search-tab) .an-set-nav .an-set-tab.active { border-color: transparent; background: transparent; color: var(--an-muted); }
 .animater-settings .an-set-panels { flex: 1; min-width: 0; padding: 4px 16px 16px; overflow-y: auto; }
 .animater-settings .an-set-panel { display: none; }
 .animater-settings .an-set-panel.active { display: block; }
@@ -3692,6 +3692,29 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 
 .animater-wx-section { padding: 10px 14px 12px; border-top: 1px solid var(--wx-line); }
 .animater-wx-section h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; padding: 0; border: 0; color: var(--wx-soft); font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.animater-an-row { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
+.animater-an-amounts, .animater-an-sizes { display: flex; gap: 2px; }
+.animater-an-amounts button { flex: 1; }
+.animater-an-amounts button, .animater-an-sizes button { min-height: 0; height: 24px; padding: 0 4px; font-size: 11px; line-height: 1; }
+.animater-an-amounts button.is-active, .animater-an-sizes button.is-active { background: var(--wx-accent); color: #1a1408; }
+.animater-an-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 12px; }
+.animater-an-top span strong { display: block; }
+.animater-an-top small { color: var(--wx-soft); font-size: 11px; }
+.animater-an-places { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.animater-an-place { display: grid; grid-template-columns: minmax(0, 1fr) auto 20px; gap: 6px; align-items: center; font-size: 12px; }
+.animater-an-place > button.is-active { background: var(--wx-accent); color: #1a1408; }
+.animater-an-hint { margin: 6px 0 0; color: var(--wx-soft); font-size: 11px; }
+.animater-wx-active ul { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.animater-wx-active-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 20px; gap: 8px; align-items: center; padding: 6px 8px; border: 1px solid var(--wx-line); border-radius: 6px; font-size: 12px; }
+.animater-wx-active-text { display: grid; min-width: 0; }
+.animater-wx-active-text strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.animater-wx-active-text small { color: var(--wx-soft); font-size: 11px; }
+.animater-wx-source { padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--wx-accent) 18%, transparent); font-size: 11px; }
+.animater-wx-source[data-source="Calendaria"] { background: rgba(70, 170, 170, 0.25); }
+.animater-wx-source[data-source="FXMaster"] { background: rgba(215, 130, 70, 0.25); }
+.animater-wx-source[data-source="Foundry"] { background: rgba(150, 150, 150, 0.25); }
+.animater-wx-off { display: grid; width: 20px !important; height: 20px !important; min-height: 0; padding: 0; place-items: center; color: var(--wx-soft) !important; font-size: 10px !important; }
+.animater-wx-none { margin: 0; color: var(--wx-soft); font-size: 12px; }
 .animater-wx-section h3 small { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 
 .animater-wx-row { display: grid; grid-template-columns: 78px 1fr 46px 20px; align-items: center; gap: 8px; min-height: 28px; }

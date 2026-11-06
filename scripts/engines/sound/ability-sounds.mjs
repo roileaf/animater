@@ -19,9 +19,11 @@ export function addAbilitySounds(item,stages,{soundCatalog,sounds=soundCatalog,s
   const best=['ggg','psfx','soundfxlibrary','pf2e-creature-sounds'].find(m=>choices.some(c=>c.active.module===m));
   const variants=choices.filter(c=>c.active.module===best),variantSeed=seed(item.slug+':'+(mode??'')+':'+cueIndex);
   let anchors;
+  // Only the cues asked for, on stages of this recipe's own (design.pinTo: { inhale: its stage id }).
+  if(design?.pinTo&&!design.pinTo[cue.stage])continue;
   // A pinned cue (a breath's layers): its own stage at its own moment, whatever its role.
   if(cue.stage){
-   const anchor=stages.find(s=>s.stageId===cue.stage);
+   const anchor=stages.find(s=>s.stageId===(design?.pinTo?.[cue.stage]??cue.stage));
    if(!anchor||result.length>=MAX_STAGES)continue;
    const chosen=variants[variantSeed%variants.length],startOffset=Math.round((moments[cue.at]??0)+(cue.offset??0));
    // Its whole recording up to six seconds (a roar, a thunder roll), not the 4.5 s other cues are held to, fading

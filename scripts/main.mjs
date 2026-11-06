@@ -29,11 +29,11 @@ import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
 import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
-import { starterRecipes, planRecipeImport } from "./core/presets.mjs";
+import { starterRecipes, planRecipeImport, starterGivesWay, starterUnchanged } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets, midiRunsActivity } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { heavyItem } from "./systems/heavy-item.mjs";
-import { glowResources, resourceWatch } from "./systems/hero-points.mjs";
+import { glowResources, resourceWatch, heroicRecipe } from "./systems/hero-points.mjs";
 import { daggerheartRollEvent, daggerheartUseEvent, daggerheartDamageEvent, dualityAccent, versionBelow as daggerheartVersionBelow, DAGGERHEART_VERIFIED } from "./systems/daggerheart.mjs";
 import { dhStateHost, dhDefeatedStates, DH_DEFEATED_STATUSES, findDhState } from "./catalogs/daggerheart/daggerheart-states.mjs";
 import { drawSteelAbilityEvent, versionBelow as drawSteelVersionBelow, DRAW_STEEL_VERIFIED } from "./systems/draw-steel.mjs";
@@ -188,6 +188,7 @@ import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strike
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
+import { animalsPanel, placedChanges, withPlaced } from "./ui/animals-panel.mjs";
 import { CLOSING_WINDOWS, applyWindowEdge, closesWindow, drawWindowIcon, mayUseWindow, nextWindowState, windowClick, windowInReach, windowLockState } from "./engines/motion/window-state.mjs";
 import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
 import { cleanTune, rainbowAim, tuneAdds, tuneFalling, tunedRainbow, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
@@ -198,7 +199,7 @@ import { createVermin, creatureAmount, creatureSize } from "./engines/motion/ver
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
-import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
+import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround, balancedLife } from "./engines/motion/wildlife.mjs";
 import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife, gullsOver } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
@@ -211,7 +212,7 @@ import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, 
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
-import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, blastRipple, aimSquares, stepSquares } from "./engines/motion/energy-blast.mjs";
+import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, blastRipple, aimSquares, stepSquares, meltsSnow, meltSpots } from "./engines/motion/energy-blast.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
 import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
@@ -2558,10 +2559,21 @@ Hooks.on("updateWall", (doc, change) => {
   }
 });
 const BLAST_MESSAGE = "energy-blast";
+// Fire melts the snow it lands on, on every screen that saw it; nothing is saved, and it creeps back.
+let blastMelts = [], blastMeltsAt = 0;
+const tickBlastMelts = (now) => {
+  if (!blastMelts.length || now - blastMeltsAt < 100) return;
+  blastMeltsAt = now;
+  const seconds = Number(hotSetting("floorBloodSeconds")) || 120, spots = meltSpots(blastMelts, now, seconds);
+  if (!spots.length) blastMelts = [];
+  surfaceLight.melt(spots);
+};
+Hooks.on("canvasTearDown", () => { blastMelts = []; });
 const playBlast = ({ x, y, radius, kind, seed }) => {
   if (!canvas?.ready || !blastsOn()) return;
   const grid = canvas.grid.size;
   energyBlasts.play({ x, y, radius, kind, seed, grid });
+  if (meltsSnow(kind)) { blastMelts.push({ x, y, radius: radius * 1.1, at: performance.now() }); blastMeltsAt = 0; }
   noiseScares({ x, y, radius });
   // Its ring bends everything, the creatures too (the map's own shockwave, as a big spell's: "Map distortion").
   const ripple = blastRipple({ x, y, radius, kind, grid, level: canvas.level?.id ?? null });
@@ -2647,11 +2659,69 @@ const openWeatherPanel = () => {
     weathers: () => [["", "From the calendar"], ...WEATHERS.map((w) => [`${SCENE_WEATHER_PREFIX}${w}`, weatherLabel(w)])],
     looks: () => { try { return game.settings.get(ID, "weatherLooks") ?? {}; } catch { return {}; } },
     saveLooks: (all) => game.settings.set(ID, "weatherLooks", all),
+    active: () => {
+      const scene = canvas?.scene, fxOn = !!game.modules.get("fxmaster")?.active; let weather = null;
+      try { weather = game.modules.get("calendaria")?.active ? globalThis.CALENDARIA?.api?.getCurrentWeather?.() ?? null : null; } catch { /* not ready */ }
+      const name = weather ? (weather.label ? game.i18n.localize(weather.label) : weather.id) : "";
+      return { calendar: name ? { name } : null, stormDark: scene?.flags?.[ID]?.stormDark ?? null, fxEffects: fxOn ? scene?.flags?.fxmaster?.effects ?? null : null, fxFilters: fxOn ? scene?.flags?.fxmaster?.filters ?? null : null };
+    },
     note: () => (undergroundScene() && !skyOpenRegions.length ? "This scene is underground: weather only shows in regions marked Open to the sky." : !weatherMapOn() ? 'Weather on the map is off in the Animater settings, so this will not show.' : ""),
   }))();
   void weatherPanelApp.render({ force: true });
 };
 Hooks.on("canvasReady", () => { tuneDragged = null; if (weatherPanelApp?.rendered) void weatherPanelApp.render(); });
+// Another module or GM changing the scene's weather: the list of what's active keeps up (not while a slider is being dragged).
+let weatherPanelSoon = null;
+const weatherPanelKeepUp = () => { if (!weatherPanelApp?.rendered || tuneDragged || weatherPanelSoon) return; weatherPanelSoon = setTimeout(() => { weatherPanelSoon = null; if (weatherPanelApp?.rendered && !tuneDragged) void weatherPanelApp.render(); }, 400); };
+Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && ("weather" in (change ?? {}) || change?.flags?.fxmaster || change?.flags?.[ID])) weatherPanelKeepUp(); });
+Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.currentWeather") weatherPanelKeepUp(); });
+// The Animals panel: the scene's own creature settings, and animals put down by hand, kept with the scene so every screen adds them.
+const placedShown = new Set();
+const syncPlacedAnimals = () => {
+  if (!canvas?.ready) return;
+  const { add, remove } = placedChanges(placedShown, wildHere() ? canvas.scene?.flags?.[ID]?.placedAnimals : []);
+  for (const id of remove) { wildlife.removeAdded(id); fieldLife.removeAdded(id); placedShown.delete(id); }
+  for (const p of add) if (wildlife.add(p.kind, p) || fieldLife.add(p.kind, p)) placedShown.add(p.id);
+};
+Hooks.on("canvasTearDown", () => { placedShown.clear(); });
+let animalsPanelApp = null, animalAim = null;
+const stopAnimalAim = () => {
+  if (!animalAim) return;
+  window.removeEventListener("pointerdown", animalAim.down, true); window.removeEventListener("keydown", animalAim.key, true); window.removeEventListener("contextmenu", animalAim.menu, true);
+  const done = animalAim.done; animalAim = null; done();
+};
+// Click the map to put one down, as many as you like; Escape or a right click stops. Taken before Foundry sees it.
+const startAnimalAim = (kind, done) => {
+  stopAnimalAim();
+  if (!game.user?.isGM || !canvas?.ready) return done();
+  const down = (e) => {
+    if (e.target !== canvas.app.view) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    if (e.button !== 0) { stopAnimalAim(); return; }
+    const p = canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY }), scene = canvas.scene, b = canvas.dimensions.sceneRect;
+    if (!scene || p.x < b.x || p.y < b.y || p.x > b.x + b.width || p.y > b.y + b.height) return;
+    const list = withPlaced(scene.flags?.[ID]?.placedAnimals, { id: foundry.utils.randomID(), kind, x: Math.round(p.x), y: Math.round(p.y) });
+    void scene.update({ [`flags.${ID}.placedAnimals`]: list }).then(() => { if (animalsPanelApp?.rendered) void animalsPanelApp.render(); });
+  };
+  const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); stopAnimalAim(); } };
+  const menu = (e) => { if (e.target === canvas.app.view) e.preventDefault(); };
+  animalAim = { down, key, menu, done };
+  window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("contextmenu", menu, true);
+};
+Hooks.on("canvasTearDown", () => { stopAnimalAim(); });
+const openAnimalsPanel = () => {
+  animalsPanelApp ??= new (animalsPanel(ApplicationV2, {
+    id: ID,
+    flags: () => canvas?.scene?.flags?.[ID] ?? {},
+    save: async (changes) => { const scene = canvas?.scene; if (scene) await scene.update(Object.fromEntries(Object.entries(changes).map(([k, v]) => [`flags.${ID}.${k}`, v]))); },
+    count: () => { try { const w = wildlife.counts, p = pondLife.counts, f = fieldLife.counts ?? {}; return (w.rabbits + w.songbirds + w.fish + p.ducks + p.herons + p.gulls + p.frogs + (f.deer ?? 0) + (f.foxes ?? 0) + (f.wolves ?? 0) + (f.squirrels ?? 0) + (f.snakes ?? 0)) || 0; } catch { return 0; } },
+    note: () => (!outdoorOn("wildlife") ? "Animals in the wild is off in the Animater settings, so none will show." : ""),
+    aim: startAnimalAim,
+    stopAim: stopAnimalAim,
+    reshuffle: () => { wildKey = null; lifeSoon(); },
+  }))();
+  void animalsPanelApp.render({ force: true });
+};
 const toolShown = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
 Hooks.on("getSceneControlButtons", (controls) => {
   try {
@@ -2686,6 +2756,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => void bakeBloodHere() });
     add({ name: "animaterClearGroundMarks", title: "Clear ground marks: wipe every ground mark from the floor, on every screen", icon: "fa-solid fa-shoe-prints", order: order + 2.75, button: true, visible: toolShown("toolClearGroundMarks"),
       onChange: () => clearGroundMarksApi() });
+    add({ name: "animaterAnimals", title: "Animals: how much life this scene has, and put animals down by hand", icon: "fa-solid fa-paw", order: order + 3.6, button: true, visible: toolShown("toolAnimals"),
+      onChange: () => openAnimalsPanel() });
     add({ name: "animaterWeather", title: "Weather: choose it and tune how it looks on this scene", icon: "fa-solid fa-cloud-sun-rain", order: order + 3.5, button: true, visible: toolShown("toolWeather"),
       onChange: () => openWeatherPanel() });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
@@ -3046,7 +3118,7 @@ const ratSpots = () => {
 let wildWallNet = null;
 const wildWalls_ = () => (wildWallNet ??= { any: (canvas.walls?.placeables ?? []).some((w) => w.document?.flags?.[ID]?.wildlifePasses === true), walls: groundWalls() });
 for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall"]) Hooks.on(hook, () => { wildWallNet = null; });
-Hooks.on("updateWall", (wall, change) => { if (change?.flags?.[ID] && "wildlifePasses" in change.flags[ID]) { try { rebuildWildlife(); } catch { /* the next look sees to it */ } } });
+Hooks.on("updateWall", (wall, change) => { if (change?.flags?.[ID] && "wildlifePasses" in change.flags[ID]) { try { rebuildWildlife(); syncPlacedAnimals(); } catch { /* the next look sees to it */ } } });
 const wallBlocks = (a, b) => { try { if (!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" })) return false; const net = wildWalls_(); return !net.any || crossesWall(a, b, net.walls); } catch { return false; } };
 // Regions creatures keep out of (Region configuration â†’ Animater â†’ Keep out): a sealed room with no rats, a shrine with no
 // moths. Each kind's areas, looked at with the rest of the life.
@@ -3064,7 +3136,7 @@ const keptOut = (kind, p) => !!keepOut[kind]?.some((area) => pointInPolygon(p, a
 const ratBlocks = (a, b) => wallBlocks(a, b) || (keptOut("rats", b) && !keptOut("rats", a));
 const batBlocks = (a, b) => wallBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
 // How many of each creature this scene has, and how big (Scene configuration â†’ Animater â†’ Creatures).
-const sceneCreatures = () => { const f = canvas.scene?.flags?.[ID] ?? {}, out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`]); } return out; };
+const sceneCreatures = () => { const f = canvas.scene?.flags?.[ID] ?? {}, out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`]); } out.wolves = f.wolves ? creatureAmount(f.wolves) : 0; out.wolvesSize = creatureSize(f.wolvesSize); return out; };
 let lifeTimer = null;
 const lifeSoon = () => { if (!lifeTimer) lifeTimer = setTimeout(rebuildLife, 600); };
 // The open ground by day (engines/motion/wildlife.mjs): where a rabbit or a songbird can be, looked at once from the floors,
@@ -3139,18 +3211,27 @@ const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
   for (const r of regionsHere()) { const flag = floorFlagOf(r); if (regionFloor({ name: r.name, flag })) floors.push([r.id, flag ?? "", unfitForLife(r.flags?.[ID]), noLifeOnWater(r.flags?.[ID]), waterKindOf(r.flags?.[ID]) === "sea" || !!r.flags?.[ID]?.sea, r.flags?.[ID]?.seaBeach === "off", regionAreas(r)]); }
-  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
+  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "wolves", "squirrels", "snakes")]), regions: JSON.stringify([["rabbits", "songbirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
 // or water the map has by a good part.
 const muchChanged = (was, now) => (was === 0) !== (now === 0) || Math.abs(was - now) > 0.25 * Math.max(was, now);
 // The rest of the open air (engines/motion/field-life.mjs), going by how much ground the map has: deer want room, a fox a little.
+// How many of each this map gets: as asked, within what its open ground has room for (wildlife.mjs balancedLife).
+const wildNumbers = (ground, many) => {
+  const open = ground.spots, rabbitSpots = open.filter((p) => !keptOut("rabbits", p)), deerSpots = open.filter((p) => !keptOut("deer", p)), foxSpots = open.filter((p) => !keptOut("foxes", p));
+  return balancedLife({ rabbits: rabbitSpots.length ? Math.round(Math.min(10, Math.max(3, rabbitSpots.length / 80)) * many.rabbits) : 0, songbirds: Math.round(9 * many.wildBirds), crows: Math.round(6 * many.wildBirds), deer: ground.share > 0.4 && deerSpots.length >= 40 ? Math.round(4 * many.deer) : 0, foxes: foxSpots.length >= 25 ? Math.max(0, Math.round(many.foxes)) : 0, wolves: foxSpots.length >= 25 ? Math.round(3 * many.wolves) : 0, squirrels: rabbitSpots.length ? Math.round(3 * many.squirrels) : 0, snakes: rabbitSpots.length >= 25 ? Math.round(many.snakes) : 0 }, open.length);
+};
+// The trees a squirrel can run to: those drawn as tiles (a map's painted-in trees cannot be told from the rest of its picture).
+const wildTrees = () => sunlitTiles().tree.map((t) => ({ x: t.x, y: t.y, r: Math.min(Math.abs(t.width), Math.abs(t.height)) / 2 })).filter((t) => !keptOut("rabbits", t));
+let wildTreesTimer = null;
+for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, () => { clearTimeout(wildTreesTimer); wildTreesTimer = setTimeout(() => { try { if (canvas?.ready) fieldLife.setTrees(wildTrees()); } catch { /* the next look sees it */ } }, 500); });
 const populateField = (ground, grid, area, many) => {
   const open = ground.spots, deerSpots = open.filter((p) => !keptOut("deer", p)), foxSpots = open.filter((p) => !keptOut("foxes", p)), bugs = open.filter((p) => !keptOut("insects", p)), bugWater = ground.waters.filter((p) => !keptOut("insects", p)), roomy = ground.share > 0.4;
-  fieldLife.populate({ spots: foxSpots.length ? foxSpots : open, waters: bugWater, deer: roomy && deerSpots.length >= 40 ? Math.round(4 * many.deer) : 0, foxes: foxSpots.length >= 25 ? Math.max(0, Math.round(many.foxes)) : 0, butterflies: bugs.length ? Math.round(Math.min(8, Math.max(3, bugs.length / 8)) * many.insects) : 0, dragonflies: bugWater.length >= 4 ? Math.round(Math.min(6, Math.max(2, bugWater.length / 5)) * many.insects) : 0, fireflies: bugs.length + bugWater.length ? Math.round(Math.min(30, (bugs.length + bugWater.length) / 2) * many.insects) : 0, owl: many.owls > 0 && ground.share >= 0.2, grid, area, deerSize: many.deerSize, foxSize: many.foxesSize, insectSize: many.insectsSize, birdSize: many.owlsSize });
+  fieldLife.populate({ spots: foxSpots.length ? foxSpots : open, waters: bugWater, trees: wildTrees(), squirrels: wildNumbers(ground, many).squirrels, squirrelSize: many.squirrelsSize, snakes: wildNumbers(ground, many).snakes, snakeSize: many.snakesSize, wolves: wildNumbers(ground, many).wolves, wolfSize: many.wolvesSize, blocked: wallBlocks, deer: wildNumbers(ground, many).deer, foxes: wildNumbers(ground, many).foxes, butterflies: bugs.length ? Math.round(Math.min(8, Math.max(3, bugs.length / 8)) * many.insects) : 0, dragonflies: bugWater.length >= 4 ? Math.round(Math.min(6, Math.max(2, bugWater.length / 5)) * many.insects) : 0, fireflies: bugs.length + bugWater.length ? Math.round(Math.min(30, (bugs.length + bugWater.length) / 2) * many.insects) : 0, owl: many.owls > 0 && ground.share >= 0.2, grid, area, deerSize: many.deerSize, foxSize: many.foxesSize, insectSize: many.insectsSize, birdSize: many.owlsSize });
 };
 const rebuildWildlife = () => {
-  if (!canvas?.ready) { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; wildKey = null; return; }
+  if (!canvas?.ready) { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; wildKey = null; placedShown.clear(); return; }
   const { all, regions, walls } = wildKeyOf();
   if (all === wildKey && regions === wildRegions && walls === wildWalls) return;
   if (all === wildKey && wildOpen) {
@@ -3184,7 +3265,7 @@ const rebuildWildlife = () => {
   }
   wildKey = all; wildRegions = regions; wildWalls = walls;
   wildCalls.settle();
-  wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null;
+  wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; placedShown.clear();
   if (!canvas?.ready || !wildHere()) return;
   const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, many = sceneCreatures(), ground = wildGround(grid, area);
   wildOpen = ground;
@@ -3194,7 +3275,7 @@ const rebuildWildlife = () => {
   // An indoor or stone map is no place for the rest (fish keep to whatever water there is); a hawk wants open sky too.
   if (ground.share < 0.2) { wildlife.populate({ ...fishOf, grid, area }); return; }
   const spots = ground.spots.filter((p) => !keptOut("rabbits", p)), songSpots = ground.spots.filter((p) => !keptOut("songbirds", p)), squares = spots.length;
-  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: spots.length ? Math.round(Math.min(10, Math.max(3, squares / 80)) * many.rabbits) : 0, blocked: wallBlocks, songbirds: songSpots.length ? Math.round(9 * many.wildBirds) : 0, hawk: many.wildBirds > 0 && ground.share > 0.4, crows: Math.round(6 * many.wildBirds), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
+  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: wildNumbers(ground, many).rabbits, blocked: wallBlocks, songbirds: songSpots.length ? wildNumbers(ground, many).songbirds : 0, hawk: many.wildBirds > 0 && ground.share > 0.4, crows: wildNumbers(ground, many).crows, grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
 };
 // How much they are out now: by day under an open sky, none at night or in a storm, nor in a scene made dark, whatever its sun.
 const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
@@ -3462,7 +3543,7 @@ const rebuildLife = () => {
       if (areas.length) drips.build({ areas, grid, water, floor: mapFloor() });
     }
   } catch { vermin.clear(); drips.clear(); verminKey = null; }
-  try { rebuildWildlife(); } catch { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildKey = null; }
+  try { rebuildWildlife(); syncPlacedAnimals(); } catch { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildKey = null; }
   try { rebuildTown(); } catch (e) { console.warn("Animater town life:", e); townLife.clear(); townKey = null; townOpen = null; }
   try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
@@ -4061,7 +4142,7 @@ const tickAir = (now) => {
 function skyTick() {
   const seconds = (canvas.app.ticker.deltaMS || 16) / 1000;
   { const stage = canvas.stage, screen = canvas.app.renderer.screen; surfaceLight.eye({ x: stage.pivot.x, y: stage.pivot.y, reach: Math.hypot(screen.width, screen.height) / 2 / (stage.scale.x || 1) });
-    const now = performance.now(); if (now - snowLightsAt > 250) { snowLightsAt = now; surfaceLight.snowLights(floorLightSources, stage.pivot, floorLevel.lights ?? 3, lampReach); if (tileSnow.showing) { try { tileSnow.lights(nearestLights(floorLightSources().filter((l) => !underCeiling(l)), stage.pivot, Math.min(4, floorLevel.lights ?? 4))); } catch { /* no lights yet */ } } }
+    const now = performance.now(); tickBlastMelts(now); if (now - snowLightsAt > 250) { snowLightsAt = now; surfaceLight.snowLights(floorLightSources, stage.pivot, floorLevel.lights ?? 3, lampReach); if (tileSnow.showing) { try { tileSnow.lights(nearestLights(floorLightSources().filter((l) => !underCeiling(l)), stage.pivot, Math.min(4, floorLevel.lights ?? 4))); } catch { /* no lights yet */ } } }
     if (tileSnow.showing) tileSnow.tick(seconds);
     try { tickAir(now); } catch { /* not built yet */ } }
   if (canopyLight.shown) canopyLight.tick(seconds);
@@ -6069,7 +6150,7 @@ const immersionPreview = (values) => {
   settingPreview.clear();
   for (const [key, value] of values ?? []) settingPreview.set(key, value);
   hotSettings.invalidate();
-  try { wildKey = null; rebuildWildlife(); verminKey = null; lookSky(); rebuildSky(); } catch (e) { console.warn("Animater immersion preview:", e); }
+  try { wildKey = null; rebuildWildlife(); syncPlacedAnimals(); verminKey = null; lookSky(); rebuildSky(); } catch (e) { console.warn("Animater immersion preview:", e); }
 };
 const demoWaterRoot = floorLayer("demoWater", 642);
 const IMMERSION_DEMOS = {
@@ -6126,9 +6207,9 @@ const IMMERSION_DEMOS = {
     return { note: "Three trails near the middle of your view: an hour old, eight hours and eighteen, on your screen only. Choose for this scene above.", undo: () => { oldTracks.clear(); trackDrawnKey = null; drawTracks(true); } };
   },
   outdoors: () => {
-    outdoorLifePreview = true; wildKey = null; rebuildWildlife();
+    outdoorLifePreview = true; wildKey = null; rebuildWildlife(); syncPlacedAnimals();
     const n = immersionCount(wildlife.counts, pondLife.counts, fieldLife.counts), off = canvas.scene?.flags?.[ID]?.outdoorLife !== "on";
-    const undo = () => { outdoorLifePreview = false; wildKey = null; rebuildWildlife(); };
+    const undo = () => { outdoorLifePreview = false; wildKey = null; rebuildWildlife(); syncPlacedAnimals(); };
     return { note: n ? `${n} animals are in this scene ${off ? "for now, on your screen only" : "now"}. Scroll around the map to find them. Choose for this scene above.` : "None here: this scene has no open ground or water for them, or is underground. Try it on an outdoor scene.", undo };
   },
   vermin: () => {
@@ -6739,6 +6820,7 @@ Hooks.once("init", () => {
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
     ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
     ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, for the GM. Marks still fade by themselves.'],
+    ['toolAnimals','Show the Animals button','In the Animater controls: choose how many of each animal a scene has, and put them down by hand.'],
     ['toolWeather','Show the Weather button','In the Animater controls: choose the scene\'s weather and tune its amount, size, speed, colour, fog, lightning, wind and clouds.'],
     ['toolClouds','Show the Clouds button','In the Animater controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
@@ -7593,21 +7675,31 @@ Hooks.once("init", () => {
   const glowIds = new Set(glowResources(game.system.id).map((r) => r.id));
   if (glowIds.has("hero")) registerSetting("heroPointGlow", {
     name: "Hero Point glow",
-    hint: "A character awarded a Hero Point glows gold for a moment, on every screen that can see their token.",
+    hint: "A character awarded a Hero Point glows gold for a moment, on every screen that can see their token. A recipe with the Heroic resource trigger plays instead.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   if (glowIds.has("mythic")) registerSetting("mythicPointGlow", {
     name: "Mythic Point glow",
-    hint: "A character who gains a Mythic Point pulses violet and gold; one who spends one flares violet.",
+    hint: "A character who gains a Mythic Point pulses violet and gold; one who spends one flares violet. A recipe with the Heroic resource trigger plays instead.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   if (glowIds.has("inspiration")) registerSetting("inspirationGlow", {
     name: "Heroic Inspiration glow",
-    hint: "A character given Heroic Inspiration glows gold for a moment; one who spends it flares bright. On every screen that can see their token.",
+    hint: "A character given Heroic Inspiration glows gold for a moment; one who spends it flares bright. On every screen that can see their token. A recipe with the Heroic resource trigger plays instead.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  if (glowIds.has("hope")) registerSetting("hopeGlow", {
+    name: "Hope glow",
+    hint: "A character who gains Hope glows gold for a moment; one who spends it flares bright. On every screen that can see their token. A recipe with the Heroic resource trigger plays instead.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  if (glowIds.has("victory")) registerSetting("victoryGlow", {
+    name: "Victory glow",
+    hint: "A hero who earns a Victory glows gold for a moment, on every screen that can see their token. A recipe with the Heroic resource trigger plays instead.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   if (glowIds.size) registerSetting("heroPointGlowLocal", {
-    name: `${game.system.id === "dnd5e" ? "Heroic Inspiration" : glowIds.has("mythic") ? "Hero and Mythic Point" : "Hero Point"} glow on my screen`,
+    name: `${{ dnd5e: "Heroic Inspiration", daggerheart: "Hope", "draw-steel": "Victory" }[game.system.id] ?? (glowIds.has("mythic") ? "Hero and Mythic Point" : "Hero Point")} glow on my screen`,
     hint: "Turn off to never draw these glows on this screen.",
     scope: "client", config: true, type: Boolean, default: true,
   });
@@ -7713,7 +7805,7 @@ const weaponSoundVolume = () => { const sys = game.system.id, key = sys === "dnd
   try { return hotSetting(key)?.soundVolume ?? 0.35; } catch { return 0.35; } };
 function systemRecipe(event, saved) {
   const sounds = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database);
-  return withWeaponSurface(catalogSystemRecipe(event, saved, sounds), event, saved, sounds);
+  return withWeaponSurface(starterGivesWay(saved, (list) => catalogSystemRecipe(event, list, sounds), event), event, saved, sounds);
 }
 function catalogSystemRecipe(event, saved, sounds) {
   const sys = game.system.id;
@@ -7734,8 +7826,8 @@ function showcaseRecipe(event){
     const state=key?hotSetting(key):{};
     return {...state,enabled:true,scope:'all',selected:[],excluded:[],independent:true,preferCatalog:false};
   };
-  const options={customEnabled:true,sounds};
-  return ['pf2e','sf2e'].includes(sys)?twoeCatalogRecipe(sys,event,recipes(),{...options,stateFor}):sys==='dnd5e'?resolveDndAutomaticRecipe(event,stateFor,recipes(),options):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,stateFor,recipes(),options):sys==='draw-steel'?resolveDrawSteelAutomaticRecipe(event,stateFor,recipes(),options):null;
+  const options={customEnabled:true,sounds},own=recipes().filter(r=>!starterUnchanged(r));
+  return ['pf2e','sf2e'].includes(sys)?twoeCatalogRecipe(sys,event,own,{...options,stateFor}):sys==='dnd5e'?resolveDndAutomaticRecipe(event,stateFor,own,options):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,stateFor,own,options):sys==='draw-steel'?resolveDrawSteelAutomaticRecipe(event,stateFor,own,options):null;
 }
 function previewShowcaseMovement(tokenId){
   if(!game.user.isGM)throw Error('Only a GM can preview NPC movement.');
@@ -7874,7 +7966,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   const amounts = [["none", "None"], ["few", "Few"], ["", "Usual number"], ["more", "More"], ["many", "Many"]], sizes = [["small", "Small"], ["", "Usual size"], ["big", "Big"], ["huge", "Huge"]];
   const row = (k, label) => `<div class="form-group"><label>${label}</label><div class="form-fields">${pick(k, amounts)}${pick(`${k}Size`, sizes)}</div></div>`;
   const creatures = document.createElement("div");
-  creatures.innerHTML = `${row("rats", "Rats")}${row("bats", "Bats")}${row("moths", "Moths")}${row("crawlers", "Crawlers")}${row("rabbits", "Rabbits")}${row("wildBirds", "Birds")}${row("fish", "Fish")}${row("waterBirds", "Water birds")}${row("frogs", "Frogs")}${row("deer", "Deer")}${row("foxes", "Foxes")}${row("insects", "Insects")}${row("owls", "Owls")}<p class="hint">How many of each this map has and how big they are: few is half the usual, more twice, many three times. Rats, bats, moths and crawlers are for underground scenes (moths counted round each fire); rabbits, birds, deer and foxes for open ground by day, fish, water birds and frogs for water; insects are butterflies and dragonflies by day and fireflies by night, owls come out at night, and bats round lamps out of doors go by Bats. To keep them out of one place, draw a region over it (Region configuration → Animater → Keep out).</p>`;
+  creatures.innerHTML = `${row("rats", "Rats")}${row("bats", "Bats")}${row("moths", "Moths")}${row("crawlers", "Crawlers")}${row("rabbits", "Rabbits")}${row("wildBirds", "Birds")}${row("fish", "Fish")}${row("waterBirds", "Water birds")}${row("frogs", "Frogs")}${row("deer", "Deer")}${row("foxes", "Foxes")}${row("insects", "Insects")}${row("owls", "Owls")}${row("squirrels", "Squirrels")}${row("snakes", "Snakes")}<div class="form-group"><label>Wolves</label><div class="form-fields">${pick("wolves", [["", "None"], ["few", "Few"], ["usual", "Usual number"], ["more", "More"], ["many", "Many"]])}${pick("wolvesSize", sizes)}</div></div><p class="hint">How many of each this map has and how big they are: few is half the usual, more twice, many three times. Rats, bats, moths and crawlers are for underground scenes (moths counted round each fire); rabbits, birds, deer and foxes for open ground by day, fish, water birds and frogs for water; insects are butterflies and dragonflies by day and fireflies by night, owls come out at night, and bats round lamps out of doors go by Bats. To keep them out of one place, draw a region over it (Region configuration → Animater → Keep out).</p>`;
   life.prepend(...creatures.children);
   life.prepend(life.querySelector("legend"));
   group.innerHTML = `<label>Acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
@@ -8933,7 +9025,7 @@ Hooks.once("ready", () => {
       kickHere: (x, y, heading = 0) => { underLife.kick({ x, y }, heading); return underLife.busy; },
       // Smoke let run on for this long at once; how much is in the air.
       doorBursts: () => doorBursts.count,
-      wildlife: { voice: (kind, at) => wildVoice(kind, at ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, true), counts: () => wildlife.counts, cast: (x, y, o) => wildCast(x, y, o), closed: (x, y) => !!wildOpen?.closed(x, y), noise: (x, y, radius) => noiseScares({ x, y, radius }), ticks: (n = 300) => { const t0 = performance.now(); for (let i = 0; i < n; i++) wildTick(1 / 60); return (performance.now() - t0) / n; }, pond: () => pondLife.counts, weatherSound: (test) => { if (test !== undefined) weatherTest = test; return Object.fromEntries(Object.entries(weatherVoices).map(([k, v]) => [k, { want: +v.volume.toFixed(3), now: v.sound ? +v.sound.volume.toFixed(3) : null }])); }, thunder: () => { thunderAt = 0; thunderAfterFlash(true); }, nightSound: () => (nightVoice.sound ? { file: nightVoice.sound.src.split("/").at(-1), volume: +nightVoice.sound.volume.toFixed(3) } : null), rivers: () => ({ regions: riverRegions.map((r) => r.speed), gentle: riverVoices.gentle.sound ? +riverVoices.gentle.sound.volume.toFixed(3) : null, swift: riverVoices.swift.sound ? +riverVoices.swift.sound.volume.toFixed(3) : null, file: { gentle: riverFile("gentle", canvas.scene?.id)?.split("/").at(-1), swift: riverFile("swift", canvas.scene?.id)?.split("/").at(-1) } }), canopy: (x, y) => wildCanopy(x, y), field: () => fieldLife.counts, high: () => ({ holes: highKey ? highKey.split(";").length : 0, roofs: highRoofs.length, shown: highRoofs.filter((t) => t.shown > 0.5).length, masked: !!highRoots.sky?.layer?.mask, sprites: highRoots.sky?.layer?.children.length ?? 0 }), night: () => wildNight(), lamps: (fake) => { if (fake) { wildLampsKey = lampLightsKey; wildLampsOut = fake; } return wildLamps().length; }, scare: () => { wildlife.scare(); pondLife.scare(); fieldLife.scare(); }, rebuild: () => { wildKey = null; rebuildWildlife(); return wildlife.counts; }, hunt: () => wildlife.hunt(), fishNow: () => ({ sent: pondLife.fishNow(), fish: wildlife.fishList.map((f) => [Math.round(f.x), Math.round(f.y)]) }), day: () => wildDay(), open: () => wildOpen?.share ?? 0 },
+      wildlife: { voice: (kind, at) => wildVoice(kind, at ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, true), counts: () => wildlife.counts, cast: (x, y, o) => wildCast(x, y, o), closed: (x, y) => !!wildOpen?.closed(x, y), noise: (x, y, radius) => noiseScares({ x, y, radius }), ticks: (n = 300) => { const t0 = performance.now(); for (let i = 0; i < n; i++) wildTick(1 / 60); return (performance.now() - t0) / n; }, pond: () => pondLife.counts, weatherSound: (test) => { if (test !== undefined) weatherTest = test; return Object.fromEntries(Object.entries(weatherVoices).map(([k, v]) => [k, { want: +v.volume.toFixed(3), now: v.sound ? +v.sound.volume.toFixed(3) : null }])); }, thunder: () => { thunderAt = 0; thunderAfterFlash(true); }, nightSound: () => (nightVoice.sound ? { file: nightVoice.sound.src.split("/").at(-1), volume: +nightVoice.sound.volume.toFixed(3) } : null), rivers: () => ({ regions: riverRegions.map((r) => r.speed), gentle: riverVoices.gentle.sound ? +riverVoices.gentle.sound.volume.toFixed(3) : null, swift: riverVoices.swift.sound ? +riverVoices.swift.sound.volume.toFixed(3) : null, file: { gentle: riverFile("gentle", canvas.scene?.id)?.split("/").at(-1), swift: riverFile("swift", canvas.scene?.id)?.split("/").at(-1) } }), canopy: (x, y) => wildCanopy(x, y), field: () => fieldLife.counts, high: () => ({ holes: highKey ? highKey.split(";").length : 0, roofs: highRoofs.length, shown: highRoofs.filter((t) => t.shown > 0.5).length, masked: !!highRoots.sky?.layer?.mask, sprites: highRoots.sky?.layer?.children.length ?? 0 }), night: () => wildNight(), lamps: (fake) => { if (fake) { wildLampsKey = lampLightsKey; wildLampsOut = fake; } return wildLamps().length; }, scare: () => { wildlife.scare(); pondLife.scare(); fieldLife.scare(); }, rebuild: () => { wildKey = null; rebuildWildlife(); syncPlacedAnimals(); return wildlife.counts; }, hunt: () => wildlife.hunt(), fishNow: () => ({ sent: pondLife.fishNow(), fish: wildlife.fishList.map((f) => [Math.round(f.x), Math.round(f.y)]) }), day: () => wildDay(), open: () => wildOpen?.share ?? 0 },
       mistAir: { ahead: (seconds = 10) => { for (let left = seconds; left > 0; left -= 0.5) mistAir?.step(0.5); if (mistAir) cavern.air(mistAir.pixels); return mistAir?.held ?? 0; }, held: () => mistAir?.held ?? 0, at: (x, y) => { if (!mistAir || !airField) return 0; return mistAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
       smokeAir: { ahead: (seconds = 60) => { for (let left = seconds; left > 0; left -= 1) smokeAir?.step(1); if (smokeAir && airField) lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows); return smokeAir?.held ?? 0; }, held: () => smokeAir?.held ?? 0, at: (x, y) => { if (!smokeAir || !airField) return 0; return smokeAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
       cavernHere: (...parts) => { cavePreview = parts.filter(Boolean); rebuildCavern(); return cavern.busy || webs.count > 0; },
@@ -9553,9 +9645,16 @@ Hooks.once("ready", () => {
     Hooks.on("updateActor", (actor, changes) => {
       try {
         const events = heroics.changed(actor, changes).filter((e) => hotSetting(e.resource.setting) !== false);
-        if (!events.length || !canvas?.ready || hotSetting("heroPointGlowLocal") === false || !tokenFx.ready()) return;
+        if (!events.length || !canvas?.ready) return;
         // One look per update: a spend over a gain when one update does both.
         const { resource, look } = events.find((e) => e.look === "spent") ?? events[0], [preset, ms] = resource[look];
+        // The GM's own recipe plays in place of the glow: the active GM starts it, and it reaches every screen.
+        const recipe = heroicRecipe(recipes(), game.system.id, `${resource.id}:${look}`);
+        if (recipe) {
+          if (game.users.activeGM?.isSelf) for (const token of actor.getActiveTokens?.() ?? []) void runtime.play(installedStages(recipe), { source: token, targets: [] }).catch((error) => runtime.trace("Blocked", `Heroic recipe: ${error.message}`));
+          return;
+        }
+        if (hotSetting("heroPointGlowLocal") === false || !tokenFx.ready()) return;
         for (const token of actor.getActiveTokens?.() ?? []) {
           const remove = tokenFx.apply(token, preset, { key: `${resource.id}:${look}:${token.id}` });
           setTimeout(remove, ms + 100);

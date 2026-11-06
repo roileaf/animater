@@ -242,7 +242,7 @@ export class TokenshadeStudio {
   }
   async action(action, b) {
     if (this.w.page !== TOKENSHADE_PAGE) return false;
-    if (action === "studio-library") { this.library = b.dataset.library; this.search = ""; this.draft = null; this.w.render(); return true; }
+    if (action === "studio-library") { this.library = b.dataset.library; this.draft = null; this.w.render(); return true; }
     if (action === "studio-pick") { this.select(b.dataset.name); this.w.render(); return true; }
     if (action === "studio-tether") { this.tether = Object.hasOwn(TETHER_LABELS, b.dataset.style) ? b.dataset.style : "rope"; this.status = ""; this.w.render(); return true; }
     if (action === "studio-tether-canvas") {

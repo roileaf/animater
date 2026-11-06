@@ -159,6 +159,8 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "momentum" },
     { world: "heroPointGlow", local: "heroPointGlowLocal", extras: ["mythicPointGlow"], when: TWOE },
     { world: "inspirationGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "dnd5e" },
+    { world: "hopeGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "daggerheart" },
+    { world: "victoryGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "draw-steel" },
     { world: "lensBlood", local: "lensBloodLocal", extras: ["lensBloodAmount", "lensTunnel", "lensHeartbeat", "lensWounded"] },
     { world: "lensEffects", local: "lensEffectsLocal" },
     { world: "lensReach" },
@@ -302,6 +304,11 @@ function rowHTML(row, tab) {
   const extras = row.extras.map((e) => `<div class="an-set-extra" title="${esc(e.hint)}"><span>${esc(e.name)}${e.scope === "client" ? " <small>(this screen)</small>" : ""}</span>${input(e, e.name)}</div>`).join("");
   return `<div class="an-set-row" data-row="${esc(row.id)}" data-tab="${esc(tab)}">${head}<div class="an-set-controls">${controls}</div>${extras ? `<div class="an-set-extras">${extras}</div>` : ""}</div>`;
 }
+// The tabs a search shows (pure): every tab with a match, or only `tab` once one has been picked.
+export function searchedTabs(hits = [], tab = null) {
+  const tabs = new Set(hits.map((h) => h.tab));
+  return tab ? new Set(tabs.has(tab) ? [tab] : []) : tabs;
+}
 // The whole window: search, tab buttons, then each tab's rows (only the active tab shows until a search).
 export function settingsWindowHTML(model, { active } = {}) {
   const current = model.tabs.some((t) => t.id === active) ? active : model.tabs[0]?.id;
@@ -338,7 +345,7 @@ export function settingsWindow(ApplicationV2, {
       super._onRender?.(context, options);
       const root = this.element;
       const search = root.querySelector(".an-set-search");
-      if (search) { search.value = this.query; search.addEventListener("input", () => { this.query = search.value; this.filter(); }); }
+      if (search) { search.value = this.query; search.addEventListener("input", () => { this.query = search.value; this.searchTab = null; this.filter(); }); }
       root.querySelectorAll("[data-tab-button]").forEach((b) => b.addEventListener("click", () => this.show(b.dataset.tabButton)));
       root.querySelectorAll("[data-menu]").forEach((b) => b.addEventListener("click", () => {
         const menu = settings().menus.get(`${id}.${b.dataset.menu}`);
@@ -350,7 +357,8 @@ export function settingsWindow(ApplicationV2, {
     }
     show(tab) {
       this.activeTab = tab;
-      if (this.query) { this.query = ""; const s = this.element.querySelector(".an-set-search"); if (s) s.value = ""; }
+      // In a search, a tab narrows it to that tab's matches and keeps the words; typing again looks everywhere.
+      this.searchTab = this.query?.trim() ? tab : null;
       for (const b of this.element.querySelectorAll("[data-tab-button]")) b.classList.toggle("active", b.dataset.tabButton === tab);
       for (const p of this.element.querySelectorAll("[data-panel]")) p.classList.toggle("active", p.dataset.panel === tab);
       this.filter();
@@ -358,12 +366,13 @@ export function settingsWindow(ApplicationV2, {
     // A search shows the matching rows of every tab; clearing it goes back to the open tab.
     filter() {
       const root = this.element, model = this._model ?? this.model();
-      const hits = new Set(searchRows(model, this.query).map((h) => `${h.tab}:${h.row}`));
+      const found = searchRows(model, this.query), hits = new Set(found.map((h) => `${h.tab}:${h.row}`)), shown = searchedTabs(found, this.searchTab);
       root.classList.toggle("an-set-searching", !!this.query.trim());
+      root.classList.toggle("an-set-search-tab", !!this.searchTab);
       for (const row of root.querySelectorAll("[data-row]")) row.hidden = !hits.has(`${row.dataset.tab}:${row.dataset.row}`);
-      for (const panel of root.querySelectorAll("[data-panel]")) panel.classList.toggle("an-set-has-hits", !!panel.querySelector("[data-row]:not([hidden])"));
+      for (const panel of root.querySelectorAll("[data-panel]")) panel.classList.toggle("an-set-has-hits", shown.has(panel.dataset.panel));
       const empty = root.querySelector(".an-set-empty");
-      if (empty) empty.hidden = hits.size > 0;
+      if (empty) empty.hidden = shown.size > 0;
     }
     async save(el) {
       const key = el?.dataset?.setting;

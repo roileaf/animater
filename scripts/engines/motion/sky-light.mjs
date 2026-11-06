@@ -62,7 +62,7 @@ export function stormGloom({ cover = 0, rain = 0, darkness = 0, most = 0.5, cap 
   const k = Math.min(1, Math.max(0, (Number(cover) - 0.9) / 0.1)), day = 1 - Math.min(1, Math.max(0, Number(darkness) || 0));
   return Math.min(cap, Math.max(0, Number(most) || 0) * (k * k * (3 - 2 * k)) * (1 + 0.25 * Math.min(1, Math.max(0, Number(rain) || 0)))) * day;
 }
-const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff', 'stormDark', 'stormDarkOff']);
+const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff', 'stormDark', 'stormDarkOff', 'placedAnimals', 'outdoorLife', ...['rats', 'bats', 'moths', 'crawlers', 'rabbits', 'wildBirds', 'fish', 'waterBirds', 'frogs', 'deer', 'foxes', 'insects', 'owls', 'wolves', 'squirrels', 'snakes'].flatMap((k) => [k, `${k}Size`])]);
 export function skyNeedsBuilding(change = {}) {
   for (const key of Object.keys(change ?? {})) {
     if (key === '_id' || key === '_stats' || key === 'weather') continue;
@@ -197,6 +197,7 @@ uniform sampler2D uSnowRelief; // the shape of the snow lying on the ground (thi
 uniform float uHasSnowGround;
 uniform vec4 uSnowSun;     // toward the sun or moon (x, y), how much of it reaches the ground, how low it is (0.35 high, 2.25 on the horizon)
 uniform vec3 uSnowSunColor;
+uniform vec4 uMelt[4]; // where fire has melted it: x, y, radius (0 none), how far
 uniform vec4 uSnowLights[4]; // the nearest lights on it: x, y, radius (0 none)
 uniform vec3 uSnowLightColor[4];
 uniform vec4 uDeck; // the cloud deck's look (cloudLook): how much of the sky, how heavy, how soft its gaps, how dim
@@ -240,6 +241,17 @@ float snowField(vec2 px){
   vec2 p = px / (uGrid * 4.0); float s = 0.0, a = 0.5;
   for (int i = 0; i < 5; i++) { s += a * patchNoise(p); p = p * 2.03 + 17.0; a *= 0.5; }
   return s;
+}
+// How far fire has melted the snow here, with an uneven edge.
+float meltAt(vec2 px){
+  float got = 0.0;
+  for (int i = 0; i < 4; i++) {
+    vec4 spot = uMelt[i];
+    if (spot.z <= 0.0) continue;
+    float d = length(px - spot.xy) / spot.z + (patchNoise(px / (uGrid * 0.7)) - 0.5) * 0.4;
+    got = max(got, spot.w * (1.0 - smoothstep(0.6, 1.05, d)));
+  }
+  return got;
 }
 float twinkle(vec2 p, float cell, float t, float rate){
   vec2 c = floor(p / cell), f = fract(p / cell) - 0.5;
@@ -943,7 +955,7 @@ void main(){
     }
     if (uSnow > 0.01) {
       // Snow lies first in patches, then everywhere open; on water only once it has frozen over.
-      float line = 1.0 - uSnow * 1.15, field = snowField(px);
+      float line = 1.0 - uSnow * 1.15 + meltAt(px) * 1.6, field = snowField(px);
       // Its shape, baked once (SNOW_SHAPE): rg how the surface slopes, b how high it lies.
       vec4 shape = uHasSnowGround > 0.5 ? texture2D(uSnowRelief, vUv) : vec4(0.5, 0.5, 0.5, 1.0);
       vec2 slope = (shape.xy * 2.0 - 1.0) * 2.0;
@@ -1033,7 +1045,7 @@ void main(){
       float snowGlint = frostGlint(px, uGrid * 0.08, t, 1.1);
       if (snowGlint > 0.001) {
         vec2 snowSlope = (texture2D(uSnowRelief, vUv).xy * 2.0 - 1.0) * 2.0;
-        float snowLine = 1.0 - uSnow * 1.15;
+        float snowLine = 1.0 - uSnow * 1.15 + meltAt(px) * 1.6;
         light += snowGlint * 1.3 * sunny * (1.0 - water) * smoothstep(-0.25, 0.45, -dot(snowSlope, uSnowSun.xy)) * smoothstep(snowLine, snowLine + 0.08, snowField(px));
       }
     }
@@ -1253,7 +1265,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         uWater: bake(water, 1), uLow: bakeWidened(), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: 0, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: 0, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -1377,6 +1389,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     // The nearest lights, for the snow lying on the ground to catch (only worth asking while it does). `at` where the view is, `lights` () => [{ x, y, radius, color }].
     // (`reachOf(light)`: how far it gets, a polygon in map pixels, walls and all; none: all round.)
     lampsMoved() { lampKey = null; },
+    // Where fire has melted the snow ([{ x, y, radius, strength }], energy-blast.mjs meltSpots).
+    melt(spots = []) {
+      for (const u of own) { const where = u.uMelt; if (!where) continue; for (let i = 0; i < 4; i++) { const s = spots[i]; where[i * 4] = s ? s.x - origin.x : 0; where[i * 4 + 1] = s ? s.y - origin.y : 0; where[i * 4 + 2] = s?.radius ?? 0; where[i * 4 + 3] = s?.strength ?? 0; } }
+    },
     snowLights(lights, at, most = 3, reachOf = null) {
       if (!own.length || !(own[0].uSnow > 0.01 || own[0].uIce > 0.01 || own[0].uWet > 0.05 || own[0].uGloom > 0.005)) return;
       const near = nearestLights(lights(), at, Math.min(3, most)), where = own[0].uSnowLights, colors = own[0].uSnowLightColor;

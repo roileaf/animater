@@ -86,3 +86,17 @@ test('its marks can be cleared on their own, and a blast still going leaves none
   assert.equal(blasts.marks, 0, 'and it leaves nothing behind');
   assert.equal(blasts.playing, 0);
 });
+
+test('fire melts snow, clears in a second, holds, then the snow creeps back', async () => {
+  const { meltsSnow, meltSpots } = await import('../../../scripts/engines/motion/energy-blast.mjs');
+  assert.equal(meltsSnow('fire'), true);
+  assert.equal(meltsSnow('cold'), false);
+  const at = (now) => meltSpots([{ x: 1, y: 2, radius: 3, at: 0 }], now, 100)[0]?.strength;
+  assert.equal(at(0), 0);
+  assert.equal(at(500), 0.5);
+  assert.equal(at(50000), 1);
+  assert.ok(Math.abs(at(90000) - 0.5) < 1e-9, 'halfway back over the last fifth');
+  assert.equal(at(100000), undefined, 'gone');
+  assert.equal(meltSpots(Array.from({ length: 6 }, (_, i) => ({ x: i, y: 0, radius: 1, at: 0 })), 500, 100).length, 4, 'the shader has room for four');
+  assert.equal(meltSpots(Array.from({ length: 6 }, (_, i) => ({ x: i, y: 0, radius: 1, at: 0 })), 500, 100)[0].x, 2, 'the latest');
+});

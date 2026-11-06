@@ -291,6 +291,20 @@ export function untouchedStarterRecipe(r) {
   starterBodies ??= new Map(starterRecipes().map((s) => [s.id, body(s)]));
   return starterBodies.get(r?.id) === body(r);
 }
+// Whether a saved recipe is still a starter as it came (pure), enabled or not, from whichever version saved it: same name, trigger, items and media.
+let starterLooks;
+const lookOf = (r) => JSON.stringify([r?.name, r?.trigger, r?.match, (r?.stages ?? []).map((s) => [s.kind, s.assets])]);
+export function starterUnchanged(r) {
+  starterLooks ??= new Map(starterRecipes().map((s) => [s.id, lookOf(s)]));
+  return starterLooks.get(r?.id) === lookOf(r);
+}
+// Which recipe an event plays (pure on `resolve(saved)`). A starter you never changed is only a stand-by: the catalog's own design for that item comes first, and turning the starter off takes nothing from it. It plays only where nothing else would.
+export function starterGivesWay(saved, resolve, event = null) {
+  const own = (saved ?? []).filter((r) => !starterUnchanged(r));
+  if (own.length === (saved ?? []).length) return resolve(saved);
+  const found = resolve(own);
+  return found ?? (event?.skipReason ? null : resolve(saved));
+}
 // Each page exports its own kind: the Recipes page plain recipes, the Finishers page finishers.
 export const recipesToExport = (list, { finishers = false } = {}) => (list ?? []).filter((r) => !!r.finisher === finishers && !untouchedStarterRecipe(r));
 export const importableRecipes = (list) => (list ?? []).filter((r) => !untouchedStarterRecipe(r));

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deerStep, foxStep, butterflyStep, dragonflyStep, owlPlace, turnToward, clearWay, batLamps } from '../../../scripts/engines/motion/field-life.mjs';
+import { wolfStep, deerStep, foxStep, butterflyStep, dragonflyStep, owlPlace, turnToward, clearWay, batLamps } from '../../../scripts/engines/motion/field-life.mjs';
 
 const deer = (over = {}) => ({ x: 0, y: 0, a: 0, mode: 'graze', wait: 5, t: 0, way: 0, want: 0, v: 0, gait: 0, lift: 0, h: 0, ...over });
 const fox = (over = {}) => ({ x: 0, y: 0, a: 0, want: 0, mode: 'trot', t: 0, wait: 5, v: 0, gait: 0, way: 0, h: 0, ...over });
@@ -119,4 +119,196 @@ test('a deer or fox on ground gone bad runs for the nearest good ground, and doe
   assert.ok(ok(d.x, d.y) && !d.stuck, `deer got off: ${Math.round(d.x)}`);
   const f = run(foxStep, runsOff({ ...start, mode: 'trot' }, { spots }));
   assert.ok(ok(f.x, f.y) && !f.stuck, `fox got off: ${Math.round(f.x)}`);
+});
+
+const wolf = (over = {}) => ({ x: 0, y: 0, a: 0, want: 0, mode: 'trot', t: 0, wait: 5, v: 0, gait: 0, seed: 0, ...over });
+const run = (w, opts, seconds) => { for (let t = 0; t < seconds; t += 1 / 30) w = wolfStep(w, { dt: 1 / 30, grid: 100, random: () => 0.5, ...opts }); return w; };
+
+test('a wolf runs from people, noise and fires, and away from them', () => {
+  for (const opts of [{ near: [{ x: 200, y: 0 }] }, { noise: { x: 200, y: 0 } }, { fires: [{ x: 200, y: 0 }] }]) {
+    const w = wolfStep(wolf(), { dt: 1 / 30, grid: 100, random: () => 0.5, ...opts });
+    assert.equal(w.mode, 'flee');
+    assert.ok(Math.cos(w.way) < 0, 'the other way');
+  }
+  assert.equal(wolfStep(wolf(), { dt: 1 / 30, grid: 100, near: [{ x: 900, y: 0 }], random: () => 0.5 }).mode, 'trot', 'too far to mind');
+  const gone = run(wolf(), { fires: [{ x: 200, y: 0 }] }, 2);
+  assert.ok(gone.x < -100, 'it gets away');
+});
+
+test('the pack keeps with its first', () => {
+  const leader = wolf({ x: 800, y: 0, a: Math.PI / 2, v: 90 });
+  const w = run(wolf({ seed: 1 }), { leader }, 8);
+  assert.ok(Math.hypot(w.x - 800, w.y) < 300, 'caught up');
+  assert.equal(wolfStep(wolf(), { dt: 1 / 30, grid: 100, leader: { ...leader, mode: 'hunt' }, prey: [{ x: 5000, y: 0 }] }).mode, 'hunt', 'hunts when it hunts');
+  assert.equal(wolfStep(wolf({ x: 800 }), { dt: 1 / 30, grid: 100, leader: { ...leader, mode: 'rest' }, random: () => 0.5 }).mode, 'rest', 'lies up beside it');
+  assert.equal(wolfStep(wolf({ mode: 'rest' }), { dt: 1 / 30, grid: 100, leader: { ...leader, mode: 'trot' }, random: () => 0.5 }).mode, 'trot', 'and gets up with it');
+});
+
+test('the first wolf hunts a deer it sees, then gives up; it does not catch it', () => {
+  const deer = [{ x: 300, y: 0 }];
+  assert.equal(wolfStep(wolf({ wait: 0 }), { dt: 1 / 30, grid: 100, prey: deer, random: () => 0.5 }).mode, 'hunt');
+  const hunting = run(wolf({ mode: 'hunt', a: Math.PI / 2 }), { prey: [{ x: 5000, y: 0 }] }, 3);
+  assert.ok(hunting.x > 500, 'runs it down');
+  assert.equal(run(wolf({ mode: 'hunt', a: Math.PI / 2 }), { prey: [{ x: 5000, y: 0 }] }, 7).mode, 'trot', 'gives up');
+  assert.equal(wolfStep(wolf({ wait: 0 }), { dt: 1 / 30, grid: 100, prey: [{ x: 3000, y: 0 }], random: () => 0.9 }).mode, 'trot', 'none in sight');
+});
+
+test('a wolf stays out of what it cannot enter', () => {
+  const w = run(wolf({ a: Math.PI / 2, want: Math.PI / 2, v: 90 }), { ok: (x) => x < 300, time: 0 }, 6);
+  assert.ok(w.x < 340);
+});
+
+test('a map only gets what its ground has room for', async () => {
+  const { balancedLife } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const many = balancedLife({ rabbits: 30, songbirds: 27, crows: 18, deer: 12, foxes: 3, wolves: 9 }, 300);
+  assert.equal(many.wolves, 5, 'one pack, not a crowd');
+  assert.equal(many.foxes, 2);
+  assert.ok(many.rabbits + many.deer + many.wolves + many.foxes <= 15, 'room for 15 on this ground');
+  assert.ok(many.deer >= 1 && many.rabbits >= 1, 'something to hunt');
+  assert.equal(many.songbirds, 12);
+  assert.equal(many.crows, 8);
+  assert.deepEqual(balancedLife({ rabbits: 5, deer: 4, foxes: 1 }, 600), { rabbits: 5, deer: 4, foxes: 1, wolves: 0, songbirds: 0, crows: 0, squirrels: 0, snakes: 0 }, 'the usual fits as it is');
+  assert.equal(balancedLife({ rabbits: 0, deer: 8 }, 0).rabbits, 0, 'none asked for, none given');
+  assert.ok(balancedLife({ rabbits: 30, wolves: 9, foxes: 3 }, 0).rabbits >= 1, 'a tiny map still has one');
+});
+
+test('newcomers come from just off the nearest edge, past no wall', async () => {
+  const { edgeArrival } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const area = { x: 0, y: 0, width: 1000, height: 1000 }, spot = { x: 950, y: 500 };
+  assert.deepEqual(edgeArrival([spot], area, { grid: 100 }), { from: { x: 1060, y: 500 }, to: spot, clear: 80 });
+  assert.ok(edgeArrival([spot], area, { grid: 100, blocked: (from) => from.x > 1000 }), 'the map\'s own boundary is no wall to it');
+  assert.equal(edgeArrival([spot], area, { grid: 100, blocked: () => true }), null);
+  assert.equal(edgeArrival([], area), null);
+  assert.equal(edgeArrival([spot], null), null);
+});
+
+test('a deer and a wolf walk in to where they are going, then carry on as usual', async () => {
+  const { deerStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  let d = { x: -60, y: 0, tx: 300, ty: 0, a: Math.PI / 2, mode: 'arrive', t: 0, gait: 0, wait: 0, v: 0, lift: 1, h: 0 }, step = { dt: 1 / 30, grid: 100, random: () => 0.5, ok: (x) => x > 0 };
+  for (let i = 0; i < 300 && d.mode === 'arrive'; i++) d = deerStep(d, step);
+  assert.equal(d.mode, 'look');
+  assert.ok(Math.abs(d.x - 300) < 60);
+  const w = run(wolf({ x: -60, tx: 300, ty: 0, a: Math.PI / 2, mode: 'arrive' }), { ok: (x) => x > 0 }, 5);
+  assert.notEqual(w.mode, 'arrive');
+  assert.ok(w.x > 200);
+  assert.equal(run(wolf({ x: -60, tx: 300, ty: 0, a: Math.PI / 2, mode: 'arrive' }), { blocked: () => true }, 26).mode, 'trot', 'never stuck at the edge for good');
+  const crossing = run(wolf({ x: -60, tx: 300, ty: 0, a: Math.PI / 2, mode: 'arrive', clear: 80 }), { blocked: (p) => p.x < 0 }, 2);
+  assert.ok(crossing.x > 100, 'it crosses the edge of the map');
+});
+
+test('a fed wolf leaves the deer alone', () => {
+  assert.equal(wolfStep(wolf({ wait: 0, full: 100 }), { dt: 1 / 30, grid: 100, prey: [{ x: 300, y: 0 }], random: () => 0.9 }).mode, 'trot');
+  assert.equal(wolfStep(wolf({ wait: 0, full: 0 }), { dt: 1 / 30, grid: 100, prey: [{ x: 300, y: 0 }], random: () => 0.9 }).mode, 'hunt');
+});
+
+test('a kill is hauled off the map: backing away with it, past the edge, then gone till brought back', async () => {
+  const { edgeExit } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const area = { x: 0, y: 0, width: 1000, height: 1000 };
+  assert.deepEqual(edgeExit({ x: 900, y: 500 }, area, { grid: 100 }), { x: 1120, y: 500 }, 'the nearest edge');
+  assert.deepEqual(edgeExit({ x: 900, y: 500 }, area, { grid: 100, blocked: (a, b) => b.x > 900 }), { x: 900, y: -120 }, 'or the nearest it can reach');
+  assert.deepEqual(edgeExit({ x: 900, y: 500 }, area, { grid: 100, blocked: () => true }), { x: 1120, y: 500 }, 'no clear line anywhere: the nearest, and it finds its way');
+  assert.equal(edgeExit({ x: 1, y: 1 }, null), null);
+  const hauling = wolf({ x: 900, y: 500, a: -Math.PI / 2, mode: 'drag', tx: 1120, ty: 500, pulling: true });
+  const one = run(hauling, { blocked: (a, b) => b.x > 1000 }, 1);
+  assert.ok(one.x > 900 && one.x < 1000, 'on its way');
+  assert.ok(Math.abs(one.a - -Math.PI / 2) < 0.2 || Math.sin(one.a) < 0, 'facing back at the kill');
+  const out = run(hauling, { blocked: (a, b) => b.x > 1000 }, 5);
+  assert.equal(out.mode, 'away', 'the edge does not stop it going out');
+  const still = run(out, { near: [{ x: 1120, y: 500 }] }, 1);
+  assert.equal(still.mode, 'away', 'nothing troubles one that has gone');
+  assert.equal(wolfStep(hauling, { dt: 1 / 30, grid: 100, near: [{ x: 1000, y: 500 }], random: () => 0.5 }).mode, 'flee', 'driven off, it lets go');
+  assert.equal(wolfStep(wolf({ mode: 'drag', tx: 1, ty: 1 }), { dt: 1 / 30, grid: 100, leader: wolf({ mode: 'flee' }), random: () => 0.5 }).mode, 'trot', 'the rest stop when its first does');
+});
+
+const chain = (step, o, opts, seconds) => { for (let i = 0; i < seconds * 30; i++) o = step(o, { dt: 1 / 30, grid: 100, random: () => 0.5, ...opts }); return o; };
+test('a squirrel races under its tree from anyone near, stays a while, then comes out', async () => {
+  const { squirrelStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const trees = [{ x: 400, y: 0, r: 150 }], s = { x: 0, y: 0, a: Math.PI / 2, mode: 'forage', wait: 5, tree: 0, t: 0, v: 0, gait: 0 };
+  assert.equal(squirrelStep(s, { dt: 1 / 30, grid: 100, trees, near: [{ x: -200, y: 0 }] }).mode, 'race');
+  const hidden = chain(squirrelStep, s, { trees, near: [{ x: -200, y: 0 }] }, 2);
+  assert.equal(hidden.mode, 'hide');
+  assert.ok(Math.hypot(hidden.x - 400, hidden.y) < 150, 'under the leaves');
+  assert.equal(chain(squirrelStep, hidden, { trees, near: [{ x: 400, y: 0 }] }, 30).mode, 'hide', 'not while someone stands there');
+  assert.notEqual(chain(squirrelStep, hidden, { trees }, 30).mode, 'hide', 'out again');
+  const noTrees = chain(squirrelStep, { ...s, tree: -1 }, { near: [{ x: -200, y: 0 }] }, 0.5);
+  assert.ok(noTrees.x > 100, 'with none, it just bolts');
+});
+
+test('a snake lies still, then slides; near it goes off the other way', async () => {
+  const { snakeStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const s = { x: 0, y: 0, a: 0, mode: 'lie', wait: 10, t: 0, v: 0, gait: 0 };
+  const still = chain(snakeStep, s, {}, 5);
+  assert.deepEqual([still.x, still.y, still.mode], [0, 0, 'lie']);
+  assert.equal(chain(snakeStep, { ...s, wait: 0 }, {}, 0.1).mode, 'slide');
+  assert.equal(snakeStep(s, { dt: 1 / 30, grid: 100, near: [{ x: 500, y: 0 }] }).mode, 'lie', 'too far to mind');
+  const off = chain(snakeStep, s, { near: [{ x: 150, y: 0 }] }, 2);
+  assert.equal(off.mode, 'flee');
+  assert.ok(off.x < -100, 'away');
+  assert.equal(chain(snakeStep, s, { noise: null, scare: true }, 0.1).mode, 'flee');
+});
+
+test('the balance caps squirrels and snakes too', async () => {
+  const { balancedLife } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  const b = balancedLife({ squirrels: 9, snakes: 9 }, 100);
+  assert.deepEqual([b.squirrels, b.snakes], [6, 3]);
+});
+
+test('a squirrel whose tree has gone does not stay hidden', async () => {
+  const { squirrelStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  assert.equal(squirrelStep({ x: 0, y: 0, a: 0, mode: 'hide', wait: 20, tree: -1 }, { dt: 1 / 30, grid: 100, random: () => 0.5 }).mode, 'forage');
+});
+
+test('a wolf is not done arriving till it is on the map, and a hungry first wolf ranges toward deer', () => {
+  const off = run(wolf({ x: 50, tx: 50, ty: 0, y: 0, a: 0, mode: 'arrive' }), { ok: () => false }, 1);
+  assert.equal(off.mode, 'arrive', 'at its mark but still off the map');
+  const deer = [{ x: 3000, y: 0 }], hungry = run(wolf({ a: 0, want: 0, wait: 1000 }), { prey: deer, time: 0 }, 12);
+  assert.ok(hungry.x > 300, 'toward the deer');
+  const fed = run(wolf({ a: 0, want: 0, wait: 1000, full: 500 }), { prey: deer, time: 0 }, 12);
+  assert.ok(fed.x < hungry.x, 'not when fed');
+  assert.equal(wolfStep(wolf({ wait: 0 }), { dt: 1 / 30, grid: 100, prey: [{ x: 900, y: 0 }], random: () => 0.9 }).mode, 'hunt', 'ten squares off');
+});
+
+test('wolves go round a wall, hauling or following', () => {
+  // A wall across the way, from y -300 to 300 at x 400.
+  const blocked = (a, b) => (a.x < 400) !== (b.x < 400) && Math.abs(a.y) < 300;
+  const hauled = run(wolf({ x: 200, y: 0, a: -Math.PI / 2, mode: 'drag', tx: 1000, ty: 0, pulling: true }), { blocked }, 30);
+  assert.ok(hauled.mode === 'away' || hauled.x > 400, 'hauled round it');
+  const leader = wolf({ x: 900, y: 0, a: Math.PI / 2, v: 0, mode: 'trot' });
+  const follower = run(wolf({ x: 200, y: 0, a: Math.PI / 2, seed: 1 }), { blocked, leader }, 20);
+  assert.ok(follower.x > 400, 'caught up, not stuck behind the wall');
+});
+
+test('a squirrel comes out on the side away from anyone, and keeps going', async () => {
+  const { squirrelStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const trees = [{ x: 0, y: 0, r: 500 }], s = { x: 0, y: 0, a: 0, mode: 'hide', wait: 0, tree: 0, t: 0, v: 0, gait: 0 };
+  // Someone at the tree's middle: the far side of a wide tree is still fine. (random 0.5: out to the west.)
+  const out = squirrelStep(s, { dt: 1 / 30, grid: 100, trees, near: [{ x: 100, y: 0 }], random: () => 0.5 });
+  assert.equal(out.mode, 'dash');
+  assert.equal(squirrelStep(out, { dt: 1 / 30, grid: 100, trees, near: [{ x: 100, y: 0 }], random: () => 0.5 }).mode, 'dash', 'no bolting straight back');
+  assert.equal(squirrelStep(s, { dt: 1 / 30, grid: 100, trees, near: [{ x: -575, y: 0 }], random: () => 0.5 }).mode, 'hide', 'someone right where it would come out');
+  assert.equal(squirrelStep({ ...out, emerging: false, x: 900, y: 0, tx: 1000, ty: 0 }, { dt: 1 / 30, grid: 100, trees, near: [{ x: 1000, y: 0 }], random: () => 0.5 }).mode, 'race', 'out and about, it minds them again');
+});
+
+test('a fright ends, even on ground the animal would not choose', async () => {
+  const { foxStep, deerStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const ask = { dt: 1 / 30, grid: 100, ok: () => false, random: () => 0.5 };
+  const calmed = (step, o, stop) => { for (let i = 0; i < 30 * 20; i++) { o = step(o, ask); if (o.mode !== 'flee') return o.mode; } return 'still running'; };
+  assert.equal(calmed(wolfStep, wolf({ mode: 'flee', way: 0, t: 0 })), 'trot');
+  assert.equal(calmed(foxStep, { x: 0, y: 0, a: 0, mode: 'flee', way: 0, t: 0, gait: 0, v: 0, h: 0 }), 'trot');
+  assert.equal(calmed(deerStep, { x: 0, y: 0, a: 0, mode: 'flee', way: 0, t: 0, gait: 0, v: 0, h: 0, lift: 0, step: 0 }), 'look');
+  // With someone still on its heels a wolf keeps going.
+  assert.equal(wolfStep(wolf({ mode: 'flee', way: 0, t: 3.3, ranOn: 9 }), { ...ask, near: [{ x: 100, y: 0 }] }).mode, 'flee');
+});
+
+test('a wolf left behind goes off the map after its pack', () => {
+  const leader = wolf({ x: 500, y: 0, mode: 'away' });
+  const left = run(wolf({ x: 0, y: 0, seed: 1 }), { leader }, 12);
+  assert.equal(left.mode, 'away');
+});
+
+test('a wolf hauling forces a way out when it cannot get round', () => {
+  // A wall all the way across: no way round it at all.
+  const blocked = (a, b) => (a.x < 400) !== (b.x < 400);
+  const out = run(wolf({ x: 200, y: 0, a: -Math.PI / 2, mode: 'drag', tx: 800, ty: 0, pulling: true }), { blocked }, 90);
+  assert.equal(out.mode, 'away');
 });

@@ -30,6 +30,7 @@ export const EVENTS = {
   damage: "Damage rolled",
   template: "Area placed",
   effect: "Effect added",
+  heroic: "Heroic resource gained or spent",
 };
 // A recipe's colour when none was picked (its card accent).
 export const DEFAULT_RECIPE_COLOR = "#9e8aff";
@@ -176,6 +177,8 @@ export function validateRecipe(input) {
     color: /^#[\da-f]{6}$/i.test(input.color) ? input.color : DEFAULT_RECIPE_COLOR,
     enabled: input.enabled !== false,
     trigger: input.trigger,
+    // Which one a Heroic resource recipe answers to (systems/hero-points.mjs), as "hero:gained".
+    ...(input.trigger === "heroic" && /^[a-z]{1,20}:(gained|spent)$/.test(input.heroic ?? "") ? { heroic: input.heroic } : {}),
     match: text(input.match, 1000),
     itemUuid: wideScope ? '' : text(input.itemUuid, 300),
     ...(wideScope ? { matchScope: wideScope } : {}),
