@@ -97,3 +97,34 @@ test("union masks match both inputs for intersecting synthetic polygons and fill
   }
   assert.throws(()=>unionOutlines([box(0,0,4,4)],[box(4,4,4,4)]),/touch/);
 });
+
+test("crowded handles pick the nearest vertex, and edge insertions stay within map bounds", () => {
+  const loops = [ring([0,0,5,0,10,0,20,0,20,20,0,20])];
+  for (const zoom of [0.5, 1, 4]) {
+    const rect = {left:0,top:0,width:100*zoom,height:100*zoom};
+    for (const vertex of [1,2]) assert.deepEqual(hitOutline(loops,{clientX:vertex*5*zoom,clientY:0},rect,100,100),{ring:0,vertex});
+  }
+  const rect = {left:0,top:0,width:443.1,height:1024*0.4431};
+  const before = [box(0,0,1000,1024)];
+  const hit = hitOutline(before,{clientX:rect.width,clientY:rect.height*0.37},rect,1000,1024);
+  assert.ok(hit.x <= 1000 && Math.abs(hit.x - 1000) < 1e-8);
+  assert.equal(validateOutline(before,changeVertex(before,{...hit,vertex:hit.edge,action:"insert"}),1000,1024),"");
+});
+
+test("existing off-map shores can be repaired one vertex at a time", () => {
+  const before = [box(-5,0,15,10)];
+  for (const edit of [{vertex:1,x:9,y:0},{vertex:0,x:0,y:0}]) {
+    assert.equal(validateOutline(before,changeVertex(before,{ring:0,...edit}),20,20),"");
+  }
+  assert.match(validateOutline(before,changeVertex(before,{ring:0,vertex:1,x:21,y:0}),20,20),/inside/);
+});
+
+test("tiny disconnected pieces do not prevent smoothing the larger shore", () => {
+  for (const tiny of [box(22,5,1,1),box(22,5,1,20)]) {
+    const before = [box(0,0,20,20),tiny];
+    const after = smoothOutline(before);
+    assert.strictEqual(after[1],tiny);
+    assert.notDeepEqual(after[0],before[0]);
+    assert.equal(validateOutline(before,after,40,40),"");
+  }
+});

@@ -222,7 +222,11 @@ export function savedWaterProposals(regions, { levelId, sceneRect, width, height
   const list = Array.isArray(regions) ? regions : regions?.contents ?? [];
   return list.filter((region) => editable.has(region.id)).map((region, index) => {
     const loops = [];
-    const add = (points, hole) => loops.push({ hole, points: Array.from(points, (value, i) => (value - (i % 2 ? sceneRect.y : sceneRect.x)) * (i % 2 ? height / sceneRect.height : width / sceneRect.width)) });
+    const add = (points, hole) => loops.push({ hole, points: Array.from(points, (value, i) => {
+      const limit = i % 2 ? height : width;
+      const at = (value - (i % 2 ? sceneRect.y : sceneRect.x)) * limit / (i % 2 ? sceneRect.height : sceneRect.width);
+      return Math.abs(at) < 1e-8 ? 0 : Math.abs(at - limit) < 1e-8 ? limit : at;
+    }) });
     if (region.polygonTree?.children) {
       const visit = (node) => { for (const child of node.children ?? []) { add(child.points, child.isHole); visit(child); } };
       visit(region.polygonTree);
@@ -436,14 +440,17 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const error = validateOutline(target.loops, loops, detect.width, detect.height);
       if (error) { hooks.notify?.(error); this.paint(); return false; }
       if (JSON.stringify(target.loops) === JSON.stringify(loops)) return false;
+      const geometry = waterProposalFromLoops(loops, detect.width, detect.height);
+      if (!geometry.pixels.length) { hooks.notify?.("Keep some water inside the outline."); this.paint(); return false; }
       this.remember();
-      const edited = { ...target, ...waterProposalFromLoops(loops, detect.width, detect.height), geometryChanged: true };
+      const edited = { ...target, ...geometry, geometryChanged: true, outlineEdited: true };
       detect.proposals = detect.proposals.map((p) => p === target ? edited : p);
       this.drawRows(choicesFromElement(this.element));
       return true;
     }
 
     deleteVertex() {
+      this.gesture = null;
       if (!this.selectedVertex || this.mode?.kind !== "vertices") return;
       const target = this.detect.proposals.find((p) => p.id === this.mode.areaId);
       if (this.commitOutline(changeVertex(target.loops, { ...this.selectedVertex, action: "delete" }))) this.selectedVertex = null;
@@ -457,11 +464,11 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const mergedIds = new Set([target.id, ...additions.map((proposal) => proposal.id)]);
       const claimed = detect.proposals.filter((proposal) => !mergedIds.has(proposal.id));
       let merged;
-      if ([target, ...additions].some((proposal) => proposal.geometryChanged)) {
-        const addedLoops = additions.flatMap((proposal) => proposal.geometryChanged ? proposal.loops
+      if ([target, ...additions].some((proposal) => proposal.outlineEdited)) {
+        const addedLoops = additions.flatMap((proposal) => proposal.outlineEdited ? proposal.loops
           : mergeWaterProposals([proposal], detect.width, detect.height, { claimed }).loops);
         try {
-          merged = { ...target, ...waterProposalFromLoops(unionOutlines(target.loops, addedLoops), detect.width, detect.height), geometryChanged: true };
+          merged = { ...target, ...waterProposalFromLoops(unionOutlines(target.loops, addedLoops), detect.width, detect.height), geometryChanged: true, outlineEdited: true };
         } catch (error) { hooks.notify?.(error.message); return; }
       } else merged = { ...mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed, preserveTarget: !!target.regionId }), geometryChanged: true };
       this.remember();
@@ -479,6 +486,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
     }
 
     undoAdd() {
+      this.gesture = null;
       if (!this.history?.length) return;
       const { proposals, choices } = this.history.pop();
       this.detect.proposals = proposals;
@@ -560,6 +568,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         });
         const finish = (cancel) => {
           const gesture = this.gesture;
+          if (!gesture) return;
           this.gesture = null;
           this.suppressClick = gesture?.kind === "vertex" || gesture?.moved === true;
           if (gesture?.kind === "vertex" && !cancel) this.commitOutline(gesture.loops);
@@ -567,6 +576,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         };
         frame.addEventListener("pointerup", () => finish(false));
         frame.addEventListener("pointercancel", () => finish(true));
+        frame.addEventListener("lostpointercapture", () => finish(true));
         frame.addEventListener("pointerleave", () => { if (this.gesture?.kind === "pan" && !this.gesture.moved) this.gesture = null; });
         frame.addEventListener("dblclick", (event) => {
           if (this.mode?.kind !== "vertices") return;
