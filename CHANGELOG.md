@@ -1,15 +1,31 @@
 # Changelog
 
-## 3.1.1 (unreleased)
+## 3.2.0 (2026-11-06)
 
 ### New
 
+- **New storm darkness engine.** When a storm shuts the sky altogether by day, the outdoors dims toward dusk. It is only a look: the scene's darkness and everyone's vision stay as they were.
+  - **When:** a thunderstorm, a blizzard or another weather with a fully closed sky, or Cloud cover at full. Plain cloud and overcast only dull the day.
+  - **How dark:** a Storm darkness setting and a Weather panel slider decide, a little darker in rain, and the map always stays readable. It fades away as real night comes on, so night is no darker for it.
+  - **Lights cut through it:** lamps, torches and fires show up against the dark, as far as walls let their light go, and a lightning strike lifts it for a moment.
+  - **Rooms spill light:** light from indoors comes out through open doors and windows as it does at night, only fainter, with creatures' shadows in it.
+- **New window engine.** Three Window types on a wall, a Wooden window, Wooden shutters and Glass, open and close with a control on the map like a door's, and the light around them follows.
+  - **Who can use them:** the GM, and players allowed to use doors who have a creature within reach. The GM's right click locks one shut, or unlocks it. They make no sound, and each icon shows its type and state.
+  - **What they let through:** a shut wooden window stops light, sight and sound. Wooden shutters do too, then a click opens their slats so you can see out, and another opens the window. Shut glass lets light and sight through. None lets sound or air through until it is open; open, each lets all of it through, fog included. Nobody walks through a window either way, and the wall's own settings are left as they were.
+  - **Bands through shutters:** with the slats open, lamplight and sunlight show through in bands, by day and night. The bands are only a look: by the rules the light stops at the shutters.
+  - **Light out of doors and windows:** the glow now takes the colour of the light in the room (a light with none gives warm lamplight), only comes from a light that actually reaches the opening, and stops at any wall outside.
+  - **Sun and lightning in:** a wall just beyond an opening keeps sun and lightning out, and a flash only lights the windows and open doors facing the strike.
 - **Rainbow.** A new effect in the Weather panel, in any weather, with its rotation and size.
 - **Weather panel buttons.** Every dropdown is now buttons: weathers in family tabs, what falls, the effects as on and off, and your presets.
+- **Lightning lights the scene.** A bolt and its light now show over the darkness, where before the night dimmed them, with a wide pool of light round where it lands, stopped by walls that block light. A strike that lands flashes harder the closer it is, all but washing out the map beside you, and the dark of a closed sky gives way for the moment. Each player can turn flashes down with a new setting, and those who ask for less motion get a gentler one.
 - **Lightning throws sparks.** Where a bolt lands, sparks fly out from the spot and die away. In a room they stop at walls that block light.
 - **Ground gets wet in.** A new setting under Wet ground says how many game minutes the hardest rain takes to soak the ground, 5 by default (it was 15). Lighter rain takes longer.
-- **Ripples on wet ground.** Rain now rings faintly on any wet ground where it lands, not only on water and puddles, so a wet floor under an opening shows it.
-- **Thunder comes from where the lightning struck.** It is panned left or right of the selected token, or of the middle of the view with none selected (a setting, on by default, for each player), and a far strike is quieter, later and duller the further it is.
+- **Lighter clouds.** Clouds darkened scenes too much: broken cloud is now passing shade, and overcast is dull but plainly day.
+- **No weather on a scene.** A new switch in the Weather panel and Scene configuration turns weather off on one scene, whatever the calendar says.
+- **Puddles.** Wet ground now gathers real puddles, spreading and joining as it gets wetter: dark, soaked, holding a pale sheen of the sky and mirroring nearby lamps and torches in their colour, only where their light reaches past the walls. An opening in a roof always gathers a pool.
+- **Ripples on wet ground.** Rain now rings on any wet ground where it lands, not only on water: clearly in puddles, faintly elsewhere.
+- **Thunder comes from where the lightning struck.** It is panned by the strike's direction from the selected token, or from the middle of the view with none selected (a setting, on by default, for each player). Volume, delay, muffling and boom follow one smooth curve from a crack overhead to a rumble at the far side of the map, scaled to the map, with every recording evened out so only distance decides how loud it is. A strike right beside a token booms at once. Under a roof it is muffled as well as quieter, and strikes close together no longer pile up.
+- **More distant thunder.** Four new CC0 recordings of far-off rolling thunder, so a distant storm repeats itself less.
 - **Clear all.** The panel's Reset all is now Clear all: it also puts back the calendar's weather, the direction and the wind's direction. Your presets stay.
 
 ## 3.1.0 (2026-11-06)
