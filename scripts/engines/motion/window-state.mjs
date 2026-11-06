@@ -40,11 +40,10 @@ export const windowClick = ({ locked = false } = {}) => (locked ? 'rattle' : 'to
 // What locking writes (pure): a window is shut to be locked; unlocking leaves it shut. { open, locked }.
 export const windowLockState = ({ locked = false } = {}) => ({ open: false, slats: false, locked: !locked });
 
-// Its control's picture (a PIXI.Graphics, its middle at 0, 0), telling what fills it: planks of wood, slats of shutters, panes of glass; shut, filling the frame; open, swung out either side of a dark gap. Locked, a red edge and a padlock.
+// Its control's picture (a PIXI.Graphics, its middle at 0, 0), with no box or frame round it, telling what fills it: planks of wood, slats of shutters, panes of glass; shut, filling its square; open, swung out either side of a dark gap. Locked, a padlock.
 const WOOD = 0xa8713c, WOOD_DARK = 0x5e3a1b, SLAT = 0xb98a55, GLASS = 0x8fc9ee, CREAM = 0xf2ece0;
 export function drawWindowIcon(PIXI, { kind = 'glassWindow', open = false, slats = false, locked = false, size = 40 } = {}) {
-  const g = new PIXI.Graphics(), s = size, h = s * 0.3, line = Math.max(1, s * 0.035);
-  g.beginFill(0x000000, 0.72); g.drawRoundedRect(-s / 2, -s / 2, s, s, s * 0.14); g.endFill();
+  const g = new PIXI.Graphics(), s = size, h = s * 0.44, line = Math.max(1, s * 0.035);
   const pane = (x, y, w, tall, skew = 0) => {
     // A pane from (x, y), `skew` lifting its far side, as it swings.
     const quad = [x, y, x + w, y - skew, x + w, y + tall + skew, x, y + tall];
@@ -69,11 +68,10 @@ export function drawWindowIcon(PIXI, { kind = 'glassWindow', open = false, slats
     pane(-h, -h, h * 0.62, h * 2, -h * 0.24); pane(h * 0.38, -h * 0.76, h * 0.62, h * 1.52, h * 0.24);
   } else if (kind === 'woodWindow') pane(-h, -h, h * 2, h * 2);
   else { pane(-h, -h, h - line / 2, h * 2); pane(line / 2, -h, h - line / 2, h * 2); }
-  g.lineStyle(Math.max(1, s * 0.055), CREAM, 1); g.drawRect(-h, -h, h * 2, h * 2);
+  g.lineStyle(Math.max(1, s * 0.04), CREAM, 1);
   if (!open && kind === 'glassWindow') { g.moveTo(0, -h); g.lineTo(0, h); g.moveTo(-h, 0); g.lineTo(h, 0); }
   if (!open && kind === 'shutterWindow') { g.moveTo(0, -h); g.lineTo(0, h); }
   if (locked) {
-    g.lineStyle(s * 0.06, 0xd65a5a, 1); g.drawRoundedRect(-s / 2, -s / 2, s, s, s * 0.14);
     const bx = s * 0.26, by = s * 0.28, w = s * 0.2;
     g.lineStyle(s * 0.045, 0xf4d9a0, 1); g.moveTo(bx - w * 0.3, by - w * 0.35); g.arc(bx, by - w * 0.35, w * 0.3, Math.PI, 0);
     g.lineStyle(0); g.beginFill(0xf4d9a0, 1); g.drawRoundedRect(bx - w / 2, by - w * 0.35, w, w * 0.8, w * 0.12); g.endFill();
