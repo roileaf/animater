@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.3.2 (2026-11-06)
+
+### Fixes
+
+- Water now keeps to its region. With a texture on its floor, moving water spilled past the region's edge and covered any hole cut in it, such as one left for a pier or boats; it now stops at the edge and leaves holes clear. Painted water that isn't moving no longer stops short of the edge, and narrow holes stay clear in every region look. Waves still run on as if under a narrow hole, cut off at its edge; a hole only makes a shore when it is several squares across.
+
 ## 3.3.1 (2026-11-06)
 
 ### Fixes
