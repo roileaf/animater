@@ -58,11 +58,11 @@ export function nearestLights(lights = [], at = { x: 0, y: 0 }, most = 4) {
   return lights.filter((l) => l.radius > 0).map((l) => ({ l, d: Math.hypot(l.x - at.x, l.y - at.y) - l.radius })).sort((a, b) => a.d - b.d).slice(0, most).map((e) => e.l);
 }
 // How dark a storm's sky makes the outdoors (pure, the strength of its wash): nothing even under plain overcast; only as the sky shuts altogether, to `most`, a little more in the rain. Only what daylight there is to lose: none at night, which is dark already. Only a look: it never touches the scene's darkness, so nobody's vision or the rules change.
-export function stormGloom({ cover = 0, rain = 0, darkness = 0, most = 0.5 } = {}) {
+export function stormGloom({ cover = 0, rain = 0, darkness = 0, most = 0.5, cap = 0.85 } = {}) {
   const k = Math.min(1, Math.max(0, (Number(cover) - 0.9) / 0.1)), day = 1 - Math.min(1, Math.max(0, Number(darkness) || 0));
-  return Math.min(0.85, Math.max(0, Number(most) || 0) * (k * k * (3 - 2 * k)) * (1 + 0.25 * Math.min(1, Math.max(0, Number(rain) || 0)))) * day;
+  return Math.min(cap, Math.max(0, Number(most) || 0) * (k * k * (3 - 2 * k)) * (1 + 0.25 * Math.min(1, Math.max(0, Number(rain) || 0)))) * day;
 }
-const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff']);
+const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff', 'stormDark', 'stormDarkOff']);
 export function skyNeedsBuilding(change = {}) {
   for (const key of Object.keys(change ?? {})) {
     if (key === '_id' || key === '_stats' || key === 'weather') continue;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gullStep, heronStep } from '../../../scripts/engines/motion/pond-life.mjs';
+import { gullStep, gullsOver, heronStep } from '../../../scripts/engines/motion/pond-life.mjs';
 
 const gull = (over = {}) => ({ cx: 0, cy: 0, r: 300, x: 0, y: 0, way: 0, mode: 'glide', huntIn: 0, h: 1, ...over });
 const run = (g, opts, seconds) => { for (let t = 0; t < seconds; t += 1 / 60) g = gullStep(g, { dt: 1 / 60, grid: 100, ...opts }); return g; };
@@ -80,4 +80,10 @@ test('a heron turns to a fish within reach and stabs', () => {
   assert.ok(Math.abs(b.a - Math.PI / 2) < 1e-6, 'facing it');
   const none = heronStep(heron, { dt: 1 / 60, grid: 100, fish: [{ x: 500, y: 0 }], random: () => 0.9 });
   assert.equal(none.strike, 0);
+});
+
+test('only the sea has gulls', () => {
+  assert.equal(gullsOver([], 1), 0, 'a river, however wide');
+  assert.equal(gullsOver([{ x: 0, y: 0 }], 1), 3, 'the sea');
+  assert.equal(gullsOver([{ x: 0, y: 0 }], 0), 0, 'water birds turned off');
 });

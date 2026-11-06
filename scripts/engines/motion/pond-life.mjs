@@ -97,6 +97,8 @@ export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   return q;
 }
 
+// How many gulls (pure): only the sea has them, however wide a river or pond is.
+export const gullsOver = (seaSpots = [], many = 1) => (many > 0 && seaSpots.length ? 3 : 0);
 // One step of a gull (pure): glides about over the water in long loose lines and wide uneven turns, now and then hangs on the wind facing into it, and stays over its own stretch of water
 // (`cx`, `cy`, `rx`, `ry`). Now and then it folds into a dive at a fish it can see, hits the water (`hit`, once) and has it or not (`got`), and climbs away with it. `air` is the wind: { angle, the way it blows, strength 0-1 }. `h` its height, 1 up there and 0 at the water; `x`, `y`, `angle` where it is and the way it heads. Fish are { x, y, view }, followed as they swim.
 export function gullStep(gull, { dt = 1 / 60, grid = 100, fish = [], air = null, random = Math.random } = {}) {

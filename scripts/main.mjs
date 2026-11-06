@@ -187,6 +187,7 @@ import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, directSun
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
+import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
 import { CLOSING_WINDOWS, applyWindowEdge, closesWindow, drawWindowIcon, mayUseWindow, nextWindowState, windowClick, windowInReach, windowLockState } from "./engines/motion/window-state.mjs";
 import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
 import { cleanTune, rainbowAim, tuneAdds, tuneFalling, tunedRainbow, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
@@ -199,7 +200,7 @@ import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wal
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
 import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround } from "./engines/motion/wildlife.mjs";
 import { appendWallSection } from "./ui/wall-config-sections.mjs";
-import { createPondLife } from "./engines/motion/pond-life.mjs";
+import { createPondLife, gullsOver } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
 import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, thunderReaches, thunderPan, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
@@ -3114,7 +3115,7 @@ const wildGround = (grid, area) => {
   return { cell, closed, flooded, walled, spots, waters, seaAt, share: spots.length / (cols * rows), at: (x, y) => outside(x, y) && !flooded(x, y) && WILD_FLOORS.has(floorHere(x, y)), inWater: (x, y) => outside(x, y) && !flooded(x, y) && floorHere(x, y) === "water" && !onBeach(x, y) };
 };
 // What lives on the water (engines/motion/pond-life.mjs), going by how much of it the map has: ducks and a heron on any pond,
-// gulls only over wide water. A frog's lily pad is near the bank, never where one already floats.
+// gulls only over the sea. A frog's lily pad is near the bank, never where one already floats.
 const populatePond = (ground, grid, many) => {
   // The sea has gulls; ducks, herons, frogs and their lily pads keep to fresh water.
   const seaSpots = ground.waters.filter((p) => { try { return ground.seaAt(p.x, p.y); } catch { return false; } }), fresh = ground.waters.filter((p) => !seaSpots.includes(p));
@@ -3128,7 +3129,7 @@ const populatePond = (ground, grid, many) => {
     if (ground.inWater(x, y) && pads.every((q) => Math.hypot(q.x - x, q.y - y) > grid * 0.8)) pads.push({ x, y });
   }
   const flocks = many.waterBirds > 0 ? birds.length : 0;
-  pondLife.populate({ waters: birds.length ? birds : seaSpots.filter((p) => !keptOut("waterBirds", p)), shore, pads, ducks: flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0, herons: flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0, gulls: many.waterBirds > 0 && seaSpots.length ? 3 : flocks >= 30 ? 3 : 0, gullWaters: seaSpots, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
+  pondLife.populate({ waters: birds.length ? birds : seaSpots.filter((p) => !keptOut("waterBirds", p)), shore, pads, ducks: flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0, herons: flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0, gulls: gullsOver(seaSpots, many.waterBirds), gullWaters: seaSpots, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
 };
 // What they were placed from. Life is looked over on any scene, setting or light change, most of them nothing to do with it
 // (a scene's wet ground saved, another module's setting): only a change here sends the ones out there away and brings new ones.
@@ -3837,6 +3838,31 @@ let tuneDragged = null;
 const weatherTuneNow = () => tuneDragged ?? cleanTune(canvas?.scene?.flags?.[ID]?.weatherTune);
 // How far a light gets, walls and doors and all, for what shows it back (lying snow, ice and puddles).
 const lampReach = (light) => { const level = canvas.level; return CONFIG.Canvas.polygonBackends.light.create({ x: light.x, y: light.y, elevation: level?.elevation?.base ?? 0 }, { type: "light", radius: light.radius, ...(level ? { level } : {}) })?.points ?? []; };
+// A storm's real darkness (storm-darkness.mjs). Only the lead GM saves it, a moment after it settles, so a slider being dragged or a gust means no save for every client.
+let stormDarkTimer = null, stormDarkWanted = 0;
+const stormDarkNext = (scene) => stormDarkStep({ darkness: scene.environment?.darknessLevel, kept: scene.flags?.[ID]?.stormDark ?? null, target: stormDarkWanted });
+const stormDarkSoon = (gloom) => {
+  const scene = canvas?.scene;
+  if (!scene || !leadGM()) return;
+  const on = hotSetting("stormSceneDarkness") === true && scene.flags?.[ID]?.stormDarkOff !== true && scene.environment?.darknessLock !== true;
+  stormDarkWanted = on ? stormDarkTarget(gloom) : 0;
+  if (stormDarkTimer || !stormDarkNext(scene)) return;
+  stormDarkTimer = setTimeout(() => {
+    stormDarkTimer = null;
+    if (canvas?.scene?.id !== scene.id || !leadGM()) return;
+    const next = stormDarkNext(scene);
+    if (next) void scene.update({ environment: { darknessLevel: next.darkness }, flags: { [ID]: { stormDark: next.kept } } }, { animaterStorm: true, animateDarkness: 4000 }).catch(() => { /* tried again at the next look */ });
+  }, 1500);
+};
+// Anyone else setting the darkness in a storm (the clock, the GM's slider): what they ask for is what it goes back to.
+Hooks.on("preUpdateScene", (scene, change, options) => {
+  const asked = change?.environment?.darknessLevel;
+  if (options?.animaterStorm || asked === undefined || asked === scene.environment?.darknessLevel) return;
+  const now = stormDarkAsked(asked, scene.flags?.[ID]?.stormDark ?? null);
+  if (!now) return;
+  change.environment.darknessLevel = now.darkness;
+  foundry.utils.setProperty(change, `flags.${ID}.stormDark`, now.kept);
+});
 const lookSky = () => {
   try {
     const tune = weatherPreview ? cleanTune() : weatherTuneNow();
@@ -3889,6 +3915,7 @@ const lookSky = () => {
       // The year on the ground: its colour and the fallen leaves (none under snow lying deep).
       ...(seasonGroundOn() ? (({ tint, litter }) => ({ season: tint, litter: litter * (1 - ground.snow) }))(seasonGround(season, { wind: weather.wind })) : {}),
     });
+    if (!weatherPreview) stormDarkSoon(weatherLightOn() && weatherCloudsOn() ? stormGloom({ cover: skyCoverNow, rain: falling.rain, most: tune.gloom ?? hotSetting("cloudDarkness"), cap: 1 }) : 0);
     if (snowCoverOn() && ground.snow > 0.01) { try { surfaceLight.snowGround(); } catch { /* none yet */ } }
     // The weather's light outdoors (over the roofs too; a room seen into keeps its own).
     weatherCast = weatherLightOn() ? weatherLight({ kind: `${drawnId ?? ""} ${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}`, rain: falling.rain, snow: falling.snow, storm: weather.storm, severity: weather.severity, clouds: cloudCover(sky), day: sunNow && !sunNow.moon ? Math.min(1, (Number(sunNow.strength) || 0) / Math.max(0.1, Number.isFinite(sky) ? sky : 1)) : 0, ...(weatherPreview ?? {}) }) : null;
@@ -7110,7 +7137,7 @@ Hooks.once("init", () => {
   skyPair("caveSkylight", "caveSkylightLocal", "Light through openings to the sky", "In an underground scene, where a region is marked as open to the sky (Region configuration → Animater → Open to the sky: a hole in the ceiling, a shaft, a cave mouth), daylight falls in as a pool on the floor with a faint shaft of light and dust turning in it, away from the sun and longer when it is low; golden at dawn and dusk, silver moonlight at night. Nowhere else underground does the sun or moon reach.");
   skyPair("caveWebs", "caveWebsLocal", "Cobwebs", "Where a region is marked as cobwebs (Region configuration → Cavern), dusty, torn webs hang in the corners of its walls and stir in the draft; now and then a spider lowers itself on a thread and climbs back.");
   skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
-  skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "Only in scenes with Outdoor life on (Scene configuration → Animater). On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over wide water, frogs on lily pads croak and leap in, deer graze and bound away, a fox stalks the rabbits, and butterflies and dragonflies fly by day. At night, fireflies blink, an owl glides over and bats hunt round the lamps. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater → Creatures), and regions can keep them out.");
+  skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "Only in scenes with Outdoor life on (Scene configuration → Animater). On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over the sea, frogs on lily pads croak and leap in, deer graze and bound away, a fox stalks the rabbits, and butterflies and dragonflies fly by day. At night, fireflies blink, an owl glides over and bats hunt round the lamps. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater → Creatures), and regions can keep them out.");
   skyPair("wildlifeSounds", "wildlifeSoundsLocal", "Wildlife sounds", "The hawk's cry, crows passing, songbirds chirping and their wings as they burst up, a rabbit's thump when it bolts, a fish's splash as it darts, ducks quacking, gulls crying, frogs croaking and plopping in, a fox's bark, dragonflies, and by night an owl and a constant bed of crickets. A few at a time, only near enough to be heard. With Birds, rabbits and fish on.", "");
   registerSetting("thunderPanning", { name: "Thunder from the side it struck", hint: "Thunder plays to the left or right of your selected token, or of the middle of your view with none selected, as it struck. Off: in both ears alike. Either way, how far off it struck says how loud it is.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
@@ -7140,7 +7167,8 @@ Hooks.once("init", () => {
   skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground within minutes of game time, first in patches, and melts within minutes once it is above freezing. Kept per scene.");
   skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. FXMaster\u2019s effects for Calendaria\u2019s weather are hidden on your screen while this is on (its settings are never changed).");
   registerSetting("lightningFlashStrength", { name: "Lightning flash strength", hint: "How bright lightning flashes are on your screen: 0 none, 1 as they come. A repeating bright flash can be hard on the eyes: this is yours to turn down.", scope: "client", config: true, type: Number, default: 1, range: { min: 0, max: 1, step: 0.05 } });
-  registerSetting("cloudDarkness", { name: "Storm darkness", hint: "How dark the outdoors gets by day when a storm shuts the sky altogether (a thunderstorm, a blizzard, or Cloud cover at full): 0 not at all, the default about dusk. Plain cloud and overcast only dull the day. Lights show up against it. Only a look: it never changes the scene's darkness, so nobody sees less by the rules. A scene can say otherwise in the Weather panel.", scope: "world", config: true, type: Number, default: 0.5, range: { min: 0, max: 1, step: 0.05 } });
+  registerSetting("cloudDarkness", { name: "Storm darkness", hint: "How dark the outdoors gets by day when a storm shuts the sky altogether (a thunderstorm, a blizzard, or Cloud cover at full): 0 not at all, the default about dusk. Plain cloud and overcast only dull the day. Lights show up against it. A scene can say otherwise in the Weather panel.", scope: "world", config: true, type: Number, default: 0.5, range: { min: 0, max: 1, step: 0.05 } });
+  registerSetting("stormSceneDarkness", { name: "Storms change the scene's darkness", hint: "A storm that shuts the sky raises the scene's real Darkness Level, and puts it back when the storm ends, so vision, the rules and modules that read it (PF2e light levels, PF2e Visioner) treat it as the darkness it is. Storm darkness says how far: at 100% the scene is fully dark. Past the scene's global light limit, creatures without darkvision or a light lose sight of the outdoors. Off: storm darkness is only a look. A scene can opt out in its configuration.", scope: "world", config: true, type: Boolean, default: false, onChange: () => { try { lookSky(); } catch { /* no canvas yet */ } } });
   registerSetting("weatherLooks", { scope: "world", config: false, type: Object, default: {} });
   registerSetting("weatherFallsDown", { name: "Rain and snow fall down the map", hint: "They always come down the map, the wind only leaning them over a little, so they never go sideways or upward. Off: the wind takes them whichever way it blows, and a strong one can. Each scene can say otherwise in its own configuration.", scope: "world", config: true, type: Boolean, default: false });
   skyPair("weatherClouds", "weatherCloudsLocal", "Clouds over the map", "The clouds' shade moving over the map with the wind, and how they dull the day. They show on the ground, with the sun out, not as shapes in the air (only smoke and ash do). Turn off for the weather without them; what falls, the fog and the rest stay.");
@@ -7884,6 +7912,10 @@ Hooks.on("renderSceneConfig", (app, html) => {
     noWeather.className = "form-group";
     noWeather.innerHTML = `<label>No weather on this scene</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.weatherOff"${flags.weatherOff === true ? " checked" : ""}></div><p class="hint">Whatever the calendar says: no rain, snow, clouds, wind sounds or lightning here, and what lay on the ground goes. The sun still follows the time of day. The Weather button in the Animater controls sets this too.</p>`;
     tab.append(noWeather);
+    const stormDark = document.createElement("div");
+    stormDark.className = "form-group";
+    stormDark.innerHTML = `<label>Storms leave the darkness alone</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.stormDarkOff"${flags.stormDarkOff === true ? " checked" : ""}></div><p class="hint">With "Storms change the scene's darkness" on, storms here are only a look, and the scene's Darkness Level stays as it is.</p>`;
+    tab.append(stormDark);
     const falls = document.createElement("div");
     falls.className = "form-group";
     falls.innerHTML = `<label>Rain and snow fall down the map</label><div class="form-fields">${select("fallsDown", flags.fallsDown === true ? "on" : flags.fallsDown, [["", "As the module's setting"], ["on", "Yes here"], ["off", "No here"], ["top", "Seen from straight above"]])}</div><p class="hint">Yes: they always come down the map, the wind only leaning them over a little, so they never go sideways or upward. No: the wind takes them whichever way it blows, and a strong one can. Seen from straight above: for a top-down map, drops and flakes falling away from the eye, not streaks across it. The Weather button in the Animater controls sets this too.</p>`;
