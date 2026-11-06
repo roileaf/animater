@@ -10,35 +10,44 @@ const WAYS = [
   ['', 'Auto', 'fa-wand-magic-sparkles', "As the module's setting."],
   ['off', 'With wind', 'fa-wind', 'The wind takes it whichever way it blows.'],
   ['on', 'Down map', 'fa-arrow-down', 'Always down the map; the wind only leans it.'],
-  ['top', 'From above', 'fa-bullseye', 'For top-down maps: drops and flakes fall away from the eye and rain lands in rings.'],
+  ['top', 'From above', 'fa-bullseye', 'For top-down maps: rain and snow stream in toward the point under the camera, and rain lands in ripples.'],
 ];
 // The compass, row by row, north up the map (the middle is the weather's own direction).
 const COMPASS = ['nw', 'n', 'ne', 'w', '', 'e', 'sw', 's', 'se'];
 const COMPASS_NAMES = { n: 'north', ne: 'north-east', e: 'east', se: 'south-east', s: 'south', sw: 'south-west', w: 'west', nw: 'north-west' };
-// The list of weathers, in families (anything else, under Otherworldly).
+// The weathers, in families (anything else, under Strange): a tab for each, showing its own.
 const FAMILIES = [
-  ['Clear and cloudy', ['clear', 'partly-cloudy', 'cloudy', 'overcast', 'windy', 'heat-wave']],
-  ['Rain', ['drizzle', 'rain', 'sunshower', 'monsoon', 'sleet', 'hail']],
-  ['Snow and ice', ['snow', 'blizzard', 'ice-storm', 'permafrost-surge']],
-  ['Storms', ['thunderstorm', 'tornado', 'hurricane', 'sandstorm', 'dust-devil']],
-  ['Fog and smoke', ['fog', 'mist', 'rolling-fog', 'ashfall', 'wildfire-smoke']],
-  ['Seasons', ['sakura-bloom', 'autumn-leaves', 'spore-cloud']],
+  ['clear', 'Clear', 'fa-cloud-sun', ['clear', 'partly-cloudy', 'cloudy', 'overcast', 'windy', 'heat-wave']],
+  ['rain', 'Rain', 'fa-cloud-rain', ['drizzle', 'rain', 'sunshower', 'monsoon', 'sleet', 'hail']],
+  ['snow', 'Snow', 'fa-snowflake', ['snow', 'blizzard', 'ice-storm', 'permafrost-surge']],
+  ['storms', 'Storms', 'fa-cloud-bolt', ['thunderstorm', 'tornado', 'hurricane', 'sandstorm', 'dust-devil']],
+  ['fog', 'Fog', 'fa-smog', ['fog', 'mist', 'rolling-fog', 'ashfall', 'wildfire-smoke']],
+  ['seasons', 'Seasons', 'fa-leaf', ['sakura-bloom', 'autumn-leaves', 'spore-cloud']],
+  ['strange', 'Strange', 'fa-wand-sparkles', null],
 ];
+const FALL_ICONS = { rain: 'fa-cloud-rain', snow: 'fa-snowflake', hail: 'fa-icicles', ash: 'fa-fire-flame-simple', petal: 'fa-spa', leaf: 'fa-leaf', spore: 'fa-bacterium', sand: 'fa-hourglass-half', ember: 'fa-fire', gust: 'fa-wind', debris: 'fa-mound' };
+const EFFECT_ICONS = { mist: 'fa-smog', curtains: 'fa-cloud-showers-heavy', bands: 'fa-hurricane', tornado: 'fa-tornado', dustDevil: 'fa-wind', smoke: 'fa-cloud', heat: 'fa-temperature-high', frost: 'fa-icicles', glaze: 'fa-snowflake', rays: 'fa-sun', glow: 'fa-lightbulb', rainbow: 'fa-rainbow', aurora: 'fa-water', sparks: 'fa-bolt', wisps: 'fa-ghost', meteors: 'fa-meteor', noise: 'fa-tv' };
 
 const bare = (value) => String(value ?? '').replace(/^animater\./, '');
-const LOOK = 'look:';
-function weatherOptions(weathers, now, looks) {
-  const option = ([v, l]) => `<option value="${esc(v)}"${v === (now ?? '') ? ' selected' : ''}>${esc(l)}</option>`;
-  const taken = new Set(), groups = [];
-  if (looks.length) groups.push(`<optgroup label="My presets">${looks.map((n) => option([`${LOOK}${n}`, n])).join('')}</optgroup>`);
-  for (const [name, ids] of FAMILIES) {
-    const rows = weathers.filter(([v]) => v && ids.includes(bare(v)));
-    rows.forEach(([v]) => taken.add(v));
-    if (rows.length) groups.push(`<optgroup label="${esc(name)}">${rows.map(option).join('')}</optgroup>`);
-  }
-  const rest = weathers.filter(([v]) => v && !taken.has(v));
-  if (rest.length) groups.push(`<optgroup label="Otherworldly">${rest.map(option).join('')}</optgroup>`);
-  return [...weathers.filter(([v]) => !v).map(option), ...groups].join('');
+// Which tab a weather is under (pure): 'calendar' for none of its own.
+export function familyOf(weather) {
+  if (!weather) return 'calendar';
+  return (FAMILIES.find(([, , , ids]) => ids?.includes(bare(weather))) ?? FAMILIES.at(-1))[0];
+}
+// One button, active or not. `data` its data attributes, as written.
+const chip = (action, data, label, { icon = '', active = false, tip = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
+function weatherButtons(weathers, now, family) {
+  const tabs = [chip('setFamily', 'data-family="calendar"', 'Calendar', { icon: 'fa-calendar-days', active: family === 'calendar', tip: "The calendar's weather, or none." }), ...FAMILIES.map(([id, label, icon]) => chip('setFamily', `data-family="${id}"`, label, { icon, active: family === id }))].join('');
+  const row = FAMILIES.find(([id]) => id === family);
+  const own = !row ? [] : row[3] ? weathers.filter(([v]) => v && row[3].includes(bare(v))) : weathers.filter(([v]) => v && !FAMILIES.some(([, , , ids]) => ids?.includes(bare(v))));
+  const list = own.length ? `<div class="animater-wx-chips is-words">${own.map(([v, l]) => chip('setWeather', `data-weather="${esc(v)}"`, l, { active: v === now })).join('')}</div>` : '';
+  return `<div class="animater-wx-chips is-tabs">${tabs}</div>${list}`;
+}
+// What choosing an effect's button does to it (pure): on at half strength, or off again, or (the weather's own) off and back.
+export function effectToggled(tune, key, base = null) {
+  const set = tune?.[key] ?? null, own = effectIn(base, key) > 0.001, on = set === null ? own : set > 0;
+  if (on) return own ? 0 : null;
+  return own ? null : TUNE_EFFECTS[key]?.start ?? 0.5;
 }
 
 // What a slider says now (pure). Left alone it follows the weather: "Auto".
@@ -74,56 +83,52 @@ function controlRow(key, tune, base, off = false, lead = '') {
 }
 const fallNames = Object.entries(FALL_CHOICES);
 const KIND_NAMES = { 1: 'Rain', 2: 'Snow', 3: 'Hail', 4: 'Ash', 5: 'Petals', 6: 'Leaves', 7: 'Spores', 8: 'Sand', 9: 'Embers', 10: 'Wind gusts', 11: 'Debris' };
-function fallPicker(field, label, now, autoLabel) {
-  const list = [['', autoLabel], ['none', 'Nothing'], ...fallNames];
-  return `<div class="animater-wx-pick"><label for="animater-wx-${field}">${esc(label)}</label><select id="animater-wx-${field}" data-tune-pick="${field}">${list.map(([v, l]) => `<option value="${esc(v)}"${v === (now ?? '') ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
+function fallButtons(slot, now, first) {
+  const kinds = fallNames.map(([id, label]) => chip('setFall', `data-slot="${slot}" data-kind="${id}"`, label, { icon: FALL_ICONS[id], active: now === id }));
+  return `<div class="animater-wx-chips">${first.join('')}${kinds.join('')}</div>`;
 }
 
-// The panel's content (pure). `state` { weather, tune, way, windFrom }; `weathers` [[value, label]]; `looks` the saved names; `base` the weather as it stands, before any of this (weatherScene's); `note` why it would not show.
-export function weatherPanelHtml({ state, weathers = [], looks = [], base = null, note = '' }) {
-  const tune = cleanTune(state?.tune), known = weathers.some(([v]) => v === (state?.weather ?? ''));
-  const list = known ? weathers : [...weathers, [state.weather, state.weather]];
+// The panel's content (pure). `state` { weather, tune, way, windFrom }; `weathers` [[value, label]]; `looks` the saved names; `base` the weather as it stands, before any of this (weatherScene's); `family` the tab open, else the weather's own; `second` whether a second thing falling is being chosen; `note` why it would not show.
+export function weatherPanelHtml({ state, weathers = [], looks = [], base = null, family = null, second = false, note = '' }) {
+  const tune = cleanTune(state?.tune), now = state?.weather ?? '', known = weathers.some(([v]) => v === now);
+  const list = known ? weathers : [...weathers, [now, now]], open = family ?? familyOf(now);
   const own = base?.falls ?? [], ownNames = own.filter((f) => f.kind).map((f) => KIND_NAMES[f.kind]).filter(Boolean);
-  const quiet = tune.fall === 'none' || (!tune.fall && !ownNames.length);
+  const quiet = tune.fall === 'none' || (!tune.fall && !ownNames.length), hasSecond = !!tune.fall2 && tune.fall2 !== 'none';
   const way = state?.way ?? '', from = state?.windFrom ?? '';
   const ways = WAYS.map(([v, label, icon, hint]) => `<button type="button" class="${v === way ? 'is-active' : ''}" data-action="setWay" data-way="${v}" aria-pressed="${v === way}" data-tooltip="${esc(hint)}"><i class="fa-solid ${icon}" inert></i><span>${esc(label)}</span></button>`).join('');
   const compass = COMPASS.map((v) => {
     const name = COMPASS_NAMES[v], tip = name ? `From the ${name}` : "The weather's direction";
     return `<button type="button" class="${v === from ? 'is-active' : ''}" data-action="setFrom" data-from="${v}" aria-pressed="${v === from}" aria-label="${tip}" data-tooltip="${tip}">${v ? esc(v.toUpperCase()) : '<i class="fa-solid fa-wand-magic-sparkles" inert></i>'}</button>`;
   }).join('');
-  // An effect shows once the weather has it or it was added; the rest wait in the list to add.
-  const effectKeys = Object.keys(TUNE_EFFECTS), shown = effectKeys.filter((key) => tune[key] !== null || effectIn(base, key) > 0.001), hidden = effectKeys.filter((key) => !shown.includes(key));
-  const effects = shown.map((key) => controlRow(key, tune, base) + (TUNE_EFFECTS[key].color ? controlRow(TUNE_EFFECTS[key].color, tune, base, false, 'sub') : '')).join('');
-  const lookPicker = looks.length
-    ? `<div class="animater-wx-line"><select data-look aria-label="My presets">${looks.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select><button type="button" class="animater-wx-icon" data-action="deleteLook" data-tooltip="Delete this preset" aria-label="Delete this preset"><i class="fa-solid fa-trash" inert></i></button></div>`
-    : '';
+  // Every effect a button; each that is on has its strength below.
+  const effectOn = (key) => (tune[key] === null ? effectIn(base, key) > 0.001 : tune[key] > 0);
+  const effectButtons = Object.entries(TUNE_EFFECTS).map(([key, e]) => chip('toggleEffect', `data-key="${key}"`, e.label, { icon: EFFECT_ICONS[key], active: effectOn(key), tip: e.hint })).join('');
+  const effects = Object.keys(TUNE_EFFECTS).filter(effectOn).map((key) => controlRow(key, tune, base) + (TUNE_EFFECTS[key].color ? controlRow(TUNE_EFFECTS[key].color, tune, base, false, 'sub') : '')).join('');
+  const presets = looks.length ? `<div class="animater-wx-presets">${looks.map((n) => `<span class="animater-wx-preset"><button type="button" data-action="applyLook" data-name="${esc(n)}" data-tooltip="Use this weather">${esc(n)}</button><button type="button" data-action="deleteLook" data-name="${esc(n)}" data-tooltip="Delete this preset" aria-label="Delete ${esc(n)}"><i class="fa-solid fa-xmark" inert></i></button></span>`).join('')}</div>` : '';
   return `<div class="animater-wx">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
-    <header class="animater-wx-head">
-      <label for="animater-weather-kind">Start from</label>
-      <select id="animater-weather-kind" data-field="weather">${weatherOptions(list, state?.weather, looks)}</select>
-    </header>
+    <section class="animater-wx-section"><h3>Start from</h3>${weatherButtons(list, now, open)}</section>
     <section class="animater-wx-section"><h3>Precipitation</h3>
-      ${fallPicker('fall', 'Falling', tune.fall, `Auto (${ownNames.length ? ownNames.join(' and ') : 'nothing'})`)}
-      ${controlRow('amount', tune, base, quiet)}${controlRow('size', tune, base, quiet)}${controlRow('speed', tune, base, quiet && !tune.fall2)}${controlRow('color', tune, base, quiet)}
-      ${fallPicker('fall2', 'Also falling', tune.fall2 === 'none' ? '' : tune.fall2, 'Nothing more')}
-      ${tune.fall2 && tune.fall2 !== 'none' ? controlRow('amount2', tune, base) + controlRow('color2', tune, base) : ''}
-      <div class="animater-wx-ways" role="group" aria-label="Which way it falls">${ways}</div>
+      ${fallButtons('fall', tune.fall, [chip('setFall', 'data-slot="fall" data-kind=""', `Auto: ${ownNames.length ? ownNames.join(', ') : 'nothing'}`, { icon: 'fa-wand-magic-sparkles', active: !tune.fall, tip: 'What this weather has falling.' }), chip('setFall', 'data-slot="fall" data-kind="none"', 'Nothing', { icon: 'fa-ban', active: tune.fall === 'none' })])}
+      ${controlRow('amount', tune, base, quiet)}${controlRow('size', tune, base, quiet)}${controlRow('speed', tune, base, quiet && !hasSecond)}${controlRow('color', tune, base, quiet)}
+      ${hasSecond || second ? `<h4>Also falling</h4>${fallButtons('fall2', tune.fall2, [chip('setFall', 'data-slot="fall2" data-kind=""', 'Nothing more', { icon: 'fa-ban', active: !hasSecond })])}` : '<button type="button" class="animater-wx-more" data-action="showSecond"><i class="fa-solid fa-plus" inert></i> Add something else falling</button>'}
+      ${hasSecond ? controlRow('amount2', tune, base) + controlRow('color2', tune, base) : ''}
+      <h4>Direction</h4><div class="animater-wx-ways" role="group" aria-label="Which way it falls">${ways}</div>
     </section>
     <section class="animater-wx-section"><h3>Sky</h3>
       ${controlRow('temperature', tune, base)}${controlRow('cover', tune, base)}${controlRow('fog', tune, base)}${controlRow('fogColor', tune, base)}${controlRow('lightning', tune, base)}
     </section>
     <section class="animater-wx-section"><h3>Effects</h3>
+      <div class="animater-wx-chips">${effectButtons}</div>
       ${effects}
-      ${hidden.length ? `<div class="animater-wx-pick"><label for="animater-wx-add">Add</label><select id="animater-wx-add" data-add-effect><option value="">Choose an effect...</option>${hidden.map((key) => `<option value="${key}">${esc(TUNE_EFFECTS[key].label)}</option>`).join('')}</select></div>` : ''}
     </section>
     <section class="animater-wx-section"><h3>Wind</h3>
       ${controlRow('wind', tune, base)}
       <div class="animater-wx-from"><span>Blows from</span><div class="animater-wx-compass" role="group" aria-label="Wind direction">${compass}</div></div>
     </section>
     <section class="animater-wx-section"><h3>My presets</h3>
+      ${presets}
       <div class="animater-wx-line"><input type="text" data-look-name placeholder="Name this weather" aria-label="Name this weather" maxlength="60"><button type="button" class="animater-wx-button" data-action="saveLook">Save</button></div>
-      ${lookPicker}
     </section>
     <footer class="animater-wx-foot"><span>Previews as you drag. Players see it when you let go.</span><button type="button" class="animater-wx-link" data-action="resetAll"${tuneTouched(tune) ? '' : ' disabled'}>Reset all</button></footer>
   </div>`;
@@ -141,11 +146,17 @@ export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers
         resetAll() { preview(null); void write({ tune: cleanTune() }).then(() => this.render()); },
         setWay(_event, target) { void write({ way: target.dataset.way }).then(() => this.render()); },
         setFrom(_event, target) { void write({ windFrom: target.dataset.from }).then(() => this.render()); },
-        deleteLook() { const name = this.element.querySelector('[data-look]')?.value, all = { ...looks() }; if (!name || !(name in all)) return; delete all[name]; void saveLooks(all).then(() => this.render()); },
+        setFamily(_event, target) { this.family = target.dataset.family; if (target.dataset.family === 'calendar') void write({ weather: '' }).then(() => this.render()); else void this.render(); },
+        setWeather(_event, target) { void write({ weather: target.dataset.weather }).then(() => this.render()); },
+        setFall(_event, target) { preview(null); void write({ tune: { ...read().tune, [target.dataset.slot]: target.dataset.kind || null } }).then(() => this.render()); },
+        toggleEffect(_event, target) { const key = target.dataset.key, tune = read().tune; preview(null); void write({ tune: { ...tune, [key]: effectToggled(tune, key, base()) } }).then(() => this.render()); },
+        showSecond() { this.second = true; void this.render(); },
+        applyLook(_event, target) { const look = looks()[target.dataset.name]; if (look) { preview(null); this.family = null; void write({ ...look, tune: cleanTune(look.tune) }).then(() => this.render()); } },
+        deleteLook(_event, target) { const name = target.dataset.name, all = { ...looks() }; if (!name || !(name in all)) return; delete all[name]; void saveLooks(all).then(() => this.render()); },
         saveLook() { const name = this.element.querySelector('[data-look-name]')?.value?.trim(); if (!name) return; void saveLooks({ ...looks(), [name]: read() }).then(() => this.render()); },
       },
     };
-    async _renderHTML() { this.dragged = null; return weatherPanelHtml({ state: read(), weathers: weathers(), looks: Object.keys(looks()).sort(), base: base(), note: note() }); }
+    async _renderHTML() { this.dragged = null; return weatherPanelHtml({ state: read(), weathers: weathers(), looks: Object.keys(looks()).sort(), base: base(), family: this.family ?? null, second: this.second === true, note: note() }); }
     _replaceHTML(html, content) { const top = content.scrollTop; content.innerHTML = html; content.scrollTop = top; }
     _onFirstRender(context, options) {
       super._onFirstRender?.(context, options);
@@ -163,11 +174,6 @@ export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers
       this.element.addEventListener('change', (event) => {
         const input = event.target; if (!input?.dataset) return;
         if (input.dataset.tune) { void save({ tune: tuneOf(input) }); return; }
-        if (input.dataset.tunePick) { void save({ tune: { ...read().tune, [input.dataset.tunePick]: input.value || null } }); return; }
-        if ('addEffect' in input.dataset) { if (input.value) void save({ tune: { ...read().tune, [input.value]: 0.5 } }); return; }
-        const field = input.dataset.field; if (!field) return;
-        if (field === 'weather' && input.value.startsWith(LOOK)) { const look = looks()[input.value.slice(LOOK.length)]; if (look) void save({ ...look, tune: cleanTune(look.tune) }); return; }
-        void save({ [field]: input.value });
       });
     }
     async close(options) { preview(null); return super.close(options); }

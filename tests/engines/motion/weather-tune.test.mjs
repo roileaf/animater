@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanTune, effectIn, tuneAdds, tuneFalling, tuneTouched, tuneWeather, tuneWords } from '../../../scripts/engines/motion/weather-tune.mjs';
+import { cleanTune, effectIn, tuneAdds, tuneFalling, tunedRainbow, tuneTouched, tuneWeather, tuneWords } from '../../../scripts/engines/motion/weather-tune.mjs';
 import { weatherScene } from '../../../scripts/engines/motion/sky-weather.mjs';
-import { sliderText, weatherPanelHtml } from '../../../scripts/ui/weather-panel.mjs';
+import { effectToggled, familyOf, sliderText, weatherPanelHtml } from '../../../scripts/ui/weather-panel.mjs';
 
 test('a saved tune is made safe, with every key so a save replaces the last', () => {
   const none = cleanTune();
@@ -65,19 +65,20 @@ test('the panel shows what is set and escapes what a GM names', () => {
   assert.equal(sliderText('wind', null), 'Auto');
   assert.equal(sliderText('wind', 0.25), '25%');
   const html = weatherPanelHtml({ state: { weather: 'animater.rain', tune: { amount: 1.5 }, way: 'top', windFrom: 'n' }, weathers: [['', 'None'], ['animater.rain', 'Rain']], looks: ['<b>"x"</b>'], base: weatherScene({ id: 'rain' }) });
-  assert.ok(html.includes('value="animater.rain" selected'));
+  assert.ok(html.includes('class="is-active" data-action="setWeather" data-weather="animater.rain"'), 'the weather chosen shows');
+  assert.equal(html.includes('<select'), false, 'no dropdowns');
   assert.ok(/class="is-active" data-action="setWay" data-way="top"/.test(html), 'the way chosen shows');
-  assert.ok(html.includes('<optgroup label="My presets">'), 'presets can be picked with the weathers');
+  assert.ok(html.includes('data-action="applyLook"'), 'presets are buttons');
   assert.ok(/class="is-active" data-action="setFrom" data-from="n"/.test(html), 'the wind chosen shows');
-  assert.ok(html.includes('<optgroup label="Rain">'), 'weathers in families');
+  assert.ok(html.includes('class="is-active" data-action="setFamily" data-family="rain"'), 'its family open');
   assert.ok(html.includes('class="animater-wx-row is-set" data-row="amount"'), 'what was changed stands out');
   assert.ok(html.includes('class="animater-wx-row" data-row="size"'), 'what was not does not');
   const clearHtml = weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'clear' }) });
-  assert.ok(clearHtml.includes('Auto (nothing)'), 'says what falls by itself');
-  assert.ok(clearHtml.includes('value="snow"'), 'snow can be chosen on a clear day');
+  assert.ok(clearHtml.includes('Auto: nothing'), 'says what falls by itself');
+  assert.ok(clearHtml.includes('data-slot="fall" data-kind="snow"'), 'snow can be chosen on a clear day');
   assert.ok(clearHtml.includes('class="animater-wx-row is-off" data-row="amount"'), 'amount waits until something falls');
   assert.ok(!weatherPanelHtml({ state: { tune: { fall: 'snow' } }, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('is-off" data-row="amount"'), 'and works once it does');
-  assert.ok(clearHtml.includes('<option value="aurora">Aurora</option>'), 'every effect can be added');
+  assert.ok(clearHtml.includes('data-action="toggleEffect" data-key="aurora"'), 'every effect can be added');
   assert.ok(!clearHtml.includes('data-row="aurora"'), 'without a row until it is');
   assert.ok(weatherPanelHtml({ state: { tune: { aurora: 0.5 } }, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('data-row="auroraColor"'), 'added, with its colour');
   assert.ok(weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'tornado' }) }).includes('data-row="tornado"'), "the weather's own effects show");
@@ -85,7 +86,7 @@ test('the panel shows what is set and escapes what a GM names', () => {
   assert.ok(html.includes('value="1.5"'));
   assert.equal(html.includes('<b>'), false);
   const other = weatherPanelHtml({ state: { weather: 'someone-elses', tune: null }, weathers: [['', 'None']] });
-  assert.ok(other.includes('value="someone-elses" selected'), "another module's weather stays selected");
+  assert.ok(other.includes('class="is-active" data-action="setWeather" data-weather="someone-elses"'), "another module's weather stays selected");
 });
 
 test('anything can be built on any weather: what falls', () => {
@@ -166,4 +167,28 @@ test('the sky shader stays within the textures a card takes for sure', async () 
   const frag = source.slice(0, source.indexOf('float hash(vec2 p)'));
   const samplers = [...frag.matchAll(/uniform sampler2D ([^;]+);/g)].flatMap((m) => m[1].split(','));
   assert.ok(samplers.length <= 16, `${samplers.length} textures`);
+});
+
+test('the panel opens at the weather\'s family, and its effect buttons turn on and off', () => {
+  assert.equal(familyOf(''), 'calendar');
+  assert.equal(familyOf('animater.blizzard'), 'snow');
+  assert.equal(familyOf('animater.blood-rain'), 'strange');
+  const clear = weatherScene({ id: 'clear' }), twister = weatherScene({ id: 'tornado' });
+  assert.equal(effectToggled(cleanTune(), 'aurora', clear), 0.5, 'off: on at half');
+  assert.equal(effectToggled(cleanTune({ aurora: 0.8 }), 'aurora', clear), null, 'on: off again');
+  assert.equal(effectToggled(cleanTune(), 'tornado', twister), 0, "the weather's own: off");
+  assert.equal(effectToggled(cleanTune({ tornado: 0 }), 'tornado', twister), null, 'and back to its own');
+  const second = weatherPanelHtml({ state: {}, weathers: [], base: clear, second: true });
+  assert.ok(second.includes('data-slot="fall2" data-kind="snow"'));
+  assert.equal(weatherPanelHtml({ state: {}, weathers: [], base: clear }).includes('data-slot="fall2"'), false, 'hidden until asked for');
+  assert.ok(weatherPanelHtml({ state: { tune: { fall2: 'ash' } }, weathers: [], base: clear }).includes('data-row="amount2"'));
+});
+
+test('a rainbow can be asked for in any weather, and turned off', () => {
+  assert.equal(tunedRainbow(cleanTune()), null, 'left to the weather');
+  assert.equal(tunedRainbow(cleanTune({ rainbow: 0 })), 0, 'or none at all');
+  assert.equal(tunedRainbow(cleanTune({ rainbow: 0.6 })), 1, 'as bright as one after the rain');
+  assert.ok(tunedRainbow(cleanTune({ rainbow: 1 })) > 1, 'brighter at the top');
+  assert.equal(effectToggled(cleanTune(), 'rainbow', weatherScene({ id: 'clear' })), 0.6, 'the button starts it at that');
+  assert.ok(weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('data-action="toggleEffect" data-key="rainbow"'));
 });

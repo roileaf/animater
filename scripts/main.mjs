@@ -188,7 +188,7 @@ import { openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createL
 import { fallWayHere, nearestLights, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
-import { cleanTune, tuneAdds, tuneFalling, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
+import { cleanTune, tuneAdds, tuneFalling, tunedRainbow, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
 import { weatherPanel } from "./ui/weather-panel.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
 import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
@@ -3782,7 +3782,8 @@ const lookSky = () => {
       // (Calendaria's darkness following the moon already lifts the whole night: then only the silver, at half.)
       moon: sunNow?.moon && hotSetting("moonLight") !== false ? moonGlow(clock?.moon, { calendariaLifts: calendariaMoonNow() }) : 0,
       // A rainbow when the rain has just stopped and the sun is out.
-      rainbow: rainbowOn() ? rainbowOf({ wet: ground.wet, raining: falling.rain > 0.05, sun: sunNow, clouds: cloudCover(sky) }) : 0,
+      // (Or the one the GM asked for, whatever the weather.)
+      rainbow: tunedRainbow(tune) ?? (rainbowOn() ? rainbowOf({ wet: ground.wet, raining: falling.rain > 0.05, sun: sunNow, clouds: cloudCover(sky) }) : 0),
       sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180,
       // The weather drawn on the map (Calendaria's, as it sets it): clouds from above with their shadows, what falls, fog.
       // (A scene's own Weather Effect, when one of Animater's, comes before Calendaria's.)

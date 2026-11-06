@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.1 (unreleased)
+
+### New
+
+- **Rainbow.** A new effect in the Weather panel, in any weather.
+- **Weather panel buttons.** Every dropdown is now buttons: weathers in family tabs, what falls, the effects as on and off, and your presets.
+
 ## 3.1.0 (2026-11-06)
 
 ### Fixes

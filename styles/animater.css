@@ -3748,3 +3748,22 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-wx-link { flex: none; padding: 4px 6px !important; color: var(--wx-accent) !important; font-size: 12px !important; font-weight: 600 !important; }
 .animater-wx-link:hover:not(:disabled) { text-decoration: underline; }
 .animater-wx-link:disabled { color: var(--wx-soft) !important; opacity: 0.6; cursor: default; }
+
+/* The Weather panel's buttons */
+.animater-wx h4 { margin: 10px 0 5px; padding: 0; border: 0; color: var(--wx-soft); font-family: inherit; font-size: 11px; font-weight: 600; }
+.animater-wx-chips { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; margin-bottom: 6px; }
+.animater-wx-chips.is-tabs { grid-template-columns: repeat(4, 1fr); }
+.animater-wx-chips.is-words { grid-template-columns: repeat(3, 1fr); margin-top: 6px; }
+.animater-wx-chips button { display: flex; min-width: 0; min-height: 40px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 4px 1px; background: var(--wx-hover); color: var(--wx-soft); font-size: 10px; line-height: 1.1; text-align: center; }
+.animater-wx-chips button span { overflow-wrap: anywhere; }
+.animater-wx-chips button i { font-size: 13px; }
+.animater-wx-chips.is-words button { min-height: 32px; }
+.animater-wx-chips button:hover { background: var(--wx-track); color: inherit; }
+.animater-wx-chips button.is-active { background: var(--wx-accent); color: #1b1712; font-weight: 600; }
+.animater-wx-more { display: block; width: 100% !important; margin-top: 6px !important; padding: 7px !important; background: var(--wx-hover) !important; color: var(--wx-soft) !important; font-size: 12px !important; }
+.animater-wx-more:hover { background: var(--wx-track) !important; color: inherit !important; }
+.animater-wx-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.animater-wx-preset { display: inline-flex; overflow: hidden; border-radius: 5px; background: var(--wx-hover); }
+.animater-wx-preset button { padding: 6px 9px !important; border-radius: 0 !important; font-size: 12px !important; }
+.animater-wx-preset button:last-child { padding: 6px 7px !important; color: var(--wx-soft) !important; }
+.animater-wx-preset button:hover { background: var(--wx-track) !important; }

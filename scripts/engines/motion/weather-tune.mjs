@@ -23,6 +23,7 @@ export const TUNE_EFFECTS = Object.freeze({
   glaze: { label: 'Ice glaze', hint: "Freezing rain's shine on the ground." },
   rays: { label: 'Sun rays', hint: 'Shafts of light with motes in them.' },
   glow: { label: 'Glow', color: 'glowColor', tint: [1, 0.86, 0.42], hint: 'A light or a pall over everything.' },
+  rainbow: { label: 'Rainbow', start: 0.6, hint: 'An arc across the map, away from the sun. It comes and goes over some seconds.' },
   aurora: { label: 'Aurora', color: 'auroraColor', tint: [0.3, 1, 0.62], hint: 'Curtains of light in the sky.' },
   sparks: { label: 'Sparks', color: 'sparksColor', tint: [0.3, 0.66, 1], hint: 'Sparks along drifting currents.' },
   wisps: { label: 'Wisps', color: 'wispsColor', tint: [0.62, 0.86, 0.72], hint: 'Pale drifting spirits.' },
@@ -126,6 +127,8 @@ export function tuneFalling(falling, tune) {
   return out;
 }
 
+// How bright a rainbow the GM asked for is, on the scale the sky draws (pure): most of the slider is as bright as one after the rain gets, the top end brighter. null: none asked for.
+export const tunedRainbow = (tune) => (tune?.rainbow === null || tune?.rainbow === undefined ? null : tune.rainbow / (TUNE_EFFECTS.rainbow.start));
 // The names the sounds go by, for what the GM built (pure): hail has its own, and snow in a hard wind howls as a blizzard.
 export function tuneWords(tune, wind = 0) {
   if (!tune) return '';
