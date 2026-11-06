@@ -196,7 +196,8 @@ export function waterSelectionPixels(loops, width, height) {
   for (const pixel of waterProposalFromLoops(loops, width, height).pixels) mask[pixel] = 1;
   for (const { points } of loops) for (let i = 0; i < points.length; i += 2) {
     const j = (i + 2) % points.length;
-    const ax = points[i], ay = points[i + 1], bx = points[j], by = points[j + 1];
+    const snap = v => Math.abs(v - Math.round(v)) < 1e-8 ? Math.round(v) : v;
+    const ax = snap(points[i]), ay = snap(points[i + 1]), bx = snap(points[j]), by = snap(points[j + 1]);
     if (ay === by) {
       if (Number.isInteger(ay) || ay < 0 || ay >= height) continue;
       for (let x = Math.max(0, Math.floor(Math.min(ax, bx))); x < Math.min(width, Math.ceil(Math.max(ax, bx))); x++) mask[Math.floor(ay) * width + x] = 1;
@@ -214,21 +215,23 @@ export function waterSelectionPixels(loops, width, height) {
   return Int32Array.from(pixels);
 }
 
-export function selectExcludedAreaAt(rgba, width, height, { x, y }, { targetPixels, broad = false } = {}) {
+export function selectExcludedAreaAt(rgba, width, height, { x, y }, { targetPixels, boundaryPixels = [], broad = false } = {}) {
   const count = width * height;
   if (!rgba || rgba.length < count * 4) throw new Error("selectExcludedAreaAt: rgba is shorter than width * height * 4");
   if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= width || y >= height) return none("outside-target");
   const clicked = Math.floor(y) * width + Math.floor(x);
   const target = new Uint8Array(count);
   for (const p of targetPixels ?? []) target[p] = 1;
-  if (!target[clicked]) return none("outside-target");
+  const boundary = new Uint8Array(count);
+  for (const p of boundaryPixels) if (!target[p]) boundary[p] = 1;
+  if (!target[clicked] && !boundary[clicked]) return none("outside-target");
   if (rgba[clicked * 4 + 3] < WATER_TUNING.alphaMin) return none("no-colour");
   const hue = new Float32Array(count), sat = new Float64Array(count), val = new Uint8Array(count);
   readColour(rgba, hue, sat, val, count);
   const accepted = new Uint8Array(count), seeds = new Uint8Array(count), mask = new Uint8Array(count);
   const hueLimit = broad ? 40 : 14, satLimit = broad ? 0.25 : 0.14, valueLimit = broad ? 56 : 32;
   for (let p = 0; p < count; p++) {
-    if (!target[p] || rgba[p * 4 + 3] < WATER_TUNING.alphaMin) continue;
+    if ((!target[p] && p !== clicked) || rgba[p * 4 + 3] < WATER_TUNING.alphaMin) continue;
     if (Math.abs(sat[p] - sat[clicked]) > satLimit || Math.abs(val[p] - val[clicked]) > valueLimit) continue;
     if (sat[clicked] < 0.08) {
       if (Math.max(...[0, 1, 2].map(c => Math.abs(rgba[p * 4 + c] - rgba[clicked * 4 + c]))) > (broad ? 40 : 24)) continue;
@@ -237,6 +240,14 @@ export function selectExcludedAreaAt(rgba, width, height, { x, y }, { targetPixe
   }
   seeds[clicked] = 1;
   grow(seeds, accepted, mask, width, height);
+  const selectedMask = mask.slice();
+  for (let p = 0; p < count; p++) if (boundary[p]) {
+    const x = p % width, y = Math.floor(p / width);
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx >= 0 && nx < width && ny >= 0 && ny < height && selectedMask[ny * width + nx]) mask[p] = 1;
+    }
+  }
   const loops = contourLoops(mask, width, height);
   const corners = new Set();
   for (const loop of loops) {
