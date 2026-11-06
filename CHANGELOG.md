@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.2.1 (2026-11-06)
+
+### Fixes
+
+- Seagulls keep to the sea. Rivers, lakes and ponds no longer get them, however wide they are.
+
+### New
+
+- **Storms can change the scene's darkness.** A new setting, off by default, makes a storm that shuts the sky raise the scene's real Darkness Level, easing in and going back when the storm ends, while still following the clock. Vision, PF2e light levels and PF2e Visioner then follow it. Storm darkness says how far, up to fully dark at 100%; past the scene's global light limit, creatures without darkvision or a light lose sight of the outdoors. Each scene can opt out.
+
 ## 3.2.0 (2026-11-06)
 
 ### New
