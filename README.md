@@ -23,6 +23,7 @@ Animater combines visual effects, cosmetic token movement, optional sound and **
 | Required (one) | JB2A Free (`JB2A_DnD5e`) or JB2A Patreon (`jb2a_patreon`) | Patreon unlocks the full art set; every animation has a Free fallback |
 | Optional | GGG, PSFX, SoundFx Library, PF2e Creature Sounds | Sound cues; uses whichever packs are active |
 | Optional | FXMaster | Brief scene weather for storm and weather spells |
+| Optional | Calendaria | Weather works without it, from the scene's weather and the Weather panel; with it, Animater also follows the calendar's weather and temperature |
 
 ## Install
 
