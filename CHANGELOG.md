@@ -4,8 +4,13 @@
 
 ### New
 
-- **Rainbow.** A new effect in the Weather panel, in any weather.
+- **Rainbow.** A new effect in the Weather panel, in any weather, with its rotation and size.
 - **Weather panel buttons.** Every dropdown is now buttons: weathers in family tabs, what falls, the effects as on and off, and your presets.
+- **Lightning throws sparks.** Where a bolt lands, sparks fly out from the spot and die away. In a room they stop at walls that block light.
+- **Ground gets wet in.** A new setting under Wet ground says how many game minutes the hardest rain takes to soak the ground, 5 by default (it was 15). Lighter rain takes longer.
+- **Ripples on wet ground.** Rain now rings faintly on any wet ground where it lands, not only on water and puddles, so a wet floor under an opening shows it.
+- **Thunder comes from where the lightning struck.** It is panned left or right of the selected token, or of the middle of the view with none selected (a setting, on by default, for each player), and a far strike is quieter, later and duller the further it is.
+- **Clear all.** The panel's Reset all is now Clear all: it also puts back the calendar's weather, the direction and the wind's direction. Your presets stay.
 
 ## 3.1.0 (2026-11-06)
 

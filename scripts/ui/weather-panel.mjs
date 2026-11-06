@@ -103,7 +103,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
   // Every effect a button; each that is on has its strength below.
   const effectOn = (key) => (tune[key] === null ? effectIn(base, key) > 0.001 : tune[key] > 0);
   const effectButtons = Object.entries(TUNE_EFFECTS).map(([key, e]) => chip('toggleEffect', `data-key="${key}"`, e.label, { icon: EFFECT_ICONS[key], active: effectOn(key), tip: e.hint })).join('');
-  const effects = Object.keys(TUNE_EFFECTS).filter(effectOn).map((key) => controlRow(key, tune, base) + (TUNE_EFFECTS[key].color ? controlRow(TUNE_EFFECTS[key].color, tune, base, false, 'sub') : '')).join('');
+  const effects = Object.keys(TUNE_EFFECTS).filter(effectOn).map((key) => controlRow(key, tune, base) + (TUNE_EFFECTS[key].color ? controlRow(TUNE_EFFECTS[key].color, tune, base, false, 'sub') : '') + (TUNE_EFFECTS[key].more ?? []).map((more) => controlRow(more, tune, base, false, 'sub')).join('')).join('');
   const presets = looks.length ? `<div class="animater-wx-presets">${looks.map((n) => `<span class="animater-wx-preset"><button type="button" data-action="applyLook" data-name="${esc(n)}" data-tooltip="Use this weather">${esc(n)}</button><button type="button" data-action="deleteLook" data-name="${esc(n)}" data-tooltip="Delete this preset" aria-label="Delete ${esc(n)}"><i class="fa-solid fa-xmark" inert></i></button></span>`).join('')}</div>` : '';
   return `<div class="animater-wx">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
@@ -130,7 +130,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
       ${presets}
       <div class="animater-wx-line"><input type="text" data-look-name placeholder="Name this weather" aria-label="Name this weather" maxlength="60"><button type="button" class="animater-wx-button" data-action="saveLook">Save</button></div>
     </section>
-    <footer class="animater-wx-foot"><span>Previews as you drag. Players see it when you let go.</span><button type="button" class="animater-wx-link" data-action="resetAll"${tuneTouched(tune) ? '' : ' disabled'}>Reset all</button></footer>
+    <footer class="animater-wx-foot"><span>Previews as you drag. Players see it when you let go.</span><button type="button" class="animater-wx-link" data-action="resetAll" data-tooltip="Everything here back to Auto and the calendar's weather. Your presets stay."${tuneTouched(tune) || now || way || from ? '' : ' disabled'}>Clear all</button></footer>
   </div>`;
 }
 
@@ -143,7 +143,7 @@ export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers
       window: { title: 'Weather', icon: 'fa-solid fa-cloud-sun-rain', resizable: true }, position: { width: 360, height: 'auto' },
       actions: {
         resetTune(_event, target) { const tune = { ...read().tune, [target.dataset.key]: null }; preview(null); void write({ tune }).then(() => this.render()); },
-        resetAll() { preview(null); void write({ tune: cleanTune() }).then(() => this.render()); },
+        resetAll() { preview(null); this.family = null; this.second = false; void write({ weather: '', tune: cleanTune(), way: '', windFrom: '' }).then(() => this.render()); },
         setWay(_event, target) { void write({ way: target.dataset.way }).then(() => this.render()); },
         setFrom(_event, target) { void write({ windFrom: target.dataset.from }).then(() => this.render()); },
         setFamily(_event, target) { this.family = target.dataset.family; if (target.dataset.family === 'calendar') void write({ weather: '' }).then(() => this.render()); else void this.render(); },

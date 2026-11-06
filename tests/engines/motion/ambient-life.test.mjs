@@ -168,3 +168,14 @@ test('drizzle set on a scene is light rain, not rain', async () => {
   assert.ok(fallingOf({ scene: 'animater.drizzle' }).rain < fallingOf({ scene: 'animater.rain' }).rain);
   assert.ok(fallingOf({ scene: 'animater.drizzle' }).rain > 0.05);
 });
+
+test('the GM says how fast rain soaks the ground, lighter rain taking longer', () => {
+  const after = (minutes, rain, wetMinutes) => createGroundWeather({ load: () => ({ wet: 0, snow: 0, ice: 0, at: 0 }), wetMinutes: () => wetMinutes }).update({ now: minutes * 60, rain }).wet;
+  assert.equal(after(5, 1, 5), 1, 'the hardest rain, in the time given');
+  assert.ok(after(2, 1, 5) < 1 && after(2, 1, 5) > 0.3, 'on its way');
+  assert.ok(after(5, 0.7, 5) < 1 && after(8, 0.7, 5) === 1, 'ordinary rain, a little longer');
+  assert.ok(after(5, 0.25, 5) < after(5, 0.7, 5), 'a drizzle longer again');
+  assert.equal(after(15, 1, null), 1, 'none given: a quarter of an hour, as ever');
+  assert.ok(after(10, 1, null) < 1);
+  assert.equal(after(60, 0, 5), 0, 'no rain, no wet');
+});

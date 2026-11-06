@@ -52,9 +52,26 @@ export function boltLevel(age, steady = false) {
   return Math.pow(1 - (age - 0.19) / (BOLT_SECONDS - 0.19), 1.6);
 }
 
-/** The layer: strike({ x, y, grid, strength, steady }) draws a bolt down to that spot; tick(seconds); clear(). */
+// The sparks thrown up where a bolt lands (pure): each flying out from the spot at its own angle and speed, slowing, gone within a second or so. `strength` 0-1 how many and how far. Speeds in map pixels a second.
+export const SPARK_DRAG = 3.2;
+export function sparksOf(random, { grid = 100, strength = 1 } = {}) {
+  const s = Math.min(1, Math.max(0.35, Number(strength) || 0)), out = [], count = Math.round(10 + 14 * s);
+  for (let i = 0; i < count; i++) {
+    const angle = random() * Math.PI * 2, speed = grid * (1.5 + 6 * random() * random()) * (0.6 + 0.4 * s);
+    out.push({ vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, life: 0.35 + 0.65 * random(), size: grid * (0.02 + 0.03 * random()), warm: random() < 0.6 });
+  }
+  return out;
+}
+// One spark at an age (pure): how far it has flown, slowing, and how bright it is. null once it is gone.
+export function sparkAt(spark, age) {
+  if (age >= spark.life) return null;
+  const flown = (1 - Math.exp(-SPARK_DRAG * age)) / SPARK_DRAG, slowing = Math.exp(-SPARK_DRAG * age), left = 1 - age / spark.life;
+  return { dx: spark.vx * flown, dy: spark.vy * flown, speed: Math.hypot(spark.vx, spark.vy) * slowing, alpha: left * left };
+}
+
+/** The layer: strike({ x, y, grid, strength, steady }) draws a bolt down to that spot, its sparks thrown out from it; tick(seconds); clear(). */
 export function createLightningBolts({ PIXI, root, random = Math.random }) {
-  let live = [], glowTexture = null;
+  let live = [], flying = [], glowTexture = null;
   const glowOf = () => {
     if (glowTexture?.valid) return glowTexture;
     const c = document.createElement('canvas'); c.width = c.height = 128;
@@ -65,6 +82,16 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
   };
   const line = (g, points, width, colour, alpha) => { g.lineStyle(width, colour, alpha); g.moveTo(points[0].x, points[0].y); for (let i = 1; i < points.length; i++) g.lineTo(points[i].x, points[i].y); };
   const drop = (b) => { try { b.view.parent?.removeChild(b.view); b.view.destroy({ children: true }); } catch { /* gone with the canvas */ } };
+  const throwSparks = ({ x, y, grid, strength, reach }) => {
+    const view = new PIXI.Container(), each = sparksOf(random, { grid, strength }).map((spark) => {
+      const sprite = new PIXI.Sprite(glowOf()); sprite.anchor.set(0.5); sprite.position.set(x, y); sprite.blendMode = PIXI.BLEND_MODES.ADD; sprite.tint = spark.warm ? 0xffc27a : 0xffffff; view.addChild(sprite);
+      return { spark, sprite };
+    });
+    // In a room, no further than its light goes.
+    if (reach?.length >= 6) { const edge = new PIXI.Graphics(); edge.beginFill(0xffffff, 1); edge.drawPolygon(reach); edge.endFill(); view.addChild(edge); view.mask = edge; }
+    view.eventMode = 'none'; root().addChild(view);
+    flying.push({ view, each, age: 0, x, y });
+  };
   return {
     // (`burst`: it came down through an opening: a hard white core where it hits the floor, its light thrown round the room. `reach`: as far as that light gets, flat x, y pairs: the bolt comes from the sky, but what it lights stops at what stops light.)
     strike({ x, y, grid = 100, strength = 1, steady = false, burst = false, reach = null } = {}) {
@@ -91,8 +118,25 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
       view.addChild(lit, g);
       view.eventMode = 'none'; root().addChild(view);
       live.push({ view, age: 0, strength: Math.min(1, Math.max(0.35, strength)), steady });
+      if (!steady && !(reach && reach.length < 6)) throwSparks({ x, y, grid, strength, reach });
     },
     tick(seconds) {
+      // Each drawn drawn out along its way, shrinking to a point as it slows.
+      flying = flying.filter((burst) => {
+        burst.age += seconds;
+        let any = false;
+        for (const { spark, sprite } of burst.each) {
+          const now = sparkAt(spark, burst.age);
+          if (!now) { sprite.visible = false; continue; }
+          any = true;
+          sprite.position.set(burst.x + now.dx, burst.y + now.dy);
+          sprite.rotation = Math.atan2(spark.vy, spark.vx);
+          sprite.width = spark.size * 4 + now.speed * 0.05; sprite.height = spark.size * 4;
+          sprite.alpha = now.alpha;
+        }
+        if (!any) drop(burst);
+        return any;
+      });
       if (!live.length) return;
       live = live.filter((b) => {
         b.age += seconds;
@@ -102,7 +146,7 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
         return true;
       });
     },
-    clear() { for (const b of live) drop(b); live = []; },
-    get busy() { return live.length > 0; },
+    clear() { for (const b of [...live, ...flying]) drop(b); live = []; flying = []; },
+    get busy() { return live.length > 0 || flying.length > 0; },
   };
 }

@@ -59,6 +59,14 @@ export function thunderClose({ near = 1, random = Math.random } = {}) {
   return { file, wait: 20 + (1 - n) * 500, volume: 0.8 + 0.2 * n, rate: 0.96 + random() * 0.08, under: { volume: 0.55 + 0.45 * n, rate: 0.58 + random() * 0.08 }, near: true };
 }
 
+// Which side a strike is heard from (pure, -1 left to 1 right): how far across from whoever hears it, never wholly in one ear.
+export const thunderPan = (from, at, grid = 100, wide = 12) => Math.max(-0.85, Math.min(0.85, (at.x - from.x) / (grid * wide) * 0.85));
+// A strike further off, by how far (pure, `squares`): quieter, later and duller the further it is. { file, wait ms, volume, rate, cutoff Hz }.
+export function thunderFar({ squares = 20, random = Math.random } = {}) {
+  const k = clamp((squares - 10) / 50), own = random() < 0.5, pick = (list) => list[Math.floor(random() * list.length) % list.length];
+  return { file: own ? pick(THUNDER.far) : pick(THUNDER.close), wait: Math.min(6500, 500 + squares * 110) + random() * 300, volume: (0.62 - 0.42 * k) * (own ? 1 : 0.7), rate: own ? 0.9 + random() * 0.2 : 0.68 + random() * 0.12, cutoff: 5000 - 4300 * k, near: false };
+}
+
 // One recording for a scene (pure), the same on every visit: `seed` its id.
 export function weatherFile(kind, seed = '') {
   const files = WEATHER_LOOPS[kind]; if (!files?.length) return null;

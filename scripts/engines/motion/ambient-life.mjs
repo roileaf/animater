@@ -65,7 +65,8 @@ const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4, FREEZ
  * temperature (null unknown: then snow lying deep for long freezes it slowly, and it thaws once the snow is gone and the
  * sun is out). `load()` gives what was kept ({ wet, snow, ice, at } or null), `save(state)` keeps it.
  */
-export function createGroundWeather({ load = () => null, save = () => {}, pace = () => null } = {}) {
+// `wetMinutes()`: game minutes for the hardest rain to soak the ground, the GM's (lighter rain takes longer); none given: a quarter of an hour.
+export function createGroundWeather({ load = () => null, save = () => {}, pace = () => null, wetMinutes = () => null } = {}) {
   let state = null;
   return {
     update({ now = 0, rain = 0, snow = 0, temperature = null, air = temperature, sun = 0 } = {}) {
@@ -75,7 +76,7 @@ export function createGroundWeather({ load = () => null, save = () => {}, pace =
       const gap = (Number(now) - state.at) / 3600, hours = Math.abs(gap) > 24 * 30 ? 0 : Math.min(48, Math.max(0, gap));
       const warm = temperature !== null && Number.isFinite(Number(temperature)) ? Number(temperature) : null;
       const heat = 1 + clamp01(sun) + (warm !== null ? clamp01((warm - 10) / 20) : 0);
-      if (rain > 0.05) state.wet = clamp01(state.wet + hours * clamp01(rain) / WETS_HOURS * 2);
+      if (rain > 0.05) { const minutes = Number(wetMinutes()); state.wet = clamp01(state.wet + hours * clamp01(rain) * (minutes > 0 ? 60 / minutes : 2 / WETS_HOURS)); }
       else state.wet = clamp01(state.wet - hours * heat / DRIES_HOURS / 2);
       const stays = warm === null || warm <= 2, timed = Number(pace()) > 0, way = timed ? hours / Number(pace()) : null;
       if (snow > 0.05 && stays) state.snow = clamp01(state.snow + (timed ? hours / SNOW_LIES_HOURS : hours * clamp01(snow) / SNOWS_HOURS * 2));
@@ -150,9 +151,9 @@ export function groundInputs({ calendaria = null, scene = '', temperature = null
 // The ground of a scene nobody is looking at, carried on to `now` (game seconds) under the weather now (groundInputs'):
 // the river freezes on while the party is elsewhere. `kept` the scene's last ({ wet, snow, ice, at } or null: it starts
 // bare, from now).
-export function groundStep(kept, { now = 0, pace = null, ...input } = {}) {
+export function groundStep(kept, { now = 0, pace = null, wetMinutes = null, ...input } = {}) {
   let out = null;
-  createGroundWeather({ load: () => kept, save: (state) => { out = state; }, pace: () => pace }).update({ now, ...input });
+  createGroundWeather({ load: () => kept, save: (state) => { out = state; }, pace: () => pace, wetMinutes: () => wetMinutes }).update({ now, ...input });
   return out;
 }
 

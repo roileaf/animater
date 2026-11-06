@@ -64,3 +64,18 @@ test('a strike can come down through an opening, more often the bigger it is', a
   assert.equal(openingStrike({ random: roll(0.1, 0.5), areas: [hole], rect, inside: () => false }), null, 'never outside the opening');
   assert.equal(openingStrike({ areas: [], rect }), null);
 });
+
+test('a bolt throws sparks that slow and die away', async () => {
+  const { sparkAt, sparksOf } = await import('../../../scripts/engines/motion/lightning-bolt.mjs');
+  let n = 0; const random = () => { n = (n * 9301 + 49297) % 233280; return n / 233280; };
+  const big = sparksOf(random, { grid: 100, strength: 1 }), small = sparksOf(random, { grid: 100, strength: 0.35 });
+  assert.ok(big.length > small.length, 'more from a harder strike');
+  assert.ok(big.every((s) => s.life <= 1), 'gone within a second');
+  const s = { vx: 300, vy: 0, life: 0.8, size: 3, warm: true };
+  const early = sparkAt(s, 0.05), late = sparkAt(s, 0.6);
+  assert.ok(late.dx > early.dx, 'further out');
+  assert.ok(late.speed < early.speed, 'slowing');
+  assert.ok(late.alpha < early.alpha, 'fading');
+  assert.equal(sparkAt(s, 0.8), null, 'gone');
+  assert.equal(sparkAt(s, 0).dx, 0, 'from the spot');
+});

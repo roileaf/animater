@@ -1024,7 +1024,9 @@ void main(){
   if (uRain > 0.01) {
     // Rain on water and on the puddles: where each drop lands a short train of waves runs out as on a pool (drips.mjs), lit on the side facing the light and dark in its troughs, more the harder it rains.
     float puddle = uWet > 0.05 ? smoothstep(0.68, 0.72, fbm(px / (uGrid * 1.4))) * (1.0 - water) : 0.0;
-    float pool = max(water, puddle) * outside;
+    // (And faintly on any ground that is wet, where each drop lands: most of all on hard floors with no puddle to show it.)
+    float film = uWet > 0.05 ? 0.6 * smoothstep(0.05, 0.45, uWet) : 0.0;
+    float pool = max(max(water, puddle), film) * outside;
     if (pool > 0.01) {
       vec3 ripple = rainRipples(px, t, uRain, uGrid * 0.42);
       vec2 slope = ripple.xy; float waves = ripple.z;
@@ -1235,13 +1237,13 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       meshes = [shade, light, pale, flock, veil, glow, air];
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil || m === air ? above : root)().addChild(m); }
     },
-    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false, snowSun = null } = {}) {
+    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false, snowSun = null, bowAngle = null, bowSize = 1 } = {}) {
       if (!own.length) return;
-      const sunny = light > 0.02;
+      const sunny = light > 0.02, bowSun = bowAngle ?? sunAngle;
       set({ uStrength: sunny ? light : 0, uClouds: clouds, uFallsDown: Number(fallsDown) || 0, uSnowSun: snowSun ? [snowSun.toSun[0], snowSun.toSun[1], Math.min(1, snowSun.shine), snowSun.reach] : [-0.6, -0.5, 0, 0.8], uSnowSunColor: snowSun?.color ?? [1, 0.97, 0.9], uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
         // The rainbow faces away from the sun: its centre off toward the sun, so the arc sweeps across the middle of the map.
-        uBow: area ? [area.bounds.width / 2 + Math.cos(sunAngle) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(sunAngle) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45, bow] : [0, 0, 1, 0],
-        uBowDir: [-Math.cos(sunAngle), -Math.sin(sunAngle)] });
+        uBow: area ? [area.bounds.width / 2 + Math.cos(bowSun) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(bowSun) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45 * bowSize, bow] : [0, 0, 1, 0],
+        uBowDir: [-Math.cos(bowSun), -Math.sin(bowSun)] });
       meshes[0].visible = wet > 0.02 || (season?.[3] ?? 0) > 0.005 || litter > 0.01;
       clouding = light > 0.005 && (clouds > 0.05 || fxOn);
       meshes[4].visible = clouding || casting || weathering;

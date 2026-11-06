@@ -23,7 +23,7 @@ export const TUNE_EFFECTS = Object.freeze({
   glaze: { label: 'Ice glaze', hint: "Freezing rain's shine on the ground." },
   rays: { label: 'Sun rays', hint: 'Shafts of light with motes in them.' },
   glow: { label: 'Glow', color: 'glowColor', tint: [1, 0.86, 0.42], hint: 'A light or a pall over everything.' },
-  rainbow: { label: 'Rainbow', start: 0.6, hint: 'An arc across the map, away from the sun. It comes and goes over some seconds.' },
+  rainbow: { label: 'Rainbow', start: 0.6, more: ['rainbowAngle', 'rainbowSize'], hint: 'An arc across the map, away from the sun. It comes and goes over some seconds.' },
   aurora: { label: 'Aurora', color: 'auroraColor', tint: [0.3, 1, 0.62], hint: 'Curtains of light in the sky.' },
   sparks: { label: 'Sparks', color: 'sparksColor', tint: [0.3, 0.66, 1], hint: 'Sparks along drifting currents.' },
   wisps: { label: 'Wisps', color: 'wispsColor', tint: [0.62, 0.86, 0.72], hint: 'Pale drifting spirits.' },
@@ -39,6 +39,8 @@ export const TUNE_SLIDERS = Object.freeze({
   speed: { label: 'Speed', min: 0.25, max: 3, step: 0.05, times: true, hint: 'How fast it falls.' },
   amount2: { label: 'Amount', min: 0, max: 1.5, step: 0.05, default: 0.5, hint: 'How much of the second thing falls.' },
   temperature: { label: 'Temperature', min: -30, max: 45, step: 1, default: 15, unit: '°C', hint: 'How cold or hot it is here. Snow lies or melts by it and water freezes or thaws, by the game clock; breath shows in the cold, and the air shimmers in great heat. Works in any weather: a cold, sunny day.' },
+  rainbowAngle: { label: 'Rotation', min: 0, max: 355, step: 5, default: 0, unit: '°', hint: 'Which way its arc faces: 0° up the map, turning clockwise. Auto: away from the sun.' },
+  rainbowSize: { label: 'Size', min: 0.4, max: 1.6, step: 0.05, times: true, hint: 'How wide its arc is across the map.' },
   fog: strength('Fog', 'How thick the fog is, in any weather.'),
   lightning: strength('Lightning', 'How fierce the storm is: how often lightning strikes and lands on the map, with its thunder. At full, a bolt every few seconds.'),
   wind: strength('Strength', 'How hard the wind blows, for the clouds, the grass, the leaves and the water too.'),
@@ -129,6 +131,8 @@ export function tuneFalling(falling, tune) {
 
 // How bright a rainbow the GM asked for is, on the scale the sky draws (pure): most of the slider is as bright as one after the rain gets, the top end brighter. null: none asked for.
 export const tunedRainbow = (tune) => (tune?.rainbow === null || tune?.rainbow === undefined ? null : tune.rainbow / (TUNE_EFFECTS.rainbow.start));
+// Where the sky should think the sun is, for a rainbow's arc to face `degrees` clockwise from up the map (pure, radians). null: the real sun's.
+export const rainbowAim = (degrees) => { if (degrees === null || degrees === undefined) return null; const r = (Number(degrees) * Math.PI) / 180; return Math.atan2(Math.cos(r), -Math.sin(r)); };
 // The names the sounds go by, for what the GM built (pure): hail has its own, and snow in a hard wind howls as a blizzard.
 export function tuneWords(tune, wind = 0) {
   if (!tune) return '';

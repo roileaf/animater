@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanTune, effectIn, tuneAdds, tuneFalling, tunedRainbow, tuneTouched, tuneWeather, tuneWords } from '../../../scripts/engines/motion/weather-tune.mjs';
+import { cleanTune, rainbowAim, effectIn, tuneAdds, tuneFalling, tunedRainbow, tuneTouched, tuneWeather, tuneWords } from '../../../scripts/engines/motion/weather-tune.mjs';
 import { weatherScene } from '../../../scripts/engines/motion/sky-weather.mjs';
 import { effectToggled, familyOf, sliderText, weatherPanelHtml } from '../../../scripts/ui/weather-panel.mjs';
 
@@ -82,7 +82,8 @@ test('the panel shows what is set and escapes what a GM names', () => {
   assert.ok(!clearHtml.includes('data-row="aurora"'), 'without a row until it is');
   assert.ok(weatherPanelHtml({ state: { tune: { aurora: 0.5 } }, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('data-row="auroraColor"'), 'added, with its colour');
   assert.ok(weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'tornado' }) }).includes('data-row="tornado"'), "the weather's own effects show");
-  assert.ok(weatherPanelHtml({ state: {}, weathers: [] }).includes('data-action="resetAll" disabled'), 'nothing to reset yet');
+  assert.ok(/data-action="resetAll"[^>]* disabled>Clear all/.test(weatherPanelHtml({ state: {}, weathers: [] })), 'nothing to clear yet');
+  for (const state of [{ weather: 'animater.rain' }, { way: 'top' }, { windFrom: 'n' }, { tune: { amount: 2 } }]) assert.equal(/data-action="resetAll"[^>]* disabled>/.test(weatherPanelHtml({ state, weathers: [] })), false, `something to clear: ${JSON.stringify(state)}`);
   assert.ok(html.includes('value="1.5"'));
   assert.equal(html.includes('<b>'), false);
   const other = weatherPanelHtml({ state: { weather: 'someone-elses', tune: null }, weathers: [['', 'None']] });
@@ -191,4 +192,19 @@ test('a rainbow can be asked for in any weather, and turned off', () => {
   assert.ok(tunedRainbow(cleanTune({ rainbow: 1 })) > 1, 'brighter at the top');
   assert.equal(effectToggled(cleanTune(), 'rainbow', weatherScene({ id: 'clear' })), 0.6, 'the button starts it at that');
   assert.ok(weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('data-action="toggleEffect" data-key="rainbow"'));
+});
+
+test('a rainbow can be turned and sized', () => {
+  // Its arc faces away from where the sky takes the sun to be.
+  const faces = (degrees) => { const s = rainbowAim(degrees); return [Math.round(-Math.cos(s) * 100) / 100, Math.round(-Math.sin(s) * 100) / 100]; };
+  assert.deepEqual(faces(0).map(Math.abs), [0, 1]);
+  assert.equal(faces(0)[1], -1, '0 faces up the map');
+  assert.equal(faces(90)[0], 1, '90 faces right');
+  assert.equal(faces(180)[1], 1, '180 faces down');
+  assert.equal(rainbowAim(null), null, 'left alone: the sun');
+  assert.equal(cleanTune({ rainbowAngle: 0 }).rainbowAngle, 0, 'straight up is a choice, not nothing');
+  const html = weatherPanelHtml({ state: { tune: { rainbow: 0.6 } }, weathers: [], base: weatherScene({ id: 'clear' }) });
+  assert.ok(html.includes('data-row="rainbowAngle"') && html.includes('data-row="rainbowSize"'), 'its own controls, once on');
+  assert.equal(weatherPanelHtml({ state: {}, weathers: [], base: weatherScene({ id: 'clear' }) }).includes('data-row="rainbowAngle"'), false, 'not before');
+  assert.equal(sliderText('rainbowAngle', 45), '45°');
 });

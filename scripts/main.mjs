@@ -188,7 +188,7 @@ import { openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createL
 import { fallWayHere, nearestLights, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
-import { cleanTune, tuneAdds, tuneFalling, tunedRainbow, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
+import { cleanTune, rainbowAim, tuneAdds, tuneFalling, tunedRainbow, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
 import { weatherPanel } from "./ui/weather-panel.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
 import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
@@ -201,7 +201,7 @@ import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
-import { weatherLevels, weatherIsOurs, thunderFor, thunderClose, strikeNearness, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
+import { weatherLevels, weatherIsOurs, thunderFor, thunderClose, thunderFar, thunderPan, strikeNearness, thunderHeard, weatherFile, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
@@ -3494,11 +3494,15 @@ const tickWeatherSound = () => {
 // Thunder after a flash, from no place in particular: quieter from under a roof, a little time apart at the least.
 let thunderAt = 0;
 // (`near` how close the strike landed, 0-1: a close one is always heard, at once, and never waits out the last rumble.)
-const thunderAfterFlash = (always = false, near = 0) => {
+// (`where` { pan -1 to 1, squares }: how it lies from whoever hears it; none: from nowhere in particular.)
+const thunderAfterFlash = (always = false, near = 0, where = null) => {
   if (!bothSettingsOn("weatherSounds") || game.audio?.locked) return;
   const now = performance.now(), close = near > 0.3; if ((!close && now - thunderAt < 3500) || (!always && !close && !thunderHeard({ storm: skyStorm }))) return; thunderAt = now;
-  const t = close ? thunderClose({ near }) : thunderFor({ storm: skyStorm }), hush = earsInside() ? 0.45 : 1;
-  const play = async (volume, playRate) => { const sound = new foundry.audio.Sound(t.file, { context: game.audio.environment }); await sound.load(); await sound.play({ volume: volume * hush }); const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = playRate; };
+  const t = close ? thunderClose({ near }) : where ? thunderFar({ squares: where.squares }) : thunderFor({ storm: skyStorm }), hush = earsInside() ? 0.45 : 1;
+  const play = async (volume, playRate) => { const context = game.audio.environment, sound = new foundry.audio.Sound(t.file, { context }); await sound.load();
+    if (t.cutoff && context?.createBiquadFilter) { const dull = context.createBiquadFilter(); dull.type = "lowpass"; dull.frequency.value = t.cutoff; sound.effects.push(dull); }
+    if (where?.pan && hotSetting("thunderPanning") !== false && context?.createStereoPanner) { const side = context.createStereoPanner(); side.pan.value = where.pan; sound.effects.push(side); }
+    await sound.play({ volume: volume * hush }); const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = playRate; };
   setTimeout(() => { play(t.volume, t.rate).catch(() => {}); if (t.under) play(t.under.volume, t.under.rate).catch(() => {}); }, t.wait);
 };
 const stopVoice = (voice, ms = 0) => { const s = voice.sound; voice.sound = null; try { if (s && ms) { s.fade(0, { duration: ms }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, ms + 100); } else s?.stop(); } catch { /* gone */ } };
@@ -3663,6 +3667,7 @@ const writeGroundSoon = (sceneId, state) => {
     if (updates.length) Scene.updateDocuments(updates, { animaterGround: true }).catch(() => { /* a scene gone */ });
   }, 2000);
 };
+const wetMinutesNow = () => { try { return hotSetting("wetMinutes"); } catch { return null; } };
 const groundPace = (id) => { try { return iceHours(id, hotSetting("iceHoursLeast"), hotSetting("iceHoursMost")); } catch { return iceHours(id); } };
 const groundOf = () => {
   const id = canvas?.scene?.id;
@@ -3676,7 +3681,7 @@ const groundOf = () => {
         try { return JSON.parse(localStorage.getItem(key) ?? "null"); } catch { return null; }
       },
       save: (state) => { try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* storage refused */ } writeGroundSoon(id, state); },
-      pace: () => groundPace(id),
+      pace: () => groundPace(id), wetMinutes: wetMinutesNow,
     });
   }
   return groundWeather;
@@ -3707,7 +3712,7 @@ const groundAway = () => {
         if (!kept) { try { kept = JSON.parse(localStorage.getItem(`${ID}.ground.${game.world?.id}.${scene.id}`) ?? "null"); } catch { kept = null; } }
         if (!kept && !scene.regions?.some((r) => { try { return regionFloor({ name: r.name, flag: floorFlagOf(r) }) === "water"; } catch { return false; } })) continue;
         const { calendaria, weather } = awayWeather(scene);
-        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, pace: groundPace(scene.id), ...tuneFalling(groundInputs({ calendaria, scene: scene.weather ?? "", temperature: weather.temperature, sun: daylight }), cleanTune(scene.flags?.[ID]?.weatherTune)) }));
+        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, pace: groundPace(scene.id), wetMinutes: wetMinutesNow(), ...tuneFalling(groundInputs({ calendaria, scene: scene.weather ?? "", temperature: weather.temperature, sun: daylight }), cleanTune(scene.flags?.[ID]?.weatherTune)) }));
       }
     } catch { /* never breaks the clock */ }
   }, 1500);
@@ -3784,7 +3789,7 @@ const lookSky = () => {
       // A rainbow when the rain has just stopped and the sun is out.
       // (Or the one the GM asked for, whatever the weather.)
       rainbow: tunedRainbow(tune) ?? (rainbowOn() ? rainbowOf({ wet: ground.wet, raining: falling.rain > 0.05, sun: sunNow, clouds: cloudCover(sky) }) : 0),
-      sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180,
+      sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, bowAngle: rainbowAim(tune.rainbowAngle), bowSize: tune.rainbowSize ?? 1,
       // The weather drawn on the map (Calendaria's, as it sets it): clouds from above with their shadows, what falls, fog.
       // (A scene's own Weather Effect, when one of Animater's, comes before Calendaria's.)
       weather: drawn,
@@ -3876,8 +3881,9 @@ const strikeNow = (level = 1, at = null) => {
   if (place.inside) lightningBolts.strike({ reach, x: place.x, y: place.y, grid, strength: level, steady: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true, burst: place.opening === true });
   // Near whoever hears it: their creatures, else the middle of the view.
   const ears = canvas.tokens?.controlled?.length ? canvas.tokens.controlled.map((t) => t.center) : [{ x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }];
-  const near = place.inside ? Math.max(...ears.map((e) => strikeNearness(e, place, grid))) : 0;
-  thunderAfterFlash(place.inside, near);
+  // (The nearest of them hears it: from there it is near or far, and on this side or that.)
+  const ear = ears.reduce((best, e) => (Math.hypot(e.x - place.x, e.y - place.y) < Math.hypot(best.x - place.x, best.y - place.y) ? e : best)), near = place.inside ? strikeNearness(ear, place, grid) : 0;
+  thunderAfterFlash(place.inside, near, { pan: thunderPan(ear, place, grid), squares: Math.hypot(ear.x - place.x, ear.y - place.y) / grid });
   return place;
 };
 // The weather's light now (sky-light.mjs weatherLight), and when the roofs under it were last looked at.
@@ -7009,6 +7015,7 @@ Hooks.once("init", () => {
   skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
   skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "Only in scenes with Outdoor life on (Scene configuration → Animater). On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over wide water, frogs on lily pads croak and leap in, deer graze and bound away, a fox stalks the rabbits, and butterflies and dragonflies fly by day. At night, fireflies blink, an owl glides over and bats hunt round the lamps. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater → Creatures), and regions can keep them out.");
   skyPair("wildlifeSounds", "wildlifeSoundsLocal", "Wildlife sounds", "The hawk's cry, crows passing, songbirds chirping and their wings as they burst up, a rabbit's thump when it bolts, a fish's splash as it darts, ducks quacking, gulls crying, frogs croaking and plopping in, a fox's bark, dragonflies, and by night an owl and a constant bed of crickets. A few at a time, only near enough to be heard. With Birds, rabbits and fish on.", "");
+  registerSetting("thunderPanning", { name: "Thunder from the side it struck", hint: "Thunder plays to the left or right of your selected token, or of the middle of your view with none selected, as it struck. Off: in both ears alike. Either way, how far off it struck says how loud it is.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
   skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (Region configuration → Flows toward): loudest at the bank, fading with distance, silent while frozen.", "");
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
@@ -7201,6 +7208,7 @@ Hooks.once("init", () => {
   });
   registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
   registerSetting("iceHoursLeast", { name: "Water freezes in at least (game hours)", hint: "How long water takes to freeze over, and to thaw, the whole way. Each scene takes its own time between this and the most below, by the game clock.", scope: "world", config: true, type: Number, default: 24, range: { min: 1, max: 240, step: 1 } });
+  registerSetting("wetMinutes", { name: "Ground gets wet in (game minutes)", hint: "How long the hardest rain takes to soak the ground, by the game clock. Lighter rain takes longer: ordinary rain about half as long again, a drizzle about four times as long.", scope: "world", config: true, type: Number, default: 5, range: { min: 1, max: 60, step: 1 } });
   registerSetting("iceHoursMost", { name: "Water freezes in at most (game hours)", hint: "See above. The same as the least: every scene takes just that long.", scope: "world", config: true, type: Number, default: 48, range: { min: 1, max: 240, step: 1 } });
   registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds of game time, so it waits while the clock stands still; it fades over the last quarter of that. It darkens as it dries, in under a minute of game time.", scope: "world", config: true, type: Number, default: 300, range: { min: 20, max: 600, step: 10 } });
   registerSetting("floorBloodForever", { name: "Blood stays until cleared", hint: "Blood never fades, and comes back with the scene, saved in it now and then by the GM's screen. Rain and water can still take it until the scene reloads; after that it is old blood they leave alone. Clear blood wipes it all; Bake blood turns it into a tile.", scope: "world", config: true, type: Boolean, default: false });

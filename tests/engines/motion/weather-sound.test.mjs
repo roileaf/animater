@@ -79,3 +79,20 @@ test('a blizzard has its own howl in place of the wind, muffled under a roof; pl
   assert.ok(snow.windStrong > 0);
   assert.equal(WEATHER_LOOPS.blizzard.length, 3);
 });
+
+test('thunder comes from where it struck: its side, and how far', async () => {
+  const { thunderPan, thunderFar } = await import('../../../scripts/engines/motion/weather-sound.mjs');
+  const ear = { x: 1000, y: 1000 };
+  assert.equal(thunderPan(ear, { x: 1000, y: 200 }, 100), 0, 'straight up the map: both ears');
+  assert.ok(thunderPan(ear, { x: 400, y: 1000 }, 100) < -0.4, 'to the left');
+  assert.ok(thunderPan(ear, { x: 1600, y: 1000 }, 100) > 0.4, 'to the right');
+  assert.equal(thunderPan(ear, { x: 90000, y: 1000 }, 100), 0.85, 'never wholly in one ear');
+  const still = () => 0;
+  const near = thunderFar({ squares: 12, random: still }), far = thunderFar({ squares: 60, random: still });
+  assert.ok(far.volume < near.volume, 'quieter');
+  assert.ok(far.wait > near.wait, 'later');
+  assert.ok(far.cutoff < near.cutoff, 'duller');
+  assert.ok(thunderFar({ squares: 5000, random: still }).wait <= 6500, 'not forever');
+  assert.ok(thunderFar({ squares: 5000, random: still }).volume > 0, 'still a rumble');
+  for (let i = 0; i < 100; i++) assert.ok(thunderFar({ squares: i }).file);
+});
