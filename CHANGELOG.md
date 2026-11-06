@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.5.0 (2026-11-06)
+
+### New
+
+- **Waves that break like real ones.** On those same seas, each breaking wave now has a sharp bright front, thick foam behind it that ages into lace with holes in it and streaks the way it runs, a dark band ahead of the crest and pale water behind. Fronts wander and join, and break on a shore that lies ahead of them. It all goes by the wind, as on the Beaufort scale: only ripples and a lip of foam on the shore in a light air, a wave every 2.5 seconds or so, up to sheets of foam and a wave every 8 seconds in a gale, with longer swells to match. However light the air, fine ripples, soft bands and drifting gusts show which way it is moving.
+- **Turn off all of Animater's sounds.** A new All Animater sounds setting, at the top of the Sound tab, silences everything the module plays: for the whole table, or for one player on their own screen. Sounds already playing stop, and your other sound settings stay as they are for when you turn it back on. Sound from the game and other modules isn't touched, and clicking a sound to preview it in Animater's windows still plays it.
+- **A calm sea sounds calm.** Seas have a new gentle wash for light winds, fading across to the surf as the wind rises. Recording: "Calm Sea" by clement.bernardeau (CC0).
+- **Clear turquoise water.** Depth has a new choice, Clear turquoise: water in its own colours instead of the map's, pale turquoise over the shallows to deep blue offshore.
+
+### Fixed
+
+- Waves on a sea now come from one side. On a small sea, or any sea with Waves toward set, surf and foam used to start in the middle of the water and spread out to every shore, which looked as if a dock in the middle was splitting it. They now cross at a steady pace the way the waves are heading, and the shore they left stays calm.
+- A wolf walks up to the deer it has brought down before hauling it off, and holds it by its mouth at any animal size, instead of pulling it along from a distance.
+- Right-clicking a window or door icon is about that icon, even with a region under it: the region's menu no longer opens over it.
+- Bats round lamps out of doors take their size from the Bats slider, not the Owls one.
+
 ## 3.4.1 (2026-11-06)
 
 ### New
