@@ -177,3 +177,13 @@ test('a sea with no beach has the edge of its region for a shore', () => {
 test('a fish in the water has no line running out past its nose', () => {
   for (const frag of [WATER_SHADERS.full, WATER_SHADERS.simple]) assert.match(frag, /smoothstep\(0\.9, 1\.05, abs\(along\)\)/);
 });
+
+test('moving water stays inside its region and out of its holes, however soft its edge', async () => {
+  const { heldInside, WATER_SHADERS: S } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  // Across: outside the region, its edge, inside, a hole, inside.
+  const soft = Uint8Array.from([60, 128, 255, 200, 255]), sharp = Uint8Array.from([0, 128, 255, 0, 255]), held = heldInside(soft, sharp);
+  assert.deepEqual([...held.data], [0, 128, 255, 0, 255]);
+  assert.equal(held.peak, 1);
+  assert.ok(Math.abs(heldInside(Uint8Array.from([100, 128]), Uint8Array.from([255, 255])).peak - 128 / 255) < 1e-9, 'a stream narrower than its blur: as full as it gets');
+  for (const frag of [S.full, S.simple]) { assert.match(frag, /uniform float uPeak;/); assert.match(frag, /smoothstep\(uPeak \* 0\.4, uPeak \* 0\.7, mask\.r\)/); }
+});

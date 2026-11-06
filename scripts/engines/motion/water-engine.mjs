@@ -38,6 +38,7 @@ const fragOf = (full) => `precision highp float;
 varying vec2 vWorld;
 uniform sampler2D uSand; // the beach: the sand floor's own painted tile
 uniform float uSandSize;
+uniform float uPeak; // the most of the region's shape any point holds, as a narrow stream never reaches full
 uniform sampler2D uMap, uMask, uFlow, uWaves, uBed; // uBed: a painted floor seen through it instead of the map, one every uBedSize px
 uniform vec4 uMapRect, uBox;
 uniform float uPix; // how many screen pixels a grid square is right now
@@ -371,7 +372,7 @@ void main(){
     col = mix(col, uSea > 0.5 ? vec3(0.93, 0.96, 0.97) * foamTone : vec3(0.86, 0.9, 0.92) * (0.93 + 0.1 * clots), min(1.0, foam) * calm);
   }
   // Where it has frozen, the map's own water is under the ice; this stops and fades.
-  float a = smoothstep(0.0, 0.5, mask.r) * calm * seaEdge;
+  float a = smoothstep(uPeak * 0.4, uPeak * 0.7, mask.r) * calm * seaEdge;
   gl_FragColor = vec4(col * a, a);
 }`;
 
@@ -423,6 +424,8 @@ export function waveSheet(size = 512) {
 // How far a shape runs along a direction: where it starts and where it ends.
 const runOf = (areas, angle) => { const cx = Math.cos(angle), cy = Math.sin(angle); let lo = Infinity, hi = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { const d = area[i] * cx + area[i + 1] * cy; lo = Math.min(lo, d); hi = Math.max(hi, d); } return [lo, hi]; };
 const boxOf = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return Number.isFinite(x0) ? { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) } : null; };
+// A soft shape held inside the sharp one (pure): a blur spreads past a region's edge and over any hole narrower than itself, so each point has the less of the two. Gives its `data`, and `peak` (0-1) the most any point holds, as a narrow stream never reaches full.
+export const heldInside = (soft, sharp) => { const data = new Uint8Array(soft.length); let most = 0; for (let i = 0; i < soft.length; i++) { const v = Math.min(soft[i], sharp[i]); data[i] = v; if (v > most) most = v; } return { data, peak: Math.max(0.05, most / 255) }; };
 // The region's shape on a small canvas, its holes left out, blurred by `blur` px; its coverage, one number a pixel.
 const shapeOf = (areas, box, k, blur, beyond = null) => {
   const w = Math.max(2, Math.ceil(box.w * k)), h = Math.max(2, Math.ceil(box.h * k)), room = Math.ceil(blur * 3), canvas = document.createElement('canvas'); canvas.width = w + room * 2; canvas.height = h + room * 2; // (Room round it: a blur stops at the edge of what it is drawn on, which would make a shore of the map's edge.)
@@ -464,9 +467,9 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
     const size = grid() || 100, box = boxOf(spec.areas), motion = WATER_MOTION[spec.kind] ?? WATER_MOTION.still;
     if (!box) return null;
     // Where it is (red), how far in from its bank (green), and for the sea how far from its shore (blue).
-    const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), crisp = shapeOf(spec.areas, box, k, spec.bed ? Math.max(2, size * k * (spec.bed.edge ?? 1) * 0.35) : 2), wide = shapeOf(spec.areas, box, k, size * k * 0.36), pixels = new Uint8ClampedArray(crisp.w * crisp.h * 4);
+    const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), crisp = shapeOf(spec.areas, box, k, spec.bed ? Math.max(2, size * k * (spec.bed.edge ?? 1) * 0.35) : 2), sharp = spec.bed ? shapeOf(spec.areas, box, k, 1) : crisp, held = heldInside(crisp.data, sharp.data), wide = shapeOf(spec.areas, box, k, size * k * 0.36), pixels = new Uint8ClampedArray(crisp.w * crisp.h * 4);
     const shore = motion.sea ? shapeOf(spec.areas, box, k, size * k * 1.5, spec.map) : null;
-    for (let i = 0; i < crisp.data.length; i++) { pixels[i * 4] = crisp.data[i]; pixels[i * 4 + 1] = (wide.data[i] - 128) * 2; pixels[i * 4 + 2] = shore ? (shore.data[i] - 128) * 2 : 255; pixels[i * 4 + 3] = 255; }
+    for (let i = 0; i < crisp.data.length; i++) { pixels[i * 4] = held.data[i]; pixels[i * 4 + 1] = (wide.data[i] - 128) * 2; pixels[i * 4 + 2] = shore ? (shore.data[i] - 128) * 2 : 255; pixels[i * 4 + 3] = 255; }
     const mask = textureOf(PIXI, pixels, crisp.w, crisp.h);
     const f = Math.min(0.05, 256 / Math.max(box.w, box.h)), soft = shapeOf(spec.areas, box, f, size * f * 0.9), flowPixels = flowField(motion.streak ? soft.data.fill(255) : soft.data, soft.w, soft.h, spec.angle);
     // A sea keeps in its red how deep it is: how far from a real shore, up to some squares out.
@@ -474,7 +477,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
     const flow = textureOf(PIXI, flowPixels, soft.w, soft.h);
     const points = [box.x, box.y, box.x + box.w, box.y, box.x + box.w, box.y + box.h, box.x, box.y + box.h];
     const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', new PIXI.Buffer(new Float32Array(points), true), 2).addIndex(new Uint16Array([0, 1, 2, 0, 2, 3]));
-    const uniforms = { uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uDepthHold: spec.depth?.hold ?? 1, uDepthDark: spec.depth?.dark ?? 0, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
+    const uniforms = { uPeak: held.peak, uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uDepthHold: spec.depth?.hold ?? 1, uDepthDark: spec.depth?.dark ?? 0, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
     const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, fragOf(qualityNow === 'full'), uniforms));
     mesh.eventMode = 'none'; root().addChild(mesh);
     skyAt = 0;
