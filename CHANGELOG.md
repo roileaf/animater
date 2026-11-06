@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.2 (2026-11-06)
+
+### Fixes
+
+- Window icons no longer have a box or border around them.
+
 ## 3.2.1 (2026-11-06)
 
 ### Fixes
