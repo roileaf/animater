@@ -14,18 +14,19 @@ function projection(x, y, ax, ay, bx, by) {
 export function hitOutline(loops, event, rect, width, height, radius = 7) {
   const x = event.clientX - rect.left, y = event.clientY - rect.top;
   const sx = rect.width / width, sy = rect.height / height;
-  let edge = null, nearest = radius;
+  let edge = null, vertex = null, nearest = radius, nearestVertex = radius;
   for (let ring = 0; ring < loops.length; ring++) {
     const p = loops[ring].points;
     for (let i = 0; i < p.length; i += 2) {
-      if (Math.hypot(x - p[i] * sx, y - p[i + 1] * sy) <= radius) return { ring, vertex: i / 2 };
+      const vertexDistance = Math.hypot(x - p[i] * sx, y - p[i + 1] * sy);
+      if (vertexDistance <= nearestVertex) { nearestVertex = vertexDistance; vertex = { ring, vertex: i / 2 }; }
       const j = (i + 2) % p.length;
       const at = projection(x, y, p[i] * sx, p[i + 1] * sy, p[j] * sx, p[j + 1] * sy);
       const distance = Math.hypot(x - at.x, y - at.y);
-      if (distance <= nearest) { nearest = distance; edge = { ring, edge: i / 2, x: at.x / sx, y: at.y / sy }; }
+      if (distance <= nearest) { nearest = distance; edge = { ring, edge: i / 2, x: Math.max(0, Math.min(width, at.x / sx)), y: Math.max(0, Math.min(height, at.y / sy)) }; }
     }
   }
-  return edge;
+  return vertex ?? edge;
 }
 
 const area = (p) => p.reduce((sum, v, i) => i % 2 ? sum : sum + v * p[(i + 3) % p.length] - p[(i + 2) % p.length] * p[i + 1], 0);
@@ -52,7 +53,11 @@ export function validateOutline(before, after, width, height) {
     if (after[r].hole !== before[r].hole) return "Keep the existing shores and holes.";
     if (p.length === old.length && p.every((v, i) => v === old[i])) continue;
     if (p.length % 2 || p.length < 6 || new Set(p.filter((_, i) => i % 2 === 0).map((v, i) => `${v},${p[i * 2 + 1]}`)).size < 3) return "A ring needs at least three distinct vertices.";
-    if (p.some((v, i) => !Number.isFinite(v) || v < 0 || v > (i % 2 ? height : width))) return "Keep edited vertices inside the map.";
+    const existing = new Set(Array.from({ length: old.length / 2 }, (_, i) => `${old[i * 2]},${old[i * 2 + 1]}`));
+    for (let i = 0; i < p.length; i += 2) {
+      if (!Number.isFinite(p[i]) || !Number.isFinite(p[i + 1])) return "Keep edited vertices inside the map.";
+      if ((p[i] < 0 || p[i] > width || p[i + 1] < 0 || p[i + 1] > height) && !existing.has(`${p[i]},${p[i + 1]}`)) return "Keep edited vertices inside the map.";
+    }
     if (!area(p) || area(p) * area(old) <= 0) return "Keep the ring's direction and a nonzero area.";
     if (!isSimple(p)) return "The outline cannot cross or touch itself.";
   }
@@ -96,6 +101,7 @@ export function smoothOutline(loops, maxDriftPx = 2) {
     let split = 1;
     for (let i = 2; i < p.length; i++) if (Math.hypot(p[i][0] - p[0][0], p[i][1] - p[0][1]) > Math.hypot(p[split][0] - p[0][0], p[split][1] - p[0][1])) split = i;
     const simple = [...simplifyArc(p.slice(0, split + 1), maxDriftPx / 2).slice(0, -1), ...simplifyArc([...p.slice(split), p[0]], maxDriftPx / 2).slice(0, -1)];
+    if (simple.length < 3) return loop;
     const points = simple.flatMap((at, i) => [simple[(i + simple.length - 1) % simple.length], simple[(i + 1) % simple.length]].flatMap((next) => {
       const distance = Math.hypot(next[0] - at[0], next[1] - at[1]);
       const t = Math.min(0.25, maxDriftPx / 2 / (distance || 1));
