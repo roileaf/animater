@@ -208,6 +208,8 @@ float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a
 float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float patchNoise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(patchHash(i), patchHash(i + vec2(1, 0)), f.x), mix(patchHash(i + vec2(0, 1)), patchHash(i + vec2(1, 1)), f.x), f.y); }
+// Whether the air here is under a ceiling, for what is drawn in the air: rain and flakes, fog, the clouds' wash. An opening in a roof (uFreeze's blue marks one) lets the weather through to the floor, where it shows as what it leaves, wet ground and lying snow; the air of the room stays the room's.
+float indoorAir(vec2 uv){ vec4 marks = texture2D(uFreeze, uv); return max(texture2D(uIndoor, uv).a, marks.b); }
 // How much lamp and fire light a glossy surface here shows back (the nearest few, in their colours).
 vec3 lampsOn(vec2 px){
   vec3 got = vec3(0.0);
@@ -603,7 +605,7 @@ void main(){
   if (uMode > 4.5) {
     // The weather's own light (uMode 5, drawn over the night's darkness, added): divine rays and the motes in them,
     // aurora, sparks along their currents, embers, meteors; a room seen into keeps its own light.
-    float inside = texture2D(uIndoor, vUv).a, roof = texture2D(uRoofShown, vUv).a, over = (1.0 - inside) + inside * roof;
+    float inside = indoorAir(vUv), roof = texture2D(uRoofShown, vUv).a, over = (1.0 - inside) + inside * roof;
     vec4 pg = vec4(0.0);
     if (uOdd.x > 0.005) {
       vec2 rd = normalize(vec2(0.86, 0.5)), rs = vec2(-rd.y, rd.x);
@@ -666,10 +668,12 @@ void main(){
   }
   if (uMode > 3.5) {
     // The weather's light over the open ground and the roofs as drawn now; a room seen into (its roof faded) keeps its own.
-    float inside = texture2D(uIndoor, vUv).a, roof = texture2D(uRoofShown, vUv).a;
+    float inside = indoorAir(vUv), roof = texture2D(uRoofShown, vUv).a;
     // (A dark wash in the light's colour, not a multiply: Foundry's canvas layer draws its children blended normally.)
     float over = (1.0 - inside) + inside * roof, s = uVeil.a * 0.5 * over;
-    if (over < 0.01) { gl_FragColor = vec4(0.0); return; }
+    // Fog and mist also come in where the air does (uFreeze's green).
+    float airOver = uFogW.a > 0.005 || uSky.y > 0.005 ? max(over, texture2D(uFreeze, vUv).g) : over;
+    if (airOver < 0.01) { gl_FragColor = vec4(0.0); return; }
     // The clouds show in what they do to the land, over the ground, the roofs and the trees alike: firm shadows and warm
     // sunlit patches sliding with the wind (a little even on a still day: the wind aloft); a closed sky is dim and cool, with slow lighter patches.
     float cloud = 0.0, deckDark = 0.0; vec3 deckAdd = vec3(0.0);
@@ -706,22 +710,24 @@ void main(){
     // Fog drifting with the wind, in its colour: thicker in places.
     if (uFogW.a > 0.005) {
       // Two banks at different heights drifting at their own pace, warped into wisps; deeper in the hollows and over water.
-      vec2 q = px / (uGrid * 7.0) - uWindDir * t * (0.02 + 0.06 * uWind);
+      // Laid out along the wind: it runs faster the harder it blows, and draws out into long streaks.
+      vec2 across = vec2(-uWindDir.y, uWindDir.x);
+      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0 * (1.0 + 1.6 * uWind)) - t * (0.02 + 0.13 * uWind), dot(px, across) / (uGrid * 7.0));
       vec2 warp = vec2(noise(q * 2.0 + t * 0.03), noise(q * 2.0 + 5.2 - t * 0.025)) - 0.5;
-      float lowBank = fbm4(q + warp * 0.8), highBank = fbm3(q * 0.6 + vec2(3.1, 7.4) - uWindDir * t * 0.02);
+      float lowBank = fbm4(q + warp * 0.8), highBank = fbm3(q * 0.6 + vec2(3.1 - t * (0.02 + 0.05 * uWind), 7.4));
       float hollow = 0.75 + 0.5 * texture2D(uLow, vUv).a;
       float n = 0.6 * smoothstep(0.25, 0.75, lowBank) + 0.4 * smoothstep(0.3, 0.7, highBank);
-      pw = overP(pw, uFogW.rgb, uFogW.a * (0.3 + 0.7 * n) * hollow * 0.8 * over);
+      pw = overP(pw, uFogW.rgb, uFogW.a * (0.3 + 0.7 * n) * hollow * 0.8 * airOver);
     }
     // Mist: thin white veils lying low over the ground, longer than they are wide, drifting slowly, gathering in the
     // hollows and over water; the ground shows through.
     if (uSky.y > 0.005) {
       vec2 side = vec2(-uWindDir.y, uWindDir.x);
-      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0) - t * 0.03, dot(px, side) / (uGrid * 5.0));
+      vec2 q = vec2(dot(px, uWindDir) / (uGrid * 7.0 * (1.0 + 1.3 * uWind)) - t * (0.02 + 0.15 * uWind), dot(px, side) / (uGrid * 5.0));
       vec2 warp = vec2(noise(q * 1.3 + t * 0.02), noise(q * 1.3 + 4.4)) - 0.5;
       float veil = smoothstep(0.3, 0.7, fbm4(q + warp * 0.9)), wisp = smoothstep(0.5, 0.78, fbm3(q * 2.3 + warp + 9.0));
       float hollow = 0.8 + 0.7 * texture2D(uLow, vUv).a;
-      pw = overP(pw, vec3(0.94, 0.96, 0.98), (0.08 + veil * 0.26 + wisp * 0.1) * hollow * uSky.y * over);
+      pw = overP(pw, vec3(0.94, 0.96, 0.98), (0.08 + veil * 0.26 + wisp * 0.1) * hollow * uSky.y * airOver);
     }
     pw = fallLayer(pw, px, uFallTime, uFallA, uFallAColor.rgb, over);
     pw = fallLayer(pw, px, uFallTime, uFallB, uFallBColor.rgb, over);
@@ -920,16 +926,16 @@ void main(){
       // Its shape, baked once (SNOW_SHAPE): rg how the surface slopes, b how high it lies.
       vec4 shape = uHasSnowGround > 0.5 ? texture2D(uSnowRelief, vUv) : vec4(0.5, 0.5, 0.5, 1.0);
       vec2 slope = (shape.xy * 2.0 - 1.0) * 2.0;
-      // (Its grain two sizes laid at angles, so it never squares up with itself.)
-      vec2 skew = vec2(px.x * 0.8 + px.y * 0.6, px.y * 0.8 - px.x * 0.6);
-      float high = shape.z, speck = 0.6 * noise(skew / (uGrid * 0.13)) + 0.4 * noise(vec2(skew.y, -skew.x) / (uGrid * 0.055) + 7.3), edgeAt = field + (high - 0.5) * 0.14 + (speck - 0.5) * 0.02;
+      // (Its grain three sizes laid at different angles: one alone shows its cells as blocks.)
+      vec2 skew = vec2(px.x * 0.8 + px.y * 0.6, px.y * 0.8 - px.x * 0.6), skew2 = vec2(px.x * 0.28 - px.y * 0.96, px.y * 0.28 + px.x * 0.96);
+      float high = shape.z, speck = 0.5 * noise(skew / (uGrid * 0.2)) + 0.3 * noise(skew2 / (uGrid * 0.085) + 7.3) + 0.2 * noise(vec2(skew.y, -skew.x) / (uGrid * 0.033) + 3.9), edgeAt = field + (high - 0.5) * 0.14 + (speck - 0.5) * 0.008;
       float lie = smoothstep(line, line + 0.03, edgeAt) * outside * (1.0 - water + ice);
       // Lit from one side: every drift and mound has a bright face and a blue shadow, the form that makes it read as snow and not paint.
       // From the sun or moon where it is now: long soft shading when it is low, little under a closed sky. Each rise throws a shadow away from it.
       vec2 toSun = uSnowSun.xy;
       float blocked = uHasSnowGround > 0.5 ? smoothstep(0.0, 0.1, texture2D(uSnowRelief, vUv + toSun * uGrid * (0.1 + 0.16 * uSnowSun.w) / uSize).z - high) : 0.0;
       float lit = clamp(0.7 - dot(slope, toSun) * (0.26 + uSnowSun.z * (0.26 + 0.2 * uSnowSun.w)) - blocked * uSnowSun.z * 0.42, 0.0, 1.0);
-      vec3 tone = mix(vec3(0.62, 0.7, 0.86), mix(vec3(1.0, 0.99, 0.97), uSnowSunColor, 0.6 * uSnowSun.z), lit) * (0.93 + 0.07 * mix(noise(px / (uGrid * 0.16)), speck, 0.4));
+      vec3 tone = mix(vec3(0.62, 0.7, 0.86), mix(vec3(1.0, 0.99, 0.97), uSnowSunColor, 0.6 * uSnowSun.z), lit) * (0.95 + 0.05 * speck);
       // The trees' shade lies on it, blue, where the sun is out.
       tone = mix(tone, tone * vec3(0.62, 0.68, 0.82), texture2D(uTreeShade, vUv).a * uSnowSun.z * 0.9);
       // A lamp or fire nearby catches the side of each rise that faces it. (Most of the light itself is Foundry's, over all this.)
@@ -940,11 +946,10 @@ void main(){
         if (near > 0.001) tone *= 1.0 + near * clamp(dot(slope, away / max(far, 1.0)) * 0.9, -0.35, 0.8) * mix(vec3(1.0), uSnowLightColor[li], 0.7) * (1.0 - 0.7 * uSnowSun.z);
       }
       // It lies thick on what rises and thins in the scoured low places, where the ground comes through in a soft dusting.
-      float thick = smoothstep(0.2, 0.4, high + (speck - 0.5) * 0.08) * smoothstep(line, line + 0.1, edgeAt);
-      float s = lie * mix(0.4 + 0.2 * speck, 0.93, thick);
-      // On an ice floor only a dusting, gathered on the rises: its own look shows through. (uFreeze's red alone marks one.)
-      vec4 froze = texture2D(uFreeze, vUv);
-      s *= 1.0 - clamp(froze.r - froze.g, 0.0, 1.0) * (0.92 - 0.45 * smoothstep(0.45, 0.8, high));
+      float thick = smoothstep(0.2, 0.4, high + (speck - 0.5) * 0.03) * smoothstep(line, line + 0.1, edgeAt);
+      float s = lie * mix(0.44 + 0.1 * speck, 0.93, thick);
+      // On an ice floor only a dusting, gathered on the rises: its own look shows through. (uFreeze's red marks one.)
+      s *= 1.0 - texture2D(uFreeze, vUv).r * (0.92 - 0.45 * smoothstep(0.45, 0.8, high));
       col = col * (1.0 - s) + tone * s; a = 1.0 - (1.0 - a) * (1.0 - s);
     }
     if (uBow.w > 0.01) {
@@ -1070,6 +1075,24 @@ const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
  * now (each tile's picture, { texture, x, y, width, height, rotation, anchorX, anchorY, shown 0–1 }); tick(seconds) moves
  * it all.
  */
+// An opening's edge, for the blurred shape given: where it reaches a middling strength, wandering with the noise.
+const RAGGED_EDGE = `
+precision highp float;
+varying vec2 vTextureCoord;
+uniform sampler2D uSampler;
+uniform vec4 inputSize, outputFrame;
+uniform float uCell;
+float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
+void main(){
+  vec2 w = (vTextureCoord * inputSize.xy + outputFrame.xy) / uCell;
+  float wander = 0.55 * noise(w * 0.9 + 3.1) + 0.3 * noise(w * 2.3 + 8.7) + 0.15 * noise(w * 6.1 + 1.9);
+  float a = texture2D(uSampler, vTextureCoord).a;
+  a = smoothstep(0.3, 0.62, a + (wander - 0.5) * 0.72);
+  gl_FragColor = vec4(a);
+}
+`;
 // The shape of lying snow, baked once for a scene: broad drifts, and small mounds gathered here and there at random. Red and green how it slopes, blue how high.
 const SNOW_SHAPE = `
 precision highp float;
@@ -1101,7 +1124,7 @@ void main(){
 }
 `;
 export function createSurfaceLight({ PIXI, root, render, above = root, renderAt = null, glowing = above }) {
-  let fallSpeed = 1, gridSize = 100;
+  let fallSpeed = 1, gridSize = 100, bakeMarks = null, seeping = false;
   let movingWater = false, masks = [], meshes = [], own = [], hasGlints = false, hasWater = false, origin = { x: 0, y: 0 }, area = null, roofShown = null;
   // The rainbow comes and goes over some seconds, never at once: `bow` where it is now, `bowTo` where look wants it.
   let bow = 0, bowTo = 0;
@@ -1136,7 +1159,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
   return {
     // Moving water (water-engine.mjs) has its own glints, and takes these off the water.
     movingWater(on) { movingWater = !!on; set({ uMovingWater: movingWater ? 1 : 0 }); },
-    build({ water = [], freezes = water, flows = [], icy = [], frozen = [], frozenAll = false, grass = [], tinted = [], bare = [], grassAll = false, indoors = [], open = [], bounds, grid = 100 } = {}) {
+    build({ water = [], freezes = water, flows = [], icy = [], openRoofed = [], frozen = [], frozenAll = false, grass = [], tinted = [], bare = [], grassAll = false, indoors = [], open = [], bounds, grid = 100 } = {}) {
       drop();
       if (!bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
@@ -1155,12 +1178,28 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         masks.push(texture);
         return texture;
       };
-      const bake = (list, blur, cut = [], red = []) => {
+      const bake = (list, blur, cut = [], red = [], blue = [], green = null, listColor = 0xffffff) => {
         const stage = new PIXI.Container(), g = new PIXI.Graphics(), draw = (shape, polygons, color = 0xffffff) => { for (const p of polygons) { const at = (q) => q.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k); shape.beginFill(color, 1); shape.drawPolygon(at(p)); for (const hole of p.holes ?? []) { shape.beginHole(); shape.drawPolygon(at(hole)); shape.endHole(); } shape.endFill(); } };
-        // (`red` in the same picture, kept apart by its colour: this shader has no texture to spare.)
-        draw(g, red, 0xff0000); draw(g, list);
+        // (`red`, `blue` and `green` in the same picture, kept apart by their colours: this shader has no texture to spare.)
+        draw(g, blue, 0x0000ff); draw(g, red, 0xff0000); draw(g, list, listColor);
         stage.addChild(g);
-        if (cut.length) { const out = new PIXI.Graphics(); draw(out, cut); out.blendMode = PIXI.BLEND_MODES.ERASE; stage.addChild(out); }
+        // `green`: [{ points, alpha }] adding up where they overlap, softened.
+        if (green?.length) {
+          const air = new PIXI.Graphics(), soft = new PIXI.BlurFilter(Math.max(2, grid * k * 0.4), 3);
+          for (const shape of green) { air.beginFill(0x00ff00, shape.alpha); air.drawPolygon(shape.points.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k)); air.endFill(); }
+          air.blendMode = PIXI.BLEND_MODES.ADD; soft.blendMode = PIXI.BLEND_MODES.ADD;
+          air.filters = [soft]; air.filterArea = new PIXI.Rectangle(0, 0, w, h);
+          stage.addChild(air);
+        }
+        // What is cut away (open to the sky) has no drawn edge: blurred, then that blur's middle pushed in and out at random, so it comes out an uneven shape with a soft rim.
+        if (cut.length) {
+          const out = new PIXI.Graphics(), edge = new PIXI.Filter(undefined, RAGGED_EDGE, { uCell: grid * k });
+          draw(out, cut);
+          edge.blendMode = PIXI.BLEND_MODES.ERASE;
+          out.filters = [new PIXI.BlurFilter(Math.max(2, grid * k * 0.45), 4), edge];
+          out.filterArea = new PIXI.Rectangle(0, 0, w, h);
+          stage.addChild(out);
+        }
         stage.filters = [new PIXI.BlurFilter(blur)];
         const texture = PIXI.RenderTexture.create({ width: w, height: h });
         try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
@@ -1174,7 +1213,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       // The banks: a wider, softer water, so the ripples' light spills a little onto the ground beside it; the low
       // ground the mist gathers on: wider still.
       const uniforms = {
-        uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: bake(freezes, 1, [], icy), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
+        uWater: bake(water, 1), uBanks: bake(water, 6 + grid * k * 0.25), uLow: bake(water, 10 + grid * k * 1.5), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
         uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
@@ -1285,6 +1324,15 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
       masks.push(texture);
       for (const u of own) { u.uSnowRelief = texture; u.uHasSnowGround = 1; }
+    },
+    // Fog and mist come indoors (air-seep.mjs): [{ points (map pixels), alpha }], adding up where they overlap. Drawn again only when told.
+    seep(shapes = []) {
+      if (!own.length || !bakeMarks || (!shapes.length && !seeping)) return;
+      const old = own[0].uFreeze, next = bakeMarks(shapes);
+      for (const u of own) u.uFreeze = next;
+      seeping = shapes.length > 0;
+      const at = masks.indexOf(old); if (at >= 0) masks.splice(at, 1);
+      try { old.destroy(true); } catch { /* gone */ }
     },
     // The nearest lights, for the snow lying on the ground to catch (only worth asking while it does). `at` where the view is, `lights` () => [{ x, y, radius, color }].
     snowLights(lights, at, most = 4) {
@@ -1421,7 +1469,10 @@ export function createLightningFlash({ PIXI, root, bounds, random = Math.random,
         through.endFill();
       }
     }
-    stage.addChild(open, rooms, through);
+    // What is open to the sky takes the flash whole.
+    const holes = new PIXI.Graphics();
+    for (const p of what.open ?? []) { holes.beginFill(0xffffff, 1); holes.drawPolygon(at(p)); for (const hole of p.holes ?? []) { holes.beginHole(); holes.drawPolygon(at(hole)); holes.endHole(); } holes.endFill(); }
+    stage.addChild(open, rooms, through, holes);
     // The roofs as drawn now: the flash falls on them as on the open map.
     for (const t of what.roofs ?? []) {
       if (!t?.texture || !(t.shown > 0.01)) continue;

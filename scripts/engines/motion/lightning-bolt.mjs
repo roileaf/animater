@@ -10,6 +10,19 @@ export function strikePlace(random, rect, grid = 100, onScene = 0.7) {
   if (side === 2) return { x: r.x + along * r.width, y: r.y + r.height + out, inside: false };
   return { x: r.x - out, y: r.y + along * r.height, inside: false };
 }
+// How much ground a polygon covers (pure): flat x, y pairs.
+export const polygonArea = (p = []) => { let sum = 0; for (let i = 0; i + 1 < p.length; i += 2) { const j = (i + 2) % p.length; sum += p[i] * p[j + 1] - p[j] * p[i + 1]; } return Math.abs(sum) / 2; };
+// Whether a strike on the scene comes down through an opening in a roof, and where (pure): as often as the openings' share of the scene, and a bit more, so a small hole is hit now and then. `always`: nowhere else it could land (underground). `inside(x, y)` whether a point is in one. null: it lands where it was going.
+export function openingStrike({ random = Math.random, areas = [], rect, inside = () => true, always = false } = {}) {
+  const sizes = areas.map(polygonArea), total = sizes.reduce((a, b) => a + b, 0);
+  if (!(total > 0) || !(rect?.width > 0) || !(rect?.height > 0)) return null;
+  if (!always && random() >= Math.min(0.5, 0.08 + (total / (rect.width * rect.height)) * 4)) return null;
+  let pick = random() * total, area = areas[0];
+  for (let i = 0; i < areas.length; i++) { area = areas[i]; pick -= sizes[i]; if (pick <= 0) break; }
+  const xs = area.filter((_, i) => i % 2 === 0), ys = area.filter((_, i) => i % 2 === 1), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  for (let i = 0; i < 16; i++) { const x = x0 + random() * (x1 - x0), y = y0 + random() * (y1 - y0); if (inside(x, y)) return { x, y, inside: true, opening: true }; }
+  return null;
+}
 // Whether this flash is the rare one that lands on the scene (pure): most lightning is off in the storm, a flash from afar. Never sooner than a while after the last, then one flash in a few. `sinceMs` since the last bolt; `storm` how fierce, 0-1.
 // (`built`: a GM's own Lightning slider, whose top end means a bolt every few seconds and nearly every flash landing.)
 export const boltDue = (sinceMs, storm = 0.55, random = Math.random, built = false) => { const s = Math.min(1, Math.max(0, Number(storm) || 0)); return built ? sinceMs >= 60000 - 54000 * s && random() < 0.4 + 0.5 * s : sinceMs >= 60000 - 40000 * s && random() < 0.4; };
@@ -53,7 +66,8 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
   const line = (g, points, width, colour, alpha) => { g.lineStyle(width, colour, alpha); g.moveTo(points[0].x, points[0].y); for (let i = 1; i < points.length; i++) g.lineTo(points[i].x, points[i].y); };
   const drop = (b) => { try { b.view.parent?.removeChild(b.view); b.view.destroy({ children: true }); } catch { /* gone with the canvas */ } };
   return {
-    strike({ x, y, grid = 100, strength = 1, steady = false } = {}) {
+    // (`burst`: it came down through an opening: a hard white core where it hits the floor, its light thrown round the room. `reach`: as far as that light gets, flat x, y pairs: the bolt comes from the sky, but what it lights stops at what stops light.)
+    strike({ x, y, grid = 100, strength = 1, steady = false, burst = false, reach = null } = {}) {
       const view = new PIXI.Container(), g = new PIXI.Graphics(), to = { x, y };
       // Down from high overhead, leaning a little, its top off beyond what is seen close to.
       const from = { x: x + (random() - 0.5) * grid * 7, y: y - grid * (12 + random() * 6) }, main = boltPath(random, from, to);
@@ -66,7 +80,16 @@ export function createLightningBolts({ PIXI, root, random = Math.random }) {
       line(g, main, grid * 0.3, 0x7fa8ff, 0.2); line(g, main, grid * 0.11, 0xb8d0ff, 0.55); line(g, main, grid * 0.04, 0xffffff, 1);
       g.blendMode = PIXI.BLEND_MODES.ADD;
       const glow = new PIXI.Sprite(glowOf()); glow.anchor.set(0.5); glow.position.set(x, y); glow.width = glow.height = grid * 5; glow.blendMode = PIXI.BLEND_MODES.ADD;
-      view.addChild(glow, g); view.eventMode = 'none'; root().addChild(view);
+      const lit = new PIXI.Container();
+      lit.addChild(glow);
+      if (burst) {
+        const spot = (size, alpha) => { const s = new PIXI.Sprite(glowOf()); s.anchor.set(0.5); s.position.set(x, y); s.width = s.height = grid * size; s.alpha = alpha; s.blendMode = PIXI.BLEND_MODES.ADD; lit.addChildAt(s, 0); };
+        spot(10, 0.5); spot(2.2, 1);
+      }
+      if (reach?.length >= 6) { const edge = new PIXI.Graphics(); edge.beginFill(0xffffff, 1); edge.drawPolygon(reach); edge.endFill(); lit.addChild(edge); lit.mask = edge; }
+      else if (reach) lit.visible = false;
+      view.addChild(lit, g);
+      view.eventMode = 'none'; root().addChild(view);
       live.push({ view, age: 0, strength: Math.min(1, Math.max(0.35, strength)), steady });
     },
     tick(seconds) {

@@ -49,3 +49,18 @@ test('a bolt on the scene is rare: most flashes are far off', () => {
   assert.equal(boltDue(90000, 0.5, () => 0.9), false, 'and then only one flash in a few');
   assert.equal(strikePlace(() => 0.5, RECT, 100, 0).inside, false, 'an off-scene flash when none is due');
 });
+
+test('a strike can come down through an opening, more often the bigger it is', async () => {
+  const { openingStrike, polygonArea } = await import('../../../scripts/engines/motion/lightning-bolt.mjs');
+  const rect = { x: 0, y: 0, width: 1000, height: 1000 }, hole = [100, 100, 300, 100, 300, 300, 100, 300];
+  assert.equal(polygonArea(hole), 40000);
+  const roll = (...values) => { let i = 0; return () => values[i++ % values.length]; };
+  assert.equal(openingStrike({ random: roll(0.9), areas: [hole], rect }), null, 'most strikes land elsewhere');
+  const hit = openingStrike({ random: roll(0.1, 0.5, 0.5, 0.5), areas: [hole], rect });
+  assert.deepEqual(hit, { x: 200, y: 200, inside: true, opening: true });
+  assert.equal(openingStrike({ random: roll(0.3), areas: [[0, 0, 10, 0, 10, 10, 0, 10]], rect }), null, 'a tiny hole only now and then');
+  assert.ok(openingStrike({ random: roll(0.3), areas: [[0, 0, 400, 0, 400, 400, 0, 400]], rect }), 'a wide one more often');
+  assert.ok(openingStrike({ random: roll(0.99, 0.5), areas: [hole], rect, always: true }), 'underground it has nowhere else to go');
+  assert.equal(openingStrike({ random: roll(0.1, 0.5), areas: [hole], rect, inside: () => false }), null, 'never outside the opening');
+  assert.equal(openingStrike({ areas: [], rect }), null);
+});

@@ -184,9 +184,10 @@ import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
-import { strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
+import { openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { fallWayHere, nearestLights, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
+import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
 import { cleanTune, tuneAdds, tuneFalling, tuneWeather, tuneWords } from "./engines/motion/weather-tune.mjs";
 import { weatherPanel } from "./ui/weather-panel.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
@@ -1153,7 +1154,7 @@ const sceneWeatherNow = () => {
   try { return sceneWeather({ weather: scene?.weather, fxmaster: scene?.flags?.fxmaster?.effects }); } catch { return null; }
 };
 // The regions open to the sky here (kept as the sky is built): the weather comes through them, whatever would keep it out.
-let skyOpenRegions = [];
+let skyOpenRegions = [], skyOpenAreas = [];
 const openToSkyAt = (point, elevation = 0) => skyOpenRegions.some((region) => { try { return region.testPoint({ x: point.x, y: point.y, elevation }); } catch { return false; } });
 const shelteredAt = (point, elevation = 0) => {
   if (openToSkyAt(point, elevation)) return false;
@@ -3563,9 +3564,10 @@ const heatShimmer = createHeatShimmer({ PIXI: globalThis.PIXI, attach: (f) => at
 const lightningBolts = createLightningBolts({ PIXI: globalThis.PIXI, root: floorLayer("lightningBolts", 790) });
 const lightning = createLightningFlash({ PIXI: globalThis.PIXI, root: () => { const fx = canvas.effects; return fx; }, bounds: () => canvas.dimensions.sceneRect, render: bakeInto,
   cover: () => {
-    const indoors = indoorPolygons();
+    // (Underground the whole scene is under the ceiling, but for its openings.)
+    const rooms = indoorPolygons(), r = canvas.dimensions.sceneRect, indoors = undergroundScene() && skyOpenAreas.length ? [[r.x, r.y, r.x + r.width, r.y, r.x + r.width, r.y + r.height, r.x, r.y + r.height]] : rooms;
     if (!indoors.length) return null;
-    return { indoors, windows: windowFlashes({ walls: wallsHere(), indoors, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares() }), roofs: sunlitTiles().roof };
+    return { indoors, open: skyOpenAreas, windows: rooms.length ? windowFlashes({ walls: wallsHere(), indoors: rooms, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares() }) : [], roofs: sunlitTiles().roof };
   } });
 // Calendaria draws its own lightning in its calendar HUD: a white flash and a bolt over the screen, not the scene. While
 // Animater's lightning flashes are on, its thunderstorm shows heavy rain there instead (in memory only: Calendaria's
@@ -3627,7 +3629,7 @@ const syncFxLightning = (now) => {
 };
 const cloudsOn = () => outdoorOn("cloudShadows"), glintsOn = () => outdoorOn("surfaceGlints");
 const shimmerOn = () => { try { return hotSetting("heatShimmer") !== false && canDistort(localQuality(), hotSetting("heatShimmerLocal")); } catch { return false; } };
-const lightningOn = () => outdoorOn("lightningFlashes");
+const lightningOn = () => weatherReaches("lightningFlashes");
 const leavesOn = () => outdoorOn("fallingLeaves"), mistOn = () => outdoorOn("morningMist");
 const wetOn = () => weatherReaches("wetGround"), snowCoverOn = () => weatherReaches("snowCover"), firefliesOn = () => outdoorOn("fireflies") && outdoorLifeHere();
 const rainRingsOn = () => weatherReaches("rainRings");
@@ -3817,8 +3819,12 @@ const rebuildSky = () => {
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size, glints = glintsOn();
     // Underground the whole scene is under the ceiling, but for what is open; above ground only the rooms are.
     const open = skyOpenRegions.flatMap((region) => { try { return regionAreas(region); } catch { return []; } });
+    skyOpenAreas = open;
+    // The openings with a ceiling round them: outdoors, an opening changes nothing.
+    const openRoofed = undergroundScene() ? open : (() => { const rooms = indoorPolygons(); return open.filter((area) => { for (let i = 0; i + 1 < area.length; i += 2) if (rooms.some((room) => pointInPolygon({ x: area[i], y: area[i + 1] }, room))) return true; return false; }); })();
     const skyIndoors = undergroundScene() && open.length ? [[bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height]] : indoorPolygons();
-    if (surfaceLifeOn()) surfaceLight.build({ water: glints || mistOn() || firefliesOn() || rainRingsOn() || frozenWaterOn() ? skySurfaces.water : [], freezes: skySurfaces.freezes, flows: skySurfaces.flows, icy: skySurfaces.icy, frozen: glints ? skySurfaces.frozen : [], frozenAll: glints && skySurfaces.whole === "frozen",
+    airWanted = true;
+    if (surfaceLifeOn()) surfaceLight.build({ water: glints || mistOn() || firefliesOn() || rainRingsOn() || frozenWaterOn() ? skySurfaces.water : [], freezes: skySurfaces.freezes, flows: skySurfaces.flows, icy: skySurfaces.icy, openRoofed, frozen: glints ? skySurfaces.frozen : [], frozenAll: glints && skySurfaces.whole === "frozen",
       grass: skySurfaces.grass, tinted: skySurfaces.tinted, bare: skySurfaces.bare, grassAll: skySurfaces.grassAll, indoors: skyIndoors, open, bounds, grid });
     else surfaceLight.clear();
     shadeWater();
@@ -3853,11 +3859,20 @@ Hooks.on("updateScene", (scene, change) => {
 // A lightning flash throws the creatures' shadows hard from where it struck, for as long as it lights the map. It lands somewhere on the scene, the bolt seen and its thunder sure to be heard, or off past an edge.
 let flashSun = null, strikeAngle = 0, lastBoltAt = -Infinity, boltNext = false;
 const strikeNow = (level = 1, at = null) => {
-  const rect = canvas.dimensions.sceneRect, grid = canvas.grid.size, place = at ?? strikePlace(Math.random, rect, grid, boltNext || boltDue(performance.now() - lastBoltAt, skyStorm, Math.random, weatherTuneNow().lightning !== null) ? 1 : 0);
+  const rect = canvas.dimensions.sceneRect, grid = canvas.grid.size;
+  let place = at ?? strikePlace(Math.random, rect, grid, boltNext || boltDue(performance.now() - lastBoltAt, skyStorm, Math.random, weatherTuneNow().lightning !== null) ? 1 : 0);
   boltNext = false;
+  // It can come down through an opening in a roof; underground there is nowhere else, so the rest stay far off.
+  if (!at && place.inside && skyOpenAreas.length) {
+    const below = undergroundScene(), level_ = canvas.level?.elevation?.base ?? 0;
+    place = openingStrike({ areas: skyOpenAreas, rect, inside: (x, y) => openToSkyAt({ x, y }, level_), always: below }) ?? (below ? { ...place, inside: false } : place);
+  }
   if (place.inside) lastBoltAt = performance.now();
   strikeAngle = strikeFrom(place, rect);
-  if (place.inside) lightningBolts.strike({ x: place.x, y: place.y, grid, strength: level, steady: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true });
+  // In a room its light goes only where light can: walls that stop light stop it, the rest let it through.
+  let reach = null;
+  if (place.opening) { try { const level_ = canvas.level; reach = CONFIG.Canvas.polygonBackends.light.create({ x: place.x, y: place.y, elevation: level_?.elevation?.base ?? 0 }, { type: "light", radius: grid * 5, ...(level_ ? { level: level_ } : {}) })?.points ?? null; } catch { /* no wall test: unclipped */ } }
+  if (place.inside) lightningBolts.strike({ reach, x: place.x, y: place.y, grid, strength: level, steady: globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true, burst: place.opening === true });
   // Near whoever hears it: their creatures, else the middle of the view.
   const ears = canvas.tokens?.controlled?.length ? canvas.tokens.controlled.map((t) => t.center) : [{ x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }];
   const near = place.inside ? Math.max(...ears.map((e) => strikeNearness(e, place, grid))) : 0;
@@ -3884,11 +3899,42 @@ const weatherRoofs = () => { try { return sunlitTiles().roof.map((t) => ({ ...t,
 // The leaves, water, dust, heat and storm move each frame: only while something of them shows.
 Hooks.on("canvasReady", () => { canvas.app.ticker.add(skyTick); });
 let snowLightsAt = 0;
+// Fog and mist come indoors through what stands open (engines/motion/air-seep.mjs). Nothing is looked at unless the weather has some, or some is still inside.
+let airOpen = null, airKnown = new Map(), airAmounts = new Map(), airShapes = new Map(), seepAt = 0, airWanted = false;
+const airSoon = () => { airOpen = null; airShapes.clear(); airWanted = true; };
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { airSoon(); });
+Hooks.on("canvasReady", () => { airKnown.clear(); airAmounts = new Map(); });
+const tickAir = (now) => {
+  const seconds = (now - seepAt) / 1000; if (seconds < 0.25) return; seepAt = now;
+  const foggy = (drawnNow?.fog?.[3] ?? 0) > 0.005 || (drawnNow?.mist ?? 0) > 0.005;
+  if (!foggy && !airAmounts.size && !airWanted) return;
+  if (!airOpen) {
+    const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ id: d.id, c: d.c, light: d.light, door: d.door, ds: d.ds }));
+    airOpen = airOpenings({ walls, rooms: indoorPolygons(), grid: canvas.grid.size, inside: pointInPolygon });
+    for (const opening of airOpen) airKnown.set(opening.id, opening);
+  }
+  const step = seepStep(airAmounts, new Set(foggy ? airOpen.map((o) => o.id) : []), Math.min(seconds, 1));
+  airAmounts = step.amounts;
+  if (!step.moved && !airWanted) return;
+  airWanted = false;
+  const shapes = [], grid = canvas.grid.size, level = canvas.level, elevation = level?.elevation?.base ?? 0;
+  // (All that still has some inside, not only what stands open: a door shut holds in what came through it, to thin away by itself. Its shape is taken again with the door shut, so none leaks back out.)
+  for (const opening of airKnown.values()) {
+    const amount = airAmounts.get(opening.id); if (!amount) { if (!airOpen.includes(opening)) airKnown.delete(opening.id); continue; }
+    // Clipped by what stops light, as the openings themselves are told apart: the room's walls hold it, and it goes on through whatever else stands open.
+    const reach = seepReach(opening, { wind: skyWindNow, windAngle: skyWindAngle, grid }), key = `${opening.id}:${Math.round(reach / (grid * 0.25))}`;
+    let rings = airShapes.get(key);
+    if (!rings) { rings = []; for (const [share, alpha] of SEEP_RINGS) { try { const points = CONFIG.Canvas.polygonBackends.light.create({ x: opening.x, y: opening.y, elevation }, { type: "light", radius: reach * share, ...(level ? { level } : {}) })?.points; if (points?.length >= 6) rings.push({ points, alpha }); } catch { /* no wall test */ } } airShapes.set(key, rings); }
+    for (const ring of rings) shapes.push({ points: ring.points, alpha: ring.alpha * amount });
+  }
+  surfaceLight.seep(shapes);
+};
 function skyTick() {
   const seconds = (canvas.app.ticker.deltaMS || 16) / 1000;
   { const stage = canvas.stage, screen = canvas.app.renderer.screen; surfaceLight.eye({ x: stage.pivot.x, y: stage.pivot.y, reach: Math.hypot(screen.width, screen.height) / 2 / (stage.scale.x || 1) });
     const now = performance.now(); if (now - snowLightsAt > 250) { snowLightsAt = now; surfaceLight.snowLights(floorLightSources, stage.pivot, floorLevel.lights ?? 4); if (tileSnow.showing) { try { tileSnow.lights(nearestLights(floorLightSources().filter((l) => !underCeiling(l)), stage.pivot, Math.min(4, floorLevel.lights ?? 4))); } catch { /* no lights yet */ } } }
-    if (tileSnow.showing) tileSnow.tick(seconds); }
+    if (tileSnow.showing) tileSnow.tick(seconds);
+    try { tickAir(now); } catch { /* not built yet */ } }
   if (canopyLight.shown) canopyLight.tick(seconds);
   // The trees sway with the wind and keep up with the camera.
   if (treeSway.swaying) {
@@ -8068,7 +8114,7 @@ Hooks.on("renderRegionConfig", (app, html) => {
   const caveKinds = [["", "None"], ["mist", "Mist on the floor"], ["fungus-green", "Glowing fungus (green)"], ["fungus-blue", "Glowing fungus (blue)"], ["fungus-violet", "Glowing fungus (violet)"], ["crystals-amethyst", "Crystals (amethyst)"], ["crystals-quartz", "Crystals (clear quartz)"], ["crystals-rose", "Crystals (rose)"], ["lava", "Lava"], ["webs", "Cobwebs"], ["wet", "Wet walls"], ["steam", "Steam vents"], ["foul", "Bad air"]];
   tab.append(section("Underground",
     field("Cavern", select("cavern", own.cavern ?? "", caveKinds), "What this region holds: low mist hugging the floor, glowing fungus, crystals growing out of its walls, a lava pool, cobwebs in its corners, water seeping down its walls, steam rising from its floor, or bad air that starves the fires. Each has its own setting."),
-    field("Open to the sky", box("openSky"), 'The weather comes through here, whatever would keep it out: an underground scene, or a region that suppresses weather. Rain and snow show over roofs and trees; the wet ground, puddles and lying snow stay on the ground, under them. In an underground scene the sky shows too (a hole in the ceiling, a shaft, a cave mouth): daylight falls in as a pool on the floor with a shaft of light and dust turning in it, moonlight at night ("Light through openings to the sky"). Nowhere else underground does the sun or moon reach.'),
+    field("Open to the sky", box("openSky"), 'The weather reaches the floor here, whatever would keep it out: an underground scene, or a region that suppresses weather. It shows as what it leaves: wet ground, puddles, snow gathering in mounds, under a soft uneven edge. Falling rain and snow, fog and cloud stay out of the room. Lightning can come down through it, lighting the opening and throwing its light round the room, as far as walls that stop light let it. In an underground scene the sky shows too (a hole in the ceiling, a shaft, a cave mouth): daylight falls in as a pool on the floor with a shaft of light and dust turning in it, moonlight at night ("Light through openings to the sky"). Nowhere else underground does the sun or moon reach.'),
     field("Opens to the outside", box("opensOutside"), 'A way out to the open air here: stairs up, a cave mouth, an air shaft, a collapsed ceiling. The air indoors flows toward it through every open door ("Drafts"). Doors on the scene\'s edge standing open, and regions that lead elsewhere (teleport, change level), count without this.')));
   // Creatures kept out of this region.
   const kept = own.keepOut ?? {}, keepBox = (kind, label) => `<label class="checkbox"><input type="checkbox" name="flags.${ID}.keepOut.${kind}"${kept[kind] ? " checked" : ""}> ${label}</label>`;
