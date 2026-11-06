@@ -191,7 +191,29 @@ export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], bro
   return { status: "found", proposal: { ...traced, id: `water-${next}`, preselected: true, clicked: true }, seed };
 }
 
-// Exclusion follows the clicked surface, including small or neutral objects inside water.
+export function waterSelectionPixels(loops, width, height) {
+  const mask = new Uint8Array(width * height);
+  for (const pixel of waterProposalFromLoops(loops, width, height).pixels) mask[pixel] = 1;
+  for (const { points } of loops) for (let i = 0; i < points.length; i += 2) {
+    const j = (i + 2) % points.length;
+    const ax = points[i], ay = points[i + 1], bx = points[j], by = points[j + 1];
+    if (ay === by) {
+      if (Number.isInteger(ay) || ay < 0 || ay >= height) continue;
+      for (let x = Math.max(0, Math.floor(Math.min(ax, bx))); x < Math.min(width, Math.ceil(Math.max(ax, bx))); x++) mask[Math.floor(ay) * width + x] = 1;
+      continue;
+    }
+    if (ax === bx && Number.isInteger(ax)) continue;
+    for (let y = Math.max(0, Math.floor(Math.min(ay, by))); y < Math.min(height, Math.ceil(Math.max(ay, by))); y++) {
+      const lo = Math.max(y, Math.min(ay, by)), hi = Math.min(y + 1, Math.max(ay, by));
+      const x0 = ax + (lo - ay) * (bx - ax) / (by - ay), x1 = ax + (hi - ay) * (bx - ax) / (by - ay);
+      for (let x = Math.max(0, Math.floor(Math.min(x0, x1))); x < Math.min(width, Math.ceil(Math.max(x0, x1))); x++) mask[y * width + x] = 1;
+    }
+  }
+  const pixels = [];
+  for (let p = 0; p < mask.length; p++) if (mask[p]) pixels.push(p);
+  return Int32Array.from(pixels);
+}
+
 export function selectExcludedAreaAt(rgba, width, height, { x, y }, { targetPixels, broad = false } = {}) {
   const count = width * height;
   if (!rgba || rgba.length < count * 4) throw new Error("selectExcludedAreaAt: rgba is shorter than width * height * 4");
