@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.3.3 (2026-11-06)
+
+### Fixes
+
+- Pattern size moves in steps of 5%, and can now be exactly 100%.
+- Edge softness can be turned off, for a hard edge along the region's own line. Turn it back on and the softness you had returns.
+- A sea no longer draws a ring inside its region. Without a beach, its waterline now runs along the region's edge rather than a rounded line within it, and narrow water, up to about a dozen squares across, has its shore and shallows drawn in to suit, so its middle no longer reads as shallows, with fewer wave fronts and little breaking surf. Wider seas with a beach look as they did.
+
+### New
+
+- **Overlapping regions in the right-click menu.** Where two or more regions with a floor overlap, the menu has a tab for each, whatever their height, so a dock over water and the water beneath it can both be reached from the same spot. It opens on the one it always did.
+- **Stands over water.** A new box on a region, in its settings and its right-click menu, for a dock, a bridge or a raft: moving water and its waves run on underneath it, unbroken, instead of over it, and its own floor is what creatures walk on, whichever region is listed first. Give it an elevation and only a creature swimming below that is in the water; anyone else there is on it. Ducks, fish and other swimmers keep out from under it. Off by default. Set its floor too, or the water stays underfoot.
+
 ## 3.3.2 (2026-11-06)
 
 ### Fixes
