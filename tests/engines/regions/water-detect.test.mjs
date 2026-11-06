@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, editableWaterRegionIds, fitSize } from "../../../scripts/engines/regions/water-detect.mjs";
+import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, editableWaterRegionIds, fitSize, waterSelectionPixels } from "../../../scripts/engines/regions/water-detect.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));
@@ -920,4 +920,14 @@ test("extending saved water retains its existing overlap without claiming more o
   assert.equal(pixels.has(11), true);
   assert.equal(pixels.has(3), false);
   assert.equal(pixels.has(13), false);
+});
+
+test("selection coverage includes fractional boundary cells but leaves full hole cells clear", () => {
+  const box = (x, y, w, h, hole = false) => ({ points: [x, y, x + w, y, x + w, y + h, x, y + h], hole });
+  const pixels = waterSelectionPixels([box(0.25, 0.25, 9, 9), box(3, 3, 2, 2, true)], 12, 12);
+  assert.equal(pixels.length, 96);
+  assert.ok(pixels.includes(9 * 12 + 9));
+  assert.equal(pixels.includes(3 * 12 + 3), false);
+  const triangle = [{ points: [0.25, 0.25, 2.25, 0.25, 0.25, 2.25], hole: false }];
+  assert.deepEqual([...waterSelectionPixels(triangle, 4, 4)], [0, 1, 2, 4, 5, 8]);
 });

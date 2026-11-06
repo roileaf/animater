@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-- **Remove water from a chosen area.** Click connected unwanted surfaces using Narrow or Wide, including small docks and neutral colours. Interior cuts make holes; shore cuts trim or split the border. Saved regions keep their ID and settings. Undo restores the draft, and checkboxes still control saving. Whole-area removal and invalid touching shores leave the draft unchanged.
-
 - **Edit water outlines in the preview.** Move, insert, and delete polygon vertices, including holes. Smooth outer shores explicitly within two read pixels per action. Invalid geometry stays unchanged. Undo restores up to 20 edits and additions without resetting current save selections or water settings.
 
 - **Edit water without replacing other regions.** Reopening loads saved generator regions. Save updates only the edited, ticked regions by ID and creates new regions alongside them. Names, behaviors, steps, unrelated settings, and all other regions stay.

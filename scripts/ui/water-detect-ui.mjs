@@ -1,9 +1,9 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectWaterAt, selectExcludedAreaAt, waterSelectionPixels, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
+import { detectWater, selectWaterAt, waterSelectionPixels, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
-import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines, outlineComponents } from "../engines/regions/water-outline.mjs";
+import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/water-outline.mjs";
 
 export const FLOW_OPTIONS = Object.freeze(flowChoices());
 export const CURRENT_OPTIONS = Object.freeze([
@@ -21,8 +21,6 @@ const NONE = Object.freeze({
 const CLICK_NONE = Object.freeze({
   "no-colour": "Experimental. That spot has no clear colour to follow. Click on the water itself.",
   "too-small": "Experimental. That patch is too small to be a region. Click somewhere wider.",
-  "outside-target": "Click inside the active area, outside its existing holes.",
-  "invalid-exclusion": "That surface would make shores touch. Try a different click or edit the outline.",
   "already-water": "Experimental. That spot is already in the list.",
 });
 
@@ -147,7 +145,6 @@ export function waterRowHTML(proposal, options = {}) {
   <label data-sea-field${kind === "sea" ? "" : " hidden"}>Waves toward ${optionsHTML(WAVE_OPTIONS, `data-wave="${id}"`, waveTo)}</label>
   <label data-sea-field class="an-water-pick"${kind === "sea" ? "" : " hidden"}><input type="checkbox" data-beach="${id}"${seaBeach === "off" ? "" : " checked"}> Beach along the shore</label>
   <button type="button" class="an-water-add" data-add-to="${id}" aria-pressed="false">Add water</button>
-  <button type="button" data-subtract-from="${id}" aria-pressed="false">Remove water</button>
   <button type="button" data-edit-outline="${id}" aria-pressed="false">Edit outline</button>
   <button type="button" class="an-water-remove" data-remove="${id}" >${proposal.regionId ? "Leave unchanged" : "Remove"}</button>
 </div>`;
@@ -401,23 +398,18 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (button) { button.textContent = this.saving ? "Creating regions…" : `${verb} ${selected} water region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
       const empty = this.element.querySelector("[data-area-empty]");
       if (empty) empty.hidden = total > 0;
-      const help = this.mode?.kind === "subtract" ? "Click a surface to remove water" : this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : "Click to add water";
+      const help = this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : "Click to add water";
       setText(".an-water-help", `Scroll to zoom · Drag to pan · ${help}`);
       this.element.querySelector(".an-water-frame")?.setAttribute("aria-label", `Water preview. Scroll to zoom. Drag to pan. ${help}.`);
       const status = this.element.querySelector("[data-add-status]");
       if (status) {
         status.hidden = !this.mode?.areaId;
-        this.element.querySelector("[data-add-message]").textContent = this.mode?.kind === "vertices" ? "Drag a handle. Double-click an edge to insert. Select a handle to delete. Escape cancels a drag, then exits. Checkboxes only choose what to save." : this.mode?.kind === "subtract" ? `Removing from Area ${this.mode.areaId.replace("water-", "")}. Click a dock or other unwanted surface inside this area. Narrow follows closer colours; Wide removes more shades. Checkboxes only choose what to save.` : `Adding to Area ${this.mode?.areaId?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which areas to save.`;
+        this.element.querySelector("[data-add-message]").textContent = this.mode?.kind === "vertices" ? "Drag a handle. Double-click an edge to insert. Select a handle to delete. Escape cancels a drag, then exits. Checkboxes only choose what to save." : `Adding to Area ${this.mode?.areaId?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which areas to save.`;
         this.element.querySelector("[data-undo-add]").disabled = !this.history?.length;
         for (const button of this.element.querySelectorAll("[data-add-to]")) {
           const active = this.mode?.kind === "add" && button.dataset.addTo === this.mode.areaId;
           button.setAttribute("aria-pressed", String(active));
           button.textContent = active ? "Adding water here" : "Add water";
-        }
-        for (const button of this.element.querySelectorAll("[data-subtract-from]")) {
-          const active = this.mode?.kind === "subtract" && button.dataset.subtractFrom === this.mode.areaId;
-          button.setAttribute("aria-pressed", String(active));
-          button.textContent = active ? "Removing water here" : "Remove water";
         }
         for (const button of this.element.querySelectorAll("[data-edit-outline]")) button.setAttribute("aria-pressed", String(this.mode?.kind === "vertices" && button.dataset.editOutline === this.mode.areaId));
         const smooth = this.element.querySelector("[data-smooth-outline]");
@@ -498,34 +490,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         .map((proposal) => proposal.id === target.id ? merged : proposal);
       this.drawRows(choices);
       hooks.notify?.(`Added water to Area ${target.id.replace("water-", "")}. Its kind and settings are unchanged.`);
-    }
-
-    subtractArea(target, exclusion) {
-      const { detect } = this;
-      let geometry;
-      try {
-        if (exclusion.scopeLoops) {
-          const outside = subtractOutlines(exclusion.loops, exclusion.scopeLoops);
-          exclusion = { ...exclusion, loops: subtractOutlines(exclusion.loops, outside) };
-        }
-        let loops = subtractOutlines(target.loops, exclusion.loops);
-        const original = outlineComponents(target.loops);
-        const empty = outlineComponents(loops).filter(component => {
-          const old = original.find(previous => previous.outer.points.every((v, i) => v === component.outer.points[i]) && previous.outer.points.length === component.outer.points.length);
-          if (old && !waterProposalFromLoops(old.loops, detect.width, detect.height).pixels.length) return false;
-          if (exclusion.scopeLoops && !waterProposalFromLoops(exclusion.scopeLoops, detect.width, detect.height).pixels.length) return false;
-          return !waterProposalFromLoops(component.loops, detect.width, detect.height).pixels.length;
-        });
-        if (empty.length) loops = subtractOutlines(loops, empty.flatMap(component => component.loops));
-        if (!loops.length) { hooks.notify?.("Keep some water in this area. Use Remove or Leave unchanged for the entire row."); return false; }
-        geometry = waterProposalFromLoops(loops, detect.width, detect.height);
-      } catch (error) { hooks.notify?.(error.message); return false; }
-      if (!geometry.pixels.length) { hooks.notify?.("Keep some water in this area."); return false; }
-      if (JSON.stringify(target.loops) === JSON.stringify(geometry.loops)) { hooks.notify?.("That surface is already outside this area."); return false; }
-      this.remember();
-      detect.proposals = detect.proposals.map(p => p === target ? { ...target, ...geometry, geometryChanged: true, outlineEdited: true, exclusions: [...(target.exclusions ?? []), exclusion.loops] } : p);
-      this.drawRows(choicesFromElement(this.element));
-      return true;
     }
 
     drawRows(choices) {
@@ -678,8 +642,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
           this.selectedVertex = null;
           return this.commitOutline(smoothOutline(target.loops));
         }
-        const subtract = event.target.closest?.("[data-subtract-from]");
-        if (subtract) return this.setMode({ kind: "subtract", areaId: subtract.dataset.subtractFrom });
         const add = event.target.closest?.("[data-add-to]");
         if (add) return this.setAddTarget(add.dataset.addTo);
         if (event.target.closest?.("[data-add-done]")) return this.setAddTarget(null);
@@ -706,17 +668,6 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const { detect } = this;
       const at = previewPixel(event, event.target.getBoundingClientRect(), detect.width, detect.height);
       const shared = sharedChoices(this.element);
-      if (this.mode?.kind === "subtract") {
-        const target = detect.proposals.find(p => p.id === this.mode.areaId);
-        if (!target) return;
-        const pixel = at.y * detect.width + at.x;
-        const components = outlineComponents(target.loops).map(component => ({ ...component, pixels: waterProposalFromLoops(component.loops, detect.width, detect.height).pixels }));
-        const component = components.find(component => component.pixels.includes(pixel)) ?? components.find(component => waterSelectionPixels(component.loops, detect.width, detect.height).includes(pixel));
-        if (!component) { hooks.notify?.(clickMessage("outside-target")); return; }
-        const picked = selectExcludedAreaAt(detect.rgba, detect.width, detect.height, at, { targetPixels: component.pixels, boundaryPixels: waterSelectionPixels(component.loops, detect.width, detect.height), broad: shared.range === "wide" });
-        if (picked.status !== "found") { hooks.notify?.(clickMessage(picked.reason)); return; }
-        return this.subtractArea(target, { ...picked.proposal, scopeLoops: component.loops });
-      }
       const target = detect.proposals.find((proposal) => proposal.id === (this.mode?.kind === "add" ? this.mode.areaId : null));
       if (target) {
         const pixel = Math.floor(at.y) * detect.width + Math.floor(at.x);
