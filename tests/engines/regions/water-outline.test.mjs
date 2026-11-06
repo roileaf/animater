@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changeVertex, validateOutline, smoothOutline, outlinePoint, hitOutline, unionOutlines } from "../../../scripts/engines/regions/water-outline.mjs";
+import { changeVertex, validateOutline, smoothOutline, outlinePoint, hitOutline, unionOutlines, subtractOutlines } from "../../../scripts/engines/regions/water-outline.mjs";
 import { waterProposalFromLoops } from "../../../scripts/engines/regions/water-detect.mjs";
 const ring = (points, hole = false) => ({ points, hole });
 const box = (x, y, w, h, hole = false) => ring([x,y,x+w,y,x+w,y+h,x,y+h], hole);
@@ -127,4 +127,28 @@ test("tiny disconnected pieces do not prevent smoothing the larger shore", () =>
     assert.notDeepEqual(after[0],before[0]);
     assert.equal(validateOutline(before,after,40,40),"");
   }
+});
+
+test("difference creates holes, notches, split shores, enlarged holes and water islands", () => {
+  const shore = [box(0.25,0.25,9,9)];
+  const cases = [
+    [shore, [box(3,3,2,2)], 77, 1, 1],
+    [shore, [box(0,3,3,2)], 75, 1, 0],
+    [shore, [box(4,0,1,10)], 72, 2, 0],
+    [[...shore,box(3,3,2,2,true)], [box(4,3,2,2)], 75, 1, 1],
+    [[...shore,box(3,3,2,2,true)], [box(3.5,3.5,1,1)], 77, 1, 1],
+    [shore, [box(2,2,5,5),box(3,3,2,2,true)], 60, 2, 1],
+  ];
+  for (const [left,right,count,outer,holes] of cases) {
+    const before = structuredClone(left);
+    const loops = subtractOutlines(left,right);
+    assert.equal(waterProposalFromLoops(loops,10,10).pixels.length,count);
+    assert.equal(loops.filter(l=>!l.hole).length,outer);
+    assert.equal(loops.filter(l=>l.hole).length,holes);
+    assert.ok(loops.some(l=>l.points.includes(0.25) && l.points.includes(9.25)));
+    assert.deepEqual(left,before);
+    assert.deepEqual(subtractOutlines(loops,right),loops);
+  }
+  assert.deepEqual(subtractOutlines(shore,[box(0,0,10,10)]),[]);
+  assert.throws(()=>subtractOutlines(shore,[box(0.25,0.25,2,2),box(2.25,2.25,2,2)]),/touch|invalid/);
 });

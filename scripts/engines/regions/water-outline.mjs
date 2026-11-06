@@ -111,8 +111,16 @@ export function smoothOutline(loops, maxDriftPx = 2) {
   });
 }
 
-// Split polygon edges at crossings, then retain the union's directed boundary.
 export function unionOutlines(left, right) {
+  return booleanOutlines(left, right, false);
+}
+
+export function subtractOutlines(left, right) {
+  return booleanOutlines(left, right, true);
+}
+
+// Split at crossings and orient each surviving edge with water on its right.
+function booleanOutlines(left, right, subtract) {
   const edges = (loops) => loops.flatMap((loop) => {
     let p = loop.points;
     if ((area(p) > 0) === loop.hole) p = Array.from({ length: p.length / 2 }, (_, i) => p.slice(i * 2, i * 2 + 2)).reverse().flat();
@@ -134,7 +142,11 @@ export function unionOutlines(left, right) {
     const t = (vx * uy - vy * ux) / denominator, u = (vx * dy - vy * dx) / denominator;
     if (t >= 0 && t <= 1 && u >= 0 && u <= 1) { e.cuts.push(t); f.cuts.push(u); }
   }
-  const contains = (x, y) => left.reduce((yes, loop) => yes !== inside(x, y, loop.points), false) || right.reduce((yes, loop) => yes !== inside(x, y, loop.points), false);
+  const contains = (x, y) => {
+    const inLeft = left.reduce((yes, loop) => yes !== inside(x, y, loop.points), false);
+    const inRight = right.reduce((yes, loop) => yes !== inside(x, y, loop.points), false);
+    return subtract ? inLeft && !inRight : inLeft || inRight;
+  };
   const key = (p) => p.map((v) => Math.round(v * 1e8)).join(",");
   const boundary = new Map();
   for (const e of [...a, ...b]) {
@@ -143,16 +155,20 @@ export function unionOutlines(left, right) {
     for (let i = 1; i < cuts.length; i++) {
       if (cuts[i] - cuts[i - 1] < epsilon) continue;
       const at = (t) => [e.a[0] + dx * t, e.a[1] + dy * t];
-      const start = at(cuts[i - 1]), end = at(cuts[i]), mid = at((cuts[i - 1] + cuts[i]) / 2);
+      let start = at(cuts[i - 1]), end = at(cuts[i]);
+      const mid = at((cuts[i - 1] + cuts[i]) / 2);
       const offset = Math.min(1e-6, length * (cuts[i] - cuts[i - 1]) / 10);
-      if (contains(mid[0] + dy / length * offset, mid[1] - dx / length * offset)) continue;
+      const outside = contains(mid[0] + dy / length * offset, mid[1] - dx / length * offset);
+      const interior = contains(mid[0] - dy / length * offset, mid[1] + dx / length * offset);
+      if (outside === interior) continue;
+      if (outside) [start, end] = [end, start];
       boundary.set(`${key(start)}>${key(end)}`, { start, end });
     }
   }
   const outgoing = new Map();
   for (const edge of boundary.values()) {
     const k = key(edge.start);
-    if (outgoing.has(k)) throw new Error("The addition would make shores touch. Try a different click.");
+    if (outgoing.has(k)) throw new Error("The outline change would make shores touch. Try a different click.");
     outgoing.set(k, edge);
   }
   const loops = [];
@@ -160,11 +176,11 @@ export function unionOutlines(left, right) {
     const first = outgoing.values().next().value, points = [];
     let edge = first;
     do {
-      if (!edge) throw new Error("The addition could not form a closed shore.");
+      if (!edge) throw new Error("The outline change could not form a closed shore.");
       points.push(...edge.start); outgoing.delete(key(edge.start));
       edge = key(edge.end) === key(first.start) ? first : outgoing.get(key(edge.end));
     } while (edge !== first);
-    if (!isSimple(points) || !area(points)) throw new Error("The addition would make an invalid shore.");
+    if (!isSimple(points) || !area(points)) throw new Error("The outline change would make an invalid shore.");
     loops.push({ points, hole: area(points) < 0 });
   }
   return loops;
