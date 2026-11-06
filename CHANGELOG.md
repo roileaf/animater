@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.3.1 (2026-11-06)
+
+### Fixes
+
+- A region's Keep out now has a box for each animal: Wolves, Squirrels and Snakes, and Crows, Hawk and Owl, are new; Water birds is now Ducks, Herons and Gulls; Insects is Butterflies, Dragonflies and Fireflies; Town animals is Pigeons, Hens, Cats and Dogs. Regions with an old box ticked keep working and show its animals ticked. Wolves used to go by the Foxes box, squirrels and snakes by Rabbits; those boxes no longer hold them back, so tick the new ones on any region that should keep them out.
+- Snow melted by fire now comes back by the game clock instead of real time, taking as long as snow takes to lie in that weather. It only fills in while snow is still falling and it is cold enough to stay; if the weather has changed, the patch stays until snow falls again or the rest of the snow goes. Winding the clock back to before the blast brings the snow back at once.
+
+### New
+
+- **Wolves howl.** A wolf calls now and then, more by night, and a pack joins in; you hear them from a long way off, and when they come in from the edge of the map. They are silent while hunting, hauling or running. A wolf growls at anyone coming within five squares. They follow the Wildlife sounds setting.
+- **Keep out all animals.** A region's Keep out has an All animals box, for a region no creature comes into, without ticking each one. Crows, the owl and the hawk pick a way round it; gulls stop fishing there but may still glide over.
+
 ## 3.3.0 (2026-11-06)
 
 ### Fixes
