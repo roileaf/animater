@@ -224,9 +224,10 @@ export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => 
 }
 
 // One step of a squirrel (pure): forages in short bursts, stock still between, near its tree (`trees` [{ x, y, r }], `tree` its own). Anyone near, a noise or a scare sends it racing under the leaves ('hide', where it stays a while, then comes back out). A map with no trees drawn as tiles: it only bolts a way off. Modes 'forage', 'dash', 'race', 'hide'.
-export function squirrelStep(squirrel, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, scare = false, noise = null, trees = [], random = Math.random } = {}) {
+// `within(x, y)`: whether a point is on the map at all; even racing for cover it never runs off it.
+export function squirrelStep(squirrel, { dt = 1 / 60, grid = 100, near = [], ok = () => true, within = () => true, blocked = () => false, scare = false, noise = null, trees = [], random = Math.random } = {}) {
   const s = { ...squirrel }, home = trees[s.tree] ?? null;
-  const go = (speed) => { const nx = s.x + Math.sin(s.a) * speed * dt, ny = s.y - Math.cos(s.a) * speed * dt; if (blocked({ x: s.x, y: s.y }, { x: nx, y: ny }) || (!ok(nx, ny) && ok(s.x, s.y) && s.mode !== 'race')) return false; s.x = nx; s.y = ny; s.gait = (s.gait ?? 0) + (speed * dt) / (grid * 0.3); return true; };
+  const go = (speed) => { const nx = s.x + Math.sin(s.a) * speed * dt, ny = s.y - Math.cos(s.a) * speed * dt; if (blocked({ x: s.x, y: s.y }, { x: nx, y: ny }) || (!within(nx, ny) && within(s.x, s.y)) || (!ok(nx, ny) && ok(s.x, s.y) && s.mode !== 'race')) return false; s.x = nx; s.y = ny; s.gait = (s.gait ?? 0) + (speed * dt) / (grid * 0.3); return true; };
   const danger = noise ?? near.find((t) => Math.hypot(t.x - s.x, t.y - s.y) < grid * 3);
   if (s.mode === 'hide') { s.wait -= dt; s.v = 0; if (!home) { s.mode = 'forage'; s.wait = between(random, 1, 3); return s; } if (s.wait <= 0 && !scare && !noise) {
       // Out on a side with nobody near: a tree can be wide, and someone at one edge of it is no reason to stay in for good.
@@ -261,8 +262,8 @@ export function squirrelStep(squirrel, { dt = 1 / 60, grid = 100, near = [], ok 
 }
 
 // One step of a snake (pure): lies still a long while, slides slowly on a little, and from anyone within a couple of squares or a noise goes off quickly the other way. Modes 'lie', 'slide', 'flee'.
-export function snakeStep(snake, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, noise = null, scare = false, time = 0, random = Math.random } = {}) {
-  const s = { ...snake }, free = (nx, ny) => !blocked({ x: s.x, y: s.y }, { x: nx, y: ny }) && (ok(nx, ny) || !ok(s.x, s.y));
+export function snakeStep(snake, { dt = 1 / 60, grid = 100, near = [], ok = () => true, within = () => true, blocked = () => false, noise = null, scare = false, time = 0, random = Math.random } = {}) {
+  const s = { ...snake }, free = (nx, ny) => !blocked({ x: s.x, y: s.y }, { x: nx, y: ny }) && (within(nx, ny) || !within(s.x, s.y)) && (ok(nx, ny) || !ok(s.x, s.y));
   const danger = noise ?? near.find((t) => Math.hypot(t.x - s.x, t.y - s.y) < grid * 2);
   if (s.mode !== 'flee' && (danger || scare)) { s.mode = 'flee'; s.t = 0; s.way = danger ? Math.atan2(s.y - danger.y, s.x - danger.x) : random() * TAU; }
   const forward = (speed) => { const nx = s.x + Math.sin(s.a) * speed * dt, ny = s.y - Math.cos(s.a) * speed * dt; if (!free(nx + Math.sin(s.a) * grid * 0.3, ny - Math.cos(s.a) * grid * 0.3)) return false; s.x = nx; s.y = ny; s.gait = (s.gait ?? 0) + (speed * dt) / (grid * 0.9); return true; };
@@ -504,6 +505,8 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
   const put = (s, tex, x, y, angle, size, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(size); s.alpha = alpha; };
   const hide = (o) => { o.body.visible = false; o.shadow.visible = false; if (o.carry) o.carry.visible = false; };
   // Where a wolf, squirrel or snake may be, by its own keep-out regions; anywhere else if none is left.
+  // On the map (its scene rectangle, `area`), a little in from its edge: a squirrel or snake never leaves it, fleeing or not.
+  const onMap = (x, y) => !area || (x > area.x + grid * 0.2 && y > area.y + grid * 0.2 && x < area.x + area.width - grid * 0.2 && y < area.y + area.height - grid * 0.2);
   const homeOf = (kind, land = spots) => (homes[kind]?.length ? homes[kind] : land);
   return {
     populate({ spots: land = [], homes: own = {}, waters = [], glowWaters = waters, trees: treeList = [], squirrels: nSquirrels = 0, squirrelSize: qs = 1, snakes: nSnakes = 0, snakeSize: ss = 1, wolves: nWolves = 0, wolfSize: ws = 1, deer: nDeer = 0, foxes: nFoxes = 0, butterflies = 0, dragonflies = 0, fireflies = 0, owl: hasOwl = false, grid: g = 100, area: a = null, deerSize: ds = 1, foxSize: fs = 1, insectSize: is = 1, birdSize: bs = 1, batSize: bats_ = 1, blocked = () => false, random = Math.random } = {}) {
@@ -615,14 +618,14 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       }
       if (alpha > 0.01) {
         if (squirrels.length) { const sets = squirrelTex(); squirrels = squirrels.map((s0) => {
-          const s = squirrelStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), trees, ok: (x, y) => ok('squirrels', x, y) });
+          const s = squirrelStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), trees, ok: (x, y) => ok('squirrels', x, y), within: onMap });
           if (s.mode === 'hide' || !can(s, s.x, s.y)) { hide(s); return s; }
           const set = sets[s.coat], tex = s.v > 3 ? set.run[Math.floor(((s.gait % 1) + 1) % 1 * 4)] : set.sit[Math.round(Math.sin(time * 1.4 + s.seed) * Math.max(0, Math.sin(time * 0.5 + s.seed)) + 1)], size = 0.55 * k * squirrelSize, c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true });
           put(s.shadow, tex, s.x + c.dx, s.y + c.dy, s.a, size, Math.min(0.5, c.alpha * 0.55) * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);
           return s;
         }); }
         if (snakes.length) { const sets = snakeTex(); snakes = snakes.map((s0) => {
-          const s = snakeStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), time, ok: (x, y) => ok('snakes', x, y) });
+          const s = snakeStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), time, ok: (x, y) => ok('snakes', x, y), within: onMap });
           if (!warm || !can(s, s.x, s.y)) { hide(s); return s; }
           const set = sets[s.coat], tex = s.v > 1 ? set.go[Math.floor(((s.gait % 1) + 1) % 1 * 8)] : set.lie[0], size = 0.5 * k * snakeSize;
           put(s.shadow, tex, s.x + sun.x * grid * 0.02, s.y + sun.y * grid * 0.02, s.a, size, 0.25 * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);

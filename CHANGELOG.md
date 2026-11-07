@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.7.5 (unreleased)
+
+- **Squirrels and snakes stay on the map.** A squirrel bolting from a creature with no tree to run to, or a snake fleeing, could run off the edge of the map into the padding around it. They now stop at the map's edge.
+
 ## 3.7.4
 
 - **Only swimmers bob.** A creature standing in a water region bobbed on the swell whatever its movement type. Now only one set to swim does; one standing or wading in the water holds still.
