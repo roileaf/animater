@@ -30,6 +30,18 @@ export function solidShare(pixels, size = 32) {
   return all ? solid / all : null;
 }
 
+/**
+ * How full a picture's leaves are (0–1), read small (`pixels`: RGBA bytes): of what is drawn at all, how much is solid.
+ * Read this small a crown's own gaps blur to half see-through, while open ground between bushes on one tile stays clear
+ * and is left out, so a stand of thick bushes is not taken for a thin crown. Null for an empty picture.
+ */
+export function leafShare(pixels) {
+  if (!pixels?.length) return null;
+  let drawn = 0, solid = 0;
+  for (let i = 3; i < pixels.length; i += 4) { const a = pixels[i]; if (a > 24) { drawn++; if (a > 200) solid++; } }
+  return drawn ? solid / drawn : null;
+}
+
 export const SUNLIGHT_KINDS = Object.freeze(['tree', 'roof', 'none']);
 /**
  * What an overhead tile does with the sun: 'tree' (its leaves let light through: dappled shade), 'roof' (a building's
@@ -48,17 +60,19 @@ export function tileSunlight({ src, choice, overhead = false, solid = null, rest
 }
 
 // How thick a tree's leaves are (0–1 of its picture's shade): its own choice (Tile configuration → Animater → Leaves),
-// else by what it is called, else by how many gaps its picture has (`solid`: solidShare's). Sparse leaves cast a lighter
-// shade, full of flecks; dense ones a deep shade with few.
+// else by what it is called, else by how many gaps its crowns have (`leafy`: leafShare's; else `solid`, solidShare's,
+// which also counts the open ground round them). Sparse leaves cast a lighter shade, full of flecks; dense ones a deep
+// shade with few.
 export const LEAVES = Object.freeze({ sparse: 0.55, medium: 0.8, dense: 1 });
 const SPARSE = /(?:^|[^a-z])(birch|willow|palm|olive|aspen|acacia|jacaranda|dead|bare|leafless|autumn)(?=$|[^a-z])/i;
 const DENSE = /(?:^|[^a-z])(oak|pine|spruce|fir|cedar|yew|jungle|redwood|sequoia|cypress|hedge|evergreen|banyan|mangrove)(?=$|[^a-z])/i;
-export function tileLeaves({ src, own = null, solid = null } = {}) {
+export function tileLeaves({ src, own = null, solid = null, leafy = null } = {}) {
   if (LEAVES[own]) return LEAVES[own];
   const name = nameOf(src);
   if (SPARSE.test(name)) return LEAVES.sparse;
   if (DENSE.test(name)) return LEAVES.dense;
-  // A picture with many gaps is a thin crown; a full one a thick crown.
+  // A crown with many gaps is a thin one; a full one a thick one.
+  if (Number.isFinite(leafy)) return leafy < 0.55 ? LEAVES.sparse : leafy > 0.8 ? LEAVES.dense : LEAVES.medium;
   if (Number.isFinite(solid)) return solid < 0.6 ? LEAVES.sparse : solid > 0.85 ? LEAVES.dense : LEAVES.medium;
   return LEAVES.medium;
 }

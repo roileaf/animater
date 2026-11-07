@@ -1,4 +1,17 @@
 import test from 'node:test';
+import { windowGlows as glowsFor } from '../../../scripts/engines/motion/wall-shadows.mjs';
+test('a lamp\'s light going out through a window carries its panes; a door or frosted glass lets it out plain', () => {
+  const room = [0, 0, 400, 0, 400, 200, 0, 200], lights = [{ x: 200, y: 100, radius: 500 }];
+  const glow = (wall) => glowsFor({ walls: [{ c: [150, 200, 250, 200], light: 20, move: 20, ...wall }], indoors: [room], lights, grid: 100 })[0];
+  assert.equal(glow({ kind: 'mosaic' }).panes, 'mosaic');
+  assert.equal(glow({ kind: 'leaded' }).panes, 'leaded');
+  assert.equal(glow({ kind: 'glass' }).panes, 'cross');
+  assert.equal(glow({ kind: 'mosaicWindow', open: false }).panes, 'mosaic');
+  assert.equal(glow({ kind: 'mosaicWindow', open: false }).leaves, true, 'one that opens is two leaves');
+  assert.equal(glow({ kind: 'frosted' }).panes, false, 'frosted glass only spreads it');
+  assert.equal(glow({ kind: 'mosaicWindow', open: true }).panes, false, 'thrown open: out whole');
+  assert.equal(glow({ kind: 'glass', pattern: 2 }).scale, 2);
+});
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DUSK_DIM, duskOf, shaftAt, shaftOf, sunsetTint, wallAlong, windowFade, windowGlowBand, windowShafts } from '../../../scripts/engines/motion/wall-shadows.mjs';

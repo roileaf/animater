@@ -35,6 +35,15 @@ test('solidShare: how much of a picture is solid inside its outline', () => {
   assert.equal(solidShare(null), null);
 });
 
+test('leafShare: of what is drawn, how much is solid; clear ground left out', async () => {
+  const { leafShare } = await import('../../../scripts/engines/motion/canopy-light.mjs');
+  const img = (alphas) => Uint8ClampedArray.from(alphas.flatMap((a) => [0, 0, 0, a]));
+  assert.equal(leafShare(img([255, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255])), 1, 'two solid bushes and open ground: full');
+  assert.equal(leafShare(img([255, 120, 255, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])), 0.5, 'a crown half see-through');
+  assert.equal(leafShare(img(Array(16).fill(0))), null);
+  assert.equal(leafShare(null), null);
+});
+
 test('canopyFall: the shade falls away from the light, long when it is low, none in the dark', () => {
   const noon = canopyFall({ angle: -90, height: 70, strength: 1 }, { height: 3, grid: 100 });
   assert.ok(Math.abs(noon.dir[0]) < 1e-9 && noon.dir[1] > 0.99);
@@ -77,6 +86,9 @@ test('tileLeaves: its own choice, else its name, else the gaps in its picture', 
   assert.equal(tileLeaves({ src: 'tree%20tile%20bokken.webp', solid: 0.9 }), LEAVES.dense, 'a full crown');
   assert.equal(tileLeaves({ src: 'tree%20tile%20bokken.webp', solid: 0.7 }), LEAVES.medium);
   assert.equal(tileLeaves({ src: 'tree%20tile%20bokken.webp' }), LEAVES.medium, 'unreadable');
+  // Bokken's tree tile: thick bushes round open grass. Its outline is half empty, but its bushes are full.
+  assert.equal(tileLeaves({ src: 'tree%20tile%20bokken.webp', solid: 0.55, leafy: 0.89 }), LEAVES.dense, 'open ground between bushes is no gap in the leaves');
+  assert.equal(tileLeaves({ src: 'tree%20tile%20bokken.webp', solid: 0.9, leafy: 0.4 }), LEAVES.sparse, 'a crown full of small gaps');
   assert.ok(LEAVES.sparse < LEAVES.medium && LEAVES.medium < LEAVES.dense && LEAVES.dense === 1);
 });
 

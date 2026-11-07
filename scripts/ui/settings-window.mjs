@@ -138,7 +138,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "movingWater", local: "movingWaterLocal" },
     { world: "regionSteps", local: "regionStepsLocal" },
     { menu: "sunMenu" },
-    { world: "sunColor", local: "sunColorLocal", extras: ["sunColorStrength", "timeOfDayColor", "moonLight"] },
+    { world: "sunColor", local: "sunColorLocal", extras: ["sunColorStrength", "timeOfDayColor", "darknessBySun", "moonLight"] },
     { local: "movementGmPerception", gmOnly: true },
     { world: "quietSneaking" },
     { world: "projectileWalls" },

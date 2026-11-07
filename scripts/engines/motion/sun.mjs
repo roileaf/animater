@@ -24,6 +24,30 @@ export function sunFromClock({ day, sunrise = 0.25, sunset = 0.75, east = COMPAS
   return { angle: east + 180 * t, height, strength: clamp01(height / 8) };
 }
 
+// How far the sun stands above (+) or below (−) the horizon, in degrees (pure; `clock` as for sunFromClock, `hours` in a
+// day): by day as it climbs to its noon height; by night sinking at twilight's own pace, about TWILIGHT_PACE degrees an
+// hour after sunset, and rising at it again before sunrise, never deeper than NIGHT_DEPTH. So dusk takes as long on a
+// short summer night as on a long winter one, and a long night stays dark through its middle.
+export const TWILIGHT_PACE = 12, NIGHT_DEPTH = 40;
+export function sunElevation({ day, sunrise = 0.25, sunset = 0.75, hours = 24 } = {}) {
+  const f = ((Number(day) % 1) + 1) % 1;
+  if (!(sunset > sunrise)) return -NIGHT_DEPTH;
+  if (f > sunrise && f < sunset) return NOON * Math.sin(Math.PI * (f - sunrise) / (sunset - sunrise));
+  const since = (f >= sunset ? f - sunset : f + 1 - sunset) * hours, until = (f <= sunrise ? sunrise - f : sunrise + 1 - f) * hours;
+  return -Math.min(NIGHT_DEPTH, TWILIGHT_PACE * Math.min(since, until));
+}
+// The scene's darkness by the sun's height (pure, 0 day – 1 night): full day until it is a few degrees up, about a tenth
+// dark as it sets, half dark at the end of civil dusk (6° under), nearly dark at the end of nautical dusk (12° under) and
+// fully dark once the sky has lost the last of its glow, DARK_UNDER degrees down. The same at dawn the other way.
+export const LIGHT_ABOVE = 4, DARK_UNDER = 16;
+// `lift`: moonLift's, how much a bright moon keeps the night from full dark.
+export function darknessBySun(elevation, lift = 0) {
+  const e = Number(elevation);
+  if (!Number.isFinite(e)) return 1;
+  const t = clamp01((LIGHT_ABOVE - e) / (LIGHT_ABOVE + DARK_UNDER));
+  return Math.min(t * t * (3 - 2 * t), 1 - clamp01(Number(lift) || 0));
+}
+
 // The colour of dawn and dusk over the whole map: golden as the sun sinks under GOLDEN degrees, deep orange at the
 // horizon, then a rose afterglow fading over TWILIGHT of the day after sunset (and before sunrise). `clock` as for
 // sunFromClock. { color: [r, g, b] 0–1, amount 0–1 }, or null in full day and at night.
@@ -86,6 +110,17 @@ export function moonFromClock({ day, sunrise = 0.25, sunset = 0.75, east = COMPA
   const t = ((((f - sunset) % 1) + 1) % 1) / (1 - (sunset - sunrise)), height = MOON_NOON * Math.sin(Math.PI * clamp01(t));
   const strength = lit * clamp01(height / 8) * MOON_SHADOW;
   return strength > 0.01 ? { angle: east + 180 * t, height, strength, moon: true } : null;
+}
+
+// How much the moon lifts the night's darkness (pure, 0–MOON_LIFT): by how much of it is lit (`clock.moon`), how high it
+// stands (it crosses the night sky as moonFromClock has it) and how clear the sky is (`clock.sky`). A full moon high in a
+// clear sky leaves the night at 1 - MOON_LIFT dark; a new moon, a set moon or an overcast sky leave it fully dark.
+export const MOON_LIFT = 0.2;
+export function moonLift({ day, sunrise = 0.25, sunset = 0.75, moon = 0, sky = 1 } = {}) {
+  const f = ((Number(day) % 1) + 1) % 1, lit = clamp01(Number(moon) || 0);
+  if (!(sunset > sunrise) || !(lit > 0) || (f > sunrise && f < sunset)) return 0;
+  const t = ((((f - sunset) % 1) + 1) % 1) / (1 - (sunset - sunrise)), height = MOON_NOON * Math.sin(Math.PI * clamp01(t));
+  return MOON_LIFT * lit * clamp01(height / 20) * clamp01(Number(sky ?? 1));
 }
 
 // How much of the sky is clear (0 covered, 1 clear) under a weather: a calendar's (Calendaria's ids) or a scene's own

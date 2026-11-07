@@ -188,7 +188,7 @@ import { createTethers, createTetherPreview } from "./engines/playback/tethers.m
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, SKY_WINDOWS, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
-import { tileSunlight, tileHeight, tileLeaves, solidShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
+import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds, skyBuildKey } from "./engines/motion/sky-light.mjs";
@@ -237,7 +237,7 @@ import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from 
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
-import { sunColorByHeight, sceneSun, sunGlow, skyAir, moonLit, phaseLit, skyClear, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING } from "./engines/motion/sun.mjs";
+import { sunColorByHeight, sceneSun, sunGlow, skyAir, moonLit, phaseLit, skyClear, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING, sunElevation, darknessBySun, moonLift } from "./engines/motion/sun.mjs";
 import { sunSettingsMenu, SUN_SETTING, CLOCK_SETTING } from "./ui/sun-settings.mjs";
 import { sunConfigElement } from "./ui/scene-sun-config.mjs";
 import { createSustainThreads, sustainLinks, concentrationLinks } from "./engines/motion/sustain-threads.mjs";
@@ -1480,6 +1480,52 @@ const quietCalendarWeatherHue = async () => {
 Hooks.once("ready", () => { void quietCalendarWeatherHue(); });
 Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.weatherLight` || setting?.key === "calendaria.ambienceSync") void quietCalendarWeatherHue(); });
 Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.sunColor` || setting?.key === "calendaria.colorShiftSync") void quietCalendarColour(); });
+// Darkness by the sun (sun.mjs darknessBySun, "Darkness follows the sun"): the active scene's own Darkness Level, so
+// Foundry's lighting and vision and the game's light rules follow it, set by how far the sun is under the horizon: fully
+// dark about an hour and a half after sunset until dawn's first glow, instead of only at the very middle of the night.
+// Only the lead GM writes it, and only when it has moved; a storm's darkness holds it down as it does the clock's
+// (preUpdateScene below). It replaces Calendaria's darkness by the hour, which it turns off.
+const sunDarknessOn = () => { try { return hotSetting("darknessBySun") === true; } catch { return false; } };
+const quietCalendarDarkness = async () => {
+  try {
+    if (!leadGM() || !sunDarknessOn() || !game.modules.get("calendaria")?.active) return;
+    if (game.settings.get("calendaria", "darknessSync") !== true) return;
+    await game.settings.set("calendaria", "darknessSync", false);
+    ui.notifications?.info("Animater: Calendaria’s darkness by the time of day is turned off, as Animater’s “Darkness follows the sun” now sets the scene’s darkness.");
+  } catch { /* Calendaria changed */ }
+};
+// Calendaria swaps Foundry's calendar for its own a moment after the game is ready: until then the clock reads another
+// calendar's hours (a noon read as nine at night), so no darkness is written before it says it is ready.
+let calendariaSettled = false;
+Hooks.once("calendaria.ready", () => { calendariaSettled = true; void quietCalendarDarkness(); sunDarknessSoon(); });
+const clockSettled = () => calendariaSettled || !game.modules.get("calendaria")?.active;
+let sunDarknessTimer = null;
+const sunDarknessSoon = () => {
+  if (sunDarknessTimer || !sunDarknessOn() || !clockSettled()) return;
+  sunDarknessTimer = setTimeout(() => {
+    sunDarknessTimer = null;
+    try {
+      const scene = game.scenes?.active, clock = clockNow();
+      if (!scene || !clock || !leadGM() || !sunDarknessOn() || !clockSettled() || scene.environment?.darknessLock === true) return;
+      // Not under the ground, and not a scene where Calendaria was told to leave the darkness alone.
+      if (undergroundOf(scene.flags?.[ID], null)) return;
+      const own = scene.flags?.calendaria?.darknessSync;
+      if (own === false || own === "false" || own === "disabled") return;
+      const hours = game.time?.calendar?.days?.hoursPerDay || 24;
+      // A bright moon keeps the night from full dark (Animater settings → Moonlight).
+      const lift = hotSetting("moonLight") === false ? 0 : moonLift(clock);
+      const want = Math.round(darknessBySun(sunElevation({ ...clock, hours }), lift) * 1000) / 1000;
+      // In a storm, what the clock asked for is kept beside the storm's own (storm-darkness.mjs): compare with that.
+      const kept = scene.flags?.[ID]?.stormDark, now = Number(kept ? kept.base : scene.environment?.darknessLevel) || 0;
+      if (Math.abs(want - now) < 0.01) return;
+      void scene.update({ environment: { darknessLevel: want } }, { animateDarkness: 2000 }).catch(() => { /* tried again at the next tick */ });
+    } catch { /* not ready */ }
+  }, 400);
+};
+Hooks.once("ready", () => { void quietCalendarDarkness(); sunDarknessSoon(); });
+Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.darknessBySun` || setting?.key === "calendaria.darknessSync") { void quietCalendarDarkness(); sunDarknessSoon(); } });
+for (const hook of ["updateWorldTime", "canvasReady", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { sunDarknessSoon(); });
+Hooks.on("updateScene", (scene, change) => { if (change?.active === true) sunDarknessSoon(); });
 // The calendars' own changes too (a new day's sunrise, a climate zone), not only Foundry's clock.
 for (const hook of ["canvasReady", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { refreshSun(); refreshSunWash(); lookSunlit(); });
 Hooks.on("updateScene", (scene, change, options) => {
@@ -1703,12 +1749,12 @@ const rebuildGlows = () => {
     // out from under them.
     const { tree, roof } = sunlitTiles(), covers = [...tree, ...roof];
     // Baked again only when something in it changed: a creature walking about refreshes the lighting many times over.
-    const key = JSON.stringify([Math.round(glowAlpha * 100), Math.round(layerAlpha * 100), glows.map((g) => [g.points.map(Math.round), g.clip?.map(Math.round), Math.round(g.alpha * 100), g.color, g.kind, g.lamp && Math.round(g.lamp.x), g.lamp && Math.round(g.lamp.y)]),
+    const key = JSON.stringify([Math.round(glowAlpha * 100), Math.round(layerAlpha * 100), glows.map((g) => [g.points.map(Math.round), g.clip?.map(Math.round), Math.round(g.alpha * 100), g.color, g.kind, g.panes, g.leaves, g.scale, g.lamp && Math.round(g.lamp.x), g.lamp && Math.round(g.lamp.y)]),
       covers.map((t) => [t.x, t.y, t.width, t.height, t.rotation, Math.round((t.alpha ?? 1) * 100)])]);
     if (key === glowKey && windowGlowLayer.built) return;
     glowKey = key;
     // (Bands through shutters are all the light there is of them, and thin: they keep the layer's strength, where an open window's soft glow, under Foundry's own light, stays gentle by day.)
-    windowGlowLayer.build({ glows: glows.map((g) => (g.slats > 0 ? g : { ...g, alpha: g.alpha * glowAlpha / Math.max(0.001, layerAlpha) })), bounds: canvas.dimensions.sceneRect, alpha: layerAlpha, covers });
+    windowGlowLayer.build({ glows: glows.map((g) => (g.slats > 0 ? g : { ...g, alpha: g.alpha * glowAlpha / Math.max(0.001, layerAlpha) })), bounds: canvas.dimensions.sceneRect, alpha: layerAlpha, covers, grid: canvas.grid.size });
     glowShadowsDirty = true;
   } catch { windowGlowLayer.clear(); glowKey = ""; }
 };
@@ -1976,21 +2022,22 @@ const animalFlagsNow = () => overLevel(canvas?.scene?.flags?.[ID], canvas?.level
 const outdoorLifeHere = () => outdoorLifePreview || animalFlagsNow().outdoorLife === "on", wildHere = () => outdoorOn("wildlife") && outdoorLifeHere();
 const canopyOn = () => outdoorOn("canopyLight");
 const roofLightOn = () => outdoorOn("roofLight");
-// How solid each tile picture is (canopy-light.mjs solidShare), read once, small, per picture.
+// How solid each tile picture is and how full its leaves (canopy-light.mjs solidShare, leafShare), read once, small, per picture.
 const solidByTexture = new Map();
 const tileSolid = (texture) => {
   const base = texture?.baseTexture;
-  if (!base) return null;
+  if (!base) return { solid: null, leafy: null };
   const key = `${base.uid ?? base.cacheId}`;
   if (!solidByTexture.has(key)) {
-    let share = null;
+    let share = { solid: null, leafy: null };
     try {
       const source = base.resource?.source, c = document.createElement("canvas");
       if (source && !(source instanceof HTMLVideoElement)) {
         c.width = c.height = 32;
         const ctx = c.getContext("2d", { willReadFrequently: true });
         ctx.drawImage(source, 0, 0, 32, 32);
-        share = solidShare(ctx.getImageData(0, 0, 32, 32).data);
+        const pixels = ctx.getImageData(0, 0, 32, 32).data;
+        share = { solid: solidShare(pixels), leafy: leafShare(pixels) };
       }
     } catch { /* another site's image: unreadable */ }
     solidByTexture.set(key, share);
@@ -2017,11 +2064,11 @@ const sunlitTiles = () => {
       const level = (own ?? canvas.level)?.elevation ?? {}, base = Number(level.base ?? level.bottom) || 0;
       const elevation = Number(d.elevation) || 0;
       const restricts = d.restrictions?.light === true || d.restrictions?.weather === true;
-      const solid = tileSolid(mesh.texture);
+      const { solid, leafy } = tileSolid(mesh.texture);
       const kind = tileSunlight({ src: d.texture?.src, choice: d.flags?.[ID]?.sunlight, overhead: elevation > base, solid, restricts });
       if (!kind) continue;
       const up = tileHeight({ kind, src: d.texture?.src, own: d.flags?.[ID]?.sunHeight ?? null, level, per, foot });
-      const leaves = kind === "tree" ? tileLeaves({ src: d.texture?.src, own: d.flags?.[ID]?.sunLeaves, solid }) : 1;
+      const leaves = kind === "tree" ? tileLeaves({ src: d.texture?.src, own: d.flags?.[ID]?.sunLeaves, solid, leafy }) : 1;
       // Its kind of tree, and a seed so a wood of the same trees is not one stamp.
       const treeKind = kind === "tree" ? treeKindOf({ src: d.texture?.src, own: d.flags?.[ID]?.sunTree ?? "" }) : null, seed = [...String(d.id ?? "")].reduce((s, ch) => (s * 31 + ch.charCodeAt(0)) >>> 0, 7);
       out[kind].push({ texture: mesh.texture, x: mesh.x, y: mesh.y, width: mesh.width, height: mesh.height, rotation: mesh.rotation, anchorX: mesh.anchor?.x ?? 0.5, anchorY: mesh.anchor?.y ?? 0.5, alpha: Number(d.alpha ?? 1) || 1, up, leaves, kind: treeKind, seed, elevation, shown: tileShown(mesh), mesh });
@@ -4185,6 +4232,8 @@ const cloudShiftNow = () => {
   return { x: Math.cos(away) * reach, y: Math.sin(away) * reach };
 };
 const calendariaMoonNow = () => {
+  // Darkness following the sun lifts for the moon itself, as Calendaria's does: the moon's tint is halved for it too.
+  if (sunDarknessOn() && !undergroundScene()) return true;
   const get = (key) => { try { return game.settings.get("calendaria", key); } catch { return false; } };
   const own = canvas?.scene?.flags?.calendaria ?? {};
   return calendariaMoonLifts({ active: game.modules.get("calendaria")?.active === true, sync: get("darknessSync"), moonSync: get("darknessMoonSync"), sceneSync: own.darknessSync ?? "default", sceneMoonSync: own.darknessMoonSync ?? "default" });
@@ -7620,6 +7669,9 @@ Hooks.once("init", () => {
   registerSetting("timeOfDayColor", { name: "Color the scene as the time of day",
     hint: "On (the usual), Animater colours the scene through the day and turns off a calendar module's own scene ambience (such as Calendaria's “Sync Scene Ambience” settings), so the map is never coloured twice. Off, for those who prefer that module's: Animater leaves its settings as you set them, and steps aside while it colours the scene.",
     scope: "world", config: true, type: Boolean, default: true, onChange: () => { try { refreshSunWash(); } catch { /* not drawn */ } void quietCalendarColour(); void quietCalendarWeatherHue(); } });
+  registerSetting("darknessBySun", { name: "Darkness follows the sun",
+    hint: "The active scene's Darkness Level follows how far the sun is under the horizon, as real twilight does: a little dark at sunset, half dark half an hour later, fully dark about an hour and a half after sunset until dawn's first light, then lightening the same way; a bright moon high in a clear sky keeps the night a little lighter (with Moonlight on). Foundry's lighting and vision and the game's light rules follow it. It takes over from Calendaria's darkness by the time of day (turned off while this is on). Not in scenes under the ground, scenes with their darkness locked, or scenes where Calendaria was told to leave the darkness alone; a storm still darkens it further.",
+    scope: "world", config: true, type: Boolean, default: false });
   registerSetting("sunColorLocal", { name: "Sunrise and sunset colour on my screen",
     hint: "Turn off to never colour the map at dawn and dusk on this screen (the world setting decides for everyone).",
     scope: "client", config: true, type: Boolean, default: true });
