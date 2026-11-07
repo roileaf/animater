@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.7.3 (unreleased)
+
+- **Shadows in a window's lamplight.** A creature standing in a lit window's light outside now throws its shadow from the lamp. The light now fans out from the lamp through the window, off to one side when the lamp is, so its panes radiate from the lamp too and whoever stands in it sees the lamp. One standing at the light's very edge, the window's end between it and the lamp, still throws its shadow; it was dropped before, and with creature-shaped shadows on nothing was left. Curtains and frosted glass still spread their light evenly.
+
 ## 3.7.2
 
 - **Only a full moon lightens the night.** With Darkness follows the sun, the moon kept every night a little lighter by how much of it was lit, so even a half moon stopped the scene short of full dark. Now only a full moon high in a clear sky does (about a day either side of it); otherwise the night goes fully dark, and the moon's silver tint is left at full strength.

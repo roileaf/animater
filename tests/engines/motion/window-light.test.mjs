@@ -1,5 +1,18 @@
 import test from 'node:test';
 import { windowGlows as glowsFor } from '../../../scripts/engines/motion/wall-shadows.mjs';
+test('a lamp\'s light out of a window fans from the lamp; one standing at its edge still throws the lamp\'s shadow', async () => {
+  const { glowShadows } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  const room = [200, 0, 1400, 0, 1400, 800, 200, 800];
+  const walls = [{ c: [200, 800, 400, 800], light: 20, move: 20 }, { c: [400, 800, 600, 800], light: 20, move: 20, kind: 'mosaicWindow' }, { c: [600, 800, 1400, 800], light: 20, move: 20 }];
+  const [g] = glowsFor({ walls, indoors: [room], lights: [{ x: 300, y: 500, radius: 1000 }], grid: 200 });
+  const [, , , , cx, , ex] = g.points;
+  assert.ok(cx > 600 && ex > 400, 'a lamp off to the left throws the light off to the right');
+  assert.ok(ex - 400 > 0 && cx - 600 > ex - 400, 'and fanning out from it');
+  // Ezren in Bokken's Hut: the lamp's line to him grazes the window's end.
+  const cast = glowShadows([g], [{ id: 'e', x: 500, y: 1100, r: 64, half: 100, height: 1.2, art: { texture: {} } }], { walls });
+  assert.ok(cast.some((s) => s.hard), 'the lamp\'s hard shadow');
+});
+
 test('a lamp\'s light going out through a window carries its panes; a door or frosted glass lets it out plain', () => {
   const room = [0, 0, 400, 0, 400, 200, 0, 200], lights = [{ x: 200, y: 100, radius: 500 }];
   const glow = (wall) => glowsFor({ walls: [{ c: [150, 200, 250, 200], light: 20, move: 20, ...wall }], indoors: [room], lights, grid: 100 })[0];

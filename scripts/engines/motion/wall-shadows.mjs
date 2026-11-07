@@ -226,7 +226,15 @@ export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100,
     const strength = Math.min(1, best * 1.6), curtained = open.kind === 'curtained';
     const reach = grid * (1 + 2 * strength) * (curtained ? 0.6 : 1), spread = reach * (curtained ? 0.7 : 0.35);
     const ox = nx * away * reach, oy = ny * away * reach;
-    out.push({ points: [ax, ay, bx, by, bx + ox + ux * spread, by + oy + uy * spread, ax + ox - ux * spread, ay + oy - uy * spread], alpha: open.alpha * strength, color,
+    // Through clear openings the lamp's light goes on in straight lines: the patch fans from the lamp through the opening's
+    // two ends (off to one side when the lamp is, wider the nearer the lamp stands to it), so whoever stands in it sees the
+    // lamp through the window. Cloth and frosted glass spread it evenly instead.
+    let far = [bx + ox + ux * spread, by + oy + uy * spread, ax + ox - ux * spread, ay + oy - uy * spread];
+    if (lamp && !curtained && open.kind !== 'frosted') {
+      const end = (px, py) => { const dx = px - lamp.x, dy = py - lamp.y, ahead = Math.max(grid * 0.25, dx * nx * away + dy * ny * away), k = reach / ahead; return [px + dx * k, py + dy * k]; };
+      far = [...end(bx, by), ...end(ax, ay)];
+    }
+    out.push({ points: [ax, ay, bx, by, ...far], alpha: open.alpha * strength, color,
       from: mid, past: { x: mid.x + nx * away * 2, y: mid.y + ny * away * 2 }, up: (open.bottom + open.top) / 2, reach, kind: open.kind, lamp, room,
       slats: open.kind === 'shuttered' ? Math.max(3, Math.round(reach / (grid * 0.3))) : 0, shadow: curtained ? 0.3 : open.kind === 'shuttered' ? 0.8 : 1,
       // The lamp's light leaves through the window as the sun's comes in: carrying its panes out onto the ground (frosted
@@ -278,8 +286,9 @@ export function glowShadows(glows = [], creatures = [], { walls = [] } = {}) {
     const r = Number(c.r) || 0, hc = Number(c.height) || 1, d = Math.hypot(c.x - L.x, c.y - L.y);
     if (d <= r * 1.05) return;
     let reach = hc >= lh ? far : Math.min(far, (d * lh) / (lh - hc));
-    // A lamp's shadow stops at the room's wall (it goes on only through a window or an open door).
-    if (hard && walls.length) { const hit = firstWall(L, { x: L.x + ((c.x - L.x) / d) * reach, y: L.y + ((c.y - L.y) / d) * reach }, walls); if (Number.isFinite(hit)) reach = Math.min(reach, hit * reach); }
+    // A lamp's shadow stops at the first wall past the creature (it goes on only through a window or an open door); walls
+    // between the lamp and the creature were weighed already, and one it stands beside at the light's edge is no stop.
+    if (hard && walls.length && reach > d) { const far = { x: L.x + ((c.x - L.x) / d) * reach, y: L.y + ((c.y - L.y) / d) * reach }, hit = firstWall(c, far, walls); if (Number.isFinite(hit)) reach = d + (reach - d) * hit; }
     if (reach <= d) return;
     // Where the light's rays graze the creature's sides.
     const back = Math.atan2(L.y - c.y, L.x - c.x), turn = Math.acos(r / d), side = [];
@@ -319,8 +328,12 @@ export function glowShadows(glows = [], creatures = [], { walls = [] } = {}) {
       const half = Number(c.half) || Number(c.r) / 0.64;
       if (Math.abs(lamp.at.x - c.x) < half && Math.abs(lamp.at.y - c.y) < half) continue;
       if (Math.hypot(c.x - lamp.at.x, c.y - lamp.at.y) >= lamp.far) continue;
-      if (lamp.rooms.length && !lamp.rooms.some((room) => inside(c, room)) && !lamp.glows.some((g) => inside(c, g))) continue;
-      if (walls.length && lightBlocked(lamp.at, c, walls)) continue;
+      // Any of it counts: its middle, or either side of it across the light (one at the light's very edge, the window's end
+      // in line between it and the lamp, is still lit along its side).
+      const d = Math.hypot(c.x - lamp.at.x, c.y - lamp.at.y) || 1, sx = (-(c.y - lamp.at.y) / d) * (Number(c.r) || 0) * 0.9, sy = ((c.x - lamp.at.x) / d) * (Number(c.r) || 0) * 0.9;
+      const parts = [c, { x: c.x + sx, y: c.y + sy }, { x: c.x - sx, y: c.y - sy }];
+      if (lamp.rooms.length && !lamp.rooms.some((room) => inside(c, room)) && !lamp.glows.some((g) => parts.some((p) => inside(p, g)))) continue;
+      if (walls.length && parts.every((p) => lightBlocked(lamp.at, p, walls))) continue;
       wedge(c, lamp.at, lamp.far, lamp.lh, lamp.shadow * (c.art?.texture ? 1 : LAMP_SHARE), true);
     }
   }
