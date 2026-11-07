@@ -147,9 +147,11 @@ test("the question says what a reset does, names the recipes it deletes, and off
   assert.match(html, /<input type="checkbox" name="full"> Also switch this catalog back to its fresh-install state \(off\)/);
   assert.doesNotMatch(html, /checked|none play until|edited|is replaced/);
   // Edited copies are marked, and a kept reset this one replaces is dated.
-  const edited = catalogResetDialogHTML("x", { deleted: [{ id: "a", name: "A" }, { id: "b", name: "B" }], edited: new Set(["b"]), replaces: "2026-11-01T10:20:30.400Z" });
+  const kept = { saved: "2026-11-01T10:20:30.400Z", catalogState: {}, recipes: [{ id: "k1" }, { id: "k2" }] }, at = new Date(kept.saved).toLocaleString().replace(/[/.]/g, "\\$&");
+  const edited = catalogResetDialogHTML("x", { deleted: [{ id: "a", name: "A" }, { id: "b", name: "B" }], edited: new Set(["b"]), replaces: kept });
   assert.match(edited, /Deletes 2 customised recipes \(1 edited since\): A, B \(edited\)\./);
-  assert.match(edited, new RegExp(`The copy kept from the reset on ${new Date("2026-11-01T10:20:30.400Z").toLocaleString().replace(/[/.]/g, "\\$&")} is replaced\\.`));
+  assert.match(edited, new RegExp(`The copy kept from the reset on ${at}, with the 2 recipes it holds, is replaced\\.`));
+  assert.match(catalogResetDialogHTML("x", { replaces: { ...kept, recipes: [] } }), new RegExp(`The copy kept from the reset on ${at} is replaced\\.`), "no recipes kept: only the date");
   assert.match(catalogResetDialogHTML("x"), /No customised recipes to delete\./);
   assert.match(catalogResetDialogHTML("x", { pickedOnly: true }), /none play until you pick them again/);
   const many = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, name: `R${i}` }));
@@ -185,6 +187,11 @@ test("the kept reset restores its recipes and state; a recipe made again since g
   plan = catalogRestorePlan(catalogBackup(state, []), starters);
   assert.deepEqual([plan.recipes, plan.restored, plan.state], [starters, [], state]);
   assert.throws(() => catalogRestorePlan({ nope: true }, starters), /No catalog reset to restore/);
+  // A kept copy far past Import's 1 MB text cap still restores: only the world's 200 recipes bound it.
+  const heavy = Array.from({ length: 150 }, (_, i) => ({ ...copy, id: `heavy-${i}`, description: "x".repeat(10_000) }));
+  assert.ok(JSON.stringify(heavy).length > 1_000_000);
+  assert.equal(catalogRestorePlan(catalogBackup(state, heavy), starters).recipes.length, starters.length + 150);
+  assert.throws(() => catalogRestorePlan(catalogBackup(state, Array.from({ length: 199 }, (_, i) => ({ ...copy, id: `h${i}` }))), starters), /Maximum 200 recipes/);
   const html = catalogRestoreDialogHTML("PF2e spell catalog", backup, { replaced: 1 });
   assert.match(html, /Put the PF2e spell catalog back as it was before its reset on .+\?/);
   assert.match(html, /Brings back 1 customised recipe: Mine\. 1 of them has been made again since and is replaced by the kept copy\./);

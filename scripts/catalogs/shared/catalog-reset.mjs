@@ -3,7 +3,7 @@
 // backup (the catalog's state and those recipes) is kept inside the world, one slot per catalog, which "Restore
 // last reset…" puts back, and the same backup downloads as a file that the Recipes page's Import takes back.
 // Pure: no Foundry globals.
-import { planRecipeImport } from "../../core/presets.mjs";
+import { mergeImported } from "../../core/recipe-share.mjs";
 import { catalogSpell } from "../pf2e/spells/spell-catalog.mjs";
 import { catalogFeat } from "../pf2e/feats/feat-catalog.mjs";
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG } from "../pf2e/ability-catalog.mjs";
@@ -83,11 +83,12 @@ export function catalogBackupOf(value) {
 }
 // Restore last reset…: the recipes back among the world's (the same merge as Import: an id already there is
 // replaced, so a recipe Customize made again since gives way to the kept one) and the catalog's state as it was.
+// The merge itself, not Import's text path: a kept copy has no size cap to fit, only the world's 200 recipes.
 export function catalogRestorePlan(backup, recipes = []) {
   const kept = catalogBackupOf(backup);
   if (!kept) throw Error("No catalog reset to restore.");
-  const merged = kept.recipes.length ? planRecipeImport({ schema: 1, recipes: kept.recipes }, recipes) : { recipes, incoming: [], replaced: 0 };
-  return { recipes: merged.recipes, restored: merged.incoming, replaced: merged.replaced, state: structuredClone(kept.catalogState) };
+  const restored = structuredClone(kept.recipes), merged = mergeImported(recipes, restored);
+  return { recipes: merged.recipes, restored, replaced: merged.replaced, state: structuredClone(kept.catalogState) };
 }
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -96,15 +97,16 @@ const when = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()
 const named = (recipes, edited) => recipes.slice(0, NAMED).map((r) => esc(r.name || r.id) + (edited?.has(r.id) ? " (edited)" : "")).join(", ") + (recipes.length > NAMED ? ` and ${recipes.length - NAMED} more` : "");
 // The reset's question. `deleted`: the customised recipes it deletes, named, those in `edited` marked as edited since
 // Customize made them. `pickedOnly`: the catalog is on for picked entries only, which a reset clears. `replaces`: the
-// moment of the kept reset this one replaces, if any.
-export function catalogResetDialogHTML(name, { deleted = [], edited = new Set(), pickedOnly = false, replaces = "" } = {}) {
-  const n = deleted.length, e = deleted.filter((r) => edited.has(r.id)).length;
+// kept reset this one replaces, if any: its moment, and how many recipes go with it.
+export function catalogResetDialogHTML(name, { deleted = [], edited = new Set(), pickedOnly = false, replaces = null } = {}) {
+  const n = deleted.length, e = deleted.filter((r) => edited.has(r.id)).length, old = catalogBackupOf(replaces), k = old?.recipes.length ?? 0;
+  const replaced = old ? ` The copy kept from the reset on ${esc(when(old.saved))}${k ? `, with the ${k} recipe${k === 1 ? "" : "s"} it holds,` : ""} is replaced.` : "";
   const recipes = n ? `Deletes ${n} customised recipe${n === 1 ? "" : "s"}${e ? ` (${e} edited since)` : ""}: ${named(deleted, edited)}.` : "No customised recipes to delete.";
   return `<p>Put the ${esc(name)} back to the stock catalog?</p><ul>`
     + `<li>Entries you picked (✓), left out (⊘) or customised are cleared, and its look and sound choices (motion, sound, volume, visibility, lasting look) go back to their defaults.</li>`
     + `<li>${recipes} Your other recipes (your own, the starters, other catalogs' and players') are kept.</li>`
     + `<li>It stays on or paused as it is now, playing every entry or only picked ones.${pickedOnly ? " It plays only picked entries, so none play until you pick them again." : ""}</li></ul>`
-    + `<p>A copy of what it deletes stays in this world until this catalog's next reset: <b>Restore last reset…</b> in the page header puts it back.${replaces ? ` The copy kept from the reset on ${esc(when(replaces))} is replaced.` : ""} The same backup downloads as a file for your records, which Import on the Recipes page takes back. For a backup of every recipe first, use Export on the Recipes page.</p>`
+    + `<p>A copy of what it deletes stays in this world until this catalog's next reset: <b>Restore last reset…</b> in the page header puts it back.${replaced} The same backup downloads as a file for your records, which Import on the Recipes page takes back. For a backup of every recipe first, use Export on the Recipes page.</p>`
     + `<label class="checkbox"><input type="checkbox" name="full"> Also switch this catalog back to its fresh-install state (off)</label>`;
 }
 // Restore last reset…'s question: what comes back, from when.
