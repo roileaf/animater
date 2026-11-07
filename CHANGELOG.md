@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.7.2 (unreleased)
+## 3.7.2
 
 - **Only a full moon lightens the night.** With Darkness follows the sun, the moon kept every night a little lighter by how much of it was lit, so even a half moon stopped the scene short of full dark. Now only a full moon high in a clear sky does (about a day either side of it); otherwise the night goes fully dark, and the moon's silver tint is left at full strength.
 
