@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.7.4 (unreleased)
+## 3.7.4
 
 - **Only swimmers bob.** A creature standing in a water region bobbed on the swell whatever its movement type. Now only one set to swim does; one standing or wading in the water holds still.
 
