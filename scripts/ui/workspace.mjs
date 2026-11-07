@@ -706,7 +706,7 @@ export class Workspace {
     const edited = new Set(kept.deleted.filter((r) => recipeEdited(r, this.stockRecipe(r, target))).map((r) => r.id));
     const choice = await globalThis.foundry?.applications?.api?.DialogV2?.confirm({
       window: { title: `Reset the ${target.name}` }, rejectClose: false, no: { default: true },
-      content: catalogResetDialogHTML(target.name, { deleted: kept.deleted, edited, pickedOnly: state.enabled && state.scope === "selected", replaces: this.keptCatalogReset(target)?.saved ?? "" }),
+      content: catalogResetDialogHTML(target.name, { deleted: kept.deleted, edited, pickedOnly: state.enabled && state.scope === "selected", replaces: this.keptCatalogReset(target) }),
       yes: { label: "Reset", icon: "fa-solid fa-rotate-left", callback: (_event, button) => ({ full: !!button.form?.elements.full?.checked }) },
     });
     if (!choice) return;
