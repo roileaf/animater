@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.6.3 (unreleased)
+## 3.7.0
 
 - **Cavern floors you can adjust.** Right-click a fungus, crystal or mist region for a popup, as on a floor: which it is, its colour or stone, Size, Amount and three stages (Dormant, Growing, In bloom; Dim, Awake, Blazing; Thin, Low, Thick). Regions you've already made look as they did.
 - **Cavern is a real floor type.** Pick Cavern in a region's Animater floor (it starts as lava) or Lava in the popup: it walks as a floor, with embers underfoot, and has its own steps, Crust, Cracking and Molten, so a chamber can fill or cool. Crust walks as stone. It uses stone's footstep sounds for now. Regions already set to lava become lava floors.
