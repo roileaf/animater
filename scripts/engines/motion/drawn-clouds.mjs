@@ -76,6 +76,11 @@ export function skyCount(makeup, squares, most = 140) {
   const k = most / want;
   return { sheets: Math.floor(sheets * k), clouds: Math.floor(clouds * k), grow: Math.sqrt(1 / k) };
 }
+// How much sky a map has to fill, in square squares (pure): the map and a little round it, so a small map is not given a sky mostly off its edges.
+export const SKY_MARGIN = 8;
+export const skySquares = (box, grid) => ((box.width / grid + SKY_MARGIN * 2) * (box.height / grid + SKY_MARGIN * 2));
+// Where a cloud is along one way (pure): it drifts on and comes round again, `pad` beyond each edge, out of sight before it turns back up.
+export const skyAlong = (start, length, pad, home, run) => { const span = length + pad * 2; return start - pad + (((home * span + run) % span) + span) % span; };
 // Spread evenly and never reshuffled (pure): adding more leaves the ones already there alone. 0–1 each way.
 export const skyHome = (i) => [(i * 0.6180339887 + 0.13) % 1, (i * 0.7548776662 + 0.37) % 1];
 // The sun on the clouds, over one pass for the whole sky: reads how lit each point was baked (the red channel) and colours it by the sun now, from shade through its mid-tones to the sunlit colour and its brightest tops toward white. Thin bright parts glow, the sun coming through. However many overlap, `uSolid` is how much covers the map.
@@ -111,7 +116,7 @@ export const DEFAULT_TRANSPARENCY = 0.4;
 /** The layer. `root()` above the rain and roofs, `floor()` on the ground under the creatures, `grid()` a square in pixels, `bounds()` the scene's rectangle, `screen()` the screen's. look({ on, cover, transparency, wind, angle, sunAngle, sunHeight in degrees, cast: {x, y}, sun 0–1, color [r, g, b], rain 0–1, dark 0–1 }); tick(seconds); clear(). */
 export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds, screen = () => null, seed = 1 }) {
   const textures = { clouds: [], sheets: [] };
-  let state = { on: false }, entries = [], run = 0, bodies = null, shadows = null, turning = null, baking = false, filter = null, shade = null;
+  let state = { on: false }, entries = [], run = 0, bodies = null, shadows = null, clips = [], turning = null, baking = false, filter = null, shade = null;
   const texture = ({ N, body, n, shadow }) => {
     const paint = (size, fill) => { const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d'), im = g.createImageData(size, size); fill(im.data); g.putImageData(im, 0, 0); return PIXI.Texture.from(c); };
     return { body: paint(N, (d) => d.set(body)), shadow: paint(n, (d) => { for (let i = 0; i < n * n; i++) { d[i * 4] = 8; d[i * 4 + 1] = 12; d[i * 4 + 2] = 28; d[i * 4 + 3] = shadow[i]; } }) };
@@ -124,14 +129,16 @@ export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds,
     try { have.push(texture(cloudPixels(list[have.length], { sheet }))); } catch (error) { console.warn('Animater | baking a cloud', error); baking = false; return; }
     setTimeout(bakeNext, 30);
   };
+  // Kept to the map: nothing over the padding round it.
+  const clipped = (parent, child) => { const box = bounds(), clip = new PIXI.Container(), edge = new PIXI.Graphics(); clip.eventMode = 'none'; edge.eventMode = 'none'; edge.beginFill(0xffffff, 1).drawRect(box.x, box.y, box.width, box.height).endFill(); clip.addChild(child); clip.mask = edge; parent.addChild(clip, edge); clips.push(clip, edge); };
   const layers = () => {
-    if (!bodies || bodies.destroyed || bodies.parent !== root()) {
-      bodies = new PIXI.Container(); bodies.eventMode = 'none'; root().addChild(bodies);
+    if (!bodies || bodies.destroyed || bodies.parent?.parent !== root()) {
+      bodies = new PIXI.Container(); bodies.eventMode = 'none'; clipped(root(), bodies);
       filter = new PIXI.Filter(undefined, CLOUD_LIGHT, { uLit: [1, 1, 1], uShade: [0.56, 0.61, 0.73], uRim: [1, 1, 1], uSolid: 0.6, uContrast: 1, uGlow: 0.2 }); bodies.filters = [filter];
       entries = [];
     }
-    if (!shadows || shadows.destroyed || shadows.parent !== floor()) {
-      shadows = new PIXI.Container(); shadows.eventMode = 'none'; floor().addChild(shadows);
+    if (!shadows || shadows.destroyed || shadows.parent?.parent !== floor()) {
+      shadows = new PIXI.Container(); shadows.eventMode = 'none'; clipped(floor(), shadows);
       shade = new (PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter)(0.4); shadows.filters = [shade];
       for (const e of entries) { try { e.body.destroy(); } catch { /* gone */ } } try { bodies.removeChildren(); } catch { /* gone */ } entries = [];
     }
@@ -154,8 +161,8 @@ export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds,
       if (!state.on && !entries.length) return;
       const box = bounds(), g = grid(); if (!box || !g) return;
       layers();
-      const pad = g * 18, field = { x: box.x - pad, y: box.y - pad, w: box.width + pad * 2, h: box.height + pad * 2 }, makeup = skyMakeup(state.on ? state.cover : 0);
-      const { clouds, sheets, grow } = skyCount(makeup, (field.w * field.h) / (g * g));
+      const makeup = skyMakeup(state.on ? state.cover : 0);
+      const { clouds, sheets, grow } = skyCount(makeup, skySquares(box, g));
       // Those wanted fade in, those no longer wanted fade out.
       for (let i = 0; i < clouds; i++) if (!entries.some((e) => !e.sheet && e.i === i)) { const e = entryOf(i, false, textures.clouds); if (e) entries.push(e); }
       for (let i = 0; i < sheets; i++) if (!entries.some((e) => e.sheet && e.i === i)) { const e = entryOf(i, true, textures.sheets); if (e) entries.push(e); }
@@ -167,7 +174,7 @@ export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds,
         const wanted = state.on && (e.sheet ? e.i < sheets : e.i < clouds);
         e.a = Math.max(0, Math.min(1, e.a + (wanted ? seconds : -seconds) / 2.5));
         if (!wanted && e.a <= 0) { try { e.body.destroy(); e.shadow.destroy(); } catch { /* gone */ } return false; }
-        const x = field.x + ((e.home[0] * field.w + dx * run) % field.w + field.w) % field.w, y = field.y + ((e.home[1] * field.h + dy * run) % field.h + field.h) % field.h, size = e.size * g * (e.sheet ? 1 : makeup.big) * grow;
+        const size = e.size * g * (e.sheet ? 1 : makeup.big) * grow, pad = (e.size * g * 1.05 * grow) / 2 + Math.hypot(cast.x ?? 0, cast.y ?? 0) + g, x = skyAlong(box.x, box.width, pad, e.home[0], dx * run), y = skyAlong(box.y, box.height, pad, e.home[1], dy * run);
         // Past the scene on all sides: nothing to draw.
         const seen = x + size > box.x && x - size < box.x + box.width && y + size > box.y && y - size < box.y + box.height;
         e.body.renderable = seen; e.shadow.renderable = seen && shines > 0.02;
@@ -185,8 +192,8 @@ export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds,
     },
     clear() {
       state = { on: false }; entries = []; run = 0; turning = null;
-      for (const c of [bodies, shadows]) { try { c?.destroy({ children: true }); } catch { /* gone with the canvas */ } }
-      bodies = null; shadows = null; filter = null; shade = null;
+      for (const c of clips) { try { if (!c.destroyed) c.destroy({ children: true }); } catch { /* gone with the canvas */ } }
+      clips = []; bodies = null; shadows = null; filter = null; shade = null;
     },
     get busy() { return state.on || entries.length > 0; },
     get count() { return entries.length; },

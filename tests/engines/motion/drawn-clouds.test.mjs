@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloudPixels, skyMakeup, skyCount, skyHome, skyLight, CLOUD_LIGHT, createDrawnClouds, DEFAULT_TRANSPARENCY } from '../../../scripts/engines/motion/drawn-clouds.mjs';
+import { cloudPixels, skyMakeup, skyCount, skyHome, skyAlong, skySquares, skyLight, CLOUD_LIGHT, createDrawnClouds, DEFAULT_TRANSPARENCY } from '../../../scripts/engines/motion/drawn-clouds.mjs';
 import { TUNE_EFFECTS, TUNE_SLIDERS, cleanTune, tuneAdds } from '../../../scripts/engines/motion/weather-tune.mjs';
 import { weatherPanelHtml, effectToggled } from '../../../scripts/ui/weather-panel.mjs';
 
@@ -28,6 +28,23 @@ test('a huge map draws no more clouds than it can afford, each bigger instead', 
   const small = skyCount(skyMakeup(0.6), 3600), huge = skyCount(skyMakeup(0.6), 60000);
   assert.equal(small.grow, 1);
   assert.ok(huge.sheets + huge.clouds <= 140); assert.ok(huge.grow > 1);
+});
+test('a small map gets its own sky: clouds over it, not scattered far off its edges', () => {
+  const box = { x: 1400, y: 1000, width: 5000, height: 4000 }, grid = 200, squares = skySquares(box, grid);
+  const { clouds } = skyCount(skyMakeup(0.6), squares);
+  assert.ok(clouds >= 15, 'enough to fill it at 60%');
+  // The real measure: how many are over the map, of those a typical cloud's margin allows.
+  const pad = 9 * grid; let over = 0;
+  for (let i = 0; i < clouds; i++) { const [hx, hy] = skyHome(i * 2), x = skyAlong(box.x, box.width, pad, hx, 0), y = skyAlong(box.y, box.height, pad, hy, 0); if (x > box.x && x < box.x + box.width && y > box.y && y < box.y + box.height) over++; }
+  assert.ok(over >= clouds * 0.2, `${over} of ${clouds} over the map`);
+  // Bigger maps fill by area.
+  assert.ok(skySquares({ width: 20000, height: 20000 }, 200) > squares * 4);
+});
+test('a cloud drifts on and comes round, never leaving its span, out of sight as it turns back', () => {
+  let last = skyAlong(100, 1000, 300, 0.2, 0), wraps = 0;
+  for (let run = 7; run < 6000; run += 7) { const x = skyAlong(100, 1000, 300, 0.2, run); assert.ok(x >= 100 - 300 && x < 100 + 1000 + 300); if (x < last) wraps++; else assert.ok(Math.abs(x - last - 7) < 1e-9, 'steady, no jump'); last = x; }
+  assert.ok(wraps >= 3);
+  assert.ok(skyAlong(0, 100, 10, 0.5, -500) >= -10, 'against the wind too');
 });
 test('adding clouds leaves the ones already there where they are', () => {
   assert.deepEqual(skyHome(3), skyHome(3));

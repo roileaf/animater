@@ -537,8 +537,10 @@ void main(){
 // them, brightest at the opening and spreading fainter across the floor, kept only under the roofs, with dust drifting
 // in them; tick(seconds) moves the dust; clear() drops them. Added to `root()` over the lit scene.
 export function createWindowShafts({ PIXI, root, render }) {
-  let sprite = null, texture = null, motes = null;
+  let sprite = null, texture = null, motes = null, clock = 0;
   const drop = () => {
+    // (The dust's clock outlasts the bake: the shafts follow the sun each minute, and the motes carry on where they are.)
+    if (motes && !motes.destroyed) clock = motes.shader.uniforms.uTime;
     try { sprite?.parent?.removeChild(sprite); sprite?.destroy(); } catch { /* gone with the canvas */ }
     try { motes?.parent?.removeChild(motes); motes?.destroy(); } catch { /* gone with the canvas */ }
     try { texture?.destroy(true); } catch { /* gone */ }
@@ -586,7 +588,7 @@ export function createWindowShafts({ PIXI, root, render }) {
           .addAttribute('aVertexPosition', [b.x, b.y, b.x + b.width, b.y, b.x + b.width, b.y + b.height, b.x, b.y + b.height], 2)
           .addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
         const c = new PIXI.Color(color);
-        motes = new PIXI.Mesh(geometry, PIXI.Shader.from(MOTES_VERT, MOTES_FRAG, { uShafts: texture, uSize: [b.width, b.height], uColor: [c.red, c.green, c.blue], uTime: 0, uGrid: grid, uAlpha: Math.min(1, alpha * 1.4) }));
+        motes = new PIXI.Mesh(geometry, PIXI.Shader.from(MOTES_VERT, MOTES_FRAG, { uShafts: texture, uSize: [b.width, b.height], uColor: [c.red, c.green, c.blue], uTime: clock, uGrid: grid, uAlpha: Math.min(1, alpha * 1.4) }));
         motes.eventMode = 'none';
         motes.blendMode = PIXI.BLEND_MODES.ADD;
         root().addChild(motes);

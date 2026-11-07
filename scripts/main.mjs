@@ -112,6 +112,8 @@ const hotSettings = frameSettings({ get: key => (settingPreview.has(key) ? setti
 const hotSetting = key => hotSettings.get(key);
 // Any setting written (this world's, this screen's, by Animater or another module): read afresh.
 for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged"]) Hooks.on(hook, () => hotSettings.invalidate());
+// Foundry keeps the game's clock in a setting, so every tick of it arrives as a setting saved: nothing to build again for that.
+const isClockSave = (first) => first?.key === "core.time";
 // Invalidate before our own onChange callbacks (not only after Foundry's
 // update hook): quality routing and other synchronous readers need the new value.
 const registerSetting = (key, config) => game.settings.register(ID, key, {
@@ -1691,7 +1693,7 @@ const rebuildLampAir = () => {
     lampLookAt = 0;
   } catch { lampAir.clear(); }
 };
-for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { lampSoon(); });
+for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) lampSoon(); });
 Hooks.on("canvasTearDown", () => { clearTimeout(lampTimer); lampTimer = null; lampAir.clear(); lampLights = []; lampLightsKey = ""; });
 // What a token sees changing: the sparks of the fires it now sees (or no longer does) at once.
 Hooks.on("sightRefresh", () => { lampLookAt = 0; });
@@ -1740,7 +1742,7 @@ const rebuildDraft = () => {
     doorWindNow();
   } catch { airField = null; lampAir.draft(null); }
 };
-for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { draftSoon(); });
+for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) draftSoon(); });
 // A door opening: the air rushes for the way out.
 // The wind sighs through a door as it swells and dies away, only where this door opens onto the air's way out: a door to
 // another closed room stirs nothing to hear.
@@ -2141,7 +2143,7 @@ const syncMovingWater = (list) => {
 };
 let floorLooksTimer = null;
 const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { floorLooksSoon(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) floorLooksSoon(); });
 const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
 const regionTakesSeason = (own) => takesSeason(own, canvas.scene?.flags?.[ID]?.floorTextures);
 const openSteps = (doc) => openStepsWindow(foundry.applications.api.ApplicationV2, { id: ID, doc, floor: plainFloorOf(doc), flagsOf: stepFlagsOf, save: saveStepFlags, season: regionTakesSeason });
@@ -2372,7 +2374,7 @@ Hooks.on("moveToken", (doc, movement) => {
     if (trackWaiting.length && !trackWriteTimer) trackWriteTimer = setTimeout(() => void writeTracks(), 30000);
   } catch { /* a token mid-change */ }
 });
-for (const hook of ["canvasReady", "updateScene", "updateWorldTime", "clientSettingChanged", "updateSetting"]) Hooks.on(hook, () => { drawTracks(hook !== "updateWorldTime" && hook !== "updateScene"); });
+for (const hook of ["canvasReady", "updateScene", "updateWorldTime", "clientSettingChanged", "updateSetting"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) drawTracks(hook !== "updateWorldTime" && hook !== "updateScene"); });
 Hooks.on("canvasTearDown", () => { if (trackWriteTimer) { clearTimeout(trackWriteTimer); void writeTracks(); } oldTracks.clear(); trackGait.clear(); trackDrawnKey = null; });
 const verminOn = () => bothSettingsOn("vermin"), dripsOn = () => bothSettingsOn("drips");
 // The map's own picture and where it lies (seen through a puddle's water, bent by its ripples).
@@ -3602,7 +3604,7 @@ const rebuildLife = () => {
   try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, () => { lifeSoon(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) lifeSoon(); });
 Hooks.on("updateWall", (wall, change) => { if (change && ("c" in change || "move" in change || "door" in change)) lifeSoon(); });
 // A drop landing in a pool near the view plips (a few a second at most, however many fall).
 let dripHeardAt = 0;
@@ -3823,7 +3825,7 @@ const syncCalendariaFlash = async () => {
     if (changed) for (const app of foundry.applications.instances.values()) if (/calendaria-hud/.test(app.id ?? "")) app.render?.();
   } catch { /* Calendaria changed its insides: leave it be */ }
 };
-for (const hook of ["ready", "calendaria.ready", "calendaria.weatherChange", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { syncCalendariaFlash(); });
+for (const hook of ["ready", "calendaria.ready", "calendaria.weatherChange", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) syncCalendariaFlash(); });
 // FXMaster's own lightning (its Lightning filter, as Calendaria's thunderstorm puts on the scene) flashes the open map
 // only, never through a window: while Animater's flashes are on, it is stopped on this screen (the scene keeps it, so it
 // comes back when they are turned off). FXMaster makes its filters anew as the weather changes: looked at once a second.
@@ -4127,7 +4129,7 @@ const calendariaColoursScene = (scene) => {
   return on("colorShiftSync") && on("ambienceSync");
 };
 const skySoon = () => { if (!skyTimer) skyTimer = setTimeout(() => { skyTimer = null; rebuildSky(); }, 250); };
-for (const hook of ["canvasReady", "drawTile", "createTile", "updateTile", "deleteTile", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, () => { canopySoon(); glowsSoon(); });
+for (const hook of ["canvasReady", "drawTile", "createTile", "updateTile", "deleteTile", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (isClockSave(first)) return; canopySoon(); glowsSoon(); });
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged", "updateWorldTime", "calendaria.weatherChange", "calendaria.ready", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { skySoon(); });
 // (The sun's handler has already looked at the new weather by now: it shows at once, with nothing built again.)
 Hooks.on("updateScene", (scene, change) => {
@@ -8642,7 +8644,7 @@ Hooks.once("ready", () => {
   let idlePending = null;
   const scheduleIdle = () => { idlePending ??= setTimeout(() => { idlePending = null; try { idleLife.sync(); } catch (error) { console.warn("Animater idle life:", error?.message ?? error); } }, 150); };
   for (const hook of ["canvasReady", "canvasPan", "createToken", "updateToken", "deleteToken", "updateActor", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem", "sightRefresh", "clientSettingChanged", "updateSetting"])
-    Hooks.on(hook, (...args) => { scheduleIdle(...args); });
+    Hooks.on(hook, (...args) => { if (!isClockSave(args[0])) scheduleIdle(...args); });
   Hooks.on("canvasTearDown", () => { clearTimeout(idlePending); idlePending = null; idleLife.clear(); });
   // Wounded looks: every client reads the same HP and draws the look locally (a Tokenshade
   // look under its own key, beside any condition looks, and a hunch or limp through ConditionBody).
@@ -8659,7 +8661,7 @@ Hooks.once("ready", () => {
   let woundPending = null;
   const scheduleWounds = () => { woundPending ??= setTimeout(() => { woundPending = null; try { woundedLooks.sync(); } catch (error) { console.warn("Animater wounded looks:", error?.message ?? error); } }, 120); };
   for (const hook of ["canvasReady", "createToken", "deleteToken", "createActiveEffect", "updateActiveEffect", "deleteActiveEffect", "createItem", "deleteItem", "sightRefresh", "clientSettingChanged", "updateSetting"])
-    Hooks.on(hook, (...args) => { scheduleWounds(...args); });
+    Hooks.on(hook, (...args) => { if (!isClockSave(args[0])) scheduleWounds(...args); });
   Hooks.on("updateActor", (actor, changes) => {
     const track = hpPath(actor, game.system.id).replace(/\.value$/, "");
     if (foundry.utils.hasProperty(changes, track)) scheduleWounds();

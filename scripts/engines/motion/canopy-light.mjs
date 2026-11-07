@@ -212,8 +212,10 @@ const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
  * leaves are drawn (by default `root()`, with the shade).
  */
 export function createCanopyLight({ PIXI, root, render, above = root }) {
-  let masks = [], meshes = [], own = [], hasTrees = false;
+  let masks = [], meshes = [], own = [], hasTrees = false, clock = 0, sky = null;
   const drop = () => {
+    // (The clock outlasts the meshes: baked again as the sun moves, the flecks and the leaves carry on from where they are.)
+    if (own[0]) clock = own[0].uTime;
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
     meshes = []; masks = []; own = [];
@@ -260,7 +262,7 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
         uTrees: bake(trees.length ? sprites(trees, false, true) : none), uTreesAt: bake(trees.length ? sprites(trees) : none, 1), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
         uRoofs: bake(roofs.length ? sprites(roofs) : none, 2),
         uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1), uWater: bake(water.length ? polygons(water) : none, 1),
-        uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: 0, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudRun: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,
+        uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: clock, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudRun: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,
         uGrid: grid, uRoofShade: 0.45, uMode: 0, uHasTrees: treeShade && trees.length ? 1 : 0, uHasRoofs: roofs.length ? 1 : 0, uColor: [1, 0.95, 0.84], uShade: [0.06, 0.09, 0.07],
         uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uLeafRate: 0, uLeafA: [0.44, 0.6, 0.23], uLeafB: [0.56, 0.7, 0.29],
       };
@@ -277,9 +279,11 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
       hasTrees = trees.length > 0;
       // The leaves can lie elsewhere than the shade (`above`; by default with it, under the tree tiles).
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === leaves ? above : root)().addChild(m); }
+      // (The clouds as last told, or the new meshes would show the trees cloudless until the sky is next looked at.)
+      this.clouds(sky);
     },
     // The sky's clouds now ({ deck, shift, angle, wind, clouds }, null none), and the clock they run by.
-    clouds(sky = null) { for (const u of own) Object.assign(u, sky ? { uCloudsOn: sky.clouds > 0.05 ? 1 : 0, uDeck: sky.deck, uCloudShift: [sky.shift.x, sky.shift.y], uCloudDir: [Math.cos(sky.angle), Math.sin(sky.angle)], uCloudWind: sky.wind } : { uCloudsOn: 0 }); },
+    clouds(now = null) { sky = now; for (const u of own) Object.assign(u, sky ? { uCloudsOn: sky.clouds > 0.05 ? 1 : 0, uDeck: sky.deck, uCloudShift: [sky.shift.x, sky.shift.y], uCloudDir: [Math.cos(sky.angle), Math.sin(sky.angle)], uCloudWind: sky.wind } : { uCloudsOn: 0 }); },
     cloudClock(seconds, run = 0) { for (const u of own) { u.uCloudClock = seconds; u.uCloudRun = run; } },
     look({ fall = null, roofFall = null, color = [1, 0.95, 0.84], wind = 0.35, windAngle = Math.PI / 4, roofShade = 0.45, leaves = null, direct = 1 } = {}) {
       if (!own.length) return;

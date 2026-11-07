@@ -1469,10 +1469,14 @@ void main(){
  * stage's world-to-screen offset and scale this frame; tick(seconds) moves the air.
  */
 export function createHeatShimmer({ PIXI, attach, detach, render }) {
-  let filter = null, mask = null, attached = false;
+  let filter = null, mask = null, attached = false, builtKey = null;
   const off = () => { if (attached) { attached = false; try { detach(filter); } catch { /* gone */ } } };
   return {
     build({ hot = [], hotAll = false, bounds } = {}) {
+      // Only when what it is baked from has changed: taken off and put back for each tick of the game's clock, the air blinked.
+      const key = skyBuildKey({ hot, hotAll, bounds });
+      if (key === builtKey && mask && !mask.destroyed) return;
+      builtKey = key;
       off();
       try { mask?.destroy(true); } catch { /* gone */ }
       mask = null;
@@ -1494,7 +1498,7 @@ export function createHeatShimmer({ PIXI, attach, detach, render }) {
       if (!attached) { try { attach(filter); attached = true; } catch { /* no canvas */ } }
     },
     tick(seconds) { if (filter && attached) filter.uniforms.uTime += seconds; },
-    clear() { off(); try { mask?.destroy(true); } catch { /* gone */ } mask = null; },
+    clear() { off(); try { mask?.destroy(true); } catch { /* gone */ } mask = null; builtKey = null; },
     get on() { return attached; },
   };
 }
