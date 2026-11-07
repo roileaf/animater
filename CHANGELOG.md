@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.6.1 (unreleased)
+## 3.6.1 (2026-11-07)
 
 - **Clouds with real volume, lit by the sun.** Drawn clouds now read as solid forms, with a bright side toward the sun and a connected shaded side, billows gathered in places and soft, wispy edges, in a wider mix of sizes. The sun recolours them through the day, white at noon, gold when it is low, glowing at sunset and blue by moonlight, and they dim with the scene's darkness.
 
