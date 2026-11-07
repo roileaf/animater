@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resetCatalogState, isCatalogCustomisation, catalogCustomisations, catalogResetPlan, catalogBackup, catalogBackupFileName, catalogResetDialogHTML, CATALOG_SWITCH_FIELDS } from "../../../scripts/catalogs/shared/catalog-reset.mjs";
+import { resetCatalogState, isCatalogCustomisation, catalogCustomisations, catalogResetPlan, catalogBackup, catalogBackupFileName, catalogBackupOf, catalogRestorePlan, recipeEdited, catalogResetDialogHTML, catalogRestoreDialogHTML, CATALOG_SWITCH_FIELDS } from "../../../scripts/catalogs/shared/catalog-reset.mjs";
 import { PF2E_SPELLS, normalizeCatalogState, spellRecipe } from "../../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
 import { PF2E_FEATS, normalizeFeatCatalogState, featRecipe } from "../../../scripts/catalogs/pf2e/feats/feat-catalog.mjs";
 import { PF2E_ACTION_CATALOG, PF2E_FEATURE_CATALOG } from "../../../scripts/catalogs/pf2e/ability-catalog.mjs";
@@ -9,6 +9,7 @@ import { PF2E_CONDITIONS, PF2E_EFFECTS, normalizeStateCatalogState, stateRecipe 
 import { SF_KINDS, sfEntries, sfRecipe, normalizeSfCatalogState } from "../../../scripts/catalogs/sf2e/sf2e-catalog.mjs";
 import { DND_KINDS, dndEntries, dndRecipe, normalizeDndCatalogState } from "../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs";
 import { DH_KINDS, dhEntries, dhRecipe, normalizeDhCatalogState } from "../../../scripts/catalogs/daggerheart/daggerheart-catalog.mjs";
+import { DS_KINDS, dsEntries, dsRecipe, normalizeDsCatalogState } from "../../../scripts/catalogs/draw-steel/draw-steel-catalog.mjs";
 import { starterRecipes, planRecipeImport } from "../../../scripts/core/presets.mjs";
 
 // Every catalog: its { system, kind }, normalize, entries, and the recipe its Customize saves for an entry.
@@ -24,6 +25,7 @@ const CATALOGS = [
   ...SF_KINDS.map((kind) => ["sf2e", kind, normalizeSfCatalogState, sfEntries(kind), (e) => sfRecipe(e, e.variants.at(-1).id)]),
   ...DND_KINDS.map((kind) => ["dnd5e", kind, normalizeDndCatalogState, dndEntries(kind), (e) => dndRecipe(e, e.variants.at(-1).id)]),
   ...DH_KINDS.map((kind) => ["daggerheart", kind, normalizeDhCatalogState, dhEntries(kind), (e) => dhRecipe(e, e.variants.at(-1).id)]),
+  ...DS_KINDS.map((kind) => ["draw-steel", kind, normalizeDsCatalogState, dsEntries(kind), (e) => dsRecipe(e, e.variants.at(-1).id)]),
 ];
 // A catalog a GM has used: on for picked entries, some left out, one customised, every look and sound choice moved.
 const used = (normalize, [a, b, c], weapon) => normalize({ enabled: true, scope: "selected", independent: true, preferCatalog: true, selected: [a.id], excluded: [b.id],
@@ -140,12 +142,52 @@ test("the question says what a reset does, names the recipes it deletes, and off
   const html = catalogResetDialogHTML("PF2e effect catalog", { deleted: [{ id: "a", name: "Stance: Inspiring Marshal Stance" }] });
   assert.match(html, /Put the PF2e effect catalog back to the stock catalog\?/);
   assert.match(html, /Deletes 1 customised recipe: Stance: Inspiring Marshal Stance\./);
-  assert.match(html, /import it with Import on the Recipes page/);
+  assert.match(html, /A copy of what it deletes stays in this world until this catalog's next reset: <b>Restore last reset…<\/b>/);
+  assert.match(html, /downloads as a file .* Import on the Recipes page takes back\. For a backup of every recipe first, use Export on the Recipes page\./);
   assert.match(html, /<input type="checkbox" name="full"> Also switch this catalog back to its fresh-install state \(off\)/);
-  assert.doesNotMatch(html, /checked|none play until/);
+  assert.doesNotMatch(html, /checked|none play until|edited|is replaced/);
+  // Edited copies are marked, and a kept reset this one replaces is dated.
+  const edited = catalogResetDialogHTML("x", { deleted: [{ id: "a", name: "A" }, { id: "b", name: "B" }], edited: new Set(["b"]), replaces: "2026-11-01T10:20:30.400Z" });
+  assert.match(edited, /Deletes 2 customised recipes \(1 edited since\): A, B \(edited\)\./);
+  assert.match(edited, new RegExp(`The copy kept from the reset on ${new Date("2026-11-01T10:20:30.400Z").toLocaleString().replace(/[/.]/g, "\\$&")} is replaced\\.`));
   assert.match(catalogResetDialogHTML("x"), /No customised recipes to delete\./);
   assert.match(catalogResetDialogHTML("x", { pickedOnly: true }), /none play until you pick them again/);
   const many = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, name: `R${i}` }));
   assert.match(catalogResetDialogHTML("x", { deleted: many }), /Deletes 12 customised recipes: R0, .*, R9 and 2 more\./);
   assert.match(catalogResetDialogHTML("<b>", { deleted: [{ id: "a", name: "<i>" }] }), /the &lt;b&gt; back.*: &lt;i&gt;\./s);
+});
+
+test("a copy counts as edited when its name or its stages (sounds aside) differ from the catalog's own recipe", () => {
+  const stock = spellRecipe(PF2E_SPELLS[0]), sound = { kind: "sound", file: "x.ogg", volume: 0.5 };
+  assert.equal(recipeEdited(stock, stock), false);
+  assert.equal(recipeEdited({ ...stock, stages: [...stock.stages, sound] }, stock), false, "a sound stage the catalog's sound choice added");
+  assert.equal(recipeEdited(stock, { ...stock, stages: [...stock.stages.filter((s) => s.kind !== "sound"), sound] }), false);
+  assert.equal(recipeEdited({ ...stock, name: `${stock.name} (mine)` }, stock), true);
+  assert.equal(recipeEdited({ ...stock, stages: stock.stages.map((s, i) => (i ? s : { ...s, scale: 3 })) }, stock), true);
+  assert.equal(recipeEdited({ ...stock, stages: stock.stages.slice(1) }, stock), true);
+  assert.equal(recipeEdited(stock, null), false, "unknown without the stock recipe");
+});
+
+test("the kept reset restores its recipes and state; a recipe made again since gives way to the kept copy", () => {
+  const [, , c] = PF2E_SPELLS, copy = { ...spellRecipe(c), name: "Mine" }, starters = starterRecipes().slice(0, 2);
+  const state = normalizeCatalogState({ enabled: true, scope: "selected", selected: [c.id], motion: false });
+  const backup = catalogBackup(state, [copy], { catalog: "pf2e-spell", date: new Date("2026-11-01T10:20:30.400Z") });
+  assert.equal(catalogBackupOf(backup), backup);
+  for (const bad of [null, {}, { recipes: [] }, { recipes: {}, catalogState: {} }, "x"]) assert.equal(catalogBackupOf(bad), null);
+  let plan = catalogRestorePlan(backup, starters);
+  assert.deepEqual(plan.recipes.map((r) => r.id), [...starters.map((r) => r.id), copy.id]);
+  assert.equal(plan.recipes.at(-1).name, "Mine");
+  assert.deepEqual([plan.restored.map((r) => r.id), plan.replaced, plan.state], [[copy.id], 0, state]);
+  // Customized again since: the saved recipe with that id is replaced by the kept one, as Import replaces it.
+  plan = catalogRestorePlan(backup, [...starters, spellRecipe(c)]);
+  assert.deepEqual([plan.recipes.map((r) => r.name).at(-1), plan.replaced], ["Mine", 1]);
+  // Nothing deleted: only the state comes back.
+  plan = catalogRestorePlan(catalogBackup(state, []), starters);
+  assert.deepEqual([plan.recipes, plan.restored, plan.state], [starters, [], state]);
+  assert.throws(() => catalogRestorePlan({ nope: true }, starters), /No catalog reset to restore/);
+  const html = catalogRestoreDialogHTML("PF2e spell catalog", backup, { replaced: 1 });
+  assert.match(html, /Put the PF2e spell catalog back as it was before its reset on .+\?/);
+  assert.match(html, /Brings back 1 customised recipe: Mine\. 1 of them has been made again since and is replaced by the kept copy\./);
+  assert.match(html, /including whether it was on/);
+  assert.match(catalogRestoreDialogHTML("x", catalogBackup(state, [])), /No recipes were deleted\./);
 });
