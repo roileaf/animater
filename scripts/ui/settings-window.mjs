@@ -2,6 +2,7 @@
 // feature: the GM's switch for everyone in the world beside each player's "on my screen" switch, with the feature's
 // extra choices (lifetime, strength, a second switch) under it. Players see only what they can set themselves.
 // Names and hints are read from the registered settings, so the registration stays the one place they are written.
+// "Reset to defaults" (the footer, or one tab's) puts only these rows' settings back to their registered defaults.
 
 import { canDistort } from "../engines/distortion/distortion-host.mjs";
 import { canShake } from "../engines/camera/camera-shake.mjs";
@@ -17,7 +18,8 @@ const FULL_OR_LIGHT = [(q) => canShake(q, true), "Needs Full or Light animation 
 // Each row: `world` (the GM's setting), `local` (this screen's), `extras` (more settings under it), `when` (only
 // where it applies: a system or an active module, as its registration listed it), `gmOnly` (a client setting only
 // a GM has a use for), `menu` (a button opening another settings menu), `quality` (see FULL_ONLY), `extrasWhen` (an
-// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window).
+// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window),
+// `noReset` (left alone by Reset to defaults).
 export const SETTINGS_TABS = Object.freeze([
   { id: "look", label: "Look & light", icon: "fa-solid fa-palette", rows: [
     { local: "quality" },
@@ -175,8 +177,10 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "daggerheartDualityAccent", when: (env) => env.systemId === "daggerheart" },
   ] },
   { id: "automation", label: "Automation & catalogs", icon: "fa-solid fa-wand-magic-sparkles", rows: [
-    { world: "automatic" },
-    { world: "crossoverCatalog", when: TWOE },
+    // Off by default: a reset would quietly stop every saved recipe playing, so it never resets this one.
+    { world: "automatic", noReset: true },
+    // Off by default: a reset would take the other system's catalogs away from a world using them, so it is exempt too.
+    { world: "crossoverCatalog", when: TWOE, noReset: true },
     { world: "npcAbilities", when: PF2E },
     { world: "npcAbilityGuess", when: PF2E },
     { world: "npcStrikeGuess", when: PF2E },
@@ -286,6 +290,43 @@ export function parseSettingValue(control, raw) {
   return String(raw ?? "");
 }
 
+// Reset to defaults: the settings a reset may change, only ever ones the window's rows list (never a menu's, a
+// catalog's, the saved recipes or a `noReset` row's). `tab`: one tab's id, else every tab; `world`/`client`: which
+// scopes to reset. A player never resets a world setting, and rows that do not apply here (`when`, `gmOnly`) are
+// left as they are.
+export function resettableSettings(tabs = SETTINGS_TABS, { id = "animater", registry, tab = null, world = false, client = false, isGM = false, systemId = "", modules = [] } = {}) {
+  const env = { isGM, systemId, modules: modules instanceof Set ? modules : new Set(modules) };
+  const keys = new Set();
+  for (const t of tabs) {
+    if (tab && t.id !== tab) continue;
+    for (const row of t.rows) {
+      if (row.menu || row.noReset || (row.when && !row.when(env)) || (row.gmOnly && !isGM)) continue;
+      for (const key of [row.world, row.local, ...(row.extras ?? [])]) {
+        const scope = key ? registry.get(`${id}.${key}`)?.scope : null;
+        if (scope === "world" ? world && isGM : scope === "client" && client) keys.add(key);
+      }
+    }
+  }
+  return [...keys];
+}
+// What a reset changes: each setting's current value beside its registered default, leaving out any already there.
+export function resetChanges(keys, { id = "animater", registry, get }) {
+  const same = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+  return keys.flatMap((key) => {
+    const config = registry.get(`${id}.${key}`);
+    if (!config || config.default === undefined) return [];
+    let value;
+    try { value = get(key); } catch { return []; }
+    return same(value, config.default) ? [] : [{ key, name: String(config.name || key), scope: config.scope, value, default: config.default, reload: config.requiresReload === true }];
+  });
+}
+// The backup a reset downloads first: the values it is about to change, by scope, as a file named for the moment.
+export function settingsBackup(changes, { id = "animater", date = new Date() } = {}) {
+  const by = (scope) => Object.fromEntries(changes.filter((c) => c.scope === scope).map((c) => [c.key, c.value]));
+  return { module: id, saved: date.toISOString(), world: by("world"), client: by("client") };
+}
+export const backupFileName = (id = "animater", date = new Date()) => `${id}-settings-backup-${date.toISOString().replace(/[:.]/g, "-")}.json`;
+
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 function input(c, label) {
   const attrs = `data-setting="${esc(c.key)}" aria-label="${esc(label)}"`;
@@ -315,12 +356,21 @@ export function searchedTabs(hits = [], tab = null) {
 export function settingsWindowHTML(model, { active } = {}) {
   const current = model.tabs.some((t) => t.id === active) ? active : model.tabs[0]?.id;
   const nav = model.tabs.map((t) => `<button type="button" class="an-set-tab${t.id === current ? " active" : ""}" data-tab-button="${esc(t.id)}"><i class="${esc(t.icon)}"></i> ${esc(t.label)}</button>`).join("");
-  const panels = model.tabs.map((t) => `<section class="an-set-panel${t.id === current ? " active" : ""}" data-panel="${esc(t.id)}"><h3>${esc(t.label)}</h3>${t.rows.map((r) => rowHTML(r, t.id)).join("")}</section>`).join("");
+  const resetTab = (t) => `<button type="button" class="an-set-reset-tab" data-reset-tab="${esc(t.id)}" title="Put this tab's settings back to their defaults"><i class="fa-solid fa-rotate-left"></i> Reset this tab</button>`;
+  const panels = model.tabs.map((t) => `<section class="an-set-panel${t.id === current ? " active" : ""}" data-panel="${esc(t.id)}"><header class="an-set-panel-head"><h3>${esc(t.label)}</h3>${resetTab(t)}</header>${t.rows.map((r) => rowHTML(r, t.id)).join("")}</section>`).join("");
   const note = model.isGM ? "Everyone: the whole world (GM only). My screen: what you see on this device." : "These settings change only what you see and hear on this device.";
   return `<div class="an-root an-settings">
 <header class="an-set-top"><input type="search" class="an-set-search" placeholder="Search Animater settings" aria-label="Search Animater settings"><p class="an-set-note">${esc(note)}</p></header>
 <div class="an-set-body"><nav class="an-set-nav">${nav}</nav><div class="an-set-panels">${panels}<p class="an-set-empty" hidden>No setting matches.</p></div></div>
+<footer class="form-footer an-set-foot"><button type="button" data-reset-all><i class="fa-solid fa-rotate-left"></i> Reset to defaults&hellip;</button></footer>
 </div>`;
+}
+// The reset's question: which settings go back to their defaults. Only a GM is offered the world's.
+export function resetDialogHTML({ isGM = false, tabLabel = "" } = {}) {
+  const what = tabLabel ? `the ${esc(tabLabel)} tab's settings` : "Animater's settings";
+  const box = (name, label) => `<label class="checkbox"><input type="checkbox" name="${name}" checked> ${esc(label)}</label>`;
+  const burst = isGM ? `<p class="hint">Each world setting that changes is applied on every connected screen as it goes, so mid-session everyone may see a short burst of redraws.</p>` : "";
+  return `<p>Put ${what} back to their defaults? A backup of the values that change downloads first.</p>${burst}${isGM ? box("world", "World settings (everyone)") : ""}${box("client", "This screen's settings")}`;
 }
 
 // The settings window, built on Foundry's ApplicationV2. Changes save as they are made (no Save button);
@@ -329,6 +379,12 @@ export function settingsWindow(ApplicationV2, {
   id, settings = () => globalThis.game.settings, isGM = () => globalThis.game.user?.isGM === true,
   systemId = () => globalThis.game.system?.id ?? "", modules = () => [...(globalThis.game.modules ?? [])].filter((m) => m.active).map((m) => m.id),
   reloadConfirm = (options) => globalThis.foundry?.applications?.settings?.SettingsConfig?.reloadConfirm?.(options),
+  // The reset's question: { world, client } as ticked, or nothing when cancelled.
+  askReset = (content) => globalThis.foundry?.applications?.api?.DialogV2?.confirm({
+    window: { title: "Reset Animater settings" }, content, rejectClose: false, no: { default: true },
+    yes: { label: "Reset", icon: "fa-solid fa-rotate-left", callback: (_event, button) => ({ world: !!button.form?.elements.world?.checked, client: !!button.form?.elements.client?.checked }) },
+  }),
+  saveFile = (text, name) => globalThis.foundry?.utils?.saveDataToFile?.(text, "application/json", name),
 } = {}) {
   return class AnimaterSettings extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
@@ -353,6 +409,8 @@ export function settingsWindow(ApplicationV2, {
         const menu = settings().menus.get(`${id}.${b.dataset.menu}`);
         if (menu?.type) new menu.type().render({ force: true });
       }));
+      root.querySelector("[data-reset-all]")?.addEventListener("click", () => void this.reset());
+      root.querySelectorAll("[data-reset-tab]").forEach((b) => b.addEventListener("click", () => void this.reset(b.dataset.resetTab)));
       // The window's element outlives each render: one listener for every control, added once.
       if (!this._wired) { this._wired = true; root.addEventListener("change", (event) => void this.save(event.target?.closest?.("[data-setting]"))); }
       if (this.query) this.filter();
@@ -394,6 +452,28 @@ export function settingsWindow(ApplicationV2, {
       } catch (error) {
         globalThis.ui?.notifications?.error(`Animater: could not save ${control.name}: ${error.message}`);
       }
+    }
+    // Reset to defaults, for every tab or one: asks first, downloads a backup of what changes, then resets it.
+    async reset(tab = null) {
+      const gm = isGM(), notes = globalThis.ui?.notifications;
+      const choice = await askReset(resetDialogHTML({ isGM: gm, tabLabel: tab ? SETTINGS_TABS.find((t) => t.id === tab)?.label : "" }));
+      if (!choice || (!choice.world && !choice.client)) return;
+      const s = settings();
+      const keys = resettableSettings(SETTINGS_TABS, { id, registry: s.settings, tab, world: choice.world, client: choice.client, isGM: gm, systemId: systemId(), modules: modules() });
+      const changes = resetChanges(keys, { id, registry: s.settings, get: (key) => s.get(id, key) });
+      if (!changes.length) { notes?.info("Animater: those settings are already at their defaults."); return; }
+      const date = new Date();
+      await saveFile(JSON.stringify(settingsBackup(changes, { id, date }), null, 2), backupFileName(id, date));
+      const done = [];
+      for (const change of changes) {
+        try { await s.set(id, change.key, structuredClone(change.default)); done.push(change); }
+        catch (error) { notes?.error(`Animater: could not reset ${change.name}: ${error.message}`); }
+      }
+      this.render?.();
+      notes?.info(`Animater: ${done.length} setting${done.length === 1 ? "" : "s"} reset to default.`);
+      // Only a setting that did reset asks for the reload it needs.
+      const reload = done.filter((c) => c.reload);
+      if (reload.length) await reloadConfirm({ world: reload.some((c) => c.scope === "world") });
     }
   };
 }
