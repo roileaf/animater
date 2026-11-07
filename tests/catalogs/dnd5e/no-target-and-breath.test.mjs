@@ -52,3 +52,19 @@ test("Dragon's Breath exhaled at empty ground still plans its area", async () =>
   const plan = planRecipe(recipe, catalog, { source: { center: { x: 0, y: 0 } }, targets: [], template: { documentName: 'Region', id: 'r' }, area, gridSize: 100 });
   assert.ok(plan.some((s) => s.kind === 'template'));
 });
+
+test('every D&D NPC area action plans with nobody in its area', async () => {
+  const { planRecipe } = await import('../../../scripts/core/model.mjs');
+  const { dndNpcActionPreview } = await import('../../../scripts/catalogs/dnd5e/dnd5e-npc-actions.mjs');
+  const all = Object.values(await import('../../../data/dnd5e-npc-actions.mjs')).find(Array.isArray);
+  const area = { type: 'cone', center: { x: 0, y: 0 }, endpoint: { x: 300, y: 0 }, length: 300, angle: 53 };
+  let checked = 0;
+  for (const action of all) {
+    const recipe = dndNpcActionPreview(action, { motion: true });
+    if (recipe?.trigger !== 'template') continue;
+    checked++;
+    const catalog = [...new Set(recipe.stages.flatMap((s) => s.assets ?? []))].map((key) => ({ key }));
+    assert.doesNotThrow(() => planRecipe(recipe, catalog, { source: { id: 's', center: { x: 0, y: 0 } }, targets: [], template: { id: 'r' }, area, gridSize: 100 }), action.name);
+  }
+  assert.ok(checked > 100);
+});

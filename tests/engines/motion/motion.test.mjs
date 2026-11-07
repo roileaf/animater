@@ -403,3 +403,20 @@ test("a broken afterimage renderer does not stop the motion", async () => {
   assert.equal(token.mesh.position.x, 100);
   assert.equal(player.active.size, 0);
 });
+
+test("a lunge in a placed area that caught no one goes toward the area", () => {
+  const recipe = validateRecipe({ id: "m", name: "M", trigger: "template", stages: [{ kind: "motion", motion: "lunge", assets: [] }] });
+  const area = { type: "cone", center: { x: 0, y: 0 }, endpoint: { x: 300, y: 40 } };
+  const [stage] = planRecipe(recipe, [], { source: { center: { x: 0, y: 0 } }, targets: [], template: { id: "r" }, area });
+  assert.deepEqual(stage.aimAt, { x: 300, y: 40 });
+  const [ring] = planRecipe(recipe, [], { source: { center: { x: 0, y: 0 } }, targets: [], template: { id: "r" }, area: { center: { x: 5, y: 6 } } });
+  assert.deepEqual(ring.aimAt, { x: 5, y: 6 }, "a round area: its middle");
+  const [aimed] = planRecipe(recipe, [], { source: { center: { x: 0, y: 0 } }, targets: [{ id: "t", center: { x: 9, y: 9 } }], template: { id: "r" }, area });
+  assert.equal(aimed.aimAt, undefined, "someone caught: at them");
+  assert.throws(() => planRecipe(recipe, [], { source: {}, targets: [], template: { id: "r" } }), /Lunge needs/, "no area to aim at");
+});
+test("a move that ends at a creature sits out an empty area, and the rest still plays", () => {
+  const recipe = validateRecipe({ id: "m", name: "M", trigger: "template", stages: [{ kind: "motion", motion: "pulse", assets: [] }, { kind: "motion", motion: "rush", motionRange: "target", assets: [] }] });
+  const plan = planRecipe(recipe, [], { source: { center: { x: 0, y: 0 } }, targets: [], template: { id: "r" }, area: { center: { x: 5, y: 6 } } });
+  assert.deepEqual(plan.map((s) => s.motion), ["pulse"]);
+});

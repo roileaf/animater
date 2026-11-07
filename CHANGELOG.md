@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.5.2 (unreleased)
+
+- **NPC breaths and other area abilities play with nobody in the area.** Dragon's Breath, Acid Breath, Cold Breath and others stopped dead when the template caught no one, because the creature's lunge had no one to aim at. It now lunges toward the area.
+- **Fewer false alarms in History.** Using something that places an area no longer also logs "No animation is set" when the area's own animation plays.
+
 ## 3.5.1 (2026-11-07)
 
 - **Dragon tread leaves clean tracks.** Large creatures left clumps that read as three feet, packed close together. It's now one clear print at a time, left then right, spaced for the creature's size.

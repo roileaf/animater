@@ -5504,7 +5504,7 @@ async function receiveMotion(data, { strict = false } = {}) {
     await motions.play(
       token,
       stage,
-      motionDirection(token, source, target, stage.motion, canvas.grid?.size ?? 100),
+      motionDirection(token, source, target ?? (data.aimAt ? { center: data.aimAt } : undefined), stage.motion, canvas.grid?.size ?? 100),
       data.session ? `${data.userId}:${data.session}` : data.userId,
       { target: token === source ? target : source },
     );
@@ -8886,6 +8886,7 @@ Hooks.once("ready", () => {
         sourceId: context.source.id,
         tokenId: stage.destination.id,
         targetId: stage.motionTarget?.id ?? context.targets?.[0]?.id,
+        ...(stage.aimAt ? { aimAt: stage.aimAt } : {}),
         stage,
         ...audienceField(context),
       };

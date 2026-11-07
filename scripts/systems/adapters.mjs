@@ -144,6 +144,7 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {}, verdict = 
     activityId: subject.id ?? subject._id,
     activity: subject,
     activityName: subject.name,
+    ...(type === "use" && results.templates?.length ? { placedArea: true } : {}),
     ...(dnd5eEventElement(subject, rolls) ? { element: dnd5eEventElement(subject, rolls) } : {}),
     tokenId: subject.getUsageToken?.()?.id,
     sceneId: subject.getUsageToken?.()?.parent?.id,

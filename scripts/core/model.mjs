@@ -763,16 +763,21 @@ function buildPlan(recipe, catalog, context, requireMedia) {
       throw Error("Select a supported circular, cone, square or line area first.");
     if (s.travelDestination === "area" && !context.area)
       throw Error("Select an area for this projectile first.");
-    if (s.kind === "motion" && s.motion === "lunge" && !context.targets?.length)
+    // A placed area that caught no one: a lunge goes toward the area, and a move that must end at a creature sits out.
+    const emptyArea = !context.targets?.length && Boolean(context.template && context.area);
+    const aimAt = emptyArea && s.kind === "motion" && s.motion === "lunge" ? context.area.endpoint ?? context.area.center : null;
+    if (s.kind === "motion" && s.motion === "lunge" && !context.targets?.length && !aimAt)
       throw Error("Lunge needs a target token for direction.");
     if (
       isPathMotion(s) &&
       s.motionRange === "target" &&
       !context.targets?.length
-    )
+    ) {
+      if (emptyArea) continue;
       throw Error(
         "This motion needs a target. Select one or use a fixed-distance path.",
       );
+    }
     const motionTarget = motionTargetFor(s);
     if (context.targets?.length && !motionTarget && s.kind === "motion" && (isPathMotion(s) || s.motion === "lunge")) continue;
     for (const [targetIndex, destination] of (
@@ -882,6 +887,7 @@ function buildPlan(recipe, catalog, context, requireMedia) {
             destination,
             ...(recording ? { soundFile: recording.file, volume: recording.volume, duration: recording.duration, ...(recording.pitch ? { pitch: recording.pitch } : {}), ...(recording.echo ? { echo: recording.echo } : {}), ...(recording.layers ? { layers: recording.layers } : {}), ...(recording.jitter ? { jitter: recording.jitter } : {}) } : {}),
             ...(isPathMotion(s) ? { motionTarget } : {}),
+            ...(aimAt ? { aimAt: { x: aimAt.x, y: aimAt.y } } : {}),
             // A blocked shot flies into the shield instead of wide.
             ...(shieldBlock && ["travel", "projectile"].includes(s.kind) ? { shieldBlock: true } : {}),
             ...(areaTiles

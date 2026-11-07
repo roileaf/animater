@@ -315,6 +315,8 @@ export class AnimaterRuntime {
     if (!recipe && !riders.length) {
       // A weapon animates on its attack roll; its damage roll having nothing more is not "no animation".
       if (event.type === "damage" && event.item?.type === "weapon" && this.attackAnimates(event, saved)) return;
+      // A use that placed an area plays from that area's own event, which says so if it has nothing either.
+      if (event.type === "use" && event.placedArea) return;
       return this.trace(
         "Skipped",
         `${event.item?.name ?? "Unknown item"}: ${event.skipReason ?? `no enabled ${event.type} recipe`}.`,
