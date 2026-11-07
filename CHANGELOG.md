@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.7.1 (unreleased)
+## 3.7.1
 
 - **Full tree shade on tiles of several bushes.** A tree tile holding a few thick bushes with open ground between them was taken for one thin, gappy crown, so its shade came out about half as dark. Its leaves are now judged by the bushes themselves, not the open ground round them. Leaves and Tree type set in Tile configuration still decide.
 - **Darkness follows the sun.** A new setting, off by default, under Sunrise and sunset colour. The active scene's Darkness Level then follows how far the sun is under the horizon, as real twilight does: a little dark at sunset, about half dark half an hour later, fully dark an hour and a half after sunset until dawn's first light. Calendaria's darkness by the time of day only reached full dark at the very middle of the night (around 23:30 to midnight in midsummer); it is turned off while this is on. Foundry's lighting, vision and the game's light rules follow it. Scenes under the ground, scenes with their darkness locked and scenes where Calendaria was told to leave the darkness alone are left as they are, and a storm still darkens it further. With Moonlight on, a bright moon high in a clear sky keeps the night a little lighter (at most a fifth), and its silver tint is lessened to match, so the moon isn't counted twice.
