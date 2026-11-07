@@ -1,5 +1,6 @@
 import { nextLastingChange, lastingChange, lastingMessage } from "../shared/lasting-choice.mjs";
 import {normalizeStateCatalogState,useStateEntry,stateRecipe,catalogStateEntry} from './state-catalog.mjs';
+import {withAuraStyle} from '../../engines/playback/aura-fields.mjs';
 export async function handleStateCatalogAction(w,action,b){
  if(!['select-state','state-auto','state-pause','state-exclude','state-page','state-reset','use-state','copy-state','enable-state-custom','state-motion','state-fade','state-flag','state-flagged-only','state-copy-flags'].includes(action))return false;
  const kind=action==='enable-state-custom'?catalogStateEntry(w.recipe()?.stateEntry)?.kind:w.page==='conditions'?'condition':'effect';
@@ -15,10 +16,14 @@ export async function handleStateCatalogAction(w,action,b){
  else if(action==='state-reset'){w.stateFilters[kind]={search:'',group:'all',theme:'all',quality:'all'};w.statePages[kind]=0;}
  else if(action==='copy-state'){
   const recipe=w.recipe()??stateRecipe(catalogStateEntry(id),{catalog:w.host.catalog?.()}),saved=w.host.recipes().find(r=>r.lifecycle==='document'&&r.stateEntry===id&&r.stateDamageType===recipe.stateDamageType);
-  if(!saved)await w.host.save([...w.host.recipes(),recipe]);
+  // Customized as it shows now: under the Tokenshade aura style, a Tokenshade aura.
+  const style=w.host.auraStyle?.(),opened=saved??withAuraStyle(recipe,style);
+  if(!saved)await w.host.save([...w.host.recipes(),opened]);
   // Customizing means using your version: the catalog turns on for this entry and plays your saved recipe.
   await w.host.setStateCatalogState(kind,{...useStateEntry(state,id),customized:[...new Set([...state.customized,id])]});
-  w.selected=saved?.id??recipe.id;w.page='recipes';w.studio=true;w.studioTime=0;w.search='';w.category='All';w.stageIndex=0;
+  w.selected=saved?.id??recipe.id;w.page='recipes';w.studio=true;w.studioTime=0;w.search='';w.category='All';
+  // It opens on what is being customized: a Tokenshade aura on its reach, not on the first of its accents.
+  const reach=opened.stages?.findIndex(s=>s.kind==='aura'&&s.auraRadius>0)??-1;w.stageIndex=reach>=0&&(style==='tokenshade'||opened.stages[reach].areaLook==='tokenshade')?reach:0;
   w.message='Your version now plays instead of the catalog one. Edit and save to change it.';
  }else{
   const env=w.host.environment();if(env.demo||env.systemId!=='pf2e'||!env.ready)throw Error('Enable persistent animations inside a PF2e world with Sequencer and JB2A.');

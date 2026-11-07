@@ -1,6 +1,7 @@
 import { heroicChoiceOf, heroicChoices } from "../systems/hero-points.mjs";
 import { tokenFxEditorHTML, applyTokenFxEdit, tokenFxAction } from "./token-fx-editor.mjs";
 import { layersOf } from "../engines/tokenshade/layers.mjs";
+import { AURA_MOTIFS } from "../engines/tokenshade/aura-field.mjs";
 import { uuid } from "../core/uuid.mjs";
 import { lookName } from "./token-looks.mjs";
 import { FLAGGED_PAGE, flaggedPageHTML, handleFlaggedAction } from "./flagged-page.mjs";
@@ -105,6 +106,8 @@ const icons = {
   Custom: "◎",
   Motion: "↝",
 };
+// The stage that draws a saved aura's reach, or -1.
+const reachStageOf = (r) => (r?.stages ?? []).findIndex((s) => s.kind === "aura" && s.auraRadius > 0);
 const options = (items, value) =>
   Object.entries(items)
     .map(
@@ -1086,6 +1089,8 @@ export class Workspace {
           ? `<svg class="an-tint-filter" aria-hidden="true"><defs><filter id="${filterId}" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${rgb[0]} 0 0 0 0 0 ${rgb[1]} 0 0 0 0 0 ${rgb[2]} 0 0 0 0 0 1 0"/></filter></defs></svg>`
           : "";
         if (s.kind === "motion") return "";
+        // A reach drawn by Tokenshade is a shader on the canvas: never its unused clip here.
+        if (s.kind === "aura" && s.auraRadius > 0 && recipe.stages[reachStageOf(recipe)]?.areaLook === "tokenshade") return "";
         // A teleport has no art of its own: while it plays, the mover's portrait is gone (styles: an-teleport-layer).
         if (s.kind === "teleport") return `<div hidden class="an-recipe-layer an-teleport-layer" data-layer-stage="${index}" data-teleport="${teleportPlan(recipe)?.who === "target" ? "targets" : "source"}"></div>`;
         if(OPTIONAL_FX_KINDS.has(s.kind))return this.optionalFxPreviewHTML(s, s.index ?? index);
@@ -1599,21 +1604,24 @@ export class Workspace {
   stageCardHTML(r, s, index, file, key, linked) {
     const track = STUDIO_TRACKS.find((t) => t.id === trackOf(s));
     const visual = !["motion", "sound", "sprite", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
-    const thumb = visual && file ? this.assetThumbHTML(file) : `<span aria-hidden="true">${esc(track?.icon ?? "◇")}</span>`;
+    // A reach drawn by Tokenshade says so, and not the clip it no longer plays.
+    const shader = reachStageOf(r) === index && r.lifecycle === "document" && s.areaLook === "tokenshade";
+    const thumb = shader ? `<span aria-hidden="true">✦</span>` : visual && file ? this.assetThumbHTML(file) : `<span aria-hidden="true">${esc(track?.icon ?? "◇")}</span>`;
     const studio = this.isStudio();
     const full = r.stages.length >= MAX_STAGES || this.busy, only = r.stages.length === 1;
     // A teleport has no variants: the token vanishes once.
     const variant = !linked && s.kind !== "teleport" && variantMembers(r.stages, s.variantGroup).length < 2 ? `<button class="an-icon" data-action="variant-add" aria-label="Add a random variant" data-tooltip="Add a random variant: a copy with different art, size or timing; each play picks one" ${full ? "disabled" : ""}>🎲</button>` : "";
     const dup = studio ? `<button class="an-icon" data-action="studio-dup-stage" data-index="${index}" aria-label="Duplicate this stage" data-tooltip="Duplicate after it (Ctrl+D)" ${full ? "disabled" : ""}>⧉</button>` : "";
     const del = `<button class="an-icon is-danger an-stage-remove" data-action="${studio ? "studio-del-stage" : "remove-stage"}" data-index="${index}" aria-label="Remove this stage" data-tooltip="${only ? "A recipe needs at least one stage" : "Remove this stage (Del)"}" ${only || this.busy ? "disabled" : ""}><i class="fas fa-trash" aria-hidden="true"></i></button>`;
-    return `<div class="an-inspector-head an-stage-card kind-${esc(s.kind)}"><div class="an-stage-thumb">${thumb}</div><div class="an-stage-id"><input class="an-stage-name" data-field="label" data-index="${index}" value="${esc(s.label ?? "")}" placeholder="${esc(KINDS[s.kind])}" aria-label="Stage name"><div class="an-stage-chips"><span class="an-st-kind kind-${esc(s.kind)}">${esc(KINDS[s.kind])}</span><span class="an-stage-chip">${esc(track?.name ?? "")} · ${index + 1} of ${r.stages.length}</span>${visual && (key || s.assets?.[0]) ? `<span class="an-stage-chip is-asset" title="${esc(key ?? s.assets[0])}">${esc(assetName(key ?? s.assets[0]))}</span>` : ""}</div></div><div class="an-stage-actions">${variant}${dup}${del}</div></div>`;
+    return `<div class="an-inspector-head an-stage-card kind-${esc(s.kind)}"><div class="an-stage-thumb">${thumb}</div><div class="an-stage-id"><input class="an-stage-name" data-field="label" data-index="${index}" value="${esc(s.label ?? "")}" placeholder="${esc(KINDS[s.kind])}" aria-label="Stage name"><div class="an-stage-chips"><span class="an-st-kind kind-${esc(s.kind)}">${esc(KINDS[s.kind])}</span><span class="an-stage-chip">${esc(track?.name ?? "")} · ${index + 1} of ${r.stages.length}</span>${shader ? `<span class="an-stage-chip is-asset">Tokenshade${s.areaMotif && s.areaMotif !== "auto" ? ` · ${esc(s.areaMotif[0].toUpperCase() + s.areaMotif.slice(1))}` : ""}</span>` : visual && (key || s.assets?.[0]) ? `<span class="an-stage-chip is-asset" title="${esc(key ?? s.assets[0])}">${esc(assetName(key ?? s.assets[0]))}</span>` : ""}</div></div><div class="an-stage-actions">${variant}${dup}${del}</div></div>`;
   }
   // The same few settings, in the same order, for every kind of stage.
   stageEssentialsHTML(r, s, index, key, linked, audioPreview) {
     const visual = !["motion", "sound", "sprite", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
-    const asset = s.kind === "sound"
+    const reach = linked && s.kind === "aura" && reachStageOf(r) === index ? this.auraReachHTML(s, index, linked) : "";
+    const asset = reach && s.areaLook === "tokenshade" ? reach : reach + (s.kind === "sound"
       ? `<label>Sound<span class="an-asset-row"><input data-field="soundFile" data-index="${index}" placeholder="sounds/spell.ogg" value="${esc(s.soundFile)}">${this.host.soundCatalog || this.host.pickMedia ? `<button data-action="browse-sound">Browse</button>` : ""}</span></label>`
-      : visual ? `<label>Art<button class="an-asset-picker" data-action="browse"><span class="an-asset-picker-text">${esc(key || s.assets[0] ? assetName(key ?? s.assets[0]) : "Choose an asset")}<span>Change ↗</span></span></button></label>${key && key !== s.assets[0] ? `<p class="an-hint">Using an installed fallback variant.</p>` : ""}` : "";
+      : visual ? `<label>Art<button class="an-asset-picker" data-action="browse"><span class="an-asset-picker-text">${esc(key || s.assets[0] ? assetName(key ?? s.assets[0]) : "Choose an asset")}<span>Change ↗</span></span></button></label>${key && key !== s.assets[0] ? `<p class="an-hint">Using an installed fallback variant.</p>` : ""}` : "");
     const subject = ["sprite", "aura", "tokenfx"].includes(s.kind) && !linked ? `<label>Plays on<select data-field="subject" data-index="${index}">${options({ source: "Source token", targets: "Target tokens" }, s.subject ?? "source")}</select></label>` : "";
     const fades = !["motion", "sprite", "teleport"].includes(s.kind) && !OPTIONAL_FX_KINDS.has(s.kind);
     const o = normalizeOptions({ ...s, kind: s.kind === "sound" ? "cast" : s.kind });
@@ -1647,10 +1655,18 @@ export class Workspace {
     else if (s.kind === "sprite") body = `${this.optionFieldsHTML(s, index, linked, ["Token copies"])}<p class="an-hint">Copies token artwork into Sequencer.</p>`;
     else if (["travel", "projectile"].includes(s.kind)) body = this.flightFieldsHTML(s, index);
     else if (s.kind === "teleport") body = `<p class="an-hint">${teleportPlan(r)?.fetch ? "Each target slides to the caster as this stage starts (its own copy, on its own hit), taking this stage's length; its square follows the spell's rules." : teleportPlan(r) ? "The token vanishes as this stage starts (the departure effect plays) and reappears at the picked spot when it ends (the arrival effect). Change who moves and the two effects in Recipe settings › Teleport." : "This recipe does not teleport anyone: turn Teleport on in Recipe settings, or remove this stage."}</p>`;
+    // An aura has one reach to draw: the first stage that has one decides (its Area look leads Essentials), and with Tokenshade the others stand down.
+    if (s.kind === "aura" && s.auraRadius > 0 && r.lifecycle === "document" && reachStageOf(r) !== index && r.stages[reachStageOf(r)]?.areaLook === "tokenshade") body += `<p class="an-hint">Not shown: the first reach stage draws this aura with Tokenshade.</p>`;
     if (s.kind === "aura" && !linked) body += `<label class="an-check an-stay"><input type="checkbox" data-field="persist" data-index="${index}" ${s.persist ? "checked" : ""}> Stay until the effect ends</label><p class="an-hint">${s.persist ? "Loops on the token until the spell's effect is removed, the spell ends or you press Stop. Length only sets the preview." : "Tick to keep a looping asset on the token for as long as the spell's effect lasts."}</p>`;
     if (["travel", "projectile", "impact"].includes(s.kind)) body += this.optionFieldsHTML(s, index, linked, ["Timing & repetition"], ["requiresHit"]);
     if (!body.trim()) return "";
     return `<div class="an-stage-block an-type-block"><div class="an-stage-block-title">${esc(KINDS[s.kind])}</div>${body}</div>`;
+  }
+  // How a saved aura draws its reach: its footage, or Tokenshade's ground field with its own pattern and colour.
+  auraReachHTML(s, index, linked) {
+    const tokenshade = s.areaLook === "tokenshade";
+    const motifs = { auto: "Automatic (from the aura)", ...Object.fromEntries(Object.keys(AURA_MOTIFS).filter((m) => m !== "swarm").map((m) => [m, m[0].toUpperCase() + m.slice(1)])) };
+    return `<label>Area look<select data-field="areaLook" data-index="${index}">${options({ jb2a: "JB2A animation", tokenshade: "Tokenshade ground" }, tokenshade ? "tokenshade" : "jb2a")}</select></label>${tokenshade ? `<label>Tokenshade pattern<select data-field="areaMotif" data-index="${index}">${options(motifs, s.areaMotif ?? "auto")}</select></label>${this.optionFieldsHTML(s, index, linked, ["Color & filters"], ["tintEnabled", "tint"])}<p class="an-hint">Tokenshade draws this reach on the ground, in place of a clip. Use Local preview to see it on the token; the window here leaves it out.</p>` : ""}`;
   }
   // Flight path, destination and pacing of a projectile or travel stage.
   flightFieldsHTML(stage, index) {

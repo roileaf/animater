@@ -55,10 +55,9 @@ test('puffsFor: prints alternate sides, follow the heading and scale with the to
     const print = (index, width = 100) => puffsFor(floor, { x: 500, y: 500, heading, index }, { seed: 'p', grid: 100, width }).find((p) => p.kind === 'print');
     const a = print(1), b = print(2);
     assert.ok(a && b, floor);
-    assert.equal(a.rotation, heading);
-    assert.equal(b.rotation, heading);
+    for (const p of [a, b]) assert.ok(Math.abs(p.rotation - heading) <= ((7 + 4) * Math.PI) / 180 + 1e-9, 'near the heading, its own way');
     // Heading straight down (+y): the side offset is along x, opposite for each foot, none along the path.
-    assert.ok(Math.abs(a.y - 500) < 1e-6 && Math.abs(b.y - 500) < 1e-6, floor);
+    assert.ok(Math.abs(a.y - 500) <= 2.5 && Math.abs(b.y - 500) <= 2.5, floor);
     assert.ok(Math.sign(a.x - 500) === -Math.sign(b.x - 500) && a.x !== 500, floor);
     assert.deepEqual([a.vx, a.vy, a.grow], [0, 0, 0]);
     const big = print(1, 300);
@@ -67,7 +66,7 @@ test('puffsFor: prints alternate sides, follow the heading and scale with the to
     // A print fades slowly: still most of the way there halfway through its life.
     const half = particleState(a, a.delay + a.life / 2);
     assert.ok(half.alpha > a.alpha * 0.5, floor);
-    assert.equal(half.rotation, heading);
+    assert.equal(half.rotation, a.rotation);
   }
   const life = (floor) => puffsFor(floor, { x: 0, y: 0, heading: 0, index: 1 }, { seed: 'p', grid: 100 }).find((p) => p.kind === 'print').life;
   assert.ok(Math.abs(life('sand') - 6000) <= 1000);
@@ -86,7 +85,7 @@ test('puffsFor: bipeds (boots, talons) alternate one print per stride, shaped by
     assert.equal(a.length, 1, gait);
     assert.equal(a[0].gait, gait);
     assert.ok(Math.sign(a[0].y - 500) === -Math.sign(b[0].y - 500) && a[0].y !== 500, gait);
-    assert.deepEqual(offsets(c), offsets(a), gait);
+    offsets(c).forEach(([d, s], i) => { assert.ok(Math.abs(d - offsets(a)[i][0]) <= 0.06 && Math.abs(s - offsets(a)[i][1]) <= 0.05, gait); });
   }
   // No gait is boots.
   assert.equal(puffsFor('mud', { x: 0, y: 0, heading: 0, index: 1 }, { seed: 'g', grid: 100 }).find((p) => p.kind === 'print').gait, 'boots');
@@ -101,7 +100,7 @@ test('puffsFor: quadrupeds leave a front and hind print per stride, four per two
     assert.equal(new Set(cycle).size, 4, `${gait}: four distinct feet`);
     // Front ahead of hind, both on one side, the other side next stride.
     assert.ok(one[0][0] > one[1][0] && Math.sign(one[0][1]) === Math.sign(one[1][1]) && Math.sign(one[0][1]) === -Math.sign(two[0][1]), gait);
-    assert.deepEqual(offsets(tracks(gait, 3)), one, gait);
+    offsets(tracks(gait, 3)).forEach(([d, a], i) => { assert.ok(Math.abs(d - one[i][0]) <= 0.06 && Math.abs(a - one[i][1]) <= 0.05, gait); });
     assert.ok(tracks(gait, 1).find((p) => p.kind === 'print').radius < tracks('boots', 1)[0].radius, gait);
     for (const p of tracks(gait, 1).filter((q) => q.kind === 'print')) assert.equal(p.gait, gait);
   }
@@ -1455,11 +1454,37 @@ test('dragon tread: one print a stride, left and right, far enough apart that no
     const all = prints(width, 24);
     assert.ok(all.length >= 3, `${width}: it does print`);
     for (let i = 1; i < all.length; i++) {
-      assert.ok(all[i].x - all[i - 1].x >= width * 0.4, `${width}: spaced for its size`);
+      assert.ok(all[i].x - all[i - 1].x >= width * 0.36, `${width}: spaced for its size`);
       assert.equal(Math.sign(all[i].y), -Math.sign(all[i - 1].y), `${width}: the other side`);
     }
   }
   const one = tracksFor('dragon', part, {}, { x: 0, y: 0, heading: 0, index: 1 }, { grid, width: 100 });
   assert.equal(one.filter((p) => p.gait === 'dragon').length, 1, 'never a cluster');
   assert.ok(one.some((p) => p.kind === 'groove'), 'the tail still drags');
+});
+
+test('in snow, mud and sand only feet press hollows: a tail or a furrow stays a groove', async () => {
+  const { puffsFor } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  for (const floor of ['snow', 'mud', 'sand']) for (const gait of ['dragon', 'claws', 'slither', 'ooze', 'boots', 'paws']) {
+    const marks = puffsFor(floor, { x: 0, y: 0, heading: 0, index: 1 }, { seed: 'g', grid: 100, density: 1, width: 100, gait, amount: 1 });
+    for (const m of marks.filter((p) => p.kind === 'groove')) assert.equal(m.hollow, undefined, `${floor} ${gait}`);
+    if (['dragon', 'boots', 'paws'].includes(gait)) assert.ok(marks.some((p) => p.kind === 'print' && p.hollow === floor), `${floor} ${gait}: its foot is pressed`);
+  }
+});
+
+test('every step is its own: turned outward by its foot, mirrored, varied in depth, the same on every screen', async () => {
+  const { puffsFor, STEP_TURN, stepNoise } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const steps = (seed = 'a', opts = {}, floor = 'snow') => Array.from({ length: 40 }, (_, i) => puffsFor(floor, { x: 0, y: 0, heading: 0, index: i + 1 }, { seed, grid: 100, width: 100, gait: 'boots', ...opts }).filter((p) => p.kind === 'print')).flat();
+  const all = steps(), deg = (p) => (p.rotation * 180) / Math.PI;
+  assert.deepEqual(steps().map((p) => p.rotation), all.map((p) => p.rotation), 'every screen alike');
+  assert.notDeepEqual(steps('b').map((p) => p.rotation), all.map((p) => p.rotation), 'each creature its own');
+  const [out, by] = STEP_TURN.boots;
+  for (const p of all) { const outer = p.mirror ? -1 : 1; assert.ok(Math.abs(deg(p) - outer * out) <= by + 1e-9); assert.equal(Math.sign(p.y), outer, 'the foot on that side'); }
+  assert.ok(new Set(all.map((p) => p.rotation)).size > 30);
+  const depths = all.map((p) => p.depth);
+  assert.ok(Math.min(...depths) >= 0.65 && Math.max(...depths) <= 1); assert.ok(Math.max(...depths) - Math.min(...depths) > 0.2, 'not all even');
+  for (const p of all) assert.equal(p.alpha, p.depth, 'a shallower hollow shows fainter');
+  for (const p of steps('a', {}, 'sand')) assert.equal(p.hollow, 'sand', 'sand takes prints as snow and mud do');
+  assert.ok(Math.abs(stepNoise('a', 1, 'x')) <= 1);
+  assert.equal(steps('a', { gait: 'paws', shape: 'cat' })[0].gait, 'cat');
 });

@@ -14,6 +14,7 @@ class Graphics {
   drawPolygon(...a) { this.calls.push(['polygon', ...a]); }
   moveTo(...a) { this.calls.push(['move', ...a]); }
   lineTo(...a) { this.calls.push(['lineTo', ...a]); }
+  quadraticCurveTo(...a) { this.calls.push(['curve', ...a]); }
   endFill() {}
   destroy() { this.destroyed = true; this.parent?.children.splice(this.parent.children.indexOf(this), 1); }
 }
@@ -82,7 +83,8 @@ test('every gait draws its own track shape in its colour', () => {
     const main = specs.find((p) => p.gait === gait) ?? specs[0];
     const g = layer.addParticle(main);
     assert.ok(g.calls.some((c) => (c[0] === 'fill' && c[1] === main.color) || (c[0] === 'line' && c[2] === main.color)), gait);
-    assert.equal(g.rotation, 0.3, gait);
+    assert.equal(g.rotation, main.rotation, gait);
+    assert.ok(Math.abs(main.rotation - 0.3) < 0.8, gait);
     shapes.set(gait, JSON.stringify(g.calls.map((c) => c.map((v) => (typeof v === 'number' ? Math.round(v) : v)))));
     for (const spec of specs) {
       const t = layer.addParticle(spec);

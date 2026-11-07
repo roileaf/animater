@@ -26,7 +26,7 @@ const FAMILIES = [
   ['strange', 'Strange', 'fa-wand-sparkles', null],
 ];
 const FALL_ICONS = { rain: 'fa-cloud-rain', snow: 'fa-snowflake', hail: 'fa-icicles', ash: 'fa-fire-flame-simple', petal: 'fa-spa', leaf: 'fa-leaf', spore: 'fa-bacterium', sand: 'fa-hourglass-half', ember: 'fa-fire', gust: 'fa-wind', debris: 'fa-mound' };
-const EFFECT_ICONS = { mist: 'fa-smog', curtains: 'fa-cloud-showers-heavy', bands: 'fa-hurricane', tornado: 'fa-tornado', dustDevil: 'fa-wind', smoke: 'fa-cloud', heat: 'fa-temperature-high', frost: 'fa-icicles', glaze: 'fa-snowflake', rays: 'fa-sun', glow: 'fa-lightbulb', rainbow: 'fa-rainbow', aurora: 'fa-water', sparks: 'fa-bolt', wisps: 'fa-ghost', meteors: 'fa-meteor', noise: 'fa-tv' };
+const EFFECT_ICONS = { drawnClouds: 'fa-cloud', mist: 'fa-smog', curtains: 'fa-cloud-showers-heavy', bands: 'fa-hurricane', tornado: 'fa-tornado', dustDevil: 'fa-wind', smoke: 'fa-cloud', heat: 'fa-temperature-high', frost: 'fa-icicles', glaze: 'fa-snowflake', rays: 'fa-sun', glow: 'fa-lightbulb', rainbow: 'fa-rainbow', aurora: 'fa-water', sparks: 'fa-bolt', wisps: 'fa-ghost', meteors: 'fa-meteor', noise: 'fa-tv' };
 
 const bare = (value) => String(value ?? '').replace(/^animater\./, '');
 // Which tab a weather is under (pure): 'calendar' for none of its own.
@@ -36,7 +36,7 @@ export function familyOf(weather) {
 }
 // A module's own word for an effect, for reading ("rainsimple" stays as it is; "heavy_fog" reads "Heavy fog").
 const wordsOf = (type) => { const text = String(type ?? '').replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase(); return text ? text[0].toUpperCase() + text.slice(1) : 'Effect'; };
-const AMOUNT_ROWS = [['cover', 'fa-cloud'], ['gloom', 'fa-moon'], ['fog', 'fa-smog'], ['lightning', 'fa-cloud-bolt'], ['wind', 'fa-wind'], ['temperature', 'fa-temperature-half']];
+const AMOUNT_ROWS = [['cover', 'fa-cloud'], ['cloudClear', 'fa-cloud'], ['gloom', 'fa-moon'], ['fog', 'fa-smog'], ['lightning', 'fa-cloud-bolt'], ['wind', 'fa-wind'], ['temperature', 'fa-temperature-half']];
 // What is at work on this scene and who says so (pure): one row each, { key, icon, name, detail, source, action, data }. `action` is how to turn it off from here; other modules' effects have none, as they are theirs to turn off.
 export function activeWeather({ off = false, weather = '', weatherName = '', calendar = null, tune: raw = null, stormDark = null, fxEffects = null, fxFilters = null } = {}) {
   const tune = cleanTune(raw), rows = [], own = String(weather).startsWith('animater.'), mine = 'Set in this panel', fx = [...Object.entries(fxEffects ?? {}), ...Object.entries(fxFilters ?? {})];
@@ -47,7 +47,7 @@ export function activeWeather({ off = false, weather = '', weatherName = '', cal
   for (const slot of ['fall', 'fall2']) if (FALL_CHOICES[tune[slot]]) rows.push({ key: slot, icon: FALL_ICONS[tune[slot]], name: FALL_CHOICES[tune[slot]], detail: slot === 'fall' ? mine : 'Also falling, set in this panel', source: 'Animater', action: 'setFall', data: `data-slot="${slot}" data-kind=""` });
   if (tune.fall === 'none') rows.push({ key: 'fall', icon: 'fa-ban', name: 'Nothing falling', detail: mine, source: 'Animater', action: 'setFall', data: 'data-slot="fall" data-kind=""' });
   for (const [key, icon] of AMOUNT_ROWS) if (tune[key] !== null) rows.push({ key, icon, name: `${TUNE_SLIDERS[key].label} ${sliderText(key, tune[key])}`, detail: mine, source: 'Animater', action: 'resetTune', data: `data-key="${key}"` });
-  for (const [key, effect] of Object.entries(TUNE_EFFECTS)) if (tune[key] > 0) rows.push({ key, icon: EFFECT_ICONS[key], name: `${effect.label} ${sliderText(key, tune[key])}`, detail: mine, source: 'Animater', action: 'resetTune', data: `data-key="${key}"` });
+  for (const [key, effect] of Object.entries(TUNE_EFFECTS)) if (tune[key] > 0) rows.push({ key, icon: EFFECT_ICONS[key], name: effect.plain ? effect.label : `${effect.label} ${sliderText(key, tune[key])}`, detail: mine, source: 'Animater', action: 'resetTune', data: `data-key="${key}"` });
   if (stormDark) rows.push({ key: 'stormDark', icon: 'fa-moon', name: 'Storm darkness', detail: `Scene darkness raised to ${Math.round(Number(stormDark.target) * 100) / 100}`, source: 'Animater' });
   return [...rows, ...others];
 }
@@ -124,7 +124,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
   // Every effect a button; each that is on has its strength below.
   const effectOn = (key) => (tune[key] === null ? effectIn(base, key) > 0.001 : tune[key] > 0);
   const effectButtons = Object.entries(TUNE_EFFECTS).map(([key, e]) => chip('toggleEffect', `data-key="${key}"`, e.label, { icon: EFFECT_ICONS[key], active: effectOn(key), tip: e.hint })).join('');
-  const effects = Object.keys(TUNE_EFFECTS).filter(effectOn).map((key) => controlRow(key, tune, base) + (TUNE_EFFECTS[key].color ? controlRow(TUNE_EFFECTS[key].color, tune, base, false, 'sub') : '') + (TUNE_EFFECTS[key].more ?? []).map((more) => controlRow(more, tune, base, false, 'sub')).join('')).join('');
+  const effects = Object.keys(TUNE_EFFECTS).filter(effectOn).map((key) => (TUNE_EFFECTS[key].plain ? '' : controlRow(key, tune, base)) + (TUNE_EFFECTS[key].color ? controlRow(TUNE_EFFECTS[key].color, tune, base, false, 'sub') : '') + (TUNE_EFFECTS[key].more ?? []).map((more) => controlRow(more, tune, base, false, 'sub')).join('')).join('');
   const presets = looks.length ? `<div class="animater-wx-presets">${looks.map((n) => `<span class="animater-wx-preset"><button type="button" data-action="applyLook" data-name="${esc(n)}" data-tooltip="Use this weather">${esc(n)}</button><button type="button" data-action="deleteLook" data-name="${esc(n)}" data-tooltip="Delete this preset" aria-label="Delete ${esc(n)}"><i class="fa-solid fa-xmark" inert></i></button></span>`).join('')}</div>` : '';
   return `<div class="animater-wx">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}

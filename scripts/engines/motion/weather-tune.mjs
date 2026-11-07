@@ -12,6 +12,7 @@ const CHOSEN_AMOUNT = 0.7;
 
 // The effects any weather can have, named as the panel shows them. `color` the key of its colour, `tint` its colour by default.
 export const TUNE_EFFECTS = Object.freeze({
+  drawnClouds: { label: 'Drawn clouds', start: 1, plain: true, more: ['cloudClear'], hint: 'Real clouds over the map, each with its own shadow, above the rain and the roofs, instead of their shadows alone. Cloud cover says how many.' },
   mist: { label: 'Low mist', hint: 'Thin veils lying low over the ground.' },
   curtains: { label: 'Rain sheets', hint: 'Broad grey sheets of rain sweeping across.' },
   bands: { label: 'Spiral clouds', hint: "A hurricane's bands of cloud." },
@@ -46,6 +47,7 @@ export const TUNE_SLIDERS = Object.freeze({
   lightning: strength('Lightning', 'How fierce the storm is: how often lightning strikes and lands on the map, with its thunder. At full, a bolt every few seconds.'),
   wind: strength('Strength', 'How hard the wind blows, for the clouds, the grass, the leaves and the water too.'),
   cover: strength('Cloud cover', 'How much of the sky is cloud. Less sun reaches the ground under more.'),
+  cloudClear: { label: 'Cloud transparency', min: 0, max: 0.95, step: 0.05, default: 0.4, hint: 'How much of the map shows through the drawn clouds, however many overlap.' },
   ...Object.fromEntries(Object.entries(TUNE_EFFECTS).map(([key, e]) => [key, strength(e.label, e.hint)])),
 });
 export const TUNE_COLORS = Object.freeze({

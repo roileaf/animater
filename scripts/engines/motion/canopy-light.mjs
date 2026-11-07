@@ -117,7 +117,7 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D uTrees, uTreesAt, uRoofCast, uRoofs, uRoofArea, uIndoor, uWater;
 uniform vec2 uSize, uShift, uRoofShift, uDir, uWindDir;
-uniform float uTime, uWind, uStrength, uStretch, uGrid, uMode, uHasTrees, uHasRoofs, uRoofShade, uLeafRate, uDirect, uCloudClock, uCloudWind, uCloudsOn;
+uniform float uTime, uWind, uStrength, uStretch, uGrid, uMode, uHasTrees, uHasRoofs, uRoofShade, uLeafRate, uDirect, uCloudClock, uCloudRun, uCloudWind, uCloudsOn;
 uniform vec2 uCloudShift, uCloudDir;
 uniform vec4 uDeck;
 uniform vec3 uColor, uShade, uLeafA, uLeafB;
@@ -174,7 +174,7 @@ void main(){
   float cover = uHasTrees > 0.5 ? at(uTrees, px) : 0.0, fleck = 0.0;
   if (cover > 0.01 && uDirect > 0.005) {
     // No fleck under a passing cloud: the sky's own pattern says where its shadow lies now.
-    float sunHere = uCloudsOn > 0.5 ? 1.0 - deckShade(cloudDeck(px - uCloudShift, uCloudClock, uCloudDir, uCloudWind, uGrid), uDeck) : 1.0;
+    float sunHere = uCloudsOn > 0.5 ? 1.0 - deckShade(cloudDeck(px - uCloudShift, uCloudClock, uCloudRun, uCloudDir, uCloudWind, uGrid), uDeck) : 1.0;
     if (sunHere > 0.005) fleck = flecks(src, px, t) * mix(0.25, 1.0, 1.0 - smoothstep(0.55, 0.95, cover)) * uDirect * sunHere;
   }
   // Roofs: a building's shadow on the open ground beside it; inside, light where the roof above toward the sun has a hole.
@@ -260,7 +260,7 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
         uTrees: bake(trees.length ? sprites(trees, false, true) : none), uTreesAt: bake(trees.length ? sprites(trees) : none, 1), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
         uRoofs: bake(roofs.length ? sprites(roofs) : none, 2),
         uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1), uWater: bake(water.length ? polygons(water) : none, 1),
-        uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: 0, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,
+        uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: 0, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudRun: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,
         uGrid: grid, uRoofShade: 0.45, uMode: 0, uHasTrees: treeShade && trees.length ? 1 : 0, uHasRoofs: roofs.length ? 1 : 0, uColor: [1, 0.95, 0.84], uShade: [0.06, 0.09, 0.07],
         uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uLeafRate: 0, uLeafA: [0.44, 0.6, 0.23], uLeafB: [0.56, 0.7, 0.29],
       };
@@ -280,7 +280,7 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
     },
     // The sky's clouds now ({ deck, shift, angle, wind, clouds }, null none), and the clock they run by.
     clouds(sky = null) { for (const u of own) Object.assign(u, sky ? { uCloudsOn: sky.clouds > 0.05 ? 1 : 0, uDeck: sky.deck, uCloudShift: [sky.shift.x, sky.shift.y], uCloudDir: [Math.cos(sky.angle), Math.sin(sky.angle)], uCloudWind: sky.wind } : { uCloudsOn: 0 }); },
-    cloudClock(seconds) { for (const u of own) u.uCloudClock = seconds; },
+    cloudClock(seconds, run = 0) { for (const u of own) { u.uCloudClock = seconds; u.uCloudRun = run; } },
     look({ fall = null, roofFall = null, color = [1, 0.95, 0.84], wind = 0.35, windAngle = Math.PI / 4, roofShade = 0.45, leaves = null, direct = 1 } = {}) {
       if (!own.length) return;
       const rgb = (c) => [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255];

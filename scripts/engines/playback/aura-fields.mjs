@@ -2,7 +2,7 @@
 // ground under the tokens, in place of its looping footage. One mesh per aura, following its creature every frame;
 // the aura's small accent around the creature stays footage. auraLook picks the motif and colour from the aura's
 // design, so no aura needs one chosen by hand.
-import { AURA_VERTEX, AURA_FRAGMENT, AURA_FIELD_DEFAULTS, auraUniforms } from '../tokenshade/aura-field.mjs';
+import { AURA_MOTIFS, AURA_VERTEX, AURA_FRAGMENT, AURA_FIELD_DEFAULTS, auraUniforms } from '../tokenshade/aura-field.mjs';
 import { WAVE_FRAGMENT, WAVE_FIELD_DEFAULTS, waveUniforms } from '../tokenshade/wave-field.mjs';
 import { SWARM_FRAGMENT, SWARM_FIELD_DEFAULTS, swarmUniforms } from '../tokenshade/swarm-field.mjs';
 
@@ -46,15 +46,31 @@ export function auraLook(recipe) {
   return { motif, color: hex ? parseInt(hex.slice(1), 16) : AURA_FIELD_DEFAULTS.color, inward };
 }
 
+// A saved aura's reach as its own stage asks (pure): the motif and colour chosen there, else what the design suggests.
+export function reachLook(recipe, stage) {
+  const auto = auraLook(recipe), motif = stage?.areaMotif;
+  return { motif: motif && motif !== 'auto' && motif !== 'swarm' && motif in AURA_MOTIFS ? motif : auto.motif, color: stage?.tintEnabled && TINT.test(stage.tint ?? '') ? parseInt(stage.tint.slice(1), 16) : auto.color, inward: auto.inward };
+}
+// A catalog aura copied to be customized (pure): under the Tokenshade aura style its reach stays Tokenshade, with the motif and
+// colour it was showing written down, ready to change. Under JB2A, or with no reach, it is as it was.
+export function withAuraStyle(recipe, style) {
+  const at = style === 'tokenshade' ? (recipe?.stages ?? []).findIndex((s) => s.kind === 'aura' && s.auraRadius > 0) : -1;
+  if (at < 0) return recipe;
+  const look = auraLook(recipe);
+  return { ...recipe, stages: recipe.stages.map((s, i) => (i === at ? { ...s, areaLook: 'tokenshade', areaMotif: look.motif, tintEnabled: true, tint: `#${look.color.toString(16).padStart(6, '0')}` } : s)) };
+}
+
 // A template stage set to the Tokenshade area look: what every client needs to draw its area as a ground field. A
 // round one (a burst or emanation) is an aura field; a cone or line is waves rolling out along it from its origin
 // (tokenshade/wave-field.mjs: a sonic breath). Areas drawn on a tile keep their footage (null).
 // The swarm motif (tokenshade/swarm-field.mjs) draws a swarm instead: round a creature for an impact or aura stage
 // (`grid` px sizes it to the creature), over a round area, or pouring along a cone or line.
-export function groundTag(stage, context, recipe, { grid = 100 } = {}) {
+export function groundTag(stage, context, recipe, { grid = 100, distance = 5 } = {}) {
   const area = context?.area;
   if (stage?.areaLook !== 'tokenshade' || stage.areaTile) return null;
   if (stage.areaMotif === 'swarm') return swarmTag(stage, area, grid);
+  // An aura's reach played on its own (a preview of a customized aura): as far as it reaches from the creature's edge.
+  if (stage.kind === 'aura' && stage.auraRadius > 0) return { ...reachLook(recipe, stage), radius: (Number(stage.destination?.w) || grid) / 2 + (stage.auraRadius * grid) / (distance > 0 ? distance : 5) };
   if (stage.kind !== 'template') return null;
   if (['line', 'cone'].includes(area?.type)) return waveTag(stage, area);
   if (!area?.diameter) return null;

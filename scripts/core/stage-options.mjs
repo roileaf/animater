@@ -170,10 +170,11 @@ export function normalizeOptions(stage) {
   if(result.maskArea === undefined || stage.kind !== 'template')delete result.maskArea;
   // Line and cone art ends at the area's far edge unless it reaches past it.
   if(!result.areaReach || stage.kind !== 'template')delete result.areaReach;
-  // The Tokenshade area look is for template stages only; JB2A (and its motif) is the unset default.
+  // The Tokenshade area look is for template stages and an aura's reach; JB2A (and its motif) is the unset default.
   // A swarm may also be drawn round a creature (an impact or aura stage).
   const swarmOnCreature = ['impact', 'aura'].includes(stage.kind) && result.areaMotif === 'swarm';
-  if(result.areaLook !== 'tokenshade' || (stage.kind !== 'template' && !swarmOnCreature)){delete result.areaLook;delete result.areaMotif;}
+  const auraReach = stage.kind === 'aura' && Number(stage.auraRadius) > 0;
+  if(result.areaLook !== 'tokenshade' || (stage.kind !== 'template' && !swarmOnCreature && !auraReach)){delete result.areaLook;delete result.areaMotif;}
   else if(result.areaMotif === 'auto')delete result.areaMotif;
   if (["travel", "projectile"].includes(stage.kind) && stage.travelDestination === "area") {
     result.areaLayout = stage.areaLayout === "fan" ? "fan" : "fit";

@@ -689,3 +689,19 @@ test('Play once: a recipe of your own plays its whole lasting layer, a catalog l
  assert.ok(f.calls.some(c=>c[0]==='duration'&&c[1]===6000));
  await f.manager.destroy();
 });
+
+test('A customized aura goes by its own Area look, whatever the Aura style',async()=>{
+ const run=async(style,stageChange)=>{
+  const entry=PF2E_EFFECTS.find(e=>e.name==='Aura: Protective Wards'),item=native(entry),f=fixture([item]);
+  item.system.rules=[{key:'Aura',slug:'protective-wards',radius:15}];f.actor.auras=new Map([['protective-wards',{slug:'protective-wards',radius:15,effects:[]}]]);
+  const fields=[];f.manager.host.auraStyle=()=>style;f.manager.host.auraField={add:(key,o)=>fields.push(o),remove(){}};
+  const design=stateRecipe(entry),at=design.stages.findIndex(s=>s.kind==='aura'&&s.persist),own={...design,stages:design.stages.map((s,i)=>i===at?{...s,auraRadius:15,...stageChange}:s)};
+  f.manager.host.recipes=()=>[own];f.manager.host.resolveStateRecipe=()=>own;
+  await f.manager.reconcile();await flush();await f.manager.destroy();
+  return {fields};
+ };
+ const chosen=await run('jb2a',{areaLook:'tokenshade',areaMotif:'frost',tintEnabled:true,tint:'#112233'});
+ assert.equal(chosen.fields.length,1,'Tokenshade by its own choice');assert.equal(chosen.fields[0].look.motif,'frost');assert.equal(chosen.fields[0].look.color,0x112233);
+ const kept=await run('tokenshade',{});
+ assert.equal(kept.fields.length,0,'saved without the choice: its footage, as before');
+});

@@ -75,6 +75,10 @@ export function skyNeedsBuilding(change = {}) {
   }
   return false;
 }
+// How fast the cloud deck goes for a wind, in its own units a second (pure).
+export const cloudSpeed = (wind) => 0.012 + 0.075 * (Number(wind) || 0);
+// What a sky is built from, as one string (pure): the same, and building it again would change nothing. A shape's holes count.
+export const skyBuildKey = (args) => JSON.stringify(args, (_, v) => (Array.isArray(v) && v.holes ? { shape: [...v], holes: v.holes } : v));
 // How the cloud deck looks for a cover (pure), as [how much of the sky it takes, how heavy, how soft its gaps, how dim the whole scene]. It shows in what it does to the land: sunlit patches and firm shadows under a broken sky; dim and cool, with slow lighter patches, once it closes; darker again with rain falling from it.
 const DRY_DECK = [[0, [0.1, 0, 0, 1]], [0.3, [0.42, 0, 0, 1]], [0.65, [0.62, 0.2, 0.1, 0.96]], [0.9, [0.66, 0.75, 0.7, 0.97]], [1, [0.68, 0.8, 0.75, 0.96]]];
 const WET_DECK = [[0.5, [0.54, 0.1, 0.05, 0.98]], [0.8, [0.68, 0.55, 0.8, 0.98]], [0.9, [0.74, 0.7, 1, 0.97]], [1, [0.76, 0.75, 1, 0.95]]];
@@ -189,6 +193,7 @@ uniform float uFxOn;
 // it, a light over all, aurora, sparks, wisps (rgb, amount), and the odd ones: rays, static, meteors, a swirl (kind, amount).
 uniform vec4 uFallA, uFallAColor, uFallB, uFallBColor, uFogW, uCloudSky, uGlow, uAurora, uSparks, uWisps, uOdd;
 uniform vec2 uCloudShift;
+uniform float uCloudRun;
 uniform float uCover, uSwirlAmount, uFallsDown, uFallTime;
 uniform vec3 uEye;
 uniform float uGloom; // how dark a closed sky makes the outdoors, by day (stormGloom)
@@ -712,7 +717,7 @@ void main(){
       cloud = smoothstep(0.12, 0.3, texture2D(uFxClouds, vUv - uFxShift).a) * 0.5 * sun * over;
     } else if (uClouds > 0.05 && uStrength > 0.005) {
       // (A cloud's shadow lies uCloudShift away from it: the cloud drawn above it, where the sun throws it.)
-      float edge = mix(0.74, 0.3, uDeck.x), d = cloudDeck(px - uCloudShift, t, uWindDir, uWind, uGrid);
+      float edge = mix(0.74, 0.3, uDeck.x), d = cloudDeck(px - uCloudShift, t, uCloudRun, uWindDir, uWind, uGrid);
       vec3 lit = vec3(1.1, 1.06, 0.97) * (1.0 - 0.38 * uDeck.y), under = mix(vec3(0.56, 0.6, 0.68), vec3(0.47, 0.5, 0.57), min(1.0, uDeck.y * 0.5 + smoothstep(edge, edge + 0.24, d) * (0.45 + 0.5 * uDeck.y)));
       // What it does to the light, as a wash: normal blending only, so how much it darkens, and what light it adds back.
       // (Never most of the day's light: broken cloud only passing shade, a closed sky dull but plainly day.)
@@ -1171,7 +1176,10 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
   let bow = 0, bowTo = 0;
   // The pass over the roofs: the weather's light (`casting`) and the clouds' shadows (`clouding`).
   let casting = false, tinting = false, clouding = false, weathering = false, fxOn = false, fxShadow = null;
+  // The clocks outlast the meshes: built again, the clouds and what falls carry on from where they are.
+  const clocks = { time: 0, run: 0, fall: 0 };
   const drop = () => {
+    if (own[0]) { clocks.time = own[0].uTime; clocks.run = own[0].uCloudRun; clocks.fall = own[0].uFallTime; }
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
     try { roofShown?.destroy(true); } catch { /* gone */ }
@@ -1264,8 +1272,8 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       const uniforms = {
         uWater: bake(water, 1), uLow: bakeWidened(), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
-        uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: 0, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: 0, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: clocks.time, uCloudRun: clocks.run, uWind: 0.3, uStrength: 0, uClouds: 0,
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: clocks.fall, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -1353,7 +1361,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     shade({ sunlit = null, trees = null, crowns = null } = {}) { set({ uSunlit: sunlit ?? PIXI.Texture.WHITE, uTreeShade: trees ?? PIXI.Texture.EMPTY, uCrowns: crowns ?? PIXI.Texture.EMPTY }); },
     tick(seconds) {
       // (What falls keeps its own clock: a change of speed carries on from where it is, not a jump.)
-      for (const u of own) { u.uTime += seconds; u.uFallTime += seconds * fallSpeed; }
+      for (const u of own) { u.uTime += seconds; u.uFallTime += seconds * fallSpeed; u.uCloudRun += seconds * cloudSpeed(u.uWind); }
       if (bow !== bowTo) {
         bow += Math.max(-seconds / 8, Math.min(seconds / 8, bowTo - bow));
         for (const u of own) u.uBow[3] = bow;
@@ -1362,6 +1370,9 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     },
     clear: drop,
     get shown() { return meshes.some((m) => m.visible); },
+    // Whether it stands on the map at all, shown or not: nothing needs building again while what it was built from is the same.
+    get standing() { return meshes.length > 0; },
+    get cloudRun() { return own[0]?.uCloudRun ?? 0; },
     // The clock its clouds run by, for anything that must agree on where they are.
     // The shape of the snow lying on the ground is baked here the first time snow lies on this scene, once.
     snowGround() {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.5.3 (unreleased)
+
+- **Drawn clouds.** A new Drawn clouds effect in the Weather panel puts real clouds over the map, each with its own shadow, above the rain and the roofs. Cloud cover says how many, from a few fair clouds to a closed, rolling overcast, and a Cloud transparency slider sets how much of the map shows through. Off unless the GM turns it on for a scene.
+- **Cloud shadows drift smoothly, and puddles stop blinking.** Every tick of the game clock rebuilt the sky, which threw the clouds back to where they started and redrew the puddles. Now it's only rebuilt when the map itself changes, and the clouds carry on from where they are when it is, or when the wind changes.
+- **New footprints for every creature.** Redrawn from how real tracks look: long-toed talons, heavy clawed dragon feet, slender five-toed lizards, dog and cat paws, round horse hooves and cloven ones, soled boots, and more. Cats and cloven animals are recognised by name.
+- **Tracks that look walked.** Every step now turns its own way, lands a little off, presses in deeper or shallower and varies slightly in size. Left and right feet are mirrored, and every player sees the same tracks. Prints in sand are now pressed in like those in snow and mud.
+- **Tokenshade auras can be customized.** With Aura style set to Tokenshade, Customize now opens the aura as Tokenshade, with its pattern and colour ready to change, instead of its JB2A clip. Any customized aura can switch with its new Area look choice, and customized auras you already have keep their JB2A look until you switch them.
+- **Dragon tread, properly this time.** On snow and mud, a tail's drag was drawn as a giant claw print at every stride, the real cause of the "three feet". It's a thin line again. Reptile claws had the same problem, and slither and ooze trails on those floors no longer turn into prints either.
+
 ## 3.5.2 (2026-11-07)
 
 - **NPC breaths and other area abilities play with nobody in the area.** Dragon's Breath, Acid Breath, Cold Breath and others stopped dead when the template caught no one, because the creature's lunge had no one to aim at. It now lunges toward the area.

@@ -542,10 +542,12 @@ export class AnimaterRuntime {
         // ...and tints the screen from this one (engines/camera/screen-tint.mjs).
         const animaterTint = tints?.get(s) ?? null;
         // ...and draws a round area as a Tokenshade ground field from this one (playback/aura-fields.mjs groundTag).
-        const animaterGround = groundTag(s, context, recipe, { grid: this.host.gridSize?.() ?? 100 });
+        const animaterGround = groundTag(s, context, recipe, { grid: this.host.gridSize?.() ?? 100, distance: this.host.gridDistance?.() ?? 5 });
         e.addOverride?.(async (_, data) => ({ ...data, animaterTier, animaterLasting, ...(animaterActor ? { animaterActor } : {}), ...(animaterRecipe ? { animaterRecipe } : {}), ...(preview ? { animaterPreview: true } : {}), ...(animaterLight ? { animaterLight } : {}), ...(animaterMark ? { animaterMark } : {}), ...(animaterWarp ? { animaterWarp } : {}), ...(animaterShake ? { animaterShake } : {}), ...(animaterTint ? { animaterTint } : {}), ...(animaterGround ? { animaterGround } : {}), ...(animaterTether ? { animaterTether } : {}) }));
         // Its footage still runs the clock (when the area shows and ends), unseen: the shader draws the area.
-        if (animaterGround || animaterTether) e.opacity(0);
+        // ...and an aura's other reach stages stand down for it, as they do on the token.
+        const coveredReach = !animaterGround && s.kind === "aura" && s.auraRadius > 0 && recipe.stages.find((o) => o.kind === "aura" && o.auraRadius > 0)?.areaLook === "tokenshade";
+        if (animaterGround || animaterTether || coveredReach) e.opacity(0);
         if (spread?.get(s)) e.delay(spread.get(s));
         if (s.kind === "sprite") e.copySprite(s.destination);
         else e.file(s.asset);

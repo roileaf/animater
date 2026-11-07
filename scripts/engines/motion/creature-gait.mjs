@@ -6,9 +6,11 @@
 //   boots    shoe or boot soles, left and right in turn (humanoids, giants, fey, fiends, celestials, undead, constructs...)
 //   paws     a pad and four toe dots, a quadruped's staggered pairs (wolves, cats, bears, rats, beasts in general)
 //   padded   broad rounded pads (elephants, mammoths, mastodons); webbed: soft splayed amphibian feet (frogs, toads)
+//            (printShape: cats leave their own round, clawless print)
 //   talons   three forward toes and a back spur with long claw tips, left and right (birds, griffons, raptors)
 //   dragon   a broad heavy pad, four thick toes ending in hooked claw gouges, four-legged, tail drag (dragons, wyverns, drakes)
 //   hooves   crescents, a quadruped's staggered pairs (horses, deer, cattle, goats, centaurs, minotaurs)
+//            (printShape: deer, cattle, goats, pigs and their like leave a cloven one)
 //   claws    splayed five-toed clawed prints in staggered pairs and a tail drag between them (lizards, crocodiles)
 //   slither  one continuous wavy groove, no prints (snakes, nagas, worms)
 //   ooze     one smooth, wide smear (oozes, slimes, jellies, puddings)
@@ -96,6 +98,17 @@ export function creatureGait({ system = '', actor = null, name = '' } = {}) {
   if (typeof type === 'object' && type.swarm) return 'legs';
   for (const [gait, keys] of TRAIT_GAITS) if (keys.includes(typeValue) || keys.some((k) => traits.includes(k))) return gait;
   return 'unknown';
+}
+
+// The print a creature leaves within its gait (pure): the gait's own, unless its name says otherwise. Only the picture changes: its cadence and sounds stay the gait's.
+const CAT_NAMES = words('cat kitten panther tiger tigress lion lioness leopard jaguar cheetah lynx bobcat cougar puma sabertooth smilodon displacer manticore sphinx');
+const CAT_TAILS = tails('cat');
+const CLOVEN_NAMES = words('elk deer stag doe moose reindeer caribou antelope gazelle goat ram sheep bull cow cattle ox oxen bison buffalo aurochs boar pig hog swine camel minotaur satyr faun');
+export function printShape(gait, { actor = null, name = '' } = {}) {
+  const text = `${name ?? ''} ${actor?.name ?? ''}`;
+  if (gait === 'paws' && (CAT_NAMES.test(text) || CAT_TAILS.test(text))) return 'cat';
+  if (gait === 'hooves' && CLOVEN_NAMES.test(text)) return 'cloven';
+  return gait;
 }
 
 // Flight speed or a flying condition says nothing about wings. Only positive anatomy evidence earns wingbeats;

@@ -102,7 +102,7 @@ const SHAPES = {
     g.beginFill(spec.color, 0.9); g.drawCircle(0.75 * R, -0.45 * R, 0.24 * R); g.endFill();
   },
   // A footprint in the creature's own shape (its gait), toe along +x.
-  print(g, spec) { (PRINTS[spec.gait] ?? PRINTS.boots)(g, spec.color); },
+  print(g, spec) { drawPrint(g, spec.gait, spec.color, spec.mirror === true); },
   // A burrower's churned earth along +x: a low soft ridge with its seeded lumps (unit space) heaped on it, each lump
   // with a darker hollow beside it, so it reads as crumbly turned soil.
   // A burrow's mouth: a dark pit (deepest at its heart) ringed by lumps of loose earth, each with a soft shadow.
@@ -145,103 +145,47 @@ const SHAPES = {
     g.lineStyle(0);
   },
 };
-// Strokes from (x, y) out along `angle` for `length`, with a thinner claw tip beyond each when `tip` is set.
-function toes(g, color, x, y, angles, length, width, tip = 0) {
-  g.lineStyle(width, color, 1);
-  for (const a of angles) { g.moveTo(x, y); g.lineTo(x + Math.cos(a) * length, y + Math.sin(a) * length); }
-  if (tip) {
-    g.lineStyle(width * 0.45, color, 1);
-    for (const a of angles) {
-      g.moveTo(x + Math.cos(a) * length, y + Math.sin(a) * length);
-      g.lineTo(x + Math.cos(a) * (length + tip), y + Math.sin(a) * (length + tip));
-    }
-  }
-  g.lineStyle(0);
-}
-const dot = (g, color, x, y, r, alpha = 1) => { g.beginFill(color, alpha); g.drawCircle(x, y, r); g.endFill(); };
-// One footprint per gait (creature-gait.mjs), each drawn once into the DRAW box.
+// What a print is being drawn in, and which foot: a left foot is the right one's mirror.
+let printInk = 0xffffff, printFlip = 1;
+// A closed, smooth shape through points given in R units.
+const smooth = (g, pts) => { const n = pts.length, mid = (a, b) => [((a[0] + b[0]) * R) / 2, ((a[1] + b[1]) * R * printFlip) / 2], s = mid(pts[n - 1], pts[0]); g.beginFill(printInk, 1); g.moveTo(s[0], s[1]); for (let i = 0; i < n; i++) { const m = mid(pts[i], pts[(i + 1) % n]); g.quadraticCurveTo(pts[i][0] * R, pts[i][1] * R * printFlip, m[0], m[1]); } g.endFill(); };
+const oval = (g, x, y, rx, ry, turn = 0) => { const c = Math.cos(turn), s = Math.sin(turn); smooth(g, Array.from({ length: 10 }, (_, i) => { const a = (i * Math.PI) / 5, px = Math.cos(a) * rx, py = Math.sin(a) * ry; return [x + px * c - py * s, y + px * s + py * c]; })); };
+// A finger from a base along an angle: knobbly at its joints, thinning, ending in a claw that hooks to one side (`gap`: a claw mark standing clear of it).
+const finger = (g, x, y, angle, len, wide, { claw = 0, hook = 0.25, knobs = 2, gap = 0 } = {}) => {
+  const c = Math.cos(angle), s = Math.sin(angle), at = (d, o) => [x + c * d - s * o, y + s * d + c * o], one = [], two = [];
+  for (let i = 0; i <= 8; i++) { const t = i / 8, w = wide * (1 - 0.42 * t) * (1 + 0.14 * Math.sin(t * Math.PI * 2 * knobs)); one.push(at(t * len, w)); two.unshift(at(t * len, -w)); }
+  smooth(g, [...one, ...two]);
+  if (!claw) return;
+  const d0 = len + gap, w = wide * 0.5, tip = at(d0 + claw, hook * claw), midA = at(d0 + claw * 0.55, w * 0.55 + hook * claw * 0.3), midB = at(d0 + claw * 0.55, -w * 0.3 + hook * claw * 0.4), a = at(d0 - 0.02, w), b = at(d0 - 0.02, -w), to = ([px, py]) => [px * R, py * R * printFlip];
+  g.beginFill(printInk, 1); g.moveTo(...to(a)); g.quadraticCurveTo(...to(midA), ...to(tip)); g.quadraticCurveTo(...to(midB), ...to(b)); g.endFill();
+};
+// One footprint per print shape (a gait's own, or creature-gait.mjs printShape's), each drawn once into the DRAW box: along +x, its
+// outer side +y (a right foot). Drawn from what real tracks show: toe counts and proportions, claws or none, which pads leave a mark.
 const PRINTS = {
-  padded(g, color) {
-    drawSoftEllipse(g, color, 0.68 * R, 0.62 * R, 3);
-  },
-  webbed(g, color) {
-    g.beginFill(color, 0.65);
-    g.drawPolygon([-0.45 * R, 0, 0.5 * R, -0.7 * R, 0.36 * R, -0.22 * R, 0.8 * R, 0, 0.36 * R, 0.22 * R, 0.5 * R, 0.7 * R]);
-    g.endFill();
-    toes(g, color, -0.3 * R, 0, [-0.65, 0, 0.65], 0.95 * R, 0.1 * R, 0);
-  },
-  // A boot: sole and heel.
-  boots(g, color) {
-    drawSoftEllipse(g, color, 0.62 * R, 0.4 * R, 2, 0.3 * R);
-    drawSoftEllipse(g, color, 0.34 * R, 0.3 * R, 2, -0.62 * R);
-  },
-  // A paw: a broad pad and four toe dots fanned ahead of it.
-  paws(g, color) {
-    drawSoftEllipse(g, color, 0.42 * R, 0.45 * R, 2, -0.25 * R);
-    for (const [x, y] of [[0.42, -0.52], [0.62, -0.18], [0.62, 0.18], [0.42, 0.52]]) dot(g, color, x * R, y * R, 0.17 * R, 0.85);
-  },
-  // A talon: three long forward toes and a back spur, each with a claw tip, and a small heel pad.
-  talons(g, color) {
-    toes(g, color, -0.2 * R, 0, [-0.55, 0, 0.55], 0.8 * R, 0.13 * R, 0.25 * R);
-    toes(g, color, -0.2 * R, 0, [Math.PI], 0.5 * R, 0.13 * R, 0.18 * R);
-    dot(g, color, -0.2 * R, 0, 0.17 * R);
-  },
-  // A dragon's foot: a broad, deep-pressed pad (wider than long, darker at its heart), four short thick toes fanned
-  // ahead, each ending in a long hooked claw gouge dug into the ground.
-  dragon(g, color) {
-    drawSoftEllipse(g, color, 0.46 * R, 0.6 * R, 3, -0.28 * R);
-    g.beginFill(color, 0.45); g.drawEllipse(-0.3 * R, 0, 0.26 * R, 0.36 * R); g.endFill();
-    const toesAt = [-0.62, -0.2, 0.2, 0.62];
-    for (const a of toesAt) {
-      const bx = -0.05 * R + Math.cos(a) * 0.12 * R, by = Math.sin(a) * 0.32 * R;
-      const tx = bx + Math.cos(a) * 0.42 * R, ty = by + Math.sin(a) * 0.42 * R;
-      // The toe: a thick pressed stroke.
-      g.lineStyle(0.2 * R, color, 1); g.moveTo(bx, by); g.lineTo(tx, ty);
-      // The claw: a tapering gouge that hooks inward at its tip.
-      const hook = a * 0.35;
-      g.lineStyle(0.09 * R, color, 1); g.moveTo(tx, ty);
-      g.lineTo(tx + Math.cos(a) * 0.22 * R, ty + Math.sin(a) * 0.22 * R);
-      g.lineStyle(0.05 * R, color, 1);
-      g.lineTo(tx + Math.cos(a - hook) * 0.36 * R, ty + Math.sin(a - hook) * 0.36 * R);
-    }
-    g.lineStyle(0);
-  },
-  // A hoof: a thick crescent open to the back, with a faint inside.
-  hooves(g, color) {
-    g.lineStyle(0.26 * R, color, 1);
-    for (let i = 0; i <= 10; i++) {
-      const a = -2.1 + (4.2 * i) / 10, x = Math.cos(a) * 0.62 * R, y = Math.sin(a) * 0.72 * R;
-      if (i) g.lineTo(x, y); else g.moveTo(x, y);
-    }
-    g.lineStyle(0);
-    g.beginFill(color, 0.25); g.drawEllipse(0, 0, 0.4 * R, 0.5 * R); g.endFill();
-  },
-  // A lizard's foot: a palm and five splayed, clawed toes.
-  claws(g, color) {
-    drawSoftEllipse(g, color, 0.36 * R, 0.4 * R, 2, -0.3 * R);
-    toes(g, color, -0.15 * R, 0, [-1.15, -0.58, 0, 0.58, 1.15], 0.6 * R, 0.11 * R, 0.24 * R);
-  },
-  // A walking plant's foot: a knot pressed into the ground, root tendrils splaying ahead and two trailing behind, each
-  // bending once and thinning to its tip.
-  roots(g, color) {
-    drawSoftEllipse(g, color, 0.3 * R, 0.27 * R, 2);
-    const root = (angle, length, width, bend) => {
-      const c = Math.cos(angle), s = Math.sin(angle), nx = -s, ny = c;
-      const pts = [[0, 0], [0.35, bend], [0.7, -bend * 0.5], [1, bend * 0.3]];
-      for (let i = 1; i < pts.length; i++) {
-        const [t0, o0] = pts[i - 1], [t1, o1] = pts[i];
-        g.lineStyle(width * (1.15 - 0.3 * i), color, 1);
-        g.moveTo(c * t0 * length + nx * o0 * R, s * t0 * length + ny * o0 * R);
-        g.lineTo(c * t1 * length + nx * o1 * R, s * t1 * length + ny * o1 * R);
-      }
-    };
-    root(-0.55, 0.85 * R, 0.13 * R, 0.08);
-    root(0.05, 0.95 * R, 0.14 * R, -0.07);
-    root(0.62, 0.8 * R, 0.13 * R, 0.09);
-    root(Math.PI - 0.4, 0.55 * R, 0.11 * R, -0.06);
-    root(Math.PI + 0.45, 0.5 * R, 0.11 * R, 0.06);
-    g.lineStyle(0);
-  },
+  // Sole with a broad ball and a pinched waist, a separate heel with a gap between them; the big toe side is fuller.
+  boots(g) { smooth(g, [[-0.08, -0.3], [0.2, -0.42], [0.55, -0.45], [0.88, -0.32], [0.98, -0.05], [0.84, 0.22], [0.55, 0.36], [0.22, 0.3], [-0.08, 0.2], [-0.14, -0.05]]); smooth(g, [[-0.34, -0.26], [-0.34, 0.2], [-0.62, 0.3], [-0.92, 0.24], [-1.02, -0.02], [-0.92, -0.26], [-0.62, -0.32]]); },
+  // Three long toes (the middle longest), each with its row of pads and a claw mark standing clear; a short spur behind; hardly any heel.
+  talons(g) { finger(g, -0.12, 0, -0.62, 0.72, 0.1, { claw: 0.2, knobs: 2, gap: 0.03 }); finger(g, -0.12, 0, 0.02, 0.92, 0.11, { claw: 0.22, knobs: 3, gap: 0.03 }); finger(g, -0.12, 0, 0.6, 0.66, 0.1, { claw: 0.2, knobs: 2, gap: 0.03, hook: -0.25 }); finger(g, -0.12, 0, Math.PI + 0.05, 0.42, 0.09, { claw: 0.2, knobs: 1, gap: 0.03 }); },
+  // A heavy palm, three long knobbled digits (the middle longest), a thumb set wide and low, every claw long and hooked.
+  dragon(g) { smooth(g, [[-0.82, -0.08], [-0.72, -0.42], [-0.42, -0.56], [-0.08, -0.5], [0.12, -0.26], [0.16, 0.08], [0.1, 0.32], [-0.14, 0.52], [-0.48, 0.58], [-0.74, 0.34]]); finger(g, -0.1, -0.3, -0.58, 0.6, 0.17, { claw: 0.32, hook: -0.2 }); finger(g, 0.02, -0.04, -0.06, 0.74, 0.18, { claw: 0.34, hook: 0.2 }); finger(g, -0.02, 0.22, 0.44, 0.62, 0.17, { claw: 0.32, hook: 0.2 }); finger(g, -0.36, 0.46, 1.2, 0.3, 0.13, { claw: 0.26, hook: 0.3, knobs: 1 }); },
+  // A small palm and five slender splayed toes, the fourth longest, all clawed.
+  claws(g) { smooth(g, [[-0.68, -0.14], [-0.48, -0.36], [-0.16, -0.3], [0, -0.05], [-0.04, 0.22], [-0.3, 0.38], [-0.58, 0.26]]); finger(g, -0.2, -0.26, -1.0, 0.34, 0.08, { claw: 0.16, knobs: 1 }); finger(g, -0.1, -0.16, -0.5, 0.56, 0.08, { claw: 0.17 }); finger(g, -0.04, 0, -0.08, 0.72, 0.085, { claw: 0.18 }); finger(g, -0.08, 0.12, 0.3, 0.82, 0.085, { claw: 0.18 }); finger(g, -0.26, 0.3, 1.0, 0.46, 0.08, { claw: 0.17, knobs: 1 }); },
+  // A dog's: a triangular pad, two toes ahead and two outer ones further back, small claw nicks ahead of each.
+  paws(g) { smooth(g, [[-0.72, -0.36], [-0.42, -0.42], [-0.08, -0.14], [-0.08, 0.14], [-0.42, 0.42], [-0.72, 0.36], [-0.62, 0]]); for (const [x, y, t] of [[0.36, -0.18, -0.08], [0.36, 0.18, 0.08], [0.0, -0.52, -0.38], [0.0, 0.52, 0.38]]) { oval(g, x, y, 0.27, 0.15, t); const c = Math.cos(t), s = Math.sin(t); oval(g, x + c * 0.4, y + s * 0.4, 0.07, 0.035, t); } },
+  // A cat's: a broad three-lobed pad, round toes, no claws, one toe leading.
+  cat(g) { smooth(g, [[-0.8, -0.32], [-0.62, -0.14], [-0.82, 0], [-0.62, 0.14], [-0.8, 0.32], [-0.52, 0.5], [-0.14, 0.32], [-0.06, 0], [-0.14, -0.32], [-0.52, -0.5]]); for (const [x, y, t] of [[0.42, -0.14, -0.05], [0.3, 0.24, 0.1], [0.04, -0.54, -0.35], [0.0, 0.58, 0.35]]) oval(g, x, y, 0.24, 0.17, t); },
+  // A wide round pad with blunt toenails along its front edge.
+  padded(g) { oval(g, -0.08, 0, 0.72, 0.78); for (const a of [-0.8, -0.28, 0.28, 0.8]) oval(g, Math.cos(a) * 0.9, Math.sin(a) * 0.96, 0.08, 0.16, a); },
+  // Long splayed toes with bulbs at their tips and a scalloped web between them.
+  webbed(g) { smooth(g, [[-0.5, 0], [-0.1, -0.42], [0.28, -0.48], [0.3, -0.2], [0.56, -0.12], [0.5, 0.14], [0.3, 0.2], [0.28, 0.48], [-0.1, 0.42]]); for (const [a, l] of [[-0.8, 0.86], [-0.05, 1.08], [0.72, 0.9]]) { finger(g, -0.3, 0, a, l, 0.075, { knobs: 1 }); oval(g, -0.3 + Math.cos(a) * l, Math.sin(a) * l, 0.09, 0.09); } },
+  // A horse's: just the round wall, open at the back.
+  hooves(g) { const wall = []; for (let i = 0; i <= 12; i++) { const a = -2.35 + (4.7 * i) / 12; wall.push([Math.cos(a) * 0.86, Math.sin(a) * 0.8]); } for (let i = 12; i >= 0; i--) { const a = -2.35 + (4.7 * i) / 12; wall.push([Math.cos(a) * 0.58, Math.sin(a) * 0.54]); } smooth(g, wall); },
+  // Cloven: two teardrop halves with a gap down the middle, their points forward (a deer, a bull, a goat).
+  cloven(g) { smooth(g, [[-0.6, -0.56], [-0.2, -0.62], [0.4, -0.44], [0.92, -0.12], [0.3, -0.1], [-0.3, -0.1], [-0.62, -0.2]]); smooth(g, [[-0.6, 0.56], [-0.2, 0.62], [0.4, 0.44], [0.92, 0.12], [0.3, 0.1], [-0.3, 0.1], [-0.62, 0.2]]); oval(g, -0.9, -0.32, 0.07, 0.07); oval(g, -0.9, 0.32, 0.07, 0.07); },
+  // A knot with root tendrils, each bending once and thinning.
+  roots(g) { oval(g, 0, 0, 0.3, 0.27); for (const [a, l, w] of [[-0.55, 0.85, 0.09], [0.05, 0.95, 0.1], [0.62, 0.8, 0.09], [Math.PI - 0.4, 0.55, 0.08], [Math.PI + 0.45, 0.5, 0.08]]) { const c = Math.cos(a), s = Math.sin(a), bend = 0.09 * (a > 0 ? 1 : -1); finger(g, 0, 0, a, l * 0.5, w, { knobs: 0 }); finger(g, c * l * 0.46, s * l * 0.46, a + bend * 3, l * 0.56, w * 0.62, { knobs: 0 }); } },
+  // Many legs: small pointed jabs in two rows, each slanting back from the body.
+  legs(g) { for (const x of [-0.6, 0, 0.6]) for (const side of [-1, 1]) { const a = side * (Math.PI / 2 + 0.5); finger(g, x + 0.08, side * 0.4, a, 0.3, 0.075, { knobs: 0 }); } },
   // A fallen leaf along +x: a pointed blade with a darker midrib and a short stem.
   leaf(g, color) {
     g.beginFill(color, 1);
@@ -254,22 +198,20 @@ const PRINTS = {
     g.lineStyle(0.06 * R, dark, 0.9); g.moveTo(-0.85 * R, 0); g.lineTo(-1.1 * R, 0.08 * R);
     g.lineStyle(0);
   },
-  // Many legs: two rows of tiny dots.
-  legs(g, color) {
-    for (const [x, y] of [[-0.6, -0.5], [0, -0.62], [0.6, -0.5], [-0.6, 0.5], [0, 0.62], [0.6, 0.5]]) dot(g, color, x * R, y * R, 0.11 * R);
-  },
 };
+const drawPrint = (g, shape, color, mirror = false) => { printInk = color; printFlip = mirror ? -1 : 1; try { (PRINTS[shape] ?? PRINTS.boots)(g, color); } finally { printInk = 0xffffff; printFlip = 1; } };
 
 // `sunlit()`: the sunlit floor (wall-shadows.mjs: { texture, x, y, scale }, null with no wall shading it), the mask the
 // sun's shadows lie under, so a floor a wall already shades from the sun never darkens twice.
-// A footprint pressed into snow or mud: the print's own shape (its gait's, PRINTS) made a hollow, shaded by a light from
+// A footprint pressed into snow, mud or sand: the print's own shape (its gait's, PRINTS) made a hollow, shaded by a light from
 // the upper left (dark on the side toward it, lit on the far wall) with a little ridge of pushed-up ground round it;
 // `hollow` the floor. Or a wet print (`wet`): the shape as a patchy dark stain. Made once a gait, floor and direction
 // (sixteen), as a picture `N` px wide standing for HOLLOW_SPAN of the DRAW box.
-const HOLLOW_N = 64, HOLLOW_SPAN = 1.3;
+const HOLLOW_N = 96, HOLLOW_SPAN = 1.3;
 const HOLLOW_LOOK = {
   snow: { tint: [78, 92, 118], glint: [255, 255, 255], deep: 0.5, rim: 0.75, ridge: 0.35 },
   mud: { tint: [30, 20, 10], glint: [190, 170, 140], deep: 0.7, rim: 0.45, ridge: 0.55 },
+  sand: { tint: [92, 68, 38], glint: [250, 236, 200], deep: 0.55, rim: 0.5, ridge: 0.45 },
 };
 const blurred = (src, n, radius) => {
   const tmp = new Float32Array(n * n), out = new Float32Array(n * n);
@@ -447,12 +389,12 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
   const hollowTexture = (spec) => {
     const r = renderer?.(); if (!r || typeof document === 'undefined') return null;
     const turn = spec.wet ? 0 : (((Math.round((spec.rotation ?? 0) / (Math.PI / 8)) % 16) + 16) % 16) * (Math.PI / 8);
-    const key = `${spec.gait ?? 'boots'}:${spec.wet ? 'wet' : spec.hollow}:${turn.toFixed(3)}`;
+    const key = `${spec.gait ?? 'boots'}:${spec.mirror === true ? 'left' : 'right'}:${spec.wet ? 'wet' : spec.hollow}:${turn.toFixed(3)}`;
     if (hollows.has(key)) return hollows.get(key);
     let tex = null;
     try {
       const g = new PIXI.Graphics(), holder = new PIXI.Container(), k = HOLLOW_N / (DRAW * HOLLOW_SPAN);
-      (PRINTS[spec.gait] ?? PRINTS.boots)(g, 0xffffff); g.scale.set(k); g.position.set(HOLLOW_N / 2, HOLLOW_N / 2); holder.addChild(g);
+      drawPrint(g, spec.gait, 0xffffff, spec.mirror === true); g.scale.set(k); g.position.set(HOLLOW_N / 2, HOLLOW_N / 2); holder.addChild(g);
       const rt = PIXI.RenderTexture.create({ width: HOLLOW_N, height: HOLLOW_N });
       r.render(holder, { renderTexture: rt, clear: true });
       const raw = r.extract.pixels(rt), mask = new Float32Array(HOLLOW_N * HOLLOW_N);

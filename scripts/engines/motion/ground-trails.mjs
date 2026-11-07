@@ -38,17 +38,17 @@ export function carryStep(state, floor) {
 const printPart = (look, alpha) => ({ color: look.color, alpha, size: PRINT_SIZE, life: look.life, hold: look.hold });
 const printBase = (part) => ({ kind: 'print', vx: 0, vy: 0, alpha: part.alpha, delay: 0, life: part.life, rotation: 0, spin: 0, grow: 0, hold: part.hold });
 // The creature's own prints (its gait's shape and cadence) in a look's colour; tail drags and grooves left out.
-function prints(gait, part, at, { grid = 100, width = grid } = {}) {
+function prints(gait, part, at, { grid = 100, width = grid, seed = '', shape = gait } = {}) {
   if (!PRINTING.has(gait)) return [];
-  return tracksFor(gait, part, printBase(part), at, { grid, width }).filter((p) => p.kind === 'print');
+  return tracksFor(gait, part, printBase(part), at, { grid, width, seed, shape }).filter((p) => p.kind === 'print');
 }
 // The carried prints of one stride (`print` from carryStep) at `at` ({x, y, heading, index}).
-export function carriedPrints(print, at, { grid = 100, width = grid, gait = 'boots' } = {}) {
+export function carriedPrints(print, at, { grid = 100, width = grid, gait = 'boots', seed = '', shape = gait } = {}) {
   const look = print && CARRY[print.floor];
   if (!look) return [];
   const alpha = look.alpha * Math.max(0, Math.min(1, print.strength ?? 1));
   // A wet print shrinks as it dries, its edges going first.
-  return prints(gait, printPart(Number.isFinite(print.color) ? { ...look, color: print.color } : look, alpha), at, { grid, width }).map((p) => ({ ...p, carried: print.floor, ...(look.wet ? { wet: true, grow: -0.4 } : {}) }));
+  return prints(gait, printPart(Number.isFinite(print.color) ? { ...look, color: print.color } : look, alpha), at, { grid, width, seed, shape }).map((p) => ({ ...p, carried: print.floor, ...(look.wet ? { wet: true, grow: -0.4 } : {}) }));
 }
 
 // Same text, same numbers.

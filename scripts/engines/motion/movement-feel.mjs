@@ -439,9 +439,18 @@ export function shedLeaf(floor, at, { width = 100, life = 15000 } = {}) {
 }
 const mod = (n, m) => ((n % m) + m) % m;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+// How a foot sits to the line of travel, in degrees: its usual turn outward (a bird's turn a little in), and how much each step differs from that.
+export const STEP_TURN = Object.freeze({ boots: [7, 4], talons: [-4, 5], dragon: [16, 6], claws: [22, 8], paws: [3, 5], cat: [3, 5], padded: [6, 4], webbed: [25, 8], hooves: [1, 3], cloven: [1, 3], roots: [10, 10], legs: [0, 14] });
+// A number from -1 to 1 for one step of one creature (pure): the same on every screen.
+export function stepNoise(seed, step, salt) {
+  let h = 2166136261; const text = `${seed}:${step}:${salt}`;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909);
+  return (((h ^ (h >>> 16)) >>> 0) / 4294967295) * 2 - 1;
+}
 // One stride's tracks for `gait` from a floor's print part. Big creatures print less often (a Huge one every other
 // stride, a Gargantuan or bigger every third) with bigger prints; grooves and smears never break.
-export function tracksFor(gait, part, base, at, { grid, width }) {
+export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape = gait }) {
   // 'unknown' (a creature Animater cannot place, or a wheeled thing) and any other unlisted gait: no tracks at all.
   const track = TRACKS[gait], heading = at.heading ?? 0, index = at.index ?? 0;
   if (!track) return [];
@@ -453,25 +462,30 @@ export function tracksFor(gait, part, base, at, { grid, width }) {
     radius: half * 1.08, rotation: heading, grow: 0, flip: mod(index, 2) ? 1 : -1, ...extra });
   if (track.feet === 'groove') return [segment('slither', { amp: clamp((0.1 * width) / half, 0.04, 0.5), thick: clamp((0.05 * width) / half, 0.02, 0.25) })];
   if (track.feet === 'smear') return [segment('ooze', { ry: clamp((0.32 * width) / half, 0.15, 1), alpha: part.alpha * 0.8 })];
-  const out = [];
-  if (track.tail) out.push(segment('claws', { amp: clamp((0.03 * width) / half, 0.01, 0.2), thick: clamp((0.025 * width) / half, 0.01, 0.12), alpha: part.alpha * 0.6 }));
+  const marks = [];
+  if (track.tail) marks.push(segment('claws', { amp: clamp((0.03 * width) / half, 0.01, 0.2), thick: clamp((0.025 * width) / half, 0.01, 0.12), alpha: part.alpha * 0.6 }));
   const squares = width / (grid || 100), every = track.feet === 'paced' ? Math.max(1, Math.round(squares * 0.75)) : squares >= 5 ? 3 : squares >= 3 ? 2 : 1;
-  if (mod(index - 1, every)) return out;
+  if (mod(index - 1, every)) return marks;
   const step = Math.floor((index - 1) / every), side = mod(step, 2) ? 1 : -1;
-  const print = (d, a, extra) => ({ ...base, color: part.color, ...place(d * width, a * width), radius: width * part.size * track.size,
-    rotation: heading, grow: 0, gait, ...extra });
-  if (track.feet === 'quad') out.push(print(0.16, 0.1 * side), print(-0.16, 0.13 * side, { hind: true }));
-  else if (track.feet === 'paced') out.push(print(0, track.spread * side));
-  else if (track.feet === 'cluster') out.push(print(0, 0.05 * side));
-  else out.push(print(0, 0.12 * side));
-  return out;
+  // No step is like the last: it turns its own way, lands a little off, presses in deeper or shallower and comes out a touch bigger or smaller.
+  const [out, by] = STEP_TURN[shape] ?? [0, 0];
+  const print = (d, a, extra) => {
+    const foot = `${index}${extra?.hind ? 'h' : ''}`, noise = (salt) => stepNoise(seed, foot, salt), outer = a < 0 ? -1 : 1, depth = 0.65 + 0.35 * (0.5 + 0.5 * noise('depth'));
+    return { ...base, color: part.color, ...place(d * width + noise('along') * grid * 0.025, a * width + noise('across') * grid * 0.02), radius: width * part.size * track.size * (1 + 0.06 * noise('size')),
+      alpha: (Number.isFinite(base.alpha) ? base.alpha : part.alpha) * depth, depth, rotation: heading + ((outer * out + by * noise('turn')) * Math.PI) / 180, mirror: outer < 0, grow: 0, gait: shape, ...extra };
+  };
+  if (track.feet === 'quad') marks.push(print(0.16, 0.1 * side), print(-0.16, 0.13 * side, { hind: true }));
+  else if (track.feet === 'paced') marks.push(print(0, track.spread * side));
+  else if (track.feet === 'cluster') marks.push(print(0, 0.05 * side));
+  else marks.push(print(0, 0.12 * side));
+  return marks;
 }
 
 // What one stride kicks up at `at` ({x, y, heading, index}): particle specs in canvas pixels, ages in milliseconds,
 // turns in radians. `width` is the token's width in pixels (prints are sized and spaced by it).
 // `gait` (creature-gait.mjs) shapes the tracks: boots by default; 'unknown' raises the floor's dust (and tramples
 // grass) but leaves no tracks; 'none' (incorporeal) leaves nothing at all, not even dust.
-export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width = grid, gait = 'boots', amount = 1 } = {}) {
+export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width = grid, gait = 'boots', amount = 1, shape = gait } = {}) {
   const look = FLOOR_LOOK[floor] ?? FLOOR_LOOK.stone;
   if (!(density > 0) || gait === 'none') return [];
   const index = at.index ?? 0, heading = at.heading ?? 0, back = heading + Math.PI, out = [];
@@ -509,9 +523,10 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
       out.push({ ...base, color: part.color, light: part.light, x: at.x + Math.cos(across) * off, y: at.y + Math.sin(across) * off,
         radius: width * part.size, rotation: heading, grow: 0, spring: part.spring ?? 0, lasting: true, blades });
     } else if (part.emit === 'print') {
-      // In snow and mud a print is a hollow pressed into the ground (drawn so where the layer can).
-      const pressed = floor === 'snow' || floor === 'mud';
-      out.push(...tracksFor(gait, part, base, at, { grid, width }).map((p) => (pressed ? { ...p, hollow: floor, alpha: 1 } : p)));
+      // In snow, mud and sand a print is a hollow pressed into the ground (drawn so where the layer can). A groove stays a
+      // groove: a tail's drag or a snake's furrow is no foot, and as a hollow it would draw as a giant print of one.
+      const pressed = floor === 'snow' || floor === 'mud' || floor === 'sand';
+      out.push(...tracksFor(gait, part, base, at, { grid, width, seed, shape }).map((p) => (pressed && p.kind !== 'groove' ? { ...p, hollow: floor, alpha: p.depth ?? 1 } : p)));
     } else if (part.emit === 'crack') {
       if (random() >= (part.chance ?? 1)) return;
       out.push({ ...base, color: part.color, x: at.x, y: at.y, radius: unit * part.size * (0.8 + random() * 0.4),
@@ -1319,7 +1334,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     const feet = feetOf(token, at);
     const floor = floorOf(feet, token);
     if (floor === NO_FLOOR) return;
-    const opts = { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots', amount: kickAmount() };
+    const opts = { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots', shape: token.printShape ?? token.gait ?? 'boots', amount: kickAmount() };
     // A burrower churns the earth instead of stepping on it; a swimmer leaves a wake on water; a jumper marks nothing
     // until it lands; everything else (walk, climb, crawl) marks its floor as a walker does.
     let specs;

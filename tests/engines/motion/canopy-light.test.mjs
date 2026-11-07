@@ -109,6 +109,6 @@ test('no sun flecks under a closed sky; all of them under broken cloud', async (
 
 test('the sky and the trees share one pattern for where a cloud is', async () => {
   const { CLOUD_DECK } = await import('../../../scripts/engines/motion/cloud-deck.mjs');
-  assert.match(CLOUD_DECK, /float cloudDeck\(vec2 px, float t, vec2 dir, float wind, float grid\)/);
+  assert.match(CLOUD_DECK, /float cloudDeck\(vec2 px, float t, float run, vec2 dir, float wind, float grid\)/);
   assert.ok(!CLOUD_DECK.includes('`'));
 });

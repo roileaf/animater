@@ -316,3 +316,19 @@ test('turning weather off on a scene builds nothing again', async () => {
   const { skyNeedsBuilding } = await import('../../../scripts/engines/motion/sky-light.mjs');
   assert.equal(skyNeedsBuilding({ flags: { animater: { weatherOff: true } } }), false);
 });
+
+test('a sky is built again only when what it is built from changes, its holes included', async () => {
+  const { skyBuildKey } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const shape = () => Object.assign([0, 0, 10, 0, 10, 10], { holes: [[1, 1, 2, 1, 2, 2]] });
+  assert.equal(skyBuildKey({ water: [shape()], grid: 100 }), skyBuildKey({ water: [shape()], grid: 100 }));
+  assert.notEqual(skyBuildKey({ water: [shape()], grid: 100 }), skyBuildKey({ water: [[0, 0, 10, 0, 10, 10]], grid: 100 }), 'the hole counts');
+  assert.notEqual(skyBuildKey({ water: [], grid: 100 }), skyBuildKey({ water: [], grid: 200 }));
+});
+test('the cloud deck goes by how far it has run, not its clock times the wind', async () => {
+  const { cloudSpeed } = await import('../../../scripts/engines/motion/sky-light.mjs');
+  const { CLOUD_DECK } = await import('../../../scripts/engines/motion/cloud-deck.mjs');
+  assert.ok(cloudSpeed(1) > cloudSpeed(0.2) && cloudSpeed(0) > 0, 'even still air moves it a little');
+  assert.equal(cloudSpeed(undefined), cloudSpeed(0));
+  assert.match(CLOUD_DECK, /a \/ 13\.0 - vec2\(run, 0\.0\)/);
+  assert.doesNotMatch(CLOUD_DECK, /t \* \(0\.012/, 'a small change of wind must not throw it across the map');
+});

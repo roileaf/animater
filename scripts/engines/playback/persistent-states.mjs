@@ -9,7 +9,7 @@ import {bodyTreatment} from '../motion/condition-body.mjs';
 import {coversToken,hollowFootage,refractionFootage,risingFlames} from '../../catalogs/shared/state-presentation.mjs';
 import {onGroundBelow} from './ground-elevation.mjs';
 import {isAuraLook} from './outside-combat.mjs';
-import {auraLook} from './aura-fields.mjs';
+import {auraLook,reachLook} from './aura-fields.mjs';
 
 export function activeState(item){
  if(item?.animaterAura){const source=item.animaterAura.source;return source?.type==='effect'?activeState(source):Boolean(source);}
@@ -283,8 +283,9 @@ export class PersistentStates{
   // Square token art without a dynamic ring is opaque to its corners: anything under it is hidden.
   const squareArt=!authored&&(h.opaqueArt?.(r.token)??false);
   // Aura style Tokenshade: the reach is drawn by a shader on the ground (aura-fields.mjs), not by its footage; the
-  // small accent around the creature stays. An ally's copy and a recipe of your own keep their footage.
-  const reach=!granted&&!authored&&h.auraStyle?.()==='tokenshade'&&h.auraField?shown.find(s=>s.auraRadius>0):null;
+  // small accent around the creature stays. An ally's copy keeps its footage; a recipe of your own goes by its own stage's Area look.
+  const reachStage=!granted&&h.auraField?shown.find(s=>s.auraRadius>0):null;
+  const reach=reachStage&&(authored?reachStage.areaLook==='tokenshade':h.auraStyle?.()==='tokenshade')?reachStage:null;
   const drawn=reach?shown.filter(s=>!(s.auraRadius>0)):shown;
   // The "On-token effect under the token" switch: that accent (an ally's copy too) goes under the art, whatever it is.
   const accentUnder=!authored&&(reach||(granted&&h.auraStyle?.()==='tokenshade'))&&h.auraAccentUnder?.()===true;
@@ -338,7 +339,7 @@ export class PersistentStates{
   // Removal/scene changes can race asynchronous texture loading.
   if(r.cancelled||this.closed||this.active.get(r.key)!==r){await this.end(r);return;}
   r.drawn=drawn.length>0;
-  if(reach)h.auraField.add(r.name,{token:r.token,feet:reach.auraRadius,look:auraLook(r.recipe),soft:r.soft===true,fadeMs:r.fade?fadeLength(r)+offset:0});
+  if(reach)h.auraField.add(r.name,{token:r.token,feet:reach.auraRadius,look:authored?reachLook(r.recipe,reach):auraLook(r.recipe),soft:r.soft===true,fadeMs:r.fade?fadeLength(r)+offset:0});
   // The creature itself reacts (trembles, sways, turns to stone…) while the state lasts.
   if(r.motion!==false){
    h.body?.add(r.name,r.token,r.item.animaterBody??bodyTreatment(r.item.name??r.recipe.name),{strength:level.scale});

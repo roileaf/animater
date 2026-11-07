@@ -106,3 +106,13 @@ test('leshies and plant creatures walk on roots; a dryad (fey) keeps boots', () 
   assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'npc', system: { traits: { value: ['fey'] } } }, name: 'Dryad' }), 'boots');
   assert.equal(creatureGait({ system: 'pf2e', actor: { type: 'character', system: { traits: { value: ['human'] } } } }), 'boots');
 });
+
+test('within a gait, cats and cloven animals leave their own print', async () => {
+  const { printShape } = await import('../../../scripts/engines/motion/creature-gait.mjs');
+  for (const name of ['Lion', 'Saber-Tooth Cat', 'Displacer Beast', 'Wildcat']) assert.equal(printShape('paws', { name }), 'cat', name);
+  for (const name of ['Wolf', 'Black Bear', 'Giant Rat', 'Catapult']) assert.equal(printShape('paws', { name }), 'paws', name);
+  for (const name of ['Stag', 'Goat', 'Giant Boar', 'Minotaur']) assert.equal(printShape('hooves', { name }), 'cloven', name);
+  for (const name of ['Warhorse', 'Pony', 'Rhinoceros']) assert.equal(printShape('hooves', { name }), 'hooves', name);
+  assert.equal(printShape('boots', { name: 'Lion Guard' }), 'boots', 'only within its gait');
+  assert.equal(printShape('paws', { actor: { name: 'Tiger' }, name: 'Shere' }), 'cat', 'the actor counts too');
+});
