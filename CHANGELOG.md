@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.5.2 (unreleased)
+## 3.5.2 (2026-11-07)
 
 - **NPC breaths and other area abilities play with nobody in the area.** Dragon's Breath, Acid Breath, Cold Breath and others stopped dead when the template caught no one, because the creature's lunge had no one to aim at. It now lunges toward the area.
 - **Fewer false alarms in History.** Using something that places an area no longer also logs "No animation is set" when the area's own animation plays.
