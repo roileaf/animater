@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.6.1 (unreleased)
+
+- **Clouds with real volume, lit by the sun.** Drawn clouds now read as solid forms, with a bright side toward the sun and a connected shaded side, billows gathered in places and soft, wispy edges, in a wider mix of sizes. The sun recolours them through the day, white at noon, gold when it is low, glowing at sunset and blue by moonlight, and they dim with the scene's darkness.
+
 ## 3.6.0 (2026-11-07)
 
 - **Drawn clouds.** A new Drawn clouds effect in the Weather panel puts real clouds over the map, each with its own shadow, above the rain and the roofs. Cloud cover says how many, from a few fair clouds to a closed, rolling overcast, and a Cloud transparency slider sets how much of the map shows through. Off unless the GM turns it on for a scene.

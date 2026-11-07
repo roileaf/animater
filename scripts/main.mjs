@@ -4038,7 +4038,7 @@ const lookSky = () => {
     skyWindNow = windNow; skyWords = `${drawnId ?? ""} ${calendaria?.id ?? ""} ${canvas?.scene?.weather ?? ""}${tuneWords(tune, windNow)}`;
     // Clouds drawn: they cast their own shadows, so the deck's stand down. A clear sky given clouds has a few.
     const cloudsDrawn = !noneHere && (Number(tune.drawnClouds) || 0) > 0 && weatherCloudsOn();
-    drawnClouds.look({ on: cloudsDrawn, cover: tune.cover ?? Math.max(skyCoverNow, 0.3), transparency: tune.cloudClear ?? undefined, wind: windNow, angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, cast: cloudShiftNow(), sun: sunNow && !sunNow.moon ? Number(fall?.light) || 0 : 0, color: sunlightColor(), rain: falling.rain });
+    drawnClouds.look({ on: cloudsDrawn, cover: tune.cover ?? Math.max(skyCoverNow, 0.3), transparency: tune.cloudClear ?? undefined, wind: windNow, angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, sunHeight: Number(sunNow?.height) || 45, cast: cloudShiftNow(), sun: sunNow && !sunNow.moon ? Number(fall?.light) || 0 : 0, color: sunlightColor(), rain: falling.rain, dark: Number(canvas.environment?.darknessLevel) || 0 });
     surfaceLight.look({
       // The cloud shadows drift with FXMaster's clouds when it draws some (then cast from their very shapes, in skyTick).
       light: fall ? fall.light : 0, clouds: !cloudsDrawn && (cloudsOn() || weatherPreview?.clouds !== undefined) ? skyCoverNow : 0, color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle,

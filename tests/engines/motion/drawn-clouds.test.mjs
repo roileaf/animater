@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloudPixels, skyMakeup, skyCount, skyHome, skyMatrix, createDrawnClouds, DEFAULT_TRANSPARENCY } from '../../../scripts/engines/motion/drawn-clouds.mjs';
+import { cloudPixels, skyMakeup, skyCount, skyHome, skyLight, CLOUD_LIGHT, createDrawnClouds, DEFAULT_TRANSPARENCY } from '../../../scripts/engines/motion/drawn-clouds.mjs';
 import { TUNE_EFFECTS, TUNE_SLIDERS, cleanTune, tuneAdds } from '../../../scripts/engines/motion/weather-tune.mjs';
 import { weatherPanelHtml, effectToggled } from '../../../scripts/ui/weather-panel.mjs';
 
@@ -33,10 +33,19 @@ test('adding clouds leaves the ones already there where they are', () => {
   assert.deepEqual(skyHome(3), skyHome(3));
   for (let i = 0; i < 50; i++) for (const v of skyHome(i)) assert.ok(v >= 0 && v < 1);
 });
-test('the sky holds one strength however many overlap: its alpha is the slider', () => {
-  assert.equal(skyMatrix(0, 0.6)[18], 0.6);
-  const clear = skyMatrix(0, 1); assert.equal(clear[0], 1); assert.equal(clear[4], 0);
-  const flat = skyMatrix(0.5, 1); assert.ok(flat[4] > 0, 'a closed sky lifts its shade');
+test('the sun colours the clouds: white high up, gold low down, its shade deepening, moonlit by night', () => {
+  const noon = skyLight({ height: 60 }), gold = skyLight({ height: 10 }), set = skyLight({ height: 2 }), night = skyLight({ height: 60, sun: 0 });
+  assert.ok(noon.lit[2] > 0.9, 'white at noon');
+  assert.ok(gold.lit[2] < noon.lit[2] && set.lit[2] < gold.lit[2], 'warmer as it sinks');
+  assert.ok(set.shade[1] < noon.shade[1], 'deeper shade');
+  assert.ok(set.glow > noon.glow, 'more glow through its rims');
+  assert.ok(night.lit[0] < night.lit[2], 'moonlight is blue'); assert.ok(night.lit[0] < noon.lit[0]);
+  const between = skyLight({ height: 17 }); assert.ok(between.lit[2] > gold.lit[2] && between.lit[2] < noon.lit[2], 'it blends');
+  const closed = skyLight({ height: 50, flat: 1 }); assert.ok(closed.shade[0] > noon.shade[0] && closed.contrast < noon.contrast, 'a closed sky lifts its shade');
+  const wet = skyLight({ height: 50, rain: 1 }); assert.ok(wet.lit[0] < noon.lit[0], 'darker under rain');
+  const dusk = skyLight({ height: 5, dark: 0.5 }), day = skyLight({ height: 5 }); assert.ok(dusk.lit[0] < day.lit[0] * 0.7, 'dims with the scene'); assert.ok(dusk.rim[0] < day.rim[0]);
+  assert.ok(!CLOUD_LIGHT.includes('`'));
+  assert.match(CLOUD_LIGHT, /uSolid/, 'however many overlap, the slider holds');
 });
 test('the Weather panel turns drawn clouds on, and its transparency shows only then', () => {
   assert.equal(TUNE_EFFECTS.drawnClouds.plain, true);
