@@ -23,3 +23,17 @@ test("the effect goes below tokens at that elevation, absolute rather than bound
   onGroundBelow(effect, null);
   assert.deepEqual(calls, [["below"]], "not on a token: only below tokens");
 });
+
+test('an area is drawn as high as the highest of those in it, and only when someone is off the floor', async () => {
+  const { areaElevation } = await import('../../../scripts/engines/playback/ground-elevation.mjs');
+  const token = (elevation, parent) => ({ document: { elevation, level: 'L', parent } });
+  assert.equal(areaElevation({ source: token(0), targets: [] }, null), null, 'on the floor: left alone');
+  assert.equal(areaElevation({ source: token(30), targets: [] }, null), 30, 'a raised caster');
+  assert.equal(areaElevation({ source: token(0), targets: [token(20), token(5)] }, null), 20, 'a raised creature caught in it');
+  assert.equal(areaElevation({ targets: [] }, null), null, 'nobody at all');
+  const scene = { levels: new Map([['L', { elevation: { base: 10, top: 25 } }], ['M', { elevation: { base: 25, top: 50 } }]]) };
+  assert.equal(areaElevation({ source: token(10, scene), targets: [] }, null), null, 'on the floor of an upper level');
+  assert.equal(areaElevation({ source: token(40, scene), targets: [] }, null), 25, 'kept to its level, or Sequencer would hide it');
+  const single = { levels: new Map([['L', { elevation: { base: 0, top: 20 } }]]) };
+  assert.equal(areaElevation({ source: token(30, single), targets: [] }, null), 30, 'one level hides nothing: as high as the flier, or it draws under it');
+});

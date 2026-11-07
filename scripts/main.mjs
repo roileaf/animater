@@ -2860,7 +2860,7 @@ const bloodWaterAt = (x, y) => {
   return null;
 };
 const floorBloodRoot = floorLayer("floorBlood", 648);
-const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorBloodRoot, grid: () => canvas?.grid?.size ?? 100, waterAt: bloodWaterAt, now: () => game.time?.worldTime,
+const floorBlood = createFloorBlood({ PIXI: globalThis.PIXI, root: floorBloodRoot, grid: () => canvas?.grid?.size ?? 100, waterAt: bloodWaterAt, now: () => game.time?.worldTime, viewedLevel: () => canvas?.level?.id ?? null,
   // Rain washes it where the sky is open ("Rain washes blood away").
   rain: () => (movementFeelSettingOn("bloodWashes") ? skyFalling.rain : 0), exposed: (x, y) => !underCeiling({ x, y }) && !shelteredAt({ x, y }, canvas.level?.elevation?.base ?? 0),
   most: () => (bloodKeptForever() ? 1500 : 320), glow: glowRootOf, lightAt: (x, y) => { const light = nearestLamp(x, y); try { if (light && canvas.visibility?.tokenVision && !canvas.visibility.testVisibility({ x, y }, { tolerance: 0 })) return null; } catch { /* the sight is being rebuilt */ } return light; }, life: () => { try { return bloodKeptForever() ? Infinity : Number(hotSetting("floorBloodSeconds")) || 300; } catch { return 300; } } });
@@ -2868,13 +2868,17 @@ Hooks.on("canvasTearDown", () => { floorBlood.clear(); bleedRuns.clear(); bleedN
 const bleedRuns = new Map(), bleedNext = new Map();
 // The GM wipes the floor: each screen draws its own blood, so each is told to.
 const CLEAR_BLOOD_MESSAGE = "clear-blood";
-const clearBloodEverywhere = () => {
-  floorBlood.clear(); bloodLoaded = []; bloodSavedKey = "";
-  game.socket?.emit(`module.${ID}`, { type: CLEAR_BLOOD_MESSAGE, sceneId: canvas?.scene?.id });
+// With a level (baking its blood into a tile), only what shows on that level.
+const bloodElsewhere = (list, level) => (level && Array.isArray(list) ? list.filter((p) => { const mark = unpackMark(p); return mark?.level && mark.level !== level; }) : []);
+const clearBloodEverywhere = (level = null) => {
+  floorBlood.clear(level); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), level).map(unpackMark); bloodSavedKey = "";
+  game.socket?.emit(`module.${ID}`, { type: CLEAR_BLOOD_MESSAGE, sceneId: canvas?.scene?.id, level });
   // And what the scene keeps, which only the GM can change.
   const own = canvas?.scene?.flags?.[ID] ?? {};
-  if (game.user?.isGM && (own[BLOOD_DRESSED]?.length || own[BLOOD_KEPT]?.length)) void canvas.scene.update({ flags: { [ID]: { [BLOOD_DRESSED]: [], [BLOOD_KEPT]: [] } } }).catch((error) => console.warn("Animater | clearing the scene's blood", error));
+  if (game.user?.isGM && (own[BLOOD_DRESSED]?.length || own[BLOOD_KEPT]?.length)) void canvas.scene.update({ flags: { [ID]: { [BLOOD_DRESSED]: bloodElsewhere(own[BLOOD_DRESSED], level), [BLOOD_KEPT]: bloodElsewhere(own[BLOOD_KEPT], level) } } }).catch((error) => console.warn("Animater | clearing the scene's blood", error));
 };
+// The level a token stands on, for the blood it leaves.
+const bloodLevelOf = (id) => canvas?.tokens?.get?.(id)?.document?.level ?? canvas?.level?.id ?? null;
 // What a scene keeps: the GM's dressing (Splat blood), which every screen shows at once, and with "Blood stays until cleared"
 // on what has lain on it so far, saved by one GM now and then and read when the scene loads (each screen draws its own until then).
 const BLOOD_DRESSED = "bloodDressed", BLOOD_KEPT = "bloodKept", BLOOD_KEPT_MOST = 1200, BLOOD_DRESSED_MOST = 1500, BLOOD_SAVE_SECONDS = 15;
@@ -2905,7 +2909,7 @@ const splatBloodHere = async () => {
   for (const token of tokens) {
     const blood = tokenBlood(token); if (!blood.bleeds) continue;
     const seed = `${token.id}:${now}`;
-    for (const mark of scaleMarks(splatMarks({ at: token.center, width: token.w, grid: canvas.grid.size, seed }), much, seed)) marks.push(packMark({ ...mark, color: blood.color, at: Number(game.time?.worldTime) || 0 }));
+    for (const mark of scaleMarks(splatMarks({ at: token.center, width: token.w, grid: canvas.grid.size, seed }), much, seed)) marks.push(packMark({ ...mark, color: blood.color, at: Number(game.time?.worldTime) || 0, level: token.document?.level ?? canvas.level?.id ?? null }));
   }
   if (!marks.length) { ui.notifications?.info("Animater: nothing selected bleeds, or Blood on the floor's amount is 0."); return; }
   const had = canvas.scene.flags?.[ID]?.[BLOOD_DRESSED];
@@ -2936,7 +2940,7 @@ const bakeBloodHere = async () => {
       },
       lay: (tile) => scene.createEmbeddedDocuments("Tile", [tile]),
     });
-    clearBloodEverywhere();
+    clearBloodEverywhere(level);
     ui.notifications?.info(`Animater: the blood is baked into a tile (${src}).`);
   } catch (error) {
     console.warn("Animater | baking the blood", error);
@@ -2948,7 +2952,7 @@ const bleedAlong = ({ x, y, heading, size, token, index, grid }) => {
   if (!token?.bloodTier || !bloodDropsOn()) return;
   const prone = token.prone === true || String(token.action ?? "").toLowerCase() === "crawl";
   let run = bleedRuns.get(token.id); if (!run) bleedRuns.set(token.id, run = {});
-  floorBlood.add(scaleMarks(bleedStep({ at: { x, y }, heading, index, tier: token.bloodTier, prone, width: size, grid, seed: token.id, run }), bloodAmount("bloodDripAmount"), `${token.id}:${index}`), token.bloodColor);
+  floorBlood.add(scaleMarks(bleedStep({ at: { x, y }, heading, index, tier: token.bloodTier, prone, width: size, grid, seed: token.id, run }), bloodAmount("bloodDripAmount"), `${token.id}:${index}`), token.bloodColor, bloodLevelOf(token.id));
 };
 // The wounded standing still: a drop now and then under them. Looked at a few times a second.
 let bleedLook = 0;
@@ -2964,7 +2968,7 @@ const tickFloorBlood = (seconds) => {
       const blood = movementFeelBlood(d); if (!blood?.bloodTier) { bleedNext.delete(d.id); continue; }
       const c = t.mesh?.position ?? t.center, now = bleedNext.get(d.id) ?? { wait: Math.random() * 2, x: c.x, y: c.y };
       const still = Math.hypot(c.x - now.x, c.y - now.y) < 1; now.x = c.x; now.y = c.y; now.wait -= step;
-      if (still && now.wait <= 0) { const much = bloodAmount("bloodDripAmount"), drip = standingDrip({ at: { x: c.x, y: c.y }, tier: blood.bloodTier, width: t.w, grid: canvas.grid.size }); if (much > 0) floorBlood.add([{ ...drip.mark, r: drip.mark.r * Math.sqrt(much) }], blood.bloodColor); now.wait = drip.nextIn / Math.max(0.25, much); }
+      if (still && now.wait <= 0) { const much = bloodAmount("bloodDripAmount"), drip = standingDrip({ at: { x: c.x, y: c.y }, tier: blood.bloodTier, width: t.w, grid: canvas.grid.size }); if (much > 0) floorBlood.add([{ ...drip.mark, r: drip.mark.r * Math.sqrt(much) }], blood.bloodColor, bloodLevelOf(t.id)); now.wait = drip.nextIn / Math.max(0.25, much); }
       bleedNext.set(d.id, now);
     } catch { /* never stop the canvas */ }
   }
@@ -8662,7 +8666,7 @@ Hooks.once("ready", () => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
-    if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(); bloodLoaded = []; } return; }
+    if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(data.level ?? null); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), data.level ?? null).map(unpackMark); } return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
     if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
     if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveAreaMark(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
@@ -9602,7 +9606,7 @@ Hooks.once("ready", () => {
       const facts = damage ?? by ?? {}, known = facts.type || facts.types?.length, type = known ? woundOf(facts) ?? facts.type ?? facts.types?.[0] : null, kill = after.down === true || (Number(after.value) || 0) <= 0;
       // The seed is the wound itself, so every screen draws the same blood for it.
       const seed = `${token.id}:${before.value}:${after.value}`;
-      floorBlood.add(scaleMarks(hitMarks({ at: token.center, from: attacker?.center ?? null, type, crit: damage?.crit === true || by?.crit === true, kill, share: lost / (Number(after.max) || Number(before.max) || 1), width: token.w, grid: canvas.grid.size, seed }), bloodAmount("floorBloodAmount"), seed), blood.color);
+      floorBlood.add(scaleMarks(hitMarks({ at: token.center, from: attacker?.center ?? null, type, crit: damage?.crit === true || by?.crit === true, kill, share: lost / (Number(after.max) || Number(before.max) || 1), width: token.w, grid: canvas.grid.size, seed }), bloodAmount("floorBloodAmount"), seed), blood.color, token.document?.level ?? level ?? null);
     }
   };
   const lensBloodFor = (actor, before) => {

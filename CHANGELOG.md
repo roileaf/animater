@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.5.1 (unreleased)
+
+- **Dragon tread leaves clean tracks.** Large creatures left clumps that read as three feet, packed close together. It's now one clear print at a time, left then right, spaced for the creature's size.
+- **Blood stays on its own level.** Stains now show only on the level where they fell, and Bake blood leaves other levels' blood alone. Blood saved in a scene before this update has no level, so it still shows on all of them until cleared.
+- **Area animations no longer play under raised tokens.** A breath or other area spell from a flying or elevated creature now draws at that creature's height instead of on the ground beneath it.
+
 ## 3.5.0 (2026-11-06)
 
 ### New

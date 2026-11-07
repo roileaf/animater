@@ -133,18 +133,24 @@ export const DRIFT_MOST = 2.2;
 export const driftLook = (u, flows = false) => { const t = Math.min(1, Math.max(0, Number(u) || 0)); return { along: 1 + (flows ? 3.2 : 1.3) * t, across: 1 + (flows ? 0.7 : 1.3) * t, alpha: 0.55 * (1 - t) * (1 - t * 0.35) }; };
 
 // A saved mark as few characters as will do (pure), and back; what bloody scenes keep in their flags. `at`: when it was made, for one that starts wet and dries; none: long dry.
-export const packMark = (m) => { const packed = [m.art, m.n ?? 0, Math.round(m.x), Math.round(m.y), Math.round((m.rot ?? 0) * 100) / 100, Math.round((m.r ?? 0) * 10) / 10, Math.round((m.squash ?? 1) * 100) / 100, Math.round((m.alpha ?? 1) * 100) / 100, m.color ?? 0x7a0d0d]; return Number.isFinite(m.at) ? [...packed, m.at] : packed; };
-export const unpackMark = (p) => (Array.isArray(p) && typeof p[0] === 'string' ? { art: p[0], n: p[1], x: p[2], y: p[3], rot: p[4], r: p[5], squash: p[6], alpha: p[7], color: p[8], ...(Number.isFinite(p[9]) ? { at: p[9] } : {}) } : null);
+export const packMark = (m) => { const packed = [m.art, m.n ?? 0, Math.round(m.x), Math.round(m.y), Math.round((m.rot ?? 0) * 100) / 100, Math.round((m.r ?? 0) * 10) / 10, Math.round((m.squash ?? 1) * 100) / 100, Math.round((m.alpha ?? 1) * 100) / 100, m.color ?? 0x7a0d0d]; if (m.level) return [...packed, Number.isFinite(m.at) ? m.at : null, m.level]; return Number.isFinite(m.at) ? [...packed, m.at] : packed; };
+export const unpackMark = (p) => (Array.isArray(p) && typeof p[0] === 'string' ? { art: p[0], n: p[1], x: p[2], y: p[3], rot: p[4], r: p[5], squash: p[6], alpha: p[7], color: p[8], ...(Number.isFinite(p[9]) ? { at: p[9] } : {}), ...(p[10] ? { level: p[10] } : {}) } : null);
 
-/** The layer: add(marks, color) lays them (a drop in flight lands first); tick(seconds); dress(saved marks) what a scene keeps; near(x, y) wet blood underfoot; clear(). `root()` the floor layer; `life` seconds a mark lasts (Infinity: until cleared); `most` marks at once (a number or a function), the oldest going first; `rain()` how hard it rains on the scene, `exposed(x, y)` whether it falls there; `waterAt(x, y)` the water there, for waterDrift, or null; `art` draws a mark; `now()` the time blood lying on the floor goes by, in seconds (the game clock: it dries, fades and washes as the game's time passes, and not at all while it stands still), else as the layer ticks. A spray landing and blood clouding in water are motion, and always go as the layer ticks. */
-export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null, life = () => 300, most = 320, rain = () => 0, exposed = () => true, waterAt = () => null, grid = () => 100, art = bloodArt, now = null }) {
+// Whether a mark shows (pure): on the level it fell on. One that says none (saved before blood knew its level) shows on all of them.
+export const bloodShows = (mark, viewed) => !mark?.level || !viewed || mark.level === viewed;
+
+/** The layer: add(marks, color, level) lays them, on that level (a drop in flight lands first); tick(seconds); dress(saved marks) what a scene keeps; near(x, y) wet blood underfoot; clear(). `root()` the floor layer; `life` seconds a mark lasts (Infinity: until cleared); `most` marks at once (a number or a function), the oldest going first; `rain()` how hard it rains on the scene, `exposed(x, y)` whether it falls there; `waterAt(x, y)` the water there, for waterDrift, or null; `art` draws a mark; `viewedLevel()` the level on screen; `now()` the time blood lying on the floor goes by, in seconds (the game clock: it dries, fades and washes as the game's time passes, and not at all while it stands still), else as the layer ticks. A spray landing and blood clouding in water are motion, and always go as the layer ticks. */
+export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null, life = () => 300, most = 320, rain = () => 0, exposed = () => true, waterAt = () => null, grid = () => 100, art = bloodArt, now = null, viewedLevel = () => null }) {
   const textures = new Map();
-  let lying = [], moving = [], drifting = [], clock = 0, fadeLook = 0, gleamTex = null, washLook = null;
+  let lying = [], moving = [], drifting = [], clock = 0, fadeLook = 0, gleamTex = null, washLook = null, lastViewed = null;
+  const viewedNow = () => { try { return viewedLevel() ?? null; } catch { return null; } };
+  const hideShine = (m) => { if (m.sheen) m.sheen.visible = false; if (m.gleam) m.gleam.visible = false; };
   const timeNow = () => { if (typeof now !== 'function') return clock; const t = Number(now()); return Number.isFinite(t) ? t : clock; };
   const dressed = new Map();
   // The light on a pool: one soft white oval, shared, tinted by the light. Added to the light, over the darkness.
   const gleamTexture = () => { if (gleamTex && !gleamTex.baseTexture?.destroyed) return gleamTex; const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d'), f = g.createRadialGradient(32, 32, 0, 32, 32, 32); f.addColorStop(0, 'rgba(255,255,255,1)'); f.addColorStop(0.5, 'rgba(255,255,255,0.35)'); f.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = f; g.fillRect(0, 0, 64, 64); return (gleamTex = PIXI.Texture.from(c)); };
   const lookAtLight = (m, age) => {
+    if (m.s.visible === false) { hideShine(m); return; }
     const l = lightAt(m.mark.x, m.mark.y), tint = Number.isFinite(l?.color) ? l.color : 0xffc890, sheen = bloodSheen(l, age);
     // The stain itself shining where the light falls on it, in its own shape.
     if (!sheen) { if (m.sheen) m.sheen.visible = false; }
@@ -195,14 +201,14 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
   };
   const sprite = (mark, color) => {
     const tex = textureOf(mark.art, mark.n, color); if (!tex) return null;
-    const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.rotation = mark.rot ?? 0; s.alpha = 0; s.position.set(mark.fromX ?? mark.x, mark.fromY ?? mark.y);
+    const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = bloodShows(mark, viewedNow()); s.rotation = mark.rot ?? 0; s.alpha = 0; s.position.set(mark.fromX ?? mark.x, mark.fromY ?? mark.y);
     const r = mark.r, across = r * (mark.squash ?? 1); s.width = r * 2; s.height = across * 2; root().addChild(s);
     return { s, mark, color, r, across, alpha: mark.alpha ?? 1, born: clock + (mark.wait ?? 0) / 1000, washed: 0 };
   };
   return {
-    add(marks = [], color = 0x7a0d0d) {
-      for (const mark of marks) {
-        const m = sprite(mark, color); if (!m) continue;
+    add(marks = [], color = 0x7a0d0d, level = null) {
+      for (const given of marks) {
+        const mark = level ? { ...given, level } : given, m = sprite(mark, color); if (!m) continue;
         if (mark.wait || mark.fromX !== undefined || mark.spreads) moving.push(m); else { m.s.alpha = m.alpha; layDown(m); }
       }
     },
@@ -236,7 +242,7 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
     near(x, y) {
       const all = [...dressed.values(), ...lying];
       for (let i = all.length - 1; i >= 0; i--) {
-        const m = all[i]; if (!bloodShines(m.mark.art) || m.dry || m.washed > 0.5) continue;
+        const m = all[i]; if (!bloodShines(m.mark.art) || m.dry || m.washed > 0.5 || m.s.visible === false) continue;
         if (Math.hypot(x - m.mark.x, y - m.mark.y) > m.r * 0.9) continue;
         return { color: m.color, wet: Math.max(0, 1 - (timeNow() - m.laid) / POOL_DRIES) };
       }
@@ -244,6 +250,9 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
     },
     tick(seconds) {
       clock += seconds;
+      // Another level on screen: its own blood, and only that. Nothing to do on the frames between.
+      const viewed = viewedNow();
+      if (viewed !== lastViewed) { lastViewed = viewed; for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) { m.s.visible = bloodShows(m.mark, viewed); if (!m.s.visible) hideShine(m); } }
       if (drifting.length) drifting = drifting.filter((m) => {
         if (m.s.destroyed) return false;
         const d = m.drift; d.age += seconds; if (d.age >= d.life) { gone(m); return false; }
@@ -288,7 +297,16 @@ export function createFloorBlood({ PIXI, root, glow = null, lightAt = () => null
         return true;
       });
     },
-    clear() { for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) gone(m); lying = []; moving = []; drifting = []; dressed.clear(); dropClouds(true); seenOnWater.clear(); dressedOnce = false; },
+    // Everything; or given a level, what shows on it, leaving the other levels' blood where it lies.
+    clear(level = null) {
+      if (level) {
+        const stays = (m) => { if (m.mark.level && m.mark.level !== level) return true; gone(m); return false; };
+        lying = lying.filter(stays); moving = moving.filter(stays); drifting = drifting.filter(stays);
+        for (const [id, m] of dressed) if (!stays(m)) dressed.delete(id);
+        dropClouds(); return;
+      }
+      for (const m of [...lying, ...moving, ...drifting, ...dressed.values()]) gone(m); lying = []; moving = []; drifting = []; dressed.clear(); dropClouds(true); seenOnWater.clear(); dressedOnce = false;
+    },
     get count() { return lying.length + moving.length + drifting.length + dressed.size; },
   };
 }

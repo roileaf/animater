@@ -16,3 +16,15 @@ export function onGroundBelow(effect, token) {
   if (token) effect.elevation?.(groundElevation(token), { absolute: true });
   return effect;
 }
+
+// An effect at a bare point (an area's art) has no height of its own, so Sequencer draws it at 0, under anything raised:
+// a dragon's breath under the dragon. It goes as high as the highest of the caster and those caught in it. On a scene of several
+// levels it stays within the caster's, since Sequencer hides an effect outside the level on screen. Null when nobody is off the floor.
+export function areaElevation(context, viewedLevel = globalThis.canvas?.level) {
+  const heightOf = (t) => { const own = Number((t?.document ?? t)?.elevation); return Number.isFinite(own) ? own : 0; };
+  const high = Math.max(...[context?.source, ...(context?.targets ?? [])].filter(Boolean).map(heightOf), -Infinity);
+  const source = context?.source?.document ?? context?.source, level = source?.parent?.levels?.get?.(source?.level) ?? viewedLevel;
+  const floor = Number(level?.elevation?.base ?? 0) || 0, top = Number(level?.elevation?.top);
+  if (!(high > floor)) return null;
+  return Number.isFinite(top) && source?.parent?.levels?.size > 1 ? Math.min(high, top) : high;
+}

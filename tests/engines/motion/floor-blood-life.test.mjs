@@ -229,3 +229,32 @@ test('fresh splat blood on water clouds away once; on a scene loading, it does n
   assert.equal(live().filter((s) => s.position.x > 500).length, 0, 'gone');
   assert.equal(live().filter((s) => s.position.x === 100).length, 1, 'and the land stays');
 });
+
+test('blood shows on the level it fell on', async () => {
+  const { bloodShows } = await import('../../../scripts/engines/motion/floor-blood.mjs');
+  assert.equal(bloodShows({ level: 'a' }, 'a'), true);
+  assert.equal(bloodShows({ level: 'a' }, 'b'), false);
+  assert.equal(bloodShows({}, 'b'), true, 'saved before blood knew its level');
+  assert.equal(bloodShows({ level: 'a' }, null), true, 'no levels here');
+  const back = unpackMark(JSON.parse(JSON.stringify(packMark({ art: 'pool', x: 1, y: 2, r: 3, level: 'a' }))));
+  assert.equal(back.level, 'a'); assert.equal(back.at, undefined);
+  const dated = unpackMark(packMark({ art: 'pool', x: 1, y: 2, r: 3, at: 7, level: 'a' }));
+  assert.equal(dated.level, 'a'); assert.equal(dated.at, 7);
+  assert.equal(unpackMark(packMark({ art: 'pool', x: 1, y: 2, r: 3, at: 7 })).level, undefined);
+});
+test('going to another level hides what fell on the first, and baking a level leaves the others', () => {
+  let viewed = 'a';
+  const sprites = [];
+  class Sprite { constructor() { this.anchor = { set() {} }; this.position = { set() {}, copyFrom() {} }; this.visible = true; sprites.push(this); } destroy() { this.destroyed = true; } }
+  const layer = createFloorBlood({ PIXI: { Sprite, Texture: { from: (x) => ({ x, baseTexture: {} }) } }, root: () => ({ addChild() {} }), art: (kind, n, color) => `${kind}:${n}:${color}`, viewedLevel: () => viewed });
+  layer.add([{ art: 'drop', n: 0, x: 1, y: 1, r: 5 }], 0x7a0d0d, 'a');
+  layer.add([{ art: 'drop', n: 0, x: 2, y: 2, r: 5 }], 0x7a0d0d, 'b');
+  layer.tick(0.01);
+  assert.deepEqual(sprites.map((s) => s.visible), [true, false]);
+  viewed = 'b'; layer.tick(0.01);
+  assert.deepEqual(sprites.map((s) => s.visible), [false, true]);
+  layer.clear('b');
+  assert.equal(layer.count, 1, 'the other level keeps its blood');
+  assert.equal(sprites[0].destroyed, undefined); assert.equal(sprites[1].destroyed, true);
+  layer.clear(); assert.equal(layer.count, 0);
+});

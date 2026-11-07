@@ -613,7 +613,7 @@ test('controller: one broken token never stops the frame', () => {
 });
 
 test('dragon tracks: heavy four-legged prints with a tail drag, bigger than a bird track', () => {
-  assert.equal(TRACKS.dragon.feet, 'quad');
+  assert.equal(TRACKS.dragon.feet, 'paced');
   assert.equal(TRACKS.dragon.tail, true);
   assert.ok(TRACKS.dragon.size > TRACKS.paws.size);
   assert.equal(TRACKS.talons.feet, 'biped', 'birds stay two-legged');
@@ -1445,4 +1445,21 @@ test('water frozen over is ice underfoot, most of the way frozen and only where 
   assert.equal(frozenFloor('water', 0.3), 'water', 'still thin: water');
   assert.equal(frozenFloor('water', 1, false), 'water', 'a hot spring');
   assert.equal(frozenFloor('grass', 1), 'grass');
+});
+
+test('dragon tread: one print a stride, left and right, far enough apart that none lands on the last', async () => {
+  const { tracksFor, STRIDE } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const part = { kind: 'print', emit: 'print', color: 0, alpha: 1, size: 0.11 }, grid = 100;
+  const prints = (width, last = 12) => Array.from({ length: last }, (_, i) => tracksFor('dragon', part, {}, { x: i * grid * STRIDE, y: 0, heading: 0, index: i + 1 }, { grid, width }).filter((p) => p.gait === 'dragon')).flat();
+  for (const width of [100, 200, 300, 600]) {
+    const all = prints(width, 24);
+    assert.ok(all.length >= 3, `${width}: it does print`);
+    for (let i = 1; i < all.length; i++) {
+      assert.ok(all[i].x - all[i - 1].x >= width * 0.4, `${width}: spaced for its size`);
+      assert.equal(Math.sign(all[i].y), -Math.sign(all[i - 1].y), `${width}: the other side`);
+    }
+  }
+  const one = tracksFor('dragon', part, {}, { x: 0, y: 0, heading: 0, index: 1 }, { grid, width: 100 });
+  assert.equal(one.filter((p) => p.gait === 'dragon').length, 1, 'never a cluster');
+  assert.ok(one.some((p) => p.kind === 'groove'), 'the tail still drags');
 });

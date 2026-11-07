@@ -43,3 +43,12 @@ test('breath weapons draw breath, with a pack that has an inhale; other things d
   assert.equal(inhale(dndRecipe(dragon, save.id, { sounds: { packs: [], entries: [], resolve: () => null } })).length, 0, 'no pack, no sound');
   assert.equal(inhale(dndRecipe(dragon, dragon.variants.find((v) => v.activityType === 'utility').id, { sounds })).length, 0);
 });
+
+test("Dragon's Breath exhaled at empty ground still plans its area", async () => {
+  const { planRecipe } = await import('../../../scripts/core/model.mjs');
+  const entry = dndEntries().find((e) => e.slug === 'dragons-breath'), exhale = entry.variants.find((v) => v.activityType === 'save');
+  const recipe = dndRecipe(entry, exhale.id, {}), catalog = [...new Set(recipe.stages.flatMap((s) => s.assets ?? []))].map((key) => ({ key }));
+  const area = { type: 'cone', center: { x: 0, y: 0 }, endpoint: { x: 300, y: 0 }, length: 300, angle: 53 };
+  const plan = planRecipe(recipe, catalog, { source: { center: { x: 0, y: 0 } }, targets: [], template: { documentName: 'Region', id: 'r' }, area, gridSize: 100 });
+  assert.ok(plan.some((s) => s.kind === 'template'));
+});

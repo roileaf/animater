@@ -409,11 +409,12 @@ function crackLines(random) {
 // 'quad' a front and a hind print per stride on one side, then the other (four prints per two strides, staggered);
 // 'cluster' one cluster of tiny leg dots per stride; 'groove' a continuous wavy furrow, 'smear' a continuous wide
 // smear (one segment per stride, no prints). `size` scales the print against the token's width; `tail` also drags
-// a thin line between the prints. The renderer picks each print's shape by its `gait`.
+// a thin line between the prints; 'paced' one big print at a time, left and right in turn, `spread` of the token's width
+// to each side, spaced by the creature's size so no print lands on the last. The renderer picks each print's shape by its `gait`.
 export const TRACKS = Object.freeze({
   boots: { feet: 'biped', size: 1 },
   talons: { feet: 'biped', size: 1.05 },
-  dragon: { feet: 'quad', size: 0.95, tail: true },
+  dragon: { feet: 'paced', size: 0.95, tail: true, spread: 0.22 },
   paws: { feet: 'quad', size: 0.62 },
   padded: { feet: 'quad', size: 0.8 },
   webbed: { feet: 'quad', size: 0.7 },
@@ -454,12 +455,13 @@ export function tracksFor(gait, part, base, at, { grid, width }) {
   if (track.feet === 'smear') return [segment('ooze', { ry: clamp((0.32 * width) / half, 0.15, 1), alpha: part.alpha * 0.8 })];
   const out = [];
   if (track.tail) out.push(segment('claws', { amp: clamp((0.03 * width) / half, 0.01, 0.2), thick: clamp((0.025 * width) / half, 0.01, 0.12), alpha: part.alpha * 0.6 }));
-  const squares = width / (grid || 100), every = squares >= 5 ? 3 : squares >= 3 ? 2 : 1;
+  const squares = width / (grid || 100), every = track.feet === 'paced' ? Math.max(1, Math.round(squares * 0.75)) : squares >= 5 ? 3 : squares >= 3 ? 2 : 1;
   if (mod(index - 1, every)) return out;
   const step = Math.floor((index - 1) / every), side = mod(step, 2) ? 1 : -1;
   const print = (d, a, extra) => ({ ...base, color: part.color, ...place(d * width, a * width), radius: width * part.size * track.size,
     rotation: heading, grow: 0, gait, ...extra });
   if (track.feet === 'quad') out.push(print(0.16, 0.1 * side), print(-0.16, 0.13 * side, { hind: true }));
+  else if (track.feet === 'paced') out.push(print(0, track.spread * side));
   else if (track.feet === 'cluster') out.push(print(0, 0.05 * side));
   else out.push(print(0, 0.12 * side));
   return out;
