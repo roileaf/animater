@@ -6542,6 +6542,14 @@ function workspaceHost() {
       await game.settings.set(ID,key,normalizeDhCatalogState({...hotSetting(key),...change}));
       persistentStates?.schedule();
     },
+    // The reset kept for a catalog (its slot: 'pf2e-spell', 'dnd5e-weapon', ...), and keeping or clearing (null) one.
+    catalogResetBackup:slot=>hotSetting('catalogResetBackups')?.[slot]??null,
+    setCatalogResetBackup:async(slot,backup)=>{
+      if(!game.user.isGM)throw Error('Only a GM can reset a catalog.');
+      const kept={...hotSetting('catalogResetBackups')};
+      if(backup)kept[slot]=backup;else delete kept[slot];
+      await game.settings.set(ID,'catalogResetBackups',kept);
+    },
     dsCatalogState:kind=>normalizeDsCatalogState(hotSetting(dsSettingKey(kind))),
     setDsCatalogState:async(kind,change)=>{
       if(!game.user.isGM||game.system.id!=='draw-steel'||!DS_KINDS.includes(kind))throw Error('Draw Steel catalog configuration requires a GM in a Draw Steel world.');
@@ -6878,6 +6886,8 @@ Hooks.once("init", () => {
   registerSequencerSpeedups(ID);
   registerSetting('mediaLibrary',{scope:'client',config:false,type:Object,default:libraryPreferences()});
   registerSetting('tokenFxPresets',{scope:'world',config:false,type:Array,default:[],onChange:()=>app?.workspace?.render()});
+  // The last catalog reset per catalog ({ 'pf2e-spell': backup, ... }): Restore last reset… on the catalog page puts it back.
+  registerSetting('catalogResetBackups',{scope:'world',config:false,type:Object,default:{},onChange:()=>app?.workspace?.render()});
   for(const [key,name,hint] of [
     ['catalogTokenFx','Tokenshade filters in catalog animations','Catalog animations add matching shader effects on the token itself (flames, frost, glows, shimmer). Drawn by Animater on each screen; nothing is saved to the token.'],
     ['catalogSceneFx','FXMaster scene effects in catalog animations','When FXMaster is active, weather-like catalog spells add brief scene effects (rain, fog, embers). Skipped automatically when the module is missing.']])

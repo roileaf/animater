@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Reset a catalog.** Each catalog page has a **Reset catalog…** button in its header (GM) that puts that catalog back to the stock catalog: picked, left-out and customised entries cleared, look and sound choices back to their defaults, and the recipes Customize made for its entries deleted. It asks first, naming those recipes and marking the ones you edited. A copy of what it deletes is kept in the world, and **Restore last reset…** beside it puts the catalog back as it was; the same backup downloads as a file that the Recipes page's Import takes back. The catalog stays on or paused as it was unless you also ask for its fresh-install state; your own recipes, the starters and other catalogs' are kept.
+
 ## 3.6.2 (2026-11-07)
 
 - **Drawn clouds actually cross the map.** They were scattered over a wide area beyond the map's edges, so a small map hardly saw any, and they drew over the padding around it. They now stay close to the map, in numbers that suit its size, and stop at its edge.

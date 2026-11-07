@@ -61,6 +61,7 @@ import { NPC_PAGE, npcAbilityCatalogHTML, npcAbilityPageRecipe, npcAbilityAction
 import {CreatureShowcaseUI,SHOWCASE_PAGE} from './creature-showcase-ui.mjs';
 import {DamageShowcaseUI,DAMAGE_SHOWCASE_PAGE} from './damage-showcase-ui.mjs';
 import { cleanOrigin, originKey, elapsedLabel, setOriginExcluded, assetLabel, groupNowPlaying } from "./activity-actions.mjs";
+import { catalogResetPlan, catalogBackup, catalogBackupFileName, catalogBackupOf, catalogRestorePlan, recipeEdited, catalogResetDialogHTML, catalogRestoreDialogHTML } from "../catalogs/shared/catalog-reset.mjs";
 import { PF2E_WEAPONS, catalogWeapon, weaponRecipe, normalizeWeaponCatalogState, useCatalogWeapon, weaponCustomizationKey } from "../catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { weaponCatalogHTML } from "./weapon-catalog-ui.mjs";
 import { openCatalogDetails } from "../catalogs/shared/catalog-details.mjs";
@@ -144,6 +145,8 @@ export function editedVariantOnly(recipe, index) {
 }
 // Sidebar names without their system prefix, capitalized: "PF2e spells" → "Spells".
 const shortNav = ([page, icon, name]) => [page, icon, String(name).replace(/^(PF2e|SF2e|D&D 5e) /, "").replace(/^./, (c) => c.toUpperCase())];
+// A PF2e catalog page's kind, for its reset's backup name.
+const PF2E_PAGE_KINDS = { spells: "spell", feats: "feat", actions: "action", features: "feature", weapons: "weapon", conditions: "condition", effects: "effect" };
 const systemCaption = (env) => { const id = worldCatalogSystem(env); return id ? ` · ${({ pf2e: "PF2E", sf2e: "SF2E", dnd5e: "D&D 5E", daggerheart: "DAGGERHEART", "draw-steel": "DRAW STEEL" })[id]}` : ""; };
 // +0.25 s / −0.10 s for a timing offset.
 const signedSeconds = (ms) => `${ms < 0 ? "−" : "+"}${(Math.abs(ms) / 1000).toFixed(2)} s`;
@@ -638,17 +641,113 @@ export class Workspace {
       ? `${missing.length} missing asset${missing.length > 1 ? "s" : ""}`
       : "Ready to play";
   }
-  // Picked-only catalogs: a card's ✓ adds or removes just that entry.
+  // Picked-only catalogs: a card's ✓ adds or removes just that entry. `normalize()`: the catalog's registered default.
   catalogStore() {
     const host = this.host, profile = abilityProfileForPage(this.pf2ePage());
-    if (this.pf2ePage() === "spells") return { get: () => normalizeCatalogState(host.catalogState()), set: (c) => host.setCatalogState(c), use: useCatalogSpell };
-    if (profile) return { get: () => profile.catalog.normalizeState(host[profile.stateKey]()), set: (c) => host[profile.setStateKey](c), use: profile.catalog.use };
-    if (this.pf2ePage() === "weapons") return { get: () => normalizeWeaponCatalogState(host.weaponCatalogState?.()), set: (c) => host.setWeaponCatalogState(c), use: useCatalogWeapon };
+    if (this.pf2ePage() === "spells") return { get: () => normalizeCatalogState(host.catalogState()), set: (c) => host.setCatalogState(c), use: useCatalogSpell, normalize: normalizeCatalogState };
+    if (profile) return { get: () => profile.catalog.normalizeState(host[profile.stateKey]()), set: (c) => host[profile.setStateKey](c), use: profile.catalog.use, normalize: profile.catalog.normalizeState };
+    if (this.pf2ePage() === "weapons") return { get: () => normalizeWeaponCatalogState(host.weaponCatalogState?.()), set: (c) => host.setWeaponCatalogState(c), use: useCatalogWeapon, normalize: normalizeWeaponCatalogState };
     if (["conditions", "effects"].includes(this.page)) {
       const kind = this.page === "conditions" ? "condition" : "effect";
-      return { get: () => normalizeStateCatalogState(host.stateCatalogState?.(kind)), set: (c) => host.setStateCatalogState(kind, c), use: useStateEntry };
+      return { get: () => normalizeStateCatalogState(host.stateCatalogState?.(kind)), set: (c) => host.setStateCatalogState(kind, c), use: useStateEntry, normalize: normalizeStateCatalogState };
     }
     return null;
+  }
+  // The catalog on this page, for Reset catalog…: its name, { system, kind }, its slot for a kept reset, state
+  // (through the host's own setters, which redraw lasting looks) and registered default. Null off a catalog page.
+  catalogResetTarget() {
+    const host = this.host, name = catalogPageTitle(this.page, host.environment?.() ?? {}) ?? "catalog", d = this.dndCatalog;
+    const target = (system, kind, get, set, defaults) => ({ name, catalog: { system, kind }, slot: `${system}-${kind}`, get, set, defaults });
+    if (d?.isCatalogPage()) {
+      const { api } = d, kind = d.kind;
+      return target(api.systemId, kind, () => api.normalize(host[api.stateKey]?.(kind)), (c) => host[api.setStateKey](kind, c), api.normalize());
+    }
+    const store = this.catalogStore(), kind = PF2E_PAGE_KINDS[this.pf2ePage() ?? this.page];
+    return store && kind ? target("pf2e", kind, store.get, store.set, store.normalize()) : null;
+  }
+  // The reset kept in the world for this page's catalog, else null.
+  keptCatalogReset(target = this.catalogResetTarget()) { return target ? catalogBackupOf(this.host.catalogResetBackup?.(target.slot)) : null; }
+  catalogResetHTML() {
+    const target = this.catalogResetTarget();
+    if (this.host.isGM?.() !== true || !target) return "";
+    const off = this.host.environment().demo || this.busy ? "disabled" : "";
+    const kept = this.keptCatalogReset(target), restore = kept ? `<button data-action="catalog-state-restore" class="an-quiet" data-tooltip="Put this catalog back as it was before its last reset: its state then, and the ${kept.recipes.length} customised recipe${kept.recipes.length === 1 ? "" : "s"} it deleted (asks first)" ${off}>↶ Restore last reset…</button>` : "";
+    return `${restore}<button data-action="catalog-state-reset" class="an-quiet" data-tooltip="Back to the stock catalog: clears its picks, left-out entries and look choices and deletes its customised recipes (asks first)" ${off}>↺ Reset catalog…</button>`;
+  }
+  // The catalog's own recipe for a Customize copy, as Customize makes it now (its sounds left out, as the comparison
+  // leaves sound stages out), to tell edited copies apart; null when it cannot be told.
+  stockRecipe(recipe, target) {
+    try {
+      const host = this.host, d = this.dndCatalog, { kind } = target.catalog, state = target.get();
+      if (d?.isCatalogPage()) {
+        const { api } = d, entry = recipe.catalogEntry ? api.entry(recipe.catalogEntry) : null, variant = entry?.variants?.find((v) => v.recipe?.id === recipe.id);
+        return entry && variant ? api.recipe(entry, variant.id, { motion: state.motion, sounds: null, soundVolume: state.soundVolume }) : null;
+      }
+      if (kind === "spell") { const spell = catalogSpell(recipe.id); return spell ? spellRecipe(spell, undefined, { ...catalogSoundOptions(host), sounds: null }) : null; }
+      if (kind === "weapon") { const weapon = catalogWeapon(recipe.id); return weapon ? weaponRecipe(weapon, recipe.weaponMode, { motion: state.motion, soundCatalog: null, soundVolume: state.soundVolume }) : null; }
+      if (["condition", "effect"].includes(kind)) { const entry = catalogStateEntry(recipe.stateEntry); return entry ? stateRecipe(entry, { damageType: recipe.stateDamageType, auraVariant: recipe.stateAuraVariant, catalog: host.catalog?.() }) : null; }
+      const profile = abilityProfileForPage(this.pf2ePage()), entry = profile?.catalog.entry(recipe.id);
+      return entry ? profile.catalog.recipe(entry, { ...state, sound: false }, null) : null;
+    } catch { return null; }
+  }
+  // Reset catalog… (GM): asks first, naming the customised recipes it deletes, keeps one backup (the catalog's state
+  // and those recipes) in the world's slot for this catalog and downloads the same, then saves the recipes and the
+  // state through the host, as the pages do. The kept copy comes first: a download the browser blocks cannot say so.
+  async resetCatalog() {
+    const target = this.catalogResetTarget(), host = this.host, notes = globalThis.ui?.notifications;
+    if (!target || host.isGM?.() !== true) return;
+    // Reviewing a player, host.recipes() and host.save() are that player's: a catalog reset never touches them.
+    if (host.reviewing?.()) throw Error(`Close ${host.reviewing().userName}'s animations first: a catalog reset changes only the world's recipes.`);
+    const state = target.get(), recipes = host.recipes(), plan = (keepEnabled) => catalogResetPlan({ state, defaults: target.defaults, recipes, catalog: target.catalog, keepEnabled });
+    const kept = plan(true);
+    if (!kept.changed && !plan(false).changed) { notes?.info(`Animater: the ${target.name} is already the stock catalog.`); return; }
+    const edited = new Set(kept.deleted.filter((r) => recipeEdited(r, this.stockRecipe(r, target))).map((r) => r.id));
+    const choice = await globalThis.foundry?.applications?.api?.DialogV2?.confirm({
+      window: { title: `Reset the ${target.name}` }, rejectClose: false, no: { default: true },
+      content: catalogResetDialogHTML(target.name, { deleted: kept.deleted, edited, pickedOnly: state.enabled && state.scope === "selected", replaces: this.keptCatalogReset(target) }),
+      yes: { label: "Reset", icon: "fa-solid fa-rotate-left", callback: (_event, button) => ({ full: !!button.form?.elements.full?.checked }) },
+    });
+    if (!choice) return;
+    const done = choice.full ? plan(false) : kept;
+    if (!done.changed) { notes?.info(`Animater: the ${target.name} is already the stock catalog.`); return; }
+    const date = new Date(), backup = catalogBackup(state, done.deleted, { catalog: target.slot, date });
+    if (host.setCatalogResetBackup) await host.setCatalogResetBackup(target.slot, backup);
+    await globalThis.foundry?.utils?.saveDataToFile?.(JSON.stringify(backup, null, 2), "application/json", catalogBackupFileName(target.slot, { date }));
+    if (done.deleted.length) {
+      await host.save(done.recipes);
+      for (const r of done.deleted) { this.drafts?.delete(r.id); this.dirty?.delete(r.id); }
+      if (done.deleted.some((r) => r.id === this.selected)) { this.selected = host.recipes()[0]?.id; this.studio = false; this.stageIndex = 0; }
+    }
+    if (done.state) await target.set(done.state);
+    this.leftOutView = null;
+    const n = done.deleted.length;
+    this.message = `${target.name} reset to the stock catalog${n ? `; ${n} customised recipe${n === 1 ? "" : "s"} deleted` : ""}. A backup is kept in this world (Restore last reset…) and downloaded.`;
+    notes?.info(`Animater: ${this.message}`);
+    this.render();
+  }
+  // Restore last reset… (GM): the catalog as it was before its last reset, from the copy kept in the world: its
+  // recipes back among the world's and its state then, through the same paths as the reset. Then the slot is cleared.
+  async restoreCatalog() {
+    const target = this.catalogResetTarget(), host = this.host, notes = globalThis.ui?.notifications, kept = this.keptCatalogReset(target);
+    if (!target || host.isGM?.() !== true || !kept) return;
+    if (host.reviewing?.()) throw Error(`Close ${host.reviewing().userName}'s animations first: a catalog restore changes only the world's recipes.`);
+    const plan = catalogRestorePlan(kept, host.recipes());
+    const yes = await globalThis.foundry?.applications?.api?.DialogV2?.confirm({
+      window: { title: `Restore the ${target.name}` }, content: catalogRestoreDialogHTML(target.name, kept, { replaced: plan.replaced }), rejectClose: false, no: { default: true },
+      yes: { label: "Restore", icon: "fa-solid fa-rotate-left", callback: () => true },
+    });
+    if (!yes) return;
+    if (plan.restored.length) {
+      await host.save(plan.recipes);
+      for (const r of plan.restored) { this.drafts?.delete(r.id); this.dirty?.delete(r.id); }
+    }
+    await target.set(plan.state);
+    await host.setCatalogResetBackup?.(target.slot, null);
+    this.leftOutView = null;
+    const n = plan.restored.length;
+    this.message = `${target.name} restored as it was before its last reset${n ? `; ${n} customised recipe${n === 1 ? "" : "s"} back` : ""}.`;
+    notes?.info(`Animater: ${this.message}`);
+    this.render();
   }
   async toggleCardInclude(id) {
     const env = this.host.environment(), store = this.catalogStore();
@@ -766,7 +865,7 @@ export class Workspace {
         ${this.navItemsHTML(env)}
         <div class="an-nav-bottom"><div class="an-pack"><span class="an-dot ${env.ready && env.jb2aRegistered !== false ? "is-ready" : ""}" ${env.jb2aRegistered === false ? `data-tooltip="${esc(env.pack)} is active, but Sequencer has no JB2A animations. See Setup."` : ""}></span><div>${esc(env.pack)}<small>${this.host.catalog().length.toLocaleString()} asset variants</small></div></div><button data-action="stop" class="an-stop">■ Stop my effects</button><small class="an-version">${env.version ? `v${esc(env.version)} · ` : ""}${esc(env.system)}${env.demo ? " · PREVIEW" : ""}</small></div>
       </aside>
-      <main class="an-main">${this.isStudio() || (this.page === "flash" && (this.flashEditor?.editing || !this.host.flashScreens)) ? "" : `<header class="an-header"><div><div class="an-eyebrow">${this.page === "recipes" ? "YOUR EFFECTS, YOUR STYLE" : this.page === "finishers" ? "FINISHING BLOWS, YOUR WAY" : this.page === "flash" ? "TITLE CARDS FOR EVERY FIGHT" : "ANIMATER WORKSPACE"}</div><h1>${esc(catalogPageTitle(this.page,env))}</h1></div><div class="an-header-actions">${this.page === "recipes" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new" class="an-primary">+ New recipe</button>` : this.page === "finishers" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new-finisher" class="an-primary">+ New finisher</button>` : this.page === "builder" ? `<button data-action="cancel-builder">Back to recipes</button>` : this.page === "flash" ? this.flashEditor?.showGallery ? "" : `<button data-action="flash-export" class="an-quiet" ${this.host.flashScreens().length ? "" : "disabled"}>↗ Export</button><button data-action="flash-import" class="an-quiet">↙ Import</button><button data-action="flash-new" class="an-primary">+ New flash screen</button>` : ""}</div></header>`}
+      <main class="an-main">${this.isStudio() || (this.page === "flash" && (this.flashEditor?.editing || !this.host.flashScreens)) ? "" : `<header class="an-header"><div><div class="an-eyebrow">${this.page === "recipes" ? "YOUR EFFECTS, YOUR STYLE" : this.page === "finishers" ? "FINISHING BLOWS, YOUR WAY" : this.page === "flash" ? "TITLE CARDS FOR EVERY FIGHT" : "ANIMATER WORKSPACE"}</div><h1>${esc(catalogPageTitle(this.page,env))}</h1></div><div class="an-header-actions">${this.page === "recipes" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new" class="an-primary">+ New recipe</button>` : this.page === "finishers" ? `<button data-action="export" class="an-quiet">↗ Export</button><button data-action="import" class="an-quiet">↙ Import</button><button data-action="new-finisher" class="an-primary">+ New finisher</button>` : this.page === "builder" ? `<button data-action="cancel-builder">Back to recipes</button>` : this.page === "flash" ? this.flashEditor?.showGallery ? "" : `<button data-action="flash-export" class="an-quiet" ${this.host.flashScreens().length ? "" : "disabled"}>↗ Export</button><button data-action="flash-import" class="an-quiet">↙ Import</button><button data-action="flash-new" class="an-primary">+ New flash screen</button>` : this.catalogResetHTML()}</div></header>`}
         <div role="status" aria-live="polite" class="an-toast ${this.message ? `is-visible is-${messageTone(this.message, this.messageError)}` : ""}">${esc(this.message)}${this.message ? `<button type="button" class="an-toast-close" data-action="dismiss-message" aria-label="Dismiss message">✕</button>` : ""}</div>
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
@@ -2947,6 +3046,8 @@ export class Workspace {
         this.host.pickMedia("image", input.value, (path) => { input.value = path; input.dispatchEvent(new Event("change", { bubbles: true })); });
         return;
       }
+      if (action === "catalog-state-reset") { await this.resetCatalog(); return; }
+      if (action === "catalog-state-restore") { await this.restoreCatalog(); return; }
       if (action === "catalog-left-out") { this.leftOutView = this.leftOutView === this.page ? null : this.page; this.render(); return; }
       if (action === "dismiss-message") { this.message = ""; this.messageError = null; this.render(); return; }
       if (action === "open-settings") { this.host.openSettings?.(); return; }
