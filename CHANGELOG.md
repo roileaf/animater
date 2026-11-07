@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.7.5 (unreleased)
+## 3.7.5
 
 - **Squirrels and snakes stay on the map.** A squirrel bolting from a creature with no tree to run to, or a snake fleeing, could run off the edge of the map into the padding around it. They now stop at the map's edge.
 
