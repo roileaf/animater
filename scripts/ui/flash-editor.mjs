@@ -209,6 +209,15 @@ export class FlashEditor {
   }
   // The inspector catches up after wheel and key tweaks, without redrawing on every notch.
   later() { clearTimeout(this.laterTimer); this.laterTimer = setTimeout(() => this.w.render(), 250); }
+  // Leaving the page or closing the window: a preview or thumbnail still running holds the closed window in memory.
+  stop() {
+    clearTimeout(this.laterTimer);
+    this.playing = false;
+    this.preview?.stop();
+    this.preview = null;
+    for (const run of this.thumbRuns ?? []) run.stop();
+    this.thumbRuns = [];
+  }
   // Space: play the preview from the start, or stop it.
   async togglePlay() {
     const s = this.current(), frame = this.w.root.querySelector("[data-flash-stage]");

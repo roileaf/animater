@@ -498,6 +498,8 @@ export class Workspace {
     clearInterval(this.activityTimer);
     void this.mediaLibrary?.stopTokenPreview();
     this.stopEditorPreview();
+    this.tokenshadeStudio?.stop();
+    this.flashEditor?.stop();
     this.abort.abort();
     cancelAnimationFrame(this.motionFrame);
     this.thumbnails?.disconnect();
@@ -780,7 +782,7 @@ export class Workspace {
     // The flash stage is drawn after the page, at the editor's current time.
     this.watchActivity();
     if (this.page === TOKENSHADE_PAGE) this.tokenshadeStudio?.mount(); else this.tokenshadeStudio?.stop();
-    if (this.page === "flash") this.flashEditor?.mount(); else if (this.flashEditor?.preview) { this.flashEditor.preview.stop(); this.flashEditor.preview = null; }
+    if (this.page === "flash") this.flashEditor?.mount(); else this.flashEditor?.stop();
     this.root.querySelectorAll("audio[data-cue-volume]").forEach((audio) => {
       audio.volume = Number(audio.dataset.cueVolume);
     });
