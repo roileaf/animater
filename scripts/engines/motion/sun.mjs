@@ -29,6 +29,20 @@ export function sunFromClock({ day, sunrise = 0.25, sunset = 0.75, east = COMPAS
 // sunFromClock. { color: [r, g, b] 0–1, amount 0–1 }, or null in full day and at night.
 const GOLDEN = 18, TWILIGHT = 0.03;
 const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+// Sunlight's colour by how high the sun stands (pure, degrees; [r, g, b] 0–1), as its colour temperature runs through the
+// day: near white high up (about 5500 K), soft yellow in the afternoon (4000–4500 K), golden lower (3000–3500 K), deep
+// orange-red at sunset (2000–2500 K) and a fading crimson as it slips under. A winter sun, never climbing as high, stays
+// a little yellow even at noon. It warms gradually all afternoon, not only at the last.
+const SUN_COLOURS = [[-4, [0.82, 0.25, 0.06]], [0, [0.95, 0.33, 0.1]], [4, [1, 0.45, 0.2]], [10, [1, 0.62, 0.32]], [20, [1, 0.76, 0.46]], [32, [1, 0.88, 0.66]], [48, [1, 0.95, 0.84]], [70, [1, 0.98, 0.94]]];
+export function sunColorByHeight(height) {
+  const h = Number.isFinite(Number(height)) ? Number(height) : 45;
+  if (h <= SUN_COLOURS[0][0]) return [...SUN_COLOURS[0][1]];
+  for (let i = 1; i < SUN_COLOURS.length; i++) {
+    const [h1, c1] = SUN_COLOURS[i], [h0, c0] = SUN_COLOURS[i - 1];
+    if (h <= h1) { const t = (h - h0) / (h1 - h0), s = t * t * (3 - 2 * t); return mix(c0, c1, s); }
+  }
+  return [...SUN_COLOURS[SUN_COLOURS.length - 1][1]];
+}
 // Under clouds (`clock.sky`) the colour fades with what shows of the sky: a grey dusk under an overcast one.
 export function sunGlow(clock) {
   const glow = clearGlow(clock), sky = clamp01(clock?.sky ?? 1);

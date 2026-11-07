@@ -1,4 +1,5 @@
 import { SIZE_RANGE, sizePercent } from '../engines/motion/vermin.mjs';
+import { scopeBar } from './level-scope.mjs';
 
 // The Animals panel (Animater controls): how much life a scene has, quickly. Amounts and sizes are the same scene flags as
 // Scene configuration > Animater > Creatures, not a copy; the same with Outdoor life. Animals placed by hand are kept on the
@@ -11,6 +12,8 @@ export const ANIMAL_GROUPS = Object.freeze([
   ['Water', [['fish', 'Fish'], ['waterBirds', 'Water birds'], ['frogs', 'Frogs']]],
   ['Dark places', [['rats', 'Rats'], ['bats', 'Bats'], ['moths', 'Moths'], ['crawlers', 'Crawlers']]],
 ]);
+// What a level can have of its own.
+export const ANIMAL_KEYS = Object.freeze([...ANIMAL_GROUPS.flatMap(([, kinds]) => kinds.flatMap(([kind]) => [kind, `${kind}Size`])), 'outdoorLife', 'animalScale', 'birdHeight', 'placedAnimals']);
 const AMOUNTS = [['none', 'None'], ['few', 'Few'], ['', 'Usual'], ['more', 'More'], ['many', 'Many']];
 // Wolves are the GM's to ask for: none until chosen, on any scene.
 const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more', 'More'], ['many', 'Many']];
@@ -25,6 +28,11 @@ export function animalPreset(amount = '') {
   for (const [group, kinds] of ANIMAL_GROUPS) if (group !== 'Dark places') for (const [kind] of kinds) if (kind !== 'wolves') out[kind] = amount;
   return out;
 }
+// How high a map's birds fly as a share of the usual (pure), from its slider's percent: unset, as usual.
+export const BIRD_HEIGHT = Object.freeze({ min: 25, max: 300, step: 5 });
+export const birdHeightOf = (percent) => { const n = Number(percent); return percent === null || percent === undefined || percent === '' || !Number.isFinite(n) ? 1 : Math.min(BIRD_HEIGHT.max, Math.max(BIRD_HEIGHT.min, n)) / 100; };
+// How big a bird looks at that height (pure): seen from above, a higher one is nearer the eye. About a third bigger at the top of the slider, a little smaller at the bottom. (Its shadow: soft-shadow.mjs.)
+export const birdBodyOf = (percent) => 1 + 0.15 * (birdHeightOf(percent) - 1);
 // The list as saved, tidied (pure): only what can be placed, with numbers for where it stands.
 export function placedList(raw) {
   if (!Array.isArray(raw)) return [];
@@ -47,13 +55,14 @@ export function placedChanges(shown, raw) {
 
 const chip = (action, data, label, { active = false, tip = '', icon = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
 const sizeSlider = (key, label, value) => { const percent = sizePercent(value); return `<label class="animater-an-size"><input type="range" data-size-key="${key}" min="${SIZE_RANGE.min}" max="${SIZE_RANGE.max}" step="${SIZE_RANGE.step}" value="${percent}" aria-label="${esc(label)}"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
+const birdHeightSlider = (value) => { const percent = Math.round(birdHeightOf(value) * 100); return `<label class="animater-an-size"><input type="range" data-size-key="birdHeight" min="${BIRD_HEIGHT.min}" max="${BIRD_HEIGHT.max}" step="${BIRD_HEIGHT.step}" value="${percent}" aria-label="Bird height"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
 const animalRow = (kind, label, flags) => {
   const amounts = (kind === 'wolves' ? WOLF_AMOUNTS : AMOUNTS).map(([v, l]) => chip('setAnimal', `data-key="${kind}" data-value="${v}"`, l, { active: String(flags[kind] ?? '') === v })).join('');
   return `<div class="animater-an-row"><span>${esc(label)}</span><div class="animater-an-amounts">${amounts}</div>${sizeSlider(`${kind}Size`, `${label}: size`, flags[`${kind}Size`])}</div>`;
 };
 
-// The panel's content (pure). `flags` the scene's Animater flags; `count` how many are about on this screen; `note` why none would show; `aiming` the kind being placed.
-export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = '' } = {}) {
+// The panel's content (pure). `flags` the scene's Animater flags; `count` how many are about on this screen; `note` why none would show; `aiming` the kind being placed; `underground` whether the scene is one: only its dark places are offered there, nothing wild living underground, and they only there; `water` whether the map has any, for what lives on it.
+export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = '', underground = false, water = true, scope = null } = {}) {
   const on = flags.outdoorLife === 'on', placed = placedList(flags.placedAnimals);
   const place = PLACEABLE.map(([id, label, icon]) => {
     const n = placed.filter((p) => p.kind === id).length;
@@ -61,18 +70,19 @@ export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = ''
   }).join('');
   return `<div class="animater-wx animater-animals">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
-    <section class="animater-wx-section"><div class="animater-an-top"><span><strong>Outdoor life on this scene</strong><small>${on ? `${count} about on your screen` : 'Off: only placed by you once it is on'}</small></span><div class="animater-wx-chips">${chip('setLife', 'data-value=""', 'Off', { active: !on })}${chip('setLife', 'data-value="on"', 'On', { active: on })}</div></div>
+    ${scopeBar(scope)}
+    ${underground ? '' : `<section class="animater-wx-section"><div class="animater-an-top"><span><strong>Outdoor life on this scene</strong><small>${on ? `${count} about on your screen` : 'Off: only placed by you once it is on'}</small></span><div class="animater-wx-chips">${chip('setLife', 'data-value=""', 'Off', { active: !on })}${chip('setLife', 'data-value="on"', 'On', { active: on })}</div></div>
       <div class="animater-wx-chips animater-an-presets">${chip('presetAnimals', 'data-value="few"', 'Quiet', { tip: 'A few of everything outdoors.' })}${chip('presetAnimals', 'data-value=""', 'Usual', { tip: 'The usual number of everything outdoors.' })}${chip('presetAnimals', 'data-value="many"', 'Lively', { tip: 'Many of everything outdoors.' })}${chip('reshuffleAnimals', '', 'Reshuffle', { icon: 'fa-rotate', tip: 'Scatter them afresh, on your screen. Each screen scatters its own.' })}</div>
     </section>
-    <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>
-    <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div></section>
-    ${ANIMAL_GROUPS.map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags)).join('')}</section>`).join('')}
+    <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>`}
+    <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div>${underground ? '' : `<div class="animater-an-all"><span><strong>Bird height</strong><small>How high birds fly over this map. Higher, they look bigger, and their shadows land further off, wider, softer and fainter.</small></span>${birdHeightSlider(flags.birdHeight)}</div>`}</section>
+    ${ANIMAL_GROUPS.filter(([group]) => (group === 'Dark places' ? underground : !underground && (group !== 'Water' || water))).map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags)).join('')}</section>`).join('')}
     <footer class="animater-wx-foot"><span>The same settings as Scene configuration. To keep them out of an area, use that region's Keep out.</span></footer>
   </div>`;
 }
 
-// `flags()` the scene's Animater flags; `save(changes)` saves those flags, for everyone; `count()` and `note()` as above; `aim(kind, onPlace)` starts placing, `stopAim()` ends it; `reshuffle()` scatters afresh on this screen.
-export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, note = () => '', aim = () => {}, stopAim = () => {}, reshuffle = () => {} }) {
+// `flags()` the scene's Animater flags; `save(changes)` saves those flags, for everyone; `count()`, `note()`, `underground()` and `water()` as above; `aim(kind, onPlace)` starts placing, `stopAim()` ends it; `reshuffle()` scatters afresh on this screen.
+export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, note = () => '', aim = () => {}, stopAim = () => {}, reshuffle = () => {}, underground = () => false, water = () => true, scope = () => null, scopeTo = () => {}, clearLevel = async () => {} }) {
   return class AnimalsPanel extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
       id: `${id}-animals`, classes: ['animater-weather-panel', 'animater-animals-panel'],
@@ -82,6 +92,8 @@ export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, 
         setLife(_event, target) { void save({ outdoorLife: target.dataset.value }).then(() => this.render()); },
         presetAnimals(_event, target) { void save(animalPreset(target.dataset.value)).then(() => this.render()); },
         reshuffleAnimals() { reshuffle(); },
+        setScope(_event, target) { scopeTo(target.dataset.value); void this.render(); },
+        clearLevel() { void clearLevel().then(() => this.render()); },
         placeAnimal(_event, target) {
           const kind = target.dataset.kind;
           if (this.aiming === kind) { this.aiming = ''; stopAim(); void this.render(); return; }
@@ -92,7 +104,7 @@ export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, 
         removeAnimal(_event, target) { void save({ placedAnimals: withoutPlaced(flags().placedAnimals, target.dataset.kind) }).then(() => this.render()); },
       },
     };
-    async _renderHTML() { return animalsPanelHtml({ flags: flags(), count: count(), note: note(), aiming: this.aiming ?? '' }); }
+    async _renderHTML() { return animalsPanelHtml({ flags: flags(), count: count(), note: note(), aiming: this.aiming ?? '', underground: underground(), water: water(), scope: scope() }); }
     _replaceHTML(html, content) { const top = content.scrollTop; content.innerHTML = html; content.scrollTop = top; }
     // A slider says its size as it moves, and saves when let go: saving scatters the animals afresh.
     _onRender() { for (const input of this.element.querySelectorAll('input[data-size-key]')) { const shown = input.parentElement.querySelector('output'); input.addEventListener('input', () => { shown.textContent = `${input.value}%`; shown.classList.toggle('is-changed', input.value !== '100'); }); input.addEventListener('change', () => { void save({ [input.dataset.sizeKey]: Number(input.value) }).then(() => this.render()); }); } }

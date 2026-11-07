@@ -58,6 +58,7 @@ export const padStep = (f, dt = 1 / 60) => {
 // One step of a duck (pure): paddles about on the water (`ok`), now and then tipping up to feed (`up`, seconds of it). Anyone
 // near sends it up (`mode` 'fly', `h` 0-1 its height) and away, and it comes down on water, turning back for where it left if
 // it finds none. After a few tries it has gone elsewhere (`gone`). It faces `a` (0 up the map, clockwise).
+const DUCK_CLEARS_WALLS = 0.35;
 export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => true, blocked = () => false, barred = () => false, scare = false, noise = null, random = Math.random } = {}) {
   const q = { ...duck };
   if (q.mode === 'swim') {
@@ -73,10 +74,12 @@ export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   }
   q.t += dt;
   const speed = grid * (1.2 + Math.min(1, q.t) * 2), nx = q.x + q.vx * speed * dt, ny = q.y + q.vy * speed * dt;
+  // Up in the air it clears a wall; only just off the water does one stop it. (A closed place it stays out of at any height.)
+  const walled = (a, b) => (q.h ?? 0) < DUCK_CLEARS_WALLS && blocked(a, b);
   // Bound for good water: straight there and down onto it, however far. Something in the way, and it flies as it would from a fright.
   if (q.to) {
     const d = Math.hypot(q.to.x - q.x, q.to.y - q.y), way = Math.atan2(q.to.y - q.y, q.to.x - q.x), step = Math.min(d, speed * dt), tx = q.x + Math.cos(way) * step, ty = q.y + Math.sin(way) * step;
-    if (blocked({ x: q.x, y: q.y }, { x: tx, y: ty }) || (barred(tx, ty) && !barred(q.x, q.y))) q.to = null;
+    if (walled({ x: q.x, y: q.y }, { x: tx, y: ty }) || (barred(tx, ty) && !barred(q.x, q.y))) q.to = null;
     else {
       q.vx = Math.cos(way); q.vy = Math.sin(way); q.a = way + Math.PI / 2; q.x = tx; q.y = ty; q.h = Math.min(1, q.t / 1.2) * Math.min(1, (d - step) / (grid * 2));
       if (d - step > 1) return q;
@@ -85,8 +88,7 @@ export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => 
       return q;
     }
   }
-  // Low enough that walls stop it, and it will not fly into a closed place.
-  if (blocked({ x: q.x, y: q.y }, { x: nx, y: ny }) || (barred(nx, ny) && !barred(q.x, q.y))) { const way = Math.atan2(q.fromY - q.y, q.fromX - q.x) + between(random, -0.7, 0.7); q.vx = Math.cos(way); q.vy = Math.sin(way); q.a = way + Math.PI / 2; }
+  if (walled({ x: q.x, y: q.y }, { x: nx, y: ny }) || (barred(nx, ny) && !barred(q.x, q.y))) { const way = Math.atan2(q.fromY - q.y, q.fromX - q.x) + between(random, -0.7, 0.7); q.vx = Math.cos(way); q.vy = Math.sin(way); q.a = way + Math.PI / 2; }
   else { q.x = nx; q.y = ny; }
   const u = q.t / 3.6; q.h = Math.sin(Math.min(1, u) * Math.PI);
   if (u >= 1) {
@@ -375,7 +377,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { kept = () => false, air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null } = {}) {
+    tick(seconds, { kept = () => false, air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null, birdBody = 1, liftShadow = () => {} } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -406,11 +408,11 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
           else put(q.ripple, t.wake[Math.floor(time * 6 + q.phase) % t.wake.length], q.x, q.y, q.a, 0.75 * k * birdSize, alpha);
           const c = fall(q, q.x, q.y, { width: grid * 0.3, body: 0.22, grounded: true }); shadowOf(q, tex, q.x + c.dx, q.y + c.dy, q.a, size, Math.min(0.32, c.alpha * 0.36) * alpha); put(q.body, tex, q.x, q.y, q.a, size, alpha);
         } else {
-          const c = fall(q, q.x, q.y, { width: grid * 0.3, lift: 0.8 }), tex = t.duckFly[Math.floor(time * 22 + q.phase) % SPANS.length], size = 0.6 * k * birdSize * (1 + q.h * 0.15);
+          const c = fall(q, q.x, q.y, { width: grid * 0.3, lift: 0.8, bird: true }), tex = t.duckFly[Math.floor(time * 22 + q.phase) % SPANS.length], size = 0.6 * k * birdSize * (1 + q.h * 0.15);
           // Pattering off the water, a splash at each beat, only until it is clear of it.
           if (ripple) { q.ripple.visible = false; if (q.h < 0.15 && rippleDue(q.ringAt, q, grid * 0.5)) { q.ringAt = { x: q.x, y: q.y }; ripple(q.x, q.y, 0.34 * birdSize, false); } }
           else if (q.h < 0.15) put(q.ripple, t.ring[Math.min(t.ring.length - 1, Math.floor((q.t ?? 0) * 7))], q.x, q.y, 0, 0.55 * k * birdSize, alpha); else q.ripple.visible = false;
-          const fade = q.leaving ? Math.max(0, Math.min(1, (3.6 - q.t) / 1.2)) : 1; shadowOf(q, tex, q.x + c.dx * q.h, q.y + c.dy * q.h, q.a, size * 0.95, Math.min(0.32, c.alpha * 0.38) * alpha * fade); put(q.body, tex, q.x, q.y, q.a, size, alpha * fade);
+          const fade = q.leaving ? Math.max(0, Math.min(1, (3.6 - q.t) / 1.2)) : 1; shadowOf(q, tex, q.x + c.dx * q.h, q.y + c.dy * q.h, q.a, size * 0.95, Math.min(0.32, c.alpha * 0.38) * alpha * fade); liftShadow(q.shadow, 0.8); put(q.body, tex, q.x, q.y, q.a, size * birdBody, alpha * fade);
         }
         return q;
       });
@@ -434,8 +436,8 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
           else put(b.ripple, t.ring[Math.floor(time * 1.4 + b.phase) % t.ring.length], b.x, b.y, 0, 0.7 * k * birdSize, alpha);
           const c = fall(b, b.x, b.y, { width: grid * 0.28, body: 0.75, grounded: true }); shadowOf(b, tex, b.x + c.dx, b.y + c.dy, b.a, size, Math.min(0.45, c.alpha * 0.5) * alpha); put(b.body, tex, b.x, b.y, b.a, size, alpha);
         } else {
-          const c = fall(b, b.x, b.y, { width: grid * 0.7, lift: 1.5 }), tex = t.heronFly[Math.floor(time * 5.5 + b.phase) % SPANS.length], size = 0.68 * k * birdSize;
-          const fade = b.leaving ? Math.max(0, Math.min(1, (7 - b.t) / 2)) : 1; b.ripple.visible = false; shadowOf(b, tex, b.x + c.dx * b.h, b.y + c.dy * b.h, b.a, size, Math.min(0.32, c.alpha * 0.38) * alpha * fade); put(b.body, tex, b.x, b.y, b.a, size, alpha * fade);
+          const c = fall(b, b.x, b.y, { width: grid * 0.7, lift: 3.5, bird: true }), tex = t.heronFly[Math.floor(time * 5.5 + b.phase) % SPANS.length], size = 0.68 * k * birdSize;
+          const fade = b.leaving ? Math.max(0, Math.min(1, (7 - b.t) / 2)) : 1; b.ripple.visible = false; shadowOf(b, tex, b.x + c.dx * b.h, b.y + c.dy * b.h, b.a, size, Math.min(0.32, c.alpha * 0.38) * alpha * fade); liftShadow(b.shadow, 3.5); put(b.body, tex, b.x, b.y, b.a, size * birdBody, alpha * fade);
         }
         return b;
       });
@@ -454,9 +456,9 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         if (alpha <= 0.01 || !can(g, x, y)) { g.body.visible = g.shadow.visible = false; if (g.carry) g.carry.visible = false; return g; }
         // Wings folded in the dive, beating hard climbing out, otherwise a glide with a flap now and then.
         const frame = g.mode === 'dive' ? 0 : g.mode === 'rise' ? Math.floor(time * 12) % SPANS.length : (Math.floor(time * 1.6 + g.phase) % 5 === 0 ? Math.floor(time * 9) % SPANS.length : 0);
-        const tex = t.gull[frame], c = fall(g, x, y, { width: grid * 0.6, lift: 1.7 * Math.max(0.04, g.h) }), near = 0.72 + 0.28 * g.h;
+        const tex = t.gull[frame], c = fall(g, x, y, { width: grid * 0.6, lift: 4 * Math.max(0.04, g.h), bird: true }), near = 0.72 + 0.28 * g.h;
         g.open = overOpen(g.open, indoors(x, y), dt); g.shade = overOpen(g.shade, indoors(x + c.dx, y + c.dy), dt);
-        put(g.shadow, tex, x + c.dx, y + c.dy, angle, 0.5 * k * birdSize * near, Math.min(0.28, c.alpha * 0.3) * alpha * g.shade); put(g.body, tex, x, y, angle, 0.46 * k * birdSize * near, alpha * g.open);
+        put(g.shadow, tex, x + c.dx, y + c.dy, angle, 0.5 * k * birdSize * near, Math.min(0.28, c.alpha * 0.3) * alpha * g.shade); liftShadow(g.shadow, 4 * Math.max(0.04, g.h)); put(g.body, tex, x, y, angle, 0.46 * k * birdSize * near * birdBody, alpha * g.open);
         if (g.carry) put(g.carry, g.carry.texture, x + Math.sin(angle) * grid * 0.14, y - Math.cos(angle) * grid * 0.14, angle + Math.PI / 2, 0.42 * k * g.carrySize, alpha * g.open);
         return g;
       });

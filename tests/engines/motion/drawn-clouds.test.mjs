@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloudPixels, skyMakeup, skyCount, skyHome, skyAlong, skySquares, skyLight, CLOUD_LIGHT, createDrawnClouds, DEFAULT_TRANSPARENCY } from '../../../scripts/engines/motion/drawn-clouds.mjs';
+import { readFileSync } from 'node:fs';
+import { cloudAreas, towardSun, cloudPixels, skyMakeup, skyCount, skyHome, skyAlong, skySquares, skyLight, CLOUD_LIGHT, createDrawnClouds, DEFAULT_TRANSPARENCY } from '../../../scripts/engines/motion/drawn-clouds.mjs';
 import { TUNE_EFFECTS, TUNE_SLIDERS, cleanTune, tuneAdds } from '../../../scripts/engines/motion/weather-tune.mjs';
 import { weatherPanelHtml, effectToggled } from '../../../scripts/ui/weather-panel.mjs';
 
@@ -29,6 +30,24 @@ test('a huge map draws no more clouds than it can afford, each bigger instead', 
   assert.equal(small.grow, 1);
   assert.ok(huge.sheets + huge.clouds <= 140); assert.ok(huge.grow > 1);
 });
+test('clouds stay out of rooms; their shadows fall through the holes in the roof', () => {
+  const box = { x: 0, y: 0, width: 100, height: 100 }, room = [0, 0, 10, 0, 10, 10], hole = [2, 2, 4, 2, 4, 4];
+  const outdoors = cloudAreas(box, { body: [room], rooms: [room], open: [hole] });
+  assert.deepEqual(outdoors.body.holes, [room], 'no cloud over a room seen into');
+  assert.deepEqual(outdoors.body.open, [], 'nor over the hole in its roof');
+  assert.deepEqual(outdoors.shadow.holes, [room]);
+  assert.deepEqual(outdoors.shadow.open, [hole], 'its shadow falls through');
+  const roofed = cloudAreas(box, { body: [], rooms: [room] });
+  assert.deepEqual(roofed.body.holes, [], 'over a roof as drawn it passes on');
+  assert.deepEqual(roofed.shadow.holes, [room], 'its shadow lands on the roof tile, not the floor below');
+  const below = cloudAreas(box, { rooms: [room], open: [hole], below: true });
+  assert.equal(below.shadow.rect, null, 'underground, nothing but the openings');
+  assert.deepEqual(below.shadow.open, [hole]);
+  const soft = cloudAreas(box, { body: [room], bodySoft: [1], rooms: [room], roomSoft: [0.5], open: [hole] });
+  assert.deepEqual(soft.body.soft, [1]); assert.deepEqual(soft.shadow.soft, [0.5], 'each room\'s edge fades as far as it says');
+  assert.deepEqual(cloudAreas(box, { rooms: [room], roomSoft: [2], below: true }).shadow.soft, [], 'underground no room to fade');
+});
+
 test('a small map gets its own sky: clouds over it, not scattered far off its edges', () => {
   const box = { x: 1400, y: 1000, width: 5000, height: 4000 }, grid = 200, squares = skySquares(box, grid);
   const { clouds } = skyCount(skyMakeup(0.6), squares);
@@ -63,6 +82,11 @@ test('the sun colours the clouds: white high up, gold low down, its shade deepen
   const dusk = skyLight({ height: 5, dark: 0.5 }), day = skyLight({ height: 5 }); assert.ok(dusk.lit[0] < day.lit[0] * 0.7, 'dims with the scene'); assert.ok(dusk.rim[0] < day.rim[0]);
   assert.ok(!CLOUD_LIGHT.includes('`'));
   assert.match(CLOUD_LIGHT, /uSolid/, 'however many overlap, the slider holds');
+  assert.match(CLOUD_LIGHT, /dot\(facing, uSun\)/, 'lit from where the sun is');
+  const source = readFileSync(new URL('../../../scripts/engines/motion/drawn-clouds.mjs', import.meta.url), 'utf8');
+  assert.ok(!/\.rotation =/.test(source), 'a cloud never turns');
+  const [x, y, z] = towardSun(0, 90); assert.ok(Math.abs(x) < 1e-9 && Math.abs(y) < 1e-9 && Math.abs(z - 1) < 1e-9, 'overhead');
+  const low = towardSun(Math.PI / 2, 10); assert.ok(low[1] > 0.9 && low[2] < 0.2, 'low in the south');
 });
 test('the Weather panel turns drawn clouds on, and its transparency shows only then', () => {
   assert.equal(TUNE_EFFECTS.drawnClouds.plain, true);

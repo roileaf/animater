@@ -135,11 +135,14 @@ const SHAPES = {
   // A continuous track segment along +x: a snake's wavy groove, an ooze's smear or a lizard's tail drag.
   groove(g, spec) {
     if (spec.gait === 'ooze') { drawSoftEllipse(g, spec.color, R, (spec.ry ?? 0.5) * R, 3); return; }
-    const amp = (spec.amp ?? 0.3) * R, flip = spec.flip ?? 1;
+    const amp = (spec.amp ?? 0.3) * R, flip = spec.flip ?? 1, bend = Number(spec.bend) || 0, L = (2 * R) / 3;
     g.lineStyle(Math.max(1, (spec.thick ?? 0.1) * R), spec.color, 1);
-    // Half a wave per stride, flipped every stride, so the segments join into one S-curve.
+    // Half a wave per stride, flipped every stride, so the segments join into one S-curve; a turn (`bend`) leaves along
+    // the way the last stride went (-bend from this one's) and arrives along this one's, a smooth line through it.
+    const p1 = [-R + L * Math.cos(-bend), L * Math.sin(-bend)], p2 = [R - L, 0];
     for (let i = 0; i <= 12; i++) {
-      const t = i / 12, x = -R + 2 * R * t, y = flip * amp * Math.sin(Math.PI * t);
+      const t = i / 12, u = 1 - t, b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
+      const x = b0 * -R + b1 * p1[0] + b2 * p2[0] + b3 * R, y = b1 * p1[1] + b2 * p2[1] + flip * amp * Math.sin(Math.PI * t);
       if (i) g.lineTo(x, y); else g.moveTo(x, y);
     }
     g.lineStyle(0);

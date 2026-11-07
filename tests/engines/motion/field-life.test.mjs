@@ -356,3 +356,16 @@ test('a wolf growls once at someone coming close, and again only after they have
   for (const mode of ['hunt', 'arrive', 'away']) assert.equal(wolfGrowlNow({ ...w, mode }, at(100)).growl, false, mode);
   assert.equal(wolfGrowlNow({ ...w, mode: 'drag' }, at(100)).growl, true, 'over its kill');
 });
+
+test('walls round a trunk do not stop a squirrel going up its tree, and it never crosses them', async () => {
+  const { squirrelStep } = await import('../../../scripts/engines/motion/field-life.mjs');
+  const trees = [{ x: 0, y: 0, r: 300 }], ring = (radius) => (a, b) => Math.hypot(a.x, a.y) >= radius && Math.hypot(b.x, b.y) < radius;
+  const race = (start, blocked) => { let s = { x: start, y: 0, a: 0, mode: 'forage', wait: 5, tree: 0 }, least = Infinity; for (let i = 0; i < 90 && s.mode !== 'hide'; i++) { s = squirrelStep(s, { dt: 1 / 30, grid: 100, trees, scare: i === 0, blocked, random: () => 0.5 }); least = Math.min(least, Math.hypot(s.x, s.y)); } return { s, least }; };
+  const walled = race(600, ring(250));
+  assert.equal(walled.s.mode, 'hide', 'up the tree at the ring');
+  assert.ok(walled.least >= 250, 'not through it');
+  assert.equal(race(600, () => false).s.mode, 'hide', 'no walls: as before');
+  const far = race(600, ring(500));
+  assert.notEqual(far.s.mode, 'hide', 'a wall well away from the tree still stops it');
+  assert.ok(far.least >= 500);
+});

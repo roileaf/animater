@@ -71,8 +71,10 @@ test('water counts as painted over the map when a look or texture covers it', ()
   assert.equal(paintsOverWater({ floor: 'water' }, 'water', undefined), false);
 });
 
+// (Lava has only its own three stages, no texture to paint, and stands at Molten until moved: cave-regions.test.mjs.)
+const PAINTED = FLOORS.filter((floor) => floor !== 'lava');
 test('every floor starts with steps of its own, the first leaving it as painted', () => {
-  for (const floor of FLOORS) {
+  for (const floor of PAINTED) {
     const list = defaultSteps(floor);
     assert.ok(list.length >= 3, `${floor} has steps`);
     assert.equal(list[0].look, 'none', `${floor} starts as painted`);
@@ -256,7 +258,7 @@ test('a region keeps its own edge softness, within what can be drawn', () => {
 });
 
 test('every floor has a choice of textures, the first its usual one', () => {
-  for (const floor of FLOORS) {
+  for (const floor of PAINTED) {
     const styles = TEXTURE_STYLES[floor];
     assert.ok(styles?.length >= 5, `${floor} has at least five styles`);
     assert.equal(new Set(styles.map(([key]) => key)).size, styles.length, `${floor}: no style twice`);
@@ -273,13 +275,13 @@ test('a region keeps the style chosen for each floor, so a step that changes the
 });
 
 test('every floor offers the full range of effects, its own first', () => {
-  for (const floor of FLOORS) {
+  for (const floor of PAINTED) {
     const list = defaultSteps(floor), looks = new Set(list.map((s) => s.look));
     assert.ok(list.length >= 18, `${floor} has ${list.length} presets`);
     assert.equal(new Set(list.map((s) => s.name)).size, list.length, `${floor}: no preset twice`);
     for (const wanted of ['blood', 'steam', 'misty', 'burnt', 'arcane', 'cursed']) assert.ok(looks.has(wanted), `${floor} has ${wanted}`);
   }
-  for (const floor of FLOORS.filter((f) => f !== 'ice' && f !== 'snow')) assert.ok(defaultSteps(floor).some((s) => s.look === 'frozen'), `${floor} can freeze`);
+  for (const floor of PAINTED.filter((f) => f !== 'ice' && f !== 'snow')) assert.ok(defaultSteps(floor).some((s) => s.look === 'frozen'), `${floor} can freeze`);
   assert.equal(defaultSteps('water').find((s) => s.look === 'frozen').walks, 'ice', 'frozen water walks as ice');
   assert.equal(defaultSteps('stone').find((s) => s.look === 'steam').effect, 'steam', 'steam also switches on the vents');
   assert.equal(defaultSteps('grass')[0].name, 'Fresh', 'a floor\'s own come first');

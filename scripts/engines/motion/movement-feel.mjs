@@ -6,10 +6,10 @@ import { DEFAULT_SUN, sunReach } from './sun.mjs';
 
 // One puff every this many squares of travel.
 export const STRIDE = 0.6;
-export const FLOORS = Object.freeze(['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud', 'pebbles', 'glass', 'metal']);
+export const FLOORS = Object.freeze(['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud', 'pebbles', 'glass', 'metal', 'lava']);
 export const FLOOR_CHOICES = Object.freeze([
   ['', 'From the scene (auto)'], ['stone', 'Stone'], ['pebbles', 'Pebbles (loose stones, gravel)'], ['wood', 'Wood'], ['dirt', 'Dirt'], ['grass', 'Grass'],
-  ['sand', 'Sand'], ['snow', 'Snow'], ['water', 'Water'], ['ice', 'Ice'], ['mud', 'Mud'], ['glass', 'Glass'], ['metal', 'Metal (plates, grates, a ship\'s deck)'],
+  ['sand', 'Sand'], ['snow', 'Snow'], ['water', 'Water'], ['ice', 'Ice'], ['mud', 'Mud'], ['glass', 'Glass'], ['metal', 'Metal (plates, grates, a ship\'s deck)'], ['lava', 'Cavern (lava; right-click it for fungus, crystals or mist)'],
   ['none', 'None (no step sounds, no marks)'],
 ]);
 // A floor that makes nothing: no step sounds and no marks on it (a wing beat still sounds over it).
@@ -108,6 +108,11 @@ export const FLOOR_LOOK = Object.freeze({
     { kind: 'chip', emit: 'burst', art: 'metal', colors: [0x55595e, 0x6b6f74, 0x3f4247], count: 3, alpha: 1, size: 0.014, life: 750, speed: [0.2, 0.5], cone: 1.6, spread: 0.1, spin: 9, hop: 0.05, bounce: 0.45, shadow: true, hold: 0.45, grow: 0 },
     { kind: 'spark', emit: 'burst', art: 'metalSpark', colors: [0xffd9a0], count: 1, chance: 0.5, alpha: 1, size: 0.035, life: 240, speed: [0.08, 0.2], cone: 1.6, spread: 0.06, hold: 0.1, grow: -0.6 },
   ] },
+  // Crust breaking underfoot: dark bits, and embers flying up from what shows beneath.
+  lava: { kind: 'embers', parts: [
+    { kind: 'chip', emit: 'burst', art: 'stone', colors: [0x2c2522, 0x3d2f29, 0x1f1a18], count: 3, alpha: 1, size: 0.024, life: 900, speed: [0.2, 0.5], cone: 1.5, spread: 0.1, spin: 9, hop: 0.06, bounce: 0.25, shadow: true, hold: 0.5, grow: 0 },
+    { kind: 'spark', emit: 'burst', art: 'metalSpark', colors: [0xffb24a, 0xff7a1f, 0xffd98a], count: 3, alpha: 1, size: 0.035, life: 620, speed: [0.1, 0.32], cone: 2, spread: 0.1, hold: 0.2, grow: -0.6 },
+  ] },
 });
 const isFloor = (value) => FLOORS.includes(value) || value === NO_FLOOR;
 
@@ -158,6 +163,7 @@ export const LYING_BODY = 0.12;
 // How far a light's shadow moves for each pixel a hovering creature bobs: more than the creature, as a shadow does when
 // the light is low, and enough to see.
 const BOB_SHADOW = 2;
+export const GROUND_SHADOW = 0.55;
 export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100, grounded = false }) {
   // At its feet: a flat ellipse straight below the creature (centred left to right), mostly under its token with its
   // lower half showing past the bottom edge, so even opaque full-frame art shows it. The higher it flies, the further
@@ -165,7 +171,8 @@ export function shadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100
   const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5));
   const w = Number(width) || grid;
   const rx = w * Math.max(0.3, 0.42 - 0.01 * h);
-  if (grounded) return { x, y: y + w * 0.4, rx: w * 0.4, ry: w * 0.16, alpha: 0.5 };
+  // (In full sun as dark as a real one on a painted map: a little over half, measured against photographs.)
+  if (grounded) return { x, y: y + w * 0.4, rx: w * 0.4, ry: w * 0.16, alpha: GROUND_SHADOW };
   // `width` and `lift` (in squares) for a shadow drawn in the flier's own shape (flier-silhouette.mjs), and `fall`
   // where that one lies: cast down and to the right as the light falls, further the higher it flies, so it shows
   // past the creature's own art (a ring token's disc hides what lies under it).
@@ -255,8 +262,8 @@ export function shadowFalls({ width, lift = 0, body, light = null, lights = null
   const weight = (part) => (total > 0 && part / total >= 0.1 ? Math.min(1, part / total / 0.6) : 0);
   // One rule for every shadow: `length` is how far the light really throws it (from a standing creature's feet, or
   // the whole body of a flier); past `cap` it fades rather than growing. A flier's sits whole at that distance (at
-  // least clear of its art); a standing creature's starts at its feet and stretches out along the light, fainter and
-  // softer the longer it gets. `soft` adds to that: crisp in sunlight, a little softer by a close light, more in dim.
+  // least clear of its art); a standing creature's starts at its feet and stretches out along the light, as dark all
+  // the way as a real one, a little softer the longer it gets. `soft` adds to that: crisp in sunlight, a little softer by a close light, more in dim.
   // The cap goes with the creature's size (a dragon's shadow is as long against it as a cat's), else big creatures'
   // shadows hit it first and faded.
   const fall = (angle, length, vis, soft) => {
@@ -267,8 +274,7 @@ export function shadowFalls({ width, lift = 0, body, light = null, lights = null
       return { dx: Math.cos(away) * at, dy: Math.sin(away) * at, alpha, soft: Math.min(1, soft) };
     }
     const stretch = 1 + reach / w;
-    alpha /= Math.sqrt(stretch);
-    return { dx: Math.cos(away) * reach / 2, dy: Math.sin(away) * reach / 2, alpha, soft: Math.min(1, soft + 0.15 * (stretch - 1)) };
+    return { dx: Math.cos(away) * reach / 2, dy: Math.sin(away) * reach / 2, alpha, soft: Math.min(1, soft + 0.05 * (stretch - 1)) };
   };
   let sunFall = null;
   const lampFalls = lamps.filter(({ share }) => weight(share) > 0).map(({ l, lh, cast, shines, share }, i) => {
@@ -448,6 +454,16 @@ export function stepNoise(seed, step, salt) {
   h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909);
   return (((h ^ (h >>> 16)) >>> 0) / 4294967295) * 2 - 1;
 }
+// A tail's drag over the stride just walked (pure): as broad as the creature is big, swaying gently, and leaving along
+// the way it came (`at.turnFrom`, the last stride's heading, `bend` how far it has turned since) to arrive along this
+// stride's: each piece starts where the last one ended, the way it ended, one smooth line through a turn.
+export function tailDrag(at, { half, width, base = {}, part = {}, flip = 1 } = {}) {
+  const heading = at.heading ?? 0, from = Number.isFinite(at.turnFrom) ? at.turnFrom : heading;
+  const turn = Math.atan2(Math.sin(heading - from), Math.cos(heading - from)), bend = Math.max(-1.2, Math.min(1.2, turn));
+  return { ...base, kind: 'groove', gait: 'claws', color: part.color, x: at.x - Math.cos(heading) * half, y: at.y - Math.sin(heading) * half,
+    radius: half * 1.08, rotation: heading, grow: 0, flip, bend,
+    amp: clamp((0.012 * width) / half, 0.01, 0.2), thick: clamp((0.035 * width) / half, 0.01, 0.5), alpha: (part.alpha ?? 1) * 0.6 };
+}
 // One stride's tracks for `gait` from a floor's print part. Big creatures print less often (a Huge one every other
 // stride, a Gargantuan or bigger every third) with bigger prints; grooves and smears never break.
 export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape = gait }) {
@@ -463,7 +479,7 @@ export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape 
   if (track.feet === 'groove') return [segment('slither', { amp: clamp((0.1 * width) / half, 0.04, 0.5), thick: clamp((0.05 * width) / half, 0.02, 0.25) })];
   if (track.feet === 'smear') return [segment('ooze', { ry: clamp((0.32 * width) / half, 0.15, 1), alpha: part.alpha * 0.8 })];
   const marks = [];
-  if (track.tail) marks.push(segment('claws', { amp: clamp((0.03 * width) / half, 0.01, 0.2), thick: clamp((0.025 * width) / half, 0.01, 0.12), alpha: part.alpha * 0.6 }));
+  if (track.tail) marks.push(tailDrag(at, { half, width, base, part, flip: mod(index, 2) ? 1 : -1 }));
   const squares = width / (grid || 100), every = track.feet === 'paced' ? Math.max(1, Math.round(squares * 0.75)) : squares >= 5 ? 3 : squares >= 3 ? 2 : 1;
   if (mod(index - 1, every)) return marks;
   const step = Math.floor((index - 1) / every), side = mod(step, 2) ? 1 : -1;
@@ -611,6 +627,8 @@ export const FOOTSTEP_FILES = Object.freeze({
   pebbles: freesound(['gravel-step-521588-0', 'gravel-step-521588-1', 'gravel-step-521588-2', 'gravel-step-556002-0', 'gravel-step-556002-1', 'gravel-step-556002-2']),
   glass: freesound(['glass-step-223152-0', 'glass-step-813392-2']),
   metal: freesound(['metal-step-698697-0', 'metal-step-698697-1', 'metal-step-698697-2', 'metal-step-208101-0', 'metal-step-208101-1', 'metal-step-398937-0', 'metal-step-398937-1']),
+  // (Lava has no recording of its own: the rock of its crust.)
+  lava: freesound(['stone-step-197778-0', 'stone-step-197779-0', 'stone-step-197780-0', 'stone-step-637555-0', 'stone-step-637555-1']),
 });
 // Which of `count` recordings the `n`th step plays: a seeded shuffle that never repeats the step before it, so a walk
 // does not cycle 1-2-3-4-5 and two tokens walking side by side do not step in unison. Same on every screen.
@@ -686,7 +704,7 @@ export const MIN_FAMILY_FILES = 3;
 const GAIT_FAMILY = { dragon: 'dragon', claws: 'paws', paws: 'paws', padded: 'padded', webbed: 'webbed', hooves: 'hooves', talons: 'talons', ooze: 'ooze', legs: 'legs', slither: 'slither' };
 const SILENT_GAITS = new Set(['none']);
 const FOREST_FLOORS = new Set(['dirt', 'grass']);
-const HARD_FLOORS = new Set(['stone', 'pebbles', 'wood', 'ice', 'glass', 'metal']);
+const HARD_FLOORS = new Set(['stone', 'pebbles', 'wood', 'ice', 'glass', 'metal', 'lava']);
 const WET_FLOORS = new Set(['mud', 'water']);
 // Floors whose own sound is part of any footfall on them: a hoof in mud squelches, a paw in snow crunches. That floor's
 // step plays under the creature's, at this share of its level and the same pitch.
@@ -1187,8 +1205,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     // Each says whether it is the sun's (kept off the floor walls already shade) and carries the floor its light
     // reaches (lit.clips: { sun, [light key] }, flat x, y pairs; none on open ground), so it stops at walls.
     return Object.values(falls).sort((a, b) => b.alpha - a.alpha).map((laid) => {
+      // (Lit through a window, `lit.window`: the sun's shadow keeps to that patch of light, its clip, not to the sunlit floor outdoors.)
       const sunlit = laid.slot === 'sun', clip = sunlit ? lit.clips?.sun : lit.clips?.[laid.key];
-      const fall = { ...laid, sun: sunlit, ...(clip ? { clip } : {}) };
+      const fall = { ...laid, sun: sunlit && lit.window !== true, ...(clip ? { clip } : {}) };
       const flicker = flickers.get(fall.key);
       if (!flicker) return fall;
       let now = 1;
@@ -1332,6 +1351,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   // One stride of a token moving by `kind` (movementSound; never null here): its floor marks and its sound.
   const emit = (token, at, time, size, rate, kind, move) => {
     const feet = feetOf(token, at);
+    // The way the last stride went, when it was the one just before: a tail's drag bends from it.
+    if (Number.isFinite(move.heading) && (at.index ?? 0) === (move.index ?? 0) + 1) feet.turnFrom = move.heading;
     const floor = floorOf(feet, token);
     if (floor === NO_FLOOR) return;
     const opts = { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots', shape: token.printShape ?? token.gait ?? 'boots', amount: kickAmount() };

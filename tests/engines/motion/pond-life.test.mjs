@@ -63,6 +63,26 @@ test('ducks and herons in flight stay out of walled and closed places', () => {
   for (let i = 0; i < 2000 && b.mode === 'fly'; i++) { b = heronStep(b, { dt: 1 / 60, grid: 100, barred }); assert.ok(b.y >= -300, `at ${b.y}`); }
 });
 
+test('a duck in the air clears a wall instead of sticking to it, and still keeps out of closed places', () => {
+  const wall = (a, b) => (a.x < 100) !== (b.x < 100), fly = (x, h, options = {}) => ({ x, y: 0, a: 0, mode: 'fly', vx: 1, vy: 0, t: 1, h, up: 0, tries: 0, fromX: -300, fromY: 0, ...options });
+  const high = duckStep(fly(99, 0.8), { dt: 1 / 60, grid: 100, blocked: wall, random: () => 0.5 });
+  assert.ok(high.x > 100, 'over it');
+  const low = duckStep(fly(99, 0.1, { t: 0.05 }), { dt: 1 / 60, grid: 100, blocked: wall, random: () => 0.5 });
+  assert.ok(low.x < 100, 'barely off the water, it turns');
+  assert.ok(low.vx < 0);
+  // Walled in on every side as it takes off: it rises, and is away.
+  const everywhere = () => true;
+  let q = fly(0, 0, { t: 0 }); const start = q.x;
+  for (let i = 0; i < 120 && q.mode === 'fly' && !q.gone; i++) q = duckStep(q, { dt: 1 / 60, grid: 100, blocked: everywhere, ok: () => false, random: () => 0.5 });
+  assert.ok(Math.abs(q.x - start) > 100 || q.y !== 0, 'not pinned where it was');
+  // A closed place stays closed, however high.
+  const barred = (x) => x > 100, kept = duckStep(fly(99, 0.9), { dt: 1 / 60, grid: 100, barred, random: () => 0.5 });
+  assert.ok(kept.x <= 100);
+  // On its way to good water, too.
+  const bound = duckStep(fly(99, 0.8, { to: { x: 500, y: 0 } }), { dt: 1 / 60, grid: 100, blocked: wall, random: () => 0.5 });
+  assert.ok(bound.x > 100 && bound.to);
+});
+
 test('a ripple comes only when something has moved far enough since the last', () => {
   assert.equal(rippleDue(null, { x: 0, y: 0 }, 50), true, 'the first');
   assert.equal(rippleDue({ x: 0, y: 0 }, { x: 30, y: 0 }, 50), false);

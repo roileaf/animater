@@ -7,7 +7,7 @@ import { isFlying } from './movement-feel.mjs';
 
 export const IDLE_CAP = 40;
 const PREFIX = 'animater-idle:';
-export const HOVER_PERIOD = 2.4;
+export const HOVER_PERIOD = 2.4, SWIM_PERIOD = 3.4;
 
 // Creatures that do not breathe (PF2e/SF2e traits, D&D creature types).
 // Oozes, plants and fungi, elementals, swarms and spirits have no lungs to heave or breath to show either.
@@ -33,14 +33,16 @@ export function breathes(actor) {
   return true;
 }
 
-// Which idle a token shows: 'idle-hover', 'idle-breathe' or null.
-export function idleKind({ actor, statuses = [], defeated = false, elevation = 0, base = 0, movementAction } = {}) {
+// Which idle a token shows: 'idle-hover', 'idle-swim', 'idle-breathe' or null.
+export function idleKind({ actor, statuses = [], defeated = false, elevation = 0, base = 0, movementAction, swimming = false } = {}) {
   if (!actor || defeated) return null;
   const s = list(statuses).map(lower);
   if (s.some((x) => STILL.has(x))) return null;
   if (NOT_CREATURES.has(lower(actor.type))) return null;
   // Flight is the fly movement action or a flying status; standing high on a platform is not flying.
   if (isFlying({ action: movementAction, statuses: s })) return 'idle-hover';
+  // In the water it rides the swell, breathing or not.
+  if (swimming) return 'idle-swim';
   return breathes(actor) ? 'idle-breathe' : null;
 }
 
@@ -79,8 +81,8 @@ export function pickIdle(tokens, view, cap = IDLE_CAP) {
 // is injected: tokens() the placeables, view() the visible world rectangle, statuses(token),
 // defeated(token), levelBase(token) the floor elevation of the token's level.
 export class IdleLife {
-  constructor({ body, tokens = () => [], view = () => null, enabled = () => true, statuses = () => [], defeated = () => false, levelBase = () => 0, cap = IDLE_CAP, strength = () => 1, kinds = () => ({ breathe: true, hover: true }) } = {}) {
-    Object.assign(this, { body, tokens, view, enabled, statuses, defeated, levelBase, cap, strength, kinds });
+  constructor({ body, tokens = () => [], view = () => null, enabled = () => true, statuses = () => [], defeated = () => false, levelBase = () => 0, cap = IDLE_CAP, strength = () => 1, kinds = () => ({ breathe: true, hover: true }), swimming = () => false } = {}) {
+    Object.assign(this, { body, tokens, view, enabled, statuses, defeated, levelBase, cap, strength, kinds, swimming });
     this.shown = new Map(); // record name → kind
   }
   wanted() {
@@ -95,9 +97,9 @@ export class IdleLife {
         if (!token || token.destroyed || !token.visible || token.document?.hidden) continue;
         const doc = token.document ?? {};
         const kind = idleKind({ actor: token.actor, statuses: this.statuses(token), defeated: this.defeated(token),
-          elevation: doc.elevation, base: this.levelBase(token), movementAction: doc.movementAction });
+          elevation: doc.elevation, base: this.levelBase(token), movementAction: doc.movementAction, swimming: this.swimming(token) === true });
         if (kind === 'idle-breathe' && allowed.breathe === false) continue;
-        if (kind === 'idle-hover' && allowed.hover === false) continue;
+        if ((kind === 'idle-hover' || kind === 'idle-swim') && allowed.hover === false) continue;
         if (kind) placed.push({ token, kind, squares: Number(doc.width) || 1, id: doc.id ?? token.id, x: token.x ?? 0, y: token.y ?? 0, w: token.w ?? 0, h: token.h ?? 0 });
       } catch { /* a token mid-teardown: skip it */ }
     }
@@ -112,7 +114,7 @@ export class IdleLife {
     for (const [name, p] of want) {
       const was = this.shown.get(name);
       if (was && was.kind === p.kind && was.token === p.token && was.strength === strength) continue;
-      const period = p.kind === 'idle-breathe' ? breathPeriod(p.id, p.squares) : HOVER_PERIOD;
+      const period = p.kind === 'idle-breathe' ? breathPeriod(p.id, p.squares) : p.kind === 'idle-swim' ? SWIM_PERIOD : HOVER_PERIOD;
       this.body.add(name, p.token, p.kind, { phase: idlePhase(p.id) * period, period, strength });
       this.shown.set(name, { kind: p.kind, token: p.token, strength });
     }

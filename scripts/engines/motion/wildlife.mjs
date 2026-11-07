@@ -436,7 +436,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
     // Sends the hawk after a rabbit now, if there is one to see.
     hunt() { if (hawk?.mode === 'soar') hawk.huntIn = 0; return !!hawk; },
-    tick(seconds, { kept = () => false, near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {}, barred = () => false, indoors = () => false, cast = null, beneath = () => false } = {}) {
+    tick(seconds, { kept = () => false, near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {}, barred = () => false, indoors = () => false, cast = null, beneath = () => false, birdBody = 1, liftShadow = () => {} } = {}) {
       if (!this.busy && !wantCrows) return;
       const dt = Math.min(0.05, seconds); time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -461,7 +461,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         if (s.mode === 'up' && s0.mode === 'ground') sound('wingsUp', s, true); else if (s.mode === 'ground' && !s.gone && Math.random() < dt * 0.04) sound('songChirp', s, false);
         if (s.gone || !can(s, s.x, s.y)) { hide(s.view); return s; }
         if (s.mode === 'ground') { const size = 0.42 * k * birdSize, c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true }); put(s.view, t.song[s.peck > 0 ? 1 : 0], s.x, s.y, s.a, size, alpha, s.x + c.dx, s.y + c.dy, Math.min(0.5, c.alpha * 0.55)); }
-        else { const size = 0.2 * k * birdSize * (1 + s.h * 0.4), c = fall(s, s.x, s.y, { width: grid * 0.2, lift: 0.8 }), g = s.h / 0.6; put(s.view, t.songFly[Math.floor(time * 26 + s.phase) % SPANS.length], s.x, s.y, s.a, size, alpha, s.x + c.dx * g, s.y + c.dy * g, Math.min(0.35, c.alpha * 0.4), size * 0.95); s.shade = overOpen(s.shade, indoors(s.x + c.dx * g, s.y + c.dy * g), dt); s.view.shadow.alpha *= s.shade; }
+        else { const size = 0.2 * k * birdSize * (1 + s.h * 0.4), c = fall(s, s.x, s.y, { width: grid * 0.2, lift: 0.8, bird: true }), g = s.h / 0.6; put(s.view, t.songFly[Math.floor(time * 26 + s.phase) % SPANS.length], s.x, s.y, s.a, size * birdBody, alpha, s.x + c.dx * g, s.y + c.dy * g, Math.min(0.35, c.alpha * 0.4), size * 0.95); liftShadow(s.view.shadow, 0.8); s.shade = overOpen(s.shade, indoors(s.x + c.dx * g, s.y + c.dy * g), dt); s.view.shadow.alpha *= s.shade; }
         return s;
       });
       if (fish.length) {
@@ -526,7 +526,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         } else { h.t += dt; if (h.t > 25) h.mode = 'soar'; }
         // Lower is bigger, its shadow closing in beneath it until they meet.
         if (h.mode === 'away') hide(h.view);
-        else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 2.2 }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4), alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.45, c.alpha * (0.3 + (1 - height) * 0.25)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
+        else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 6, bird: true }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4) * birdBody, alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.3, c.alpha * (0.2 + (1 - height) * 0.3)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); liftShadow(h.view.shadow, 6 * height); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
       }
       nextCrows -= dt;
       if (wantCrows > 0 && !crows.length && nextCrows <= 0 && area && day > 0.3) {
@@ -544,7 +544,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         crows = crows.filter((c) => {
           c.x += c.vx * dt; c.y += c.vy * dt;
           if (Math.hypot(c.x - cx, c.y - cy) > far && (c.x - cx) * c.vx + (c.y - cy) * c.vy > 0) { dropPair(c); return false; }
-          if (can(c, c.x, c.y)) { const f = fall(c, c.x, c.y, { width: grid * 0.6, lift: 1.1 }); c.open = overOpen(c.open, indoors(c.x, c.y), dt); put(c.view, t.crow[Math.floor(time * 9 + c.phase) % SPANS.length], c.x, c.y, c.a, 0.42 * k * birdSize * c.size, alpha * c.open, c.x + f.dx, c.y + f.dy, Math.min(0.32, f.alpha * 0.34), 0.46 * k * birdSize * c.size); c.shade = overOpen(c.shade, indoors(c.x + f.dx, c.y + f.dy), dt); c.view.shadow.alpha *= c.shade; } else hide(c.view);
+          if (can(c, c.x, c.y)) { const f = fall(c, c.x, c.y, { width: grid * 0.6, lift: 4, bird: true }); c.open = overOpen(c.open, indoors(c.x, c.y), dt); put(c.view, t.crow[Math.floor(time * 9 + c.phase) % SPANS.length], c.x, c.y, c.a, 0.42 * k * birdSize * c.size * birdBody, alpha * c.open, c.x + f.dx, c.y + f.dy, Math.min(0.2, f.alpha * 0.24), 0.46 * k * birdSize * c.size); liftShadow(c.view.shadow, 4); c.shade = overOpen(c.shade, indoors(c.x + f.dx, c.y + f.dy), dt); c.view.shadow.alpha *= c.shade; } else hide(c.view);
           return true;
         });
         if (!crows.length) nextCrows = 9 + Math.random() * 12;

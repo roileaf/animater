@@ -78,6 +78,16 @@ export function skyNeedsBuilding(change = {}) {
 // How fast the cloud deck goes for a wind, in its own units a second (pure).
 export const cloudSpeed = (wind) => 0.012 + 0.075 * (Number(wind) || 0);
 // What a sky is built from, as one string (pure): the same, and building it again would change nothing. A shape's holes count.
+// One thing falling on its way to another (pure), [kind, amount, size, _], at p 0 to 1: the same kind eases across; another kind, the old thins out, then the new comes in.
+export function fadedFall(from, to, p) {
+  const f = from ?? [0, 0, 1, 0], t = to ?? [0, 0, 1, 0];
+  if (f[0] === t[0]) return t.map((v, i) => f[i] + (v - f[i]) * p);
+  if (!f[0] || !(f[1] > 0.001)) return [t[0], t[1] * p, t[2], t[3]];
+  if (!t[0] || !(t[1] > 0.001)) return [f[0], f[1] * (1 - p), f[2], f[3]];
+  return p < 0.5 ? [f[0], f[1] * (1 - 2 * p), f[2], f[3]] : [t[0], t[1] * (2 * p - 1), t[2], t[3]];
+}
+export const fadedValue = (from, to, p) => (Array.isArray(to) ? to.map((v, i) => from[i] + (v - from[i]) * p) : from + (to - from) * p);
+const sameValue = (a, b) => (Array.isArray(b) ? Array.isArray(a) && a.length === b.length && b.every((v, i) => Math.abs(a[i] - v) < 1e-4) : Math.abs(a - b) < 1e-4);
 export const skyBuildKey = (args) => JSON.stringify(args, (_, v) => (Array.isArray(v) && v.holes ? { shape: [...v], holes: v.holes } : v));
 // How the cloud deck looks for a cover (pure), as [how much of the sky it takes, how heavy, how soft its gaps, how dim the whole scene]. It shows in what it does to the land: sunlit patches and firm shadows under a broken sky; dim and cool, with slow lighter patches, once it closes; darker again with rain falling from it.
 const DRY_DECK = [[0, [0.1, 0, 0, 1]], [0.3, [0.42, 0, 0, 1]], [0.65, [0.62, 0.2, 0.1, 0.96]], [0.9, [0.66, 0.75, 0.7, 0.97]], [1, [0.68, 0.8, 0.75, 0.96]]];
@@ -178,7 +188,7 @@ uniform float uMovingWater; // moving water (water-engine.mjs) has its own glint
 uniform sampler2D uWater, uFrozen, uIndoor, uGrass, uTinted, uBare, uLow, uRoofShown, uSunlit, uTreeShade, uFreeze, uFlow, uCrowns, uLampReach;
 uniform vec2 uSize, uWindDir;
 uniform vec4 uBird;     // a flock's centre (x, y), heading (radians) and its birds' size (w, 1 a square and a half each; 0 none)
-uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain, uIce, uLitter;
+uniform float uTime, uWind, uStrength, uClouds, uGrid, uMode, uFrozenAll, uGrassAll, uWet, uSnow, uMist, uFireflies, uRain, uIce, uLitter, uPuddles, uSplashes;
 uniform vec4 uSeason;   // the season's colour over the open ground (rgb) and how strongly (a)
 uniform float uMoon;    // moonlight on the open ground at night (0–1: how much of the moon is lit)
 uniform vec4 uBow;      // a rainbow: its centre (x, y, scene pixels), radius and strength
@@ -222,11 +232,12 @@ float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a
 float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float patchNoise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(patchHash(i), patchHash(i + vec2(1, 0)), f.x), mix(patchHash(i + vec2(0, 1)), patchHash(i + vec2(1, 1)), f.x), f.y); }
-// Where water stands on wet ground (0-1): small pools at first, spreading and joining the wetter it gets, with an uneven edge.
+// Where water stands on wet ground (0-1): small pools at first, spreading and joining the wetter it gets, with an uneven edge. (uPuddles: how big, 1 as usual; smaller ones stay apart, as a big puddle runs across a town's painted roofs; 0 none.)
 float puddleAt(vec2 px){
-  if (uWet <= 0.05) return 0.0;
+  if (uWet <= 0.05 || uPuddles < 0.01) return 0.0;
   float line = mix(0.68, 0.56, smoothstep(0.1, 1.0, uWet)) - 0.34 * texture2D(uFreeze, vUv).b * smoothstep(0.05, 0.5, uWet);
-  return smoothstep(line, line + 0.022, fbm(px / (uGrid * 0.62)) + (noise(px / (uGrid * 0.16)) - 0.5) * 0.03);
+  line += (1.0 - min(uPuddles, 1.0)) * 0.15;
+  return smoothstep(line, line + 0.022, fbm(px / (uGrid * max(0.12, 0.62 * uPuddles))) + (noise(px / (uGrid * 0.16)) - 0.5) * 0.03);
 }
 // Whether the air here is under a ceiling, for what is drawn in the air: rain and flakes, fog, the clouds' wash. An opening in a roof (uFreeze's blue marks one) lets the weather through to the floor, where it shows as what it leaves, wet ground and lying snow; the air of the room stays the room's.
 float indoorAir(vec2 uv){ vec4 marks = texture2D(uFreeze, uv); return max(texture2D(uIndoor, uv).a, marks.b); }
@@ -380,7 +391,7 @@ vec4 rainAbove(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
     p = overP(p, mix(col, vec3(1.0), 0.15 * near), a * over);
   }
   // Where it lands: the same ripples as rain on water, fixed to the map, lit on the side facing the light and dark in their troughs.
-  vec3 ripple = rainRipples(px, t, min(1.0, amount), uGrid * 0.42 * size);
+  vec3 ripple = uSplashes > 0.01 ? rainRipples(px, t, min(1.0, amount), uGrid * max(0.06, 0.42 * uSplashes) * size) : vec3(0.0);
   if (ripple.z > 0.002) {
     vec3 L = normalize(vec3(-0.55, -0.45, 0.7));
     float shade = (-ripple.x * L.x - ripple.y * L.y) * 1.6;
@@ -439,10 +450,10 @@ vec4 rainLayer(vec4 p, vec2 px, float t, float amount, float size, vec3 col, flo
     p = overP(p, mix(col, vec3(1.0), 0.2 * near), a * over);
   }
   // Splashes: a soft burst of spray where each drop lands, gone in a moment. (On water the drops' ripples do the rest.)
-  float sc = uGrid * 0.45;
+  float sc = uGrid * max(0.07, 0.45 * uSplashes);
   vec2 sq = px / sc, sid = floor(sq), sf = fract(sq) - 0.5;
   float sh = hash(sid + 9.1), life = fract(t * 2.2 + sh * 7.0);
-  if (sh < dense * 0.7 * min(1.0, size * size)) {
+  if (uSplashes > 0.01 && sh < dense * 0.7 * min(1.0, size * size)) {
     vec2 at = (vec2(hash(sid + 3.3), hash(sid + 6.6)) - 0.5) * 0.6;
     float r = length(sf - at), spray = exp(-pow(r / (0.025 + life * 0.05), 2.0)) * (1.0 - life) * (1.0 - life) * 0.22;
     p = overP(p, mix(col, vec3(1.0), 0.4), spray * over);
@@ -1065,12 +1076,13 @@ void main(){
   float rainDim = 0.0;
   if (uRain > 0.01) {
     // Rain on water and on the puddles: where each drop lands a short train of waves runs out as on a pool (drips.mjs), lit on the side facing the light and dark in its troughs, more the harder it rains.
-    float puddle = puddleAt(px) * (1.0 - water);
+    // (uSplashes: how big the rings on the ground are, 0 none; open water keeps its own whatever it asks.)
+    float puddle = uSplashes > 0.01 ? puddleAt(px) * (1.0 - water) : 0.0;
     // (And faintly on any ground that is wet, where each drop lands: most of all on hard floors with no puddle to show it.)
-    float film = uWet > 0.05 ? 0.6 * smoothstep(0.05, 0.45, uWet) : 0.0;
+    float film = uWet > 0.05 && uSplashes > 0.01 ? 0.6 * smoothstep(0.05, 0.45, uWet) : 0.0;
     float pool = max(max(water, puddle), film) * outside;
     if (pool > 0.01) {
-      vec3 ripple = rainRipples(px, t, uRain, uGrid * 0.42);
+      vec3 ripple = rainRipples(px, t, uRain, uGrid * mix(max(0.06, 0.42 * uSplashes), 0.42, step(0.5, water)));
       vec2 slope = ripple.xy; float waves = ripple.z;
       if (waves > 0.002) {
         vec3 L = normalize(vec3(-0.55, -0.45, 0.7)), H = normalize(L + vec3(0.0, 0.0, 1.0)), n = normalize(vec3(-slope, 1.0));
@@ -1178,8 +1190,13 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
   let casting = false, tinting = false, clouding = false, weathering = false, fxOn = false, fxShadow = null;
   // The clocks outlast the meshes: built again, the clouds and what falls carry on from where they are.
   const clocks = { time: 0, run: 0, fall: 0 };
+  // The regions with weather of their own, drawn in their own shape over the map's air.
+  let regionAir = [];
   const drop = () => {
     if (own[0]) { clocks.time = own[0].uTime; clocks.run = own[0].uCloudRun; clocks.fall = own[0].uFallTime; }
+    fades.clear(); looked = false;
+    for (const r of regionAir) { try { r.mesh.parent?.removeChild(r.mesh); r.mesh.destroy(); } catch { /* gone with the canvas */ } }
+    regionAir = [];
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
     try { roofShown?.destroy(true); } catch { /* gone */ }
@@ -1205,10 +1222,29 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     for (const u of own) u.uRoofShown = roofShown;
   };
   const set = (values) => { for (const u of own) Object.assign(u, values); };
+  // The weather's changes ease over `seconds`, each value from where it is now. The first look at a scene shows it as it is.
+  const fades = new Map(), FALLS = new Set(['uFallA', 'uFallB']);
+  let looked = false, glowWanted = false, fadeSeconds = 0;
+  const fadeSet = (values, seconds) => {
+    for (const [key, value] of Object.entries(values)) {
+      if (!(seconds > 0) || !looked) { fades.delete(key); set({ [key]: value }); continue; }
+      const now = own[0][key], going = fades.get(key);
+      if (going ? sameValue(going.to, value) : sameValue(now, value)) continue;
+      fades.set(key, { from: Array.isArray(now) ? [...now] : now, to: value, t: 0, T: seconds });
+    }
+  };
+  // The weather's own values, for the map or a region's.
+  const weatherValues = (weather, cover = 0, cloudShift = { x: 0, y: 0 }) => {
+    const fall = (f) => (f ? [f.kind, f.amount, f.size, 0] : [0, 0, 1, 0]), tint = (f) => (f ? [...f.color, 1] : [1, 1, 1, 1]);
+    return { uFallA: fall(weather?.falls?.[0]), uFallAColor: tint(weather?.falls?.[0]), uFallB: fall(weather?.falls?.[1]), uFallBColor: tint(weather?.falls?.[1]),
+      uFogW: weather?.fog ?? [1, 1, 1, 0], uCloudSky: weather ? weather.clouds : [1, 1, 1, 0], uGlow: weather?.glow ?? [1, 1, 1, 0], uAurora: weather?.aurora ?? [0, 0, 0, 0],
+      uSparks: weather?.sparks ?? [0, 0, 0, 0], uWisps: weather?.wisps ?? [0, 0, 0, 0], uOdd: [weather?.rays ?? 0, weather?.noise ?? 0, weather?.meteors ?? 0, weather?.swirl?.[0] ?? 0],
+      uSwirlAmount: weather?.swirl?.[1] ?? 0, uCover: cover, uSky: [weather?.deck ?? 0, weather?.mist ?? 0, weather?.curtains ?? 0, weather?.bands ?? 0], uSky2: [weather?.glaze ?? 0, weather?.frost ?? 0, weather?.heat ?? 0, weather?.smoke ?? 0] };
+  };
   return {
     // Moving water (water-engine.mjs) has its own glints, and takes these off the water.
     movingWater(on) { movingWater = !!on; set({ uMovingWater: movingWater ? 1 : 0 }); },
-    build({ water = [], freezes = water, flows = [], icy = [], openRoofed = [], frozen = [], frozenAll = false, grass = [], tinted = [], bare = [], grassAll = false, indoors = [], open = [], bounds, grid = 100 } = {}) {
+    build({ water = [], freezes = water, flows = [], icy = [], openRoofed = [], frozen = [], frozenAll = false, grass = [], tinted = [], bare = [], grassAll = false, indoors = [], indoorSoft = [], open = [], regions = [], bounds, grid = 100 } = {}) {
       drop();
       if (!bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
@@ -1227,11 +1263,13 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         masks.push(texture);
         return texture;
       };
-      const bake = (list, blur, cut = [], red = [], blue = [], green = null, listColor = 0xffffff) => {
+      // `soft`: how far each of `list` fades at its edge, in squares, as a list (rooms: indoorEdge).
+      const bake = (list, blur, cut = [], red = [], blue = [], green = null, listColor = 0xffffff, soft = null) => {
         const stage = new PIXI.Container(), g = new PIXI.Graphics(), draw = (shape, polygons, color = 0xffffff) => { for (const p of polygons) { const at = (q) => q.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k); shape.beginFill(color, 1); shape.drawPolygon(at(p)); for (const hole of p.holes ?? []) { shape.beginHole(); shape.drawPolygon(at(hole)); shape.endHole(); } shape.endFill(); } };
         // (`red`, `blue` and `green` in the same picture, kept apart by their colours: this shader has no texture to spare.)
-        draw(g, blue, 0x0000ff); draw(g, red, 0xff0000); draw(g, list, listColor);
+        draw(g, blue, 0x0000ff); draw(g, red, 0xff0000); draw(g, soft ? list.filter((_, i) => !(Number(soft[i]) > 0)) : list, listColor);
         stage.addChild(g);
+        if (soft) list.forEach((p, i) => { const r = (Number(soft[i]) || 0) * grid * k * 0.5; if (!(r > 0)) return; const room = new PIXI.Graphics(); draw(room, [p], listColor); room.filters = [new PIXI.BlurFilter(Math.max(1, r), 4)]; stage.addChild(room); });
         // `green`: [{ points, alpha }] adding up where they overlap, softened.
         if (green?.length) {
           const air = new PIXI.Graphics(), soft = new PIXI.BlurFilter(Math.max(2, grid * k * 0.4), 3);
@@ -1270,15 +1308,17 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       // The banks: a wider, softer water, so the ripples' light spills a little onto the ground beside it; the low
       // ground the mist gathers on: wider still.
       const uniforms = {
-        uWater: bake(water, 1), uLow: bakeWidened(), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open),
+        uWater: bake(water, 1), uLow: bakeWidened(), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open, [], [], null, 0xffffff, indoorSoft),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: clocks.time, uCloudRun: clocks.run, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: clocks.fall, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uPuddles: 1, uSplashes: 1, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: clocks.fall, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
         .addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
-      own = [uniforms, { ...uniforms, uMode: 1 }, { ...uniforms, uMode: 2 }, { ...uniforms, uMode: 3 }, { ...uniforms, uMode: 4 }, { ...uniforms, uMode: 5 }, { ...uniforms, uMode: 6 }];
+      // A region with its own weather keeps the scene's air out as a roof does; the ground under it stays the scene's.
+      const airIndoor = regions.length ? bake([...indoors, ...regions.flatMap((r) => r.areas)], 1, open, [], [], null, 0xffffff, indoorSoft) : uniforms.uIndoor;
+      own = [uniforms, { ...uniforms, uMode: 1 }, { ...uniforms, uMode: 2 }, { ...uniforms, uMode: 3 }, { ...uniforms, uMode: 4, uIndoor: airIndoor }, { ...uniforms, uMode: 5, uIndoor: airIndoor }, { ...uniforms, uMode: 6, uIndoor: airIndoor }];
       const shade = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[0]));
       const light = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[1]));
       const pale = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, own[2]));
@@ -1291,11 +1331,28 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       light.blendMode = PIXI.BLEND_MODES.ADD;
       meshes = [shade, light, pale, flock, veil, glow, air];
       for (const m of meshes) { m.eventMode = 'none'; m.visible = false; (m === glow ? glowing : m === flock || m === veil || m === air ? above : root)().addChild(m); }
+      // Each region's own weather, only over its own box: everything outside its shape counts as indoors to it.
+      const whole = [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height];
+      for (const region of regions) {
+        const xs = region.areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = region.areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
+        const left = Math.max(bounds.x, Math.min(...xs) - grid), top = Math.max(bounds.y, Math.min(...ys) - grid), right = Math.min(bounds.x + bounds.width, Math.max(...xs) + grid), bottom = Math.min(bounds.y + bounds.height, Math.max(...ys) + grid);
+        if (!(right > left && bottom > top)) continue;
+        const uv = (x, y) => [(x - bounds.x) / bounds.width, (y - bounds.y) / bounds.height], box = new PIXI.Geometry()
+          .addAttribute('aVertexPosition', [left, top, right, top, right, bottom, left, bottom], 2)
+          .addAttribute('aUvs', [...uv(left, top), ...uv(right, top), ...uv(right, bottom), ...uv(left, bottom)], 2).addIndex([0, 1, 2, 0, 2, 3]);
+        const u = { ...uniforms, uMode: 4, uIndoor: bake([whole], 2, region.areas), uClouds: 0, ...weatherValues(region.weather) };
+        const mesh = new PIXI.Mesh(box, PIXI.Shader.from(VERT, FRAG, u));
+        mesh.eventMode = 'none';
+        above().addChild(mesh);
+        regionAir.push({ mesh, u, speed: region.weather?.speed ?? 1 });
+      }
     },
-    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false, snowSun = null, bowAngle = null, bowSize = 1, gloom = 0 } = {}) {
+    look({ light = 0, clouds = 0, color = [1, 0.95, 0.84], wind = 0.3, windAngle = Math.PI / 4, wet = 0, snow = 0, mist = 0, fireflies = 0, rain = 0, ice = 0, season = null, litter = 0, moon = 0, rainbow = 0, sunAngle = 0, weather = null, cover = 0, cloudShift = { x: 0, y: 0 }, raining = false, fallsDown = false, snowSun = null, bowAngle = null, bowSize = 1, gloom = 0, puddles = 1, splashes = 1, fade = 0 } = {}) {
       if (!own.length) return;
       const sunny = light > 0.02, bowSun = bowAngle ?? sunAngle;
-      set({ uStrength: sunny ? light : 0, uClouds: clouds, uFallsDown: Number(fallsDown) || 0, uGloom: gloom, uSnowSun: snowSun ? [snowSun.toSun[0], snowSun.toSun[1], Math.min(1, snowSun.shine), snowSun.reach] : [-0.6, -0.5, 0, 0.8], uSnowSunColor: snowSun?.color ?? [1, 0.97, 0.9], uDeck: cloudLook(clouds, raining), uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uRain: rain, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
+      fadeSeconds = Number(fade) || 0;
+      fadeSet({ uClouds: clouds, uGloom: gloom, uDeck: cloudLook(clouds, raining), uRain: rain }, fadeSeconds);
+      set({ uStrength: sunny ? light : 0, uFallsDown: Number(fallsDown) || 0, uSnowSun: snowSun ? [snowSun.toSun[0], snowSun.toSun[1], Math.min(1, snowSun.shine), snowSun.reach] : [-0.6, -0.5, 0, 0.8], uSnowSunColor: snowSun?.color ?? [1, 0.97, 0.9], uColor: color, uWind: wind, uWindDir: [Math.cos(windAngle), Math.sin(windAngle)], uWet: wet, uSnow: snow, uMist: mist, uFireflies: fireflies, uPuddles: puddles, uSplashes: splashes, uIce: hasWater ? ice : 0, uSeason: season ?? [0, 0, 0, 0], uLitter: litter, uMoon: moon,
         // The rainbow faces away from the sun: its centre off toward the sun, so the arc sweeps across the middle of the map.
         uBow: area ? [area.bounds.width / 2 + Math.cos(bowSun) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(bowSun) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45 * bowSize, bow] : [0, 0, 1, 0],
         uBowDir: [-Math.cos(bowSun), -Math.sin(bowSun)] });
@@ -1307,16 +1364,16 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       meshes[1].visible = (sunny && hasGlints) || wet > 0.05 || fireflies > 0.01 || (rain > 0.01 && (hasWater || wet > 0.05)) || moon > 0.01 || (sunny && (snow > 0.05 || (hasWater && ice > 0.05)));
       // The weather on the map (sky-weather.mjs weatherScene; null none), drawn over the roofs.
       fallSpeed = weather?.speed ?? 1;
-      const fall = (f) => (f ? [f.kind, f.amount, f.size, 0] : [0, 0, 1, 0]), tint = (f) => (f ? [...f.color, 1] : [1, 1, 1, 1]);
-      set({ uFallA: fall(weather?.falls?.[0]), uFallAColor: tint(weather?.falls?.[0]), uFallB: fall(weather?.falls?.[1]), uFallBColor: tint(weather?.falls?.[1]),
-        uFogW: weather?.fog ?? [1, 1, 1, 0], uCloudSky: weather ? weather.clouds : [1, 1, 1, 0], uGlow: weather?.glow ?? [1, 1, 1, 0], uAurora: weather?.aurora ?? [0, 0, 0, 0],
-        uSparks: weather?.sparks ?? [0, 0, 0, 0], uWisps: weather?.wisps ?? [0, 0, 0, 0], uOdd: [weather?.rays ?? 0, weather?.noise ?? 0, weather?.meteors ?? 0, weather?.swirl?.[0] ?? 0],
-        uSwirlAmount: weather?.swirl?.[1] ?? 0, uCover: cover, uCloudShift: [cloudShift.x, cloudShift.y],
-        uSky: [weather?.deck ?? 0, weather?.mist ?? 0, weather?.curtains ?? 0, weather?.bands ?? 0], uSky2: [weather?.glaze ?? 0, weather?.frost ?? 0, weather?.heat ?? 0, weather?.smoke ?? 0] });
+      set({ uCloudShift: [cloudShift.x, cloudShift.y] });
+      fadeSet(weatherValues(weather, cover), fadeSeconds);
+      looked = true;
       weathering = !!weather && (weatherDrawn(weather) || cover > 0.05);
       meshes[5].visible = !!weather && (weather.rays > 0.01 || weather.aurora[3] > 0.01 || weather.sparks[3] > 0.01 || weather.meteors > 0.01 || weather.falls.some((f) => f.kind === 9 && f.amount > 0.01));
       bowTo = rainbow;
       meshes[2].visible = snow > 0.01 || mist > 0.01 || (hasWater && ice > 0.01) || Math.max(bow, bowTo) > 0.01;
+      glowWanted = meshes[5].visible;
+      // (What is fading out still has to show.)
+      if (fades.size) { meshes[4].visible = true; meshes[5].visible = true; }
     },
     // The weather's light (weatherLight's [r, g, b, strength]) over the open ground and `roofs` as drawn now (as bird's):
     // called again as the roofs fade.
@@ -1324,8 +1381,8 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       if (!own.length) return;
       casting = !!cast && cast[3] > 0.01;
       if (casting || tinting || clouding || weathering) drawRoofs(roofs);
-      for (const u of own) u.uVeil = casting ? cast : [1, 1, 1, 0];
-      meshes[4].visible = casting || clouding || weathering;
+      fadeSet({ uVeil: casting ? cast : [1, 1, 1, 0] }, fadeSeconds);
+      meshes[4].visible = casting || clouding || weathering || fades.size > 0;
     },
     // The open air's colour (skyTint's [r, g, b, how much], null none), over the open ground and `roofs` as drawn now.
     tint(colour = null, roofs = []) {
@@ -1348,7 +1405,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       }
       set({ uFxClouds: fxOn ? fxShadow : PIXI.Texture.EMPTY, uFxOn: fxOn ? 1 : 0, uFxShift: [shift.x / area.bounds.width, shift.y / area.bounds.height] });
       clouding = own[0].uStrength > 0.005 && (own[0].uClouds > 0.05 || fxOn);
-      meshes[4].visible = casting || clouding || weathering;
+      meshes[4].visible = casting || clouding || weathering || fades.size > 0;
     },
     bird(flock, roofs = []) {
       if (!own.length) return;
@@ -1362,6 +1419,17 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     tick(seconds) {
       // (What falls keeps its own clock: a change of speed carries on from where it is, not a jump.)
       for (const u of own) { u.uTime += seconds; u.uFallTime += seconds * fallSpeed; u.uCloudRun += seconds * cloudSpeed(u.uWind); }
+      if (fades.size) {
+        for (const [key, f] of fades) {
+          f.t += seconds;
+          const p = Math.min(1, f.t / f.T), value = p >= 1 ? f.to : FALLS.has(key) ? fadedFall(f.from, f.to, p) : fadedValue(f.from, f.to, p);
+          for (const u of own) u[key] = value;
+          if (p >= 1) fades.delete(key);
+        }
+        if (!fades.size) { meshes[4].visible = casting || clouding || weathering; meshes[5].visible = glowWanted; }
+      }
+      // The regions' own weather runs by the map's clocks and wind.
+      if (regionAir.length) { const m = own[0]; for (const r of regionAir) { const u = r.u; u.uTime = m.uTime; u.uFallTime += seconds * r.speed; u.uCloudRun = m.uCloudRun; u.uWind = m.uWind; u.uWindDir = m.uWindDir; u.uStrength = m.uStrength; u.uFallsDown = m.uFallsDown; u.uEye = m.uEye; u.uCloudShift = m.uCloudShift; u.uRoofShown = m.uRoofShown; u.uColor = m.uColor; u.uAmbient = m.uAmbient; } }
       if (bow !== bowTo) {
         bow += Math.max(-seconds / 8, Math.min(seconds / 8, bowTo - bow));
         for (const u of own) u.uBow[3] = bow;
@@ -1369,7 +1437,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       }
     },
     clear: drop,
-    get shown() { return meshes.some((m) => m.visible); },
+    get shown() { return meshes.some((m) => m.visible) || regionAir.length > 0; },
     // Whether it stands on the map at all, shown or not: nothing needs building again while what it was built from is the same.
     get standing() { return meshes.length > 0; },
     get cloudRun() { return own[0]?.uCloudRun ?? 0; },

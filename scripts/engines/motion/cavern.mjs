@@ -8,6 +8,7 @@ const rng = (seed) => { let h = 2166136261; for (const c of String(seed)) h = Ma
 const inside = ({ x, y }, p) => { let hit = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit; return hit; };
 const inArea = (pt, p) => inside(pt, p) && !(p.holes ?? []).some((h) => inside(pt, h));
 import { doorPushAt } from './indoor-air.mjs';
+import { WINDOW_KINDS, colouredPanes, printOf, windowPrint } from './wall-shadows.mjs';
 const boxOf = (p) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i < p.length; i += 2) { x0 = Math.min(x0, p[i]); x1 = Math.max(x1, p[i]); y0 = Math.min(y0, p[i + 1]); y1 = Math.max(y1, p[i + 1]); } return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }; };
 
 // Each colour: the glow, its pale heart, and the cap's own flesh as ordinary light shows it.
@@ -16,25 +17,34 @@ export const CRYSTAL_STONES = { amethyst: [[0.78, 0.73, 0.96], [0.47, 0.35, 0.67
 
 // ---- Layout (pure) --------------------------------------------------------------------------------------------------
 
+// Where creatures have lately brushed the fungus (pure): one mark a spot, kept fresh for as long as a creature stands there, so a creature standing still keeps it steadily dim, and it brightens again only once they have gone. { x, y, at }, at most `most`.
+export function fungusTouches(touches = [], creatures = [], now = 0, grid = 100, { keep = 4000, most = 12 } = {}) {
+  const out = touches.map((t) => ({ ...t }));
+  for (const c of creatures) {
+    const spot = out.findLast((t) => Math.hypot(t.x - c.x, t.y - c.y) < grid * 0.3);
+    if (spot) spot.at = now; else out.push({ x: c.x, y: c.y, at: now });
+  }
+  return out.filter((t) => now - t.at < keep).slice(-most);
+}
 // The fungus in some areas (flat x, y pairs): a cluster every ~`per` squares, each a crowd of caps (bigger toward the
 // middle, little ones crowding at the big ones' feet) and short threads curling out from it, all on the floor
 // (`floor({ x, y })`, not the rock). Caps { x, y, r, phase, seed, d }, the bigger first; threads [[x, y], ...]. The same
-// areas always grow the same fungus.
-export function fungusIn(areas = [], { grid = 100, per = 4, seed = 'fungus', floor = () => true } = {}) {
+// areas always grow the same fungus. `amount` and `scale` how many and how big, against the usual 1.
+export function fungusIn(areas = [], { grid = 100, per = 4, seed = 'fungus', floor = () => true, amount = 1, scale = 1 } = {}) {
   const r = rng(seed), clusters = [], here = (pt, p) => inArea(pt, p) && floor(pt);
   for (const p of areas) {
-    const b = boxOf(p), want = Math.max(1, Math.round((b.w * b.h) / (grid * grid) / per));
+    const b = boxOf(p), want = Math.max(1, Math.round(((b.w * b.h) / (grid * grid) / per) * amount));
     for (let n = 0, tries = 0; n < want && tries < want * 30; tries++) {
       const c = { x: b.x + r() * b.w, y: b.y + r() * b.h };
       if (!here(c, p)) continue;
       n++;
-      const spread = grid * (0.3 + 0.35 * r()), count = 14 + Math.floor(r() * 12), caps = [];
+      const spread = grid * (0.3 + 0.35 * r()) * scale, count = 14 + Math.floor(r() * 12), caps = [];
       for (let i = 0; i < count; i++) {
-        const a = r() * 6.283, d = Math.sqrt(r()) * spread, size = grid * (0.04 + r() * 0.1) * (1 - 0.45 * d / spread);
+        const a = r() * 6.283, d = Math.sqrt(r()) * spread, size = grid * (0.04 + r() * 0.1) * (1 - 0.45 * d / spread) * scale;
         const cap = { x: c.x + Math.cos(a) * d, y: c.y + Math.sin(a) * d * 0.75, r: size, phase: r() * 6.28, seed: r() * 50, d };
         if (!here(cap, p)) continue;
         caps.push(cap);
-        if (size > grid * 0.08) for (let k = 0; k < 3; k++) { const t = r() * 6.283, small = { x: cap.x + Math.cos(t) * size * 1.25, y: cap.y + Math.sin(t) * size * 1.05, r: grid * (0.012 + r() * 0.02), phase: r() * 6.28, seed: r() * 50, d }; if (here(small, p)) caps.push(small); }
+        if (size > grid * 0.08 * scale) for (let k = 0; k < 3; k++) { const t = r() * 6.283, small = { x: cap.x + Math.cos(t) * size * 1.25, y: cap.y + Math.sin(t) * size * 1.05, r: grid * (0.012 + r() * 0.02) * scale, phase: r() * 6.28, seed: r() * 50, d }; if (here(small, p)) caps.push(small); }
       }
       caps.sort((a, b) => a.y - b.y);
       const threads = Array.from({ length: 8 + Math.floor(r() * 5) }, () => {
@@ -51,17 +61,17 @@ export function fungusIn(areas = [], { grid = 100, per = 4, seed = 'fungus', flo
 // Crystal clusters in some areas: growing out of the walls that run through them (about one a square and a half along a
 // wall, on the side inside the area that is floor, `floor({ x, y })`, not solid rock), or standing free in an area with no
 // walls. Each { x, y, out (angle away from the wall), shards: [{ x, y, a, L, wd, tilt }], rock: [[x, y], ...] }.
-export function crystalsIn(areas = [], { walls = [], grid = 100, seed = 'crystals', floor = () => true } = {}) {
+export function crystalsIn(areas = [], { walls = [], grid = 100, seed = 'crystals', floor = () => true, amount = 1, scale = 1 } = {}) {
   const r = rng(seed), out = [];
   const cluster = (bx, by, dir, free) => {
     const along = [-Math.sin(dir), Math.cos(dir)], shards = [], rock = [];
-    for (let i = 0; i < 9; i++) { const a = i / 9 * 6.283, k = grid * (0.2 + 0.1 * r()); rock.push([bx + Math.cos(a) * k * (free ? 0.8 : 1.2), by + Math.sin(a) * k * (free ? 0.8 : 0.6)]); }
+    for (let i = 0; i < 9; i++) { const a = i / 9 * 6.283, k = grid * (0.2 + 0.1 * r()) * scale; rock.push([bx + Math.cos(a) * k * (free ? 0.8 : 1.2), by + Math.sin(a) * k * (free ? 0.8 : 0.6)]); }
     for (let i = 0, n = 7 + Math.floor(r() * 7); i < n; i++) {
-      const a = dir + (r() - 0.5) * (free ? 6.283 : 2.3), L = grid * (0.15 + r() * 0.38), o = (r() - 0.5) * grid * 0.45;
-      shards.push({ x: bx + along[0] * o, y: by + along[1] * o, a, L: L * (1 - Math.abs(o) / (grid * 0.6)), wd: grid * (0.09 + r() * 0.1) + L * 0.15, tilt: 0.3 + r() * 0.6 });
+      const a = dir + (r() - 0.5) * (free ? 6.283 : 2.3), L = grid * (0.15 + r() * 0.38) * scale, o = (r() - 0.5) * grid * 0.45 * scale;
+      shards.push({ x: bx + along[0] * o, y: by + along[1] * o, a, L: L * (1 - Math.abs(o) / (grid * 0.6 * scale)), wd: grid * (0.09 + r() * 0.1) * scale + L * 0.15, tilt: 0.3 + r() * 0.6 });
     }
     shards.sort((s1, s2) => s2.L - s1.L);
-    out.push({ x: bx + Math.cos(dir) * grid * 0.25, y: by + Math.sin(dir) * grid * 0.25, out: dir, shards, rock });
+    out.push({ x: bx + Math.cos(dir) * grid * 0.25 * scale, y: by + Math.sin(dir) * grid * 0.25 * scale, out: dir, shards, rock, scale });
   };
   for (const p of areas) {
     let grew = 0;
@@ -69,7 +79,7 @@ export function crystalsIn(areas = [], { walls = [], grid = 100, seed = 'crystal
       if (!(Number(w.move) > 0)) continue;
       const [x1, y1, x2, y2] = w.c, len = Math.hypot(x2 - x1, y2 - y1); if (len < grid * 0.5) continue;
       const nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
-      for (let s = grid * 0.4; s < len - grid * 0.3; s += grid * (1.1 + r() * 0.8)) {
+      for (let s = grid * 0.4; s < len - grid * 0.3; s += (grid * (1.1 + r() * 0.8)) / amount) {
         if (r() < 0.35) continue;
         const px = x1 + (x2 - x1) * (s / len), py = y1 + (y2 - y1) * (s / len);
         for (const side of [1, -1]) {
@@ -78,7 +88,7 @@ export function crystalsIn(areas = [], { walls = [], grid = 100, seed = 'crystal
         }
       }
     }
-    if (!grew) { const b = boxOf(p), want = Math.max(1, Math.round((b.w * b.h) / (grid * grid) / 8));
+    if (!grew) { const b = boxOf(p), want = Math.max(1, Math.round(((b.w * b.h) / (grid * grid) / 8) * amount));
       for (let n = 0, tries = 0; n < want && tries < want * 30; tries++) { const at = { x: b.x + r() * b.w, y: b.y + r() * b.h }; if (inArea(at, p)) { cluster(at.x, at.y, r() * 6.283, true); n++; } } }
   }
   return out;
@@ -122,6 +132,7 @@ varying vec2 vPos; varying vec2 vCenter; varying vec4 vCap;   // cap: radius, ph
 uniform float uTime, uGrid, uPass, uDark;   // pass 0: the caps as light shows them (on the floor); 1: their glow (added)
 uniform vec3 uGlow, uPale, uFlesh;
 uniform vec3 uTouch[12];   // where creatures were lately: x, y, seconds ago (large: none)
+uniform vec3 uBodies[12];  // where creatures are: x, y, how far their token reaches (0: none)
 ${NOISE}
 void main(){
   float R = vCap.x; vec2 p = vPos - vCenter; float dist = length(p);
@@ -154,7 +165,10 @@ void main(){
     vec2 at = vec2(sin(uTime * 0.8 + fs * 3.0 + vCap.y) * R * 0.6, -ph * R * 3.0);
     col += uPale * 0.5 * sin(ph * 3.1416) * b * exp(-dot(p - at, p - at) / (uGrid * uGrid * 0.0001));
   }
-  gl_FragColor = vec4(col, 0.0);
+  // The glow is drawn over the darkness, above the tokens: it stops at a creature standing on it, as if under its feet.
+  float over = 1.0;
+  for (int i = 0; i < 12; i++) { vec3 body = uBodies[i]; if (body.z > 0.0) over = min(over, smoothstep(body.z * 0.86, body.z, length(vPos - body.xy))); }
+  gl_FragColor = vec4(col * over, 0.0);
 }`;
 
 const CRYSTAL_VERT = `
@@ -339,17 +353,22 @@ const SKY_FRAG = `
 precision highp float;
 varying vec2 vUv;
 uniform sampler2D uMask;    // a: the opening (soft edged)
+uniform sampler2D uRoom;    // a: the floor its light can reach without crossing a wall (white: anywhere)
 uniform vec4 uBox;
 uniform vec2 uShift;        // where the light lands from the opening (px): away from the sun, further the lower it is
 uniform vec3 uColor;
 uniform float uStrength, uTime, uGrid;
 ${NOISE}
-float openAt(vec2 px){ vec2 uv = (px - uBox.xy) / uBox.zw; return (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? 0.0 : texture2D(uMask, uv).a; }
+vec4 openPx(vec2 px){ vec2 uv = (px - uBox.xy) / uBox.zw; return (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? vec4(0.0) : texture2D(uMask, uv); }
+float openAt(vec2 px){ return openPx(px).a; }
 void main(){
   if (uStrength < 0.01) { gl_FragColor = vec4(0.0); return; }
   vec2 px = uBox.xy + vUv * uBox.zw;
   // The pool on the floor: the opening's shape, cast away from the sun, its edge softened, dappled a little.
-  float pool = openAt(px - uShift) * (0.85 + 0.15 * noise(px / (uGrid * 0.6) + uTime * 0.05));
+  // (A window in it: its panes' colours carried in the mask, its frame cut out of it.)
+  vec4 landed = openPx(px - uShift);
+  float pool = landed.a * (0.85 + 0.15 * noise(px / (uGrid * 0.6) + uTime * 0.05));
+  vec3 tint = landed.a > 0.001 ? landed.rgb / landed.a : vec3(1.0);
   // The shaft: the light seen in the air between the opening and the pool.
   float beam = 0.0;
   for (int k = 1; k < 8; k++) beam += openAt(px - uShift * (float(k) / 8.0));
@@ -362,7 +381,7 @@ void main(){
     vec2 id = floor(q), f = fract(q) - 0.5; float h = hash(id);
     if (h < 0.35) { f -= (vec2(hash(id + 1.3), hash(id + 2.9)) - 0.5) * 0.6; motes += (1.0 - smoothstep(0.02, 0.07, length(f))) * (0.4 + 0.6 * pow(0.5 + 0.5 * sin(uTime * (0.7 + h * 2.0) + h * 30.0), 2.0)); }
   }
-  vec3 col = uColor * uStrength * (pool * 0.5 + beam * 0.18 + motes * beam * 0.7);
+  vec3 col = uColor * uStrength * (tint * pool * 0.5 + vec3(beam * 0.18 + motes * beam * 0.7)) * texture2D(uRoom, vUv).a;
   gl_FragColor = vec4(col, 0.0);
 }`;
 
@@ -371,6 +390,32 @@ const quad = (PIXI, b) => new PIXI.Geometry()
   .addAttribute('aVertexPosition', [b.x, b.y, b.x + b.w, b.y, b.x + b.w, b.y + b.h, b.x, b.y + b.h], 2)
   .addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
 
+// An opening's mask with a window in it (wall-shadows.mjs's kinds): its soft edge, then the window's coloured panes
+// multiplied into it and its frame cut out of it, sharp. Frosted glass: a wider, softer pool.
+// How soft a roof window's shadow edges are, in squares: softer than a creature's at its feet, never so soft its frame is lost.
+const ROOF_WINDOW_SOFT = 0.035;
+const windowMask = (PIXI, render, p, box, soft, kind, scale = 1) => {
+  const k = Math.min(0.5, 1024 / Math.max(box.w, box.h)), w = Math.max(1, Math.ceil(box.w * k)), h = Math.max(1, Math.ceil(box.h * k));
+  const at = (pts) => pts.map((v, i) => (v - (i % 2 ? box.y : box.x)) * k), stage = new PIXI.Container(), base = new PIXI.Graphics();
+  base.beginFill(0xffffff, 1); base.drawPolygon(at(p)); base.endFill();
+  const blur = Math.max(2, soft * k * (kind === 'frosted' ? 2.5 : 1)), filter = new PIXI.BlurFilter(blur); filter.padding = Math.ceil(blur * 3); base.filters = [filter];
+  stage.addChild(base);
+  const b = boxOf(p), P = (u, v) => [b.x + u * b.w, b.y + v * b.h];
+  // A roof is far above the floor, so its window's shadow comes down soft-edged (much softer than a creature's at its feet):
+  // the panes' edges and the frame's lines blurred a little.
+  const roofSoft = () => { const f = new PIXI.BlurFilter(Math.max(1.5, ROOF_WINDOW_SOFT * (soft / 0.3) * k), 3); f.padding = Math.ceil(f.blur * 3); return f; };
+  if (kind === 'mosaic' || kind === 'rose') { const colour = new PIXI.Graphics(), f = roofSoft(); f.blendMode = PIXI.BLEND_MODES.MULTIPLY; colour.filters = [f]; colouredPanes(colour, { panes: kind, alpha: 1, scale }, P, at, { fades: false }); stage.addChild(colour); }
+  const lines = windowPrint(printOf(kind), scale);
+  if (lines.length) {
+    const cut = new PIXI.Graphics(), f = roofSoft(); f.blendMode = PIXI.BLEND_MODES.ERASE; cut.filters = [f];
+    cut.lineStyle(Math.max(1, Math.min(b.w, b.h) * k * (kind === 'glass' || kind === 'bars' ? 0.05 : 0.025)), 0xffffff, 0.95);
+    for (const [u0, v0, u1, v1] of lines) { cut.moveTo(...at(P(u0, v0))); cut.lineTo(...at(P(u1, v1))); }
+    stage.addChild(cut);
+  }
+  const out = PIXI.RenderTexture.create({ width: w, height: h });
+  try { render(stage, out); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+  return out;
+};
 // An area's mask over `box` (in its alpha): the area itself, blurred by `soft` px.
 const maskOf = (PIXI, render, polygons, box, { soft = 0 } = {}) => {
   const k = Math.min(0.25, 1024 / Math.max(box.w, box.h)), w = Math.max(1, Math.ceil(box.w * k)), h = Math.max(1, Math.ceil(box.h * k));
@@ -404,17 +449,21 @@ export function createCavern({ PIXI, floor, glow, render }) {
     build({ fungus: fungusAreas = [], crystals: crystalAreas = [], lava = [], mist = [], sky = [], walls = [], grid: g = 100, seed = 'cave', isFloor = () => true, bounds = null } = {}) {
       drop(); grid = g;
       // Openings to the sky: a quad over each, wide enough for the pool its light casts (as far as a low sun throws it).
-      for (const areas of sky) for (const p of areas) {
+      // (Each a list of areas, or { areas, under }: under a roof, drawn beneath the roof tiles so it shows only once the roof fades.)
+      for (const item of sky) for (const p of item.areas ?? item) {
         const b0 = boxOf(p), pad = grid * 4, box = { x: b0.x - pad, y: b0.y - pad, w: b0.w + pad * 2, h: b0.h + pad * 2 };
-        const mask = maskOf(PIXI, render, [p], box, { soft: grid * 0.3 }); textures.push(mask);
-        const own = { uMask: mask, uBox: [box.x, box.y, box.w, box.h], uShift: [0, 0], uColor: [1, 0.93, 0.78], uStrength: 0, uTime: 0, uGrid: grid };
-        add(new PIXI.Mesh(quad(PIXI, box), PIXI.Shader.from(AREA_VERT, SKY_FRAG, own)), glow, PIXI.BLEND_MODES.ADD);
+        const mask = item.window ? windowMask(PIXI, render, p, box, grid * 0.3, item.window, item.pattern ?? 1) : maskOf(PIXI, render, [p], box, { soft: grid * 0.3 }); textures.push(mask);
+        // (A window in it lets through its share of the light.)
+        // Kept to the floor the opening can light without crossing a wall: a low sun slides its pool up to the wall, never through it.
+        const room = item.room?.length >= 6 ? maskOf(PIXI, render, [item.room], box, { soft: grid * 0.12 }) : PIXI.Texture.WHITE; if (room !== PIXI.Texture.WHITE) textures.push(room);
+        const own = { through: item.window ? WINDOW_KINDS[item.window] ?? 1 : 1, uMask: mask, uRoom: room, uBox: [box.x, box.y, box.w, box.h], uShift: [0, 0], uColor: [1, 0.93, 0.78], uStrength: 0, uTime: 0, uGrid: grid };
+        add(new PIXI.Mesh(quad(PIXI, box), PIXI.Shader.from(AREA_VERT, SKY_FRAG, own)), item.under ? floor : glow, PIXI.BLEND_MODES.ADD);
         skies.push(own);
       }
       // Fungus: the caps on the floor as light shows them, and their glow over the darkness (one mesh each a colour, a
       // quad a cap, big enough for its halo); the threads as faint pale lines on the floor.
-      for (const { areas, color } of fungusAreas) {
-        const clusters = fungusIn(areas, { grid, seed: `${seed}:fungus:${color}`, floor: isFloor }), pos = [], center = [], cap = [], index = [];
+      for (const { areas, color, amount = 1, scale = 1, glow: bright = 1 } of fungusAreas) {
+        const clusters = fungusIn(areas, { grid, seed: `${seed}:fungus:${color}`, floor: isFloor, amount, scale }), pos = [], center = [], cap = [], index = [];
         for (const cl of clusters) for (const c of cl.caps) {
           const H = c.r * 5, i = pos.length / 2;
           pos.push(c.x - H, c.y - H * 1.2, c.x + H, c.y - H * 1.2, c.x + H, c.y + H, c.x - H, c.y + H);
@@ -428,23 +477,23 @@ export function createCavern({ PIXI, floor, glow, render }) {
         for (const cl of clusters) for (const th of cl.threads) { lines.moveTo(th[0][0], th[0][1]); for (const [x, y] of th.slice(1)) lines.lineTo(x, y); }
         floor().addChild(lines); graphics.push(lines);
         const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', pos, 2).addAttribute('aCenter', center, 2).addAttribute('aCap', cap, 4).addIndex(index);
-        const body = { uTime: 0, uGrid: grid, uPass: 0, uDark: 1, uGlow: glowC, uPale: pale, uFlesh: flesh, uTouch: new Float32Array(36).fill(1e4) };
-        const lit = { ...body, uPass: 1, uTouch: new Float32Array(36).fill(1e4) };
+        const body = { bright, uTime: 0, uGrid: grid, uPass: 0, uDark: bright, uGlow: glowC, uPale: pale, uFlesh: flesh, uTouch: new Float32Array(36).fill(1e4), uBodies: new Float32Array(36) };
+        const lit = { ...body, uPass: 1, uTouch: new Float32Array(36).fill(1e4), uBodies: new Float32Array(36) };
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(FUNGUS_VERT, FUNGUS_FRAG, body)), floor);
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(FUNGUS_VERT, FUNGUS_FRAG, lit)), glow, PIXI.BLEND_MODES.ADD);
         fungus.push(body, lit);
       }
       // Crystals: one mesh a stone, its faces as triangles with their normals, and a soft quad of tint on the floor.
-      for (const { areas, stone } of crystalAreas) {
-        const clusters = crystalsIn(areas, { walls, grid, seed: `${seed}:crystals:${stone}`, floor: isFloor }), pos = [], normal = [], kind = [];
+      for (const { areas, stone, amount = 1, scale = 1, torch = 1 } of crystalAreas) {
+        const clusters = crystalsIn(areas, { walls, grid, seed: `${seed}:crystals:${stone}`, floor: isFloor, amount, scale }), pos = [], normal = [], kind = [];
         for (const cl of clusters) {
           for (const t of crystalFaces(cl)) for (const [x, y] of t.pts) { pos.push(x, y); normal.push(...t.n); kind.push(t.kind); }
-          const R = grid * 0.8, corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
+          const R = grid * 0.8 * (cl.scale ?? 1), corners = [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]];
           for (const [dx, dy] of corners) { pos.push(cl.x + dx * R, cl.y + dy * R); normal.push(dx, dy, 0.001); kind.push(2); }
         }
         if (!pos.length) continue;
         const [pale, deep] = CRYSTAL_STONES[stone] ?? CRYSTAL_STONES.amethyst;
-        const own = { uLights: new Float32Array(32), uLightCol: new Float32Array(24), uCount: 0, uGrid: grid, uPale: pale, uDeep: deep };
+        const own = { torch, uLights: new Float32Array(32), uLightCol: new Float32Array(24), uCount: 0, uGrid: grid, uPale: pale, uDeep: deep };
         const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', pos, 2).addAttribute('aNormal', normal, 3).addAttribute('aKind', kind, 1);
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(CRYSTAL_VERT, CRYSTAL_FRAG, own)), glow, PIXI.BLEND_MODES.ADD);
         // The stone itself as ordinary light shows it, on the floor (the same faces, plain, under the darkness).
@@ -454,38 +503,42 @@ export function createCavern({ PIXI, floor, glow, render }) {
         crystals.push(own);
       }
       // Lava: a quad over each area (and a few squares round it for its light), drawn twice.
-      for (const areas of lava) for (const p of areas) {
+      // (Each a list of areas, or { areas, heat }.)
+      for (const item of lava) for (const p of item.areas ?? item) {
         const b0 = boxOf(p), pad = grid * 3, box = { x: b0.x - pad, y: b0.y - pad, w: b0.w + pad * 2, h: b0.h + pad * 2 };
         const mask = maskOf(PIXI, render, [p], box, { soft: grid * 0.25 }), wide = maskOf(PIXI, render, [p], box, { soft: grid * 1.6 }); textures.push(mask, wide);
-        const own = { uMask: mask, uWide: wide, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uHeat: 0.6, uPass: 0 }, lit = { ...own, uPass: 1 };
+        const own = { uMask: mask, uWide: wide, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uHeat: item.heat ?? 0.6, uPass: 0 }, lit = { ...own, uPass: 1 };
         const geometry = quad(PIXI, box);
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(AREA_VERT, LAVA_FRAG, own)), floor);
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(AREA_VERT, LAVA_FRAG, lit)), glow, PIXI.BLEND_MODES.ADD);
         lavas.push(own, lit);
       }
       // Mist: a quad over each area; where feet passed lately in a small picture (a cell a quarter square).
-      for (const areas of mist) for (const p of areas) {
+      // (Each a list of areas, or { areas, thick, scale }.)
+      for (const item of mist) for (const p of item.areas ?? item) {
         const b0 = boxOf(p), pad = grid * 0.5, box = { x: b0.x - pad, y: b0.y - pad, w: b0.w + pad * 2, h: b0.h + pad * 2 };
         const mask = maskOf(PIXI, render, [p], box, { soft: grid * 0.5 }); textures.push(mask);
         const cols = Math.max(1, Math.ceil(box.w / (grid / 4))), rows = Math.max(1, Math.ceil(box.h / (grid / 4))), cells = new Float32Array(cols * rows), px = new Uint8Array(cols * rows * 4);
         const trail = PIXI.Texture.fromBuffer(px, cols, rows, { scaleMode: PIXI.SCALE_MODES.LINEAR }); textures.push(trail);
-        const own = { uMask: mask, uTrail: trail, uDraft: draftTex(), uDraftWas: draftWas ?? draftTex(), uDraftMix: draftMix, uField: draftField, uCell: [1 / cols, 1 / rows], uAir: PIXI.Texture.WHITE, uAirRect: [0, 0, 1, 1], uAirOn: 0, uPull: [0, 0], uPullAt: [0, 0, 1], uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uThick: 1.1 };
+        const own = { uMask: mask, uTrail: trail, uDraft: draftTex(), uDraftWas: draftWas ?? draftTex(), uDraftMix: draftMix, uField: draftField, uCell: [1 / cols, 1 / rows], uAir: PIXI.Texture.WHITE, uAirRect: [0, 0, 1, 1], uAirOn: 0, uPull: [0, 0], uPullAt: [0, 0, 1], uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid * (item.scale ?? 1), uThick: 1.1 * (item.thick ?? 1) };
         add(new PIXI.Mesh(quad(PIXI, box), PIXI.Shader.from(AREA_VERT, MIST_FRAG, own)), floor);
         mists.push({ own, box, cols, rows, cells, px, trail, dirty: false, since: 0 });
       }
       // What the draft draws out of them, over the whole map; shown once the air is told (air()).
       if (mist.length && bounds) {
-        const box = { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height }, inside = maskOf(PIXI, render, mist.flat(), box, { soft: grid * 0.5 }); textures.push(inside);
+        const box = { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height }, inside = maskOf(PIXI, render, mist.flatMap((item) => item.areas ?? item), box, { soft: grid * 0.5 }); textures.push(inside);
         mistOut = { uAir: PIXI.Texture.WHITE, uPull: [0, 0], uPullAt: [0, 0, 1], uInside: inside, uDraft: draftTex(), uDraftWas: draftWas ?? draftTex(), uDraftMix: draftMix, uField: draftField, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uThick: 1.1 };
         mistOutMesh = new PIXI.Mesh(quad(PIXI, box), PIXI.Shader.from(AREA_VERT, MIST_OUT_FRAG, mistOut)); add(mistOutMesh, floor); mistOutMesh.visible = false;
       }
     },
+    // The creatures standing about now ({ x, y, width }), the nearest dozen in the list, each frame.
+    bodies(list = []) { for (const own of fungus) { own.uBodies.fill(0); list.slice(0, 12).forEach((c, i) => { own.uBodies[i * 3] = c.x; own.uBodies[i * 3 + 1] = c.y; own.uBodies[i * 3 + 2] = (Number(c.width) || grid) / 2; }); } },
     look({ touches = [], lights = [], dark = 1, sky = null } = {}) {
-      for (const own of skies) { own.uStrength = sky?.strength ?? 0; if (sky) { own.uColor = sky.color; own.uShift = sky.shift; } }
-      for (const own of fungus) { own.uDark = dark; own.uTouch.fill(1e4); touches.slice(0, 12).forEach((t, i) => { own.uTouch[i * 3] = t.x; own.uTouch[i * 3 + 1] = t.y; own.uTouch[i * 3 + 2] = t.ago; }); }
+      for (const own of skies) { own.uStrength = (sky?.strength ?? 0) * (own.through ?? 1); if (sky) { own.uColor = sky.color; own.uShift = sky.shift; } }
+      for (const own of fungus) { own.uDark = dark * own.bright; own.uTouch.fill(1e4); touches.slice(0, 12).forEach((t, i) => { own.uTouch[i * 3] = t.x; own.uTouch[i * 3 + 1] = t.y; own.uTouch[i * 3 + 2] = t.ago; }); }
       for (const own of crystals) {
         const list = lights.slice(0, 8);
-        list.forEach((l, i) => { own.uLights[i * 4] = l.x; own.uLights[i * 4 + 1] = l.y; own.uLights[i * 4 + 2] = l.reach; own.uLights[i * 4 + 3] = l.strength; own.uLightCol[i * 3] = l.color[0]; own.uLightCol[i * 3 + 1] = l.color[1]; own.uLightCol[i * 3 + 2] = l.color[2]; });
+        list.forEach((l, i) => { own.uLights[i * 4] = l.x; own.uLights[i * 4 + 1] = l.y; own.uLights[i * 4 + 2] = l.reach; own.uLights[i * 4 + 3] = l.strength * own.torch; own.uLightCol[i * 3] = l.color[0]; own.uLightCol[i * 3 + 1] = l.color[1]; own.uLightCol[i * 3 + 2] = l.color[2]; });
         own.uCount = list.length;
       }
     },
@@ -542,8 +595,6 @@ export function createCavern({ PIXI, floor, glow, render }) {
       if (draftMix < 1) { draftMix = Math.min(1, draftMix + seconds / 5); for (const m of mists) m.own.uDraftMix = draftMix; if (mistOut) mistOut.uDraftMix = draftMix; }
       for (const m of mists) {
         m.own.uTime = time;
-        // With no air worked out to carry it (above ground), it gathers by itself as the scene opens.
-        m.own.uThick = 1.1 * (m.own.uAirOn > 0.5 ? 1 : Math.min(1, time / 40));
         if (!m.dirty) continue;
         // Its picture sent a dozen times a second: the patches close slowly, and a big bank has many cells.
         m.since += seconds; if (m.since < 0.08) continue;

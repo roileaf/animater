@@ -21,7 +21,7 @@ test('nothing listed: no tabs', () => { assert.deepEqual(stepTabs(), []); });
 test('the menu offers Stands over water on what is not water', async () => {
   const { readFileSync } = await import('node:fs');
   const ui = readFileSync(new URL('../../scripts/ui/region-steps-ui.mjs', import.meta.url), 'utf8');
-  assert.ok(ui.includes("if (menu.reflections === null) parts.push(tick('Stands over water', own.overWater === true,"));
+  assert.ok(ui.includes("if (menu.reflections === null && !molten) parts.push(tick('Stands over water', own.overWater === true,"));
 });
 
 test('pattern size moves in fives, so it can be exactly 100%', async () => {

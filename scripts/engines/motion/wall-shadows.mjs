@@ -8,7 +8,7 @@ import { createSilhouettes, silhouetteScale, SILHOUETTE_SIZE } from './flier-sil
 // The longest a wall's shadow grows (squares), with the sun on the horizon: past it, it is cut.
 export const WALL_SHADOW_CAP = 12;
 // The picture is drawn at this share of the scene's size: soft by nature, and cheap.
-const RESOLUTION = 0.25;
+const RESOLUTION = 0.25, SHAFT_RESOLUTION = 0.5;
 // How soft its edges are (blur at the picture's size).
 const SOFTNESS = 2;
 // The largest picture made (pixels a side).
@@ -96,7 +96,17 @@ export const WINDOW_SHAFT_CAP = 8;
 // (Animater's Window on the wall: WINDOW_KINDS) says what fills it, on any wall, a solid one too (shutters drawn as a
 // wall): glass, open (an empty frame), curtained (cloth letting a dim, spread light through) or shuttered (slats letting
 // it through in bands); it is returned as `kind` (an open door 'open', Foundry's window 'glass').
-export const WINDOW_KINDS = { glass: 0.8, open: 1, curtained: 0.4, shuttered: 0.55 };
+export const WINDOW_KINDS = { glass: 0.8, open: 1, curtained: 0.4, shuttered: 0.55, mosaic: 0.85, leaded: 0.75, rose: 0.85, frosted: 0.5, lattice: 0.65, bars: 0.85, slit: 1 };
+// The windows that open and close (window-state.mjs CLOSING_WINDOWS), by what fills them when shut; a wooden one, nothing.
+const SHUT_LOOK = Object.freeze({ glassWindow: 'glass', curtainWindow: 'curtained', shutterWindow: 'shuttered', mosaicWindow: 'mosaic', leadedWindow: 'leaded', roseWindow: 'rose', frostedWindow: 'frosted' });
+// What each prints in its light (createWindowShafts): a frame's cross or bar, coloured panes, a net, a grid, stripes.
+const PRINTS = Object.freeze({ glass: 'cross', shuttered: 'bar', mosaic: 'mosaic', leaded: 'leaded', rose: 'rose', lattice: 'lattice', bars: 'bars', frosted: 'frosted' });
+export const printOf = (kind) => PRINTS[kind] ?? null;
+// What can fill an opening in a roof (region configuration, `skyWindow`): [key, name]; '' none. Glazed ones keep the weather out
+// and let the sun and the clouds' shadows through.
+export const SKY_WINDOWS = Object.freeze([['', 'None: open to the weather'], ['glass', 'Glass skylight'], ['mosaic', 'Mosaic or stained glass'], ['leaded', 'Leaded diamonds'], ['rose', 'Rose window'], ['frosted', 'Frosted glass'], ['lattice', 'Wooden lattice'], ['bars', 'Iron grate']]);
+export const GLAZED = Object.freeze(new Set(['glass', 'mosaic', 'leaded', 'rose', 'frosted']));
+export const skyWindowOf = (own) => (SKY_WINDOWS.some(([k]) => k && k === own?.skyWindow) ? own.skyWindow : '');
 export function windowOpening(wall = {}, height = 2, foot = 0.2) {
   const given = (v) => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
   const bottom = given(wall.bottom) ? Math.max(0, Number(wall.bottom)) : 0;
@@ -104,9 +114,9 @@ export function windowOpening(wall = {}, height = 2, foot = 0.2) {
   const upTo = (feet) => Math.min(top, bottom + feet * ft);
   if (Number(wall.door) > 0) return Number(wall.ds) === 1 ? { bottom, top: upTo(7), alpha: 1, kind: 'open' } : null;
   // One that opens and closes (window-state.mjs): a shut wooden window lets nothing through, shut shutters or glass their share; open, an empty frame.
-  if (wall.kind === 'woodWindow' || wall.kind === 'shutterWindow' || wall.kind === 'glassWindow') {
+  if (wall.kind === 'woodWindow' || Object.hasOwn(SHUT_LOOK, wall.kind ?? '')) {
     if (!wall.open && (wall.kind === 'woodWindow' || (wall.kind === 'shutterWindow' && !wall.slats))) return null;
-    const shut = wall.kind === 'shutterWindow' ? 'shuttered' : 'glass';
+    const shut = SHUT_LOOK[wall.kind] ?? 'glass';
     return upTo(7) > upTo(3) ? { bottom: upTo(3), top: upTo(7), alpha: wall.open ? 1 : WINDOW_KINDS[shut], kind: wall.open ? 'open' : shut } : null;
   }
   // A window: Foundry's Window (light proximity or distance), or glass drawn as a wall that lets the light through
@@ -118,6 +128,28 @@ export function windowOpening(wall = {}, height = 2, foot = 0.2) {
 // edge), alpha }. As wallShadowQuads, for the same walls, sun and height. `indoors` the roofs: an opening whose sunward
 // side is under one too (a door between two rooms) lets no daylight through. `shade` the walls' shadows
 // (wallShadowQuads's): an opening another wall taller than it shades from the sun lets that much less through.
+// How far along a ray (from `p`, the unit way `d`) the first wall stops the light, up to `most` (pure): any wall that blocks
+// light, not the window itself (`skip`) nor another opening.
+export function wallAlong(p, d, walls, options = {}) { return wallHitAlong(p, d, walls, options).t; }
+// The same, with the wall it meets (null: none before `most`).
+export function wallHitAlong(p, d, walls, { skip = null, most = Infinity, height = 2, foot = 0.2 } = {}) {
+  let best = most, hit = null;
+  for (const wall of walls) {
+    const c = wall?.c; if (!Array.isArray(c) || c.length < 4 || wall === skip) continue;
+    if (!(Number(wall.light) > 0) || windowOpening(wall, height, foot)) continue;
+    const [x1, y1, x2, y2] = c.map(Number), ex = x2 - x1, ey = y2 - y1, den = d.x * ey - d.y * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = ((x1 - p.x) * ey - (y1 - p.y) * ex) / den, u = ((x1 - p.x) * d.y - (y1 - p.y) * d.x) / den;
+    if (t > 1 && t < best && u >= 0 && u <= 1) { best = t; hit = wall; }
+  }
+  return { t: best, wall: hit };
+}
+// Whether two walls lie along one line (pure): a long wall drawn in pieces is still one wall.
+export const sameWallLine = (a, b, tolerance = 2) => {
+  if (!a || !b) return false; if (a === b) return true;
+  const [x1, y1, x2, y2] = a.c.map(Number), len = Math.hypot(x2 - x1, y2 - y1) || 1, off = (x, y) => Math.abs((x2 - x1) * (y - y1) - (y2 - y1) * (x - x1)) / len;
+  return off(Number(b.c[0]), Number(b.c[1])) <= tolerance && off(Number(b.c[2]), Number(b.c[3])) <= tolerance;
+};
 export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, indoors = [], foot = 0.2, shade = [], blocked = () => false } = {}) {
   if (!sun || !(Number(sun.strength) > 0)) return [];
   const away = ((Number(sun.angle) || 0) + 180) * Math.PI / 180, dx = Math.cos(away), dy = Math.sin(away);
@@ -129,7 +161,9 @@ export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, i
     // lands: a high sill's gap below it would leave the patch floating, never reading as the window's.
     const near = 0, far = Math.min(WINDOW_SHAFT_CAP, wallShadowReach(open.top, sun.height)) * grid;
     if (!(far - near > grid * 0.1)) continue;
-    const [ax, ay, bx, by] = c.map(Number);
+    let [ax, ay, bx, by] = c.map(Number);
+    // An arrow slit: only a narrow slot of it lets the light through.
+    if (open.kind === 'slit') { const mx = (ax + bx) / 2, my = (ay + by) / 2, len = Math.hypot(bx - ax, by - ay) || 1, half = Math.max(grid * 0.05, len * 0.06), ux = (bx - ax) / len, uy = (by - ay) / len; ax = mx - ux * half; ay = my - uy * half; bx = mx + ux * half; by = my + uy * half; }
     const sunward = { x: (ax + bx) / 2 - dx * grid * 0.5, y: (ay + by) / 2 - dy * grid * 0.5 };
     if (indoors.some((p) => inside(sunward, p))) continue;
     // Another wall hard up against it, on the sun's side, stops light: none gets in.
@@ -138,7 +172,20 @@ export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, i
     const sill = { x: (ax + bx) / 2 - dx * grid * 0.15, y: (ay + by) / 2 - dy * grid * 0.15 };
     const alpha = open.alpha * (1 - shadedAbove(sill, shade, { elevation: (open.bottom + open.top) / 2, sun, grid, skip: [ax, ay, bx, by] }));
     if (!(alpha > 0.05)) continue;
-    out.push({ points: [ax + dx * near, ay + dy * near, bx + dx * near, by + dy * near, bx + dx * far, by + dy * far, ax + dx * far, ay + dy * far], alpha, slats: open.kind === 'shuttered' ? Math.max(3, Math.round((far - near) / (grid * 0.3))) : 0 });
+    // Stopped by the far wall: each edge of the light runs only as far as the first wall in its way, and what would have
+    // gone on climbs that wall (`wall`: where it meets it, and how much of the light that is).
+    const way = { x: dx, y: dy }, ha = wallHitAlong({ x: ax, y: ay }, way, walls, { skip: wall, most: far, height, foot }), hb = wallHitAlong({ x: bx, y: by }, way, walls, { skip: wall, most: far, height, foot });
+    // Edges stopped by two different walls (one through a doorway): the whole patch stops at the nearer, never spilling
+    // across a wall into the next room.
+    const split = (ha.wall || hb.wall) && !sameWallLine(ha.wall, hb.wall), fa = split ? Math.min(ha.t, hb.t) : ha.t, fb = split ? Math.min(ha.t, hb.t) : hb.t;
+    // The band at the foot of the far wall only where both edges of the light meet that one wall: split between two (one
+    // edge through a doorway), a line between them would cut across the room.
+    const hit = fa < far - 1 && fb < far - 1 && sameWallLine(ha.wall, hb.wall) ? { points: [ax + dx * fa, ay + dy * fa, bx + dx * fb, by + dy * fb], share: Math.min(1, (far - Math.min(fa, fb)) / far) } : null;
+    // A window's frame printed in its light: a cross for shut glass, the bar where a pair of shutters meet (their slats
+    // already make the bands). Thrown open, whatever it is, its leaves are out of the way and the light comes in whole, as
+    // through a doorway; a curtain's cloth has none.
+    const framed = Number(wall.door) > 0 ? false : PRINTS[open.kind] ?? false;
+    out.push({ points: [ax + dx * near, ay + dy * near, bx + dx * near, by + dy * near, bx + dx * fb, by + dy * fb, ax + dx * fa, ay + dy * fa], alpha, slats: open.kind === 'shuttered' ? Math.max(3, Math.round((far - near) / (grid * 0.3))) : 0, panes: framed, leaves: typeof wall.kind === 'string' && /Window$/.test(wall.kind), scale: patternScaleOf(wall.pattern), soft: open.kind === 'frosted', wall: hit, from: [ax, ay, bx, by] });
   }
   return out;
 }
@@ -533,14 +580,104 @@ void main(){
   gl_FragColor = vec4(uColor * a, a);
 }`;
 
+// How big a window's panes are (`windowPattern` on a wall, `skyPattern` on a roof opening): 1 as usual, smaller for more
+// and finer panes, bigger for fewer and larger.
+export const WINDOW_PATTERN = Object.freeze({ min: 0.5, max: 2, usual: 1 });
+export const patternScaleOf = (v) => { const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(WINDOW_PATTERN.max, Math.max(WINDOW_PATTERN.min, n)) : WINDOW_PATTERN.usual; };
+// How many panes across for a kind at a pattern size (pure).
+export const panesAcross = (usual, scale = 1, least = 2) => Math.max(least, Math.round(usual / patternScaleOf(scale)));
+// The glow just inside a window (pure): half an ellipse lying along the wall [x1, y1, x2, y2], reaching a little way into
+// the room on the side `inward` points to (any vector that way), flat x, y pairs.
+export function windowGlowBand(from, inward, grid = 100) {
+  const [x1, y1, x2, y2] = from, len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+  let nx = -uy, ny = ux; if (nx * inward[0] + ny * inward[1] < 0) { nx = -nx; ny = -ny; }
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, across = len * 0.6, deep = Math.min(len * 0.35, grid * 0.6), out = [];
+  for (let i = 0; i <= 12; i++) { const a = Math.PI * (i / 12), c = Math.cos(a), s = Math.sin(a); out.push(mx + ux * across * c + nx * deep * s, my + uy * across * c + ny * deep * s); }
+  return out;
+}
+// How bright a window's patch is along it (pure, `t` 0 at the window – 1 at its far end): brightest by the window, fading as the light spreads.
+export const windowFade = (t) => 1 - 0.8 * Math.pow(Math.min(1, Math.max(0, t)), 0.8);
+// The lines a window's print cuts across its light (pure): [u0, v0, u1, v1, weight?] each, u across the window, v along the
+// light, `weight` how much heavier than the rest (1 when left out). `scale` its pattern size. `leaves`: a window that opens
+// is two leaves meeting in the middle: the bar there, a little heavier, and each leaf's panes laid out on their own.
+export function windowPrint(kind, scale = 1, { leaves = false } = {}) {
+  const out = [];
+  // (Frosted glass shows no lines of its own, a rose window keeps its wheel: each only the bar where its leaves meet.)
+  if (leaves && (kind === 'rose' || kind === 'frosted')) return [...windowPrint(kind, scale), [0.5, 0, 0.5, 1, 1.8]];
+  if (leaves && (kind === 'leaded' || kind === 'mosaic')) {
+    const half = windowPrint(kind, scale * 2), squeeze = (u, side) => side * 0.5 + u * 0.5;
+    for (const side of [0, 1]) for (const [u0, v0, u1, v1, w] of half) out.push([squeeze(u0, side), v0, squeeze(u1, side), v1, w]);
+    out.push([0.5, 0, 0.5, 1, 1.8]);
+    return out;
+  }
+  if (kind === 'cross') out.push([0.5, 0, 0.5, 1], [0, 0.45, 1, 0.45]);
+  else if (kind === 'bar') out.push([0.5, 0, 0.5, 1]);
+  else if (kind === 'bars') { const n = panesAcross(6, scale); for (let i = 1; i < n; i++) out.push([i / n, 0, i / n, 1]); out.push([0, 0.5, 1, 0.5]); }
+  else if (kind === 'lattice') { const n = panesAcross(8, scale); for (let i = 1; i < n; i++) out.push([i / n, 0, i / n, 1], [0, i / n, 1, i / n]); }
+  else if (kind === 'leaded') { const n = panesAcross(6, scale); for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out.push([i / n, j / n, (i + 1) / n, (j + 1) / n], [(i + 1) / n, j / n, i / n, (j + 1) / n]); }
+  else if (kind === 'mosaic') { const n = panesAcross(6, scale); for (let i = 1; i < n; i++) out.push([i / n, 0, i / n, 1], [0, i / n, 1, i / n]); }
+  else if (kind === 'rose') {
+    const n = panesAcross(12, scale, 6);
+    for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; out.push([0.5, 0.5, 0.5 + Math.cos(a) * 0.48, 0.5 + Math.sin(a) * 0.48]); }
+    for (const r of [0.13, 0.32, 0.48]) for (let i = 0; i < 24; i++) { const a0 = (i / 24) * Math.PI * 2, a1 = ((i + 1) / 24) * Math.PI * 2; out.push([0.5 + Math.cos(a0) * r, 0.5 + Math.sin(a0) * r, 0.5 + Math.cos(a1) * r, 0.5 + Math.sin(a1) * r]); }
+  }
+  return out;
+}
+// The coloured panes' colours, lightened as the sun comes through them.
+const JEWELS = [0xe0443a, 0x3f68e8, 0xf6c43a, 0x46b04f, 0xa64ad8, 0xf2843a];
+// A coloured window's panes laid along its light (`P(u, v)` a point of it, `at` into the picture), fading as the light spreads.
+export function colouredPanes(g, s, P, at, { fades = true } = {}) {
+  const fade = (v) => s.alpha * (fades ? windowFade(v) : 1);
+  if (s.panes === 'mosaic' && s.leaves) {
+    // Two leaves, each its own panes.
+    for (const side of [0, 1]) colouredPanes(g, { ...s, leaves: false, scale: (s.scale ?? 1) * 2 }, (u, v) => P(side * 0.5 + u * 0.5, v), at, { fades });
+    return;
+  }
+  if (s.panes === 'mosaic') {
+    const n = panesAcross(6, s.scale);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const h = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; g.beginFill(JEWELS[Math.floor((h - Math.floor(h)) * JEWELS.length)], fade((j + 0.5) / n)); g.drawPolygon(at([...P(i / n, j / n), ...P((i + 1) / n, j / n), ...P((i + 1) / n, (j + 1) / n), ...P(i / n, (j + 1) / n)].map((v) => v))); g.endFill(); }
+    return;
+  }
+  // A rose window: wedges round a golden heart (twelve as usual), outside them the light plain.
+  const wedges = panesAcross(12, s.scale, 6);
+  for (let i = 0; i < wedges; i++) {
+    const pts = [...P(0.5, 0.5)];
+    for (let k = 0; k <= 4; k++) { const a = ((i + k / 4) / wedges) * Math.PI * 2; pts.push(...P(0.5 + Math.cos(a) * 0.48, 0.5 + Math.sin(a) * 0.48)); }
+    g.beginFill(JEWELS[i % JEWELS.length], fade(0.5)); g.drawPolygon(at(pts)); g.endFill();
+  }
+  const heart = []; for (let k = 0; k < 16; k++) { const a = (k / 16) * Math.PI * 2; heart.push(...P(0.5 + Math.cos(a) * 0.13, 0.5 + Math.sin(a) * 0.13)); }
+  g.beginFill(0xffe08a, fade(0.5)); g.drawPolygon(at(heart)); g.endFill();
+}
+// How much of the sun a point indoors gets through the windows (pure, 0–1): the brightest patch of light it stands in
+// (windowShafts'), less through shutters' slats, fading toward the patch's far end as the light does.
+export function shaftAt(point, shafts = []) { return shaftOf(point, shafts).share; }
+// The same, with the patch it stands in (`points`, flat x, y pairs; null in none): its shadow lies only there.
+export function shaftOf(point, shafts = []) {
+  let best = 0, points = null;
+  for (const s of shafts) {
+    if (!inside(point, s.points)) continue;
+    const [ax, ay, bx, by, cx, cy, ex, ey] = s.points, nx = (ax + bx) / 2, ny = (ay + by) / 2, fx = (cx + ex) / 2, fy = (cy + ey) / 2, len = Math.hypot(fx - nx, fy - ny) || 1;
+    const along = Math.min(1, Math.max(0, ((point.x - nx) * (fx - nx) + (point.y - ny) * (fy - ny)) / (len * len)));
+    const share = s.alpha * (s.slats > 0 ? 0.5 : 1) * (1 - 0.5 * along);
+    if (share > best) { best = share; points = s.points; }
+  }
+  return { share: best, points };
+}
+// How dark a room the low sun shines into goes at sunset, at most.
+export const DUSK_DIM = 0.45;
+// How low the sun is, 0 high – 1 on the horizon (pure): the rooms dim and the windows glow from about 40° down to 6°.
+export const duskOf = (sun) => { if (!sun || sun.moon) return 0; const h = Number(sun.height) || 45, t = Math.min(1, Math.max(0, (40 - h) / 34)); return t * t * (3 - 2 * t); };
+// The light's colour at sunset (pure, [r, g, b] 0–1): toward pink once the sun is under about 12°.
+export const sunsetTint = (rgb, sun) => { const h = Number(sun?.height) || 45, k = sun?.moon ? 0 : 0.35 * Math.min(1, Math.max(0, (12 - h) / 9)), pink = [1, 0.42, 0.45]; return rgb.map((v, i) => v + (pink[i] - v) * k); };
 // The shafts' layer: build({ shafts, bounds, indoors (the roofs, as for the shadows), color (0xrrggbb), alpha }) bakes
 // them, brightest at the opening and spreading fainter across the floor, kept only under the roofs, with dust drifting
 // in them; tick(seconds) moves the dust; clear() drops them. Added to `root()` over the lit scene.
 export function createWindowShafts({ PIXI, root, render }) {
-  let sprite = null, texture = null, motes = null, clock = 0;
+  let sprite = null, texture = null, motes = null, clock = 0, dimSprite = null, dimTexture = null;
   const drop = () => {
     // (The dust's clock outlasts the bake: the shafts follow the sun each minute, and the motes carry on where they are.)
     if (motes && !motes.destroyed) clock = motes.shader.uniforms.uTime;
+    try { dimSprite?.parent?.removeChild(dimSprite); dimSprite?.destroy(); dimTexture?.destroy(true); } catch { /* gone */ } dimSprite = null; dimTexture = null;
     try { sprite?.parent?.removeChild(sprite); sprite?.destroy(); } catch { /* gone with the canvas */ }
     try { motes?.parent?.removeChild(motes); motes?.destroy(); } catch { /* gone with the canvas */ }
     try { texture?.destroy(true); } catch { /* gone */ }
@@ -548,33 +685,76 @@ export function createWindowShafts({ PIXI, root, render }) {
   };
   const SLICES = 6;
   return {
-    build({ shafts = [], bounds, indoors = [], color = 0xfff2d8, alpha = 1, grid = 100 } = {}) {
+    // `dusk` 0–1: how low the sun is, deepening the rooms it shines into and the glow at their windows.
+    build({ shafts = [], bounds, indoors = [], color = 0xfff2d8, alpha = 1, grid = 100, dusk = 0 } = {}) {
       drop();
       if (!shafts.length || !indoors.length || !bounds || !(alpha > 0)) return;
-      const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
+      // Twice the walls' detail: a rose window's wedges and a leaded window's net, its lead lines and its colours, survive the bake.
+      const k = Math.min(SHAFT_RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
       const w = Math.max(1, Math.ceil(bounds.width * k)), h = Math.max(1, Math.ceil(bounds.height * k));
       const at = (p) => p.map((v, i) => (v - (i % 2 ? bounds.y : bounds.x)) * k);
-      const stage = new PIXI.Container(), g = new PIXI.Graphics();
+      const stage = new PIXI.Container(), g = new PIXI.Graphics(), colour = new PIXI.Graphics(), fog = new PIXI.Graphics();
       // Each patch in slices from the opening out, fading as the light spreads.
       for (const s of shafts) {
         const [ax, ay, bx, by, cx, cy, ex, ey] = s.points, lerp = (p, q, t) => p + (q - p) * t;
+        // Coloured panes (mosaic, a rose window): each its own colour, lit by the sun (the layer is tinted by it); frosted glass: a soft glow, no sharp patch.
+        const P = (u, v) => [lerp(lerp(ax, bx, u), lerp(ex, cx, u), v), lerp(lerp(ay, by, u), lerp(ey, cy, u), v)];
+        if (s.panes === 'mosaic' || s.panes === 'rose') { colouredPanes(colour, s, P, at); continue; }
+        if (s.soft) { fog.beginFill(0xffffff, s.alpha * 0.8); fog.drawPolygon(at(s.points)); fog.endFill(); continue; }
         // (Through shutters: a band from each gap between the slats, with dark between.)
         const n = s.slats > 0 ? s.slats : SLICES, lit = s.slats > 0 ? 0.5 : 1;
         for (let i = 0; i < n; i++) {
           const t0 = i / n, t1 = (i + lit) / n;
-          g.beginFill(0xffffff, s.alpha * (1 - 0.65 * (i + 0.5) / n));
+          g.beginFill(0xffffff, s.alpha * windowFade((i + 0.5) / n));
           g.drawPolygon(at([lerp(ax, ex, t0), lerp(ay, ey, t0), lerp(bx, cx, t0), lerp(by, cy, t0), lerp(bx, cx, t1), lerp(by, cy, t1), lerp(ax, ex, t1), lerp(ay, ey, t1)]));
           g.endFill();
         }
+        // The light that runs into the far wall: a bright band along its foot.
+        if (s.wall && typeof g.lineStyle === 'function') { const [wx1, wy1, wx2, wy2] = at(s.wall.points); g.lineStyle(Math.max(1, grid * k * (0.12 + 0.15 * s.wall.share)), 0xffffff, Math.min(1, s.alpha * (0.5 + 0.6 * s.wall.share))); g.moveTo(wx1, wy1); g.lineTo(wx2, wy2); g.lineStyle(0); }
+        // A glow just inside the window, more as the sun goes down: a low band hugging the wall, the window's width across.
+        if (s.from) { g.beginFill(0xffffff, s.alpha * (0.1 + 0.25 * dusk)); g.drawPolygon(at(windowGlowBand(s.from, [(cx + ex - ax - bx) / 2, (cy + ey - ay - by) / 2], grid))); g.endFill(); }
+      }
+      // What fills each window printed in its light, cut out of it: a frame's cross or bar, lead between coloured panes, a
+      // diamond net, a lattice's grid, a cell's bars.
+      const frames = new PIXI.Graphics(); frames.blendMode = PIXI.BLEND_MODES.ERASE;
+      if (typeof frames.lineStyle === 'function') for (const s of shafts) {
+        if (!s.panes) continue;
+        const [ax, ay, bx, by, cx, cy, ex, ey] = s.points, lerp = (p, q, t) => p + (q - p) * t, long = Math.hypot(ex - ax, ey - ay);
+        // A frame's shadow is thin, and the further it lands from the window the softer and fainter it is: each line laid in
+        // short pieces, narrower and lighter along the light.
+        // (A net of lead or a lattice is many lines close together: each keeps its weight and fades less, or the net blurs away.)
+        const fine = s.panes === 'leaded' || s.panes === 'lattice' || s.panes === 'mosaic' || s.panes === 'rose', width = Math.max(1.5, grid * k * (0.025 + 0.02 * Math.min(1, long / (grid * 4))) * (fine ? 0.9 : 1)), fades = fine ? 0.45 : 0.7;
+        const P = (u, v) => at([lerp(lerp(ax, bx, u), lerp(ex, cx, u), v), lerp(lerp(ay, by, u), lerp(ey, cy, u), v)]);
+        const cut = (u0, v0, u1, v1, w = 1) => { const pieces = 6; for (let i = 0; i < pieces; i++) { const t0 = i / pieces, t1 = (i + 1) / pieces, v = lerp(v0, v1, (t0 + t1) / 2); frames.lineStyle(Math.max(1, width * w * (1 + 0.6 * v)), 0xffffff, 0.95 * (1 - fades * v)); frames.moveTo(...P(lerp(u0, u1, t0), lerp(v0, v1, t0))); frames.lineTo(...P(lerp(u0, u1, t1), lerp(v0, v1, t1))); } };
+        for (const [u0, v0, u1, v1, w = 1] of windowPrint(s.panes, s.scale, { leaves: s.leaves })) cut(u0, v0, u1, v1, w);
       }
       // Only under the roofs.
       const roofs = new PIXI.Graphics();
       for (const p of indoors) { roofs.beginFill(0xffffff, 1); roofs.drawPolygon(at(p)); for (const hole of p.holes ?? []) { roofs.beginHole(); roofs.drawPolygon(at(hole)); roofs.endHole(); } roofs.endFill(); }
-      g.mask = roofs;
-      stage.addChild(g, roofs);
-      stage.filters = [new PIXI.BlurFilter(SOFTNESS * 1.5)];
+      fog.filters = [new PIXI.BlurFilter(Math.max(2, grid * k * 0.45))];
+      const lit = new PIXI.Container(); lit.addChild(g, colour, fog, frames); lit.mask = roofs;
+      stage.addChild(lit, roofs);
+      // (As soft on the map as before, the picture being finer.)
+      // (Soft enough to read as light, never so soft its frame's lines blur away.)
+      stage.filters = [new PIXI.BlurFilter(SOFTNESS * 0.75 * (k / SHAFT_RESOLUTION))];
       texture = PIXI.RenderTexture.create({ width: w, height: h });
       try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+      // The rooms the sun shines into go dim as it gets low, so its light through their windows blazes against them.
+      if (dusk > 0.02 && typeof PIXI.Graphics === 'function') {
+        const lit = indoors.filter((p) => shafts.some((s) => inside({ x: (s.points[0] + s.points[2]) / 2 + (s.points[6] - s.points[0]) * 0.02, y: (s.points[1] + s.points[3]) / 2 + (s.points[7] - s.points[1]) * 0.02 }, p)));
+        if (lit.length) {
+          const dim = new PIXI.Container(), fill = new PIXI.Graphics();
+          for (const p of lit) { fill.beginFill(0xffffff, 1); fill.drawPolygon(at(p)); for (const hole of p.holes ?? []) { fill.beginHole(); fill.drawPolygon(at(hole)); fill.endHole(); } fill.endFill(); }
+          // (Only a soft fill: baked at the walls' coarser size, a quarter the memory of the light's.)
+          const dk = k * (RESOLUTION / SHAFT_RESOLUTION), dw = Math.max(1, Math.ceil(bounds.width * dk)), dh = Math.max(1, Math.ceil(bounds.height * dk));
+          fill.scale.set(dk / k); dim.addChild(fill); dim.filters = [new PIXI.BlurFilter(Math.max(2, grid * dk * 0.25))];
+          dimTexture = PIXI.RenderTexture.create({ width: dw, height: dh });
+          try { render(dim, dimTexture); } finally { try { dim.destroy({ children: true }); } catch { /* drawn */ } }
+          dimSprite = new PIXI.Sprite(dimTexture); dimSprite.eventMode = 'none'; dimSprite.tint = 0x0e0a18; dimSprite.alpha = DUSK_DIM * dusk;
+          dimSprite.position.set(bounds.x, bounds.y); dimSprite.scale.set(1 / dk, 1 / dk);
+          root().addChild(dimSprite);
+        }
+      }
       sprite = new PIXI.Sprite(texture);
       sprite.eventMode = 'none';
       sprite.blendMode = PIXI.BLEND_MODES.ADD;
@@ -632,6 +812,34 @@ function inside({ x, y }, p) {
   return hit;
 }
 
+// The rooms cut out of a picture (`at` maps a polygon into it): each fading in over as much of its edge as it says
+// (`soft` on the polygon, in squares; region-steps.mjs indoorEdgeOf), `perSquare` a square in the picture's pixels. A list
+// of erasing shapes to add to what they cut from.
+export function eraseRooms(PIXI, rooms, at, perSquare) {
+  const hard = new PIXI.Graphics(), out = [hard];
+  hard.blendMode = PIXI.BLEND_MODES.ERASE;
+  for (const p of rooms) {
+    const r = (Number(p.soft) || 0) * perSquare * 0.5, g = r > 0.5 ? new PIXI.Graphics() : hard;
+    g.beginFill(0xffffff, 1); g.drawPolygon(at(p)); for (const hole of p.holes ?? []) { g.beginHole(); g.drawPolygon(at(hole)); g.endHole(); } g.endFill();
+    if (g !== hard) { const blur = new PIXI.BlurFilter(r, 4); blur.blendMode = PIXI.BLEND_MODES.ERASE; g.filters = [blur]; out.push(g); }
+  }
+  return out;
+}
+
+// How far an opening's edge may fade (pure, in the same units as its points): never past a quarter of its narrower side,
+// so however soft it is asked to be, its middle still lets the whole sun and the whole cloud's shadow through.
+export const openingFade = (points, want) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i + 1 < points.length; i += 2) { x0 = Math.min(x0, points[i]); x1 = Math.max(x1, points[i]); y0 = Math.min(y0, points[i + 1]); y1 = Math.max(y1, points[i + 1]); } const side = Math.min(x1 - x0, y1 - y0); return Number.isFinite(side) ? Math.max(0, Math.min(want, side * 0.25)) : 0; };
+// What is open to the sky drawn back in (as eraseRooms, but adding): the sun reaches through a hole in a roof.
+export function openRooms(PIXI, open, at, perSquare) {
+  const hard = new PIXI.Graphics(), out = [hard];
+  for (const p of open) {
+    const r = openingFade(at(p), (Number(p.soft) || 0) * perSquare * 0.5), g = r > 0.5 ? new PIXI.Graphics() : hard;
+    g.beginFill(0xffffff, 1); g.drawPolygon(at(p)); g.endFill();
+    if (g !== hard) { g.filters = [new PIXI.BlurFilter(r, 4)]; out.push(g); }
+  }
+  return out;
+}
+
 // The layer: build({ quads, bounds (the scene's { x, y, width, height }), alpha (how dark, the sun's strength in it),
 // indoors (polygons, flat x, y pairs: under a roof the sun never reaches) }) bakes them; clear() drops them. `render(g,
 // rt)` draws a display object into a render texture (Foundry's renderer; in tests, a record).
@@ -644,7 +852,7 @@ export function createWallShadows({ PIXI, root, render }) {
     sprite = null; texture = null; sunlitTexture = null; sunlit = null;
   };
   return {
-    build({ quads = [], bounds, alpha = 1, indoors = [] } = {}) {
+    build({ quads = [], bounds, alpha = 1, indoors = [], open = [], grid = 100 } = {}) {
       drop();
       if (!quads.length || !bounds || !(alpha > 0)) return;
       // Never past what any graphics card takes (a huge scene's picture is drawn a little smaller still).
@@ -655,12 +863,7 @@ export function createWallShadows({ PIXI, root, render }) {
       // A whole wall's shadow drawn solid (overlapping ones never darker), a half one at half.
       for (const q of quads) { g.beginFill(0x000000, q.alpha); g.drawPolygon(at(q.points)); g.endFill(); }
       // Under a roof (a region that keeps the weather out) the sun never reaches: nothing drawn there.
-      if (indoors.length) {
-        const roof = new PIXI.Graphics();
-        roof.blendMode = PIXI.BLEND_MODES.ERASE;
-        for (const p of indoors) { roof.beginFill(0xffffff, 1); roof.drawPolygon(at(p)); for (const hole of p.holes ?? []) { roof.beginHole(); roof.drawPolygon(at(hole)); roof.endHole(); } roof.endFill(); }
-        g.addChild(roof);
-      }
+      if (indoors.length) g.addChild(...eraseRooms(PIXI, indoors, at, grid * k));
       g.filters = [new PIXI.BlurFilter(SOFTNESS)];
       texture = PIXI.RenderTexture.create({ width: w, height: h });
       try { render(g, texture); } finally { try { g.destroy({ children: true }); } catch { /* drawn */ } }
@@ -678,8 +881,7 @@ export function createWallShadows({ PIXI, root, render }) {
       const shade = new PIXI.Graphics();
       shade.blendMode = PIXI.BLEND_MODES.ERASE;
       for (const q of quads) { shade.beginFill(0xffffff, q.alpha); shade.drawPolygon(at(q.points)); shade.endFill(); }
-      for (const p of indoors) { shade.beginFill(0xffffff, 1); shade.drawPolygon(at(p)); for (const hole of p.holes ?? []) { shade.beginHole(); shade.drawPolygon(at(hole)); shade.endHole(); } shade.endFill(); }
-      lit.addChild(shade);
+      lit.addChild(shade, ...eraseRooms(PIXI, indoors, at, grid * k), ...openRooms(PIXI, open, at, grid * k));
       lit.filters = [new PIXI.BlurFilter(SOFTNESS)];
       sunlitTexture = PIXI.RenderTexture.create({ width: w, height: h });
       try { render(lit, sunlitTexture); } finally { try { lit.destroy({ children: true }); } catch { /* drawn */ } }

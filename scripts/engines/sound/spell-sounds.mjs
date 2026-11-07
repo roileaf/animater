@@ -120,6 +120,24 @@ function candidatesFor(cue, catalog) {
     .map((c) => ({ original: c, active: catalog?.resolve?.(c) }))
     .filter((c) => c.active);
 }
+// A spell's recordings for something else that should sound as it does (an energy blast, energy-blast.mjs BLAST_BORROWS):
+// one file per cue of those roles, from the installed packs in the order a spell picks them (or `prefer`), only files
+// matching `match` when given. Each { file, gain, role }.
+export function profileCueFiles(profile, roles, catalog, random = Math.random, { prefer = null, match = null } = {}) {
+  const out = [], fits = match ? new RegExp(match, "i") : null;
+  for (const cue of SOUND_PROFILES[profile] ?? []) {
+    if (!roles.includes(cue.role)) continue;
+    const choices = candidatesFor(cue, catalog).filter((c) => !fits || fits.test(c.active.file));
+    if (!choices.length) continue;
+    const order = prefer ?? (cue.role === "chain" ? ["ggg", "soundfxlibrary", "psfx"] : ["psfx", "ggg", "soundfxlibrary"]);
+    const best = order.find((module) => choices.some((c) => c.active.module === module));
+    const variants = best ? choices.filter((c) => c.active.module === best) : [];
+    if (!variants.length) continue;
+    const chosen = variants[Math.floor(random() * variants.length) % variants.length].active;
+    out.push({ file: chosen.file, gain: soundGain(chosen), role: cue.role });
+  }
+  return out;
+}
 export function spellSoundInfo(spell, catalog, enabled = true) {
   const design = SPELL_SOUND_DESIGNS[spell.id] ?? {
     profile: "",

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FLOORS, FLOOR_CHOICES, FLOOR_LOOK, autoFloor, sceneFloor, regionFloor, floorAt, isFlying, shadowGeometry,
+  FLOORS, FLOOR_CHOICES, FLOOR_LOOK, autoFloor, sceneFloor, regionFloor, floorAt, isFlying, shadowGeometry, shadowFalls,
   createStrideTracker, puffsFor, particleState, movementDensity, footstepFile, createMovementFeel, STRIDE,
   FOOTSTEP_FILES, footstepVolume, footstepVariation, PARTICLE_KINDS, stepWeight, stepGap, createStepPacer, thudFile,
   thudLevel, TRACKS, audioPeakMs, thudDelayMs, THUD_PEAK_MS, perceive,
@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {carriedPrints,bloodDrop} from '../../../scripts/engines/motion/ground-trails.mjs';
 
 test('floors: every choice has a look, and the select starts with From the scene', () => {
-  assert.deepEqual(FLOORS, ['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud', 'pebbles', 'glass', 'metal']);
+  assert.deepEqual(FLOORS, ['stone', 'wood', 'dirt', 'grass', 'sand', 'snow', 'water', 'ice', 'mud', 'pebbles', 'glass', 'metal', 'lava']);
   assert.equal(FLOOR_CHOICES[0][0], '');
   assert.match(FLOOR_CHOICES[0][1], /From the scene/);
   for (const floor of FLOORS) {
@@ -32,7 +32,7 @@ const kindsOf = (floor, strides = 16) => {
 test('puffsFor: every floor has its own look', () => {
   const expected = {
     stone: ['chip', 'puff'], wood: ['chip', 'fleck'], dirt: ['chip', 'puff'], grass: ['blade', 'fleck', 'trample', 'tuft'], sand: ['chip', 'print', 'puff'],
-    snow: ['chip', 'print', 'puff'], water: ['drop', 'ring'], ice: ['chip', 'crack', 'spark', 'streak'], mud: ['blob', 'print'], pebbles: ['chip', 'puff'], glass: ['puff', 'spark'], metal: ['chip', 'spark'],
+    snow: ['chip', 'print', 'puff'], water: ['drop', 'ring'], ice: ['chip', 'crack', 'spark', 'streak'], mud: ['blob', 'print'], pebbles: ['chip', 'puff'], glass: ['puff', 'spark'], metal: ['chip', 'spark'], lava: ['chip', 'spark'],
   };
   const signatures = new Set();
   for (const floor of FLOORS) {
@@ -46,7 +46,7 @@ test('puffsFor: every floor has its own look', () => {
   }
   assert.equal(signatures.size, FLOORS.length);
   // Unknown floors look like stone.
-  assert.deepEqual(kindsOf('lava'), kindsOf('stone'));
+  assert.deepEqual(kindsOf('cheese'), kindsOf('stone'));
 });
 
 test('puffsFor: prints alternate sides, follow the heading and scale with the token', () => {
@@ -296,7 +296,7 @@ test('autoFloor: global light, an outdoor name or background picks dirt; else st
 test('sceneFloor: a valid flag wins over auto', () => {
   assert.equal(sceneFloor({ flag: 'snow', name: 'Crypt' }), 'snow');
   assert.equal(sceneFloor({ flag: '', globalLight: true }), 'dirt');
-  assert.equal(sceneFloor({ flag: 'lava', name: 'Crypt' }), 'stone');
+  assert.equal(sceneFloor({ flag: 'cheese', name: 'Crypt' }), 'stone');
 });
 
 test('regionFloor: a flag, else a watery name, else none', () => {
@@ -459,7 +459,9 @@ test('footstepFile: PSFX outdoor steps replace only the dirt steps when PSFX is 
 
 test('footstep families: no two floors share a recording', () => {
   const owner = new Map();
-  for (const [floor, files] of Object.entries(FOOTSTEP_FILES)) for (const file of files) {
+  // (Lava has no recording yet and walks on its crust's rock.)
+  assert.deepEqual(FOOTSTEP_FILES.lava, FOOTSTEP_FILES.stone);
+  for (const [floor, files] of Object.entries(FOOTSTEP_FILES).filter(([floor]) => floor !== 'lava')) for (const file of files) {
     assert.ok(!owner.has(file) || owner.get(file) === floor, `${file} is used by both ${owner.get(file)} and ${floor}`);
     owner.set(file, floor);
   }
@@ -471,7 +473,7 @@ test('footstepFile: every floor has its own bundled steps, varied by n, that exi
   const own = { stone: /freesound\/stone-step-/, wood: /freesound\/wood-step-/, grass: /freesound\/grass-step-/,
     dirt: /freesound\/dirt-step-/, snow: /kenney\/snowstep_/, sand: /freesound\/sand-step-/,
     water: /freesound\/water-step-/, mud: /freesound\/mud-step-/, ice: /freesound\/ice-step-/,
-    pebbles: /freesound\/gravel-step-/, glass: /freesound\/glass-step-/, metal: /freesound\/metal-step-/ };
+    pebbles: /freesound\/gravel-step-/, glass: /freesound\/glass-step-/, metal: /freesound\/metal-step-/, lava: /freesound\/stone-step-/ };
   for (const floor of FLOORS) {
     assert.ok(own[floor], `no expectation for ${floor}`);
     const files = new Set([0, 1, 2, 3, 4, 5, 6, 7].map((n) => footstepFile(floor, n)));
@@ -484,7 +486,7 @@ test('footstepFile: every floor has its own bundled steps, varied by n, that exi
     assert.equal(footstepFile(floor, 2), footstepFile(floor, 2));
     assert.equal(footstepFile(floor, -2), footstepFile(floor, 2));
   }
-  assert.equal(footstepFile('lava', 1), footstepFile('stone', 1));
+  assert.equal(footstepFile('cheese', 1), footstepFile('stone', 1));
   assert.ok(footstepFile('dirt', 3, { psfx: false }).includes('modules/animater/'));
 });
 
@@ -609,6 +611,18 @@ test('controller: one broken token never stops the frame', () => {
   tok.x = 200; h.advance(16);
   assert.doesNotThrow(() => h.feel.tick());
   assert.ok(h.log.added > 0);
+});
+
+test('a tail drag is as thick as the creature is big, and bends smoothly through a turn', async () => {
+  const { tailDrag } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const half = 30, small = tailDrag({ x: 0, y: 0, heading: 0 }, { half, width: 100 }), huge = tailDrag({ x: 0, y: 0, heading: 0 }, { half, width: 800 });
+  assert.ok(huge.thick > small.thick * 4, 'a huge dragon drags a far broader line than a lizard');
+  assert.equal(small.bend, 0, 'straight on, no bend');
+  const turned = tailDrag({ x: 0, y: 0, heading: Math.PI / 2, turnFrom: 0 }, { half, width: 400 });
+  assert.ok(Math.abs(turned.bend - Math.PI / 2) < 1e-9 || turned.bend === 1.2, 'it bends by the turn, a sharp one eased');
+  assert.ok(Math.abs(turned.rotation - Math.PI / 2) < 1e-9, 'along the stride it covers');
+  assert.ok(huge.amp <= 0.2, 'a gentle sway, never a snake\'s');
+  const wrap = tailDrag({ x: 0, y: 0, heading: -3, turnFrom: 3 }, { half, width: 400 }); assert.ok(Math.abs(wrap.bend) < 0.5, 'the short way round');
 });
 
 test('dragon tracks: heavy four-legged prints with a tail drag, bigger than a bird track', () => {
@@ -893,9 +907,17 @@ test('controller: Shadows under every token gives a standing creature a soft sha
   h.feel.tick();
   assert.equal(h.log.shadowsAdded, 1);
   const flier = shadowGeometry({ x: 0, y: 0, width: 100 }), ground = shadowGeometry({ x: 0, y: 0, width: 100, grounded: true });
-  assert.ok(ground.alpha < flier.alpha, "softer than a flier's");
+  assert.ok(ground.alpha <= flier.alpha, "never darker than a flier's");
   on = false; h.advance(16); h.feel.tick();
   assert.equal(h.log.shadowsRemoved, 1);
+});
+test('a standing creature\'s sun shadow is as dark long as short, and only a little softer', () => {
+  const at = (height) => shadowFalls({ width: 100, lift: 0.8, grounded: true, grid: 100, sun: { angle: 90, height, strength: 1 } }).sun;
+  const noon = at(70), evening = at(20);
+  assert.ok(Math.hypot(evening.dx, evening.dy) > Math.hypot(noon.dx, noon.dy) * 3, 'much longer at evening');
+  assert.equal(evening.alpha, noon.alpha, 'no fainter for it');
+  assert.ok(evening.soft - noon.soft < 0.2, 'only a little softer');
+  assert.equal(shadowGeometry({ x: 0, y: 0, width: 100, grounded: true }).alpha, 0.55, 'a little over half dark in full sun');
 });
 test('spells change the floor: frost is ice, acid sludge, fire melts snow and burns grass, a blast cracks stone; the newest mark wins',async()=>{
   const { markedFloor } = await import('../../../scripts/engines/motion/movement-feel.mjs');

@@ -12,7 +12,7 @@ const CHOSEN_AMOUNT = 0.7;
 
 // The effects any weather can have, named as the panel shows them. `color` the key of its colour, `tint` its colour by default.
 export const TUNE_EFFECTS = Object.freeze({
-  drawnClouds: { label: 'Drawn clouds', start: 1, plain: true, more: ['cloudClear'], hint: 'Real clouds over the map, each with its own shadow, above the rain and the roofs, instead of their shadows alone. Cloud cover says how many.' },
+  drawnClouds: { label: 'Drawn clouds', start: 1, plain: true, more: ['cloudClear'], hint: 'Real clouds over the map, each with its own shadow, above the rain and the roofs, instead of their shadows alone. As many as the weather has, none in a clear sky; Cloud cover asks for more.' },
   mist: { label: 'Low mist', hint: 'Thin veils lying low over the ground.' },
   curtains: { label: 'Rain sheets', hint: 'Broad grey sheets of rain sweeping across.' },
   bands: { label: 'Spiral clouds', hint: "A hurricane's bands of cloud." },
@@ -39,6 +39,8 @@ export const TUNE_SLIDERS = Object.freeze({
   size: { label: 'Size', min: 0.4, max: 2, step: 0.05, times: true, hint: 'How big the drops and flakes are.' },
   speed: { label: 'Speed', min: 0.25, max: 3, step: 0.05, times: true, hint: 'How fast it falls.' },
   amount2: { label: 'Amount', min: 0, max: 1.5, step: 0.05, default: 0.5, hint: 'How much of the second thing falls.' },
+  puddleSize: { label: 'Puddle size', min: 0, max: 1.5, step: 0.05, times: true, hint: 'How big the rain\'s puddles are on this map. Smaller ones stay apart, for maps with painted buildings, where a big puddle can run across the roofs. At 0% none lie, though the ground still darkens when wet.' },
+  splashSize: { label: 'Splash size', min: 0, max: 1.5, step: 0.05, times: true, hint: 'How big the spray and rings are where drops land on the ground on this map. At 0% none. Water regions keep their rings.' },
   temperature: { label: 'Temperature', min: -30, max: 45, step: 1, default: 15, unit: '°C', hint: 'How cold or hot it is here. Snow lies or melts by it and water freezes or thaws, by the game clock; breath shows in the cold, and the air shimmers in great heat. Works in any weather: a cold, sunny day.' },
   rainbowAngle: { label: 'Rotation', min: 0, max: 355, step: 5, default: 0, unit: '°', hint: 'Which way its arc faces: 0° up the map, turning clockwise. Auto: away from the sun.' },
   rainbowSize: { label: 'Size', min: 0.4, max: 1.6, step: 0.05, times: true, hint: 'How wide its arc is across the map.' },

@@ -3692,7 +3692,31 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 
 .animater-wx-section { padding: 10px 14px 12px; border-top: 1px solid var(--wx-line); }
 .animater-wx-section h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; padding: 0; border: 0; color: var(--wx-soft); font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
-.animater-an-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 150px; gap: 8px; align-items: center; margin: 4px 0; font-size: 12px; }
+.animater-wx-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; }
+.animater-wx-scope > span { color: var(--wx-soft); }
+.animater-wx-scope-chips { display: flex; flex: 1; min-width: 220px; gap: 2px; padding: 2px; border-radius: 7px; background: var(--wx-hover); }
+.animater-wx-scope-chips button { flex: 1; min-width: 0; height: 26px; min-height: 0; padding: 0 8px; border: 0; background: none; color: var(--wx-soft); font-size: 12px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.animater-wx-scope-chips button:hover { color: inherit; }
+.animater-wx-scope-chips button.is-active { background: var(--wx-accent); color: #1b1712; font-weight: 600; }
+.animater-an-top .animater-wx-chips { display: flex; gap: 2px; margin: 0; padding: 2px; border-radius: 7px; background: var(--wx-hover); }
+.animater-an-top .animater-wx-chips button { flex-direction: row; width: 52px; min-height: 0; height: 26px; padding: 0; border: 0; background: none; font-size: 12px; }
+.animater-an-top .animater-wx-chips button:hover { background: none; color: inherit; }
+.animater-an-top .animater-wx-chips button.is-active { background: var(--wx-accent); color: #1b1712; }
+.animater-wx-chips.animater-an-presets { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 0; }
+.animater-an-presets button { flex-direction: row; gap: 5px; min-height: 30px; font-size: 12px; }
+.animater-an-presets button i { font-size: 11px; }
+.animater-an-all + .animater-an-all { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--wx-line); }
+.animater-an-all small { display: block; margin-top: 2px; line-height: 1.3; }
+.animater-an-place > button { display: flex; flex-direction: row; justify-content: flex-start; align-items: center; gap: 7px; min-height: 28px; padding: 0 8px; background: var(--wx-hover); font-size: 12px; text-align: left; }
+.animater-an-place > button:hover { background: var(--wx-track); }
+.animater-an-place > button i { width: 14px; text-align: center; font-size: 12px; opacity: 0.85; }
+.animater-an-place output { min-width: 14px; text-align: right; color: var(--wx-soft); font-variant-numeric: tabular-nums; }
+.animater-an-row { padding: 1px 4px; margin-inline: -4px; border-radius: 5px; }
+.animater-an-row:hover { background: var(--wx-hover); }
+.animater-an-amounts { gap: 1px; padding: 1px; border-radius: 6px; background: var(--wx-hover); }
+.animater-an-amounts button { border: 0; background: none; color: var(--wx-soft); }
+.animater-an-amounts button:hover { color: inherit; }
+.animater-an-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 150px; gap: 8px; align-items: center; margin-block: 3px; font-size: 12px; }
 .animater-an-amounts { display: flex; gap: 2px; }
 .animater-an-size { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 6px; align-items: center; margin: 0; }
 .animater-an-size input[type="range"] { width: 100%; min-width: 0; height: 18px; margin: 0; accent-color: var(--wx-accent); }
@@ -3759,6 +3783,8 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-wx-compass button.is-active { background: var(--wx-accent); color: #1b1712; }
 
 .animater-wx-ways { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; margin-top: 8px; padding: 2px; border-radius: 7px; background: var(--wx-hover); }
+.animater-portrait-holder { position: relative; }
+.animater-portrait-blood { position: absolute; inset: 0; pointer-events: none; background-size: cover; background-position: center; z-index: 1; }
 .animater-wx-ways button { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 7px 2px 6px; color: var(--wx-soft); font-size: 11px; white-space: nowrap; }
 .animater-wx-ways button i { font-size: 14px; }
 .animater-wx-ways button:hover { color: inherit; }

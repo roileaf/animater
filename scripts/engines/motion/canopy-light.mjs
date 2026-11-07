@@ -3,6 +3,7 @@
 // through their holes. Which tiles do what and where their shade falls is pure; the light is drawn by one shader over
 // the map (createCanopyLight).
 import { sunReach } from './sun.mjs';
+import { PATTERN_SIZE, TILE_SQUARES, TREE_DARK, isOneTree } from './tree-kinds.mjs';
 
 // Words in a tile's file name that say it is a tree (the big asset packs name their trees so).
 const TREE = /(?:^|[^a-z])(trees?|canop(?:y|ies)|foliage|leaf|leaves|bush(?:es)?|shrubs?|oak|pine|palm|willow|birch|maple|elm|ash_?tree|cedar|cypress|spruce|fir|redwood|sequoia|baobab|mangrove|forest|woods|jungle|grove|orchard|hedge|ivy|vines?)(?=$|[^a-z])/i;
@@ -186,7 +187,7 @@ void main(){
     hole = inside * at(uIndoor, above) * at(uRoofArea, px) * at(uRoofArea, above) * (1.0 - smoothstep(0.15, 0.45, roof));
   }
   if (uMode < 0.5) {
-    float a = 1.0 - (1.0 - cover * (1.0 - fleck) * 0.5) * (1.0 - shadow * uRoofShade);
+    float a = 1.0 - (1.0 - cover * (1.0 - fleck) * 0.8) * (1.0 - shadow * uRoofShade);
     a *= uStrength;
     gl_FragColor = vec4(uShade * a, a);
   } else {
@@ -211,8 +212,11 @@ const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
  * the leaves falling from the trees whatever the light); tick(seconds) moves the leaves. `above()`: where the falling
  * leaves are drawn (by default `root()`, with the shade).
  */
-export function createCanopyLight({ PIXI, root, render, above = root }) {
+// `pattern(kind, seed, tiled)`: what of a tree's picture to cut away for its kind's shade (tree-kinds.mjs createTreePatterns' get); null: its picture alone.
+export function createCanopyLight({ PIXI, root, render, above = root, pattern = null }) {
   let masks = [], meshes = [], own = [], hasTrees = false, clock = 0, sky = null;
+  const patternTextures = new Map();
+  const patternOf = (t, tiled) => { const picture = pattern?.(t.kind, t.seed, tiled); if (!picture) return null; if (!patternTextures.has(picture)) patternTextures.set(picture, PIXI.Texture.from(picture)); return patternTextures.get(picture); };
   const drop = () => {
     // (The clock outlasts the meshes: baked again as the sun moves, the flecks and the leaves carry on from where they are.)
     if (own[0]) clock = own[0].uTime;
@@ -226,11 +230,13 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
       if ((!trees.length && !roofs.length) || !bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
       const w = Math.max(1, Math.ceil(bounds.width * k)), h = Math.max(1, Math.ceil(bounds.height * k));
-      const bake = (fill, blur = 3) => {
+      // The trees' own shade at twice the detail, so a palm's fronds and a pine's needles survive.
+      const kt = Math.min(RESOLUTION * 2, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height)), wt = Math.max(1, Math.ceil(bounds.width * kt)), ht = Math.max(1, Math.ceil(bounds.height * kt));
+      const bake = (fill, blur = 3, fine = false) => {
         const stage = new PIXI.Container();
         fill(stage);
         stage.filters = [new PIXI.BlurFilter(blur)];
-        const texture = PIXI.RenderTexture.create({ width: w, height: h });
+        const texture = PIXI.RenderTexture.create({ width: fine ? wt : w, height: fine ? ht : h });
         try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
         masks.push(texture);
         return texture;
@@ -238,17 +244,31 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
       // How far a tile's shade lands from it: away from the sun, as far as its height throws it.
       const away = sun ? ((Number(sun.angle) || 0) + 180) * Math.PI / 180 : 0;
       const fall = (t) => { const reach = sun ? Math.min(6 * grid, sunReach(Math.max(0.5, Number(t.up) || 0) * grid, sun.height)) : 0; return [Math.cos(away) * reach, Math.sin(away) * reach]; };
-      const sprites = (tiles, solid = false, cast = false) => (stage) => {
+      const sprites = (tiles, solid = false, cast = false, kk = k, kinds = false) => (stage) => {
         for (const t of tiles) {
           if (!t?.texture) continue;
           const s = solid ? new PIXI.Sprite(PIXI.Texture.WHITE) : new PIXI.Sprite(t.texture);
           const [dx, dy] = cast ? fall(t) : [0, 0];
           s.anchor.set(t.anchorX ?? 0.5, t.anchorY ?? 0.5);
-          s.position.set((t.x + dx - bounds.x) * k, (t.y + dy - bounds.y) * k);
-          s.width = Math.abs(t.width) * k; s.height = Math.abs(t.height) * k;
+          s.position.set((t.x + dx - bounds.x) * kk, (t.y + dy - bounds.y) * kk);
+          s.width = Math.abs(t.width) * kk; s.height = Math.abs(t.height) * kk;
           s.rotation = t.rotation ?? 0;
           // A tree's leaves, as thick as they are (tileLeaves): a sparse crown's shade is lighter, and full of flecks.
           s.alpha = solid ? 1 : (t.alpha ?? 1) * (t.leaves ?? 1);
+          // Its kind's shade cut from its own picture (the picture's outline, the kind's clumps, needles or fronds inside it), as
+          // dark as that kind is: one tree its own crown, a stand of them a pattern repeating every TILE_SQUARES. Each tree in a
+          // layer of its own, so cutting it never cuts its neighbours.
+          const one = isOneTree({ width: t.width, height: t.height, grid }), look = kinds ? patternOf(t, !one) : null;
+          const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
+          if (look && Alpha && PIXI.TilingSprite) {
+            const holder = new PIXI.Container(); holder.position.copyFrom(s.position); holder.rotation = s.rotation; holder.filters = [new Alpha(1)];
+            s.position.set(0, 0); s.rotation = 0; s.alpha *= (TREE_DARK[t.kind] ?? 0.8) / 0.8;
+            const cut = one ? new PIXI.Sprite(look) : new PIXI.TilingSprite(look, s.width, s.height);
+            cut.position.set(-(t.anchorX ?? 0.5) * s.width, -(t.anchorY ?? 0.5) * s.height); cut.blendMode = PIXI.BLEND_MODES.ERASE;
+            if (one) { cut.width = s.width; cut.height = s.height; } else { const scale = (TILE_SQUARES * grid * kk) / PATTERN_SIZE; cut.tileScale.set(scale, scale); cut.tilePosition.set(((t.seed ?? 0) % 97) * 3, ((t.seed ?? 0) % 89) * 3); }
+            holder.addChild(s, cut); stage.addChild(holder);
+            continue;
+          }
           stage.addChild(s);
         }
       };
@@ -259,7 +279,7 @@ export function createCanopyLight({ PIXI, root, render, above = root }) {
       };
       const none = () => {};
       const uniforms = {
-        uTrees: bake(trees.length ? sprites(trees, false, true) : none), uTreesAt: bake(trees.length ? sprites(trees) : none, 1), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
+        uTrees: bake(trees.length ? sprites(trees, false, true, kt, true) : none, 1.5, true), uTreesAt: bake(trees.length ? sprites(trees) : none, 1), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
         uRoofs: bake(roofs.length ? sprites(roofs) : none, 2),
         uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1), uWater: bake(water.length ? polygons(water) : none, 1),
         uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: clock, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudRun: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,

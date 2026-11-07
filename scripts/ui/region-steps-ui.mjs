@@ -3,7 +3,7 @@
 
 import { FLOORS } from '../engines/motion/movement-feel.mjs';
 import { floorBody } from '../engines/motion/floor-shadows.mjs';
-import { WATER_DEPTHS, WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, showsPosts, overShadowOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
+import { WATER_DEPTHS, WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, showsPosts, overShadowOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu } from '../engines/motion/region-steps.mjs';
 
 const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -15,7 +15,7 @@ export const stepTabs = (list = [], first = null) => {
   for (const r of ordered) count.set(nameOf(r), (count.get(nameOf(r)) ?? 0) + 1);
   return ordered.map((r) => ({ doc: r.doc, floor: r.floor, name: count.get(nameOf(r)) > 1 ? `${nameOf(r)} (${titled(r.floor)})` : nameOf(r) }));
 };
-const FLOOR_ICONS = Object.freeze({ water: 'fa-water', ice: 'fa-icicles', snow: 'fa-snowflake', wood: 'fa-tree', sand: 'fa-umbrella-beach', grass: 'fa-seedling', dirt: 'fa-mountain', mud: 'fa-droplet', stone: 'fa-cubes' });
+const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'fa-water', ice: 'fa-icicles', snow: 'fa-snowflake', wood: 'fa-tree', sand: 'fa-umbrella-beach', grass: 'fa-seedling', dirt: 'fa-mountain', mud: 'fa-droplet', stone: 'fa-cubes' });
 // A tick box with its words beside it.
 const tick = (label, checked, change) => {
   const row = element('label', 'an-step-check'), box = element('input'); box.type = 'checkbox'; box.checked = checked;
@@ -47,6 +47,18 @@ const styleChoice = (own, floor, save, make) => {
   row.append(make(TEXTURE_STYLES[now] ?? [], textureStyleOf(own, now), 'Texture style', (value) => save({ textureStyles: { ...(own.textureStyles ?? {}), [now]: value } })));
   return row;
 };
+const percent = (v) => `${Math.round(v * 100)}%`;
+const chips = (options, current, pick) => { const row = element('div', 'an-step-chips'); for (const [value, label] of options) row.append(button(label, value === current ? 'an-step-on' : '', () => pick(value))); return row; };
+// What a cavern region holds: which, its colour, how big and how many, its stage. `kind` moves it to another kind.
+const caveParts = (menu, act, kind) => {
+  const parts = [];
+  if (menu.choosable) parts.push(element('div', 'an-step-label', "What's here"), chips(CAVE_CHOICES, menu.kind, kind));
+  if (!menu.steps) return parts;
+  if (menu.tones) parts.push(element('div', 'an-step-label', menu.toneLabel), chips(menu.tones, menu.tone, (tone) => act({ cavern: `${menu.kind}-${tone}` })));
+  parts.push(element('div', 'an-step-label', 'How much'), slider_('Size', menu.sizeRange, menu.size, percent, (value) => act({ caveSize: value }), 0.05), slider_('Amount', CAVE_AMOUNT, menu.amount, percent, (value) => act({ caveAmount: value }), 0.1));
+  parts.push(element('div', 'an-step-label', 'Stage'), chips(menu.steps.map((name, i) => [i, name]), menu.step, (i) => act({ caveStep: i })));
+  return parts;
+};
 const choice = (options, value, label, change) => {
   const select = element('select'); select.setAttribute('aria-label', label);
   const groups = new Map();
@@ -77,13 +89,18 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
   const escape = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   const draw = () => {
     if (!open_ || !box) return;
-    const { doc, floor, at } = open_, own = flagsOf(doc) ?? {}, menu = stepMenu(own, floor);
+    const { doc, floor, at } = open_, own = flagsOf(doc) ?? {}, cave = floor === 'cavern', molten = floor === 'lava', menu = cave ? null : stepMenu(own, floor), caveNow = caveMenu(own, floor);
     const act = (flags) => Promise.resolve(save(doc, flags)).then(draw, draw);
+    const toKind = (kind) => { const was = open_; act(caveKindFlags(own, kind)); if (open_ === was) { const next = kind === 'lava' ? 'lava' : 'cavern'; open_ = { ...was, floor: next, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: next } : r)) }; } };
     const tabs = stepTabs(open_.regions ?? [], open_.first ?? doc), tabbed = tabs.length > 1;
-    const title = element('div', 'an-step-title', tabbed ? titled(floor) : doc.name || `${titled(floor)} region`); title.append(element('small', '', `step ${menu.current + 1} of ${menu.steps.length}`));
-    const steps = element('div', 'an-step-list');
-    menu.steps.forEach((name, i) => steps.append(button(name, i === menu.current ? 'an-step-on' : '', () => act(changeStep(own, floor, i, at)))));
-    const parts = [title, steps];
+    const title = element('div', 'an-step-title', cave ? doc.name || caveNow?.name || 'Cavern' : tabbed ? titled(floor) : doc.name || `${titled(floor)} region`); if (!cave) title.append(element('small', '', `step ${menu.current + 1} of ${menu.steps.length}`));
+    const parts = [title];
+    if (!cave) {
+      const steps = element('div', 'an-step-list');
+      menu.steps.forEach((name, i) => steps.append(button(name, i === menu.current ? 'an-step-on' : '', () => act(changeStep(own, floor, i, at)))));
+      parts.push(steps);
+    }
+    if (caveNow) parts.push(...caveParts(caveNow, act, toKind));
     if (tabbed) {
       const row = element('div', 'an-step-tabs'); row.setAttribute('role', 'tablist');
       for (const tab of tabs) {
@@ -94,6 +111,7 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
       }
       parts.unshift(row);
     }
+    if (cave) { box.replaceChildren(...parts); place(); return; }
     if (menu.walks) parts.push(element('div', 'an-step-note', `Walks as ${menu.walks}: its footsteps, sounds and prints.`));
     if (menu.speed) {
       const chips = element('div', 'an-step-chips');
@@ -115,9 +133,9 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
     // (A dripping region that is not water has no water section to sit in.)
     if (menu.reflections === null && own.drips) parts.push(tick('Dripping sound', own.regionSound !== 'off', (on) => act({ regionSound: on ? '' : 'off' })));
     // A dock, a bridge: what isn't water can stand over it.
-    if (menu.reflections === null) parts.push(tick('Stands over water', own.overWater === true, (on) => act({ overWater: on })));
-    if (menu.reflections === null) parts.push(tick('Casts a shadow', castsShadow(own), (on) => act({ castShadow: on })));
-    if (menu.reflections === null && castsShadow(own)) {
+    if (menu.reflections === null && !molten) parts.push(tick('Stands over water', own.overWater === true, (on) => act({ overWater: on })));
+    if (menu.reflections === null && !molten) parts.push(tick('Casts a shadow', castsShadow(own), (on) => act({ castShadow: on })));
+    if (menu.reflections === null && !molten && castsShadow(own)) {
       const shadow = overShadowOf(own, floor), row = element('label', 'an-step-slider', 'Its shadow ');
       row.append(choice(overShadowChoices(floor), shadow.kind, 'Its shadow', (value) => act({ overShadows: { ...(own.overShadows ?? {}), [floor]: value } })));
       if (floorBody(floor).post) { const built = element('label', 'an-step-slider', 'Built as '); built.append(choice(DOCK_STYLES, dockStyleOf(own), 'Built as', (value) => act({ dockStyle: value }))); parts.push(built); if (dockStyleOf(own)) parts.push(tick('Posts', showsPosts(own), (on) => act({ overPosts: on }))); }
@@ -125,14 +143,17 @@ export function createStepMenu({ flagsOf, save, edit, texture = () => false, sea
     }
     parts.push(tick('Animal sounds', own.animalSound !== 'off', (on) => act({ animalSound: on ? '' : 'off' })));
     if (activeStep(own) || own.stepHidden) parts.push(button(menu.hidden ? 'Show this step' : 'Hide this step', 'an-step-wide', () => act({ stepHidden: !menu.hidden })));
-    parts.push(button(texture(own) ? 'Hide floor texture' : 'Show floor texture', 'an-step-wide', () => act({ texture: texture(own) ? 'off' : 'on' })));
+    if (!molten) parts.push(button(texture(own) ? 'Hide floor texture' : 'Show floor texture', 'an-step-wide', () => act({ texture: texture(own) ? 'off' : 'on' })));
     if (texture(own)) parts.push(styleChoice(own, floor, act, choice));
     if (menu.strength !== null) parts.push(strengthSlider(menu.strength, (value) => act(setStepStrength(own, floor, value))));
     if (texture(own) || menu.strength !== null) parts.push(scaleSlider(menu.scale, (value) => act({ stepScale: value })));
-    parts.push(...edgeControls(own, act));
+    if (!molten) parts.push(...edgeControls(own, act));
     if (menu.grassy) parts.push(tick('Affected by season', season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(button('Edit steps…', 'an-step-wide', () => { close(); edit(doc); }));
     box.replaceChildren(...parts);
+    place();
+  };
+  const place = () => {
     const r = box.getBoundingClientRect();
     box.style.left = `${Math.max(6, Math.min(open_.client.x, window.innerWidth - r.width - 6))}px`;
     box.style.top = `${Math.max(6, Math.min(open_.client.y, window.innerHeight - r.height - 6))}px`;

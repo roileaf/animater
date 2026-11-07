@@ -50,18 +50,23 @@ export function webStrands(c, { grid = 100, seed = 'web' } = {}) {
 // How much of the web shows: threads bright and fine enough to read on a dark floor, the gauze thick.
 const WEB_THICK = 2.1, WEB_BRIGHT = 2.2, WEB_WIDTH = 1.25;
 
+const SPIDER_CYCLE = 14;
+// Which webs have a spider (pure): one to about every three, spread through them, never so many that they crowd a screen.
+export const MOST_SPIDERS = 8;
+export const spiderHomes = (webs) => { const n = Math.min(MOST_SPIDERS, Math.ceil(Math.max(0, Number(webs) || 0) / 3)); return Array.from({ length: n }, (_, i) => Math.floor(((i + 0.5) / n) * webs)); };
+
 /** The webs' layer. build({ corners, grid, seed }); tick(seconds, { view, air: (x, y) => 0–1 how the air moves there }); clear(). */
 export function createWebs({ PIXI, root }) {
-  let webs = [], time = 0, grid = 100, spider = null, spiderTex = null, shadowTex = null;
-  const drop = () => { for (const w of webs) { try { w.box.destroy({ children: true }); w.tex?.destroy(true); } catch { /* gone */ } } try { spider?.box.destroy({ children: true }); } catch { /* gone */ } webs = []; spider = null; };
+  let webs = [], time = 0, grid = 100, spiders = [], spiderTex = null, shadowTex = null;
+  const drop = () => { for (const w of webs) { try { w.box.destroy({ children: true }); w.tex?.destroy(true); } catch { /* gone */ } } for (const s of spiders) { try { s.box.destroy({ children: true }); } catch { /* gone */ } } webs = []; spiders = []; };
   // Three poses painted once, the spider a sprite of one of them; its line a thin strip, its shadow on the floor below it.
-  const makeSpider = (web) => {
+  const makeSpider = (web, phase = 0) => {
     spiderTex ??= [0, 2, 4].map((pose) => PIXI.Texture.from(spiderArt(pose)));
     shadowTex ??= PIXI.Texture.from(shadowArt());
     const box = new PIXI.Container(), shadow = new PIXI.Sprite(shadowTex), line = new PIXI.Sprite(PIXI.Texture.WHITE), body = new PIXI.Sprite(spiderTex[0]);
     box.eventMode = 'none'; shadow.anchor.set(0.5); body.anchor.set(0.5); line.anchor.set(0, 0.5); line.tint = 0xebe8de; line.alpha = 0.5; shadow.alpha = 0.32;
     box.addChild(shadow, line, body); box.visible = false; root().addChild(box);
-    return { box, shadow, line, body, web, phase: 0 };
+    return { box, shadow, line, body, web, phase };
   };
   // The gauze: a thin, torn, dusty sheet over the tightest part of the corner, as a picture (once per web).
   const gauze = (c, seed) => {
@@ -91,8 +96,9 @@ export function createWebs({ PIXI, root }) {
         box.addChild(fixed, loose); root().addChild(box);
         webs.push({ c, box, tex, loose, strands: strands.filter((t) => t.loose), seen: false });
       });
-      // A spider, in one of the webs.
-      if (webs.length) spider = makeSpider(webs[Math.floor(webs.length / 2)]);
+      // Spiders through the webs, each at its own point in its comings and goings.
+      const homes = spiderHomes(webs.length);
+      spiders = homes.map((home, i) => makeSpider(webs[home], (i * SPIDER_CYCLE * 0.618) % SPIDER_CYCLE));
     },
     tick(seconds, { view = null, air = () => 0 } = {}) {
       time += seconds;
@@ -108,10 +114,10 @@ export function createWebs({ PIXI, root }) {
           g.lineStyle(s.w * WEB_WIDTH, 0xd8d6ce, Math.min(1, s.a * WEB_BRIGHT)); g.moveTo(s.p[0], s.p[1]); g.quadraticCurveTo(mx - (dy / len) * (s.sag + sway), my + (dx / len) * (s.sag + sway), s.q[0] + sway, s.q[1] + sway * 0.4);
         }
       }
-      // The spider: down on its line, a pause, back up; a long wait in between.
-      if (spider) {
+      // Each spider: down on its line, a pause, back up; a long wait in between.
+      for (const spider of spiders) {
         spider.phase += seconds;
-        const { c } = spider.web, cyc = spider.phase % 14, drop = cyc < 3 ? (1 - Math.cos((cyc / 3) * Math.PI)) / 2 : cyc < 5.5 ? 1 : cyc < 8.5 ? (1 + Math.cos(((cyc - 5.5) / 3) * Math.PI)) / 2 : 0;
+        const { c } = spider.web, cyc = spider.phase % SPIDER_CYCLE, drop = cyc < 3 ? (1 - Math.cos((cyc / 3) * Math.PI)) / 2 : cyc < 5.5 ? 1 : cyc < 8.5 ? (1 + Math.cos(((cyc - 5.5) / 3) * Math.PI)) / 2 : 0;
         const shows = drop > 0.01 && spider.web.box.visible; spider.box.visible = shows;
         if (shows) {
           const k = grid / 100, ax = c.x + (c.u[0] + c.v[0]) * c.L * 0.3, ay = c.y + (c.u[1] + c.v[1]) * c.L * 0.3, d = [c.u[0] + c.v[0], c.u[1] + c.v[1]], dl = Math.hypot(...d) || 1;

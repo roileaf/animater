@@ -52,9 +52,31 @@ const OWN = {
   force: [], void: [], radiant: [], sonic: [], psychic: [],
 };
 export const blastFiles = (id) => OWN[id] ?? [];
-export function blastSounds(id, { big = false, random = Math.random } = {}) {
+// Kinds that sound as a spell does when a sound pack is installed (data/spell-sounds.mjs: the profile, the cue roles taken,
+// which pack first, which of its files), layered: the main hit, then a lighter one through it. Lightning as Chain
+// Lightning, a thunder crash and a leaping strike; cold a frost nova with ice cracking; fire a fireball going off, flames
+// bursting; acid a splash eating in; force a gravity blast and a shockwave slam; sonic a shockwave slam with a boom of
+// thunder; void an abyssal pulse and a shadow bolt; radiant a holy light flaring; poison a hit of venom in a whoosh;
+// psychic a confusing pulse. With no pack, its own recordings.
+const borrow = (profile, roles, match, volume = 1, wait = 0) => ({ profile, roles: [roles], prefer: ['ggg', 'psfx', 'soundfxlibrary'], match, volume, wait });
+export const BLAST_BORROWS = Object.freeze({
+  electricity: [{ profile: 'chainLightning', roles: ['impact'], volume: 1, wait: 0 }, { profile: 'chainLightning', roles: ['chain'], volume: 0.75, wait: 90 }],
+  cold: [borrow('coldCone', 'effect', 'Frost Nova|cone-of-cold'), borrow('cold', 'effect', 'Ice Hits|impacts-magicaleffects-cold', 0.9, 60)],
+  fire: [borrow('fireball', 'impact', 'Large Fireball Impact|fireball-explosion'), borrow('fire', 'effect', 'Fire Impact [AB]\\.|cast-fire-side', 0.6, 70)],
+  acid: [borrow('acidSplash', 'impact', 'Acid Hit|acid-splash'), borrow('acid', 'effect', 'Grotesque Acid|acid-splash', 0.55, 120)],
+  force: [borrow('force', 'effect', 'Impact Gravi Blast 00|spell-impact'), borrow('sonic', 'effect', 'Shockwave Slam 00[123]|thunderclap', 0.75, 40)],
+  sonic: [borrow('sonic', 'effect', 'Shockwave Slam 00[123]|thunderclap'), borrow('lightningBolt', 'impact', 'Thunderous Boom|lightning-strike', 0.5, 60)],
+  void: [borrow('void', 'effect', 'Abyssal Pulse|arms-of-hadar'), borrow('darkRay', 'release', 'Shadow Bolt Cast|eldritch-blast', 0.6, 50)],
+  radiant: [borrow('holy', 'effect', 'Holy Light|sacred-flame'), borrow('radiantRay', 'release', 'Illuminate', 0.45, 80)],
+  poison: [borrow('poison', 'effect', 'Poison_Hit|poison-spray'), borrow('poisonRay', 'release', 'Poison_Magic_Whoosh|poison-spray', 0.6, 40)],
+  psychic: [borrow('psychic', 'effect', 'Ailments Confuse 00[23]|mind-sliver', 0.9)],
+});
+// `borrowed`: the files a sound pack gives (spell-sounds.mjs profileCueFiles), each { file, gain, volume, wait }; cut to the blast.
+export function blastSounds(id, { big = false, random = Math.random, borrowed = [] } = {}) {
   const own = OWN[id] ?? [], lower = big ? 0.8 : 1, out = [];
-  if (own.length) out.push({ file: own[Math.floor(random() * own.length) % own.length], rate: lower * (0.9 + random() * 0.2), volume: 1, wait: 0 });
+  // The same recording twice (a pack with one file for both layers) is only louder: once.
+  if (borrowed.length) for (const b of borrowed.filter((b, i, all) => all.findIndex((o) => o.file === b.file) === i)) out.push({ file: b.file, rate: lower * (0.95 + random() * 0.1), volume: Math.min(1, (b.volume ?? 1) * (b.gain ?? 1)), wait: b.wait ?? 0, holds: big ? 3000 : 2200, fades: 900 });
+  else if (own.length) out.push({ file: own[Math.floor(random() * own.length) % own.length], rate: lower * (0.9 + random() * 0.2), volume: 1, wait: 0 });
   // Kinds with no recording of their own yet: moving air, pitched to suit.
   // A whole recording is many seconds, far longer than a blast (more when slowed), so it is cut: `holds` ms, then `fades` ms.
   else if (id !== 'psychic') out.push({ wind: true, rate: { force: 0.6, void: 0.45, radiant: 1.25, sonic: 0.85 }[id] ?? 1, volume: 0.9, wait: 0, holds: big ? 1500 : 900, fades: 900 });
@@ -75,6 +97,10 @@ float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); r
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * n(p); p = p * 2.03 + 17.3; a *= 0.5; } return s; }
 float ridge(vec2 p){ return 1.0 - abs(fbm(p) * 2.0 - 1.0); }
 float ss(float a, float b, float x){ return smoothstep(a, b, x); }
+// How far a point is from the nearest edge between cells: the cracks in a sheet of ice.
+float cracks(vec2 p){ vec2 i = floor(p), f = fract(p); float d1 = 8.0, d2 = 8.0;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) { vec2 g = vec2(float(x), float(y)); vec2 o = vec2(h(i + g), h(i + g + 19.1)); float d = length(g + o - f); if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d; }
+  return d2 - d1; }
 void main(){
   vec2 q = vQ;
   float spark = min(1.0, pow(uGridR, 2.0));   // a spark's size against a two-square blast's
@@ -108,8 +134,30 @@ void main(){
     float smoke = ss(0.25, 0.9, t) * (1.0 - ss(1.8, 3.8, t)) * ss(1.25, 0.2, r + (fbm(q * 2.4 + t * 0.25) - 0.5) * 0.6); cover = smoke * 0.5 * ss(0.25, 0.7, fbm(q * 3.4 + vec2(t * 0.2, -t * 0.3))); coverCol = vec3(0.1, 0.09, 0.085);
     for (int i = 0; i < 24; i++) { float fi = float(i), ang = h(vec2(fi, 2.1)) * 6.283, sp = 0.5 + h(vec2(fi, 4.4)) * 1.2; vec2 at = vec2(cos(ang), sin(ang)) * sp * (1.0 - exp(-t * 2.2)) + vec2(0.0, 0.1) * t; float lf = 1.0 - ss(0.5, 1.2 + h(vec2(fi, 7.0)), t); glow += vec3(1.0, 0.5, 0.12) * exp(-dot(q - at, q - at) / (0.00022 * spark)) * lf * 2.2; }
   } else if (uType == 1) {    // cold
-    float frost = mark * (0.45 + 0.55 * fbm(q * 9.0)); col = mix(col, col * 0.75 + vec3(0.32, 0.4, 0.46), min(1.0, frost) * 0.7);
-    float fine = pow(ridge(q * 11.0), 6.0) * mark; col += vec3(0.7, 0.85, 1.0) * fine * 0.28;
+    // Frost on the ground: grey-white grains with the floor still showing, spreading out from the middle and holding only on
+    // the high, dry spots towards a broken edge; thin feathers reaching past it; at the middle a glazed sheet, the ground dark
+    // under clear ice and white cracks through it; a few glints. Grain and glints keep their size on the map, whatever the blast's.
+    float fine = 1.0 / max(uGridR, 0.25), lum = dot(col, vec3(0.3, 0.59, 0.11));
+    float fgrow = 1.0 - ss(1.3 * (1.0 - exp(-t * 2.6)) - 0.3, 1.3 * (1.0 - exp(-t * 2.6)), r);
+    float freach = 0.8 + (fbm(q * 3.0 + 7.0) - 0.5) * 0.6, rr = r + (fbm(q * 9.0) - 0.5) * 0.2, fbody = 1.0 - ss(freach - 0.4, freach, rr);
+    float glaze = (1.0 - ss(0.16, 0.42, rr)) * fgrow;
+    float clump = ss(0.38, 0.62, fbm(q * 14.0) * 0.7 + lum * 0.7 + fbody * 0.55 - 0.15);
+    float rime = clamp(fbody * 1.1, 0.0, 1.0) * clump * fgrow * (1.0 - glaze * 0.8);
+    float grain = n(q * 120.0 * fine) * 0.55 + n(q * 48.0 * fine) * 0.45;
+    vec3 frostCol = mix(vec3(0.5, 0.56, 0.62), vec3(0.92, 0.95, 0.98), clamp(lum * 1.2 + grain * 0.6 - 0.15, 0.0, 1.0));
+    col = mix(col, vec3(lum) * vec3(0.92, 0.97, 1.04), rime * 0.5);
+    col = mix(col, frostCol, rime * (0.22 + 0.55 * grain * grain));
+    float fern = pow(ridge(vec2(a * 8.0, r * 2.4) + fbm(q * 5.0) * 1.3), 12.0), fernBand = ss(0.3, 0.75, r) * (1.0 - ss(freach - 0.05, freach + 0.25, rr)) * fgrow;
+    col = mix(col, vec3(0.9, 0.95, 1.0), fern * fernBand * 0.45);
+    vec2 wob = vec2(fbm(q * 3.0), fbm(q * 3.0 + 5.0)) * 0.8;
+    float crack = max(1.0 - ss(0.0, 0.03, cracks(q * 5.0 + wob)), (1.0 - ss(0.0, 0.025, cracks(q * 13.0 + wob * 2.0))) * 0.55);
+    col = mix(col, col * vec3(0.72, 0.84, 0.98) + vec3(0.03, 0.05, 0.08), glaze * 0.75);
+    col += vec3(0.85, 0.93, 1.0) * pow(max(0.0, 1.0 - length(q - vec2(-0.12, 0.1)) * 2.6), 2.0) * (0.5 + 0.5 * fbm(q * 7.0)) * glaze * 0.2;
+    col = mix(col, vec3(0.93, 0.97, 1.0), crack * glaze * 0.75);
+    col = mix(col, vec3(0.9, 0.94, 0.98), glaze * (1.0 - ss(0.0, 0.1, abs(rr - 0.36))) * 0.25 * grain);
+    vec2 gq = q * 42.0 * fine, gp = fract(gq) - 0.5; float gh = h(floor(gq));
+    if (gh > 0.968) { float star = max(0.0, 1.0 - length(gp) * 4.0) + max(0.0, 1.0 - abs(gp.x) * 12.0) * max(0.0, 1.0 - abs(gp.y) * 2.2) * 0.4 + max(0.0, 1.0 - abs(gp.y) * 12.0) * max(0.0, 1.0 - abs(gp.x) * 2.2) * 0.4;
+      col += vec3(0.9, 0.96, 1.0) * star * rime * pow(0.5 + 0.5 * sin(t * 2.4 + gh * 80.0), 3.0) * 0.9; }
     float spike = 0.2 + 0.62 * pow(abs(sin(a * 17.0 + fbm(vec2(a * 5.0, 2.0)) * 11.0)), 7.0) * (0.25 + 0.9 * pow(n(vec2(a * 13.0, 4.0)), 2.0));
     float grow = 1.0 - exp(-t * 7.0), shatter = 1.0 - ss(0.75, 1.5, t), inSpike = ss(0.02, -0.02, r - spike * grow) * shatter;
     float facet = fbm(vec2(a * 24.0, r * 8.0)); coverCol = mix(vec3(0.46, 0.62, 0.74), vec3(0.86, 0.94, 0.98), facet); cover = inSpike * (0.28 + 0.34 * facet);

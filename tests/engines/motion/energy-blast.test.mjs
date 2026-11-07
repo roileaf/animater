@@ -30,6 +30,34 @@ test('every sound it plays is a file Animater ships', () => {
   assert.ok(blastSounds('force', { big: true }).filter((s) => s.thud).length === 2, 'a big one lands twice');
 });
 
+test('lightning sounds as Chain Lightning, cold as a frost nova, when a pack gives it, cut to the blast; else their own', async () => {
+  const { BLAST_BORROWS } = await import('../../../scripts/engines/motion/energy-blast.mjs');
+  const { profileCueFiles } = await import('../../../scripts/engines/sound/spell-sounds.mjs');
+  const all = { resolve: (c) => c };
+  const take = (kind) => BLAST_BORROWS[kind].flatMap((b) => profileCueFiles(b.profile, b.roles, all, () => 0, b).map((f) => ({ ...f, volume: b.volume, wait: b.wait })));
+  const borrowed = take('electricity');
+  assert.deepEqual(borrowed.map((b) => b.role), ['impact', 'chain'], 'its thunder crash and a leaping strike');
+  const cold = take('cold');
+  assert.equal(cold.length, 2);
+  assert.match(cold[0].file, /Frost Nova/, 'a burst, not a slow rush');
+  assert.match(cold[1].file, /Ice Hits/, 'ice cracking through it');
+  const twice = [{ file: 'a.ogg', gain: 1 }, { file: 'a.ogg', gain: 1 }];
+  assert.equal(blastSounds('acid', { borrowed: twice }).filter((s) => s.file).length, 1, 'one file for both layers plays once');
+  for (const t of BLAST_TYPES) {
+    const got = take(t.id);
+    assert.ok(got.length >= 1, `${t.id} borrows a pack's sound`);
+    assert.equal(got.length, BLAST_BORROWS[t.id].length, `${t.id}: every layer finds a file`);
+    assert.ok(got.every((g) => !/cast a|storm cast/i.test(g.file) || t.id === 'void'), `${t.id}: no long wind-up`);
+  }
+  assert.ok(borrowed.every((b) => !/storm cast|call-lightning-001/i.test(b.file)), 'never the long storm build-up');
+  const sounds = blastSounds('electricity', { borrowed });
+  assert.deepEqual(sounds.filter((s) => s.file).map((s) => s.file), borrowed.map((b) => b.file));
+  assert.ok(sounds.filter((s) => s.file).every((s) => s.holds + s.fades <= 4000), 'cut, not left to ring for seconds');
+  assert.ok(sounds.some((s) => s.thud), 'still the deep thud under it');
+  assert.equal(profileCueFiles('chainLightning', ['impact'], { resolve: () => null }).length, 0, 'no pack, nothing borrowed');
+  assert.ok(blastSounds('electricity').some((s) => /electric-arc/.test(s.file ?? '')), 'its own arcs then');
+});
+
 test('a blast\'s moving air is cut to the blast, never a whole long recording', () => {
   for (const t of BLAST_TYPES) for (const big of [false, true]) for (const s of blastSounds(t.id, { big })) if (s.wind) assert.ok(s.holds + s.fades <= 2500, `${t.id} ${s.holds + s.fades}`);
 });

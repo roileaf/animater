@@ -242,7 +242,9 @@ export function squirrelStep(squirrel, { dt = 1 / 60, grid = 100, near = [], ok 
   }
   if (s.mode === 'race' || s.mode === 'dash') {
     s.t = (s.t ?? 0) + dt; s.a = turnToward(s.a, Math.atan2(s.ty - s.y, s.tx - s.x) + Math.PI / 2, dt * 9); s.v = grid * (s.mode === 'race' ? 4.6 : 2.6);
-    const moved = go(s.v), there = Math.hypot(s.tx - s.x, s.ty - s.y) < grid * 0.3 || (s.mode === 'race' && trees[s.tree] && Math.hypot(trees[s.tree].x - s.x, trees[s.tree].y - s.y) < trees[s.tree].r * 0.55);
+    const moved = go(s.v), cover = s.mode === 'race' ? trees[s.tree] : null, fromCover = cover ? Math.hypot(cover.x - s.x, cover.y - s.y) : Infinity;
+    // Under the leaves it is safe; and stopped by a wall at its tree (walls drawn round a trunk), it goes up from there.
+    const there = Math.hypot(s.tx - s.x, s.ty - s.y) < grid * 0.3 || (cover && (fromCover < cover.r * 0.55 || (!moved && fromCover < cover.r + grid * 0.5)));
     if (there || !moved || s.t > 5) {
       s.v = 0;
       s.emerging = false;
@@ -557,7 +559,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { near = [], ok = () => true, blocked = () => false, kept = () => false, seen = () => true, day = 1, night = 0, warm = true, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, indoors = () => false, canopy = () => false, cast = null, prey = null, lamps = () => [] } = {}) {
+    tick(seconds, { near = [], ok = () => true, blocked = () => false, kept = () => false, seen = () => true, day = 1, night = 0, warm = true, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, indoors = () => false, canopy = () => false, cast = null, prey = null, lamps = () => [], birdBody = 1, liftShadow = () => {} } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
@@ -707,7 +709,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
         if (o.t < 1) {
           o.t += dt / 9;
           const p = owlPlace(o);
-          if (o.t < 1 && dark > 0.3 && can(o, p.x, p.y)) { const t2 = owlTex(), tex = t2[Math.floor(time * 1.1) % 6 === 0 ? Math.floor(time * 7) % 6 : 0], c = fall(o, p.x, p.y, { width: grid * 1, lift: 1.6 }); o.open = overOpen(o.open, indoors(p.x, p.y), dt); o.shade = overOpen(o.shade, indoors(p.x + c.dx, p.y + c.dy), dt); put(o.shadow, tex, p.x + c.dx, p.y + c.dy, p.a, 0.62 * k * birdSize, Math.min(0.3, c.alpha * 0.3) * dark * o.shade); put(o.body, tex, p.x, p.y, p.a, 0.55 * k * birdSize, dark * o.open); } else hide(o);
+          if (o.t < 1 && dark > 0.3 && can(o, p.x, p.y)) { const t2 = owlTex(), tex = t2[Math.floor(time * 1.1) % 6 === 0 ? Math.floor(time * 7) % 6 : 0], c = fall(o, p.x, p.y, { width: grid * 1, lift: 1.6, bird: true }); o.open = overOpen(o.open, indoors(p.x, p.y), dt); o.shade = overOpen(o.shade, indoors(p.x + c.dx, p.y + c.dy), dt); put(o.shadow, tex, p.x + c.dx, p.y + c.dy, p.a, 0.62 * k * birdSize, Math.min(0.3, c.alpha * 0.3) * dark * o.shade); liftShadow(o.shadow, 1.6); put(o.body, tex, p.x, p.y, p.a, 0.55 * k * birdSize * birdBody, dark * o.open); } else hide(o);
           if (dark > 0.3 && Math.random() < dt * 0.1) sound('owlHoot', p, false);
         } else { hide(o); if (dark > 0.5 && area && (o.wait -= dt) <= 0) { o.wait = 40 + Math.random() * 60;
           // A line across the map that misses anywhere keeping owls out; none in a few tries, and it stays away this time.
