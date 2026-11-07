@@ -247,7 +247,8 @@ test("the window offers a reset for everything and for each tab; only a GM is as
   assert.match(gm, /the Motion tab's settings/);
   assert.match(gm, /name="world" checked> World settings \(everyone\)/);
   assert.match(gm, /name="client" checked> This screen&#39;s settings/);
-  assert.doesNotMatch(player, /name="world"/);
+  assert.match(gm, /burst of redraws/, "a GM is warned that a world reset redraws every screen");
+  assert.doesNotMatch(player, /name="world"|burst of redraws/);
   assert.match(player, /name="client" checked/);
 });
 

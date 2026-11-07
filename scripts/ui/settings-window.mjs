@@ -368,7 +368,8 @@ export function settingsWindowHTML(model, { active } = {}) {
 export function resetDialogHTML({ isGM = false, tabLabel = "" } = {}) {
   const what = tabLabel ? `the ${esc(tabLabel)} tab's settings` : "Animater's settings";
   const box = (name, label) => `<label class="checkbox"><input type="checkbox" name="${name}" checked> ${esc(label)}</label>`;
-  return `<p>Put ${what} back to their defaults? A backup of the values that change downloads first.</p>${isGM ? box("world", "World settings (everyone)") : ""}${box("client", "This screen's settings")}`;
+  const burst = isGM ? `<p class="hint">Each world setting that changes is applied on every connected screen as it goes, so mid-session everyone may see a short burst of redraws.</p>` : "";
+  return `<p>Put ${what} back to their defaults? A backup of the values that change downloads first.</p>${burst}${isGM ? box("world", "World settings (everyone)") : ""}${box("client", "This screen's settings")}`;
 }
 
 // The settings window, built on Foundry's ApplicationV2. Changes save as they are made (no Save button);
