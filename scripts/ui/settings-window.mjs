@@ -179,7 +179,8 @@ export const SETTINGS_TABS = Object.freeze([
   { id: "automation", label: "Automation & catalogs", icon: "fa-solid fa-wand-magic-sparkles", rows: [
     // Off by default: a reset would quietly stop every saved recipe playing, so it never resets this one.
     { world: "automatic", noReset: true },
-    { world: "crossoverCatalog", when: TWOE },
+    // Off by default: a reset would take the other system's catalogs away from a world using them, so it is exempt too.
+    { world: "crossoverCatalog", when: TWOE, noReset: true },
     { world: "npcAbilities", when: PF2E },
     { world: "npcAbilityGuess", when: PF2E },
     { world: "npcStrikeGuess", when: PF2E },
@@ -463,14 +464,15 @@ export function settingsWindow(ApplicationV2, {
       if (!changes.length) { notes?.info("Animater: those settings are already at their defaults."); return; }
       const date = new Date();
       await saveFile(JSON.stringify(settingsBackup(changes, { id, date }), null, 2), backupFileName(id, date));
-      let done = 0;
+      const done = [];
       for (const change of changes) {
-        try { await s.set(id, change.key, structuredClone(change.default)); done++; }
+        try { await s.set(id, change.key, structuredClone(change.default)); done.push(change); }
         catch (error) { notes?.error(`Animater: could not reset ${change.name}: ${error.message}`); }
       }
       this.render?.();
-      notes?.info(`Animater: ${done} setting${done === 1 ? "" : "s"} reset to default.`);
-      const reload = changes.filter((c) => c.reload);
+      notes?.info(`Animater: ${done.length} setting${done.length === 1 ? "" : "s"} reset to default.`);
+      // Only a setting that did reset asks for the reload it needs.
+      const reload = done.filter((c) => c.reload);
       if (reload.length) await reloadConfirm({ world: reload.some((c) => c.scope === "world") });
     }
   };
