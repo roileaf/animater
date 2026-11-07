@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.6.2 (unreleased)
+## 3.6.2 (2026-11-07)
 
 - **Drawn clouds actually cross the map.** They were scattered over a wide area beyond the map's edges, so a small map hardly saw any, and they drew over the padding around it. They now stay close to the map, in numbers that suit its size, and stop at its edge.
 - **Less blinking as the game's clock ticks.** Every tick was taken as a setting changed, so the tree light, lamps, floor looks and wildlife were built again each game minute, with sunlight flecks, falling leaves and window dust jumping back to their start. They now carry on smoothly, and a heat wave's shimmer no longer blinks.
