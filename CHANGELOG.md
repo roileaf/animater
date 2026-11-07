@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.5.3 (unreleased)
+## 3.6.0 (2026-11-07)
 
 - **Drawn clouds.** A new Drawn clouds effect in the Weather panel puts real clouds over the map, each with its own shadow, above the rain and the roofs. Cloud cover says how many, from a few fair clouds to a closed, rolling overcast, and a Cloud transparency slider sets how much of the map shows through. Off unless the GM turns it on for a scene.
 - **Cloud shadows drift smoothly, and puddles stop blinking.** Every tick of the game clock rebuilt the sky, which threw the clouds back to where they started and redrew the puddles. Now it's only rebuilt when the map itself changes, and the clouds carry on from where they are when it is, or when the wind changes.
