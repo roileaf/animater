@@ -185,7 +185,7 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
       <p class="an-water-empty" data-area-empty${rows.length ? " hidden" : ""}>No areas yet. Click water on the map to add one.</p>
     </section>
   </div>
-  <footer class="an-water-foot"><span data-selection-count aria-live="polite">${selected} of ${rows.length} areas selected</span><button type="button" data-create${selected ? "" : " disabled"}>Create ${selected} water region${selected === 1 ? "" : "s"}</button></footer>
+  <footer class="an-water-foot"><span data-selection-count aria-live="polite">${selected} of ${rows.length} areas selected</span><button type="button" data-create${selected ? "" : " disabled"}>${verb} ${selected} water region${selected === 1 ? "" : "s"}</button></footer>
 </div>`;
 }
 
@@ -317,6 +317,15 @@ function sharedChoices(root) {
     current: root.querySelector("[data-all-current]")?.value ?? "",
     range: root.querySelector("[data-click-range]")?.value ?? "narrow",
   };
+}
+
+function untickedGeometryEdits(proposals, picked) {
+  const checked = new Map((picked ?? []).map((row) => [row.id, row.checked === true]));
+  return (proposals ?? []).filter((proposal) => proposal.geometryChanged && !checked.get(proposal.id));
+}
+
+function untickedGeometryMessage(count) {
+  return `Experimental. ${count === 1 ? "An unticked area has outline edits" : `${count} unticked areas have outline edits`} that will be discarded. Tick ${count === 1 ? "it" : "them"} to save the outline, or continue to discard.`;
 }
 
 function updateKindFields(row) {
@@ -653,7 +662,11 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       });
     }
 
-    async close(options) {
+    async close(options = {}) {
+      if (!options.force && this.detect && this.element) {
+        const lost = untickedGeometryEdits(this.detect.proposals, choicesFromElement(this.element));
+        if (lost.length && !(await hooks.confirm?.(untickedGeometryMessage(lost.length)))) return this;
+      }
       const out = await super.close(options);
       this.resizeObserver?.disconnect();
       if (openWindow === this) openWindow = null;
@@ -727,9 +740,12 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       this.updateSummary();
       try {
         const { detect } = this;
+        const picked = choicesFromElement(this.element);
+        const lost = untickedGeometryEdits(detect.proposals, picked);
+        if (lost.length && !(await hooks.confirm?.(untickedGeometryMessage(lost.length)))) return;
         const plan = planWaterCreate({
           proposals: detect.proposals,
-          picked: choicesFromElement(this.element),
+          picked,
           sceneRect: detect.sceneRect,
           imageWidth: detect.width,
           imageHeight: detect.height,
@@ -739,10 +755,13 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         const outcome = await commitWaterPlan(plan, { scene: detect.scene, notify: hooks.notify });
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
           hooks.notify?.(`${outcome.created ? `Created ${outcome.created} water region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
-          await this.close();
+          await this.close({ force: true });
         }
       } catch (error) {
-        hooks.warn?.("Experimental. The water regions could not be saved.");
+        const detail = typeof error?.message === "string" && /Reopen the generator/.test(error.message)
+          ? `Experimental. ${error.message}`
+          : "Experimental. The water regions could not be saved.";
+        hooks.warn?.(detail);
         console.warn("Animater water regions:", error);
       } finally {
         this.saving = false;
@@ -779,6 +798,10 @@ async function openOnce({
   textures,
   notify = (message) => globalThis.ui?.notifications?.info?.(message),
   warn = (message) => globalThis.ui?.notifications?.warn?.(message),
+  confirm = (content) => globalThis.foundry?.applications?.api?.DialogV2.confirm?.({
+    window: { title: "Experimental water regions" },
+    content: `<p>${content}</p>`,
+  }),
   load = loadMapRgba,
   detect = detectWater,
   select = selectWaterAt,
@@ -808,7 +831,7 @@ async function openOnce({
     .filter((proposal) => proposal.share >= WATER_TUNING.componentMinShare)
     .map((proposal, i) => ({ ...proposal, id: `water-${saved.length + i + 1}`, preselected: false })) : result.proposals ?? [];
   const proposals = [...saved, ...fresh];
-  const Window = waterDetectWindow(Application, { notify, warn, select });
+  const Window = waterDetectWindow(Application, { notify, warn, select, confirm });
   const app = new Window();
   app.detect = {
     proposals,

@@ -67,6 +67,8 @@ test("rows follow share, large pieces start ticked, and one control sets every t
   assert.match(html, /data-all-current/);
   assert.match(html, /North-east/);
   assert.match(html, /Swift/);
+  assert.match(html, />Create 1 water region</);
+  assert.match(waterWindowHTML({ proposals: [{ ...square, regionId: "saved" }], width: 10, height: 5 }), />Save 1 water region</);
 });
 
 test("the same proposals always draw the same form", () => {
@@ -172,6 +174,23 @@ test("with nothing ticked, create says so and the regions the tool made stay", a
   assert.deepEqual(outcome, { created: 0, updated: 0 });
   assert.deepEqual(scene.calls, []);
   assert.match(notes[0], /Tick an edited or new area first/);
+});
+
+test("create surfaces the reopen-generator error instead of a generic warning", async () => {
+  const ui = waterApp();
+  const warned = [];
+  const scene = fakeScene([savedRegion("ocean")]);
+  const { app } = await openWaterDetect(opening({
+    Application: ui.App, scene, sceneRect: editRect, warn: (message) => warned.push(message),
+    load: async () => ({ ok: true, rgba: null, width: 20, height: 20 }),
+    detect: () => ({ proposals: [] }),
+  }));
+  scene.regions.contents.length = 0;
+  ui.rows()[0].querySelector("[data-pick]").checked = true;
+  ui.rows()[0].querySelector("[data-wave]").value = "s";
+  await app.create();
+  assert.match(warned[0], /Reopen the generator/);
+  assert.doesNotMatch(warned[0], /could not be saved/);
 });
 
 test("the map is read once, resized on the long edge, and a bad image becomes a reason", async () => {
@@ -601,12 +620,18 @@ test("a click on the same map during a load joins it and says so", async () => {
 });
 
 test("a map load that never finishes gives up, and the next click loads again", async () => {
-  const stalled = await loadMapRgba("stalled.png", { width: 8, height: 8 }, {
-    timeoutMs: 5,
-    fetch: (_src, { signal }) => new Promise((_resolve, reject) => { signal.addEventListener("abort", () => reject(signal.reason)); }),
-  });
-  assert.deepEqual(stalled, { ok: false, reason: "timeout" });
-  assert.match(failureMessage("timeout"), /too long/);
+  // AbortSignal.timeout is not retained as an active handle under this runner, so keep the loop alive until the abort fires.
+  const keep = setInterval(() => {}, 1);
+  try {
+    const stalled = await loadMapRgba("stalled.png", { width: 8, height: 8 }, {
+      timeoutMs: 5,
+      fetch: (_src, { signal }) => new Promise((_resolve, reject) => { signal.addEventListener("abort", () => reject(signal.reason)); }),
+    });
+    assert.deepEqual(stalled, { ok: false, reason: "timeout" });
+    assert.match(failureMessage("timeout"), /too long/);
+  } finally {
+    clearInterval(keep);
+  }
 });
 
 test("a scene superseded while the previous window closes never renders", async () => {
@@ -897,6 +922,80 @@ test("reopening saved water leaves fresh suggestions unticked and Leave unchange
   await app.create();
   assert.deepEqual(scene.calls, []);
   await app.close();
+});
+
+test("reopening a saved shore does not offer a junk row of combined sliver fragments", async () => {
+  const { WATER_TUNING, waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const width = 200, height = 200, count = width * height;
+  const min = count * WATER_TUNING.componentMinShare;
+  const savedLoops = [{ points: [10, 10, 50, 10, 50, 50, 10, 50], hole: false }];
+  const saved = { ...waterProposalFromLoops(savedLoops, width, height), id: "water-1", regionId: "river", name: "River",
+    savedChoices: { waterKind: "still", flowTo: "", current: "", waveTo: "", seaBeach: "" }, preselected: false };
+  const slivers = [];
+  for (let i = 0; i < Math.ceil(min) + 10; i++) slivers.push(60 * width + 2 * i);
+  assert.ok(slivers.length / count >= WATER_TUNING.componentMinShare);
+  const detected = { id: "water-1", pixels: Int32Array.from([...saved.pixels, ...slivers]), loops: savedLoops, share: (saved.pixels.length + slivers.length) / count, vertices: 4 };
+  const region = {
+    id: "river", name: "River", levels: ["level-1"],
+    shapes: [{ type: "polygon", points: savedLoops[0].points.flatMap((v, i) => i % 2 ? 200 + v : 100 + v), hole: false }],
+    flags: { animater: { generated: "water-detect", floor: "water", waterKind: "still" } },
+  };
+  const ui = waterApp();
+  const { app } = await openWaterDetect(opening({
+    scene: fakeScene([region]), sceneRect: editRect, Application: ui.App,
+    load: async () => ({ ok: true, rgba: new Uint8Array(count * 4), width, height }),
+    detect: () => ({ status: "found", proposals: [detected] }),
+  }));
+  assert.equal(app.detect.proposals.length, 1);
+  assert.equal(app.detect.proposals[0].regionId, "river");
+  assert.equal(ui.rows().length, 1);
+  await app.close();
+});
+
+test("unticked outline edits warn on save and close instead of vanishing silently", async (t) => {
+  const map = outlineMap(t), ui = waterApp(map), asks = [];
+  let allow = false;
+  const scene = fakeScene([savedRegion("edited"), savedRegion("other", 200)]);
+  const { app } = await openWaterDetect(opening({
+    Application: ui.App, scene, sceneRect: editRect,
+    load: async () => ({ ok: true, rgba: null, width: 20, height: 20 }),
+    detect: () => ({ proposals: [] }),
+    confirm: async (message) => { asks.push(message); return allow; },
+  }));
+  ui.fire("click", ui.button("edit-outline", "water-1"));
+  map.fire("pointerdown", 8, 0); map.fire("pointermove", 6.25, 0); map.fire("pointerup", 6.25, 0);
+  assert.equal(app.detect.proposals[0].geometryChanged, true);
+  assert.equal(ui.rows()[0].querySelector("[data-pick]").checked, false);
+  const other = ui.rows()[1];
+  other.querySelector("[data-pick]").checked = true;
+  other.querySelector("[data-wave]").value = "s";
+  await app.create();
+  assert.equal(asks.length, 1);
+  assert.match(asks[0], /unticked|discard/i);
+  assert.deepEqual(scene.calls, []);
+  assert.equal(app.detect?.proposals[0].geometryChanged, true);
+  allow = true;
+  await app.create();
+  assert.equal(asks.length, 2);
+  assert.equal(scene.calls.length, 1);
+  assert.equal(scene.calls[0][0], "update");
+  assert.equal(scene.calls[0][2][0]._id, "other");
+  assert.equal(app.detect, null);
+
+  const map2 = outlineMap(t), ui2 = waterApp(map2), closeAsks = [];
+  const again = await openWaterDetect(opening({
+    Application: ui2.App, scene: fakeScene([savedRegion("edited")]), sceneRect: editRect,
+    load: async () => ({ ok: true, rgba: null, width: 20, height: 20 }),
+    detect: () => ({ proposals: [] }),
+    confirm: async (message) => { closeAsks.push(message); return false; },
+  }));
+  ui2.fire("click", ui2.button("edit-outline", "water-1"));
+  map2.fire("pointerdown", 8, 0); map2.fire("pointermove", 6.25, 0); map2.fire("pointerup", 6.25, 0);
+  const closed = await again.app.close();
+  assert.equal(closeAsks.length, 1);
+  assert.match(closeAsks[0], /unticked|discard/i);
+  assert.equal(again.app.detect?.proposals[0].geometryChanged, true, "cancel keeps the window open");
+  assert.equal(closed, again.app);
 });
 
 function outlineMap(t) {

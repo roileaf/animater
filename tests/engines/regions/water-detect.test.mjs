@@ -922,6 +922,29 @@ test("extending saved water retains its existing overlap without claiming more o
   assert.equal(pixels.has(13), false);
 });
 
+test("claiming a saved shore drops leftover sliver components instead of offering their combined share", () => {
+  const width = 200, height = 200, count = width * height;
+  const min = count * WATER_TUNING.componentMinShare;
+  assert.ok(min > 1, "map is large enough that one pixel is below the component floor");
+  const claimedPixels = [];
+  for (let y = 10; y < 50; y++) for (let x = 10; x < 50; x++) claimedPixels.push(y * width + x);
+  const slivers = [];
+  for (let i = 0; i < Math.ceil(min) + 10; i++) slivers.push(60 * width + 2 * i);
+  assert.ok(slivers.length > min);
+  assert.ok(slivers.every((_, i) => i === 0 || slivers[i] - slivers[i - 1] > 1));
+  const detected = { id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers]) };
+  const claimed = [{ id: "saved", pixels: Int32Array.from(claimedPixels) }];
+  const merged = mergeWaterProposals([detected], width, height, { claimed });
+  assert.equal(merged.pixels.length, 0, "isolated shore slivers are not one fresh area");
+  assert.ok(merged.share < WATER_TUNING.componentMinShare);
+
+  const real = [];
+  for (let y = 120; y < 150; y++) for (let x = 120; x < 150; x++) real.push(y * width + x);
+  const withReal = mergeWaterProposals([{ id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers, ...real]) }], width, height, { claimed });
+  assert.equal(withReal.pixels.length, real.length, "a real leftover keeps only its own component");
+  assert.equal(new Set(withReal.pixels).has(slivers[0]), false);
+});
+
 test("selection coverage includes fractional boundary cells but leaves full hole cells clear", () => {
   const box = (x, y, w, h, hole = false) => ({ points: [x, y, x + w, y, x + w, y + h, x, y + h], hole });
   const pixels = waterSelectionPixels([box(0.25, 0.25, 9, 9), box(3, 3, 2, 2, true)], 12, 12);

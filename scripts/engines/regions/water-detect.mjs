@@ -6,7 +6,8 @@
 
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags } from "../motion/region-steps.mjs";
 
-// Every threshold the detector uses. The comments are the measurements that set them.
+// Every threshold the detector uses. Tuned against map corpora that are no longer in this
+// repository, so the values cannot be re-measured here.
 export const WATER_TUNING = Object.freeze({
   hueMin: 170,
   hueMax: 250,
@@ -114,6 +115,9 @@ export function mergeWaterProposals(proposals, width, height, { claimed = [], pr
   for (let p = 0; p < mask.length; p++) if (blocked[p]) mask[p] = 0;
   // A union can introduce diagonal contacts. Use the detector's existing one-pixel corner repair.
   removeSaddles(mask, width, height, blocked);
+  // Shore simplification leaves disconnected slivers outside a saved polygon. Drop them by
+  // component size so their combined share cannot reopen as one junk area.
+  dropSmall(mask, width, height);
   const pieces = traceProposals(mask, width, height);
   const pixels = new Int32Array(pieces.reduce((sum, piece) => sum + piece.pixels.length, 0));
   let offset = 0;
