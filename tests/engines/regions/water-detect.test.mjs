@@ -934,15 +934,35 @@ test("claiming a saved shore drops leftover sliver components instead of offerin
   assert.ok(slivers.every((_, i) => i === 0 || slivers[i] - slivers[i - 1] > 1));
   const detected = { id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers]) };
   const claimed = [{ id: "saved", pixels: Int32Array.from(claimedPixels) }];
-  const merged = mergeWaterProposals([detected], width, height, { claimed });
+  const merged = mergeWaterProposals([detected], width, height, { claimed, dropSmallComponents: true });
   assert.equal(merged.pixels.length, 0, "isolated shore slivers are not one fresh area");
   assert.ok(merged.share < WATER_TUNING.componentMinShare);
 
   const real = [];
   for (let y = 120; y < 150; y++) for (let x = 120; x < 150; x++) real.push(y * width + x);
-  const withReal = mergeWaterProposals([{ id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers, ...real]) }], width, height, { claimed });
+  const withReal = mergeWaterProposals([{ id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers, ...real]) }], width, height, { claimed, dropSmallComponents: true });
   assert.equal(withReal.pixels.length, real.length, "a real leftover keeps only its own component");
   assert.equal(new Set(withReal.pixels).has(slivers[0]), false);
+});
+
+test("combining into a saved region keeps a small pond under the component size floor", () => {
+  const width = 400, height = 400, count = width * height;
+  const min = count * WATER_TUNING.componentMinShare;
+  assert.ok(min > 90 && min < 97);
+  const block = [];
+  for (let y = 10; y < 110; y++) for (let x = 10; x < 110; x++) block.push(y * width + x);
+  const pond = [];
+  for (let y = 200; y < 208; y++) for (let x = 200; x < 208; x++) pond.push(y * width + x);
+  assert.equal(pond.length, 64);
+  assert.ok(pond.length < min);
+  const added = [];
+  for (let y = 10; y < 110; y++) for (let x = 110; x < 150; x++) added.push(y * width + x);
+  const target = { id: "water-1", pixels: Int32Array.from([...block, ...pond]) };
+  const merged = mergeWaterProposals([target, { pixels: Int32Array.from(added) }], width, height, { preserveTarget: true });
+  const pixels = new Set(merged.pixels);
+  assert.equal(pond.filter((p) => pixels.has(p)).length, 64, "the pond survives combine");
+  assert.equal(block.filter((p) => pixels.has(p)).length, block.length);
+  assert.equal(added.filter((p) => pixels.has(p)).length, added.length);
 });
 
 test("selection coverage includes fractional boundary cells but leaves full hole cells clear", () => {

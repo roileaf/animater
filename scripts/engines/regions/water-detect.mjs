@@ -106,7 +106,7 @@ export function detectWater(rgba, width, height) {
   };
 }
 
-export function mergeWaterProposals(proposals, width, height, { claimed = [], preserveTarget = false } = {}) {
+export function mergeWaterProposals(proposals, width, height, { claimed = [], preserveTarget = false, dropSmallComponents = false } = {}) {
   const mask = new Uint8Array(width * height);
   const blocked = new Uint8Array(mask.length);
   for (const proposal of proposals) for (const pixel of proposal.pixels) mask[pixel] = 1;
@@ -115,9 +115,9 @@ export function mergeWaterProposals(proposals, width, height, { claimed = [], pr
   for (let p = 0; p < mask.length; p++) if (blocked[p]) mask[p] = 0;
   // A union can introduce diagonal contacts. Use the detector's existing one-pixel corner repair.
   removeSaddles(mask, width, height, blocked);
-  // Shore simplification leaves disconnected slivers outside a saved polygon. Drop them by
-  // component size so their combined share cannot reopen as one junk area.
-  dropSmall(mask, width, height);
+  // Reopen only: shore-simplification slivers outside a saved polygon. Combine must keep
+  // intentional small parts of a saved region (a pond under the size floor).
+  if (dropSmallComponents) dropSmall(mask, width, height);
   const pieces = traceProposals(mask, width, height);
   const pixels = new Int32Array(pieces.reduce((sum, piece) => sum + piece.pixels.length, 0));
   let offset = 0;

@@ -827,7 +827,7 @@ async function openOnce({
   }
   const result = detect(loaded.rgba, loaded.width, loaded.height);
   const saved = savedWaterProposals(scene?.regions, { levelId, sceneRect, width: loaded.width, height: loaded.height });
-  const fresh = saved.length ? (result.proposals ?? []).map((proposal) => mergeWaterProposals([proposal], loaded.width, loaded.height, { claimed: saved }))
+  const fresh = saved.length ? (result.proposals ?? []).map((proposal) => mergeWaterProposals([proposal], loaded.width, loaded.height, { claimed: saved, dropSmallComponents: true }))
     .filter((proposal) => proposal.share >= WATER_TUNING.componentMinShare)
     .map((proposal, i) => ({ ...proposal, id: `water-${saved.length + i + 1}`, preselected: false })) : result.proposals ?? [];
   const proposals = [...saved, ...fresh];
