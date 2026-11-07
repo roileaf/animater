@@ -24,7 +24,10 @@ test('darkness follows twilight: a little at sunset, half at civil dusk, full by
   for (let h = 19.7; h < 21.2; h += 0.1) assert.ok(dark(h + 0.1) >= dark(h) - 1e-9, 'never lightens through dusk');
 });
 
-test('a bright moon high in a clear sky keeps the night from full dark; none by day, at new moon or overcast', () => {
+test('only a full moon high in a clear sky keeps the night from full dark; none by day, at other phases or overcast', () => {
+  assert.equal(moonLift({ ...clock(0), moon: 0.5, sky: 1 }), 0, 'a half moon leaves it fully dark');
+  assert.equal(moonLift({ ...clock(0), moon: 0.9, sky: 1 }), 0, 'gibbous too');
+  assert.ok(moonLift({ ...clock(0), moon: 0.98, sky: 1 }) > 0, 'a day from full still counts');
   const night = { ...clock(0), moon: 1, sky: 1 };
   const full = moonLift(night);
   assert.ok(full > MOON_LIFT * 0.9 && full <= MOON_LIFT, 'full moon near its height at midnight');

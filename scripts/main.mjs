@@ -237,7 +237,7 @@ import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from 
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
-import { sunColorByHeight, sceneSun, sunGlow, skyAir, moonLit, phaseLit, skyClear, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING, sunElevation, darknessBySun, moonLift } from "./engines/motion/sun.mjs";
+import { sunColorByHeight, sceneSun, sunGlow, skyAir, moonLit, phaseLit, skyClear, clockSource, DEFAULT_SUN, DEFAULT_SUN_SETTING, sunElevation, darknessBySun, moonLift, fullMoon } from "./engines/motion/sun.mjs";
 import { sunSettingsMenu, SUN_SETTING, CLOCK_SETTING } from "./ui/sun-settings.mjs";
 import { sunConfigElement } from "./ui/scene-sun-config.mjs";
 import { createSustainThreads, sustainLinks, concentrationLinks } from "./engines/motion/sustain-threads.mjs";
@@ -4232,8 +4232,8 @@ const cloudShiftNow = () => {
   return { x: Math.cos(away) * reach, y: Math.sin(away) * reach };
 };
 const calendariaMoonNow = () => {
-  // Darkness following the sun lifts for the moon itself, as Calendaria's does: the moon's tint is halved for it too.
-  if (sunDarknessOn() && !undergroundScene()) return true;
+  // Darkness following the sun lifts for a full moon itself, as Calendaria's does: the moon's tint is halved for it then.
+  if (sunDarknessOn() && !undergroundScene()) return hotSetting("moonLight") !== false && fullMoon(clockNow()?.moon);
   const get = (key) => { try { return game.settings.get("calendaria", key); } catch { return false; } };
   const own = canvas?.scene?.flags?.calendaria ?? {};
   return calendariaMoonLifts({ active: game.modules.get("calendaria")?.active === true, sync: get("darknessSync"), moonSync: get("darknessMoonSync"), sceneSync: own.darknessSync ?? "default", sceneMoonSync: own.darknessMoonSync ?? "default" });
@@ -7670,7 +7670,7 @@ Hooks.once("init", () => {
     hint: "On (the usual), Animater colours the scene through the day and turns off a calendar module's own scene ambience (such as Calendaria's “Sync Scene Ambience” settings), so the map is never coloured twice. Off, for those who prefer that module's: Animater leaves its settings as you set them, and steps aside while it colours the scene.",
     scope: "world", config: true, type: Boolean, default: true, onChange: () => { try { refreshSunWash(); } catch { /* not drawn */ } void quietCalendarColour(); void quietCalendarWeatherHue(); } });
   registerSetting("darknessBySun", { name: "Darkness follows the sun",
-    hint: "The active scene's Darkness Level follows how far the sun is under the horizon, as real twilight does: a little dark at sunset, half dark half an hour later, fully dark about an hour and a half after sunset until dawn's first light, then lightening the same way; a bright moon high in a clear sky keeps the night a little lighter (with Moonlight on). Foundry's lighting and vision and the game's light rules follow it. It takes over from Calendaria's darkness by the time of day (turned off while this is on). Not in scenes under the ground, scenes with their darkness locked, or scenes where Calendaria was told to leave the darkness alone; a storm still darkens it further.",
+    hint: "The active scene's Darkness Level follows how far the sun is under the horizon, as real twilight does: a little dark at sunset, half dark half an hour later, fully dark about an hour and a half after sunset until dawn's first light, then lightening the same way; a full moon high in a clear sky keeps the night a little lighter (with Moonlight on). Foundry's lighting and vision and the game's light rules follow it. It takes over from Calendaria's darkness by the time of day (turned off while this is on). Not in scenes under the ground, scenes with their darkness locked, or scenes where Calendaria was told to leave the darkness alone; a storm still darkens it further.",
     scope: "world", config: true, type: Boolean, default: false });
   registerSetting("sunColorLocal", { name: "Sunrise and sunset colour on my screen",
     hint: "Turn off to never colour the map at dawn and dusk on this screen (the world setting decides for everyone).",

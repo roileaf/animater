@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.7.2 (unreleased)
+
+- **Only a full moon lightens the night.** With Darkness follows the sun, the moon kept every night a little lighter by how much of it was lit, so even a half moon stopped the scene short of full dark. Now only a full moon high in a clear sky does (about a day either side of it); otherwise the night goes fully dark, and the moon's silver tint is left at full strength.
+
 ## 3.7.1
 
 - **Full tree shade on tiles of several bushes.** A tree tile holding a few thick bushes with open ground between them was taken for one thin, gappy crown, so its shade came out about half as dark. Its leaves are now judged by the bushes themselves, not the open ground round them. Leaves and Tree type set in Tile configuration still decide.

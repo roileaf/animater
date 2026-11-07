@@ -112,15 +112,17 @@ export function moonFromClock({ day, sunrise = 0.25, sunset = 0.75, east = COMPA
   return strength > 0.01 ? { angle: east + 180 * t, height, strength, moon: true } : null;
 }
 
-// How much the moon lifts the night's darkness (pure, 0–MOON_LIFT): by how much of it is lit (`clock.moon`), how high it
-// stands (it crosses the night sky as moonFromClock has it) and how clear the sky is (`clock.sky`). A full moon high in a
-// clear sky leaves the night at 1 - MOON_LIFT dark; a new moon, a set moon or an overcast sky leave it fully dark.
-export const MOON_LIFT = 0.2;
+// How much the moon lifts the night's darkness (pure, 0–MOON_LIFT): only a full moon does (`clock.moon`, how much of it
+// is lit, at least FULL_MOON: about a day either side of it), by how high it stands (it crosses the night sky as
+// moonFromClock has it) and how clear the sky is (`clock.sky`). A full moon high in a clear sky leaves the night at
+// 1 - MOON_LIFT dark; any other phase, a set moon or an overcast sky leave it fully dark.
+export const MOON_LIFT = 0.2, FULL_MOON = 0.97;
+export const fullMoon = (lit) => (Number(lit) || 0) >= FULL_MOON;
 export function moonLift({ day, sunrise = 0.25, sunset = 0.75, moon = 0, sky = 1 } = {}) {
-  const f = ((Number(day) % 1) + 1) % 1, lit = clamp01(Number(moon) || 0);
-  if (!(sunset > sunrise) || !(lit > 0) || (f > sunrise && f < sunset)) return 0;
+  const f = ((Number(day) % 1) + 1) % 1;
+  if (!(sunset > sunrise) || !fullMoon(moon) || (f > sunrise && f < sunset)) return 0;
   const t = ((((f - sunset) % 1) + 1) % 1) / (1 - (sunset - sunrise)), height = MOON_NOON * Math.sin(Math.PI * clamp01(t));
-  return MOON_LIFT * lit * clamp01(height / 20) * clamp01(Number(sky ?? 1));
+  return MOON_LIFT * clamp01(height / 20) * clamp01(Number(sky ?? 1));
 }
 
 // How much of the sky is clear (0 covered, 1 clear) under a weather: a calendar's (Calendaria's ids) or a scene's own
