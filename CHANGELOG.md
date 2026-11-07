@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.7.4 (unreleased)
+
+- **Only swimmers bob.** A creature standing in a water region bobbed on the swell whatever its movement type. Now only one set to swim does; one standing or wading in the water holds still.
+
 ## 3.7.3
 
 - **Shadows in a window's lamplight.** A creature standing in a lit window's light outside now throws its shadow from the lamp. The light now fans out from the lamp through the window, off to one side when the lamp is, so its panes radiate from the lamp too and whoever stands in it sees the lamp. One standing at the light's very edge, the window's end between it and the lamp, still throws its shadow; it was dropped before, and with creature-shaped shadows on nothing was left. Curtains and frosted glass still spread their light evenly.

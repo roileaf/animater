@@ -7873,7 +7873,7 @@ Hooks.once("init", () => {
   });
   registerSetting("idleHover", {
     name: "Fliers hover and swimmers bob",
-    hint: "Flying creatures bob gently in the air, so they stand out from those on the ground. Off: they hold still (others can still breathe).",
+    hint: "Flying creatures bob gently in the air, so they stand out from those on the ground, and creatures set to swim ride a gentle swell. Off: they hold still (others can still breathe).",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: () => idleLife?.sync(),
   });
@@ -8991,8 +8991,9 @@ Hooks.once("ready", () => {
   conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody, cutOut: (token) => tokenCutOut(token) });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
-    // In the water, with a body to bob: a swimmer, or anything simply floating there.
-    swimming: (token) => { const doc = token.document; if (doc?.movementAction === "swim") return true; return movementFeelFloor({ x: token.x + token.w / 2, y: token.y + token.h / 2 }, doc) === "water"; },
+    // Bobbing on the swell: only a creature set to swim (its movement type). One standing or wading in a water region holds
+    // still like anyone on the ground.
+    swimming: (token) => token.document?.movementAction === "swim",
     strength: () => { try { return hotSetting("idleLifeStrength"); } catch { return 1; } },
     kinds: () => ({ breathe: hotSetting("idleBreathing") !== false && hotSetting("idleBreathingLocal") !== false, hover: hotSetting("idleHover") !== false && hotSetting("idleHoverLocal") !== false }),
     enabled: () => hotSetting("idleLife") !== false && hotSetting("idleLifeLocal") !== false && qualityRank(localQuality()) >= 2 && !!canvas?.ready,
