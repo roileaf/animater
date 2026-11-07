@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.5.1 (unreleased)
+## 3.5.1 (2026-11-07)
 
 - **Dragon tread leaves clean tracks.** Large creatures left clumps that read as three feet, packed close together. It's now one clear print at a time, left then right, spaced for the creature's size.
 - **Blood stays on its own level.** Stains now show only on the level where they fell, and Bake blood leaves other levels' blood alone. Blood saved in a scene before this update has no level, so it still shows on all of them until cleared.
