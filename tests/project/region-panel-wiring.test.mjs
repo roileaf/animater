@@ -58,10 +58,10 @@ test('settings hints point to the right-click panel, not the old region window f
   assert.match(main, /the Cave-in button in the Animater controls, scroll to size it\)/);
 });
 
-test('the changelog has an Unreleased entry for the panel, the size slider and moving water', () => {
+test('the changelog has an entry for the panel, the size slider and moving water (released in 3.8.0)', () => {
   const log = readFileSync(new URL('../../CHANGELOG.md', import.meta.url), 'utf8');
-  const top = log.slice(log.indexOf('## Unreleased'), log.indexOf('\n## ', log.indexOf('## Unreleased') + 5));
-  assert.ok(log.indexOf('## Unreleased') < log.indexOf('## 3.'), 'at the top');
+  const top = log.slice(log.indexOf('## 3.8.0'), log.indexOf('\n## ', log.indexOf('## 3.8.0') + 5));
+  assert.ok(log.indexOf('## Unreleased') < log.indexOf('## 3.8.0'), 'Unreleased stays at the top');
   assert.match(top, /right-click panel/); assert.match(top, /size is a slider/); assert.match(top, /All water is moving water/);
 });
 

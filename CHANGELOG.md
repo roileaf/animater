@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **River sounds no longer restart while a river is placed or a scene loads.** A river's, the surf's or a waterfall's loop that dipped to silence for a moment was stopped and started again from its beginning, so for the first half minute or so it could restart over and over. It now fades out and keeps going, stopping only after several seconds of real silence; and a river goes quiet for ice only once it is frozen over.
+
 ## 3.8.0
 
 - **Painted animals.** Every animal Animater draws (town, wildlife, field, pond, farm, rats and bats, and the crows and vultures that come down to the fallen) is now drawn in the battlemaps' own painted look: inked outlines, shading in a few painted steps, muted colours, real coats and markings that stay put as they move. Each keeps everything it did before: how it walks, grazes, flees and flocks, its size, its sounds and its shadow. Dragonflies, flying ducks and herons are painted too, and fish seen through moving water now show as the painted fish, tinted by the water, instead of a dark shape.

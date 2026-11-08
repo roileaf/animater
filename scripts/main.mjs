@@ -3980,7 +3980,7 @@ const tickPlaces = () => {
     const h = heard[kind]; let through = 1;
     try { if (h?.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = kind === "tavern" ? THROUGH_WALL : 0.35; } catch { /* no wall test */ }
     const volume = soundsOn() ? PLACE_VOLUME[kind] * (h?.level ?? 0) * through * (kind === "waterfall" ? waterLoudness("waterfallVolume") : kind === "calmSea" ? calmSeaShare(skyWindNow) : kind === "surf" ? 1 - calmSeaShare(skyWindNow) : 1) : 0;
-    if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
+    if (voice.sound) { try { voiceAt(voice, volume); } catch { stopVoice(voice); } continue; }
     const file = placeFile(kind, canvas.scene?.id);
     if (volume <= 0.004 || voice.starting || !file) continue;
     voice.starting = true;
@@ -4338,11 +4338,21 @@ const thunderAfterFlash = (always = false, where = null) => {
   };
   setTimeout(() => { play(t.volume, t.rate).catch(() => {}); if (t.under) play(t.under.volume, t.under.rate).catch(() => {}); }, at - now);
 };
+// A loop gone quiet (a river, the surf, a waterfall): faded out but kept going, stopped only once it has been silent for
+// QUIET_HOLD_MS. Stopped at once, a moment's dip (the outline redrawn as a river is placed, the listener settling as a
+// scene loads, ice easing in) would start it again from its beginning a moment later, over and over.
+const QUIET_HOLD_MS = 8000;
+const voiceAt = (voice, volume, fadeMs = 450) => {
+  if (volume > 0.004) { voice.quietSince = 0; voice.sound.fade(volume, { duration: fadeMs }); return; }
+  const now = performance.now();
+  if (!voice.quietSince) { voice.quietSince = now; voice.sound.fade(0, { duration: 700 }); }
+  else if (now - voice.quietSince > QUIET_HOLD_MS) { voice.quietSince = 0; stopVoice(voice, 300); }
+};
 const stopVoice = (voice, ms = 0) => { const s = voice.sound; voice.sound = null; try { if (s && ms) { s.fade(0, { duration: ms }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, ms + 100); } else s?.stop(); } catch { /* gone */ } };
 const tickRivers = () => {
   const now = performance.now(); if (now - riverLookAt < 400) return; riverLookAt = now;
   if (game.audio?.locked) return;
-  const on = bothSettingsOn("riverSounds"), frozen = frozenWaterOn() && groundOf().now.ice > 0, flowing = !on ? [] : frozen ? riverRegions.filter((r) => r.keeps) : riverRegions;
+  const on = bothSettingsOn("riverSounds"), frozen = frozenWaterOn() && groundOf().now.ice > 0.5, flowing = !on ? [] : frozen ? riverRegions.filter((r) => r.keeps) : riverRegions;
   let ears = canvas.sounds?.getListenerPositions?.() ?? [];
   if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
   const heard = riverHeard(flowing, ears, { grid: canvas.grid.size });
@@ -4350,7 +4360,7 @@ const tickRivers = () => {
     let through = 1;
     try { const h = heard[speed]; if (h.level > 0 && h.at.d > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
     const volume = soundsOn() ? RIVER_VOLUME[speed] * heard[speed].level * through * waterLoudness("riverVolume") : 0;
-    if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 450 }); else stopVoice(voice, 700); } catch { voice.sound = null; } continue; }
+    if (voice.sound) { try { voiceAt(voice, volume); } catch { stopVoice(voice); } continue; }
     if (volume <= 0.004 || voice.starting) continue;
     voice.starting = true;
     (async () => {
