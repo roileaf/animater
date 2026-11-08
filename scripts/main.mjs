@@ -2348,7 +2348,7 @@ const floorRegionAt = (point) => {
 // Every region at a point, whatever it holds, at any height: what a right-click there can be about. (An elevated dock over water is right there on the map, whatever the level's own height.)
 const regionsUnder = (point) => regionsHere().filter((region) => { try { return regionAreas(region).some((area) => pointInPolygon(point, area)); } catch { return false; } });
 // The floor the panel shows a region as: its own, a cavern when it only has a cavern's growth, none for plain ground.
-const panelFloorOf = (region) => (caveHasMenu(stepFlags(region.flags?.[ID])) ? plainFloorOf(region) ?? "cavern" : plainFloorOf(region) ?? null);
+const panelFloorOf = (region) => (caveHasMenu(stepFlags(region.flags?.[ID])) ? plainFloorOf(region) ?? "cavern" : plainFloorOf(region));
 // How the right button went down and came up, seen before the canvas sees it.
 let rightPress = null;
 Hooks.once("canvasReady", () => {
@@ -2360,7 +2360,6 @@ const overControlIcon = (point) => { if (!point) return false; for (const icons 
 // A right-click on the open map (a token takes its own, and so does a window's or door's icon) opens the region's menu for the GM, when the button comes up: pressed and held or dragged, it is panning.
 const stepMenuClick = (event) => {
   if (!game.user?.isGM || canvas.activeLayer !== canvas.tokens || canvas.controls?.ruler?.active || canvas.tokens?._draggedToken) return;
-  if (hotSetting("regionSteps") === false) return;
   if (overControlIcon(event.global)) return;
   const at = event.getLocalPosition(canvas.stage), here = regionsUnder({ x: at.x, y: at.y }), region = floorRegionAt({ x: at.x, y: at.y }) ?? here.at(-1);
   if (!region) return;

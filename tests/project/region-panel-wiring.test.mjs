@@ -13,7 +13,7 @@ test('main builds the region panel, not the old step menu', () => {
 
 test('the panel closes when the map pans or tears down', () => {
   assert.match(main, /Hooks\.on\("canvasPan", \(\) => \{ regionPanel\.close\(\); \}\);/);
-  assert.match(main, /Hooks\.on\("canvasTearDown", \(\) => \{[^\n]*regionPanel\.close\(\); \}\);/);
+  assert.match(main, /Hooks\.on\("canvasTearDown", \(\) => \{(?:(?!\n\}\);)[\s\S])*?floorLooks\.clear\(\);(?:(?!\n\}\);)[\s\S])*?regionPanel\.close\(\);/);
 });
 
 test('regionsUnder lists every region at the point, with no floor filter', () => {
@@ -29,6 +29,7 @@ test('only the GM opens it', () => {
   const at = main.indexOf('const stepMenuClick = ');
   const body = main.slice(at, main.indexOf('\n};', at));
   assert.match(body, /game\.user\?\.isGM/);
+  assert.doesNotMatch(body, /regionSteps/);
   assert.match(body, /regionPanel\.open\(/);
   assert.match(body, /regionsUnder\(/);
 });
