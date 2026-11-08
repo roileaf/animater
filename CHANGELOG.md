@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.8.3
+
 - **The Animals panel says why no animals show.** With Outdoor life on and nothing appearing, it now names the cause: Animals in the wild off in the settings, this screen's quality at Low or Off, a scene floor animals don't live on (they need grass, dirt, snow, mud or sand; set Floor in Scene configuration → Animater), or a map all under roofs or walled in.
 
 ## 3.8.2
