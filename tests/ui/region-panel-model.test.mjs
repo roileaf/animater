@@ -26,15 +26,41 @@ test('regionKindOf reads the kind off the flags and floor', () => {
 });
 
 test('kindFlags says what to save to make a region that kind', () => {
-  assert.deepEqual(kindFlags('water', {}), { floor: 'water', overWater: false });
-  assert.deepEqual(kindFlags('ground', { floor: 'water' }), { floor: 'grass', overWater: false });
-  assert.deepEqual(kindFlags('ground', { floor: 'sand' }), { floor: 'sand', overWater: false });
-  assert.deepEqual(kindFlags('ground', { floor: 'cavern' }), { floor: 'grass', overWater: false });
+  assert.deepEqual(kindFlags('water', {}), { floor: 'water', overWater: false, indoors: false });
+  assert.deepEqual(kindFlags('ground', { floor: 'water' }), { floor: 'grass', overWater: false, indoors: false });
+  assert.deepEqual(kindFlags('ground', { floor: 'sand' }), { floor: 'sand', overWater: false, indoors: false });
+  assert.deepEqual(kindFlags('ground', { floor: 'cavern' }), { floor: 'grass', overWater: false, indoors: false });
   assert.deepEqual(kindFlags('indoors', {}), { floor: 'wood', indoors: true, overWater: false });
-  assert.deepEqual(kindFlags('cave', {}), { floor: 'cavern' });
   assert.equal(kindFlags('deck', { floor: 'water' }).floor, 'wood');
-  assert.deepEqual(kindFlags('deck', { floor: 'stone' }), { overWater: true, floor: 'stone' });
-  assert.deepEqual(kindFlags('lava', {}), { floor: 'lava' });
+  assert.deepEqual(kindFlags('deck', { floor: 'stone' }), { overWater: true, floor: 'stone', indoors: false });
+  assert.deepEqual(kindFlags('lava', {}), { floor: 'lava', indoors: false });
+});
+
+test('a cave has no floor of its own: its decor makes it one, glowing fungus if it has none', () => {
+  assert.deepEqual(kindFlags('cave', {}), { indoors: false, floor: '', cavern: 'fungus-green' });
+  assert.deepEqual(kindFlags('cave', { cavern: 'webs' }), { indoors: false, floor: '' }, 'its own decor kept');
+  assert.equal(regionKindOf({ ...{ floor: 'grass' }, ...kindFlags('cave', { floor: 'grass' }) }, ''), 'cave');
+});
+
+test('from lava to a cave, the lava steps go as caveKindFlags takes them', () => {
+  assert.deepEqual(kindFlags('cave', { floor: 'lava', steps: [{ name: 'Crust' }], step: 1 }), { indoors: false, floor: '', steps: null, stepsFloor: null, step: 0, stepHidden: false, cavern: 'fungus-green' });
+});
+
+test('leaving a kind undoes it: Indoors to Ground, Cave to Water, Cave to Lava', () => {
+  const after = (own, kind) => { const next = { ...own, ...kindFlags(kind, own) }; return regionKindOf(next, next.floor); };
+  assert.equal(after({ floor: 'wood', indoors: true }, 'ground'), 'ground');
+  assert.equal(kindFlags('ground', { floor: 'wood', indoors: true }).indoors, false);
+  assert.equal(after({ cavern: 'fungus-green' }, 'water'), 'water');
+  assert.equal(kindFlags('water', { cavern: 'fungus-green' }).cavern, '');
+  assert.equal(after({ cavern: 'crystals-rose' }, 'lava'), 'lava');
+  assert.equal(after({ cavern: 'mist' }, 'deck'), 'deck');
+  assert.equal(after({ floor: 'wood', indoors: true }, 'cave'), 'cave');
+  assert.ok(!('cavern' in kindFlags('water', {})), 'nothing to undo: no cavern written');
+});
+
+test('section icons as the mock has them', () => {
+  const icon = (id) => panelSections('water', {}).find((s) => s.id === id)?.icon;
+  assert.equal(icon('steps'), 'fa-shoe-prints'); assert.equal(icon('air'), 'fa-cloud-sun'); assert.equal(icon('look'), 'fa-palette');
 });
 
 test('panelSections: the sections each kind has, the first open', () => {

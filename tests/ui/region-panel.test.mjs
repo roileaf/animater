@@ -310,6 +310,70 @@ test('switching kind to lava from a cave follows the new floor', async () => {
   t.done();
 });
 
+test('Indoors to Ground through the panel: the room stops being indoors', async () => {
+  const t = await setup({ floor: 'wood', indoors: true }, 'wood');
+  assert.equal(t.byLabel('Indoors').attrs['aria-pressed'], 'true');
+  await t.click(t.byLabel('Ground'));
+  assert.equal(t.saves.at(-1).indoors, false);
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true', 'drawn as ground now');
+  t.done();
+});
+
+test('Cave to Water through the panel: its decor goes', async () => {
+  const t = await setup({ cavern: 'fungus-green' }, 'cavern');
+  await t.click(t.byLabel('Water'));
+  assert.equal(t.saves.at(-1).cavern, '');
+  assert.equal(t.byLabel('Water').attrs['aria-pressed'], 'true');
+  assert.ok(t.section('water'));
+  t.done();
+});
+
+test('Lava to Cave through the panel: a cave, with fungus, and no floor saved', async () => {
+  const t = await setup({ floor: 'lava' }, 'lava');
+  await t.click(t.byLabel('Cave'));
+  assert.equal(t.saves.at(-1).floor, '');
+  assert.equal(t.saves.at(-1).cavern, 'fungus-green');
+  assert.equal(t.byLabel('Cave').attrs['aria-pressed'], 'true');
+  t.done();
+});
+
+test('a refused kind change leaves the panel on the old kind', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass', { reject: true });
+  await t.click(t.byLabel('Water'));
+  assert.equal(t.saves.length, 1);
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true', 'still ground');
+  assert.equal(t.section('water'), null);
+  await t.pick(t.byLabel('Floor'), 'sand');
+  assert.match(t.section('ground').children[0].children[2].textContent, /^Grass/, 'a refused floor keeps the old floor too');
+  t.done();
+});
+
+test('ground and indoors keep the shadow controls under More', async () => {
+  for (const [own, floor] of [[{ floor: 'stone' }, 'stone'], [{ floor: 'wood', indoors: true }, 'wood']]) {
+    const t = await setup(own, floor);
+    assert.equal(t.byLabel('Casts a shadow'), null, 'folded away');
+    await t.more('ground');
+    await t.click(t.byLabel('Casts a shadow'));
+    assert.deepEqual(t.saves.at(-1), { castShadow: true });
+    const last = t.byLabel('Its shadow').children.at(-1).value;
+    await t.pick(t.byLabel('Its shadow'), last);
+    assert.deepEqual(t.saves.at(-1), { overShadows: { [floor]: last } });
+    await t.pick(t.byLabel('Shadow darkness'), 0.6);
+    assert.deepEqual(t.saves.at(-1), { overShadowDark: 0.6 });
+    await t.pick(t.byLabel('Shadow softness'), 0.2);
+    assert.deepEqual(t.saves.at(-1), { overShadowSoft: 0.2 });
+    t.done();
+  }
+});
+
+test('the ground floor list has no "from the scene" choice', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  const values = t.byLabel('Floor').children.map((o) => o.value);
+  assert.ok(!values.includes(''));
+  assert.ok(values.includes('grass') && values.includes('stone'));
+  t.done();
+});
+
 test('long explanations are tooltips, not paragraphs', async () => {
   const t = await setup({ floor: 'water' }, 'water');
   for (const id of ['water', 'steps', 'animals', 'air', 'look']) t.openSection(id);

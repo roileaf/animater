@@ -68,7 +68,8 @@ const CURRENTS = [['slower', 'Crawl'], ['slow', 'Slow'], ['', 'Gentle'], ['swift
 const DRIP_PACE = [['slow', 'Slow'], ['', 'Steady'], ['fast', 'Fast'], ['faster', 'Trickle']];
 const DRIP_POOL = [['', 'Puddle'], ['pool', 'Pool'], ['deep', 'Deep']];
 const CLIMATES = [['', 'Scene'], ['cold', 'Cold'], ['warm', 'Warm']];
-const GROUND_FLOORS = FLOOR_CHOICES.filter(([v]) => v !== 'water' && v !== 'lava');
+// (No "from the scene": the panel has to know the floor it shows.)
+const GROUND_FLOORS = FLOOR_CHOICES.filter(([v]) => v && v !== 'water' && v !== 'lava');
 const DECK_FLOORS = FLOOR_CHOICES.filter(([v]) => v && !['water', 'lava', 'none'].includes(v));
 const CAVE_KINDS = [['', 'None'], ['mist', 'Mist on the floor'], ['fungus-green', 'Glowing fungus (green)'], ['fungus-blue', 'Glowing fungus (blue)'], ['fungus-violet', 'Glowing fungus (violet)'], ['crystals-amethyst', 'Crystals (amethyst)'], ['crystals-quartz', 'Crystals (clear quartz)'], ['crystals-rose', 'Crystals (rose)'], ['lava', 'Lava'], ['webs', 'Cobwebs'], ['wet', 'Wet walls'], ['steam', 'Steam vents'], ['foul', 'Bad air']];
 const KEEP_OUT = [['all', 'All animals'], ['rats', 'Rats'], ['bats', 'Bats'], ['moths', 'Moths'], ['crawlers', 'Crawlers'], ['eyes', 'Eyes'], ['rabbits', 'Rabbits'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['songbirds', 'Songbirds'], ['crows', 'Crows'], ['hawk', 'Hawk'], ['owl', 'Owl'], ['fish', 'Fish'], ['frogs', 'Frogs'], ['ducks', 'Ducks'], ['herons', 'Herons'], ['gulls', 'Gulls'], ['butterflies', 'Butterflies'], ['dragonflies', 'Dragonflies'], ['fireflies', 'Fireflies'], ['pigeons', 'Pigeons'], ['hens', 'Hens'], ['cats', 'Cats'], ['dogs', 'Dogs']];
@@ -81,6 +82,16 @@ const AMOUNTS = REGION_AMOUNTS.map(([key]) => key);
 const styleRow = ({ own, floor, act }) => { const now = textureFloor(own, floor); return row('Texture style', choice(TEXTURE_STYLES[now] ?? [], textureStyleOf(own, now), 'Texture style', (v) => act({ textureStyles: { ...(own.textureStyles ?? {}), [now]: v } }))); };
 const scaleRow = ({ own, act }) => range('Pattern size', STEP_SCALE, stepScale(own), percent, (v) => act({ stepScale: v }), 0.05, 'Smaller for more of it: more panes of glass, more stones.');
 const scaleShown = (c) => c.texture(c.own) || stepMenu(c.own, c.floor).strength !== null;
+// Whether it throws a shadow on what is below, which one, and (`fine`, else under a More line) how soft and dark.
+const shadowParts = (c, fine) => {
+  const { own, floor, act } = c, shadow = castsShadow(own);
+  const parts = [toggle('Casts a shadow', shadow, flip('castShadow', act), 'It throws a shadow on what is below, away from the sun and longer as the sun gets low.')];
+  if (!shadow) return parts;
+  const s = overShadowOf(own, floor), more = () => [range('Softness', OVER_SOFT, s.soft, percent, (v) => act({ overShadowSoft: v }), 0.05, '', 'Shadow softness'),
+    range('Darkness', OVER_DARK, s.dark, percent, (v) => act({ overShadowDark: v }), 0.05, '', 'Shadow darkness')];
+  parts.push(row('Shadow', choice(overShadowChoices(floor), s.kind, 'Its shadow', (v) => act({ overShadows: { ...(own.overShadows ?? {}), [floor]: v } }))));
+  return [...parts, ...(fine ? more() : c.more('deck', 'More: shadow softness, darkness…', more))];
+};
 
 export const SECTIONS = {
   water(c) {
@@ -112,11 +123,13 @@ export const SECTIONS = {
 
   ground(c) {
     const { own, floor, act } = c, textured = c.texture(own);
-    const parts = [row('Floor', choice(GROUND_FLOORS, own.floor ?? '', 'Floor', (v) => c.toFloor({ floor: v })), 'What creatures walk on here: their footsteps, sounds and prints.')];
+    const parts = [row('Floor', choice(GROUND_FLOORS, own.floor || floor, 'Floor', (v) => c.toFloor({ floor: v })), 'What creatures walk on here: their footsteps, sounds and prints.')];
     if (stepMenu(own, floor).grassy) parts.push(toggle('Changes with the seasons', c.season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(toggle('Floor texture', textured, (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
     if (textured) parts.push(styleRow(c));
     if (scaleShown(c)) parts.push(scaleRow(c));
+    // A raised floor (a stage, a balcony) can throw a shadow too: rarely, so it waits under More.
+    parts.push(...c.more('ground', 'More: its shadow…', () => shadowParts(c, true)));
     return parts;
   },
 
@@ -155,14 +168,7 @@ export const SECTIONS = {
       parts.push(row('Built as', seg(DOCK_STYLES, dockStyleOf(own), (v) => act({ dockStyle: v }), 'Built as'), 'Plain is the floor and its shadow; old boards and a railed pier show edge boards, planks and beam ends.', true));
       if (dockStyleOf(own)) parts.push(toggle('Posts', showsPosts(own), flip('overPosts', act), 'What holds it up along its long edges, standing in the water.'));
     }
-    const shadow = castsShadow(own);
-    parts.push(toggle('Casts a shadow', shadow, flip('castShadow', act), 'It throws a shadow on what is below, away from the sun and longer as the sun gets low.'));
-    if (!shadow) return parts;
-    const s = overShadowOf(own, floor);
-    parts.push(row('Shadow', choice(overShadowChoices(floor), s.kind, 'Its shadow', (v) => act({ overShadows: { ...(own.overShadows ?? {}), [floor]: v } }))),
-      ...c.more('deck', 'More: shadow softness, darkness…', () => [range('Softness', OVER_SOFT, s.soft, percent, (v) => act({ overShadowSoft: v }), 0.05, '', 'Shadow softness'),
-        range('Darkness', OVER_DARK, s.dark, percent, (v) => act({ overShadowDark: v }), 0.05, '', 'Shadow darkness')]));
-    return parts;
+    return [...parts, ...shadowParts(c, false)];
   },
 
   steps(c) {

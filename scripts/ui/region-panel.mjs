@@ -34,12 +34,13 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
     if (!open_ || !box) return;
     const { doc } = open_, own = flagsOf(doc) ?? {}, floor = open_.floor, kind = regionKindOf(own, floor);
     // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back).
-    const act = (flags) => Promise.resolve(save(doc, flags)).then(draw, draw);
-    // A save that gives the region another floor: the panel follows it, as the region's floor is what it was opened with.
+    // `then` runs only once the save is taken, before that redraw.
+    const act = (flags, then) => Promise.resolve(save(doc, flags)).then(() => { then?.(); draw(); }, draw);
+    // A save that gives the region another floor: once it is taken, the panel follows it, as the region's floor is what it
+    // was opened with. A floor saved empty is a cave's (its decor makes it one).
     const toFloor = (flags) => {
-      const was = open_, done = act(flags);
-      if (open_ === was && flags.floor) open_ = { ...was, floor: flags.floor, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: flags.floor } : r)) };
-      return done;
+      const was = open_, next = flags.floor === '' ? 'cavern' : flags.floor;
+      return act(flags, () => { if (open_ === was && next) open_ = { ...was, floor: next, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: next } : r)) }; });
     };
     const more = (key, label, build) => {
       const on = mores.has(key), line = button('', 'an-rp-more', () => { if (on) mores.delete(key); else mores.add(key); draw(); });

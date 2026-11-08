@@ -1,6 +1,6 @@
 // What the region panel (the right-click panel holding every Animater setting of a map region) is made of, apart from how it
 // is drawn: the kinds of region, the sections each kind shows, and the one-line summary on each section's heading.
-import { waterKindOf, stepMenu, caveMenu, WATER_KINDS, WATER_TOWARD, WATER_DEPTHS, DOCK_STYLES, dockStyleOf, castsShadow } from '../engines/motion/region-steps.mjs';
+import { waterKindOf, stepMenu, caveMenu, caveKindFlags,WATER_KINDS, WATER_TOWARD, WATER_DEPTHS, DOCK_STYLES, dockStyleOf, castsShadow } from '../engines/motion/region-steps.mjs';
 import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals } from '../engines/motion/region-animals.mjs';
 import { weatherLabel } from '../engines/motion/sky-weather.mjs';
 
@@ -28,21 +28,27 @@ export function regionKindOf(own = {}, floor) {
 }
 
 // The flags to save to make a region this kind. Only the panel reads `indoors`: it tells an indoor room from open ground.
+// Leaving a kind undoes what made it that kind (indoors, a cave's decor), or the region would read as the old kind still.
 export function kindFlags(kind, own = {}) {
-  const f = own?.floor;
+  const f = own?.floor, out = { ...(kind !== 'indoors' ? { indoors: false } : {}), ...(kind !== 'cave' && own?.cavern ? { cavern: '' } : {}) };
   switch (kind) {
-    case 'water': return { floor: 'water', overWater: false };
-    case 'indoors': return { floor: 'wood', indoors: true, overWater: false };
-    case 'cave': return { floor: 'cavern' };
-    case 'deck': return { overWater: true, floor: f && f !== 'water' ? f : 'wood' };
-    case 'lava': return { floor: 'lava' };
-    default: return { floor: f && f !== 'water' && f !== 'lava' && f !== 'cavern' ? f : 'grass', overWater: false };
+    case 'water': return { ...out, floor: 'water', overWater: false };
+    case 'indoors': return { ...out, floor: 'wood', indoors: true, overWater: false };
+    case 'cave': {
+      // A cave has no floor of its own: its decor makes it a cave (glowing fungus, as the old menu began, when it has none).
+      // Coming from lava, the lava's steps go too.
+      const { cavern, ...away } = caveKindFlags(own, 'fungus'), decor = own?.cavern && own.cavern !== 'lava';
+      return { ...out, ...away, floor: '', ...(decor ? {} : { cavern }) };
+    }
+    case 'deck': return { ...out, overWater: true, floor: f && f !== 'water' ? f : 'wood' };
+    case 'lava': return { ...out, floor: 'lava' };
+    default: return { ...out, floor: f && f !== 'water' && f !== 'lava' && f !== 'cavern' ? f : 'grass', overWater: false };
   }
 }
 
 const TITLES = {
   water: ['fa-water', 'Water'], ground: ['fa-seedling', 'Ground'], cavern: ['fa-gem', 'Cavern'], drips: ['fa-droplet', 'Drips'],
-  deck: ['fa-bridge', 'Dock'], steps: ['fa-stairs', 'Steps'], animals: ['fa-paw', 'Animals'], air: ['fa-wind', 'Air'], look: ['fa-eye', 'Look'],
+  deck: ['fa-bridge', 'Dock'], steps: ['fa-shoe-prints', 'Steps'], animals: ['fa-paw', 'Animals'], air: ['fa-cloud-sun', 'Air'], look: ['fa-palette', 'Look'],
 };
 const ORDER = {
   water: ['water', 'steps', 'animals', 'air', 'look'],
