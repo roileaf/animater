@@ -1,0 +1,104 @@
+// The right-click panel for a map region (GM): every Animater setting of the region in one place. First what the region
+// is (its kind), then only the sections that kind uses, each folded to a one-line summary until opened. Every control
+// saves to the region's flags at once, which reach every screen. What each section holds: region-panel-sections.mjs.
+
+import { REGION_KINDS, regionKindOf, kindFlags, panelSections } from './region-panel-model.mjs';
+import { stepTabs } from './region-steps-ui.mjs';
+import { SECTIONS, element, button, icon } from './region-panel-sections.mjs';
+
+const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'fa-water', ice: 'fa-icicles', snow: 'fa-snowflake', wood: 'fa-tree', sand: 'fa-umbrella-beach', grass: 'fa-seedling', dirt: 'fa-mountain', mud: 'fa-droplet', stone: 'fa-cubes' });
+
+/**
+ * The panel. open({ doc, floor, at, client: { x, y }, regions, first }) shows it by the pointer: `regions` [{ doc, floor }]
+ * all those at that spot (tabs when more than one), `first` the one to show, `at` where on the map (a step spreads from
+ * there); close(). `flagsOf(doc)` the region's Animater flags, `save(doc, flags)` saves some (a promise), `edit(doc)` opens
+ * its steps list, `texture(flags)` whether its floor is painted now, `season(flags)` whether the season colours it,
+ * `presets()` the Tokenshade look names, `weathers()` [[id, label]].
+ */
+export function createRegionPanel({ flagsOf, save, edit, texture = () => false, season = () => false, presets = () => [], weathers = () => [] }) {
+  let box = null, open_ = null;
+  // Sections opened or shut by hand (id → open), and the "More" lines unfolded; both start over with each region shown.
+  const folds = new Map(), mores = new Set();
+  const forget = () => { folds.clear(); mores.clear(); };
+  const close = () => {
+    open_ = null;
+    if (!box) return;
+    box.remove(); box = null;
+    document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true);
+  };
+  const outside = (e) => { if (box && !box.contains(e.target)) close(); };
+  const escape = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+
+  const draw = () => {
+    if (!open_ || !box) return;
+    const { doc } = open_, own = flagsOf(doc) ?? {}, floor = open_.floor, kind = regionKindOf(own, floor);
+    // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back).
+    const act = (flags) => Promise.resolve(save(doc, flags)).then(draw, draw);
+    // A save that gives the region another floor: the panel follows it, as the region's floor is what it was opened with.
+    const toFloor = (flags) => {
+      const was = open_, done = act(flags);
+      if (open_ === was && flags.floor) open_ = { ...was, floor: flags.floor, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: flags.floor } : r)) };
+      return done;
+    };
+    const more = (key, label, build) => {
+      const on = mores.has(key), line = button('', 'an-rp-more', () => { if (on) mores.delete(key); else mores.add(key); draw(); });
+      line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
+      return on ? [line, ...build()] : [line];
+    };
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, more, texture, season, presets, weathers, close, edit };
+
+    const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
+    shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
+    head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor ?? 'region')} region`), shut);
+    const parts = [head];
+
+    const tabs = stepTabs(open_.regions ?? [], open_.first ?? doc);
+    if (tabs.length > 1) {
+      const row = element('div', 'an-rp-tabs'); row.setAttribute('role', 'tablist');
+      for (const tab of tabs) {
+        const on = tab.doc === doc, b = button('', on ? 'an-rp-tab an-rp-on' : 'an-rp-tab', () => { if (on) return; open_ = { ...open_, doc: tab.doc, floor: tab.floor }; forget(); draw(); });
+        b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(on));
+        b.append(icon(FLOOR_ICONS[tab.floor] ?? 'fa-shoe-prints'), element('span', '', tab.name)); row.append(b);
+      }
+      parts.push(row);
+    }
+
+    const kinds = element('div', 'an-rp-kinds');
+    for (const [id, glyph, label] of REGION_KINDS) {
+      const on = id === kind, b = button('', on ? 'an-rp-kind an-rp-on' : 'an-rp-kind', () => { if (on) return; forget(); toFloor(kindFlags(id, own)); });
+      b.setAttribute('aria-label', label); b.setAttribute('aria-pressed', String(on));
+      b.append(icon(glyph), element('span', '', label)); kinds.append(b);
+    }
+    parts.push(kinds);
+
+    for (const s of panelSections(kind, own, floor)) {
+      const shown = folds.has(s.id) ? folds.get(s.id) : s.open, sec = element('section', shown ? 'an-rp-sec an-rp-open' : 'an-rp-sec');
+      sec.setAttribute('data-section', s.id); sec.setAttribute('data-open', String(shown));
+      const title = button('', 'an-rp-title', () => { folds.set(s.id, !shown); draw(); });
+      title.setAttribute('aria-expanded', String(shown));
+      title.append(icon(s.icon, 'an-rp-ic'), element('b', '', s.title), element('small', '', s.summary), icon('fa-chevron-right', 'an-rp-chev'));
+      sec.append(title);
+      // A folded section's controls are not built at all.
+      if (shown) { const body = element('div', 'an-rp-body'); body.append(...SECTIONS[s.id](c)); sec.append(body); }
+      parts.push(sec);
+    }
+    box.replaceChildren(...parts);
+    place();
+  };
+  const place = () => {
+    const r = box.getBoundingClientRect(), at = open_.client ?? { x: 6, y: 6 };
+    box.style.left = `${Math.max(6, Math.min(at.x, window.innerWidth - r.width - 6))}px`;
+    box.style.top = `${Math.max(6, Math.min(at.y, window.innerHeight - r.height - 6))}px`;
+  };
+  return {
+    open(what) {
+      close(); forget();
+      open_ = what; box = element('div', 'an-region-panel'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Region');
+      document.body.append(box); draw();
+      document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true);
+    },
+    close,
+    get isOpen() { return !!box; },
+  };
+}

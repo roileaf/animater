@@ -59,7 +59,8 @@ const caveParts = (menu, act, kind) => {
   parts.push(element('div', 'an-step-label', 'Stage'), chips(menu.steps.map((name, i) => [i, name]), menu.step, (i) => act({ caveStep: i })));
   return parts;
 };
-const choice = (options, value, label, change) => {
+// A drop-down of [value, label, group?] options. (The region panel builds its drop-downs with it too.)
+export const choice = (options, value, label, change) => {
   const select = element('select'); select.setAttribute('aria-label', label);
   const groups = new Map();
   for (const [v, l, group] of options) {

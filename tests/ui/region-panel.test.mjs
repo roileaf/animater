@@ -1,0 +1,319 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { kindFlags } from '../../scripts/ui/region-panel-model.mjs';
+import { waterKindFlags, changeStep, caveKindFlags } from '../../scripts/engines/motion/region-steps.mjs';
+
+// A small DOM, just enough to build the panel and click through it: elements with children, attributes and listeners.
+function installDom() {
+  const saved = { document: globalThis.document, window: globalThis.window };
+  const docListeners = [];
+  const make = (tag) => ({
+    tagName: tag.toUpperCase(), className: '', textContent: '', children: [], attrs: {}, listeners: {}, style: {}, parent: null, value: '', type: '',
+    append(...kids) { for (const k of kids) { if (typeof k !== 'object') continue; k.parent = this; this.children.push(k); } },
+    replaceChildren(...kids) { this.children = []; this.append(...kids); },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; },
+    contains(t) { for (let n = t; n; n = n.parent) if (n === this) return true; return false; },
+    setAttribute(k, v) { this.attrs[k] = String(v); }, getAttribute(k) { return this.attrs[k] ?? null; },
+    addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); },
+    getBoundingClientRect: () => ({ width: 312, height: 400 }),
+  });
+  const body = make('body');
+  globalThis.document = {
+    createElement: make, body,
+    addEventListener: (type, fn) => docListeners.push({ type, fn }),
+    removeEventListener: (type, fn) => { const i = docListeners.findIndex((l) => l.type === type && l.fn === fn); if (i >= 0) docListeners.splice(i, 1); },
+  };
+  globalThis.window = { innerWidth: 1200, innerHeight: 800 };
+  const fireDoc = (type, event) => { for (const l of docListeners.filter((x) => x.type === type)) l.fn({ stopPropagation() {}, preventDefault() {}, ...event }); };
+  return { body, docListeners, fireDoc, restore() { globalThis.document = saved.document; globalThis.window = saved.window; } };
+}
+const walk = function* (n) { yield n; for (const c of n.children ?? []) yield* walk(c); };
+const textOf = (n) => [...walk(n)].map((x) => x.textContent).join('');
+const fire = (n, type, extra = {}) => { const e = { target: n, defaultPrevented: false, preventDefault() { e.defaultPrevented = true; }, stopPropagation() {}, ...extra }; for (const fn of n.listeners[type] ?? []) fn(e); return e; };
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+// Opens the panel on one region; `saves` records every save, and flagsOf follows them unless `stick` keeps the region as it was.
+async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false } = {}) {
+  const dom = installDom();
+  const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
+  const doc = { name: 'Mill pond' };
+  let own = structuredClone(start), reads = 0;
+  const saves = [], edits = [];
+  const panel = createRegionPanel({
+    flagsOf: () => { reads++; return own; },
+    save: (d, flags) => { saves.push(flags); if (reject) return Promise.reject(new Error('no')); if (!stick) own = { ...own, ...flags }; return Promise.resolve(); },
+    edit: (d) => edits.push(d), texture, season,
+    presets: () => ['Haunted', 'Forge'], weathers: () => [['fog', 'Fog'], ['rain', 'Rain']],
+  });
+  panel.open({ doc, floor, at: { x: 5, y: 6 }, client: { x: 10, y: 10 }, regions: [{ doc, floor }], first: doc });
+  const root = () => dom.body.children[0];
+  const find = (pred) => [...walk(root())].find(pred) ?? null;
+  const byLabel = (label) => find((n) => n.attrs['aria-label'] === label);
+  const section = (id) => find((n) => n.attrs['data-section'] === id);
+  const openSection = (id) => { const s = section(id); assert.ok(s, `section ${id} shown`); if (s.attrs['data-open'] !== 'true') fire(s.children[0], 'click'); return section(id); };
+  const button = (text, within = root()) => [...walk(within)].find((n) => n.tagName === 'BUTTON' && textOf(n).trim() === text) ?? null;
+  const pick = async (n, value) => { n.value = String(value); fire(n, 'change'); await tick(); };
+  const click = async (n) => { assert.ok(n, 'control shown'); fire(n, 'click'); await tick(); };
+  const more = async (id) => click([...walk(section(id))].find((n) => n.className?.includes('an-rp-more') && n.attrs['aria-expanded'] === 'false'));
+  return { dom, panel, doc, saves, edits, root, find, byLabel, section, openSection, button, pick, click, more, own: () => own, reads: () => reads, done: () => { panel.close(); dom.restore(); } };
+}
+
+test('clicking a kind saves what makes the region that kind', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  await t.click(t.byLabel('Water'));
+  assert.deepEqual(t.saves, [kindFlags('water', { floor: 'grass' })]);
+  assert.equal(t.byLabel('Water').attrs['aria-pressed'], 'true', 'now drawn as water');
+  assert.ok(t.section('water'), 'with the water section');
+  t.done();
+});
+
+test('a section title folds it open and shut without saving', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  assert.equal(t.section('ground').attrs['data-open'], 'true', 'the first section starts open');
+  assert.equal(t.section('steps').children.length, 1, 'a folded section has no body built');
+  t.openSection('steps');
+  assert.equal(t.section('steps').attrs['data-open'], 'true');
+  assert.equal(t.section('steps').children.length, 2);
+  fire(t.section('steps').children[0], 'click');
+  assert.equal(t.section('steps').attrs['data-open'], 'false');
+  assert.deepEqual(t.saves, []);
+  t.done();
+});
+
+test('an animal card steps its amount up on a click and down on a right-click', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  t.openSection('animals');
+  await t.click(t.find((n) => n.attrs['aria-label']?.startsWith('Cows')));
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: 'few' } });
+  const card = t.find((n) => n.attrs['aria-label']?.startsWith('Cows'));
+  assert.match(card.attrs['aria-label'], /Few/);
+  assert.equal(card.children.at(-1).children.filter((d) => d.className.includes('an-rp-on')).length, 1, 'one dot of four lit');
+  const e = fire(card, 'contextmenu'); await tick();
+  assert.equal(e.defaultPrevented, true, 'no browser menu');
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '' } });
+  t.done();
+});
+
+test('a right-click keeps the other animals as they are', async () => {
+  const t = await setup({ floor: 'grass', regionAnimals: { cows: 'few', sheep: 'usual' } }, 'grass');
+  assert.equal(t.section('animals').attrs['data-open'], 'true', 'a field with animals opens on them');
+  fire(t.find((n) => n.attrs['aria-label']?.startsWith('Cows')), 'contextmenu'); await tick();
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '', sheep: 'usual' } });
+  fire(t.find((n) => n.attrs['aria-label']?.startsWith('Cows')), 'contextmenu'); await tick();
+  assert.equal(t.saves.length, 1, 'none is the least: nothing more to save');
+  t.done();
+});
+
+test('the animals size slider saves a number', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  t.openSection('animals');
+  const slider = t.byLabel('Their size');
+  assert.equal(slider.min, '0.5'); assert.equal(slider.max, '2'); assert.equal(slider.step, '0.05');
+  await t.pick(slider, 1.4);
+  assert.deepEqual(t.saves.at(-1), { regionAnimalSize: 1.4 });
+  t.done();
+});
+
+test('animal sounds and keep out save their flags', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  t.openSection('animals');
+  await t.click(t.byLabel('Animal sounds'));
+  assert.deepEqual(t.saves.at(-1), { animalSound: 'off' });
+  await t.click(t.find((n) => n.className === 'an-rp-more' && textOf(n) === 'Keep out: none'));
+  await t.click(t.button('Wolves', t.find((n) => n.className === 'an-rp-chips')));
+  assert.deepEqual(t.saves.at(-1), { keepOut: { wolves: true } });
+  t.done();
+});
+
+test('a save that fails redraws the panel from the region as it is', async () => {
+  const t = await setup({ floor: 'water' }, 'water', { reject: true });
+  const before = t.reads();
+  await t.click(t.byLabel('Reflections'));
+  assert.deepEqual(t.saves, [{ reflections: 'off' }]);
+  assert.ok(t.reads() > before, 'read the flags again');
+  assert.equal(t.byLabel('Reflections').attrs['aria-checked'], 'true', 'still shows reflections on');
+  t.done();
+});
+
+test('Escape closes the panel', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  assert.equal(t.panel.isOpen, true);
+  t.dom.fireDoc('keydown', { key: 'Escape' });
+  assert.equal(t.panel.isOpen, false);
+  assert.equal(t.dom.body.children.length, 0);
+  assert.equal(t.dom.docListeners.length, 0, 'its listeners go with it');
+  t.dom.restore();
+});
+
+test('the close button and a click outside close it too', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  await t.click(t.byLabel('Close'));
+  assert.equal(t.panel.isOpen, false);
+  t.dom.restore();
+  const u = await setup({ floor: 'grass' }, 'grass');
+  u.dom.fireDoc('pointerdown', { target: u.byLabel('Water') });
+  assert.equal(u.panel.isOpen, true, 'a click inside keeps it');
+  u.dom.fireDoc('pointerdown', { target: {} });
+  assert.equal(u.panel.isOpen, false);
+  u.dom.restore();
+});
+
+test('water: its kind, way, depth, reflections, freezing and sound', async () => {
+  const t = await setup({ floor: 'water' }, 'water');
+  await t.click(t.button('River', t.byLabel('Kind of water')));
+  assert.deepEqual(t.saves.at(-1), waterKindFlags({ floor: 'water' }, 'river'));
+  await t.click(t.byLabel('North'));
+  assert.deepEqual(t.saves.at(-1), { flowTo: 'n' });
+  await t.click(t.button('Swift', t.byLabel('Current')));
+  assert.deepEqual(t.saves.at(-1), { current: 'swift' });
+  await t.pick(t.byLabel('How deep the water is'), 'deep');
+  assert.deepEqual(t.saves.at(-1), { waterDepth: 'deep' });
+  await t.click(t.byLabel('Reflections'));
+  assert.deepEqual(t.saves.at(-1), { reflections: 'off' });
+  await t.click(t.byLabel('Freezes in the cold'));
+  assert.deepEqual(t.saves.at(-1), { noFreeze: true });
+  await t.click(t.byLabel('Water sound'));
+  assert.deepEqual(t.saves.at(-1), { regionSound: 'off' });
+  t.done();
+});
+
+test('water: the sea has its waves and beach, and drips, coast and waterfall fold under More', async () => {
+  const t = await setup({ floor: 'water', waterKind: 'sea' }, 'water');
+  await t.click(t.byLabel('Waves toward').children.find((b) => b.attrs['aria-label'] === 'East'));
+  assert.deepEqual(t.saves.at(-1), { waveTo: 'e' });
+  await t.click(t.byLabel('Beach along the shore'));
+  assert.deepEqual(t.saves.at(-1), { seaBeach: 'off' });
+  assert.equal(t.byLabel('Drips from the ceiling'), null, 'folded away');
+  await t.more('water');
+  await t.click(t.byLabel('Drips from the ceiling'));
+  assert.deepEqual(t.saves.at(-1), { drips: true });
+  await t.click(t.byLabel('Coast waves and tide'));
+  assert.deepEqual(t.saves.at(-1), { sea: true });
+  await t.click(t.byLabel('Waterfall spray'));
+  assert.deepEqual(t.saves.at(-1), { waterfall: true });
+  t.done();
+});
+
+test('no Moving water switch anywhere', async () => {
+  const t = await setup({ floor: 'water' }, 'water');
+  for (const id of ['water', 'steps', 'animals', 'air', 'look']) t.openSection(id);
+  await t.more('water');
+  assert.equal(t.find((n) => /moving water/i.test(n.textContent) || /moving water/i.test(n.attrs['aria-label'] ?? '')), null);
+  t.done();
+});
+
+test('ground: its floor, seasons, texture and pattern size', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass', { texture: (own) => own.texture === 'on' });
+  await t.pick(t.byLabel('Floor'), 'sand');
+  assert.deepEqual(t.saves.at(-1), { floor: 'sand' });
+  await t.pick(t.byLabel('Floor'), 'grass');
+  await t.click(t.byLabel('Changes with the seasons'));
+  assert.deepEqual(t.saves.at(-1), { season: 'on' });
+  await t.click(t.byLabel('Floor texture'));
+  assert.deepEqual(t.saves.at(-1), { texture: 'on' });
+  await t.pick(t.byLabel('Pattern size'), 1.5);
+  assert.deepEqual(t.saves.at(-1), { stepScale: 1.5 });
+  await t.pick(t.byLabel('Texture style'), 'clover');
+  assert.deepEqual(t.saves.at(-1), { textureStyles: { grass: 'clover' } });
+  t.done();
+});
+
+test('air: weather, climate, tavern, openings and the edge', async () => {
+  const t = await setup({ floor: 'wood', indoors: true }, 'wood');
+  t.openSection('air');
+  await t.pick(t.byLabel('Weather here'), 'fog');
+  assert.deepEqual(t.saves.at(-1), { regionWeather: 'fog' });
+  await t.click(t.button('Cold', t.byLabel('Climate here')));
+  assert.deepEqual(t.saves.at(-1), { cold: 'cold' });
+  await t.click(t.byLabel('Tavern murmur'));
+  assert.deepEqual(t.saves.at(-1), { tavern: true });
+  await t.click(t.byLabel('Opens to the outside'));
+  assert.deepEqual(t.saves.at(-1), { opensOutside: true });
+  await t.click(t.byLabel('Open to the sky'));
+  assert.deepEqual(t.saves.at(-1), { openSky: true });
+  await t.pick(t.byLabel('Window in it'), 'rose');
+  assert.deepEqual(t.saves.at(-1), { skyWindow: 'rose' });
+  await t.pick(t.byLabel('Window pattern size'), 1.25);
+  assert.deepEqual(t.saves.at(-1), { skyPattern: 1.25 });
+  await t.more('air');
+  await t.pick(t.byLabel('Weather edge'), 1.2);
+  assert.deepEqual(t.saves.at(-1), { indoorEdge: 1.2 });
+  t.done();
+});
+
+test('cave: what it holds, and its drips with their pace and pool', async () => {
+  const t = await setup({ cavern: 'fungus-green' }, 'cavern');
+  await t.click(t.button('Crystals', t.byLabel("What's here")));
+  assert.deepEqual(t.saves.at(-1), caveKindFlags({ cavern: 'fungus-green' }, 'crystals'));
+  await t.click(t.button('Rose', t.byLabel('Stone')));
+  assert.deepEqual(t.saves.at(-1), { cavern: 'crystals-rose' });
+  t.openSection('drips');
+  await t.click(t.byLabel('Drips from the ceiling'));
+  assert.deepEqual(t.saves.at(-1), { drips: true });
+  await t.click(t.button('Fast', t.byLabel('Drip pace')));
+  assert.deepEqual(t.saves.at(-1), { dripPace: 'fast' });
+  await t.click(t.button('Pool', t.byLabel('Pool depth')));
+  assert.deepEqual(t.saves.at(-1), { dripDepth: 'pool' });
+  await t.click(t.byLabel('Dripping sound'));
+  assert.deepEqual(t.saves.at(-1), { regionSound: 'off' });
+  t.done();
+});
+
+test('dock: how it is built, its posts and its shadow', async () => {
+  const t = await setup({ floor: 'wood', overWater: true }, 'wood');
+  await t.click(t.button('Old boards', t.byLabel('Built as')));
+  assert.deepEqual(t.saves.at(-1), { dockStyle: 'old' });
+  await t.click(t.byLabel('Posts'));
+  assert.deepEqual(t.saves.at(-1), { overPosts: false });
+  await t.pick(t.byLabel('Its shadow'), 'slats');
+  assert.deepEqual(t.saves.at(-1), { overShadows: { wood: 'slats' } });
+  await t.more('deck');
+  await t.pick(t.byLabel('Shadow softness'), 0.3);
+  assert.deepEqual(t.saves.at(-1), { overShadowSoft: 0.3 });
+  await t.pick(t.byLabel('Shadow darkness'), 0.6);
+  assert.deepEqual(t.saves.at(-1), { overShadowDark: 0.6 });
+  await t.click(t.byLabel('Casts a shadow'));
+  assert.deepEqual(t.saves.at(-1), { castShadow: false });
+  t.done();
+});
+
+test('steps: a chip moves to that step, and Edit steps opens the list', async () => {
+  const t = await setup({ floor: 'water' }, 'water');
+  t.openSection('steps');
+  const chips = t.find((n) => n.className === 'an-rp-steps');
+  const second = chips.children[1];
+  await t.click(second);
+  assert.deepEqual(t.saves.at(-1), changeStep({ floor: 'water' }, 'water', 1, { x: 5, y: 6 }));
+  await t.click(t.button('Edit steps…'));
+  assert.equal(t.edits.length, 1);
+  assert.equal(t.panel.isOpen, false, 'the panel makes way for the list');
+  t.dom.restore();
+});
+
+test('look: the creatures inside wear a Tokenshade look', async () => {
+  const t = await setup({ floor: 'water' }, 'water');
+  t.openSection('look');
+  await t.pick(t.byLabel('Animater look'), 'Haunted');
+  assert.deepEqual(t.saves.at(-1), { tokenshade: 'Haunted' });
+  await t.click(t.byLabel('Floor texture'));
+  assert.deepEqual(t.saves.at(-1), { texture: 'on' });
+  await t.more('look');
+  await t.click(t.byLabel('Soft edge'));
+  assert.deepEqual(t.saves.at(-1), { stepEdgeOff: true });
+  t.done();
+});
+
+test('switching kind to lava from a cave follows the new floor', async () => {
+  const t = await setup({ cavern: 'fungus-green' }, 'cavern');
+  await t.click(t.button('Lava', t.byLabel("What's here")));
+  assert.equal(t.byLabel('Lava').attrs['aria-pressed'], 'true', 'drawn as lava now');
+  t.done();
+});
+
+test('long explanations are tooltips, not paragraphs', async () => {
+  const t = await setup({ floor: 'water' }, 'water');
+  for (const id of ['water', 'steps', 'animals', 'air', 'look']) t.openSection(id);
+  assert.equal(t.find((n) => n.tagName === 'P'), null);
+  assert.ok(t.find((n) => n.attrs['data-tooltip']), 'some tooltips');
+  t.done();
+});
