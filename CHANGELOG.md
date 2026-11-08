@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- **Season colours can be turned off for a scene.** Scene configuration → Animater → Season colours on the ground: Off keeps a map as painted. With a scene's floor on Grass, the season's colour covered the whole map, its painted paths and trees too.
+## 3.8.5
 
+- **Season colours can be turned off for a scene.** Scene configuration → Animater → Season colours on the ground: Off keeps a map as painted. With a scene's floor on Grass, the season's colour covered the whole map, its painted paths and trees too.
 - **The hawk's shadow shows again, and high birds' shadows are easier to see.** A hawk circling high cast a shadow at about one hundredth of full strength, and the painted birds' soft shadows copied only a corner of the picture. High birds (the hawk, crows, gulls, herons) now cast a soft shadow as dark as the light makes it, landing further off the higher they fly.
 
 ## 3.8.4
