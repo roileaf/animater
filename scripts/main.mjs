@@ -3169,6 +3169,19 @@ const startAnimalAim = (kind, done) => {
   window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("contextmenu", menu, true);
 };
 Hooks.on("canvasTearDown", () => { stopAnimalAim(); });
+// Why no animal shows, when that is not plain from the panel: the settings, this screen's quality, or a map with no ground
+// they live on (its floor, or all of it roofed or walled in).
+const wildNote = () => {
+  if (undergroundScene()) return "";
+  let quality = 2;
+  try { if (hotSetting("wildlife") === false || hotSetting("wildlifeLocal") === false) return "Animals in the wild is off in the Animater settings, so none will show."; quality = qualityRank(localQuality()); } catch { return ""; }
+  if (quality < 2) return "Your Animater quality is Low or Off, so no animals show on this screen. Balanced or higher shows them.";
+  if (!outdoorLifeHere() || !wildOpen || wildOpen.spots.length || wildOpen.waters.length) return "";
+  const floor = sceneFloorNow();
+  return WILD_FLOORS.has(floor)
+    ? "No open ground here: all of this map is under a roof or walled in. Animals live outdoors."
+    : `No ground here for animals: this map's floor is ${floor}, and they live on grass, dirt, snow, mud or sand. Set Floor in Scene configuration → Animater, or paint ground regions with one of those floors.`;
+};
 const openAnimalsPanel = () => {
   animalsPanelApp ??= new (animalsPanel(ApplicationV2, {
     id: ID,
@@ -3178,7 +3191,7 @@ const openAnimalsPanel = () => {
     scopeTo: (mode) => { animalScope = mode; },
     clearLevel: () => saveAnimals(clearedOwn(levelOf(canvas?.scene), ANIMAL_KEYS)),
     count: () => { try { const w = wildlife.counts, p = pondLife.counts, f = fieldLife.counts ?? {}; return (w.rabbits + w.songbirds + w.fish + p.ducks + p.herons + p.gulls + p.frogs + (f.deer ?? 0) + (f.foxes ?? 0) + (f.wolves ?? 0) + (f.squirrels ?? 0) + (f.snakes ?? 0)) || 0; } catch { return 0; } },
-    note: () => (!undergroundScene() && !outdoorOn("wildlife") ? "Animals in the wild is off in the Animater settings, so none will show." : ""),
+    note: () => wildNote(),
     aim: startAnimalAim,
     stopAim: stopAnimalAim,
     reshuffle: () => { wildKey = null; lifeSoon(); },
