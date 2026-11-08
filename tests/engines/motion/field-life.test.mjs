@@ -318,11 +318,9 @@ test('wolves, squirrels and snakes each have their own keep-out', async () => {
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8'), field = readFileSync(new URL('../../../scripts/engines/motion/field-life.mjs', import.meta.url), 'utf8');
   for (const kind of ['wolves', 'squirrels', 'snakes']) {
     assert.ok(new RegExp('const KEEP_OUT = \\[[^\\]]*"' + kind + '"').test(main), kind + ' is a kind');
-    assert.ok(main.includes('keepBox("' + kind + '",'), kind + ' has a box');
     assert.ok(new RegExp('regions: JSON\\.stringify\\(\\[\\[[^\\]]*"' + kind + '"').test(main), kind + ' ticked is noticed at once');
     assert.ok(field.includes("ok('" + kind + "', x, y)"), kind + ' asks after itself');
   }
-  assert.ok(main.includes('keepBox("all", "All animals")'), 'an All animals box');
   assert.ok(main.includes('if (keepsOut(own, kind))'), 'which counts for every kind');
 });
 

@@ -139,6 +139,5 @@ test('portrait blood grows with the wound and keeps its place', async () => {
 
 test('a region says its own climate and weather; Arms Reach decides when it is on', () => {
   assert.match(main, /cold = regionClimateAt\(feet, d\.elevation \?\? 0\) \?\?/);
-  assert.match(main, /select\("regionWeather"/);
   assert.match(main, /game\.modules\.get\("arms-reach"\)/);
 });

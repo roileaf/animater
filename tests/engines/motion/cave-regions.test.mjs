@@ -69,7 +69,6 @@ test('the floor list says Cavern, for a region only', async () => {
   assert.ok(!FLOOR_CHOICES.some(([, l]) => l === 'Lava'));
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /FLOOR_CHOICES\.filter\(\(\[v\]\) => cavern \|\| v !== "lava" \|\| value === "lava"\)/);
-  assert.match(main, /undefined, \{ cavern: true \}\),/);
 });
 
 test('a room fades the weather in at its edge, half a square unless told', async () => {
@@ -79,7 +78,6 @@ test('a room fades the weather in at its edge, half a square unless told', async
   assert.match(main, /area\.soft = soft; out\.push\(area\)/);
   assert.match(main, /indoorSoft: skyIndoors\.map\(\(p\) => p\.soft \?\? 0\)/);
   assert.match(main, /areas: \{ body: unroofed, bodySoft, rooms, roomSoft,/);
-  assert.match(main, /name="flags\.\$\{ID\}\.indoorEdge"/);
 });
 
 test('the sun\'s layers fade in at a room\'s edge as the weather does', async () => {

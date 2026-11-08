@@ -43,7 +43,8 @@ test('a window\'s pattern size: smaller for more panes, bigger for fewer; the cr
   assert.deepEqual(windowPrint('cross', 2), windowPrint('cross', 1));
   assert.equal(at('mosaicWindow', { pattern: 1.5 }).scale, 1.5);
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /name="flags\.\$\{ID\}\.windowPattern"/); assert.match(main, /name="flags\.\$\{ID\}\.skyPattern"/);
+  assert.match(main, /name="flags\.\$\{ID\}\.windowPattern"/);
+  // (A region's skyPattern is set from the right-click panel: tests/ui/region-panel.test.mjs.)
 });
 
 test('a window that opens is two leaves in its light: the bar where they meet, each leaf\'s panes its own', () => {

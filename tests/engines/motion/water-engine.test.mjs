@@ -195,7 +195,6 @@ test('a region standing over water is taken out of it, not made a hole in it', a
   assert.match(engine, /takenOut\(held\.data,/, 'taken out of what shows, not made a hole: one past the water\'s edge would fill in on the land beyond');
   assert.ok(!/shapeOf\([^\n]*cuts\)/.test(engine), 'only what shows is cut: the water, its waves and its shores run on beneath');
   assert.match(engine, /\(spec\.over \?\? \[\]\)\.map\(\(o\) => \[o\.areas,/, 'changing the dock redraws the water');
-  assert.ok(main.includes('box("overWater")'), 'the box');
   assert.ok(main.includes('r.flags?.[ID]?.overWater === true'), 'off unless ticked');
   assert.ok(main.includes('!onBeach(x, y) && !overDock(x, y)'), 'nothing swims under it');
   assert.ok(main.includes('if (overWater || regionFloor('), 'ticking it is noticed at once');

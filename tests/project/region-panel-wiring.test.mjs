@@ -33,3 +33,24 @@ test('only the GM opens it', () => {
   assert.match(body, /regionPanel\.open\(/);
   assert.match(body, /regionsUnder\(/);
 });
+
+// The region window's Animater tab only points to the panel: every setting it held now lives there.
+const tabHook = (() => { const at = main.indexOf('Hooks.on("renderRegionConfig"'); return main.slice(at, main.indexOf('\nHooks.once("ready"', at)); })();
+
+test('the region window tab is a pointer to the right-click panel', () => {
+  assert.ok(tabHook.length > 100);
+  assert.match(tabHook, /Right-click the region on the map to set it up\./);
+  assert.match(tabHook, /data-animater-open-panel/);
+  assert.match(tabHook, /Open its panel/);
+  assert.match(tabHook, /regionPanel\.open\(/);
+  assert.match(tabHook, /game\.user\?\.isGM/);
+  assert.match(tabHook, /\.close\(\)/);
+  assert.doesNotMatch(tabHook, /field\("This is the sea"/);
+  assert.doesNotMatch(tabHook, /regionAnimalsHtml\(/);
+  assert.doesNotMatch(tabHook, /floorSelect\(/);
+  assert.doesNotMatch(tabHook, /data-animater-cavein|bringCeilingDown|clearRubble|openSteps/);
+});
+
+test('nothing of the old tab is left behind', () => {
+  assert.doesNotMatch(main, /regionAnimalsHtml/);
+});

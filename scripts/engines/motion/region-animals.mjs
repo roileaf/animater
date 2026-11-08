@@ -36,16 +36,3 @@ export const animalSizeOf = (own) => {
   return Number.isFinite(n) ? Math.min(ANIMAL_SIZE.max, Math.max(ANIMAL_SIZE.min, n)) : 1;
 };
 export const regionAnimalSize = (own = {}) => animalSizeOf(own);
-
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-// The region's settings (pure): a row of amounts for each kind, as chips (radio buttons), saved with the region by its form.
-export function regionAnimalsHtml(own = {}, id = 'animater') {
-  const chips = (name, now, choices) => `<div class="animater-region-chips">${choices.map(([v, l]) => `<label><input type="radio" name="${name}" value="${esc(v)}"${v === now ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div>`;
-  const rows = REGION_ANIMAL_GROUPS.map(([group, list]) => `<h4>${esc(group)}</h4>${list.map(([kind, label]) => `<div class="form-group animater-region-animal"><label>${esc(label)}</label>${chips(`flags.${id}.regionAnimals.${kind}`, amountOf(own, kind), REGION_AMOUNTS)}</div>`).join('')}`).join('');
-  const size = own?.regionAnimalSize === 'small' || own?.regionAnimalSize === 'big' ? own.regionAnimalSize : '';
-  return `<fieldset class="animater-region-animals"><legend>Animals in this region</legend>
-    <p class="hint">They live here and stay inside it, besides the scene's own animals. Scared out, they come back once it is quiet. Each screen has its own; nothing is saved as they move.</p>
-    ${rows}
-    <div class="form-group animater-region-animal"><label>Their size</label>${chips(`flags.${id}.regionAnimalSize`, size, [['small', 'Small'], ['', 'Usual'], ['big', 'Big']])}</div>
-  </fieldset>`;
-}

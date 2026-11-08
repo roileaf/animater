@@ -3841,14 +3841,6 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-blast-edit .animater-blast-swatch { height: 84px; margin: 0 0 8px; border-radius: 6px; background: radial-gradient(circle at 50% 50%, var(--b) 0, var(--a) 22%, transparent 52%), radial-gradient(circle at 50% 50%, transparent 40%, color-mix(in srgb, var(--a) 45%, transparent) 47%, transparent 54%), #3b4031; }
 
 /* A region's own animals (Region configuration > Animater): a row of amounts for each kind, as chips. */
-.animater-region-animals h4 { margin: 8px 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.75; border: 0; }
-.animater-region-animal { align-items: center; }
-.animater-region-chips { display: flex; flex: 2; gap: 3px; }
-.animater-region-chips label { position: relative; flex: 1; margin: 0; cursor: pointer; }
-.animater-region-chips input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; pointer-events: none; }
-.animater-region-chips span { display: block; text-align: center; padding: 2px 0; font-size: 11px; border: 1px solid var(--color-border, #444); border-radius: 4px; opacity: 0.8; }
-.animater-region-chips input:checked + span { border-color: var(--color-warm-2, #c9a35b); color: var(--color-warm-2, #c9a35b); opacity: 1; background: rgba(201, 163, 91, 0.12); }
-.animater-region-chips input:focus-visible + span { outline: 1px solid var(--color-warm-2, #c9a35b); }
 /* The right-click region panel (scripts/ui/region-panel.mjs): what the region is, then folding sections. */
 .an-region-panel { --rp-line: #34363f; --rp-soft: #2a2c34; --rp-text: #e8e6e1; --rp-dim: #9a9aa2; --rp-gold: #c9a35b; --rp-gold-bg: rgba(201, 163, 91, 0.14); position: fixed; z-index: 1000; width: 312px; max-height: calc(100vh - 12px); overflow-y: auto; color: var(--rp-text); background: rgba(24, 25, 30, 0.97); border: 1px solid var(--rp-line); border-radius: 10px; box-shadow: 0 10px 30px #000a; font-size: 13px; line-height: 1.4; }
 .an-region-panel button { width: auto; min-height: 0; height: auto; line-height: 1.3; margin: 0; padding: 0; font: inherit; color: inherit; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; }

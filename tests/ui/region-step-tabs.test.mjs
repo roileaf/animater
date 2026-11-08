@@ -18,17 +18,13 @@ test('two that would read alike say their floor, and an unnamed one goes by its 
 
 test('nothing listed: no tabs', () => { assert.deepEqual(stepTabs(), []); });
 
-test('the menu offers Stands over water on what is not water', async () => {
-  const { readFileSync } = await import('node:fs');
-  const ui = readFileSync(new URL('../../scripts/ui/region-steps-ui.mjs', import.meta.url), 'utf8');
-  assert.ok(ui.includes("if (menu.reflections === null && !molten) parts.push(tick('Stands over water', own.overWater === true,"));
-});
-
 test('pattern size moves in fives, so it can be exactly 100%', async () => {
   const { readFileSync } = await import('node:fs');
   const { STEP_SCALE } = await import('../../scripts/engines/motion/region-steps.mjs');
   const ui = readFileSync(new URL('../../scripts/ui/region-steps-ui.mjs', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../../scripts/ui/region-panel-sections.mjs', import.meta.url), 'utf8');
   assert.match(ui, /slider_\('Pattern size'[^\n]*, change, 0\.05\);/);
+  assert.match(panel, /range\('Pattern size'[^\n]*, 0\.05,/);
   assert.equal(Math.round((1 - STEP_SCALE.min) / 0.05) * 0.05 + STEP_SCALE.min, 1);
 });
 

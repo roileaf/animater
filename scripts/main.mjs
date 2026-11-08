@@ -187,7 +187,7 @@ import { cutOutArt } from "./engines/playback/art-crop.mjs";
 import { createTethers, createTetherPreview } from "./engines/playback/tethers.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
-import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, SKY_WINDOWS, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
+import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
@@ -217,13 +217,13 @@ import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, th
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, overShadowChoices, DOCK_STYLES, dockStyleOf, showsPosts, caveHasMenu, caveLook, INDOOR_EDGE, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
+import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveHasMenu, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
-import { regionAnimalCounts, regionHasAnimals, regionAnimalsHtml, regionAnimalSize, townLevelOf } from "./engines/motion/region-animals.mjs";
+import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, BLAST_BORROWS, blastRipple, aimSquares, stepSquares, meltsSnow, meltSpots, meltsFilled } from "./engines/motion/energy-blast.mjs";
 import { REACTION_SECONDS, caughtBy, createBlastReactions, pushedTo, reactionOf, reactionSecondsOf } from "./engines/motion/blast-reactions.mjs";
@@ -8959,18 +8959,13 @@ onTokenConfig((app, html) => {
 });
 for (const hook of ['closeTokenConfig', 'closePrototypeTokenConfig']) Hooks.on(hook, (app) => movementConfigCleanup.get(app)?.());
 Hooks.on('canvasTearDown', () => { for (const stop of movementConfigStops) stop(); });
-// Animater's region options, on a tab of their own in Region configuration (grouped, and scrolling on their own).
+// Animater's tab in Region configuration: a pointer to the panel a right-click on the region opens, where its settings are.
 Hooks.on("renderRegionConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
-  if (!root || root.querySelector(`[name="flags.${ID}.floor"]`)) return;
+  if (!root || root.querySelector(".animater-region")) return;
   const nav = root.querySelector("nav.sheet-tabs, nav.tabs"), sibling = root.querySelector('.tab[data-group="sheet"]') ?? root.querySelector(".tab");
   if (!sibling) return;
-  const own = app.document?.flags?.[ID] ?? {}, group = sibling.dataset.group ?? "sheet", active = app.tabGroups?.[group] === "animater";
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  const select = (name, value, options) => `<select name="flags.${ID}.${name}">${options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select>`;
-  const field = (label, input, hint) => { const div = document.createElement("div"); div.className = "form-group"; div.innerHTML = `<label>${label}</label><div class="form-fields">${input}</div><p class="hint">${hint}</p>`; return div; };
-  const box = (name) => `<input type="checkbox" name="flags.${ID}.${name}"${own[name] ? " checked" : ""}>`;
-  const section = (title, ...fields) => { const set = document.createElement("fieldset"); set.innerHTML = `<legend>${title}</legend>`; set.append(...fields); return set; };
+  const group = sibling.dataset.group ?? "sheet", active = app.tabGroups?.[group] === "animater";
   // The tab and its button.
   const tab = document.createElement("section");
   tab.className = `tab animater-region scrollable${active ? " active" : ""}`;
@@ -8984,67 +8979,23 @@ Hooks.on("renderRegionConfig", (app, html) => {
     nav.append(button);
   }
   if (active) { for (const t of root.querySelectorAll(`.tab[data-group="${group}"]`)) t.classList.remove("active"); for (const a of nav?.querySelectorAll(`[data-group="${group}"]`) ?? []) a.classList.toggle("active", a.dataset.tab === "animater"); }
-  tab.append(section("Weather and climate",
-    field("Weather here", select("regionWeather", own.regionWeather ?? "", [["", "As the scene"], ...WEATHERS.map((w) => [w, weatherLabel(w)])]), "Weather drawn only inside this region, in place of the scene's: mist in a hollow, snow on one peak, a storm over one ship. Clear keeps the scene's out. It is only the look: the wet ground, sounds and footsteps stay as the scene's."),
-    field("Climate here", select("cold", own.cold ?? "", [["", "As the scene"], ["cold", "Cold: breath shows"], ["warm", "Warm: no breath"]]), "Whether creatures' breath shows as vapor inside this region, whatever the scene's climate: a very cold cave, a walk-in larder."),
-    field("Edge softness", `<range-picker name="flags.${ID}.indoorEdge" value="${indoorEdgeOf(own)}" min="${INDOOR_EDGE.min}" max="${INDOOR_EDGE.max}" step="0.1"></range-picker>`, "When this region keeps the weather out (Suppress Weather) or is open to the sky (a hole in a roof), how far the rain, snow, sunlight, clouds and their shadows fade in at its edge, in squares. 0 is a hard line.")));
-  // The floor and its water.
-  const points = [["", "Still (lake, pond)"], ["wind", "Follows the wind"], ["n", "North"], ["ne", "North-east"], ["e", "East"], ["se", "South-east"], ["s", "South"], ["sw", "South-west"], ["w", "West"], ["nw", "North-west"]];
-  tab.append(section("Floor and water",
-    floorSelect(own.floor, "From the name (water names are water, else the scene's floor)", "The floor Animater's movement effects use inside this region, over the scene's. The sun glitters on water and sparkles on snow and ice here, and the air shimmers over sand at a hot midday. Cavern starts as lava; right-click the region to make it glowing fungus, crystals or low mist, and to set how big, how many and its stage.", undefined, { cavern: true }),
-    field("Stands over water", box("overWater"), 'A dock, a bridge, a raft: moving water and its waves run on underneath this region, unbroken, instead of over it, and its own floor is what creatures walk on. Give it an elevation and only a creature swimming below that is in the water. Off, a beach or sandbar laid over a sea stays as it is.'),
-    ...(() => { const floor = plainFloorOf(app.document), choices = overShadowChoices(floor ?? ""); return floor && floor !== "water" ? [field("Casts a shadow", `<input type="checkbox" name="flags.${ID}.castShadow"${castsShadow(own) ? " checked" : ""}>`, "This floor stands above what is below it, and throws a shadow on it, away from the sun and longer as the sun gets low. The higher above what is below it, by their elevations, the longer."), field("Its shadow", select(`overShadows.${floor}`, overShadowOf(own, floor).kind, choices), "Which shadow it throws, for this floor. Its softness and darkness are in its right-click menu."), ...(floorBody(floor).post ? [field("Built as", select("dockStyle", dockStyleOf(own), DOCK_STYLES), "Plain is just the floor and its shadow. Old boards and Railed pier show what real docks show from above: edge boards, planks, and beam ends; a railed pier has rails too, with their shadow."), ...(dockStyleOf(own) ? [field("Posts", `<input type="checkbox" name="flags.${ID}.overPosts"${showsPosts(own) ? " checked" : ""}>`, "What holds it up, along its long edges, made of its own floor: standing in the water, or on what is lower if it is raised. Off, it has no posts or beam ends.")] : [])] : [])] : []; })(),
-    field("Never freezes", box("noFreeze"), 'Water here stays open in a hard frost ("Water freezes"): a hot spring, a fast river.'),
-    field("This is the sea", box("sea"), 'Waves wash in on its shores, the wet sand moves with the tide, and crabs keep to the shore ("The coast").'),
-    field("This is a tavern", box("tavern"), 'The murmur of a crowd inside: loud in here, faint through the walls, and spilling out of an open door ("Tavern murmur"). Works on any floor.'),
-    field("This is a waterfall", box("waterfall"), 'The water here falls the way "Flows toward" points, with foam at its foot, mist and a rainbow in the spray ("Waterfalls").'),
-    field("Flows toward", select("flowTo", own.flowTo ?? "", points) + select("current", own.current ?? "", [["slower", "Very slow"], ["slow", "Slow"], ["", "Gentle"], ["swift", "Swift"]]), "For a river or stream: the way the water runs (north is up the map) and how fast. Its ripples, glints and foam are carried downstream instead of drifting with the wind."),
-    field("Reflections", select("reflections", own.reflections ?? "", [["", "On"], ["off", "Off"]]), 'Whether still water or a dripping pool here mirrors creatures, tiles, fires and the moon ("Reflections on still water"). Off in Scene configuration turns them off for every region.')));
-  // Water dripping from the ceiling: its pace and the pool it falls into show only when it drips.
-  const pace = field("Drip pace", select("dripPace", own.dripPace ?? "", [["slow", "Slow (a drop now and then)"], ["", "Steady"], ["fast", "Fast"], ["faster", "Very fast (a steady trickle)"]]), "How often the drops fall here (each spot keeps its own rhythm).");
-  const depth = field("Pool depth", select("dripDepth", own.dripDepth ?? "", [["", "A puddle (the floor plain through it)"], ["pool", "A pool"], ["deep", "Deep water (dark, the floor barely seen)"]]), "How deep the water the drops fall into: shallow shows the floor through it; deeper is darker, the floor fading, the ripples bending it more. A pool or deep water is a water floor for creatures walking through (splashes, wet steps), unless the floor above says otherwise.");
-  const drips = field("Drips from the ceiling", box("drips"), 'Water seeps through the ceiling and drips here into a pool filling the region, its rings bending the floor seen through it ("Dripping water"). Over open water, the water itself rings.');
-  const showDrips = () => { const on = drips.querySelector("input").checked; pace.hidden = !on; depth.hidden = !on; };
-  drips.querySelector("input").addEventListener("change", showDrips); showDrips();
-  tab.append(section("Dripping water", drips, pace, depth));
-  // Underground.
-  const caveKinds = [["", "None"], ["mist", "Mist on the floor"], ["fungus-green", "Glowing fungus (green)"], ["fungus-blue", "Glowing fungus (blue)"], ["fungus-violet", "Glowing fungus (violet)"], ["crystals-amethyst", "Crystals (amethyst)"], ["crystals-quartz", "Crystals (clear quartz)"], ["crystals-rose", "Crystals (rose)"], ["lava", "Lava"], ["webs", "Cobwebs"], ["wet", "Wet walls"], ["steam", "Steam vents"], ["foul", "Bad air"]];
-  tab.append(section("Underground",
-    field("Cavern", select("cavern", own.cavern ?? "", caveKinds), "What this region holds: low mist hugging the floor, glowing fungus, crystals growing out of its walls, a lava pool, cobwebs in its corners, water seeping down its walls, steam rising from its floor, or bad air that starves the fires. Each has its own setting."),
-    field("Open to the sky", box("openSky"), 'The weather reaches the floor here, whatever would keep it out: an underground scene, or a region that suppresses weather. It shows as what it leaves: wet ground, puddles, snow gathering in mounds, under a soft uneven edge. Falling rain and snow, fog and cloud stay out of the room. Lightning can come down through it, lighting the opening and throwing its light round the room, as far as walls that stop light let it. In an underground scene the sky shows too (a hole in the ceiling, a shaft, a cave mouth): daylight falls in as a pool on the floor with a shaft of light and dust turning in it, moonlight at night ("Light through openings to the sky"). Nowhere else underground does the sun or moon reach.'),
-    field("Pattern size", `<range-picker name="flags.${ID}.skyPattern" value="${patternScaleOf(own.skyPattern)}" min="${WINDOW_PATTERN.min}" max="${WINDOW_PATTERN.max}" step="0.05"></range-picker>`, "How big the window's panes are in its light: smaller for more and finer ones, bigger for fewer and larger. 1 as usual."),
-    field("Window in it", select("skyWindow", skyWindowOf(own), SKY_WINDOWS), "When it is open to the sky, what fills the opening: a glass skylight, coloured glass, leaded diamonds, a rose window or frosted glass keep the rain and snow out and let the sun in through their pattern, coloured where the glass is; a wooden lattice or an iron grate let the weather in too. None: open to the weather."),
-    field("Opens to the outside", box("opensOutside"), 'A way out to the open air here: stairs up, a cave mouth, an air shaft, a collapsed ceiling. The air indoors flows toward it through every open door ("Drafts"). Doors on the scene\'s edge standing open, and regions that lead elsewhere (teleport, change level), count without this.')));
-  // Creatures kept out of this region.
-  const kept = own.keepOut ?? {}, keepBox = (kind, label) => `<label class="checkbox"><input type="checkbox" name="flags.${ID}.keepOut.${kind}"${(kind === "all" ? kept.all === true : keepsOut({ ...kept, all: false }, kind)) ? " checked" : ""}> ${label}</label>`;
-  tab.querySelector("fieldset:last-of-type")?.append(field("Keep out", keepBox("all", "All animals") + keepBox("rats", "Rats") + keepBox("bats", "Bats") + keepBox("moths", "Moths") + keepBox("crawlers", "Crawlers") + keepBox("eyes", "Eyes") + keepBox("rabbits", "Rabbits") + keepBox("deer", "Deer") + keepBox("foxes", "Foxes") + keepBox("wolves", "Wolves") + keepBox("squirrels", "Squirrels") + keepBox("snakes", "Snakes") + keepBox("songbirds", "Songbirds") + keepBox("crows", "Crows") + keepBox("hawk", "Hawk") + keepBox("owl", "Owl") + keepBox("fish", "Fish") + keepBox("frogs", "Frogs") + keepBox("ducks", "Ducks") + keepBox("herons", "Herons") + keepBox("gulls", "Gulls") + keepBox("butterflies", "Butterflies") + keepBox("dragonflies", "Dragonflies") + keepBox("fireflies", "Fireflies") + keepBox("pigeons", "Pigeons") + keepBox("hens", "Hens") + keepBox("cats", "Cats") + keepBox("dogs", "Dogs"), "The creatures ticked never come in here: a sealed room, a shrine, a well-kept hall, a garden. High fliers pick a way round it; gulls only stop fishing there."));
-  // A cave-in (GM): the ceiling comes down over this region, its rubble kept with the scene.
+  tab.innerHTML = '<p class="hint">Right-click the region on the map to set it up.</p>';
+  // Its panel opens at the region's centre, the window closed.
   if (game.user?.isGM && app.document?.parent?.id === canvas?.scene?.id) {
-    const caveIn = field("Cave-in", `<button type="button" data-animater-cavein><i class="fa-solid fa-person-falling-burst"></i> Bring the ceiling down</button><button type="button" data-animater-clearrubble><i class="fa-solid fa-broom"></i> Clear all rubble</button>`, 'The ceiling over this region collapses now, for everyone: the view shakes, rocks fall and bounce, dust rolls out, and the rubble stays ("Cave-ins"). Clearing takes away every cave-in\'s rubble in the scene. The Animater controls have the same two buttons, to bring the ceiling down wherever you click.');
-    caveIn.querySelector("[data-animater-cavein]").addEventListener("click", () => {
-      try { const pts = regionAreas(app.document).flat(), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
-        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-        bringCeilingDown({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, radius: Math.min(canvas.grid.size * 4, Math.max(canvas.grid.size * 0.75, Math.min(x1 - x0, y1 - y0) / 2)) });
-      } catch { /* no shape */ } });
-    caveIn.querySelector("[data-animater-clearrubble]").addEventListener("click", () => { clearRubble(); });
-    tab.querySelector("fieldset:last-of-type")?.append(caveIn);
-  }
-  // Animals of its own, living inside it (engines/motion/region-animals.mjs).
-  if (!root.querySelector(".animater-region-animals")) tab.insertAdjacentHTML("beforeend", regionAnimalsHtml(own, ID));
-  // Region looks: a Tokenshade look on every creature inside.
-  if (!root.querySelector(`[name="flags.${ID}.${REGION_LOOK_FLAG}"]`)) {
-    const value = own[REGION_LOOK_FLAG] ?? "";
-    const names = tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b));
-    tab.append(section("Creatures inside", field("Animater look", select(REGION_LOOK_FLAG, value, [["", "None"], ...names.map((n) => [n, n])]), "A Tokenshade look every creature inside this region shows (it fades in as they step in and out as they leave): haunted ground, a forge’s warmth, deep water. Make your own on Animater’s Tokenshade page.")));
-  }
-  // Steps: states the GM moves this region through in play.
-  if (game.user?.isGM && app.document) {
-    const stepFloor = plainFloorOf(app.document);
-    const stepField = stepFloor
-      ? field("Steps", `<button type="button" data-animater-steps><i class="fa-solid fa-layer-group"></i> Edit steps…</button>`, 'States the GM moves this region through in play, by right-clicking it on the map ("Region steps"). Each has a look on the floor, the floor it walks as, and a region effect it switches on.')
-      : field("Steps", "", "Give this region a floor above, or a water name, to give it steps.");
-    stepField.querySelector("[data-animater-steps]")?.addEventListener("click", () => openSteps(app.document));
-    tab.append(section("Steps", stepField));
+    const open = document.createElement("button");
+    open.type = "button"; open.setAttribute("data-animater-open-panel", "");
+    open.innerHTML = '<i class="fa-solid fa-wand-sparkles"></i> Open its panel';
+    open.addEventListener("click", () => {
+      const doc = app.document;
+      try {
+        const pts = regionAreas(doc).flat(), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
+        const at = { x: Math.round((Math.min(...xs) + Math.max(...xs)) / 2), y: Math.round((Math.min(...ys) + Math.max(...ys)) / 2) }, floor = panelFloorOf(doc), screen = hoverToScreen(at);
+        if (!Number.isFinite(at.x) || !Number.isFinite(at.y)) return;
+        app.close();
+        regionPanel.open({ doc, first: doc, floor, at, client: { x: screen?.x ?? 0, y: screen?.y ?? 0 }, regions: [{ doc, floor, name: doc.name }] });
+      } catch { /* no shape */ }
+    });
+    tab.append(open);
   }
   // After the window's own tabs, before its footer (the Update button stays at the bottom).
   const tabs = root.querySelectorAll(`.tab[data-group="${group}"]`);

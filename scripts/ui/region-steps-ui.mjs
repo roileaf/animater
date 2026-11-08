@@ -1,9 +1,8 @@
-// The GM's two ways at a region's steps (engines/motion/region-steps.mjs): the menu on a right-click on the map, and the
-// list in Region configuration. Both save to the region's flags, which reach every screen.
+// The steps list the GM edits in its own window (engines/motion/region-steps.mjs), and the helpers the region panel shares.
+// It saves to the region's flags, which reach every screen.
 
 import { FLOORS } from '../engines/motion/movement-feel.mjs';
-import { floorBody } from '../engines/motion/floor-shadows.mjs';
-import { WATER_DEPTHS, WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, showsPosts, overShadowOf, STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, STEP_SPEEDS, activeStep, changeStep, defaultSteps, setStepSpeed, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu } from '../engines/motion/region-steps.mjs';
+import { STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, defaultSteps, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
 
 const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -15,7 +14,6 @@ export const stepTabs = (list = [], first = null) => {
   for (const r of ordered) count.set(nameOf(r), (count.get(nameOf(r)) ?? 0) + 1);
   return ordered.map((r) => ({ doc: r.doc, floor: r.floor, name: count.get(nameOf(r)) > 1 ? `${nameOf(r)} (${titled(r.floor)})` : nameOf(r) }));
 };
-const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'fa-water', ice: 'fa-icicles', snow: 'fa-snowflake', wood: 'fa-tree', sand: 'fa-umbrella-beach', grass: 'fa-seedling', dirt: 'fa-mountain', mud: 'fa-droplet', stone: 'fa-cubes' });
 // A tick box with its words beside it.
 const tick = (label, checked, change) => {
   const row = element('label', 'an-step-check'), box = element('input'); box.type = 'checkbox'; box.checked = checked;
@@ -47,18 +45,6 @@ const styleChoice = (own, floor, save, make) => {
   row.append(make(TEXTURE_STYLES[now] ?? [], textureStyleOf(own, now), 'Texture style', (value) => save({ textureStyles: { ...(own.textureStyles ?? {}), [now]: value } })));
   return row;
 };
-const percent = (v) => `${Math.round(v * 100)}%`;
-const chips = (options, current, pick) => { const row = element('div', 'an-step-chips'); for (const [value, label] of options) row.append(button(label, value === current ? 'an-step-on' : '', () => pick(value))); return row; };
-// What a cavern region holds: which, its colour, how big and how many, its stage. `kind` moves it to another kind.
-const caveParts = (menu, act, kind) => {
-  const parts = [];
-  if (menu.choosable) parts.push(element('div', 'an-step-label', "What's here"), chips(CAVE_CHOICES, menu.kind, kind));
-  if (!menu.steps) return parts;
-  if (menu.tones) parts.push(element('div', 'an-step-label', menu.toneLabel), chips(menu.tones, menu.tone, (tone) => act({ cavern: `${menu.kind}-${tone}` })));
-  parts.push(element('div', 'an-step-label', 'How much'), slider_('Size', menu.sizeRange, menu.size, percent, (value) => act({ caveSize: value }), 0.05), slider_('Amount', CAVE_AMOUNT, menu.amount, percent, (value) => act({ caveAmount: value }), 0.1));
-  parts.push(element('div', 'an-step-label', 'Stage'), chips(menu.steps.map((name, i) => [i, name]), menu.step, (i) => act({ caveStep: i })));
-  return parts;
-};
 // A drop-down of [value, label, group?] options. (The region panel builds its drop-downs with it too.)
 export const choice = (options, value, label, change) => {
   const select = element('select'); select.setAttribute('aria-label', label);
@@ -72,104 +58,6 @@ export const choice = (options, value, label, change) => {
   select.addEventListener('change', () => change(select.value));
   return select;
 };
-
-/**
- * The menu. open({ doc, floor, client: { x, y }, at: { x, y }, regions }) shows it by the pointer, `regions` [{ doc, floor }] all those at that spot, as tabs when there is more than one; close(). `flagsOf(doc)` the
- * region's Animater flags, `save(doc, flags)` saves some (returns a promise), `edit(doc)` opens its steps, `texture(flags)`
- * whether it paints its floor now, `season(flags)` whether the season colours it, `movingWater(flags)` whether its water moves (null: not offered).
- */
-export function createStepMenu({ flagsOf, save, edit, texture = () => false, season = () => false, movingWater = () => null }) {
-  let box = null, open_ = null;
-  const close = () => {
-    open_ = null;
-    if (!box) return;
-    box.remove(); box = null;
-    document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true);
-  };
-  const outside = (e) => { if (box && !box.contains(e.target)) close(); };
-  const escape = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
-  const draw = () => {
-    if (!open_ || !box) return;
-    const { doc, floor, at } = open_, own = flagsOf(doc) ?? {}, cave = floor === 'cavern', molten = floor === 'lava', menu = cave ? null : stepMenu(own, floor), caveNow = caveMenu(own, floor);
-    const act = (flags) => Promise.resolve(save(doc, flags)).then(draw, draw);
-    const toKind = (kind) => { const was = open_; act(caveKindFlags(own, kind)); if (open_ === was) { const next = kind === 'lava' ? 'lava' : 'cavern'; open_ = { ...was, floor: next, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: next } : r)) }; } };
-    const tabs = stepTabs(open_.regions ?? [], open_.first ?? doc), tabbed = tabs.length > 1;
-    const title = element('div', 'an-step-title', cave ? doc.name || caveNow?.name || 'Cavern' : tabbed ? titled(floor) : doc.name || `${titled(floor)} region`); if (!cave) title.append(element('small', '', `step ${menu.current + 1} of ${menu.steps.length}`));
-    const parts = [title];
-    if (!cave) {
-      const steps = element('div', 'an-step-list');
-      menu.steps.forEach((name, i) => steps.append(button(name, i === menu.current ? 'an-step-on' : '', () => act(changeStep(own, floor, i, at)))));
-      parts.push(steps);
-    }
-    if (caveNow) parts.push(...caveParts(caveNow, act, toKind));
-    if (tabbed) {
-      const row = element('div', 'an-step-tabs'); row.setAttribute('role', 'tablist');
-      for (const tab of tabs) {
-        const on = tab.doc === doc, b = button('', on ? 'an-step-tab an-step-tab-on' : 'an-step-tab', () => { open_ = { ...open_, doc: tab.doc, floor: tab.floor }; draw(); });
-        b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(on));
-        const icon = element('i', `fa-solid ${FLOOR_ICONS[tab.floor] ?? 'fa-shoe-prints'}`); icon.setAttribute('aria-hidden', 'true');
-        b.append(icon, element('span', '', tab.name)); row.append(b);
-      }
-      parts.unshift(row);
-    }
-    if (cave) { box.replaceChildren(...parts); place(); return; }
-    if (menu.walks) parts.push(element('div', 'an-step-note', `Walks as ${menu.walks}: its footsteps, sounds and prints.`));
-    if (menu.speed) {
-      const chips = element('div', 'an-step-chips');
-      for (const [value, label] of STEP_SPEEDS) chips.append(button(label, value === menu.speed ? 'an-step-on' : '', () => act(setStepSpeed(own, floor, value))));
-      parts.push(element('div', 'an-step-label', 'Speed, this step'), chips);
-    }
-    if (menu.reflections !== null) parts.push(button(menu.reflections ? 'Turn reflections off' : 'Turn reflections on', 'an-step-wide', () => act({ reflections: menu.reflections ? 'off' : '' })));
-    if (menu.reflections !== null) {
-      // What kind of water it is: how the water engine moves it, and what it sounds like.
-      const kind = waterKindOf(own), row = element('label', 'an-step-slider', 'Water '), toward = element('label', 'an-step-slider', 'Flows toward ');
-      row.append(choice(WATER_KINDS, kind, 'Kind of water', (value) => act(waterKindFlags(own, value))));
-      parts.push(row);
-      if (kind === 'sea') { const waves = element('label', 'an-step-slider', 'Waves toward '); waves.append(choice([['', 'With the wind'], ...WATER_TOWARD], own.waveTo ?? '', 'Waves toward', (value) => act({ waveTo: value }))); parts.push(waves); parts.push(tick('Beach along the shore', own.seaBeach !== 'off', (on) => act({ seaBeach: on ? '' : 'off' }))); }
-      if (waterFlows(kind)) { toward.append(choice(flowChoices(kind), own.flowTo || 's', 'Flows toward', (value) => act({ flowTo: value }))); parts.push(toward); }
-      if (kind !== 'falls') { const depth = element('label', 'an-step-slider', 'Depth '); depth.append(choice(WATER_DEPTHS, own.waterDepth ?? '', 'How deep the water is', (value) => act({ waterDepth: value }))); parts.push(depth); }
-      parts.push(tick('Water sound', own.regionSound !== 'off', (on) => act({ regionSound: on ? '' : 'off' })));
-      if (movingWater(own) !== null) parts.push(tick('Moving water', movingWater(own), (on) => act({ movingWater: on ? '' : 'off' })));
-    }
-    // (A dripping region that is not water has no water section to sit in.)
-    if (menu.reflections === null && own.drips) parts.push(tick('Dripping sound', own.regionSound !== 'off', (on) => act({ regionSound: on ? '' : 'off' })));
-    // A dock, a bridge: what isn't water can stand over it.
-    if (menu.reflections === null && !molten) parts.push(tick('Stands over water', own.overWater === true, (on) => act({ overWater: on })));
-    if (menu.reflections === null && !molten) parts.push(tick('Casts a shadow', castsShadow(own), (on) => act({ castShadow: on })));
-    if (menu.reflections === null && !molten && castsShadow(own)) {
-      const shadow = overShadowOf(own, floor), row = element('label', 'an-step-slider', 'Its shadow ');
-      row.append(choice(overShadowChoices(floor), shadow.kind, 'Its shadow', (value) => act({ overShadows: { ...(own.overShadows ?? {}), [floor]: value } })));
-      if (floorBody(floor).post) { const built = element('label', 'an-step-slider', 'Built as '); built.append(choice(DOCK_STYLES, dockStyleOf(own), 'Built as', (value) => act({ dockStyle: value }))); parts.push(built); if (dockStyleOf(own)) parts.push(tick('Posts', showsPosts(own), (on) => act({ overPosts: on }))); }
-      parts.push(row, slider_('Shadow softness', OVER_SOFT, shadow.soft, (v) => `${Math.round(v * 100)}%`, (value) => act({ overShadowSoft: value }), 0.05), slider_('Shadow darkness', OVER_DARK, shadow.dark, (v) => `${Math.round(v * 100)}%`, (value) => act({ overShadowDark: value }), 0.05));
-    }
-    parts.push(tick('Animal sounds', own.animalSound !== 'off', (on) => act({ animalSound: on ? '' : 'off' })));
-    if (activeStep(own) || own.stepHidden) parts.push(button(menu.hidden ? 'Show this step' : 'Hide this step', 'an-step-wide', () => act({ stepHidden: !menu.hidden })));
-    if (!molten) parts.push(button(texture(own) ? 'Hide floor texture' : 'Show floor texture', 'an-step-wide', () => act({ texture: texture(own) ? 'off' : 'on' })));
-    if (texture(own)) parts.push(styleChoice(own, floor, act, choice));
-    if (menu.strength !== null) parts.push(strengthSlider(menu.strength, (value) => act(setStepStrength(own, floor, value))));
-    if (texture(own) || menu.strength !== null) parts.push(scaleSlider(menu.scale, (value) => act({ stepScale: value })));
-    if (!molten) parts.push(...edgeControls(own, act));
-    if (menu.grassy) parts.push(tick('Affected by season', season(own), (on) => act({ season: on ? 'on' : 'off' })));
-    parts.push(button('Edit steps…', 'an-step-wide', () => { close(); edit(doc); }));
-    box.replaceChildren(...parts);
-    place();
-  };
-  const place = () => {
-    const r = box.getBoundingClientRect();
-    box.style.left = `${Math.max(6, Math.min(open_.client.x, window.innerWidth - r.width - 6))}px`;
-    box.style.top = `${Math.max(6, Math.min(open_.client.y, window.innerHeight - r.height - 6))}px`;
-  };
-  return {
-    open(what) {
-      close();
-      open_ = what; box = element('div', 'an-step-menu'); box.setAttribute('role', 'menu'); box.setAttribute('aria-label', 'Region steps');
-      document.body.append(box); draw();
-      document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true);
-    },
-    close,
-    get isOpen() { return !!box; },
-  };
-}
 
 /** The list of a region's steps: returns its element. Saves as it goes. */
 export function stepsEditor({ doc, floor, flagsOf, save, season = () => false }) {

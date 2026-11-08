@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals, regionAnimalsHtml, regionAnimalSize, townLevelOf } from '../../../scripts/engines/motion/region-animals.mjs';
+import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf } from '../../../scripts/engines/motion/region-animals.mjs';
 
 // Roi: animals put in a region, not only a whole scene; and the town's animals too, without turning on town life.
 test('a region asks for its own animals by kind, on top of the scene\'s; none asked, none', () => {
@@ -27,18 +27,8 @@ test('town animals: busy once any asks for more; size small, usual or big', () =
   assert.equal(regionAnimalSize({ regionAnimalSize: 1.6 }), 1.6); assert.equal(regionAnimalSize({ regionAnimalSize: 9 }), 2); assert.equal(regionAnimalSize({ regionAnimalSize: 0.1 }), 0.5);
 });
 
-test('the region\'s Animater tab: a row of amounts for each kind, saved with the region', () => {
-  const html = regionAnimalsHtml({ regionAnimals: { deer: 'usual' } }, 'animater');
-  assert.match(html, /Animals in this region/);
-  assert.match(html, /name="flags\.animater\.regionAnimals\.deer" value="usual" checked/);
-  assert.match(html, /name="flags\.animater\.regionAnimals\.rabbits" value="" checked/, 'none by default');
-  for (const a of ['None', 'Few', 'Usual', 'More', 'Many']) assert.match(html, new RegExp(`>${a}<`));
-  assert.match(html, /name="flags\.animater\.regionAnimalSize"/);
-});
-
 test('main builds each region\'s animals kept inside it, ticks them, and clears them', () => {
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /const rebuildRegionAnimals = /);
-  assert.match(main, /regionAnimalsHtml\(own, ID\)/);
   assert.match(main, /for \(const life of regionLife\.values\(\)\)/);
 });

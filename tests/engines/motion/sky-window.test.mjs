@@ -29,7 +29,6 @@ test('main keeps glazed openings out of the weather and hands the light pool its
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8'), cave = readFileSync(new URL('../../../scripts/engines/motion/cavern.mjs', import.meta.url), 'utf8');
   assert.match(main, /const weatherOpen = open\.filter\(\(area\) => !GLAZED\.has\(area\.window\)\)/);
   assert.match(main, /open: weatherOpen, bounds, grid,/);
-  assert.match(main, /field\("Window in it", select\("skyWindow"/);
   assert.match(cave, /item\.window \? windowMask\(/);
   assert.match(cave, /tint \* pool \* 0\.5/);
   assert.match(cave, /f\.blendMode = PIXI\.BLEND_MODES\.ERASE; cut\.filters = \[f\];/, 'a roof window\'s frame comes down soft-edged');
