@@ -252,6 +252,7 @@ import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
 import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingText, twoeCatalogRecipe, twoeSettingKey, seedBorrowedState, TWOE_KINDS } from "./systems/twoe-crossover.mjs";
 import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./catalogs/daggerheart/daggerheart-catalog.mjs";
 import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,floorDetail, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
+import { separateBatchBuffers, gpuName } from './core/apple-gpu.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
@@ -362,6 +363,12 @@ const distortsHere = () => {
 // "Map distortion on my screen" settings call it when they change.
 let rewarmShaders = () => {};
 // The shaders a scene draws as soon as it appears, compiled in the background from the moment there is a canvas: otherwise each holds its first frame while it compiles.
+// Macs: each batch of the canvas in a vertex buffer of its own (core/apple-gpu.mjs), so Metal never stalls a frame
+// on a buffer it is still drawing from. For the whole canvas, every module's drawing as well as ours.
+Hooks.once("canvasInit", () => {
+  try { if (separateBatchBuffers(globalThis.PIXI, canvas.app?.renderer?.gl)) console.info(`Animater | Metal GPU (${gpuName(canvas.app.renderer.gl)}): canvas batches use separate vertex buffers.`); }
+  catch (error) { console.warn("Animater Metal batch buffers:", error.message); }
+});
 Hooks.once("canvasInit", () => {
   try {
     const renderer = canvas.app?.renderer, PIXI = globalThis.PIXI;
