@@ -3987,7 +3987,7 @@ const tickPlaces = () => {
     (async () => {
       const sound = new foundry.audio.Sound(file, { context: game.audio.environment });
       await sound.load(); await sound.play({ loop: true, volume: 0 });
-      voice.sound = sound; sound.fade(volume, { duration: kind === "waterfall" ? 500 : 1500 });
+      voiceStarted(voice, sound, volume, kind === "waterfall" ? 500 : 1500);
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
 };
@@ -4227,13 +4227,15 @@ const dripLanded = (d) => {
 };
 // The pools lap softly while someone is near one: one loop, louder the nearer the nearest listener stands to a pool.
 let poolSound = null, poolStarting = false, poolHeardAt = 0;
+// (the pools' loop's eased level, for fadeVoice: the loop itself is poolSound)
+const poolLoop = { sound: null, target: 0, rampEnd: 0 };
 const tickPools = () => {
   const now = performance.now(); if (now - poolHeardAt < 400) return; poolHeardAt = now;
   let level = 0;
   let near = null;
   try { const pools = drips.count ? drips.pools : [], ears = canvas.sounds?.getListenerPositions?.() ?? []; for (const p of pools) { if (hushedAt(p, "regionSound")) continue; const k = heardFrom(p, ears, canvas.grid.size * 6); if (k > level) { level = k; near = p; } } } catch { level = 0; }
   const volume = soundsOn() ? 0.28 * level : 0;
-  if (poolSound) { try { if (volume > 0.005) poolSound.fade(volume, { duration: 450 }); else { const s = poolSound; poolSound = null; s.fade(0, { duration: 600 }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, 700); } } catch { poolSound = null; } return; }
+  if (poolSound) { try { if (volume > 0.005) { const v = poolLoop; v.sound = poolSound; fadeVoice(v, volume, 350); } else { const s = poolSound; poolSound = null; s.fade(0, { duration: 600 }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, 700); } } catch { poolSound = null; } return; }
   if (volume <= 0.005 || poolStarting) return;
   poolStarting = true;
   (async () => {
@@ -4242,7 +4244,7 @@ const tickPools = () => {
     if (near) Hooks.callAll("animater.shapeSound", { file, rate: 1, at: soundPlace({ x: near.x + near.w / 2, y: near.y + near.h / 2 }), roomShare: 0.7 });
     const sound = new foundry.audio.Sound(file, { context: game.audio.environment });
     await sound.load(); await sound.play({ loop: true, volume: 0 });
-    poolSound = sound; sound.fade(volume, { duration: 900 });
+    poolSound = sound; voiceStarted(poolLoop, sound, volume, 900);
   })().catch(() => {}).finally(() => { poolStarting = false; });
 };
 // Rivers heard (engines/motion/river-sound.mjs): any water with a way to flow (the region's right-click panel → Water → Flows toward), a loop for each speed
@@ -4268,13 +4270,13 @@ const tickNight = () => {
   let ears = canvas.sounds?.getListenerPositions?.() ?? [];
   if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
   const volume = outside && ears.length ? nightLevel({ night: wildNight() * shiftNow().crickets, warm: !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.5), quiet: canvas.scene?.flags?.[ID]?.nightSounds === "off", inside: ears.every((e) => wildOpen.closed(e.x, e.y)) }) : 0;
-  if (nightVoice.sound) { try { if (volume > 0.004) nightVoice.sound.fade(volume, { duration: 1500 }); else stopVoice(nightVoice, 2500); } catch { nightVoice.sound = null; } return; }
+  if (nightVoice.sound) { try { if (volume > 0.004) fadeVoice(nightVoice, volume, 1500); else stopVoice(nightVoice, 2500); } catch { stopVoice(nightVoice); } return; }
   if (volume <= 0.004 || nightVoice.starting) return;
   nightVoice.starting = true;
   (async () => {
     const sound = new foundry.audio.Sound(nightFile(canvas.scene?.id), { context: game.audio.environment });
     await sound.load(); await sound.play({ loop: true, volume: 0 });
-    nightVoice.sound = sound; sound.fade(volume, { duration: 3000 });
+    voiceStarted(nightVoice, sound, volume, 3000);
   })().catch(() => {}).finally(() => { nightVoice.starting = false; });
 };
 // The weather heard (engines/motion/weather-sound.mjs): a loop for each of rain, wind and hail, fading with how much of it there is now, muffled
@@ -4299,13 +4301,13 @@ const tickWeatherSound = () => {
   const levels = weatherHeard() ?? {};
   for (const [kind, voice] of Object.entries(weatherVoices)) {
     const volume = soundsOn() ? levels[kind] ?? 0 : 0; voice.volume = volume;
-    if (voice.sound) { try { if (volume > 0.004) voice.sound.fade(volume, { duration: 2500 }); else stopVoice(voice, 3000); } catch { voice.sound = null; } continue; }
+    if (voice.sound) { try { if (volume > 0.004) fadeVoice(voice, volume, 2500); else stopVoice(voice, 3000); } catch { stopVoice(voice); } continue; }
     if (volume <= 0.004 || voice.starting) continue;
     voice.starting = true;
     (async () => {
       const sound = new foundry.audio.Sound(weatherFile(kind, canvas.scene?.id), { context: game.audio.environment });
       await sound.load(); await sound.play({ loop: true, volume: 0 });
-      voice.sound = sound; sound.fade(voice.volume, { duration: 4000 });
+      voiceStarted(voice, sound, voice.volume, 4000);
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
   // Two of the same weather would double: Calendaria's loop stands down for the weathers sounded here (a stop with none playing does nothing).
@@ -4342,13 +4344,25 @@ const thunderAfterFlash = (always = false, where = null) => {
 // QUIET_HOLD_MS. Stopped at once, a moment's dip (the outline redrawn as a river is placed, the listener settling as a
 // scene loads, ice easing in) would start it again from its beginning a moment later, over and over.
 const QUIET_HOLD_MS = 8000;
-const voiceAt = (voice, volume, fadeMs = 450) => {
-  if (volume > 0.004) { voice.quietSince = 0; voice.sound.fade(volume, { duration: fadeMs }); return; }
+// A loop's volume eased to `volume` over `ms`, from the level we last set (`voice.target`), not from what the sound reports:
+// Foundry's fade cancels the one under way and starts again from the gain's reading, so a new fade every check (0.4 s)
+// against a longer one cut each short and the loop pulsed, dipping and swelling over and over as if restarting. A fade
+// under way is let finish, and a change too small to hear is let be.
+const fadeVoice = (voice, volume, ms) => {
+  const now = performance.now(), last = voice.target ?? 0;
+  if ((voice.rampEnd ?? 0) > now) return;
+  if (Math.abs(volume - last) <= Math.max(0.002, last * 0.06)) return;
+  voice.sound.fade(volume, { duration: ms, from: last }); voice.target = volume; voice.rampEnd = now + ms;
+};
+// A loop just started: faded in from silence; nothing else changes it until that is done.
+const voiceStarted = (voice, sound, volume, ms) => { voice.sound = sound; voice.quietSince = 0; voice.target = volume; voice.rampEnd = performance.now() + ms; sound.fade(volume, { duration: ms, from: 0 }); };
+const voiceAt = (voice, volume, fadeMs = 350) => {
+  if (volume > 0.004) { voice.quietSince = 0; fadeVoice(voice, volume, fadeMs); return; }
   const now = performance.now();
-  if (!voice.quietSince) { voice.quietSince = now; voice.sound.fade(0, { duration: 700 }); }
+  if (!voice.quietSince) { voice.quietSince = now; voice.rampEnd = 0; fadeVoice(voice, 0, 700); }
   else if (now - voice.quietSince > QUIET_HOLD_MS) { voice.quietSince = 0; stopVoice(voice, 300); }
 };
-const stopVoice = (voice, ms = 0) => { const s = voice.sound; voice.sound = null; try { if (s && ms) { s.fade(0, { duration: ms }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, ms + 100); } else s?.stop(); } catch { /* gone */ } };
+const stopVoice = (voice, ms = 0) => { const s = voice.sound; voice.sound = null; voice.target = 0; voice.rampEnd = 0; try { if (s && ms) { s.fade(0, { duration: ms }); setTimeout(() => { try { s.stop(); } catch { /* gone */ } }, ms + 100); } else s?.stop(); } catch { /* gone */ } };
 const tickRivers = () => {
   const now = performance.now(); if (now - riverLookAt < 400) return; riverLookAt = now;
   if (game.audio?.locked) return;
@@ -4366,7 +4380,7 @@ const tickRivers = () => {
     (async () => {
       const sound = new foundry.audio.Sound(riverFile(speed, canvas.scene?.id), { context: game.audio.environment });
       await sound.load(); await sound.play({ loop: true, volume: 0 });
-      voice.sound = sound; sound.fade(volume, { duration: 1500 });
+      voiceStarted(voice, sound, volume, 1500);
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
 };

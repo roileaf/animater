@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 3.8.2
+
+- **River and other looping sounds no longer pulse.** A river, the surf, a waterfall, a pool, the night or the weather could throb two or three times a second after being placed or as a scene loaded, sounding as if it kept restarting. Each now changes volume smoothly, from where it was, only when the change can be heard.
+
 ## 3.8.1
 
 - **River sounds no longer restart while a river is placed or a scene loads.** A river's, the surf's or a waterfall's loop that dipped to silence for a moment was stopped and started again from its beginning, so for the first half minute or so it could restart over and over. It now fades out and keeps going, stopping only after several seconds of real silence; and a river goes quiet for ice only once it is frozen over.
