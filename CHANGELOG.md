@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.8.4
+
 - **Kill-cam length, with a Preview.** The slow-motion kill-cam now lasts 2.5 seconds by default (it was 1.2) and the GM sets it from 1 to 5 seconds (Animater settings → Motion → Kill-cam length). A longer one also plays the effects slower. The Preview button plays it on your screen, on your selected token or the middle of your view.
 - **Fewer animal settings.** Birds, rabbits and fish, Fireflies, Dawn chorus and Bodies draw flies and crows no longer have a switch for the whole table: each scene's Outdoor life and Animals panel decide. Each keeps one switch for your own screen, and their descriptions are shorter.
 
