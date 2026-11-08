@@ -4,15 +4,17 @@
 import { FLOORS } from '../engines/motion/movement-feel.mjs';
 import { STEP_EDGE, STEP_SCALE, stepScale, STEP_STRENGTH, STEP_EFFECTS, STEP_LOOK_NAMES, TEXTURE_STYLES, textureFloor, textureStyleOf, STEP_SECONDS, defaultSteps, setStepStrength, stepEdge, stepStrength, stepIndexOf, stepListOf, stepMenu } from '../engines/motion/region-steps.mjs';
 
-const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+// (Nothing to capitalise gives nothing.)
+export const titled = (text) => { const s = String(text ?? ''); return s.charAt(0).toUpperCase() + s.slice(1); };
 const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
 const button = (text, className, click) => { const b = element('button', className, text); b.type = 'button'; b.addEventListener('click', click); return b; };
-// The regions at one spot as tabs (pure): the one to open first (`first`, a doc) leading, each named for itself, its floor added where two would read alike. `list` [{ doc, floor }].
+// The regions at one spot as tabs (pure): the one to open first (`first`, a doc) leading, each named for itself, its floor
+// added where two would read alike (its place in the list, when it has no floor either). `list` [{ doc, floor }].
 export const stepTabs = (list = [], first = null) => {
   const ordered = [...list.filter((r) => r.doc === first), ...list.filter((r) => r.doc !== first)];
-  const nameOf = (r) => r.doc.name || `${titled(r.floor)} region`, count = new Map();
+  const nameOf = (r) => r.doc.name || (r.floor ? `${titled(r.floor)} region` : 'Region'), count = new Map();
   for (const r of ordered) count.set(nameOf(r), (count.get(nameOf(r)) ?? 0) + 1);
-  return ordered.map((r) => ({ doc: r.doc, floor: r.floor, name: count.get(nameOf(r)) > 1 ? `${nameOf(r)} (${titled(r.floor)})` : nameOf(r) }));
+  return ordered.map((r, i) => ({ doc: r.doc, floor: r.floor, name: count.get(nameOf(r)) > 1 ? `${nameOf(r)} (${r.floor ? titled(r.floor) : i + 1})` : nameOf(r) }));
 };
 // A tick box with its words beside it.
 const tick = (label, checked, change) => {

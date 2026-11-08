@@ -3903,3 +3903,5 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-region-panel .an-rp-dots i.an-rp-on { background: var(--rp-gold); }
 .an-region-panel .an-rp-more { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11px; color: var(--rp-dim); text-align: left; }
 .an-region-panel .an-rp-more:hover { color: var(--rp-gold); }
+.an-region-panel .an-rp-add-sections { padding: 0 10px 8px; }
+.an-region-panel .an-rp-add button { display: inline-flex; align-items: center; gap: 5px; }

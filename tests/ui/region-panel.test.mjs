@@ -33,19 +33,24 @@ const fire = (n, type, extra = {}) => { const e = { target: n, defaultPrevented:
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // Opens the panel on one region; `saves` records every save, and flagsOf follows them unless `stick` keeps the region as it was.
-async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false } = {}) {
+async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null } = {}) {
   const dom = installDom();
   const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
   const doc = { name: 'Mill pond' };
   let own = structuredClone(start), reads = 0;
-  const saves = [], edits = [];
+  const saves = [], edits = [], held = [];
   const panel = createRegionPanel({
-    flagsOf: () => { reads++; return own; },
-    save: (d, flags) => { saves.push(flags); if (reject) return Promise.reject(new Error('no')); if (!stick) own = { ...own, ...flags }; return Promise.resolve(); },
+    flagsOf: flagsOf ?? (() => { reads++; return own; }),
+    save: (d, flags) => {
+      saves.push(flags); if (reject) return Promise.reject(new Error('no'));
+      const take = () => { if (!stick) own = { ...own, ...flags }; };
+      if (hold) return new Promise((resolve) => held.push(() => { take(); resolve(); }));
+      take(); return Promise.resolve();
+    },
     edit: (d) => edits.push(d), texture, season,
     presets: () => ['Haunted', 'Forge'], weathers: () => [['fog', 'Fog'], ['rain', 'Rain']],
   });
-  panel.open({ doc, floor, at: { x: 5, y: 6 }, client: { x: 10, y: 10 }, regions: [{ doc, floor }], first: doc });
+  panel.open(what ?? { doc, floor, at: { x: 5, y: 6 }, client: { x: 10, y: 10 }, regions: [{ doc, floor }], first: doc });
   const root = () => dom.body.children[0];
   const find = (pred) => [...walk(root())].find(pred) ?? null;
   const byLabel = (label) => find((n) => n.attrs['aria-label'] === label);
@@ -55,7 +60,7 @@ async function setup(start = {}, floor = 'grass', { reject = false, stick = fals
   const pick = async (n, value) => { n.value = String(value); fire(n, 'change'); await tick(); };
   const click = async (n) => { assert.ok(n, 'control shown'); fire(n, 'click'); await tick(); };
   const more = async (id) => click([...walk(section(id))].find((n) => n.className?.includes('an-rp-more') && n.attrs['aria-expanded'] === 'false'));
-  return { dom, panel, doc, saves, edits, root, find, byLabel, section, openSection, button, pick, click, more, own: () => own, reads: () => reads, done: () => { panel.close(); dom.restore(); } };
+  return { dom, panel, doc, saves, edits, held, root, find, byLabel, section, openSection, button, pick, click, more, own: () => own, reads: () => reads, done: () => { panel.close(); dom.restore(); } };
 }
 
 test('clicking a kind saves what makes the region that kind', async () => {
@@ -366,11 +371,144 @@ test('ground and indoors keep the shadow controls under More', async () => {
   }
 });
 
-test('the ground floor list has no "from the scene" choice', async () => {
-  const t = await setup({ floor: 'grass' }, 'grass');
+test('the ground floor list leads with "From the scene", which saves no floor and stays Ground', async () => {
+  const t = await setup({ floor: 'stone' }, 'stone');
   const values = t.byLabel('Floor').children.map((o) => o.value);
-  assert.ok(!values.includes(''));
+  assert.equal(values[0], '');
   assert.ok(values.includes('grass') && values.includes('stone'));
+  await t.pick(t.byLabel('Floor'), '');
+  assert.deepEqual(t.saves.at(-1), { floor: '' });
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true', 'still ground');
+  assert.equal(t.byLabel('Floor').children.find((o) => o.selected)?.value, '', 'showing From the scene');
+  t.done();
+});
+
+test('a floor the list does not name still shows as chosen', async () => {
+  const t = await setup({ floor: 'none' }, null);
+  assert.equal(t.byLabel('Floor').children.find((o) => o.selected)?.value, 'none');
+  t.done();
+});
+
+test('a region with no floor and regions sharing a name open with their tabs, without throwing', async () => {
+  const a = { name: '' }, b = { name: 'Hall' }, c = { name: 'Hall' };
+  const t = await setup({}, undefined, { what: { doc: a, first: a, floor: undefined, at: { x: 1, y: 1 }, client: { x: 1, y: 1 }, regions: [{ doc: a, floor: undefined }, { doc: b, floor: undefined }, { doc: c }] } });
+  assert.equal(t.panel.isOpen, true);
+  const tabs = [...walk(t.root())].filter((n) => n.attrs.role === 'tab');
+  assert.equal(tabs.length, 3);
+  assert.ok(tabs.every((n) => !/undefined/.test(textOf(n))), tabs.map(textOf).join(' | '));
+  assert.ok(!/undefined/.test(textOf(t.root())));
+  const second = textOf(tabs[1]);
+  await t.click(tabs[1]);
+  assert.equal(textOf([...walk(t.root())].find((n) => n.attrs.role === 'tab' && n.attrs['aria-selected'] === 'true')), second, 'another tab opens');
+  t.done();
+});
+
+test('a panel that cannot be drawn leaves nothing behind', async () => {
+  const warn = console.warn; console.warn = () => {};
+  try {
+    const t = await setup({}, 'grass', { flagsOf: () => { throw new Error('broken'); } });
+    assert.equal(t.panel.isOpen, false);
+    assert.equal(t.dom.body.children.length, 0);
+    assert.equal(t.dom.docListeners.length, 0);
+    t.dom.restore();
+  } finally { console.warn = warn; }
+});
+
+test('a floorless region: its shadow, steps and summaries all go by the same floor', async () => {
+  const t = await setup({}, undefined);
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true');
+  assert.equal(t.byLabel('Floor').children.find((o) => o.selected)?.value, '');
+  await t.more('ground');
+  await t.click(t.byLabel('Casts a shadow'));
+  const last = t.byLabel('Its shadow').children.at(-1).value;
+  await t.pick(t.byLabel('Its shadow'), last);
+  assert.deepEqual(t.saves.at(-1), { overShadows: { grass: last } });
+  assert.ok(!('undefined' in (t.saves.at(-1).overShadows ?? {})));
+  t.openSection('steps');
+  const chips = t.find((n) => n.className === 'an-rp-steps'), on = chips.children.find((b) => b.className === 'an-rp-on');
+  const summary = t.section('steps').children[0].children[2].textContent;
+  assert.ok(summary.startsWith(textOf(on)), `${summary} / ${textOf(on)}`);
+  assert.equal(summary.match(/of (\d+)\)/)[1], String(chips.children.length));
+  t.done();
+});
+
+test('a failed save warns', async () => {
+  const warn = console.warn, said = [];
+  console.warn = (...a) => said.push(a);
+  try {
+    const t = await setup({ floor: 'water' }, 'water', { reject: true });
+    await t.click(t.byLabel('Reflections'));
+    assert.equal(said.length, 1);
+    assert.equal(said[0][0], 'Animater | region panel save');
+    t.done();
+  } finally { console.warn = warn; }
+});
+
+test('animal cards wait for the save before taking another click', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass', { hold: true });
+  t.openSection('animals');
+  const cows = () => t.find((n) => n.attrs['aria-label']?.startsWith('Cows'));
+  fire(cows(), 'click'); fire(cows(), 'click'); await tick();
+  assert.equal(t.saves.length, 1, 'the second click came while the first was saving');
+  t.held.shift()(); await tick();
+  fire(cows(), 'click'); await tick();
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: 'usual' } });
+  t.held.shift()(); await tick();
+  t.done();
+});
+
+test('settings a region uses show whatever its kind: a dock with weather, a stone room with drips', async () => {
+  const t = await setup({ floor: 'wood', overWater: true, regionWeather: 'fog' }, 'wood');
+  assert.ok(t.section('air'), 'a dock shows Air when it has its own weather');
+  t.done();
+  const u = await setup({ floor: 'stone', drips: true }, 'stone');
+  assert.ok(u.section('drips'), 'a stone room with drips shows Drips');
+  u.done();
+});
+
+test('Cave offers Look through More sections', async () => {
+  const t = await setup({ cavern: 'mist' }, 'cavern');
+  assert.equal(t.section('look'), null);
+  const line = t.find((n) => n.className === 'an-rp-more' && textOf(n) === 'More sections');
+  await t.click(line);
+  await t.click(t.button('Look', t.find((n) => n.className?.includes('an-rp-add'))));
+  assert.ok(t.section('look'), 'added');
+  assert.equal(t.section('look').attrs['data-open'], 'true', 'and open');
+  await t.pick(t.byLabel('Animater look'), 'Haunted');
+  assert.deepEqual(t.saves.at(-1), { tokenshade: 'Haunted' });
+  assert.ok(t.section('look'), 'still there once set');
+  t.done();
+});
+
+test('a stone room with cobwebs is ground, keeps them on clicking Indoors, and sets them under Air', async () => {
+  const t = await setup({ floor: 'stone', cavern: 'webs' }, 'stone');
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true');
+  t.openSection('air');
+  await t.more('air');
+  await t.pick(t.byLabel('Room dressing'), 'steam');
+  assert.deepEqual(t.saves.at(-1), { cavern: 'steam' });
+  await t.click(t.byLabel('Indoors'));
+  assert.ok(!('cavern' in t.saves.at(-1)));
+  assert.equal(t.saves.at(-1).floor, 'stone');
+  assert.equal(t.byLabel('Indoors').attrs['aria-pressed'], 'true');
+  t.done();
+});
+
+test('a drip pool on stone is ground, and Ground and Indoors still switch', async () => {
+  const t = await setup({ floor: 'stone', drips: true, dripDepth: 'pool' }, 'stone');
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true');
+  await t.click(t.byLabel('Indoors'));
+  assert.equal(t.byLabel('Indoors').attrs['aria-pressed'], 'true');
+  await t.click(t.byLabel('Ground'));
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true');
+  t.done();
+});
+
+test('the tavern murmur is there on any kind', async () => {
+  const t = await setup({ floor: 'wood', overWater: true, tavern: true }, 'wood');
+  t.openSection('air');
+  await t.click(t.byLabel('Tavern murmur'));
+  assert.deepEqual(t.saves.at(-1), { tavern: false });
   t.done();
 });
 

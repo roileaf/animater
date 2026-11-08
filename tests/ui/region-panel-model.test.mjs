@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REGION_KINDS, regionKindOf, kindFlags, panelSections, summaryOf, animalSizeOf, ANIMAL_SIZE } from '../../scripts/ui/region-panel-model.mjs';
+import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, summaryOf, shownFloorOf, floorOfKind, animalSizeOf, ANIMAL_SIZE } from '../../scripts/ui/region-panel-model.mjs';
 import { regionAnimalSize } from '../../scripts/engines/motion/region-animals.mjs';
 
 const ids = (kind, own = {}) => panelSections(kind, own).map((s) => s.id);
@@ -19,7 +19,6 @@ test('regionKindOf reads the kind off the flags and floor', () => {
   assert.equal(regionKindOf({ cavern: 'fungus-green' }, 'grass'), 'cave');
   assert.equal(regionKindOf({}, 'grass'), 'ground');
   assert.equal(regionKindOf({}, null), 'ground');
-  assert.equal(regionKindOf({ drips: true, dripDepth: 'pool' }, null), 'water');
   assert.equal(regionKindOf({ drips: true }, 'cavern'), 'cave');
   assert.equal(regionKindOf({ indoors: true }, 'wood'), 'indoors');
   assert.equal(regionKindOf({ indoors: true }, 'water'), 'water');
@@ -110,6 +109,75 @@ test('summaryOf: water, steps, air, cavern, deck, ground', () => {
   assert.equal(summaryOf('ground', { floor: 'grass' }, 'grass'), 'Grass · seasons as the scene');
   assert.equal(summaryOf('ground', { floor: 'sand', season: 'off' }, 'sand'), 'Sand · no seasons');
   assert.equal(summaryOf('ground', { floor: 'sand', season: 'on' }, 'sand'), 'Sand · seasons');
+});
+
+test('a drip pool is a Drips setting, not a kind', () => {
+  assert.equal(regionKindOf({ floor: 'stone', drips: true, dripDepth: 'pool' }, 'stone'), 'ground');
+  assert.equal(regionKindOf({ drips: true, dripDepth: 'deep' }, null), 'ground');
+  const own = { floor: 'stone', drips: true, dripDepth: 'pool' };
+  assert.deepEqual(kindFlags('ground', own), { floor: 'stone', overWater: false, indoors: false });
+  assert.equal(regionKindOf({ ...own, ...kindFlags('indoors', own) }, 'stone'), 'indoors');
+});
+
+test('cave: no floor of its own, or a cave-menu growth; room dressing on a floor is not a cave', () => {
+  assert.equal(regionKindOf({ floor: 'stone', cavern: 'webs' }, 'stone'), 'ground');
+  assert.equal(regionKindOf({ floor: 'stone', cavern: 'webs', indoors: true }, 'stone'), 'indoors');
+  assert.equal(regionKindOf({ floor: 'stone', cavern: 'foul' }, 'stone'), 'ground');
+  assert.equal(regionKindOf({ cavern: 'webs' }, undefined), 'cave', 'no floor of its own');
+  assert.equal(regionKindOf({ cavern: 'mist' }, undefined), 'cave');
+  assert.equal(regionKindOf({ floor: 'stone', cavern: 'crystals-rose' }, 'stone'), 'cave', 'a growth');
+});
+
+test('kindFlags keeps room dressing between the other kinds, and a sensible floor between Ground and Indoors', () => {
+  const room = { floor: 'stone', cavern: 'webs' };
+  assert.ok(!('cavern' in kindFlags('ground', room)), 'clicking Ground keeps the cobwebs');
+  assert.ok(!('cavern' in kindFlags('indoors', room)));
+  assert.ok(!('cavern' in kindFlags('water', room)));
+  assert.equal(kindFlags('indoors', room).floor, 'stone', 'a stone room stays stone indoors');
+  assert.equal(kindFlags('indoors', { floor: 'dirt' }).floor, 'dirt');
+  assert.equal(kindFlags('indoors', { floor: 'grass' }).floor, 'wood', 'grass is no room floor');
+  assert.equal(kindFlags('indoors', { floor: 'water' }).floor, 'wood');
+  assert.equal(kindFlags('ground', { floor: 'stone', indoors: true }).floor, 'stone');
+  assert.equal(kindFlags('water', { cavern: 'fungus-green' }).cavern, '', 'a growth still goes');
+  assert.equal(kindFlags('ground', { cavern: 'webs' }).cavern, '', 'a floorless cave of cobwebs stops being one');
+});
+
+test('shownFloorOf: one floor for display and controls, by kind, when the region has none of its own', () => {
+  assert.equal(shownFloorOf({}, undefined), 'grass');
+  assert.equal(shownFloorOf({}, null), 'grass');
+  assert.equal(shownFloorOf({ indoors: true }, undefined), 'wood');
+  assert.equal(shownFloorOf({ overWater: true }, undefined), 'wood');
+  assert.equal(shownFloorOf({ cavern: 'fungus-green' }, undefined), 'cavern');
+  assert.equal(shownFloorOf({ cavern: 'webs' }, undefined), 'cavern');
+  assert.equal(shownFloorOf({}, 'sand'), 'sand');
+  assert.equal(shownFloorOf({ floor: 'stone' }, 'stone'), 'stone');
+  assert.equal(floorOfKind('water'), 'water'); assert.equal(floorOfKind('lava'), 'lava'); assert.equal(floorOfKind('ground'), 'grass');
+  // The summaries use the same floor.
+  assert.equal(panelSections('ground', {}).find((s) => s.id === 'ground').summary, summaryOf('ground', {}, 'grass'));
+  assert.equal(panelSections('indoors', { indoors: true }).find((s) => s.id === 'ground').summary, summaryOf('ground', {}, 'wood'));
+});
+
+test('a section set off its defaults always shows; the others wait under More sections', () => {
+  assert.ok(ids('deck', { overWater: true, regionWeather: 'fog' }).includes('air'), 'dock with its own weather');
+  assert.ok(!ids('deck', { overWater: true }).includes('air'));
+  assert.ok(ids('ground', { floor: 'stone', drips: true }).includes('drips'), 'a stone room with drips');
+  assert.ok(ids('cave', { cavern: 'mist', tokenshade: 'Haunted' }).includes('look'));
+  assert.ok(ids('lava', { regionAnimals: { rats: 'few' } }).includes('animals'));
+  assert.ok(ids('deck', { overWater: true, tavern: true }).includes('air'));
+  assert.ok(ids('cave', { cavern: 'mist', steps: [{ name: 'A' }], stepsEdited: true }).includes('steps'));
+  assert.ok(ids('deck', { overWater: true, keepOut: { rats: true } }).includes('animals'));
+  assert.ok(!ids('deck', { overWater: true, keepOut: { rats: false } }).includes('animals'), 'an unticked box is the default');
+  assert.ok(ids('ground', { floor: 'stone', cavern: 'webs' }).includes('air'), 'room dressing lives in Air');
+  const more = (kind, own = {}) => moreSections(kind, own).map((s) => s.id);
+  assert.ok(more('cave', { cavern: 'mist' }).includes('look'), 'Cave offers Look');
+  assert.ok(more('cave', { cavern: 'mist' }).includes('steps'));
+  assert.ok(!more('cave', { cavern: 'mist', tokenshade: 'Haunted' }).includes('look'), 'not when it already shows');
+  assert.deepEqual(more('ground', {}), ['drips']);
+  assert.ok(!more('water', {}).includes('drips'), 'water holds its drips in its own section');
+  for (const s of moreSections('deck', {})) assert.ok(s.icon && s.title, s.id);
+  // Every optional section is either shown or offered, for every kind.
+  for (const [kind] of REGION_KINDS) for (const id of ['air', 'animals', 'look', 'steps']) assert.ok(ids(kind).includes(id) || more(kind).includes(id), `${kind}/${id}`);
+  assert.deepEqual(panelSections('deck', { overWater: true }, 'wood', ['air']).map((s) => s.id), ['deck', 'steps', 'look', 'air'], 'one added by hand');
 });
 
 test('animalSizeOf: a number from 0.5 to 2, old words kept', () => {

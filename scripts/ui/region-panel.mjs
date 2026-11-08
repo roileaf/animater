@@ -2,11 +2,10 @@
 // is (its kind), then only the sections that kind uses, each folded to a one-line summary until opened. Every control
 // saves to the region's flags at once, which reach every screen. What each section holds: region-panel-sections.mjs.
 
-import { REGION_KINDS, regionKindOf, kindFlags, panelSections } from './region-panel-model.mjs';
-import { stepTabs } from './region-steps-ui.mjs';
+import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, shownFloorOf } from './region-panel-model.mjs';
+import { stepTabs, titled } from './region-steps-ui.mjs';
 import { SECTIONS, element, button, icon } from './region-panel-sections.mjs';
 
-const titled = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'fa-water', ice: 'fa-icicles', snow: 'fa-snowflake', wood: 'fa-tree', sand: 'fa-umbrella-beach', grass: 'fa-seedling', dirt: 'fa-mountain', mud: 'fa-droplet', stone: 'fa-cubes' });
 
 /**
@@ -17,29 +16,40 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * `presets()` the Tokenshade look names, `weathers()` [[id, label]].
  */
 export function createRegionPanel({ flagsOf, save, edit, texture = () => false, season = () => false, presets = () => [], weathers = () => [] }) {
-  let box = null, open_ = null;
-  // Sections opened or shut by hand (id → open), and the "More" lines unfolded; both start over with each region shown.
-  const folds = new Map(), mores = new Set();
-  const forget = () => { folds.clear(); mores.clear(); };
+  let box = null, open_ = null, saving = 0;
+  // Sections opened or shut by hand (id → open), the "More" lines unfolded, and sections added from More sections; all
+  // start over with each region shown.
+  const folds = new Map(), mores = new Set(), added = new Set();
+  const forget = () => { folds.clear(); mores.clear(); added.clear(); };
   const close = () => {
     open_ = null;
     if (!box) return;
     box.remove(); box = null;
     document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true);
+    globalThis.window?.removeEventListener?.('resize', place);
   };
   const outside = (e) => { if (box && !box.contains(e.target)) close(); };
   const escape = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
 
   const draw = () => {
     if (!open_ || !box) return;
-    const { doc } = open_, own = flagsOf(doc) ?? {}, floor = open_.floor, kind = regionKindOf(own, floor);
-    // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back).
+    // A region with no floor of its own shows as its kind's floor, as its summaries do.
+    const { doc } = open_, own = flagsOf(doc) ?? {}, floor = shownFloorOf(own, open_.floor), kind = regionKindOf(own, floor);
+    // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back, and says so).
     // `then` runs only once the save is taken, before that redraw.
-    const act = (flags, then) => Promise.resolve(save(doc, flags)).then(() => { then?.(); draw(); }, draw);
+    const act = (flags, then) => {
+      saving++;
+      return Promise.resolve().then(() => save(doc, flags)).then(() => { saving--; then?.(); draw(); }, (error) => {
+        saving--;
+        console.warn('Animater | region panel save', error);
+        globalThis.ui?.notifications?.warn?.('Animater: the region could not be saved.');
+        draw();
+      });
+    };
     // A save that gives the region another floor: once it is taken, the panel follows it, as the region's floor is what it
-    // was opened with. A floor saved empty is a cave's (its decor makes it one).
+    // was opened with. A floor saved empty (none of its own) shows as its kind's: a cave's, or the scene's under Ground.
     const toFloor = (flags) => {
-      const was = open_, next = flags.floor === '' ? 'cavern' : flags.floor;
+      const was = open_, next = flags.floor === '' ? shownFloorOf({ ...own, ...flags }, undefined) : flags.floor;
       return act(flags, () => { if (open_ === was && next) open_ = { ...was, floor: next, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: next } : r)) }; });
     };
     const more = (key, label, build) => {
@@ -47,14 +57,14 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, more, texture, season, presets, weathers, close, edit };
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0 };
 
     const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
-    head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor ?? 'region')} region`), shut);
+    head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor)} region`), shut);
     const parts = [head];
 
-    const tabs = stepTabs(open_.regions ?? [], open_.first ?? doc);
+    const tabs = stepTabs((open_.regions ?? []).map((r) => ({ ...r, floor: r.doc === doc ? floor : shownFloorOf(flagsOf(r.doc) ?? {}, r.floor) })), open_.first ?? doc);
     if (tabs.length > 1) {
       const row = element('div', 'an-rp-tabs'); row.setAttribute('role', 'tablist');
       for (const tab of tabs) {
@@ -73,7 +83,7 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
     }
     parts.push(kinds);
 
-    for (const s of panelSections(kind, own, floor)) {
+    for (const s of panelSections(kind, own, floor, [...added])) {
       const shown = folds.has(s.id) ? folds.get(s.id) : s.open, sec = element('section', shown ? 'an-rp-sec an-rp-open' : 'an-rp-sec');
       sec.setAttribute('data-section', s.id); sec.setAttribute('data-open', String(shown));
       const title = button('', 'an-rp-title', () => { folds.set(s.id, !shown); draw(); });
@@ -84,10 +94,22 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
       if (shown) { const body = element('div', 'an-rp-body'); body.append(...SECTIONS[s.id](c)); sec.append(body); }
       parts.push(sec);
     }
+    // The sections this kind does not use yet, by name: a click adds one, open.
+    const extra = moreSections(kind, own, [...added]);
+    if (extra.length) {
+      const foot = element('div', 'an-rp-add-sections');
+      foot.append(...more('sections', 'More sections', () => {
+        const list = element('div', 'an-rp-chips an-rp-add');
+        for (const s of extra) { const b = button('', '', () => { added.add(s.id); folds.set(s.id, true); mores.delete('sections'); draw(); }); b.append(icon(s.icon), element('span', '', s.title)); list.append(b); }
+        return [list];
+      }));
+      parts.push(foot);
+    }
     box.replaceChildren(...parts);
     place();
   };
   const place = () => {
+    if (!box || !open_) return;
     const r = box.getBoundingClientRect(), at = open_.client ?? { x: 6, y: 6 };
     box.style.left = `${Math.max(6, Math.min(at.x, window.innerWidth - r.width - 6))}px`;
     box.style.top = `${Math.max(6, Math.min(at.y, window.innerHeight - r.height - 6))}px`;
@@ -96,10 +118,15 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
     open(what) {
       close(); forget();
       open_ = what; box = element('div', 'an-region-panel'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Region');
-      document.body.append(box); draw();
+      document.body.append(box);
+      // Its listeners come first, so whatever happens in drawing, close() takes everything away again.
       document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true);
+      globalThis.window?.addEventListener?.('resize', place);
+      try { draw(); } catch (error) { console.warn('Animater | region panel', error); close(); }
     },
     close,
     get isOpen() { return !!box; },
+    // The region shown, if any.
+    get doc() { return open_?.doc ?? null; },
   };
 }

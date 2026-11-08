@@ -18,6 +18,14 @@ test('two that would read alike say their floor, and an unnamed one goes by its 
 
 test('nothing listed: no tabs', () => { assert.deepEqual(stepTabs(), []); });
 
+test('regions with no floor, unnamed or sharing a name, still make tabs', () => {
+  const tabs = stepTabs([{ doc: { name: '' } }, { doc: { name: 'Hall' }, floor: undefined }, { doc: { name: 'Hall' }, floor: null }]);
+  assert.equal(tabs.length, 3);
+  assert.equal(tabs[0].name, 'Region');
+  assert.ok(tabs.every((t) => !/undefined|null/.test(t.name)), tabs.map((t) => t.name).join(' | '));
+  assert.notEqual(tabs[1].name, tabs[2].name, 'two alike still tell apart');
+});
+
 test('pattern size moves in fives, so it can be exactly 100%', async () => {
   const { readFileSync } = await import('node:fs');
   const { STEP_SCALE } = await import('../../scripts/engines/motion/region-steps.mjs');

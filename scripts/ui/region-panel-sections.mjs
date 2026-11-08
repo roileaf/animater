@@ -11,6 +11,7 @@ import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../eng
 import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
+import { ROOM_DRESSING } from './region-panel-model.mjs';
 
 // The small pieces every section is made of.
 export const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -68,8 +69,11 @@ const CURRENTS = [['slower', 'Crawl'], ['slow', 'Slow'], ['', 'Gentle'], ['swift
 const DRIP_PACE = [['slow', 'Slow'], ['', 'Steady'], ['fast', 'Fast'], ['faster', 'Trickle']];
 const DRIP_POOL = [['', 'Puddle'], ['pool', 'Pool'], ['deep', 'Deep']];
 const CLIMATES = [['', 'Scene'], ['cold', 'Cold'], ['warm', 'Warm']];
-// (No "from the scene": the panel has to know the floor it shows.)
-const GROUND_FLOORS = FLOOR_CHOICES.filter(([v]) => v && v !== 'water' && v !== 'lava');
+// "From the scene" saves no floor of its own: the panel then shows it as its kind's floor (region-panel-model.mjs).
+const GROUND_FLOORS = [['', 'From the scene'], ...FLOOR_CHOICES.filter(([v]) => v && v !== 'water' && v !== 'lava')];
+// A floor the list does not name (an old or hand-set one) still shows as chosen.
+const withFloor = (list, value) => (!value || list.some(([v]) => v === value) ? list : [...list, [value, capital(value)]]);
+const capital = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const DECK_FLOORS = FLOOR_CHOICES.filter(([v]) => v && !['water', 'lava', 'none'].includes(v));
 const CAVE_KINDS = [['', 'None'], ['mist', 'Mist on the floor'], ['fungus-green', 'Glowing fungus (green)'], ['fungus-blue', 'Glowing fungus (blue)'], ['fungus-violet', 'Glowing fungus (violet)'], ['crystals-amethyst', 'Crystals (amethyst)'], ['crystals-quartz', 'Crystals (clear quartz)'], ['crystals-rose', 'Crystals (rose)'], ['lava', 'Lava'], ['webs', 'Cobwebs'], ['wet', 'Wet walls'], ['steam', 'Steam vents'], ['foul', 'Bad air']];
 const KEEP_OUT = [['all', 'All animals'], ['rats', 'Rats'], ['bats', 'Bats'], ['moths', 'Moths'], ['crawlers', 'Crawlers'], ['eyes', 'Eyes'], ['rabbits', 'Rabbits'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['songbirds', 'Songbirds'], ['crows', 'Crows'], ['hawk', 'Hawk'], ['owl', 'Owl'], ['fish', 'Fish'], ['frogs', 'Frogs'], ['ducks', 'Ducks'], ['herons', 'Herons'], ['gulls', 'Gulls'], ['butterflies', 'Butterflies'], ['dragonflies', 'Dragonflies'], ['fireflies', 'Fireflies'], ['pigeons', 'Pigeons'], ['hens', 'Hens'], ['cats', 'Cats'], ['dogs', 'Dogs']];
@@ -123,7 +127,7 @@ export const SECTIONS = {
 
   ground(c) {
     const { own, floor, act } = c, textured = c.texture(own);
-    const parts = [row('Floor', choice(GROUND_FLOORS, own.floor || floor, 'Floor', (v) => c.toFloor({ floor: v })), 'What creatures walk on here: their footsteps, sounds and prints.')];
+    const parts = [row('Floor', choice(withFloor(GROUND_FLOORS, own.floor), own.floor || '', 'Floor', (v) => c.toFloor({ floor: v })), 'What creatures walk on here: their footsteps, sounds and prints. From the scene: whatever the scene\'s floor is.')];
     if (stepMenu(own, floor).grassy) parts.push(toggle('Changes with the seasons', c.season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(toggle('Floor texture', textured, (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
     if (textured) parts.push(styleRow(c));
@@ -148,7 +152,9 @@ export const SECTIONS = {
     const { own, kind, act } = c;
     const parts = [row('Weather', choice([['', 'As the scene'], ...c.weathers()], own.regionWeather ?? '', 'Weather here', (v) => act({ regionWeather: v })), "Weather drawn only inside this region, in place of the scene's. Only the look: the ground, sounds and footsteps stay as the scene's."),
       row('Climate', seg(CLIMATES, own.cold ?? '', (v) => act({ cold: v }), 'Climate here'), "Whether creatures' breath shows inside, whatever the scene's climate.")];
-    if (kind === 'ground' || kind === 'indoors') parts.push(toggle('Tavern murmur', said(own, 'tavern'), flip('tavern', act), 'The murmur of a crowd inside: loud in here, faint through the walls, spilling out of an open door.'));
+    parts.push(toggle('Tavern murmur', said(own, 'tavern'), flip('tavern', act), 'The murmur of a crowd inside: loud in here, faint through the walls, spilling out of an open door.'));
+    // A room's dressing: a cave sets it in its own section, every other kind here.
+    const dressing = () => (kind === 'cave' ? [] : [row('Room dressing', choice(withFloor(ROOM_DRESSING, own.cavern), own.cavern ?? '', 'Room dressing', (v) => act({ cavern: v })), 'Cobwebs in its corners, water down its walls, steam from its floor, or bad air that starves the fires.')]);
     const openings = () => {
       const out = [toggle('Opens to the outside', said(own, 'opensOutside'), flip('opensOutside', act), 'A way out to the open air: stairs up, a cave mouth, an air shaft. The air indoors flows toward it.'),
         toggle('Open to the sky', said(own, 'openSky'), flip('openSky', act), 'The weather reaches the floor here, and underground the sky shows through: a hole in the roof, a shaft.')];
@@ -157,13 +163,14 @@ export const SECTIONS = {
       return out;
     };
     const edge = () => [range('Weather edge', INDOOR_EDGE, indoorEdgeOf(own), (v) => v.toFixed(1), (v) => act({ indoorEdge: v }), 0.1, 'Where this region keeps the weather out or is open to the sky: how far the weather fades in at its edge, in squares. 0 is a hard line.')];
-    if (kind === 'cave' || kind === 'indoors') parts.push(...openings(), ...c.more('air', 'More: weather edge…', edge));
-    else parts.push(...c.more('air', 'More: openings, weather edge…', () => [...openings(), ...edge()]));
+    if (kind === 'cave') parts.push(...openings(), ...c.more('air', 'More: weather edge…', edge));
+    else if (kind === 'indoors') parts.push(...openings(), ...c.more('air', 'More: weather edge, cobwebs…', () => [...edge(), ...dressing()]));
+    else parts.push(...c.more('air', 'More: openings, weather edge, cobwebs…', () => [...openings(), ...edge(), ...dressing()]));
     return parts;
   },
 
   deck(c) {
-    const { own, floor, act } = c, parts = [row('Floor', choice(DECK_FLOORS, own.floor || floor, 'Floor', (v) => c.toFloor({ floor: v })))];
+    const { own, floor, act } = c, parts = [row('Floor', choice(withFloor(DECK_FLOORS, own.floor || floor), own.floor || floor, 'Floor', (v) => c.toFloor({ floor: v })))];
     if (floorBody(floor).post) {
       parts.push(row('Built as', seg(DOCK_STYLES, dockStyleOf(own), (v) => act({ dockStyle: v }), 'Built as'), 'Plain is the floor and its shadow; old boards and a railed pier show edge boards, planks and beam ends.', true));
       if (dockStyleOf(own)) parts.push(toggle('Posts', showsPosts(own), flip('overPosts', act), 'What holds it up along its long edges, standing in the water.'));
@@ -186,7 +193,8 @@ export const SECTIONS = {
     const { own, kind, act } = c, now = own.regionAnimals ?? {};
     const amountOf = (k) => (AMOUNTS.includes(now[k] ?? '') ? now[k] ?? '' : '');
     const card = (k, label) => {
-      const n = AMOUNTS.indexOf(amountOf(k)), set = (to) => { const next = Math.max(0, Math.min(AMOUNTS.length - 1, to)); if (next !== n) act({ regionAnimals: { ...now, [k]: AMOUNTS[next] } }); };
+      // (While a save is on its way, a click would only repeat it.)
+      const n = AMOUNTS.indexOf(amountOf(k)), set = (to) => { if (c.saving?.()) return; const next = Math.max(0, Math.min(AMOUNTS.length - 1, to)); if (next !== n) act({ regionAnimals: { ...now, [k]: AMOUNTS[next] } }); };
       const b = button('', n ? 'an-rp-animal an-rp-on' : 'an-rp-animal', () => set(n + 1)), dots = element('div', 'an-rp-dots');
       b.addEventListener('contextmenu', (e) => { e.preventDefault(); set(n - 1); });
       for (let i = 1; i < AMOUNTS.length; i++) dots.append(element('i', i <= n ? 'an-rp-on' : ''));
@@ -223,6 +231,8 @@ export const SECTIONS = {
       if (soft) out.push(range('Softness', STEP_EDGE, stepEdge(own), (v) => v.toFixed(1), (v) => act({ stepEdge: v }), 0.1, '', 'Edge softness'));
       return out;
     }));
+    // Lava has no ground section to hold its shadow (raised lava, a forge's trough): it waits here.
+    if (kind === 'lava') parts.push(...c.more('look', 'More: its shadow…', () => shadowParts(c, true)));
     return parts;
   },
 };
