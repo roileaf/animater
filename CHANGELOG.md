@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Detect every floor.** The review window can build stone, wood, dirt, grass, sand, snow, water, ice, mud, pebbles, glass, metal, lava, or none. Automatic detection stays water-only. Grey and pale clicks match by Lab colour with a small blur. New regions use `generated: floor-detect`; earlier water-detect regions still open and save. Tiles are not read yet.
+- **AI floor suggestions (spike).** An optional off-by-default setting can lazily fetch a SegFormer model for research. Lab/hue matching never depends on it. Findings are in the README.
+
 ## 3.8.5
 
 - **Season colours can be turned off for a scene.** Scene configuration → Animater → Season colours on the ground: Off keeps a map as painted. With a scene's floor on Grass, the season's colour covered the whole map, its painted paths and trees too.
@@ -54,8 +57,6 @@
 - **Experimental: detect water regions.** Off until you turn it on in the Floor & world tab of Animater settings. The Animater controls can propose blue and teal water from this level's map. Review the pieces, choose a water kind and its flow or sea settings, then create them. Reruns load saved regions limited to this level for editing. Untouched regions stay unchanged. Hand-drawn, shared, and all-level regions stay.
 - **Click the water it missed.** The preview opens even when automatic detection finds nothing. Click water of any colour to add a selected piece. Narrow colour selection is the default. Wide follows more connected shades but can also include similarly coloured land. Contrasting floating objects stay as holes. Remove any incorrect piece before saving.
 - **What it leaves alone.** A saturated roof larger than the water can still fool the automatic read, so untick it and click the water instead. A lone pool under about a quarter of a percent of the map needs a click too. A video or SVG background, or a level background moved, scaled or rotated in its configuration, cannot be read, and it says so.
-- **Detect every floor.** The review window can build stone, wood, dirt, grass, sand, snow, water, ice, mud, pebbles, glass, metal, lava, or none. Automatic detection stays water-only. Grey and pale clicks match by Lab colour with a small blur. New regions use `generated: floor-detect`; earlier water-detect regions still open and save. Tiles are not read yet.
-- **AI floor suggestions (spike).** An optional off-by-default setting can lazily fetch a SegFormer model for research. Lab/hue matching never depends on it. Findings are in the README.
 
 ## 3.7.6
 
