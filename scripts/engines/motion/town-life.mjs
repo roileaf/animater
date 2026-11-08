@@ -6,6 +6,7 @@
 
 import { noiseReaching, shadowKeeper, wayOut, NOISE_SPEED } from './wildlife.mjs';
 import { turnToward, clearWay } from './field-life.mjs';
+import { perchHopStep, nextPerch, perchBirdCount } from './perch-hops.mjs';
 
 const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
@@ -38,6 +39,12 @@ export function townCounts(level, spotCount = 0, wallCount = 0, random = Math.ra
   const busy = level === 'busy', birds = Math.round(busy ? between(random, 7, 9) : between(random, 4, 5)), hens = Math.round(busy ? between(random, 4, 5) : between(random, 2, 3));
   const pigeons = Math.min(birds, spotCount * 2), chickens = Math.min(hens, spotCount);
   return { pigeons: pigeons >= 4 ? pigeons : 0, chickens: chickens >= 2 ? chickens : 0, cat: wallCount > 0 ? 1 : 0, dog: busy && spotCount >= 2 ? 1 : 0 };
+}
+// A region's own (region-animals.mjs) asks for so many of each, { pigeons, hens, cats, dogs }: as many as it has room for,
+// not a town's quiet or busy numbers (pure). A cat with no wall to sit on walks the ground; one cat and one dog at most.
+export function wantedCounts(want = {}, spotCount = 0) {
+  const n = (k) => Math.max(0, Math.round(Number(want?.[k]) || 0));
+  return { pigeons: Math.min(n('pigeons'), spotCount * 2), chickens: Math.min(n('hens'), spotCount), cat: n('cats') > 0 && spotCount > 0 ? 1 : 0, dog: n('dogs') > 0 && spotCount > 0 ? 1 : 0 };
 }
 
 // How many flocks, and how many broods of hens, a map this size has (pure): `spotCount` its open places. One on a small map, a few on a big one.
@@ -407,28 +414,34 @@ function dogPicture(c, { p = 0, reach = 8, nose = false, bark = false }) {
 }
 
 /**
- * The layer: populate({ spots, wallTops, grid, size, busy: 'quiet' | 'busy', blocked, random }) places what fits (`spots` { x, y } open
+ * The layer: populate({ spots, wallTops, grid, size, busy: 'quiet' | 'busy', want, blocked, random }) places what fits (`want`, a
+ * region's own counts { pigeons, hens, cats, dogs }, in place of the town's numbers) (`spots` { x, y } open
  * street, `wallTops` { ax, ay, bx, by } wall segments, `size` how big against the squares, `blocked` optional, keeping a flock's first
  * places on one side of a wall). tick(seconds, { near, ok(kind, x, y), blocked(a, b), barred(kind, x, y), day (0-1), night (0-1),
  * rain (0-1), view, seen(x, y), cast, sound(kind, at, urgent) }), kinds 'pigeons', 'chickens', 'cat', 'dog'. noise({ x, y, radius });
  * clear(). `busy` true while it has anything at all; `counts` how many of what, and `level` the setting it was given. `floor()` on
  * the ground, `sky()` the cat on its wall and birds low down, `high()` birds over the roofs.
  */
-export function createTownLife({ PIXI, floor, sky, high = sky }) {
-  let pigeons = [], chickens = [], cat = null, dog = null, noises = [], spots = [], walls = [], grid = 100, size = 1, level = 'quiet', time = 0, shownDay = 0, look = 0, wheelNow = 1, chance = Math.random, art = {};
+export function createTownLife({ PIXI, floor, sky, high = sky, restyle = null }) {
+  let pigeons = [], chickens = [], cat = null, dog = null, noises = [], spots = [], walls = [], grid = 100, size = 1, level = 'quiet', time = 0, shownDay = 0, look = 0, wheelNow = 1, chance = Math.random, art = {}, roofers = [], perches = [], perchKeys = new Set(), roofIn = 30, keptBy = () => false;
   const texOf = (c) => PIXI.Texture.from(c);
+  // Each set in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here.
+  const styled = (set, prefix) => (restyle ? restyle('town', set, prefix) : set);
   // Each set drawn the first time it is wanted, and again only if the canvas textures have been thrown away.
   const lazily = (key, sample, make) => { if (!art[key] || sample(art[key])?.baseTexture?.destroyed) art[key] = make(); return art[key]; };
-  const pigeonTex = () => lazily('pigeon', (a) => a[0].stand, () => PIGEONS.map((c) => ({ stand: texOf(pigeonPicture(c, {})), walk: [0, 3.5, 5, 2].map((reach) => texOf(pigeonPicture(c, { reach }))), peck: texOf(pigeonPicture(c, { peck: true })), tucked: texOf(pigeonPicture(c, { tucked: true })), fly: SPANS.map((s) => texOf(pigeonFlying(c, s))) })));
-  const henTex = () => lazily('hen', (a) => a[0].stand, () => HENS.map((c) => { const h = henArt(c); return { stand: texOf(h.stand), peck: texOf(h.peck), walk: h.walk.map(texOf), scratch: h.scratch.map(texOf) }; }));
-  const catTex = (i) => lazily(`cat${i}`, (a) => a.sit, () => { const c = CATS[i]; return { sit: texOf(catSitting(c, {})), wash: [-3, 3].map((head) => texOf(catSitting(c, { head, paw: true }))), walk: Array.from({ length: 8 }, (_, n) => texOf(catGoing(c, n / 8, false))), slink: Array.from({ length: 8 }, (_, n) => texOf(catGoing(c, n / 8, true))) }; });
-  const dogTex = (i) => lazily(`dog${i}`, (a) => a.stand, () => { const c = DOGS[i]; return { stand: texOf(dogPicture(c, { reach: 0 })), bark: texOf(dogPicture(c, { reach: 0, bark: true })), trot: Array.from({ length: 8 }, (_, n) => texOf(dogPicture(c, { p: n / 8 }))), nose: Array.from({ length: 8 }, (_, n) => texOf(dogPicture(c, { p: n / 8, reach: 4, nose: true }))) }; });
+  const pigeonTex = () => lazily('pigeon', (a) => a[0].stand, () => styled(PIGEONS.map((c) => ({ stand: texOf(pigeonPicture(c, {})), walk: [0, 3.5, 5, 2].map((reach) => texOf(pigeonPicture(c, { reach }))), peck: texOf(pigeonPicture(c, { peck: true })), tucked: texOf(pigeonPicture(c, { tucked: true })), fly: SPANS.map((s) => texOf(pigeonFlying(c, s))) })), 'pigeon'));
+  const henTex = () => lazily('hen', (a) => a[0].stand, () => styled(HENS.map((c) => { const h = henArt(c); return { stand: texOf(h.stand), peck: texOf(h.peck), walk: h.walk.map(texOf), scratch: h.scratch.map(texOf) }; }), 'hen'));
+  const catTex = (i) => lazily(`cat${i}`, (a) => a.sit, () => styled(catSet(i), `cat/${i}`));
+  const catSet = (i) => { const c = CATS[i]; return { sit: texOf(catSitting(c, {})), wash: [-3, 3].map((head) => texOf(catSitting(c, { head, paw: true }))), walk: Array.from({ length: 8 }, (_, n) => texOf(catGoing(c, n / 8, false))), slink: Array.from({ length: 8 }, (_, n) => texOf(catGoing(c, n / 8, true))) }; };
+  const dogTex = (i) => lazily(`dog${i}`, (a) => a.stand, () => styled(dogSet(i), `dog/${i}`));
+  const dogSet = (i) => { const c = DOGS[i]; return { stand: texOf(dogPicture(c, { reach: 0 })), bark: texOf(dogPicture(c, { reach: 0, bark: true })), trot: Array.from({ length: 8 }, (_, n) => texOf(dogPicture(c, { p: n / 8 }))), nose: Array.from({ length: 8 }, (_, n) => texOf(dogPicture(c, { p: n / 8, reach: 4, nose: true }))) }; };
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
   const pair = (parent, tex) => ({ shadow: sprite(floor(), tex, true), body: sprite(parent, tex) });
   const gone = (...list) => { for (const s of list) { try { s?.destroy(); } catch { /* gone */ } } };
   const drop = () => {
     for (const o of [...pigeons, ...chickens, ...(cat ? [cat] : []), ...(dog ? [dog] : [])]) gone(o.body, o.shadow);
-    pigeons = []; chickens = []; cat = null; dog = null; spots = []; walls = [];
+    for (const r of roofers) gone(r.p.body, r.p.shadow);
+    pigeons = []; chickens = []; cat = null; dog = null; spots = []; walls = []; roofers = [];
   };
   const put = (s, tex, x, y, angle, scale, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(scale); s.alpha = alpha; };
   const hide = (o) => { o.body.visible = false; o.shadow.visible = false; };
@@ -436,20 +449,24 @@ export function createTownLife({ PIXI, floor, sky, high = sky }) {
   const layerFor = (p) => (p.mode !== 'fly' ? 'floor' : p.h > 0.5 ? 'high' : 'sky');
   const rehome = (p) => { const want = layerFor(p); if (p.layer !== want) { p.layer = want; (want === 'floor' ? floor : want === 'high' ? high : sky)().addChild(p.body); } };
   return {
-    populate({ kept = () => false, spots: open = [], wallTops = [], grid: g = 100, size: s = 1, busy: b = 'quiet', blocked = () => false, focus = null, random = Math.random } = {}) {
-      drop(); grid = g; size = s; level = b === 'busy' ? 'busy' : 'quiet'; spots = open; shownDay = 0; chance = random;
+    populate({ kept = () => false, spots: open = [], wallTops = [], grid: g = 100, size: s = 1, busy: b = 'quiet', want = null, blocked = () => false, focus = null, perches: givenPerches = null, random = Math.random } = {}) {
+      drop(); keptBy = kept; roofIn = between(random, 15, 45); if (givenPerches) { perches = givenPerches; perchKeys = new Set(givenPerches.map((p) => p.key)); } grid = g; size = s; level = b === 'busy' ? 'busy' : 'quiet'; spots = open; shownDay = 0; chance = random;
       walls = wallTops.filter((w) => Math.hypot(w.bx - w.ax, w.by - w.ay) >= g * 0.5 && !kept('cats', (w.ax + w.bx) / 2, (w.ay + w.by) / 2));
-      const n = townCounts(level, open.length, walls.length, random);
+      const n = want ? wantedCounts(want, open.length) : townCounts(level, open.length, walls.length, random);
+      // A region's cat with no wall in it: a short stretch of its open ground to sit and walk on, as a wall top would be.
+      if (want && n.cat && !walls.length) { const p = pickOf(open.filter((q) => !kept('cats', q.x, q.y)), random); if (p) walls = [{ ax: p.x - g * 0.6, ay: p.y, bx: p.x + g * 0.6, by: p.y, ground: true }]; else n.cat = 0; }
       // A flock, or a few hens, round one place; on the wrong side of a wall from that place they stay on it.
       const round = (home, r) => { const x = home.x + between(random, -r, r) * g, y = home.y + between(random, -r, r) * g; return blocked(home, { x, y }) ? { x: home.x, y: home.y } : { x, y }; };
       // A big map has several flocks and broods, so a town is not one corner of it; the first of each, and the cat and the dog, start where the view is.
-      const groups = townGroups(level, open.length), placesFor = (kind) => open.filter((p) => !kept(kind, p.x, p.y)), pigeonPlaces = placesFor('pigeons'), henPlaces = placesFor('hens'), dogPlaces = placesFor('dogs'), homes = pigeonPlaces.length ? homesFor(pigeonPlaces, groups, focus, { grid: g, random }) : [], henHomes = henPlaces.length ? homesFor(henPlaces, groups, focus, { grid: g, random }) : [];
+      const groups = want ? (open.length ? 1 : 0) : townGroups(level, open.length), placesFor = (kind) => open.filter((p) => !kept(kind, p.x, p.y)), pigeonPlaces = placesFor('pigeons'), henPlaces = placesFor('hens'), dogPlaces = placesFor('dogs'), homes = pigeonPlaces.length ? homesFor(pigeonPlaces, groups, focus, { grid: g, random }) : [], henHomes = henPlaces.length ? homesFor(henPlaces, groups, focus, { grid: g, random }) : [];
       if (n.pigeons) { const t = pigeonTex(); pigeons = homes.flatMap((home) => Array.from({ length: n.pigeons }, () => { const coat = Math.floor(random() * t.length); return { ...round(home, 0.7), a: random() * TAU, mode: 'ground', wait: random() * 2, peck: 0, walk: 0, gait: random(), h: 0, t: 0, coat, phase: random() * 6, layer: 'floor', ...pair(floor(), t[coat].stand) }; })); }
       if (n.chickens) { const t = henTex(); chickens = henHomes.flatMap((home) => Array.from({ length: n.chickens }, () => { const coat = Math.floor(random() * t.length); return { ...round(home, 0.8), a: random() * TAU, mode: 'peck', wait: random() * 3, peck: 0, nod: 0, gait: random(), t: 0, coat, phase: random() * 6, ...pair(floor(), t[coat].stand) }; })); }
-      if (n.cat) { const coat = Math.floor(random() * CATS.length), t = catTex(coat), seg = focus ? walls.reduce((best, w) => (Math.hypot((w.ax + w.bx) / 2 - focus.x, (w.ay + w.by) / 2 - focus.y) < Math.hypot((best.ax + best.bx) / 2 - focus.x, (best.ay + best.by) / 2 - focus.y) ? w : best)) : pickOf(walls, random), u = between(random, 0.1, 0.9), dir = random() < 0.5 ? 1 : -1; cat = { seg, u, dir, x: seg.ax + (seg.bx - seg.ax) * u, y: seg.ay + (seg.by - seg.ay) * u, a: Math.atan2((seg.bx - seg.ax) * dir, -(seg.by - seg.ay) * dir), mode: 'sit', left: between(random, 10, 50), wash: 0, washIn: between(random, 1, 6), gait: 0, show: 1, t: 0, coat, ...pair(sky(), t.sit) }; }
+      if (n.cat) { const coat = Math.floor(random() * CATS.length), t = catTex(coat), seg = focus ? walls.reduce((best, w) => (Math.hypot((w.ax + w.bx) / 2 - focus.x, (w.ay + w.by) / 2 - focus.y) < Math.hypot((best.ax + best.bx) / 2 - focus.x, (best.ay + best.by) / 2 - focus.y) ? w : best)) : pickOf(walls, random), u = between(random, 0.1, 0.9), dir = random() < 0.5 ? 1 : -1; cat = { seg, u, dir, x: seg.ax + (seg.bx - seg.ax) * u, y: seg.ay + (seg.by - seg.ay) * u, a: Math.atan2((seg.bx - seg.ax) * dir, -(seg.by - seg.ay) * dir), mode: 'sit', left: between(random, 10, 50), wash: 0, washIn: between(random, 1, 6), gait: 0, show: 1, t: 0, coat, ...pair(seg.ground ? floor() : sky(), t.sit) }; }
       if (n.dog && dogPlaces.length) { const coat = Math.floor(random() * DOGS.length), t = dogTex(coat), at = homesFor(dogPlaces, 1, focus, { grid: g, random })[0]; dog = { x: at.x, y: at.y, a: random() * TAU, mode: 'nose', t: between(random, 1, 4), want: 0, next: 0, sniff: false, v: 0, gait: 0, bark: 0, bored: 0, coat, ...pair(floor(), t.stand) }; dog.want = dog.a; }
     },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
+    // Where a pigeon may go up to sit (perch-hops.mjs perchesFrom: the roofs); one on a roof that has gone comes down next step.
+    setPerches(list = []) { if (list === perches) return; perches = list; perchKeys = new Set(list.map((p) => p.key)); },
     tick(seconds, { near = [], ok = () => true, blocked = () => false, barred = () => false, day = 1, night = 0, rain = 0, view = null, seen = () => true, cast = null, sound = () => {} } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = (grid / 100) * size; time += dt;
@@ -491,6 +508,49 @@ export function createTownLife({ PIXI, floor, sky, high = sky }) {
         if (wentUp) sound('wingsUp', centre, true);
         else if (cooing && chance() < dt * 0.08) sound('pigeonCoo', centre, false);
       } else for (const p of pigeons) hide(p);
+      // Now and then one of the flock goes up alone to sit on a roof's ridge or edge, then comes back down to the others, or goes on
+      // to another roof (perch-hops.mjs). Heavy rain brings them down and keeps them there.
+      if (alpha > 0.01 && pigeons.length && perches.length && rain < HEAVY_RAIN && (roofIn -= dt) <= 0) {
+        roofIn = between(chance, 25, 70);
+        const want = perchBirdCount('pigeons', perches, pigeons.length + roofers.length), free = pigeons.filter((p) => p.mode === 'ground' && !p.tucked);
+        if (roofers.length < want && free.length) {
+          const p = pickOf(free, chance), at = { x: p.x, y: p.y, h: 0, kind: 'ground', on: 'ground', face: p.a, key: 'ground:here' };
+          const to = nextPerch(at, perches, { kind: 'pigeons', grid, roofs: 1, taken: roofers.map((r) => r.b.to?.key ?? r.b.at?.key), kept: (x, y) => keptBy('pigeons', x, y), random: chance });
+          if (to && to.kind === 'roof') { pigeons = pigeons.filter((q) => q !== p); roofers.push({ p, b: { x: p.x, y: p.y, a: p.a, mode: 'fly', from: { x: p.x, y: p.y, h: 0, kind: 'ground' }, to, t: 0, len: Math.max(1.2, Math.min(8, Math.hypot(to.x - p.x, to.y - p.y) / (grid * 3) + 0.6)), stage: 'takeoff', lift: 0, shown: 1 } }); sound('wingsUp', p, false); }
+        }
+      }
+      if (roofers.length) {
+        const t = pigeonTex(), cx = pigeons.length ? pigeons.reduce((n, p) => n + p.x, 0) / pigeons.length : null, cy = pigeons.length ? pigeons.reduce((n, p) => n + p.y, 0) / pigeons.length : null;
+        // Back down among the others: a free spot near the flock, else where it went up from.
+        const down = (r) => { const at = cx === null ? null : landingSpot(spots, { x: cx, y: cy }, { grid, near, ok: okFor('pigeons'), random: chance }) ?? { x: cx, y: cy }; return at ? { x: at.x, y: at.y, h: 0, kind: 'ground', on: 'ground', face: r.b.a, key: 'ground:flock' } : null; };
+        const after = [];
+        for (const r of roofers) {
+          const b0 = r.b, goDown = rain >= HEAVY_RAIN || light < 0.3 || chance() < 0.6;
+          const b = perchHopStep(b0, { dt, grid, kind: 'pigeons', near, noise: heard(b0), here: (p) => p.kind === 'ground' || (perchKeys.has(p.key) && !keptBy('pigeons', p.x, p.y)), choose: (o) => {
+            const ground = goDown ? down(r) : null, others = roofers.filter((q) => q !== r).map((q) => q.b.to?.key ?? q.b.at?.key);
+            return (ground && nextPerch(o.at, [ground], { kind: 'pigeons', grid, roofs: 0, kept: (x, y) => keptBy('pigeons', x, y), random: chance })) ?? nextPerch(o.at, perches, { kind: 'pigeons', grid, roofs: 1, taken: others, kept: (x, y) => keptBy('pigeons', x, y), random: chance }) ?? down(r);
+          }, random: chance });
+          if (b.mode === 'fly' && b0.mode === 'sit') sound('wingsUp', b, false);
+          const p = r.p; p.x = b.x; p.y = b.y; p.a = b.a;
+          // Down on the ground: one of the flock again.
+          if (b.mode === 'gone' || (b.mode === 'sit' && b.at.kind === 'ground')) { Object.assign(p, { mode: 'ground', h: 0, wait: between(chance, 0.8, 2.2), peck: 0, walk: 0, stage: null, tucked: false }); rehome(p); if (p.shadow.parent !== floor()) floor().addChild(p.shadow); pigeons.push(p); continue; }
+          r.b = b; after.push(r);
+          // Up over the roofs, its shadow on the roof under it as it sits, on the ground as it flies.
+          if (p.layer !== 'high') { p.layer = 'high'; high().addChild(p.body); }
+          const sitting = b.mode === 'sit', shadowHome = sitting ? high() : floor();
+          if (p.shadow.parent !== shadowHome) { shadowHome.addChild(p.shadow); if (sitting) high().addChild(p.body); }
+          if (alpha <= 0.01 || !can(p)) { hide(p); continue; }
+          const set = t[p.coat];
+          if (sitting) {
+            const tex = b.peck > 0 ? set.peck : set.stand, s = 0.62 * k, c = fall(p, p.x, p.y, { width: grid * 0.14, body: 0.12, grounded: true });
+            put(p.shadow, tex, p.x + c.dx * 0.6, p.y + c.dy * 0.6, p.a, s, Math.min(0.4, c.alpha * 0.45) * alpha); put(p.body, tex, p.x, p.y, p.a, s, alpha);
+          } else {
+            const tex = set.fly[b.stage === 'glide' ? 0 : Math.floor(time * (b.stage === 'takeoff' ? 22 : 16) + p.phase) % SPANS.length], h = Math.min(1, b.lift / 4), s = 0.42 * k * (1 + h * 0.18), c = fall(p, p.x, p.y, { width: grid * 0.35, lift: Math.max(0.3, b.lift) });
+            put(p.shadow, tex, p.x + c.dx, p.y + c.dy, p.a, s * (1 + h * 0.25), Math.min(0.24, c.alpha * 0.28) * (1 - h * 0.35) * alpha); put(p.body, tex, p.x, p.y, p.a, s, alpha);
+          }
+        }
+        roofers = after;
+      }
       if (alpha > 0.01 && chickens.length) {
         const t = henTex(), okHere = okFor('chickens');
         chickens = chickens.map((c0) => {
@@ -528,7 +588,7 @@ export function createTownLife({ PIXI, floor, sky, high = sky }) {
       }
     },
     clear() { drop(); noises = []; },
-    get busy() { return pigeons.length + chickens.length + (cat ? 1 : 0) + (dog ? 1 : 0) > 0; },
-    get counts() { return { level, pigeons: pigeons.length, chickens: chickens.length, cat: cat ? 1 : 0, dog: dog ? 1 : 0, pigeonModes: pigeons.map((p) => (p.tucked ? 'tucked' : p.mode)), chickenModes: chickens.map((c) => c.mode), catMode: cat?.mode ?? null, dogMode: dog?.mode ?? null }; },
+    get busy() { return pigeons.length + roofers.length + chickens.length + (cat ? 1 : 0) + (dog ? 1 : 0) > 0; },
+    get counts() { return { level, pigeons: pigeons.length + roofers.length, onRoofs: roofers.filter((r) => r.b.mode === 'sit').length, chickens: chickens.length, cat: cat ? 1 : 0, dog: dog ? 1 : 0, pigeonModes: pigeons.map((p) => (p.tucked ? 'tucked' : p.mode)), chickenModes: chickens.map((c) => c.mode), catMode: cat?.mode ?? null, dogMode: dog?.mode ?? null }; },
   };
 }

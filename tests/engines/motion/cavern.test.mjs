@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fungusIn, crystalsIn, crystalFaces, pathPoints } from '../../../scripts/engines/motion/cavern.mjs';
+import { readFileSync } from 'node:fs';
 import { webCorners, webStrands } from '../../../scripts/engines/motion/webs.mjs';
 import { dripsIn } from '../../../scripts/engines/motion/drips.mjs';
 
@@ -51,4 +52,15 @@ test('a walker clears its whole path through the mist, however far it got betwee
   assert.deepEqual(path.at(-1), { x: 100, y: 0 });
   assert.equal(pathPoints({ x: 0, y: 0 }, { x: 0, y: 0 }).length, 1, 'standing still: where it stands');
   assert.deepEqual(pathPoints({ x: 0, y: 0 }, { x: 5000, y: 0 }, { most: 800 }), [{ x: 5000, y: 0 }], 'a jump clears only where it landed');
+});
+
+// Discord (sonofkyuss): a tree tile and a creature over lava showed its cracks through them, as if see-through.
+test('the lava\'s glow (over the darkness, so over everything) leaves out what stands over it', () => {
+  const cave = readFileSync(new URL('../../../scripts/engines/motion/cavern.mjs', import.meta.url), 'utf8');
+  assert.match(cave, /uniform sampler2D uCover;/);
+  assert.match(cave, /\(1\.0 - texture2D\(uCover, vUv\)\.a\), 0\.0\);/, 'the glow pass, times what is not covered');
+  assert.match(cave, /cover\(c\.rt, c\.box\)/, 'redrawn as things move');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /cover: coverOverFloor \}\);/);
+  assert.match(main, /canvas\.tokens\?\.placeables[^\n]*draw\(t\.mesh\)/); assert.match(main, /canvas\.tiles\?\.placeables[^\n]*> base[^\n]*draw\(t\.mesh\)/);
 });

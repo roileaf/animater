@@ -8,15 +8,21 @@ import { scopeBar } from './level-scope.mjs';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export const ANIMAL_GROUPS = Object.freeze([
-  ['Open ground', [['rabbits', 'Rabbits'], ['wildBirds', 'Birds'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['insects', 'Insects'], ['owls', 'Owls']]],
-  ['Water', [['fish', 'Fish'], ['waterBirds', 'Water birds'], ['frogs', 'Frogs']]],
+  ['Open ground', [['rabbits', 'Rabbits'], ['wildBirds', 'Birds'], ['crows', 'Crows'], ['hawks', 'Hawks'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['insects', 'Insects'], ['owls', 'Owls']]],
+  ['Water', [['fish', 'Fish'], ['waterBirds', 'Ducks'], ['herons', 'Herons'], ['gulls', 'Gulls'], ['frogs', 'Frogs']]],
+  ['Town', [['pigeons', 'Pigeons'], ['hens', 'Hens'], ['cats', 'Cats'], ['dogs', 'Dogs']]],
+  ['Farm', [['cows', 'Cows'], ['goats', 'Goats'], ['sheep', 'Sheep'], ['pigs', 'Pigs'], ['horses', 'Horses']]],
   ['Dark places', [['rats', 'Rats'], ['bats', 'Bats'], ['moths', 'Moths'], ['crawlers', 'Crawlers']]],
 ]);
+// The kinds that come only when asked for (none until chosen): wolves, and the town's and the farm's animals.
+export const ASKED_FOR = Object.freeze(new Set(['wolves', 'pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses']));
 // What a level can have of its own.
 export const ANIMAL_KEYS = Object.freeze([...ANIMAL_GROUPS.flatMap(([, kinds]) => kinds.flatMap(([kind]) => [kind, `${kind}Size`])), 'outdoorLife', 'animalScale', 'birdHeight', 'placedAnimals']);
 const AMOUNTS = [['none', 'None'], ['few', 'Few'], ['', 'Usual'], ['more', 'More'], ['many', 'Many']];
 // Wolves are the GM's to ask for: none until chosen, on any scene.
 const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more', 'More'], ['many', 'Many']];
+// Hawks are counted, not given an amount: one unless set (unset reads as 1), up to four.
+const HAWK_COUNTS = [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']];
 // What can be placed by hand, and how it is kept.
 export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake']]);
 export const MOST_PLACED = 40;
@@ -25,7 +31,7 @@ const PLACEABLE_IDS = new Set(PLACEABLE.map(([id]) => id));
 // The scene flags a preset writes (pure): every outdoor kind at one amount; dark places are left alone, as those belong to underground scenes, and wolves, who come only when asked for.
 export function animalPreset(amount = '') {
   const out = {};
-  for (const [group, kinds] of ANIMAL_GROUPS) if (group !== 'Dark places') for (const [kind] of kinds) if (kind !== 'wolves') out[kind] = amount;
+  for (const [group, kinds] of ANIMAL_GROUPS) if (group !== 'Dark places') for (const [kind] of kinds) if (!ASKED_FOR.has(kind) && kind !== 'hawks') out[kind] = amount;
   return out;
 }
 // How high a map's birds fly as a share of the usual (pure), from its slider's percent: unset, as usual.
@@ -57,7 +63,8 @@ const chip = (action, data, label, { active = false, tip = '', icon = '' } = {})
 const sizeSlider = (key, label, value) => { const percent = sizePercent(value); return `<label class="animater-an-size"><input type="range" data-size-key="${key}" min="${SIZE_RANGE.min}" max="${SIZE_RANGE.max}" step="${SIZE_RANGE.step}" value="${percent}" aria-label="${esc(label)}"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
 const birdHeightSlider = (value) => { const percent = Math.round(birdHeightOf(value) * 100); return `<label class="animater-an-size"><input type="range" data-size-key="birdHeight" min="${BIRD_HEIGHT.min}" max="${BIRD_HEIGHT.max}" step="${BIRD_HEIGHT.step}" value="${percent}" aria-label="Bird height"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
 const animalRow = (kind, label, flags) => {
-  const amounts = (kind === 'wolves' ? WOLF_AMOUNTS : AMOUNTS).map(([v, l]) => chip('setAnimal', `data-key="${kind}" data-value="${v}"`, l, { active: String(flags[kind] ?? '') === v })).join('');
+  const now = kind === 'hawks' && (flags[kind] ?? '') === '' ? '1' : String(flags[kind] ?? '');
+  const amounts = (kind === 'hawks' ? HAWK_COUNTS : ASKED_FOR.has(kind) ? WOLF_AMOUNTS : AMOUNTS).map(([v, l]) => chip('setAnimal', `data-key="${kind}" data-value="${v}"`, l, { active: now === v })).join('');
   return `<div class="animater-an-row"><span>${esc(label)}</span><div class="animater-an-amounts">${amounts}</div>${sizeSlider(`${kind}Size`, `${label}: size`, flags[`${kind}Size`])}</div>`;
 };
 

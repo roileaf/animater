@@ -36,6 +36,11 @@ export function weatherLevels({ rain = 0, wind = 0, storm = 0, words = '', insid
   };
 }
 
+// How loud the weather is on this screen (pure): its player's Weather volume, a percent, to a factor 0-1. Unset or broken plays as recorded.
+export const weatherLoudness = (percent) => { const n = Number(percent); return percent === null || percent === undefined || percent === '' || !Number.isFinite(n) ? 1 : clamp(n / 100); };
+// Every loop's level by that factor (pure).
+export const louder = (levels, by = 1) => Object.fromEntries(Object.entries(levels ?? {}).map(([kind, v]) => [kind, v * by]));
+
 // Which of Calendaria's weathers Animater sounds itself (pure): the rest (Gravewind, Black Sun and such) keep Calendaria's own.
 const OURS = new Set(['rain', 'drizzle', 'sunshower', 'acid-rain', 'blood-rain', 'windy', 'wind', 'snow', 'sleet', 'hail', 'thunderstorm', 'blizzard', 'ice-storm', 'sandstorm', 'dust-devil', 'hurricane', 'monsoon', 'tornado']);
 export const weatherIsOurs = (id) => OURS.has(String(id ?? '').toLowerCase());

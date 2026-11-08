@@ -102,6 +102,27 @@ function libraryFixture() {
   return {library,w,original,get draft(){return draft;},get saves(){return saves;},get renders(){return renders;}};
 }
 
+// Roi: a blast of the GM's own chooses its animation here, not from a list in its form.
+test('opened to choose for something outside a recipe: hands the choice back, leaves the recipe alone, goes back where it was', async () => {
+  const f = libraryFixture(), before = structuredClone(f.draft);
+  f.w.page = 'settings';
+  const effect = f.library.items.find(item=>item.key==='jb2a.ray_of_frost.blue');
+  const picked = [], backs = [];
+  f.w.page = 'settings';
+  f.library.openFor({ label: 'Witchfire', current: effect.files[1], onPick: (r) => picked.push(r), onBack: () => backs.push(1) });
+  assert.equal(f.w.page, 'assets'); assert.equal(f.library.selectedId, effect.id, 'opens on the one it has'); assert.equal(f.library.file, effect.files[1]);
+  const html = f.library.html(f.draft);
+  assert.match(html, /Choosing the animation for <b>Witchfire<\/b>/); assert.match(html, /Use for Witchfire/);
+  assert.doesNotMatch(html, /data-action="media-add"/);
+  f.library.file = null;
+  await f.library.action('media-apply', {dataset:{}});
+  assert.deepEqual(picked, [effect.key]); assert.deepEqual(backs, [], 'a choice is not a Back');
+  assert.equal(f.w.page, 'settings'); assert.equal(f.library.target, null); assert.deepEqual(f.draft, before, 'the recipe untouched');
+  f.library.openFor({ label: 'Witchfire', onPick: (r) => picked.push(r), onBack: () => backs.push(1) });
+  await f.library.action('media-back', {dataset:{}});
+  assert.deepEqual(backs, [1]); assert.equal(picked.length, 1);
+});
+
 test('teleport picker applies departure and arrival art independently, preserves stages and returns to settings', async () => {
   const f = libraryFixture(), originalStages = structuredClone(f.draft.stages);
   f.w.studioSettings = true;

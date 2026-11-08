@@ -119,6 +119,43 @@ test('no sun flecks under a closed sky; all of them under broken cloud', async (
   assert.equal(directSun(undefined), 1);
 });
 
+test('sun through the leaves falls in ragged warm patches, not round pale discs', async () => {
+  const { CANOPY_SHADER_SOURCES } = await import('../../../scripts/engines/motion/canopy-light.mjs');
+  const [, frag] = CANOPY_SHADER_SOURCES[0];
+  const flecks = frag.slice(frag.indexOf('float flecks('), frag.indexOf('// Leaves falling'));
+  // No disc round a cell's centre: the patches come from warped noise.
+  assert.doesNotMatch(flecks, /length\(q - centre\)/);
+  assert.match(flecks, /fbm3\(/);
+  // How thin the crown is shapes them (more and bigger where it thins), and they come in two painted steps.
+  assert.match(frag, /float flecks\(vec2 src, vec2 px, float t, float cover, float kind\)/);
+  assert.match(frag, /flecks\(src, px, t, cover, floor\(texture2D\(uKinds/);
+  assert.match(frag, /float twoSteps\(float n, float th, float rise\)/);
+  // The light added on top is a little and warm, not the sun's colour at 30% (which greys the grass).
+  assert.doesNotMatch(frag, /fleck \* cover \* 0\.3/);
+  assert.match(frag, /vec3\(1\.0, 0\.88, 0\.62\) \* glow/);
+  assert.ok(!frag.includes('`'), 'no backtick in the shader');
+});
+
+test('each kind of tree lets the sun through its own way, read from a baked kind map', async () => {
+  const { CANOPY_SHADER_SOURCES, KIND_CODES } = await import('../../../scripts/engines/motion/canopy-light.mjs');
+  const { TREE_DARK } = await import('../../../scripts/engines/motion/tree-kinds.mjs');
+  // Every kind has its own code, none of them 0 (no tree), each fitting the kind map's red in eighths.
+  assert.deepEqual(Object.keys(KIND_CODES).sort(), Object.keys(TREE_DARK).sort());
+  const codes = Object.values(KIND_CODES);
+  assert.equal(new Set(codes).size, codes.length);
+  assert.ok(codes.every((c) => Number.isInteger(c) && c >= 1 && c <= 7));
+  const [, frag] = CANOPY_SHADER_SOURCES[0];
+  assert.match(frag, /uniform sampler2D [^;]*uKinds/);
+  // A bare tree and a palm add none of their own: their branches' and fronds' shade already leaves the ground lit between.
+  assert.match(frag, /kind > 4\.5 && kind < 5\.5\) \|\| \(kind > 2\.5 && kind < 3\.5\)\) return 0\.0/);
+});
+
+test('the tree patterns cut no round sun spots into the shade', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../../../scripts/engines/motion/tree-kinds.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /createRadialGradient|SPOTS/);
+});
+
 test('the sky and the trees share one pattern for where a cloud is', async () => {
   const { CLOUD_DECK } = await import('../../../scripts/engines/motion/cloud-deck.mjs');
   assert.match(CLOUD_DECK, /float cloudDeck\(vec2 px, float t, float run, vec2 dir, float wind, float grid\)/);

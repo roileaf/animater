@@ -285,3 +285,18 @@ test('a keep-out box of its own decides, then the old group, and All animals hol
   assert.equal(crossesKept(line, 'crows', kept), true);
   assert.equal(crossesKept(line, 'owl', kept), false, 'another kind');
 });
+
+test('a songbird on the ground hops over a moment, a little way each frame, never set down far off at once', async () => {
+  const { songStep } = await import('../../../scripts/engines/motion/wildlife.mjs');
+  let rolls = [0.99, 0.5, 0.5, 0.99];   // not a peck, a turn, a hop, no run after it
+  const random = () => (rolls.length ? rolls.shift() : 0.5);
+  let s = { x: 0, y: 0, a: 0, mode: 'ground', wait: 0, peck: 0 };
+  s = songStep(s, { dt: 1 / 60, grid: 100, random });
+  assert.ok(s.hop, 'a hop begins');
+  assert.equal(s.x, 0); assert.equal(s.y, 0);
+  const land = { x: s.hop.tx, y: s.hop.ty }; let biggest = 0, prev = { x: s.x, y: s.y };
+  for (let i = 0; i < 30 && s.hop; i++) { s = songStep(s, { dt: 1 / 60, grid: 100, random }); biggest = Math.max(biggest, Math.hypot(s.x - prev.x, s.y - prev.y)); prev = { x: s.x, y: s.y }; }
+  assert.ok(!s.hop, 'it lands');
+  assert.ok(Math.hypot(s.x - land.x, s.y - land.y) < 1e-6, 'where the hop was aimed');
+  assert.ok(biggest < Math.hypot(land.x, land.y) / 3, 'carried over several frames');
+});

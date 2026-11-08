@@ -220,6 +220,7 @@ precision highp float;
 varying vec2 vUv;
 uniform sampler2D uMask;    // a: the lava (soft edged)
 uniform sampler2D uWide;    // a: a wide blur of it (the light it throws around)
+uniform sampler2D uCover;   // a: what stands over it (creatures, tiles higher up), which its glow never shows through
 uniform vec4 uBox;         // the quad over the scene: x, y, w, h
 uniform float uTime, uGrid, uHeat, uPass;   // pass 0: the lava on the floor; 1: its glow, over the darkness
 ${NOISE}
@@ -267,7 +268,7 @@ void main(){
     vec2 at = bc + vec2(cos(a), sin(a)) * k * uGrid * (0.2 + 0.25 * hash(cell + fs)); ember += (1.0 - k) * exp(-dot(px - at, px - at) / (uGrid * uGrid * 0.00025)); }
   float a = smoothstep(0.5, 0.56, shore);
   if (uPass < 0.5) gl_FragColor = vec4(col * a, a);
-  else gl_FragColor = vec4((col * smoothstep(0.15, 0.8, T) * 1.25 + vec3(1.0, 0.6, 0.2) * ember + vec3(0.78, 0.27, 0.06) * glowAround * (0.22 + 0.2 * uHeat) * flick) * a, 0.0);
+  else gl_FragColor = vec4((col * smoothstep(0.15, 0.8, T) * 1.25 + vec3(1.0, 0.6, 0.2) * ember + vec3(0.78, 0.27, 0.06) * glowAround * (0.22 + 0.2 * uHeat) * flick) * a * (1.0 - texture2D(uCover, vUv).a), 0.0);
 }`;
 
 const MIST_FRAG = `
@@ -432,9 +433,12 @@ const maskOf = (PIXI, render, polygons, box, { soft = 0 } = {}) => {
  * build({ fungus: [{ areas, color }], crystals: [{ areas, stone }], lava: [areas], mist: [areas], walls, grid, seed, isFloor })
  * lays it all out; look({ touches: [{ x, y, ago }], lights: [{ x, y, reach, strength, color: [r, g, b] }] }) a few times
  * a second; feet([{ x, y }]) parts the mist; tick(seconds); clear().
+ * `cover(renderTexture, box)`, given, draws what stands over the floor in a box (creatures, tiles higher up) into a small
+ * picture, cleared first: the lava's glow is drawn over the darkness, so over everything, and must leave those out
+ * (Discord, sonofkyuss: a tree and a creature over lava showed its cracks through them).
  */
-export function createCavern({ PIXI, floor, glow, render }) {
-  let meshes = [], textures = [], graphics = [], fungus = [], crystals = [], lavas = [], mists = [], skies = [], grid = 100, time = 0, walkers = new Map(), mistOut = null, mistOutMesh = null, airTex = null, airPixels = null, pull = null;
+export function createCavern({ PIXI, floor, glow, render, cover = null }) {
+  let covers = [], coverSince = 0, noCover = null, meshes = [], textures = [], graphics = [], fungus = [], crystals = [], lavas = [], mists = [], skies = [], grid = 100, time = 0, walkers = new Map(), mistOut = null, mistOutMesh = null, airTex = null, airPixels = null, pull = null;
   // The air's flow (draft()), for the mist to stream with: none, a still texture.
   let draft = null, draftField = [0, 0, 1, 1], draftWas = null, draftMix = 1;
   let still = null;
@@ -442,7 +446,7 @@ export function createCavern({ PIXI, floor, glow, render }) {
   const drop = () => {
     for (const m of [...meshes, ...graphics]) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone */ } }
     for (const t of textures) { try { t.destroy(true); } catch { /* gone */ } }
-    meshes = []; textures = []; graphics = []; fungus = []; crystals = []; lavas = []; mists = []; skies = []; walkers = new Map(); mistOut = null; mistOutMesh = null; pull = null; try { airTex?.destroy(true); } catch { /* gone */ } airTex = null; airPixels = null;
+    covers = []; meshes = []; textures = []; graphics = []; fungus = []; crystals = []; lavas = []; mists = []; skies = []; walkers = new Map(); mistOut = null; mistOutMesh = null; pull = null; try { airTex?.destroy(true); } catch { /* gone */ } airTex = null; airPixels = null;
   };
   const add = (mesh, root, blend) => { mesh.eventMode = 'none'; if (blend) mesh.blendMode = blend; root().addChild(mesh); meshes.push(mesh); return mesh; };
   return {
@@ -507,7 +511,10 @@ export function createCavern({ PIXI, floor, glow, render }) {
       for (const item of lava) for (const p of item.areas ?? item) {
         const b0 = boxOf(p), pad = grid * 3, box = { x: b0.x - pad, y: b0.y - pad, w: b0.w + pad * 2, h: b0.h + pad * 2 };
         const mask = maskOf(PIXI, render, [p], box, { soft: grid * 0.25 }), wide = maskOf(PIXI, render, [p], box, { soft: grid * 1.6 }); textures.push(mask, wide);
-        const own = { uMask: mask, uWide: wide, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uHeat: item.heat ?? 0.6, uPass: 0 }, lit = { ...own, uPass: 1 };
+        noCover ??= PIXI.Texture.fromBuffer(new Uint8Array([0, 0, 0, 0]), 1, 1);
+        const own = { uMask: mask, uWide: wide, uCover: noCover, uBox: [box.x, box.y, box.w, box.h], uTime: 0, uGrid: grid, uHeat: item.heat ?? 0.6, uPass: 0 }, lit = { ...own, uPass: 1 };
+        // What stands over it, a quarter of the scene's resolution (soft edges are fine for a glow).
+        if (cover) { const rt = PIXI.RenderTexture.create({ width: Math.max(1, Math.ceil(box.w / 4)), height: Math.max(1, Math.ceil(box.h / 4)) }); textures.push(rt); lit.uCover = rt; covers.push({ rt, box }); }
         const geometry = quad(PIXI, box);
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(AREA_VERT, LAVA_FRAG, own)), floor);
         add(new PIXI.Mesh(geometry, PIXI.Shader.from(AREA_VERT, LAVA_FRAG, lit)), glow, PIXI.BLEND_MODES.ADD);
@@ -585,6 +592,9 @@ export function createCavern({ PIXI, floor, glow, render }) {
       time += seconds;
       for (const o of fungus) o.uTime = time;
       for (const o of lavas) o.uTime = time;
+      // What stands over the lava, redrawn ten times a second (creatures walk; a tile can be moved).
+      coverSince += seconds;
+      if (covers.length && coverSince >= 0.1) { coverSince = 0; for (const c of covers) { try { cover(c.rt, c.box); } catch { /* a cover never breaks the cave */ } } }
       for (const o of skies) o.uTime = time;
       if (mistOut) mistOut.uTime = time;
       if (pull) {

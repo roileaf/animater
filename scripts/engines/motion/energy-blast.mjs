@@ -262,11 +262,12 @@ export function createEnergyBlasts({ PIXI, floor, above, glow, map, render, mark
       try { mesh?.destroy(); geometry?.destroy(); tex?.destroy(true); } catch { /* gone */ }
     },
     // (`look`: a blast of the GM's own, blast-variants.mjs variantLook: its colours, recoloured all over.)
-    play({ x, y, radius, kind = 'fire', grid = 100, seed = Math.random() * 100, look = null } = {}) {
+    // (`floorOnly`: only the mark it leaves, under an animation of the GM's choosing playing in its place.)
+    play({ x, y, radius, kind = 'fire', grid = 100, seed = Math.random() * 100, look = null, floorOnly = false } = {}) {
       const type = blastType(kind), half = radius * 1.65, ground = map();
       const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [x - half, y - half, x + half, y - half, x + half, y + half, x - half, y + half], 2).addIndex([0, 1, 2, 0, 2, 3]);
       const uniforms = { uT: 0, uSeed: seed % 97, uR: radius, uGridR: (grid * 2) / radius, uCenter: [x, y], uType: type.shader, uA: look?.a ?? type.a, uB: look?.b ?? type.b, uRecolor: look?.recolor ?? 0, uFloor: ground?.texture ?? PIXI.Texture.WHITE, uRect: ground ? [ground.rect.x, ground.rect.y, ground.rect.width, ground.rect.height] : [0, 0, 1, 1] };
-      const b = { x, y, radius, t: 0, geometry, floor: ground ? meshOf(geometry, uniforms, 0, floor()) : null, cover: meshOf(geometry, uniforms, 1, above()), light: meshOf(geometry, uniforms, 2, glow(), true) };
+      const b = { x, y, radius, t: 0, geometry, floor: ground ? meshOf(geometry, uniforms, 0, floor()) : null, cover: floorOnly ? null : meshOf(geometry, uniforms, 1, above()), light: floorOnly ? null : meshOf(geometry, uniforms, 2, glow(), true) };
       live.push(b);
       return b;
     },

@@ -74,6 +74,7 @@ uniform vec4 uMapRect, uBox;
 uniform float uPix; // how many screen pixels a grid square is right now
 uniform vec4 uFish[${MOST_FISH}]; // x, y, heading, world pixels to one unit of a fish
 uniform float uFishSwing[${MOST_FISH}], uFishCount, uFishDim;
+uniform sampler2D uFishLook; uniform float uFishLookOn; // the fish's own picture (wildlife's, in the painted look), when there is one
 uniform float uTime, uWind, uGrid, uCurrent, uSun, uFrozen, uLightCount, uStill, uRough, uFoam, uSwell, uStreak, uBedSize, uStrength, uSea, uBeach, uSoft, uBedColour, uDepthHold, uDepthDark, uDepthTint;
 uniform vec2 uWindDir, uSwellDir, uToSun, uGlare, uDown, uRun; // uRun: where a fall starts and ends, along uDown
 uniform vec3 uSunColor;
@@ -148,6 +149,14 @@ float fishShape(vec2 off, vec4 fish, float swing, float soft){
   float along = (q.y + 4.0) / (q.y < -4.0 ? 16.0 : 24.0), wide = 5.4 * sqrt(max(0.0, 1.0 - along * along)), fin = clamp((q.y - 18.0) / 14.0, 0.0, 1.0);
   float body = (1.0 - smoothstep(wide - soft, wide + soft, abs(q.x))) * (1.0 - smoothstep(0.9, 1.05, abs(along))), tail = (1.0 - smoothstep(1.4 + 4.4 * fin * fin - soft, 1.4 + 4.4 * fin * fin + soft, abs(q.x))) * smoothstep(15.0, 18.0, q.y) * (1.0 - smoothstep(30.0, 33.0, q.y));
   return max(body, tail);
+}
+// The fish's own picture at off from it, bent as fishShape bends it: wildlife's frame is 40 x 72 of its units, nose up, its middle the fish's place.
+vec4 fishLookAt(vec2 off, vec4 fish, float swing){
+  float turnC = cos(fish.z), turnS = sin(fish.z); vec2 q = vec2(turnC * off.x + turnS * off.y, turnC * off.y - turnS * off.x) / fish.w;
+  float bendAt = max(q.y + 20.0, 0.0) / 52.0; q.x -= swing * bendAt * bendAt * 7.0;
+  vec2 uv = vec2((q.x + 20.0) / 40.0, (q.y + 36.0) / 72.0);
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return vec4(0.0);
+  return texture2D(uFishLook, uv);
 }
 ${OVER_PATTERNS}
 // One set of waves from one side where they break. dense how thick the foam, thinning behind each front; line the bright edge of a front; dark the shade just ahead of a crest; milk the pale water it leaves. Fronts wander and join, breaking in stretches at first and all along them nearer the shore. No backticks in here.
@@ -281,8 +290,15 @@ void main(){
     vec4 fish = uFish[i]; vec2 off = seen - fish.xy;
     if (dot(off, off) > fish.w * fish.w * 2300.0) continue;
     float hazy = uSea > 0.5 ? depth : deep, soft = 1.2 + 1.6 * hazy;
-    col *= 1.0 - 0.34 * fishShape(off - vec2(0.055, 0.075) * uGrid, fish, uFishSwing[i], soft + 2.6) * uFishDim * calm;
-    col = mix(col, col * vec3(0.24, 0.3, 0.32), fishShape(off, fish, uFishSwing[i], soft) * uFishDim * (1.0 - 0.45 * hazy) * calm);
+    if (uFishLookOn > 0.5) {
+      // its painted picture seen through the water: its shadow on the bed, then the fish itself, its colours sunk toward the water's
+      col *= 1.0 - 0.34 * fishLookAt(off - vec2(0.055, 0.075) * uGrid, fish, uFishSwing[i]).a * uFishDim * calm;
+      vec4 look = fishLookAt(off, fish, uFishSwing[i]); vec3 own = look.rgb / max(look.a, 0.001);
+      col = mix(col, own * mix(vec3(0.82, 0.9, 0.9), vec3(0.4, 0.52, 0.54), 0.3 + 0.5 * hazy) * (col / max(0.001, dot(col, vec3(0.33))) * 0.12 + 0.78), look.a * uFishDim * (1.0 - 0.45 * hazy) * calm);
+    } else {
+      col *= 1.0 - 0.34 * fishShape(off - vec2(0.055, 0.075) * uGrid, fish, uFishSwing[i], soft + 2.6) * uFishDim * calm;
+      col = mix(col, col * vec3(0.24, 0.3, 0.32), fishShape(off, fish, uFishSwing[i], soft) * uFishDim * (1.0 - 0.45 * hazy) * calm);
+    }
   }
   // Deep water: its own dark, thickest away from the bank, between the eye and the bed and fish; its light and foam go over it.
   col = mix(col, vec3(0.012, 0.055, 0.075), uDepthDark * smoothstep(0.0, 0.6, mask.g) * calm);
@@ -647,7 +663,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
       }
       over = textureOf(PIXI, overPixels, w, h);
     }
-    const uniforms = { uOverWatery: spec.watery ? 1 : 0, uOverSoft: Math.max(0, ...overs.map((o) => o.soft ?? 0)) * 0.3, uOver: over ?? PIXI.Texture.WHITE, uOverOn: over ? 1 : 0, uOverLift: spec.lift ?? size * 0.45, uPeak: held.peak, uAimed: blurs && (Number.isFinite(spec.waves) || blurs.deep < size * 3.5) ? 1 : 0, uWaveClock: 0, uWaveGap: WAVE_SPEED * wavePeriod(0), uSeaState: 0, uSwellLong: swellLength(0), uSwellClock: 0, uBreakSize: 1, uCells: cellsOf(), uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uDepthHold: spec.depth?.hold ?? 1, uDepthDark: spec.depth?.dark ?? 0, uDepthTint: spec.depth?.tint ? 1 : 0, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
+    const uniforms = { uOverWatery: spec.watery ? 1 : 0, uOverSoft: Math.max(0, ...overs.map((o) => o.soft ?? 0)) * 0.3, uOver: over ?? PIXI.Texture.WHITE, uOverOn: over ? 1 : 0, uOverLift: spec.lift ?? size * 0.45, uPeak: held.peak, uAimed: blurs && (Number.isFinite(spec.waves) || blurs.deep < size * 3.5) ? 1 : 0, uWaveClock: 0, uWaveGap: WAVE_SPEED * wavePeriod(0), uSeaState: 0, uSwellLong: swellLength(0), uSwellClock: 0, uBreakSize: 1, uCells: cellsOf(), uMap: floorNow.texture, uMask: mask, uFlow: flow, uWaves: sheetOf(), uBed: spec.bed?.texture ?? PIXI.Texture.WHITE, uSand: spec.sand ?? PIXI.Texture.WHITE, uSandSize: spec.sand ? size * 4 : 0, uBedSize: spec.bed?.texture ? size * 4 : 0, uBedColour: spec.bed?.colourOnly ? 1 : 0, uMapRect: [floorNow.rect.x, floorNow.rect.y, floorNow.rect.width, floorNow.rect.height], uBox: [box.x, box.y, box.w, box.h], uTime: clock, uWind: 0.2, uGrid: size, uCurrent: Number.isFinite(spec.angle) ? (spec.current ?? 0.4) * 1.4 * motion.pace : 0, ...sunUniforms(PIXI), uPix: size, uFish: fishes, uFishSwing: swings, uFishCount: 0, uFishDim: 1, uFishLook: PIXI.Texture.EMPTY, uFishLookOn: 0, uStill: motion.streak ? 0 : spec.followsWind ? 0.35 + 1.3 * (spec.current ?? 0.4) : Number.isFinite(spec.angle) ? 0.12 : 1, uRough: motion.rough, uFoam: waterFoam(spec.kind, spec.current), uStrength: Math.min(1, Math.max(0, spec.current ?? 0.4)), uSwell: motion.swell, uStreak: motion.streak, uSea: motion.sea ? 1 : 0, uBeach: motion.sea && spec.beach !== false ? 1 : 0, uSoft: spec.edge ?? 1, uDepthHold: spec.depth?.hold ?? 1, uDepthDark: spec.depth?.dark ?? 0, uDepthTint: spec.depth?.tint ? 1 : 0, uSwellDir: [0.8, 0.6], uDown: [Math.cos(spec.angle ?? 0), Math.sin(spec.angle ?? 0)], uRun: runOf(spec.areas, spec.angle ?? 0), uSun: 0, uFrozen: 0, uLightCount: 0, uWindDir: [0.8, 0.6], uToSun: [1, 0], uGlare: [box.x, box.y], uSunColor: [1, 1, 1], uLights: lights.lights, uLightColors: lights.colors, uRings: rings };
     const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, fragOf(qualityNow === 'full'), uniforms));
     mesh.eventMode = 'none'; root().addChild(mesh);
     skyAt = 0;
@@ -667,7 +683,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
       }
       for (const [id, entry] of known) if (!seen.has(id)) { drop(entry); known.delete(id); }
     },
-    tick(seconds, { sky = () => null, view = () => null, lights: sources = () => [], weather = () => null, flash = () => null, wind = 0, angle = 0.6, mostLights = MOST_LIGHTS, fish = () => null, shade = () => null } = {}) {
+    tick(seconds, { sky = () => null, view = () => null, lights: sources = () => [], weather = () => null, flash = () => null, wind = 0, angle = 0.6, mostLights = MOST_LIGHTS, fish = () => null, fishLook = () => null, shade = () => null } = {}) {
       clock += seconds;
       const shadeNow = shade();
       const swimming = fish(), fishCount = Math.min(MOST_FISH, swimming?.list?.length ?? 0);
@@ -684,7 +700,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
         const w = entry.mesh.shader.uniforms;
         if (light) { w.uSun = entry.roofed ? 0 : light.shine; w.uToSun = light.toSun; w.uSunColor = light.color; w.uGlare = glareAt(box, light); w.uFrozen = entry.keeps ? 0 : Math.min(1, Math.max(0, (Number(sky_.ice) || 0) * 2 - 0.2)); }
         if (!entry.mesh.visible) continue;
-        if (shadeNow) { w.uSunlit = shadeNow.sunlit; w.uTreeShade = shadeNow.trees; w.uSceneRect = shadeNow.rect; } w.uFishCount = fishCount; w.uFishDim = swimming?.dim ?? 1; w.uPix = w.uGrid * (entry.mesh.worldTransform?.a || 1); w.uTime = clock; w.uWind = entry.roofed ? 0.02 : wind; entry.waveWind = (entry.waveWind ?? w.uWind) + (w.uWind - (entry.waveWind ?? w.uWind)) * Math.min(1, seconds / 20); { const period = wavePeriod(entry.waveWind), long = swellLength(entry.waveWind); w.uWaveClock += seconds / period; { const wide = (Math.abs(w.uSwellDir[0]) * entry.box.w + Math.abs(w.uSwellDir[1]) * entry.box.h) / w.uGrid; w.uWaveGap = waveGap(period, wide); w.uBreakSize = Math.min(1, wide / 7); } w.uSeaState = Math.min(1, Math.max(0, entry.waveWind)); w.uSwellLong = long; w.uSwellClock += seconds / long; } w.uWindDir = dir; w.uSwellDir = entry.waves ?? (w.uAimed ? (entry.aimedWith = turnedToward(entry.aimedWith ?? dir, dir, seconds / 20)) : dir); w.uLights = lights.lights; w.uLightColors = lights.colors; w.uLightCount = lights.count;
+        if (shadeNow) { w.uSunlit = shadeNow.sunlit; w.uTreeShade = shadeNow.trees; w.uSceneRect = shadeNow.rect; } w.uFishCount = fishCount; w.uFishDim = swimming?.dim ?? 1; { const look = fishLook(); w.uFishLook = look ?? PIXI.Texture.EMPTY; w.uFishLookOn = look ? 1 : 0; } w.uPix = w.uGrid * (entry.mesh.worldTransform?.a || 1); w.uTime = clock; w.uWind = entry.roofed ? 0.02 : wind; entry.waveWind = (entry.waveWind ?? w.uWind) + (w.uWind - (entry.waveWind ?? w.uWind)) * Math.min(1, seconds / 20); { const period = wavePeriod(entry.waveWind), long = swellLength(entry.waveWind); w.uWaveClock += seconds / period; { const wide = (Math.abs(w.uSwellDir[0]) * entry.box.w + Math.abs(w.uSwellDir[1]) * entry.box.h) / w.uGrid; w.uWaveGap = waveGap(period, wide); w.uBreakSize = Math.min(1, wide / 7); } w.uSeaState = Math.min(1, Math.max(0, entry.waveWind)); w.uSwellLong = long; w.uSwellClock += seconds / long; } w.uWindDir = dir; w.uSwellDir = entry.waves ?? (w.uAimed ? (entry.aimedWith = turnedToward(entry.aimedWith ?? dir, dir, seconds / 20)) : dir); w.uLights = lights.lights; w.uLightColors = lights.colors; w.uLightCount = lights.count;
       }
     },
     addRing({ x, y, size = 0.7, keep = true } = {}) {

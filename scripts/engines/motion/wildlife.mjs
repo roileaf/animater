@@ -4,6 +4,8 @@
 
 const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
+import { perchHopStep, nextPerch, perchBirdCount, perchedBird } from './perch-hops.mjs';
+import { crowStanding } from './aftermath.mjs';
 
 // ---- What they sound like (assets/sounds/wildlife, each folder's License.txt) ---------------------------------------------
 const SOUND_DIR = 'modules/animater/assets/sounds/wildlife';
@@ -26,6 +28,12 @@ export const WILD_SOUNDS = Object.freeze({
   wolfPack: ['158780-0', '158780-2'].map((n) => `${SOUND_DIR}/wolf/pack-${n}.ogg`),
   wolfGrowl: ['260776-0'].map((n) => `${SOUND_DIR}/wolf/growl-${n}.ogg`),
   dragonBuzz: ['447319-0', '447319-1', '447319-2'].map((n) => `${SOUND_DIR}/dragonfly/dragonfly-${n}.ogg`),
+  // Deer mewing, a squirrel's chatter, a snake's hiss (field-life.mjs); a heron's croak (pond-life.mjs); a crab scuttling into its hole (coast.mjs).
+  deerCall: ['351113-0', '351113-2', '351113-3'].map((n) => `${SOUND_DIR}/deer/deer-${n}.ogg`),
+  squirrelChatter: ['111393-0', '111393-1', '402432-2'].map((n) => `${SOUND_DIR}/squirrel/squirrel-${n}.ogg`),
+  snakeHiss: ['540162-0'].map((n) => `${SOUND_DIR}/snake/snake-${n}.ogg`),
+  heronCall: ['541377-0', '541377-1', '825293-0', '825293-1'].map((n) => `${SOUND_DIR}/heron/heron-${n}.ogg`),
+  crabDive: ['761559-0', '761559-1'].map((n) => `${SOUND_DIR}/crab/crab-${n}.ogg`),
   // Town life (town-life.mjs).
   henCluck: ['233097-0', '724216-0'].map((n) => `${SOUND_DIR}/town/hen-${n}.ogg`),
   catMeow: ['110011-0', '584895-0', '584895-1'].map((n) => `${SOUND_DIR}/town/cat-${n}.ogg`),
@@ -39,7 +47,18 @@ export const WILD_SOUNDS = Object.freeze({
   horseCall: [`${SOUND_DIR}/farm/horse-0863-0.ogg`, `${SOUND_DIR}/farm/snort-1543-0.ogg`],
 });
 // How long each kind waits [least, most seconds] after it sounds, whatever their number (underground-sounds.mjs critterVoices).
-export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], wolfHowl: [60, 150], wolfPack: [60, 150], wolfGrowl: [4, 10], dragonBuzz: [5, 12], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14], cowCall: [12, 30], goatCall: [6, 16], sheepCall: [5, 14], pigCall: [6, 16], horseCall: [14, 35] });
+export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], wolfHowl: [60, 150], wolfPack: [60, 150], wolfGrowl: [4, 10], dragonBuzz: [5, 12], deerCall: [10, 30], squirrelChatter: [5, 15], snakeHiss: [6, 15], heronCall: [12, 35], crabDive: [2, 6], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14], cowCall: [12, 30], goatCall: [6, 16], sheepCall: [5, 14], pigCall: [6, 16], horseCall: [14, 35] });
+// What each kind of animal Animater spawns sounds like: its sounds here or among the rats' and bats' (underground-sounds.mjs).
+// The few that make no sound worth hearing are named in SILENT_ANIMALS, so a new kind with neither is caught by the tests.
+export const ANIMAL_VOICES = Object.freeze({
+  rabbits: ['rabbitThump'], wildBirds: ['songChirp', 'wingsUp'], deer: ['deerCall'], foxes: ['foxBark'], wolves: ['wolfHowl', 'wolfPack', 'wolfGrowl'], squirrels: ['squirrelChatter'], snakes: ['snakeHiss'], insects: ['dragonBuzz'], owls: ['owlHoot'],
+  fish: ['fishSplash'], waterBirds: ['duckQuack', 'wingsUp'], ducks: ['duckQuack'], herons: ['heronCall'], gulls: ['gullCry'], frogs: ['frogCroak', 'frogPlop'],
+  pigeons: ['pigeonCoo', 'wingsUp'], hens: ['henCluck'], cats: ['catMeow'], dogs: ['dogBark'],
+  cows: ['cowCall'], goats: ['goatCall'], sheep: ['sheepCall'], pigs: ['pigCall'], horses: ['horseCall'],
+  rats: ['ratSqueak', 'ratSkitter'], bats: ['batWing', 'batChirp'],
+  hawk: ['hawkCry'], hawks: ['hawkCry'], crows: ['crowCaw'], crickets: ['cricketChirp'], dragonflies: ['dragonBuzz'], crabs: ['crabDive'],
+});
+export const SILENT_ANIMALS = Object.freeze(['butterflies', 'fireflies']);
 // Whether a region's Keep out holds this kind (pure). A box of its own decides; one never saved goes by the older box that once covered it, so regions set before they were split keep working. All animals holds everything.
 const KEEP_GROUPS = Object.freeze({ ducks: 'waterBirds', herons: 'waterBirds', gulls: 'waterBirds', butterflies: 'insects', dragonflies: 'insects', fireflies: 'insects', pigeons: 'town', hens: 'town', cats: 'town', dogs: 'town' });
 export const keepsOut = (own, kind) => !!own && (own.all === true || !!(own[kind] ?? own[KEEP_GROUPS[kind]]));
@@ -185,14 +204,29 @@ export function songStep(bird, { dt = 1 / 60, grid = 100, near = [], ok = () => 
     const close = noise ?? near.find((t) => Math.hypot(t.x - s.x, t.y - s.y) < grid * 2.4);
     if (close || scare) {
       const away = close ? Math.atan2(s.y - close.y, s.x - close.x) + between(random, -0.8, 0.8) : random() * TAU;
-      return { ...s, mode: 'up', vx: Math.cos(away) * grid * 4, vy: Math.sin(away) * grid * 4, t: 0, flight: between(random, 1.6, 2.6), tries: 0, a: away + Math.PI / 2 };
+      return { ...s, mode: 'up', vx: Math.cos(away) * grid * 4, vy: Math.sin(away) * grid * 4, t: 0, flight: between(random, 1.6, 2.6), tries: 0, a: away + Math.PI / 2, hop: null, hops: 0, bounce: 0 };
+    }
+    // In the middle of a hop: carried to where it lands over the hop's moment, up and down (`bounce` 0-1), not set there at once.
+    if (s.hop) {
+      const h = { ...s.hop, t: s.hop.t + dt }, u = Math.min(1, h.t / h.dur);
+      s.x = h.fx + (h.tx - h.fx) * u; s.y = h.fy + (h.ty - h.fy) * u; s.bounce = Math.sin(u * Math.PI);
+      if (u >= 1) { s.hop = null; s.bounce = 0; if (h.more > 0) s.wait = between(random, 0.04, 0.1), s.hops = h.more; } else s.hop = h;
+      return s;
     }
     s.wait -= dt; s.peck = Math.max(0, s.peck - dt);
+    if (s.wait <= 0 && s.hops > 0) {
+      // the next of a run of hops, on the same way
+      s.hops -= 1; const hop = between(random, grid * 0.04, grid * 0.09), nx = s.x + Math.sin(s.a) * hop, ny = s.y - Math.cos(s.a) * hop;
+      if (ok(nx, ny) && !blocked({ x: s.x, y: s.y }, { x: nx, y: ny })) s.hop = { fx: s.x, fy: s.y, tx: nx, ty: ny, t: 0, dur: 0.16, more: s.hops }; else s.hops = 0;
+      s.wait = between(random, 0.25, 1.1);
+      return s;
+    }
     if (s.wait <= 0) {
       // On the wrong ground (the flock lands loosely round one spot): up and off to stand somewhere else.
-      if (!ok(s.x, s.y)) { const away = random() * TAU; return { ...s, mode: 'up', vx: Math.cos(away) * grid * 4, vy: Math.sin(away) * grid * 4, t: 0, flight: between(random, 1.6, 2.6), tries: 0, a: away + Math.PI / 2 }; }
+      if (!ok(s.x, s.y)) { const away = random() * TAU; return { ...s, mode: 'up', vx: Math.cos(away) * grid * 4, vy: Math.sin(away) * grid * 4, t: 0, flight: between(random, 1.6, 2.6), tries: 0, a: away + Math.PI / 2, hop: null, hops: 0, bounce: 0 }; }
       if (random() < 0.6) s.peck = 0.18;
-      else { s.a += between(random, -1, 1); const hop = between(random, grid * 0.04, grid * 0.13), nx = s.x + Math.sin(s.a) * hop, ny = s.y - Math.cos(s.a) * hop; if (ok(nx, ny) && !blocked({ x: s.x, y: s.y }, { x: nx, y: ny })) { s.x = nx; s.y = ny; } }
+      // a hop (now and then two or three in a run), carried over its moment by the branch above
+      else { s.a += between(random, -1, 1); const hop = between(random, grid * 0.04, grid * 0.13), nx = s.x + Math.sin(s.a) * hop, ny = s.y - Math.cos(s.a) * hop; if (ok(nx, ny) && !blocked({ x: s.x, y: s.y }, { x: nx, y: ny })) { const more = random() < 0.4 ? Math.floor(between(random, 1, 3)) : 0; s.hop = { fx: s.x, fy: s.y, tx: nx, ty: ny, t: 0, dur: 0.16, more }; } }
       s.wait = between(random, 0.25, 1.1);
     }
     return s;
@@ -364,20 +398,40 @@ export function takeCover(cover, shelter = 1, dt = 0, runFor = 3) {
  * ground { x, y }); tick(seconds, { near, ok(kind, x, y), blocked, seen(x, y), day (0–1, they come and go with it), sun
  * ({ x, y } the way shadows fall), wind (radians), view }); scare(); clear(). `floor()` under the creatures, `sky()` over all.
  */
-export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
-  let spareOwed = 0, fishBeneath = { list: [], dim: 1 }, fishWaters = [], fishScale = 1, fishLost = 0, fishIn = 0, noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawk = null, grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null;
+export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = null }) {
+  let spareOwed = 0, fishBeneath = { list: [], dim: 1 }, fishWaters = [], fishScale = 1, fishLost = 0, fishIn = 0, noises = [], fish = [], spare = [], spareIn = 0, rabbits = [], songs = [], crows = [], hawks = [], grid = 100, area = null, rabbitSize = 1, birdSize = 1, wantCrows = 0, nextCrows = 8, time = 0, scared = 0, shown = 1, look = 0, textures = null, perchers = [], perches = [], perchKeys = new Set(), crowSit = null;
+  // A crow sitting on a roof: aftermath.mjs's crow standing, in its painted look where baked.
+  const sitArt = () => { if (crowSit && !crowSit[0].baseTexture?.destroyed) return crowSit; const drawn = { stand: [false, true].map((p) => PIXI.Texture.from(crowStanding(p))) }; return (crowSit = (restyle ? restyle('aftermath', drawn, 'crow') : drawn).stand); };
   const art = () => {
     if (textures && !textures.hawk[0].baseTexture?.destroyed) return textures;
     const tex = (c) => PIXI.Texture.from(c);
-    return (textures = { hawk: SPANS.map((s) => tex(flyingBird(s, HAWK))), crow: SPANS.map((s) => tex(flyingBird(s, CROW))), song: [false, true].map((p) => tex(songbird(p))), songFly: SPANS.map((s) => tex(flyingBird(s, SONG))), rabbit: COATS.map((c) => [0, 1, 2].map((p) => tex(rabbitPicture(p, ...c)))), fish: SCALES.map((c) => SWINGS.map((s) => tex(fishPicture(s, ...c)))) });
+    const drawn = { hawk: SPANS.map((s) => tex(flyingBird(s, HAWK))), crow: SPANS.map((s) => tex(flyingBird(s, CROW))), song: [false, true].map((p) => tex(songbird(p))), songFly: SPANS.map((s) => tex(flyingBird(s, SONG))), rabbit: COATS.map((c) => [0, 1, 2].map((p) => tex(rabbitPicture(p, ...c)))), fish: SCALES.map((c) => SWINGS.map((s) => tex(fishPicture(s, ...c)))) };
+    // in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here
+    return (textures = restyle ? restyle('wildlife', drawn, '') : drawn);
   };
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
   const pair = (bodyRoot, tex) => ({ shadow: sprite(floor(), tex, true), body: sprite(bodyRoot, tex) });
   // The high fliers' pair: on the layers kept out of a room seen into.
   const high = (tex) => ({ shadow: sprite(skyShadow(), tex, true), body: sprite(sky(), tex) });
-  const dropPair = (o) => { try { o.view.body.destroy(); o.view.shadow.destroy(); } catch { /* gone */ } };
+  const dropPair = (o) => { try { o.view.body.destroy(); o.view.shadow.destroy(); o.view.contact?.destroy(); } catch { /* gone */ } };
+  // A single bird's: its shadow on the ground as it flies, and a little one under it on the roof it sits on, over the roof.
+  const perchPair = (tex) => ({ shadow: sprite(skyShadow(), tex, true), contact: sprite(sky(), tex, true), body: sprite(sky(), tex) });
+  // As many single birds as the perches give each kind (perch-hops.mjs), starting in the trees where there are any.
+  let perchWant = { crows: 0, songbirds: 0 };
+  const fillPerchers = (random = Math.random) => {
+    if (!perches.length) return;
+    const t = art();
+    for (const kind of ['crows', 'songbirds']) {
+      const want = perchBirdCount(kind, perches, perchWant[kind]);
+      for (let have = perchers.filter((b) => b.kind === kind).length; have < want; have++) {
+        const taken = perchers.map((b) => b.at?.key ?? b.to?.key), free = perches.filter((p) => p.kind !== 'ground' && !taken.includes(p.key) && (kind === 'crows' || p.on !== 'ridge')), trees = free.filter((p) => p.kind === 'tree'), from = trees.length ? trees : free;
+        if (!from.length) break;
+        perchers.push({ ...perchedBird(from[Math.floor(random() * from.length)], { random }), kind, view: perchPair(kind === 'crows' ? t.crow[0] : t.song[0]) });
+      }
+    }
+  };
   const newFish = (t, i, random = Math.random) => { const w = fishWaters[Math.floor(random() * fishWaters.length)]; return { x: w.x + between(random, -0.3, 0.3) * grid, y: w.y + between(random, -0.3, 0.3) * grid, a: random() * TAU, wait: random() * 2, turn: 0, dart: 0, kind: i % SCALES.length, phase: random() * 8, beat: between(random, 3, 5), size: between(random, 0.75, 1.1) * fishScale, view: pair(floor(), t.fish[0][0]) }; };
-  const drop = () => { for (const o of [...fish, ...rabbits, ...songs, ...crows, ...(hawk ? [hawk] : [])]) dropPair(o); try { hawk?.carry?.destroy(); } catch { /* gone */ } fish = []; fishLost = 0; fishBeneath = { list: [], dim: 1 }; spare = []; spareOwed = 0; spareIn = 0; rabbits = []; songs = []; crows = []; hawk = null; };
+  const drop = () => { for (const o of [...fish, ...rabbits, ...songs, ...crows, ...hawks]) dropPair(o); for (const h of hawks) { try { h.carry?.destroy(); } catch { /* gone */ } } fish = []; fishLost = 0; fishBeneath = { list: [], dim: 1 }; spare = []; spareOwed = 0; spareIn = 0; rabbits = []; songs = []; crows = []; hawks = []; for (const b of perchers) dropPair(b); perchers = []; };
   const put = (view, tex, x, y, angle, size, alpha, sx, sy, shadowAlpha, shadowSize = size) => {
     view.body.visible = view.shadow.visible = true;
     view.body.texture = tex; view.body.position.set(x, y); view.body.rotation = angle; view.body.scale.set(size); view.body.alpha = alpha;
@@ -385,8 +439,8 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
   };
   const hide = (view) => { view.body.visible = view.shadow.visible = false; };
   return {
-    populate({ waters = [], fish: nFish = 0, fishSize = 1, spots = [], rabbits: nRabbits = 0, songbirds = 0, hawk: hasHawk = false, crows: nCrows = 0, grid: g = 100, area: a = null, rabbitSize: rs = 1, birdSize: bs = 1, blocked = () => false, random = Math.random } = {}) {
-      drop(); grid = g; area = a; rabbitSize = rs; birdSize = bs; wantCrows = nCrows; nextCrows = between(random, 5, 12); shown = 0;
+    populate({ waters = [], fish: nFish = 0, fishSize = 1, spots = [], rabbits: nRabbits = 0, songbirds = 0, hawk: hasHawk = false, crows: nCrows = 0, grid: g = 100, area: a = null, rabbitSize: rs = 1, birdSize: bs = 1, blocked = () => false, perches: ps = null, random = Math.random } = {}) {
+      drop(); perchWant = { crows: nCrows, songbirds: spots.length ? songbirds : 0 }; if (ps) { perches = ps; perchKeys = new Set(ps.map((p) => p.key)); } grid = g; area = a; rabbitSize = rs; birdSize = bs; wantCrows = nCrows; nextCrows = between(random, 5, 12); shown = 0;
       if (!spots.length && !hasHawk && !nCrows && !(waters.length && nFish)) return;
       const t = art(), at = () => spots[Math.floor(random() * spots.length)];
       spare = spots;
@@ -397,7 +451,10 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         // Songbirds keep together: a flock pecking about one place.
         const home = at(); songs = Array.from({ length: songbirds }, () => { const x = home.x + between(random, -1, 1) * grid * 0.85, y = home.y + between(random, -1, 1) * grid * 0.6, clear = !blocked(home, { x, y }); return { x: clear ? x : home.x, y: clear ? y : home.y }; }).map((p) => ({ ...p, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, view: pair(floor(), t.song[0]) }));
       }
-      if (hasHawk && area) hawk = { cx: area.x + area.width * between(random, 0.3, 0.7), cy: area.y + area.height * between(random, 0.3, 0.7), r: Math.min(area.width, area.height) * 0.2, a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110), view: high(t.hawk[0]) };
+      fillPerchers(random);
+      // `hawk`: how many hawks (true one), each circling its own patch of sky
+      const nHawks = hasHawk === true ? 1 : Math.max(0, Math.min(8, Math.floor(Number(hasHawk) || 0)));
+      if (area) for (let i = 0; i < nHawks; i++) hawks.push({ cx: area.x + area.width * between(random, 0.2, 0.8), cy: area.y + area.height * between(random, 0.2, 0.8), r: Math.min(area.width, area.height) * between(random, 0.14, 0.22), a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110) + i * 25, view: high(t.hawk[0]) });
     },
     // One put down by hand: `kind` 'rabbit' or 'songbird', `id` to take it away by. False for any other kind.
     add(kind, { x, y, id }, random = Math.random) {
@@ -411,6 +468,9 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
       rabbits = rabbits.filter(leave); songs = songs.filter(leave);
     },
     // The walls changed: new places to come back to, and any shut in go there, the flock together.
+    // Where single birds can sit (perch-hops.mjs perchesFrom) has changed: one on a perch that has gone goes elsewhere next step.
+    setPerches(list = []) { if (list === perches) return; perches = list; perchKeys = new Set(list.map((p) => p.key)); fillPerchers(); },
+    get perchers() { return perchers; },
     resettle({ spots = [], closed = () => false, random = Math.random } = {}) {
       spare = spots; rabbits = resettled(rabbits, { spots, closed, random });
       if (spots.length) songs = resettled(songs, { spots: [spots[Math.floor(random() * spots.length)]], closed, random });
@@ -437,11 +497,13 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
     get fishList() { return fish; },
     // Those swimming where something else draws the water, for it to draw under its surface: { list: [{ x, y, a, scale, swing }], dim }.
     get fishBeneath() { return fishBeneath; },
+    // the fish's picture (straight, in the painted look where baked), for the water to draw those beneath its surface
+    get fishLook() { return fish.length ? (textures?.fish?.[0]?.[0] ?? null) : null; },
     takeFish(caught) { const f = fish.find((o) => o.view === caught.view); if (!f) return null; fish = fish.filter((o) => o !== f); dropPair(f); fishLost += 1; fishIn = between(Math.random, 45, 120); return { texture: textures?.fish[f.kind][0], size: f.size }; },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
     // Sends the hawk after a rabbit now, if there is one to see.
-    hunt() { if (hawk?.mode === 'soar') hawk.huntIn = 0; return !!hawk; },
+    hunt() { const h = hawks.find((o) => o.mode === 'soar'); if (h) h.huntIn = 0; return hawks.length > 0; },
     tick(seconds, { kept = () => false, near = [], ok = () => true, blocked = () => false, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, wind = 0.6, view = null, sound = () => {}, barred = () => false, indoors = () => false, cast = null, beneath = () => false, birdBody = 1, liftShadow = () => {} } = {}) {
       if (!this.busy && !wantCrows) return;
       const dt = Math.min(0.05, seconds); time += dt; scared = Math.max(0, scared - dt);
@@ -466,7 +528,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         const s = songStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), barred: (x, y) => barred('songbirds', x, y), ok: (x, y) => ok('songbirds', x, y) }); s.view = s0.view; s.seen = s0.seen;
         if (s.mode === 'up' && s0.mode === 'ground') sound('wingsUp', s, true); else if (s.mode === 'ground' && !s.gone && Math.random() < dt * 0.04) sound('songChirp', s, false);
         if (s.gone || !can(s, s.x, s.y)) { hide(s.view); return s; }
-        if (s.mode === 'ground') { const size = 0.42 * k * birdSize, c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true }); put(s.view, t.song[s.peck > 0 ? 1 : 0], s.x, s.y, s.a, size, alpha, s.x + c.dx, s.y + c.dy, Math.min(0.5, c.alpha * 0.55)); }
+        if (s.mode === 'ground') { const size = 0.42 * k * birdSize * (1 + 0.08 * (s.bounce ?? 0)), c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true }); put(s.view, t.song[s.peck > 0 ? 1 : 0], s.x, s.y, s.a, size, alpha, s.x + c.dx, s.y + c.dy, Math.min(0.5, c.alpha * 0.55)); }
         else { const size = 0.2 * k * birdSize * (1 + s.h * 0.4), c = fall(s, s.x, s.y, { width: grid * 0.2, lift: 0.8, bird: true }), g = s.h / 0.6; put(s.view, t.songFly[Math.floor(time * 26 + s.phase) % SPANS.length], s.x, s.y, s.a, size * birdBody, alpha, s.x + c.dx * g, s.y + c.dy * g, Math.min(0.35, c.alpha * 0.4), size * 0.95); liftShadow(s.view.shadow, 0.8); s.shade = overOpen(s.shade, indoors(s.x + c.dx * g, s.y + c.dy * g), dt); s.view.shadow.alpha *= s.shade; }
         return s;
       });
@@ -496,8 +558,8 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         if (!way) spareIn = 20;
         else { spareOwed = Math.max(0, spareOwed - 1); if (spareOwed > 0) spareIn = between(Math.random, 20, 60); const dx = way.to.x - way.from.x, dy = way.to.y - way.from.y; rabbits.push({ ...way.from, clear: way.clear, a: Math.atan2(dx, -dy), coat: Math.floor(Math.random() * COATS.length), wait: 2, mode: 'hop', hops: Math.ceil(Math.hypot(dx, dy) / (grid * 0.44)) + 1, hop: 0, size: between(Math.random, 0.9, 1.05), view: pair(floor(), t.rabbit[0][0]) }); }
       }
-      if (hawk) {
-        const h = hawk, base = 0.62 * k * birdSize;
+      for (const h of hawks) {
+        const base = 0.62 * k * birdSize;
         let x = h.cx + Math.cos(h.a) * h.r, y = h.cy + Math.sin(h.a) * h.r * 0.8, angle = h.a + Math.PI, height = 1, frame = Math.floor(time * 1.4) % 7 === 0 ? Math.floor(time * 12) % SPANS.length : 0;
         if (h.mode === 'soar') {
           h.a += dt * 0.26; h.huntIn -= dt;
@@ -534,6 +596,37 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
         if (h.mode === 'away') hide(h.view);
         else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 6, bird: true }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4) * birdBody, alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.3, c.alpha * (0.2 + (1 - height) * 0.3)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); liftShadow(h.view.shadow, 6 * height); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
       }
+      if (perchers.length) {
+        // Single birds going between the trees and the roofs (perch-hops.mjs): seen on a roof and in the air, hidden in the leaves.
+        const still = day < 0.3 || alpha <= 0.01;
+        const after = [];
+        for (const b0 of perchers) {
+          const kind = b0.kind, keptHere = (x, y) => kept(kind, x, y);
+          const b = perchHopStep(b0, { dt, grid, kind, near, noise: heard(b0), still, here: (p) => perchKeys.has(p.key) && !keptHere(p.x, p.y), choose: (o) => nextPerch(o.at ?? o, perches, { kind, grid, taken: perchers.filter((q) => q !== b0).map((q) => (q.mode === 'fly' ? q.to?.key : q.at?.key)), kept: keptHere }) });
+          if (b.mode === 'gone') { dropPair(b0); continue; }
+          after.push(b);
+          if (b.mode === 'fly' && b0.mode === 'sit') sound('wingsUp', b, false);
+          if (b.mode === 'sit' && b.at.kind === 'roof' && day > 0.3 && Math.random() < dt * (kind === 'crows' ? 0.03 : 0.05)) sound(kind === 'crows' ? 'crowCaw' : 'songChirp', b, false);
+          const v = b.view, crow = kind === 'crows';
+          if (!(b.shown > 0.01) || !can(b, b.x, b.y)) { hide(v); v.contact.visible = false; continue; }
+          if (b.mode === 'sit') {
+            // On a roof: standing, a little shadow at its feet on the roof, none on the ground under it.
+            const tex = crow ? sitArt()[b.peck > 0 ? 1 : 0] : t.song[b.peck > 0 ? 1 : 0], size = (crow ? 0.62 : 0.42) * k * birdSize, c = fall(b, b.x, b.y, { width: grid * 0.2, body: 0.12, grounded: true });
+            put(v, tex, b.x, b.y, b.a, size, alpha * b.shown, b.x + c.dx, b.y + c.dy, 0); v.shadow.visible = false;
+            v.contact.visible = true; v.contact.texture = tex; v.contact.position.set(b.x + c.dx * 0.6, b.y + c.dy * 0.6); v.contact.rotation = b.a; v.contact.scale.set(size); v.contact.alpha = Math.min(0.45, c.alpha * 0.5) * alpha;
+            continue;
+          }
+          // In the air: quick beats off the perch, steady ones on the way, still wings coming down; the shadow on the ground below
+          // falls further off the higher it is.
+          v.contact.visible = false;
+          const frames = crow ? t.crow : t.songFly, rate = b.stage === 'takeoff' ? 18 : crow ? 9 : 22, frame = b.stage === 'glide' ? 0 : Math.floor(time * rate + b.phase) % frames.length;
+          const lift = Math.max(0.3, b.lift), size = (crow ? 0.42 : 0.2) * k * birdSize * (1 + Math.min(1, b.lift / 6) * 0.25), f = fall(b, b.x, b.y, { width: grid * (crow ? 0.5 : 0.2), lift, bird: true });
+          b.open = overOpen(b.open, indoors(b.x, b.y), dt);
+          put(v, frames[frame], b.x, b.y, b.a, size * birdBody, alpha * b.shown * b.open, b.x + f.dx, b.y + f.dy, Math.min(crow ? 0.24 : 0.3, f.alpha * 0.3), size * 0.95);
+          liftShadow(v.shadow, lift); b.shade = overOpen(b.shade, indoors(b.x + f.dx, b.y + f.dy), dt); v.shadow.alpha *= b.shade;
+        }
+        perchers = after;
+      }
       nextCrows -= dt;
       if (wantCrows > 0 && !crows.length && nextCrows <= 0 && area && day > 0.3) {
         // A line over the map that misses anywhere keeping crows out, the wind's if it can be, else another; none, and they try later.
@@ -557,7 +650,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor }) {
       }
     },
     clear() { drop(); wantCrows = 0; noises = []; },
-    get busy() { return fish.length + fishLost + rabbits.length + songs.length + crows.length + (hawk ? 1 : 0) > 0; },
-    get counts() { return { fish: fish.length, rabbits: rabbits.length, songbirds: songs.length, crows: crows.length, hawk: hawk?.mode ?? null }; },
+    get busy() { return fish.length + fishLost + rabbits.length + songs.length + crows.length + perchers.length + hawks.length > 0; },
+    get counts() { return { fish: fish.length, rabbits: rabbits.length, songbirds: songs.length, crows: crows.length, hawk: hawks[0]?.mode ?? null, hawks: hawks.length, perched: perchers.length }; },
   };
 }

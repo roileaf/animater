@@ -241,9 +241,22 @@ export class MediaLibrary {
     this.w.page='assets'; this.w.render();
     this.w.root.querySelector('[data-search="assets"]')?.focus();
   }
+  // Opened to choose for something outside a recipe (a blast of the GM's own): `label` what it is for, `current` the
+  // reference it has now, `onPick(reference)` takes the choice, `onBack()` hears it closed unchosen. Animations and images only.
+  openFor({ type = 'animation', label = 'this', current = '', category = null, onPick, onBack } = {}) {
+    this.target = { external: { label, onPick, onBack, page: this.w.page } };
+    this.filter('type', type);
+    this.filters.collection = 'all'; this.filters.color = 'all'; this.filters.source = 'all'; this.filters.search = ''; this.filters.category = 'all'; this.autoCategory = null; this.page = 0;
+    const found = current ? this.items.find((item) => !['audio', 'tokenfx'].includes(item.type) && (item.key === current || item.file === current || item.files.includes(current))) : null;
+    if (found) { this.choose(found.id); if (found.key !== current && found.files.includes(current)) this.file = current; }
+    else if (category) { this.filters.category = category; this.autoCategory = category; }
+    this.w.page = 'assets'; this.w.render();
+    this.w.root.querySelector('[data-search="assets"]')?.focus();
+  }
   backToRecipe() {
     const target = this.target;
     this.target = null;
+    if (target?.external) { const page = target.external.page; this.w.page = page && page !== 'assets' ? page : 'recipes'; this.w.render(); target.external.onBack?.(); return; }
     this.w.page = 'recipes'; this.w.render();
     if (target) {
       const settings = this.w.root.querySelector('.an-st-settings');
@@ -415,6 +428,18 @@ export class MediaLibrary {
     }
     if(action==='media-apply'||action==='media-add') {
       const item=this.selected;
+      // Chosen for something outside a recipe: handed back, and the window goes back to where it was.
+      if (this.target?.external) {
+        if (action !== 'media-apply' || !item || !['animation', 'image'].includes(item.type)) return true;
+        const reference = this.file ?? item.key ?? item.file;
+        if (!visualReference(reference)) throw Error('Choose a database key or relative visual media file.');
+        const { onPick } = this.target.external;
+        await this.stopTokenPreview(); this.remember(item);
+        this.target.external.onBack = null;
+        this.backToRecipe();
+        onPick?.(reference);
+        return true;
+      }
       if(!item||!this.w.recipe())return true;
       if (this.target) {
         if (this.target.recipeId !== this.w.recipe().id) throw Error('Recipe changed. Reopen the teleport asset picker.');
@@ -574,12 +599,12 @@ export class MediaLibrary {
     const facets=this.index().facets,facet=facets.get(this.filters.type);
     const sources=[...(facet?.sources??[])].sort(),categories=[...(facet?.categories??[])].sort(),palette=[...(facet?.colors??[])].sort();
     return `<section class="an-media-library" aria-label="Media library">
-      ${recipe?`<div class="an-media-context"><button data-action="media-back" class="an-media-back">← Back to ${esc(recipe.name)}</button><span>Choosing ${this.target ? `the teleport ${this.target.field === 'teleportOut' ? 'departure' : 'arrival'} effect` : `for <b>${esc(this.w.stageLabel(recipe.stages[this.w.stageIndex]))}</b> · stage ${this.w.stageIndex+1}`}</span></div>`:''}
+      ${this.target?.external?`<div class="an-media-context"><button data-action="media-back" class="an-media-back">← Back</button><span>Choosing the animation for <b>${esc(this.target.external.label)}</b></span></div>`:recipe?`<div class="an-media-context"><button data-action="media-back" class="an-media-back">← Back to ${esc(recipe.name)}</button><span>Choosing ${this.target ? `the teleport ${this.target.field === 'teleportOut' ? 'departure' : 'arrival'} effect` : `for <b>${esc(this.w.stageLabel(recipe.stages[this.w.stageIndex]))}</b> · stage ${this.w.stageIndex+1}`}</span></div>`:''}
       <div class="an-media-toolbar"><div class="an-media-types" role="group" aria-label="Media type">${[['animation','Animations'],['audio','Sounds'],['image','Images'],['tokenfx','Tokenshade'],['all','All media']].filter(([id])=>!this.target||['animation','image'].includes(id)).map(([id,label])=>`<button data-action="media-type" data-value="${id}" aria-pressed="${this.filters.type===id}" class="${this.filters.type===id?'is-selected':''}">${svg(id)}${label}<small>${(facets.get(id)?.count??0).toLocaleString()}</small></button>`).join('')}</div><div class="an-media-tools">${this.sourceControls()}</div></div>
       <div class="an-media-search-row"><div class="an-search">${svg('search')}<input data-search="assets" aria-label="Search media" placeholder="Search effects, weapons, creatures, colors, sounds…" value="${esc(this.filters.search)}"></div><div class="an-media-collections" role="group" aria-label="Library collection">${[['all','Library'],['favorites','Favorites'],['recent','Recent']].map(([id,label])=>`<button data-action="media-collection" data-value="${id}" aria-pressed="${this.filters.collection===id}" class="${this.filters.collection===id?'is-selected':''}">${label}</button>`).join('')}</div></div>
       <div class="an-media-filters">${select('source','Source',[['all','All sources'],...sources.map(v=>[v,v])],this.filters.source)}${select('category','Category',[['all','All categories'],...categories.map(v=>[v,v])],this.filters.category)}${['audio','tokenfx'].includes(this.filters.type)?'':select('color','Color',[['all','All colors'],...palette.map(v=>[v,title(v)])],this.filters.color)}${this.filters.type==='tokenfx'?'':select('loop','Playback',[['all','Any playback'],['loop','Loops'],['one','Other clips']],this.filters.loop)}${select('sort','Sort',[['az','Name A–Z'],['za','Name Z–A']],this.filters.sort)}<button data-action="media-clear" class="an-media-reset">Reset</button></div>
       ${this.error?`<div class="an-media-notice" role="status">${esc(this.error)}</div>`:''}
-      <div class="an-media-work"><div class="an-media-results"><div class="an-media-result-bar"><span><b>${groups.length.toLocaleString()}</b> ${this.filters.grouped?'families':'results'} <small>· ${count.toLocaleString()} variants</small>${this.autoCategory && this.filters.category === this.autoCategory ? ` <button class="an-media-autochip" data-action="media-clear-auto" data-tooltip="Shown because this stage has no art yet. Click to see every category.">${esc(this.autoCategory)} for this stage ✕</button>` : ""}</span><div><button data-action="media-group" aria-pressed="${this.filters.grouped}">${this.filters.grouped?'Group variants':'Show variants'}</button><button data-action="media-view" data-value="grid" aria-label="Grid view" aria-pressed="${this.view==='grid'}">▦</button><button data-action="media-view" data-value="list" aria-label="List view" aria-pressed="${this.view==='list'}">☰</button></div></div>
+      <div class="an-media-work"><div class="an-media-results"><div class="an-media-result-bar"><span><b>${groups.length.toLocaleString()}</b> ${this.filters.grouped?'families':'results'} <small>· ${count.toLocaleString()} variants</small>${this.autoCategory && this.filters.category === this.autoCategory ? ` <button class="an-media-autochip" data-action="media-clear-auto" data-tooltip="${this.target?.external ? 'Shown to start you off. Click to see every category.' : 'Shown because this stage has no art yet. Click to see every category.'}">${esc(this.autoCategory)} ${this.target?.external ? 'to start' : 'for this stage'} ✕</button>` : ""}</span><div><button data-action="media-group" aria-pressed="${this.filters.grouped}">${this.filters.grouped?'Group variants':'Show variants'}</button><button data-action="media-view" data-value="grid" aria-label="Grid view" aria-pressed="${this.view==='grid'}">▦</button><button data-action="media-view" data-value="list" aria-label="List view" aria-pressed="${this.view==='list'}">☰</button></div></div>
       <div class="an-asset-list an-media-cards is-${this.view}">${visible.map(g=>this.card(g,selected)).join('')||`<div class="an-media-empty">${svg(this.filters.type)}<h2>${this.filters.collection==='favorites'?'No favorites yet':this.filters.collection==='recent'?'No recent picks':'No matching media'}</h2><p>${this.filters.type==='tokenfx'?(this.w.host.fxCatalog?.().tokenReady?'Change filters to see installed presets.':'Turn on token filters in Animater settings, then refresh.'):this.filters.type==='audio'?'Activate a sound pack or browse your own audio files.':'Change filters or browse your own files.'}</p><button data-action="media-clear">Reset filters</button></div>`}</div>
       <div class="an-media-pagination"><span>${groups.length?`${this.page*this.pageSize+1}–${Math.min((this.page+1)*this.pageSize,groups.length)} of ${groups.length.toLocaleString()}`:'0 results'}</span><div><button data-action="media-page" data-value="-1" ${this.page===0?'disabled':''} aria-label="Previous media page">←</button><span>${this.page+1} / ${Math.max(1,Math.ceil(groups.length/this.pageSize))}</span><button data-action="media-page" data-value="1" ${(this.page+1)*this.pageSize>=groups.length?'disabled':''} aria-label="Next media page">→</button></div></div></div>
       <aside class="an-media-detail">${selected?this.detail(selected,group,recipe):'<div class="an-media-empty">Select media to preview.</div>'}</aside></div></section>`;
@@ -596,7 +621,7 @@ export class MediaLibrary {
     if(item.type==='tokenfx')return this.tokenFxDetail(item,group,recipe);
     const url=this.w.host.mediaURL?.(this.file??item.file)??this.file??item.file;
     const stage=recipe?.stages[this.w.stageIndex];
-    const compatible=this.target ? recipe?.id===this.target.recipeId && ['animation','image'].includes(item.type) : stage&&(item.type==='audio'?stage.kind==='sound':!['sound','motion','sprite','tokenfx','scenefx'].includes(stage.kind));
+    const compatible=this.target?.external ? ['animation','image'].includes(item.type) : this.target ? recipe?.id===this.target.recipeId && ['animation','image'].includes(item.type) : stage&&(item.type==='audio'?stage.kind==='sound':!['sound','motion','sprite','tokenfx','scenefx'].includes(stage.kind));
     const variants=this.familyVariants(item,group);
     const choices=mediaVariantChoices(variants,item);
     const remainingVariants=item.type==='audio'?variants:choices.variants;
@@ -613,7 +638,7 @@ export class MediaLibrary {
       ${item.type==='audio'?settingsAudio:''}<details class="an-media-view" ${this.w.root?.querySelector?.('.an-media-view')?.open?'open':''} ${item.type==='audio'?'hidden':''}><summary>View: background, zoom, speed</summary><div class="an-media-preview-settings">${item.type==='audio'?`<label>Volume <output data-media-volume-value>${Math.round(this.preview.volume*100)}%</output><input type="range" min="0" max="1" step="0.05" data-media-preview="volume" value="${this.preview.volume}" aria-label="Preview volume"></label>`:`<label>Background<select data-media-preview="background" aria-label="Preview background">${['grid','dark','light'].map(v=>`<option value="${v}" ${this.preview.background===v?'selected':''}>${title(v)}</option>`).join('')}</select></label><label>Zoom <output data-media-size-value>${this.preview.size}%</output><input type="range" min="25" max="150" step="5" data-media-preview="size" value="${this.preview.size}" aria-label="Preview zoom"></label>`}${item.type==='image'?'':`<label>Speed<select data-media-preview="rate" aria-label="Preview speed">${[.5,.75,1,1.25,1.5,2].map(v=>`<option value="${v}" ${this.preview.rate===v?'selected':''}>${v}×</option>`).join('')}</select></label><button data-action="media-preview-loop" aria-pressed="${this.preview.loop}">Loop ${this.preview.loop?'on':'off'}</button>`}</div></details>
       <div class="an-media-tags"><span>${esc(item.category)}</span><span>${item.type==='audio'?'Audio':title(item.color==='none'?item.type:item.color)}</span><span>${esc((this.file??item.file).split('.').at(-1).toUpperCase())}</span>${item.width&&item.height?`<span>${item.width} × ${item.height}</span>`:''}</div>
       <details class="an-media-reference"><summary>Media reference</summary><code>${esc(item.key??item.file)}</code><small>${esc(this.file??item.file)}</small></details></div>
-      <div class="an-media-insert"><button class="an-primary" data-action="media-apply" ${compatible?'':'disabled'}>${this.target ? `Use ${this.target.field === 'teleportOut' ? 'departure' : 'arrival'} effect` : `${item.type==='audio'?'Use sound':'Use'} for ${esc(stage?(this.w.stageLabel(stage)):'this stage')}`}</button>${this.target ? '' : `<button data-action="media-add" ${recipe&&recipe.stages.length<MAX_STAGES?'':'disabled'}>+ Add ${item.type==='audio'?'sound':'effect'} stage</button>`}<small>${!recipe?'Select a recipe first.':compatible?'Updates draft. Save recipe when ready.':this.target?'Choose an animation or image for the teleport effect.':`Current stage is ${esc(stage?.kind)}. Add a ${item.type==='audio'?'sound':'effect'} stage to use this media.`}</small></div>`;
+      <div class="an-media-insert"><button class="an-primary" data-action="media-apply" ${compatible?'':'disabled'}>${this.target?.external ? `Use for ${esc(this.target.external.label)}` : this.target ? `Use ${this.target.field === 'teleportOut' ? 'departure' : 'arrival'} effect` : `${item.type==='audio'?'Use sound':'Use'} for ${esc(stage?(this.w.stageLabel(stage)):'this stage')}`}</button>${this.target ? '' : `<button data-action="media-add" ${recipe&&recipe.stages.length<MAX_STAGES?'':'disabled'}>+ Add ${item.type==='audio'?'sound':'effect'} stage</button>`}<small>${this.target?.external?(compatible?'Goes back to where you were choosing.':'Choose an animation or image.'):!recipe?'Select a recipe first.':compatible?'Updates draft. Save recipe when ready.':this.target?'Choose an animation or image for the teleport effect.':`Current stage is ${esc(stage?.kind)}. Add a ${item.type==='audio'?'sound':'effect'} stage to use this media.`}</small></div>`;
   }
   tokenFxDetail(item,group,recipe) {
     const variants=this.familyVariants(item,group),stage=recipe?.stages[this.w.stageIndex];

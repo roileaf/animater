@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml, VARIANT_REACTIONS } from '../../../scripts/engines/motion/blast-variants.mjs';
+import { blastAnimFamilies, cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml, VARIANT_REACTIONS } from '../../../scripts/engines/motion/blast-variants.mjs';
 import { blastShake } from '../../../scripts/engines/motion/energy-blast.mjs';
 
 // Discord (y_deda_povis): their own Energy Blasts. Roi: on creatures any Tokenshade preset; sound from a file or Animater's own.
@@ -41,9 +41,9 @@ test('its sound: as any kind, none, or a file; its shake as its base, none, ligh
 
 test('the editor has every field, presets from Tokenshade listed, a file picker for the sound', () => {
   const html = variantEditorHtml(cleanVariant({ name: 'Hellfire', reaction: 'preset', preset: 'Burning', presetLibrary: 'tokenshade' }), { presets: [{ name: 'Burning', library: 'tokenshade' }, { name: 'Glow', library: 'tmfx-main' }] });
-  for (const field of ['name', 'base', 'a', 'b', 'squares', 'reaction', 'preset', 'sound', 'file', 'shake', 'melts']) assert.match(html, new RegExp(`name="${field}"`), field);
+  for (const field of ['name', 'base', 'look', 'anim', 'squares', 'reaction', 'preset', 'sound', 'file', 'shake', 'melts']) assert.match(html, new RegExp(`name="${field}"`), field);
   assert.match(html, /<option value="tokenshade\|Burning" selected>/); assert.match(html, /data-action="pickFile"/);
-  assert.match(html, /data-swatch style="--a:#[0-9a-f]{6};--b:#[0-9a-f]{6}"/, 'a preview of its colours at the top');
+  assert.match(html, /data-anim-preview/, 'a preview of its animation at the top');
   assert.match(variantEditorHtml(cleanVariant({}), { presets: [] }), /Tokenshade is not on/);
 });
 
@@ -54,4 +54,60 @@ test('main: the picker lists your blasts, the editor saves them for the world, a
   assert.match(main, /variantReaction\(variant\)/);
   const blast = readFileSync(new URL('../../../scripts/engines/motion/energy-blast.mjs', import.meta.url), 'utf8');
   assert.match(blast, /uniform float uRecolor;/);
+});
+
+// Roi: not two colours — let the GM pick an animation for their blast, in Animater's own asset browser.
+test('a blast of your own looks as Animater draws its kind, or plays a JB2A animation of the GM\'s choosing', () => {
+  assert.equal(cleanVariant({}).look, 'own');
+  const v = cleanVariant({ look: 'jb2a', anim: 'jb2a.explosion.01.orange' });
+  assert.equal(v.look, 'jb2a'); assert.equal(v.anim, 'jb2a.explosion.01.orange');
+  assert.equal(cleanVariant({ look: 'jb2a', anim: 'javascript:alert(1)' }).anim, '', 'only a key or a file');
+  assert.equal(cleanVariant({ look: 'jb2a', anim: 'modules/x/boom.webm' }).anim, 'modules/x/boom.webm', 'any visual file the browser offers');
+  assert.equal(cleanVariant({ look: 'jb2a', anim: 'sounds/boom.ogg' }).anim, '', 'never a sound');
+  assert.equal(cleanVariant({ look: 'other' }).look, 'own');
+  assert.equal(cleanVariant({ look: 'own', anim: 'jb2a.explosion.01.orange' }).anim, '', 'no animation kept for its own look');
+});
+
+test('the JB2A explosions and impacts installed, each effect with its colours', () => {
+  const catalog = [
+    { key: 'jb2a.explosion.01.orange', type: 'animation', color: 'orange', file: 'a/Explosion_01_Orange.webm' },
+    { key: 'jb2a.explosion.01.blue', type: 'animation', color: 'blue', file: 'a/Explosion_01_Blue.webm' },
+    { key: 'jb2a.explosion.03.regular.red', type: 'animation', color: 'red', file: 'a/Explosion_03.webm' },
+    { key: 'jb2a.impact.001.white', type: 'animation', color: 'white', file: 'b/Impact.webm' },
+    { key: 'jb2a.magic_missile.purple', type: 'animation', color: 'purple', file: 'c.webm' },
+    { key: 'jb2a.explosion.01.orange.thumb', type: 'image', color: 'orange', file: 'x.webp' },
+  ];
+  const fams = blastAnimFamilies(catalog);
+  assert.deepEqual(fams.map((f) => f.label), ['Explosion 01', 'Explosion 03', 'Impact 001']);
+  assert.deepEqual(fams[0].variants.map((v) => v.key), ['jb2a.explosion.01.blue', 'jb2a.explosion.01.orange']);
+  assert.equal(fams[0].variants[1].file, 'a/Explosion_01_Orange.webm');
+  assert.equal(fams[1].variants[0].label, 'Regular red', 'the rest of its key, read');
+  assert.deepEqual(blastAnimFamilies([]), []);
+});
+
+test('the editor: Animater\'s own or an animation chosen in the asset browser, no colour pickers', () => {
+  const animOf = (ref) => (ref === 'jb2a.explosion.01.orange' ? { label: 'Explosion 01 Orange', file: 'a.webm' } : null);
+  const html = variantEditorHtml(cleanVariant({ look: 'jb2a', anim: 'jb2a.explosion.01.orange' }), { presets: [], animOf });
+  assert.match(html, /name="look"/); assert.match(html, /<input type="hidden" name="anim" value="jb2a.explosion.01.orange">/);
+  assert.match(html, /data-action="chooseAnim"/, 'a button that opens the asset browser'); assert.match(html, /Explosion 01 Orange/);
+  assert.match(html, /data-anim-preview[^>]*src="a.webm"/); assert.doesNotMatch(html, /<select name="anim"/, 'no list in the form');
+  assert.doesNotMatch(html, /type="color"/, 'no colour pickers');
+  assert.match(variantEditorHtml(cleanVariant({ look: 'jb2a' }), { presets: [] }), /None chosen yet/);
+});
+
+test('main opens Animater\'s asset browser from the editor, and the choice comes back to the form', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /data-action="chooseAnim"/); assert.match(main, /chooseAnimation\(\{ label/);
+  assert.match(main, /app\.workspace\.chooseMedia\(/);
+  const ws = readFileSync(new URL('../../../scripts/ui/workspace.mjs', import.meta.url), 'utf8');
+  assert.match(ws, /chooseMedia\(options\) \{/);
+});
+
+test('main plays the chosen animation where the blast goes off, on each screen, with its kind\'s floor mark under it', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /variant\?\.look === "jb2a"/);
+  assert.match(main, /\.play\(\{ local: true \}\)/);
+  assert.match(main, /floorOnly: !!anim/);
+  const blast = readFileSync(new URL('../../../scripts/engines/motion/energy-blast.mjs', import.meta.url), 'utf8');
+  assert.match(blast, /floorOnly/);
 });

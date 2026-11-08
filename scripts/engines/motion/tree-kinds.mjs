@@ -1,6 +1,6 @@
 // The kinds of tree a tree tile can be, and the shade each throws seen from above: a broadleaf's heavy clumps with its
 // branches in the gaps, a pine's whorls of needles, a palm's combed fronds, a birch's lace, a bare tree's branches, a
-// willow's trailing strands, the sun's round spots coming through the gaps. Each pattern is a picture drawn once (white,
+// willow's trailing strands. (The sun coming through the gaps is drawn by the canopy's shader, each kind its own way.) Each pattern is a picture drawn once (white,
 // its alpha the shade), laid over the tree's own picture when the shade is baked (canopy-light.mjs).
 
 // [key, name in Tile configuration]; '' picks by the tile's name.
@@ -83,8 +83,7 @@ export function frondsOf(seed, count = 11) {
   }
   return out;
 }
-// How many of the sun's round spots come through each kind's gaps, how big (px in the pattern), and how dark its branches.
-const SPOTS = { broadleaf: [70, 6], pine: [22, 4], birch: [120, 5], willow: [50, 4.5], palm: [0, 0], bare: [0, 0] };
+// How dark each kind's branches are.
 const BRANCHES = { broadleaf: { arms: 6, length: 30, width: 7, depth: 3, alpha: 1 }, birch: { arms: 5, length: 26, width: 4, depth: 3, alpha: 0.8 }, bare: { arms: 6, length: 28, width: 8, depth: 5, alpha: 1 } };
 
 /**
@@ -113,16 +112,6 @@ export function createTreePatterns({ doc = globalThis.document } = {}) {
     } else if (kind === 'palm') for (let i = 0; i < 4; i++) stroke(small(frondsOf(seed + i), 0.42), 1, [r() * S, r() * S]);
     else if (kind === 'bare') for (let i = 0; i < 5; i++) stroke(small(branchesOf(seed + i, BRANCHES.bare), 0.4), 1, [r() * S, r() * S]);
     else if (kind === 'pine') for (let i = 0; i < 6; i++) { const at = [r() * S, r() * S], arms = []; for (let a = 0; a < 7; a++) { const t = (a / 7) * Math.PI * 2 + r() * 0.4; arms.push([0, 0, Math.cos(t) * 34, Math.sin(t) * 34, 4]); } stroke(arms, 0.9, at); }
-    // The sun's spots: each a little image of the sun through a gap, cut out of the shade.
-    const [count, size] = SPOTS[kind] ?? [0, 0];
-    if (count) {
-      const sr = rng(seed * 13 + 5); g.globalCompositeOperation = 'destination-out';
-      for (let i = 0, n = 0; i < count * 30 && n < count; i++) {
-        const x = (sr() - 0.5) * S, y = (sr() - 0.5) * S; if (!tiled && Math.hypot(x, y) > R * 0.92) continue; n++;
-        const rad = size * (0.6 + sr() * 0.8);
-        for (const [ox, oy] of wraps) { const cx = C + x + ox, cy = C + y + oy, grad = g.createRadialGradient(cx, cy, 0, cx, cy, rad); grad.addColorStop(0, 'rgba(0,0,0,0.95)'); grad.addColorStop(0.7, 'rgba(0,0,0,0.8)'); grad.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = grad; g.beginPath(); g.arc(cx, cy, rad, 0, Math.PI * 2); g.fill(); }
-      }
-    }
     // Turned into what to cut away: white where there is no shade.
     const cut = canvas(), k = cut.getContext('2d');
     k.fillStyle = '#fff'; k.fillRect(0, 0, S, S); k.globalCompositeOperation = 'destination-out'; k.drawImage(c, 0, 0);

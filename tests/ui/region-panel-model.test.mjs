@@ -5,8 +5,34 @@ import { regionAnimalSize } from '../../scripts/engines/motion/region-animals.mj
 
 const ids = (kind, own = {}) => panelSections(kind, own).map((s) => s.id);
 
-test('the six kinds, with their icons and labels', () => {
-  assert.deepEqual(REGION_KINDS.map(([id]) => id), ['water', 'ground', 'indoors', 'cave', 'deck', 'lava']);
+// Roi: a None choice for regions Animater has nothing to do with (a teleport, a trigger).
+test('None: a region with no Animater settings, and the choice that clears them', () => {
+  assert.deepEqual(REGION_KINDS[0], ['none', 'fa-ban', 'None']);
+  assert.equal(regionKindOf({}, null), 'none'); assert.equal(regionKindOf({}, 'grass'), 'none', 'the floor shown for it is only the scene\'s');
+  assert.equal(regionKindOf({ indoors: false, overWater: false, cavern: '', regionAnimals: { cows: '' } }, 'grass'), 'none', 'settings left empty are none');
+  assert.equal(regionKindOf({}, 'water'), 'water', 'water by its name stays water'); assert.equal(regionKindOf({ floor: 'grass' }, 'grass'), 'ground');
+  assert.equal(regionKindOf({ regionWeather: 'fog' }, 'grass'), 'ground', 'any setting at all and it is Animater\'s');
+  assert.deepEqual(panelSections('none', {}), []); assert.deepEqual(moreSections('none', {}), []);
+  assert.deepEqual(kindFlags('none', { floor: 'stone', drips: true, keepOut: { rats: true } }), { '-=floor': null, '-=drips': null, '-=keepOut': null });
+  assert.equal(regionKindOf({}, 'stone'), 'none', 'cleared, it reads None again');
+});
+
+// Roi: Lava, then Dock, did nothing. Every kind, switched to every other, becomes that kind.
+test('every kind switches to every other kind', () => {
+  // The floor the panel is handed for a region, as the opener works it out: its own, else a cave's when it has cave decor.
+  const floorOf = (own) => own.floor || (own.cavern ? 'cavern' : null);
+  // Saved as Foundry saves: a `-=key` deletes that key.
+  const saved = (own, flags) => { const out = { ...own }; for (const [k, v] of Object.entries(flags)) { if (k.startsWith('-=')) delete out[k.slice(2)]; else out[k] = v; } return out; };
+  const start = { none: {}, water: { floor: 'water' }, ground: { floor: 'grass' }, indoors: { floor: 'stone', indoors: true }, cave: { floor: '', cavern: 'fungus-green' }, deck: { floor: 'wood', overWater: true }, lava: { floor: 'lava' } };
+  for (const [from] of REGION_KINDS) for (const [to] of REGION_KINDS) {
+    if (from === to) continue;
+    const own0 = start[from], own = saved(own0, kindFlags(to, own0));
+    assert.equal(regionKindOf(own, floorOf(own)), to, `${from} -> ${to}: ${JSON.stringify(own)}`);
+  }
+});
+
+test('the seven kinds, with their icons and labels', () => {
+  assert.deepEqual(REGION_KINDS.map(([id]) => id), ['none', 'water', 'ground', 'indoors', 'cave', 'deck', 'lava']);
   assert.deepEqual(REGION_KINDS.find(([id]) => id === 'deck'), ['deck', 'fa-bridge', 'Dock']);
   assert.deepEqual(REGION_KINDS.find(([id]) => id === 'cave'), ['cave', 'fa-mountain', 'Cave']);
 });
@@ -17,8 +43,8 @@ test('regionKindOf reads the kind off the flags and floor', () => {
   assert.equal(regionKindOf({}, 'lava'), 'lava');
   assert.equal(regionKindOf({}, 'cavern'), 'cave');
   assert.equal(regionKindOf({ cavern: 'fungus-green' }, 'grass'), 'cave');
-  assert.equal(regionKindOf({}, 'grass'), 'ground');
-  assert.equal(regionKindOf({}, null), 'ground');
+  assert.equal(regionKindOf({ floor: 'grass' }, 'grass'), 'ground');
+  assert.equal(regionKindOf({}, null), 'none', 'no settings at all: None');
   assert.equal(regionKindOf({ drips: true }, 'cavern'), 'cave');
   assert.equal(regionKindOf({ indoors: true }, 'wood'), 'indoors');
   assert.equal(regionKindOf({ indoors: true }, 'water'), 'water');
@@ -72,7 +98,7 @@ test('panelSections: the sections each kind has, the first open', () => {
   assert.deepEqual(ids('cave'), ['cavern', 'drips', 'air', 'animals']);
   assert.deepEqual(ids('deck'), ['deck', 'steps', 'look']);
   assert.deepEqual(ids('lava'), ['steps', 'air', 'look']);
-  for (const [kind] of REGION_KINDS) {
+  for (const [kind] of REGION_KINDS.filter(([id]) => id !== 'none')) {
     const open = panelSections(kind, {}).filter((s) => s.open);
     assert.equal(open.length, 1, kind);
     for (const s of panelSections(kind, {})) assert.ok(s.icon && s.title && typeof s.summary === 'string', `${kind}/${s.id}`);
@@ -176,7 +202,8 @@ test('a section set off its defaults always shows; the others wait under More se
   assert.ok(!more('water', {}).includes('drips'), 'water holds its drips in its own section');
   for (const s of moreSections('deck', {})) assert.ok(s.icon && s.title, s.id);
   // Every optional section is either shown or offered, for every kind.
-  for (const [kind] of REGION_KINDS) for (const id of ['air', 'animals', 'look', 'steps']) assert.ok(ids(kind).includes(id) || more(kind).includes(id), `${kind}/${id}`);
+  // (None holds nothing: picking a kind is the way back.)
+  for (const [kind] of REGION_KINDS.filter(([k]) => k !== 'none')) for (const id of ['air', 'animals', 'look', 'steps']) assert.ok(ids(kind).includes(id) || more(kind).includes(id), `${kind}/${id}`);
   assert.deepEqual(panelSections('deck', { overWater: true }, 'wood', ['air']).map((s) => s.id), ['deck', 'steps', 'look', 'air'], 'one added by hand');
 });
 

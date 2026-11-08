@@ -322,17 +322,19 @@ function ringFrame(u) {
  * the birds come and go with it, the frogs stay out), sun ({ x, y } the way shadows fall), view, sound(kind, { x, y }, urgent) });
  * scare(); clear(). `floor()` on the water, `sky()` over all: a duck taking off moves from one to the other.
  */
-export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floor }) {
+export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floor, restyle = null }) {
   let noises = [], ducks = [], herons = [], gulls = [], frogs = [], plops = [], grid = 100, birdSize = 1, frogSize = 1, time = 0, scared = 0, shown = 0, look = 0, waterSpots = [], textures = null;
   const art = () => {
     if (textures && !textures.gull[0].baseTexture?.destroyed) return textures;
     const tex = (c) => PIXI.Texture.from(c);
-    return (textures = {
+    // in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here
+    const painted = (set) => (restyle ? restyle('pond', set, '') : set);
+    return (textures = painted({
       gull: SPANS.map((s) => tex(flying(s, GULL))), heronFly: SPANS.map((s) => tex(flying(s, HERON))), duckFly: SPANS.map((s) => tex(flying(s, DUCK))),
       duck: [[false, false], [false, true], [true, false], [true, true]].map(([h, u]) => tex(duckOn(h, u))), heron: [false, true].map((s) => tex(heronStanding(s))),
       frog: FROGS.map((c) => [0, 1, 2, 3].map((p) => tex(frogPicture(p, ...c)))), pad: [0, 2.1, 4.4].map((n) => tex(lilyPad(n))),
       wake: [0, 0.25, 0.5, 0.75].map((u) => tex(wakeFrame(u))), ring: [0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((u) => tex(ringFrame(u))),
-    });
+    }));
   };
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
   const gone = (...sprites) => { for (const s of sprites) { try { s?.destroy(); } catch { /* gone */ } } };
@@ -420,7 +422,9 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         if (b0.gone) { if (!waterSpots.length) return b0; const w = waterSpots[Math.floor(Math.random() * waterSpots.length)]; return { ...b0, gone: false, leaving: false, hx: w.x, hy: w.y, mode: 'fly', t: 7, h: 1 }; }
         if (alpha <= 0.01) { b0.body.visible = b0.shadow.visible = b0.ripple.visible = false; return b0; }
         const b = heronStep(b0, { dt, grid, near, scare, noise: heard(b0), blocked, barred: (x, y) => barred('herons', x, y), fish: fishNow });
-        if (b.mode === 'fly' && b0.mode === 'stand') { sound('wingsUp', b, true); sky().addChild(b.body); }
+        // A croak as it goes up, and a rare one as it stands.
+        if (b.mode === 'fly' && b0.mode === 'stand') { sound('wingsUp', b, true); sound('heronCall', b, true); sky().addChild(b.body); }
+        else if (b.mode === 'stand' && b0.mode === 'stand' && Math.random() < dt * 0.004) sound('heronCall', b, false);
         else if (b.mode === 'stand' && b0.mode === 'fly') floor().addChild(b.body);
         if (b.gone || !can(b, b.x, b.y)) { b.body.visible = b.shadow.visible = b.ripple.visible = false; return b; }
         if (b.mode === 'stand') {

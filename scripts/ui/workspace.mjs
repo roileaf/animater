@@ -1951,6 +1951,11 @@ export class Workspace {
     this.mediaLibrary ??= new MediaLibrary(this);
     return this.mediaLibrary.html(recipe);
   }
+  // The asset browser opened to choose for something outside a recipe (see MediaLibrary.openFor).
+  chooseMedia(options) {
+    this.mediaLibrary ??= new MediaLibrary(this);
+    this.mediaLibrary.openFor(options);
+  }
   // The Activity page follows new entries while it is open: a cheap check each second redraws
   // only when the log changed (each entry also asks for a redraw as it is logged).
   watchActivity() {

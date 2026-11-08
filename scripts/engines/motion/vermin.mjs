@@ -188,11 +188,13 @@ function drawBat(ctx, span) {
  * The layer: populate({ spots, count, lit, grid, size, batSize }) places the rats (sizes: times their usual); tick(seconds, { near, lit, blocked, view }) moves and
  * draws them (only those in `view`), and the bats when `bats` is on, their shadows passing over the floor; clear().
  */
-export function createVermin({ PIXI, root, batsRoot = root }) {
+export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
   let rats = [], bats = [], shapes = [], batShapes = [], grid = 100, size = 1, batSize = 1, time = 0, frame = 0, ratTex = null, batTex = null;
   const frames = (w, h, n, paint) => Array.from({ length: n }, (_, i) => { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), i); return PIXI.Texture.from(c); });
-  const ratFrames = () => (ratTex ??= frames(RAT_W, RAT_H, RAT_FRAMES, (ctx, i) => drawRat(ctx, i / RAT_FRAMES)));
-  const batFrames = () => (batTex ??= frames(BAT_W, BAT_H, BAT_SPANS.length, (ctx, i) => drawBat(ctx, BAT_SPANS[i])));
+  // in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here
+  const styled = (set, prefix) => (restyle ? restyle('vermin', set, prefix) : set);
+  const ratFrames = () => (ratTex ??= styled(frames(RAT_W, RAT_H, RAT_FRAMES, (ctx, i) => drawRat(ctx, i / RAT_FRAMES)), 'rat'));
+  const batFrames = () => (batTex ??= styled(frames(BAT_W, BAT_H, BAT_SPANS.length, (ctx, i) => drawBat(ctx, BAT_SPANS[i])), 'bat'));
   const sprite = (tex, parent) => { const sp = new PIXI.Sprite(tex); sp.anchor.set(0.5); sp.eventMode = 'none'; parent.addChild(sp); return sp; };
   const drop = () => { for (const s of [...shapes, ...batShapes]) { try { s.body?.destroy(); s.tail?.destroy(); s.shadow?.destroy(); } catch { /* gone */ } } shapes = []; batShapes = []; rats = []; bats = []; };
   return {

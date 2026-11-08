@@ -118,13 +118,15 @@ const DRAW = {
  * ({ x, y }); tick(seconds, { near, ok(kind, x, y), blocked(from, to), seen(x, y) }); noise({ x, y, radius }); clear().
  * `picture(w, h, draw)` makes a texture (a canvas drawn at twice the size, by default).
  */
-export function createFarmLife({ PIXI, floor, picture = null }) {
+export function createFarmLife({ PIXI, floor, picture = null, restyle = null }) {
   const paint = picture ?? ((w, h, draw) => { const c = document.createElement('canvas'); c.width = w * 2; c.height = h * 2; const x = c.getContext('2d'); x.scale(2, 2); x.translate(w / 2, h / 2); x.lineCap = 'round'; x.lineJoin = 'round'; draw(x); return PIXI.Texture.from(c); });
   const art = new Map();
   // Each kind and coat drawn once, when first wanted: four strides and grazing.
   const artOf = (kind, coat, seed) => {
     const key = `${kind}:${coat}:${seed}`;
-    if (!art.has(key)) { const k = FARM_KINDS[kind], c = FARM_COATS[kind][coat], draw = (o) => paint(k.w, k.h, (x) => DRAW[kind](x, c, { p: 0, graze: false, seed, ...o })); art.set(key, { walk: [0, 0.25, 0.5, 0.75].map((p) => draw({ p })), graze: draw({ graze: true }) }); }
+    if (!art.has(key)) { const k = FARM_KINDS[kind], c = FARM_COATS[kind][coat], draw = (o) => paint(k.w, k.h, (x) => DRAW[kind](x, c, { p: 0, graze: false, seed, ...o })); const drawn = { walk: [0, 0.25, 0.5, 0.75].map((p) => draw({ p })), graze: draw({ graze: true }) };
+      // in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here
+      art.set(key, restyle ? restyle('farm', drawn, `${kind}/${coat}`) : drawn); }
     return art.get(key);
   };
   let animals = [], grid = 100, size = 1, noises = [], calls = {};

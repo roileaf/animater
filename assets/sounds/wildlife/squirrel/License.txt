@@ -1,0 +1,7 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. The chatter of squirrels. Thank you to each author.
+
+squirrel-111393-0.ogg: "Red_Squirrel_chatter.wav" by philberts, https://freesound.org/people/philberts/sounds/111393/ (CC0 1.0). Changes: cut 26.63-27.69 s, high-pass 55 Hz, mixed to mono, gain +4.4 dB.
+squirrel-111393-1.ogg: "Red_Squirrel_chatter.wav" by philberts, https://freesound.org/people/philberts/sounds/111393/ (CC0 1.0). Changes: cut 39.92-41.26 s, high-pass 55 Hz, mixed to mono, gain +12.0 dB.
+squirrel-402432-2.ogg: "Squirrel Angry (Stereo, iso booth)" by petebuchwald, https://freesound.org/people/petebuchwald/sounds/402432/ (CC0 1.0). Changes: cut 99.30-100.08 s, high-pass 55 Hz, mixed to mono, gain +33.0 dB.

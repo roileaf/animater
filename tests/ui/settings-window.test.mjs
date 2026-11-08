@@ -125,6 +125,13 @@ test('river and waterfall volume are each player\'s own sliders, under their fea
  assert.equal(extra('waterfalls').key,'waterfallVolume');assert.equal(extra('waterfalls').kind,'range');
 });
 
+test('weather volume is each player\'s own 0-100 slider, under Weather sounds',()=>{
+ const records=new Map([reg('weatherSounds','world',Boolean),reg('weatherSoundsLocal','client',Boolean),reg('weatherVolume','client',Number,{range:{min:0,max:100,step:5}}),reg('thunderPanning','client',Boolean)]);
+ const row=settingsModel({registry:records,get:k=>k==='weatherVolume'?40:true,isGM:false}).tabs.flatMap(t=>t.rows).find(r=>r.id==='weatherSounds');
+ const vol=row.extras.find(e=>e.key==='weatherVolume');assert.equal(vol.kind,'range');assert.equal(vol.value,40);assert.equal(vol.min,0);assert.equal(vol.max,100);
+ assert.ok(row.extras.some(e=>e.key==='thunderPanning'));
+});
+
 test("the aura's on-token checkbox shows only under the Tokenshade aura style", () => {
   const records = new Map([
     reg("auraStyle", "world", String, { name: "Aura style", choices: { jb2a: "JB2A", tokenshade: "Tokenshade" } }),

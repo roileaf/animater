@@ -1,0 +1,8 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. The calls of herons. Thank you to each author.
+
+heron-541377-0.ogg: "Great egret.WAV" by joericortens, https://freesound.org/people/joericortens/sounds/541377/ (CC0 1.0). Changes: cut 4.24-4.98 s, high-pass 55 Hz, mixed to mono, gain +20.8 dB.
+heron-541377-1.ogg: "Great egret.WAV" by joericortens, https://freesound.org/people/joericortens/sounds/541377/ (CC0 1.0). Changes: cut 6.39-7.14 s, high-pass 55 Hz, mixed to mono, gain +24.8 dB.
+heron-825293-0.ogg: "Haigur-1" by inspire153, https://freesound.org/people/inspire153/sounds/825293/ (CC0 1.0). Changes: cut 5.97-6.38 s, high-pass 55 Hz, mixed to mono, gain +6.3 dB.
+heron-825293-1.ogg: "Haigur-1" by inspire153, https://freesound.org/people/inspire153/sounds/825293/ (CC0 1.0). Changes: cut 5.06-5.45 s, high-pass 55 Hz, mixed to mono, gain +10.1 dB.

@@ -1,0 +1,7 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. The calls of deer. Thank you to each author.
+
+deer-351113-0.ogg: "Deer Meewing 01.wav" by msantoro11, https://freesound.org/people/msantoro11/sounds/351113/ (CC0 1.0). Changes: cut 14.60-15.45 s, high-pass 55 Hz, mixed to mono, gain +15.4 dB.
+deer-351113-2.ogg: "Deer Meewing 01.wav" by msantoro11, https://freesound.org/people/msantoro11/sounds/351113/ (CC0 1.0). Changes: cut 2.87-3.85 s, high-pass 55 Hz, mixed to mono, gain +15.3 dB.
+deer-351113-3.ogg: "Deer Meewing 01.wav" by msantoro11, https://freesound.org/people/msantoro11/sounds/351113/ (CC0 1.0). Changes: cut 4.46-5.27 s, high-pass 55 Hz, mixed to mono, gain +13.2 dB.

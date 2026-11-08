@@ -1,0 +1,6 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. Crabs scuttling into their holes. Thank you to each author.
+
+crab-761559-0.ogg: "crab walking" by stuniverso, https://freesound.org/people/stuniverso/sounds/761559/ (CC0 1.0). Changes: cut 0.13-0.79 s, high-pass 55 Hz, mixed to mono, gain +15.9 dB.
+crab-761559-1.ogg: "crab walking" by stuniverso, https://freesound.org/people/stuniverso/sounds/761559/ (CC0 1.0). Changes: cut 1.27-2.05 s, high-pass 55 Hz, mixed to mono, gain +12.8 dB.

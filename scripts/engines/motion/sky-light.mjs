@@ -62,7 +62,7 @@ export function stormGloom({ cover = 0, rain = 0, darkness = 0, most = 0.5, cap 
   const k = Math.min(1, Math.max(0, (Number(cover) - 0.9) / 0.1)), day = 1 - Math.min(1, Math.max(0, Number(darkness) || 0));
   return Math.min(cap, Math.max(0, Number(most) || 0) * (k * k * (3 - 2 * k)) * (1 + 0.25 * Math.min(1, Math.max(0, Number(rain) || 0)))) * day;
 }
-const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff', 'stormDark', 'stormDarkOff', 'placedAnimals', 'outdoorLife', ...['rats', 'bats', 'moths', 'crawlers', 'rabbits', 'wildBirds', 'fish', 'waterBirds', 'frogs', 'deer', 'foxes', 'insects', 'owls', 'wolves', 'squirrels', 'snakes'].flatMap((k) => [k, `${k}Size`])]);
+const LOOK_ONLY_FLAGS = new Set(['ground', 'weatherTune', 'fallsDown', 'weatherOff', 'stormDark', 'stormDarkOff', 'placedAnimals', 'outdoorLife', ...['rats', 'bats', 'moths', 'crawlers', 'rabbits', 'wildBirds', 'fish', 'waterBirds', 'frogs', 'deer', 'foxes', 'insects', 'owls', 'wolves', 'squirrels', 'snakes', 'crows', 'hawks', 'herons', 'gulls', 'pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses'].flatMap((k) => [k, `${k}Size`])]);
 export function skyNeedsBuilding(change = {}) {
   for (const key of Object.keys(change ?? {})) {
     if (key === '_id' || key === '_stats' || key === 'weather') continue;

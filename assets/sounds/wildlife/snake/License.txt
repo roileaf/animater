@@ -1,0 +1,5 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview and encoded as
+Ogg Vorbis 96 kb/s for Animater. The hiss of snakes. Thank you to each author.
+
+snake-540162-0.ogg: "Snake hissing.mp3" by schreibsel, https://freesound.org/people/schreibsel/sounds/540162/ (CC0 1.0). Changes: cut 0.91-2.49 s, high-pass 55 Hz, mixed to mono, gain +13.7 dB.

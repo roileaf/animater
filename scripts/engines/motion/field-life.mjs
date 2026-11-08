@@ -477,23 +477,25 @@ export const batLamps = (lights = [], open = () => true) => lights.filter((l) =>
  * tick(seconds, { near, ok(kind, x, y), blocked, seen(x, y), day, night, warm, sun, view, sound(kind, at, urgent), cast, prey, lamps() });
  * noise({ x, y, radius }); scare(); clear(). `prey`: the rabbits, { list, spook(rabbit, from), take(rabbit) } (wildlife.mjs).
  */
-export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, highShadow = floor }) {
+export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, highShadow = floor, restyle = null }) {
   let trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], homes = {}, area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, batSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
   const texOf = (c) => PIXI.Texture.from(c), group = (o, f) => (Array.isArray(o) ? o.map(f) : Object.fromEntries(Object.entries(o).map(([k, v]) => [k, group2(v, f)]))), group2 = (v, f) => (Array.isArray(v) ? v.map(f) : f(v));
   const lazily = (key, make) => { const had = art[key]; const sample = had && (had.doe?.look?.[0] ?? had.trot?.[0] ?? had[0]?.[0] ?? had[0]); if (!had || sample?.baseTexture?.destroyed) art[key] = make(); return art[key]; };
-  const herd = () => lazily('herd', () => ({ doe: group(herdArt(false), texOf), stag: group(herdArt(true), texOf) }));
-  const foxTex = () => lazily('fox', () => group(foxArt(), texOf));
-  const wolfTex = () => { const had = art.wolf; if (!had || had[0].trot[0]?.baseTexture?.destroyed) art.wolf = wolfArt().map((set) => group(set, texOf)); return art.wolf; };
-  const squirrelTex = () => { const had = art.squirrel; if (!had || had[0].sit[0]?.baseTexture?.destroyed) art.squirrel = squirrelArt().map((set) => group(set, texOf)); return art.squirrel; };
-  const snakeTex = () => { const had = art.snake; if (!had || had[0].lie[0]?.baseTexture?.destroyed) art.snake = snakeArt().map((set) => group(set, texOf)); return art.snake; };
+  // Each set in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here.
+  const styled = (set, prefix) => (restyle ? restyle('field', set, prefix) : set);
+  const herd = () => lazily('herd', () => styled({ doe: group(herdArt(false), texOf), stag: group(herdArt(true), texOf) }, 'herd'));
+  const foxTex = () => lazily('fox', () => styled(group(foxArt(), texOf), 'fox'));
+  const wolfTex = () => { const had = art.wolf; if (!had || had[0].trot[0]?.baseTexture?.destroyed) art.wolf = styled(wolfArt().map((set) => group(set, texOf)), 'wolf'); return art.wolf; };
+  const squirrelTex = () => { const had = art.squirrel; if (!had || had[0].sit[0]?.baseTexture?.destroyed) art.squirrel = styled(squirrelArt().map((set) => group(set, texOf)), 'squirrel'); return art.squirrel; };
+  const snakeTex = () => { const had = art.snake; if (!had || had[0].lie[0]?.baseTexture?.destroyed) art.snake = styled(snakeArt().map((set) => group(set, texOf)), 'snake'); return art.snake; };
   const newSquirrel = (p, i, random, placed) => ({ x: p.x, y: p.y, a: random() * TAU, mode: 'forage', wait: between(random, 0.5, 3), tree: p.tree ?? -1, t: 0, v: 0, gait: 0, coat: i % SQUIRREL_COATS.length, seed: random() * 6, ...(placed ? { placed } : {}), ...pair(floor(), squirrelTex()[i % SQUIRREL_COATS.length].sit[1]) });
   const newSnake = (p, i, random, placed) => ({ x: p.x, y: p.y, a: random() * TAU, want: 0, mode: 'lie', wait: between(random, 2, 15), t: 0, v: 0, gait: random(), coat: i % SNAKE_COATS.length, seed: random() * 6, ...(placed ? { placed } : {}), ...pair(floor(), snakeTex()[i % SNAKE_COATS.length].lie[0]) });
   const newWolf = (p, i, random, placed) => { const a0 = random() * TAU; return { x: p.x, y: p.y, a: a0, want: a0, mode: 'trot', t: 0, wait: between(random, 4, 10), v: 0, gait: random(), seed: i, coat: i % WOLF_COATS.length, ...(placed ? { placed } : {}), ...pair(floor(), wolfTex()[i % WOLF_COATS.length].rest[0]) }; };
-  const flyTex = () => lazily('fly', () => WINGS.map((c) => [1, 0.75, 0.4, 0.15, 0.4, 0.75].map((o) => texOf(butterflyPicture(o, c)))));
-  const dragTex = () => lazily('drag', () => ['#2f7f86', '#a2472f'].map((c) => [0, 1, 0.3].map((f) => texOf(dragonflyPicture(f, c)))));
-  const owlTex = () => lazily('owl', () => [1, 0.9, 0.65, 0.4, 0.65, 0.9].map((s) => texOf(owlPicture(s))));
+  const flyTex = () => lazily('fly', () => styled(WINGS.map((c) => [1, 0.75, 0.4, 0.15, 0.4, 0.75].map((o) => texOf(butterflyPicture(o, c)))), 'fly'));
+  const dragTex = () => lazily('drag', () => styled(['#2f7f86', '#a2472f'].map((c) => [0, 1, 0.3].map((f) => texOf(dragonflyPicture(f, c)))), 'drag'));
+  const owlTex = () => lazily('owl', () => styled([1, 0.9, 0.65, 0.4, 0.65, 0.9].map((s) => texOf(owlPicture(s))), 'owl'));
   const glowTex = () => lazily('glow', () => [texOf(fireflyPicture())]);
-  const batTex = () => lazily('bat', () => batWingbeat().map(texOf));
+  const batTex = () => lazily('bat', () => styled(batWingbeat().map(texOf), 'bat'));
   const sprite = (parent, tex, dark = false) => { const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.eventMode = 'none'; s.visible = false; if (dark) s.tint = 0x000000; parent.addChild(s); return s; };
   const pair = (root, tex) => ({ shadow: sprite(floor(), tex, true), body: sprite(root, tex) });
   const gone = (...list) => { for (const s of list) { try { s?.destroy(); } catch { /* gone */ } } };
@@ -619,6 +621,9 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       if (alpha > 0.01) {
         if (squirrels.length) { const sets = squirrelTex(); squirrels = squirrels.map((s0) => {
           const s = squirrelStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), trees, ok: (x, y) => ok('squirrels', x, y), within: onMap });
+          // A chatter as it races for cover, and now and then a scolding from up in its tree.
+          if (s.mode === 'race' && s0.mode !== 'race') sound('squirrelChatter', s, true);
+          else if (s.mode === 'hide' && Math.random() < dt * 0.04) sound('squirrelChatter', s, false);
           if (s.mode === 'hide' || !can(s, s.x, s.y)) { hide(s); return s; }
           const set = sets[s.coat], tex = s.v > 3 ? set.run[Math.floor(((s.gait % 1) + 1) % 1 * 4)] : set.sit[Math.round(Math.sin(time * 1.4 + s.seed) * Math.max(0, Math.sin(time * 0.5 + s.seed)) + 1)], size = 0.55 * k * squirrelSize, c = fall(s, s.x, s.y, { width: grid * 0.2, body: 0.12, grounded: true });
           put(s.shadow, tex, s.x + c.dx, s.y + c.dy, s.a, size, Math.min(0.5, c.alpha * 0.55) * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);
@@ -626,6 +631,8 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
         }); }
         if (snakes.length) { const sets = snakeTex(); snakes = snakes.map((s0) => {
           const s = snakeStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), time, ok: (x, y) => ok('snakes', x, y), within: onMap });
+          // A hiss as it is disturbed; none from a snake gone in out of the cold.
+          if (warm && s.mode === 'flee' && s0.mode !== 'flee') sound('snakeHiss', s, true);
           if (!warm || !can(s, s.x, s.y)) { hide(s); return s; }
           const set = sets[s.coat], tex = s.v > 1 ? set.go[Math.floor(((s.gait % 1) + 1) % 1 * 8)] : set.lie[0], size = 0.5 * k * snakeSize;
           put(s.shadow, tex, s.x + sun.x * grid * 0.02, s.y + sun.y * grid * 0.02, s.a, size, 0.25 * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);
@@ -645,6 +652,9 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
             return o;
           }
           const o = deerStep(o0, { dt, grid, near: alarmed(o0), blocked: area && (o0.x < area.x || o0.y < area.y || o0.x > area.x + area.width || o0.y > area.y + area.height) ? () => false : blocked, scare, noise: heard(o0), ok: (x, y) => ok('deer', x, y) });
+          // A call as it starts away, and now and then one to the herd as it grazes.
+          if (o.mode === 'flee' && o0.mode !== 'flee') sound('deerCall', o, true);
+          else if (o.mode !== 'flee' && Math.random() < dt * 0.006) sound('deerCall', o, false);
           if (!can(o, o.x, o.y)) { hide(o); return o; }
           const set = o.buck ? t.stag : t.doe, q = ((o.gait % 1) + 1) % 1;
           const tex = o.mode === 'flee' ? set.bound[Math.floor(q * 8)] : o.v > 3 ? set.walk[Math.floor(q * 8)] : o.lift >= 1 ? set.look[Math.round((Math.sin(time * 0.6 + o.step) + 1) * 2)] : o.lift > 0 ? set.rise[Math.floor(o.lift * 4.99)] : set.graze[Math.floor(((time * 0.7 + o.step) % 1) * 6)];

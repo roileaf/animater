@@ -9,7 +9,18 @@ const rabbit = (id, x = 1, y = 2) => ({ id, kind: 'rabbit', x, y });
 
 test('it offers every creature the scene already has a setting for', () => {
   const kinds = ANIMAL_GROUPS.flatMap(([, list]) => list.map(([k]) => k)).sort();
-  assert.deepEqual(kinds, ['bats', 'crawlers', 'deer', 'fish', 'foxes', 'frogs', 'insects', 'moths', 'owls', 'rabbits', 'rats', 'waterBirds', 'wildBirds', 'wolves', 'squirrels', 'snakes'].sort());
+  assert.deepEqual(kinds, ['bats', 'crawlers', 'deer', 'fish', 'foxes', 'frogs', 'insects', 'moths', 'owls', 'rabbits', 'rats', 'waterBirds', 'wildBirds', 'wolves', 'squirrels', 'snakes',
+    'crows', 'hawks', 'herons', 'gulls', 'pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses'].sort());
+});
+
+test('crows, a hawk, herons and gulls can be chosen on their own; the town and farm come only when asked for', () => {
+  const out = animalPreset('many');
+  for (const k of ['crows', 'herons', 'gulls']) assert.equal(out[k], 'many', k);
+  assert.equal('hawks' in out, false, 'hawks are counted, not given an amount');
+  assert.match(animalsPanelHtml({ flags: {}, water: true }), /data-key="hawks" data-value="1"[^>]*class="[^"]*is-active|class="[^"]*is-active[^"]*"[^>]*data-key="hawks" data-value="1"/, 'one hawk shown when nothing is set');
+  for (const k of ['pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses']) assert.equal(k in out, false, `${k} only when asked for`);
+  const html = animalsPanelHtml({ flags: {}, water: true });
+  for (const label of ['Hawks', 'Crows', 'Herons', 'Gulls', 'Ducks', 'Pigeons', 'Cows']) assert.ok(html.includes(`>${label}<`), label);
 });
 
 test('a preset sets the outdoors and leaves dark places alone', () => {
@@ -57,7 +68,7 @@ test('a higher bird looks bigger, seen from above, and its shadow keeps its size
   assert.ok(Math.abs(birdBodyOf(300) - 1.3) < 1e-9);
   assert.ok(birdBodyOf(25) < 1 && birdBodyOf(25) > 0.85);
   const read = (name) => readFileSync(new URL(`../../scripts/engines/motion/${name}.mjs`, import.meta.url), 'utf8');
-  assert.equal((read('wildlife').match(/\* birdBody,/g) ?? []).length, 3, 'songbird, hawk, crow');
+  assert.equal((read('wildlife').match(/\* birdBody,/g) ?? []).length, 4, 'songbird, hawk, crow, a lone bird between perches');
   assert.equal((read('pond-life').match(/\* birdBody,/g) ?? []).length, 3, 'duck, heron, gull');
   assert.equal((read('field-life').match(/\* birdBody,/g) ?? []).length, 1, 'owl');
   assert.ok(!/shadowOf\([^;]*birdBody/.test(read('pond-life')), 'the body only: shadows go by their own look');
@@ -72,7 +83,7 @@ test('a higher bird\'s shadow is wider, softer and fainter, and each flying bird
   assert.equal(shadowSoftness(0.8), 0); assert.equal(shadowSoftness(2.5), 0, 'crisp while low'); assert.equal(shadowSoftness(4), 1); assert.equal(shadowSoftness(12), 2);
   assert.ok(highShadowLook(2, 3).level > highShadowLook(2, 1).level, 'one sent high softens too');
   const read = (name) => readFileSync(new URL(`../../scripts/engines/motion/${name}.mjs`, import.meta.url), 'utf8');
-  assert.equal((read('wildlife').match(/liftShadow\(/g) ?? []).length, 3);
+  assert.equal((read('wildlife').match(/liftShadow\(/g) ?? []).length, 4);
   assert.equal((read('pond-life').match(/liftShadow\(/g) ?? []).length, 3);
   assert.equal((read('field-life').match(/liftShadow\(/g) ?? []).length, 1);
   assert.ok(/sprite\(highShadow\(\), t2\[0\], true\)/.test(read('field-life')), "the bats' own layer stays as it was");
@@ -100,7 +111,7 @@ test('soft copies are drawn once, keep their size, and stay crisp where a canvas
 
 test('every flying bird goes by it; bats, butterflies and what walks do not', () => {
   const read = (name) => readFileSync(new URL(`../../scripts/engines/motion/${name}.mjs`, import.meta.url), 'utf8');
-  assert.equal((read('wildlife').match(/bird: true/g) ?? []).length, 3, 'songbird, hawk, crow');
+  assert.equal((read('wildlife').match(/bird: true/g) ?? []).length, 4, 'songbird, hawk, crow, a lone bird between perches');
   assert.equal((read('pond-life').match(/bird: true/g) ?? []).length, 3, 'duck, heron, gull');
   assert.equal((read('field-life').match(/bird: true/g) ?? []).length, 1, 'owl');
   assert.match(readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8'), /const lift = bird \? flying \* birdHeightOf\(animalFlagsNow\(\)\.birdHeight\) : flying;/);

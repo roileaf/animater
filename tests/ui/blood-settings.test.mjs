@@ -22,3 +22,9 @@ test("the Splat and Bake buttons are the GM's, and can be hidden", () => {
   assert.match(main, /const splatBloodHere = async \(\) => \{\s*if \(!game\.user\?\.isGM/);
   assert.match(main, /const bakeBloodHere = async \(\) => \{\s*if \(!game\.user\?\.isGM/);
 });
+
+test('the hints say which blood a duration covers: wounded view stains wait for healing', () => {
+  assert.match(main, /registerSetting\("floorBloodForever", \{[^}]*hint: "Blood on the floor never fades/, 'stays until cleared is about the floor');
+  assert.match(main, /registerSetting\("lensDuration", \{[\s\S]*?hint: "[^"]*Wounded view's stains[^"]*until the creature is healed[^"]*turn off Wounded view/, 'the lens duration points at the wounded view stains');
+  assert.match(main, /registerSetting\("lensWounded", \{[\s\S]*?hint: "[^"]*stay until it is healed/, 'the wounded view says its stains wait for healing');
+});

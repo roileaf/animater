@@ -13,20 +13,37 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * all those at that spot (tabs when more than one), `first` the one to show, `at` where on the map (a step spreads from
  * there); close(). `flagsOf(doc)` the region's Animater flags, `save(doc, flags)` saves some (a promise), `edit(doc)` opens
  * its steps list, `texture(flags)` whether its floor is painted now, `season(flags)` whether the season colours it,
- * `presets()` the Tokenshade look names, `weathers()` [[id, label]].
+ * `presets()` the Tokenshade look names, `weathers()` [[id, label]], `confirm(text)` a yes or no (a promise) before None
+ * takes a region's settings away, `configure(doc)` Foundry's own configuration of the region (a cog by the close button).
+ * `shows(doc | null)` hears which region it shows now (null once closed), to outline it on the map.
+ * Its heading drags it about the screen; it stays where it is put until it closes.
  */
-export function createRegionPanel({ flagsOf, save, edit, texture = () => false, season = () => false, presets = () => [], weathers = () => [] }) {
-  let box = null, open_ = null, saving = 0;
+export function createRegionPanel({ flagsOf, save, edit, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {} }) {
+  let shown = null;
+  const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
+  let box = null, open_ = null, saving = 0, drag = null;
   // Sections opened or shut by hand (id → open), the "More" lines unfolded, and sections added from More sections; all
   // start over with each region shown.
   const folds = new Map(), mores = new Set(), added = new Set();
   const forget = () => { folds.clear(); mores.clear(); added.clear(); };
   const close = () => {
     open_ = null;
+    tell(null);
     if (!box) return;
     box.remove(); box = null;
     document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true);
     globalThis.window?.removeEventListener?.('resize', place);
+    stopDrag();
+  };
+  // Dragged by its heading: it follows the pointer from where it was taken, and keeps that place through redraws.
+  const follow = (e) => { if (!drag || !open_) return; open_ = { ...open_, client: { x: drag.left + e.clientX - drag.x, y: drag.top + e.clientY - drag.y } }; place(); };
+  const stopDrag = () => { if (!drag) return; drag = null; document.removeEventListener('pointermove', follow, true); document.removeEventListener('pointerup', stopDrag, true); };
+  const startDrag = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (e.target?.closest?.('button')) return;
+    e.preventDefault?.();
+    drag = { x: e.clientX, y: e.clientY, left: parseFloat(box.style.left) || 0, top: parseFloat(box.style.top) || 0 };
+    document.addEventListener('pointermove', follow, true); document.addEventListener('pointerup', stopDrag, true);
   };
   const outside = (e) => { if (box && !box.contains(e.target)) close(); };
   const escape = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
@@ -34,6 +51,7 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
   const draw = () => {
     if (!open_ || !box) return;
     // A region with no floor of its own shows as its kind's floor, as its summaries do.
+    tell(open_.doc);
     const { doc } = open_, own = flagsOf(doc) ?? {}, floor = shownFloorOf(own, open_.floor), kind = regionKindOf(own, floor);
     // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back, and says so).
     // `then` runs only once the save is taken, before that redraw.
@@ -61,7 +79,11 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
 
     const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
-    head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor)} region`), shut);
+    head.setAttribute('data-tooltip', 'Drag to move'); head.addEventListener('pointerdown', startDrag);
+    head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor)} region`));
+    // Roi: Foundry's own region configuration, a click away.
+    if (configure) { const cog = button('', 'an-rp-close an-rp-config', () => { close(); configure(doc); }); cog.setAttribute('aria-label', 'Region configuration'); cog.setAttribute('data-tooltip', 'Foundry\'s region configuration'); cog.append(icon('fa-gear')); head.append(cog); }
+    head.append(shut);
     const parts = [head];
 
     const tabs = stepTabs((open_.regions ?? []).map((r) => ({ ...r, floor: r.doc === doc ? floor : shownFloorOf(flagsOf(r.doc) ?? {}, r.floor) })), open_.first ?? doc);
@@ -77,14 +99,20 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
 
     const kinds = element('div', 'an-rp-kinds');
     for (const [id, glyph, label] of REGION_KINDS) {
-      const on = id === kind, b = button('', on ? 'an-rp-kind an-rp-on' : 'an-rp-kind', () => { if (on) return; forget(); toFloor(kindFlags(id, own)); });
+      // None takes every Animater setting off the region: asked first when it has any.
+      const pick = async () => { if (id === 'none' && Object.keys(own).length && !(await confirm(`Take every Animater setting off ${doc.name || 'this region'}? Its floor, water, animals and every other setting go, and cannot be brought back.`))) return; forget(); toFloor(kindFlags(id, own)); };
+      const on = id === kind, b = button('', on ? 'an-rp-kind an-rp-on' : 'an-rp-kind', () => { if (!on) pick(); });
       b.setAttribute('aria-label', label); b.setAttribute('aria-pressed', String(on));
       b.append(icon(glyph), element('span', '', label)); kinds.append(b);
     }
     parts.push(kinds);
+    if (kind === 'none') parts.push(element('div', 'an-rp-none', 'Animater does nothing in this region. Pick what it is above.'));
 
     for (const s of panelSections(kind, own, floor, [...added])) {
       const shown = folds.has(s.id) ? folds.get(s.id) : s.open, sec = element('section', shown ? 'an-rp-sec an-rp-open' : 'an-rp-sec');
+      // Once shown it stays, and open stays open until folded by hand: a change in it (drips turned off) never shuts it, or
+      // takes it away, under the pointer. A new kind starts over.
+      added.add(s.id); if (shown) folds.set(s.id, true);
       sec.setAttribute('data-section', s.id); sec.setAttribute('data-open', String(shown));
       const title = button('', 'an-rp-title', () => { folds.set(s.id, !shown); draw(); });
       title.setAttribute('aria-expanded', String(shown));

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { WEATHER_LOOPS, THUNDER, weatherLevels, weatherIsOurs, thunderGain, thunderPan, thunderReaches, thunderShape, weatherFile } from '../../../scripts/engines/motion/weather-sound.mjs';
+import { WEATHER_LOOPS, THUNDER, weatherLevels, weatherIsOurs, thunderGain, thunderPan, thunderReaches, thunderShape, weatherFile, weatherLoudness, louder } from '../../../scripts/engines/motion/weather-sound.mjs';
 
 test('every weather sound is there and credited', () => {
   for (const f of [...Object.values(WEATHER_LOOPS).flat(), ...Object.values(THUNDER).flat()]) {
@@ -124,4 +124,15 @@ test('a strike beside you booms at once', async () => {
   assert.ok(wait(3) > wait(2) && wait(10) > wait(3), 'and further off, later');
   assert.equal(thunderOnTopOf(3), true, 'nothing makes these wait');
   assert.equal(thunderOnTopOf(4), false);
+});
+
+test('each player sets how loud the weather is for them: a percent, 100 as recorded', () => {
+  assert.equal(weatherLoudness(100), 1);
+  assert.equal(weatherLoudness(50), 0.5);
+  assert.equal(weatherLoudness(0), 0, 'zero is silent');
+  for (const odd of [undefined, null, 'x', NaN]) assert.equal(weatherLoudness(odd), 1, 'unset or broken: as recorded');
+  assert.equal(weatherLoudness(-20), 0); assert.equal(weatherLoudness(250), 1, 'never past as recorded');
+  const levels = weatherLevels({ rain: 1, wind: 0.9, words: 'hail' }), half = louder(levels, weatherLoudness(50));
+  for (const [kind, v] of Object.entries(levels)) assert.equal(half[kind], v * 0.5, kind);
+  assert.deepEqual(Object.values(louder(levels, 0)), [0, 0, 0, 0, 0, 0], 'at zero every loop falls silent');
 });

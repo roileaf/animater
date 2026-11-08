@@ -6,7 +6,7 @@
 import { FLOOR_CHOICES } from '../engines/motion/movement-feel.mjs';
 import { floorBody } from '../engines/motion/floor-shadows.mjs';
 import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, overShadowOf, showsPosts, STEP_EDGE, STEP_SCALE, STEP_STRENGTH, STEP_SPEEDS, TEXTURE_STYLES, textureFloor, textureStyleOf, activeStep, changeStep, setStepSpeed, setStepStrength, stepEdge, stepMenu, stepScale, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu, INDOOR_EDGE, indoorEdgeOf } from '../engines/motion/region-steps.mjs';
-import { REGION_ANIMAL_GROUPS, REGION_AMOUNTS, ANIMAL_SIZE, animalSizeOf } from '../engines/motion/region-animals.mjs';
+import { REGION_ANIMAL_GROUPS, REGION_AMOUNTS, ANIMAL_SIZE, animalSizeOf, hawkCountOf, MOST_HAWKS } from '../engines/motion/region-animals.mjs';
 import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../engines/motion/wall-shadows.mjs';
 import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
@@ -77,7 +77,7 @@ const capital = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const DECK_FLOORS = FLOOR_CHOICES.filter(([v]) => v && !['water', 'lava', 'none'].includes(v));
 const CAVE_KINDS = [['', 'None'], ['mist', 'Mist on the floor'], ['fungus-green', 'Glowing fungus (green)'], ['fungus-blue', 'Glowing fungus (blue)'], ['fungus-violet', 'Glowing fungus (violet)'], ['crystals-amethyst', 'Crystals (amethyst)'], ['crystals-quartz', 'Crystals (clear quartz)'], ['crystals-rose', 'Crystals (rose)'], ['lava', 'Lava'], ['webs', 'Cobwebs'], ['wet', 'Wet walls'], ['steam', 'Steam vents'], ['foul', 'Bad air']];
 const KEEP_OUT = [['all', 'All animals'], ['rats', 'Rats'], ['bats', 'Bats'], ['moths', 'Moths'], ['crawlers', 'Crawlers'], ['eyes', 'Eyes'], ['rabbits', 'Rabbits'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['songbirds', 'Songbirds'], ['crows', 'Crows'], ['hawk', 'Hawk'], ['owl', 'Owl'], ['fish', 'Fish'], ['frogs', 'Frogs'], ['ducks', 'Ducks'], ['herons', 'Herons'], ['gulls', 'Gulls'], ['butterflies', 'Butterflies'], ['dragonflies', 'Dragonflies'], ['fireflies', 'Fireflies'], ['pigeons', 'Pigeons'], ['hens', 'Hens'], ['cats', 'Cats'], ['dogs', 'Dogs']];
-const ANIMAL_ICONS = { rabbits: 'fa-carrot', wildBirds: 'fa-dove', deer: 'fa-tree', foxes: 'fa-paw', wolves: 'fa-moon', squirrels: 'fa-leaf', snakes: 'fa-staff-snake', insects: 'fa-bug', owls: 'fa-feather', fish: 'fa-fish', waterBirds: 'fa-crow', frogs: 'fa-frog', pigeons: 'fa-dove', hens: 'fa-egg', cats: 'fa-cat', dogs: 'fa-dog', cows: 'fa-cow', goats: 'fa-horse-head', sheep: 'fa-cloud', pigs: 'fa-piggy-bank', horses: 'fa-horse', rats: 'fa-cheese', bats: 'fa-cloud-moon' };
+const ANIMAL_ICONS = { crows: 'fa-crow', hawks: 'fa-feather-pointed', herons: 'fa-water', gulls: 'fa-wind', rabbits: 'fa-carrot', wildBirds: 'fa-dove', deer: 'fa-tree', foxes: 'fa-paw', wolves: 'fa-moon', squirrels: 'fa-leaf', snakes: 'fa-staff-snake', insects: 'fa-bug', owls: 'fa-feather', fish: 'fa-fish', waterBirds: 'fa-crow', frogs: 'fa-frog', pigeons: 'fa-dove', hens: 'fa-egg', cats: 'fa-cat', dogs: 'fa-dog', cows: 'fa-cow', goats: 'fa-horse-head', sheep: 'fa-cloud', pigs: 'fa-piggy-bank', horses: 'fa-horse', rats: 'fa-cheese', bats: 'fa-cloud-moon' };
 // Which animals each kind of region shows first; the rest wait under "More animals".
 const ANIMALS_FIRST = { water: ['Water', 'Open ground', 'Farm', 'Town'], ground: ['Farm', 'Open ground', 'Town', 'Water'], indoors: ['Town', 'Dark places', 'Farm'], cave: ['Dark places'] };
 const AMOUNTS = REGION_AMOUNTS.map(([key]) => key);
@@ -194,6 +194,15 @@ export const SECTIONS = {
     const amountOf = (k) => (AMOUNTS.includes(now[k] ?? '') ? now[k] ?? '' : '');
     const card = (k, label) => {
       // (While a save is on its way, a click would only repeat it.)
+      if (k === 'hawks') {
+        // counted one by one: one unless set, up to MOST_HAWKS; its number on the card
+        const n = hawkCountOf(now.hawks), set = (to) => { if (c.saving?.()) return; const next = Math.max(0, Math.min(MOST_HAWKS, to)); if (next !== n) act({ regionAnimals: { ...now, hawks: String(next) } }); };
+        const b = button('', n ? 'an-rp-animal an-rp-on' : 'an-rp-animal', () => set(n + 1));
+        b.addEventListener('contextmenu', (e) => { e.preventDefault(); set(n - 1); });
+        b.setAttribute('aria-label', `${label}: ${n}`); tip(b, `${n === 0 ? 'None' : n === 1 ? 'One hawk' : `${n} hawks`}. Click for more, right-click for fewer.`);
+        b.append(icon(ANIMAL_ICONS[k] ?? 'fa-paw'), element('span', '', label), element('div', 'an-rp-count', String(n)));
+        return b;
+      }
       const n = AMOUNTS.indexOf(amountOf(k)), set = (to) => { if (c.saving?.()) return; const next = Math.max(0, Math.min(AMOUNTS.length - 1, to)); if (next !== n) act({ regionAnimals: { ...now, [k]: AMOUNTS[next] } }); };
       const b = button('', n ? 'an-rp-animal an-rp-on' : 'an-rp-animal', () => set(n + 1)), dots = element('div', 'an-rp-dots');
       b.addEventListener('contextmenu', (e) => { e.preventDefault(); set(n - 1); });

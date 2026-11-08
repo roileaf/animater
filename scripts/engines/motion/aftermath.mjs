@@ -207,6 +207,8 @@ function birdStanding(peck, c) {
     x.fillStyle = c.beak; x.beginPath(); x.moveTo(-1.7, hy - 4); x.lineTo(0, hy - 10); x.lineTo(1.7, hy - 4); x.closePath(); x.fill();
   });
 }
+// A crow standing, head up or down (for a crow sitting on a roof, wildlife.mjs; baked as this file's 'crow/stand').
+export const crowStanding = (peck) => birdStanding(peck, CROW);
 // A soft dark patch for a bird's shadow.
 const softShadow = () => picture(64, 64, (x) => { const g = x.createRadialGradient(0, 0, 2, 0, 0, 30); g.addColorStop(0, 'rgba(0,0,0,0.85)'); g.addColorStop(0.55, 'rgba(0,0,0,0.45)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.beginPath(); x.arc(0, 0, 30, 0, TAU); x.fill(); });
 // A fly: a dark speck, with the blur of its wings on the upbeat.
@@ -221,7 +223,7 @@ const speckPicture = (wings) => picture(16, 16, (x) => { if (wings) { x.fillStyl
  * containers or functions returning one: shots in the world and birds on the ground on the floor; flies, fliers and shots in
  * creatures over all.
  */
-export function createAftermath({ PIXI, floor, sky, grid: startGrid = 100, cap = SHOT_CAP, lifetime: startLifetime = null }) {
+export function createAftermath({ PIXI, floor, sky, grid: startGrid = 100, cap = SHOT_CAP, lifetime: startLifetime = null, restyle = null }) {
   let shots = [], bodies = new Map(), noises = [], grid = startGrid, time = 0, specksShown = 0, textures = null;
   const keepFor = (s) => (s > 0 && Number.isFinite(s) ? s : null);
   let lifetime = keepFor(startLifetime);
@@ -229,9 +231,10 @@ export function createAftermath({ PIXI, floor, sky, grid: startGrid = 100, cap =
   const art = () => {
     if (textures && !textures.speck[0].baseTexture?.destroyed) return textures;
     const tex = (c) => PIXI.Texture.from(c);
-    const flock = (c, big) => ({ fly: SPANS.map((s) => tex(birdFlying(s, c, big))), stand: [false, true].map((p) => tex(birdStanding(p, c))) });
+    // the birds in the painted look where baked (animal-art.mjs `restyle`, given by main), else as drawn here
+    const flock = (c, big, name) => { const drawn = { fly: SPANS.map((s) => tex(birdFlying(s, c, big))), stand: [false, true].map((p) => tex(birdStanding(p, c))) }; return restyle ? restyle('aftermath', drawn, name) : drawn; };
     const shafts = (list) => ({ wall: list.map((c) => tex(shotPicture(c, false))), floor: list.map((c) => tex(shotPicture(c, true))) });
-    return (textures = { arrow: shafts(ARROWS), bolt: shafts(BOLTS), crow: flock(CROW, false), vulture: flock(VULTURE, true), shadow: tex(softShadow()), speck: [true, false].map((w) => tex(speckPicture(w))) });
+    return (textures = { arrow: shafts(ARROWS), bolt: shafts(BOLTS), crow: flock(CROW, false, 'crow'), vulture: flock(VULTURE, true, 'vulture'), shadow: tex(softShadow()), speck: [true, false].map((w) => tex(speckPicture(w))) });
   };
   const sprite = (parent, tex, anchorX = 0.5) => { const s = new PIXI.Sprite(tex); s.anchor.set(anchorX, 0.5); s.eventMode = 'none'; s.visible = false; parent.addChild(s); return s; };
   const gone = (...sprites) => { for (const s of sprites) { try { s?.destroy(); } catch { /* gone */ } } };

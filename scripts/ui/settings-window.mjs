@@ -101,7 +101,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "wildlife", local: "wildlifeLocal" },
     { world: "wildlifeSounds", local: "wildlifeSoundsLocal" },
     { world: "riverSounds", local: "riverSoundsLocal", extras: ["riverVolume"] },
-    { world: "weatherSounds", local: "weatherSoundsLocal", extras: ["thunderPanning"] },
+    { world: "weatherSounds", local: "weatherSoundsLocal", extras: ["weatherVolume", "thunderPanning"] },
     { world: "drips", local: "dripsLocal" },
     { world: "drafts", local: "draftsLocal" },
     { world: "torchDraft", local: "torchDraftLocal" },

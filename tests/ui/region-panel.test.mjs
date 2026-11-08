@@ -33,7 +33,7 @@ const fire = (n, type, extra = {}) => { const e = { target: n, defaultPrevented:
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // Opens the panel on one region; `saves` records every save, and flagsOf follows them unless `stick` keeps the region as it was.
-async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null } = {}) {
+async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, shows = null } = {}) {
   const dom = installDom();
   const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
   const doc = { name: 'Mill pond' };
@@ -43,12 +43,16 @@ async function setup(start = {}, floor = 'grass', { reject = false, stick = fals
     flagsOf: flagsOf ?? (() => { reads++; return own; }),
     save: (d, flags) => {
       saves.push(flags); if (reject) return Promise.reject(new Error('no'));
-      const take = () => { if (!stick) own = { ...own, ...flags }; };
+      // Saved as Foundry saves: `-=key` deletes that key.
+      const take = () => { if (stick) return; own = { ...own }; for (const [k, v] of Object.entries(flags)) { if (k.startsWith('-=')) delete own[k.slice(2)]; else own[k] = v; } };
       if (hold) return new Promise((resolve) => held.push(() => { take(); resolve(); }));
       take(); return Promise.resolve();
     },
     edit: (d) => edits.push(d), texture, season,
     presets: () => ['Haunted', 'Forge'], weathers: () => [['fog', 'Fog'], ['rain', 'Rain']],
+    ...(confirm ? { confirm } : {}),
+    ...(configure ? { configure } : {}),
+    ...(shows ? { shows } : {}),
   });
   panel.open(what ?? { doc, floor, at: { x: 5, y: 6 }, client: { x: 10, y: 10 }, regions: [{ doc, floor }], first: doc });
   const root = () => dom.body.children[0];
@@ -62,6 +66,46 @@ async function setup(start = {}, floor = 'grass', { reject = false, stick = fals
   const more = async (id) => click([...walk(section(id))].find((n) => n.className?.includes('an-rp-more') && n.attrs['aria-expanded'] === 'false'));
   return { dom, panel, doc, saves, edits, held, root, find, byLabel, section, openSection, button, pick, click, more, own: () => own, reads: () => reads, done: () => { panel.close(); dom.restore(); } };
 }
+
+// Roi: a None choice for regions Animater leaves alone.
+test('a region with no Animater settings opens on None, saying so, with no sections', async () => {
+  const t = await setup({}, 'grass');
+  assert.equal(t.byLabel('None').attrs['aria-pressed'], 'true');
+  assert.match(textOf(t.root()), /Animater does nothing in this region/);
+  assert.equal(t.find((n) => n.attrs['data-section']), null);
+  await t.click(t.byLabel('Ground'));
+  assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true', 'picking a kind brings it back');
+  t.done();
+});
+
+test('None asks first, then takes every Animater setting off the region', async () => {
+  const asked = [];
+  let answer = false;
+  const t = await setup({ floor: 'stone', drips: true }, 'stone', { confirm: async (text) => { asked.push(text); return answer; } });
+  await t.click(t.byLabel('None')); await tick();
+  assert.equal(asked.length, 1); assert.deepEqual(t.saves, [], 'said no: nothing saved');
+  answer = true;
+  await t.click(t.byLabel('None')); await tick(); await tick();
+  assert.deepEqual(t.saves, [{ '-=floor': null, '-=drips': null }]);
+  assert.deepEqual(t.own(), {}); assert.equal(t.byLabel('None').attrs['aria-pressed'], 'true');
+  t.done();
+});
+
+// Roi: let the panel be moved about the screen.
+test('the panel moves by its heading and stays where it is put', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  const head = t.find((n) => n.className === 'an-rp-head');
+  const left0 = parseFloat(t.root().style.left), top0 = parseFloat(t.root().style.top);
+  fire(head, 'pointerdown', { clientX: 100, clientY: 50, button: 0 });
+  t.dom.fireDoc('pointermove', { clientX: 160, clientY: 90 });
+  t.dom.fireDoc('pointerup', { clientX: 160, clientY: 90 });
+  assert.equal(parseFloat(t.root().style.left), left0 + 60); assert.equal(parseFloat(t.root().style.top), top0 + 40);
+  await t.click(t.byLabel('Water'));
+  assert.equal(parseFloat(t.root().style.left), left0 + 60, 'a redraw keeps it there');
+  t.dom.fireDoc('pointermove', { clientX: 400, clientY: 400 });
+  assert.equal(parseFloat(t.root().style.left), left0 + 60, 'let go, it no longer follows');
+  t.done();
+});
 
 test('clicking a kind saves what makes the region that kind', async () => {
   const t = await setup({ floor: 'grass' }, 'grass');
@@ -82,6 +126,42 @@ test('a section title folds it open and shut without saving', async () => {
   fire(t.section('steps').children[0], 'click');
   assert.equal(t.section('steps').attrs['data-open'], 'false');
   assert.deepEqual(t.saves, []);
+  t.done();
+});
+
+// Found going over the panel: turning drips off shut its section, or took it away, under the pointer.
+test('a section being changed stays shown and open, until it is folded or the kind changes', async () => {
+  const t = await setup({ floor: 'stone', indoors: true, drips: true }, 'stone');
+  t.openSection('drips');
+  await t.click(t.byLabel('Drips from the ceiling'));
+  assert.equal(t.own().drips, false);
+  assert.ok(t.section('drips'), 'still there'); assert.equal(t.section('drips').attrs['data-open'], 'true', 'and open');
+  await t.click(t.byLabel('Drips from the ceiling'));
+  assert.equal(t.own().drips, true, 'turned back on from the same place');
+  t.done();
+});
+
+// Roi: a button by the X for Foundry's own region configuration.
+test('the cog by the close button opens Foundry\'s region configuration and closes the panel', async () => {
+  const opened = [];
+  const t = await setup({ floor: 'grass' }, 'grass', { configure: (d) => opened.push(d) });
+  await t.click(t.byLabel('Region configuration'));
+  assert.deepEqual(opened, [t.doc]); assert.equal(t.panel.isOpen, false);
+  t.done();
+  const plain = await setup({ floor: 'grass' }, 'grass');
+  assert.equal(plain.byLabel('Region configuration'), null, 'none without a way to open it');
+  plain.done();
+});
+
+// Roi: outline the region right-clicked.
+test('the panel says which region it shows, to outline it, and nothing once closed', async () => {
+  const told = [];
+  const t = await setup({ floor: 'grass' }, 'grass', { shows: (d) => told.push(d) });
+  assert.deepEqual(told, [t.doc], 'once, on opening');
+  await t.click(t.byLabel('Water'));
+  assert.deepEqual(told, [t.doc], 'a redraw of the same region tells nothing new');
+  t.panel.close();
+  assert.deepEqual(told, [t.doc, null]);
   t.done();
 });
 
@@ -372,7 +452,9 @@ test('ground and indoors keep the shadow controls under More', async () => {
 });
 
 test('the ground floor list leads with "From the scene", which saves no floor and stays Ground', async () => {
-  const t = await setup({ floor: 'stone' }, 'stone');
+  // (Ground with its animals: with nothing else set, a floor from the scene is a region Animater leaves alone, None.)
+  const t = await setup({ floor: 'stone', regionAnimals: { cows: 'usual' } }, 'stone');
+  t.openSection('ground');
   const values = t.byLabel('Floor').children.map((o) => o.value);
   assert.equal(values[0], '');
   assert.ok(values.includes('grass') && values.includes('stone'));
@@ -415,7 +497,7 @@ test('a panel that cannot be drawn leaves nothing behind', async () => {
 });
 
 test('a floorless region: its shadow, steps and summaries all go by the same floor', async () => {
-  const t = await setup({}, undefined);
+  const t = await setup({ regionWeather: 'fog' }, undefined);
   assert.equal(t.byLabel('Ground').attrs['aria-pressed'], 'true');
   assert.equal(t.byLabel('Floor').children.find((o) => o.selected)?.value, '');
   await t.more('ground');

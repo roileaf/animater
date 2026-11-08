@@ -130,7 +130,7 @@ void main(){ vUv = aUvs; gl_Position = vec4((projectionMatrix * translationMatri
 const FRAG = `
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D uTrees, uTreesAt, uRoofCast, uRoofs, uRoofArea, uIndoor, uWater;
+uniform sampler2D uTrees, uTreesAt, uKinds, uRoofCast, uRoofs, uRoofArea, uIndoor, uWater;
 uniform vec2 uSize, uShift, uRoofShift, uDir, uWindDir;
 uniform float uTime, uWind, uStrength, uStretch, uGrid, uMode, uHasTrees, uHasRoofs, uRoofShade, uLeafRate, uDirect, uCloudClock, uCloudRun, uCloudWind, uCloudsOn;
 uniform vec2 uCloudShift, uCloudDir;
@@ -142,21 +142,29 @@ float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 ${CLOUD_DECK}
 float at(sampler2D map, vec2 px){ vec2 uv = px / uSize; return (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? 0.0 : texture2D(map, uv).a; }
-float flecks(vec2 src, vec2 px, float t){
-  vec2 sway = vec2(sin(t * 1.3 + px.y * 0.004), cos(t * 1.1 + px.x * 0.005)) * uGrid * (0.02 + 0.1 * uWind);
+float fbm3(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a * noise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return v / 0.875; }
+// Two painted steps of light where a field n passes th: a half-lit rim, then a lit core past th + rise.
+float twoSteps(float n, float th, float rise){ const float e = 0.012; return 0.5 * smoothstep(th - e, th + e, n) + 0.5 * smoothstep(th + rise - e, th + rise + e, n); }
+// The sun through the gaps in the leaves (no round spots), each kind of tree its own way (kind as the kind map has it:
+// 1 broadleaf, 2 pine, 3 palm, 4 birch, 5 bare, 6 willow; 0 none, taken as a broadleaf), in two painted steps, more and
+// bigger where the crown is thin (cover low), stretched along the light when the sun is low. The crown sways them a
+// little and they slowly open and close as the leaves move.
+float flecks(vec2 src, vec2 px, float t, float cover, float kind){
+  vec2 sway = vec2(sin(t * 0.9 + px.y * 0.003), cos(t * 0.7 + px.x * 0.004)) * uGrid * (0.015 + 0.06 * uWind);
   vec2 side = vec2(-uDir.y, uDir.x);
-  vec2 q = vec2(dot(src + sway, uDir) / uStretch, dot(src + sway, side));
-  float cell = uGrid * 0.34, best = 0.0;
-  vec2 c0 = floor(q / cell);
-  for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) {
-    vec2 c = c0 + vec2(float(i), float(j));
-    vec2 h = hash2(c);
-    vec2 centre = (c + 0.2 + 0.6 * h) * cell;
-    float r = cell * (0.16 + 0.22 * hash(c + 7.0));
-    float open = smoothstep(0.42, 0.7, noise(c * 1.7 + vec2(t * 0.9, -t * 0.6) + h * 9.0));
-    best = max(best, open * (1.0 - smoothstep(r * 0.55, r, length(q - centre))));
-  }
-  return best;
+  vec2 q = vec2(dot(src + sway, uDir) / uStretch, dot(src + sway, side)) / uGrid;
+  float open = 1.0 - smoothstep(0.3, 0.95, cover), lit = mix(0.55, 1.0, open);
+  vec2 w = q * 1.15 + 0.55 * vec2(noise(q * 0.9 + vec2(t * 0.11, 3.1)), noise(q * 0.9 + vec2(7.4, -t * 0.09)));
+  // A bare tree's and a palm's light is their open ground already, between the branches' or the fronds' shadows.
+  if ((kind > 4.5 && kind < 5.5) || (kind > 2.5 && kind < 3.5)) return 0.0;
+  // A pine: fine specks between the needles, few of them.
+  if (kind > 1.5 && kind < 2.5) return twoSteps(fbm3(w * 4.2 + vec2(t * 0.08, -t * 0.06)), mix(0.71, 0.62, open), 0.05) * lit;
+  // A birch: small bright gaps all through its lace of leaves.
+  if (kind > 3.5 && kind < 4.5) return twoSteps(fbm3(w * 3.4 + vec2(t * 0.07, -t * 0.05)), mix(0.63, 0.55, open), 0.05) * lit;
+  // A willow: a few small gaps between its strands (which its shade draws), shifting more in the wind.
+  if (kind > 5.5) return twoSteps(fbm3(w * 2.6 + sway / uGrid * 1.5 + vec2(t * 0.09, -t * 0.07)), mix(0.74, 0.66, open), 0.05) * lit * 0.8;
+  // A broadleaf: ragged patches of every size between its clumps.
+  return twoSteps(fbm3(w * 1.6 + vec2(t * 0.05, -t * 0.04)), mix(0.66, 0.5, open), 0.07) * lit;
 }
 // Leaves falling from the crowns: each leaves its tree now and then, drifts out on the wind turning over, and settles.
 vec4 fallingLeaves(vec2 px){
@@ -190,7 +198,7 @@ void main(){
   if (cover > 0.01 && uDirect > 0.005) {
     // No fleck under a passing cloud: the sky's own pattern says where its shadow lies now.
     float sunHere = uCloudsOn > 0.5 ? 1.0 - deckShade(cloudDeck(px - uCloudShift, uCloudClock, uCloudRun, uCloudDir, uCloudWind, uGrid), uDeck) : 1.0;
-    if (sunHere > 0.005) fleck = flecks(src, px, t) * mix(0.25, 1.0, 1.0 - smoothstep(0.55, 0.95, cover)) * uDirect * sunHere;
+    if (sunHere > 0.005) fleck = flecks(src, px, t, cover, floor(texture2D(uKinds, clamp(px / uSize, 0.0, 1.0)).r * 8.0 + 0.5)) * uDirect * sunHere;
   }
   // Roofs: a building's shadow on the open ground beside it; inside, light where the roof above toward the sun has a hole.
   float shadow = 0.0, hole = 0.0;
@@ -205,11 +213,16 @@ void main(){
     a *= uStrength;
     gl_FragColor = vec4(uShade * a, a);
   } else {
-    // Water has no surface for a fleck to land on: most of it goes through, so it barely shows.
-    float a = (fleck * cover * 0.3 * (1.0 - 0.85 * at(uWater, px)) + hole * 0.35 * uDirect) * uStrength;
-    gl_FragColor = vec4(uColor * a, a);
+    // A fleck mostly lifts the shade, so the map's own sunlit paint shows through; on top only a little warm glow (white
+    // added over the grass greys it). Water has no surface for a fleck to land on: most of it goes through.
+    float glow = fleck * cover * 0.14 * (1.0 - 0.85 * at(uWater, px)) * uStrength, a = glow + hole * 0.35 * uDirect * uStrength;
+    gl_FragColor = vec4(uColor * (vec3(1.0, 0.88, 0.62) * glow + (a - glow)), a);
   }
 }`;
+
+// A tree's kind as the shader reads it (red, in eighths of full): 0 none (a broadleaf's light), then each kind.
+export const KIND_CODES = Object.freeze({ broadleaf: 1, pine: 2, palm: 3, birch: 4, bare: 5, willow: 6 });
+const kindTint = (t) => ((KIND_CODES[t.kind] ?? 1) * 32) << 16;
 
 // The masks are baked this small (a soft shade needs no detail), at most this wide.
 const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
@@ -249,7 +262,7 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
       const bake = (fill, blur = 3, fine = false) => {
         const stage = new PIXI.Container();
         fill(stage);
-        stage.filters = [new PIXI.BlurFilter(blur)];
+        if (blur > 0) stage.filters = [new PIXI.BlurFilter(blur)];
         const texture = PIXI.RenderTexture.create({ width: fine ? wt : w, height: fine ? ht : h });
         try { render(stage, texture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
         masks.push(texture);
@@ -258,7 +271,7 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
       // How far a tile's shade lands from it: away from the sun, as far as its height throws it.
       const away = sun ? ((Number(sun.angle) || 0) + 180) * Math.PI / 180 : 0;
       const fall = (t) => { const reach = sun ? Math.min(6 * grid, sunReach(Math.max(0.5, Number(t.up) || 0) * grid, sun.height)) : 0; return [Math.cos(away) * reach, Math.sin(away) * reach]; };
-      const sprites = (tiles, solid = false, cast = false, kk = k, kinds = false) => (stage) => {
+      const sprites = (tiles, solid = false, cast = false, kk = k, kinds = false, tint = null) => (stage) => {
         for (const t of tiles) {
           if (!t?.texture) continue;
           const s = solid ? new PIXI.Sprite(PIXI.Texture.WHITE) : new PIXI.Sprite(t.texture);
@@ -267,6 +280,7 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
           s.position.set((t.x + dx - bounds.x) * kk, (t.y + dy - bounds.y) * kk);
           s.width = Math.abs(t.width) * kk; s.height = Math.abs(t.height) * kk;
           s.rotation = t.rotation ?? 0;
+          if (tint) s.tint = tint(t);
           // A tree's leaves, as thick as they are (tileLeaves): a sparse crown's shade is lighter, and full of flecks.
           s.alpha = solid ? 1 : (t.alpha ?? 1) * (t.leaves ?? 1);
           // Its kind's shade cut from its own picture (the picture's outline, the kind's clumps, needles or fronds inside it), as
@@ -293,7 +307,9 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
       };
       const none = () => {};
       const uniforms = {
-        uTrees: bake(trees.length ? sprites(trees, false, true, kt, true) : none, 1.5, true), uTreesAt: bake(trees.length ? sprites(trees) : none, 1), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
+        uTrees: bake(trees.length ? sprites(trees, false, true, kt, true) : none, 1.5, true), uTreesAt: bake(trees.length ? sprites(trees) : none, 1),
+        // Which kind of tree each spot of shade is under (its tile where its shade falls, red = its code in eighths), unblurred so a kind never blends into its neighbour.
+        uKinds: bake(trees.length ? sprites(trees, true, true, k, false, kindTint) : none, 0), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
         uRoofs: bake(roofs.length ? sprites(roofs) : none, 2),
         uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1), uWater: bake(water.length ? polygons(water) : none, 1),
         uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: clock, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudRun: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,
