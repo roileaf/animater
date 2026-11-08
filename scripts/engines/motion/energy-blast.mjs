@@ -36,8 +36,9 @@ export function blastRipple({ x, y, radius, kind, grid = 100, level = null } = {
   return { kind: 'shock', at: { x, y }, radius: reach, band: Math.max(grid * 0.45, radius * 0.22), startMs: 0, lengthMs: Math.round(Math.min(2200, 900 + (reach / grid) * 200)), strength, follow: false, ...(typeof level === 'string' && level ? { level } : {}) };
 }
 // How the view shakes: waves of { at (ms), weight, scale }, by how hard the kind hits and how big it is. Psychic moves nothing.
-export function blastShake(id, big = false) {
-  const hard = { force: 1.25, sonic: 1.2, fire: 1, electricity: 0.8, cold: 0.8, radiant: 0.7, void: 0.9, acid: 0.55, poison: 0.3, psychic: 0 }[id] ?? 1;
+// (`own`: how hard, in place of the kind's: a blast of the GM's own, blast-variants.mjs.)
+export function blastShake(id, big = false, own = null) {
+  const hard = own ?? { force: 1.25, sonic: 1.2, fire: 1, electricity: 0.8, cold: 0.8, radiant: 0.7, void: 0.9, acid: 0.55, poison: 0.3, psychic: 0 }[id] ?? 1;
   if (!(hard > 0)) return [];
   const k = big ? 2 : 1.3;
   return [{ at: 0, weight: big ? 12 : 9, scale: Math.min(2, k * hard) }, { at: 280, weight: big ? 10 : 7, scale: Math.min(2, k * hard * 0.7) }, ...(big ? [{ at: 700, weight: 9, scale: Math.min(2, hard) }] : [])];
@@ -92,6 +93,9 @@ void main(){ vQ = (aVertexPosition - uCenter) / uR; gl_Position = vec4((projecti
 const FRAG = `precision highp float;
 varying vec2 vQ;
 uniform float uT, uSeed, uR, uGridR; uniform int uType, uPass; uniform sampler2D uFloor; uniform vec3 uA, uB; uniform vec2 uCenter; uniform vec4 uRect;
+uniform float uRecolor;
+// A blast of the GM's own in its colours (uRecolor 1): whatever the kind drew, its bright parts in the highlight, its dim ones in the main colour, as bright as they were.
+vec3 recolor(vec3 c, float top){ float l = max(c.r, max(c.g, c.b)); vec3 tint = mix(uA, uB, smoothstep(0.12, top, l)); float m = max(0.05, max(tint.r, max(tint.g, tint.b))); return mix(c, tint * (l / m), uRecolor); }
 float h(vec2 p){ return fract(sin(dot(p + uSeed, vec2(127.1, 311.7))) * 43758.5453); }
 float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * n(p); p = p * 2.03 + 17.3; a *= 0.5; } return s; }
@@ -210,8 +214,8 @@ void main(){
   float edge = ss(1.62, 1.3, r);
   // Only what it changed, never the map's own picture: how much it darkens what is under it, and what light it adds. Over the map that comes to exactly what it worked out; over a floor texture it scorches the texture.
   if (uPass == 0) { vec3 was = texture2D(uFloor, (uCenter + q * uR - uRect.xy) / uRect.zw).rgb, kept = col / max(was, vec3(0.02)); float dark = 1.0 - clamp(min(kept.r, min(kept.g, kept.b)), 0.0, 1.0); gl_FragColor = vec4(max(col - was * (1.0 - dark), vec3(0.0)), dark) * edge; return; }
-  if (uPass == 1) { float c = clamp(cover, 0.0, 1.0) * edge; gl_FragColor = vec4(coverCol * c, c); return; }
-  vec3 lit = glow * edge; lit = lit / (1.0 + max(0.0, max(lit.r, max(lit.g, lit.b)) - 1.0) * 0.55);
+  if (uPass == 1) { float c = clamp(cover, 0.0, 1.0) * edge; gl_FragColor = vec4(recolor(coverCol, 0.95) * c, c); return; }
+  vec3 lit = recolor(glow, 1.4) * edge; lit = lit / (1.0 + max(0.0, max(lit.r, max(lit.g, lit.b)) - 1.0) * 0.55);
   gl_FragColor = vec4(lit, 0.0);
 }`;
 
@@ -251,16 +255,17 @@ export function createEnergyBlasts({ PIXI, floor, above, glow, map, render, mark
       try {
         const type = blastType('fire');
         geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [0, 0, 4, 0, 4, 4, 0, 4], 2).addIndex([0, 1, 2, 0, 2, 3]);
-        mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, { uT: 0.5, uSeed: 1, uR: 2, uGridR: 1, uCenter: [2, 2], uType: type.shader, uA: type.a, uB: type.b, uFloor: PIXI.Texture.WHITE, uRect: [0, 0, 4, 4], uPass: 1 }));
+        mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, { uT: 0.5, uSeed: 1, uR: 2, uGridR: 1, uCenter: [2, 2], uType: type.shader, uA: type.a, uB: type.b, uRecolor: 0, uFloor: PIXI.Texture.WHITE, uRect: [0, 0, 4, 4], uPass: 1 }));
         tex = PIXI.RenderTexture.create({ width: 4, height: 4 });
         render(mesh, { renderTexture: tex, clear: true });
       } catch { /* the first blast prepares it, then */ }
       try { mesh?.destroy(); geometry?.destroy(); tex?.destroy(true); } catch { /* gone */ }
     },
-    play({ x, y, radius, kind = 'fire', grid = 100, seed = Math.random() * 100 } = {}) {
+    // (`look`: a blast of the GM's own, blast-variants.mjs variantLook: its colours, recoloured all over.)
+    play({ x, y, radius, kind = 'fire', grid = 100, seed = Math.random() * 100, look = null } = {}) {
       const type = blastType(kind), half = radius * 1.65, ground = map();
       const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [x - half, y - half, x + half, y - half, x + half, y + half, x - half, y + half], 2).addIndex([0, 1, 2, 0, 2, 3]);
-      const uniforms = { uT: 0, uSeed: seed % 97, uR: radius, uGridR: (grid * 2) / radius, uCenter: [x, y], uType: type.shader, uA: type.a, uB: type.b, uFloor: ground?.texture ?? PIXI.Texture.WHITE, uRect: ground ? [ground.rect.x, ground.rect.y, ground.rect.width, ground.rect.height] : [0, 0, 1, 1] };
+      const uniforms = { uT: 0, uSeed: seed % 97, uR: radius, uGridR: (grid * 2) / radius, uCenter: [x, y], uType: type.shader, uA: look?.a ?? type.a, uB: look?.b ?? type.b, uRecolor: look?.recolor ?? 0, uFloor: ground?.texture ?? PIXI.Texture.WHITE, uRect: ground ? [ground.rect.x, ground.rect.y, ground.rect.width, ground.rect.height] : [0, 0, 1, 1] };
       const b = { x, y, radius, t: 0, geometry, floor: ground ? meshOf(geometry, uniforms, 0, floor()) : null, cover: meshOf(geometry, uniforms, 1, above()), light: meshOf(geometry, uniforms, 2, glow(), true) };
       live.push(b);
       return b;

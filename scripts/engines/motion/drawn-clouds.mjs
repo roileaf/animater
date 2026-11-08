@@ -121,6 +121,10 @@ export function skyLight({ height = 50, sun = 1, flat = 0, rain = 0, dark = 0, c
 // The shortest way round from one angle to another (pure).
 const turnBy = (from, to) => { const d = ((to - from + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; return d; };
 export const DEFAULT_TRANSPARENCY = 0.4;
+// How high a scene's clouds stand (pure), 1 as ever to 5: a cloud that many times bigger on the map (a town at 5 ft squares
+// wants them well up, not puffs over its roofs), and its shadow out by the root of it, so it still falls by the cloud.
+export const CLOUD_HEIGHT_MOST = 5;
+export const cloudHeight = (height) => { const size = Math.min(CLOUD_HEIGHT_MOST, Math.max(1, Number(height) || 1)); return { size, cast: Math.sqrt(size) }; };
 // How dark a cloud's shadow is at most under a bright sun, before the sky's own flatness and the cloud's thinness lighten it: a real one dims sunlit ground by a third or more.
 export const CLOUD_SHADE = 0.8;
 
@@ -214,8 +218,9 @@ export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds,
       const drawn = state.drawn !== false;
       bodyShare = entries.length ? bodiesShown(bodyShare, drawn, seconds) : drawn ? 1 : 0;
       bodies.renderable = bodyShare > 0;
-      const makeup = skyMakeup(state.on ? state.cover : 0);
-      const { clouds, sheets, grow } = skyCount(makeup, skySquares(box, g));
+      const makeup = skyMakeup(state.on ? state.cover : 0), up = cloudHeight(state.height), big = g * up.size;
+      // (Higher, each covers more squares: fewer of them over the same map.)
+      const { clouds, sheets, grow } = skyCount(makeup, skySquares(box, big));
       // Those wanted fade in, those no longer wanted fade out.
       for (let i = 0; i < clouds; i++) if (!entries.some((e) => !e.sheet && e.i === i)) { const e = entryOf(i, false, textures.clouds); if (e) entries.push(e); }
       for (let i = 0; i < sheets; i++) if (!entries.some((e) => e.sheet && e.i === i)) { const e = entryOf(i, true, textures.sheets); if (e) entries.push(e); }
@@ -223,12 +228,12 @@ export function createDrawnClouds({ PIXI, root, floor, grid = () => 100, bounds,
       run += seconds * speed;
       // (The sun eases round to where it is now: it only jumps when someone moves it.)
       const want = Number(state.sunAngle) || 0; turning ??= want; turning += turnBy(turning, want) * Math.min(1, seconds / 2);
-      const cast = state.cast ?? { x: 0, y: 0 }, view = screen?.(), shines = Math.min(1, (Number(state.sun) || 0) * 2.5);
+      const cast = { x: (state.cast?.x ?? 0) * up.cast, y: (state.cast?.y ?? 0) * up.cast }, view = screen?.(), shines = Math.min(1, (Number(state.sun) || 0) * 2.5);
       entries = entries.filter((e) => {
         const wanted = state.on && (e.sheet ? e.i < sheets : e.i < clouds);
         e.a = Math.max(0, Math.min(1, e.a + (wanted ? seconds : -seconds) / 2.5));
         if (!wanted && e.a <= 0) { try { e.body.destroy(); e.shadow.destroy(); } catch { /* gone */ } return false; }
-        const size = e.size * g * (e.sheet ? 1 : makeup.big) * grow, pad = (e.size * g * 1.05 * grow) / 2 + Math.hypot(cast.x ?? 0, cast.y ?? 0) + g, x = skyAlong(box.x, box.width, pad, e.home[0], dx * run), y = skyAlong(box.y, box.height, pad, e.home[1], dy * run);
+        const size = e.size * big * (e.sheet ? 1 : makeup.big) * grow, pad = (e.size * big * 1.05 * grow) / 2 + Math.hypot(cast.x ?? 0, cast.y ?? 0) + g, x = skyAlong(box.x, box.width, pad, e.home[0], dx * run), y = skyAlong(box.y, box.height, pad, e.home[1], dy * run);
         // Past the scene on all sides: nothing to draw.
         const seen = x + size > box.x && x - size < box.x + box.width && y + size > box.y && y - size < box.y + box.height;
         e.body.renderable = seen && !state.areas?.below; e.shadow.renderable = seen && shines > 0.02;

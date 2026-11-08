@@ -2,6 +2,7 @@
 // and add any effect; save it as a preset. A slider shows on the GM's screen as it moves and reaches everyone on
 // letting go, so nothing is written to the scene while dragging.
 import { scopeBar } from './level-scope.mjs';
+import { CLIMATES } from '../engines/motion/weather-forecast.mjs';
 import { FALL_CHOICES, TUNE_COLORS, TUNE_EFFECTS, TUNE_SLIDERS, cleanTune, effectIn, tuneTouched } from '../engines/motion/weather-tune.mjs';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -37,14 +38,14 @@ export function familyOf(weather) {
 }
 // A module's own word for an effect, for reading ("rainsimple" stays as it is; "heavy_fog" reads "Heavy fog").
 const wordsOf = (type) => { const text = String(type ?? '').replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase(); return text ? text[0].toUpperCase() + text.slice(1) : 'Effect'; };
-const AMOUNT_ROWS = [['cover', 'fa-cloud'], ['cloudClear', 'fa-cloud'], ['gloom', 'fa-moon'], ['fog', 'fa-smog'], ['lightning', 'fa-cloud-bolt'], ['wind', 'fa-wind'], ['temperature', 'fa-temperature-half']];
+const AMOUNT_ROWS = [['cover', 'fa-cloud'], ['cloudHeight', 'fa-cloud-arrow-up'],['cloudClear', 'fa-cloud'], ['gloom', 'fa-moon'], ['fog', 'fa-smog'], ['lightning', 'fa-cloud-bolt'], ['wind', 'fa-wind'], ['temperature', 'fa-temperature-half']];
 // What is at work on this scene and who says so (pure): one row each, { key, icon, name, detail, source, action, data }. `action` is how to turn it off from here; other modules' effects have none, as they are theirs to turn off.
 export function activeWeather({ off = false, weather = '', weatherName = '', calendar = null, tune: raw = null, stormDark = null, fxEffects = null, fxFilters = null } = {}) {
   const tune = cleanTune(raw), rows = [], own = String(weather).startsWith('animater.'), mine = 'Set in this panel', fx = [...Object.entries(fxEffects ?? {}), ...Object.entries(fxFilters ?? {})];
   const others = fx.map(([id, effect]) => ({ key: `fx-${id}`, icon: 'fa-wand-magic-sparkles', name: wordsOf(effect?.type ?? id), detail: 'Turn off in FXMaster', source: 'FXMaster' }));
   if (off) return [{ key: 'off', icon: 'fa-ban', name: 'No weather on this scene', detail: 'Whatever the calendar says', source: 'Animater', action: 'setWeatherOff' }, ...others];
   if (weather) rows.push({ key: 'weather', icon: 'fa-cloud-sun-rain', name: weatherName || wordsOf(weather), detail: calendar?.name ? `The scene's own, in place of ${calendar.name}` : "The scene's own weather", source: own ? 'Animater' : 'Foundry', action: 'setWeather', data: 'data-weather=""' });
-  else if (calendar?.name) rows.push({ key: 'calendar', icon: 'fa-calendar-days', name: calendar.name, detail: "The calendar's weather", source: 'Calendaria' });
+  else if (calendar?.name) rows.push({ key: 'calendar', icon: 'fa-calendar-days', name: calendar.name, detail: calendar.detail ?? "The calendar's weather", source: calendar.source ?? 'Calendaria' });
   for (const slot of ['fall', 'fall2']) if (FALL_CHOICES[tune[slot]]) rows.push({ key: slot, icon: FALL_ICONS[tune[slot]], name: FALL_CHOICES[tune[slot]], detail: slot === 'fall' ? mine : 'Also falling, set in this panel', source: 'Animater', action: 'setFall', data: `data-slot="${slot}" data-kind=""` });
   if (tune.fall === 'none') rows.push({ key: 'fall', icon: 'fa-ban', name: 'Nothing falling', detail: mine, source: 'Animater', action: 'setFall', data: 'data-slot="fall" data-kind=""' });
   for (const [key, icon] of AMOUNT_ROWS) if (tune[key] !== null) rows.push({ key, icon, name: `${TUNE_SLIDERS[key].label} ${sliderText(key, tune[key])}`, detail: mine, source: 'Animater', action: 'resetTune', data: `data-key="${key}"` });
@@ -75,6 +76,7 @@ export function effectToggled(tune, key, base = null) {
 // What a slider says now (pure). Left alone it follows the weather: "Auto".
 export function sliderText(key, value) {
   const slider = TUNE_SLIDERS[key];
+  if (slider.say) return slider.say(value ?? slider.default);
   if (value === null || value === undefined) return slider.times ? '100%' : 'Auto';
   if (slider.unit) return `${Math.round(value)}${slider.unit}`;
   return `${Math.round(value * 100)}%`;
@@ -111,6 +113,23 @@ function fallButtons(slot, now, first) {
   return `<div class="animater-wx-chips">${first.join('')}${kinds.join('')}</div>`;
 }
 
+// While the calendar has no weather of its own (Simple Calendar Reborn, Foundry's clock): Animater makes it from the
+// date, in a climate the GM picks for the world (weather-forecast.mjs). `date` { climate, from } or null.
+function dateRow(date) {
+  if (!date) return '';
+  const options = [['off', 'Off'], ...Object.entries(CLIMATES).map(([k, c]) => [k, c.label])].map(([v, l]) => `<option value="${v}"${v === (date.climate || 'off') ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  const row = `<div class="animater-wx-row" data-row="dateWeather"><label for="animater-date-weather" data-tooltip="${esc(`${date.from} has no weather of its own. Animater makes it from the date for the climate here: the same date gives the same weather on every screen, changing every few hours, and nothing is saved. For the whole world; a scene's own weather still comes first.`)}">Weather from the date</label><select id="animater-date-weather" data-climate>${options}</select></div>`;
+  return row + weekTable(date.climate && date.climate !== 'off' ? date.week : null);
+}
+// The coming week (pure): a row a day, its night, morning, afternoon and evening; the part of today it is now marked.
+const DAY_PARTS = ['Night', 'Morning', 'Afternoon', 'Evening'];
+function weekTable(week) {
+  if (!week?.days?.length) return '';
+  const head = `<tr><th></th>${DAY_PARTS.map((p) => `<th scope="col">${p}</th>`).join('')}</tr>`;
+  const rows = week.days.map((d, i) => `<tr data-day="${i}"><th scope="row">${esc(d.name)}</th>${d.parts.map((w, b) => `<td${i === 0 && b === week.now ? ' class="is-now" data-tooltip="Now"' : ''}>${esc(w)}</td>`).join('')}</tr>`).join('');
+  return `<h4>The coming week</h4><table class="animater-wx-week">${head}${rows}</table>`;
+}
+
 // The panel's content (pure). `state` { weather, tune, way, windFrom }; `weathers` [[value, label]]; `looks` the saved names; `base` the weather as it stands, before any of this (weatherScene's); `family` the tab open, else the weather's own; `second` whether a second thing falling is being chosen; `note` why it would not show.
 export function weatherPanelHtml({ state, weathers = [], looks = [], base = null, family = null, second = false, note = '', active = {}, scope = null }) {
   const tune = cleanTune(state?.tune), now = state?.weather ?? '', known = weathers.some(([v]) => v === now);
@@ -134,7 +153,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
     ${scopeBar(scope)}
     ${activeSection(activeWeather({ ...active, off: state?.off === true, weather: now, weatherName: list.find(([v]) => v === now)?.[1] ?? '', tune }))}
-    <section class="animater-wx-section"><h3>Start from</h3>${weatherButtons(list, now, open, state?.off === true)}</section>
+    <section class="animater-wx-section"><h3>Start from</h3>${weatherButtons(list, now, open, state?.off === true)}${dateRow(active.dateWeather)}</section>
     <section class="animater-wx-section"><h3>Precipitation</h3>
       ${fallButtons('fall', tune.fall, [chip('setFall', 'data-slot="fall" data-kind=""', `Auto: ${ownNames.length ? ownNames.join(', ') : 'nothing'}`, { icon: 'fa-wand-magic-sparkles', active: !tune.fall, tip: 'What this weather has falling.' }), chip('setFall', 'data-slot="fall" data-kind="none"', 'Nothing', { icon: 'fa-ban', active: tune.fall === 'none' })])}
       ${controlRow('amount', tune, base, quiet)}${controlRow('size', tune, base, quiet)}${controlRow('speed', tune, base, quiet && !hasSecond)}${controlRow('color', tune, base, quiet)}
@@ -144,7 +163,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
       ${raining ? controlRow('puddleSize', tune, base) + controlRow('splashSize', tune, base) : ''}
     </section>
     <section class="animater-wx-section"><h3>Sky</h3>
-      ${controlRow('temperature', tune, base)}${controlRow('cover', tune, base)}${controlRow('gloom', tune, base)}${controlRow('fog', tune, base)}${controlRow('fogColor', tune, base)}${controlRow('lightning', tune, base)}
+      ${controlRow('temperature', tune, base)}${controlRow('cover', tune, base)}${controlRow('cloudHeight', tune, base, false, 'sub')}${controlRow('gloom', tune, base)}${controlRow('fog', tune, base)}${controlRow('fogColor', tune, base)}${controlRow('lightning', tune, base)}
     </section>
     <section class="animater-wx-section"><h3>Effects</h3>
       <div class="animater-wx-chips">${effectButtons}</div>
@@ -164,7 +183,7 @@ export function weatherPanelHtml({ state, weathers = [], looks = [], base = null
 
 // `read()` the scene's { weather, tune, way, windFrom }; `write(changes)` saves those to the scene, for everyone;
 // `preview(tune | null)` shows a tune on this screen alone; `looks()`/`saveLooks(all)` the world's presets ({ name: state }); `base()` the weather as it stands before any of this; `active()` what else activeWeather needs to know ({ calendar, stormDark, fxEffects, fxFilters }).
-export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers, looks, saveLooks, base = () => null, note = () => '', active = () => ({}), title = 'Weather', scope = () => null, scopeTo = () => {}, clearLevel = async () => {} }) {
+export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers, looks, saveLooks, base = () => null, note = () => '', active = () => ({}), title = 'Weather', scope = () => null, scopeTo = () => {}, clearLevel = async () => {}, setClimate = async () => {} }) {
   return class WeatherPanel extends ApplicationV2 {
     static DEFAULT_OPTIONS = {
       id: `${id}-weather`, classes: ['animater-weather-panel'],
@@ -205,6 +224,7 @@ export function weatherPanel(ApplicationV2, { id, read, write, preview, weathers
       this.element.addEventListener('change', (event) => {
         const input = event.target; if (!input?.dataset) return;
         if (input.dataset.tune) { void save({ tune: tuneOf(input) }); return; }
+        if ('climate' in input.dataset) { void Promise.resolve(setClimate(input.value)).then(() => this.render()); return; }
       });
     }
     async close(options) { preview(null); return super.close(options); }

@@ -1226,7 +1226,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   const fallen = (geom, fall, point, grounded = false) => {
     const off = Math.hypot(fall.dx, fall.dy), w = Number(geom.width) || 100;
     return { ...geom, fall: { x: point.x + fall.dx, y: point.y + fall.dy }, alpha: geom.alpha * fall.alpha, lift: (geom.lift ?? 0) + 4 * fall.soft,
-      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch: grounded ? 1 + (2 * off) / w : 1, sun: fall.sun === true, ...(fall.clip ? { clip: fall.clip } : {}) };
+      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch: grounded ? 1 + (2 * off) / w : 1, laid: grounded && off > 0.5, sun: fall.sun === true, ...(fall.clip ? { clip: fall.clip } : {}) };
   };
   // Each standing creature's grounding rim (rimGeometry; the layer's addRim, drawn as a shadow); null removes it.
   const rims = new Map();

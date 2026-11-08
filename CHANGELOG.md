@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.7.6
+
+- **Your own Energy Blasts.** The Energy Blast picker lists blasts of your own after the ten kinds, each in its colours; a GM makes one with New blast and changes or deletes them with Edit mine. Each is built on a kind (how it moves, what it leaves on the floor) with its own name, main and highlight colours (recolouring all of it, fire's flames and smoke too), size, what it does to the creatures it catches (as its kind, nothing, burn, frost, shock, shove, tremble, or any Tokenshade preset), its sound (as any kind, silent, or a file from Foundry's file picker, starting in Animater's own sounds), its shake and whether it melts snow. Kept for the world; a fired blast carries its whole look, so every screen draws it alike.
+- **Heroic resources as ready recipes.** Each system's heroic looks come as starter recipes: Heroic Inspiration gained and spent, Hero and Mythic Points, Hope, Victory. Left as they come they are the glow itself, each screen keeping its own switch; change one and yours plays instead. Worlds made before this get them once, when the GM next loads.
+- **Weather from the date.** Simple Calendar Reborn (or Foundry's own clock) has no weather of its own: the Weather panel now offers a climate (temperate, cold, dry or tropical) and Animater makes the weather from the date and season, changing every six hours, the same on every screen with nothing saved. The coming week shows under it, by night, morning, afternoon and evening. Calendaria's weather is used as before when it is on, and a scene's own weather still comes first.
+- **Cloud height per map.** A Cloud height slider under Cloud cover in the Weather panel, from Low (as before) to High: higher clouds are bigger and fewer, their shadows falling a little further off, so a town at 5 ft squares gets clouds over whole blocks instead of puffs over its roofs.
+- **Reflections in every water nearby.** A creature shows a copy into each water it reaches, below, above or to the side, so on a bridge both sides show it; each grows and fades with its distance and eases in and out instead of jumping from one bank to the other, and keeps up with a token as it glides. Wading in open water shows only the copy below. Regions set to Stands over water (docks, bridges) show no reflection on their decks, and a creature on one is not wading.
+- **Shadows lie the way reflections do.** In sunlight, moonlight, lamplight and window light, a standing creature's shadow lies with its head away from the light and its sides where they are on the map, as its reflection does, instead of keeping the art upright whichever way the light threw it. Fliers keep the art as drawn from above.
+- **Blast reactions fit the creature.** The flames, frost and dark haze of an Energy Blast on a creature are sized by its squares, not by its art scaled up, so a one-square token with big art no longer burns several squares high.
+
 ## 3.7.5
 
 - **Squirrels and snakes stay on the map.** A squirrel bolting from a creature with no tree to run to, or a snake fleeing, could run off the edge of the map into the padding around it. They now stop at the map's edge.

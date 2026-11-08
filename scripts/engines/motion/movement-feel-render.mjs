@@ -4,7 +4,7 @@
 // ellipses, no blur.
 // `root()` returns (and makes, when needed) the container on the viewed level's floor.
 import { kickArt, shadowArt } from './kick-art.mjs';
-import { createSilhouettes, silhouettePose, silhouetteScale, silhouetteSize, isMoving, SHARP_BLUR, SOFT_BLUR } from './flier-silhouette.mjs';
+import { createSilhouettes, laidArt, silhouettePose, silhouetteScale, silhouetteSize, isMoving, SHARP_BLUR, SOFT_BLUR } from './flier-silhouette.mjs';
 
 const DRAW = 100;
 const SHADOW_RINGS = 14;
@@ -311,11 +311,13 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     node.outer.rotation = along;
     node.outer.scale.set(Math.max(1, Number(geom.stretch) || 1), pose.flat);
     node.outer.alpha = geom.alpha;
-    node.inner.rotation = (art.rotation || 0) - along;
-    const sx = ((art.width * k) / shape.width) * (art.flipX ? -1 : 1), sy = ((art.height * k) / shape.height) * (art.flipY ? -1 : 1);
+    // Standing in a light off to one side, the art lies head away from it, as its reflection in water does.
+    const lay = laidArt({ along, laid: geom.laid === true, rotation: art.rotation });
+    node.inner.rotation = lay.rotation;
+    const sx = ((art.width * k) / shape.width) * (art.flipX ? -1 : 1) * lay.mirror, sy = ((art.height * k) / shape.height) * (art.flipY ? -1 : 1);
     if (moving) {
       const f = art.texture.frame, zoom = Math.abs(parent.worldTransform?.a ?? 1) || 1;
-      node.sharp.scale.set(((art.width * k) / f.width) * (art.flipX ? -1 : 1), ((art.height * k) / f.height) * (art.flipY ? -1 : 1));
+      node.sharp.scale.set(((art.width * k) / f.width) * (art.flipX ? -1 : 1) * lay.mirror,((art.height * k) / f.height) * (art.flipY ? -1 : 1));
       node.sharp.alpha = 1;
       // The made ones' blur, carried from the silhouette's pixels to the screen's.
       node.blur.blur = (SHARP_BLUR + (SOFT_BLUR - SHARP_BLUR) * pose.soft) * ((art.width * k) / shape.width) * zoom;

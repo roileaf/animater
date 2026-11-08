@@ -49,6 +49,7 @@ export const TUNE_SLIDERS = Object.freeze({
   lightning: strength('Lightning', 'How fierce the storm is: how often lightning strikes and lands on the map, with its thunder. At full, a bolt every few seconds.'),
   wind: strength('Strength', 'How hard the wind blows, for the clouds, the grass, the leaves and the water too.'),
   cover: strength('Cloud cover', 'How much of the sky is cloud. Less sun reaches the ground under more.'),
+  cloudHeight: { label: 'Cloud height', min: 1, max: 5, step: 0.25, default: 1, say: (v) => (v < 1.75 ? 'Low' : v < 3.75 ? 'Medium' : 'High'), hint: 'How high the clouds stand over this map. Low suits maps of fields and wilds; on a town at 5 ft squares, higher clouds are big, few, and cover whole blocks, their shadows falling a little further off. Only the drawn clouds and their shadows.' },
   cloudClear: { label: 'Cloud transparency', min: 0, max: 0.95, step: 0.05, default: 0.4, hint: 'How much of the map shows through the drawn clouds, however many overlap.' },
   ...Object.fromEntries(Object.entries(TUNE_EFFECTS).map(([key, e]) => [key, strength(e.label, e.hint)])),
 });

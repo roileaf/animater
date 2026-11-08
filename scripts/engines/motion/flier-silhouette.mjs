@@ -43,6 +43,12 @@ export const silhouetteScale = ({ artWidth, artHeight, width }) => {
   return big > 0 && w > 0 ? Math.min(1, (MAX_SPREAD * w) / big) : 1;
 };
 
+// How the art turns inside a shadow laid along a light (pure; the shadow's container already turned to `along`):
+// { rotation, mirror } (mirror -1: flipped side to side). `laid`: a creature standing on the ground with the light off
+// to one side, its shadow lying as its reflection in water does: its head away from the light, its sides kept where they
+// are on the map (water-mirror.mjs mirrorOf). Otherwise (a flier, a light straight above) the art as drawn from above.
+export const laidArt = ({ along = 0, laid = false, rotation = 0 } = {}) => (laid ? { rotation: Math.PI / 2 - (Number(rotation) || 0), mirror: -1 } : { rotation: (Number(rotation) || 0) - (Number(along) || 0), mirror: 1 });
+
 // How the silhouette sits for a shadow geometry (movement-feel.mjs shadowGeometry or castShadowGeometry, with its
 // `width` and `lift` in squares, and optionally `flat`): `flat` its height kept (laid on the floor, or nearly whole when cast from above),
 // `size` its scale (shrinking with height as the round shadow does), `soft` how much of the soft blur shows.

@@ -43,48 +43,50 @@ const copyOnWater = (foot, way, width, tall, areas, rough) => {
   }
   return { wet: hit / (COPY_COLUMNS.length * COPY_ROWS), down };
 };
-// The nearest place on the shore of any water, its holes (islands) too (pure). { x, y, d }, null with no shore at all.
-const nearestShore = (p, areas) => {
-  let best = null;
-  for (const area of areas) for (const line of [area, ...(area.holes ?? [])]) for (let i = 0, j = line.length - 2; i < line.length; j = i, i += 2) {
-    const ax = line[j], ay = line[j + 1], dx = line[i] - ax, dy = line[i + 1] - ay, u = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy) / (dx * dx + dy * dy || 1))), x = ax + dx * u, y = ay + dy * u, d = Math.hypot(p.x - x, p.y - y);
-    if (!best || d < best.d) best = { x, y, d };
-  }
-  return best;
-};
-// Which way a copy falls (pure): out across the water from the nearest bank. On the bank, toward the shore; in the water, away from it. Straight down the map if there is no telling.
-export function mirrorWay(p, areas = []) {
-  const shore = nearestShore(p, areas); if (!shore || shore.d < 0.001) return { x: 0, y: 1 };
-  const inWater = areas.some((a) => inPoly(p, a) && !(a.holes ?? []).some((h) => inPoly(p, h))), k = (inWater ? -1 : 1) / shore.d;
-  return { x: (shore.x - p.x) * k, y: (shore.y - p.y) * k };
-}
+// The ways a copy can fall: down the map, up it, and to either side. Each water it reaches shows its own copy.
+export const MIRROR_WAYS = Object.freeze([{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }].map((w) => Object.freeze(w)));
 
-// Where a token's mirrored copy goes (pure). `x`, `y` its middle and `w`, `h` its size in px, `rotation` radians. null: it stands in rough water, or no water lies within its own length of it, so a big creature reflects from further off than a small one.
+// Where a token's mirrored copy goes one way (pure; `way` down the map unless given). `x`, `y` its middle and `w`, `h` its size in px, `rotation` radians. null: it stands in rough water, or no water lies within its own length of it, so a big creature reflects from further off than a small one.
 // Else { id, x, y (the copy's middle), footX, foot (where the copy starts, on the token's side facing the water), way { x, y } the way it falls, w, h (stretched), rotation, alpha, distance (px, its edge to the nearest water), down (px, its edge to the water along that way), wet (0-1 how much of the copy lands on the water; none: nothing shows) }.
-// The copy runs from that edge and the water cuts it, so the further from the shore, the less of it shows: the head alone, then nothing; and what is left is fainter.
+// The copy runs from that edge and the water cuts it, so the further from the shore, the less of it shows: the head alone, then nothing; and it fades to nothing as it goes.
 // `blocked(from, to)`: whether a wall stands between two places; one between it and the water it would land on hides it. From just off its middle, so a tile standing on a wall's line still shows.
-export function mirrorOf(token, areas = [], { grid = 100, rough = [], stretch = 1.12, blocked = null } = {}) {
+// `decks`: what stands over the water (a dock, a bridge): nothing shows on them, and standing on one is not wading.
+export function mirrorOf(token, areas = [], { grid = 100, rough = [], decks = [], stretch = 1.12, blocked = null, way = MIRROR_WAYS[0] } = {}) {
   if (!token || !areas.length) return null;
-  const w = token.w ?? grid, h = token.h ?? grid, centre = { x: token.x, y: token.y }, way = mirrorWay(centre, areas);
+  const w = token.w ?? grid, h = token.h ?? grid, centre = { x: token.x, y: token.y };
   // How far its edge lies from its middle that way: a tall token's foot is further than a wide one's side.
   const reach = (Math.abs(way.x) * w + Math.abs(way.y) * h) / 2, foot = { x: centre.x + way.x * reach, y: centre.y + way.y * reach };
   if (inAny(foot, rough) || inAny(centre, rough)) return null;
   const tall = h * stretch, distance = nearestWater(foot, areas);
   if (distance > tall + w / 2) return null;
-  const { wet, down } = copyOnWater(foot, way, w, tall, areas, rough), showing = Math.max(0, 1 - down / tall);
+  const { wet, down } = copyOnWater(foot, way, w, tall, areas, decks.length ? [...rough, ...decks] : rough), showing = Math.max(0, 1 - down / tall);
   if (wet > 0 && blocked?.({ x: centre.x + way.x, y: centre.y + way.y }, { x: foot.x + way.x * down, y: foot.y + way.y * down })) return null;
   // The picture's top falls away from the token; a copy running down the map needs no turn.
   const turn = Math.atan2(way.y, way.x) - Math.PI / 2;
-  return { id: token.id, x: foot.x + way.x * tall / 2, y: foot.y + way.y * tall / 2, footX: foot.x, foot: foot.y, way, w, h: tall, rotation: turn - (Number(token.rotation) || 0), alpha: (token.alpha ?? 1) * 0.62 * (0.45 + 0.55 * showing), distance, down, wet };
+  return { id: token.id, x: foot.x + way.x * tall / 2, y: foot.y + way.y * tall / 2, footX: foot.x, foot: foot.y, way: { x: way.x, y: way.y }, w, h: tall, rotation: turn - (Number(token.rotation) || 0), alpha: (token.alpha ?? 1) * 0.62 * Math.min(1, showing * 1.6) * Math.min(1, wet * 2.5), distance, down, wet };
+}
+
+// Every copy a token shows (pure): one into each water it reaches, down, up or to a side, so on a bridge both sides show
+// it, each fading with its own distance. Standing in open water (wading; `token.dry` not set: no bridge or dock under it)
+// only the copy down the map, as the table sees it from below. Each copy carries `dir`, which way it is (0-3).
+export function mirrorsOf(token, areas = [], options = {}) {
+  if (!token || !areas.length) return [];
+  const centre = { x: token.x, y: token.y }, wading = token.dry !== true && !inAny(centre, options.decks ?? []) && areas.some((a) => inPoly(centre, a) && !(a.holes ?? []).some((h) => inPoly(centre, h)));
+  const out = [];
+  MIRROR_WAYS.forEach((way, dir) => {
+    if (wading && dir !== 0) return;
+    const spot = mirrorOf(token, areas, { ...options, way });
+    if (spot && spot.wet > 0) out.push({ ...spot, dir });
+  });
+  return out;
 }
 
 // The tiles that show in the water (pure): `tiles` as tokens are, with their `texture`; a hidden one, one the size of a map, or one with none of it landing on calm water shows nothing. Tiles are not stretched.
-export function tileMirrors(tiles = [], areas = [], { grid = 100, rough = [], blocked = null } = {}) {
+export function tileMirrors(tiles = [], areas = [], { grid = 100, rough = [], decks = [], blocked = null } = {}) {
   const out = [];
   for (const tile of tiles) {
     if (tile.hidden || Math.max(tile.w ?? 0, tile.h ?? 0) > BIGGEST_TILE * grid) continue;
-    const spot = mirrorOf(tile, areas, { grid, rough, stretch: 1, blocked });
-    if (spot && spot.wet > 0) out.push({ ...spot, texture: tile.texture });
+    for (const spot of mirrorsOf({ ...tile, dry: true }, areas, { grid, rough, decks, stretch: 1, blocked })) out.push({ ...spot, texture: tile.texture });
   }
   return out;
 }
@@ -174,11 +176,12 @@ export const WATER_MIRROR_SHADER = Object.freeze({ vert: VERT, frag: FRAG });
  */
 export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.canvas?.grid?.size ?? 100, blocked = null }) {
   let holder = null, layer = null, mask = null, mesh = null, uniforms = null, pos = null, band = null, tint = null;
-  let areas = [], rough = [], grid = 100, box = null, tokens = [], lampsNow = [], moonNow = null, sunny = false, time = 0, refresh = 0, viewKey = '', lightKey = '', lightDirty = true;
-  const sprites = [], shown = new Map(), cache = new Map();
+  let areas = [], rough = [], decks = [], grid = 100, box = null, tokens = [], lampsNow = [], moonNow = null, sunny = false, time = 0, refresh = 0, viewKey = '', lightKey = '', lightDirty = true;
+  // Each copy drawn, by token and way (`id:dir`): its sprite, what it shows, and how far it has faded in, so a copy never pops in or out.
+  const live = new Map(), spare = [], cache = new Map();
   let copies = [], tilesNow = [], tileCopies = [];
   // Tiles stand still, so this is only worked out when they or the water change.
-  const placeTiles = () => { tileCopies = tileMirrors(tilesNow, areas, { grid: gridOf(), rough, blocked }).map((c) => ({ ...c, phase: hashPhase(c.id) })); refresh = 0; };
+  const placeTiles = () => { tileCopies = tileMirrors(tilesNow, areas, { grid: gridOf(), rough, decks, blocked }).map((c) => ({ ...c, key: `${c.id}:${c.dir}`, phase: hashPhase(c.id) })); refresh = 0; };
   const make = () => {
     holder = new PIXI.Container(); holder.eventMode = 'none';
     layer = new PIXI.Container(); layer.eventMode = 'none';
@@ -200,7 +203,7 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     mask.clear(); mask.beginFill(0xffffff);
     for (const area of areas) {
       mask.drawPolygon(area);
-      const cuts = [...(area.holes ?? []), ...rough.filter((r) => { for (let i = 0; i < r.length; i += 2) if (!inPoly({ x: r[i], y: r[i + 1] }, area)) return false; return true; })];
+      const cuts = [...(area.holes ?? []), ...[...rough, ...decks].filter((r) => { for (let i = 0; i < r.length; i += 2) if (!inPoly({ x: r[i], y: r[i + 1] }, area)) return false; return true; })];
       for (const hole of cuts) { mask.beginHole(); mask.drawPolygon(hole); mask.endHole(); }
     }
     mask.endFill();
@@ -210,10 +213,11 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     const seen = new Set(), g = gridOf();
     copies = [];
     for (const t of tokens) {
-      const key = `${t.x}|${t.y}|${t.w}|${t.h}|${t.rotation}|${t.alpha}`; seen.add(t.id);
+      const key = `${t.x}|${t.y}|${t.w}|${t.h}|${t.rotation}|${t.alpha}|${t.dry === true}`; seen.add(t.id);
       let was = cache.get(t.id);
-      if (!was || was.key !== key) { was = { key, spot: mirrorOf(t, areas, { grid: g, rough, blocked }) }; cache.set(t.id, was); }
-      if (was.spot && was.spot.wet > 0) copies.push({ ...was.spot, texture: t.texture, phase: hashPhase(t.id) });
+      if (!was || was.key !== key) { was = { key, spots: mirrorsOf(t, areas, { grid: g, rough, decks, blocked }) }; cache.set(t.id, was); }
+      // (`live`: where the token is drawn this very frame, its position object, so the copy keeps up as it glides between these looks.)
+      for (const spot of was.spots) copies.push({ ...spot, key: `${t.id}:${spot.dir}`, texture: t.texture, phase: hashPhase(t.id) + spot.dir, live: t.live ?? null, fromX: t.x, fromY: t.y });
     }
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
     refresh = 0;
@@ -237,24 +241,26 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
   };
   const dressSprites = (view) => {
     const pick = [...nearestFirst(copies, view, MAX_MIRRORS), ...nearestFirst(tileCopies, view, MAX_TILES)];
-    shown.clear();
-    pick.forEach((c, i) => {
-      if (!c.texture?.valid) return;
-      let s = sprites[i];
-      if (!s || s.destroyed) { s = sprites[i] = new PIXI.Sprite(c.texture); s.anchor.set(0.5); s.eventMode = 'none'; s.tint = 0x5e6e78; layer.addChildAt(s, 0); }
-      s.texture = c.texture; s.visible = true; s.rotation = c.rotation; s.alpha = c.alpha * (sunny ? 1 : 0.75);
-      shown.set(s, c);
-    });
-    for (let i = 0; i < sprites.length; i++) if (sprites[i] && !shown.has(sprites[i])) sprites[i].visible = false;
+    for (const entry of live.values()) entry.want = false;
+    for (const c of pick) {
+      if (!c.texture?.valid) continue;
+      let entry = live.get(c.key);
+      if (!entry) {
+        let s = spare.pop();
+        if (!s || s.destroyed) { s = new PIXI.Sprite(c.texture); s.anchor.set(0.5); s.eventMode = 'none'; s.tint = 0x5e6e78; layer.addChildAt(s, 0); }
+        entry = { s, a: 0 }; live.set(c.key, entry);
+      }
+      entry.c = c; entry.want = true; entry.s.texture = c.texture; entry.s.rotation = c.rotation; entry.s.visible = true;
+    }
     refresh = 0.25;
   };
   const dropAll = () => {
     try { if (layer) layer.mask = null; holder?.parent?.removeChild(holder); holder?.destroy({ children: true }); } catch { /* gone */ }
-    holder = layer = mask = mesh = uniforms = pos = band = tint = null; sprites.length = 0; shown.clear();
+    holder = layer = mask = mesh = uniforms = pos = band = tint = null; live.clear(); spare.length = 0;
   };
   return {
-    water(list = [], { rough: bad = [] } = {}) {
-      areas = list; rough = bad; cache.clear(); box = null; lightDirty = true;
+    water(list = [], { rough: bad = [], decks: over = [] } = {}) {
+      areas = list; rough = bad; decks = over; cache.clear(); box = null; lightDirty = true;
       if (list.length) {
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (const a of list) for (let i = 0; i < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); }
@@ -275,7 +281,7 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
       place();
     },
     tick(seconds, { view = null, wind = 0 } = {}) {
-      if (!areas.length || (!copies.length && !tileCopies.length && !lampsNow.length && !moonNow)) { if (holder) holder.visible = false; return; }
+      if (!areas.length || (!copies.length && !tileCopies.length && !live.size && !lampsNow.length && !moonNow)) { if (holder) holder.visible = false; return; }
       ready();
       const shows = !view || !box || (box.x < view.x + view.w && box.r > view.x && box.y < view.y + view.h && box.b > view.y);
       holder.visible = shows;
@@ -287,18 +293,25 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
       if (lightDirty || key !== viewKey) { viewKey = key; paintLight(view); }
       refresh -= dt;
       if (refresh <= 0) dressSprites(view);
-      for (const [s, c] of shown) {
+      // Each copy eases toward how strong it should be: in as its water comes within reach, out as it goes, about half a second either way.
+      const ease = Math.min(1, dt * 6);
+      for (const [key, entry] of live) {
+        const { s, c } = entry;
+        entry.a += ((entry.want ? c.alpha * (sunny ? 1 : 0.75) : 0) - entry.a) * ease;
+        if (!entry.want && entry.a < 0.004) { s.visible = false; spare.push(s); live.delete(key); continue; }
+        s.alpha = entry.a;
         const w = mirrorWobble(time, c.phase, wind), tall = c.h * w.stretch;
         s.skew.x = w.skew;
         s.scale.set(c.w / Math.max(1, c.texture.width), -tall / Math.max(1, c.texture.height));
         // The lean swings about its middle: moved back so that it stays at their feet.
         const lean = Math.sin(w.skew) * (tall / 2), way = c.way ?? { x: 0, y: 1 };
-        s.position.set(c.footX + way.x * tall / 2 + way.y * lean, c.foot + way.y * tall / 2 - way.x * lean);
+        const dx = c.live ? (Number(c.live.x) || 0) - c.fromX : 0, dy = c.live ? (Number(c.live.y) || 0) - c.fromY : 0;
+        s.position.set(c.footX + dx + way.x * tall / 2 + way.y * lean, c.foot + dy + way.y * tall / 2 - way.x * lean);
       }
     },
-    clear() { dropAll(); areas = []; rough = []; box = null; tokens = []; lampsNow = []; moonNow = null; copies = []; tilesNow = []; tileCopies = []; cache.clear(); lightDirty = true; viewKey = ''; },
+    clear() { dropAll(); areas = []; rough = []; decks = []; box = null; tokens = []; lampsNow = []; moonNow = null; copies = []; tilesNow = []; tileCopies = []; cache.clear(); lightDirty = true; viewKey = ''; },
     // Still drawn with nothing left to show counts too: the next tick is what clears it.
-    get busy() { return !!box && (copies.length > 0 || tileCopies.length > 0 || lampsNow.length > 0 || !!moonNow || holder?.visible === true); },
+    get busy() { return !!box && (copies.length > 0 || tileCopies.length > 0 || live.size > 0 || lampsNow.length > 0 || !!moonNow || holder?.visible === true); },
   };
 }
 

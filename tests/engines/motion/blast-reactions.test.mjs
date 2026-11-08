@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BLAST_REACTIONS, caughtBy, createBlastReactions, pushedTo, reactionLife, reactionOf, reactionSecondsOf, reactionTint } from '../../../scripts/engines/motion/blast-reactions.mjs';
+import { BLAST_REACTIONS, FIRE_SIZE, caughtBy, createBlastReactions, pushedTo, reactionLife, reactionOf, reactionSecondsOf, reactionTint } from '../../../scripts/engines/motion/blast-reactions.mjs';
 import { bodyPose, BODY_PRIORITY } from '../../../scripts/engines/motion/condition-body.mjs';
 
 test('each kind its reaction: fire burns, cold frosts, lightning shocks, force and sound shove, void and mind tremble', () => {
@@ -60,6 +60,20 @@ test('the layer draws on the caught, tints them while it lasts, and gives their 
   layer.tick(3); assert.equal(mesh.filters, null, 'the warp comes off again');
   layer.play('burn', [{ id: 'a', x: 0, y: 0 }], { seconds: 2 }); layer.tick(0.5); assert.equal(mesh.tint, 0xffffff, 'fire lights it by its flames, never darkens it');
   layer.play('shock', [{ id: 'a', x: 0, y: 0 }], { seconds: 2 }); layer.tick(0.1); layer.clear(); assert.equal(layer.count, 0);
+});
+
+// Discord: a one-square token with its art scaled up burned with flames several squares tall; Burning drew it right.
+test('the flames fit the creature\'s squares, not its art scaled up', () => {
+  const scales = [];
+  class Thing { constructor() { this.position = { set() {} }; this.scale = { set: (s) => scales.push(s) }; } destroy() { this.destroyed = true; } }
+  class Geometry { addAttribute() { return this; } addIndex() { return this; } }
+  class Mesh extends Thing { constructor(g, shader) { super(); this.shader = shader; } }
+  const Shader = { from: (v, f, uniforms) => ({ uniforms }) };
+  const mesh = { tint: 0xffffff, position: { x: 0, y: 0 }, width: 300, height: 300, destroyed: false, filters: null };
+  const PIXI = { Geometry, Mesh, Shader, BLEND_MODES: { ADD: 1 } };
+  const layer = createBlastReactions({ PIXI, root: () => ({ addChild() {} }), meshOf: () => mesh, sizeOf: () => 100, grid: () => 100 });
+  layer.play('burn', [{ id: 'a', x: 0, y: 0 }], { seconds: 2 }); layer.tick(0.2);
+  assert.equal(scales.at(-1), 100 * FIRE_SIZE, 'a square\'s worth of fire, though its art is drawn three squares wide');
 });
 
 test('main wires it: every screen reacts, the GM alone really pushes, and three settings say how', () => {

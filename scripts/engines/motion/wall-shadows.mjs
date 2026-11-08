@@ -3,7 +3,7 @@
 // walls; the sun had nothing. The shadows are baked once into one soft picture under the creatures and kept until the
 // sun, the walls or the scene change, so a scene in daylight costs one sprite a frame.
 
-import { createSilhouettes, silhouetteScale, SILHOUETTE_SIZE } from './flier-silhouette.mjs';
+import { createSilhouettes, laidArt, silhouetteScale, SILHOUETTE_SIZE } from './flier-silhouette.mjs';
 
 // The longest a wall's shadow grows (squares), with the sun on the horizon: past it, it is cut.
 export const WALL_SHADOW_CAP = 12;
@@ -554,9 +554,10 @@ export function createWindowGlow({ PIXI, root, render }) {
           outer.rotation = along;
           outer.scale.set(stretch * k, 0.85 * k);
           figure.anchor.set(0.5);
-          // Its top along the light (the container turned to it).
-          figure.rotation = Math.PI / 2;
-          figure.scale.set((((art.width || size) * fit) / shape.width) * (art.flipX ? -1 : 1), (((art.height || size) * fit) / shape.height) * (art.flipY ? -1 : 1));
+          // Its top along the light (the container turned to it), its sides kept as its reflection in water keeps them.
+          const lay = laidArt({ along, laid: true, rotation: art.rotation });
+          figure.rotation = lay.rotation;
+          figure.scale.set((((art.width || size) * fit) / shape.width) * (art.flipX ? -1 : 1) * lay.mirror,(((art.height || size) * fit) / shape.height) * (art.flipY ? -1 : 1));
           figure.blendMode = PIXI.BLEND_MODES.ADD;
           figure.alpha = 0.95 * s.depth;
           outer.addChild(figure);

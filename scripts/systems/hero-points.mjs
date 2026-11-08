@@ -52,9 +52,22 @@ export function heroicChoices(systemId) {
   return out;
 }
 // The choice a recipe has made here (pure): its own if this system has it, else the system's first, as the list shows it. Null with none here.
+const ALL_HEROIC = new Set(GLOW_RESOURCES.flatMap((r) => ['gained', 'spent'].filter((look) => r[look]).map((look) => `${r.id}:${look}`)));
 export function heroicChoiceOf(recipe, systemId) {
   const choices = Object.keys(heroicChoices(systemId));
   return choices.includes(recipe?.heroic) ? recipe.heroic : choices[0] ?? null;
+}
+// Each of this system's heroic looks as a ready recipe (pure; recipe objects for validateRecipe), so the GM sees the
+// glow is theirs to change: left as it came it is the glow itself, changed it plays in its place.
+export const HEROIC_STARTER_IDS = Object.freeze([...ALL_HEROIC].map((key) => `heroic-${key.replace(':', '-')}`));
+const STARTER_TINTS = { gained: '#ffc83a', spent: '#fff1b8' };
+export function heroicStarters(systemId) {
+  return glowResources(systemId).flatMap((r) => ['gained', 'spent'].filter((look) => r[look]).map((look) => {
+    const [preset, ms] = r[look];
+    return { id: `heroic-${r.id}-${look}`, name: `${HEROIC_NAMES[r.id]} ${look}`, category: 'Heroic', color: STARTER_TINTS[look], trigger: 'heroic', heroic: `${r.id}:${look}`, match: '', enabled: true,
+      description: `Plays on a character's tokens when they ${look === 'gained' ? 'gain' : 'spend'} ${/^[AEIOU]/.test(HEROIC_NAMES[r.id]) ? 'an' : 'a'} ${HEROIC_NAMES[r.id]}. As it comes it is Animater's own glow; change it and your version plays instead.`,
+      stages: [{ kind: 'tokenfx', subject: 'source', delay: 0, duration: ms + 100, assets: [], fxLayers: preset.params.map((p) => structuredClone(p)) }] };
+  }));
 }
 // The recipe for this moment, if the GM has made one (pure): it plays in place of the glow.
 export const heroicRecipe = (recipes, systemId, key) => (recipes ?? []).find((r) => r?.trigger === 'heroic' && r.enabled !== false && !r.finisher && heroicChoiceOf(r, systemId) === key) ?? null;

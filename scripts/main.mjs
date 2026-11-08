@@ -32,7 +32,7 @@ import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
 import { createBreathVapor, VAPOR_CAP, vaporArt } from "./engines/motion/breath-vapor.mjs";
-import { starterRecipes, planRecipeImport, starterGivesWay, starterUnchanged } from "./core/presets.mjs";
+import { starterRecipes, planRecipeImport, starterGivesWay, starterUnchanged, untouchedStarterRecipe } from "./core/presets.mjs";
 import { pf2eEvent, sf2eEvent, dnd5eEvent, twoeEvent, eventTargets, midiRunsActivity } from "./systems/adapters.mjs";
 import { usedItemDamages, usedItemElement } from "./systems/item-damages.mjs";
 import { heavyItem } from "./systems/heavy-item.mjs";
@@ -193,6 +193,7 @@ import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tre
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds, skyBuildKey } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
+import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
 import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
 import { createSoftShadows, highShadowLook } from "./engines/motion/soft-shadow.mjs";
 import { ANIMAL_KEYS, animalsPanel, birdBodyOf, birdHeightOf, placedChanges, withPlaced } from "./ui/animals-panel.mjs";
@@ -220,6 +221,7 @@ import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, 
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
+import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, BLAST_BORROWS, blastRipple, aimSquares, stepSquares, meltsSnow, meltSpots, meltsFilled } from "./engines/motion/energy-blast.mjs";
 import { REACTION_SECONDS, caughtBy, createBlastReactions, pushedTo, reactionOf, reactionSecondsOf } from "./engines/motion/blast-reactions.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
@@ -1333,7 +1335,7 @@ const clockNow = () => {
     try { if (hotSetting("moonLight") === false) moon = 0; } catch { /* not registered yet */ }
     // Clouds: the scene's own weather (Animater's, by its bare name), else Calendaria's now, else whatever the scene has.
     const tunedCover = weatherTuneNow().cover;
-    const sky = weatherOffIn(canvas?.scene) ? 1 : tunedCover !== null ? Math.max(0.15, 1 - tunedCover) : skyClear(sceneWeatherId(weatherWordOf(canvas?.scene)) || (calendaria && ask(() => calendaria.getCurrentWeather?.())) || weatherWordOf(canvas?.scene) || null);
+    const sky = weatherOffIn(canvas?.scene) ? 1 : tunedCover !== null ? Math.max(0.15, 1 - tunedCover) : skyClear(sceneWeatherId(weatherWordOf(canvas?.scene)) || ((calendaria && ask(() => calendaria.getCurrentWeather?.())) || dateWeatherNow()) || weatherWordOf(canvas?.scene) || null);
     return { day, sunrise: rise, sunset: set, moon, sky };
   } catch { return null; }
 };
@@ -2096,10 +2098,46 @@ const sunColorOf = (sun) => {
   return own.map((v, i) => v + (plain[i] - v) * (1 - sky) * 0.6);
 };
 const sunlightColor = () => sunColorOf(sunNow);
-// The weather now (sky-light.mjs weatherOf): Calendaria's, else the scene's own; the scene's own wind over either.
+// The calendar's weather now: Calendaria's (for a climate zone, if given), else, with a calendar that has none
+// (Simple Calendar Reborn, Foundry's own clock), what the date makes in the climate the GM picked (weather-forecast.mjs).
+const dateWeatherSource = () => (game.modules.get("calendaria")?.active ? null : game.modules.get("foundryvtt-simple-calendar-reborn")?.active && globalThis.SimpleCalendar?.api ? "Simple Calendar Reborn" : "Foundry's clock");
+const dateClimate = () => { try { return String(game.settings.get(ID, "dateWeather") || "off"); } catch { return "off"; } };
+// The date as the weather counts it: { day (whole days), hour, name(d) the name of the day d days on, as the calendar writes it }.
+const dateClock = () => {
+  try {
+    const sc = globalThis.SimpleCalendar?.api;
+    if (game.modules.get("foundryvtt-simple-calendar-reborn")?.active && sc) {
+      const ts = Number(sc.timestamp()) || 0, cfg = sc.getTimeConfiguration?.() ?? {}, perDay = (cfg.hoursInDay || 24) * (cfg.minutesInHour || 60) * (cfg.secondsInMinute || 60);
+      const name = (d) => { try { const on = sc.timestampToDate(ts + d * perDay), shown = on?.display ?? {}; return [shown.weekday, shown.day ?? (on?.day ?? 0) + 1, shown.monthName].filter((v) => v !== undefined && v !== "").join(" ") || `Day ${d + 1}`; } catch { return `Day ${d + 1}`; } };
+      return { day: Math.floor(ts / perDay), hour: Number(sc.timestampToDate(ts)?.hour) || 0, name };
+    }
+    const now = Number(game.time.worldTime) || 0;
+    return { day: Math.floor(now / 86400), hour: Number(game.time.components?.hour) || 0, name: (d) => (d === 0 ? "Today" : d === 1 ? "Tomorrow" : `In ${d} days`) };
+  } catch { return null; }
+};
+// (Each world its own weather: the same date in another world rolls differently.)
+const dateSeed = () => [...String(game.world?.id ?? "")].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
+const dateWeatherNow = () => {
+  const climate = dateClimate(), clock = dateClock();
+  if (climate === "off" || !dateWeatherSource() || !clock) return null;
+  const made = forecastWeather({ day: clock.day, hour: clock.hour, climate, season: seasonNow(), seed: dateSeed() });
+  return { ...made, label: weatherLabel(made.id) };
+};
+// The coming week, for the Weather panel: [{ name, parts: [label × the blocks of a day] }] and which block is now.
+const dateWeek = () => {
+  const climate = dateClimate(), clock = dateClock();
+  if (climate === "off" || !clock) return null;
+  const days = forecastDays({ from: clock.day, days: 7, climate, season: seasonNow(), seed: dateSeed() });
+  return { days: days.map((parts, d) => ({ name: clock.name(d), parts: parts.map((id) => weatherLabel(id)) })), now: Math.floor(clock.hour / BLOCK_HOURS) };
+};
+const calendarWeather = (zone = null) => {
+  const api = globalThis.CALENDARIA?.api;
+  try { const own = (zone && api?.getCurrentWeather?.(zone)) || api?.getCurrentWeather?.(); if (own) return own; } catch { /* not ready */ }
+  return dateWeatherNow();
+};
+// The weather now (sky-light.mjs weatherOf): the calendar's, else the scene's own; the scene's own wind over either.
 const weatherNow = () => {
-  let calendaria = null;
-  try { calendaria = globalThis.CALENDARIA?.api?.getCurrentWeather?.() ?? null; } catch { /* not ready */ }
+  const calendaria = calendarWeather();
   const own = canvas?.scene?.flags?.[ID] ?? {};
   const weather = weatherOf({ calendaria, scene: weatherWordOf(canvas?.scene) ?? "", fx: canvas?.scene?.flags?.fxmaster?.effects ?? {}, fxFilters: canvas?.scene?.flags?.fxmaster?.filters ?? {}, own: { wind: own.wind, windFrom: levelOf(canvas?.scene).windFrom || own.windFrom || globalWeatherNow().windFrom } });
   // The GM's own temperature (the Weather panel) over the calendar's.
@@ -2689,7 +2727,7 @@ const aimCaveIn = () => {
 // show: no one is hurt, and nothing is saved.
 const blastsOn = () => bothSettingsOn("energyBlast");
 // What a blast does to the creatures it catches (engines/motion/blast-reactions.mjs), over them.
-const blastReactions = createBlastReactions({ PIXI: globalThis.PIXI, root: floorLayer("blastReactions", 780), meshOf: (id) => canvas.tokens?.get(id)?.mesh ?? null, grid: () => canvas.grid?.size ?? 100 });
+const blastReactions = createBlastReactions({ PIXI: globalThis.PIXI, root: floorLayer("blastReactions", 780), meshOf: (id) => canvas.tokens?.get(id)?.mesh ?? null, sizeOf: (id) => { const t = canvas.tokens?.get(id); return t ? Math.max(t.w, t.h) || 0 : 0; }, grid: () => canvas.grid?.size ?? 100 });
 const blastsTouch = () => { try { return hotSetting("blastReactions") !== false; } catch { return true; } };
 Hooks.on("canvasTearDown", () => { blastReactions.clear(); });
 const energyBlasts = createEnergyBlasts({ PIXI: globalThis.PIXI, floor: floorLayer("blastFloor", 490), above: floorLayer("blastAbove", 770), glow: glowRootOf, map: () => mapFloor(), render: (mesh, options) => canvas.app.renderer.render(mesh, options), markSeconds: () => { try { return Number(hotSetting("floorBloodSeconds")) || 120; } catch { return 120; } } });
@@ -2794,16 +2832,24 @@ const tickBlastMelts = (now) => {
   surfaceLight.melt(meltSpots(blastMelts, now));
 };
 Hooks.on("canvasTearDown", () => { blastMelts = []; });
-const playBlast = ({ x, y, radius, kind, seed, push = false }) => {
+const playBlast = ({ x, y, radius, kind, seed, push = false, variant: sent = null }) => {
   if (!canvas?.ready || !blastsOn()) return;
   const grid = canvas.grid.size;
-  energyBlasts.play({ x, y, radius, kind, seed, grid });
-  // The creatures it catches: set alight, rimed, shocked, thrown back or trembling, for as long as the GM set.
-  const reaction = blastsTouch() ? reactionOf(kind) : null;
-  if (reaction) {
+  // A blast of the GM's own (blast-variants.mjs) comes whole with the message: its kind's movement, its own colours, reaction, sound and shake.
+  const variant = sent ? cleanVariant(sent) : null;
+  if (variant) kind = variant.base;
+  energyBlasts.play({ x, y, radius, kind, seed, grid, look: variant ? variantLook(variant) : null });
+  // The creatures it catches: set alight, rimed, shocked, thrown back or trembling, for as long as the GM set; or a Tokenshade preset of the GM's choosing.
+  const touch = variant ? variantReaction(variant) : { reaction: reactionOf(kind), preset: null };
+  const reaction = blastsTouch() ? touch.reaction : null, presetOn = blastsTouch() && touch.preset && tokenFx.ready();
+  if (reaction || presetOn) {
     const caught = caughtBy({ x, y, radius }, (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.document.hidden).map((t) => ({ id: t.id, x: t.center.x, y: t.center.y, w: t.w })));
     const seconds = reactionSecondsOf(hotSetting("blastReactionSeconds"));
-    blastReactions.play(reaction, caught, { seconds, seed });
+    if (presetOn) {
+      const preset = (() => { try { return tokenFx.getPresets?.(touch.preset.library)?.find((p) => p.name === touch.preset.name) ?? null; } catch { return null; } })();
+      if (preset) for (const c of caught) { const token = canvas.tokens.get(c.id); if (!token) continue; try { const remove = tokenFx.apply(token, preset, { key: `blast:${seed}:${c.id}` }); setTimeout(() => { try { remove?.(); } catch { /* gone */ } }, seconds * 1000); } catch { /* no preset look */ } }
+    }
+    if (reaction) blastReactions.play(reaction, caught, { seconds, seed });
     // (Really pushed: the move itself is the shove.)
     for (const c of caught) {
       const token = canvas.tokens.get(c.id); if (!token || !conditionBody) continue;
@@ -2812,26 +2858,29 @@ const playBlast = ({ x, y, radius, kind, seed, push = false }) => {
       if (reaction === 'tremble') { conditionBody.add(name, token, 'tremble', { strength: 2.5 }); setTimeout(() => conditionBody?.remove(name, { immediate: true }), seconds * 1000); }
     }
   }
-  if (meltsSnow(kind)) { blastMelts.push({ x, y, radius: radius * 1.1, at: performance.now(), world: game.time?.worldTime ?? 0, left: 1 }); blastMeltsAt = 0; }
+  if (variant ? variant.melts : meltsSnow(kind)) { blastMelts.push({ x, y, radius: radius * 1.1, at: performance.now(), world: game.time?.worldTime ?? 0, left: 1 }); blastMeltsAt = 0; }
   noiseScares({ x, y, radius });
   // Its ring bends everything, the creatures too (the map's own shockwave, as a big spell's: "Map distortion").
   const ripple = blastRipple({ x, y, radius, kind, grid, level: canvas.level?.id ?? null });
   if (ripple) { try { distortionHost.onEffect({ data: { animaterWarp: ripple, moduleName: "animater", sceneId: canvas.scene?.id }, destroyed: false, ended: false, worldPosition: { x, y } }); } catch { /* the floor still bends */ } }
   const big = radius >= grid * 3, reach = Math.round((radius / grid) * 12);
+  // Its sound: a blast of the GM's own may sound as another kind, be silent, or play a file of their choosing.
+  const heard = variant ? variantSound(variant) : { kind, file: null }, soundKind = heard.kind;
+  if (heard.file) void playUnder("blast", { x, y }, { file: heard.file, volume: 0.9, reach, gmAlways: true, room: 1 });
   // Lightning sounds as Chain Lightning does, cold as a frost nova, when a sound pack for it is installed.
   let borrowed = [];
-  if (BLAST_BORROWS[kind]) { try { const catalog = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database); borrowed = BLAST_BORROWS[kind].flatMap((b) => profileCueFiles(b.profile, b.roles, catalog, Math.random, b).map((f) => ({ ...f, volume: b.volume, wait: b.wait }))); } catch { borrowed = []; } }
-  for (const s of blastSounds(kind, { big, borrowed })) setTimeout(() => playUnder(s.thud ? "thud" : s.wind ? "wind" : "blast", { x, y }, { file: s.file ?? (s.thud ? THUD_FILES[Math.floor(Math.random() * THUD_FILES.length)] : undefined), volume: s.volume, reach, rate: s.rate, gmAlways: true, room: 1, ...(s.thud ? { lowpass: big ? 380 : 600, bass: 12 } : {}) }).then((sound) => {
+  if (soundKind && BLAST_BORROWS[soundKind]) { try { const catalog = installedSoundCatalog(game.modules, globalThis.Sequencer?.Database); borrowed = BLAST_BORROWS[soundKind].flatMap((b) => profileCueFiles(b.profile, b.roles, catalog, Math.random, b).map((f) => ({ ...f, volume: b.volume, wait: b.wait }))); } catch { borrowed = []; } }
+  for (const s of soundKind ? blastSounds(soundKind, { big, borrowed }) : []) setTimeout(() => playUnder(s.thud ? "thud" : s.wind ? "wind" : "blast", { x, y }, { file: s.file ?? (s.thud ? THUD_FILES[Math.floor(Math.random() * THUD_FILES.length)] : undefined), volume: s.volume, reach, rate: s.rate, gmAlways: true, room: 1, ...(s.thud ? { lowpass: big ? 380 : 600, bass: 12 } : {}) }).then((sound) => {
     if (!sound || !s.holds) return;
     setTimeout(() => { try { sound.fade(0, { duration: s.fades }); } catch { /* gone */ } }, s.holds);
     setTimeout(() => { try { sound.stop(); } catch { /* gone */ } }, s.holds + s.fades + 50);
   }), s.wait);
-  for (const [n, wave] of blastShake(kind, big).entries()) setTimeout(() => { try { cameraShake.tremor({ at: { x, y }, weight: wave.weight, sceneId: canvas.scene?.id, seed: `blast:${seed}:${n}`, scale: wave.scale }); } catch { /* no shake */ } }, wave.at);
+  for (const [n, wave] of (variant ? variantShake(variant, big) : blastShake(kind, big)).entries()) setTimeout(() => { try { cameraShake.tremor({ at: { x, y }, weight: wave.weight, sceneId: canvas.scene?.id, seed: `blast:${seed}:${n}`, scale: wave.scale }); } catch { /* no shake */ } }, wave.at);
 };
-const fireBlast = (p, kind, radius) => {
+const fireBlast = (p, kind, radius, variant = null) => {
   // Force and sound really push, when the GM has it so: half a square away from the blast, short of walls.
-  const push = reactionOf(kind) === 'shove' && blastsTouch() && hotSetting("blastPush") === true && game.user.isGM;
-  const blast = { x: Math.round(p.x), y: Math.round(p.y), radius, kind, seed: Math.floor(Math.random() * 1e6), sceneId: canvas.scene?.id, push };
+  const push = (variant ? variantReaction(variant).reaction : reactionOf(kind)) === 'shove' && blastsTouch() && hotSetting("blastPush") === true && game.user.isGM;
+  const blast = { x: Math.round(p.x), y: Math.round(p.y), radius, kind, seed: Math.floor(Math.random() * 1e6), sceneId: canvas.scene?.id, push, ...(variant ? { variant } : {}) };
   playBlast(blast);
   game.socket?.emit(`module.${ID}`, { type: BLAST_MESSAGE, blast });
   if (push) {
@@ -2842,10 +2891,11 @@ const fireBlast = (p, kind, radius) => {
   }
 };
 let blastSquares = 2;
-const aimBlast = (kind) => {
-  const type = blastType(kind), tone = (c) => (Math.round(c[0] * 255) << 16) | (Math.round(c[1] * 255) << 8) | Math.round(c[2] * 255);
-  if (aimOnMap({ squares: blastSquares, setSquares: (s) => { blastSquares = s; }, line: tone(type.b), fill: tone(type.a), fire: (p, radius) => fireBlast(p, kind, radius) }))
-    ui.notifications?.info(`${type.name} blast: click where it goes off. Scroll to change its size, Shift to double it. Escape or right click to cancel.`);
+const aimBlast = (kind, variant = null) => {
+  const type = blastType(kind), look = variant ? variantLook(variant) : type, tone = (c) => (Math.round(c[0] * 255) << 16) | (Math.round(c[1] * 255) << 8) | Math.round(c[2] * 255);
+  if (variant?.squares) blastSquares = variant.squares;
+  if (aimOnMap({ squares: blastSquares, setSquares: (s) => { blastSquares = s; }, line: tone(look.b), fill: tone(look.a), fire: (p, radius) => fireBlast(p, kind, radius, variant) }))
+    ui.notifications?.info(`${variant?.name ?? type.name} blast: click where it goes off. Scroll to change its size, Shift to double it. Escape or right click to cancel.`);
 };
 // Which kind: a button each, then where.
 let blastAsking = false;
@@ -2854,10 +2904,57 @@ const askBlast = async () => {
   if (!blastsOn()) { ui.notifications?.info("Energy blasts are off in the Animater settings."); return; }
   blastAsking = true;
   try {
+    // The ten kinds, then the GM's own blasts (blast-variants.mjs), each in its colours; the GM can make more or change them.
+    const mine = blastVariants(), rgbText = (c) => c.map((v) => Math.round(v * 255)).join(", ");
     const kind = await foundry.applications.api.DialogV2.wait({ window: { title: "Energy blast (Animater)" }, content: "<p>Pick one, then click the map. Scroll to size it. Visual only: no one is hurt.</p>", classes: ["animater-blast-pick"], rejectClose: false,
-      buttons: BLAST_TYPES.map((t) => ({ action: t.id, label: t.name, icon: `fa-solid ${t.icon}` })), position: { width: 520 } });
+      buttons: [...BLAST_TYPES.map((t) => ({ action: t.id, label: t.name, icon: `fa-solid ${t.icon}` })),
+        ...mine.map((v) => ({ action: `mine:${v.id}`, label: v.name, icon: `fa-solid ${blastType(v.base).icon}` })),
+        ...(game.user.isGM ? [{ action: "new", label: "New blast", icon: "fa-solid fa-plus" }, ...(mine.length ? [{ action: "edit", label: "Edit mine", icon: "fa-solid fa-pen" }] : [])] : [])],
+      render: (_event, dialog) => { for (const v of mine) { const b = dialog.element?.querySelector(`button[data-action="mine:${v.id}"]`); if (b) b.style.setProperty("--blast", rgbText(variantLook(v).b)); } },
+      position: { width: 520 } });
     if (BLAST_TYPES.some((t) => t.id === kind)) aimBlast(kind);
+    else if (typeof kind === "string" && kind.startsWith("mine:")) { const v = mine.find((m) => m.id === kind.slice(5)); if (v) aimBlast(v.base, v); }
+    else if (kind === "new") { blastAsking = false; const made = await editBlastVariant(null); if (made) aimBlast(made.base, made); }
+    else if (kind === "edit") { blastAsking = false; await manageBlastVariants(); }
   } catch { /* closed */ } finally { blastAsking = false; }
+};
+// The GM's own blasts, kept for the world.
+const blastVariants = () => { try { return cleanVariants(game.settings.get(ID, "blastVariants")); } catch { return []; } };
+const saveBlastVariants = (list) => game.settings.set(ID, "blastVariants", cleanVariants(list));
+// One blast of the GM's own made or changed: a form, its sound file chosen in Foundry's file picker (Animater's own sounds to start with).
+const editBlastVariant = async (was = null) => {
+  if (!game.user.isGM) return null;
+  const start = cleanVariant(was ?? { name: "My blast" }), presets = (() => { try { return fxCatalog().presets.map((p) => ({ name: p.name, library: p.library })); } catch { return []; } })();
+  const data = await foundry.applications.api.DialogV2.wait({ window: { title: was ? `Edit ${start.name}` : "New blast (Animater)" }, classes: ["animater-blast-editor"], content: variantEditorHtml(start, { presets }), rejectClose: false, position: { width: 460 },
+    render: (_event, dialog) => {
+      const form = dialog.element?.querySelector("form") ?? dialog.element;
+      // (The preview at the top takes the colours as they are picked.)
+      const swatch = form?.querySelector("[data-swatch]");
+      for (const name of ["a", "b"]) form?.querySelector(`[name="${name}"]`)?.addEventListener("input", (event) => swatch?.style.setProperty(`--${name}`, event.target.value));
+      form?.querySelector('[data-action="pickFile"]')?.addEventListener("click", (event) => {
+        event.preventDefault();
+        const input = form.querySelector('[name="file"]'), Picker = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
+        new Picker({ type: "audio", current: input.value || "modules/animater/assets/sounds/", callback: (path) => { input.value = path; const sound = form.querySelector('[name="sound"]'); if (sound) sound.value = "file"; } }).render(true);
+      });
+    },
+    buttons: [{ action: "save", label: "Save", icon: "fa-solid fa-check", default: true, callback: (_event, button) => new foundry.applications.ux.FormDataExtended(button.form).object }, { action: "cancel", label: "Cancel" }] });
+  if (!data || typeof data !== "object") return null;
+  const [presetLibrary, ...presetName] = String(data.preset ?? "").split("|");
+  const made = cleanVariant({ ...data, id: start.id, preset: presetName.join("|"), presetLibrary: presetName.length ? presetLibrary : "", melts: data.melts === true });
+  const list = blastVariants(), at = list.findIndex((v) => v.id === made.id);
+  await saveBlastVariants(at >= 0 ? list.map((v) => (v.id === made.id ? made : v)) : [...list, made]);
+  return made;
+};
+// The GM's own blasts listed: change one or delete it.
+const manageBlastVariants = async () => {
+  const list = blastVariants(); if (!list.length) return;
+  const pick = await foundry.applications.api.DialogV2.wait({ window: { title: "My energy blasts (Animater)" }, rejectClose: false, position: { width: 420 },
+    content: "<p>Change one, or delete it. Each is kept for this world.</p>",
+    buttons: list.flatMap((v) => [{ action: `edit:${v.id}`, label: v.name, icon: "fa-solid fa-pen" }, { action: `delete:${v.id}`, label: `Delete ${v.name}`, icon: "fa-solid fa-trash" }]) });
+  if (typeof pick !== "string") return;
+  const [what, id] = pick.split(":"), v = list.find((x) => x.id === id); if (!v) return;
+  if (what === "edit") await editBlastVariant(v);
+  if (what === "delete") { const sure = await foundry.applications.api.DialogV2.confirm({ window: { title: "Delete blast" }, content: `<p>Delete <b>${foundry.utils.escapeHTML?.(v.name) ?? v.name}</b>? This cannot be undone.</p>`, rejectClose: false }); if (sure) await saveBlastVariants(list.filter((x) => x.id !== id)); }
 };
 Hooks.on("canvasTearDown", stopCaveInAim);
 // Lighting controls → Flames (GM): one light's Animater flame settings given to many at once, the lights selected or, with
@@ -2920,18 +3017,19 @@ const openWeatherPanel = () => {
       await scene.update(update);
     },
     preview: (tune) => { tuneDragged = !tune ? null : weatherOnLevel() ? mergeTunes(tune, sceneTuneOf(canvas?.scene)) : mergeTunes(levelOf(canvas?.scene).weatherTune, mergeTunes(tune, globalWeatherNow().tune)); try { refreshSun(); lookSunlit(); buildShimmer(); } catch { /* no scene shown */ } },
-    base: () => { const own = sceneWeatherId(weatherWordOf(canvas?.scene)); let calendaria = null; try { calendaria = globalThis.CALENDARIA?.api?.getCurrentWeather?.() ?? null; } catch { /* not ready */ } return weatherScene(own ? { id: own } : calendaria ?? { id: "clear" }); },
+    base: () => { const own = sceneWeatherId(weatherWordOf(canvas?.scene)); const calendaria = calendarWeather(); return weatherScene(own ? { id: own } : calendaria ?? { id: "clear" }); },
     scope: () => ({ multi: severalLevels(), mode: weatherScope, name: canvas?.level?.name, own: hasOwn(levelOf(canvas?.scene), WEATHER_KEYS) }),
     scopeTo: (mode) => { weatherScope = mode; },
     clearLevel: async () => { const clear = clearedOwn(levelOf(canvas?.scene), WEATHER_KEYS); if (Object.keys(clear).length) await canvas.level.update(Object.fromEntries(Object.entries(clear).map(([k, v]) => [`flags.${ID}.${k}`, v]))); },
     weathers: () => [["", weatherOnLevel() ? "From the scene" : "From the calendar"], ...WEATHERS.map((w) => [`${SCENE_WEATHER_PREFIX}${w}`, weatherLabel(w)])],
     looks: () => { try { return game.settings.get(ID, "weatherLooks") ?? {}; } catch { return {}; } },
     saveLooks: (all) => game.settings.set(ID, "weatherLooks", all),
+    setClimate: (climate) => game.settings.set(ID, "dateWeather", climate),
     active: () => {
       const scene = canvas?.scene, fxOn = !!game.modules.get("fxmaster")?.active; let weather = null;
-      try { weather = game.modules.get("calendaria")?.active ? globalThis.CALENDARIA?.api?.getCurrentWeather?.() ?? null : null; } catch { /* not ready */ }
-      const name = weather ? (weather.label ? game.i18n.localize(weather.label) : weather.id) : "";
-      return { calendar: name ? { name } : null, stormDark: scene?.flags?.[ID]?.stormDark ?? null, fxEffects: fxOn ? scene?.flags?.fxmaster?.effects ?? null : null, fxFilters: fxOn ? scene?.flags?.fxmaster?.filters ?? null : null };
+      try { weather = calendarWeather(); } catch { /* not ready */ }
+      const name = weather ? (weather.label ? game.i18n.localize(weather.label) : weather.id) : "", from = dateWeatherSource();
+      return { calendar: name ? { name, ...(from ? { detail: `Made from ${from === "Simple Calendar Reborn" ? "Simple Calendar Reborn's date" : "the game date"}`, source: "Animater" } : {}) } : null, dateWeather: from ? { climate: dateClimate(), from, week: dateWeek() } : null, stormDark: scene?.flags?.[ID]?.stormDark ?? null, fxEffects: fxOn ? scene?.flags?.fxmaster?.effects ?? null : null, fxFilters: fxOn ? scene?.flags?.fxmaster?.filters ?? null : null };
     },
     note: () => (undergroundScene() && !skyOpenRegions.length ? "This scene is underground: weather only shows in regions marked Open to the sky." : !weatherMapOn() ? 'Weather on the map is off in the Animater settings, so this will not show.' : ""),
   }))();
@@ -2945,10 +3043,11 @@ const openAllWeatherPanel = () => {
     read: () => { const g = globalWeatherNow(); return { off: g.off === true, weather: g.weather ?? "", tune: cleanTune(g.tune), way: g.way ?? "", windFrom: g.windFrom ?? "" }; },
     write: async (changes) => { await game.settings.set(ID, "globalWeather", { ...globalWeatherNow(), ...changes, ...("tune" in changes ? { tune: cleanTune(changes.tune) } : {}) }); },
     preview: (tune) => { tuneDragged = tune ? mergeTunes(levelOf(canvas?.scene).weatherTune, mergeTunes(canvas?.scene?.flags?.[ID]?.weatherTune, tune)) : null; try { refreshSun(); lookSunlit(); buildShimmer(); } catch { /* no scene shown */ } },
-    base: () => { const own = sceneWeatherId(globalWeatherNow().weather); let calendaria = null; try { calendaria = globalThis.CALENDARIA?.api?.getCurrentWeather?.() ?? null; } catch { /* not ready */ } return weatherScene(own ? { id: own } : calendaria ?? { id: "clear" }); },
+    base: () => { const own = sceneWeatherId(globalWeatherNow().weather); const calendaria = calendarWeather(); return weatherScene(own ? { id: own } : calendaria ?? { id: "clear" }); },
     weathers: () => [["", "From the calendar"], ...WEATHERS.map((w) => [`${SCENE_WEATHER_PREFIX}${w}`, weatherLabel(w)])],
     looks: () => { try { return game.settings.get(ID, "weatherLooks") ?? {}; } catch { return {}; } },
     saveLooks: (all) => game.settings.set(ID, "weatherLooks", all),
+    setClimate: (climate) => game.settings.set(ID, "dateWeather", climate),
     note: () => "For every scene. A scene's or level's own weather, sliders, direction or No weather (the Weather button) come first.",
   }))();
   void allWeatherPanelApp.render({ force: true });
@@ -3086,6 +3185,16 @@ const installFoulAir = () => {
   proto._getLightSourceData = starved;
 };
 Hooks.once("ready", installFoulAir);
+// A world made before the heroic starter recipes gets them once, beside what the GM has (the active GM writes it).
+Hooks.once("ready", async () => {
+  try {
+    if (!game.users.activeGM?.isSelf || game.settings.get(ID, "heroicStartersAdded")) return;
+    const saved = game.settings.get(ID, "recipes")?.recipes ?? [], have = new Set(saved.map((r) => r.id));
+    const add = starterRecipes().filter((r) => r.trigger === "heroic" && !have.has(r.id));
+    if (add.length && saved.length + add.length <= 200) await game.settings.set(ID, "recipes", { schema: 1, recipes: [...saved, ...add] });
+    await game.settings.set(ID, "heroicStartersAdded", true);
+  } catch (error) { console.warn("Animater | heroic starter recipes", error); }
+});
 let foulKey = "";
 const refoulLights = () => {
   const key = JSON.stringify(foulPolygons); if (key === foulKey) return; foulKey = key;
@@ -3772,7 +3881,9 @@ const rebuildWater = () => {
   const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror") && canvas?.scene?.flags?.[ID]?.reflections !== "off";
   placeAreas.surf = [...(useSea ? seasHeard : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? fallsHeard.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? fallsHeard.map((f) => f.loud) : []), ...fallLouds];
   const useBeaches = bothSettingsOn("coast") && !undergroundScene();
-  const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useBeaches && beaches]);
+  // What stands over the water (a dock, a bridge): nothing reflects on it, and a creature on it is not wading.
+  const decks = canvas?.ready ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
+  const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useMirror && decks, useBeaches && beaches]);
   if (key === waterKey) return; waterKey = key;
   coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
   if (!canvas?.ready) return;
@@ -3780,7 +3891,7 @@ const rebuildWater = () => {
   if (useSea && seas.length) coast.build({ seas, grid, bounds: canvas.dimensions.sceneRect });
   if (useBeaches && beaches.length) beachLife.build({ seas: beaches, grid, bounds: canvas.dimensions.sceneRect, creaturesOnly: true });
   if (useFalls && falls.length) waterfalls.build({ falls, grid });
-  if (calmWater.length) waterMirror.water(calmWater, { rough });
+  if (calmWater.length) waterMirror.water(calmWater, { rough, decks });
 };
 const tickWater = (seconds) => {
   const now = performance.now(), view = viewNow(), frozen = frozenWaterOn() && groundOf().now.ice > 0.5;
@@ -3805,7 +3916,7 @@ const tickWater = (seconds) => {
   }
   if (calmWater.length && now - mirrorLookAt > 50) {
     mirrorLookAt = now;
-    const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => ({ id: t.id, texture: t.mesh.texture, x: t.mesh.position.x, y: t.mesh.position.y, w: t.w, h: t.h, rotation: (Number(t.document.rotation) || 0) * Math.PI / 180, alpha: t.mesh.alpha }));
+    const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => ({ id: t.id, texture: t.mesh.texture, x: t.mesh.position.x, y: t.mesh.position.y, live: t.mesh.position, dry: (() => { try { return movementFeelFloor(t.center, t.document) !== "water"; } catch { return false; } })(), w: t.w, h: t.h, rotation: (Number(t.document.rotation) || 0) * Math.PI / 180, alpha: t.mesh.alpha }));
     const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05, middle = { x: view.x + view.w / 2, y: view.y + view.h / 2 };
     const near = moonOut ? calmWater.map((area) => nearestOfArea(middle, area)).sort((a, b) => a.d - b.d)[0] : null;
     waterMirror.look({ tokens, lamps: lampLights.map((l) => ({ x: l.x, y: l.y, color: l.color, radius: l.radius })), moon: near ? { x: near.x, y: near.y, strength: Number(sunNow.strength) } : null, sunny: !!sunNow && !sunNow.moon && Number(sunNow.strength) > 0.3 });
@@ -4187,9 +4298,7 @@ const groundOf = () => {
 };
 // The weather a scene has now: Calendaria's for its climate zone (else the zone in play), and the scene's own.
 const awayWeather = (scene) => {
-  const api = globalThis.CALENDARIA?.api;
-  let calendaria = null;
-  try { const zone = scene?.flags?.calendaria?.climateZoneOverride; calendaria = (zone && api?.getCurrentWeather?.(zone)) || api?.getCurrentWeather?.() || null; } catch { /* not ready */ }
+  const calendaria = calendarWeather(scene?.flags?.calendaria?.climateZoneOverride ?? null);
   const own = scene?.flags?.[ID] ?? {};
   const weather = weatherOf({ calendaria, scene: weatherWordOf(scene), fx: scene?.flags?.fxmaster?.effects ?? {}, fxFilters: scene?.flags?.fxmaster?.filters ?? {}, own: { wind: own.wind, windFrom: own.windFrom || globalWeatherNow().windFrom } });
   return { calendaria, weather };
@@ -4280,8 +4389,7 @@ const lookSky = () => {
     const tune = weatherPreview ? cleanTune() : weatherTuneNow();
     const clock = clockNow(), sky = clock?.sky, weather = weatherNow(), season = seasonNow();
     const fall = sunNow ? canopyFall(sunNow, { grid: canvas.grid.size, darkness: Number(canvas.environment?.darknessLevel) || 0 }) : null;
-    let calendaria = null;
-    try { calendaria = globalThis.CALENDARIA?.api?.getCurrentWeather?.() ?? null; } catch { /* not ready */ }
+    const calendaria = calendarWeather();
     const noneHere = weatherOffHere(), falling = noneHere ? { rain: 0, snow: 0 } : tuneFalling(fallingOf({ calendaria, scene: weatherWordOf(canvas?.scene) ?? "" }), tune);
     skyFalling = falling;
     // Rain and snow on the ground carry on by the game clock, whether drawn or not, so turning them on finds them right.
@@ -4311,7 +4419,7 @@ const lookSky = () => {
     const cloudsDrawn = !noneHere && (Number(tune.drawnClouds) || 0) > 0 && (weatherCloudsOn() || cloudsBelow);
     // One sky: with no clouds drawn their shadows still fall, so drawing them puts them over those same shadows.
     const cloudLayerOn = cloudsDrawn || (!noneHere && (cloudsOn() || weatherPreview?.clouds !== undefined) && (tune.cover ?? skyCoverNow) > 0.05);
-    drawnClouds.look({ on: cloudLayerOn, drawn: cloudsDrawn, cover: tune.cover ?? skyCoverNow, transparency: tune.cloudClear ?? undefined, wind: windNow, angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, sunHeight: Number(sunNow?.height) || 45, cast: cloudShiftNow(), sun: sunNow && !sunNow.moon ? Number(fall?.light) || 0 : cloudsBelow && skySunNow && !skySunNow.moon ? Number(skySunNow.strength) || 0 : 0, color: sunlightColor(), rain: falling.rain, dark: Number(canvas.environment?.darknessLevel) || 0 });
+    drawnClouds.look({ on: cloudLayerOn, drawn: cloudsDrawn, cover: tune.cover ?? skyCoverNow, transparency: tune.cloudClear ?? undefined, height: tune.cloudHeight ?? 1, wind: windNow, angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, sunHeight: Number(sunNow?.height) || 45, cast: cloudShiftNow(), sun: sunNow && !sunNow.moon ? Number(fall?.light) || 0 : cloudsBelow && skySunNow && !skySunNow.moon ? Number(skySunNow.strength) || 0 : 0, color: sunlightColor(), rain: falling.rain, dark: Number(canvas.environment?.darknessLevel) || 0 });
     surfaceLight.look({
       // The cloud shadows drift with FXMaster's clouds when it draws some (then cast from their very shapes, in skyTick).
       light: fall ? fall.light : 0, clouds: !cloudLayerOn && (cloudsOn() || weatherPreview?.clouds !== undefined) ? skyCoverNow : 0, color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle,
@@ -7374,6 +7482,12 @@ Hooks.once("init", () => {
     type: Object,
     default: { schema: 1, recipes: starterRecipes() },
   });
+  // Whether this world has been given its heroic starter recipes yet (worlds made before them have a saved list).
+  // The climate Animater makes weather from the date in, while the calendar has none of its own ("off": none made).
+  registerSetting("dateWeather", { scope: "world", config: false, type: String, default: "off" });
+  // The GM's own Energy Blasts (blast-variants.mjs), each a kind with its own look, reaction, sound and shake.
+  registerSetting("blastVariants", { scope: "world", config: false, type: Array, default: [] });
+  registerSetting("heroicStartersAdded", { scope: "world", config: false, type: Boolean, default: false });
   registerSetting(WAIT_FOR_DICE, {
     name: "Wait for Dice So Nice",
     hint: "Attack and damage animations start when the 3D dice for that roll have landed, so a hit or miss plays after you see the result.",
@@ -10120,7 +10234,8 @@ Hooks.once("ready", () => {
         // One look per update: a spend over a gain when one update does both.
         const { resource, look } = events.find((e) => e.look === "spent") ?? events[0], [preset, ms] = resource[look];
         // The GM's own recipe plays in place of the glow: the active GM starts it, and it reaches every screen.
-        const recipe = heroicRecipe(recipes(), game.system.id, `${resource.id}:${look}`);
+        // (Its starter recipe left as it came is this glow itself: each screen keeps its own switch for it.)
+        const recipe = heroicRecipe(recipes().filter((r) => !untouchedStarterRecipe(r)), game.system.id, `${resource.id}:${look}`);
         if (recipe) {
           if (game.users.activeGM?.isSelf) for (const token of actor.getActiveTokens?.() ?? []) void runtime.play(installedStages(recipe), { source: token, targets: [] }).catch((error) => runtime.trace("Blocked", `Heroic recipe: ${error.message}`));
           return;

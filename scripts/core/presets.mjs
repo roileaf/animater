@@ -2,6 +2,7 @@ import { validateRecipe, parseImport } from "./model.mjs";
 import { mergeImported } from "./recipe-share.mjs";
 import { paceGeneratedMotion } from "../engines/motion/motion-pacing.mjs";
 import { STARTER_MEDIA_TIMING } from "../../data/starter-media-timing.mjs";
+import { heroicStarters } from "../systems/hero-points.mjs";
 const stage = (kind, assets, delay = 0, duration = 1500, scale = 1) => ({
   kind,
   assets: assets.split(","),
@@ -280,7 +281,7 @@ export function starterRecipes() {
         stages: stages.map(paceGeneratedMotion),
         enabled: true,
       });},
-  );
+  ).concat(heroicStarters(globalThis.game?.system?.id).map((r) => validateRecipe(r)));
 }
 
 // Sharing recipes between worlds. A starter recipe nobody changed is in every world already, so export

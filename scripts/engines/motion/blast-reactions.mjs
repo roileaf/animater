@@ -130,7 +130,8 @@ export function arcSegments(ax, ay, bx, by, { depth = 5, rough = 30, random = Ma
  * grid() a square. play(reaction, caught, { seconds, seed }) starts one on each caught creature (burn, frost, shock and
  * the void's haze and warp are drawn here; the shove and the tremble itself move the body, outside); tick(seconds); clear().
  */
-export function createBlastReactions({ PIXI, root, meshOf = () => null, grid = () => 100 }) {
+// sizeOf(id): the creature's footprint across, from its squares; its art can be scaled well past them.
+export function createBlastReactions({ PIXI, root, meshOf = () => null, sizeOf = () => 0, grid = () => 100 }) {
   const live = [];
   let clock = 0;
   const quad = () => new PIXI.Geometry().addAttribute('aVertexPosition', [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5], 2).addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
@@ -168,7 +169,7 @@ export function createBlastReactions({ PIXI, root, meshOf = () => null, grid = (
         const r = live[i]; r.t += seconds;
         const mesh = meshOf(r.id), life = reactionLife(r.t, r.seconds);
         if (!mesh || mesh.destroyed || life <= 0) { end(r); live.splice(i, 1); continue; }
-        const x = mesh.position.x, y = mesh.position.y, body = Math.max(Math.abs(mesh.width), Math.abs(mesh.height)) || square, R = body * 0.44;
+        const x = mesh.position.x, y = mesh.position.y, body = sizeOf(r.id) || Math.max(Math.abs(mesh.width), Math.abs(mesh.height)) || square, R = body * 0.44;
         let flick = 1;
         if (r.flame) { r.flame.position.set(x, y - FIRE_LOW * body * FIRE_SIZE); r.flame.scale.set(body * FIRE_SIZE); Object.assign(r.flame.shader.uniforms, { uTime: clock, uLife: life }); }
         if (r.frost) { r.frost.position.set(x, y); r.frost.scale.set(body * FROST_SIZE); Object.assign(r.frost.shader.uniforms, { uTime: clock, uLife: life, uGrow: Math.min(1, r.t / 1.2) }); }

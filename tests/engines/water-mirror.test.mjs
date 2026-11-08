@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mirrorOf, mirrorWay, tileMirrors, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER } from '../../scripts/engines/motion/water-mirror.mjs';
+import { mirrorOf, mirrorsOf, tileMirrors, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER } from '../../scripts/engines/motion/water-mirror.mjs';
 
 const square = (x, y, s) => [x, y, x + s, y, x + s, y + s, x, y + s];
 const pond = square(1000, 1000, 600);
@@ -49,8 +49,8 @@ test('a door opening shows again what it hid, without anything moving', () => {
   assert.equal(mirror.busy, true, 'the door is open');
   mirror.tick(0.016, { view: { x: 900, y: 500, w: 1000, h: 1000 } });
   shut = true; mirror.walls();
-  assert.equal(mirror.busy, true, 'still drawn: the next tick must clear what the door now hides');
-  mirror.tick(0.016, { view: { x: 900, y: 500, w: 1000, h: 1000 } });
+  assert.equal(mirror.busy, true, 'still drawn: the next ticks fade out what the door now hides');
+  for (let i = 0; i < 90; i++) mirror.tick(0.016, { view: { x: 900, y: 500, w: 1000, h: 1000 } });
   assert.equal(mirror.busy, false, 'cleared, and nothing left to do');
 });
 
@@ -93,28 +93,71 @@ test('tiles by the water show in it; hidden, map-sized and far ones do not', () 
   assert.deepEqual(tileMirrors([tile()], [], { grid: 100 }), []);
 });
 
-test('a copy falls out across the water from whichever bank is nearest', () => {
-  const near = (x, y) => { const s = mirrorOf(token({ x, y }), [pond], { grid: 100 }); return { s, x: Math.round(s.way.x), y: Math.round(s.way.y) }; };
-  const north = near(1300, 950), south = near(1300, 1650), west = near(950, 1300), east = near(1650, 1300);
-  assert.deepEqual([north.x, north.y], [0, 1]); assert.deepEqual([south.x, south.y], [0, -1]);
-  assert.deepEqual([west.x, west.y], [1, 0]); assert.deepEqual([east.x, east.y], [-1, 0]);
-  for (const side of [north, south, west, east]) assert.ok(side.s.wet > 0.5, JSON.stringify(side.s.way));
-  assert.ok(Math.abs(north.s.rotation) < 1e-9, 'down the map needs no turn');
-  assert.ok(south.s.y < south.s.foot, 'from the south it runs up the map');
-  assert.equal(west.s.footX, 1000, 'from the side it starts at the edge facing the water');
+// Roi: walking Celdar up and down over the river, his reflection jumped from one side to the other; with water on both
+// sides both should show. Each water within reach shows its own copy, each fading with its own distance.
+test('each water within reach shows its own copy; wading, only the one down the map', () => {
+  const ways = (t, areas = [pond]) => mirrorsOf(token(t), areas, { grid: 100 }).map((s) => s.dir).sort();
+  assert.deepEqual(ways({ x: 1300, y: 950 }), [0], 'on the north bank: into the pond below');
+  assert.deepEqual(ways({ x: 950, y: 1300 }), [2], 'on the west bank: into the pond beside');
+  assert.deepEqual(ways({ x: 1300, y: 1650 }), [1], 'on the south bank: up into it');
+  // A river running across the map, a bridge over it down the map: from the bridge the water lies to either side.
+  const river = [0, 1000, 3000, 1000, 3000, 1400, 0, 1400], bridge = [1250, 950, 1350, 950, 1350, 1450, 1250, 1450];
+  assert.deepEqual(ways({ x: 1300, y: 1200 }, [river]), [0], 'standing in the river: wading');
+  assert.deepEqual(mirrorsOf(token({ x: 1300, y: 1200 }), [river], { grid: 100, decks: [bridge] }).map((s) => s.dir).sort(), [2, 3], 'on the bridge: the water on both sides, none on the deck');
+  // A pier out into the pond from its north bank: in its middle, water to the east, west and south.
+  const pier = [1250, 900, 1350, 900, 1350, 1300, 1250, 1300];
+  assert.deepEqual(mirrorsOf(token({ x: 1300, y: 1200 }), [pond], { grid: 100, decks: [pier] }).map((s) => s.dir).sort(), [0, 2, 3]);
+  const side = mirrorsOf(token({ x: 950, y: 1300 }), [pond], { grid: 100 })[0];
+  assert.equal(side.footX, 1000, 'from the edge facing the water'); assert.ok(Math.abs(side.rotation + Math.PI / 2) < 1e-9, 'its top away from them');
 });
 
-test('in the water a copy falls away from the nearest bank', () => {
-  const near = mirrorWay({ x: 1100, y: 1300 }, [pond]);
-  assert.ok(Math.abs(near.x - 1) < 1e-9 && Math.abs(near.y) < 1e-9, JSON.stringify(near));
-  const up = mirrorWay({ x: 1300, y: 1550 }, [pond]);
-  assert.ok(Math.abs(up.x) < 1e-9 && Math.abs(up.y + 1) < 1e-9, JSON.stringify(up));
+// (Sampled in strips, a copy's strength steps a little; the layer eases every change over half a second.)
+test('walking over a bridge, each copy slides along and grows and fades smoothly, never jumping', () => {
+  const river = [0, 1000, 3000, 1000, 3000, 1400, 0, 1400], bridge = [1250, 950, 1350, 950, 1350, 1450, 1250, 1450];
+  const was = new Map(); let seen = 0;
+  for (let y = 700; y <= 1700; y += 5) {
+    const now = new Map(mirrorsOf(token({ x: 1300, y, dry: true }), [river], { grid: 100, decks: [bridge] }).map((s) => [s.dir, s]));
+    for (const [dir, s] of now) {
+      seen++;
+      const before = was.get(dir);
+      if (before) { assert.ok(Math.abs(s.y - before.y - 5) < 1e-6, `${dir} at ${y} moved ${s.y - before.y}`); assert.ok(Math.abs(s.alpha - before.alpha) < 0.35, `${dir} at ${y}: ${before.alpha} to ${s.alpha}`); }
+      else assert.ok(s.alpha < 0.35, `${dir} at ${y} comes in faint (${s.alpha})`);
+    }
+    for (const [dir, before] of was) if (!now.has(dir)) assert.ok(before.alpha < 0.35, `${dir} at ${y} goes out faint (${before.alpha})`);
+    was.clear(); for (const [dir, s] of now) was.set(dir, s);
+  }
+  assert.ok(seen > 40, `${seen}`);
 });
 
-test('an island counts as a bank, and water with no shore falls down the map', () => {
-  const ring = Object.assign([...pond], { holes: [square(1200, 1200, 200)] });
-  assert.deepEqual(mirrorWay({ x: 1180, y: 1300 }, [ring]).x < 0, true, 'away from the island');
-  assert.deepEqual(mirrorWay({ x: 0, y: 0 }, []), { x: 0, y: 1 });
+test('the layer eases each copy in and out rather than popping', () => {
+  const sprites = [];
+  class Sprite { constructor(t) { this.texture = t; this.alpha = 1; this.anchor = { set() {} }; this.scale = { set() {} }; this.position = { set() {} }; this.skew = {}; sprites.push(this); } }
+  const PIXI = { Container: class { addChild() {} addChildAt() {} destroy() {} }, Graphics: class { clear() {} beginFill() {} drawPolygon() {} endFill() {} beginHole() {} endHole() {} }, Sprite, Mesh: class { constructor(g) { this.geometry = g; } }, Geometry: class { addAttribute() { return this; } addIndex() { return this; } getBuffer() { return { update() {} }; } }, Buffer: class {}, Shader: { from: () => ({}) } };
+  const mirror = createWaterMirror({ PIXI, root: () => ({ addChild() {} }), grid: () => 100 });
+  mirror.water([pond]);
+  const view = { x: 900, y: 500, w: 1000, h: 1500 };
+  mirror.look({ tokens: [token({ y: 950 })], sunny: true });
+  mirror.tick(0.016, { view }); const first = sprites[0].alpha;
+  for (let i = 0; i < 60; i++) mirror.tick(0.016, { view });
+  assert.ok(first < sprites[0].alpha * 0.3, `${first} then ${sprites[0].alpha}`);
+  mirror.look({ tokens: [], sunny: true });
+  mirror.tick(0.016, { view }); assert.ok(sprites[0].visible !== false && sprites[0].alpha > 0, 'still fading out');
+  for (let i = 0; i < 90; i++) mirror.tick(0.016, { view });
+  assert.equal(sprites[0].visible, false); assert.equal(mirror.busy, false);
+});
+
+test('between looks the drawn copy keeps up with the token as it glides', () => {
+  const sprites = [];
+  class Sprite { constructor(t) { this.texture = t; this.anchor = { set() {} }; this.scale = { set() {} }; this.at = null; this.position = { set: (x, y) => { this.at = { x, y }; } }; this.skew = {}; sprites.push(this); } }
+  const PIXI = { Container: class { addChild() {} addChildAt() {} destroy() {} }, Graphics: class { clear() {} beginFill() {} drawPolygon() {} endFill() {} beginHole() {} endHole() {} }, Sprite, Mesh: class { constructor(g) { this.geometry = g; } }, Geometry: class { addAttribute() { return this; } addIndex() { return this; } getBuffer() { return { update() {} }; } }, Buffer: class {}, Shader: { from: () => ({}) } };
+  const mirror = createWaterMirror({ PIXI, root: () => ({ addChild() {} }), grid: () => 100 });
+  mirror.water([pond]);
+  const live = { x: 1300, y: 950 };
+  mirror.look({ tokens: [token({ y: 950, live })] });
+  const view = { x: 900, y: 500, w: 1000, h: 1500 };
+  mirror.tick(0.016, { view }); const first = { ...sprites[0].at };
+  live.y += 30; mirror.tick(0.016, { view });
+  assert.ok(Math.abs(sprites[0].at.y - first.y - 30) < 2, `moved ${sprites[0].at.y - first.y}`);
 });
 
 test('no mirror in rough water', () => {
@@ -125,7 +168,7 @@ test('no mirror in rough water', () => {
   assert.equal(beside.distance, 0); assert.ok(beside.wet > 0.5);
   const above = mirrorOf(token({ x: 1300, y: 1100 }), [pond], { grid: 100, rough: [square(1200, 1000, 200)] });
   assert.equal(above, null, 'nearest bank is the race itself: its feet stand in it');
-  const facing = mirrorOf(token({ x: 1130, y: 1300 }), [pond], { grid: 100, rough: [race] });
+  const facing = mirrorOf(token({ x: 1300, y: 1130 }), [pond], { grid: 100, rough: [square(1200, 1250, 200)] });
   assert.ok(facing.wet < 1, 'what lands on the rough shows nothing');
 });
 
@@ -224,8 +267,8 @@ test('the layer: at most 12 copies, nearest first, the sprites used over', () =>
   assert.equal(PIXI.made, made, 'no new sprites');
 
   layer.look({ tokens: crowd.slice(0, 2), lamps: [], moon: null, sunny: true });
-  layer.tick(0.3, { view });
-  assert.equal(on().length, 2, 'the rest put away');
+  for (let i = 0; i < 12; i++) layer.tick(0.3, { view });
+  assert.equal(on().length, 2, 'the rest faded and put away');
 
   const out = { x: 9000, y: 9000, w: 100, h: 100 };
   layer.tick(0.05, { view: out });
