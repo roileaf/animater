@@ -42,6 +42,9 @@ export const WATER_TUNING = Object.freeze({
   clickHue: 14,
   clickWeakHue: 40,
   clickSatFactor: 0.55,
+  // A click on foam, white falls or grey water has no hue to follow, so the fill follows brightness among unsaturated pixels.
+  paleSatMax: 0.2,
+  paleValueBand: 40,
   clickValueMin: 14,
   // Fill pale reflections or holes of similar hue; contrasting floating objects remain holes.
   holeFillHue: 24,
@@ -166,15 +169,21 @@ export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], bro
   const sat = new Float64Array(count);
   const val = new Uint8Array(count);
   readColour(rgba, hue, sat, val, count);
-  const seed = seedColour(hue, sat, rgba, taken, cx, cy, width, height);
+  const seed = seedColour(hue, sat, rgba, taken, cx, cy, width, height) ?? seedPale(sat, val, rgba, taken, cx, cy, width, height);
   if (!seed) return none("no-colour");
 
-  const { clickHue, clickWeakHue, clickSatFactor, clickValueMin, alphaMin } = WATER_TUNING;
+  const { clickHue, clickWeakHue, clickSatFactor, clickValueMin, paleSatMax, paleValueBand, alphaMin } = WATER_TUNING;
   const satFloor = seed.saturation * clickSatFactor;
+  const band = paleValueBand * (broad ? 2 : 1);
   const strong = new Uint8Array(count);
   const weak = new Uint8Array(count);
   for (let p = 0, i = 3; p < count; p++, i += 4) {
-    if (hue[p] < 0 || taken[p] || val[p] < clickValueMin || rgba[i] < alphaMin) continue;
+    if (taken[p] || val[p] < clickValueMin || rgba[i] < alphaMin) continue;
+    if (seed.pale) {
+      if (sat[p] <= paleSatMax && Math.abs(val[p] - seed.value) <= band) strong[p] = weak[p] = 1;
+      continue;
+    }
+    if (hue[p] < 0) continue;
     const d = hueDistance(hue[p], seed.hue);
     const s = sat[p];
     if (d <= clickHue && s >= satFloor) strong[p] = 1;
@@ -190,6 +199,8 @@ export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], bro
   const mask = cleanMask(flooded, width, height, taken, { hue, sat });
   if (!keepComponentAt(mask, start, width, height)) return none("too-small");
   const [traced] = traceProposals(mask, width, height);
+  // Foam and grey water are small. A pale area this big is the map's own stone or ground.
+  if (seed.pale && traced.share > WATER_TUNING.clickWarnShare) return none("no-colour");
   let next = 1;
   for (const proposal of claimed) next = Math.max(next, Number(String(proposal.id).replace("water-", "")) + 1);
   return { status: "found", proposal: { ...traced, id: `water-${next}`, preselected: true, clicked: true }, seed };
@@ -245,6 +256,20 @@ function seedColour(hue, sat, rgba, taken, cx, cy, width, height) {
   const centre = Math.atan2(sin, cos) * 180 / Math.PI;
   const offset = median(voters.map((p) => ((hue[p] - centre + 540) % 360) - 180));
   return { hue: (centre + offset + 360) % 360, saturation };
+}
+
+// The unsaturated counterpart of seedColour: the patch's median brightness, when the click and most of its patch are pale.
+function seedPale(sat, val, rgba, taken, cx, cy, width, height) {
+  const { clickPatch, paleSatMax, alphaMin } = WATER_TUNING;
+  const values = [];
+  for (let y = Math.max(0, cy - clickPatch); y <= Math.min(height - 1, cy + clickPatch); y++) {
+    for (let x = Math.max(0, cx - clickPatch); x <= Math.min(width - 1, cx + clickPatch); x++) {
+      const p = y * width + x;
+      if (!taken[p] && rgba[p * 4 + 3] >= alphaMin && sat[p] <= paleSatMax) values.push(val[p]);
+    }
+  }
+  if (!values.length || sat[cy * width + cx] > paleSatMax) return null;
+  return { hue: -1, saturation: 0, value: median(values), pale: true };
 }
 
 function median(values) {

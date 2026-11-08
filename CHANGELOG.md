@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Click-to-add water works on white falls, foam and grey water.** Clicking a white waterfall or pale foam in the water-region tool said "That spot has no clear colour to follow". The click now follows the brightness of colourless water instead, within the Narrow or Wide range. A colourless area bigger than a quarter of the map is still refused, so clicking bare grey stone does not select the whole map.
+
 ## 3.8.5
 
 - **Season colours can be turned off for a scene.** Scene configuration → Animater → Season colours on the ground: Off keeps a map as painted. With a scene's floor on Grass, the season's colour covered the whole map, its painted paths and trees too.

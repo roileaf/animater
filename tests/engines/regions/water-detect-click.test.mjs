@@ -46,3 +46,25 @@ test("a click on a 3 pixel stream selects the stream and not its banks", () => {
   assert.ok(Math.abs(result.seed.hue - 205) < 3, `seed hue ${result.seed.hue}`);
   assert.ok(result.proposal.share < 0.03, `share ${result.proposal.share}`);
 });
+
+test("a click on white foam selects the foam and not the blue pool beside it", () => {
+  const image = paint((x, y) => {
+    if (x >= 70 && x < 100 && y >= 60 && y < 140) return rgb(210, 0.03, 235);
+    return inLake(x, y) ? rgb(205, 0.55, 150) : LAND;
+  });
+  const result = selectWaterAt(image, SIZE, SIZE, { x: 85, y: 100 });
+  assert.equal(result.status, "found");
+  assert.ok(result.proposal.share > 0.04 && result.proposal.share < 0.08, `share ${result.proposal.share}`);
+});
+
+test("a click on grey water with no hue still selects it", () => {
+  const image = paint((x, y) => (x >= 70 && x < 130 && y >= 70 && y < 130 ? rgb(0, 0, 90) : LAND));
+  const result = selectWaterAt(image, SIZE, SIZE, { x: 100, y: 100 });
+  assert.equal(result.status, "found");
+  assert.ok(result.proposal.share > 0.05 && result.proposal.share < 0.12, `share ${result.proposal.share}`);
+});
+
+test("a click on grey ground that fills the map is not water", () => {
+  const image = paint(() => rgb(0, 0, 120));
+  assert.deepEqual(selectWaterAt(image, SIZE, SIZE, { x: 100, y: 100 }), { status: "none", reason: "no-colour" });
+});
