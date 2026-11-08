@@ -27,7 +27,15 @@ export function regionAnimalCounts(own = {}) {
 export const regionHasAnimals = (own = {}) => KINDS.some((k) => amountOf(own, k));
 // The town's animals come in a quiet or a busy town's numbers: busy once any of them asks for more.
 export const townLevelOf = (own = {}) => (['pigeons', 'hens', 'cats', 'dogs'].some((k) => ['more', 'many'].includes(amountOf(own, k))) ? 'busy' : 'quiet');
-export const regionAnimalSize = (own = {}) => ({ small: 0.75, big: 1.3 }[own?.regionAnimalSize] ?? 1);
+// How big they are, as a number (a slider): saved as 0.5 to 2. The words it was once saved as, small and big, still read as they did.
+export const ANIMAL_SIZE = Object.freeze({ min: 0.5, max: 2, step: 0.05 });
+export const animalSizeOf = (own) => {
+  const v = own?.regionAnimalSize, word = { small: 0.75, big: 1.3 }[v];
+  if (word) return word;
+  const n = v === undefined || v === null || v === '' ? NaN : Number(v);
+  return Number.isFinite(n) ? Math.min(ANIMAL_SIZE.max, Math.max(ANIMAL_SIZE.min, n)) : 1;
+};
+export const regionAnimalSize = (own = {}) => animalSizeOf(own);
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // The region's settings (pure): a row of amounts for each kind, as chips (radio buttons), saved with the region by its form.

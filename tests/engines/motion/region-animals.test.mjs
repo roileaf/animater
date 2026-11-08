@@ -24,6 +24,7 @@ test('every kind the scene has outdoors, the town\'s four, rats and bats', () =>
 test('town animals: busy once any asks for more; size small, usual or big', () => {
   assert.equal(townLevelOf({ regionAnimals: { hens: 'few' } }), 'quiet'); assert.equal(townLevelOf({ regionAnimals: { pigeons: 'many' } }), 'busy');
   assert.equal(regionAnimalSize({}), 1); assert.ok(regionAnimalSize({ regionAnimalSize: 'small' }) < 1); assert.ok(regionAnimalSize({ regionAnimalSize: 'big' }) > 1);
+  assert.equal(regionAnimalSize({ regionAnimalSize: 1.6 }), 1.6); assert.equal(regionAnimalSize({ regionAnimalSize: 9 }), 2); assert.equal(regionAnimalSize({ regionAnimalSize: 0.1 }), 0.5);
 });
 
 test('the region\'s Animater tab: a row of amounts for each kind, saved with the region', () => {
