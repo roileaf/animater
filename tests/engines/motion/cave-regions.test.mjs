@@ -133,8 +133,8 @@ test('the light through an opening is the sun\'s own colour', () => {
 test('main hands the looks on, opens the popup, and an old lava region is a lava floor', () => {
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /const look = caveLook\(stepFlags\(region\.flags\?\.\[ID\]\)\)/);
-  assert.match(main, /caveHasMenu\(stepFlags\(region\.flags\?\.\[ID\]\)\)/);
-  assert.match(main, /plainFloorOf\(region\) \?\? "cavern"/);
+  // A region with only a cave's growth opens its panel as a cavern (shownFloorOf: region-panel-model.mjs).
+  assert.match(main, /const panelFloorOf = \(region\) => shownFloorOf\(stepFlags\(region\.flags\?\.\[ID\]\) \?\? \{\}, plainFloorOf\(region\)\);/);
   assert.match(main, /own\.cavern === "lava" \? "lava"/);
   assert.ok(stepMenu({ floor: 'lava' }, 'lava').steps.length === 3);
 });

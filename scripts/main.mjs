@@ -7521,7 +7521,7 @@ Hooks.once("init", () => {
     hint:'A creature near a light (a torch, a brazier, a glowing spell) takes on its colour and catches a rim of it on the side facing it. Strongest in the dark. Needs Tokenshade token filters on.',
     scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(syncLitLooksNow,0)});
   registerSetting("regionLooks",{name:'Region looks',
-    hint:'A region given an Animater look (the region's right-click panel → Look) shows it on every creature inside, fading in and out as they come and go. Needs Tokenshade token filters on.',
+    hint:'A region given an Animater look (its right-click panel → Look) shows it on every creature inside, fading in and out as they come and go. Needs Tokenshade token filters on.',
     scope:'world',config:true,type:Boolean,default:true,onChange:()=>setTimeout(syncRegionLooksNow,0)});
   registerSetting("tokenshadeLive",{name:'Tokenshade follows the game',
     hint:'Tokenshade effects set to follow the game change with the creature: a look that drains as it is hurt, glows on its turn, shimmers as it climbs. Off: they hold their starting look.',
