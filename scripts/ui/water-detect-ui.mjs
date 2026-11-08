@@ -286,7 +286,10 @@ export function planWaterCreate({ proposals, picked, sceneRect, imageWidth, imag
     const before = proposal.savedChoices ?? {};
     const own = data.flags.animater;
     const beforeFloor = before.floor ?? "water";
-    if (row.floor !== beforeFloor) patch["flags.animater.floor"] = own.floor ?? "";
+    if (row.floor !== beforeFloor) {
+      patch["flags.animater.floor"] = own.floor ?? "";
+      patch.color = floorMeta(row.floor).color;
+    }
     if (row.floor === "lava" && beforeFloor !== "lava") {
       for (const [key, value] of Object.entries(own)) {
         if (key === "generated") continue;

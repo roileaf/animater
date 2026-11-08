@@ -71,6 +71,7 @@ test("switching a saved region off water clears water flags", () => {
   assert.equal(plan.updates.length, 1);
   const patch = plan.updates[0];
   assert.equal(patch["flags.animater.floor"], "stone");
+  assert.equal(patch.color, FLOOR_META.stone.color);
   for (const key of WATER_FLAG_KEYS) assert.equal(patch[`flags.animater.${key}`], "");
 });
 

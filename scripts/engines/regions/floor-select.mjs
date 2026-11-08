@@ -62,7 +62,7 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     grow(seeds, weak, flooded, width, height);
   } else {
     const lab = readLab(rgba, count);
-    blurLab(lab, width, height, FLOOR_SELECT_TUNING.labBlur);
+    blurLab(lab, rgba, width, height, FLOOR_SELECT_TUNING.labBlur);
     const labSeed = seedLab(lab, rgba, taken, cx, cy, width, height);
     if (!labSeed) return none("no-colour");
     seed = { ...labSeed, matcher: "lab" };
@@ -92,7 +92,8 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
   const [traced] = traceProposals(mask, width, height);
   let next = 1;
   for (const proposal of claimed) next = Math.max(next, Number(String(proposal.id).replace("water-", "")) + 1);
-  return { status: "found", proposal: { ...traced, id: `water-${next}`, floor: "water", preselected: true, clicked: true }, seed };
+  // Floor comes from Floor to add in the window — the matcher only returns geometry.
+  return { status: "found", proposal: { ...traced, id: `water-${next}`, preselected: true, clicked: true }, seed };
 }
 
 // A small patch read around the click, so a click on foam, a wave crest or a lamp's reflection still reads the water
@@ -144,9 +145,9 @@ function rgbToLab(r, g, b) {
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
 }
 
-function blurLab(lab, width, height, radius) {
+function blurLab(lab, rgba, width, height, radius) {
   if (!(radius > 0)) return;
-  const count = width * height;
+  const { alphaMin } = WATER_TUNING;
   const src = lab.slice();
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -157,11 +158,14 @@ function blurLab(lab, width, height, radius) {
         for (let dx = -radius; dx <= radius; dx++) {
           const xx = x + dx;
           if (xx < 0 || xx >= width) continue;
-          const o = (yy * width + xx) * 3;
+          const p = yy * width + xx;
+          if (rgba[p * 4 + 3] < alphaMin) continue;
+          const o = p * 3;
           L += src[o]; a += src[o + 1]; b += src[o + 2]; n++;
         }
       }
       const o = (y * width + x) * 3;
+      if (!n) continue;
       lab[o] = L / n; lab[o + 1] = a / n; lab[o + 2] = b / n;
     }
   }
@@ -177,13 +181,13 @@ function seedLab(lab, rgba, taken, cx, cy, width, height) {
     }
   }
   if (!voters.length) return null;
-  let L = 0, a = 0, b = 0;
+  // Median of each channel so a shore pixel cannot pull the seed off the clicked floor.
+  const Ls = [], as = [], bs = [];
   for (const p of voters) {
     const o = p * 3;
-    L += lab[o]; a += lab[o + 1]; b += lab[o + 2];
+    Ls.push(lab[o]); as.push(lab[o + 1]); bs.push(lab[o + 2]);
   }
-  const n = voters.length;
-  return { L: L / n, a: a / n, b: b / n };
+  return { L: median(Ls), a: median(as), b: median(bs) };
 }
 
 function deltaE(lab, p, seed) {
