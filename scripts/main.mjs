@@ -220,7 +220,8 @@ import { bakeBlood } from "./engines/motion/blood-bake.mjs";
 import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, overShadowChoices, DOCK_STYLES, dockStyleOf, showsPosts, caveHasMenu, caveLook, INDOOR_EDGE, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
-import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
+import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
+import { createRegionPanel } from "./ui/region-panel.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { regionAnimalCounts, regionHasAnimals, regionAnimalsHtml, regionAnimalSize, townLevelOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
@@ -2333,19 +2334,21 @@ for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion
 const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
 const regionTakesSeason = (own) => takesSeason(own, canvas.scene?.flags?.[ID]?.floorTextures);
 const openSteps = (doc) => openStepsWindow(foundry.applications.api.ApplicationV2, { id: ID, doc, floor: plainFloorOf(doc), flagsOf: stepFlagsOf, save: saveStepFlags, season: regionTakesSeason });
-const stepMenuBox = createStepMenu({ flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), movingWater: (own) => (movingWaterHere() ? own.movingWater !== "off" : null) });
+const regionPanel = createRegionPanel({ flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
-Hooks.on("canvasPan", () => { stepMenuBox.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); stepMenuBox.close(); });
+Hooks.on("canvasPan", () => { regionPanel.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
   for (let i = regions.length - 1; i >= 0; i--) { try { const region = regions[i]; if (plainFloorOf(region) && region.testPoint({ ...point, elevation })) return region; } catch { /* a broken region never breaks the rest */ } }
   return null;
 };
-// Every region with a floor or a cavern's growth at a point, at any height: what a right-click there can be about. (An elevated dock over water is right there on the map, whatever the level's own height.)
-const floorRegionsAt = (point) => regionsHere().filter((region) => { try { return (!!plainFloorOf(region) || caveHasMenu(stepFlags(region.flags?.[ID]))) && regionAreas(region).some((area) => pointInPolygon(point, area)); } catch { return false; } });
+// Every region at a point, whatever it holds, at any height: what a right-click there can be about. (An elevated dock over water is right there on the map, whatever the level's own height.)
+const regionsUnder = (point) => regionsHere().filter((region) => { try { return regionAreas(region).some((area) => pointInPolygon(point, area)); } catch { return false; } });
+// The floor the panel shows a region as: its own, a cavern when it only has a cavern's growth, none for plain ground.
+const panelFloorOf = (region) => (caveHasMenu(stepFlags(region.flags?.[ID])) ? plainFloorOf(region) ?? "cavern" : plainFloorOf(region) ?? null);
 // How the right button went down and came up, seen before the canvas sees it.
 let rightPress = null;
 Hooks.once("canvasReady", () => {
@@ -2359,12 +2362,12 @@ const stepMenuClick = (event) => {
   if (!game.user?.isGM || canvas.activeLayer !== canvas.tokens || canvas.controls?.ruler?.active || canvas.tokens?._draggedToken) return;
   if (hotSetting("regionSteps") === false) return;
   if (overControlIcon(event.global)) return;
-  const at = event.getLocalPosition(canvas.stage), here = floorRegionsAt({ x: at.x, y: at.y }), region = floorRegionAt({ x: at.x, y: at.y }) ?? here.at(-1);
+  const at = event.getLocalPosition(canvas.stage), here = regionsUnder({ x: at.x, y: at.y }), region = floorRegionAt({ x: at.x, y: at.y }) ?? here.at(-1);
   if (!region) return;
   const native = event.nativeEvent ?? event;
-  const what = { doc: region, first: region, regions: here.map((doc) => ({ doc, floor: plainFloorOf(doc) ?? "cavern" })), floor: plainFloorOf(region) ?? "cavern", client: { x: native.clientX ?? event.client?.x ?? 0, y: native.clientY ?? event.client?.y ?? 0 }, at: { x: Math.round(at.x), y: Math.round(at.y) } }, press = rightPress;
-  const open = () => { if (press.quick) stepMenuBox.open(what); };
-  if (!press) stepMenuBox.open(what); else if (press.up) open(); else press.done = open;
+  const what = { doc: region, first: region, regions: here.map((doc) => ({ doc, floor: panelFloorOf(doc) })), floor: panelFloorOf(region), client: { x: native.clientX ?? event.client?.x ?? 0, y: native.clientY ?? event.client?.y ?? 0 }, at: { x: Math.round(at.x), y: Math.round(at.y) } }, press = rightPress;
+  const open = () => { if (press.quick) regionPanel.open(what); };
+  if (!press) regionPanel.open(what); else if (press.up) open(); else press.done = open;
 };
 Hooks.on("canvasReady", () => {
   const manager = canvas.mouseInteractionManager, before = manager?.callbacks?.clickRight;
