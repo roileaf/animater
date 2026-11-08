@@ -2252,7 +2252,7 @@ const syncFloorLooks = () => {
   const list = [];
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
     try { const own = region.flags?.[ID], floor = plainFloorOf(region); if (floor && Array.isArray(own?.steps)) {
-        const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterHere() && floorLevel.water && flags.movingWater !== "off" && own.seaBeach !== "off";
+        const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && floorLevel.water && own.seaBeach !== "off";
         // A look on a sea moving water draws stops at its waterline, leaving the shore alone.
         list.push({ id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null });
       } } catch { /* a broken region never breaks the rest */ }
@@ -2270,23 +2270,22 @@ const syncFloorLooks = () => {
   syncMovingWater(moving);
   syncFloorShadows(moving);
 };
-// Moving water (engines/motion/water-engine.mjs): the GM's for each scene, as a map may paint its water so it won't bend well, and each region's after that.
+// Moving water (engines/motion/water-engine.mjs): every water region's, on every scene, as far as each screen's quality level and the Moving water setting allow.
 const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorLayer("floorShadows", 405), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
-const movingWaterHere = () => canvas?.scene?.flags?.[ID]?.movingWater === "on";
 // Whether two sets of areas have boxes that overlap at all.
 const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
 const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   let on = false;
-  try { on = !!floorLevel.water && movingWaterHere() && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { /* not ready */ }
+  try { on = !!floorLevel.water && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { /* not ready */ }
   // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them; and what casts a shadow shades it, hidden or not.
   const over = on ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
   if (on) for (const region of regionsHere()) {
     try {
       const own = region.flags?.[ID] ?? {};
-      if (own.movingWater === "off" || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
+      if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
       const kind = waterKindOf(own);
       // "This is a waterfall" has its own drawing (engines/motion/waterfall.mjs): the two together fight.
       if (own.waterfall && bothSettingsOn("waterfalls")) continue;
@@ -3579,7 +3578,7 @@ const wildGround = (grid, area) => {
   const floodLevel = canvas.level?.elevation?.base ?? 0, frozen = waterFrozenNow(), floods = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID]; return floodedByStep(own, plainFloorOf(doc)) || unfitForLife(own) || (regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && (noLifeOnWater(own) || (frozen && !own?.noFreeze))); } catch { return false; } }), flooded = (x, y) => floods.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   const seaRegions = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID] ?? {}; return regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && (own.sea || waterKindOf(own) === "sea"); } catch { return false; } }), seaAt = (x, y) => seaRegions.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   // A sea moving water draws has its waterline inside the region, with a beach or the map's own ground beyond it: nothing that lives in the water goes there.
-  const beachSeas = seaRegions.filter((doc) => { const own = stepFlags(doc.flags?.[ID]) ?? {}; return waterKindOf(own) === "sea" && !own.sea && movingWaterHere() && floorLevel.water && own.movingWater !== "off" && own.seaBeach !== "off"; }), beachField = beachSeas.length ? shoreField(beachSeas.flatMap((doc) => regionAreas(doc)), { bounds: canvas.dimensions.sceneRect, grid }) : null, keepOff = beachKeepOff(grid);
+  const beachSeas = seaRegions.filter((doc) => { const own = stepFlags(doc.flags?.[ID]) ?? {}; return waterKindOf(own) === "sea" && !own.sea && floorLevel.water && own.seaBeach !== "off"; }), beachField = beachSeas.length ? shoreField(beachSeas.flatMap((doc) => regionAreas(doc)), { bounds: canvas.dimensions.sceneRect, grid }) : null, keepOff = beachKeepOff(grid);
   const onBeach = (x, y, margin = keepOff) => !!beachField && beachSeas.some((doc) => doc.testPoint({ x, y, elevation: floodLevel })) && shoreAt(beachField, x, y) < margin;
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
     const p = middle(i, j);
@@ -3880,7 +3879,7 @@ const rebuildWater = () => {
       if (isWater && engineFalls && heard) for (const area of areas) { fallSounds.push(Array.from(area)); fallLouds.push(fallLoudness(riverCurrent(own.current))); }
       if (isWater && engineSea && heard) seaSounds.push(...areas.map((a) => Array.from(a)));
       // The crabs on the beach moving water draws.
-      if (isWater && engineSea && movingWaterHere() && floorLevel.water && own.movingWater !== "off" && own.seaBeach !== "off") beaches.push(...areas);
+      if (isWater && engineSea && floorLevel.water && own.seaBeach !== "off") beaches.push(...areas);
       (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }
@@ -7860,7 +7859,7 @@ Hooks.once("init", () => {
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (Region configuration → Floor and water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
   skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (Region configuration → Floor and water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
   registerSetting("waterfallVolume", { name: "Waterfall volume", hint: "How loud waterfalls are for you: 0 silent, 1 as recorded, 2 twice as loud. Heard while River sounds are on; with Waterfalls off, a fall sounds as a river and River volume applies.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
-  skyPair("movingWater", "movingWaterLocal", "Moving water", "Water that moves: waves run along a river's current and before the wind, the map seen through them bends, and the sun, the moon and flames glint on them. Only on scenes that ask for it (Scene configuration → Animater → Moving water), and any water region can opt out in its right-click menu. Each screen's Animation quality sets how much is drawn: Full and Light in full, Balanced simpler, Low not at all.", "");
+  skyPair("movingWater", "movingWaterLocal", "Moving water", "Water that moves: waves run along a river's current and before the wind, the map seen through them bends, and the sun, the moon and flames glint on them. Every water region on every scene. Each screen's Animation quality sets how much is drawn: Full and Light in full, Balanced simpler, Low not at all.", "");
   skyPair("regionSteps", "regionStepsLocal", "Region steps", "The GM right-clicks a region with a floor on the map to move it through its steps: grass goes from fresh to bloodied to burnt, a cave from dry to steam to lava. A region can also paint its floor for a bare map (Scene configuration, or its menu). A step can draw blood, wet or burnt on the floor, change what the floor walks as (its footsteps, sounds and prints), switch on a region effect such as mist or steam, and set a river's speed. The steps are set in Region configuration → Animater. Off stops the menu and the looks; steps already chosen keep their floor and effects. Each screen's Animation quality sets how much it draws: Full and Light keep grass blades, moving flames and bubbles and shine on every look, Light with fewer torches; Balanced keeps floors catching the sun, moon and two lights; Low draws them still.");
   skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
   skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
@@ -8561,10 +8560,6 @@ Hooks.on("renderSceneConfig", (app, html) => {
   mirror.className = "form-group";
   mirror.innerHTML = `<label>Reflections on still water</label><div class="form-fields"><select name="flags.${ID}.reflections">${[["", "On"], ["off", "Off (no reflections on this map)"]].map(([v, l]) => `<option value="${v}"${v === mirrorNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Creatures, tiles, fires and the moon mirrored in this map's still water and dripping pools. For a map that paints its own water.</p>`;
   life.append(mirror);
-  const moving = document.createElement("div"), movingNow = String(app.document?.getFlag?.(ID, "movingWater") ?? "");
-  moving.className = "form-group";
-  moving.innerHTML = `<label>Moving water</label><div class="form-fields"><select name="flags.${ID}.movingWater">${[["", "Off"], ["on", "On"]].map(([v, l]) => `<option value="${v}"${v === movingNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Waves on this map's water regions, the map bending under them, with glints from the sun, the moon and flames. Rivers follow their banks and Flows toward. A map with waves or foam painted on its water may look better without it.</p>`;
-  life.append(moving);
   const painted = document.createElement("div"), paintedNow = String(app.document?.getFlag?.(ID, "floorTextures") ?? "");
   painted.className = "form-group";
   painted.innerHTML = `<label>Region floor textures</label><div class="form-fields"><select name="flags.${ID}.floorTextures">${[["", "Off (the map is already painted)"], ["on", "On (regions paint their floors)"]].map(([v, l]) => `<option value="${v}"${v === paintedNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Whether regions with a floor paint it over the map: grass, stone, water and the rest ("Region steps"). For a bare or blank map. A region can choose for itself from its right-click menu or its steps.</p>`;
