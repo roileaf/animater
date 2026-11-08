@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Edit water outlines in the preview.** Move, insert, and delete polygon vertices, including holes. Smooth outer shores explicitly within two read pixels per action. Invalid geometry stays unchanged. Undo restores up to 20 edits and additions without resetting current save selections or water settings.
+
+- **Edit water without replacing other regions.** Reopening loads saved generator regions. Save updates only the edited, ticked regions by ID and creates new regions alongside them. Names, behaviors, steps, unrelated settings, and all other regions stay.
+
+- **Add water to an existing draft.** Extend a chosen area with shoreline clicks or click existing pieces into that region. Checkboxes only choose which areas to save. Its water settings stay, and the last addition can be undone.
+
+- **Water review window.** Separate map and area panels, zoom and pan controls, live selection counts, and a confirmation of how many regions were created.
+
+- **Experimental: detect water regions.** Off until you turn it on in the Floor & world tab of Animater settings. The Animater controls can propose blue and teal water from this level's map. Review the pieces, choose a water kind and its flow or sea settings, then create them. Reruns load saved regions limited to this level for editing. Untouched regions stay unchanged. Hand-drawn, shared, and all-level regions stay.
+- **Click the water it missed.** The preview opens even when automatic detection finds nothing. Click water of any colour to add a selected piece. Narrow colour selection is the default. Wide follows more connected shades but can also include similarly coloured land. Contrasting floating objects stay as holes. Remove any incorrect piece before saving.
+- **What it leaves alone.** A saturated roof larger than the water can still fool the automatic read, so untick it and click the water instead. A lone pool under about a quarter of a percent of the map needs a click too. A video or SVG background, or a level background moved, scaled or rotated in its configuration, cannot be read, and it says so.
+
 ## 3.7.6
 
 - **Your own Energy Blasts.** The Energy Blast picker lists blasts of your own after the ten kinds, each in its colours; a GM makes one with New blast and changes or deletes them with Edit mine. Each is built on a kind (how it moves, what it leaves on the floor) with its own name, main and highlight colours (recolouring all of it, fire's flames and smoke too), size, what it does to the creatures it catches (as its kind, nothing, burn, frost, shock, shove, tremble, or any Tokenshade preset), its sound (as any kind, silent, or a file from Foundry's file picker, starting in Animater's own sounds), its shake and whether it melts snow. Kept for the world; a fired blast carries its whole look, so every screen draws it alike.

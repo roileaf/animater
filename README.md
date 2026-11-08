@@ -168,6 +168,7 @@ Open **Configure Settings → Animater → Animater settings**. The window has a
 | Underwater bubble lifetime (seconds) | World | Time until fully faded. 0 keeps natural fading (1.8 seconds). Applies to existing and new effects. Burrow holes keep their own lifetime (0 to 3600, default 0) |
 | Submerged token appearance | World | Below the water surface, visible swimmers fade to a blue, translucent silhouette. Surfacing restores their original appearance. This changes artwork only, not Foundry visibility or detection (on by default) |
 | Submerged token opacity | World | How clearly a submerged creature’s artwork is drawn (0.35 = 35%). Applies equally to GM and player artwork, while Foundry still decides who can see the creature (0.1 to 1, default 0.35) |
+| Experimental: detect water regions | World | On the Floor & world tab, for the GM. Adds a button in the Animater controls. Click it and Animater proposes water regions from this level's map, and you can click more water on its preview. It runs only when you click (off by default) |
 | Burrow path lifetime (seconds) | World | Time until fully faded. 0 keeps natural fading (8 seconds). Applies to existing and new effects. Burrow holes keep their own lifetime (0 to 3600, default 0) |
 | Hide burrow paths at relative elevation | World | Burrowing at or below this elevation relative to the viewed level’s floor leaves no visible path. -10 hides paths 10 scene units below that floor; 0 hides every underground path. Entrance and exit holes still appear when the creature crosses the surface. Existing shallow trails fade normally (-1000 to 0, default -10) |
 | Movement respects stealth | World | Players only see and hear what their characters could: an undetected or unnoticed creature moves in silence and leaves no tracks, and a hidden one is heard but leaves nothing to see (PF2e Visioner, judged from each player's own tokens, else the creature's conditions). Off: everyone sees and hears every movement drawn on their screen. Tokens the GM hid never give anything away either way (on by default) |
@@ -283,6 +284,44 @@ The per-user preview setting can minimize the Animater window during local previ
 | Off | No Animater visuals (sounds still play) |
 
 The player who starts an animation only sends optional layers to viewers whose level allows them, so slower computers never load footage they won't show.
+
+## Experimental: detect water regions
+
+This is an experiment. It is off until you turn it on.
+
+Open **Animater settings**, go to the **Floor & world** tab, and turn on **Experimental: detect water regions**. Only a GM sees this switch. On a scene, open the **Animater** controls and click **Detect water**.
+
+Animater reads that level's map and opens a window. It shows a preview of the map and a list of proposed pieces. Each blue area it found is one row. Large areas start ticked. Small ones start unticked. Hover a row to see it on the preview.
+
+**Click the water.** The automatic read finds only strongly coloured blue and teal water. If it found nothing, the window says why and stays open. Click water on the preview, and Animater follows that colour out from your click and adds a ticked row. This is how you get muted underground water, and water of any other colour. A bad click on stone is easy to undo. A clicked piece larger than a quarter of the map shows a warning, and **Remove** takes any row away. Outside Add water mode, a click on a piece already in the list adds nothing, and neither does a click on a spot with no clear colour or a patch too small to be a region. You get a short message instead.
+
+**Review the map.** Use the zoom buttons or scroll over the preview to zoom in. Drag to pan, and choose **Fit map** to see the whole image again. The area list scrolls separately. Its heading shows the number of areas found and selected. The save button shows how many areas are selected, and a notification confirms the number created and updated.
+
+**Extend one area.** Choose **Add water** on the ocean's row, then click missed shallow water on the map. Each click samples that water's colour and adds its shape to the same draft region. The region keeps its kind, flow, wave, and beach settings. To combine an existing piece, click that piece on the map while Add water is active. Each click adds only the area you click. The row checkboxes only choose which areas to save. They do not control Add water, and choosing a target does not tick its checkbox. Disconnected pieces can belong to one region without filling the land between them. **Undo last change** restores the previous shapes. Choose **Done** to return to adding separate areas. These edits remain proposals until you create the regions.
+
+**Edit an outline.** Choose **Edit outline** on one row. Drag a handle to pull back an overshoot, including a dock or bank the colour read included. Double-click an edge to insert a vertex. Select a handle, then choose **Delete vertex** or press Delete or Backspace. Every ring needs at least three vertices. Shores and holes cannot cross, touch, or change which shore contains a hole. Invalid changes leave the draft unchanged. Drag empty space or use the middle mouse button to pan. Escape cancels the current drag, then exits editing. **Smooth shore** softens outer shores with at most two read pixels of boundary drift per action and leaves hole coordinates unchanged. **Undo last change** keeps up to 20 outline edits and additions, while preserving current checkbox and water settings for rows still present. Edits do not tick rows. Choose **Done**, then tick the areas you want to save.
+
+**Click colour range** starts at **Narrow**. Choose **Wide** to follow more shades through connected water. Wide can also join touching grass or banks of similar colour, so inspect its result before creating regions. Both ranges preserve contrasting floating objects as holes.
+
+Set **Kind** to still pool, river, rapids, waterfall, or sea. Flowing water supports compass directions or **Follows the wind**. Rivers can be gentle or swift. Rapids and waterfalls use a swift current. For the sea, choose the wave direction and whether to add a beach. These choices use the same water settings as Region configuration. Shared controls set kind, flow, or current for every ticked row.
+
+**Create water regions** writes the ticked shapes as regions on this level. Their floor is water.
+
+**Edit saved water.** Reopening the generator loads regions it previously created on this level, with their saved outlines, names, and water settings. They start unticked. Choose **Add water** to extend one, **Edit outline** to change its shore, or change its settings, then tick that row and save. The generator updates that same region ID. It preserves the region's name, color, behaviors, steps, and settings outside these controls. An unchanged or unticked saved region receives no update. New areas are created alongside existing regions. Nothing is deleted, including regions created since the window opened. Shared, all-level, and hand-drawn regions stay outside the editor. A saved area cannot be absorbed into another saved area; edit it separately. If you move to another scene while the window is open, it still saves to the scene it opened on.
+
+**Limits.**
+
+- Image resizing can hide a narrow dock or channel. Use **Edit outline** to pull the shore back around it.
+- A saturated roof larger than the water can fool the automatic read. Untick it, then click the real water.
+- A lone pool under about a quarter of a percent of the map can be too small for the automatic read. So can a thin river, even a long one, because the read needs a block of solid colour. Click it.
+- A map with more saturated colours can lift roofs into the automatic selection. Untick them. The window shows every piece before anything is made.
+- Pieces never share a map pixel, but their simplified shores can overlap by up to 2 pixels of the 1024-pixel read where two pieces meet.
+- Click selection follows connected similar colours. A sharply different rim or disconnected pool needs another click or manual drawing.
+- A video or SVG background cannot be read. Use a PNG, WebP or JPEG map.
+- A level whose background is moved, scaled or rotated in its configuration cannot be read, because the shapes would land in the wrong place. The tool says so and opens nothing. Reset the position first.
+- Detailed shores can go over the tool's target of 400 corners a piece, because it keeps the shape accurate rather than rounding it off.
+
+If it marks a roof, or misses water you can see, report the map on the [issue tracker](https://github.com/roileaf/animater/issues).
 
 ## Integrations
 
