@@ -17,7 +17,8 @@ const FULL_OR_LIGHT = [(q) => canShake(q, true), "Needs Full or Light animation 
 // Each row: `world` (the GM's setting), `local` (this screen's), `extras` (more settings under it), `when` (only
 // where it applies: a system or an active module, as its registration listed it), `gmOnly` (a client setting only
 // a GM has a use for), `menu` (a button opening another settings menu), `quality` (see FULL_ONLY), `extrasWhen` (an
-// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window).
+// extra shown only while its test on the settings' values holds; saving the row's own setting redraws the window),
+// `preview` (a Preview button that plays the feature on this screen as now set; the window's `preview(key)` option).
 export const SETTINGS_TABS = Object.freeze([
   { id: "look", label: "Look & light", icon: "fa-solid fa-palette", rows: [
     { local: "quality" },
@@ -58,7 +59,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "teleportTokens", extras: ["teleportDissolve"] },
     { world: "newCreatureArrival" },
     { world: "cameraShake", local: "cameraShakeLocal", extras: ["cameraShakeStrength", "footfallTremor"], quality: FULL_OR_LIGHT },
-    { world: "killCam", local: "killCamLocal" },
+    { world: "killCam", local: "killCamLocal", extras: ["killCamSeconds"], preview: "killCam" },
     { world: "mapDistortion", local: "mapDistortionLocal", extras: ["shockwaveReach"], quality: FULL_ONLY },
   ] },
   { id: "floor", label: "Floor & world", icon: "fa-solid fa-mountain-sun", rows: [
@@ -98,7 +99,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "vermin", local: "verminLocal" },
     { world: "verminSounds", local: "verminSoundsLocal" },
     { world: "doorBurst", local: "doorBurstLocal" },
-    { world: "wildlife", local: "wildlifeLocal" },
+    { local: "wildlifeLocal" },
     { world: "wildlifeSounds", local: "wildlifeSoundsLocal" },
     { world: "riverSounds", local: "riverSoundsLocal", extras: ["riverVolume"] },
     { world: "weatherSounds", local: "weatherSoundsLocal", extras: ["weatherVolume", "thunderPanning"] },
@@ -122,14 +123,14 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "caveSkylight", local: "caveSkylightLocal" },
     { world: "lightFlames", local: "lightFlamesLocal" },
     { world: "roomSmoke", local: "roomSmokeLocal" },
-    { world: "fireflies", local: "firefliesLocal" },
+    { local: "firefliesLocal" },
     { world: "rainRings", local: "rainRingsLocal" },
     { world: "windowGlow", local: "windowGlowLocal" },
-    { world: "dawnChorus", local: "dawnChorusLocal" },
+    { local: "dawnChorusLocal" },
     { world: "windFlames", local: "windFlamesLocal" },
     { world: "oldTracks", local: "oldTracksLocal" },
     { world: "stuckShots", local: "stuckShotsLocal" },
-    { world: "carrion", local: "carrionLocal" },
+    { local: "carrionLocal" },
     { world: "townLife", local: "townLifeLocal" },
     { world: "tavernMurmur", local: "tavernMurmurLocal" },
     { world: "coast", local: "coastLocal" },
@@ -252,7 +253,7 @@ export function settingsModel({ id = "animater", registry, get, menus = new Map(
       const extras = (row.extras ?? []).filter((key) => row.extrasWhen?.[key]?.(read) ?? true).map(control).filter(mine);
       if (!world && !local && !extras.length) continue;
       rows.push({
-        id: row.world ?? row.local, name: lead.name, hint: lead.hint, world, local, extras,
+        id: row.world ?? row.local, name: lead.name, hint: lead.hint, world, local, extras, preview: row.preview ?? null,
         // A player whose GM turned the feature off for everyone: their own switch changes nothing for now.
         worldOff: !isGM && !!local && (worldC?.value === false || (worldC?.kind === "select" && worldC.value === "off")),
         // This screen's animation quality never draws it, whatever the switches say.
@@ -304,7 +305,8 @@ function rowHTML(row, tab) {
   const both = row.world && row.local;
   const controls = [row.world && cell(row.world, both || row.world.kind === "boolean" ? "Everyone" : "", "an-set-world"),
     row.local && cell(row.local, both || row.local.kind === "boolean" ? "My screen" : "", "an-set-local")].filter(Boolean).join("");
-  const extras = row.extras.map((e) => `<div class="an-set-extra" title="${esc(e.hint)}"><span>${esc(e.name)}${e.scope === "client" ? " <small>(this screen)</small>" : ""}</span>${input(e, e.name)}</div>`).join("");
+  const preview = row.preview ? `<div class="an-set-extra"><span>See it on this screen, at the length set</span><button type="button" data-preview="${esc(row.preview)}"><i class="fa-solid fa-play"></i> Preview</button></div>` : "";
+  const extras = row.extras.map((e) => `<div class="an-set-extra" title="${esc(e.hint)}"><span>${esc(e.name)}${e.scope === "client" ? " <small>(this screen)</small>" : ""}</span>${input(e, e.name)}</div>`).join("") + preview;
   return `<div class="an-set-row" data-row="${esc(row.id)}" data-tab="${esc(tab)}">${head}<div class="an-set-controls">${controls}</div>${extras ? `<div class="an-set-extras">${extras}</div>` : ""}</div>`;
 }
 // The tabs a search shows (pure): every tab with a match, or only `tab` once one has been picked.
@@ -329,6 +331,7 @@ export function settingsWindowHTML(model, { active } = {}) {
 export function settingsWindow(ApplicationV2, {
   id, settings = () => globalThis.game.settings, isGM = () => globalThis.game.user?.isGM === true,
   systemId = () => globalThis.game.system?.id ?? "", modules = () => [...(globalThis.game.modules ?? [])].filter((m) => m.active).map((m) => m.id),
+  preview = () => false,
   reloadConfirm = (options) => globalThis.foundry?.applications?.settings?.SettingsConfig?.reloadConfirm?.(options),
 } = {}) {
   return class AnimaterSettings extends ApplicationV2 {
@@ -353,6 +356,9 @@ export function settingsWindow(ApplicationV2, {
       root.querySelectorAll("[data-menu]").forEach((b) => b.addEventListener("click", () => {
         const menu = settings().menus.get(`${id}.${b.dataset.menu}`);
         if (menu?.type) new menu.type().render({ force: true });
+      }));
+      root.querySelectorAll("[data-preview]").forEach((b) => b.addEventListener("click", () => {
+        if (!preview(b.dataset.preview)) globalThis.ui?.notifications?.info("Animater: open a scene to preview this.");
       }));
       // The window's element outlives each render: one listener for every control, added once.
       if (!this._wired) { this._wired = true; root.addEventListener("change", (event) => void this.save(event.target?.closest?.("[data-setting]"))); }

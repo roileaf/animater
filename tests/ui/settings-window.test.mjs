@@ -208,3 +208,15 @@ test("a search shows every tab with a match, or only the tab picked", () => {
   assert.deepEqual([...searchedTabs(hits, "motion")], [], "nothing there: the empty note shows, and the words stay");
   assert.deepEqual([...searchedTabs([])], []);
 });
+
+// The kill-cam's length sits under it with a Preview that plays it on this screen as now set.
+test("the kill-cam row has its length and a Preview button", () => {
+  const withCam = new Map([...registry, reg("killCam", "world", Boolean, { name: "Slow-motion kill-cam" }), reg("killCamLocal", "client", Boolean, { name: "Kill-cam on my screen" }),
+    reg("killCamSeconds", "world", Number, { name: "Kill-cam length", range: { min: 1, max: 5, step: 0.25 } })]);
+  const m = model({ isGM: true, registry: withCam, get: (k) => ({ ...values, killCam: true, killCamLocal: true, killCamSeconds: 2.5 })[k] });
+  const row = rowsOf(m).killCam;
+  assert.equal(row.preview, "killCam");
+  assert.deepEqual(row.extras.map((e) => e.key), ["killCamSeconds"]);
+  assert.match(settingsWindowHTML(m, { active: row.tab }), /data-preview="killCam"/);
+  assert.doesNotMatch(settingsWindowHTML(model({ isGM: true })), /data-preview=/, "no Preview on rows without one");
+});

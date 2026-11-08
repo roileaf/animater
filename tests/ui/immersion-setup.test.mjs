@@ -40,7 +40,19 @@ test('only the GM gets a scene switch, in the open row, naming the scene', () =>
 
 test('every setting a feature names is one the settings window knows', () => {
   const known = new Set(SETTINGS_TABS.flatMap((tab) => tab.rows.flatMap((row) => [row.world, row.local, ...(row.extras ?? [])])).filter(Boolean));
-  for (const feature of IMMERSION_FEATURES) for (const key of feature.keys) assert.ok(known.has(key), `${feature.id}: ${key}`);
+  // A feature the scene decides (no switch for the table) is known by its screen's switch.
+  for (const feature of IMMERSION_FEATURES) for (const key of feature.keys) assert.ok(known.has(key) || known.has(`${key}Local`), `${feature.id}: ${key}`);
+});
+
+// Outdoor life's animals, fireflies, the dawn chorus and carrion have no switch for the table (the scene decides): the GM
+// turning one off writes their own screen's, and a player still chooses theirs.
+test('a feature with only a screen switch is shown, read and written through it', () => {
+  const feature = { id: 'dayshift', keys: ['dawnChorus'] }, values = { dawnChorusLocal: true }, has = (k) => k in values, get = (k) => values[k];
+  assert.equal(featureShown(feature, { get, has, isGM: true }), true);
+  assert.equal(featureShown(feature, { get, has, isGM: false }), true);
+  assert.equal(featureOn(feature, { get, has, isGM: false }), true);
+  assert.deepEqual([...choiceWrites([feature], new Map([['dayshift', true]]), new Map([['dayshift', false]]), { has, isGM: true })], [['dawnChorusLocal', false]]);
+  assert.deepEqual([...choiceWrites([feature], new Map([['dayshift', false]]), new Map([['dayshift', true]]), { has, isGM: false })], [['dawnChorusLocal', true]]);
 });
 
 test('no setting belongs to two features, and each feature is explained', () => {

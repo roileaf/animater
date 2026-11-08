@@ -4,6 +4,7 @@
 // Pure: every canvas, Sequencer and DOM call is an injected host option.
 import { qualityRank } from '../../core/quality.mjs';
 
+// The timings below are for a kill-cam of KILL_CAM.ms; the GM's length (KILL_CAM_LENGTH, seconds) stretches them all alike.
 export const KILL_CAM = Object.freeze({
   ms: 1200,        // the whole kill-cam, pan back included
   zoom: 1.2,       // the gentle zoom towards the target
@@ -15,13 +16,24 @@ export const KILL_CAM = Object.freeze({
   fadeInMs: 200,
   fadeOutMs: 300,
 });
+// The world setting "Kill-cam length", in seconds.
+export const KILL_CAM_LENGTH = Object.freeze({ min: 1, max: 5, step: 0.25, default: 2.5 });
 
 const finite = (n) => Number.isFinite(n);
 
-/** How long the finisher and Finish Him! wait for the kill-cam: its length when the table uses it on this NPC, else 0. */
-export function killCamLength({ worldOn, npc } = {}) {
-  return worldOn === true && npc === true ? KILL_CAM.ms : 0;
+/** The kill-cam's length in ms from the setting's seconds, kept in range; the default for anything unusable. */
+export function killCamMs(seconds) {
+  const s = Number(seconds);
+  return Math.round((Number.isFinite(s) && s > 0 ? Math.min(KILL_CAM_LENGTH.max, Math.max(KILL_CAM_LENGTH.min, s)) : KILL_CAM_LENGTH.default) * 1000);
 }
+
+/** How long the finisher and Finish Him! wait for the kill-cam: its length when the table uses it on this NPC, else 0. */
+export function killCamLength({ worldOn, npc, seconds } = {}) {
+  return worldOn === true && npc === true ? killCamMs(seconds) : 0;
+}
+
+/** How slow the effects play: slower the longer the kill-cam, so a long one is not just the same moment held. */
+export const killCamRate = (ms) => Math.max(0.08, Math.min(KILL_CAM.slowRate, KILL_CAM.slowRate * KILL_CAM.ms / ms));
 
 /** Whether this screen plays a kill-cam: table and screen on, Full or Light quality, the target on this scene and seen. */
 export function canKillCam({ worldOn, localOn, quality, sameScene, visible, hidden } = {}) {
@@ -42,7 +54,7 @@ export function killCamPlan({ tokenCenter, view, maxZoom, ms = KILL_CAM.ms } = {
   return {
     ms: total,
     panIn: { x: tokenCenter.x, y: tokenCenter.y, scale, duration: t(KILL_CAM.panInMs) },
-    slow: { rate: KILL_CAM.slowRate, at: 0, restoreAt: t(KILL_CAM.slowMs) },
+    slow: { rate: killCamRate(total), at: 0, restoreAt: t(KILL_CAM.slowMs) },
     vignette: { fadeIn: t(KILL_CAM.fadeInMs), hideAt: t(KILL_CAM.slowMs), fadeOut: t(KILL_CAM.fadeOutMs) },
     panOut: { at: t(KILL_CAM.panOutAt), x: view.x, y: view.y, scale: view.scale, duration: t(KILL_CAM.panOutMs) },
   };
@@ -104,7 +116,15 @@ export function createKillCam(host) {
   }
   function play({ tokenId, sceneId, ms } = {}) {
     if (running) return false;
-    const target = safe(() => host.target(tokenId, sceneId));
+    return run(safe(() => host.target(tokenId, sceneId)), ms);
+  }
+  // A kill-cam to see how it plays (the settings' Preview): at `center` (a token's, or the middle of the view), whatever
+  // the switches say.
+  function preview({ center, uuid = null, radius = 0, ms } = {}) {
+    if (running) finish();
+    return run(center ? { center, uuid, radius } : null, ms);
+  }
+  function run(target, ms) {
     if (!target) return false;
     const view = safe(() => host.view());
     const plan = killCamPlan({ tokenCenter: target.center, view, maxZoom: safe(() => host.maxZoom()), ms });
@@ -122,5 +142,5 @@ export function createKillCam(host) {
     at(plan.ms, () => { running = null; });
     return true;
   }
-  return { play, clear: finish, get playing() { return running !== null; } };
+  return { play, preview, clear: finish, get playing() { return running !== null; } };
 }

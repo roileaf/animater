@@ -27,22 +27,26 @@ export const IMMERSION_FEATURES = Object.freeze([
 const LOCAL_NAMES = Object.freeze({ roomAcoustics: "roomReverbLocal" });
 const localOf = (key) => LOCAL_NAMES[key] ?? `${key}Local`;
 
-// The on-or-off settings a feature has here: `has(key)` whether such a setting is registered.
+// The on-or-off settings a feature has here: `has(key)` whether such a setting is registered. A feature with no
+// world switch (the scene decides, as Outdoor life does for the animals) has only each screen's: `screen`.
 export function featureKeys(feature, has) {
-  const world = feature.keys.filter(has);
-  return { world, local: world.map(localOf).filter(has) };
+  const world = feature.keys.filter(has), local = feature.keys.map(localOf).filter(has);
+  return { world, local, screen: feature.keys.filter((key) => !has(key) && has(localOf(key))).map(localOf) };
 }
-// Whether a feature counts as on (pure): for the GM, any of its table's settings on; for a player, any they can see on their own screen.
+// A feature's key as the table has it: its world switch, or on where it has none.
+const tableOn = (key, { get, has }) => !has(key) || get(key) !== false;
+// Whether a feature counts as on (pure): for the GM, any of its table's settings on (or their own screen's, where the
+// table has none); for a player, any they can see on their own screen.
 export function featureOn(feature, { get, has, isGM }) {
-  const { world } = featureKeys(feature, has);
-  if (isGM) return world.some((key) => get(key) !== false);
-  return world.some((key) => get(key) !== false && has(localOf(key)) && get(localOf(key)) !== false);
+  const { world, screen } = featureKeys(feature, has);
+  if (isGM) return [...world, ...screen].some((key) => get(key) !== false);
+  return feature.keys.some((key) => tableOn(key, { get, has }) && has(localOf(key)) && get(localOf(key)) !== false);
 }
 // Whether a person gets to choose this feature (pure): a player has nothing to choose in what the GM turned off, or what has no setting for a screen.
 export function featureShown(feature, { get, has, isGM }) {
-  const { world } = featureKeys(feature, has);
-  if (isGM) return world.length > 0;
-  return world.some((key) => get(key) !== false && has(localOf(key)));
+  const { world, local } = featureKeys(feature, has);
+  if (isGM) return world.length > 0 || local.length > 0;
+  return feature.keys.some((key) => tableOn(key, { get, has }) && has(localOf(key)));
 }
 // The settings to change for a person's choices (pure), only for features they changed, so a table's careful mix survives leaving a feature alone.
 // `before` and `after` are id to on-or-off. Turning a feature on for the GM also turns it on for their own screen; a player only ever writes their screen's.
@@ -51,8 +55,8 @@ export function choiceWrites(features, before, after, { has, isGM }) {
   for (const feature of features) {
     const on = after.get(feature.id);
     if (on === undefined || on === before.get(feature.id)) continue;
-    const { world, local } = featureKeys(feature, has);
-    if (isGM) { for (const key of world) writes.set(key, on); if (on) for (const key of local) writes.set(key, true); }
+    const { world, local, screen } = featureKeys(feature, has);
+    if (isGM) { for (const key of world) writes.set(key, on); for (const key of on ? local : screen) writes.set(key, on); }
     else for (const key of local) writes.set(key, on);
   }
   return writes;

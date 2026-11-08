@@ -53,7 +53,7 @@ import { createLightHost } from "./engines/lighting/light-host.mjs";
 import { createDistortionHost, canDistort, attachFilter, detachFilter } from "./engines/distortion/distortion-host.mjs";
 import { createCameraShake, canShake, shakeTagOf } from "./engines/camera/camera-shake.mjs";
 import { createScreenTint, canTint } from "./engines/camera/screen-tint.mjs";
-import { createKillCam, canKillCam, killCamLength } from "./engines/camera/kill-cam.mjs";
+import { createKillCam, canKillCam, killCamLength, killCamMs, KILL_CAM_LENGTH } from "./engines/camera/kill-cam.mjs";
 import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
@@ -463,7 +463,7 @@ const killsPlaying = new Map();
 // How long the finisher, Finish Him! and a kill's blood wait for it: the table uses it, the creature is an NPC and has
 // a token in view that is not hidden (the client that saw the drop plays it).
 const killCamWait = (actor) => killCamLength({
-  worldOn: killCamOn() && acceptsEvents(),
+  worldOn: killCamOn() && acceptsEvents(), seconds: shakeSetting("killCamSeconds", KILL_CAM_LENGTH.default),
   npc: isNpcActor(actor, game.system.id, { playerOwned: ownerUsers(actor).length > 0 })
     && (actor?.getActiveTokens?.() ?? []).some((t) => t.document?.parent?.id === canvas?.scene?.id && !t.document.hidden),
 });
@@ -504,6 +504,14 @@ const killCam = createKillCam({
   cancel: (h) => clearTimeout(h),
   trace: (status, detail) => runtime?.trace(status, detail),
 });
+// The settings' Preview: a kill-cam on this screen at the length set, on the token you control (else the first you see
+// on this scene), or the middle of your view.
+const previewKillCam = () => {
+  if (!canvas?.ready) return false;
+  const token = canvas.tokens?.controlled?.[0] ?? canvas.tokens?.placeables?.find((t) => t.visible && !t.document?.hidden);
+  const center = token?.center ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y };
+  return killCam.preview({ center, uuid: token?.document?.uuid ?? null, radius: token ? Math.max(token.w ?? 0, token.h ?? 0) : 0, ms: killCamMs(shakeSetting("killCamSeconds", KILL_CAM_LENGTH.default)) });
+};
 // Another screen saw an NPC's killing blow.
 const receiveKillCam = (data, senderId) => {
   if (data?.type !== "kill-cam" || (senderId && data.userId !== senderId)) return;
@@ -2034,7 +2042,9 @@ const treePatterns = createTreePatterns();
 const canopyLight = createCanopyLight({ PIXI: globalThis.PIXI, root: canopyRootOf, render: bakeInto, pattern: (kind, seed, tiled) => treePatterns.get(kind, seed, tiled) });
 // Whether Animater may make any sound here: the table's switch and this screen's. Every sound it plays asks this (tests/engines/sound/master-switch.test.mjs holds it to that).
 const soundsOn = () => { try { return hotSetting("animaterSounds") !== false && hotSetting("animaterSoundsLocal") !== false; } catch { return true; } };
-const bothSettingsOn = (key) => { try { return hotSetting(key) !== false && hotSetting(`${key}Local`) !== false && qualityRank(localQuality()) >= 2; } catch { return false; } };
+// Features each scene decides for itself have no switch for the table, only each screen's (`${key}Local`).
+const SCREEN_ONLY = new Set(["wildlife", "fireflies", "dawnChorus", "carrion"]);
+const bothSettingsOn = (key) => { try { return (SCREEN_ONLY.has(key) || hotSetting(key) !== false) && hotSetting(`${key}Local`) !== false && qualityRank(localQuality()) >= 2; } catch { return false; } };
 // The open sky's effects (sun through trees and roofs, clouds, birds, rain, snow, lightning, the moon on the ground...)
 // never show in an underground scene.
 const outdoorOn = (key) => bothSettingsOn(key) && !undergroundScene();
@@ -3174,7 +3184,7 @@ Hooks.on("canvasTearDown", () => { stopAnimalAim(); });
 const wildNote = () => {
   if (undergroundScene()) return "";
   let quality = 2;
-  try { if (hotSetting("wildlife") === false || hotSetting("wildlifeLocal") === false) return "Animals in the wild is off in the Animater settings, so none will show."; quality = qualityRank(localQuality()); } catch { return ""; }
+  try { if (hotSetting("wildlifeLocal") === false) return "Birds, rabbits and fish is off for your screen in the Animater settings, so none will show."; quality = qualityRank(localQuality()); } catch { return ""; }
   if (quality < 2) return "Your Animater quality is Low or Off, so no animals show on this screen. Balanced or higher shows them.";
   if (!outdoorLifeHere() || !wildOpen || wildOpen.spots.length || wildOpen.waters.length) return "";
   const floor = sceneFloorNow();
@@ -7624,7 +7634,7 @@ Hooks.once("init", () => {
   // Every Animater setting but the animation quality, by topic, in one window (ui/settings-window.mjs).
   game.settings.registerMenu(ID,'settingsWindow',{name:'Animater settings',label:'Animater settings',icon:'fa-solid fa-sliders',
     hint:'All of Animater\'s settings by topic, with a search. Each feature\'s switch for everyone (GM) sits beside its own switch for your screen.',
-    type:settingsWindow(ApplicationV2,{id:ID}),restricted:false});
+    type:settingsWindow(ApplicationV2,{id:ID,preview:(key)=>key==="killCam"?previewKillCam():false}),restricted:false});
   // The hit sounds engine: one menu (Hit sounds) holds its world switch and each device's mix (ui/hit-sounds-settings.mjs).
   game.settings.registerMenu(ID,'hitSoundsMenu',{name:'Hit sounds',label:'Hit sounds',icon:'fa-solid fa-volume-high',
     hint:'Weapon hits that sound like what they land on, and how you hear them: on or off, volume, blood, echo, and hearing hits where they happen.',
@@ -8000,6 +8010,10 @@ Hooks.once("init", () => {
     hint: "Turn off to never draw light through windows on this screen (the world setting decides for everyone).",
     scope: "client", config: true, type: Boolean, default: true });
   // Each sky effect: a world setting and this screen's own.
+  // What each scene decides for itself (Outdoor life and its animals): no switch for the table, only each screen's, which
+  // keeps the `local` key the feature has always read.
+  const screenOnly = (local, name, hint, quality = "Drawn at Balanced quality or better.") =>
+    registerSetting(local, { name, hint: `${hint} ${quality} Turn off to never show them on this screen.`, scope: "client", config: true, type: Boolean, default: true });
   const skyPair = (key, local, name, hint, quality = "Drawn at Balanced quality or better.") => {
     registerSetting(key, { name, hint: `${hint} ${quality}`, scope: "world", config: true, type: Boolean, default: true });
     registerSetting(local, { name: `${name} on my screen`, hint: `Turn off to never draw ${name.toLowerCase()} on this screen (the world setting decides for everyone).`, scope: "client", config: true, type: Boolean, default: true });
@@ -8017,7 +8031,7 @@ Hooks.once("init", () => {
   skyPair("caveSkylight", "caveSkylightLocal", "Light through openings to the sky", "In an underground scene, where a region is marked as open to the sky (the region's right-click panel → Air → Open to the sky: a hole in the ceiling, a shaft, a cave mouth), daylight falls in as a pool on the floor with a faint shaft of light and dust turning in it, away from the sun and longer when it is low; golden at dawn and dusk, silver moonlight at night. Nowhere else underground does the sun or moon reach.");
   skyPair("caveWebs", "caveWebsLocal", "Cobwebs", "Where a region is marked as cobwebs (the region's right-click panel → Cave, or Air → Room dressing for any other region), dusty, torn webs hang in the corners of its walls and stir in the draft; now and then a spider lowers itself on a thread and climbs back.");
   skyPair("caveEyes", "caveEyesLocal", "Eyes in the dark", "In an underground scene, now and then a pair of eyes glints back from the dark at the edge of the view, blinks, and is gone when a light or a creature comes near.");
-  skyPair("wildlife", "wildlifeLocal", "Birds, rabbits and fish", "Only in scenes with Outdoor life on (Scene configuration → Animater). On open ground by day, a hawk circles overhead and now and then stoops on a rabbit, crows pass, songbirds peck about and burst into the air, and rabbits sit, hop and bolt from anyone who comes near; fish drift in the water and dart away; ducks paddle and clatter up, a heron stands in the shallows, gulls wheel over the sea, frogs on lily pads croak and leap in, deer graze and bound away, a fox stalks the rabbits, and butterflies and dragonflies fly by day. At night, fireflies blink, an owl glides over and bats hunt round the lamps. Only out of doors, on grass, dirt, sand, mud or snow, and in water. Each scene sets how many (Scene configuration → Animater → Creatures), and regions can keep them out.");
+  screenOnly("wildlifeLocal", "Birds, rabbits and fish", "Hawks, crows, songbirds, rabbits, fish, ducks, herons, gulls, frogs, deer, foxes, butterflies and dragonflies, and at night an owl and bats. Only on scenes with Outdoor life on, out of doors on grass, dirt, sand, mud or snow, and in water. Each scene sets how many in its Animals panel, and regions can keep them out.");
   skyPair("wildlifeSounds", "wildlifeSoundsLocal", "Wildlife sounds", "The hawk's cry, crows passing, songbirds chirping and their wings as they burst up, a rabbit's thump when it bolts, a fish's splash as it darts, ducks quacking, gulls crying, frogs croaking and plopping in, a fox's bark, dragonflies, and by night an owl and a constant bed of crickets. A few at a time, only near enough to be heard. With Birds, rabbits and fish on.", "");
   registerSetting("thunderPanning", { name: "Thunder from the side it struck", hint: "Thunder plays to the left or right of your selected token, or of the middle of your view with none selected, as it struck. Off: in both ears alike. Either way, how far off it struck says how loud it is.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
@@ -8062,14 +8076,14 @@ Hooks.once("init", () => {
   skyPair("treeSway", "treeSwayLocal", "Trees in the wind", "The tree tiles sway with the wind, each out of step with the next, their leaves fluttering: barely in still air, a good deal in a gale. From Calendaria's weather or the scene's wind.");
   skyPair("frozenWater", "frozenWaterLocal", "Water freezes", "In a hard frost the water freezes over, the ice creeping in from the banks: pale and matte with fine cracks, sparkling, snow lying on it, and ice underfoot. It freezes from −3 °C over some hours (faster the colder) and thaws above freezing; with no temperature known, deep snow lying for long freezes it. Turning off Freezes in the cold (the region's right-click panel → Water) keeps a hot spring open. Kept on each screen per scene.");
   skyPair("tileSnow", "tileSnowLocal", "Snow on roofs and trees", "Snow lying on the ground lies on the roofs and in the trees too (the roof and tree tiles): a roof under a blanket, a tree's leaves caught white on top, less in a wind. It melts with the ground's. A roof fading for a creature inside takes its snow with it.");
-  skyPair("fireflies", "firefliesLocal", "Fireflies", "On warm summer evenings fireflies glow over the grass and by the water from sunset into the first hours of the night (none in winter, autumn or under 15 °C).");
+  screenOnly("firefliesLocal", "Fireflies", "On warm summer evenings on scenes with Outdoor life on, fireflies glow over the grass and by the water from sunset into the first hours of the night (none in winter, autumn or under 15 °C).");
   skyPair("rainRings", "rainRingsLocal", "Rain on water", "While it rains (Calendaria's weather or the scene's), rings spread where the drops land on water and on the puddles of wet ground, more the harder it rains.");
   skyPair("windowGlow", "windowGlowLocal", "Warm light from windows", "At night a lit room's light spills out of its windows and open doors onto the ground outside, in the light's colour, further the brighter the room. A room is a region that keeps the weather out; any light inside it that reaches the window lights it.");
-  skyPair("dawnChorus", "dawnChorusLocal", "Dawn chorus and night shift", "Birds sing all around at first light and go quiet as the sun sets; a hush falls, and the crickets take over once it is dark. Needs Wildlife sounds on.");
+  screenOnly("dawnChorusLocal", "Dawn chorus and night shift", "Birds sing all around at first light and go quiet as the sun sets; a hush falls, and the crickets take over once it is dark. Needs Wildlife sounds on.");
   skyPair("windFlames", "windFlamesLocal", "Flames in the wind", "Out of doors, flames, torches and their smoke lean with the wind, swelling in the gusts and pressed low by the strongest. Under a roof or in a room they feel none of it. Never changes the light itself.");
   skyPair("oldTracks", "oldTracksLocal", "Old tracks", "Where a scene asks for it (Scene configuration → Animater → Old tracks; off otherwise), prints stay and age by the game's clock, softer and fainter the older they are, so you can read who passed and how long ago. Mud and dirt keep them longest, stone hardly at all. The GM chooses for each scene whether only the GM or everyone sees them, and how long they last.");
   skyPair("stuckShots", "stuckShotsLocal", "Shots stick where they land", "Arrows and bolts that hit a wall stay stuck in it, and those that miss stay in the floor, until the scene changes. Never saved.");
-  skyPair("carrion", "carrionLocal", "Bodies draw flies and crows", "After a while a body on the map draws flies, and out of doors by day crows come down to it (a vulture for a big one). They scatter when anyone comes near. Not for bloodless creatures. Never saved.");
+  screenOnly("carrionLocal", "Bodies draw flies and crows", "After a while a body on the map draws flies, and out of doors by day crows come down to it (a vulture for a big one). They scatter when anyone comes near. Not for bloodless creatures. Never saved.");
   skyPair("townLife", "townLifeLocal", "Town life", "Where a scene asks for it (Scene configuration → Animater → Town life; off otherwise): pigeons, chickens, a cat on the walls and a stray dog, who run from noise and from your creatures.");
   skyPair("tavernMurmur", "tavernMurmurLocal", "Tavern murmur", "A region marked as a tavern (the region's right-click panel → Air → Tavern murmur) is full of voices: loud inside, a far-off murmur through its walls, spilling out when a door opens.", "Played at Balanced quality or better.");
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (the region's right-click panel → Water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
@@ -8391,6 +8405,11 @@ Hooks.once("init", () => {
     hint: "When a killing blow lands on an NPC, every screen that can see it eases the view towards it with a gentle zoom, slows Animater's effects on it and fades the colour for a moment, then pans back. The finisher and Finish Him! wait for it. Drawn only on screens at Full or Light animation quality.",
     scope: "world", config: true, type: Boolean, default: false,
     onChange: (on) => { if (on === false) killCam.clear(); },
+  });
+  registerSetting("killCamSeconds", {
+    name: "Kill-cam length",
+    hint: "How long the slow motion lasts, in seconds, pan back included. Longer also plays the effects slower. The finisher and Finish Him! wait this long.",
+    scope: "world", config: true, type: Number, range: { min: KILL_CAM_LENGTH.min, max: KILL_CAM_LENGTH.max, step: KILL_CAM_LENGTH.step }, default: KILL_CAM_LENGTH.default,
   });
   registerSetting("killCamLocal", {
     name: "Kill-cam on my screen",

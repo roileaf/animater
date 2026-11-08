@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KILL_CAM, killCamLength, canKillCam, killCamPlan, killCamEffects, slowEffects, createKillCam } from '../../../scripts/engines/camera/kill-cam.mjs';
+import { KILL_CAM, KILL_CAM_LENGTH, killCamMs, killCamRate, killCamLength, canKillCam, killCamPlan, killCamEffects, slowEffects, createKillCam } from '../../../scripts/engines/camera/kill-cam.mjs';
 
 test('length: the whole kill-cam when the table uses it on an NPC, else nothing to wait for', () => {
-  assert.equal(killCamLength({ worldOn: true, npc: true }), KILL_CAM.ms);
+  assert.equal(killCamLength({ worldOn: true, npc: true }), KILL_CAM_LENGTH.default * 1000, 'the default length');
+  assert.equal(killCamLength({ worldOn: true, npc: true, seconds: 4 }), 4000, 'the GM\'s length');
   assert.equal(killCamLength({ worldOn: false, npc: true }), 0);
   assert.equal(killCamLength({ worldOn: true, npc: false }), 0);
   assert.equal(killCamLength(), 0);
@@ -132,4 +133,26 @@ test('kill-cam: a host error never breaks the canvas', () => {
   assert.equal(createKillCam(host).play({ tokenId: 't' }), true);
   host.run(KILL_CAM.ms);
   assert.ok(traces.some((d) => d.includes('no Sequencer')));
+});
+
+// Roi: the slow motion was too fast (1.2 s). The GM sets its length, and a longer one also plays the effects slower.
+test('length: the setting\'s seconds, kept in range; longer plays the effects slower', () => {
+  assert.ok(KILL_CAM_LENGTH.default * 1000 > KILL_CAM.ms, 'slower than it was by default');
+  assert.equal(killCamMs(3), 3000);
+  assert.equal(killCamMs(99), KILL_CAM_LENGTH.max * 1000);
+  assert.equal(killCamMs(0.1), KILL_CAM_LENGTH.min * 1000);
+  assert.equal(killCamMs('x'), KILL_CAM_LENGTH.default * 1000);
+  assert.equal(killCamRate(KILL_CAM.ms), KILL_CAM.slowRate);
+  assert.ok(killCamRate(3000) < killCamRate(2000) && killCamRate(5000) >= 0.08);
+  const plan = killCamPlan({ tokenCenter: { x: 0, y: 0 }, view: { x: 0, y: 0, scale: 1 }, ms: 3000 });
+  assert.equal(plan.slow.restoreAt, Math.round(KILL_CAM.slowMs * 3000 / KILL_CAM.ms), 'every timing stretched alike');
+  assert.equal(plan.slow.rate, killCamRate(3000));
+});
+
+test('preview: plays at a point whatever the switches say, and cuts a playing one short', () => {
+  const host = fakeHost({ target: () => null }), cam = createKillCam(host);
+  assert.equal(cam.preview({ center: { x: 10, y: 20 }, ms: 2000 }), true);
+  assert.deepEqual(host.log[0], ['pan', 10, 20, 1.2]);
+  assert.equal(cam.preview({ center: { x: 30, y: 40 }, ms: 2000 }), true, 'a second preview restarts it');
+  assert.equal(cam.preview({}), false, 'no point, nothing');
 });
