@@ -34,6 +34,23 @@ test('only the GM opens it', () => {
   assert.match(body, /regionsUnder\(/);
 });
 
+test('the right-click opens it on the Regions layer as well as the Tokens layer', () => {
+  const at = main.indexOf('const stepMenuClick = ');
+  const body = main.slice(at, main.indexOf('\n};', at));
+  assert.match(body, /canvas\.activeLayer !== canvas\.tokens && canvas\.activeLayer !== canvas\.regions/);
+});
+
+test('panelFloorOf always gives the panel a floor to show', () => {
+  const at = main.indexOf('const panelFloorOf = ');
+  const def = main.slice(at, main.indexOf('\n', at));
+  assert.match(def, /shownFloorOf\(/);
+  assert.match(main, /import \{[^}]*shownFloorOf[^}]*\} from "\.\/ui\/region-panel-model\.mjs"/);
+});
+
+test('the panel goes when its region is deleted, and follows a window resize', () => {
+  assert.match(main, /Hooks\.on\("deleteRegion", \(doc\) => \{ if \(regionPanel\.doc === doc\) regionPanel\.close\(\); \}\);/);
+});
+
 // The region window's Animater tab only points to the panel: every setting it held now lives there.
 const tabHook = (() => { const at = main.indexOf('Hooks.on("renderRegionConfig"'); return main.slice(at, main.indexOf('\nHooks.once("ready"', at)); })();
 

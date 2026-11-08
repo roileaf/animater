@@ -217,11 +217,12 @@ import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, th
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveHasMenu, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
+import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
+import { shownFloorOf } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
@@ -2252,7 +2253,7 @@ const syncFloorLooks = () => {
   const list = [];
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
     try { const own = region.flags?.[ID], floor = plainFloorOf(region); if (floor && Array.isArray(own?.steps)) {
-        const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && floorLevel.water && own.seaBeach !== "off";
+        const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterOn() && own.seaBeach !== "off";
         // A look on a sea moving water draws stops at its waterline, leaving the shore alone.
         list.push({ id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null });
       } } catch { /* a broken region never breaks the rest */ }
@@ -2276,10 +2277,12 @@ const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer(
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorLayer("floorShadows", 405), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
 // Whether two sets of areas have boxes that overlap at all.
 const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
+// Whether moving water is drawn on this screen: its quality level allows it and the Moving water setting (world and player) is on.
+// What lives on its shore (the cut-out shore, the beach animals keep off, the crabs) asks this too, so none of it acts on a sea not drawn.
+const movingWaterOn = () => { try { return !!floorLevel.water && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { return false; } };
 const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
-  let on = false;
-  try { on = !!floorLevel.water && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { /* not ready */ }
+  const on = movingWaterOn();
   // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them; and what casts a shadow shades it, hidden or not.
   const over = on ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
   if (on) for (const region of regionsHere()) {
@@ -2337,6 +2340,7 @@ const regionPanel = createRegionPanel({ flagsOf: stepFlagsOf, save: saveStepFlag
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
+Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
 Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
@@ -2346,8 +2350,8 @@ const floorRegionAt = (point) => {
 };
 // Every region at a point, whatever it holds, at any height: what a right-click there can be about. (An elevated dock over water is right there on the map, whatever the level's own height.)
 const regionsUnder = (point) => regionsHere().filter((region) => { try { return regionAreas(region).some((area) => pointInPolygon(point, area)); } catch { return false; } });
-// The floor the panel shows a region as: its own, a cavern when it only has a cavern's growth, none for plain ground.
-const panelFloorOf = (region) => (caveHasMenu(stepFlags(region.flags?.[ID])) ? plainFloorOf(region) ?? "cavern" : plainFloorOf(region));
+// The floor the panel shows a region as: its own, else its kind's (a cave's, a room's wood, open ground's grass), never none.
+const panelFloorOf = (region) => shownFloorOf(stepFlags(region.flags?.[ID]) ?? {}, plainFloorOf(region));
 // How the right button went down and came up, seen before the canvas sees it.
 let rightPress = null;
 Hooks.once("canvasReady", () => {
@@ -2356,9 +2360,9 @@ Hooks.once("canvasReady", () => {
 });
 // Whether a screen point is on a window's or a door's icon: a click there is about that, not the floor under it.
 const overControlIcon = (point) => { if (!point) return false; for (const icons of [windowControlRoot, canvas.controls?.doors]) for (const icon of icons?.children ?? []) { try { if (icon.visible && icon.getBounds().contains(point.x, point.y)) return true; } catch { /* gone */ } } return false; };
-// A right-click on the open map (a token takes its own, and so does a window's or door's icon) opens the region's menu for the GM, when the button comes up: pressed and held or dragged, it is panning.
+// A right-click on the open map, on the Tokens or the Regions layer (a token takes its own, and so does a window's or door's icon), opens the region's panel for the GM, when the button comes up: pressed and held or dragged, it is panning.
 const stepMenuClick = (event) => {
-  if (!game.user?.isGM || canvas.activeLayer !== canvas.tokens || canvas.controls?.ruler?.active || canvas.tokens?._draggedToken) return;
+  if (!game.user?.isGM || (canvas.activeLayer !== canvas.tokens && canvas.activeLayer !== canvas.regions) || canvas.controls?.ruler?.active || canvas.tokens?._draggedToken) return;
   if (overControlIcon(event.global)) return;
   const at = event.getLocalPosition(canvas.stage), here = regionsUnder({ x: at.x, y: at.y }), region = floorRegionAt({ x: at.x, y: at.y }) ?? here.at(-1);
   if (!region) return;
@@ -3578,7 +3582,7 @@ const wildGround = (grid, area) => {
   const floodLevel = canvas.level?.elevation?.base ?? 0, frozen = waterFrozenNow(), floods = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID]; return floodedByStep(own, plainFloorOf(doc)) || unfitForLife(own) || (regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && (noLifeOnWater(own) || (frozen && !own?.noFreeze))); } catch { return false; } }), flooded = (x, y) => floods.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   const seaRegions = regionsHere().filter((doc) => { try { const own = doc.flags?.[ID] ?? {}; return regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && (own.sea || waterKindOf(own) === "sea"); } catch { return false; } }), seaAt = (x, y) => seaRegions.some((doc) => doc.testPoint({ x, y, elevation: floodLevel }));
   // A sea moving water draws has its waterline inside the region, with a beach or the map's own ground beyond it: nothing that lives in the water goes there.
-  const beachSeas = seaRegions.filter((doc) => { const own = stepFlags(doc.flags?.[ID]) ?? {}; return waterKindOf(own) === "sea" && !own.sea && floorLevel.water && own.seaBeach !== "off"; }), beachField = beachSeas.length ? shoreField(beachSeas.flatMap((doc) => regionAreas(doc)), { bounds: canvas.dimensions.sceneRect, grid }) : null, keepOff = beachKeepOff(grid);
+  const beachSeas = seaRegions.filter((doc) => { const own = stepFlags(doc.flags?.[ID]) ?? {}; return waterKindOf(own) === "sea" && !own.sea && movingWaterOn() && own.seaBeach !== "off"; }), beachField = beachSeas.length ? shoreField(beachSeas.flatMap((doc) => regionAreas(doc)), { bounds: canvas.dimensions.sceneRect, grid }) : null, keepOff = beachKeepOff(grid);
   const onBeach = (x, y, margin = keepOff) => !!beachField && beachSeas.some((doc) => doc.testPoint({ x, y, elevation: floodLevel })) && shoreAt(beachField, x, y) < margin;
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
     const p = middle(i, j);
@@ -3879,7 +3883,7 @@ const rebuildWater = () => {
       if (isWater && engineFalls && heard) for (const area of areas) { fallSounds.push(Array.from(area)); fallLouds.push(fallLoudness(riverCurrent(own.current))); }
       if (isWater && engineSea && heard) seaSounds.push(...areas.map((a) => Array.from(a)));
       // The crabs on the beach moving water draws.
-      if (isWater && engineSea && floorLevel.water && own.seaBeach !== "off") beaches.push(...areas);
+      if (isWater && engineSea && movingWaterOn() && own.seaBeach !== "off") beaches.push(...areas);
       (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }

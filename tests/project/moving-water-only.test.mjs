@@ -26,9 +26,25 @@ test('a water region that once said movingWater off still moves', () => {
 });
 
 test('a GM can still turn moving water off on every scene, and it still follows the quality level', () => {
-  const list = defOf('movingWaterList');
-  assert.match(list, /floorLevel\.water/);
-  assert.match(list, /hotSetting\("movingWater"\) !== false && hotSetting\("movingWaterLocal"\) !== false/);
+  // (Through movingWaterOn(), which the next test reads.)
+  assert.match(defOf('movingWaterList'), /const on = movingWaterOn\(\);/);
+  assert.match(main, /const movingWaterOn = \(\) => \{ try \{ return !!floorLevel\.water && hotSetting\("movingWater"\) !== false && hotSetting\("movingWaterLocal"\) !== false;/);
+});
+
+test('one movingWaterOn() says whether moving water is drawn, and the shore, beaches and seas ask it', () => {
+  const on = main.slice(main.indexOf('const movingWaterOn = '), main.indexOf('\n', main.indexOf('const movingWaterOn = ')));
+  assert.match(on, /floorLevel\.water/);
+  assert.match(on, /hotSetting\("movingWater"\) !== false && hotSetting\("movingWaterLocal"\) !== false/);
+  assert.match(defOf('movingWaterList'), /movingWaterOn\(\)/);
+  const seaHere = main.slice(main.indexOf('seaHere = '), main.indexOf(';', main.indexOf('seaHere = ')));
+  assert.match(seaHere, /movingWaterOn\(\)/);
+  assert.doesNotMatch(seaHere, /floorLevel\.water/);
+  const beachSeas = main.slice(main.indexOf('const beachSeas = '), main.indexOf('beachField', main.indexOf('const beachSeas = ')));
+  assert.match(beachSeas, /movingWaterOn\(\)/);
+  assert.doesNotMatch(beachSeas, /floorLevel\.water/);
+  const at = main.indexOf(') beaches.push('), beaches = main.slice(main.lastIndexOf('\n', at), at);
+  assert.match(beaches, /movingWaterOn\(\)/);
+  assert.doesNotMatch(beaches, /floorLevel\.water/);
 });
 
 test('the region panel and its window never offer Moving water', () => {
