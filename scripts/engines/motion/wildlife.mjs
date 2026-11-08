@@ -31,9 +31,15 @@ export const WILD_SOUNDS = Object.freeze({
   catMeow: ['110011-0', '584895-0', '584895-1'].map((n) => `${SOUND_DIR}/town/cat-${n}.ogg`),
   dogBark: ['277058-0', '832435-1'].map((n) => `${SOUND_DIR}/town/dog-${n}.ogg`),
   pigeonCoo: ['517683-0'].map((n) => `${SOUND_DIR}/town/pigeon-${n}.ogg`),
+  // Farm animals (farm-life.mjs). A horse now whinnies, now snorts.
+  cowCall: ['59245-0'].map((n) => `${SOUND_DIR}/farm/cow-${n}.ogg`),
+  goatCall: ['581240-0', '581240-1', '677220-0'].map((n) => `${SOUND_DIR}/farm/goat-${n}.ogg`),
+  sheepCall: ['710300-0'].map((n) => `${SOUND_DIR}/farm/sheep-${n}.ogg`),
+  pigCall: ['233181-0'].map((n) => `${SOUND_DIR}/farm/pig-${n}.ogg`),
+  horseCall: [`${SOUND_DIR}/farm/horse-0863-0.ogg`, `${SOUND_DIR}/farm/snort-1543-0.ogg`],
 });
 // How long each kind waits [least, most seconds] after it sounds, whatever their number (underground-sounds.mjs critterVoices).
-export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], wolfHowl: [60, 150], wolfPack: [60, 150], wolfGrowl: [4, 10], dragonBuzz: [5, 12], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14] });
+export const WILD_GAPS = Object.freeze({ hawkCry: [18, 45], crowCaw: [0.9, 2.8], songChirp: [4, 10], wingsUp: [1.5, 3], rabbitThump: [6, 14], fishSplash: [5, 12], frogPlop: [0.08, 0.2], duckQuack: [3, 8], frogCroak: [3, 9], gullCry: [5, 14], owlHoot: [14, 40], cricketChirp: [1.2, 3.5], foxBark: [10, 30], wolfHowl: [60, 150], wolfPack: [60, 150], wolfGrowl: [4, 10], dragonBuzz: [5, 12], henCluck: [2.5, 8], catMeow: [25, 70], dogBark: [6, 20], pigeonCoo: [5, 14], cowCall: [12, 30], goatCall: [6, 16], sheepCall: [5, 14], pigCall: [6, 16], horseCall: [14, 35] });
 // Whether a region's Keep out holds this kind (pure). A box of its own decides; one never saved goes by the older box that once covered it, so regions set before they were split keep working. All animals holds everything.
 const KEEP_GROUPS = Object.freeze({ ducks: 'waterBirds', herons: 'waterBirds', gulls: 'waterBirds', butterflies: 'insects', dragonflies: 'insects', fireflies: 'insects', pigeons: 'town', hens: 'town', cats: 'town', dogs: 'town' });
 export const keepsOut = (own, kind) => !!own && (own.all === true || !!(own[kind] ?? own[KEEP_GROUPS[kind]]));

@@ -198,7 +198,8 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
   return {
     populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false, allowed = () => true, size: big = 1, batSize: wide = 1 } = {}) {
       drop(); grid = g; size = Number(big) > 0 ? Number(big) : 1; batSize = Number(wide) > 0 ? Number(wide) : 1;
-      rats = ratsAt(spots, { count, lit }).map((r) => ({ ...r, stride: Math.random() }));
+      // (Each its own: a little bigger or smaller, a little browner or greyer.)
+      rats = ratsAt(spots, { count, lit }).map((r) => ({ ...r, stride: Math.random(), big: 0.85 + Math.random() * 0.3, shade: [0xffffff, 0xf2ebe2, 0xe6ddd2, 0xeeeeee][Math.floor(Math.random() * 4)] }));
       // The tail first, then the body over its root.
       shapes = rats.map(() => { const shadow = sprite(ratFrames()[0], root()); shadow.tint = 0x000000; const t = new PIXI.Graphics(); t.eventMode = 'none'; root().addChild(t); return { shadow, tail: t, body: sprite(ratFrames()[0], root()) }; });
       // Each bat starts out in a room near one of the spots (inside the walls), not over the rock; without spots, anywhere
@@ -219,7 +220,7 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
       rats = rats.map((r, i) => {
         const n = ratStep(r, { dt, grid, lit, near, blocked });
         // Its feet step with how far it runs.
-        n.stride = ((r.stride ?? 0) + (n.speed * dt) / (grid * 0.22)) % 1;
+        n.stride = ((r.stride ?? 0) + (n.speed * dt) / (grid * 0.22)) % 1; n.big = r.big ?? 1; n.shade = r.shade ?? 0xffffff;
         const { body, tail: t, shadow } = shapes[i], show = seen(n.x, n.y);
         body.visible = t.visible = show;
         const cast = show ? shadowFrom(light(n.x, n.y), n, { grid }) : null;
@@ -230,9 +231,9 @@ export function createVermin({ PIXI, root, batsRoot = root }) {
           else if (Math.random() < dt * 0.05) sound('ratSqueak', n, false);
           if (n.speed > 0) sound('ratSkitter', n, false);
           body.texture = rt[Math.floor(n.stride * RAT_FRAMES) % RAT_FRAMES];
-          body.position.set(n.x, n.y); body.rotation = n.angle; body.scale.set(k * 0.5);
+          body.position.set(n.x, n.y); body.rotation = n.angle; body.scale.set(k * 0.5 * n.big); body.tint = n.shade;
           // Its shadow on the floor, away from the nearest light.
-          if (cast) { shadow.texture = body.texture; shadow.position.set(cast.x, cast.y); shadow.rotation = n.angle; shadow.scale.set(k * 0.5 * cast.scale); shadow.alpha = cast.alpha; }
+          if (cast) { shadow.texture = body.texture; shadow.position.set(cast.x, cast.y); shadow.rotation = n.angle; shadow.scale.set(k * 0.5 * n.big * cast.scale); shadow.alpha = cast.alpha; }
           drawRatTail(t, n, k, time, i);
         }
         return n;

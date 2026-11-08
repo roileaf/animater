@@ -1,0 +1,13 @@
+All recordings in this folder are CC0 1.0 (public domain); each source page was checked for its CC0 licence. Freesound
+files (https://freesound.org) were cut from the sound's high-quality Freesound preview; BigSoundBank files
+(https://bigsoundbank.com, "CC0 (public domain): Free and royalty-free") from its own download. Each was encoded as Ogg
+Vorbis 96 kb/s for Animater. The calls of farm animals. Thank you to each author.
+
+cow-59245-0.ogg: "z-moo01.wav" by Zozzy, https://freesound.org/people/Zozzy/sounds/59245/ (CC0 1.0). Changes: cut 0.00-1.72 s, high-pass 55 Hz, mixed to mono, gain +0.3 dB.
+goat-581240-0.ogg: "Single Goat Bleating 2x" by Kinoton, https://freesound.org/people/Kinoton/sounds/581240/ (CC0 1.0). Changes: cut 0.33-1.16 s, high-pass 55 Hz, mixed to mono, gain -0.7 dB.
+goat-581240-1.ogg: "Single Goat Bleating 2x" by Kinoton, https://freesound.org/people/Kinoton/sounds/581240/ (CC0 1.0). Changes: cut 2.08-2.93 s, high-pass 55 Hz, mixed to mono, gain +3.8 dB.
+goat-677220-0.ogg: "Nigerian Dwarf Buck Goat" by satoristudios3, https://freesound.org/people/satoristudios3/sounds/677220/ (CC0 1.0). Changes: cut 0.00-1.43 s, high-pass 55 Hz, mixed to mono, gain +2.5 dB.
+sheep-710300-0.ogg: "Sheep baaing 5 - Norwegian sheep expressing itself concisely" by michaelperfect, https://freesound.org/people/michaelperfect/sounds/710300/ (CC0 1.0). Changes: cut 0.00-1.83 s, high-pass 55 Hz, mixed to mono, gain -5.4 dB.
+pig-233181-0.ogg: "Pig - Multiple Snorts 4 - 96kHz.wav" by JarredGibb, https://freesound.org/people/JarredGibb/sounds/233181/ (CC0 1.0). Changes: cut 0.20-2.68 s, high-pass 55 Hz, mixed to mono, compressed (4:1 above -24 dB), gain +10.7 dB.
+horse-0863-0.ogg: "Horse Neighing #3" by Joseph Sardin, https://bigsoundbank.com/horse-neighing-3-s0863.html (CC0). Changes: cut 0.12-1.62 s, high-pass 55 Hz, mixed to mono, gain -2.1 dB.
+snort-1543-0.ogg: "Breath Horse #4" by Joseph Sardin, https://bigsoundbank.com/breath-horse-4-s1543.html (CC0). Changes: cut 0.00-0.69 s, high-pass 55 Hz, mixed to mono, gain -3.8 dB.

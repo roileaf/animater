@@ -221,6 +221,8 @@ import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, 
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { createStepMenu, openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
+import { createFarmLife } from "./engines/motion/farm-life.mjs";
+import { regionAnimalCounts, regionHasAnimals, regionAnimalsHtml, regionAnimalSize, townLevelOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, blastSounds, BLAST_BORROWS, blastRipple, aimSquares, stepSquares, meltsSnow, meltSpots, meltsFilled } from "./engines/motion/energy-blast.mjs";
 import { REACTION_SECONDS, caughtBy, createBlastReactions, pushedTo, reactionOf, reactionSecondsOf } from "./engines/motion/blast-reactions.mjs";
@@ -2403,7 +2405,7 @@ const lowFlierRoot = floorLayer("lowFliers", 750);
 const pondLife = createPondLife({ PIXI: globalThis.PIXI, floor: floorLayer("pondLife", 662), sky: lowFlierRoot, high: highSkyOf, highShadow: highFloorOf });
 // A loud noise sends everything out there running, the bigger the bang the further, spreading out from it.
 const fieldLife = createFieldLife({ PIXI: globalThis.PIXI, floor: floorLayer("fieldLife", 660), sky: lowFlierRoot, glow: glowRootOf, high: highSkyOf, highShadow: highFloorOf });
-const noiseScares = ({ x, y, radius }) => { try { const grid = canvas.grid.size, far = Math.max(grid * 12, (Number(radius) || grid) * 4); wildlife.noise({ x, y, radius: far }); pondLife.noise({ x, y, radius: far }); fieldLife.noise({ x, y, radius: far }); aftermath.noise({ x, y, radius: far }); townLife.noise({ x, y, radius: far }); } catch { /* the canvas mid-change */ } };
+const noiseScares = ({ x, y, radius }) => { try { const grid = canvas.grid.size, far = Math.max(grid * 12, (Number(radius) || grid) * 4); wildlife.noise({ x, y, radius: far }); pondLife.noise({ x, y, radius: far }); fieldLife.noise({ x, y, radius: far }); for (const life of regionLife.values()) { life.wild.noise({ x, y, radius: far }); life.pond.noise({ x, y, radius: far }); life.field.noise({ x, y, radius: far }); life.town.noise?.({ x, y, radius: far }); life.farm.noise({ x, y, radius: far }); } aftermath.noise({ x, y, radius: far }); townLife.noise({ x, y, radius: far }); } catch { /* the canvas mid-change */ } };
 // What a fight leaves behind (engines/motion/aftermath.mjs): shots stuck where they landed, flies and crows at the bodies. Every screen has its own, never saved.
 const aftermath = createAftermath({ PIXI: globalThis.PIXI, floor: floorLayer("aftermath", 650), sky: lowFlierRoot, cap: 40 });
 const SHOTS_MESSAGE = "stuck-shots";
@@ -2607,7 +2609,7 @@ const critterSound = (kind, at, urgent) => {
   const s = CRITTER_SOUND[kind], ears = earsNow(at, s.reach);
   if (!(ears.volume > 0)) return;
   if (!critterCalls.wanted(kind, urgent)) return;
-  playUnder(kind, at, { volume: (urgent ? s.volume * 1.5 : s.volume) * ears.volume, reach: s.reach, rate: s.rates[0] + Math.random() * (s.rates[1] - s.rates[0]), walls: true, gmAlways: ears.gmAlways, room: 0.5 });
+  playUnder(kind, at, { volume: (urgent ? s.volume * 1.5 : s.volume) * ears.volume * (0.8 + Math.random() * 0.35), reach: s.reach, rate: s.rates[0] + Math.random() * (s.rates[1] - s.rates[0]), walls: true, gmAlways: ears.gmAlways, room: 0.5 });
 };
 // A door set to send bats or rats (Wall configuration → Animater door) as it opens: seen on every screen, the same flock on
 // each (seeded by the door and the moment the server saved it), at the nearest creature on the side it was opened from.
@@ -3697,17 +3699,19 @@ const rebuildWildlife = () => {
 // How much they are out now: by day under an open sky, none at night or in a storm, nor in a scene made dark, whatever its sun.
 const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
 const wildSeen = (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false;
-const wildOk = (kind, x, y) => {
+// Where an animal may be on some ground (wildGround's): the scene's, or a region's own.
+const okOn = (ground, kind, x, y) => {
   // Insects go over ground and water alike; dragonflies keep to the water.
-  if (kind === "butterflies") return !!wildOpen && !wildOpen.closed(x, y) && !keptOut("butterflies", { x, y });
-  if (kind === "dragonflies") return !!wildOpen?.inWater(x, y) && !keptOut("dragonflies", { x, y });
+  if (kind === "butterflies") return !!ground && !ground.closed(x, y) && !keptOut("butterflies", { x, y });
+  if (kind === "dragonflies") return !!ground?.inWater(x, y) && !keptOut("dragonflies", { x, y });
   // Fish may go on past the map's edge where the water reaches it (wildlife.mjs: another comes back in a while).
   if (kind === "fish") { const r = canvas.dimensions?.sceneRect; if (r && (x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height)) return true; }
-  return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? wildOpen?.inWater(x, y) : wildOpen?.at(x, y)) && !keptOut(kind, { x, y });
+  return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
+const wildOk = (kind, x, y) => okOn(wildOpen, kind, x, y);
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });
-const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.86, 1.14] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, frogPlop: { volume: 0.26, reach: 8, rates: [0.94, 1.18] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] }, gullCry: { volume: 0.25, reach: 25, rates: [0.92, 1.08] }, owlHoot: { volume: 0.3, reach: 30, rates: [0.95, 1.05] }, cricketChirp: { volume: 0.14, reach: 8, rates: [0.96, 1.06] }, foxBark: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, wolfHowl: { volume: 0.32, reach: 45, rates: [0.96, 1.04] }, wolfPack: { volume: 0.32, reach: 45, rates: [0.97, 1.03] }, wolfGrowl: { volume: 0.34, reach: 12, rates: [0.93, 1.05] }, dragonBuzz: { volume: 0.16, reach: 5, rates: [0.9, 1.15] }, henCluck: { volume: 0.22, reach: 7, rates: [0.92, 1.1] }, catMeow: { volume: 0.2, reach: 8, rates: [0.95, 1.08] }, dogBark: { volume: 0.32, reach: 22, rates: [0.92, 1.08] }, pigeonCoo: { volume: 0.2, reach: 7, rates: [0.88, 1.14] } };
+const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.86, 1.14] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, frogPlop: { volume: 0.26, reach: 8, rates: [0.94, 1.18] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] }, gullCry: { volume: 0.25, reach: 25, rates: [0.92, 1.08] }, owlHoot: { volume: 0.3, reach: 30, rates: [0.95, 1.05] }, cricketChirp: { volume: 0.14, reach: 8, rates: [0.96, 1.06] }, foxBark: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, wolfHowl: { volume: 0.32, reach: 45, rates: [0.96, 1.04] }, wolfPack: { volume: 0.32, reach: 45, rates: [0.97, 1.03] }, wolfGrowl: { volume: 0.34, reach: 12, rates: [0.93, 1.05] }, dragonBuzz: { volume: 0.16, reach: 5, rates: [0.9, 1.15] }, henCluck: { volume: 0.22, reach: 7, rates: [0.92, 1.1] }, catMeow: { volume: 0.2, reach: 8, rates: [0.95, 1.08] }, dogBark: { volume: 0.32, reach: 22, rates: [0.92, 1.08] }, pigeonCoo: { volume: 0.2, reach: 7, rates: [0.88, 1.14] }, cowCall: { volume: 0.32, reach: 26, rates: [0.86, 1.06] }, goatCall: { volume: 0.26, reach: 14, rates: [0.9, 1.14] }, sheepCall: { volume: 0.26, reach: 14, rates: [0.88, 1.12] }, pigCall: { volume: 0.34, reach: 10, rates: [0.88, 1.1] }, horseCall: { volume: 0.3, reach: 22, rates: [0.9, 1.08] } };
 // The change of shift at dawn and dusk (engines/motion/day-shift.mjs), read every couple of seconds. Off: the day's birds and the night's crickets as they always were.
 const SHIFT_OFF = Object.freeze({ chorus: 0, birds: 1, crickets: 1, hush: 0 });
 let shiftAt = 0, shiftWas = SHIFT_OFF, chorusIn = 0;
@@ -3951,6 +3955,81 @@ const tickTown = (seconds) => {
   townLife.tick(Math.min(seconds, 0.1), { near, view, ok: (kind, x, y) => !!townOpen?.ok(x, y) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
 };
 Hooks.on("canvasTearDown", () => { townLife.clear(); townKey = null; townOpen = null; });
+// Animals of a region's own (engines/motion/region-animals.mjs): each region asking for some has its own layers of them,
+// given only the ground inside it and kept to it, on top of the scene's. The town's and the dark's kinds too, whatever
+// the scene has on. Only "Animals in the wild" (the settings) turns them off.
+const regionLife = new Map();
+const dropRegionLife = (life) => { for (const layer of [life.wild, life.pond, life.field, life.town, life.rats, life.farm]) { try { layer.clear(); } catch { /* gone */ } } };
+const regionLifeOf = (doc, grid) => {
+  const own = doc.flags?.[ID] ?? {}, n = regionAnimalCounts(own), size = regionAnimalSize(own), elevation = canvas.level?.elevation?.base ?? 0;
+  const areas = regionAreas(doc), pts = areas.flatMap((a) => Array.from(a)), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
+  if (!xs.length) return null;
+  const x0 = Math.min(...xs) - grid, y0 = Math.min(...ys) - grid, area = { x: x0, y: y0, width: Math.max(...xs) - x0 + grid, height: Math.max(...ys) - y0 + grid };
+  const inside = (x, y) => { try { return doc.testPoint({ x, y, elevation }); } catch { return false; } };
+  const ground = wildGround(grid, area), spots = ground.spots.filter((p) => inside(p.x, p.y)), waters = ground.waters.filter((p) => inside(p.x, p.y));
+  // Never out of it: a step across its edge from inside is as a wall.
+  const keepIn = (a, b) => inside(a.x, a.y) && !inside(b.x, b.y);
+  const life = { inside, ground, ok: (kind, x, y) => inside(x, y) && okOn(ground, kind, x, y), barred: (kind, x, y) => ground.closed(x, y) || keptOut(kind, { x, y }), indoors: (x, y) => ground.walled(x, y) && !roofOver(x, y), blocked: (a, b) => wallBlocks(a, b) || keepIn(a, b),
+    wild: createWildlife({ PIXI: globalThis.PIXI, floor: floorLayer("wildlife", 661), sky: highSkyOf, skyShadow: highFloorOf }),
+    pond: createPondLife({ PIXI: globalThis.PIXI, floor: floorLayer("pondLife", 662), sky: lowFlierRoot, high: highSkyOf, highShadow: highFloorOf }),
+    field: createFieldLife({ PIXI: globalThis.PIXI, floor: floorLayer("fieldLife", 660), sky: lowFlierRoot, glow: glowRootOf, high: highSkyOf, highShadow: highFloorOf }),
+    town: createTownLife({ PIXI: globalThis.PIXI, floor: floorLayer("townLife", 659), sky: lowFlierRoot, high: highSkyOf }),
+    rats: createVermin({ PIXI: globalThis.PIXI, root: ratRootOf, batsRoot: birdRootOf }),
+    farm: createFarmLife({ PIXI: globalThis.PIXI, floor: floorLayer("farmLife", 661) }) };
+  life.ratBlocked = (a, b) => ratBlocks(a, b) || keepIn(a, b); life.batBlocked = (a, b) => batBlocks(a, b) || keepIn(a, b);
+  const fish = waters.filter((p) => !keptOut("fish", p));
+  life.wild.populate({ waters: fish, fish: fish.length ? n.fish : 0, fishSize: size, spots, rabbits: spots.length ? n.rabbits : 0, songbirds: spots.length ? n.wildBirds : 0, hawk: false, crows: 0, blocked: life.blocked, grid, area, rabbitSize: size, birdSize: size });
+  life.field.populate({ spots, homes: fieldHomes(spots), waters: [], glowWaters: [], trees: wildTrees().filter((tr) => inside(tr.x, tr.y)), squirrels: spots.length ? n.squirrels : 0, squirrelSize: size, snakes: spots.length ? n.snakes : 0, snakeSize: size, wolves: spots.length ? n.wolves : 0, wolfSize: size, blocked: life.blocked, deer: spots.length ? n.deer : 0, foxes: spots.length ? n.foxes : 0, butterflies: spots.length ? n.insects : 0, dragonflies: 0, fireflies: 0, owl: n.owls > 0 && spots.length > 0, grid, area, deerSize: size, foxSize: size, insectSize: size, birdSize: size, batSize: size });
+  const cell = ground.cell, shore = waters.filter((p) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([i, j]) => ground.at(p.x + i * cell, p.y + j * cell))), pads = [];
+  for (const p of [...shore].sort(() => Math.random() - 0.5)) { if (pads.length >= n.frogs) break; const x = p.x + (Math.random() - 0.5) * 0.6 * cell, y = p.y + (Math.random() - 0.5) * 0.6 * cell; if (inside(x, y) && ground.inWater(x, y) && pads.every((q) => Math.hypot(q.x - x, q.y - y) > grid * 0.8)) pads.push({ x, y }); }
+  if (waters.length) life.pond.populate({ kept: wildKept, waters, shore, pads, ducks: n.waterBirds, herons: 0, gulls: 0, grid, birdSize: size, frogSize: size });
+  // The town's: a quiet or busy town's numbers, only the kinds asked for.
+  if (n.pigeons || n.hens || n.cats || n.dogs) {
+    const want = { pigeons: n.pigeons, hens: n.hens, cats: n.cats, dogs: n.dogs }, townSpots = spots.filter((p) => !ground.inWater(p.x, p.y));
+    const wallTops = wallsHere().filter((w) => !Number(w.door) && Math.hypot(w.c[2] - w.c[0], w.c[3] - w.c[1]) >= grid && inside((w.c[0] + w.c[2]) / 2, (w.c[1] + w.c[3]) / 2)).slice(0, 100).map((w) => ({ ax: w.c[0], ay: w.c[1], bx: w.c[2], by: w.c[3] }));
+    const v = viewNow();
+    life.town.populate({ kept: (kind, x, y) => !(want[kind] > 0) || !inside(x, y) || wildKept(kind, x, y), spots: townSpots, wallTops, grid, size, busy: townLevelOf(own), blocked: life.blocked, focus: { x: v.x + v.w / 2, y: v.y + v.h / 2 } });
+  }
+  // Farm animals: a herd of each kind asked for, on its open ground.
+  if (n.cows || n.goats || n.sheep || n.pigs || n.horses) life.farm.populate({ spots: spots.filter((p) => !ground.inWater(p.x, p.y)), cows: n.cows, goats: n.goats, sheep: n.sheep, pigs: n.pigs, horses: n.horses, grid, size });
+  if (n.rats || n.bats) life.rats.populate({ spots, count: n.rats, lit: litForRats, grid, bats: n.bats, area: { x: area.x, y: area.y, w: area.width, h: area.height }, blocked: life.batBlocked, allowed: (p) => inside(p.x, p.y) && !keptOut("bats", p), size, batSize: size });
+  return life;
+};
+const rebuildRegionAnimals = () => {
+  const on = canvas?.ready && bothSettingsOn("wildlife"), grid = canvas?.grid?.size ?? 100, seen = new Set();
+  if (on) for (const doc of regionsHere()) {
+    const own = doc.flags?.[ID] ?? {};
+    if (!regionHasAnimals(own)) continue;
+    seen.add(doc.id);
+    const key = JSON.stringify([canvas.scene?.id, canvas.level?.id, regionAreas(doc).map((a) => Array.from(a)), own.regionAnimals, own.regionAnimalSize ?? "", groundWalls().length]);
+    const was = regionLife.get(doc.id);
+    if (was?.key === key) continue;
+    if (was) dropRegionLife(was);
+    try { const life = regionLifeOf(doc, grid); if (life) regionLife.set(doc.id, { ...life, key }); else regionLife.delete(doc.id); } catch (error) { console.warn("Animater | region animals", error); regionLife.delete(doc.id); }
+  }
+  for (const [id, life] of regionLife) if (!seen.has(id)) { dropRegionLife(life); regionLife.delete(id); }
+};
+let regionCover = { out: 1, flush: false };
+const regionTick = (seconds) => {
+  if (!regionLife.size) return;
+  const away = (((Number(sunNow?.angle) || 51) + 180) * Math.PI) / 180, shelter = weatherShelter(skyFalling);
+  regionCover = takeCover(regionCover, shelter, seconds);
+  const out = regionCover.out, near = creaturesNow(), day = wildDay(), night = wildNight() * shelter, warm = !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.15), sun = { x: Math.cos(away), y: Math.sin(away) }, view = viewNow(), wind = skyWindAngle ?? 0.6;
+  const birdBody = birdBodyOf(animalFlagsNow().birdHeight), liftShadow = highBirdShadow;
+  for (const life of regionLife.values()) {
+    if (regionCover.flush) { life.wild.scare(); life.field.scare(); }
+    for (let left = Math.min(seconds, 0.25); left > 0.0001; left -= 0.05) {
+      const step = Math.min(left, 0.05);
+      if (life.wild.busy) life.wild.tick(step, { birdBody, liftShadow, near, ok: life.ok, kept: wildKept, blocked: life.blocked, barred: life.barred, indoors: life.indoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y) });
+      if (life.pond.busy) life.pond.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: life.wild, ripple: pondRipple, near, ok: life.ok, blocked: life.blocked, barred: life.barred, indoors: life.indoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
+      if (life.field.busy) life.field.tick(step, { birdBody, liftShadow, near, ok: life.ok, blocked: life.blocked, kept: wildKept, indoors: life.indoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: life.wild, lamps: wildLamps });
+    }
+    if (life.town.busy) life.town.tick(Math.min(seconds, 0.1), { near, view, ok: (kind, x, y) => life.inside(x, y) && !life.ground.closed(x, y) && !life.ground.inWater(x, y) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: life.blocked, barred: (kind, x, y) => !life.inside(x, y) || life.ground.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+    if (life.rats.count) life.rats.tick(seconds, { near, lit: litForRats, blocked: life.ratBlocked, batBlocked: life.batBlocked, view, light: nearestLamp, sound: critterSound });
+    if (life.farm.busy) life.farm.tick(seconds, { near, ok: (kind, x, y) => life.inside(x, y) && !!life.ground.at(x, y) && !keptOut(kind, { x, y }), blocked: life.blocked, seen: wildSeen, sound: wildVoice });
+  }
+};
+Hooks.on("canvasTearDown", () => { for (const life of regionLife.values()) dropRegionLife(life); regionLife.clear(); });
 const rebuildLife = () => {
   lifeTimer = null;
   try {
@@ -3977,6 +4056,7 @@ const rebuildLife = () => {
   } catch { vermin.clear(); drips.clear(); verminKey = null; }
   try { rebuildWildlife(); syncPlacedAnimals(); } catch { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildKey = null; }
   try { rebuildTown(); } catch (e) { console.warn("Animater town life:", e); townLife.clear(); townKey = null; townOpen = null; }
+  try { rebuildRegionAnimals(); } catch (e) { console.warn("Animater region animals:", e); }
   try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
@@ -4658,6 +4738,7 @@ function skyTick() {
   if (wildOpen) tickChorus(seconds);
   tickAftermath(seconds);
   if (townLife.busy) tickTown(seconds);
+  if (regionLife.size) regionTick(seconds);
   if (coast.busy || beachLife.busy || waterfalls.busy || calmWater.length) tickWater(seconds);
   tickPlaces();
   tickWeatherSound();
@@ -8946,6 +9027,8 @@ Hooks.on("renderRegionConfig", (app, html) => {
     caveIn.querySelector("[data-animater-clearrubble]").addEventListener("click", () => { clearRubble(); });
     tab.querySelector("fieldset:last-of-type")?.append(caveIn);
   }
+  // Animals of its own, living inside it (engines/motion/region-animals.mjs).
+  if (!root.querySelector(".animater-region-animals")) tab.insertAdjacentHTML("beforeend", regionAnimalsHtml(own, ID));
   // Region looks: a Tokenshade look on every creature inside.
   if (!root.querySelector(`[name="flags.${ID}.${REGION_LOOK_FLAG}"]`)) {
     const value = own[REGION_LOOK_FLAG] ?? "";
@@ -9609,6 +9692,8 @@ Hooks.once("ready", () => {
       kickHere: (x, y, heading = 0) => { underLife.kick({ x, y }, heading); return underLife.busy; },
       // Smoke let run on for this long at once; how much is in the air.
       doorBursts: () => doorBursts.count,
+      // Each region's own animals: how many of each it has now (region-animals.mjs).
+      regionAnimals: () => [...regionLife].map(([id, life]) => ({ id, wild: life.wild.counts, pond: life.pond.counts, field: life.field.counts, rats: life.rats.count, town: life.town.busy, farm: life.farm.counts })),
       wildlife: { voice: (kind, at) => wildVoice(kind, at ?? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, true), counts: () => wildlife.counts, cast: (x, y, o) => wildCast(x, y, o), closed: (x, y) => !!wildOpen?.closed(x, y), noise: (x, y, radius) => noiseScares({ x, y, radius }), ticks: (n = 300) => { const t0 = performance.now(); for (let i = 0; i < n; i++) wildTick(1 / 60); return (performance.now() - t0) / n; }, pond: () => pondLife.counts, weatherSound: (test) => { if (test !== undefined) weatherTest = test; return Object.fromEntries(Object.entries(weatherVoices).map(([k, v]) => [k, { want: +v.volume.toFixed(3), now: v.sound ? +v.sound.volume.toFixed(3) : null }])); }, thunder: () => { thunderAt = 0; thunderAfterFlash(true); }, nightSound: () => (nightVoice.sound ? { file: nightVoice.sound.src.split("/").at(-1), volume: +nightVoice.sound.volume.toFixed(3) } : null), rivers: () => ({ regions: riverRegions.map((r) => r.speed), gentle: riverVoices.gentle.sound ? +riverVoices.gentle.sound.volume.toFixed(3) : null, swift: riverVoices.swift.sound ? +riverVoices.swift.sound.volume.toFixed(3) : null, file: { gentle: riverFile("gentle", canvas.scene?.id)?.split("/").at(-1), swift: riverFile("swift", canvas.scene?.id)?.split("/").at(-1) } }), canopy: (x, y) => wildCanopy(x, y), field: () => fieldLife.counts, high: () => ({ holes: highKey ? highKey.split(";").length : 0, roofs: highRoofs.length, shown: highRoofs.filter((t) => t.shown > 0.5).length, masked: !!highRoots.sky?.layer?.mask, sprites: highRoots.sky?.layer?.children.length ?? 0 }), night: () => wildNight(), lamps: (fake) => { if (fake) { wildLampsKey = lampLightsKey; wildLampsOut = fake; } return wildLamps().length; }, scare: () => { wildlife.scare(); pondLife.scare(); fieldLife.scare(); }, rebuild: () => { wildKey = null; rebuildWildlife(); syncPlacedAnimals(); return wildlife.counts; }, hunt: () => wildlife.hunt(), fishNow: () => ({ sent: pondLife.fishNow(), fish: wildlife.fishList.map((f) => [Math.round(f.x), Math.round(f.y)]) }), day: () => wildDay(), open: () => wildOpen?.share ?? 0 },
       mistAir: { ahead: (seconds = 10) => { for (let left = seconds; left > 0; left -= 0.5) mistAir?.step(0.5); if (mistAir) cavern.air(mistAir.pixels); return mistAir?.held ?? 0; }, held: () => mistAir?.held ?? 0, at: (x, y) => { if (!mistAir || !airField) return 0; return mistAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
       smokeAir: { ahead: (seconds = 60) => { for (let left = seconds; left > 0; left -= 1) smokeAir?.step(1); if (smokeAir && airField) lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows); return smokeAir?.held ?? 0; }, held: () => smokeAir?.held ?? 0, at: (x, y) => { if (!smokeAir || !airField) return 0; return smokeAir.at(Math.floor((y - airField.y) / airField.cell) * airField.cols + Math.floor((x - airField.x) / airField.cell)); } },
