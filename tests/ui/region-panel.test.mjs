@@ -599,3 +599,18 @@ test('long explanations are tooltips, not paragraphs', async () => {
   assert.ok(t.find((n) => n.attrs['data-tooltip']), 'some tooltips');
   t.done();
 });
+
+test('Over water says in so many words what Dock means: on from Ground builds it out over the water, off from Dock brings it back to Ground', async () => {
+  const t = await setup({ floor: 'wood' }, 'wood');
+  t.openSection('ground');
+  await t.click(t.byLabel('Over water'));
+  assert.equal(t.saves.at(-1).overWater, true);
+  assert.equal(t.saves.at(-1).floor, 'wood', 'its floor kept');
+  t.done();
+  const d = await setup({ floor: 'wood', overWater: true }, 'wood');
+  d.openSection('deck');
+  await d.click(d.byLabel('Over water'));
+  assert.equal(d.saves.at(-1).overWater, false);
+  assert.equal(d.saves.at(-1).floor, 'wood');
+  d.done();
+});

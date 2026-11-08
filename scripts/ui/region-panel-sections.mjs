@@ -11,7 +11,9 @@ import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../eng
 import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
-import { ROOM_DRESSING } from './region-panel-model.mjs';
+import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
+// Whether the ground here is built out over water: the same as choosing Dock (on) or Ground (off) above, said in so many words.
+const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards. The same as choosing Dock above.';
 
 // The small pieces every section is made of.
 export const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -127,6 +129,7 @@ export const SECTIONS = {
   ground(c) {
     const { own, floor, act } = c, textured = c.texture(own);
     const parts = [row('Floor', choice(withFloor(GROUND_FLOORS, own.floor), own.floor || '', 'Floor', (v) => c.toFloor({ floor: v })), 'What creatures walk on here: their footsteps, sounds and prints. From the scene: whatever the scene\'s floor is.')];
+    parts.push(toggle('Over water', false, (on) => { if (on) c.toFloor(kindFlags('deck', own)); }, OVER_WATER_TIP));
     if (stepMenu(own, floor).grassy) parts.push(toggle('Changes with the seasons', c.season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(toggle('Floor texture', textured, (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
     if (textured) parts.push(styleRow(c));
@@ -169,7 +172,8 @@ export const SECTIONS = {
   },
 
   deck(c) {
-    const { own, floor, act } = c, parts = [row('Floor', choice(withFloor(DECK_FLOORS, own.floor || floor), own.floor || floor, 'Floor', (v) => c.toFloor({ floor: v })))];
+    const { own, floor, act } = c, parts = [row('Floor', choice(withFloor(DECK_FLOORS, own.floor || floor), own.floor || floor, 'Floor', (v) => c.toFloor({ floor: v }))),
+      toggle('Over water', true, (on) => { if (!on) c.toFloor(kindFlags('ground', own)); }, OVER_WATER_TIP)];
     if (floorBody(floor).post) {
       parts.push(row('Built as', seg(DOCK_STYLES, dockStyleOf(own), (v) => act({ dockStyle: v }), 'Built as'), 'Plain is the floor and its shadow; old boards and a railed pier show edge boards, planks and beam ends.', true));
       if (dockStyleOf(own)) parts.push(toggle('Posts', showsPosts(own), flip('overPosts', act), 'What holds it up along its long edges, standing in the water.'));
