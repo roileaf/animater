@@ -9,6 +9,7 @@
 - **Reflections in every water nearby.** A creature shows a copy into each water it reaches, below, above or to the side, so on a bridge both sides show it; each grows and fades with its distance and eases in and out instead of jumping from one bank to the other, and keeps up with a token as it glides. Wading in open water shows only the copy below. Regions set to Stands over water (docks, bridges) show no reflection on their decks, and a creature on one is not wading.
 - **Shadows lie the way reflections do.** In sunlight, moonlight, lamplight and window light, a standing creature's shadow lies with its head away from the light and its sides where they are on the map, as its reflection does, instead of keeping the art upright whichever way the light threw it. Fliers keep the art as drawn from above.
 - **Blast reactions fit the creature.** The flames, frost and dark haze of an Energy Blast on a creature are sized by its squares, not by its art scaled up, so a one-square token with big art no longer burns several squares high.
+- **Smoother on Macs.** On Apple GPUs (Metal), batched drawing now gets its own vertex buffers, which lifts the frame rate. Thanks to camrun91 for the fix.
 
 ## 3.7.5
 
