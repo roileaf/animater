@@ -39,7 +39,10 @@ test('bundled sound packaging excludes local catalogs, audit reports and source 
 
 test('water detection ships with the module', () => {
   const files = new Set(releaseFiles());
+  assert.ok(files.has('scripts/engines/regions/floor-trace.mjs'));
+  assert.ok(files.has('scripts/engines/regions/floor-select.mjs'));
   assert.ok(files.has('scripts/engines/regions/water-detect.mjs'));
+  assert.ok(files.has('scripts/engines/regions/floor-region-data.mjs'));
   assert.ok(files.has('scripts/ui/water-detect-ui.mjs'));
 });
 

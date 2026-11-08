@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, editableWaterRegionIds, fitSize, waterSelectionPixels } from "../../../scripts/engines/regions/water-detect.mjs";
+import { WATER_TUNING, mergeWaterProposals, contourLoops, isSimple, fitSize, waterSelectionPixels } from "../../../scripts/engines/regions/floor-trace.mjs";
+import { detectWater } from "../../../scripts/engines/regions/water-detect.mjs";
+import { selectWaterAt } from "../../../scripts/engines/regions/floor-select.mjs";
+import { toRegionData, editableWaterRegionIds } from "../../../scripts/engines/regions/floor-region-data.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));

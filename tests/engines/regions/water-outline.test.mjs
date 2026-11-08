@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { changeVertex, validateOutline, smoothOutline, outlinePoint, hitOutline, unionOutlines, subtractOutlines } from "../../../scripts/engines/regions/water-outline.mjs";
-import { waterProposalFromLoops } from "../../../scripts/engines/regions/water-detect.mjs";
+import { waterProposalFromLoops } from "../../../scripts/engines/regions/floor-trace.mjs";
 const ring = (points, hole = false) => ({ points, hole });
 const box = (x, y, w, h, hole = false) => ring([x,y,x+w,y,x+w,y+h,x,y+h], hole);
 

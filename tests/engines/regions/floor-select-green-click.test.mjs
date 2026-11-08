@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectWaterAt } from "../../../scripts/engines/regions/water-detect.mjs";
+import { selectWaterAt } from "../../../scripts/engines/regions/floor-select.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));

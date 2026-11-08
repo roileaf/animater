@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectWaterAt } from "../../../scripts/engines/regions/water-detect.mjs";
+import { selectWaterAt } from "../../../scripts/engines/regions/floor-select.mjs";
 
 const SIZE = 200;
 const rgb = (hue, sat, value) => {

@@ -927,7 +927,7 @@ test("reopening saved water leaves fresh suggestions unticked and Leave unchange
 });
 
 test("reopening a saved shore does not offer a junk row of combined sliver fragments", async () => {
-  const { WATER_TUNING, waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const { WATER_TUNING, waterProposalFromLoops } = await import("../../scripts/engines/regions/floor-trace.mjs");
   const width = 200, height = 200, count = width * height;
   const min = count * WATER_TUNING.componentMinShare;
   const savedLoops = [{ points: [10, 10, 50, 10, 50, 50, 10, 50], hole: false }];
@@ -1066,7 +1066,7 @@ test("outline gestures commit once, cancel atomically, undo with current choices
 
 test("trimmed pixel ownership feeds Add water and later additions preserve exact fractional shores", async (t) => {
   const map=outlineMap(t),ui=waterApp(map);
-  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/floor-trace.mjs");
   const original = { ...waterProposalFromLoops([{ points: [0,0,8,0,8,8,0,8],hole:false }],20,20),id:"water-1",preselected:false };
   let claimed;
   const { app } = await openWaterDetect(opening({ Application:ui.App,scene:fakeScene(),
@@ -1095,7 +1095,7 @@ test("trimmed pixel ownership feeds Add water and later additions preserve exact
 
 test("invalid drags and triangle deletion keep the proposal and history untouched with feedback", async (t) => {
   const map=outlineMap(t),ui=waterApp(map),notes=[];
-  const { waterProposalFromLoops }=await import("../../scripts/engines/regions/water-detect.mjs");
+  const { waterProposalFromLoops }=await import("../../scripts/engines/regions/floor-trace.mjs");
   const initial={...waterProposalFromLoops([{points:[0,0,12,0,12,12,0,12],hole:false},{points:[3,3,5,3,4,5],hole:true}],20,20),id:"water-1"};
   const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),notify:(message)=>notes.push(message),
     load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[initial]})}));
@@ -1116,7 +1116,7 @@ test("invalid drags and triangle deletion keep the proposal and history untouche
 
 test("Smooth shore is explicit, preserves hole coordinates, and undo restores the original outline", async (t) => {
   const map=outlineMap(t),ui=waterApp(map);
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
+  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/floor-trace.mjs");
   const points=[0,0,20,0,20,20];
   for(let i=19;i>0;i--) points.push(i+1,i,i,i);
   const hole={points:[14,3,16,3,16,5,14,5],hole:true};
@@ -1136,7 +1136,7 @@ test("Smooth shore is explicit, preserves hole coordinates, and undo restores th
 
 async function savedOpen(t, {sw,sh,ring,notes}) {
   const map=outlineMap(t), ui=waterApp(map);
-  const { fitSize } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const { fitSize } = await import("../../scripts/engines/regions/floor-trace.mjs");
   const f=fitSize(sw,sh), rect={x:100,y:200,width:sw,height:sh};
   const region={id:"edited",name:"Ocean",levels:["level-1"],flags:{animater:{generated:"water-detect",waterKind:"sea",floor:"water"}},behaviors:[{name:"keep"}],shapes:[{type:"polygon",hole:false,points:ring(rect)}]};
   const scene=fakeScene([region]);
@@ -1155,7 +1155,7 @@ test("saved ocean reaching the bottom edge can be dragged", async (t)=>{
 });
 test("Delete pressed during a drag is not undone by pointerup", async (t)=>{
   const notes=[],map=outlineMap(t),ui=waterApp(map);
-  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/water-detect.mjs");
+  const {waterProposalFromLoops}=await import("../../scripts/engines/regions/floor-trace.mjs");
   const initial={...waterProposalFromLoops([{points:[0,0,12,0,12,12,0,12,0,6],hole:false}],20,20),id:"water-1",preselected:false};
   const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),notify:(m)=>notes.push(m),load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[initial]})}));
   ui.fire("click",ui.button("edit-outline","water-1"));
@@ -1183,7 +1183,7 @@ test("zero-pixel edit is refused and not written to the saved region", async (t)
 
 test("keyboard Undo mid-drag does not get overwritten", async (t)=>{
   const map=outlineMap(t),ui=waterApp(map);
-  const {waterProposalFromLoops:WP}=await import("../../scripts/engines/regions/water-detect.mjs");
+  const {waterProposalFromLoops:WP}=await import("../../scripts/engines/regions/floor-trace.mjs");
   const a={...WP([{points:[0,0,6,0,6,6,0,6],hole:false}],20,20),id:"water-1",preselected:false};
   const {app}=await openWaterDetect(opening({Application:ui.App,scene:fakeScene(),load:async()=>({ok:true,rgba:null,width:20,height:20}),detect:()=>({proposals:[a]})}));
   ui.fire("click",ui.button("edit-outline","water-1"));
@@ -1197,7 +1197,7 @@ test("keyboard Undo mid-drag does not get overwritten", async (t)=>{
 
 test("second Add water with a diagonal touch", async () => {
   const ui=waterApp(), notes=[];
-  const {mergeWaterProposals:M}=await import("../../scripts/engines/regions/water-detect.mjs");
+  const {mergeWaterProposals:M}=await import("../../scripts/engines/regions/floor-trace.mjs");
   const W=20,H=20,mk=(id,x,y,w,h)=>{const a=[];for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++)a.push(j*W+i);return {id,pixels:new Int32Array(a),preselected:true};};
   const target={...M([mk("water-1",0,0,4,4)],W,H),id:"water-1",preselected:false};
   const adds=[{...M([mk("a",10,0,4,4)],W,H),id:"water-8"},{...M([mk("b",4,4,4,4)],W,H),id:"water-9"}];
@@ -1214,7 +1214,7 @@ test("second Add water with a diagonal touch", async () => {
 });
 
 test("a manual shore edit supersedes the outline cut it replaces during later Add", async () => {
-  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/water-detect.mjs");
+  const { waterProposalFromLoops } = await import("../../scripts/engines/regions/floor-trace.mjs");
   const ui = waterApp();
   const initial = { ...waterProposalFromLoops([{ points: [0, 0, 10, 0, 10, 10, 0, 10], hole: false }], 20, 20), id: "water-1" };
   const { app } = await openWaterDetect(opening({ Application: ui.App, scene: fakeScene(), load: async () => ({ ok: true, rgba: null, width: 20, height: 20 }), detect: () => ({ proposals: [initial] }) }));

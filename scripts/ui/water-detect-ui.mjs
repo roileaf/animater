@@ -1,7 +1,10 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectWaterAt, waterSelectionPixels, mergeWaterProposals, fitSize, toRegionData, editableWaterRegionIds, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/water-detect.mjs";
+import { detectWater } from "../engines/regions/water-detect.mjs";
+import { selectWaterAt } from "../engines/regions/floor-select.mjs";
+import { waterSelectionPixels, mergeWaterProposals, fitSize, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/floor-trace.mjs";
+import { toRegionData, editableWaterRegionIds } from "../engines/regions/floor-region-data.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/water-outline.mjs";
 
