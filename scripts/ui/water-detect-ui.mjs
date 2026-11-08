@@ -5,8 +5,12 @@ import { detectWater } from "../engines/regions/water-detect.mjs";
 import { selectWaterAt } from "../engines/regions/floor-select.mjs";
 import { waterSelectionPixels, mergeWaterProposals, fitSize, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/floor-trace.mjs";
 import { toRegionData, editableWaterRegionIds, WATER_FLAG_KEYS, floorMeta, isDetectFloor, DETECT_FLOORS, FLOOR_META } from "../engines/regions/floor-region-data.mjs";
+import { AI_FLOOR_SPIKE } from "../engines/regions/floor-suggest-ai.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/water-outline.mjs";
+
+// Spike module ships with the release graph. Not wired into Floor select yet — see README.
+export { AI_FLOOR_SPIKE };
 
 export const FLOW_OPTIONS = Object.freeze(flowChoices());
 export const CURRENT_OPTIONS = Object.freeze([

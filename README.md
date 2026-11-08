@@ -285,43 +285,40 @@ The per-user preview setting can minimize the Animater window during local previ
 
 The player who starts an animation only sends optional layers to viewers whose level allows them, so slower computers never load footage they won't show.
 
-## Experimental: detect water regions
+## Experimental: detect floor regions
 
 This is an experiment. It is off until you turn it on.
 
 Open **Animater settings**, go to the **Floor & world** tab, and turn on **Experimental: detect water regions**. Only a GM sees this switch. On a scene, open the **Animater** controls and click **Detect water**.
 
-Animater reads that level's map and opens a window. It shows a preview of the map and a list of proposed pieces. Each blue area it found is one row. Large areas start ticked. Small ones start unticked. Hover a row to see it on the preview.
+Animater reads that level's **background** map only (tiles are left out for now, so floors painted only on tiles are not seen). It opens a window with the map preview and a list of proposed areas. Automatic detection still finds blue and teal **water** only. Use **Floor to add** and click the map to grow stone, wood, dirt, grass, sand, snow, ice, mud, pebbles, glass, metal, lava, water, or **none** (no step sounds or marks). Grey and pale clicks match by Lab colour with a small blur so planks and cobbles fill as one area; saturated colours such as water and lava still match by hue.
 
-**Click the water.** The automatic read finds only strongly coloured blue and teal water. If it found nothing, the window says why and stays open. Click water on the preview, and Animater follows that colour out from your click and adds a ticked row. This is how you get muted underground water, and water of any other colour. A bad click on stone is easy to undo. A clicked piece larger than a quarter of the map shows a warning, and **Remove** takes any row away. Outside Add water mode, a click on a piece already in the list adds nothing, and neither does a click on a spot with no clear colour or a patch too small to be a region. You get a short message instead.
+Each row has a **Floor** select. Water kind, flow, waves, and beach appear only on water rows. Lava regions use Animater's lava cave flags. New regions are tagged `generated: floor-detect`; regions from the earlier water-only tool still open and save.
 
-**Review the map.** Use the zoom buttons or scroll over the preview to zoom in. Drag to pan, and choose **Fit map** to see the whole image again. The area list scrolls separately. Its heading shows the number of areas found and selected. The save button shows how many areas are selected, and a notification confirms the number created and updated.
+**Limits.** Painted battlemaps often share colours across floors, so automatic guessing beyond water stays off. Similar roofs or vegetation can still match a click — review before saving. A video, SVG, or transformed level background cannot be read.
 
-**Extend one area.** Choose **Add water** on the ocean's row, then click missed shallow water on the map. Each click samples that water's colour and adds its shape to the same draft region. The region keeps its kind, flow, wave, and beach settings. To combine an existing piece, click that piece on the map while Add water is active. Each click adds only the area you click. The row checkboxes only choose which areas to save. They do not control Add water, and choosing a target does not tick its checkbox. Disconnected pieces can belong to one region without filling the land between them. **Undo last change** restores the previous shapes. Choose **Done** to return to adding separate areas. These edits remain proposals until you create the regions.
+### Experimental: AI floor suggestions (spike)
 
-**Edit an outline.** Choose **Edit outline** on one row. Drag a handle to pull back an overshoot, including a dock or bank the colour read included. Double-click an edge to insert a vertex. Select a handle, then choose **Delete vertex** or press Delete or Backspace. Every ring needs at least three vertices. Shores and holes cannot cross, touch, or change which shore contains a hole. Invalid changes leave the draft unchanged. Drag empty space or use the middle mouse button to pan. Escape cancels the current drag, then exits editing. **Smooth shore** softens outer shores with at most two read pixels of boundary drift per action and leaves hole coordinates unchanged. **Undo last change** keeps up to 20 outline edits and additions, while preserving current checkbox and water settings for rows still present. Edits do not tick rows. Choose **Done**, then tick the areas you want to save.
+Optional and **off by default**. The Lab/hue matchers never depend on it.
 
-**Click colour range** starts at **Narrow**. Choose **Wide** to follow more shades through connected water. Wide can also join touching grass or banks of similar colour, so inspect its result before creating regions. Both ranges preserve contrasting floating objects as holes.
+**Research comparison (lazy browser fetch, weights not bundled):**
 
-Set **Kind** to still pool, river, rapids, waterfall, or sea. Flowing water supports compass directions or **Follows the wind**. Rivers can be gentle or swift. Rapids and waterfalls use a swift current. For the sea, choose the wave direction and whether to add a beach. These choices use the same water settings as Region configuration. Shared controls set kind, flow, or current for every ticked row.
+| Option | Size | Speed | Licence | Battlemap fit |
+| --- | --- | --- | --- | --- |
+| SegFormer-B0 ADE20K (transformers.js) | ~15 MB q8 | WASM OK; WebGPU faster | NVIDIA Source Code License (research/evaluation). Repo is GPL-3; weights are **not** redistributed — the GM's browser fetches them from Hugging Face on first use | Best class overlap (floor, grass, sand, water, snow…). Still photo-trained, so painted top-down maps are out of domain |
+| CLIP ViT-B/32 zero-shot | ~157 MB | WebGPU preferred | MIT model + Apache-2.0 runtime | Flexible labels for every Animater floor; photo-trained, weak on painted maps |
+| TinyCLIP | ~28 MB | Faster | Check checkpoint | Weaker accuracy |
+| MINC-Materials-23 | ~85 MB INT8 | Moderate | Apache-2.0 | Wood/stone/glass/metal/water only; misses dirt/grass/sand/snow/ice/mud/pebbles/lava |
+| SAM (+ CLIP label) | 90 MB+ | Heavy | Apache-2.0 | Good region proposals, no floor labels alone |
+| Mask2Former zoo weights | Large | Heavy | CC BY-NC 4.0 on zoo weights | Uncertain browser path; NC weights |
+| OneFormer | Large | Heavy | MIT code; verify weights | COCO/ADE photo domain |
 
-**Create water regions** writes the ticked shapes as regions on this level. Their floor is water.
+**Licence check (what matters here).** Animater itself is GPL-3 (see [LICENSE](LICENSE)) and is a free module with no paid tier. We do **not** bundle or redistribute model weights — with the setting on, the GM's browser would fetch them lazily from Hugging Face at runtime. SegFormer's NVIDIA Source Code License allows research/evaluation use of those weights under that fetch model; the licence is named in the setting hint and here. Non-commercial is acceptable for this opt-in spike. Prefer a permissive model if quality is close: CLIP (MIT) is the nearest, but ~10× larger and no better on painted battlemaps, so SegFormer remains the spike choice. Mask2Former's zoo weights (CC BY-NC) are heavier with a weaker browser path.
 
-**Edit saved water.** Reopening the generator loads regions it previously created on this level, with their saved outlines, names, and water settings. They start unticked. Choose **Add water** to extend one, **Edit outline** to change its shore, or change its settings, then tick that row and save. The generator updates that same region ID. It preserves the region's name, color, behaviors, steps, and settings outside these controls. An unchanged or unticked saved region receives no update. New areas are created alongside existing regions. Nothing is deleted, including regions created since the window opened. Shared, all-level, and hand-drawn regions stay outside the editor. A saved area cannot be absorbed into another saved area; edit it separately. If you move to another scene while the window is open, it still saves to the scene it opened on.
+**Tradeoff.** SegFormer is the smallest segmentation option with usable ADE floor-like classes, but it is photo-trained (out of domain for painted top-down maps). Neither SegFormer nor CLIP is trusted enough to drive the Floor select yet — Lab/hue matching stays the real path.
 
-**Limits.**
+The spike lives in `scripts/engines/regions/floor-suggest-ai.mjs`. Enable **Experimental: AI floor suggestions** only when deliberately testing. A future wiring can show a suggested floor and confidence in the row; the GM always confirms.
 
-- Image resizing can hide a narrow dock or channel. Use **Edit outline** to pull the shore back around it.
-- A saturated roof larger than the water can fool the automatic read. Untick it, then click the real water.
-- A lone pool under about a quarter of a percent of the map can be too small for the automatic read. So can a thin river, even a long one, because the read needs a block of solid colour. Click it.
-- A map with more saturated colours can lift roofs into the automatic selection. Untick them. The window shows every piece before anything is made.
-- Pieces never share a map pixel, but their simplified shores can overlap by up to 2 pixels of the 1024-pixel read where two pieces meet.
-- Click selection follows connected similar colours. A sharply different rim or disconnected pool needs another click or manual drawing.
-- A video or SVG background cannot be read. Use a PNG, WebP or JPEG map.
-- A level whose background is moved, scaled or rotated in its configuration cannot be read, because the shapes would land in the wrong place. The tool says so and opens nothing. Reset the position first.
-- Detailed shores can go over the tool's target of 400 corners a piece, because it keeps the shape accurate rather than rounding it off.
-
-If it marks a roof, or misses water you can see, report the map on the [issue tracker](https://github.com/roileaf/animater/issues).
 
 ## Integrations
 

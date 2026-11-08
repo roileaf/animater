@@ -7624,12 +7624,20 @@ Hooks.once("init", () => {
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   registerSetting("experimentalWaterRegions", {
     name: "Experimental: detect water regions",
-    hint: "Adds a button in the Animater controls that proposes water regions from the level background. Off by default. It runs only when you click that button.",
+    hint: "Adds a button in the Animater controls that proposes floor regions from the level background (automatic water, click any floor). Off by default. It runs only when you click that button.",
     scope: "world",
     config: true,
     type: Boolean,
     default: false,
     onChange: () => { ui.controls?.render({ reset: true }); },
+  });
+  registerSetting("experimentalAiFloorSuggestions", {
+    name: "Experimental: AI floor suggestions",
+    hint: "Spike only: optionally download a ~15 MB SegFormer model (NVIDIA research licence) from Hugging Face to suggest a floor type for a clicked patch. Off by default. Lab/hue matching works without it. Never bundles model weights.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
   });
   // On for GMs, off for players: game.user does not exist yet at init, the world's user data does.
   registerSetting('hoverExplain',{name:'Explain animations on hover',
