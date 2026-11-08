@@ -594,7 +594,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
         } else { h.t += dt; if (h.t > 25) h.mode = 'soar'; }
         // Lower is bigger, its shadow closing in beneath it until they meet.
         if (h.mode === 'away') hide(h.view);
-        else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 6, bird: true }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4) * birdBody, alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.3, c.alpha * (0.2 + (1 - height) * 0.3)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); liftShadow(h.view.shadow, 6 * height); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
+        else if (can(h, x, y)) { const c = fall(h, x, y, { width: grid * 0.9, lift: 6, bird: true }); h.open = overOpen(h.open, indoors(x, y), dt); put(h.view, t.hawk[frame], x, y, angle, base * (1 + (1 - height) * 0.4) * birdBody, alpha * h.open, x + c.dx * height, y + c.dy * height, Math.min(0.34, c.alpha * (0.6 + (1 - height) * 0.35)), 0.72 * k * birdSize * (0.85 + 0.15 * height)); liftShadow(h.view.shadow, 6 * height); h.shade = overOpen(h.shade, indoors(x + c.dx * height, y + c.dy * height), dt); h.view.shadow.alpha *= h.shade; } else hide(h.view);
       }
       if (perchers.length) {
         // Single birds going between the trees and the roofs (perch-hops.mjs): seen on a roof and in the air, hidden in the leaves.
@@ -643,7 +643,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
         crows = crows.filter((c) => {
           c.x += c.vx * dt; c.y += c.vy * dt;
           if (Math.hypot(c.x - cx, c.y - cy) > far && (c.x - cx) * c.vx + (c.y - cy) * c.vy > 0) { dropPair(c); return false; }
-          if (can(c, c.x, c.y)) { const f = fall(c, c.x, c.y, { width: grid * 0.6, lift: 4, bird: true }); c.open = overOpen(c.open, indoors(c.x, c.y), dt); put(c.view, t.crow[Math.floor(time * 9 + c.phase) % SPANS.length], c.x, c.y, c.a, 0.42 * k * birdSize * c.size * birdBody, alpha * c.open, c.x + f.dx, c.y + f.dy, Math.min(0.2, f.alpha * 0.24), 0.46 * k * birdSize * c.size); liftShadow(c.view.shadow, 4); c.shade = overOpen(c.shade, indoors(c.x + f.dx, c.y + f.dy), dt); c.view.shadow.alpha *= c.shade; } else hide(c.view);
+          if (can(c, c.x, c.y)) { const f = fall(c, c.x, c.y, { width: grid * 0.6, lift: 4, bird: true }); c.open = overOpen(c.open, indoors(c.x, c.y), dt); put(c.view, t.crow[Math.floor(time * 9 + c.phase) % SPANS.length], c.x, c.y, c.a, 0.42 * k * birdSize * c.size * birdBody, alpha * c.open, c.x + f.dx, c.y + f.dy, Math.min(0.26, f.alpha * 0.6), 0.46 * k * birdSize * c.size); liftShadow(c.view.shadow, 4); c.shade = overOpen(c.shade, indoors(c.x + f.dx, c.y + f.dy), dt); c.view.shadow.alpha *= c.shade; } else hide(c.view);
           return true;
         });
         if (!crows.length) nextCrows = 9 + Math.random() * 12;

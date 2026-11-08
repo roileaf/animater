@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Season colours can be turned off for a scene.** Scene configuration → Animater → Season colours on the ground: Off keeps a map as painted. With a scene's floor on Grass, the season's colour covered the whole map, its painted paths and trees too.
+
+- **The hawk's shadow shows again, and high birds' shadows are easier to see.** A hawk circling high cast a shadow at about one hundredth of full strength, and the painted birds' soft shadows copied only a corner of the picture. High birds (the hawk, crows, gulls, herons) now cast a soft shadow as dark as the light makes it, landing further off the higher they fly.
+
 ## 3.8.4
 
 - **Kill-cam length, with a Preview.** The slow-motion kill-cam now lasts 2.5 seconds by default (it was 1.2) and the GM sets it from 1 to 5 seconds (Animater settings → Motion → Kill-cam length). A longer one also plays the effects slower. The Preview button plays it on your screen, on your selected token or the middle of your view.

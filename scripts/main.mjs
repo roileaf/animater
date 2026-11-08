@@ -3927,6 +3927,7 @@ const wildIndoors = (x, y) => !!wildOpen?.walled(x, y) && !roofOver(x, y);
 const wildBarred = (kind, x, y) => !!wildOpen?.closed(x, y) || keptOut(kind, { x, y });
 // A creature's shadows out of doors, by the engine every creature's are (movement-feel.mjs shadowFalls): sun or moon as high as it
 // stands and as strong as the sky lets it, each light in reach, the darkness there, none out of the sun in a wall's shade or indoors.
+const BIRD_SHADOW_LIFT = 0.8;
 const wildCast = (x, y, { width = 40, lift: flying = 0, body = 0, grounded = false, bird = false } = {}) => {
   try {
     // How high this map's birds fly (the Animals panel): the higher, the further off their shadows land.
@@ -3938,6 +3939,9 @@ const wildCast = (x, y, { width = 40, lift: flying = 0, body = 0, grounded = fal
     const lights = reaching.map((l) => { const one = lightAround(point, [l], 1); return one && { ...one, key: l.key }; }).filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, 2);
     const shade = wallQuads.length ? shadeAcross(point, width, wallQuads, { elevation: lift }) : 0, sun = shadowsOffHere() ? null : sunNow && shade > 0 ? { ...sunNow, strength: (Number(sunNow.strength) || 0) * (1 - shade) } : sunNow;
     const fall = shadowFall({ width, lift, body, grounded, lights, darkness, sun, grid });
+    // A bird high up: where its shadow lands goes by its height, how dark by the light alone (BIRD_SHADOW_LIFT up), else a
+    // hawk six squares up threw one at a twentieth of a rabbit's, too faint to see. Its softness shows the height.
+    if (bird && lift > BIRD_SHADOW_LIFT) { const low = shadowFall({ width, lift: BIRD_SHADOW_LIFT, body, lights, darkness, sun, grid }); return { ...fall, alpha: low.alpha }; }
     return grounded ? standingCopyFall(fall) : fall;
   } catch { return null; }
 };
@@ -4532,7 +4536,7 @@ const leavesOn = () => outdoorOn("fallingLeaves"), mistOn = () => outdoorOn("mor
 const wetOn = () => weatherReaches("wetGround"), snowCoverOn = () => weatherReaches("snowCover"), firefliesOn = () => outdoorOn("fireflies") && outdoorLifeHere();
 const rainRingsOn = () => weatherReaches("rainRings");
 const weatherLightOn = () => outdoorOn("weatherLight") && !weatherOffHere(), weatherMapOn = () => weatherReaches("weatherOnMap"), weatherCloudsOn = () => outdoorOn("weatherClouds") && !weatherOffHere();
-const frozenWaterOn = () => outdoorOn("frozenWater") && !weatherOffHere(), seasonGroundOn = () => outdoorOn("seasonGround"), rainbowOn = () => outdoorOn("rainbows");
+const frozenWaterOn = () => outdoorOn("frozenWater") && !weatherOffHere(), seasonGroundOn = () => outdoorOn("seasonGround") && canvas?.scene?.flags?.[ID]?.seasonGround !== "off", rainbowOn = () => outdoorOn("rainbows");
 const surfaceLifeOn = () => cloudsOn() || glintsOn() || mistOn() || wetOn() || snowCoverOn() || firefliesOn() || rainRingsOn() || frozenWaterOn() || seasonGroundOn() || rainbowOn() || weatherLightOn() || weatherMapOn() || (hotSetting("moonLight") !== false && !undergroundScene());
 // The season: Calendaria's, else Simple Calendar Reborn's, else unknown.
 const seasonNow = () => {
@@ -8795,6 +8799,11 @@ Hooks.on("renderSceneConfig", (app, html) => {
   mirror.className = "form-group";
   mirror.innerHTML = `<label>Reflections on still water</label><div class="form-fields"><select name="flags.${ID}.reflections">${[["", "On"], ["off", "Off (no reflections on this map)"]].map(([v, l]) => `<option value="${v}"${v === mirrorNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Creatures, tiles, fires and the moon mirrored in this map's still water and dripping pools. For a map that paints its own water.</p>`;
   life.append(mirror);
+  // The season's colour on the ground: a map painted all over (its dirt and trees under a Grass floor) can keep its own.
+  const seasons = document.createElement("div"), seasonsNow = String(app.document?.getFlag?.(ID, "seasonGround") ?? "");
+  seasons.className = "form-group";
+  seasons.innerHTML = `<label>Season colours on the ground</label><div class="form-fields"><select name="flags.${ID}.seasonGround">${[["", "On"], ["off", "Off (the map keeps its own colours)"]].map(([v, l]) => `<option value="${v}"${v === seasonsNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">The season's colour over this map's grass, and fallen leaves in autumn ("The ground through the seasons"). With the scene's floor on Grass it covers the whole map, its painted paths and trees too: Off keeps the map as painted.</p>`;
+  life.append(seasons);
   const painted = document.createElement("div"), paintedNow = String(app.document?.getFlag?.(ID, "floorTextures") ?? "");
   painted.className = "form-group";
   painted.innerHTML = `<label>Region floor textures</label><div class="form-fields"><select name="flags.${ID}.floorTextures">${[["", "Off (the map is already painted)"], ["on", "On (regions paint their floors)"]].map(([v, l]) => `<option value="${v}"${v === paintedNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Whether regions with a floor paint it over the map: grass, stone, water and the rest ("Region steps"). For a bare or blank map. A region can choose for itself from its right-click menu or its steps.</p>`;
@@ -8802,7 +8811,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Outdoor life: only where the GM asks for it.
   const outdoors = document.createElement("div"), outdoorsNow = app.document?.getFlag?.(ID, "outdoorLife") === "on" ? "on" : "";
   outdoors.className = "form-group";
-  outdoors.innerHTML = `<label>Outdoor life</label><div class="form-fields"><select name="flags.${ID}.outdoorLife">${[["", "Off"], ["on", "On"]].map(([v, l]) => `<option value="${v}"${v === outdoorsNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Birds, rabbits, deer, foxes, fish, ducks, frogs and insects, with their calls, the crickets at night and the dawn chorus ("Animals in the wild"). Off on every scene until you choose. How many of each are set in the rows above.</p>`;
+  outdoors.innerHTML = `<label>Outdoor life</label><div class="form-fields"><select name="flags.${ID}.outdoorLife">${[["", "Off"], ["on", "On"]].map(([v, l]) => `<option value="${v}"${v === outdoorsNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Birds, rabbits, deer, foxes, fish, ducks, frogs and insects, with their calls, the crickets at night and the dawn chorus ("Birds, rabbits and fish"). Off on every scene until you choose. How many of each are set in the rows above.</p>`;
   life.append(outdoors);
   // Town life: only where the GM asks for it.
   const town = document.createElement("div"), townNow = String(app.document?.getFlag?.(ID, "townLife") ?? "");

@@ -441,7 +441,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
           const c = fall(b, b.x, b.y, { width: grid * 0.28, body: 0.75, grounded: true }); shadowOf(b, tex, b.x + c.dx, b.y + c.dy, b.a, size, Math.min(0.45, c.alpha * 0.5) * alpha); put(b.body, tex, b.x, b.y, b.a, size, alpha);
         } else {
           const c = fall(b, b.x, b.y, { width: grid * 0.7, lift: 3.5, bird: true }), tex = t.heronFly[Math.floor(time * 5.5 + b.phase) % SPANS.length], size = 0.68 * k * birdSize;
-          const fade = b.leaving ? Math.max(0, Math.min(1, (7 - b.t) / 2)) : 1; b.ripple.visible = false; shadowOf(b, tex, b.x + c.dx * b.h, b.y + c.dy * b.h, b.a, size, Math.min(0.32, c.alpha * 0.38) * alpha * fade); liftShadow(b.shadow, 3.5); put(b.body, tex, b.x, b.y, b.a, size * birdBody, alpha * fade);
+          const fade = b.leaving ? Math.max(0, Math.min(1, (7 - b.t) / 2)) : 1; b.ripple.visible = false; shadowOf(b, tex, b.x + c.dx * b.h, b.y + c.dy * b.h, b.a, size, Math.min(0.3, c.alpha * 0.65) * alpha * fade); liftShadow(b.shadow, 3.5); put(b.body, tex, b.x, b.y, b.a, size * birdBody, alpha * fade);
         }
         return b;
       });
@@ -462,7 +462,7 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         const frame = g.mode === 'dive' ? 0 : g.mode === 'rise' ? Math.floor(time * 12) % SPANS.length : (Math.floor(time * 1.6 + g.phase) % 5 === 0 ? Math.floor(time * 9) % SPANS.length : 0);
         const tex = t.gull[frame], c = fall(g, x, y, { width: grid * 0.6, lift: 4 * Math.max(0.04, g.h), bird: true }), near = 0.72 + 0.28 * g.h;
         g.open = overOpen(g.open, indoors(x, y), dt); g.shade = overOpen(g.shade, indoors(x + c.dx, y + c.dy), dt);
-        put(g.shadow, tex, x + c.dx, y + c.dy, angle, 0.5 * k * birdSize * near, Math.min(0.28, c.alpha * 0.3) * alpha * g.shade); liftShadow(g.shadow, 4 * Math.max(0.04, g.h)); put(g.body, tex, x, y, angle, 0.46 * k * birdSize * near * birdBody, alpha * g.open);
+        put(g.shadow, tex, x + c.dx, y + c.dy, angle, 0.5 * k * birdSize * near, Math.min(0.26, c.alpha * 0.6) * alpha * g.shade); liftShadow(g.shadow, 4 * Math.max(0.04, g.h)); put(g.body, tex, x, y, angle, 0.46 * k * birdSize * near * birdBody, alpha * g.open);
         if (g.carry) put(g.carry, g.carry.texture, x + Math.sin(angle) * grid * 0.14, y - Math.cos(angle) * grid * 0.14, angle + Math.PI / 2, 0.42 * k * g.carrySize, alpha * g.open);
         return g;
       });

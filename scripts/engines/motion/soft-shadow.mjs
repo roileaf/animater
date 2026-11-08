@@ -19,7 +19,9 @@ export function createSoftShadows({ PIXI, document = globalThis.document }) {
     // (Not every browser blurs a canvas: then it stays crisp.)
     if (!g || typeof g.filter !== 'string') return null;
     g.filter = `blur(${Math.max(1, frame.width * BLUR[level]).toFixed(2)}px)`;
-    g.drawImage(source, frame.x, frame.y, frame.width, frame.height, frame.width * INSET, frame.height * INSET, frame.width * (1 - 2 * INSET), frame.height * (1 - 2 * INSET));
+    // The frame is in the texture's units; a sharp picture (the painted animals, resolution above 1) has that many more pixels.
+    const r = Number(texture.baseTexture?.resolution) > 0 ? texture.baseTexture.resolution : 1;
+    g.drawImage(source, frame.x * r, frame.y * r, frame.width * r, frame.height * r, frame.width * INSET, frame.height * INSET, frame.width * (1 - 2 * INSET), frame.height * (1 - 2 * INSET));
     return new PIXI.Texture(new PIXI.BaseTexture(canvas));
   };
   return {
