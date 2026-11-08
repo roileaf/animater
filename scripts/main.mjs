@@ -226,7 +226,7 @@ import { createRegionPanel } from "./ui/region-panel.mjs";
 import { shownFloorOf } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight } from "./engines/motion/animal-art.mjs";
-import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, hawkCountOf } from "./engines/motion/region-animals.mjs";
+import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, hawkCountOf, exactCountOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { mediaForReference } from "./engines/media/media-library-model.mjs";
 import { artworkSize } from "./engines/media/media-preview.mjs";
@@ -3182,6 +3182,9 @@ const openAnimalsPanel = () => {
     aim: startAnimalAim,
     stopAim: stopAnimalAim,
     reshuffle: () => { wildKey = null; lifeSoon(); },
+    // How many of each kind the scene has now, for the rows left on Auto.
+    live: () => { try { const w = wildlife.counts, p = pondLife.counts, f = fieldLife.counts ?? {}, t = townLife.counts ?? {}, fm = sceneFarm.counts ?? {};
+      return { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: w.hawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: vermin.count }; } catch { return {}; } },
     underground: () => undergroundScene(),
     // Any water on the map: its own floor, or a region's (named or set).
     water: () => { try { return sceneFloorNow() === "water" || regionsHere().some((doc) => regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water"); } catch { return true; } },
@@ -3660,7 +3663,12 @@ const sceneCreatures = () => { const f = animalFlagsNow(), out = {}; for (const 
   // chosen, as many as chosen.
   out.chosen = { crows: !!f.crows, herons: !!f.herons, gulls: !!f.gulls };
   // Hawks counted: one unless set (the Animals panel shows it so), up to four.
-  out.hawks = hawkCountOf(f.hawks); out.hawksSize = creatureSize(f.hawksSize, f.animalScale); return out; };
+  out.hawks = hawkCountOf(f.hawks); out.hawksSize = creatureSize(f.hawksSize, f.animalScale);
+  // A number set in the Animals panel is exactly that many; left on Auto (or an old amount word), worked out from the map.
+  out.exact = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "wolves", "crows", "herons", "gulls"]) { const n = exactCountOf(f[kind]); if (n !== null) { out.exact[kind] = n; if (n > 0 && !(out[kind] > 0)) out[kind] = 1; } }
+  return out; };
+// The number of a kind: exactly as set, else as worked out.
+const exactOr = (many, kind, worked) => many.exact?.[kind] ?? worked;
 let lifeTimer = null;
 const lifeSoon = () => { if (!lifeTimer) lifeTimer = setTimeout(rebuildLife, 600); };
 // The open ground by day (engines/motion/wildlife.mjs): where a rabbit or a songbird can be, looked at once from the floors,
@@ -3724,14 +3732,14 @@ const populatePond = (ground, grid, many) => {
   const noBirds = (p) => keptOut("ducks", p) && keptOut("herons", p), birds = fresh.filter((p) => !noBirds(p)), gullWaters = seaSpots.filter((p) => !keptOut("gulls", p)), cell = ground.cell, waters = fresh;
   const shoreOf = (list) => list.filter((p) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([i, j]) => ground.at(p.x + i * cell, p.y + j * cell)));
   const shore = shoreOf(birds), banks = shoreOf(waters).filter((p) => !keptOut("frogs", p)).sort(() => Math.random() - 0.5), pads = [];
-  const wanted = waters.length >= 3 ? Math.round(Math.min(9, Math.max(3, waters.length / 6)) * many.frogs) : 0;
+  const wanted = waters.length ? exactOr(many, "frogs", waters.length >= 3 ? Math.round(Math.min(9, Math.max(3, waters.length / 6)) * many.frogs) : 0) : 0;
   for (const p of banks) {
     if (pads.length >= wanted) break;
     const x = p.x + (Math.random() - 0.5) * 0.6 * cell, y = p.y + (Math.random() - 0.5) * 0.6 * cell;
     if (ground.inWater(x, y) && pads.every((q) => Math.hypot(q.x - x, q.y - y) > grid * 0.8)) pads.push({ x, y });
   }
   const flocks = many.waterBirds > 0 ? birds.length : 0;
-  pondLife.populate({ kept: wildKept, waters: birds.length ? birds : seaSpots.filter((p) => !noBirds(p)), shore, pads, ducks: flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0, herons: many.chosen?.herons ? (birds.length && many.herons > 0 ? Math.max(1, Math.round(many.herons)) : 0) : flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0, gulls: many.chosen?.gulls ? (gullWaters.length ? Math.round(3 * many.gulls) : 0) : gullsOver(gullWaters, many.waterBirds), gullWaters, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
+  pondLife.populate({ kept: wildKept, waters: birds.length ? birds : seaSpots.filter((p) => !noBirds(p)), shore, pads, ducks: exactOr(many, "waterBirds", flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0), herons: exactOr(many, "herons", many.chosen?.herons ? (birds.length && many.herons > 0 ? Math.max(1, Math.round(many.herons)) : 0) : flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0), gulls: gullWaters.length ? exactOr(many, "gulls", many.chosen?.gulls ? Math.round(3 * many.gulls) : gullsOver(gullWaters, many.waterBirds)) : 0, gullWaters, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
 };
 // What they were placed from. Life is looked over on any scene, setting or light change, most of them nothing to do with it
 // (a scene's wet ground saved, another module's setting): only a change here sends the ones out there away and brings new ones.
@@ -3741,7 +3749,7 @@ const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
   for (const r of regionsHere()) { const flag = floorFlagOf(r), overWater = r.flags?.[ID]?.overWater === true; if (overWater || regionFloor({ name: r.name, flag })) floors.push([r.id, overWater, flag ?? "", unfitForLife(r.flags?.[ID]), noLifeOnWater(r.flags?.[ID]), waterKindOf(r.flags?.[ID]) === "sea" || !!r.flags?.[ID]?.sea, r.flags?.[ID]?.seaBeach === "off", regionAreas(r)]); }
-  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "wolves", "squirrels", "snakes", "crows", "hawks", "herons", "gulls"), many.chosen]), regions: JSON.stringify([["rabbits", "songbirds", "crows", "hawk", "owl", "fish", "frogs", "ducks", "herons", "gulls", "deer", "foxes", "wolves", "squirrels", "snakes", "butterflies", "dragonflies", "fireflies"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
+  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "wolves", "squirrels", "snakes", "crows", "hawks", "herons", "gulls"), many.chosen, many.exact]), regions: JSON.stringify([["rabbits", "songbirds", "crows", "hawk", "owl", "fish", "frogs", "ducks", "herons", "gulls", "deer", "foxes", "wolves", "squirrels", "snakes", "butterflies", "dragonflies", "fireflies"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
 // or water the map has by a good part.
@@ -3769,7 +3777,7 @@ Hooks.on("canvasTearDown", () => { birdPerchList = []; birdPerchAt = -Infinity; 
 for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, () => { clearTimeout(wildTreesTimer); wildTreesTimer = setTimeout(() => { try { if (canvas?.ready) fieldLife.setTrees(wildTrees()); } catch { /* the next look sees it */ } }, 500); });
 const populateField = (ground, grid, area, many) => {
   const open = ground.spots, deerSpots = open.filter((p) => !keptOut("deer", p)), foxSpots = open.filter((p) => !keptOut("foxes", p)), homes = fieldHomes(open), bugs = homes.butterflies, bugWater = ground.waters.filter((p) => !keptOut("dragonflies", p)), glowWater = ground.waters.filter((p) => !keptOut("fireflies", p)), roomy = ground.share > 0.4;
-  fieldLife.populate({ spots: foxSpots.length ? foxSpots : open, homes, waters: bugWater, glowWaters: glowWater, trees: wildTrees(), squirrels: wildNumbers(ground, many).squirrels, squirrelSize: many.squirrelsSize, snakes: wildNumbers(ground, many).snakes, snakeSize: many.snakesSize, wolves: wildNumbers(ground, many).wolves, wolfSize: many.wolvesSize, blocked: wallBlocks, deer: wildNumbers(ground, many).deer, foxes: wildNumbers(ground, many).foxes, butterflies: bugs.length ? Math.round(Math.min(8, Math.max(3, bugs.length / 8)) * many.insects) : 0, dragonflies: bugWater.length >= 4 ? Math.round(Math.min(6, Math.max(2, bugWater.length / 5)) * many.insects) : 0, fireflies: homes.fireflies.length + glowWater.length ? Math.round(Math.min(30, (homes.fireflies.length + glowWater.length) / 2) * many.insects) : 0, owl: many.owls > 0 && ground.share >= 0.2, grid, area, deerSize: many.deerSize, foxSize: many.foxesSize, insectSize: many.insectsSize, birdSize: many.owlsSize, batSize: many.batsSize });
+  fieldLife.populate({ spots: foxSpots.length ? foxSpots : open, homes, waters: bugWater, glowWaters: glowWater, trees: wildTrees(), squirrels: exactOr(many, "squirrels", wildNumbers(ground, many).squirrels), squirrelSize: many.squirrelsSize, snakes: exactOr(many, "snakes", wildNumbers(ground, many).snakes), snakeSize: many.snakesSize, wolves: exactOr(many, "wolves", wildNumbers(ground, many).wolves), wolfSize: many.wolvesSize, blocked: wallBlocks, deer: exactOr(many, "deer", wildNumbers(ground, many).deer), foxes: exactOr(many, "foxes", wildNumbers(ground, many).foxes), butterflies: bugs.length ? exactOr(many, "insects", Math.round(Math.min(8, Math.max(3, bugs.length / 8)) * many.insects)) : 0, dragonflies: bugWater.length >= 4 ? Math.round(Math.min(6, Math.max(2, bugWater.length / 5)) * many.insects) : 0, fireflies: homes.fireflies.length + glowWater.length ? Math.round(Math.min(30, (homes.fireflies.length + glowWater.length) / 2) * many.insects) : 0, owl: exactOr(many, "owls", many.owls > 0 && ground.share >= 0.2 ? 1 : 0) > 0, grid, area, deerSize: many.deerSize, foxSize: many.foxesSize, insectSize: many.insectsSize, birdSize: many.owlsSize, batSize: many.batsSize });
 };
 const rebuildWildlife = () => {
   if (!canvas?.ready) { wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; wildKey = null; placedShown.clear(); return; }
@@ -3812,11 +3820,11 @@ const rebuildWildlife = () => {
   wildOpen = ground;
   populatePond(ground, grid, many);
   populateField(ground, grid, area, many);
-  const fish = ground.waters.filter((p) => !keptOut("fish", p)), fishOf = { waters: fish, fish: fish.length >= 2 ? Math.round(Math.min(14, Math.max(3, fish.length / 4)) * many.fish) : 0, fishSize: many.fishSize };
+  const fish = ground.waters.filter((p) => !keptOut("fish", p)), fishOf = { waters: fish, fish: fish.length ? exactOr(many, "fish", fish.length >= 2 ? Math.round(Math.min(14, Math.max(3, fish.length / 4)) * many.fish) : 0) : 0, fishSize: many.fishSize };
   // An indoor or stone map is no place for the rest (fish keep to whatever water there is); a hawk wants open sky too.
   if (ground.share < 0.2) { wildlife.populate({ ...fishOf, grid, area }); return; }
   const spots = ground.spots.filter((p) => !keptOut("rabbits", p)), songSpots = ground.spots.filter((p) => !keptOut("songbirds", p)), squares = spots.length;
-  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: wildNumbers(ground, many).rabbits, blocked: wallBlocks, songbirds: songSpots.length ? wildNumbers(ground, many).songbirds : 0, hawk: many.hawks, crows: many.chosen?.crows ? Math.round(3 * many.crows) : wildNumbers(ground, many).crows, perches: birdPerches(true), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
+  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: exactOr(many, "rabbits", wildNumbers(ground, many).rabbits), blocked: wallBlocks, songbirds: songSpots.length ? exactOr(many, "wildBirds", wildNumbers(ground, many).songbirds) : 0, hawk: many.hawks, crows: exactOr(many, "crows", many.chosen?.crows ? Math.round(3 * many.crows) : wildNumbers(ground, many).crows), perches: birdPerches(true), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
 };
 // How much they are out now: by day under an open sky, none at night or in a storm, nor in a scene made dark, whatever its sun.
 const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
@@ -4189,7 +4197,7 @@ const rebuildLife = () => {
     if (changed) { verminKey = key; vermin.clear(); critterCalls.settle(); }
     if (changed && wanted) {
       const spots = ratSpots().filter((p) => !keptOut("rats", p) && !keptOut("bats", p));
-      vermin.populate({ spots, count: Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats), lit: litForRats, grid, bats: Math.round(3 * many.bats), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
+      vermin.populate({ spots, count: exactOr(many, "rats", Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats)), lit: litForRats, grid, bats: exactOr(many, "bats", Math.round(3 * many.bats)), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
     }
     if (dripsOn()) {
       const areas = [];

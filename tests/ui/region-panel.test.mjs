@@ -165,17 +165,17 @@ test('the panel says which region it shows, to outline it, and nothing once clos
   t.done();
 });
 
-test('an animal card steps its amount up on a click and down on a right-click', async () => {
+test('an animal card counts one more on a click and one fewer on a right-click, its number on it', async () => {
   const t = await setup({ floor: 'grass' }, 'grass');
   t.openSection('animals');
   await t.click(t.find((n) => n.attrs['aria-label']?.startsWith('Cows')));
-  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: 'few' } });
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '1' } });
   const card = t.find((n) => n.attrs['aria-label']?.startsWith('Cows'));
-  assert.match(card.attrs['aria-label'], /Few/);
-  assert.equal(card.children.at(-1).children.filter((d) => d.className.includes('an-rp-on')).length, 1, 'one dot of four lit');
+  assert.match(card.attrs['aria-label'], /: 1$/);
+  assert.equal(card.children.at(-1).text ?? card.children.at(-1).textContent, '1', 'its number shows');
   const e = fire(card, 'contextmenu'); await tick();
   assert.equal(e.defaultPrevented, true, 'no browser menu');
-  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '' } });
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '0' } });
   t.done();
 });
 
@@ -183,9 +183,7 @@ test('a right-click keeps the other animals as they are', async () => {
   const t = await setup({ floor: 'grass', regionAnimals: { cows: 'few', sheep: 'usual' } }, 'grass');
   assert.equal(t.section('animals').attrs['data-open'], 'true', 'a field with animals opens on them');
   fire(t.find((n) => n.attrs['aria-label']?.startsWith('Cows')), 'contextmenu'); await tick();
-  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '', sheep: 'usual' } });
-  fire(t.find((n) => n.attrs['aria-label']?.startsWith('Cows')), 'contextmenu'); await tick();
-  assert.equal(t.saves.length, 1, 'none is the least: nothing more to save');
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '1', sheep: 'usual' } }, 'a few cows were 2: one fewer is 1, the sheep untouched');
   t.done();
 });
 
@@ -534,7 +532,7 @@ test('animal cards wait for the save before taking another click', async () => {
   assert.equal(t.saves.length, 1, 'the second click came while the first was saving');
   t.held.shift()(); await tick();
   fire(cows(), 'click'); await tick();
-  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: 'usual' } });
+  assert.deepEqual(t.saves.at(-1), { regionAnimals: { cows: '2' } });
   t.held.shift()(); await tick();
   t.done();
 });

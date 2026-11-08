@@ -17,7 +17,7 @@ test('crows, a hawk, herons and gulls can be chosen on their own; the town and f
   const out = animalPreset('many');
   for (const k of ['crows', 'herons', 'gulls']) assert.equal(out[k], 'many', k);
   assert.equal('hawks' in out, false, 'hawks are counted, not given an amount');
-  assert.match(animalsPanelHtml({ flags: {}, water: true }), /data-key="hawks" data-value="1"[^>]*class="[^"]*is-active|class="[^"]*is-active[^"]*"[^>]*data-key="hawks" data-value="1"/, 'one hawk shown when nothing is set');
+  assert.match(animalsPanelHtml({ flags: {}, water: true }), /data-key="hawks" data-value="0"[\s\S]*?<output class="">1<\/output>/, 'one hawk shown when nothing is set');
   for (const k of ['pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses']) assert.equal(k in out, false, `${k} only when asked for`);
   const html = animalsPanelHtml({ flags: {}, water: true });
   for (const label of ['Hawks', 'Crows', 'Herons', 'Gulls', 'Ducks', 'Pigeons', 'Cows']) assert.ok(html.includes(`>${label}<`), label);
@@ -139,8 +139,8 @@ test('only what can live on this scene is offered', () => {
 
 test('the panel shows the scene settings as they are', () => {
   const html = animalsPanelHtml({ flags: { outdoorLife: 'on', rabbits: 'many', deerSize: 'huge', placedAnimals: [rabbit('a')] }, count: 12 });
-  assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="rabbits" data-value="many"'));
-  assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="foxes" data-value=""'), 'unset is Usual');
+  assert.match(animalsPanelHtml({ flags: { rabbits: '7' } }), /data-key="rabbits" data-value="6"[\s\S]*?<output class="">7<\/output>/, 'a number set shows as it is');
+  assert.match(animalsPanelHtml({ flags: {}, live: { foxes: 2 } }), /data-key="foxes" data-value="1"[\s\S]*?<output class="is-auto">2<\/output>/, 'unset shows how many the scene has now');
   assert.ok(/data-size-key="deerSize"[^>]*value="180"/.test(html), 'a name saved before the sliders keeps its size');
   assert.ok(/data-size-key="foxesSize"[^>]*value="100"/.test(html), 'unset is the usual size');
   assert.ok(/data-size-key="animalScale"[^>]*value="100"/.test(html), 'and so is the whole map');
@@ -148,7 +148,7 @@ test('the panel shows the scene settings as they are', () => {
   assert.ok(/data-size-key="wolvesSize"[^>]*value="35"/.test(animalsPanelHtml({ flags: { wolvesSize: 35 } })));
   assert.ok(html.includes('class="is-active" data-action="setLife" data-value="on"'));
   assert.ok(html.includes('12 about on your screen'));
-  assert.ok(html.includes('class="is-active" data-action="setAnimal" data-key="wolves" data-value=""'), 'no wolves until chosen');
+  assert.match(html, /data-key="wolves" data-value="1"[^>]*>[\s\S]*?<\/button><output class="">0<\/output>|<output class="">0<\/output>[\s\S]*?data-key="wolves" data-value="1"/, 'no wolves until chosen');
   assert.ok(/data-kind="rabbit" data-tooltip="Take away the last one" aria-label/.test(html), 'one to take away');
   assert.ok(/data-kind="fox" data-tooltip="Take away the last one" disabled/.test(html), 'none to take away');
   assert.ok(animalsPanelHtml({ flags: {} }).includes('class="is-active" data-action="setLife" data-value=""'), 'off until chosen');

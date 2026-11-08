@@ -21,16 +21,25 @@ const amountOf = (own, kind) => { const a = own?.regionAnimals?.[kind]; return O
 // Kinds counted one by one rather than by amount: hawks, one unless set (0 to MOST_HAWKS), as the panels show it.
 export const MOST_HAWKS = 4;
 export const hawkCountOf = (v) => { if (v === undefined || v === null || v === '') return 1; const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.max(0, Math.min(MOST_HAWKS, n)) : 1; };
+// Every kind is counted: a number saved is that many (up to MOST_COUNT); the words it was once saved as (few, usual, more,
+// many) still read as their numbers.
+export const MOST_COUNT = 40;
+export const exactCountOf = (v) => { if (typeof v === 'number' && Number.isFinite(v)) return Math.max(0, Math.min(MOST_COUNT, Math.floor(v))); return typeof v === 'string' && /^\d+$/.test(v) ? Math.min(MOST_COUNT, Number(v)) : null; };
 // How many of each kind (pure): every kind, 0 where none is asked; hawks as many as set, one when left alone.
 export function regionAnimalCounts(own = {}) {
   const out = {};
-  for (const kind of KINDS) { if (kind === 'hawks') { out.hawks = hawkCountOf(own?.regionAnimals?.hawks); continue; } const a = amountOf(own, kind); out[kind] = !a ? 0 : ONE.has(kind) ? 1 : Math.max(1, Math.round(USUAL[kind] * SHARE[a])); }
+  for (const kind of KINDS) {
+    const raw = own?.regionAnimals?.[kind], exact = exactCountOf(raw);
+    if (kind === 'hawks') { out.hawks = hawkCountOf(raw); continue; }
+    if (exact !== null) { out[kind] = exact; continue; }
+    const a = amountOf(own, kind); out[kind] = !a ? 0 : ONE.has(kind) ? 1 : Math.max(1, Math.round(USUAL[kind] * SHARE[a]));
+  }
   return out;
 }
 // Whether a region has animals of its own: any kind asked for (the one hawk every region has by default does not count; hawks set on purpose do).
-export const regionHasAnimals = (own = {}) => KINDS.some((k) => (k === 'hawks' ? !['', undefined, null].includes(own?.regionAnimals?.hawks) && hawkCountOf(own.regionAnimals.hawks) > 0 : amountOf(own, k)));
+export const regionHasAnimals = (own = {}) => KINDS.some((k) => (k === 'hawks' ? !['', undefined, null].includes(own?.regionAnimals?.hawks) && hawkCountOf(own.regionAnimals.hawks) > 0 : amountOf(own, k) || (exactCountOf(own?.regionAnimals?.[k]) ?? 0) > 0));
 // The town's animals come in a quiet or a busy town's numbers: busy once any of them asks for more.
-export const townLevelOf = (own = {}) => (['pigeons', 'hens', 'cats', 'dogs'].some((k) => ['more', 'many'].includes(amountOf(own, k))) ? 'busy' : 'quiet');
+export const townLevelOf = (own = {}) => (['pigeons', 'hens', 'cats', 'dogs'].some((k) => ['more', 'many'].includes(amountOf(own, k)) || (exactCountOf(own?.regionAnimals?.[k]) ?? 0) > USUAL[k]) ? 'busy' : 'quiet');
 // How big they are, as a number (a slider): saved as 0.5 to 2. The words it was once saved as, small and big, still read as they did.
 export const ANIMAL_SIZE = Object.freeze({ min: 0.5, max: 2, step: 0.05 });
 export const animalSizeOf = (own) => {

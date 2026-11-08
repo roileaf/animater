@@ -3728,6 +3728,14 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-an-amounts button { flex: 1; }
 .animater-an-amounts button { min-height: 0; height: 24px; padding: 0 4px; font-size: 11px; line-height: 1; }
 .animater-an-amounts button.is-active { background: var(--wx-accent); color: #1a1408; }
+/* How many of a kind, counted: − the number + (and Auto, back to as many as the map suits). */
+.animater-an-count { display: flex; align-items: center; gap: 4px; }
+.animater-an-count .animater-an-step { flex: 0 0 24px; width: 24px; min-height: 0; height: 24px; padding: 0; border: 0; border-radius: 5px; background: var(--wx-hover); color: var(--wx-soft); font-size: 10px; line-height: 1; }
+.animater-an-count .animater-an-step:hover:not([disabled]) { color: inherit; }
+.animater-an-count .animater-an-step[disabled] { opacity: 0.35; }
+.animater-an-count output { min-width: 28px; text-align: center; font-weight: 700; font-size: 13px; color: var(--wx-accent); }
+.animater-an-count output.is-auto { color: var(--wx-soft); font-weight: 600; }
+.animater-an-count > button:not(.animater-an-step) { min-height: 0; height: 22px; padding: 0 8px; margin-left: 4px; font-size: 11px; line-height: 1; border: 0; border-radius: 5px; background: var(--wx-hover); color: var(--wx-soft); }
 .animater-an-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 12px; }
 .animater-an-top span strong { display: block; }
 .animater-an-top small { color: var(--wx-soft); font-size: 11px; }
