@@ -51,6 +51,20 @@ test('the panel goes when its region is deleted, and follows a window resize', (
   assert.match(main, /Hooks\.on\("deleteRegion", \(doc\) => \{ if \(regionPanel\.doc === doc\) regionPanel\.close\(\); \}\);/);
 });
 
+test('settings hints point to the right-click panel, not the old region window fields', () => {
+  for (const old of ['Floor and water', 'Cavern', 'Flows toward', 'Never freezes', 'Animater → Keep out', 'Animater → Cave-in']) assert.ok(!main.includes(`Region configuration → ${old}`), old);
+  assert.ok(!main.includes('Off stops the menu'));
+  assert.match(main, /the region's right-click panel → Water → Flows toward/);
+  assert.match(main, /the Cave-in button in the Animater controls, scroll to size it\)/);
+});
+
+test('the changelog has an Unreleased entry for the panel, the size slider and moving water', () => {
+  const log = readFileSync(new URL('../../CHANGELOG.md', import.meta.url), 'utf8');
+  const top = log.slice(log.indexOf('## Unreleased'), log.indexOf('\n## ', log.indexOf('## Unreleased') + 5));
+  assert.ok(log.indexOf('## Unreleased') < log.indexOf('## 3.'), 'at the top');
+  assert.match(top, /right-click panel/); assert.match(top, /size is a slider/); assert.match(top, /All water is moving water/);
+});
+
 // The region window's Animater tab only points to the panel: every setting it held now lives there.
 const tabHook = (() => { const at = main.indexOf('Hooks.on("renderRegionConfig"'); return main.slice(at, main.indexOf('\nHooks.once("ready"', at)); })();
 

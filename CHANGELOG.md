@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **One right-click panel for every region setting.** The GM right-clicks any region on the map (on the Tokens or Regions layer) and a panel opens by the pointer with all of its Animater settings. First you say what the region is (Water, Ground, Indoors, Cave, Dock or Lava), then come only the sections that kind uses, each folded to a one-line summary until opened: its water or floor, steps, animals, air, look, drips. Anything a region already uses always shows, and the rest wait under More sections, so no setting is out of reach. Where regions overlap, each gets a tab. Every change is saved at once. It replaces the Animater tab in the region window (which now only points to the panel and opens it) and the old right-click step menu; Cave-in stays on the Animater controls.
+- **Animals' size is a slider.** A region's animals can be any size from half to twice the usual, in place of the old small, usual and big; regions set before keep their size.
+- **All water is moving water.** Every water region on every scene now moves, flows and waves; the scene's Moving water option and the region's switch to turn it off are gone. The old still look of water is kept only where moving water is not drawn: at Low quality, or with the Moving water setting off.
+
 ## 3.7.6
 
 - **Your own Energy Blasts.** The Energy Blast picker lists blasts of your own after the ten kinds, each in its colours; a GM makes one with New blast and changes or deletes them with Edit mine. Each is built on a kind (how it moves, what it leaves on the floor) with its own name, main and highlight colours (recolouring all of it, fire's flames and smoke too), size, what it does to the creatures it catches (as its kind, nothing, burn, frost, shock, shove, tremble, or any Tokenshade preset), its sound (as any kind, silent, or a file from Foundry's file picker, starting in Animater's own sounds), its shake and whether it melts snow. Kept for the world; a fired blast carries its whole look, so every screen draws it alike.
