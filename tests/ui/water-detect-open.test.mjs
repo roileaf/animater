@@ -13,7 +13,8 @@ globalThis.foundry = { applications: { api: { ApplicationV2: FakeApp, Handlebars
 globalThis.window = globalThis;
 globalThis.document = { addEventListener() {}, createElement: () => ({ style: {} }), head: { appendChild() {} } };
 globalThis.ui = { notifications: { info() {}, warn() {} } };
-globalThis.game = { user: { isGM: true }, settings: { get: (_module, key) => key === "experimentalWaterRegions" } };
+const settings = new Map([["experimentalWaterRegions", true], ["toolDetectWater", true]]);
+globalThis.game = { user: { isGM: true }, settings: { get: (_module, key) => settings.has(key) ? settings.get(key) : undefined } };
 globalThis.fetch = async () => ({ ok: true, blob: async () => ({ type: "image/png" }) });
 globalThis.createImageBitmap = async (_blob, size) => ({ width: size.resizeWidth, height: size.resizeHeight, close() {} });
 globalThis.OffscreenCanvas = class {
@@ -40,13 +41,40 @@ const viewing = (scene, levelId, size, textures = {}) => ({
   level: { id: levelId, background: { src: `maps/${scene.id}.png` }, textures },
   dimensions: { sceneRect: { x: 0, y: 0, width: size, height: size } },
 });
-
-test("a scene switch during the first click's module load still writes to the scene clicked on", async () => {
+const buildControls = () => {
   const controls = { regions: { name: "regions", tools: {} } };
   for (const fn of hooks.get("getSceneControlButtons")) fn(controls);
+  return controls;
+};
+
+test("Detect water sits in the Animater group only while the experimental setting and tool toggle allow it", () => {
+  settings.set("experimentalWaterRegions", true);
+  settings.set("toolDetectWater", true);
+  let controls = buildControls();
+  assert.ok(controls.animater?.tools?.animaterDetectWater);
+  assert.equal(controls.animater.tools.animaterDetectWater.visible, true);
+  assert.equal(controls.animater.tools.animaterDetectWater.button, true);
+  assert.equal(controls.regions.tools.animaterDetectWater, undefined);
+
+  settings.set("experimentalWaterRegions", false);
+  controls = buildControls();
+  assert.equal(controls.animater.tools.animaterDetectWater.visible, false);
+  assert.equal(controls.regions.tools.animaterDetectWater, undefined);
+
+  settings.set("experimentalWaterRegions", true);
+  settings.set("toolDetectWater", false);
+  controls = buildControls();
+  assert.equal(controls.animater.tools.animaterDetectWater.visible, false);
+  settings.set("toolDetectWater", true);
+});
+
+test("a scene switch during the first click's module load still writes to the scene clicked on", async () => {
+  settings.set("experimentalWaterRegions", true);
+  settings.set("toolDetectWater", true);
+  const controls = buildControls();
   const sceneA = makeScene("A"), sceneB = makeScene("B");
   globalThis.canvas = viewing(sceneA, "level-A", 200);
-  controls.regions.tools.animaterDetectWater.onChange();
+  controls.animater.tools.animaterDetectWater.onChange();
   globalThis.canvas = viewing(sceneB, "level-B", 800, { scaleX: 2 });
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.ok(renderedApp, "a moved level B map would have refused to open");

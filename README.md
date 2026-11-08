@@ -168,7 +168,7 @@ Open **Configure Settings → Animater → Animater settings**. The window has a
 | Underwater bubble lifetime (seconds) | World | Time until fully faded. 0 keeps natural fading (1.8 seconds). Applies to existing and new effects. Burrow holes keep their own lifetime (0 to 3600, default 0) |
 | Submerged token appearance | World | Below the water surface, visible swimmers fade to a blue, translucent silhouette. Surfacing restores their original appearance. This changes artwork only, not Foundry visibility or detection (on by default) |
 | Submerged token opacity | World | How clearly a submerged creature’s artwork is drawn (0.35 = 35%). Applies equally to GM and player artwork, while Foundry still decides who can see the creature (0.1 to 1, default 0.35) |
-| Experimental: detect water regions | World | On the Floor & world tab, for the GM. Adds a button on the Regions controls. Click it and Animater proposes water regions from this level's map, and you can click more water on its preview. It runs only when you click (off by default) |
+| Experimental: detect water regions | World | On the Floor & world tab, for the GM. Adds a button in the Animater controls. Click it and Animater proposes water regions from this level's map, and you can click more water on its preview. It runs only when you click (off by default) |
 | Burrow path lifetime (seconds) | World | Time until fully faded. 0 keeps natural fading (8 seconds). Applies to existing and new effects. Burrow holes keep their own lifetime (0 to 3600, default 0) |
 | Hide burrow paths at relative elevation | World | Burrowing at or below this elevation relative to the viewed level’s floor leaves no visible path. -10 hides paths 10 scene units below that floor; 0 hides every underground path. Entrance and exit holes still appear when the creature crosses the surface. Existing shallow trails fade normally (-1000 to 0, default -10) |
 | Movement respects stealth | World | Players only see and hear what their characters could: an undetected or unnoticed creature moves in silence and leaves no tracks, and a hidden one is heard but leaves nothing to see (PF2e Visioner, judged from each player's own tokens, else the creature's conditions). Off: everyone sees and hears every movement drawn on their screen. Tokens the GM hid never give anything away either way (on by default) |
@@ -289,7 +289,7 @@ The player who starts an animation only sends optional layers to viewers whose l
 
 This is an experiment. It is off until you turn it on.
 
-Open **Animater settings**, go to the **Floor & world** tab, and turn on **Experimental: detect water regions**. Only a GM sees this switch. On a scene, open the **Regions** controls and click **Detect water**.
+Open **Animater settings**, go to the **Floor & world** tab, and turn on **Experimental: detect water regions**. Only a GM sees this switch. On a scene, open the **Animater** controls and click **Detect water**.
 
 Animater reads that level's map and opens a window. It shows a preview of the map and a list of proposed pieces. Each blue area it found is one row. Large areas start ticked. Small ones start unticked. Hover a row to see it on the preview.
 

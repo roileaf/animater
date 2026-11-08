@@ -566,12 +566,14 @@ test("a second click on the tool replaces the open window", async () => {
   assert.equal(App.closed, before + 1);
 });
 
-test("the setting is registered off and the tool appears only while it is on", () => {
+test("the setting is registered off and Detect water is wired into the Animater controls", () => {
   const main = readFileSync(new URL("../../scripts/main.mjs", import.meta.url), "utf8");
   assert.match(main, /registerSetting\("experimentalWaterRegions", \{[\s\S]*?name: "Experimental: detect water regions"[\s\S]*?default: false/);
-  assert.match(main, /experimentalWaterRegions"\) !== true/);
+  assert.match(main, /hint: "Adds a button in the Animater controls/);
+  assert.match(main, /\['toolDetectWater','Show the Detect water button'/);
   assert.match(main, /name: "animaterDetectWater"/);
-  assert.match(main, /c\.name === "regions"/);
+  assert.match(main, /toolShown\("toolDetectWater"\) && game\.settings\.get\(ID, "experimentalWaterRegions"\) === true/);
+  assert.doesNotMatch(main, /c\.name === "regions"/);
   assert.match(main, /import\("\.\/ui\/water-detect-ui\.mjs"\)/);
 });
 
