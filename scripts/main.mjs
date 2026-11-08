@@ -226,7 +226,7 @@ import { createRegionPanel } from "./ui/region-panel.mjs";
 import { shownFloorOf } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight } from "./engines/motion/animal-art.mjs";
-import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, hawkCountOf, exactCountOf } from "./engines/motion/region-animals.mjs";
+import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { mediaForReference } from "./engines/media/media-library-model.mjs";
 import { artworkSize } from "./engines/media/media-preview.mjs";
@@ -3184,7 +3184,9 @@ const openAnimalsPanel = () => {
     reshuffle: () => { wildKey = null; lifeSoon(); },
     // How many of each kind the scene has now, for the rows left on Auto.
     live: () => { try { const w = wildlife.counts, p = pondLife.counts, f = fieldLife.counts ?? {}, t = townLife.counts ?? {}, fm = sceneFarm.counts ?? {};
-      return { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: w.hawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: vermin.count }; } catch { return {}; } },
+      // (the hawks flying over the scene, a region's own among them)
+      let regionHawks = 0; for (const life of regionLife.values()) regionHawks += life?.wild?.counts?.hawks ?? 0;
+      return { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: (w.hawks ?? 0) + regionHawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: vermin.count }; } catch { return {}; } },
     underground: () => undergroundScene(),
     // Any water on the map: its own floor, or a region's (named or set).
     water: () => { try { return sceneFloorNow() === "water" || regionsHere().some((doc) => regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water"); } catch { return true; } },
@@ -3658,14 +3660,12 @@ const wildKept = (kind, x, y) => keptOut(kind, { x, y });
 const ratBlocks = (a, b) => wallBlocks(a, b) || (keptOut("rats", b) && !keptOut("rats", a));
 const batBlocks = (a, b) => wallBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
 // How many of each creature this scene has, and how big (Scene configuration â†’ Animater â†’ Creatures).
-const sceneCreatures = () => { const f = animalFlagsNow(), out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "crows", "herons", "gulls"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`], f.animalScale); } out.wolves = f.wolves ? creatureAmount(f.wolves) : 0; out.wolvesSize = creatureSize(f.wolvesSize, f.animalScale);
+const sceneCreatures = () => { const f = animalFlagsNow(), out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "crows", "herons", "gulls", "hawks"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`], f.animalScale); } out.wolves = f.wolves ? creatureAmount(f.wolves) : 0; out.wolvesSize = creatureSize(f.wolvesSize, f.animalScale);
   // Crows, a hawk, herons and gulls left at Usual come as they always have (with the birds, the open country, the water birds);
   // chosen, as many as chosen.
   out.chosen = { crows: !!f.crows, herons: !!f.herons, gulls: !!f.gulls };
-  // Hawks counted: one unless set (the Animals panel shows it so), up to four.
-  out.hawks = hawkCountOf(f.hawks); out.hawksSize = creatureSize(f.hawksSize, f.animalScale);
   // A number set in the Animals panel is exactly that many; left on Auto (or an old amount word), worked out from the map.
-  out.exact = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "wolves", "crows", "herons", "gulls"]) { const n = exactCountOf(f[kind]); if (n !== null) { out.exact[kind] = n; if (n > 0 && !(out[kind] > 0)) out[kind] = 1; } }
+  out.exact = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "wolves", "crows", "herons", "gulls", "hawks"]) { const n = exactCountOf(f[kind]); if (n !== null) { out.exact[kind] = n; if (n > 0 && !(out[kind] > 0)) out[kind] = 1; } }
   return out; };
 // The number of a kind: exactly as set, else as worked out.
 const exactOr = (many, kind, worked) => many.exact?.[kind] ?? worked;
@@ -3824,7 +3824,7 @@ const rebuildWildlife = () => {
   // An indoor or stone map is no place for the rest (fish keep to whatever water there is); a hawk wants open sky too.
   if (ground.share < 0.2) { wildlife.populate({ ...fishOf, grid, area }); return; }
   const spots = ground.spots.filter((p) => !keptOut("rabbits", p)), songSpots = ground.spots.filter((p) => !keptOut("songbirds", p)), squares = spots.length;
-  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: exactOr(many, "rabbits", wildNumbers(ground, many).rabbits), blocked: wallBlocks, songbirds: songSpots.length ? exactOr(many, "wildBirds", wildNumbers(ground, many).songbirds) : 0, hawk: many.hawks, crows: exactOr(many, "crows", many.chosen?.crows ? Math.round(3 * many.crows) : wildNumbers(ground, many).crows), perches: birdPerches(true), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
+  wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: exactOr(many, "rabbits", wildNumbers(ground, many).rabbits), blocked: wallBlocks, songbirds: songSpots.length ? exactOr(many, "wildBirds", wildNumbers(ground, many).songbirds) : 0, hawk: Math.min(4, exactOr(many, "hawks", many.hawks > 0 && many.wildBirds > 0 && ground.share > 0.4 ? Math.max(1, Math.round(many.hawks)) : 0)), crows: exactOr(many, "crows", many.chosen?.crows ? Math.round(3 * many.crows) : wildNumbers(ground, many).crows), perches: birdPerches(true), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
 };
 // How much they are out now: by day under an open sky, none at night or in a storm, nor in a scene made dark, whatever its sun.
 const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };

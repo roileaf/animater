@@ -196,7 +196,7 @@ export const SECTIONS = {
     const { own, kind, act } = c, now = own.regionAnimals ?? {};
     // Every kind counted: how many the region has of it (a hawk one unless set), its number on the card; click for one
     // more, right-click for one fewer, saved as that number.
-    const counts = regionAnimalCounts(own), amountOf = (k) => counts[k] > 0 && (k !== 'hawks' || ![undefined, null, ''].includes(now.hawks));
+    const counts = regionAnimalCounts(own), amountOf = (k) => counts[k] > 0;
     const card = (k, label) => {
       const n = counts[k] ?? 0, most = k === 'hawks' ? MOST_HAWKS : MOST_COUNT;
       // (While a save is on its way, a click would only repeat it.)

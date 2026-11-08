@@ -30,14 +30,15 @@ export function regionAnimalCounts(own = {}) {
   const out = {};
   for (const kind of KINDS) {
     const raw = own?.regionAnimals?.[kind], exact = exactCountOf(raw);
-    if (kind === 'hawks') { out.hawks = hawkCountOf(raw); continue; }
+    // (a region's hawks only when asked for: the scene's own hawk, one by default, already flies over the whole map)
+    if (kind === 'hawks') { out.hawks = Math.min(MOST_HAWKS, exactCountOf(raw) ?? 0); continue; }
     if (exact !== null) { out[kind] = exact; continue; }
     const a = amountOf(own, kind); out[kind] = !a ? 0 : ONE.has(kind) ? 1 : Math.max(1, Math.round(USUAL[kind] * SHARE[a]));
   }
   return out;
 }
-// Whether a region has animals of its own: any kind asked for (the one hawk every region has by default does not count; hawks set on purpose do).
-export const regionHasAnimals = (own = {}) => KINDS.some((k) => (k === 'hawks' ? !['', undefined, null].includes(own?.regionAnimals?.hawks) && hawkCountOf(own.regionAnimals.hawks) > 0 : amountOf(own, k) || (exactCountOf(own?.regionAnimals?.[k]) ?? 0) > 0));
+// Whether a region has animals of its own: any kind asked for.
+export const regionHasAnimals = (own = {}) => KINDS.some((k) => amountOf(own, k) || (exactCountOf(own?.regionAnimals?.[k]) ?? 0) > 0);
 // The town's animals come in a quiet or a busy town's numbers: busy once any of them asks for more.
 export const townLevelOf = (own = {}) => (['pigeons', 'hens', 'cats', 'dogs'].some((k) => ['more', 'many'].includes(amountOf(own, k)) || (exactCountOf(own?.regionAnimals?.[k]) ?? 0) > USUAL[k]) ? 'busy' : 'quiet');
 // How big they are, as a number (a slider): saved as 0.5 to 2. The words it was once saved as, small and big, still read as they did.

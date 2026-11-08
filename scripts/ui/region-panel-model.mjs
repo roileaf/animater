@@ -134,8 +134,7 @@ export function summaryOf(id, own = {}, floor) {
     }
     case 'animals': {
       // (Farm animals first, as the ones a map most often holds.)
-      // (the one hawk every region has unless set is not worth naming; hawks set on purpose are)
-      const counts = regionAnimalCounts(own); if ([undefined, null, ''].includes(own?.regionAnimals?.hawks)) counts.hawks = 0;
+      const counts = regionAnimalCounts(own);
       const parts = SUMMARY_ORDER.map((kind) => [kind, counts[kind]]).filter(([, n]) => n > 0)
         .map(([kind, n]) => (n === 1 ? `${aOrAn(oneOf(kind))} ${oneOf(kind)}` : `${n} ${PLURAL.get(kind)}`));
       return parts.length ? parts.join(', ') : 'None';

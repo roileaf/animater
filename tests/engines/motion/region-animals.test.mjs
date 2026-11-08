@@ -49,10 +49,12 @@ test('main: a region\'s animals stand on any dry floor in it, at its own height,
   assert.match(main, /const OWN_FLOORS_NOT = new Set\(\["water", "lava", "cavern"\]\)/);
 });
 
-test('hawks are counted: one unless set, as many as set up to four, and the default one alone gives a region no animals', async () => {
+test('hawks are counted: the scene one unless set; a region none unless asked (the scene hawk already flies over it), up to four', async () => {
   const { hawkCountOf, MOST_HAWKS } = await import('../../../scripts/engines/motion/region-animals.mjs');
   assert.equal(hawkCountOf(undefined), 1); assert.equal(hawkCountOf(''), 1); assert.equal(hawkCountOf('0'), 0); assert.equal(hawkCountOf('3'), 3); assert.equal(hawkCountOf(9), MOST_HAWKS);
-  assert.equal(regionAnimalCounts({}).hawks, 1);
+  assert.equal(regionAnimalCounts({}).hawks, 0, 'a region with cows and nothing said of hawks has none of its own');
+  assert.equal(regionAnimalCounts({ regionAnimals: { cows: 'usual' } }).hawks, 0);
+  assert.equal(regionAnimalCounts({ regionAnimals: { hawks: '9' } }).hawks, MOST_HAWKS);
   assert.equal(regionAnimalCounts({ regionAnimals: { hawks: '2' } }).hawks, 2);
   assert.equal(regionHasAnimals({}), false);
   assert.equal(regionHasAnimals({ regionAnimals: { hawks: '2' } }), true);

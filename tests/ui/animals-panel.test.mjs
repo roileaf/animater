@@ -15,9 +15,10 @@ test('it offers every creature the scene already has a setting for', () => {
 
 test('crows, a hawk, herons and gulls can be chosen on their own; the town and farm come only when asked for', () => {
   const out = animalPreset('many');
-  for (const k of ['crows', 'herons', 'gulls']) assert.equal(out[k], 'many', k);
-  assert.equal('hawks' in out, false, 'hawks are counted, not given an amount');
-  assert.match(animalsPanelHtml({ flags: {}, water: true }), /data-key="hawks" data-value="0"[\s\S]*?<output class="">1<\/output>/, 'one hawk shown when nothing is set');
+  for (const k of ['crows', 'hawks', 'herons', 'gulls']) assert.equal(out[k], 'many', k);
+  assert.match(animalsPanelHtml({ flags: {}, water: true, live: { hawks: 1 } }), /data-key="hawks" data-value="0"[\s\S]*?<output class="is-auto">1<\/output>/, 'a hawk flying shows as 1, not 0');
+  assert.match(animalsPanelHtml({ flags: {}, water: true, live: {} }), /data-key="hawks" data-value="1"[\s\S]*?<output class="is-auto">0<\/output>/, 'none flying shows 0');
+  assert.match(animalsPanelHtml({ flags: { hawks: '3' }, water: true }), /<output class="">3<\/output>/, 'a number set shows as set');
   for (const k of ['pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses']) assert.equal(k in out, false, `${k} only when asked for`);
   const html = animalsPanelHtml({ flags: {}, water: true });
   for (const label of ['Hawks', 'Crows', 'Herons', 'Gulls', 'Ducks', 'Pigeons', 'Cows']) assert.ok(html.includes(`>${label}<`), label);

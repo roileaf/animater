@@ -1,6 +1,6 @@
 import { SIZE_RANGE, sizePercent } from '../engines/motion/vermin.mjs';
 import { scopeBar } from './level-scope.mjs';
-import { exactCountOf, hawkCountOf, MOST_COUNT, MOST_HAWKS } from '../engines/motion/region-animals.mjs';
+import { exactCountOf, MOST_COUNT, MOST_HAWKS } from '../engines/motion/region-animals.mjs';
 
 // The Animals panel (Animater controls): how much life a scene has, quickly. Amounts and sizes are the same scene flags as
 // Scene configuration > Animater > Creatures, not a copy; the same with Outdoor life. Animals placed by hand are kept on the
@@ -32,7 +32,7 @@ const PLACEABLE_IDS = new Set(PLACEABLE.map(([id]) => id));
 // The scene flags a preset writes (pure): every outdoor kind at one amount; dark places are left alone, as those belong to underground scenes, and wolves, who come only when asked for.
 export function animalPreset(amount = '') {
   const out = {};
-  for (const [group, kinds] of ANIMAL_GROUPS) if (group !== 'Dark places') for (const [kind] of kinds) if (!ASKED_FOR.has(kind) && kind !== 'hawks') out[kind] = amount;
+  for (const [group, kinds] of ANIMAL_GROUPS) if (group !== 'Dark places') for (const [kind] of kinds) if (!ASKED_FOR.has(kind)) out[kind] = amount;
   return out;
 }
 // How high a map's birds fly as a share of the usual (pure), from its slider's percent: unset, as usual.
@@ -66,11 +66,11 @@ const birdHeightSlider = (value) => { const percent = Math.round(birdHeightOf(va
 // A kind's row: how many, counted. A number set is that many; left alone (Auto) it shows how many the scene has of it now,
 // worked out from the map as before; the town's, the farm's and wolves start at none, hawks at one. − and + set the number.
 const animalRow = (kind, label, flags, live = {}) => {
-  const raw = flags[kind] ?? '', exact = exactCountOf(raw), auto = exact === null && !ASKED_FOR.has(kind) && kind !== 'hawks';
-  const shown = kind === 'hawks' ? hawkCountOf(raw) : exact ?? (ASKED_FOR.has(kind) ? 0 : Math.max(0, Math.round(Number(live[kind]) || 0)));
+  const raw = flags[kind] ?? '', exact0 = exactCountOf(raw), exact = kind === 'hawks' && exact0 !== null ? Math.min(MOST_HAWKS, exact0) : exact0, auto = exact === null && !ASKED_FOR.has(kind);
+  const shown = exact ?? (ASKED_FOR.has(kind) ? 0 : Math.max(0, Math.round(Number(live[kind]) || 0)));
   const most = kind === 'hawks' ? MOST_HAWKS : MOST_COUNT;
   const step = (to, icon, tip) => `<button type="button" class="animater-an-step" data-action="setAnimal" data-key="${kind}" data-value="${Math.max(0, Math.min(most, to))}" data-tooltip="${esc(tip)}"${to < 0 || to > most ? ' disabled' : ''} aria-label="${esc(`${label}: ${tip}`)}"><i class="fa-solid ${icon}" inert></i></button>`;
-  const counter = `<div class="animater-an-count">${step(shown - 1, 'fa-minus', 'One fewer')}<output class="${auto ? 'is-auto' : ''}">${shown}</output>${step(shown + 1, 'fa-plus', 'One more')}${auto || ASKED_FOR.has(kind) || kind === 'hawks' ? '' : chip('setAnimal', `data-key="${kind}" data-value=""`, 'Auto', { tip: 'As many as the map suits, as before' })}</div>`;
+  const counter = `<div class="animater-an-count">${step(shown - 1, 'fa-minus', 'One fewer')}<output class="${auto ? 'is-auto' : ''}">${shown}</output>${step(shown + 1, 'fa-plus', 'One more')}${auto || ASKED_FOR.has(kind) ? '' : chip('setAnimal', `data-key="${kind}" data-value=""`, 'Auto', { tip: 'As many as the map suits, as before' })}</div>`;
   return `<div class="animater-an-row"><span>${esc(label)}</span>${counter}${sizeSlider(`${kind}Size`, `${label}: size`, flags[`${kind}Size`])}</div>`;
 };
 
