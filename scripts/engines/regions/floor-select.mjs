@@ -13,6 +13,8 @@ export const FLOOR_SELECT_TUNING = Object.freeze({
   labBroadWeak: 26,
   labBlur: 1,
   labValueMin: WATER_TUNING.clickValueMin,
+  // When almost every usable pixel matches the Lab seed, there is no distinct floor to follow.
+  labCoverMax: 0.95,
 });
 
 export function selectWaterAt(rgba, width, height, at, options = {}) {
@@ -64,16 +66,19 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     const labSeed = seedLab(lab, rgba, taken, cx, cy, width, height);
     if (!labSeed) return none("no-colour");
     seed = { ...labSeed, matcher: "lab" };
-    const { labStrong, labWeak, labBroadWeak, labValueMin, alphaMin } = { ...FLOOR_SELECT_TUNING, alphaMin: WATER_TUNING.alphaMin };
+    const { labStrong, labWeak, labBroadWeak, labValueMin, labCoverMax, alphaMin } = { ...FLOOR_SELECT_TUNING, alphaMin: WATER_TUNING.alphaMin };
     const weakLimit = broad ? labBroadWeak : labWeak;
     const strong = new Uint8Array(count);
     const weak = new Uint8Array(count);
+    let usable = 0, strongCount = 0;
     for (let p = 0, i = 3; p < count; p++, i += 4) {
       if (taken[p] || rgba[i] < alphaMin || val[p] < labValueMin) continue;
+      usable++;
       const d = deltaE(lab, p, labSeed);
-      if (d <= labStrong) strong[p] = 1;
+      if (d <= labStrong) { strong[p] = 1; strongCount++; }
       if (d <= weakLimit) weak[p] = 1;
     }
+    if (!usable || strongCount / usable >= labCoverMax) return none("no-colour");
     start = nearestAccepted(strong, cx, cy, width, height);
     if (start < 0) return none("no-colour");
     const seeds = new Uint8Array(count);

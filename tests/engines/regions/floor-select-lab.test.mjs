@@ -83,6 +83,13 @@ test("Lab matcher with blur fills textured planks as one area", () => {
   assert.equal(countIn(found.proposal.pixels, width, 0, 0, 8, 8), 0);
 });
 
+test("Lab matcher refuses a featureless grey field with nothing distinct to follow", () => {
+  const width = 80, height = 80;
+  const rgba = solid(width, height, 128, 128, 130);
+  const found = selectFloorAt(rgba, width, height, { x: 40, y: 40 });
+  assert.deepEqual(found, { status: "none", reason: "no-colour" });
+});
+
 test("saturated blue water still uses the hue matcher", () => {
   const width = 40, height = 40;
   const [r, g, b] = hsvToRgb(210, 0.7, 0.7);
