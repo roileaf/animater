@@ -67,8 +67,10 @@ test("rows follow share, large pieces start ticked, and one control sets every t
   assert.match(html, /data-all-current/);
   assert.match(html, /North-east/);
   assert.match(html, /Swift/);
-  assert.match(html, />Create 1 water region</);
-  assert.match(waterWindowHTML({ proposals: [{ ...square, regionId: "saved" }], width: 10, height: 5 }), />Save 1 water region</);
+  assert.match(html, />Create 1 region</);
+  assert.match(html, /Floor to add/);
+  assert.match(html, /data-floor="water-1"/);
+  assert.match(waterWindowHTML({ proposals: [{ ...square, regionId: "saved" }], width: 10, height: 5 }), />Save 1 region</);
 });
 
 test("the same proposals always draw the same form", () => {
@@ -278,39 +280,56 @@ test("only a level map at Foundry's default placement is read", () => {
 
 function waterApp(map = null) {
   const listeners = {};
-  const makeRow = (id, checked, kind = "still", flowTo = "", currentTo = "") => {
+  const makeRow = (id, checked, kind = "still", flowTo = "", currentTo = "", floor = "water") => {
     const box = { checked, dataset: { pick: id } }, kindSel = { value: kind }, flow = { value: flowTo }, current = { value: currentTo };
-    const wave = { value: "" }, beach = { checked: true };
-    const flowField = { hidden: kind === "still" || kind === "sea" }, currentField = { hidden: kind !== "river" };
-    const seaFields = [{ hidden: kind !== "sea" }, { hidden: kind !== "sea" }];
+    const floorSel = { value: floor }, wave = { value: "" }, beach = { checked: true };
+    const wet = floor === "water";
+    const flowField = { hidden: !wet || kind === "still" || kind === "sea" }, currentField = { hidden: !wet || kind !== "river" };
+    const seaFields = [{ hidden: !wet || kind !== "sea" }, { hidden: !wet || kind !== "sea" }];
+    const waterFields = [{ hidden: !wet }, { hidden: !wet }, flowField, currentField, ...seaFields];
     const row = {
-      dataset: { id, kind },
+      dataset: { id, kind, floor },
       classList: { toggle() {}, remove() {} },
-      querySelector: (selector) => ({ "[data-pick]": box, "[data-kind]": kindSel, "[data-flow]": flow, "[data-current]": current, "[data-wave]": wave, "[data-beach]": beach, "[data-flow-field]": flowField, "[data-current-field]": currentField })[selector],
-      querySelectorAll: (selector) => selector === "[data-sea-field]" ? seaFields : [],
+      querySelector: (selector) => ({
+        "[data-pick]": box,
+        "select[data-floor]": floorSel,
+        "[data-floor]": floorSel,
+        "[data-kind]": kindSel,
+        "[data-flow]": flow,
+        "[data-current]": current,
+        "[data-wave]": wave,
+        "[data-beach]": beach,
+        "[data-flow-field]": flowField,
+        "[data-current-field]": currentField,
+      })[selector],
+      querySelectorAll: (selector) => {
+        if (selector === "[data-sea-field]") return seaFields;
+        if (selector === "[data-water-fields]") return waterFields;
+        return [];
+      },
       remove: () => { rows.splice(rows.indexOf(row), 1); },
       closest: (selector) => (selector === "[data-id]" ? row : null),
     };
-    for (const [name, select] of [["kind", kindSel], ["flow", flow], ["current", current]]) {
+    for (const [name, select] of [["kind", kindSel], ["flow", flow], ["current", current], ["floor", floorSel]]) {
       select.getAttribute = () => id;
       select.closest = (selector) => selector === `select[data-${name}]` ? select : selector === "[data-id]" ? row : null;
     }
     return row;
   };
   const parseRows = (html) => html.split('<div class="an-water-row"').slice(1).map((part) => {
-    const [, id, checked] = part.match(/data-id="([^"]+)">\s*<label class="an-water-pick"><input type="checkbox" data-pick="[^"]+"( checked)?/);
+    const [, id, checked] = part.match(/data-id="([^"]+)"[^>]*>\s*<label class="an-water-pick"><input type="checkbox" data-pick="[^"]+"( checked)?/);
     const chosen = (attribute) => {
       const options = part.match(new RegExp(`<select ${attribute}="[^"]*">([\\s\\S]*?)</select>`))?.[1] ?? "";
       return options.match(/<option value="([^"]*)" selected>/)?.[1] ?? options.match(/<option value="([^"]*)"/)?.[1] ?? "";
     };
-    const parsed = makeRow(id, Boolean(checked), chosen("data-kind") || "still", chosen("data-flow"), chosen("data-current"));
+    const parsed = makeRow(id, Boolean(checked), chosen("data-kind") || "still", chosen("data-flow"), chosen("data-current"), chosen("data-floor") || "water");
     parsed.querySelector("[data-wave]").value = chosen("data-wave");
     parsed.querySelector("[data-beach]").checked = /data-beach="[^"]*" checked/.test(part);
     return parsed;
   });
   let rows = [];
   let hasReason = false;
-  const shared = { kind: { value: "still" }, flow: { value: "s" }, current: { value: "" }, range: { value: "narrow" } };
+  const shared = { kind: { value: "still" }, flow: { value: "s" }, current: { value: "" }, range: { value: "narrow" }, floorToAdd: { value: "water" } };
   const list = { set innerHTML(html) { rows = parseRows(html); }, scrollTop: 0, insertAdjacentHTML: (_where, html) => { rows.unshift(...parseRows(html)); } };
   const status = Object.fromEntries(["data-area-count", "data-selection-count", "data-create", "data-area-empty", "data-add-status", "data-add-message", "data-undo-add"].map((key) => [key, {}]));
   const query = (selector) => {
@@ -323,6 +342,7 @@ function waterApp(map = null) {
     if (selector === "[data-all-flow]") return shared.flow;
     if (selector === "[data-all-current]") return shared.current;
     if (selector === "[data-click-range]") return shared.range;
+    if (selector === "[data-floor-to-add]") return shared.floorToAdd;
     return null;
   };
   const queryAll = (selector) => {
@@ -383,7 +403,7 @@ test("a map with no automatic water still opens, with the reason and a way to cl
   assert.deepEqual(notes, []);
   const html = await opened.app._renderHTML();
   assert.match(html, /too grey to be water/);
-  assert.match(html, /Click water on the map/);
+  assert.match(html, /Click the map to add one/);
   assert.deepEqual(opened.app.detect.proposals, []);
 });
 
@@ -461,7 +481,7 @@ test("wide click selection is explicit and defaults to narrow", async () => {
   setShared("s", "", "still", "wide");
   fire("click", preview);
   assert.deepEqual(broad, [false, true]);
-  assert.match(await app._renderHTML(), /Wide can join touching grass/);
+  assert.match(await app._renderHTML(), /Wide can join touching colours/);
 });
 
 test("shared kinds change checked rows and preserve an unchecked row", async () => {
@@ -498,7 +518,8 @@ test("a clicked piece above a quarter of the map carries a warning, and only a c
   assert.doesNotMatch(waterRowHTML(pieces({ clicked: true, share: 0.2 })), /of the map/);
   assert.doesNotMatch(waterRowHTML(pieces({ share: 0.73 })), /of the map/);
   assert.match(waterRowHTML(pieces()), /data-remove="water-1"/);
-  assert.match(waterRowHTML(pieces()), /Add water/);
+  assert.match(waterRowHTML(pieces()), /Add to area/);
+  assert.match(waterRowHTML({ ...pieces(), clicked: true, share: 0.3 }), /Check this area/);
   assert.match(waterRowHTML(pieces()), /Edit outline/);
   assert.doesNotMatch(waterRowHTML(pieces()), /Remove water/);
 });
@@ -669,7 +690,7 @@ test("counts and create action follow checked, added, and removed areas", async 
     notify: (message) => notes.push(message),
   }));
   assert.equal(ui.status["data-selection-count"].textContent, "1 of 2 areas selected");
-  assert.equal(ui.status["data-create"].textContent, "Create 1 water region");
+  assert.equal(ui.status["data-create"].textContent, "Create 1 region");
   const box = ui.rows()[0].querySelector("[data-pick]");
   box.checked = false;
   ui.fire("change", { closest: () => null });
@@ -679,7 +700,7 @@ test("counts and create action follow checked, added, and removed areas", async 
   app.removeRow("water-2");
   assert.equal(ui.status["data-area-count"].textContent, "2 found · 1 selected");
   await app.create();
-  assert.equal(notes.at(-1), "Created 1 water region.");
+  assert.equal(notes.at(-1), "Created 1 region.");
 });
 
 test("zoom enlarges the preview, keeps click coordinates accurate, and fits again", () => {
@@ -1229,4 +1250,21 @@ test("a manual shore edit supersedes the outline cut it replaces during later Ad
   app.combineAreas([{ ...waterProposalFromLoops([{ points: [12, 0, 15, 0, 15, 3, 12, 3], hole: false }], 20, 20), id: "addition" }]);
   assert.equal(app.detect.proposals[0].pixels.includes(4 * 20 + 8), true);
   await app.close();
+});
+
+
+test("floor row hides water fields when set to stone", () => {
+  const stone = waterRowHTML(pieces({ floor: "stone" }), { floor: "stone" });
+  assert.match(stone, /data-floor="water-1"/);
+  assert.match(stone, /option value="stone" selected/);
+  assert.match(stone, /data-water-fields hidden/);
+  const water = waterRowHTML(pieces({ floor: "water" }), { floor: "water" });
+  assert.match(water, /<label data-water-fields>Kind/);
+  assert.doesNotMatch(water, /data-water-fields hidden>Kind/);
+});
+
+test("Floor to add appears in the window and defaults to water", () => {
+  const html = waterWindowHTML({ proposals: [], width: 10, height: 5, reason: "no-candidates" });
+  assert.match(html, /Floor to add/);
+  assert.match(html, /data-floor-to-add[^>]*>[\s\S]*value="water" selected/);
 });

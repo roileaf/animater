@@ -4,7 +4,7 @@
 import { detectWater } from "../engines/regions/water-detect.mjs";
 import { selectWaterAt } from "../engines/regions/floor-select.mjs";
 import { waterSelectionPixels, mergeWaterProposals, fitSize, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/floor-trace.mjs";
-import { toRegionData, editableWaterRegionIds, WATER_FLAG_KEYS, floorMeta, isDetectFloor } from "../engines/regions/floor-region-data.mjs";
+import { toRegionData, editableWaterRegionIds, WATER_FLAG_KEYS, floorMeta, isDetectFloor, DETECT_FLOORS, FLOOR_META } from "../engines/regions/floor-region-data.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/water-outline.mjs";
 
@@ -14,6 +14,7 @@ export const CURRENT_OPTIONS = Object.freeze([
   ["swift", "Swift"],
 ]);
 export const WAVE_OPTIONS = Object.freeze([["", "With the wind"], ...WATER_TOWARD]);
+export const FLOOR_OPTIONS = Object.freeze(DETECT_FLOORS.map((floor) => [floor, FLOOR_META[floor].name]));
 
 const NONE = Object.freeze({
   "no-candidates": "Experimental. No blue water was found on this map.",
@@ -132,22 +133,26 @@ function currentDefault(kind, current) {
 }
 
 export function waterRowHTML(proposal, options = {}) {
-  const { checked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = { ...proposal.savedChoices, ...options };
+  const merged = { ...proposal.savedChoices, ...options };
+  const floor = isDetectFloor(merged.floor) ? merged.floor : (isDetectFloor(proposal.floor) ? proposal.floor : "water");
+  const { checked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = merged;
   const id = esc(proposal.id);
   const kind = WATER_KINDS.some(([key]) => key === waterKind) ? waterKind : "still";
   const flows = waterFlows(kind);
   const flow = flowDefault(kind, flowTo);
   const cur = currentDefault(kind, current);
+  const wet = floor === "water";
   const warning = proposal.clicked && proposal.share > WATER_TUNING.clickWarnShare
-    ? ` <span class="an-water-warn">${percent(proposal.share)} of the map. Is this water?</span>` : "";
+    ? ` <span class="an-water-warn">${percent(proposal.share)} of the map. Check this area.</span>` : "";
   return `<div class="an-water-row" data-id="${id}">
   <label class="an-water-pick"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""}> <strong>${proposal.regionId ? `Saved: ${esc(proposal.name)}` : `Area ${esc(String(proposal.id).replace("water-", ""))}`}</strong> <span class="an-water-share">${percent(proposal.share)} of map</span> <span class="an-water-vertices">${proposal.vertices} vertices</span>${warning}</label>
-  <label>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
-  <label data-flow-field${flows ? "" : " hidden"}>Flows toward ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
-  <label data-current-field${kind === "river" ? "" : " hidden"}>Current ${optionsHTML(CURRENT_OPTIONS, `data-current="${id}"`, cur)}</label>
-  <label data-sea-field${kind === "sea" ? "" : " hidden"}>Waves toward ${optionsHTML(WAVE_OPTIONS, `data-wave="${id}"`, waveTo)}</label>
-  <label data-sea-field class="an-water-pick"${kind === "sea" ? "" : " hidden"}><input type="checkbox" data-beach="${id}"${seaBeach === "off" ? "" : " checked"}> Beach along the shore</label>
-  <button type="button" class="an-water-add" data-add-to="${id}" aria-pressed="false">Add water</button>
+  <label>Floor ${optionsHTML(FLOOR_OPTIONS, `data-floor="${id}"`, floor)}</label>
+  <label data-water-fields${wet ? "" : " hidden"}>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
+  <label data-water-fields data-flow-field${wet && flows ? "" : " hidden"}>Flows toward ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
+  <label data-water-fields data-current-field${wet && kind === "river" ? "" : " hidden"}>Current ${optionsHTML(CURRENT_OPTIONS, `data-current="${id}"`, cur)}</label>
+  <label data-water-fields data-sea-field${wet && kind === "sea" ? "" : " hidden"}>Waves toward ${optionsHTML(WAVE_OPTIONS, `data-wave="${id}"`, waveTo)}</label>
+  <label data-water-fields data-sea-field class="an-water-pick"${wet && kind === "sea" ? "" : " hidden"}><input type="checkbox" data-beach="${id}"${seaBeach === "off" ? "" : " checked"}> Beach along the shore</label>
+  <button type="button" class="an-water-add" data-add-to="${id}" aria-pressed="false">Add to area</button>
   <button type="button" data-edit-outline="${id}" aria-pressed="false">Edit outline</button>
   <button type="button" class="an-water-remove" data-remove="${id}" >${proposal.regionId ? "Leave unchanged" : "Remove"}</button>
 </div>`;
@@ -159,7 +164,7 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
   const verb = proposals.some((proposal) => proposal.regionId) ? "Save" : "Create";
   const selected = rows.filter((proposal) => choices.get(proposal.id)?.checked ?? proposal.preselected).length;
   return `<div class="an-water">
-  <header class="an-water-heading"><h2>Review water areas</h2><p>Experimental. Click water to add an area. Review your selection before saving.</p></header>
+  <header class="an-water-heading"><h2>Review floor areas</h2><p>Experimental. Choose a floor, click matching colour on the map, then review before saving.</p></header>
   ${reason ? `<p class="an-water-reason">${esc(noneMessage(reason))}</p>` : ""}
   <div class="an-water-workspace">
     <section class="an-water-map" aria-label="Map preview">
@@ -172,23 +177,24 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
         <button type="button" data-smooth-outline title="Smooth outer shores within 2 read pixels per action. Holes stay unchanged." hidden>Smooth shore</button>
         <button type="button" data-delete-vertex hidden>Delete vertex</button>
       </div></div>
-      <div class="an-water-frame" tabindex="0" aria-label="Water preview. Scroll to zoom. Drag to pan. Click to add water."><div class="an-water-stage"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div></div>
-      <p class="an-water-help">Scroll to zoom · Drag to pan · Click to add water</p>
-      <div class="an-water-range"><label>Click colour range ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide"]], "data-click-range", shared.range ?? "narrow")}</label>
-      <p class="an-water-range-note">Wide can join touching grass, banks or other similar colours. Review the preview before creating regions.</p></div>
+      <div class="an-water-frame" tabindex="0" aria-label="Floor preview. Scroll to zoom. Drag to pan. Click to add an area."><div class="an-water-stage"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div></div>
+      <p class="an-water-help">Scroll to zoom · Drag to pan · Click to add an area</p>
+      <div class="an-water-range"><label>Floor to add ${optionsHTML(FLOOR_OPTIONS, "data-floor-to-add", shared.floorToAdd ?? "water")}</label>
+      <label>Click colour range ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide"]], "data-click-range", shared.range ?? "narrow")}</label>
+      <p class="an-water-range-note">Wide can join touching colours. Automatic detection still finds water only. Review the preview before creating regions.</p></div>
     </section>
-    <section class="an-water-review" aria-label="Water areas">
-      <div class="an-water-toolbar"><h3>Water areas</h3><span data-area-count>${rows.length} found · ${selected} selected</span></div>
+    <section class="an-water-review" aria-label="Floor areas">
+      <div class="an-water-toolbar"><h3>Floor areas</h3><span data-area-count>${rows.length} found · ${selected} selected</span></div>
       <details class="an-water-all" open><summary>Settings for selected areas</summary><p>Changes below apply to every ticked area.</p><div class="an-water-shared-fields">
         <label>Kind ${optionsHTML(WATER_KINDS, 'data-all-kind=""', shared.waterKind ?? "still")}</label>
         <label data-shared-flow>Flows toward ${optionsHTML(FLOW_OPTIONS, 'data-all-flow=""', shared.flowTo || "s")}</label>
         <label data-shared-current>Current ${optionsHTML(CURRENT_OPTIONS, 'data-all-current=""', shared.current ?? "")}</label>
       </div></details>
       <div class="an-water-list">${rows.map((proposal) => waterRowHTML(proposal, choices.get(proposal.id))).join("")}</div>
-      <p class="an-water-empty" data-area-empty${rows.length ? " hidden" : ""}>No areas yet. Click water on the map to add one.</p>
+      <p class="an-water-empty" data-area-empty${rows.length ? " hidden" : ""}>No areas yet. Click the map to add one.</p>
     </section>
   </div>
-  <footer class="an-water-foot"><span data-selection-count aria-live="polite">${selected} of ${rows.length} areas selected</span><button type="button" data-create${selected ? "" : " disabled"}>${verb} ${selected} water region${selected === 1 ? "" : "s"}</button></footer>
+  <footer class="an-water-foot"><span data-selection-count aria-live="polite">${selected} of ${rows.length} areas selected</span><button type="button" data-create${selected ? "" : " disabled"}>${verb} ${selected} region${selected === 1 ? "" : "s"}</button></footer>
 </div>`;
 }
 
@@ -343,6 +349,7 @@ function applyShared(root, attribute, value) {
 
 function sharedChoices(root) {
   return {
+    floorToAdd: root.querySelector("[data-floor-to-add]")?.value ?? "water",
     waterKind: root.querySelector("[data-all-kind]")?.value ?? "still",
     flowTo: root.querySelector("[data-all-flow]")?.value ?? "s",
     current: root.querySelector("[data-all-current]")?.value ?? "",
@@ -359,15 +366,26 @@ function untickedGeometryMessage(count) {
   return `Experimental. ${count === 1 ? "An unticked area has outline edits" : `${count} unticked areas have outline edits`} that will be discarded. Tick ${count === 1 ? "it" : "them"} to save the outline, or continue to discard.`;
 }
 
-function updateKindFields(row) {
-  const kind = row.querySelector("[data-kind]").value;
+function updateFloorFields(row) {
+  const floor = row.querySelector("select[data-floor]")?.value ?? "water";
+  row.dataset.floor = floor;
+  const wet = floor === "water";
+  for (const field of row.querySelectorAll("[data-water-fields]")) field.hidden = !wet;
+  if (!wet) return;
+  const kind = row.querySelector("[data-kind]")?.value ?? "still";
   const flow = row.querySelector("[data-flow]");
   const current = row.querySelector("[data-current]");
-  flow.value = flowDefault(kind, flow.value) || "s";
-  current.value = currentDefault(kind, current.value);
-  row.querySelector("[data-flow-field]").hidden = !waterFlows(kind);
-  row.querySelector("[data-current-field]").hidden = kind !== "river";
+  if (flow) flow.value = flowDefault(kind, flow.value) || "s";
+  if (current) current.value = currentDefault(kind, current.value);
+  const flowField = row.querySelector("[data-flow-field]");
+  const currentField = row.querySelector("[data-current-field]");
+  if (flowField) flowField.hidden = !waterFlows(kind);
+  if (currentField) currentField.hidden = kind !== "river";
   for (const field of row.querySelectorAll("[data-sea-field]")) field.hidden = kind !== "sea";
+}
+
+function updateKindFields(row) {
+  updateFloorFields(row);
 }
 
 // `detect` is what the window works on: the pixels, the rows so far, and the scene and level as they were at open.
@@ -377,7 +395,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
     static DEFAULT_OPTIONS = {
       id: "animater-water-detect",
       classes: ["animater", "animater-water"],
-      window: { title: "Experimental: detect water regions", icon: "fa-solid fa-water", resizable: true },
+      window: { title: "Experimental: detect floor regions", icon: "fa-solid fa-border-all", resizable: true },
       position: { width: 1000, height: 760 },
     };
 
@@ -435,7 +453,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       setText("[data-selection-count]", `${selected} of ${total} areas selected`);
       const verb = this.detect.proposals.some((proposal) => proposal.regionId) ? "Save" : "Create";
       const button = this.element.querySelector("[data-create]");
-      if (button) { button.textContent = this.saving ? "Creating regions…" : `${verb} ${selected} water region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
+      if (button) { button.textContent = this.saving ? "Creating regions…" : `${verb} ${selected} region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
       const empty = this.element.querySelector("[data-area-empty]");
       if (empty) empty.hidden = total > 0;
       const help = this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : "Click to add water";
@@ -449,7 +467,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         for (const button of this.element.querySelectorAll("[data-add-to]")) {
           const active = this.mode?.kind === "add" && button.dataset.addTo === this.mode.areaId;
           button.setAttribute("aria-pressed", String(active));
-          button.textContent = active ? "Adding water here" : "Add water";
+          button.textContent = active ? "Adding here" : "Add to area";
         }
         for (const button of this.element.querySelectorAll("[data-edit-outline]")) button.setAttribute("aria-pressed", String(this.mode?.kind === "vertices" && button.dataset.editOutline === this.mode.areaId));
         const smooth = this.element.querySelector("[data-smooth-outline]");
@@ -668,7 +686,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         }
         if (event.target.closest?.("[data-all-flow]")) applyShared(this.element, "data-flow", event.target.value);
         if (event.target.closest?.("[data-all-current]")) applyShared(this.element, "data-current", event.target.value);
-        if (event.target.closest?.("select[data-kind]")) updateKindFields(event.target.closest("[data-id]"));
+        if (event.target.closest?.("select[data-kind], select[data-floor]")) updateFloorFields(event.target.closest("[data-id]"));
         this.updateSummary();
       });
       this.element.addEventListener("click", (event) => {
@@ -739,9 +757,11 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         return this.combineAreas([{ ...picked.proposal, id: "addition" }]);
       }
       this.history = [];
+      const floor = isDetectFloor(shared.floorToAdd) ? shared.floorToAdd : "water";
+      picked.proposal.floor = floor;
       detect.proposals.push(picked.proposal);
       this.element.querySelector(".an-water-reason")?.remove();
-      this.element.querySelector(".an-water-list").insertAdjacentHTML("afterbegin", waterRowHTML(picked.proposal, shared));
+      this.element.querySelector(".an-water-list").insertAdjacentHTML("afterbegin", waterRowHTML(picked.proposal, { ...shared, floor }));
       this.element.querySelector(".an-water-list").scrollTop = 0;
       this.paint();
       this.updateSummary();
@@ -785,7 +805,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         });
         const outcome = await commitWaterPlan(plan, { scene: detect.scene, notify: hooks.notify });
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
-          hooks.notify?.(`${outcome.created ? `Created ${outcome.created} water region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
+          hooks.notify?.(`${outcome.created ? `Created ${outcome.created} region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
           await this.close({ force: true });
         }
       } catch (error) {
