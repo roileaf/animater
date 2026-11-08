@@ -37,7 +37,7 @@ export function detectWater(rgba, width, height) {
 
   const mask = cleanMask(grown, width, height, null, { hue, sat });
 
-  const proposals = traceProposals(mask, width, height);
+  const proposals = traceProposals(mask, width, height).map((proposal) => ({ ...proposal, floor: "water" }));
   if (!proposals.length) return none("nothing-left");
   return {
     status: "found",

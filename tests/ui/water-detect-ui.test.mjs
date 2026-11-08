@@ -103,7 +103,7 @@ test("create keeps the ticked pieces, maps them onto the scene, and leaves hand-
   assert.equal(river.color, "#2c7da0");
   assert.deepEqual(river.levels, ["level-1"]);
   assert.equal(river.flags.animater.floor, "water");
-  assert.equal(river.flags.animater.generated, "water-detect");
+  assert.equal(river.flags.animater.generated, "floor-detect");
   assert.equal(river.flags.animater.waterKind, "river");
   assert.equal(river.flags.animater.flowTo, "se");
   assert.equal(river.flags.animater.current, "swift");

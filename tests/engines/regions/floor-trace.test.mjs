@@ -215,12 +215,12 @@ test("toRegionData maps pixel corners into scene space and writes water flags", 
   assert.equal(Math.min(...ys), 2000);
   assert.equal(Math.max(...ys), 4500);
   assert.deepEqual(data.levels, ["level-a"]);
-  assert.deepEqual(data.flags, { animater: { floor: "water", generated: "water-detect", waterKind: "river", flowTo: "se", current: "swift" } });
+  assert.deepEqual(data.flags, { animater: { floor: "water", generated: "floor-detect", waterKind: "river", flowTo: "se", current: "swift" } });
   const still = toRegionData(found.proposals[0], {
     sceneRect: { x: 0, y: 0, width: 20, height: 10 }, imageWidth: 20, imageHeight: 10, name: "Pool", waterKind: "still",
   });
   assert.deepEqual(still.levels, []);
-  assert.deepEqual(still.flags, { animater: { floor: "water", generated: "water-detect", waterKind: "still", flowTo: "", current: "" } });
+  assert.deepEqual(still.flags, { animater: { floor: "water", generated: "floor-detect", waterKind: "still", flowTo: "", current: "" } });
   const badStill = toRegionData(found.proposals[0], {
     sceneRect: { x: 0, y: 0, width: 20, height: 10 }, imageWidth: 20, imageHeight: 10, waterKind: "still", flowTo: "", current: "swift",
   });
@@ -231,11 +231,12 @@ test("editableWaterRegionIds selects only generated regions on exactly this leve
   const ids = editableWaterRegionIds([
     { id: "hand", flags: { animater: { floor: "water" } } },
     { id: "old", levels: ["level-a"], flags: { animater: { floor: "water", generated: "water-detect" } } },
+    { id: "fresh", levels: ["level-a"], flags: { animater: { floor: "stone", generated: "floor-detect" } } },
     { id: "other", flags: { animater: { generated: "something-else" } } },
     { id: "plain" },
     null,
   ], "level-a");
-  assert.deepEqual(ids, ["old"]);
+  assert.deepEqual(ids, ["old", "fresh"]);
   assert.deepEqual(editableWaterRegionIds(null, "level-a"), []);
   assert.deepEqual(editableWaterRegionIds({ contents: [{ id: "kept" }, { id: "again", levels: ["b"], flags: { animater: { generated: "water-detect" } } }] }, "b"), ["again"]);
 });

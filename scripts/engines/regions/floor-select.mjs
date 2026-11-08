@@ -44,7 +44,7 @@ export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], bro
   const [traced] = traceProposals(mask, width, height);
   let next = 1;
   for (const proposal of claimed) next = Math.max(next, Number(String(proposal.id).replace("water-", "")) + 1);
-  return { status: "found", proposal: { ...traced, id: `water-${next}`, preselected: true, clicked: true }, seed };
+  return { status: "found", proposal: { ...traced, id: `water-${next}`, floor: "water", preselected: true, clicked: true }, seed };
 }
 
 // A small patch read around the click, so a click on foam, a wave crest or a lamp's reflection still reads the water

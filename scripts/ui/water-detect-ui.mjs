@@ -4,7 +4,7 @@
 import { detectWater } from "../engines/regions/water-detect.mjs";
 import { selectWaterAt } from "../engines/regions/floor-select.mjs";
 import { waterSelectionPixels, mergeWaterProposals, fitSize, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/floor-trace.mjs";
-import { toRegionData, editableWaterRegionIds } from "../engines/regions/floor-region-data.mjs";
+import { toRegionData, editableWaterRegionIds, WATER_FLAG_KEYS, floorMeta, isDetectFloor } from "../engines/regions/floor-region-data.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/water-outline.mjs";
 
@@ -196,6 +196,7 @@ export function readWaterChoices(rows) {
   return (rows ?? []).map((row) => ({
     id: row.id,
     checked: row.checked === true,
+    floor: isDetectFloor(row.floor) ? row.floor : (row.floor || "water"),
     waterKind: row.waterKind ?? "still",
     flowTo: row.flowTo ?? "",
     current: row.current ?? "",
@@ -210,6 +211,7 @@ export function choicesFromElement(root) {
     rows.push({
       id: row.dataset.id,
       checked: row.querySelector("[data-pick]")?.checked === true,
+      floor: row.querySelector("[data-floor]")?.value ?? row.dataset.floor ?? "water",
       waterKind: row.querySelector("[data-kind]")?.value ?? row.dataset.kind ?? "still",
       flowTo: row.querySelector("[data-flow]")?.value ?? "",
       current: row.querySelector("[data-current]")?.value ?? "",
@@ -240,9 +242,10 @@ export function savedWaterProposals(regions, { levelId, sceneRect, width, height
       }
     }
     const own = region.flags?.animater ?? {};
+    const floor = isDetectFloor(own.floor) ? own.floor : "water";
     const kind = waterKindOf(own);
-    const savedChoices = { waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "" };
-    return { ...waterProposalFromLoops(loops, width, height), id: `water-${index + 1}`, regionId: region.id, name: region.name ?? "Water", savedChoices, preselected: false };
+    const savedChoices = { floor, waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "" };
+    return { ...waterProposalFromLoops(loops, width, height), id: `water-${index + 1}`, regionId: region.id, name: region.name ?? floorMeta(floor).name, floor, savedChoices, preselected: false };
   }).filter((proposal) => proposal.loops.length).map((proposal, i) => ({ ...proposal, id: `water-${i + 1}` }));
 }
 
@@ -251,25 +254,50 @@ export function planWaterCreate({ proposals, picked, sceneRect, imageWidth, imag
   const editable = new Set(editableWaterRegionIds(regions, levelId));
   const creates = [], updates = [];
   for (const pickedRow of [...(picked ?? [])].sort((a, b) => (byId.get(b.id)?.share ?? 0) - (byId.get(a.id)?.share ?? 0))) {
-    const row = { ...pickedRow, flowTo: flowDefault(pickedRow.waterKind, pickedRow.flowTo), current: currentDefault(pickedRow.waterKind, pickedRow.current) };
+    const floor = isDetectFloor(pickedRow.floor) ? pickedRow.floor : (pickedRow.floor || byId.get(pickedRow.id)?.floor || "water");
+    const row = {
+      ...pickedRow,
+      floor,
+      flowTo: floor === "water" ? flowDefault(pickedRow.waterKind, pickedRow.flowTo) : "",
+      current: floor === "water" ? currentDefault(pickedRow.waterKind, pickedRow.current) : "",
+      waterKind: floor === "water" ? (pickedRow.waterKind ?? "still") : "",
+      waveTo: floor === "water" ? (pickedRow.waveTo ?? "") : "",
+      seaBeach: floor === "water" ? (pickedRow.seaBeach ?? "") : "",
+    };
     if (!row.checked) continue;
     const proposal = byId.get(row.id);
     if (!proposal) continue;
-    const data = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId,
+    const data = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, floor: row.floor,
       waterKind: row.waterKind, flowTo: row.flowTo, current: row.current, waveTo: row.waveTo, seaBeach: row.seaBeach });
     if (!proposal.regionId) { creates.push(data); continue; }
     if (!editable.has(proposal.regionId)) throw new Error("The saved region is no longer editable on this level. Reopen the generator.");
     const patch = { _id: proposal.regionId };
     if (proposal.geometryChanged) patch.shapes = data.shapes;
-    const before = proposal.savedChoices;
+    const before = proposal.savedChoices ?? {};
     const own = data.flags.animater;
-    const kindChanged = row.waterKind !== before.waterKind;
-    for (const key of ["waterKind", "flowTo", "current", "waveTo", "seaBeach"]) {
-      if (row[key] !== before[key] || (kindChanged && ["flowTo", "current"].includes(key))) patch[`flags.animater.${key}`] = own[key] ?? "";
+    const beforeFloor = before.floor ?? "water";
+    if (row.floor !== beforeFloor) patch["flags.animater.floor"] = own.floor ?? "";
+    if (row.floor === "lava" && beforeFloor !== "lava") {
+      for (const [key, value] of Object.entries(own)) {
+        if (key === "generated") continue;
+        patch[`flags.animater.${key}`] = value ?? "";
+      }
+    }
+    const leftWater = beforeFloor === "water" && row.floor !== "water";
+    if (leftWater) {
+      for (const key of WATER_FLAG_KEYS) patch[`flags.animater.${key}`] = "";
+    } else if (row.floor === "water") {
+      const kindChanged = row.waterKind !== before.waterKind;
+      for (const key of WATER_FLAG_KEYS) {
+        if (row[key] !== before[key] || (kindChanged && ["flowTo", "current"].includes(key))) patch[`flags.animater.${key}`] = own[key] ?? "";
+      }
     }
     if (Object.keys(patch).length > 1) updates.push(patch);
   }
-  creates.forEach((data, i) => { data.name = creates.length === 1 ? "Water" : `Water ${i + 1}`; });
+  creates.forEach((data, i) => {
+    const label = floorMeta(data.flags.animater.floor).name;
+    data.name = creates.length === 1 ? label : `${label} ${i + 1}`;
+  });
   return { creates, updates };
 }
 
