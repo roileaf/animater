@@ -3228,10 +3228,41 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => openWeatherPanel() });
     add({ name: "animaterWeatherAll", title: "Weather for all scenes: a scene's own settings come first", icon: "fa-solid fa-earth-americas", order: order + 3.6, button: true, visible: toolShown("toolWeather"),
       onChange: () => openAllWeatherPanel() });
+    add({ name: "animaterDetectWater", title: "Detect water (Experimental): propose water regions from this level's map", icon: "fa-solid fa-water", order: order + 3.55, button: true,
+      visible: toolShown("toolDetectWater") && game.settings.get(ID, "experimentalWaterRegions") === true,
+      onChange: () => { void openDetectedWater(); } });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
   } catch { /* another layout of the controls */ }
 });
+// The read happens on the click, not on a frame.
+const openDetectedWater = async () => {
+  if (!canvas?.ready) return;
+  // All of it now, in one tick. The first click's module load is an await, and the GM can change scene during it.
+  const { scene, level } = canvas;
+  const src = level?.background?.src;
+  if (!src) {
+    ui.notifications?.warn("Experimental. This level has no map image to read.");
+    return;
+  }
+  const sceneRect = canvas.dimensions?.sceneRect;
+  if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) {
+    ui.notifications?.warn("Experimental. This scene has no map size yet.");
+    return;
+  }
+  const levelId = level?.id;
+  const textures = level?.textures;
+  const { openWaterDetect } = await import("./ui/water-detect-ui.mjs");
+  await openWaterDetect({
+    src,
+    scene,
+    sceneRect,
+    levelId,
+    textures,
+    notify: (message) => { ui.notifications?.info(message); },
+    warn: (message) => { ui.notifications?.warn(message); },
+  });
+};
 // Changed in the settings window: the button in the Animater controls follows.
 Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.weatherClouds` && game.user?.isGM) ui.controls?.render({ reset: true }); });
 let rubbleAsking = false;
@@ -7528,9 +7559,19 @@ Hooks.once("init", () => {
     ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, for the GM. Marks still fade by themselves.'],
     ['toolAnimals','Show the Animals button','In the Animater controls: choose how many of each animal a scene has, and put them down by hand.'],
     ['toolWeather','Show the Weather button','In the Animater controls: choose the scene\'s weather and tune its amount, size, speed, colour, fog, lightning, wind and clouds.'],
+    ['toolDetectWater','Show the Detect water button','In the Animater controls: propose water regions from this level\'s map (experimental).'],
     ['toolClouds','Show the Clouds button','In the Animater controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
+  registerSetting("experimentalWaterRegions", {
+    name: "Experimental: detect water regions",
+    hint: "Adds a button in the Animater controls that proposes water regions from the level background. Off by default. It runs only when you click that button.",
+    scope: "world",
+    config: true,
+    type: Boolean,
+    default: false,
+    onChange: () => { ui.controls?.render({ reset: true }); },
+  });
   // On for GMs, off for players: game.user does not exist yet at init, the world's user data does.
   registerSetting('hoverExplain',{name:'Explain animations on hover',
     hint:'Hovering a token shows what Animater is playing on it right now: each animation\'s name, whether it comes from a catalog or a recipe, and whether it lasts. Hold Shift while it shows for buttons to hide a lasting look, leave it out of its catalog, or flag it for a new look.',
