@@ -15,7 +15,8 @@ export function ownWalls(tile, walls, grid) {
 }
 
 export function openUpdates(walls) {
-  return walls.map(w => ({
+  // a wall already opened keeps its saved originals (overlapping props)
+  return walls.filter(w => !saved(w)).map(w => ({
     _id: w.id, move: 0, sight: 0, light: 0, sound: 0,
     "flags.animater.prop.restore": Object.fromEntries(KEYS.map(k => [k, w[k]])),
   }));

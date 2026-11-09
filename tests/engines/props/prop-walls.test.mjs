@@ -10,10 +10,10 @@ test("only non-door walls fully inside (with a quarter-square tolerance) belong"
   assert.deepEqual(ownWalls(tile, walls, 100).map((w) => w.id), ["in", "edge"]);
 });
 
-test("a rotated tile bounds its walls by the rotated rectangle", () => {
-  const t = { x: 100, y: 100, width: 200, height: 20, rotation: 90 };
-  // centre (200,110); rotated 90deg it spans x 190..210, y 10..210
-  const walls = [wall("along", [200, 20, 200, 200]), wall("across", [110, 110, 290, 110])];
+test("a rotated tile bounds its walls by the rotated rectangle (clockwise, y down)", () => {
+  const t = { x: 100, y: 100, width: 200, height: 20, rotation: 30 };
+  // centre (200,110); long axis runs along (cos30, sin30)
+  const walls = [wall("along", [130.7, 70, 269.3, 150]), wall("mirrored", [130.7, 150, 269.3, 70])];
   assert.deepEqual(ownWalls(t, walls, 40).map((w) => w.id), ["along"]);
 });
 
@@ -22,4 +22,10 @@ test("open stores the originals; restore puts them back and clears the flag", ()
   assert.deepEqual(u, { _id: "a", move: 0, sight: 0, light: 0, sound: 0, "flags.animater.prop.restore": { move: 20, sight: 10, light: 20, sound: 20 } });
   const opened = wall("a", [0, 0, 1, 1], { move: 0, sight: 0, light: 0, sound: 0, flags: { animater: { prop: { restore: { move: 20, sight: 10, light: 20, sound: 20 } } } } });
   assert.deepEqual(restoreUpdates([opened, wall("b", [0, 0, 1, 1])]), [{ _id: "a", move: 20, sight: 10, light: 20, sound: 20, "flags.animater.prop.-=restore": null }]);
+});
+
+test("a wall that is already open produces no update, so its saved originals survive", () => {
+  const opened = wall("a", [0, 0, 1, 1], { move: 0, sight: 0, light: 0, sound: 0, flags: { animater: { prop: { restore: { move: 20, sight: 10, light: 20, sound: 20 } } } } });
+  assert.deepEqual(openUpdates([opened]), []);
+  assert.equal(openUpdates([opened, wall("b", [0, 0, 1, 1])]).length, 1);
 });
