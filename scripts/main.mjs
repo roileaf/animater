@@ -3290,6 +3290,7 @@ const openFloorRegionsTool = async () => {
     scene,
     sceneRect,
     levelId,
+    tiles: (canvas.tiles?.placeables ?? []).map((placeable) => placeable.document),
     textures,
     grid: canvas.grid?.size ?? 100,
     tile: (floor, style) => floorTextures.tileImage(floor, style),

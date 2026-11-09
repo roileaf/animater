@@ -662,7 +662,7 @@ function signedArea(points) {
   return sum / 2;
 }
 
-function traceProposals(mask, width, height) {
+export function traceProposals(mask, width, height) {
   const count = width * height;
   const labels = new Int32Array(count);
   const comps = label(mask, labels, width, height);
