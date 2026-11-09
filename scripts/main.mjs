@@ -20,6 +20,7 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
+import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
@@ -6941,7 +6942,10 @@ async function receiveDisplace(data, senderId) {
 // tile update and one wall batch. Every screen draws the wreckage of a hidden tile that has a note.
 const propGrid = (scene) => scene?.grid?.size ?? canvas?.grid?.size ?? 100;
 const propWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: () => canvas.primary, grid: () => canvas?.grid?.size ?? 100,
-  renderer: createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 }) });
+  renderer: createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 }),
+  materialOf: (doc) => propMaterial(propTileView(doc), propGrid(doc.parent)),
+  // Heard where it breaks, with the room's acoustics (playUnder).
+  playSound: (file, at) => { void playUnder("propBreak", at, { file, volume: 0.8, reach: 20, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); } });
 const PROP_REFUSED_MS = 3000;
 const propPending = new Map(), propWriting = new Set(); // broken on this screen, waiting on the GM; being written by the GM
 let propNoGmTraced = false;

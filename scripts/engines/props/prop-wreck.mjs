@@ -2,12 +2,15 @@
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
 import { wreckLayout, wreckTargets, GRAIN_TONES } from "./prop-wreck-layout.mjs";
+import { propSound } from "./prop-sounds.mjs";
+import { seededRandom } from "../fragments/fragments.mjs";
 
 const FALLBACK = { mid: 0x7a6a55, dark: 0x433a2f, light: 0x9a8a72 };
 const FLIGHT_MS = 1400;
 const quiet = (fn) => { try { fn(); } catch { /* keep cleaning */ } };
 
-export function createPropWreckage({ PIXI, layer, renderer, grid }) {
+// materialOf(tile doc) names the prop's material; playSound(file, at) plays a recording at a point (main.mjs, with room acoustics).
+export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {} }) {
   const wrecks = new Map(); // tile id -> { box, handle, stop }
   const artTextures = new Map(), colours = new Map();
 
@@ -155,6 +158,11 @@ export function createPropWreckage({ PIXI, layer, renderer, grid }) {
     }
     const frame = (t) => { entry.handle?.update(t); grow(t); speckG.alpha = Math.min(1, t * 1.5); };
     if (!animate) { frame(1); return; }
+    // Only a break seen happening is heard; a wreck redrawn on load stays silent. The note's seed gives every screen the same pick.
+    try {
+      const { file, splash } = propSound(materialOf(d), contents, seededRandom(note.seed));
+      playSound(file, centre); if (splash) playSound(splash, centre);
+    } catch (error) { console.warn("Animater prop wreckage: no sound", error); }
     const t0 = performance.now(); let raf = 0;
     entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; };
     const tick = () => {

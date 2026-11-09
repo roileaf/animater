@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { releaseFiles } from '../../tools/release-files.mjs';
 import { gaitStepFiles, bodyStepFiles, FOOTSTEP_FILES, MOVE_SOUND_FILES, THUD_FILES } from '../../scripts/engines/motion/movement-feel.mjs';
+import { BREAK_SOUNDS, SPLASH_SOUNDS } from '../../scripts/engines/props/prop-sounds.mjs';
 
 test('release includes every bundled movement recording and its attribution', () => {
   const files = new Set(releaseFiles());
@@ -12,7 +13,7 @@ test('release includes every bundled movement recording and its attribution', ()
   for (const file of sounds.filter(f => f.startsWith('modules/animater/'))) {
     assert.ok(files.has(file.replace('modules/animater/', '')), `Missing release sound: ${file}`);
   }
-  for (const folder of ['creatures/reviewed', 'creatures/completed', 'creatures/wood', 'surfaces/freesound', 'surfaces/kenney']) {
+  for (const folder of ['creatures/reviewed', 'creatures/completed', 'creatures/wood', 'surfaces/freesound', 'surfaces/kenney', 'props']) {
     assert.ok(files.has(`assets/sounds/${folder}/License.txt`), `Missing attribution: ${folder}`);
   }
 });
@@ -35,6 +36,11 @@ test('bundled sound packaging excludes local catalogs, audit reports and source 
     assert.equal(path.dirname(path.resolve(root)), path.resolve(tmpdir()));
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('release includes every breakable-prop break sound', () => {
+  const files = new Set(releaseFiles());
+  for (const f of [...Object.values(BREAK_SOUNDS).flat(), ...SPLASH_SOUNDS]) assert.ok(files.has(f.replace('modules/animater/', '')), `Missing release sound: ${f}`);
 });
 
 test('water detection ships with the module', () => {
