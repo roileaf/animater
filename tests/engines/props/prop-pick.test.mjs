@@ -19,6 +19,12 @@ test("miss: only a square next to the target; nearest the attacker→target line
   assert.equal(propNextToMiss({ attacker, target }, [far], 100, "bludgeoning"), null);
   assert.equal(propNextToMiss({ attacker, target }, [behind], 100, "piercing"), null);   // wood ignores piercing
 });
+test("miss: a prop on the attacker's side of the target is never hit", () => {
+  const target = { x: 300, y: 300, w: 100, h: 100 }, attacker = { x: 150, y: 350 };
+  const near = tile("near", 2, 3), behind = tile("behind", 4, 3);
+  assert.equal(propNextToMiss({ attacker, target }, [near, behind], 100, "bludgeoning")?.id, "behind");
+  assert.equal(propNextToMiss({ attacker, target }, [near], 100, "bludgeoning"), null);
+});
 test("miss: a big target uses the ring around its whole footprint", () => {
   const target = { x: 300, y: 300, w: 200, h: 200 }, attacker = { x: 0, y: 400 };
   assert.equal(propNextToMiss({ attacker, target }, [tile("r", 5, 4)], 100, "bludgeoning")?.id, "r");

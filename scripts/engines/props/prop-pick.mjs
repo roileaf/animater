@@ -15,15 +15,21 @@ export function propNextToMiss({ attacker, target }, tiles, grid, damageType) {
   const ring = { x: target.x - grid, y: target.y - grid, w: target.w + 2 * grid, h: target.h + 2 * grid };
   const tc = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
   const dx = tc.x - attacker.x, dy = tc.y - attacker.y, len = Math.hypot(dx, dy);
-  // distance from a point to the attacker→target line (plain distance if they coincide)
-  const off = p => len ? Math.abs((p.x - attacker.x) * dy - (p.y - attacker.y) * dx) / len : Math.hypot(p.x - tc.x, p.y - tc.y);
-  let best = null, bestD = Infinity;
+  // how far the target's footprint reaches back toward the attacker along the line
+  const near = len ? len - (target.w / 2 * Math.abs(dx) + target.h / 2 * Math.abs(dy)) / len : 0;
+  // along: distance past the attacker; across: distance off the attacker→target line
+  const measure = p => len
+    ? { along: ((p.x - attacker.x) * dx + (p.y - attacker.y) * dy) / len, across: Math.abs((p.x - attacker.x) * dy - (p.y - attacker.y) * dx) / len }
+    : { along: 0, across: 0 };
+  let best = null, bestD = Infinity, bestT = Infinity;
   for (const t of eligible(tiles, grid, { damageType })) {
     const c = centre(t);
     if (c.x >= target.x && c.x <= target.x + target.w && c.y >= target.y && c.y <= target.y + target.h) continue;
     if (t.x >= ring.x + ring.w || t.x + t.width <= ring.x || t.y >= ring.y + ring.h || t.y + t.height <= ring.y) continue;
-    const d = off(c);
-    if (d < bestD) { best = t; bestD = d; }
+    const m = measure(c);
+    if (m.along < near) continue; // on the attacker's side of the target: a missed swing never reaches it
+    const d = m.across, toTarget = Math.hypot(c.x - tc.x, c.y - tc.y);
+    if (d < bestD || (d === bestD && toTarget < bestT)) { best = t; bestD = d; bestT = toTarget; }
   }
   return best;
 }
