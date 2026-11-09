@@ -46,7 +46,7 @@ function segsCross(a, b, c, d) {
   return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b);
 }
 // shortest distance between a segment and a tile's rectangle
-function segRectDist(a, b, t) {
+export function segRectDist(a, b, t) {
   if (inRect(a, t) || inRect(b, t)) return 0;
   const k = [{ x: t.x, y: t.y }, { x: t.x + t.width, y: t.y }, { x: t.x + t.width, y: t.y + t.height }, { x: t.x, y: t.y + t.height }];
   let d = Infinity;

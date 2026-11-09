@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validBreakRequest, undoUpdates, repairUpdates, breakNoteFor, withDeletes, levelTopOf, cleanCause, wallsToRestore } from "../../../scripts/engines/props/prop-requests.mjs";
+import { validBreakRequest, undoUpdates, repairUpdates, breakNoteFor, withDeletes, levelTopOf, cleanCause, wallsToRestore, slamPlausible } from "../../../scripts/engines/props/prop-requests.mjs";
 import { ownWalls } from "../../../scripts/engines/props/prop-walls.mjs";
 
 const grid = 100;
@@ -65,15 +65,34 @@ test("a plain miss breaks only when the GM's roll is under the scene chance", ()
   assert.deepEqual(validBreakRequest(req("criticalFailure"), ctx({ roll: 0 })), { ok: false, why: "far" });
 });
 
-test("a slam is plausible only near the mover, and uses the mover's own size", () => {
-  const req = { cause: { kind: "path", slam: { size: 3 }, moverUuid: "Scene.s.Token.m" }, note: noteFor(barrel(), { kind: "path", slam: { size: 1 } }) };
-  assert.equal(validBreakRequest(req, ctx({ mover: { x: 350, y: 250, size: 1 } })).ok, true);
-  assert.deepEqual(validBreakRequest(req, ctx({ mover: { x: 650, y: 250, size: 1 } })), { ok: false, why: "far" });
+test("a slam is plausible along its planned path, from either end, and uses the mover's own size", () => {
+  const along = (from, to) => ({ cause: { kind: "path", slam: { size: 3 }, moverUuid: "Scene.s.Token.m", path: { from, to } }, note: noteFor(barrel(), { kind: "path", slam: { size: 1 } }) });
+  // a 6-square path with the barrel in its middle, 2.5 squares from either end
+  const req = along({ x: -50, y: 250 }, { x: 550, y: 250 });
+  assert.equal(validBreakRequest(req, ctx({ mover: { x: -50, y: 250, size: 1 } })).ok, true);
+  assert.equal(validBreakRequest(req, ctx({ mover: { x: 550, y: 250, size: 1 } })).ok, true);
+  // the mover nowhere near either end, or unknown
+  assert.deepEqual(validBreakRequest(req, ctx({ mover: { x: 250, y: 800, size: 1 } })), { ok: false, why: "far" });
   assert.deepEqual(validBreakRequest(req, ctx({})), { ok: false, why: "far" });
+  // the barrel off the path
+  assert.deepEqual(validBreakRequest(along({ x: -50, y: 450 }, { x: 550, y: 450 }), ctx({ mover: { x: -50, y: 450, size: 1 } })), { ok: false, why: "far" });
+  // a path longer than 12 squares
+  assert.deepEqual(validBreakRequest(along({ x: -50, y: 250 }, { x: 1350, y: 250 }), ctx({ mover: { x: -50, y: 250, size: 1 } })), { ok: false, why: "far" });
+  // no path
+  assert.deepEqual(validBreakRequest({ ...req, cause: { kind: "path", slam: { size: 1 } } }, ctx({ mover: { x: 350, y: 250, size: 1 } })), { ok: false, why: "far" });
   // a Medium creature cannot slam through metal, whatever size the request claims
   const iron = barrel({ texture: { src: "props/iron-cage.webp" } });
-  assert.deepEqual(validBreakRequest(req, ctx({ tile: iron, mover: { x: 350, y: 250, size: 1 } })), { ok: false, why: "material" });
-  assert.equal(validBreakRequest(req, ctx({ tile: iron, mover: { x: 350, y: 250, size: 2 } })).ok, true);
+  assert.deepEqual(validBreakRequest(req, ctx({ tile: iron, mover: { x: -50, y: 250, size: 1 } })), { ok: false, why: "material" });
+  assert.equal(validBreakRequest(req, ctx({ tile: iron, mover: { x: -50, y: 250, size: 2 } })).ok, true);
+});
+
+test("slamPlausible is the one rule both sides use", () => {
+  const path = { from: { x: -50, y: 250 }, to: { x: 550, y: 250 } };
+  assert.equal(slamPlausible(barrel(), path, { x: -50, y: 250, size: 1 }, grid), true);
+  // a Large mover reaches a prop a square off the line
+  const off = { from: { x: -50, y: 400 }, to: { x: 550, y: 400 } };
+  assert.equal(slamPlausible(barrel(), off, { x: -50, y: 400, size: 1 }, grid), false);
+  assert.equal(slamPlausible(barrel(), off, { x: -50, y: 400, size: 2 }, grid), true);
 });
 
 test("undo restores only that tile's walls and clears only its note", () => {
@@ -133,6 +152,9 @@ test("a tile's level top: its first named level in scene order, else the initial
 test("a cause from the socket keeps only its known, well-formed fields", () => {
   assert.deepEqual(cleanCause({ kind: "area", damageType: "fire", at: { x: 1, y: 2, z: 3 }, extra: "x", slam: { size: "big" } }), { kind: "area", damageType: "fire", at: { x: 1, y: 2 } });
   assert.deepEqual(cleanCause({ kind: "path", slam: { size: 2 }, moverUuid: "Scene.s.Token.m", at: { x: NaN, y: 0 } }), { kind: "path", slam: { size: 2 }, moverUuid: "Scene.s.Token.m" });
+  assert.deepEqual(cleanCause({ kind: "path", path: { from: { x: 1, y: 2, z: 9 }, to: { x: 3, y: 4 } } }), { kind: "path", path: { from: { x: 1, y: 2 }, to: { x: 3, y: 4 } } });
+  assert.deepEqual(cleanCause({ kind: "path", path: { from: { x: 1, y: Infinity }, to: { x: 3, y: 4 } } }), { kind: "path" });
+  assert.deepEqual(cleanCause({ kind: "path", path: "far" }), { kind: "path" });
   assert.deepEqual(cleanCause(null), { kind: "" });
   assert.equal(cleanCause({ kind: "miss", targetUuid: "u".repeat(500) }).targetUuid.length, 200);
 });

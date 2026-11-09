@@ -15,15 +15,15 @@ import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./e
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
 import { bloodOnSheet, portraitBloodLevel, showPortraitBlood } from "./ui/portrait-blood.mjs";
 import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent } from "./engines/finishers/finisher-model.mjs";
-import { playFinisher, previewFinisher, travelEnd } from "./engines/finishers/finisher-play.mjs";
+import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
-import { PROP_BREAK_MESSAGE, validBreakRequest, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
+import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
-import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, slamReachable } from "./engines/props/prop-triggers.mjs";
+import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, onWhatStandsOver, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
@@ -2959,7 +2959,7 @@ const fireBlast = (p, kind, radius, variant = null) => {
     const updates = caught.flatMap((c) => {
       const doc = scene?.tokens?.get(c.id), to = pushedTo(c, grid, blocked(doc));
       if (!to) return [];
-      for (const t of propSafe("blast push", () => slamProps(doc, { x: c.x, y: c.y }, to)) ?? []) slammed.push({ t, cause: { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid }, from: { x: c.x, y: c.y } });
+      for (const t of propSafe("blast push", () => slamProps(doc, { x: c.x, y: c.y }, to)) ?? []) slammed.push({ t, cause: { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid, path: { from: { x: c.x, y: c.y }, to: { x: to.x, y: to.y } } }, from: { x: c.x, y: c.y } });
       return [{ _id: c.id, x: Math.round(to.x - c.w / 2), y: Math.round(to.y - c.h / 2) }];
     });
     if (updates.length) setTimeout(async () => {
@@ -6483,18 +6483,15 @@ const finisherWalk = (mover, direction, squares, ignore = null) => ({
   collides: (a, b) => moveBlocked(a, b, ignore),
   bounds: canvas.dimensions.sceneRect, snap: (p) => mover.getSnappedPosition?.(p) ?? p,
 });
-// A real forced move (throughProps) smashes through breakable props: the walls it leaves out are those slamWalls gives
-// between where it starts and where it would land were every crossed prop's walls left out.
+// A real forced move (throughProps) smashes through breakable props: it leaves out the walls slamWalls gives along
+// its whole walk (a prop it reaches before landing lies on that walk too).
 const throughWalls = (mover, direction, squares, throughProps) => {
   if (!throughProps) return null;
   return propSafe("forced path", () => {
     const grid = canvas.grid.size, doc = mover.document, lead = Math.max(Math.abs(direction?.x ?? 0), Math.abs(direction?.y ?? 0));
-    const centre = (p) => ({ x: p.x + mover.w / 2, y: p.y + mover.h / 2 }), start = centre({ x: doc.x, y: doc.y });
     if (!lead) return null;
-    const crossed = slamProps(doc, start, { x: start.x + (direction.x / lead) * grid * squares, y: start.y + (direction.y / lead) * grid * squares });
-    if (!crossed.length) return null;
-    const walls = doc.parent?.walls?.contents ?? [], all = new Set(crossed.flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
-    return slamWalls(doc, start, centre(landingSpot(finisherWalk(mover, direction, squares, all))));
+    const start = { x: doc.x + mover.w / 2, y: doc.y + mover.h / 2 };
+    return slamWalls(doc, start, { x: start.x + (direction.x / lead) * grid * squares, y: start.y + (direction.y / lead) * grid * squares });
   }) ?? null;
 };
 const finisherLanding = (mover, direction, squares, throughProps = false) => landingSpot(finisherWalk(mover, direction, squares, throughWalls(mover, direction, squares, throughProps)));
@@ -7084,6 +7081,8 @@ for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (d
 // area's impact when its recipe is still playing, else now. Areas break nothing on placement.
 function breakAreaProps(message) {
   if ((message?.author ?? message?.user)?.id !== game.user.id) return;
+  // Cheap first: the roller's scene has breakable props.
+  if (!propsOn((message.speaker?.scene ? game.scenes.get(message.speaker.scene) : null) ?? canvas?.scene)) return;
   const d = damageFromMessage(message, game.system.id);
   if (!d?.type || !d.itemUuid) return;
   let speaker = null;
@@ -7117,20 +7116,20 @@ async function breakPropOnMiss(event) {
   await askProp(scene, tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
 }
 const propMiss = (event) => { void propSafe("miss", () => breakPropOnMiss(event))?.catch?.((e) => runtime?.trace("props", `miss: ${e?.message ?? e}`)); };
-// A forced move's breakable props: those a mover of its size crosses from a to b (centres). None while the scene's
-// props cannot break or no GM could write them.
+// A forced move's breakable props: those a mover of its size crosses from a to b (centres, the planned path) that
+// the GM will let it break with the mover standing at a (slamPlausible). None while the scene's props cannot break or
+// no GM could write them.
 const moverSize = (doc) => Math.max(doc?.width ?? 1, doc?.height ?? 1);
 function slamProps(doc, a, b) {
   const scene = doc?.parent;
   if (!propsOn(scene) || !game.users.activeGM || ![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite) || (a.x === b.x && a.y === b.y)) return [];
-  return propsOnPath([a, b], moverSize(doc), scene.tiles.contents.map(propTileView), propGrid(scene));
+  const grid = propGrid(scene), path = { from: a, to: b }, mover = { x: a.x, y: a.y, size: moverSize(doc) };
+  return propsOnPath([a, b], mover.size, scene.tiles.contents.map(propTileView), grid).filter((t) => slamPlausible(t, path, mover, grid));
 }
-// The walls that move's wall test leaves out: the own walls of the props it crosses that the GM will let it break,
-// those within its reach where it starts (a) or lands (b). Any other prop's walls still stop it.
+// The walls that move's wall test leaves out: those props' own walls. Any other prop's walls still stop it.
 function slamWalls(doc, a, b) {
   const scene = doc?.parent, grid = propGrid(scene), walls = scene?.walls?.contents ?? [];
-  const near = slamProps(doc, a, b).filter((t) => slamReachable(t, a, moverSize(doc), grid) || slamReachable(t, b, moverSize(doc), grid));
-  return new Set(near.flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+  return new Set(slamProps(doc, a, b).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
 }
 // The move wall test, less the `ignore`d walls: each crossing's walls are read from the test's own report.
 function moveBlocked(a, b, ignore, options = {}) {
@@ -7138,35 +7137,19 @@ function moveBlocked(a, b, ignore, options = {}) {
   if (!test("any")) return false;
   if (!ignore?.size) return true;
   try {
-    const crossings = Array.from(test("all") ?? [], (v) => Array.from(v?.edges ?? [], (e) => e?.object?.document?.id ?? e?.id).filter(Boolean));
+    const crossings = crossedWalls(test("all"));
     return !crossings.length || ownWallsBeforeCollision(crossings, ignore);
   } catch { return true; }
 }
-// Resolves true once the token's document stands at `at` (top-left), false after `ms`.
-const tokenAt = (doc, at, ms = 3000) => new Promise((resolve) => {
-  if (doc.x === at.x && doc.y === at.y) return resolve(true);
-  let hook = null, timer = null;
-  const done = (v) => { Hooks.off("updateToken", hook); clearTimeout(timer); resolve(v); };
-  hook = Hooks.on("updateToken", (d) => { if (d === doc && d.x === at.x && d.y === at.y) done(true); });
-  timer = setTimeout(() => done(false), ms);
-});
-// A forced move from → to (top-left) travelling travelMs: each prop it smashes through is asked for as the travel
-// reaches it, while the mover's document still stands at `from` (the GM measures the slam from there). One the GM
-// would find too far from `from` is asked once the document stands at `to` (landed()). Null when it crosses none.
-function slamAlong(doc, from, to, travelMs) {
+// A forced move from → to (top-left) whose travel spans {start, end} (ms into its play): each prop it smashes through
+// is asked for as the travel reaches it, with its planned path, a little before the move is written.
+function slamAlong(doc, from, to, span) {
   const grid = propGrid(doc?.parent), w = (doc.width ?? 1) * grid, h = (doc.height ?? 1) * grid;
   const a = { x: from.x + w / 2, y: from.y + h / 2 }, b = { x: to.x + w / 2, y: to.y + h / 2 };
-  const tiles = slamProps(doc, a, b);
-  if (!tiles.length) return null;
-  const scene = doc.parent, cause = { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid }, later = [];
-  // Asked a little before the travel ends, so never after the move is written.
-  const asked = slamTimes(a, b, tiles, Math.max(0, travelMs - 50)).map(({ tile, ms }) => new Promise((resolve) => setTimeout(resolve, ms))
-    .then(() => askProp(scene, tile.id, cause, a)).then((ok) => { if (!ok) later.push(tile); }));
-  return { landed: async () => {
-    await Promise.all(asked);
-    if (!later.length || !(await tokenAt(doc, to))) return;
-    for (const t of later) await askProp(scene, t.id, cause, a);
-  } };
+  const tiles = slamProps(doc, a, b), scene = doc.parent;
+  const cause = { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid, path: { from: a, to: b } };
+  for (const { tile, ms } of slamTimes(a, b, tiles, { start: span.start, end: Math.max(span.start, span.end - 50) }))
+    setTimeout(() => void askProp(scene, tile.id, cause, a), ms);
 }
 const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort"];
 // Its prop flags changed (set, or removed with a "-=" key); other modules' flags never redraw it.
@@ -10363,7 +10346,7 @@ Hooks.once("ready", () => {
   // A picked square (`spot`) is where it lands, exactly. The move smashes through breakable props on its way: each
   // is asked for as the travel reaches it (slamAlong), from the landing this host planned.
   const finisherHost = (attacker, spot = null) => {
-    let forced = null, slam = null;
+    let forced = null;
     const planned = (mover, to) => { forced = to ? { doc: mover.document, from: { x: mover.document.x, y: mover.document.y }, to: { x: to.x, y: to.y } } : null; return to; };
     return {
       gridSize: () => canvas.grid.size,
@@ -10371,17 +10354,15 @@ Hooks.once("ready", () => {
       wallHit: (mover, direction, squares) => finisherWallHit(mover, direction, squares, true),
       play: (recipe, context) => new Promise((resolve) => {
         runtime.play(installedStages(recipe), context, { onStart: (started) => {
-          const travelMs = travelEnd(started.playbackPlan);
-          slam = forced && travelMs > 0 ? propSafe("forced path", () => slamAlong(forced.doc, forced.from, forced.to, travelMs)) ?? null : null;
+          // Only a travel that moves the token (the move playFinisher writes at its end) slams.
+          const span = travelSpan(started.playbackPlan);
+          if (forced && span.end > 0) propSafe("forced path", () => slamAlong(forced.doc, forced.from, forced.to, span));
           resolve(started.playbackPlan);
         } }).then(() => resolve(null), (error) => { runtime.trace("Blocked", error.message); resolve(null); });
       }),
       wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [] }),
-      commit: async (token, data) => {
-        await commitDisplace(token, data, attacker);
-        if (slam && Number.isFinite(data?.x)) void slam.landed().catch((e) => runtime.trace("props", `forced path: ${e?.message ?? e}`));
-      },
+      commit: (token, data) => commitDisplace(token, data, attacker),
       trace: (status, detail) => runtime.trace(status, detail),
     };
   };

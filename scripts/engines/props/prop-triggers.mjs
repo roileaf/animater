@@ -12,6 +12,7 @@ export function createAreaWaits({ now = () => Date.now(), ttl = 120000 } = {}) {
   return {
     remember(area) {
       if (!area?.templateId) return;
+      drop();
       areas.delete(area.templateId);
       areas.set(area.templateId, { ...area, rememberedAt: now(), impactAt: null, claimed: new Set() });
     },
@@ -23,6 +24,7 @@ export function createAreaWaits({ now = () => Date.now(), ttl = 120000 } = {}) {
       return best;
     },
     forget(templateId) { areas.delete(templateId); },
+    size() { return areas.size; },
     played(templateId, at) { const a = areas.get(templateId); if (a && Number.isFinite(at)) a.impactAt = at; },
     delayFor(area) { return Number.isFinite(area?.impactAt) ? Math.max(0, area.impactAt - now()) : 0; },
     claim(templateId, tileId) {
@@ -70,19 +72,31 @@ export function ownWallsBeforeCollision(crossings, ignored) {
   return (crossings ?? []).some((ids) => !ids?.length || ids.some((id) => !ignored?.has(id)));
 }
 
-// Whether a mover whose centre stands at `centre` (size in squares) is close enough to slam into the tile: its
-// nearest point within the mover's size, as the GM checks a path request (prop-requests.mjs).
-export function slamReachable(tile, centre, size, grid) {
-  const nx = Math.max(tile.x, Math.min(tile.x + tile.width, centre.x)), ny = Math.max(tile.y, Math.min(tile.y + tile.height, centre.y));
-  return Math.hypot(centre.x - nx, centre.y - ny) <= (Number.isFinite(size) && size > 0 ? Math.min(size, 10) : 1) * grid;
+// The walls each crossing of a move collision report meets (its vertices' edges). A v14 wall edge is built by the
+// WallDocument (id "wall.<id>", object the document); an older one by the Wall placeable. Other edges keep their id.
+const wallIdOf = (e) => {
+  const o = e?.object;
+  if (o?.documentName === "Wall" && o.id) return o.id;
+  if (o?.document?.id) return o.document.id;
+  return typeof e?.id === "string" ? e.id.replace(/^wall\./, "") : null;
+};
+export function crossedWalls(crossings) {
+  return Array.from(crossings ?? [], (v) => Array.from(v?.edges ?? [], wallIdOf).filter(Boolean));
 }
 
-// When a mover travelling from → to (centres) in travelMs reaches each tile: its share along the line, nearest first.
-export function slamTimes(from, to, tiles, travelMs) {
-  const dx = to.x - from.x, dy = to.y - from.y, l2 = dx * dx + dy * dy, ms = Math.max(0, travelMs || 0);
+// When a play's travel moves its mover: from the first to the last end of its moving motions (finisher-play travelEnd).
+export function travelSpan(plan) {
+  const moving = (Array.isArray(plan) ? plan : []).filter((s) => s.kind === "motion" && (s.motionOffset || s.motionFrame));
+  if (!moving.length) return { start: 0, end: 0 };
+  return { start: Math.min(...moving.map((s) => s.delay ?? 0)), end: Math.max(...moving.map((s) => (s.delay ?? 0) + (s.duration ?? 0))) };
+}
+
+// When a mover travelling from → to (centres) over {start, end} (ms) reaches each tile: its share along the line, nearest first.
+export function slamTimes(from, to, tiles, { start = 0, end = 0 } = {}) {
+  const dx = to.x - from.x, dy = to.y - from.y, l2 = dx * dx + dy * dy, t0 = Math.max(0, start || 0), ms = Math.max(0, (end || 0) - t0);
   return (tiles ?? []).map((tile) => {
     const cx = tile.x + tile.width / 2, cy = tile.y + tile.height / 2;
     const u = l2 ? Math.max(0, Math.min(1, ((cx - from.x) * dx + (cy - from.y) * dy) / l2)) : 0;
-    return { tile, ms: Math.round(u * ms) };
+    return { tile, ms: Math.round(t0 + u * ms) };
   }).sort((a, b) => a.ms - b.ms);
 }

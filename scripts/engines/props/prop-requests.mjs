@@ -2,11 +2,13 @@
 import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
+import { segRectDist } from "./prop-pick.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path"];
 const AREA_REACH = 30; // squares from the area's centre
 const MISS_CHANCE = 25;
+export const PATH_SQUARES = 12; // the longest planned path a slam may claim
 
 const propOf = (t) => t?.flags?.animater?.prop ?? {};
 const centre = (t) => ({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
@@ -23,6 +25,7 @@ export function cleanCause(c) {
   if (Number.isFinite(c.slam?.size)) out.slam = { size: c.slam.size };
   if (typeof c.outcome === "string") out.outcome = c.outcome.slice(0, 40);
   if (finite(c.at)) out.at = { x: c.at.x, y: c.at.y };
+  if (finite(c.path?.from) && finite(c.path?.to)) out.path = { from: { x: c.path.from.x, y: c.path.from.y }, to: { x: c.path.to.x, y: c.path.to.y } };
   for (const k of ["targetUuid", "moverUuid"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
   return out;
 }
@@ -40,9 +43,18 @@ function plausible(cause, tile, grid, { target, mover }) {
     if (c.x >= target.x && c.x <= target.x + target.w && c.y >= target.y && c.y <= target.y + target.h) return false;
     return tile.x < target.x + target.w + grid && tile.x + tile.width > target.x - grid && tile.y < target.y + target.h + grid && tile.y + tile.height > target.y - grid;
   }
-  if (!finite(mover)) return false;
-  const nx = Math.max(tile.x, Math.min(tile.x + tile.width, mover.x)), ny = Math.max(tile.y, Math.min(tile.y + tile.height, mover.y));
-  return Math.hypot(mover.x - nx, mover.y - ny) <= sizeOf(mover.size) * grid;
+  return slamPlausible(tile, cause.path, mover, grid);
+}
+
+// A slam on a planned path {from, to} (the mover's centre at the start and at the landing): the mover stands near
+// either end now (before or after its move is written), the path is at most PATH_SQUARES long, and the tile lies
+// within half the mover's size of it. mover: {x, y} centre and size in squares. The requester picks with it too.
+export function slamPlausible(tile, path, mover, grid = 100) {
+  if (!tile || !finite(path?.from) || !finite(path?.to) || !finite(mover)) return false;
+  const size = sizeOf(mover.size), near = (p) => Math.hypot(mover.x - p.x, mover.y - p.y) <= size * grid;
+  if (!near(path.from) && !near(path.to)) return false;
+  if (Math.hypot(path.to.x - path.from.x, path.to.y - path.from.y) > PATH_SQUARES * grid) return false;
+  return segRectDist(path.from, path.to, tile) <= (size * grid) / 2;
 }
 
 // target: {x, y, w, h} of the missed token; mover: {x, y} centre and size in squares; roll in [0, 1).
