@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { settingsModel, settingsWindowHTML, searchRows, searchedTabs, parseSettingValue, SETTINGS_TABS, WINDOW_SETTING_KEYS } from "../../scripts/ui/settings-window.mjs";
+import { settingsModel, settingsWindowHTML, searchRows, searchedTabs, parseSettingValue, SETTINGS_TABS, WINDOW_SETTING_KEYS, resettableSettings, resetChanges, settingsBackup, backupFileName, resetDialogHTML, settingsWindow } from "../../scripts/ui/settings-window.mjs";
 
 const reg = (key, scope, type, extra = {}) => [`animater.${key}`, { key, namespace: "animater", scope, type, name: extra.name ?? key, hint: extra.hint ?? `${key} hint`, ...extra }];
 const registry = new Map([
@@ -219,4 +219,135 @@ test("the kill-cam row has its length and a Preview button", () => {
   assert.deepEqual(row.extras.map((e) => e.key), ["killCamSeconds"]);
   assert.match(settingsWindowHTML(m, { active: row.tab }), /data-preview="killCam"/);
   assert.doesNotMatch(settingsWindowHTML(model({ isGM: true })), /data-preview=/, "no Preview on rows without one");
+});
+
+// Reset to defaults: only the window's own rows, by scope and tab, as this user may set them.
+const resetTabs = Object.freeze([
+  { id: "a", label: "A", rows: [
+    { world: "groundMarks", local: "groundMarksLocal", extras: ["groundMarkMinutes"] },
+    { world: "cameraShake", local: "cameraShakeLocal", extras: ["cameraShakeStrength"] },
+    { menu: "hitSoundsMenu" },
+    { local: "flashTrackerMenus", gmOnly: true },
+  ] },
+  { id: "b", label: "B", rows: [
+    { local: "quality" },
+    { world: "weaponRuneFlourishes", when: (env) => env.systemId === "pf2e" },
+    { local: "waitForDice", when: (env) => env.modules.has("dice-so-nice") },
+  ] },
+]);
+const resetRegistry = new Map([...registry,
+  reg("hitSoundsMenu", "world", Boolean), reg("spellCatalog", "world", Object), reg("recipes", "world", Array)]);
+const resettable = (options) => resettableSettings(resetTabs, { registry: resetRegistry, systemId: "pf2e", ...options });
+
+test("a reset touches world settings only for a GM who asks, and this screen's only when asked", () => {
+  assert.deepEqual(resettable({ isGM: true, world: true }), ["groundMarks", "groundMarkMinutes", "cameraShake", "weaponRuneFlourishes"]);
+  assert.deepEqual(resettable({ isGM: true, client: true }), ["groundMarksLocal", "cameraShakeLocal", "cameraShakeStrength", "flashTrackerMenus", "quality"]);
+  assert.deepEqual(resettable({ isGM: false, world: true, client: true }), ["groundMarksLocal", "cameraShakeLocal", "cameraShakeStrength", "quality"], "a player never resets the world's, nor a GM-only row");
+  assert.deepEqual(resettable({ isGM: false, world: true }), []);
+  assert.deepEqual(resettable({ isGM: true }), [], "nothing ticked, nothing reset");
+});
+
+test("a reset keeps to its tab and to rows that apply here, never a menu or a setting the window does not list", () => {
+  assert.deepEqual(resettable({ isGM: true, world: true, client: true, tab: "b" }), ["quality", "weaponRuneFlourishes"]);
+  assert.deepEqual(resettable({ isGM: true, world: true, client: true, tab: "b", systemId: "dnd5e", modules: ["dice-so-nice"] }), ["quality", "waitForDice"]);
+  const all = resettable({ isGM: true, world: true, client: true });
+  for (const key of ["hitSoundsMenu", "spellCatalog", "recipes", "projectileWalls", "splatterSync"]) assert.ok(!all.includes(key), key);
+  assert.ok(all.includes("groundMarkMinutes") && all.includes("cameraShakeStrength"), "extras are reset with their row");
+  // The real tabs: no catalog, recipe or menu setting is ever in reach.
+  const real = resettableSettings(SETTINGS_TABS, { registry: new Map(WINDOW_SETTING_KEYS.map((k) => reg(k, "world", Boolean))), isGM: true, world: true, systemId: "pf2e" });
+  assert.ok(real.length > 0 && real.every((k) => WINDOW_SETTING_KEYS.includes(k)));
+  for (const key of ["spellCatalog", "featCatalog", "effectCatalog", "recipes", "hitSoundsMenu", "bloodColorsMenu"]) assert.ok(!real.includes(key), key);
+});
+
+test("a reset changes only what differs from its default, and backs up those values first", () => {
+  const withDefaults = new Map([...registry].map(([k, c]) => [k, { ...c, default: c.type === Boolean ? true : c.type === Number ? 1 : "full" }]));
+  const changes = resetChanges(["groundMarks", "groundMarksLocal", "groundMarkMinutes", "cameraShakeStrength", "quality"], { registry: withDefaults, get: (k) => values[k] });
+  assert.deepEqual(changes.map((c) => [c.key, c.value, c.default]), [["groundMarks", false, true], ["groundMarkMinutes", 5, 1]]);
+  const date = new Date("2026-11-01T10:20:30.400Z");
+  assert.deepEqual(settingsBackup(changes, { date }), { module: "animater", saved: "2026-11-01T10:20:30.400Z", world: { groundMarks: false, groundMarkMinutes: 5 }, client: {} });
+  assert.equal(backupFileName("animater", date), "animater-settings-backup-2026-11-01T10-20-30-400Z.json");
+});
+
+test("the window offers a reset for everything and for each tab; only a GM is asked about the world's", () => {
+  const html = settingsWindowHTML(model({ isGM: true }));
+  assert.match(html, /<footer[^>]*><button type="button" data-reset-all>.*Reset to defaults/);
+  assert.match(html, /data-reset-tab="motion"/);
+  const gm = resetDialogHTML({ isGM: true, tabLabel: "Motion" }), player = resetDialogHTML({ isGM: false });
+  assert.match(gm, /the Motion tab's settings/);
+  assert.match(gm, /name="world" checked> World settings \(everyone\)/);
+  assert.match(gm, /name="client" checked> This screen&#39;s settings/);
+  assert.match(gm, /burst of redraws/, "a GM is warned that a world reset redraws every screen");
+  assert.doesNotMatch(player, /name="world"|burst of redraws/);
+  assert.match(player, /name="client" checked/);
+});
+
+test("a reset never turns off the switch that plays the GM's own recipes", () => {
+  const records = new Map(WINDOW_SETTING_KEYS.map((k) => reg(k, "world", Boolean)));
+  for (const tab of [null, "automation"]) {
+    const keys = resettableSettings(SETTINGS_TABS, { registry: records, tab, isGM: true, world: true, client: true, systemId: "pf2e" });
+    assert.ok(keys.length > 0, `${tab ?? "every tab"} still resets something`);
+    for (const key of ["automatic", "crossoverCatalog"]) assert.ok(!keys.includes(key), `${key}: ${tab ?? "every tab"}`);
+  }
+});
+
+// The window's reset itself, with Foundry's parts injected: the question, the download, the reload prompt, and a
+// settings store that records every set and can refuse one.
+function resetWindow({ answer = { world: true, client: true }, failing = null, values = {} } = {}) {
+  const log = [], store = { ...values };
+  const config = (key, scope, def, extra = {}) => [`animater.${key}`, { key, namespace: "animater", scope, name: key, type: typeof def === "number" ? Number : Boolean, default: def, ...extra }];
+  const registry = new Map([config("groundMarks", "world", true), config("groundMarkMinutes", "world", 1, { requiresReload: true }), config("cameraShake", "world", true),
+    config("groundMarksLocal", "client", true), config("quality", "client", true, { requiresReload: true }), config("automatic", "world", false), config("crossoverCatalog", "world", false)]);
+  const settings = { settings: registry, menus: new Map(), get: (_id, key) => store[key],
+    set: async (_id, key, value) => { if (key === failing) throw Error(`${key} is read-only`); log.push(["set", key, value]); store[key] = value; } };
+  const Window = settingsWindow(class {}, { id: "animater", settings: () => settings, isGM: () => true, systemId: () => "pf2e", modules: () => [],
+    askReset: async (content) => { log.push(["asked", /name="world"/.test(content)]); return answer; },
+    saveFile: async (text, name) => log.push(["saved", JSON.parse(text), name]),
+    reloadConfirm: async (options) => log.push(["reload", options]) });
+  const w = new Window(); w.renders = 0; w.render = () => w.renders++;
+  globalThis.ui = { notifications: { info: (m) => log.push(["info", m]), error: (m) => log.push(["error", m]) } };
+  return { w, log, store };
+}
+const changed = { groundMarks: false, groundMarkMinutes: 5, cameraShake: true, groundMarksLocal: false, quality: false, automatic: true, crossoverCatalog: true };
+
+test("the window's reset asks, downloads the backup before the first set, resets only what differs, then asks for the reload once", async () => {
+  const { w, log, store } = resetWindow({ values: changed });
+  await w.reset();
+  assert.deepEqual(log.map((e) => e[0]), ["asked", "saved", "set", "set", "set", "set", "info", "reload"]);
+  assert.equal(log[0][1], true, "a GM is offered the world's");
+  assert.deepEqual(log[1][1].world, { groundMarks: false, groundMarkMinutes: 5 }, "the backup holds exactly what changes");
+  assert.deepEqual(log[1][1].client, { groundMarksLocal: false, quality: false });
+  assert.deepEqual(log.filter((e) => e[0] === "set").map((e) => e[1]), ["quality", "groundMarks", "groundMarksLocal", "groundMarkMinutes"], "in the window's own order");
+  assert.deepEqual([store.cameraShake, store.automatic, store.crossoverCatalog], [true, true, true], "already default, exempt, exempt");
+  assert.match(log.at(-2)[1], /4 settings reset to default/);
+  assert.deepEqual(log.at(-1)[1], { world: true });
+  assert.equal(w.renders, 1);
+  // Cancelled, or nothing ticked: no download, no set.
+  for (const answer of [false, { world: false, client: false }]) {
+    const quiet = resetWindow({ values: changed, answer });
+    await quiet.w.reset();
+    assert.deepEqual(quiet.log.map((e) => e[0]), ["asked"]);
+  }
+  // Already at their defaults: said so, no download.
+  const stock = resetWindow({ values: { groundMarks: true, groundMarkMinutes: 1, cameraShake: true, groundMarksLocal: true, quality: true } });
+  await stock.w.reset();
+  assert.deepEqual(stock.log.map((e) => e[0]), ["asked", "info"]);
+  assert.match(stock.log[1][1], /already at their defaults/);
+});
+
+test("a setting that refuses to reset is reported, the others still reset, and it does not ask for a reload", async () => {
+  const { w, log, store } = resetWindow({ values: changed, failing: "groundMarkMinutes" });
+  await w.reset();
+  assert.deepEqual(log.filter((e) => e[0] === "set").map((e) => e[1]), ["quality", "groundMarks", "groundMarksLocal"]);
+  assert.equal(store.groundMarkMinutes, 5);
+  assert.match(log.find((e) => e[0] === "error")[1], /could not reset groundMarkMinutes: groundMarkMinutes is read-only/);
+  assert.match(log.find((e) => e[0] === "info")[1], /3 settings reset to default/);
+  assert.deepEqual(log.at(-1), ["reload", { world: false }], "only the client setting that did reset needs one");
+  // The only reload setting failing: no reload prompt at all.
+  const one = resetWindow({ values: { ...changed, quality: true }, failing: "groundMarkMinutes" });
+  await one.w.reset();
+  assert.ok(!one.log.some((e) => e[0] === "reload"));
+  // One tab only: just its rows are in reach, so the Look tab's quality stays.
+  const tab = resetWindow({ values: changed }), ground = SETTINGS_TABS.find((t) => t.rows.some((r) => r.world === "groundMarks")).id;
+  await tab.w.reset(ground);
+  assert.deepEqual(tab.log.filter((e) => e[0] === "set").map((e) => e[1]), ["groundMarks", "groundMarksLocal", "groundMarkMinutes"]);
 });
