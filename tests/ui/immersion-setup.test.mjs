@@ -15,24 +15,30 @@ test('what this update added asks everyone again, under new groups', () => {
 });
 
 test('a scene switch reads what the scene says, and Off for anything else', () => {
-  const town = IMMERSION_FEATURES.find((f) => f.id === 'town'), tracks = IMMERSION_FEATURES.find((f) => f.id === 'tracks');
-  assert.equal(sceneValue(town, {}), '');
-  assert.equal(sceneValue(town, { townLife: 'busy' }), 'busy');
-  assert.equal(sceneValue(town, { townLife: 'nonsense' }), '');
+  const outdoors = IMMERSION_FEATURES.find((f) => f.id === 'outdoors'), tracks = IMMERSION_FEATURES.find((f) => f.id === 'tracks');
+  assert.equal(sceneValue(outdoors, {}), '');
+  assert.equal(sceneValue(outdoors, { outdoorLife: 'on' }), 'on');
+  assert.equal(sceneValue(outdoors, { outdoorLife: 'nonsense' }), '');
   assert.equal(sceneValue(tracks, {}), 'off');
+  assert.equal(sceneValue(tracks, { oldTracks: 'gm' }), 'gm');
 });
 
 test('only scene switches that changed are written', () => {
   const features = IMMERSION_FEATURES.filter((f) => f.scene);
-  const before = new Map([['town', ''], ['outdoors', 'on'], ['tracks', 'off']]);
+  const before = new Map([['outdoors', 'on'], ['tracks', 'off']]);
   assert.deepEqual(sceneWrites(features, before, new Map(before), 'animater'), {});
-  assert.deepEqual(sceneWrites(features, before, new Map(before).set('town', 'quiet'), 'animater'), { 'flags.animater.townLife': 'quiet' });
+  assert.deepEqual(sceneWrites(features, before, new Map(before).set('tracks', 'gm'), 'animater'), { 'flags.animater.oldTracks': 'gm' });
+});
+
+// Roi: the scene's Town life switch went, for the Animals panel's town counts. Its town animals come only when asked for.
+test('town life has no scene switch of its own', () => {
+  assert.equal(IMMERSION_FEATURES.find((f) => f.id === 'town').scene, undefined);
 });
 
 test('only the GM gets a scene switch, in the open row, naming the scene', () => {
-  const town = IMMERSION_FEATURES.find((f) => f.id === 'town'), args = { features: [town], choices: new Map([['town', true]]), selected: 'town', sceneValues: new Map([['town', 'busy']]), sceneName: 'Oleg\'s <Post>' };
+  const tracks = IMMERSION_FEATURES.find((f) => f.id === 'tracks'), args = { features: [tracks], choices: new Map([['tracks', true]]), selected: 'tracks', sceneValues: new Map([['tracks', 'gm']]), sceneName: 'Oleg\'s <Post>' };
   const gm = immersionHTML({ ...args, isGM: true });
-  assert.ok(gm.includes('data-scene="town"') && gm.includes('Oleg\'s &lt;Post&gt;') && /value="busy" selected/.test(gm));
+  assert.ok(gm.includes('data-scene="tracks"') && gm.includes('Oleg\'s &lt;Post&gt;') && /value="gm" selected/.test(gm));
   assert.ok(!immersionHTML({ ...args, isGM: false }).includes('data-scene'));
   assert.ok(!immersionHTML({ ...args, isGM: true, selected: null }).includes('data-scene'));
   assert.ok(!immersionHTML({ ...args, isGM: true, sceneName: '' }).includes('data-scene'));

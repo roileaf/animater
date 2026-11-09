@@ -1776,7 +1776,7 @@ const rebuildGlows = () => {
         if (d.radius > 0) lights.push({ x: d.x, y: d.y, radius: d.radius, color: Number.isFinite(color) ? color : null });
       } catch { /* a broken light never breaks the rest */ }
     }
-    // In a scene with Town life on, the town goes to bed: its windows go dark one by one through the night.
+    // In a scene with town animals asked for, the town goes to bed: its windows go dark one by one through the night.
     const town = bothSettingsOn("townLife") && townLevel(), hourNow = town ? (clockNow()?.day ?? 0.75) * 24 : 0;
     const glows = windowGlows({ blocked: lightBlocked, walls: wallsHere(), indoors, lights, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares() }).filter((g) => !town || !lightsOutAt(g.points.slice(0, 2).map(Math.round).join(), hourNow)).map((g) => ({ ...g, clip: lightFrom(g.past, g.reach * 1.5) }));
     // Hidden under the trees' leaves (whether or not they cast their own shade) and the roofs' eaves: the light comes
@@ -2051,7 +2051,7 @@ const outdoorOn = (key) => bothSettingsOn(key) && !undergroundScene();
 // What the weather itself does also shows underground where a region is open to the sky, and only there (the sky's mask keeps it to them).
 const weatherOffHere = () => weatherOffIn(canvas?.scene);
 const weatherReaches = (key) => bothSettingsOn(key) && !weatherOffHere() && (!undergroundScene() || skyOpenRegions.length > 0);
-// Outdoor life is the GM's for each scene, as Town life is (Scene configuration → Animater → Outdoor life): animals, their calls, the crickets and the dawn chorus, only where it is on.
+// Outdoor life is the GM's for each scene (Animals panel → Outdoor life on this scene): animals, their calls, the crickets and the dawn chorus, only where it is on.
 let outdoorLifePreview = false; // "Choose your immersion" showing it on a scene that has it off, on this screen only.
 // The animals as this level has them, over its scene's.
 const animalFlagsNow = () => overLevel(canvas?.scene?.flags?.[ID], canvas?.level?.flags?.[ID], ANIMAL_KEYS);
@@ -4089,18 +4089,26 @@ const tickWater = (seconds) => {
   if (waterMirror.busy) waterMirror.tick(seconds, { view, wind: skyWindNow });
 };
 Hooks.on("canvasTearDown", () => { coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; });
-// Town life (engines/motion/town-life.mjs): only on a scene the GM set it for (Scene configuration → Animater → Town life). Its streets are any open ground, stone too, not water and not in a room.
+// Town life (engines/motion/town-life.mjs): only the town's animals the GM asks for in a scene's Animals panel (Town). Its streets are any open ground, stone too, not water and not in a room.
 const townLife = createTownLife({ PIXI: animalPIXI, restyle: animalLook, floor: floorLayer("townLife", 659), sky: lowFlierRoot, high: highSkyOf });
 let townKey = null, townOpen = null, townPreview = null;
-const townLevel = () => { const v = canvas?.scene?.flags?.[ID]?.townLife; return v === "quiet" || v === "busy" ? v : null; };
+// A scene's old Town life switch (quiet or busy), gone from Scene configuration: the GM's screen turns it into the Animals panel's town counts, once.
+const OLD_TOWN = { quiet: { pigeons: 5, hens: 3, cats: 1 }, busy: { pigeons: 8, hens: 5, cats: 1, dogs: 1 } };
+const oldTownCounts = (flags = {}) => { const set = OLD_TOWN[flags.townLife]; return set ? Object.fromEntries(Object.entries(set).filter(([kind]) => exactCountOf(flags[kind]) === null)) : null; };
+Hooks.on("canvasReady", () => {
+  const scene = canvas?.scene, counts = oldTownCounts(scene?.flags?.[ID]);
+  if (!counts || !game.user?.isActiveGM) return;
+  void scene.update({ [`flags.${ID}`]: counts }).then(() => scene.unsetFlag(ID, "townLife")).catch((e) => console.warn("Animater: moving Town life to the Animals panel", e));
+});
+const townLevel = () => sceneTownWant()?.level ?? null;
 // Each of the town's animals by its own Keep out box. The engine's names on the left.
 const TOWN_KEPT = ["pigeons", "hens", "cats", "dogs"], townKept = { pigeons: "pigeons", chickens: "hens", cat: "cats", dog: "dogs" };
-// The town's animals asked for one by one in the Animals panel (Town: pigeons, hens, cats, dogs), with outdoor life on: as
-// a region asks for its own, without the scene's Town life. Their counts, or null when none is asked for.
-const sceneTownWant = () => { if (!canvas?.ready || !wildHere()) return null; const f = animalFlagsNow(), own = { regionAnimals: { pigeons: f.pigeons, hens: f.hens, cats: f.cats, dogs: f.dogs } }, n = regionAnimalCounts(own); return n.pigeons || n.hens || n.cats || n.dogs ? { want: { pigeons: n.pigeons, hens: n.hens, cats: n.cats, dogs: n.dogs }, level: townLevelOf(own) } : null; };
+// The town's animals asked for one by one in the Animals panel (Town: pigeons, hens, cats, dogs), as a region asks for its
+// own; the count is the GM's choice, so Outdoor life need not be on. Their counts, or null when none is asked for.
+const sceneTownWant = () => { if (!canvas?.ready || !outdoorOn("townLife") || undergroundScene()) return null; const f = animalFlagsNow(), own = { regionAnimals: { pigeons: f.pigeons, hens: f.hens, cats: f.cats, dogs: f.dogs } }, n = regionAnimalCounts(own); return n.pigeons || n.hens || n.cats || n.dogs ? { want: { pigeons: n.pigeons, hens: n.hens, cats: n.cats, dogs: n.dogs }, level: townLevelOf(own) } : null; };
 const rebuildTown = () => {
   const asked = townPreview ? null : sceneTownWant();
-  const level = townPreview ?? (canvas?.ready && outdoorOn("townLife") ? townLevel() : null) ?? asked?.level ?? null, want = townPreview ? null : asked?.want ?? null;
+  const level = townPreview ?? asked?.level ?? null, want = townPreview ? null : asked?.want ?? null;
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, level, want, keepOut.pigeons ?? [], keepOut.hens ?? [], keepOut.cats ?? [], keepOut.dogs ?? []]);
   if (key === townKey) return; townKey = key;
   townLife.clear(); townOpen = null;
@@ -8088,7 +8096,7 @@ Hooks.once("init", () => {
   skyPair("oldTracks", "oldTracksLocal", "Old tracks", "Where a scene asks for it (Scene configuration → Animater → Old tracks; off otherwise), prints stay and age by the game's clock, softer and fainter the older they are, so you can read who passed and how long ago. Mud and dirt keep them longest, stone hardly at all. The GM chooses for each scene whether only the GM or everyone sees them, and how long they last.");
   skyPair("stuckShots", "stuckShotsLocal", "Shots stick where they land", "Arrows and bolts that hit a wall stay stuck in it, and those that miss stay in the floor, until the scene changes. Never saved.");
   screenOnly("carrionLocal", "Bodies draw flies and crows", "After a while a body on the map draws flies, and out of doors by day crows come down to it (a vulture for a big one). They scatter when anyone comes near. Not for bloodless creatures. Never saved.");
-  skyPair("townLife", "townLifeLocal", "Town life", "Where a scene asks for it (Scene configuration → Animater → Town life; off otherwise): pigeons, chickens, a cat on the walls and a stray dog, who run from noise and from your creatures.");
+  skyPair("townLife", "townLifeLocal", "Town life", "Where a scene asks for them (Animals panel → Town; none otherwise): pigeons, chickens, a cat on the walls and a stray dog, who run from noise and from your creatures.");
   skyPair("tavernMurmur", "tavernMurmurLocal", "Tavern murmur", "A region marked as a tavern (the region's right-click panel → Air → Tavern murmur) is full of voices: loud inside, a far-off murmur through its walls, spilling out when a door opens.", "Played at Balanced quality or better.");
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (the region's right-click panel → Water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
   skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (the region's right-click panel → Water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
@@ -8808,16 +8816,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   painted.className = "form-group";
   painted.innerHTML = `<label>Region floor textures</label><div class="form-fields"><select name="flags.${ID}.floorTextures">${[["", "Off (the map is already painted)"], ["on", "On (regions paint their floors)"]].map(([v, l]) => `<option value="${v}"${v === paintedNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Whether regions with a floor paint it over the map: grass, stone, water and the rest ("Region steps"). For a bare or blank map. A region can choose for itself from its right-click menu or its steps.</p>`;
   life.append(painted);
-  // Outdoor life: only where the GM asks for it.
-  const outdoors = document.createElement("div"), outdoorsNow = app.document?.getFlag?.(ID, "outdoorLife") === "on" ? "on" : "";
-  outdoors.className = "form-group";
-  outdoors.innerHTML = `<label>Outdoor life</label><div class="form-fields"><select name="flags.${ID}.outdoorLife">${[["", "Off"], ["on", "On"]].map(([v, l]) => `<option value="${v}"${v === outdoorsNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Birds, rabbits, deer, foxes, fish, ducks, frogs and insects, with their calls, the crickets at night and the dawn chorus ("Birds, rabbits and fish"). Off on every scene until you choose. How many of each are set in the rows above.</p>`;
-  life.append(outdoors);
-  // Town life: only where the GM asks for it.
-  const town = document.createElement("div"), townNow = String(app.document?.getFlag?.(ID, "townLife") ?? "");
-  town.className = "form-group";
-  town.innerHTML = `<label>Town life</label><div class="form-fields"><select name="flags.${ID}.townLife">${[["", "Off"], ["quiet", "Quiet (a village, a back street)"], ["busy", "Busy (a market town)"]].map(([v, l]) => `<option value="${v}"${v === townNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Pigeons and chickens by day, a cat on the walls and, when busy, a stray dog day and night ("Town life"); a big map has several flocks. Off on every scene until you choose. Needs open ground: nothing shows in a scene marked underground or with cave or hall acoustics. To keep them out of one place, draw a region over it (the region's right-click panel → Animals → Keep out).</p>`;
-  life.append(town);
+  // (Outdoor life and the town's animals are switched in the Animals panel, kind by kind.)
   // Old tracks: the GM's for each scene, and off until asked for.
   const tracks = document.createElement("div"), tracksNow = trackMode(app.document?.getFlag?.(ID, "oldTracks")), hoursNow = trackHours(app.document?.getFlag?.(ID, "oldTrackHours")), kept = app.document?.getFlag?.(ID, "tracks")?.length ?? 0;
   tracks.className = "form-group";
