@@ -1,5 +1,5 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
-const {DND5E_ENTRIES, DND5E_SOURCE} = catalogDataNeeded('dnd5e') ? await import('../../../data/dnd5e-catalog.mjs') : {DND5E_ENTRIES: [], DND5E_SOURCE: {}};
+import {catalogData} from '../shared/catalog-data.mjs';
+
 import {clone,normalize,originalName,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
 import {addSpellSounds} from '../../engines/sound/spell-sounds.mjs';
 import {addAbilitySounds} from '../../engines/sound/ability-sounds.mjs';
@@ -8,10 +8,20 @@ import {withCatalogFx,withAuditedLooks} from '../shared/catalog-fx.mjs';
 import {normalizeElement} from '../shared/element-choice.mjs';
 import {MARKS} from '../../engines/marks/ground-marks.mjs';
 import {resolveDndNpcAction,findDndNpcAction} from './dnd5e-npc-actions.mjs';
+// Filled when the data loads (catalog-data.mjs): the SRD entries first, ahead of any book's.
+const DND5E_ENTRIES=[],DND5E_SOURCE={};
 export {DND5E_ENTRIES,DND5E_SOURCE};
 export const DND_KINDS=['spell','feat','weapon','item','condition','effect'];
-const byId=new Map(DND5E_ENTRIES.map(e=>[e.id,e]));
-const byUuid=new Map(DND5E_ENTRIES.filter(e=>e.uuid).map(e=>[e.uuid,e]));
+const byId=new Map();
+const byUuid=new Map();
+let loaded=false;
+await catalogData('dnd5e','entries',async()=>{
+ const data=await import('../../../data/dnd5e-catalog.mjs');
+ const fresh=data.DND5E_ENTRIES.filter(e=>!byId.has(e.id));
+ DND5E_ENTRIES.splice(0,0,...fresh);Object.assign(DND5E_SOURCE,data.DND5E_SOURCE);
+ for(const e of fresh){byId.set(e.id,e);if(e.uuid)byUuid.set(e.uuid,e);}
+ loaded=true;
+});
 export const dndEntries=kind=>kind?DND5E_ENTRIES.filter(e=>e.kind===kind):DND5E_ENTRIES;
 const BOOK_LABELS={'dnd-players-handbook':'PHB','dnd-dungeon-masters-guide':'DMG','dnd-monster-manual':'MM','dnd-heroes-borderlands':'Borderlands'};
 export const dndBookLabel=id=>BOOK_LABELS[id]??globalThis.game?.modules?.get?.(id)?.title??id;
@@ -27,7 +37,8 @@ export function addDndBookEntries(entries,active=()=>true){
 }
 export const dndEntry=id=>byId.get(String(id).replace(/^animater-/,''))??null;
 export function normalizeDndCatalogState(state={}){
- state??={};const ids=values=>[...new Set((Array.isArray(values)?values:[]).filter(id=>byId.has(id)))];
+ // Before the data loads, a saved choice keeps its id as it is (nothing is dropped as unknown).
+ state??={};const ids=values=>[...new Set((Array.isArray(values)?values:[]).filter(id=>!loaded?typeof id==='string'&&id:byId.has(id)))];
  return {enabled:state.enabled===true,independent:state.independent===true,preferCatalog:state.preferCatalog===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:ids(state.customized),motion:state.motion!==false,fade:state.fade===true,turn:state.turn===true,sound:state.sound!==false,soundVolume:Number.isFinite(Number(state.soundVolume))?Math.max(0,Math.min(1,Number(state.soundVolume))):.35,opacity:Number.isFinite(Number(state.opacity))?Math.max(.1,Math.min(1,Number(state.opacity))):1};
 }
 export const dndEntryEnabled=(id,state)=>state?.enabled===true&&!state.excluded?.includes(id)&&(state.scope!=='selected'||state.selected?.includes(id)||state.customized?.includes(id));

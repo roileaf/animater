@@ -1,16 +1,26 @@
-import {catalogDataNeeded} from '../../shared/catalog-data.mjs';
-const {PF2E_FEATS, PF2E_FEAT_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../../data/pf2e-feats.mjs') : {PF2E_FEATS: [], PF2E_FEAT_SOURCE: {}};
+import {catalogData,fillList} from '../../shared/catalog-data.mjs';
 import { normalize, matchRecipe, ownRecipe } from "../../../core/model.mjs";
 import { featRecipe, FEAT_THEMES, FEAT_MOTIFS } from "./feat-choreography.mjs";
+// Filled when the data loads (catalog-data.mjs).
+const PF2E_FEATS = [], PF2E_FEAT_SOURCE = {};
 export { PF2E_FEATS, PF2E_FEAT_SOURCE, featRecipe, FEAT_THEMES, FEAT_MOTIFS };
 
-const byId = new Map(PF2E_FEATS.map(feat => [feat.id, feat])), byName = new Map();
-for (const feat of [...PF2E_FEATS].sort((a,b) => Number(a.edition === "legacy") - Number(b.edition === "legacy")))
-  for (const name of [feat.name, feat.slug]) if (!byName.has(normalize(name))) byName.set(normalize(name), feat);
+const byId = new Map(), byName = new Map();
+let loaded = false;
+await catalogData('pf2e', 'feats', async () => {
+  const data = await import('../../../../data/pf2e-feats.mjs');
+  fillList(PF2E_FEATS, data.PF2E_FEATS); Object.assign(PF2E_FEAT_SOURCE, data.PF2E_FEAT_SOURCE);
+  for (const feat of PF2E_FEATS) byId.set(feat.id, feat);
+  for (const feat of [...PF2E_FEATS].sort((a,b) => Number(a.edition === "legacy") - Number(b.edition === "legacy")))
+    for (const name of [feat.name, feat.slug]) if (!byName.has(normalize(name))) byName.set(normalize(name), feat);
+  loaded = true;
+});
 export const catalogFeat = id => byId.get(String(id).replace(/^pf2e-feat-/, "")) ?? null;
+// Before the data loads, a saved choice keeps its id as it is (nothing is dropped as unknown).
+const knownFeat = id => loaded ? catalogFeat(id)?.id : String(id).replace(/^pf2e-feat-/, "");
 export function normalizeFeatCatalogState(state = {}) {
   state ??= {};
-  const ids = values => [...new Set((Array.isArray(values) ? values : []).map(id => catalogFeat(id)?.id).filter(Boolean))];
+  const ids = values => [...new Set((Array.isArray(values) ? values : []).map(knownFeat).filter(Boolean))];
   return { enabled: state.enabled === true, independent: state.independent === true,
     scope: state.scope === "selected" ? "selected" : "all", selected: ids(state.selected), excluded: ids(state.excluded), customized: ids(state.customized),
     preferCatalog: state.preferCatalog === true, motion: state.motion !== false, sound: state.sound !== false,

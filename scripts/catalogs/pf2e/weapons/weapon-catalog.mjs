@@ -1,22 +1,32 @@
-import {catalogDataNeeded} from '../../shared/catalog-data.mjs';
-const {PF2E_WEAPONS: EQUIPMENT, PF2E_WEAPON_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../../data/pf2e-weapons.mjs') : {PF2E_WEAPONS: [], PF2E_WEAPON_SOURCE: {}};
+import {catalogData} from '../../shared/catalog-data.mjs';
 import {weaponRecipe} from './weapon-choreography.mjs';
 import {normalize,matchRecipe, ownRecipe,matchStrikeOverride} from '../../../core/model.mjs';
 import {withRuneFlourishes,runeFlourishesEnabled} from './weapon-runes.mjs';
-import {NATURAL_WEAPONS,naturalWeaponFor,naturalVariant,naturalByDamage,naturalElement} from '../natural-weapons.mjs';
-// Equipment weapons, then creature attacks (Jaws, Claw) the equipment has no entry for.
-const PF2E_WEAPONS=[...EQUIPMENT,...NATURAL_WEAPONS];
+import {NATURAL_WEAPONS,naturalWeaponFor,naturalVariant,naturalByDamage,naturalElement,naturalFinishes} from '../natural-weapons.mjs';
+// Equipment weapons, then creature attacks (Jaws, Claw) the equipment has no entry for. The equipment
+// joins when its data loads (catalog-data.mjs); the creature attacks are here from the start.
+const PF2E_WEAPONS=[...NATURAL_WEAPONS],PF2E_WEAPON_SOURCE={};
 export {PF2E_WEAPONS,PF2E_WEAPON_SOURCE,weaponRecipe};
 const byId=new Map(PF2E_WEAPONS.map(w=>[w.id,w])),byName=new Map(),byBase=new Map();
-for(const w of [...EQUIPMENT].sort((a,b)=>Number(a.edition==='legacy')-Number(b.edition==='legacy')||a.level-b.level)){
- for(const n of [w.name,w.slug])if(!byName.has(normalize(n)))byName.set(normalize(n),w);
- if(w.base&&normalize(w.base)===normalize(w.slug)&&!byBase.has(w.base))byBase.set(w.base,w);
-}
+let loaded=false;
+await catalogData('pf2e','weapons',async()=>{
+ const {PF2E_WEAPONS:EQUIPMENT,PF2E_WEAPON_SOURCE:source}=await import('../../../../data/pf2e-weapons.mjs');
+ PF2E_WEAPONS.splice(0,0,...EQUIPMENT);Object.assign(PF2E_WEAPON_SOURCE,source);
+ for(const w of EQUIPMENT)byId.set(w.id,w);
+ for(const w of [...EQUIPMENT].sort((a,b)=>Number(a.edition==='legacy')-Number(b.edition==='legacy')||a.level-b.level)){
+  for(const n of [w.name,w.slug])if(!byName.has(normalize(n)))byName.set(normalize(n),w);
+  if(w.base&&normalize(w.base)===normalize(w.slug)&&!byBase.has(w.base))byBase.set(w.base,w);
+ }
+ naturalFinishes(EQUIPMENT);
+ loaded=true;
+});
 export const catalogWeapon=id=>byId.get(String(id).replace(/^pf2e-weapon-/,'').replace(/-(melee|ranged|thrown)$/,''))??null;
+// Before the data loads, a saved choice keeps its id as it is (nothing is dropped as unknown).
+const knownWeapon=id=>loaded?catalogWeapon(id)?.id:String(id).replace(/^pf2e-weapon-/,'').replace(/-(melee|ranged|thrown)$/,'');
 export const weaponCustomizationKey=(id,mode)=>`${id}:${mode}`;
 export function normalizeWeaponCatalogState(state={}){
- state??={};const ids=list=>[...new Set((Array.isArray(list)?list:[]).map(id=>catalogWeapon(id)?.id).filter(Boolean))];
- return {enabled:state.enabled===true,independent:state.independent===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:[...new Set((Array.isArray(state.customized)?state.customized:[]).map(String).filter(k=>{const[id,mode,...extra]=k.split(':');return !extra.length&&byId.get(id)?.modes.some(m=>m.mode===mode);}))],preferCatalog:state.preferCatalog===true,motion:state.motion!==false,sound:state.sound!==false,surfaceSound:state.surfaceSound!==false,soundVolume:Number.isFinite(Number(state.soundVolume))?Math.max(0,Math.min(1,Number(state.soundVolume))):.35};
+ state??={};const ids=list=>[...new Set((Array.isArray(list)?list:[]).map(knownWeapon).filter(Boolean))];
+ return {enabled:state.enabled===true,independent:state.independent===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:[...new Set((Array.isArray(state.customized)?state.customized:[]).map(String).filter(k=>{const[id,mode,...extra]=k.split(':');return !extra.length&&(!loaded||byId.get(id)?.modes.some(m=>m.mode===mode));}))],preferCatalog:state.preferCatalog===true,motion:state.motion!==false,sound:state.sound!==false,surfaceSound:state.surfaceSound!==false,soundVolume:Number.isFinite(Number(state.soundVolume))?Math.max(0,Math.min(1,Number(state.soundVolume))):.35};
 }
 export const catalogWeaponEnabled=(id,state)=>state?.enabled===true&&!state.excluded?.includes(id)&&(state.scope!=='selected'||state.selected?.includes(id)===true);
 export function useCatalogWeapon(state,id){state=normalizeWeaponCatalogState(state);id=catalogWeapon(id)?.id;if(!id)throw Error('Choose a weapon first.');return normalizeWeaponCatalogState({...state,enabled:true,independent:true,scope:state.enabled?state.scope:'selected',selected:state.enabled?[...state.selected,id]:[id],excluded:state.excluded.filter(k=>k!==id),customized:state.customized.filter(k=>!k.startsWith(id+':'))});}

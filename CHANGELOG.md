@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 3.8.12
+
+- **Much faster first load for players.** The animation catalogs (about 58 MB of data in a PF2e world) no longer download and load with the module. Each catalog loads a moment after the scene has drawn, and only if it is turned on. Every catalog loads when the Animater window opens. The SF2e catalogs stay out of a PF2e world unless crossover is on, and a catalog that is off never loads for players. In the first second or two after joining, the catalogs play nothing until they are in.
 - **Rivers keep their fish.** Where a river runs off the edge of the map, fish wandering near it swim off, and each was made good only one every one to two minutes, so the river slowly emptied (five down to one in a few minutes). One that leaves is now replaced within seconds, and one a heron catches within half a minute.
 - **The Animals panel's numbers stay current.** While it is open, the rows left on Auto and the count at the top follow the animals as they come and go, every two seconds, instead of keeping the numbers from when it opened.
 

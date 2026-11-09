@@ -1,5 +1,4 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
-const {SF2E_ENTRIES, SF2E_SOURCE} = catalogDataNeeded('sf2e') ? await import('../../../data/sf2e-catalog.mjs') : {SF2E_ENTRIES: [], SF2E_SOURCE: {}};
+import {catalogData,fillList} from '../shared/catalog-data.mjs';
 import {withoutBespoke} from '../shared/bespoke.mjs';
 import {clone,normalize,validateRecipe,matchRecipe, ownRecipe,matchStrikeOverride} from '../../core/model.mjs';
 import {spellRecipe} from '../pf2e/spells/spell-choreography.mjs';
@@ -12,15 +11,25 @@ import {applySfMotionPatch} from './sf2e-motion.mjs';
 import {withRuneFlourishes,runeFlourishesEnabled} from '../pf2e/weapons/weapon-runes.mjs';
 import {normalizeElement} from '../shared/element-choice.mjs';
 import {MARKS} from '../../engines/marks/ground-marks.mjs';
+// Filled when the data loads (catalog-data.mjs).
+const SF2E_ENTRIES=[],SF2E_SOURCE={};
 export {SF2E_ENTRIES,SF2E_SOURCE};
 export const SF_KINDS=['spell','feat','action','feature','weapon','condition','effect'];
-const byId=new Map(SF2E_ENTRIES.map(e=>[e.id,e]));
-const byUuid=new Map(SF2E_ENTRIES.map(e=>[e.uuid,e]));
-const byRecipe=new Map(SF2E_ENTRIES.flatMap(e=>e.variants.map(v=>[v.recipe.id,e])));
+const byId=new Map();
+const byUuid=new Map();
+const byRecipe=new Map();
+let loaded=false;
+await catalogData('sf2e','entries',async()=>{
+ const data=await import('../../../data/sf2e-catalog.mjs');
+ fillList(SF2E_ENTRIES,data.SF2E_ENTRIES);Object.assign(SF2E_SOURCE,data.SF2E_SOURCE);
+ for(const e of SF2E_ENTRIES){byId.set(e.id,e);byUuid.set(e.uuid,e);for(const v of e.variants)byRecipe.set(v.recipe.id,e);}
+ loaded=true;
+});
 export const sfEntries=kind=>kind?SF2E_ENTRIES.filter(e=>e.kind===kind):SF2E_ENTRIES;
 export const sfEntry=id=>byId.get(id)??byRecipe.get(id)??null;
 export function normalizeSfCatalogState(state={}){
- state??={};const ids=values=>[...new Set((Array.isArray(values)?values:[]).filter(id=>byId.has(id)))];
+ // Before the data loads, a saved choice keeps its id as it is (nothing is dropped as unknown).
+ state??={};const ids=values=>[...new Set((Array.isArray(values)?values:[]).filter(id=>!loaded?typeof id==='string'&&id:byId.has(id)))];
  const number=(v,fallback,min,max)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):fallback;
  return {enabled:state.enabled===true,independent:state.independent===true,preferCatalog:state.preferCatalog===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:ids(state.customized),motion:state.motion!==false,fade:state.fade===true,turn:state.turn===true,sound:state.sound!==false,soundVolume:number(state.soundVolume,.35,0,1),opacity:number(state.opacity,1,.1,1)};
 }

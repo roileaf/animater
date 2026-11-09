@@ -1,9 +1,9 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
+import {catalogData,fillList} from '../shared/catalog-data.mjs';
 // PF2e ability catalogs that are not feats: basic/skill/class actions (packs/actions)
 // and class/ancestry features. Same entry shape and choreography as PF2e feats
 // (featRecipe), with their own native packs, settings and enable/exclude state.
-const {PF2E_ACTIONS, PF2E_ACTION_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-actions.mjs') : {PF2E_ACTIONS: [], PF2E_ACTION_SOURCE: {}};
-const {PF2E_CLASS_FEATURES, PF2E_CLASS_FEATURE_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-class-features.mjs') : {PF2E_CLASS_FEATURES: [], PF2E_CLASS_FEATURE_SOURCE: {}};
+// Filled when their data loads (catalog-data.mjs, below).
+const PF2E_ACTIONS = [], PF2E_ACTION_SOURCE = {}, PF2E_CLASS_FEATURES = [], PF2E_CLASS_FEATURE_SOURCE = {};
 import { normalize, matchRecipe, ownRecipe } from "../../core/model.mjs";
 import { featRecipe } from "./feats/feat-choreography.mjs";
 import { withElementChoice } from "../shared/element-choice.mjs";
@@ -18,15 +18,24 @@ function meleeLook(recipe) {
       // Its per-element projectiles would replace the strike; the strike takes the element's tint instead.
       : s.kind === "travel" ? { ...s, assets: [...MELEE_STRIKE], elementAssets: undefined, label: "Elemental strike" } : s) };
 }
-export function createAbilityCatalog({ entries, source, recipeKind, label, packs, matchesItem }) {
-  const byId = new Map(entries.map(entry => [entry.id, entry])), byName = new Map();
-  for (const entry of [...entries].sort((a,b) => Number(a.edition === "legacy") - Number(b.edition === "legacy")))
-    for (const name of [entry.name, entry.slug]) if (!byName.has(normalize(name))) byName.set(normalize(name), entry);
+// `entries` may fill later (its data loading on demand): reindex() then, and until it has run once
+// (`loaded` false), a saved choice keeps its id as it is.
+export function createAbilityCatalog({ entries, source, recipeKind, label, packs, matchesItem, loaded = true }) {
+  const byId = new Map(), byName = new Map();
+  function reindex() {
+    byId.clear(); byName.clear();
+    for (const entry of entries) byId.set(entry.id, entry);
+    for (const entry of [...entries].sort((a,b) => Number(a.edition === "legacy") - Number(b.edition === "legacy")))
+      for (const name of [entry.name, entry.slug]) if (!byName.has(normalize(name))) byName.set(normalize(name), entry);
+    loaded = true;
+  }
+  if (loaded) reindex();
   const prefix = new RegExp(`^(?:pf2e|sf2e)-${recipeKind}-`);
   const entry = id => byId.get(String(id).replace(prefix, "")) ?? null;
+  const known = id => loaded ? entry(id)?.id : String(id).replace(prefix, "");
   function normalizeState(state = {}) {
     state ??= {};
-    const ids = values => [...new Set((Array.isArray(values) ? values : []).map(id => entry(id)?.id).filter(Boolean))];
+    const ids = values => [...new Set((Array.isArray(values) ? values : []).map(known).filter(Boolean))];
     return { enabled: state.enabled === true, independent: state.independent === true,
       scope: state.scope === "selected" ? "selected" : "all", selected: ids(state.selected), excluded: ids(state.excluded), customized: ids(state.customized),
       preferCatalog: state.preferCatalog === true, motion: state.motion !== false, sound: state.sound !== false,
@@ -77,18 +86,28 @@ export function createAbilityCatalog({ entries, source, recipeKind, label, packs
       (quality === "all" || e.quality === quality) && (edition === "all" || e.edition === edition) &&
       (!query || normalize(`${e.name} ${e.slug} ${e.traits.join(" ")} ${e.publication} ${e.rationale}`).includes(query)));
   }
-  return { entries, source, recipeKind, label, entry, normalizeState, enabled, use, find, recipe, automaticRecipe, resolveAutomaticRecipe, filter };
+  return { entries, source, recipeKind, label, entry, normalizeState, enabled, use, find, recipe, automaticRecipe, resolveAutomaticRecipe, filter, reindex };
 }
 
 // Actions that play as attack rolls and look like the element rolled: Elemental Blast is a Strike
 // in an element (its roll carries element:fire, element:water…). The built entry only knows a use.
 const ROLLED_ELEMENTAL = new Set(["elemental-blast"]);
-for (const entry of PF2E_ACTIONS) if (ROLLED_ELEMENTAL.has(entry.slug)) Object.assign(entry, { trigger: "attack", elementChoice: true, meleeLook: true });
 export const PF2E_ACTION_CATALOG = createAbilityCatalog({ entries: PF2E_ACTIONS, source: PF2E_ACTION_SOURCE, recipeKind: "action", label: "action",
-  packs: ["actionspf2e"], matchesItem: item => item.type === "action" });
+  packs: ["actionspf2e"], matchesItem: item => item.type === "action", loaded: false });
 const FEATURE_CATEGORIES = new Set(["classfeature", "ancestryfeature"]);
 export const PF2E_FEATURE_CATALOG = createAbilityCatalog({ entries: PF2E_CLASS_FEATURES, source: PF2E_CLASS_FEATURE_SOURCE, recipeKind: "feature", label: "feature",
-  packs: ["classfeatures", "ancestryfeatures"], matchesItem: item => item.type === "feat" && FEATURE_CATEGORIES.has(item.system?.category ?? item.category) });
+  packs: ["classfeatures", "ancestryfeatures"], matchesItem: item => item.type === "feat" && FEATURE_CATEGORIES.has(item.system?.category ?? item.category), loaded: false });
+await catalogData('pf2e', 'actions', async () => {
+  const data = await import('../../../data/pf2e-actions.mjs');
+  fillList(PF2E_ACTIONS, data.PF2E_ACTIONS); Object.assign(PF2E_ACTION_SOURCE, data.PF2E_ACTION_SOURCE);
+  for (const entry of PF2E_ACTIONS) if (ROLLED_ELEMENTAL.has(entry.slug)) Object.assign(entry, { trigger: "attack", elementChoice: true, meleeLook: true });
+  PF2E_ACTION_CATALOG.reindex();
+});
+await catalogData('pf2e', 'features', async () => {
+  const data = await import('../../../data/pf2e-class-features.mjs');
+  fillList(PF2E_CLASS_FEATURES, data.PF2E_CLASS_FEATURES); Object.assign(PF2E_CLASS_FEATURE_SOURCE, data.PF2E_CLASS_FEATURE_SOURCE);
+  PF2E_FEATURE_CATALOG.reindex();
+});
 export const isFeatureItem = item => item?.type === "feat" && FEATURE_CATEGORIES.has(item.system?.category ?? item.category);
 
 // Damage riders: passive features that add dice/modifiers to a Strike's damage roll.

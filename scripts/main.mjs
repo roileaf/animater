@@ -257,6 +257,7 @@ import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalo
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
 import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
 import { dndSettingKey,sfSettingKey,dhSettingKey,dsSettingKey, catalogListText } from './catalogs/shared/catalog-system.mjs';
+import { loadCatalogData, catalogDataLoaded, onCatalogData } from './catalogs/shared/catalog-data.mjs';
 import { dndStateHost } from './catalogs/dnd5e/dnd5e-states.mjs';
 import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState} from './catalogs/sf2e/sf2e-catalog.mjs';
 import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
@@ -6674,6 +6675,8 @@ export class AnimaterApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const root = this.element.querySelector(".an-root");
     if (this.workspace?.root !== root) {
       this.workspace?.destroy();
+      // Every catalog of this world (on or off) is listed here: their data loads first, once.
+      await loadWorldCatalogs({ all: true });
       const { Workspace } = await import("./ui/workspace.mjs");
       if (this.rendered === false || root !== this.element.querySelector(".an-root")) return;
       if (this.workspace?.root === root) return;
@@ -7055,6 +7058,38 @@ async function seedBorrowedCatalogs() {
 const catalogKeys = () => [...(CATALOG_KINDS[game.system.id] ?? []), ...(borrowedSystemId() ? TWOE_KINDS.map((kind) => twoeSettingKey(borrowedSystemId(), kind)) : [])].filter((key) => game.settings.settings.has(`${ID}.${key}`));
 const catalogOn = (key) => { const s = hotSetting(key) ?? {}; return s.enabled === true && (s.scope ?? "all") === "all"; };
 function catalogsOn() { const keys = catalogKeys(); return { on: keys.filter(catalogOn).length, total: keys.length }; }
+// Catalog data loads on demand (catalog-data.mjs), not with the module: once this screen's canvas is up, the
+// data of the catalogs that are on (this system's, and the borrowed 2e system's with crossover on); a catalog
+// turned on later, when it is; all of them when the Animater window opens. A catalog that is off never loads
+// for a player. Until its data is in, a catalog plays nothing (the first seconds after joining).
+const catalogSystemsHere = () => [game.system.id, ...(borrowedSystemId() ? [borrowedSystemId()] : [])];
+const settingOn = (key) => { try { return hotSetting(key)?.enabled === true; } catch { return false; } };
+const npcCatalogOn = () => { try { return hotSetting("npcAbilities") !== false; } catch { return true; } };
+// Which data files a system's catalogs that are on need.
+function catalogDataWanted(system) {
+  if (system === "pf2e") return [["spells", "spellCatalog"], ["feats", "featCatalog"], ["actions", "actionCatalog"], ["features", "featureCatalog"],
+    ["weapons", "weaponCatalog"], ["states", "conditionCatalog"], ["states", "effectCatalog"]].filter(([, key]) => settingOn(key)).map(([name]) => name)
+    .concat(npcCatalogOn() ? ["npcActions"] : []);
+  const keys = system === "sf2e" ? SF_KINDS.map(sfSettingKey) : system === "dnd5e" ? DND_KINDS.map(dndSettingKey) : [];
+  return keys.some(settingOn) || (system === game.system.id && npcCatalogOn()) ? ["entries", "npcActions"] : [];
+}
+let catalogsStarted = false;
+async function loadWorldCatalogs({ all = false } = {}) {
+  try {
+    for (const system of catalogSystemsHere()) {
+      const names = all ? undefined : [...new Set(catalogDataWanted(system))];
+      if (!names || names.length) await loadCatalogData({ systems: [system], names });
+    }
+  } catch (error) { console.warn("Animater | catalog data did not load", error); }
+}
+onCatalogData(() => { persistentStates?.schedule(); });
+// After the canvas has drawn (or a few seconds on, with no scene), so the data never holds up the first view.
+Hooks.once("ready", () => {
+  const start = () => { if (catalogsStarted) return; catalogsStarted = true; setTimeout(() => void loadWorldCatalogs(), 1000); };
+  if (canvas?.ready) start(); else { Hooks.once("canvasReady", () => { start(); }); setTimeout(start, 8000); }
+});
+// A catalog (or crossover) turned on mid-session loads then.
+Hooks.on("updateSetting", (setting) => { if (catalogsStarted && String(setting?.key ?? "").startsWith(`${ID}.`)) void loadWorldCatalogs(); });
 async function useEveryCatalog() {
   if (!game.user.isGM) throw Error("Only a GM can turn catalogs on.");
   for (const key of catalogKeys()) await game.settings.set(ID, key, { ...(hotSetting(key) ?? {}), enabled: true, scope: "all", independent: true, preferCatalog: true });
@@ -8900,6 +8935,8 @@ async function loadDndBooks() {
   const active = Array.from(game.modules?.values?.() ?? []).filter((m) => m.active && DND_BOOKS.test(m.id));
   if (game.system.id !== "dnd5e" || !active.length) return;
   try {
+    // The SRD entries come first; a book's join after them.
+    await loadCatalogData({ systems: ["dnd5e"], names: ["entries"] });
     const { DND5E_BOOK_ENTRIES } = await import("../data/dnd5e-book-catalog.mjs");
     const added = addDndBookEntries(DND5E_BOOK_ENTRIES, (id) => Boolean(game.modules.get(id)?.active));
     if (added) app?.workspace?.render();
@@ -9986,6 +10023,9 @@ Hooks.once("ready", () => {
     conditions: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='draw-steel'?DRAW_STEEL_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), conditions: clone(game.system.id==='daggerheart'?dhEntries('condition'):game.system.id==='draw-steel'?dsEntries('condition'):game.system.id==='sf2e'?sfEntries('condition'):game.system.id==='dnd5e'?dndEntries('condition'):game.system.id==='pf2e'?PF2E_CONDITIONS:[]) }),
     effects: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), effects: clone(game.system.id==='sf2e'?sfEntries('effect'):game.system.id==='dnd5e'?dndEntries('effect'):game.system.id==='pf2e'?PF2E_EFFECTS:[]) }),
     refreshPersistent: () => persistentStates?.reconcile(),
+    // Catalog data loads on demand: this loads every catalog of the world now (spells() and the rest list nothing before).
+    loadCatalogs: () => loadWorldCatalogs({ all: true }),
+    catalogLoaded: (system, name) => catalogDataLoaded(system ?? game.system.id, name),
     // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
     clearGroundMarks: (options) => clearGroundMarksApi(options),
     // Read-only views for live checks (tools/live/*.mjs): what this screen perceives of a moving token (seen: its
