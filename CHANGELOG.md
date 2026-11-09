@@ -2,8 +2,14 @@
 
 ## Unreleased
 
+## 3.8.7
+
 - **Reset a catalog.** Each catalog page has a **Reset catalog…** button in its header (GM) that puts that catalog back to the stock catalog: picked, left-out and customised entries cleared, look and sound choices back to their defaults, and the recipes Customize made for its entries deleted. It asks first, naming those recipes and marking the ones you edited. A copy of what it deletes is kept in the world, and **Restore last reset…** beside it puts the catalog back as it was; the same backup downloads as a file that the Recipes page's Import takes back. The catalog stays on or paused as it was unless you also ask for its fresh-install state; your own recipes, the starters and other catalogs' are kept.
 - **Reset to defaults.** The Animater settings window has a **Reset to defaults…** button in its footer and a **Reset this tab** button on each tab. It asks first (a GM picks the world settings, this screen's or both), downloads a backup of the values it changes, and leaves menus, catalogs, recipes and the switch that plays them alone.
+- **Ponds and still water have a sound.** A water region set to Still (not the sea) now plays a quiet swamp loop near it, as rivers do; Region configuration → Animater → Region sound Off silences one. Two CC0 recordings, one picked per scene.
+- **Sparks have their own switch.** Ambient Light configuration → Animater → Sparks turns a light's sparks and embers on or off apart from its heat haze. Before, only the Heat haze choice decided them, and turning heat haze off on a fire also stopped it counting as a fire for its flame, moths and soot.
+- **Buttons instead of drop-downs on lights.** The Animater section of Ambient Light configuration shows its choices (flame, fire kind, size, moths, soot, smoke, heat haze, sparks, chimney) as rows of buttons, and the light previews each click at once.
+- **The scene's outer walls no longer make every room sound closed.** Room echo treats walls along the scene's edge as open, so an outdoor map fenced by boundary walls sounds outdoors.
 
 ## 3.8.6
 
