@@ -224,7 +224,7 @@ import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/m
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
-import { shownFloorOf } from "./ui/region-panel-model.mjs";
+import { shownFloorOf, setRoof } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight } from "./engines/motion/animal-art.mjs";
 import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf } from "./engines/motion/region-animals.mjs";
@@ -3291,6 +3291,9 @@ const openFloorRegionsTool = async () => {
     levelId,
     textures,
     grid: canvas.grid?.size ?? 100,
+    effectsOff: () => ["Fungus", "Crystals", "Lava", "Mist"].filter((_, index) => !bothSettingsOn(["caveFungus", "caveCrystals", "caveLava", "caveMist"][index])),
+    walls: () => { try { return wallsHere(); } catch { return []; } },
+    setRoof,
     tile: (floor, style) => floorTextures.tileImage(floor, style),
     snapshot: (list, rect, width, height) => floorTextures.snapshot(list.map((spec) => ({ ...spec, blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(spec.areas) })), rect, width, height),
     notify: (message) => { ui.notifications?.info(message); },

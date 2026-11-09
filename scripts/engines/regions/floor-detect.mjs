@@ -850,7 +850,7 @@ export function floorFlags(floor, { waterKind = "still", flowTo = "", current = 
   return flags;
 }
 
-export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null } = {}) {
+export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null, flags: extra = null, roof = null } = {}) {
   if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) throw new Error("toRegionData: sceneRect needs a width and a height");
   if (!(imageWidth > 0) || !(imageHeight > 0)) throw new Error("toRegionData: image size is missing");
   const scaleX = sceneRect.width / imageWidth;
@@ -874,12 +874,23 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
   if (steps && typeof steps === "object") Object.assign(animater, steps);
   const soft = edge === "" || edge === undefined || edge === null ? NaN : Number(edge);
   if (Number.isFinite(soft)) { if (soft <= 0) animater.stepEdgeOff = true; else animater.stepEdge = Math.min(3, soft); }
+  // Draft patches from the embedded panel. The row's floor still wins.
+  if (extra && typeof extra === "object") {
+    for (const [key, value] of Object.entries(extra)) {
+      if (key === "floor" || key === "generated") continue;
+      if (key.startsWith("-=")) delete animater[key.slice(2)];
+      else animater[key] = value;
+    }
+  }
+  animater.floor = wire;
+  if (roof === true) animater.roof = true;
   return {
     name: name || floorName(area),
     color: FLOOR_LOOK[area][1],
     shapes,
     levels: levelId ? [levelId] : [],
     flags: { animater },
+    ...(roof === true ? { behaviors: [{ name: "Roof", type: "suppressWeather" }] } : {}),
   };
 }
 
