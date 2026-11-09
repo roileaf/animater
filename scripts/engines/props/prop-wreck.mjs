@@ -42,24 +42,50 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     return colours.get(src);
   };
 
-  const blotch = (b) => {
-    const g = new PIXI.Graphics();
-    for (const step of b.steps) for (const pts of step.polys) {
-      if (step.edge) g.lineStyle(1, b.ink, 0.14); else g.lineStyle(0);
-      g.beginFill(step.color, step.alpha).drawPolygon(pts).endFill();
-    }
-    return g;
+  // The ground mark painted once into its own texture: each tone step is the union of its lobes, filled once with
+  // rounded edges, so overlapping lobes never stack into see-through polygon layers; only the outer step's silhouette
+  // gets the faint ink edge. `held` collects the texture for release.
+  const css = (color, alpha) => `rgba(${(color >> 16) & 255},${(color >> 8) & 255},${color & 255},${alpha})`;
+  const lobePath = (ctx, pts, ox, oy, k) => {
+    const n = pts.length / 2, p = (i) => [(pts[(2 * i) % pts.length] - ox) * k, (pts[(2 * i + 1) % pts.length] - oy) * k];
+    const mid = (i) => { const [ax, ay] = p(i), [bx, by] = p(i + 1); return [(ax + bx) / 2, (ay + by) / 2]; };
+    ctx.moveTo(...mid(n - 1));
+    for (let i = 0; i < n; i++) ctx.quadraticCurveTo(...p(i), ...mid(i));
+    ctx.closePath();
   };
-
-  const groundMark = (mark) => {
-    const g = new PIXI.Container();
-    for (const b of mark.blobs) g.addChild(blotch(b));
-    if (mark.ticks.length) {
-      const t = new PIXI.Graphics(); t.lineStyle(1.2, 0xf2f8fb, 0.5);
-      for (const { x, y, s } of mark.ticks) t.moveTo(x - s, y).lineTo(x + s, y).moveTo(x, y - s).lineTo(x, y + s);
-      g.addChild(t);
+  const groundMark = (mark, held) => {
+    const xs = [], ys = [];
+    for (const b of mark.blobs) for (const s of b.steps) for (const pts of s.polys) for (let i = 0; i < pts.length; i += 2) { xs.push(pts[i]); ys.push(pts[i + 1]); }
+    for (const { x, y, s } of mark.ticks) { xs.push(x - s, x + s); ys.push(y - s, y + s); }
+    if (!xs.length) return new PIXI.Container();
+    const pad = 4, ox = Math.min(...xs) - pad, oy = Math.min(...ys) - pad, w = Math.max(...xs) + pad - ox, h = Math.max(...ys) + pad - oy;
+    const k = Math.min(2, 1024 / Math.max(w, h)); // sharp when zoomed in, bounded in memory
+    const c = document.createElement("canvas"); c.width = Math.ceil(w * k); c.height = Math.ceil(h * k);
+    const ctx = c.getContext("2d");
+    for (const b of mark.blobs) {
+      b.steps.forEach((step) => {
+        ctx.beginPath(); for (const pts of step.polys) lobePath(ctx, pts, ox, oy, k);
+        ctx.fillStyle = css(step.color, Math.min(1, step.alpha * 1.4)); ctx.fill("nonzero");
+      });
+      const outer = b.steps.find((s) => s.edge);
+      if (outer) {
+        // The silhouette's outside half of a stroke: stroke every lobe, then cut away everything inside the union.
+        const e = document.createElement("canvas"); e.width = c.width; e.height = c.height;
+        const ex = e.getContext("2d");
+        ex.beginPath(); for (const pts of outer.polys) lobePath(ex, pts, ox, oy, k);
+        ex.lineWidth = 2 * k; ex.lineJoin = "round"; ex.strokeStyle = css(b.ink, 0.22); ex.stroke();
+        ex.globalCompositeOperation = "destination-out"; ex.fillStyle = "#000"; ex.fill("nonzero");
+        ctx.drawImage(e, 0, 0);
+      }
     }
-    return g;
+    if (mark.ticks.length) {
+      ctx.beginPath();
+      for (const { x, y, s } of mark.ticks) { const X = (x - ox) * k, Y = (y - oy) * k, S = s * k; ctx.moveTo(X - S, Y); ctx.lineTo(X + S, Y); ctx.moveTo(X, Y - S); ctx.lineTo(X, Y + S); }
+      ctx.lineWidth = 1.2 * k; ctx.strokeStyle = css(0xf2f8fb, 0.5); ctx.stroke();
+    }
+    const tex = PIXI.Texture.from(c); held.push(tex);
+    const s = new PIXI.Sprite(tex); s.position.set(ox, oy); s.scale.set(1 / k);
+    return s;
   };
 
   // Draws the spill into `box`; returns grow(t), t 0-1.
@@ -110,6 +136,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     entry.stop?.();
     quiet(() => entry.handle?.destroy());
     quiet(() => entry.box.destroy({ children: true }));
+    for (const t of entry.textures) quiet(() => t.destroy(true));
   };
 
   const hide = (id) => { const e = wrecks.get(id); if (e) { wrecks.delete(id); release(e); } };
@@ -128,7 +155,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const d = tile.document ?? tile, id = d.id;
     hide(id);
     const rect = tileRect(d), centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-    const box = new PIXI.Container(), entry = { box, handle: null, stop: null };
+    const box = new PIXI.Container(), entry = { box, handle: null, stop: null, textures: [] };
     wrecks.set(id, entry);
     box.sortableChildren = true;
     box.elevation = d.elevation ?? 0; box.sort = (d.sort ?? 0) + 1;
@@ -141,7 +168,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents });
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
-    marks.addChild(groundMark(layout.mark));
+    marks.addChild(groundMark(layout.mark, entry.textures));
     const grow = drawSpill(layout.spill, marks, tones), speckG = drawSpecks(layout.specks, marks, tones);
 
     // The prop's art stands in as an unseen sprite at the tile's transform; its pieces fly from it.
