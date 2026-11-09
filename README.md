@@ -335,7 +335,7 @@ Animater reads that level's map and opens a window. It shows a preview of the ma
   - Undo: Ctrl+Z, or the undo button in the toolbar, undoes the last change of any kind, including settings, new areas and removed ones.
   - Split off part: select the area and choose **Split**, then drag a loop around part of that area on the map (a waterfall in a river). That part becomes its own area with the same floor and settings, ready for its own kind.
   - Stray spots and fingers: right-click a small separate piece of an area, or a thin finger of it running into a bush, to remove it (in Smart or Colour), or select the area and choose **Tidy** to remove every small piece at once, or **Remove all small spots** at the bottom to do it for every area. Ctrl+Z undoes the last change. The main body and pieces at least 5% of its size stay.
-  - Press **1**, **2** or **3** to switch that area between the model's small, middle and large sizes.
+  - Press **1**, **2** or **3**, or use the **Size** buttons at the bottom right of the map, to switch the last area or cut between the model's small, middle and large versions. The size in use is highlighted, and the buttons show only while there is something to resize.
 - **What it keeps:** only the pieces you clicked, with small enclosed holes (a table, a bush) filled in.
 - **Adding to an area:** after **Add to area** (the + on its row), a smart click joins that area.
 - **Accuracy:** in testing on 41 hand-drawn regions from real adventure maps, a click or a box with at most one correction matched the drawn region at 85% overlap three times in four. Check each area before creating regions.

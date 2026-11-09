@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, floorWindowHTML, areaRowHTML,
-  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, AUTO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
+  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, sizeOf, AUTO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
 } from "../../scripts/ui/floor-regions-ui.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -1563,6 +1563,24 @@ test("a right-click cuts the clicked thing out of whichever area is under it, ke
   assert.equal(count(app.detect.proposals[0].pixels), 24 * 24 - 8 * 8, "undo: back to the small cut");
   await app.smartMark({ remove: { x: 55, y: 35 } });
   assert.match(notes.at(-1), /inside an area/, "outside every area: says so");
+  await app.close();
+});
+
+test("the size of a smart mark is known, so the Size control can show it", async () => {
+  const m = (n) => { const a = new Uint8Array(100); a.fill(1, 0, n); return a; };
+  const small = m(10), middle = m(40), large = m(90);
+  assert.equal(sizeOf([large, small, middle], small), 0);
+  assert.equal(sizeOf([large, small, middle], large), 2);
+  assert.equal(sizeOf([large, small, middle], m(35)), 1, "another mask: the nearest size");
+  assert.equal(sizeOf([], small), null);
+  const { App, listeners, shared } = waterApp();
+  const log = { loads: 0, reads: [], marks: [] };
+  const { app } = await openFloorRegions(smartOpening(App, log));
+  shared.selection.value = "smart";
+  await app.smartMark({ at: { x: 30, y: 20 } });
+  assert.equal(app.smartLast.size, 1, "a click starts on the middle size");
+  await app.smartResize(2);
+  assert.equal(app.smartLast.size, 2);
   await app.close();
 });
 

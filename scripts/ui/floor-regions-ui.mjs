@@ -11,10 +11,20 @@ import { areaSignature, rememberAreas, recallFloor, memoryOf, markAreas, knowsFl
 // Asked once per page, before the first smart mark downloads anything.
 export const SMART_CONSENT = `Experimental. Smart selection uses ${SMART_MODEL.name}, a segmentation model that runs in this browser. The first time, it downloads about ${SMART_MODEL.size} from huggingface.co (and its library from cdn.jsdelivr.net); after that it loads from this browser's cache. The map is read on this computer and is not sent anywhere. Download it now?`;
 const SMART_HELP = "Click a floor · Shift+drag a box · Right-click to cut out · 1–3 resize · Ctrl+Z undo";
+const SIZE_NAMES = ["Small", "Middle", "Large"];
+// Which of the model's three sizes (0 small, 1 middle, 2 large) `mask` is: the same mask, else the size nearest in area.
+export function sizeOf(masks, mask) {
+  if (!masks?.length || !mask) return null;
+  const order = sizeOrder(masks), exact = order.findIndex((i) => masks[i] === mask);
+  if (exact >= 0) return exact;
+  const area = (m) => { let n = 0; for (let i = 0; i < m.length; i++) n += m[i] ? 1 : 0; return n; };
+  const want = area(mask), sizes = order.map((i) => Math.abs(area(masks[i]) - want));
+  return sizes.indexOf(Math.min(...sizes));
+}
 const COLOUR_HELP = "Click to follow a colour · Right-click a stray spot to remove it · Ctrl+Z undo";
 // The status line is kept short; its tooltip says it in full.
 const HELP_TIPS = {
-  [SMART_HELP]: "Click a floor to add it. Shift+drag a box around a room. Right-click to cut out a bush, stray spot or thin finger. 1–3 resize the last one. Click a part you cut out to put it back. Ctrl+Z undoes.",
+  [SMART_HELP]: "Click a floor to add it. Shift+drag a box around a room. Right-click to cut out a bush, stray spot or thin finger. 1–3 (or the Size buttons at the bottom right) switch the last one between the model's small, middle and large versions. Click a part you cut out to put it back. Ctrl+Z undoes.",
   [COLOUR_HELP]: "Click to follow a colour, best on water and strong colours. Right-click a stray spot or thin finger to remove it. Click a part you cut out to put it back. Ctrl+Z undoes.",
 };
 const helpTip = (text) => HELP_TIPS[text] ?? text;
@@ -348,6 +358,7 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
           <button type="button" data-delete-vertex hidden>Delete vertex</button>
           <button type="button" class="an-primary" data-add-done>Done</button>
         </div></div>
+        <div class="an-size-pick" data-size-pick role="group" aria-label="Size of the last smart area" hidden><span class="an-tool-label">Size</span>${SIZE_NAMES.map((name, i) => `<button type="button" data-size="${i}" aria-pressed="false" title="${name}: the model's ${name.toLowerCase()} version of the last area or cut (key ${i + 1})"><b>${i + 1}</b> ${name}</button>`).join("")}</div>
         <p class="an-floors-status" data-smart-status aria-live="polite" title="${esc(helpTip(toolStatus(selection, addFloor)))}">${esc(toolStatus(selection, addFloor))}</p>
       </div>
     </section>
@@ -833,6 +844,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     }
 
     updateSummary() {
+      this.drawSizes();
       const kind = sharedChoices(this.element).waterKind;
       const flowField = this.element.querySelector("[data-shared-flow]");
       const currentField = this.element.querySelector("[data-shared-current]");
@@ -1289,6 +1301,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (!event.target.closest?.("[data-floor-picker]")) this.floorMenu(false);
         if (event.target.closest?.("[data-undo-toolbar]")) return this.undoAdd();
         if (event.target.closest?.("[data-auto-mark]")) return void this.markClicked();
+        const size = event.target.closest?.("[data-size]");
+        if (size) return void this.smartResize(Number(size.dataset.size));
         const edit = event.target.closest?.("[data-edit-outline]");
         if (edit) return this.setMode({ kind: "vertices", areaId: edit.dataset.editOutline });
         if (event.target.closest?.("[data-delete-vertex]")) return this.deleteVertex();
@@ -1551,6 +1565,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     smartOn() { return sharedChoices(this.element).selection === "smart"; }
 
+    // The last smart area or cut, which 1-3 resize. The Size control on the map shows while there is one.
+    get smartLast() { return this._smartLast ?? null; }
+    set smartLast(value) { this._smartLast = value ?? null; this.drawSizes(); }
+
+    drawSizes() {
+      const pick = this.element?.querySelector?.("[data-size-pick]");
+      if (!pick) return;
+      const last = this._smartLast, live = !!last && !!this.detect?.proposals?.includes(last.area) && this.smartOn();
+      pick.hidden = !live;
+      for (const button of pick.querySelectorAll?.("[data-size]") ?? []) button.setAttribute("aria-pressed", String(live && Number(button.dataset.size) === last.size));
+    }
+
     // A smart mask kept to the colours around `seeds`, when Same colours is on.
     keepColours(mask, seeds = []) {
       if (!seeds?.length || !sharedChoices(this.element).keepColours) return mask;
@@ -1653,7 +1679,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (!area) { hooks.notify?.("Nothing new there: that part is already in an area, or too small to be a region. To grow an area, press its + button first."); return; }
         const placed = this.placePicked(area, target);
         // Only a new area can change size or lose a part afterwards; one added into another area is merged.
-        this.smartLast = placed && !target ? { area, points, masks, seeds } : null;
+        this.smartLast = placed && !target ? { area, points, masks, seeds, size: sizeOf(masks, mask) } : null;
       } catch (error) {
         console.warn("Animater smart selection:", error);
         hooks.warn?.(`Experimental. Smart selection failed: ${error.message}`);
@@ -1693,7 +1719,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       cut.excludedBefore ??= this.excluded ?? {};
       this.excluded = this.withExcluded(cut.excludedBefore, this.areaFloor(cut.base), removed);
       detect.proposals = detect.proposals.map((p) => (p === replacing ? area : p));
-      this.smartLast = cut.masks ? { cut, area, masks: cut.masks } : null;
+      this.smartLast = cut.masks ? { cut, area, masks: cut.masks, size: sizeOf(cut.masks, mask) } : null;
       this.drawRows(choices);
       return true;
     }
@@ -1806,7 +1832,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       const choices = choicesFromElement(this.element);
       this.remember();
       detect.proposals = detect.proposals.map((p) => (p === last.area ? area : p));
-      this.smartLast = { ...last, area };
+      this.smartLast = { ...last, area, size: sizeOf(last.masks, mask) };
       this.drawRows(choices);
     }
 
