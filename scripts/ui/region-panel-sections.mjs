@@ -189,7 +189,8 @@ export const SECTIONS = {
     if (menu.speed) parts.push(row('Speed', seg(STEP_SPEEDS, menu.speed, (v) => act(setStepSpeed(own, floor, v)), 'Speed, this step')));
     if (menu.strength !== null) parts.push(range('Strength', STEP_STRENGTH, menu.strength, percent, (v) => act(setStepStrength(own, floor, v)), 0.1, 'How much of its look this step puts down.', 'Look strength'));
     if (activeStep(own) || own.stepHidden) parts.push(toggle('Hide this step', menu.hidden, (on) => act({ stepHidden: on })));
-    parts.push(button('Edit steps…', 'an-rp-more an-rp-link', () => { c.close(); c.edit(c.doc); }));
+    if (c.edit) parts.push(button('Edit steps…', 'an-rp-more an-rp-link', () => { c.close(); c.edit(c.doc); }));
+    else if (c.stepsNote) parts.push(element('p', 'an-rp-note', c.stepsNote));
     return parts;
   },
 
