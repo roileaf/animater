@@ -2,9 +2,6 @@
 
 ## Unreleased
 
-- **Much faster first load for players.** The animation catalogs (about 58 MB of data in a PF2e world) no longer download and load with the module. Each catalog loads a moment after the scene has drawn, and only if it is turned on. Every catalog loads when the Animater window opens. The SF2e catalogs stay out of a PF2e world unless crossover is on, and a catalog that is off never loads for players. In the first second or two after joining, the catalogs play nothing until they are in.
-- **Rivers keep their fish.** Where a river runs off the edge of the map, fish wandering near it swim off, and each was made good only one every one to two minutes, so the river slowly emptied (five down to one in a few minutes). One that leaves is now replaced within seconds, and one a heron catches within half a minute.
-- **The Animals panel's numbers stay current.** While it is open, the rows left on Auto and the count at the top follow the animals as they come and go, every two seconds, instead of keeping the numbers from when it opened.
 - **Size buttons for smart areas.** After a smart click, box or cut, **Size: 1 Small · 2 Middle · 3 Large** shows at the bottom right of the map with the size in use highlighted. Click one, or press 1, 2 or 3 as before. It hides when there is nothing to resize.
 - **Smart selection keeps to the clicked colours.** With **Same colours** on (the default, next to the Floor picker), a smart click leaves out what stands on the floor in another colour, such as green chairs on grey stone or a red rug, as holes in the area. The floor's own light and dark patches stay. Turn it off for a floor of many colours.
 - **Right-click cuts out a bridge.** A right-click could only take out a part under a quarter of the area, so a stone bridge across a small pool answered "Nothing there to take out". A bigger part that plainly differs in colour from the rest of the area can now be cut, up to nine tenths of it. Where the model sees the bridge and the pool as one thing, the right-click cuts the part of the area in the clicked colours instead.
@@ -34,6 +31,12 @@
   - **Marking:** click an area, **Shift+drag** a box around a room or pond, right-click a bush or rock inside any area to cut it out (the hole stays), and press **1**, **2** or **3** to change the size of the last area or cut.
   - **The download:** the first time, it asks before downloading about 456 MB, and the browser keeps the model afterwards. The map is read on your computer and is not sent anywhere.
   - **Colour selection** still works as before and stays the default.
+
+## 3.8.12
+
+- **Much faster first load for players.** The animation catalogs (about 58 MB of data in a PF2e world) no longer download and load with the module. Each catalog loads a moment after the scene has drawn, and only if it is turned on. Every catalog loads when the Animater window opens. The SF2e catalogs stay out of a PF2e world unless crossover is on, and a catalog that is off never loads for players. In the first second or two after joining, the catalogs play nothing until they are in.
+- **Rivers keep their fish.** Where a river runs off the edge of the map, fish wandering near it swim off, and each was made good only one every one to two minutes, so the river slowly emptied (five down to one in a few minutes). One that leaves is now replaced within seconds, and one a heron catches within half a minute.
+- **The Animals panel's numbers stay current.** While it is open, the rows left on Auto and the count at the top follow the animals as they come and go, every two seconds, instead of keeping the numbers from when it opened.
 
 ## 3.8.11
 
