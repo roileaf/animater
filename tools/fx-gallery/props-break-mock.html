@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Breakable props mock</title>
+<style>
+  :root { --bg:#1b1916; --panel:#26231f; --ink:#e9e2d4; --dim:#a99f8c; --accent:#d9a45b; --line:#3a352e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; }
+  main { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  #stage { border:1px solid var(--line); border-radius:6px; overflow:hidden; flex:0 0 auto; max-width:100%; }
+  #stage canvas { display:block; max-width:100%; height:auto !important; }
+  aside { flex:1 1 260px; max-width:340px; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:14px; }
+  h1 { font-size:16px; margin:0 0 4px; }
+  p.note { color:var(--dim); margin:0 0 12px; font-size:12.5px; }
+  fieldset { border:1px solid var(--line); border-radius:5px; margin:0 0 10px; padding:8px 10px; }
+  legend { color:var(--accent); font-size:12px; padding:0 4px; }
+  label { display:block; margin:3px 0; cursor:pointer; }
+  .row { display:flex; gap:8px; margin-top:6px; }
+  button { flex:1; padding:8px; border-radius:5px; border:1px solid var(--line); background:#3b342b; color:var(--ink); font-weight:600; cursor:pointer; }
+  button.primary { background:var(--accent); color:#1b1916; border-color:var(--accent); }
+  #status { margin-top:10px; color:var(--dim); font-size:12.5px; min-height:2.6em; }
+</style>
+</head>
+<body>
+<main>
+  <div id="stage"></div>
+  <aside>
+    <h1>Breakable props: mock</h1>
+    <p class="note">The real Animater fragments renderer cuts the prop's own picture. The pieces stay where they land as wreckage. Props are Baileywiki tiles from your packs, because FA's barrels aren't downloaded here.</p>
+    <fieldset><legend>Prop</legend>
+      <label><input type="radio" name="prop" value="barrel" checked> Barrel (wood, 1×1)</label>
+      <label><input type="radio" name="prop" value="crates"> Crate (wood, 1×2)</label>
+      <label><input type="radio" name="prop" value="urns"> Urns (clay, 2×2)</label>
+    </fieldset>
+    <fieldset><legend>What hits it</legend>
+      <label><input type="radio" name="cause" value="fire" checked> Fireball (fire)</label>
+      <label><input type="radio" name="cause" value="hammer"> Missed hammer swing (bludgeoning)</label>
+      <label><input type="radio" name="cause" value="cold"> Cone of cold (cold)</label>
+      <label><input type="radio" name="cause" value="shove"> Shoved into it</label>
+    </fieldset>
+    <fieldset><legend>Contents (GM sets)</legend>
+      <label><input type="radio" name="contents" value="none" checked> Nothing</label>
+      <label><input type="radio" name="contents" value="water"> Water</label>
+      <label><input type="radio" name="contents" value="wine"> Wine</label>
+      <label><input type="radio" name="contents" value="oil"> Oil</label>
+      <label><input type="radio" name="contents" value="grain"> Grain</label>
+    </fieldset>
+    <fieldset><legend>View</legend>
+      <label><input type="checkbox" id="gm"> GM view (hidden tile shows faded)</label>
+      <label><input type="checkbox" id="slow"> Slow motion</label>
+    </fieldset>
+    <div class="row"><button class="primary" id="break">Break</button><button id="repair">Repair</button></div>
+    <div id="status"></div>
+  </aside>
+</main>
+<script type="module">
+import * as PIXI from '/preview-pixi.mjs';
+import { createFragmentRenderer } from '/modules/animater/scripts/engines/fragments/fragment-render.mjs';
+import { seededRandom } from '/modules/animater/scripts/engines/fragments/fragments.mjs';
+import { bloodArt } from '/modules/animater/scripts/engines/motion/blood-art.mjs';
+import { splatMarks } from '/modules/animater/scripts/engines/motion/floor-blood.mjs';
+
+const G = 100, W = 900, H = 600;
+const PROPS = {
+  // Local copies (git-excluded) of Baileywiki tiles: the preview server only serves this module.
+  barrel: { src: 'props-mock/bw_barrel_wood_painted_01.webp', size: 1, material: 'wood' },
+  crates: { src: 'props-mock/bw_crate_wood_rectangle_002.webp', size: 2, w: 1.33, material: 'wood', shape: 'boxy' },
+  urns: { src: 'props-mock/bw_catacomb_ceramic_urns_01.webp', size: 2, material: 'clay' },
+};
+// How each material breaks (the design's "pattern per material"); top-down, so no falling.
+// Spread is in squares per square of prop, so a 2x2 stack scatters as far relative to its size as a barrel.
+const BREAK = {
+  wood: { pattern: 'shards', pieces: 10, spread: 0.32, spin: 120, fall: 0 },
+  clay: { pattern: 'crush', pieces: 3, spread: 0.28, spin: 90, fall: 0 },
+};
+// The engine's own tints (charred is near-black) hide the prop's art, so wreckage gets a lighter
+// "scorched" / "frosted" multiply that keeps the picture readable. That is a new tint for the build.
+const CAUSE = {
+  fire: { tint: 'none', wreckTint: 0x8a6f60, mark: 'scorch', label: 'fire' },
+  hammer: { tint: 'none', mark: 'dust', label: 'bludgeoning' },
+  cold: { tint: 'none', wreckTint: 0xcfe4f2, mark: 'frost', label: 'cold' },
+  shove: { tint: 'none', mark: 'dust', label: 'slammed into it' },
+};
+function tintPieces(color) {
+  if (color === undefined) return;
+  for (const box of propLayer.children) if (box !== tile) box.children?.[0]?.children?.forEach((c) => { if (c instanceof PIXI.Sprite) c.tint = color; });
+}
+// Boxy wood (crates) breaks into rectangular chunks rather than pie wedges; round wood (barrels) into shards.
+const breakStage = (p, cause, seed) => {
+  const base = p.shape === 'boxy' ? { pattern: 'diced', pieces: 3, spread: 0.45, spin: 70, fall: 0 } : BREAK[p.material];
+  return { ...base, spread: base.spread * p.size, seed, tint: cause.tint, duration: DURATION, fade: FADE };
+};
+const DURATION = 1400, FADE = 100, SETTLE = 1 - FADE / DURATION - 0.005; // stop just before the stage's fade: the pieces' final pose
+
+const app = new PIXI.Application({ width: W, height: H, backgroundColor: 0x2b2722, antialias: true, resolution: window.devicePixelRatio || 1, autoDensity: true });
+document.getElementById('stage').appendChild(app.view);
+const floorTex = await PIXI.Assets.load('props-mock/flagstone-light.webp');
+const floor = new PIXI.TilingSprite(floorTex, W, H); floor.tileScale.set(0.5); floor.tint = 0x8f8474; app.stage.addChild(floor); // the underlay is a white base meant to be tinted
+const grid = new PIXI.Graphics(); grid.lineStyle(1, 0x000000, 0.12);
+for (let x = 0; x <= W; x += G) grid.moveTo(x, 0).lineTo(x, H);
+for (let y = 0; y <= H; y += G) grid.moveTo(0, y).lineTo(W, y);
+app.stage.addChild(grid);
+const world = new PIXI.Container(); world.sortableChildren = false; app.stage.addChild(world);
+const marks = new PIXI.Container(); world.addChild(marks);   // ground marks, spills, specks: under everything
+const propLayer = new PIXI.Container(); world.addChild(propLayer); // prop tile + flying/settled pieces
+const fx = new PIXI.Container(); world.addChild(fx);         // the cause (blast, swing, shover)
+
+const renderer = createFragmentRenderer({ PIXI, grid: () => G });
+const centre = { x: 5 * G, y: 3 * G };
+const $ = (s) => document.querySelector(s), pick = (n) => document.querySelector(`input[name=${n}]:checked`).value;
+const status = (t) => { $('#status').textContent = t; };
+let tile = null, handle = null, busy = false, seed = 1;
+const colours = {};
+
+// The prop's own colours (mean of opaque pixels, plus darker and lighter), for specks and splinters.
+async function sampleColours(src) {
+  if (colours[src]) return colours[src];
+  const img = new Image(); img.src = src; await img.decode();
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+  const d = x.getImageData(0, 0, c.width, c.height).data; let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 16) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  const m = [r / n, g / n, b / n], hex = (k) => (Math.min(255, m[0] * k) << 16) | (Math.min(255, m[1] * k) << 8) | Math.min(255, m[2] * k);
+  return (colours[src] = { mid: hex(1), dark: hex(0.55), light: hex(1.25) });
+}
+
+async function placeTile() {
+  const p = PROPS[pick('prop')];
+  const tex = await PIXI.Assets.load(p.src);
+  if (tile) tile.destroy();
+  tile = new PIXI.Sprite(tex); tile.anchor.set(0.5);
+  tile.width = (p.w ?? p.size) * G; tile.height = p.size * G;
+  tile.position.set(centre.x, centre.y);
+  propLayer.addChild(tile);
+}
+
+function clearWreck() {
+  try { handle?.destroy(); } catch { /* keep cleaning */ }
+  handle = null;
+  marks.removeChildren().forEach((c) => c.destroy({ children: true }));
+  fx.removeChildren().forEach((c) => c.destroy({ children: true }));
+}
+
+// A painted blotch: a cloud of overlapping lobes, in stepped tones (darkest inward), with a faint
+// ink edge on the outer step only. Lobes keep the outline ragged instead of one hard polygon.
+function blotch(cx, cy, r, steps, rand, ink = 0x1a1410, lobes = 7) {
+  const g = new PIXI.Graphics();
+  const centres = Array.from({ length: lobes }, (_, k) => {
+    const a = (k / lobes) * Math.PI * 2 + rand() * 0.6, d = k ? r * (0.25 + rand() * 0.3) : 0;
+    return { x: cx + Math.cos(a) * d, y: cy + Math.sin(a) * d, s: k ? 0.45 + rand() * 0.25 : 0.7 };
+  });
+  steps.forEach(([color, alpha], i) => {
+    const shrink = 1 - i * 0.3;
+    for (const c of centres) {
+      const rr = r * c.s * shrink, pts = [];
+      for (let k = 0; k < 12; k++) { const a = (k / 12) * Math.PI * 2, j = rr * (0.78 + rand() * 0.4); pts.push(c.x + Math.cos(a) * j, c.y + Math.sin(a) * j); }
+      if (i === 0) g.lineStyle(1, ink, 0.14); else g.lineStyle(0);
+      g.beginFill(color, alpha / Math.sqrt(lobes) * 1.6).drawPolygon(pts).endFill();
+    }
+  });
+  return g;
+}
+
+function groundMark(kind, r, rand) {
+  if (kind === 'scorch') marks.addChild(blotch(centre.x, centre.y, r * 1.25, [[0x2a1d16, 0.5], [0x1a110c, 0.55], [0x0c0806, 0.5]], rand));
+  if (kind === 'dust') marks.addChild(blotch(centre.x, centre.y, r * 1.15, [[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], rand, 0x4a3f30));
+  if (kind === 'frost') {
+    marks.addChild(blotch(centre.x, centre.y, r * 1.25, [[0xa9c7d8, 0.28], [0xc4dcea, 0.3], [0xe2eff6, 0.28]], rand, 0x5f8296));
+    const t = new PIXI.Graphics(); t.lineStyle(1.2, 0xf2f8fb, 0.5);
+    for (let k = 0; k < 14; k++) { const a = rand() * Math.PI * 2, d = r * (0.5 + rand() * 0.7), x = centre.x + Math.cos(a) * d, y = centre.y + Math.sin(a) * d, s = 4 + rand() * 5;
+      t.moveTo(x - s, y).lineTo(x + s, y).moveTo(x, y - s).lineTo(x, y + s); }
+    marks.addChild(t);
+  }
+}
+
+// Liquids use Animater's own painted floor-blood art (the pool, patches and drops it already draws),
+// recoloured, so a spill matches the blood already on the table instead of a new drawing style.
+const LIQUIDS = { water: { color: 0x33505c, alpha: 0.7 }, wine: { color: 0x4a0c1a, alpha: 0.92 }, oil: { color: 0x4a3410, alpha: 0.85 } };
+const artTextures = new Map();
+const artTexture = (art, n, color) => { const key = `${art}:${n}:${color}`; if (!artTextures.has(key)) { const c = bloodArt(art, n, color); artTextures.set(key, c ? PIXI.Texture.from(c) : null); } return artTextures.get(key); };
+function spill(kind, r, rand, cutAngle = 0) {
+  if (LIQUIDS[kind]) {
+    const { color, alpha } = LIQUIDS[kind], width = r * 3.2; // a barrel holds a lot: the spill outgrows the prop
+    // It runs out a little the way the hit pushed it, and seeps from under the pieces.
+    const at = { x: centre.x + Math.cos(cutAngle) * r * 0.25, y: centre.y + Math.sin(cutAngle) * r * 0.25 };
+    const parts = splatMarks({ at, width, grid: G, seed: `spill-${kind}-${seed}` })
+      .map((m) => (m.art === 'slash' || m.art === 'blunt' ? { ...m, art: 'patch' } : m)) // a spill, not a thrown spray
+      .filter((m) => m.art !== 'drop' || rand() < 0.5)
+      .map((m) => {
+        const tex = artTexture(m.art, m.n ?? 0, color); if (!tex) return null;
+        const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.position.set(m.x, m.y); s.rotation = m.rot ?? 0;
+        const w = m.r * 2, h = m.r * 2 * (m.squash ?? 1); s.width = w; s.height = h; s.alpha = 0; marks.addChild(s);
+        // Pools spread last and longest; patches and drops come with the burst.
+        const delay = m.art === 'pool' ? 0.15 : m.art === 'drop' ? 0 : 0.05;
+        return { s, w, h, delay, pool: m.art === 'pool' };
+      }).filter(Boolean);
+    return (t) => { for (const p of parts) { const u = Math.min(1, Math.max(0, (t - p.delay) / (1 - p.delay))), g = p.pool ? 0.25 + 0.75 * (1 - (1 - u) ** 2) : 0.6 + 0.4 * u;
+      p.s.width = p.w * g; p.s.height = p.h * g; p.s.alpha = alpha * Math.min(1, u * 3); } };
+  }
+  if (kind === 'grain') {
+    // Grain pours out in a fan along the hit, heaped near the break and thinning as it trails off,
+    // in a few clumps; kernels vary in size and tone, each with a small shadow, plus pale husks.
+    const g = new PIXI.Graphics(), tones = [0xc8a462, 0xb48f50, 0xd9bc7e, 0x9c7a40];
+    const clumps = Array.from({ length: 4 }, () => ({ a: cutAngle + (rand() - 0.5) * 1.6, d: r * (0.3 + rand() * 0.6), s: r * (0.25 + rand() * 0.25) }));
+    const kernels = [];
+    for (let k = 0; k < Math.round(700 * (r / G) ** 0.5); k++) {
+      let x, y;
+      if (rand() < 0.65) { const c = clumps[Math.floor(rand() * clumps.length)], a = rand() * Math.PI * 2, d = c.s * Math.sqrt(rand());
+        x = centre.x + Math.cos(c.a) * c.d + Math.cos(a) * d; y = centre.y + Math.sin(c.a) * c.d + Math.sin(a) * d; }
+      else { const a = cutAngle + (rand() - 0.5) * 2.2, d = r * (0.15 + rand() ** 1.8 * 1.5); x = centre.x + Math.cos(a) * d; y = centre.y + Math.sin(a) * d; }
+      kernels.push({ x, y, rot: rand() * Math.PI, l: 1.6 + rand() * 1.6, w: 0.9 + rand() * 0.7, c: tones[Math.floor(rand() * tones.length)], husk: rand() < 0.08 });
+    }
+    for (const k of kernels) g.beginFill(0x2a1e10, 0.28).drawEllipse(k.x + 0.8, k.y + 0.9, k.l, k.w).endFill();
+    for (const k of kernels) {
+      const dx = Math.cos(k.rot), dy = Math.sin(k.rot);
+      if (k.husk) { g.lineStyle(0.6, 0x6d5a3a, 0.5).beginFill(0xe6d6a8, 0.75).drawPolygon([k.x - dx * k.l * 2, k.y - dy * k.l * 2, k.x - dy * k.w, k.y + dx * k.w, k.x + dx * k.l * 2, k.y + dy * k.l * 2, k.x + dy * k.w, k.y - dx * k.w]).endFill().lineStyle(0); continue; }
+      g.beginFill(k.c, 1).drawPolygon([k.x - dx * k.l, k.y - dy * k.l, k.x - dy * k.w, k.y + dx * k.w, k.x + dx * k.l, k.y + dy * k.l, k.x + dy * k.w, k.y - dx * k.w]).endFill();
+    }
+    g.alpha = 0; marks.addChild(g);
+    return (t) => { g.alpha = Math.min(1, t * 1.6); };
+  }
+  return () => {};
+}
+
+function specks(c, r, rand, charred) {
+  const g = new PIXI.Graphics();
+  for (let k = 0; k < 18; k++) {
+    const a = rand() * Math.PI * 2, d = r * (0.35 + rand() * 0.95), len = 5 + rand() * 13, w = 1.6 + rand() * 1.6, rot = rand() * Math.PI;
+    const x = centre.x + Math.cos(a) * d, y = centre.y + Math.sin(a) * d, dx = Math.cos(rot) * len / 2, dy = Math.sin(rot) * len / 2, nx = -Math.sin(rot) * w / 2, ny = Math.cos(rot) * w / 2;
+    const col = charred ? (rand() < 0.5 ? 0x2a1d16 : 0x3d2c22) : (rand() < 0.5 ? c.dark : c.mid);
+    g.lineStyle(0.8, 0x14100c, 0.5).beginFill(col, 0.95).drawPolygon([x - dx - nx, y - dy - ny, x + dx - nx, y + dy - ny, x + dx + nx, y + dy + ny, x - dx + nx, y - dy + ny]).endFill();
+  }
+  return g;
+}
+
+// The cause, drawn plainly: it is only there to show what started the break.
+function playCause(cause, ms) {
+  return new Promise((done) => {
+    const g = new PIXI.Graphics(); fx.addChild(g);
+    let shover = null;
+    if (cause === 'shove') {
+      shover = new PIXI.Graphics().lineStyle(4, 0x2d241b, 1).beginFill(0x6b5a48).drawCircle(0, 0, 38).endFill();
+      shover.position.set(centre.x - 3 * G, centre.y); fx.addChild(shover);
+    }
+    const t0 = performance.now(); let fired = false;
+    const tick = () => {
+      const t = (performance.now() - t0) / ms;
+      g.clear();
+      if (cause === 'fire') {
+        const c = { x: centre.x - 1.4 * G, y: centre.y - 0.9 * G }, rr = 2.6 * G * Math.min(1, t * 1.6);
+        g.beginFill(0xff8a2a, Math.max(0, 0.55 * (1 - t))).drawCircle(c.x, c.y, rr).endFill();
+        g.beginFill(0xffe08a, Math.max(0, 0.6 * (1 - t * 1.4))).drawCircle(c.x, c.y, rr * 0.55).endFill();
+        if (!fired && t > 0.3) { fired = true; done(Math.atan2(centre.y - c.y, centre.x - c.x)); }
+      } else if (cause === 'cold') {
+        const o = { x: centre.x - 3.2 * G, y: centre.y }, len = 4.4 * G * Math.min(1, t * 1.5), sp = 0.5;
+        g.beginFill(0xbfe6ff, Math.max(0, 0.5 * (1 - t))).moveTo(o.x, o.y).lineTo(o.x + Math.cos(-sp) * len, o.y + Math.sin(-sp) * len).lineTo(o.x + Math.cos(sp) * len, o.y + Math.sin(sp) * len).closePath().endFill();
+        if (!fired && t > 0.4) { fired = true; done(0); }
+      } else if (cause === 'hammer') {
+        const a0 = -2.2, a1 = -0.2 + 0.0, a = a0 + (a1 - a0) * Math.min(1, t * 1.8), o = { x: centre.x - 0.9 * G, y: centre.y + 0.35 * G };
+        g.lineStyle(10, 0xffffff, Math.max(0, 0.55 * (1 - t))).arc(o.x, o.y, 0.95 * G, a0, a);
+        if (!fired && t > 0.45) { fired = true; done(-0.4); }
+      } else if (cause === 'shove') {
+        const x = centre.x - 3 * G + 6 * G * Math.min(1, t) ** 0.8; shover.position.x = x;
+        const reach = PROPS[pick('prop')].size * G / 2 + 38;
+        if (!fired && x > centre.x - reach) { fired = true; done(0); }
+      }
+      if (t < 1) requestAnimationFrame(tick); else { g.destroy(); shover?.destroy(); }
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
+async function doBreak() {
+  if (busy) return;
+  if (!tile || !tile.visible || tile.alpha < 1) { await repair(); }
+  busy = true;
+  const p = PROPS[pick('prop')], cause = CAUSE[pick('cause')], contents = pick('contents');
+  const slow = $('#slow').checked ? 4 : 1, rand = seededRandom(seed * 977 + 13);
+  const c = await sampleColours(p.src);
+  status(`${p.material} + ${cause.label}: breaks.`);
+  const cutAngle = await playCause(pick('cause'), 900 * slow);
+  const r = p.size * G * 0.5;
+  groundMark(cause.mark, r, rand);
+  const grow = spill(contents, r, rand, cutAngle);
+  // The real fragments renderer, given the tile's sprite as the "token".
+  const token = { mesh: tile, center: { ...centre }, w: tile.width, h: tile.height, id: 'prop', document: { elevation: 0 } };
+  handle = renderer.start(token, breakStage(p, cause, seed++), cutAngle);
+  tintPieces(cause.wreckTint);
+  // The tile is hidden the moment its pieces appear: gone for players, faded for the GM.
+  applyHidden();
+  const s = specks(c, r, rand, cause.tint === 'charred'); s.alpha = 0; marks.addChild(s);
+  const t0 = performance.now(), ms = DURATION * SETTLE * slow;
+  await new Promise((done) => {
+    const tick = () => {
+      if (!handle) { busy = false; return done(); } // repaired mid-flight
+      const t = Math.min(1, (performance.now() - t0) / ms);
+      handle.update(t * SETTLE); grow(t); s.alpha = Math.min(1, t * 1.5);
+      if (t < 1) requestAnimationFrame(tick); else done();
+    };
+    requestAnimationFrame(tick);
+  });
+  status(`Wreckage stays. ${$('#gm').checked ? 'GM view: the hidden tile shows faded.' : 'Player view: the tile is hidden.'} Repair puts it back.`);
+  busy = false;
+}
+
+function applyHidden() {
+  if (!tile || !handle) return;
+  const gm = $('#gm').checked;
+  tile.visible = gm; tile.alpha = gm ? 0.35 : 1;
+}
+
+async function repair() {
+  clearWreck(); busy = false;
+  await placeTile();
+  status('Prop in place.');
+}
+
+$('#break').onclick = doBreak;
+$('#repair').onclick = repair;
+$('#gm').onchange = applyHidden;
+document.querySelectorAll('input[name=prop]').forEach((i) => (i.onchange = repair));
+await placeTile();
+status('Pick a prop and what hits it, then Break.');
+// Test hook: draw the break at a fraction of its flight without animating (a hidden tab throttles frames).
+async function frameAt(t, prop, causeKey, contents = 'none', gm = false) {
+  if (prop) { document.querySelector(`input[name=prop][value=${prop}]`).checked = true; }
+  clearWreck(); await placeTile();
+  const p = PROPS[pick('prop')], cause = CAUSE[causeKey], rand = seededRandom(7 * 977 + 13), c = await sampleColours(p.src);
+  const cutAngle = { fire: Math.atan2(0.9, 1.4), cold: 0, hammer: -0.4, shove: 0 }[causeKey], r = p.size * G * 0.5;
+  groundMark(cause.mark, r, rand); const grow = spill(contents, r, rand, cutAngle);
+  handle = renderer.start({ mesh: tile, center: { ...centre }, w: tile.width, h: tile.height, id: 'prop', document: { elevation: 0 } },
+    breakStage(p, cause, 7), cutAngle);
+  tintPieces(cause.wreckTint);
+  $('#gm').checked = gm; applyHidden();
+  const s = specks(c, r, rand, cause.tint === 'charred'); marks.addChild(s);
+  handle.update(t * SETTLE); grow(t); s.alpha = Math.min(1, t * 1.5); app.render();
+}
+window.__mock = { doBreak, repair, frameAt };
+</script>
+</body>
+</html>
