@@ -4,9 +4,18 @@
 
 export const FIRE_ANIMATIONS = Object.freeze(new Set(['torch', 'flame', 'fire', 'candle', 'flicker']));
 
-// Whether a light (its source data, plus its document's Animater flags) is a fire.
-export function isFireLight(data = {}, flags = {}) {
-  return choiceOf(flags?.heatHaze) ?? FIRE_ANIMATIONS.has(String(data?.animation?.type ?? '').toLowerCase());
+// Whether a light (its source data) is a fire: animated as a torch, flame, fire, candle or flicker. Each thing a fire
+// brings (its flame, smoke, heat haze, sparks, moths, soot) has its own switch on the light; Auto follows this.
+export function isFireLight(data = {}) {
+  return FIRE_ANIMATIONS.has(String(data?.animation?.type ?? '').toLowerCase());
+}
+// Whether the air shimmers over a light (Ambient Light configuration → Animater: Heat haze): its own choice, else a fire does.
+export function hazesLight(data = {}, flags = {}) {
+  return choiceOf(flags?.heatHaze) ?? isFireLight(data);
+}
+// Whether a light throws sparks and embers (Animater: Sparks): its own choice, else a fire does.
+export function sparksLight(data = {}, flags = {}) {
+  return choiceOf(flags?.sparks) ?? isFireLight(data);
 }
 // Whether a light sends up smoke (Ambient Light configuration → Animater: Smoke): its own choice, else a fire does.
 export function smokesLight(data = {}, flags = {}) {

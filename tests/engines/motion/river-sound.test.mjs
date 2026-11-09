@@ -52,3 +52,20 @@ test('a scene can keep its nights quiet', () => {
   assert.ok(nightLevel({ night: 1 }) > 0);
   assert.equal(nightLevel({ night: 1, quiet: true }), 0);
 });
+
+// Roi: still water (Pond) had no sound. It plays a swamp now, from the two picked: insects with slow mud bubbles, or the mud alone.
+import { RIVER_SOUNDS as WATER_SOUNDS, riverHeard as heardOf, riverFile as fileOf } from '../../../scripts/engines/motion/river-sound.mjs';
+import { existsSync, readFileSync as readText } from 'node:fs';
+test('still water is heard close by, and plays a swamp', () => {
+  const pond = { speed: 'still', areas: [[0, 0, 200, 0, 200, 200, 0, 200]] };
+  const near = heardOf([pond], [{ x: 300, y: 100 }], { grid: 100 }), far = heardOf([pond], [{ x: 900, y: 100 }], { grid: 100 });
+  assert.ok(near.still.level > 0.5 && far.still.level === 0, 'carries a few squares, not far');
+  assert.equal(near.gentle.level, 0);
+  assert.equal(WATER_SOUNDS.still.length, 2);
+  for (const file of WATER_SOUNDS.still) assert.ok(existsSync(new URL(`../../../${file.replace('modules/animater/', '')}`, import.meta.url)), file);
+  assert.ok(WATER_SOUNDS.still.includes(fileOf('still', 'scene')));
+  const credits = readText(new URL('../../../assets/sounds/wildlife/pond/License.txt', import.meta.url), 'utf8');
+  for (const id of ['547690', '415608']) assert.match(credits, new RegExp(`sounds/${id}/ \\(CC0 1\\.0\\)`));
+  const main = readText(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /speed: !own\.flowTo \? "still" :/, 'a pond region (no way to flow) is still water');
+});

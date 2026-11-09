@@ -3987,3 +3987,11 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-water .an-water-add-status button { min-height: 28px; padding: 5px 8px; font-size: 11px; }
 .animater-water [data-edit-outline] { grid-column: 2; min-height: 26px; padding: 4px 8px; font-size: 11px; }
 .animater-water [data-edit-outline][aria-pressed="true"] { border-color: var(--an-accent); color: var(--an-accent); }
+
+/* Ambient Light configuration → Animater: each choice a row of buttons over a hidden field. */
+.animater-light-pick .form-fields { flex-wrap: wrap; }
+.animater-seg { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); width: 100%; }
+.animater-seg button { flex: 1 1 auto; min-width: 0; width: auto; height: 26px; line-height: 24px; margin: 0; padding: 0 8px; border: 0; border-radius: 4px; background: none; color: inherit; font-size: 12px; white-space: nowrap; box-shadow: none; }
+.animater-seg button:hover { background: rgba(255, 255, 255, 0.08); }
+.animater-seg button.is-active { background: var(--color-warm-2, #d08a3e); color: #1b1712; }
+.animater-seg button:focus-visible { outline: 1px solid var(--color-warm-2, #d08a3e); outline-offset: 1px; }

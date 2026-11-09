@@ -242,7 +242,7 @@ import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, crea
 import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
-import { isFireLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
+import { isFireLight, hazesLight, sparksLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
@@ -776,7 +776,7 @@ const syncFireHazeNow = () => {
     try {
       if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
       const flags = source.object?.document?.flags?.[ID] ?? {};
-      if (!isFireLight(source.data, flags)) continue;
+      if (!hazesLight(source.data, flags)) continue;
       // A token's fire shown as an orb (or nothing) has no torch to haze above.
       const bearer = carrierOf(source);
       if (bearer && lightKindOf(bearer, source.data) !== "torch") continue;
@@ -1834,12 +1834,14 @@ const rebuildLampAir = () => {
         const d = source.data ?? {}, radius = Number(d.radius) || 0;
         if (!(radius > 0)) continue;
         const own = source.object?.document?.flags?.[ID] ?? {}, color = d.color === null || d.color === undefined ? null : Number(d.color);
-        const fire = source.object?.document?.documentName !== "Token" && isFireLight(d, own), shapePoints = source.shape?.points ? Array.from(source.shape.points) : null;
+        const fire = source.object?.document?.documentName !== "Token" && isFireLight(d), shapePoints = source.shape?.points ? Array.from(source.shape.points) : null;
         // A fire on a wall: what it throws stays on its own side, its smoke's room too.
         const home = fire && shapePoints ? mothHome({ x: d.x, y: d.y, shape: shapePoints }, { grid: canvas.grid.size }) : null;
         const onWall = home ? wallSide({ x: d.x, y: d.y }, wallsHere(), { grid: canvas.grid.size, home }) : null;
         lampLights.push({ x: d.x, y: d.y, radius, smokeFrom: onWall && home ? { x: home.x, y: home.y } : { x: d.x, y: d.y }, reach: fire ? fireReach(d.x, d.y, shapePoints) : null, smokeShape: onWall ? clipToSide(shapePoints, { x: d.x, y: d.y }, onWall.nx, onWall.ny) : null, color: Number.isFinite(color) ? color : null, shape: source.shape?.points ? Array.from(source.shape.points) : null,
-          fire: source.object?.document?.documentName !== "Token" && isFireLight(d, own),
+          fire,
+          // Sparks and embers from it (Light configuration → Animater → Sparks): Auto a fire light, On or Off this one.
+          sparks: source.object?.document?.documentName !== "Token" && sparksLight(d, own),
           // A creature's own light (a torch in its hand), not a lamp that stays put.
           carried: source.object?.document?.documentName === "Token",
           // Moths round it (Light configuration → Animater → Moths): Auto a fire light underground, On or Off this one.
@@ -1850,7 +1852,7 @@ const rebuildLampAir = () => {
     }
     lampAir.build({ lights: lampLights, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size });
     fillSmoke();
-    const lightsKey = lampLights.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.radius)},${l.fire ? 1 : 0},${l.soot},${l.moths}`).join(";");
+    const lightsKey = lampLights.map((l) => `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.radius)},${l.fire ? 1 : 0},${l.sparks ? 1 : 0},${l.soot},${l.moths}`).join(";");
     if (lightsKey !== lampLightsKey) { lampLightsKey = lightsKey; lifeSoon(); }
     lampLookAt = 0;
   } catch { lampAir.clear(); }
@@ -3056,11 +3058,11 @@ const setFlamesAsk = async () => {
     ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]])}
     ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}
     ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}
-    ${[["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
+    ${[["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
   flamesAsking = true;
   try {
     const picked = await foundry.applications.api.DialogV2.prompt({ window: { title: "Flames (Animater)" }, content,
-      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "soot", "smoke", "heatHaze", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
+      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "soot", "smoke", "heatHaze", "sparks", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
     const change = Object.fromEntries(Object.entries(picked ?? {}).filter(([, v]) => v !== "keep").map(([k, v]) => [`flags.${ID}.${k}`, v]));
     if (!Object.keys(change).length) return;
     await canvas.scene.updateEmbeddedDocuments("AmbientLight", lights.map((l) => ({ _id: l.id, ...change })));
@@ -3311,7 +3313,7 @@ const installFoulAir = () => {
   const starved = function (...args) {
     const data = (own ?? Object.getPrototypeOf(proto)._getLightSourceData).apply(this, args);
     try {
-      if (data && foulPolygons.length && foulAt(data.x, data.y) && isFireLight(data, this.document?.flags?.[ID] ?? {})) { data.dim = (Number(data.dim) || 0) * 0.55; data.bright = (Number(data.bright) || 0) * 0.45; }
+      if (data && foulPolygons.length && foulAt(data.x, data.y) && isFireLight(data)) { data.dim = (Number(data.dim) || 0) * 0.55; data.bright = (Number(data.bright) || 0) * 0.45; }
     } catch { /* Foundry's own */ }
     return data;
   };
@@ -4285,14 +4287,14 @@ const tickPools = () => {
 // Rivers heard (engines/motion/river-sound.mjs): any water with a way to flow (the region's right-click panel → Water → Flows toward), a loop for each speed
 // of current, none till audio is unlocked (Foundry would hold it to the first click), none on water frozen over, quieter through a wall.
 let riverRegions = [], riverLookAt = 0;
-const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false } };
+const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false }, still: { sound: null, starting: false } };
 const readRivers = () => {
   riverRegions = [];
   const water = [];
   for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") { const painted = waterPainted(region); for (const area of regionAreas(region)) { area.painted = painted; water.push(area); } } } catch { /* a broken region never breaks the rest */ } }
   wakeRipples.water(water);
   for (const region of regionsHere()) {
-    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (!own.flowTo || regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; riverRegions.push({ speed: own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
+    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; const kind = waterKindOf(own); if (!own.flowTo && (kind !== "still" || region.flags?.[ID]?.sea)) continue; riverRegions.push({ speed: !own.flowTo ? "still" : own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
 };
 // The night out of doors, constant (river-sound.mjs nightLevel): on a map with open ground, with Wildlife sounds on. Heard from the listener.
@@ -4419,7 +4421,7 @@ const tickRivers = () => {
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
 };
-Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(riverVoices.swift); stopVoice(nightVoice); for (const voice of Object.values(weatherVoices)) stopVoice(voice); riverRegions = []; });
+Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(riverVoices.swift); stopVoice(riverVoices.still); stopVoice(nightVoice); for (const voice of Object.values(weatherVoices)) stopVoice(voice); riverRegions = []; });
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
 Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
@@ -4950,7 +4952,7 @@ function skyTick() {
   if (blastReactions.busy) blastReactions.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
   else if (poolSound) tickPools();
-  if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound) tickRivers();
+  if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound || riverVoices.still.sound) tickRivers();
   if (wildOpen || nightVoice.sound) tickNight();
   if (wildOpen) tickChorus(seconds);
   tickAftermath(seconds);
@@ -5681,7 +5683,7 @@ const lightKindOf = (token, data) => {
   const lightOf = (v) => (v ? { animation: v.animation?.type ?? null, bright: Number.isFinite(v.bright) ? v.bright : null, dim: Number.isFinite(v.dim) ? v.dim : null } : null);
   const held = items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true)
     .map((i) => ({ name: i.name, light: lightOf([...(i.system?.rules ?? [])].find((r) => r?.key === "TokenLight")?.value) }));
-  return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data, flags), effects, held, light: lightOf(token?.document?.light ?? data) });
+  return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data), effects, held, light: lightOf(token?.document?.light ?? data) });
 };
 // How many lights it is: Dancing Lights several wisps circling the creature (its light stays at its middle).
 const wispsOf = (token) => orbCount([...(token?.actor?.items ?? [])].map((i) => i.name).concat([...(token?.actor?.effects ?? [])].map((e) => e.name)));
@@ -5728,7 +5730,7 @@ const syncLightFlames = () => {
         // A light on another level of the scene burns there, not on the floor viewed now.
         if (canvas.level && light.document.includedInLevel?.(canvas.level) === false) continue;
         const own = light.document.flags?.[ID] ?? {}, flag = own.flame;
-        const on = flag === true || flag === "true" ? true : flag === false || flag === "false" ? false : isFireLight(src.data, own);
+        const on = flag === true || flag === "true" ? true : flag === false || flag === "false" ? false : isFireLight(src.data);
         if (!on) continue;
         // In bad air the flame burns low.
         const low = foulPolygons.length && foulAt(light.center.x, light.center.y) ? 0.6 : 1;
@@ -8058,7 +8060,7 @@ Hooks.once("init", () => {
   registerSetting("thunderPanning", { name: "Thunder from the side it struck", hint: "Thunder plays to the left or right of your selected token, or of the middle of your view with none selected, as it struck. Off: in both ears alike. Either way, how far off it struck says how loud it is.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
   registerSetting("weatherVolume", { name: "Weather volume", hint: "How loud rain, wind, hail and thunder are for you, in percent: 0 silent, 100 as recorded. Only on your screen; everyone sets their own.", scope: "client", config: true, type: Number, range: { min: 0, max: 100, step: 5 }, default: 100 });
-  skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward): loudest at the bank, fading with distance, silent while frozen.", "");
+  skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward), and a swamp's insects and slow mud bubbles by still water (Pond): loudest at the bank, fading with distance, silent while frozen. A region's Sound: Off quiets its own.", "");
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
@@ -8074,7 +8076,7 @@ Hooks.once("init", () => {
   skyPair("energyBlast", "energyBlastLocal", "Energy blasts", "The GM can set off a blast of fire, cold, lightning, acid, force, void, radiance, sound, poison or the mind (the Energy blast button in the Animater controls; scroll to size it): a flash, a shockwave bending the floor, the energy, and a mark left behind. A show only: no one is hurt. Heavy on the graphics card for the few seconds it plays.");
   skyPair("caveRubble", "caveRubbleLocal", "Cave-ins", "The GM can bring a ceiling down (the Cave-in button in the Animater controls, scroll to size it): the view shakes, rocks fall and bounce, dust rolls out on the air, and the rubble stays where it fell.");
   skyPair("ceilingDust", "ceilingDustLocal", "Dust from the ceiling", "Under a ceiling (an underground scene, or a room under a roof), a heavy creature's step shakes grit and dust down around it, settling on the floor: more and wider the bigger it is.");
-  skyPair("lampEmbers", "lampEmbersLocal", "Sparks from fires", "Every fire light (a light animated as a torch, flame or fire, or set to on in its Animater options) throws sparks now and then, rising on the heat, flaring and dying out; brightest in the dark.");
+  skyPair("lampEmbers", "lampEmbersLocal", "Sparks from fires", "Every fire light (a light animated as a torch, flame or fire; each light can turn its own Sparks on or off in its Animater options) throws sparks now and then, rising on the heat, flaring and dying out; brightest in the dark.");
   skyPair("lampMotes", "lampMotesLocal", "Dust in the light", "In dim and dark scenes, fine dust turns slowly in the air where the lights reach, a soft sparkle inside each light's glow that stops at the walls.");
   skyPair("canopyLight", "canopyLightLocal", "Light through trees", "Overhead tree tiles cast their shade on the ground away from the sun, broken by sun flecks that drift and wink as the leaves move: short at noon, long and golden at dawn and dusk, silver under a bright moon, faint under clouds. A tile counts as a tree when its file name says so (tree, oak, pine, canopy, foliage…); Tile configuration → Animater → Sunlight decides for one tile.");
   skyPair("roofLight", "roofLightLocal", "Roof shadows", "Overhead roof tiles cast a building's shadow on the open ground away from the sun, and let the sun in through their holes onto the floor inside (a ruin, a broken roof). A tile counts as a roof when its file name says so (roof, house, tower, tent…) or its picture is solid; Tile configuration → Animater → Sunlight decides for one tile.");
@@ -8984,17 +8986,36 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.smoke"]`)) return;
   const flags = (app.document ?? app.object)?.flags?.[ID] ?? {};
-  const pick = (name, label) => {
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // A row of buttons over a hidden field (what the form saves); `tip` what each says on hover.
+  const buttons = (name, label, options, value, tip = "") => `<div class="form-group animater-light-pick"><label${tip ? ` data-tooltip="${esc(tip)}"` : ""}>${label}</label><div class="form-fields"><input type="hidden" name="flags.${ID}.${name}" value="${esc(value)}"><div class="animater-seg" role="group" aria-label="${esc(label)}">${options.map(([o, l, t]) => `<button type="button" data-seg="${esc(o)}" class="${o === value ? "is-active" : ""}" aria-pressed="${o === value}"${t ? ` data-tooltip="${esc(t)}"` : ""}>${esc(l)}</button>`).join("")}</div></div></div>`;
+  const autoOnOff = (name, label, tip, auto = "Fire lights") => {
     const v = flags[name] === true || flags[name] === "true" ? "true" : flags[name] === false || flags[name] === "false" ? "false" : "";
-    return `<div class="form-group"><label>${label}</label><div class="form-fields"><select name="flags.${ID}.${name}">${[["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
+    return buttons(name, label, [["", "Auto", auto], ["true", "On", "This light, always"], ["false", "Off", "Never on this light"]], v, tip);
   };
   const set = document.createElement("fieldset");
-  const kinds = [["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]];
-  const fireKind = `<div class="form-group"><label>Fire</label><div class="form-fields"><select name="flags.${ID}.fireKind">${kinds.map(([o, l]) => `<option value="${o}"${o === (flags.fireKind ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
-  const sizes = [["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]];
-  const flameSize = `<div class="form-group"><label>Flame size</label><div class="form-fields"><select name="flags.${ID}.flameSize">${sizes.map(([o, l]) => `<option value="${o}"${o === String(flags.flameSize ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>`;
-  set.innerHTML = `<legend>Animater</legend>${pick("flame", "Flame")}${fireKind}${flameSize}${pick("moths", "Moths")}${pick("soot", "Soot")}${pick("smoke", "Smoke")}${pick("heatHaze", "Heat haze")}${pick("chimney", "Chimney smoke")}
-    <p class="hint">A flame burning where this light stands ("Flames on fire lights": Off where the map already draws its fire); Fire: one tongue for a torch, a bed of them across a brazier's bowl or a campfire; Flame size: bigger or smaller than its light makes it, to fit the sconce or bowl the map draws. Moths: moths loop round it ("Moths and crawlers"); On: this light, on any map (a castle ruin's torches); Auto: every fire light in an underground scene. Soot: the wall behind it blackened ("Soot over torches"); Auto: a fire light against a wall in an underground scene, On any light against a wall, anywhere. Smoke rising from this light and the heat shimmer over it. Auto: a light animated as a torch, flame or fire has both. Chimney smoke: a hearth in a room smokes from the roof above it while the roof is drawn (Auto); On always smokes above the roofs (a forge), Off never.</p>`;
+  const kinds = [["", "Auto", "One flame"], ["torch", "Torch", "Torch or candle: one flame"], ["brazier", "Brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire", "Campfire or bonfire: a big bed of flames"]];
+  const sizes = [["0.4", "40%", "Tiny: a candle"], ["0.6", "60%", "Small"], ["0.8", "80%", "A little smaller"], ["", "100%", "As its light"], ["1.25", "125%", "A little bigger"], ["1.5", "150%", "Big"], ["2", "200%", "Huge"]];
+  const sizeNow = sizes.some(([o]) => o === String(flags.flameSize ?? "")) ? String(flags.flameSize ?? "") : "";
+  set.innerHTML = `<legend>Animater</legend>
+    ${autoOnOff("flame", "Flame", "A flame burning where this light stands (\"Flames on fire lights\"). Off where the map already draws its fire.")}
+    ${buttons("fireKind", "Fire", kinds, kinds.some(([o]) => o === flags.fireKind) ? flags.fireKind : "", "One tongue for a torch, a bed of them across a brazier's bowl or a campfire.")}
+    ${buttons("flameSize", "Flame size", sizes, sizeNow, "Bigger or smaller than its light makes it, to fit the sconce or bowl the map draws.")}
+    ${autoOnOff("moths", "Moths", "Moths loop round it (\"Moths and crawlers\"). Auto: every fire light in an underground scene; On: this light, on any map.", "Fire lights underground")}
+    ${autoOnOff("soot", "Soot", "The wall behind it blackened (\"Soot over torches\"). Auto: a fire light against a wall in an underground scene; On: any light against a wall, anywhere.", "Fire lights underground, against a wall")}
+    ${autoOnOff("smoke", "Smoke", "Smoke rising from this light.")}
+    ${autoOnOff("heatHaze", "Heat haze", "The air shimmering over this light (\"Heat haze over fires\").")}
+    ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
+    ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
+    <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
+  // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
+  set.addEventListener("click", (event) => {
+    const button = event.target.closest?.("button[data-seg]"); if (!button) return;
+    const group = button.closest(".form-fields"), input = group?.querySelector("input[type=hidden]"); if (!input) return;
+    input.value = button.dataset.seg;
+    for (const b of group.querySelectorAll("button[data-seg]")) { const on = b === button; b.classList.toggle("is-active", on); b.setAttribute("aria-pressed", String(on)); }
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  });
   const tab = root.querySelector('.tab[data-tab="animation"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });
@@ -9257,8 +9278,9 @@ Hooks.once("ready", () => {
       const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
       return CONFIG.Canvas.polygonBackends.sound.create(at, { type: "sound", radius: 30 * canvas.grid.size, ...(level ? { level } : {}) })?.points;
     },
-    // A sound sweep also stops at the canvas edge (its outer bounds): that edge is open, not a wall.
-    bounds: () => canvas.dimensions?.rect ?? null,
+    // A sound sweep also stops at the canvas edge (its outer bounds): that edge is open, not a wall. Walls drawn along
+    // the scene's edge only fence the map in: open too (a quarter square of slack, for walls drawn just inside it).
+    bounds: () => { const d = canvas.dimensions; return [d?.rect, d?.sceneRect && { x: d.sceneRect.x, y: d.sceneRect.y, width: d.sceneRect.width, height: d.sceneRect.height, tolerance: (canvas.grid?.size ?? 100) / 4 }].filter(Boolean); },
   });
   for (const hook of ["createWall", "updateWall", "deleteWall", "canvasReady", "updateScene", "createLevel", "updateLevel", "deleteLevel"])
     Hooks.on(hook, () => { rooms.bump(); });

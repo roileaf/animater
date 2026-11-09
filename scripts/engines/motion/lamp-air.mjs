@@ -330,12 +330,12 @@ export function createLampAir({ PIXI, root, render, smokeRoot = null }) {
   };
 }
 
-// The fires to throw sparks, nearest the view first: [{ x, y, size }] from fire lights ({ x, y, radius, fire }), at most
+// The fires to throw sparks, nearest the view first: [{ x, y, size }] from the lights that throw them ({ x, y, radius, sparks }, else `fire`), at most
 // MAX_FIRES, within `margin` of the view ({ x, y, w, h }).
 export function fireSparksOf(lights = [], view = null, grid = 100) {
   const inView = (l) => !view || (l.x > view.x - grid * 2 && l.y > view.y - grid * 2 && l.x < view.x + view.w + grid * 2 && l.y < view.y + view.h + grid * 2);
   const mid = view ? { x: view.x + view.w / 2, y: view.y + view.h / 2 } : { x: 0, y: 0 };
-  return lights.filter((l) => l.fire && inView(l))
+  return lights.filter((l) => (l.sparks ?? l.fire) && inView(l))
     .sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y))
     .slice(0, MAX_FIRES)
     .map((l) => ({ x: l.x, y: l.y, reach: l.reach, size: Math.min(2, Math.max(0.4, (Number(l.radius) || grid * 3) / (grid * 5))) }));

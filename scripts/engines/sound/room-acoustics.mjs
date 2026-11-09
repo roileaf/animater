@@ -13,14 +13,19 @@ export function classifyRoom({ openness, area }) {
   if (area > 120) return 'hall';
   return 'room';
 }
-// A sweep polygon (flat x,y list): openness is the share of corners out at the sweep's reach or on the edge of
-// the canvas (bounds, {x, y, width, height}: the sweep stops there too, but no wall stands there), area is in grid
-// squares.
+// A sweep polygon (flat x,y list): openness is the share of corners out at the sweep's reach or on an edge that is
+// not a room's wall (bounds, one {x, y, width, height, tolerance?} or a list: the canvas edge, where the sweep stops
+// though no wall stands, and the scene's edge, where a GM's walls only fence the map in), area is in grid squares.
 export function measurePolygon(points, { origin, radius, tolerance = 2, gridPx = 100, bounds = null } = {}) {
   const n = Math.floor((points?.length ?? 0) / 2);
   if (n < 3) return { openness: 0, area: 0 };
-  const onEdge = bounds ? (x, y) => Math.abs(x - bounds.x) <= tolerance || Math.abs(x - (bounds.x + bounds.width)) <= tolerance
-    || Math.abs(y - bounds.y) <= tolerance || Math.abs(y - (bounds.y + bounds.height)) <= tolerance : () => false;
+  const edges = (Array.isArray(bounds) ? bounds : [bounds]).filter((b) => b && Number.isFinite(b.width) && Number.isFinite(b.height));
+  const near = (a, b, t) => Math.abs(a - b) <= t;
+  // On the rectangle's outline: on one of its sides, within its span.
+  const onEdge = (x, y) => edges.some((b) => {
+    const t = b.tolerance ?? tolerance, inX = x >= b.x - t && x <= b.x + b.width + t, inY = y >= b.y - t && y <= b.y + b.height + t;
+    return ((near(x, b.x, t) || near(x, b.x + b.width, t)) && inY) || ((near(y, b.y, t) || near(y, b.y + b.height, t)) && inX);
+  });
   let far = 0, twice = 0;
   for (let i = 0; i < n; i++) {
     const x = points[i * 2], y = points[i * 2 + 1], j = (i + 1) % n;

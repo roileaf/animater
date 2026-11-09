@@ -60,6 +60,19 @@ test('measurePolygon: walls on two sides, the canvas edge on the others', () => 
   assert.equal(room.openness, 0);
 });
 
+// Roi: walls a GM draws round the whole scene only fence the map in. Padded canvas 0..3000, scene 500..2500, walls
+// on the scene's edge (one drawn a little inside): the map is open; a room standing apart in it is still a room.
+test('measurePolygon: walls along the scene edge do not make a room', () => {
+  const scene = { x: 500, y: 500, width: 2000, height: 2000, tolerance: 25 }, bounds = [{ x: 0, y: 0, width: 3000, height: 3000 }, scene];
+  const fenced = [500, 500, 2500, 500, 2490, 2500, 500, 2500];
+  const m = measurePolygon(fenced, { origin: { x: 1500, y: 1500 }, radius: 3000, gridPx: 100, bounds });
+  assert.equal(m.openness, 1);
+  assert.equal(classifyRoom(m), 'open');
+  assert.equal(classifyRoom(measurePolygon(fenced, { origin: { x: 1500, y: 1500 }, radius: 3000, gridPx: 100, bounds: bounds[0] })), 'hall', 'counting them, a hall');
+  const hut = measurePolygon([1000, 1000, 1400, 1000, 1400, 1400, 1000, 1400], { origin: { x: 1200, y: 1200 }, radius: 3000, gridPx: 100, bounds });
+  assert.equal(classifyRoom(hut), 'small');
+});
+
 test('cache measures against the canvas bounds', () => {
   const cache = createRoomCache({ sweep: () => [0, 0, 2500, 0, 2500, 2500, 0, 2500], bounds: () => canvasRect });
   assert.equal(cache.classAt('s', 'l', { x: 1250, y: 1250 }, 100), 'open');
