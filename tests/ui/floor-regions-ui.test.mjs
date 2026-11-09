@@ -1566,6 +1566,31 @@ test("a right-click cuts the clicked thing out of whichever area is under it, ke
   await app.close();
 });
 
+test("a right-click on a bridge filling most of a small pool cuts the bridge by colour when the model's piece is the whole thing", async () => {
+  const { App } = waterApp();
+  const W = 60, H = 40, rgba = new Uint8Array(W * H * 4), poolPixels = [];
+  const isBridge = (x, y) => y >= 3 && y < 27;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const p = y * W + x, inPool = x < 40 && y < 30;
+    rgba.set(inPool && isBridge(x, y) ? [150, 150, 145, 255] : inPool ? [40, 110, 170, 255] : [60, 120, 50, 255], p * 4);
+    if (inPool) poolPixels.push(p);
+  }
+  const pool = { ...mergeAreaProposals([{ id: "area-1", pixels: Int32Array.from(poolPixels) }], W, H), id: "area-1", preselected: true, floor: "water" };
+  // The model sees the bridge and nearly all the water as one thing, at every size.
+  const big = new Uint8Array(W * H); for (const p of poolPixels) if (Math.floor(p / W) < 26) big[p] = 1; // 87% of the pool: under the size cap, grey on average
+  const model = { device: "webgpu", read: async () => ({}), masks: async () => ({ masks: [big, big, big], scores: [1, 1, 1] }) };
+  const notes = [];
+  const { app } = await openFloorRegions(opening({ Application: App, scene: fakeScene(), notify: (m) => notes.push(m), confirm: async () => true,
+    load: async () => ({ ok: true, rgba, width: W, height: H }), detect: () => ({ proposals: [pool] }), smart: async () => model, autoMark: false }));
+  await app.smartMark({ remove: { x: 20, y: 15 } });
+  const left = app.detect.proposals[0].pixels;
+  const bridgeLeft = [...left].filter((p) => isBridge(p % W, Math.floor(p / W))).length;
+  assert.ok(bridgeLeft <= 4, `bridge pixels left: ${bridgeLeft}`);
+  assert.ok(left.length >= 40 * 4, `the water strips stay: ${left.length} pixels`);
+  assert.doesNotMatch(notes.join("\n"), /whole area|Nothing there/);
+  await app.close({ force: true });
+});
+
 test("a right-click on a stray spot removes it in either tool, and the broom removes every small spot", async () => {
   const { App, listeners } = waterApp();
   const notes = [];

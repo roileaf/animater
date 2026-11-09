@@ -107,9 +107,9 @@ export function cleanSelection(mask, width, height, points = [], holeShare = SMA
 // them, smoothed over 3 × 3 pixels so a painted texture reads as its colour. Lightness may vary more than hue: stone
 // is light and dark, a green chair on it is another hue. When the cut would leave less than `minKeep` of the mask
 // (a floor of many colours), the mask is returned as it was. Returns { mask, dropped } (dropped: pixels taken out).
-export const PALETTE_TUNING = Object.freeze({ radius: 0.03, light: 24, hue: 9, minKeep: 0.4, speck: 0.0004, samples: 600 });
+export const PALETTE_TUNING = Object.freeze({ radius: 0.03, light: 24, hue: 9, minKeep: 0.4, speck: 0.0004, samples: 600, joinedOnly: false });
 export function keepToColours(mask, rgba, width, height, seeds = [], tuning = {}) {
-  const { radius, light, hue, minKeep, speck, samples } = { ...PALETTE_TUNING, ...tuning };
+  const { radius, light, hue, minKeep, speck, samples, joinedOnly } = { ...PALETTE_TUNING, ...tuning };
   const n = width * height, total = count(mask);
   const points = seeds.filter((p) => p && p.x >= 0 && p.y >= 0 && p.x < width && p.y < height);
   if (!total || !points.length || !rgba) return { mask, dropped: 0 };
@@ -146,7 +146,7 @@ export function keepToColours(mask, rgba, width, height, seeds = [], tuning = {}
   const parts = label(keep, width, height), joined = new Set(), crumbs = Math.max(24, total * 0.01);
   for (const { x, y } of points) { const id = parts.lab[Math.round(y) * width + Math.round(x)]; if (id) joined.add(id); }
   if (!joined.size) return { mask, dropped: 0 };
-  for (let id = 1; id < parts.sizes.length; id++) if (parts.sizes[id] >= crumbs) joined.add(id);
+  if (!joinedOnly) for (let id = 1; id < parts.sizes.length; id++) if (parts.sizes[id] >= crumbs) joined.add(id);
   const out = new Uint8Array(n); for (let p = 0; p < n; p++) out[p] = joined.has(parts.lab[p]) ? 1 : 0;
   const inv = new Uint8Array(n); for (let p = 0; p < n; p++) inv[p] = out[p] ? 0 : 1;
   const holes = label(inv, width, height), edge = new Uint8Array(holes.sizes.length);
@@ -172,7 +172,7 @@ export function keepToColours(mask, rgba, width, height, seeds = [], tuning = {}
 // most of a room. With the map's `rgba` (`width` wide), when no size is small enough, the smallest one up to
 // `bigShare` of the area whose colour is at least `contrast` (CIELAB, lightness counting half) from the rest of the
 // area is the cut. Plain grass under a click is the colour of the rest of the field, so it never passes.
-export function cutStart(masks, areaMask, { cutMaxShare = 0.25, pixel = -1, rgba = null, width = 0, bigShare = 0.7, contrast = 15 } = {}) {
+export function cutStart(masks, areaMask, { cutMaxShare = 0.25, pixel = -1, rgba = null, width = 0, bigShare = 0.9, contrast = 15 } = {}) {
   let areaSize = 0; for (let i = 0; i < areaMask.length; i++) areaSize += areaMask[i] ? 1 : 0;
   if (!areaSize) return null;
   let best = null;
@@ -198,6 +198,28 @@ export function cutStart(masks, areaMask, { cutMaxShare = 0.25, pixel = -1, rgba
     if (d >= contrast) return index;
   }
   return null;
+}
+
+// A right-click cut by colour, for when none of the model's sizes is a part of the area (it sees the bridge and the pool
+// as one): the part of the area joined to the click in the clicked colours (sampled close around it), with the specks
+// of its own texture filled. Null when that is nothing, or `maxShare` or more of the area (the click was on the floor
+// itself). The mask of the part, on the area only.
+export function colourCut(areaMask, rgba, width, height, at, { maxShare = 0.9, radius = 0.012 } = {}) {
+  if (!rgba || !at) return null;
+  const pixel = Math.round(at.y) * width + Math.round(at.x);
+  if (!areaMask[pixel]) return null;
+  const { mask, dropped } = keepToColours(areaMask, rgba, width, height, [at], { joinedOnly: true, minKeep: 0, radius });
+  if (mask === areaMask && !dropped) return null; // nothing differs: the whole area is the clicked colour
+  let part = 0, area = 0;
+  for (let i = 0; i < areaMask.length; i++) { if (areaMask[i]) area++; if (mask[i] && areaMask[i]) part++; }
+  if (!part || part >= area * maxShare) return null;
+  // One pixel more, on the area: the edge where smoothing blends the part with the floor goes with the part.
+  const out = Uint8Array.from(mask);
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i]) continue; const x = i % width;
+    for (const j of [x > 0 ? i - 1 : -1, x < width - 1 ? i + 1 : -1, i - width, i + width]) if (j >= 0 && j < mask.length && areaMask[j]) out[j] = 1;
+  }
+  return out;
 }
 
 // Square grow by r pixels (sideways, then up and down, per step). The map's border is not an edge.

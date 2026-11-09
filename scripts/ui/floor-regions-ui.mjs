@@ -4,7 +4,7 @@
 import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor } from "../engines/regions/floor-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
-import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours } from "../engines/regions/smart-select.mjs";
+import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours, colourCut } from "../engines/regions/smart-select.mjs";
 import { SMART_MODEL, loadSmartModel, isSmartModelCached } from "./smart-model.mjs";
 import { areaSignature, rememberAreas, recallFloor, memoryOf, markAreas, knowsFloors, NONE_FLOOR } from "../engines/regions/floor-memory.mjs";
 
@@ -1625,9 +1625,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           if (!base) { hooks.notify?.("Right-click inside an area to take that part out of it."); return; }
           const areaMask = this.areaMask(base);
           masks = (await model.masks(view, [{ ...remove, label: 1 }])).masks.map((m) => solidCut(m, width, height, remove));
-          const which = cutStart(masks, areaMask, { pixel: this.pixelOf(remove), rgba: detect.rgba, width });
-          if (which === null) { hooks.notify?.("Nothing there to take out: the model sees only the whole area at that spot. Zoom in and right-click right on the thing, or use Edit outline."); return; }
-          return this.smartCut({ base, areaMask, masks }, masks[which]);
+          // In order, the first that leaves some of the area: the model's part when it is a small part of the area; else
+          // the part in the clicked colours (exact, no 1-3 sizes: the model sees the bridge and the pool as one); else
+          // the model's bigger part that plainly looks different. A big mixed piece of the model's comes last.
+          const pixel = this.pixelOf(remove), cut = { base, areaMask, masks };
+          const small = cutStart(masks, areaMask, { pixel });
+          const tries = [];
+          if (small !== null) tries.push(() => this.smartCut(cut, masks[small], base, { quiet: true }));
+          tries.push(() => { const byColour = colourCut(areaMask, detect.rgba, width, height, remove); return byColour ? this.smartCut({ base, areaMask }, byColour, base, { quiet: true }) : false; });
+          tries.push(() => { const big = small === null ? cutStart(masks, areaMask, { pixel, rgba: detect.rgba, width }) : null; return big !== null ? this.smartCut(cut, masks[big], base, { quiet: true }) : false; });
+          for (const attempt of tries) if (attempt()) return;
+          hooks.notify?.("Nothing there to take out: the model sees only the whole area at that spot, in one colour. Zoom in and right-click right on the thing, or use Edit outline.");
+          return;
         }
         if (box) {
           points = boxPoints(box);
@@ -1665,13 +1674,13 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     // Cut `mask` out of the area `cut.base`, keeping its row, settings and saved region. `replacing` is the area a
     // previous size of this same cut made, swapped back to the area before the cut. Undo brings the old one back.
     // A cut without `masks` (a spot) cannot be resized, and is cut as it is, with no rim.
-    smartCut(cut, mask, replacing = cut.base) {
+    smartCut(cut, mask, replacing = cut.base, { quiet = false } = {}) {
       const { detect } = this, { width, height } = detect;
       if (!detect.proposals.includes(replacing)) { this.smartLast = null; hooks.notify?.("That area has changed since. Right-click it again."); return; }
       const { mask: kept, removed } = cutFrom(cut.areaMask, mask, width, height, cut.masks ? 1 : 0);
       const others = detect.proposals.filter((p) => p !== replacing);
       const traced = smartProposal(kept, width, height, { id: cut.base.id, claimed: others });
-      if (!traced) { hooks.notify?.("That would take out the whole area. Use its Remove button instead, or try another size (1–3)."); return; }
+      if (!traced) { if (!quiet) hooks.notify?.("That would take out the whole area. Use its Remove button instead, or try another size (1–3)."); return false; }
       const removedPixels = []; for (let p = 0; p < removed.length; p++) if (removed[p]) removedPixels.push(p);
       const removedLoops = removedPixels.length ? mergeAreaProposals([{ id: "cut", pixels: Int32Array.from(removedPixels) }], width, height).loops : [];
       const area = {

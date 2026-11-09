@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SMART_TUNING, sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal } from "../../../scripts/engines/regions/smart-select.mjs";
+import { SMART_TUNING, sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, colourCut, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal } from "../../../scripts/engines/regions/smart-select.mjs";
 
 const W = 100, H = 80;
 const rect = (x0, y0, x1, y1) => { const m = new Uint8Array(W * H); for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) m[y * W + x] = 1; return m; };
@@ -84,7 +84,23 @@ test("a big part that plainly looks different, like a stone bridge over a small 
   assert.equal(cutStart([bridge, pool], pool, { pixel, rgba, width: W }), 0, "but grey on blue: the bridge");
   const plain = new Uint8ClampedArray(W * H * 4); for (let p = 0; p < W * H; p++) plain.set([40, 110, 170, 255], p * 4);
   assert.equal(cutStart([bridge, pool], pool, { pixel, rgba: plain, width: W }), null, "the same colour as the rest: not a part");
-  assert.equal(cutStart([rect(0, 0, 40, 27), pool], pool, { pixel, rgba, width: W }), null, "most of the pool is never a part");
+  assert.equal(cutStart([rect(0, 0, 40, 29), pool], pool, { pixel, rgba, width: W }), null, "nearly all of the pool is never a part");
+});
+
+test("when the model sees only the whole area, a right-click cuts the part in the clicked colours", () => {
+  // A pool that is mostly bridge: a thin strip of water above and below a wide grey bridge.
+  const pool = rect(0, 0, 40, 30), bridge = rect(0, 3, 40, 27), rgba = new Uint8ClampedArray(W * H * 4);
+  for (let p = 0; p < W * H; p++) rgba.set(bridge[p] ? [150, 150, 145, 255] : [40, 110, 170, 255], p * 4);
+  const at = { x: 20, y: 15 };
+  assert.equal(cutStart([pool], pool, { pixel: 15 * W + 20, rgba, width: W }), null, "the model's only size is the pool");
+  const cut = colourCut(pool, rgba, W, H, at);
+  let inBridge = 0, inWater = 0;
+  for (let p = 0; p < W * H; p++) if (cut[p]) { if (bridge[p]) inBridge++; else inWater++; }
+  assert.ok(inBridge >= 40 * 24 - 4, `bridge taken: ${inBridge} of 960`);
+  assert.ok(inWater <= 2 * 40, `water taken: ${inWater}, at most a one-pixel rim`);
+  const plain = new Uint8ClampedArray(W * H * 4); for (let p = 0; p < W * H; p++) plain.set([40, 110, 170, 255], p * 4);
+  assert.equal(colourCut(pool, plain, W, H, at), null, "an area all of one colour: nothing to cut");
+  assert.equal(colourCut(pool, rgba, W, H, { x: 90, y: 70 }), null, "a click off the area");
 });
 
 test("a cut leaves a hole the size of the part plus a one-pixel rim, and reports what it removed", () => {
