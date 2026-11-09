@@ -329,7 +329,8 @@ export class AnimaterRuntime {
       return this.trace("Skipped", `${event.item?.name ?? "Unknown item"}: claimed by another module.`, recipe, { item: event.item?.name, reason: "claimed" });
     await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
       try {
-        await this.play(next, {...event,automatic:true});
+        // The event's own recipe tells it when it starts (its plan), e.g. for a placed area's impact.
+        await this.play(next, {...event,automatic:true}, next === recipe && typeof event.onPlayStart === "function" ? { onStart: event.onPlayStart } : undefined);
       } catch (error) {
         this.trace("Blocked", error.message, next);
       }

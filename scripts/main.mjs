@@ -15,12 +15,15 @@ import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./e
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
 import { bloodOnSheet, portraitBloodLevel, showPortraitBlood } from "./ui/portrait-blood.mjs";
 import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment, checkFinisherEvent, mayDisplace, pickedFinisher, playerFinisherChoices, pickPlays, createFinishedMemory, finishedKey, finishedMessage, FINISHED_MESSAGE, critTargets, targetPassed, saveFinisherEvent } from "./engines/finishers/finisher-model.mjs";
-import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
+import { playFinisher, previewFinisher, travelEnd } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
+import { propsInArea, propNextToMiss, propsOnPath } from "./engines/props/prop-pick.mjs";
+import { ownWalls } from "./engines/props/prop-walls.mjs";
+import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, slamReachable } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, onWhatStandsOver, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
@@ -2949,10 +2952,20 @@ const fireBlast = (p, kind, radius, variant = null) => {
   playBlast(blast);
   game.socket?.emit(`module.${ID}`, { type: BLAST_MESSAGE, blast });
   if (push) {
-    const grid = canvas.grid.size, blocked = (from, to) => { try { return CONFIG.Canvas.polygonBackends.move.testCollision(from, to, { type: "move", mode: "any", ...(canvas.level ? { level: canvas.level } : {}) }) === true; } catch { return true; } };
+    // A pushed creature smashes through breakable props (their own walls never stop it); each is asked for before the push is written.
+    const grid = canvas.grid.size, scene = canvas.scene, slammed = [];
+    const blocked = (doc) => (from, to) => { try { return moveBlocked(from, to, propSafe("blast push", () => slamWalls(doc, from, to)), canvas.level ? { level: canvas.level } : {}) === true; } catch { return true; } };
     const caught = caughtBy({ x: blast.x, y: blast.y, radius }, (canvas.tokens?.placeables ?? []).filter((t) => !t.document.hidden).map((t) => ({ id: t.id, x: t.center.x, y: t.center.y, w: t.w, h: t.h })));
-    const updates = caught.flatMap((c) => { const to = pushedTo(c, grid, blocked); return to ? [{ _id: c.id, x: Math.round(to.x - c.w / 2), y: Math.round(to.y - c.h / 2) }] : []; });
-    if (updates.length) setTimeout(() => { void canvas.scene?.updateEmbeddedDocuments("Token", updates, { animate: true }); }, 250);
+    const updates = caught.flatMap((c) => {
+      const doc = scene?.tokens?.get(c.id), to = pushedTo(c, grid, blocked(doc));
+      if (!to) return [];
+      for (const t of propSafe("blast push", () => slamProps(doc, { x: c.x, y: c.y }, to)) ?? []) slammed.push({ t, cause: { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid }, from: { x: c.x, y: c.y } });
+      return [{ _id: c.id, x: Math.round(to.x - c.w / 2), y: Math.round(to.y - c.h / 2) }];
+    });
+    if (updates.length) setTimeout(async () => {
+      await Promise.all(slammed.map((s) => askProp(scene, s.t.id, s.cause, s.from)));
+      void scene?.updateEmbeddedDocuments("Token", updates, { animate: true });
+    }, 250);
   }
 };
 let blastSquares = 2;
@@ -6464,14 +6477,29 @@ function findRecipe(id) {
     saved.find(r=>typeof id === "string" && r.name?.trim().toLowerCase() === id.trim().toLowerCase());
 }
 // Where a finisher's mover lands: walks the grid until a wall, the scene edge or `squares`.
-const finisherWalk = (mover, direction, squares) => ({
+// `ignore`: walls left out of its wall test.
+const finisherWalk = (mover, direction, squares, ignore = null) => ({
   from: { x: mover.document.x, y: mover.document.y }, direction, squares, grid: canvas.grid.size, size: { w: mover.w, h: mover.h },
-  collides: (a, b) => CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" }),
+  collides: (a, b) => moveBlocked(a, b, ignore),
   bounds: canvas.dimensions.sceneRect, snap: (p) => mover.getSnappedPosition?.(p) ?? p,
 });
-const finisherLanding = (mover, direction, squares) => landingSpot(finisherWalk(mover, direction, squares));
+// A real forced move (throughProps) smashes through breakable props: the walls it leaves out are those slamWalls gives
+// between where it starts and where it would land were every crossed prop's walls left out.
+const throughWalls = (mover, direction, squares, throughProps) => {
+  if (!throughProps) return null;
+  return propSafe("forced path", () => {
+    const grid = canvas.grid.size, doc = mover.document, lead = Math.max(Math.abs(direction?.x ?? 0), Math.abs(direction?.y ?? 0));
+    const centre = (p) => ({ x: p.x + mover.w / 2, y: p.y + mover.h / 2 }), start = centre({ x: doc.x, y: doc.y });
+    if (!lead) return null;
+    const crossed = slamProps(doc, start, { x: start.x + (direction.x / lead) * grid * squares, y: start.y + (direction.y / lead) * grid * squares });
+    if (!crossed.length) return null;
+    const walls = doc.parent?.walls?.contents ?? [], all = new Set(crossed.flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+    return slamWalls(doc, start, centre(landingSpot(finisherWalk(mover, direction, squares, all))));
+  }) ?? null;
+};
+const finisherLanding = (mover, direction, squares, throughProps = false) => landingSpot(finisherWalk(mover, direction, squares, throughWalls(mover, direction, squares, throughProps)));
 // How far (squares) the first wall is along that walk, or null: Wall slam seeks the nearest one.
-const finisherWallHit = (mover, direction, squares) => wallDistance(finisherWalk(mover, direction, squares));
+const finisherWallHit = (mover, direction, squares, throughProps = false) => wallDistance(finisherWalk(mover, direction, squares, throughWalls(mover, direction, squares, throughProps)));
 // A test play (studio Play at table / Local preview, api.play, api.preview). A finisher with a
 // mover token plays composed as a kill would (wall cut, crash and landing where the token hits)
 // but writes nothing; anything else, or a finisher with no token to move, plays as authored.
@@ -6839,7 +6867,8 @@ const tokenOf = (doc) => doc?.object ?? doc;
 // The square (top-left) picked on this screen: inside the ring, the right way, with no wall in between.
 function pickMoveSpot({ mover, source, squares, pull, degrees = 90 }) {
   const grid = canvas.grid.size, distance = canvas.scene?.grid?.distance ?? 5;
-  const wallFree = (center) => !CONFIG.Canvas.polygonBackends?.move?.testCollision?.(mover.center, center, { type: "move", mode: "any" });
+  // A breakable prop's own walls never stop the move: it smashes through.
+  const wallFree = (center) => !moveBlocked(mover.center, center, propSafe("forced path", () => slamWalls(mover.document, mover.center, center)));
   ui.notifications.info(movePrompt(pull, mover, source, squares));
   return pickTeleportSpot({ caster: mover, mover, feet: squares * distance, notify: (text) => ui.notifications.warn(text),
     allow: (center) => allowedSpot({ mover, source, center, pull, grid, degrees }) && wallFree(center), cone: moveCone({ mover, source, pull, degrees }),
@@ -7013,6 +7042,131 @@ async function repairAllProps(scene = canvas?.scene) {
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   if (r.walls.length) await scene.updateEmbeddedDocuments("Wall", r.walls.map((w) => withDeletes(w, del)));
   return r.tiles.length;
+}
+// What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.
+// The client that rolled or moved asks; the GM checks. A prop's error never breaks the play it rides on.
+const propSafe = (label, fn) => { try { return fn(); } catch (e) { runtime?.trace("props", `${label}: ${e?.message ?? e}`); return undefined; } };
+const propsOn = (scene) => scene?.flags?.[ID]?.breakableProps === true;
+const askProp = (scene, id, cause, from) => { const doc = scene.tiles.get(id); return doc ? requestPropBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
+// Placed areas wait for their spell's damage roll: every screen remembers them, the roller asks.
+const propAreas = createAreaWaits();
+// Whether a point lies in a placed area: a Region (v14 templates are Regions) or an old template.
+function areaTestOf(doc) {
+  if (doc?.documentName === "Region") {
+    const bottom = Number(doc.elevation?.bottom), top = Number(doc.elevation?.top), elevation = Number.isFinite(bottom) ? bottom : Number.isFinite(top) ? top : 0;
+    return (p) => { try { return doc.testPoint({ x: p.x, y: p.y, elevation }) === true; } catch { return false; } };
+  }
+  return (p) => { try { return doc?.object?.shape?.contains(p.x - doc.x, p.y - doc.y) === true; } catch { return false; } };
+}
+// Where the blow comes from: the area's origin (a burst's centre, a cone's or line's start).
+function areaCentreOf(doc) {
+  const s = doc?.shapes?.[0], fin = (...v) => v.every(Number.isFinite);
+  if (s?.type === "rectangle" && fin(s.x, s.y, s.width, s.height)) return { x: s.x + s.width / 2, y: s.y + s.height / 2 };
+  if (s?.type === "polygon" && s.points?.length >= 2) { const p = Array.from(s.points), n = Math.floor(p.length / 2); let x = 0, y = 0; for (let i = 0; i < n; i++) { x += p[2 * i]; y += p[2 * i + 1]; } return { x: x / n, y: y / n }; }
+  if (fin(s?.x, s?.y)) return { x: s.x, y: s.y };
+  if (doc?.documentName !== "Region" && fin(doc?.x, doc?.y)) return { x: doc.x, y: doc.y };
+  const b = doc?.object?.bounds;
+  return b && fin(b.x, b.y, b.width, b.height) ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null;
+}
+// The item and caster that placed an area, as their damage roll names them.
+function areaOriginOf(doc) {
+  const flags = doc?.flags?.[game.system.id] ?? {};
+  if (game.system.id === "dnd5e") return uuidOwners(flags.activity ?? flags.origin);
+  const message = doc.message ?? game.messages?.get(flags.messageId), item = doc.item ?? message?.item;
+  return { itemUuid: flags.origin?.uuid ?? item?.uuid ?? null, actorUuid: flags.origin?.actor ?? item?.actor?.uuid ?? null };
+}
+for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc) => propSafe("area", () => {
+  const { itemUuid, actorUuid } = areaOriginOf(doc), at = areaCentreOf(doc);
+  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, testPoint: areaTestOf(doc), at, scene: doc.parent });
+}));
+for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
+// A damage roll of this client's for an area still on its scene: each prop inside it the damage can break, at the
+// area's impact when its recipe is still playing, else now. Areas break nothing on placement.
+function breakAreaProps(message) {
+  if ((message?.author ?? message?.user)?.id !== game.user.id) return;
+  const d = damageFromMessage(message, game.system.id);
+  if (!d?.type || !d.itemUuid) return;
+  let speaker = null;
+  try { speaker = ChatMessage.implementation?.getSpeakerActor?.(message.speaker)?.uuid ?? null; } catch { speaker = null; }
+  const area = propAreas.matchDamage({ itemUuid: d.itemUuid, actorUuid: d.actorUuid ?? uuidOwners(d.itemUuid).actorUuid ?? speaker });
+  const scene = area?.scene;
+  if (!area || !propsOn(scene) || !game.scenes.get(scene.id)) return;
+  const hits = propsInArea(scene.tiles.contents.map(propTileView), area.testPoint, propGrid(scene), d.type).filter((t) => propAreas.claim(area.templateId, t.id));
+  if (!hits.length) return;
+  const ask = () => { for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at }, area.at); };
+  const wait = propAreas.delayFor(area);
+  if (wait > 0) setTimeout(ask, wait); else ask();
+}
+Hooks.on("createChatMessage", (message) => propSafe("area damage", () => breakAreaProps(message)));
+// A melee strike of this client's that missed (or critically failed) its one target: the prop beside the target
+// nearest the line of the swing, if the weapon's own damage type can break it. The GM rolls a plain miss's chance.
+async function breakPropOnMiss(event) {
+  const outcome = missOutcome(event?.outcome);
+  if (!outcome || event.type !== "attack" || event.weaponMode !== "melee") return;
+  const scene = (event.sceneId ? game.scenes.get(event.sceneId) : null) ?? canvas?.scene;
+  if (!propsOn(scene)) return;
+  const targetUuid = event.targetUuid ?? (event.targetUuids?.length === 1 ? event.targetUuids[0] : null);
+  const target = typeof targetUuid === "string" ? await fromUuid(targetUuid).catch(() => null) : null;
+  const attacker = scene.tokens.get(event.tokenId ?? "") ?? event.source?.document;
+  const damageType = weaponDamageType(event.item);
+  if (target?.documentName !== "Token" || target.parent !== scene || attacker?.parent !== scene || !damageType) return;
+  const grid = propGrid(scene), from = { x: attacker.x + (attacker.width * grid) / 2, y: attacker.y + (attacker.height * grid) / 2 };
+  const tile = propNextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } }, scene.tiles.contents.map(propTileView), grid, damageType);
+  if (!tile) return;
+  await afterDice(event);
+  await askProp(scene, tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
+}
+const propMiss = (event) => { void propSafe("miss", () => breakPropOnMiss(event))?.catch?.((e) => runtime?.trace("props", `miss: ${e?.message ?? e}`)); };
+// A forced move's breakable props: those a mover of its size crosses from a to b (centres). None while the scene's
+// props cannot break or no GM could write them.
+const moverSize = (doc) => Math.max(doc?.width ?? 1, doc?.height ?? 1);
+function slamProps(doc, a, b) {
+  const scene = doc?.parent;
+  if (!propsOn(scene) || !game.users.activeGM || ![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite) || (a.x === b.x && a.y === b.y)) return [];
+  return propsOnPath([a, b], moverSize(doc), scene.tiles.contents.map(propTileView), propGrid(scene));
+}
+// The walls that move's wall test leaves out: the own walls of the props it crosses that the GM will let it break,
+// those within its reach where it starts (a) or lands (b). Any other prop's walls still stop it.
+function slamWalls(doc, a, b) {
+  const scene = doc?.parent, grid = propGrid(scene), walls = scene?.walls?.contents ?? [];
+  const near = slamProps(doc, a, b).filter((t) => slamReachable(t, a, moverSize(doc), grid) || slamReachable(t, b, moverSize(doc), grid));
+  return new Set(near.flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+}
+// The move wall test, less the `ignore`d walls: each crossing's walls are read from the test's own report.
+function moveBlocked(a, b, ignore, options = {}) {
+  const test = (mode) => CONFIG.Canvas.polygonBackends?.move?.testCollision?.(a, b, { type: "move", mode, ...options });
+  if (!test("any")) return false;
+  if (!ignore?.size) return true;
+  try {
+    const crossings = Array.from(test("all") ?? [], (v) => Array.from(v?.edges ?? [], (e) => e?.object?.document?.id ?? e?.id).filter(Boolean));
+    return !crossings.length || ownWallsBeforeCollision(crossings, ignore);
+  } catch { return true; }
+}
+// Resolves true once the token's document stands at `at` (top-left), false after `ms`.
+const tokenAt = (doc, at, ms = 3000) => new Promise((resolve) => {
+  if (doc.x === at.x && doc.y === at.y) return resolve(true);
+  let hook = null, timer = null;
+  const done = (v) => { Hooks.off("updateToken", hook); clearTimeout(timer); resolve(v); };
+  hook = Hooks.on("updateToken", (d) => { if (d === doc && d.x === at.x && d.y === at.y) done(true); });
+  timer = setTimeout(() => done(false), ms);
+});
+// A forced move from → to (top-left) travelling travelMs: each prop it smashes through is asked for as the travel
+// reaches it, while the mover's document still stands at `from` (the GM measures the slam from there). One the GM
+// would find too far from `from` is asked once the document stands at `to` (landed()). Null when it crosses none.
+function slamAlong(doc, from, to, travelMs) {
+  const grid = propGrid(doc?.parent), w = (doc.width ?? 1) * grid, h = (doc.height ?? 1) * grid;
+  const a = { x: from.x + w / 2, y: from.y + h / 2 }, b = { x: to.x + w / 2, y: to.y + h / 2 };
+  const tiles = slamProps(doc, a, b);
+  if (!tiles.length) return null;
+  const scene = doc.parent, cause = { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid }, later = [];
+  // Asked a little before the travel ends, so never after the move is written.
+  const asked = slamTimes(a, b, tiles, Math.max(0, travelMs - 50)).map(({ tile, ms }) => new Promise((resolve) => setTimeout(resolve, ms))
+    .then(() => askProp(scene, tile.id, cause, a)).then((ok) => { if (!ok) later.push(tile); }));
+  return { landed: async () => {
+    await Promise.all(asked);
+    if (!later.length || !(await tokenAt(doc, to))) return;
+    for (const t of later) await askProp(scene, t.id, cause, a);
+  } };
 }
 const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort"];
 // Its prop flags changed (set, or removed with a "-=" key); other modules' flags never redraw it.
@@ -9808,7 +9962,7 @@ Hooks.once("ready", () => {
           gridSize: () => canvas.grid.size,
           pick: pickMove,
           // A picked square is where it lands, exactly; otherwise the shove walks the line and stops at walls.
-          playFinisher: (shove, mover, source, spot) => playFinisher({ recipe: shove, mover, attacker: source }, spot ? { ...finisherHost(source), landing: () => ({ x: spot.x, y: spot.y }) } : finisherHost(source))
+          playFinisher: (shove, mover, source, spot) => playFinisher({ recipe: shove, mover, attacker: source }, finisherHost(source, spot))
             .catch((error) => { runtime.trace("Blocked", error.message); return null; }),
         });
         stage = previewMotion(stage);
@@ -10206,19 +10360,31 @@ Hooks.once("ready", () => {
   };
   // Finishers play on the real token (finisher-play.mjs): travel lands, the token is moved
   // there, then it vanishes, stays as a body, or stays.
-  const finisherHost = (attacker) => ({
-    gridSize: () => canvas.grid.size,
-    landing: finisherLanding,
-    wallHit: finisherWallHit,
-    play: (recipe, context) => new Promise((resolve) => {
-      runtime.play(installedStages(recipe), context, { onStart: (started) => resolve(started.playbackPlan) })
-        .then(() => resolve(null), (error) => { runtime.trace("Blocked", error.message); resolve(null); });
-    }),
-    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-    fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [] }),
-    commit: (token, data) => commitDisplace(token, data, attacker),
-    trace: (status, detail) => runtime.trace(status, detail),
-  });
+  // A picked square (`spot`) is where it lands, exactly. The move smashes through breakable props on its way: each
+  // is asked for as the travel reaches it (slamAlong), from the landing this host planned.
+  const finisherHost = (attacker, spot = null) => {
+    let forced = null, slam = null;
+    const planned = (mover, to) => { forced = to ? { doc: mover.document, from: { x: mover.document.x, y: mover.document.y }, to: { x: to.x, y: to.y } } : null; return to; };
+    return {
+      gridSize: () => canvas.grid.size,
+      landing: (mover, direction, squares) => planned(mover, spot ? { x: spot.x, y: spot.y } : finisherLanding(mover, direction, squares, true)),
+      wallHit: (mover, direction, squares) => finisherWallHit(mover, direction, squares, true),
+      play: (recipe, context) => new Promise((resolve) => {
+        runtime.play(installedStages(recipe), context, { onStart: (started) => {
+          const travelMs = travelEnd(started.playbackPlan);
+          slam = forced && travelMs > 0 ? propSafe("forced path", () => slamAlong(forced.doc, forced.from, forced.to, travelMs)) ?? null : null;
+          resolve(started.playbackPlan);
+        } }).then(() => resolve(null), (error) => { runtime.trace("Blocked", error.message); resolve(null); });
+      }),
+      wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      fade: (token) => runtime.play({ id: "animater-finisher-fade", name: "Finisher fade", trigger: "manual", stages: [{ kind: "motion", motion: "fade", subject: "source", duration: 900, motionEnd: "hold", assets: [] }] }, { source: token, targets: [] }),
+      commit: async (token, data) => {
+        await commitDisplace(token, data, attacker);
+        if (slam && Number.isFinite(data?.x)) void slam.landed().catch((e) => runtime.trace("props", `forced path: ${e?.message ?? e}`));
+      },
+      trace: (status, detail) => runtime.trace(status, detail),
+    };
+  };
   // Resolves playFinisher's answer: true played, false a write failed, null never played.
   const runFinisher = (recipe, { mover, attacker }) => {
     const dead = hpOf(mover.actor)?.down === true;
@@ -10855,7 +11021,10 @@ Hooks.once("ready", () => {
         const saver = message.speaker?.token;
         return void Promise.resolve(critStarted).then((started) => { if (!started?.has?.(saver)) return playSaveReaction(save, saver, message.id, message.speaker?.scene); });
       }
-      void dispatch((game.system.id==="sf2e"?sf2eEvent:pf2eEvent)(message, game.user.id));
+      const event = (game.system.id==="sf2e"?sf2eEvent:pf2eEvent)(message, game.user.id);
+      // A missed melee Strike may break the prop beside its target (read before dispatch fills the event in).
+      propMiss(event && { ...event });
+      void dispatch(event);
     });
     // A turn ends: the sustained spells its combatant did not play again end (Spiritual Armament's hovering
     // weapon). On the client that cast them, which is the one that recorded them.
@@ -10899,7 +11068,9 @@ Hooks.once("ready", () => {
     const midiWorkflow = (subject) => midiRunsActivity(globalThis.MidiQOL?.Workflow?.workflows, subject);
     Hooks.on("dnd5e.rollAttackV2", (rolls, data) => {
       if (!rolls?.some((r) => r?.parent) && midiWorkflow(data?.subject)) return;
-      void dispatch(dnd5eEvent("attack", data?.subject, { rolls }));
+      const event = dnd5eEvent("attack", data?.subject, { rolls });
+      propMiss(event && { ...event });
+      void dispatch(event);
     });
     Hooks.on("midi-qol.AttackRollComplete", (workflow) => {
       const roll = workflow?.attackRoll;
@@ -10912,11 +11083,13 @@ Hooks.once("ready", () => {
         return doc?.uuid ? { token: doc.uuid, ac: own ? own.ac : doc.actor?.system?.attributes?.ac?.value } : null;
       }).filter(Boolean);
       const checked = game.settings.get("midi-qol", "ConfigSettings")?.autoCheckHit !== "none";
-      void dispatch(dnd5eEvent("attack", workflow.activity, { rolls: [roll], verdict: {
+      const event = dnd5eEvent("attack", workflow.activity, { rolls: [roll], verdict: {
         messageId: workflow.itemCardId,
         targets,
         hits: checked ? Array.from(workflow.hitTargets ?? [], (t) => (t?.document ?? t)?.id).filter(Boolean) : null,
-      } }));
+      } });
+      propMiss(event && { ...event });
+      void dispatch(event);
     });
     // A saving throw against a known DC: the saving creature reacts to passing or failing.
     const onSave = (rolls, data) => {
@@ -11098,6 +11271,8 @@ Hooks.once("ready", () => {
             actor: actor ?? item.actor,
             template,
             sceneId: template.parent?.id,
+            // Its props break at the area's impact while this plays (breakAreaProps).
+            onPlayStart: (started) => propSafe("area", () => propAreas.played(template.uuid, Date.now() + impactDelay(started?.playbackPlan))),
           });
       };
       if (acceptsEvents())
