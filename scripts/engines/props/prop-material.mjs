@@ -21,9 +21,10 @@ const MAX_SIDE = 3; // squares; bigger tiles are floor or roof pieces
 const TOKEN_MATERIAL = new Map();
 for (const [m, words] of Object.entries(TOKENS)) for (const w of words) TOKEN_MATERIAL.set(w, m);
 
-// file name only (no folders, no extension), camelCase split, lowercase tokens
+const decoded = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
+// file name only (no folders, no extension, percent-encoding undone: Old%20Barrel), camelCase split, lowercase tokens
 function nameTokens(src) {
-  const name = String(src ?? "").split(/[\/]/).pop().replace(/\.[^.]*$/, "");
+  const name = decoded(String(src ?? "").split(/[\/]/).pop()).replace(/\.[^.]*$/, "");
   return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 }
 

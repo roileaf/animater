@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeFragments, fragmentPieces, fragmentFlight, fragmentPose, FRAGMENT_TINTS, FRAGMENT_TINT_LOOKS, FRAGMENT_BEHAVIORS, KEEP_BEHAVIORS } from "../../../scripts/engines/fragments/fragments.mjs";
+import { normalizeFragments, fragmentPieces, fragmentFlight, fragmentPose, FRAGMENT_TINTS, FRAGMENT_TINT_LOOKS, FRAGMENT_BEHAVIORS } from "../../../scripts/engines/fragments/fragments.mjs";
 import { createFragmentRenderer } from "../../../scripts/engines/fragments/fragment-render.mjs";
 
 test("keep: pieces never fade and hold their end pose", () => {
@@ -32,10 +32,6 @@ test("scorched and frosted tints are registered", () => {
   assert.deepEqual(FRAGMENT_TINT_LOOKS.scorched, { tint: 0x8a6f60, alpha: 1, css: "sepia(.35) brightness(.7)" });
   assert.deepEqual(FRAGMENT_TINT_LOOKS.frosted, { tint: 0xcfe4f2, alpha: 1, css: "saturate(.6) brightness(1.1) hue-rotate(170deg)" });
   assert.equal(normalizeFragments({ tint: "scorched" }).tint, "scorched");
-});
-test("KEEP_BEHAVIORS are real behaviours", () => {
-  assert.deepEqual(KEEP_BEHAVIORS, ["burst", "bounce", "crumble", "flatten", "shudder"]);
-  for (const b of KEEP_BEHAVIORS) assert.ok(b in FRAGMENT_BEHAVIORS);
 });
 
 // The smallest fake of the PIXI the renderer's start() touches.

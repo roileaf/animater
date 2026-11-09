@@ -9,3 +9,15 @@ export function tileRect(tile) {
   const cx = (Number(d.x) || 0) + Math.cos(a) * dx - Math.sin(a) * dy, cy = (Number(d.y) || 0) + Math.sin(a) * dx + Math.cos(a) * dy;
   return { x: cx - width / 2, y: cy - height / 2, width, height, rotation };
 }
+
+// The scale Foundry draws a tile's art at (PrimarySpriteMesh#resize): fitted to the tile's size by texture.fit,
+// then multiplied by texture.scaleX/scaleY (a negative one mirrors). texW/texH: the art's own size.
+export function tileArtScale(tile, texW, texH) {
+  const d = tile?.document ?? tile ?? {}, w = Number(d.width) || 0, h = Number(d.height) || 0;
+  const tw = texW > 0 ? texW : 1, th = texH > 0 ? texH : 1, fx = w / tw, fy = h / th;
+  const fit = d.texture?.fit ?? "fill";
+  const [sx, sy] = fit === "cover" ? [Math.max(fx, fy), Math.max(fx, fy)] : fit === "contain" ? [Math.min(fx, fy), Math.min(fx, fy)]
+    : fit === "width" ? [fx, fx] : fit === "height" ? [fy, fy] : [fx, fy];
+  const k = (v) => (Number.isFinite(v) && v !== 0 ? v : 1);
+  return { sx: sx * k(d.texture?.scaleX), sy: sy * k(d.texture?.scaleY) };
+}

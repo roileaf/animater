@@ -196,3 +196,34 @@ test("repair also restores any opened wall no broken tile names any more", () =>
   assert.deepEqual(r.walls.map((w) => w._id).sort(), ["a1", "orphan"]);
   assert.deepEqual(repairUpdates([], [orphan]).walls.map((w) => w._id), ["orphan"]);
 });
+
+test("slamPlausible refuses a prop the mover stands on or is pushed away from; accepts one pushed into", () => {
+  const table = barrel({ id: "table", x: 0, y: 100, width: 200, height: 200, texture: { src: "Wooden_Table.webp" } });
+  const b = barrel({ x: 80, y: 100 }), at = { x: 50, y: 150 }, mover = { ...at, size: 1 };
+  assert.equal(slamPlausible(table, { from: at, to: { x: 350, y: 150 } }, mover, grid), false);
+  assert.equal(slamPlausible(b, { from: at, to: { x: -250, y: 150 } }, mover, grid), false);
+  assert.equal(slamPlausible(b, { from: at, to: { x: 350, y: 150 } }, mover, grid), true);
+  const pathReq = (to) => ({ cause: { kind: "path", slam: { size: 1 }, path: { from: at, to } }, note: noteFor(b, { kind: "path", slam: { size: 1 } }) });
+  assert.deepEqual(validBreakRequest(pathReq({ x: -250, y: 150 }), ctx({ tile: b, mover })), { ok: false, why: "far" });
+  assert.equal(validBreakRequest(pathReq({ x: 350, y: 150 }), ctx({ tile: b, mover })).ok, true);
+});
+
+test("a miss or slam on another level than the tile is too far; a tile on no level is reached from any", () => {
+  const up = barrel({ levels: ["upstairs"] });
+  const missReq = { cause: { kind: "miss", damageType: "bludgeoning", outcome: "criticalFailure" }, note: noteFor(up) };
+  assert.deepEqual(validBreakRequest(missReq, ctx({ tile: up, target: { ...target, level: "ground" } })), { ok: false, why: "far" });
+  assert.equal(validBreakRequest(missReq, ctx({ tile: up, target: { ...target, level: "upstairs" } })).ok, true);
+  assert.equal(validBreakRequest(missReq, ctx({ tile: barrel(), target: { ...target, level: "ground" } })).ok, true);
+  const path = { from: { x: -50, y: 250 }, to: { x: 550, y: 250 } };
+  const pathReq = { cause: { kind: "path", slam: { size: 1 }, path }, note: noteFor(up, { kind: "path", slam: { size: 1 } }) };
+  assert.deepEqual(validBreakRequest(pathReq, ctx({ tile: up, mover: { x: -50, y: 250, size: 1, level: "ground" } })), { ok: false, why: "far" });
+  assert.equal(validBreakRequest(pathReq, ctx({ tile: up, mover: { x: -50, y: 250, size: 1, level: "upstairs" } })).ok, true);
+});
+
+test("unhiding two broken tiles that share a wall at once gives the shared wall back", () => {
+  const shared = opened("s", [290, 210, 310, 210]), a1 = opened("a1", [210, 210, 290, 210]);
+  // both already unhidden by the same batch, notes not yet cleared
+  const A = { ...brokenTile("A", 200, ["s", "a1"]), hidden: false }, B = { ...brokenTile("B", 300, ["s"]), hidden: false };
+  assert.deepEqual(wallsToRestore(A, [A, B], [shared, a1]).map((w) => w.id), ["s", "a1"]);
+  assert.deepEqual(wallsToRestore(B, [A, B], [shared, a1]).map((w) => w.id), ["s"]);
+});

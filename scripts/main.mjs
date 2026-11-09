@@ -23,7 +23,7 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
-import { propsInArea, propNextToMiss, propsOnPath } from "./engines/props/prop-pick.mjs";
+import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -6947,8 +6947,9 @@ const propWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: () => ca
   materialOf: (doc) => propMaterial(propTileView(doc), propGrid(doc.parent)),
   // Heard where it breaks, with the room's acoustics (playUnder).
   playSound: (file, at) => { void playUnder("propBreak", at, { file, volume: 0.8, reach: 20, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); } });
-const PROP_REFUSED_MS = 3000;
+const PROP_REFUSED_MS = 3000, PROP_LATE_MS = 30000;
 const propPending = new Map(), propWriting = new Set(); // broken on this screen, waiting on the GM; being written by the GM
+const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write that still comes is drawn without playing again
 let propNoGmTraced = false;
 // v14's deletion marker for the "-=" keys of the pure updates.
 const propDel = () => globalThis._del ?? (foundry.data?.operators?.ForcedDeletion ? new foundry.data.operators.ForcedDeletion() : undefined);
@@ -6959,7 +6960,7 @@ const propTileView = (doc) => {
   let top;
   try { top = levelTopOf(doc.levels, scene?.levels?.contents ?? [], scene?.initialLevel?.id ?? null); } catch { top = undefined; }
   // v14 keeps x/y at the texture anchor: the rules read the top-left corner (tileRect).
-  return { id: doc.id, ...tileRect(doc), hidden: doc.hidden, elevation,
+  return { id: doc.id, ...tileRect(doc), hidden: doc.hidden, elevation, levels: [...(doc.levels ?? [])],
     texture: { src: doc.texture?.src }, flags: doc.flags ?? {}, overhead: top === undefined ? undefined : elevation >= top,
     // read only when the scene has no levels (v14 deprecates occlusion.mode)
     occlusion: { mode: [...(doc.occlusion?.modes ?? [])][0] ?? 0 } };
@@ -6968,29 +6969,37 @@ const propTileView = (doc) => {
 async function propPlace(cause, scene, grid) {
   const token = async (uuid) => { if (!uuid) return null; const d = await fromUuid(uuid).catch(() => null); return d?.documentName === "Token" && d.parent === scene ? d : null; };
   const t = cause.kind === "miss" ? await token(cause.targetUuid) : null, m = cause.kind === "path" ? await token(cause.moverUuid) : null;
-  return { target: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid } : undefined,
-    mover: m ? { x: m.x + (m.width * grid) / 2, y: m.y + (m.height * grid) / 2, size: Math.max(m.width, m.height) } : undefined };
+  return { target: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level } : undefined,
+    mover: m ? { x: m.x + (m.width * grid) / 2, y: m.y + (m.height * grid) / 2, size: Math.max(m.width, m.height), level: m.level } : undefined };
 }
+// A wreck shows where its tile would: only while the tile's level is the one viewed (a tile on no level, always).
+const propViewed = (doc) => onLevel(doc.levels, canvas?.level?.id);
 // Draws (or removes) a tile's wreckage from what the tile holds now.
 const drawPropWreck = (doc, animate) => {
-  const note = doc.hidden ? readNote(doc.flags?.[ID]?.prop?.broken) : null;
+  const note = doc.hidden && propViewed(doc) ? readNote(doc.flags?.[ID]?.prop?.broken) : null;
   propWreckage.hide(doc.id);
   if (note) void propWreckage.show(doc.object ?? doc, note, propContents(doc), { animate });
 };
 // Broken on this screen the moment it is asked: the tile hides and its pieces fly. Shown again if the GM never writes it.
 function breakPropHere(doc, note) {
+  if (!propViewed(doc)) return;
   if (doc.object?.mesh) doc.object.mesh.renderable = false;
   void propWreckage.show(doc.object ?? doc, note, propContents(doc), { animate: true });
   clearTimeout(propPending.get(doc.id)?.timer);
   propPending.set(doc.id, { seed: note.seed, timer: setTimeout(() => settlePropHere(doc.id, true), PROP_REFUSED_MS) });
 }
+function forgetLateProp(id) { clearTimeout(propLate.get(id)?.timer); propLate.delete(id); }
 function settlePropHere(id, refused) {
   const waiting = propPending.get(id);
   if (!waiting) return;
   clearTimeout(waiting.timer); propPending.delete(id);
   const tile = canvas?.tiles?.get(id);
   if (tile?.mesh) tile.mesh.renderable = true;
-  if (refused) { if (tile?.document) drawPropWreck(tile.document, false); else propWreckage.hide(id); }
+  if (!refused) return;
+  if (tile?.document) drawPropWreck(tile.document, false); else propWreckage.hide(id);
+  // Its break was already seen and heard here: a late write of the same note is drawn still.
+  forgetLateProp(id);
+  propLate.set(id, { seed: waiting.seed, timer: setTimeout(() => propLate.delete(id), PROP_LATE_MS) });
 }
 // Breaks a prop tile for a cause {kind: "area"|"miss"|"path", damageType?, slam?: {size}, outcome?, at?, targetUuid?, moverUuid?};
 // from: where the blow came from (the area's centre by default). True once it is asked of (or written by) the GM.
@@ -7053,7 +7062,7 @@ const propSafe = (label, fn) => { try { return fn(); } catch (e) { runtime?.trac
 const propsOn = (scene) => scene?.flags?.[ID]?.breakableProps === true;
 const askProp = (scene, id, cause, from) => { const doc = scene.tiles.get(id); return doc ? requestPropBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 // Placed areas wait for their spell's damage roll: every screen remembers them, the roller asks.
-const propAreas = createAreaWaits();
+const propAreas = createAreaWaits({ trace: (m) => runtime?.trace("props", m) });
 // Whether a point lies in a placed area: a Region (v14 templates are Regions) or an old template.
 function areaTestOf(doc) {
   if (doc?.documentName === "Region") {
@@ -7081,7 +7090,7 @@ function areaOriginOf(doc) {
 }
 for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc) => propSafe("area", () => {
   const { itemUuid, actorUuid } = areaOriginOf(doc), at = areaCentreOf(doc);
-  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, testPoint: areaTestOf(doc), at, scene: doc.parent });
+  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, testPoint: areaTestOf(doc), at, scene: doc.parent, levels: [...(doc.levels ?? [])] });
 }));
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // A damage roll of this client's for an area still on its scene: each prop inside it the damage can break, at the
@@ -7097,7 +7106,7 @@ function breakAreaProps(message) {
   const area = propAreas.matchDamage({ itemUuid: d.itemUuid, actorUuid: d.actorUuid ?? uuidOwners(d.itemUuid).actorUuid ?? speaker });
   const scene = area?.scene;
   if (!area || !propsOn(scene) || !game.scenes.get(scene.id)) return;
-  const hits = propsInArea(scene.tiles.contents.map(propTileView), area.testPoint, propGrid(scene), d.type).filter((t) => propAreas.claim(area.templateId, t.id));
+  const hits = propsInArea(tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), area.testPoint, propGrid(scene), d.type).filter((t) => propAreas.claim(area.templateId, t.id));
   if (!hits.length) return;
   const ask = () => { for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at }, area.at); };
   const wait = propAreas.delayFor(area);
@@ -7117,7 +7126,7 @@ async function breakPropOnMiss(event) {
   const damageType = weaponDamageType(event.item);
   if (target?.documentName !== "Token" || target.parent !== scene || attacker?.parent !== scene || !damageType) return;
   const grid = propGrid(scene), from = { x: attacker.x + (attacker.width * grid) / 2, y: attacker.y + (attacker.height * grid) / 2 };
-  const tile = propNextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } }, scene.tiles.contents.map(propTileView), grid, damageType);
+  const tile = propNextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } }, tilesOnLevel(scene.tiles.contents.map(propTileView), target.level), grid, damageType);
   if (!tile) return;
   await afterDice(event);
   await askProp(scene, tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
@@ -7131,7 +7140,7 @@ function slamProps(doc, a, b) {
   const scene = doc?.parent;
   if (!propsOn(scene) || !game.users.activeGM || ![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite) || (a.x === b.x && a.y === b.y)) return [];
   const grid = propGrid(scene), path = { from: a, to: b }, mover = { x: a.x, y: a.y, size: moverSize(doc) };
-  return propsOnPath([a, b], mover.size, scene.tiles.contents.map(propTileView), grid).filter((t) => slamPlausible(t, path, mover, grid));
+  return propsOnPath([a, b], mover.size, tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), grid).filter((t) => slamPlausible(t, path, mover, grid));
 }
 // The walls that move's wall test leaves out: those props' own walls. Any other prop's walls still stop it.
 function slamWalls(doc, a, b) {
@@ -7165,20 +7174,21 @@ function slamUnder(stage, token, source, target) {
   if (!GROUND_MOTIONS.has(stage?.motion) || !propsOn(scene) || !game.users.activeGM || doc.hidden || !token.center) return;
   const grid = propGrid(scene), size = moverSize(doc), ms = Math.max(0, Number(stage.duration) || 0);
   const travel = groundTravel(stage, { x: token.center.x, y: token.center.y }, motionDirection(token, source, target, stage.motion, grid), grid);
-  for (const { tile, p, path } of groundSlams(travel, size, scene.tiles.contents.map(propTileView), grid))
+  for (const { tile, p, path } of groundSlams(travel, size, tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), grid))
     setTimeout(() => void askProp(scene, tile.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from), Math.round(p * ms));
 }
-const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort"];
+const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort", "levels"];
 // Its prop flags changed (set, or removed with a "-=" key); other modules' flags never redraw it.
 const propFlagsChanged = (changes) => Object.keys(changes.flags?.[ID] ?? {}).some((k) => k === "prop" || k === "-=prop");
 Hooks.on("updateTile", (doc, changes, options) => {
   if (changes.hidden === false && game.users.activeGM?.isSelf && doc.flags?.[ID]?.prop?.broken) void undoPropBreak(doc).catch((e) => console.warn("Animater props: undo", e));
   if (doc.parent !== canvas?.scene) return;
   if (options?.animater?.propBreak) {
-    // Already flying on the screen that asked for it.
-    const mine = propPending.get(doc.id)?.seed === readNote(doc.flags?.[ID]?.prop?.broken)?.seed;
-    settlePropHere(doc.id, false);
-    if (!mine) drawPropWreck(doc, true);
+    // Already flying on the screen that asked for it; already seen there if the write came after it was shown again.
+    const seed = readNote(doc.flags?.[ID]?.prop?.broken)?.seed;
+    const mine = propPending.get(doc.id)?.seed === seed, late = !mine && propLate.get(doc.id)?.seed === seed;
+    settlePropHere(doc.id, false); forgetLateProp(doc.id);
+    if (!mine) drawPropWreck(doc, !late);
     return;
   }
   // A changed note, contents, place or visibility redraws it (the wreckage never redraws in place).
@@ -7189,8 +7199,12 @@ Hooks.on("deleteTile", (doc) => {
   settlePropHere(doc.id, false); propWreckage.hide(doc.id);
   if (game.users.activeGM?.isSelf && doc.flags?.[ID]?.prop?.broken) void undoPropBreak(doc, { deleted: true }).catch((e) => console.warn("Animater props: walls of a deleted prop", e));
 });
-Hooks.on("canvasReady", () => { propWreckage.sync(canvas.tiles?.placeables ?? []); });
-Hooks.on("canvasTearDown", () => { for (const w of propPending.values()) clearTimeout(w.timer); propPending.clear(); propWreckage.clear(); });
+// A level change redraws the canvas: the wrecks are cleared, then drawn again for the tiles of the viewed level.
+Hooks.on("canvasReady", () => { propWreckage.sync((canvas.tiles?.placeables ?? []).filter((t) => propViewed(t.document))); });
+Hooks.on("canvasTearDown", () => {
+  for (const w of [...propPending.values(), ...propLate.values()]) clearTimeout(w.timer);
+  propPending.clear(); propLate.clear(); propWreckage.clear();
+});
 // Every built-in catalog of this system: turn them all on at once (exclusions and your own
 // recipes stay), as each catalog's own "Use the catalog" button does.
 const CATALOG_KINDS = { pf2e: ["spellCatalog", "featCatalog", "actionCatalog", "featureCatalog", "weaponCatalog", "conditionCatalog", "effectCatalog"],

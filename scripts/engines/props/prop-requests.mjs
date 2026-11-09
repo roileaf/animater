@@ -2,7 +2,7 @@
 import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
-import { segRectDist } from "./prop-pick.mjs";
+import { segRectDist, headsInto, onLevel } from "./prop-pick.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path"];
@@ -38,26 +38,30 @@ function plausible(cause, tile, grid, { target, mover }) {
   }
   if (cause.kind === "miss") {
     if (!finite(target) || !Number.isFinite(target.w) || !Number.isFinite(target.h)) return false;
+    if (!onLevel(tile.levels, target.level)) return false;
     // overlaps the target's footprint grown by a square, centre not on the target
     const c = centre(tile);
     if (c.x >= target.x && c.x <= target.x + target.w && c.y >= target.y && c.y <= target.y + target.h) return false;
     return tile.x < target.x + target.w + grid && tile.x + tile.width > target.x - grid && tile.y < target.y + target.h + grid && tile.y + tile.height > target.y - grid;
   }
-  return slamPlausible(tile, cause.path, mover, grid);
+  return onLevel(tile.levels, mover?.level) && slamPlausible(tile, cause.path, mover, grid);
 }
 
 // A slam on a planned path {from, to} (the mover's centre at the start and at the landing): the mover stands near
 // either end now (before or after its move is written), the path is at most PATH_SQUARES long, and the tile lies
-// within half the mover's size of it. mover: {x, y} centre and size in squares. The requester picks with it too.
+// within half the mover's size of it, ahead of the mover (headsInto: not a prop it starts on or moves away from).
+// mover: {x, y} centre and size in squares. The requester picks with it too.
 export function slamPlausible(tile, path, mover, grid = 100) {
   if (!tile || !finite(path?.from) || !finite(path?.to) || !finite(mover)) return false;
   const size = sizeOf(mover.size), near = (p) => Math.hypot(mover.x - p.x, mover.y - p.y) <= size * grid;
   if (!near(path.from) && !near(path.to)) return false;
   if (Math.hypot(path.to.x - path.from.x, path.to.y - path.from.y) > PATH_SQUARES * grid) return false;
-  return segRectDist(path.from, path.to, tile) <= (size * grid) / 2;
+  const reach = (size * grid) / 2;
+  return headsInto(path.from, path.to, tile, reach) && segRectDist(path.from, path.to, tile) <= reach;
 }
 
-// target: {x, y, w, h} of the missed token; mover: {x, y} centre and size in squares; roll in [0, 1).
+// target: {x, y, w, h, level?} of the missed token; mover: {x, y, level?} centre and size in squares; roll in [0, 1).
+// A tile on another level than the target or mover (tile.levels) is too far.
 export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, sender, target, mover, roll = 1 } = {}) {
   const no = (why) => ({ ok: false, why });
   const own = scene?.flags?.animater ?? {};
@@ -94,7 +98,8 @@ const namedIds = (tile) => new Set(readNote(propOf(tile).broken)?.walls ?? []);
 // (a copied tile carries the original's note), less those another broken tile still names.
 export function wallsToRestore(tile, tiles, walls, grid = 100) {
   const ids = namedIds(tile), held = new Set();
-  for (const t of tiles ?? []) if (t.id !== tile.id) for (const id of namedIds(t)) held.add(id);
+  // A broken tile already unhidden is being undone too (several unhidden at once): it holds nothing.
+  for (const t of tiles ?? []) if (t.id !== tile.id && t.hidden !== false) for (const id of namedIds(t)) held.add(id);
   const own = new Set(ownWalls(tile, walls, grid).map((w) => w.id));
   return walls.filter((w) => ids.has(w.id) && own.has(w.id) && !held.has(w.id));
 }

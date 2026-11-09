@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { tileRect } from "../../../scripts/engines/props/prop-geometry.mjs";
+import { tileRect, tileArtScale } from "../../../scripts/engines/props/prop-geometry.mjs";
 
 const near = (got, want) => {
   for (const k of Object.keys(want)) assert.ok(Math.abs(got[k] - want[k]) < 1e-9, `${k}: ${got[k]} vs ${want[k]}`);
@@ -34,4 +34,20 @@ test("rotation turns about the anchor: the centre lies along the turned offset",
 
 test("a placeable reads through its document", () => {
   near(tileRect({ document: { x: 100, y: 100, width: 100, height: 100, texture: { anchorX: 0.5, anchorY: 0.5 } } }), { x: 50, y: 50 });
+});
+
+test("art scale: fill stretches to the tile, then the texture scale multiplies (a negative one mirrors)", () => {
+  near(tileArtScale({ width: 200, height: 100 }, 400, 400), { sx: 0.5, sy: 0.25 });
+  near(tileArtScale({ width: 200, height: 100, texture: { fit: "fill", scaleX: -2, scaleY: 1.5 } }, 400, 400), { sx: -1, sy: 0.375 });
+});
+test("art scale: contain, cover, width and height keep the art's aspect", () => {
+  const d = (fit) => ({ width: 200, height: 100, texture: { fit } });
+  near(tileArtScale(d("contain"), 400, 400), { sx: 0.25, sy: 0.25 });
+  near(tileArtScale(d("cover"), 400, 400), { sx: 0.5, sy: 0.5 });
+  near(tileArtScale(d("width"), 400, 400), { sx: 0.5, sy: 0.5 });
+  near(tileArtScale(d("height"), 400, 400), { sx: 0.25, sy: 0.25 });
+  near(tileArtScale({ ...d("contain"), texture: { fit: "contain", scaleX: 2, scaleY: -1 } }, 400, 400), { sx: 0.5, sy: -0.25 });
+});
+test("art scale: unknown fit reads as fill; a zero or missing scale as 1", () => {
+  near(tileArtScale({ width: 100, height: 100, texture: { fit: "odd", scaleX: 0 } }, 50, 200), { sx: 2, sy: 0.5 });
 });

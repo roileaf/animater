@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, groundTravel, groundSlams } from "../../../scripts/engines/props/prop-triggers.mjs";
+import { createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, groundTravel, groundSlams } from "../../../scripts/engines/props/prop-triggers.mjs";
 import { motionPhases } from "../../../scripts/engines/motion/motion-path.mjs";
 import { pathSpan } from "../../../scripts/engines/motion/motion.mjs";
 import { slamPlausible } from "../../../scripts/engines/props/prop-requests.mjs";
@@ -152,4 +152,33 @@ test("a keyframed path breaks a prop it crosses on its second leg, with a path t
   assert.ok(slams[0].p > 0.5 * pathSpan(bend) && slams[0].p < pathSpan(bend));
   // the straight line from rest to the furthest point misses the leg: the request names where it crosses instead
   assert.ok(slamPlausible(barrel("leg2", 3, 2), slams[0].path, { ...rest, size: 1 }, 100));
+});
+
+test("a token standing on a table lunging or charging leaves the table whole", () => {
+  const table = { ...barrel("table", 0, 1), width: 200, height: 200, texture: { src: "Wooden_Table.webp" } };
+  assert.deepEqual(slamsOf({ kind: "motion", motion: "lunge", distance: 0.35, duration: 500 }, [table]), []);
+  assert.deepEqual(slamsOf({ kind: "motion", motion: "rush", distance: 4, motionRange: "distance", duration: 1000 }, [table]), []);
+});
+test("a lunge away from an overlapping barrel leaves it; one into it smashes it with a path the GM accepts", () => {
+  const b = { ...barrel("b", 0, 1), x: 80 }; // overlaps the mover's square by 20 px, to its right
+  const lunge = { kind: "motion", motion: "lunge", distance: 0.35, duration: 500 };
+  assert.deepEqual(groundSlams(groundTravel(lunge, rest, { x: -1, y: 0 }, 100), 1, [b], 100), []);
+  const [hit] = groundSlams(groundTravel(lunge, rest, right, 100), 1, [b], 100);
+  assert.equal(hit?.tile.id, "b");
+  assert.ok(slamPlausible(b, hit.path, { ...rest, size: 1 }, 100));
+});
+test("an area is kept 10 minutes; a roll only an expired area matched is reported", () => {
+  let t = 0; const said = []; const w = createAreaWaits({ now: () => t, trace: (m) => said.push(m) });
+  assert.equal(AREA_TTL_MS, 600000);
+  w.remember({ templateId: "T", itemUuid: "I", actorUuid: "A", testPoint: () => true });
+  t = 5 * 60000;
+  assert.equal(w.matchDamage({ itemUuid: "I", actorUuid: "A" })?.templateId, "T");
+  assert.deepEqual(said, []);
+  t = 11 * 60000;
+  assert.equal(w.matchDamage({ itemUuid: "I", actorUuid: "A" }), null);
+  assert.equal(said.length, 1);
+  assert.match(said[0], /T expired/);
+  // a roll for another item says nothing; a forgotten (deleted) area is not reported
+  w.matchDamage({ itemUuid: "J", actorUuid: "A" }); w.forget("T"); w.matchDamage({ itemUuid: "I", actorUuid: "A" });
+  assert.equal(said.length, 1);
 });

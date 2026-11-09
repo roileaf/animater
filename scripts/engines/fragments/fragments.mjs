@@ -19,8 +19,6 @@ export const FRAGMENT_BEHAVIORS = {
   flatten: "Crushed flat", shudder: "Shudder apart", glitch: "Glitch out", sink: "Sink and fade",
 };
 export const FRAGMENT_TINTS = { none: "None", frozen: "Frozen", charred: "Charred", stone: "Stone", ghost: "Ghostly", burning: "Burning", electric: "Electric", acid: "Acid", poison: "Poison", scorched: "Scorched", frosted: "Frosted" };
-// The behaviours whose pieces end lying visible: the only ones a prop's wreckage may use.
-export const KEEP_BEHAVIORS = ["burst", "bounce", "crumble", "flatten", "shudder"];
 // How a tint draws: a PIXI tint on the table (stone adds one shared greyscale filter), a CSS filter
 // in the studio, and an alpha factor for both.
 export const FRAGMENT_TINT_LOOKS = {

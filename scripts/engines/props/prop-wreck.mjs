@@ -4,7 +4,7 @@ import { bloodArt } from "../motion/blood-art.mjs";
 import { wreckLayout, wreckTargets, GRAIN_TONES } from "./prop-wreck-layout.mjs";
 import { propSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
-import { tileRect } from "./prop-geometry.mjs";
+import { tileRect, tileArtScale } from "./prop-geometry.mjs";
 
 const FALLBACK = { mid: 0x7a6a55, dark: 0x433a2f, light: 0x9a8a72 };
 const FLIGHT_MS = 1400;
@@ -171,15 +171,17 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     marks.addChild(groundMark(layout.mark, entry.textures));
     const grow = drawSpill(layout.spill, marks, tones), speckG = drawSpecks(layout.specks, marks, tones);
 
-    // The prop's art stands in as an unseen sprite at the tile's transform; its pieces fly from it.
+    // The prop's art stands in as an unseen sprite drawn the way Foundry draws the tile (fit, texture scale, anchor at
+    // the tile's x/y); its pieces fly from it.
     if (texture) {
-      const stand = new PIXI.Sprite(texture); stand.anchor.set(0.5); stand.renderable = false;
-      stand.width = d.width; stand.height = d.height;
-      stand.scale.x *= Math.sign(d.texture?.scaleX ?? 1) || 1; stand.scale.y *= Math.sign(d.texture?.scaleY ?? 1) || 1;
-      stand.position.set(centre.x, centre.y); stand.rotation = ((d.rotation ?? 0) * Math.PI) / 180;
+      const stand = new PIXI.Sprite(texture); stand.renderable = false;
+      const { sx, sy } = tileArtScale(d, texture.width, texture.height), fin = (v, or) => (Number.isFinite(v) ? v : or);
+      stand.anchor.set(fin(d.texture?.anchorX, 0.5), fin(d.texture?.anchorY, 0.5)); stand.scale.set(sx, sy);
+      stand.position.set(fin(Number(d.x), centre.x), fin(Number(d.y), centre.y)); stand.rotation = ((d.rotation ?? 0) * Math.PI) / 180;
       stand.elevation = box.elevation; stand.sort = tile.mesh?.sort ?? d.sort ?? 0; stand.zIndex = 0;
       if (sortLayer !== undefined) stand.sortLayer = sortLayer;
       box.addChild(stand);
+      // No behaviour: the default burst, whose pieces end lying where they land (keep).
       const stage = { pattern: note.pattern, pieces: note.pieces, spread: note.spread, spin: note.spin, fall: 0, duration: FLIGHT_MS, keep: true, tint: note.tint, seed: note.seed };
       try { entry.handle = renderer.start({ mesh: stand, center: centre, w: d.width, h: d.height, id, document: { elevation: box.elevation } }, stage, note.cutAngle); }
       catch (error) { console.warn("Animater prop wreckage: no pieces", error); }

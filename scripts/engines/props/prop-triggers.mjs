@@ -10,9 +10,18 @@ const FLIGHTS = new Set(["travel", "projectile"]);
 
 // Placed areas waiting for their spell's damage roll: the same item and caster, the newest still on the scene.
 // played: when the area's own recipe lands (now() clock); claim: each prop is asked for once per area.
-export function createAreaWaits({ now = () => Date.now(), ttl = 120000 } = {}) {
-  const areas = new Map();
-  const drop = () => { for (const [id, a] of areas) if (now() - a.rememberedAt > ttl) areas.delete(id); };
+// An area still on the scene is kept for ttl (10 minutes); a damage roll that only an expired area would have matched
+// is reported through trace(message), so a late roll breaking nothing leaves a reason.
+export const AREA_TTL_MS = 600000;
+export function createAreaWaits({ now = () => Date.now(), ttl = AREA_TTL_MS, trace = () => {} } = {}) {
+  const areas = new Map(), expired = [];
+  const drop = () => {
+    for (const [id, a] of areas) if (now() - a.rememberedAt > ttl) {
+      areas.delete(id);
+      expired.push({ templateId: id, itemUuid: a.itemUuid, actorUuid: a.actorUuid });
+      if (expired.length > 20) expired.shift();
+    }
+  };
   return {
     remember(area) {
       if (!area?.templateId) return;
@@ -25,9 +34,11 @@ export function createAreaWaits({ now = () => Date.now(), ttl = 120000 } = {}) {
       if (!itemUuid || !actorUuid) return null;
       let best = null;
       for (const a of areas.values()) if (a.itemUuid === itemUuid && a.actorUuid === actorUuid && (!best || a.rememberedAt >= best.rememberedAt)) best = a;
+      const late = !best && expired.findLast((e) => e.itemUuid === itemUuid && e.actorUuid === actorUuid);
+      if (late) { try { trace(`area ${late.templateId} expired before its damage roll: nothing breaks`); } catch { /* only a report */ } }
       return best;
     },
-    forget(templateId) { areas.delete(templateId); },
+    forget(templateId) { areas.delete(templateId); const i = expired.findIndex((e) => e.templateId === templateId); if (i >= 0) expired.splice(i, 1); },
     size() { return areas.size; },
     played(templateId, at) { const a = areas.get(templateId); if (a && Number.isFinite(at)) a.impactAt = at; },
     delayFor(area) { return Number.isFinite(area?.impactAt) ? Math.max(0, area.impactAt - now()) : 0; },
@@ -119,10 +130,13 @@ export function groundTravel(stage, centre, direction, grid = 100) {
 }
 // The props that travel smashes (mover of size squares, standing at its first point): each with its share of the stage
 // and the path the GM checks, rest to the furthest point, or to where it crosses the prop when that line misses it.
+// Only those the GM will accept on that path are asked for, so the two never disagree.
 export function groundSlams(points, size, tiles, grid = 100) {
   if (points.length < 2) return [];
   const from = { x: points[0].x, y: points[0].y }, mover = { ...from, size };
   const far = points.reduce((f, q) => (Math.hypot(q.x - from.x, q.y - from.y) > Math.hypot(f.x - from.x, f.y - from.y) ? q : f), points[0]);
   const to = { x: far.x, y: far.y };
-  return propsUnderTravel(points, size, tiles, grid).map(({ t, p, at }) => ({ tile: t, p, path: { from, to: slamPlausible(t, { from, to }, mover, grid) ? to : at } }));
+  return propsUnderTravel(points, size, tiles, grid)
+    .map(({ t, p, at }) => ({ tile: t, p, path: { from, to: slamPlausible(t, { from, to }, mover, grid) ? to : at } }))
+    .filter(({ tile, path }) => slamPlausible(tile, path, mover, grid));
 }
