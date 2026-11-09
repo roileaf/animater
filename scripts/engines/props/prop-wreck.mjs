@@ -23,8 +23,10 @@ export function createPropWreckage({ PIXI, layer, renderer, grid }) {
       colours.set(src, (async () => {
         try {
           const img = new Image(); img.src = src; await img.decode();
-          const c = document.createElement("canvas"); c.width = img.width; c.height = img.height;
-          const x = c.getContext("2d"); x.drawImage(img, 0, 0);
+          // Drawn downscaled (about 64 px longest side): the same mean colour for far less memory.
+          const k = Math.min(1, 64 / Math.max(img.width, img.height, 1));
+          const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+          const x = c.getContext("2d"); x.drawImage(img, 0, 0, c.width, c.height);
           const d = x.getImageData(0, 0, c.width, c.height).data; let r = 0, g = 0, b = 0, n = 0;
           for (let i = 0; i < d.length; i += 16) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
           if (!n) return FALLBACK;
@@ -108,7 +110,17 @@ export function createPropWreckage({ PIXI, layer, renderer, grid }) {
 
   const hide = (id) => { const e = wrecks.get(id); if (e) { wrecks.delete(id); release(e); } };
 
-  async function show(tile, note, contents = "none", { animate = false } = {}) {
+  // The sort layer a tile draws in: its mesh's, else the primary canvas's tiles layer (a hidden tile has no mesh on a player's client).
+  const sortLayerOf = (tile) => tile.mesh?.sortLayer ?? globalThis.canvas?.primary?.constructor?.SORT_LAYERS?.TILES ?? foundry.canvas?.groups?.PrimaryCanvasGroup?.SORT_LAYERS?.TILES;
+
+  // A failure leaves no half-built wreck behind, so the next sync tries again.
+  async function show(tile, note, contents = "none", opts = {}) {
+    const id = (tile.document ?? tile).id;
+    try { await draw(tile, note, contents, opts); }
+    catch (error) { hide(id); console.warn("Animater prop wreckage: could not draw", error); }
+  }
+
+  async function draw(tile, note, contents, { animate = false }) {
     const d = tile.document ?? tile, id = d.id;
     hide(id);
     const centre = { x: d.x + d.width / 2, y: d.y + d.height / 2 };
@@ -116,7 +128,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid }) {
     wrecks.set(id, entry);
     box.sortableChildren = true;
     box.elevation = d.elevation ?? 0; box.sort = (d.sort ?? 0) + 1;
-    if (tile.mesh?.sortLayer !== undefined) box.sortLayer = tile.mesh.sortLayer;
+    const sortLayer = sortLayerOf(tile);
+    if (sortLayer !== undefined) box.sortLayer = sortLayer;
     layer().addChild(box);
 
     const src = d.texture?.src;
@@ -134,6 +147,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid }) {
       stand.scale.x *= Math.sign(d.texture?.scaleX ?? 1) || 1; stand.scale.y *= Math.sign(d.texture?.scaleY ?? 1) || 1;
       stand.position.set(centre.x, centre.y); stand.rotation = ((d.rotation ?? 0) * Math.PI) / 180;
       stand.elevation = box.elevation; stand.sort = tile.mesh?.sort ?? d.sort ?? 0; stand.zIndex = 0;
+      if (sortLayer !== undefined) stand.sortLayer = sortLayer;
       box.addChild(stand);
       const stage = { pattern: note.pattern, pieces: note.pieces, spread: note.spread, spin: note.spin, fall: 0, duration: FLIGHT_MS, keep: true, tint: note.tint, seed: note.seed };
       try { entry.handle = renderer.start({ mesh: stand, center: centre, w: d.width, h: d.height, id, document: { elevation: box.elevation } }, stage, note.cutAngle); }
