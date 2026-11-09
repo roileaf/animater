@@ -1509,6 +1509,21 @@ test("a smart click loads the model, reads the map once, and adds the area the n
   await app.close();
 });
 
+test("while the model works on a click the status says so, and goes back to the help after", async () => {
+  const { App, shared } = waterApp();
+  const log = { loads: 0, reads: [], marks: [] }, seen = [];
+  const model = fakeSmart(60, 40, log);
+  const smart = async (...args) => { const m = await model(...args); return { ...m, masks: async (view, points) => { seen.push(shared.smartStatus.textContent); return m.masks(view, points); } }; };
+  const { app } = await openFloorRegions(smartOpening(App, log, { confirm: async () => true, smart }));
+  shared.selection.value = "smart";
+  await app.smartMark({ at: { x: 30, y: 20 } });
+  assert.ok(seen.length && seen.every((text) => text === "Finding the area…"), seen.join(" | "));
+  assert.match(shared.smartStatus.textContent, /Shift\+drag/);
+  await app.smartMark({ remove: { x: 30, y: 20 } });
+  assert.equal(seen.at(-1), "Finding the part to take out…");
+  await app.close();
+});
+
 test("1 to 3 switch the last smart area's size in place, and undo brings the earlier size back", async () => {
   const { App, listeners, shared } = waterApp();
   const log = { loads: 0, reads: [], marks: [] };
