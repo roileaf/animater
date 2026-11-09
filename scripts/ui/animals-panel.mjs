@@ -90,7 +90,7 @@ export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = ''
     <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>`}
     <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div>${underground ? '' : `<div class="animater-an-all"><span><strong>Bird height</strong><small>How high birds fly over this map. Higher, they look bigger, and their shadows land further off, wider, softer and fainter.</small></span>${birdHeightSlider(flags.birdHeight)}</div>`}</section>
     ${ANIMAL_GROUPS.filter(([group]) => (group === 'Dark places' ? underground : !underground && (group !== 'Water' || water))).map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags, live)).join('')}</section>`).join('')}
-    <footer class="animater-wx-foot"><span>The same settings as Scene configuration. To keep them out of an area, use that region's Keep out.</span></footer>
+    <footer class="animater-wx-foot"><span>Kept with the scene, for everyone. To keep them out of an area, use that region's Keep out.</span></footer>
   </div>`;
 }
 

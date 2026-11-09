@@ -225,8 +225,8 @@ test('underwater movement makes bubbles and swim sounds, never burrow trails/hol
  for(const [floor,action] of [['water','walk'],['water','swim'],['stone','swim']]){
   const tok={id:`swimmer-${floor}-${action}`,x:0,y:0,width:100,elevation:0,base:0,action,visible:true,statuses:['flying']},h=harness({tokens:[tok],floor});h.feel.tick();
   tok.elevation=-15;h.feel.tick();h.walk(tok,12);
-  assert.ok([...h.live].some(p=>p.spec.underwater));assert.ok(h.sounds.every(([,k])=>k==='swim'));assert.ok(!h.kinds().some(k=>['hole','mound','print','groove','wake'].includes(k)));
-  tok.elevation=0;h.feel.tick();assert.ok(!h.kinds().includes('hole'),'surfacing creates no soil hole');
+  assert.ok([...h.live].some(p=>p.spec.underwater));assert.ok(h.sounds.every(([,k])=>k==='swim'||k==='dive'));assert.equal(h.sounds.filter(([,k])=>k==='dive').length,1,'one splash going under');assert.ok(!h.kinds().some(k=>['hole','mound','print','groove','wake'].includes(k)));
+  tok.elevation=0;h.feel.tick();assert.ok(!h.kinds().includes('hole'),'surfacing creates no soil hole');assert.equal(h.sounds.filter(([,k])=>k==='surface').length,1,'one splash coming up');
   const before=h.sounds.length;h.wait(2500);assert.equal(h.sounds.length,before,'stationary swimmers stay silent');
  }
  const hidden={id:'unseen-water',x:0,y:0,width:100,elevation:-10,base:0,action:'swim',visible:false,audible:true};

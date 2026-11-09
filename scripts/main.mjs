@@ -27,7 +27,7 @@ import {underwaterPose,underwaterTint} from './engines/motion/underwater-appeara
 import { creatureGait, creatureBulk, creatureBody, creatureFlight, printShape } from "./engines/motion/creature-gait.mjs";
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
-import { movementSound, movementEnvironment, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
+import { movementSound, movementEnvironment, outOfWater, swimOutWaypoints, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
@@ -5165,7 +5165,7 @@ const movementFeel = createMovementFeel({
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
       // Teleporting (gone: no shadow while it slides unseen), or playing an animation (skip: no steps or dust).
       const gone = (until ?? 0) > time, skip = gone || motions?.active?.has?.(t) === true;
-      const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
+      const action = actionNow(t), signature = [c.x, c.y, t.w, d.elevation, base, level, action, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
       const cached = movementViews.get(d.id);
       if (cached && cached.token === t && time - cached.at < 500 && signature.every((value, i) => value === cached.signature[i])) {
         cached.view.skip = skip; cached.view.gone = gone;
@@ -5174,7 +5174,7 @@ const movementFeel = createMovementFeel({
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       const view = {
-        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action: d.movementAction,
+        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action,
         ...((d.elevation??0)<base?{floor:movementFeelFloor(c,d)}:{}),
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), printShape: printShape(sound.gait || movementFeelGait(d), { actor: d.actor, name: d.name }), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
@@ -5484,6 +5484,66 @@ const tickBurrowSink = () => {
     if (turned ||waterTurned|| moving || was ||waterSink.has(d.id)||waterTints.has(t)|| (first && under)) applyBurrowSink(t);
   }
 };
+// Out of the water ("Swimmers walk out of the water"): a swimmer's move is walked from where its path leaves the water
+// (engines/motion/movement-feel.mjs swimOutWaypoints), rising first if it was under, as it crosses, not once it stops.
+// A drag, the keys, TokenDocument#move and Scene#moveTokens all hand Foundry the move's waypoints in the update's
+// options (options.movement), read first by TokenDocument#_preUpdate on the mover's own screen: they are changed there.
+const swimOutMove = (doc, options, changed) => {
+  const move = options?.movement?.[doc?.id];
+  if (!Array.isArray(move?.waypoints) || !move.waypoints.length || options.isUndo || options.isPaste) return;
+  const walk = CONFIG.Token?.movement?.actions?.walk ? "walk" : null; if (!walk) return;
+  const src = doc._source, pivot = doc.getCenterPoint({ x: 0, y: 0, elevation: 0, width: src.width, height: src.height, shape: src.shape });
+  const out = swimOutWaypoints({ x: src.x, y: src.y, elevation: src.elevation, action: doc.movementAction }, move.waypoints,
+    (p, { elevation }) => movementFeelFloor(p, { elevation, movementAction: "swim" }),
+    { walk, base: canvas.level?.elevation?.base ?? 0, step: (canvas.grid?.size ?? 100) / 4, centre: (p) => ({ x: p.x + pivot.x, y: p.y + pivot.y }) });
+  if (out.length === move.waypoints.length && out.every((w, i) => w === move.waypoints[i])) return;
+  move.waypoints = out;
+  // Ending on land, its mode is walking from now on (the waypoints carry each stretch's own way of moving; the token's
+  // chosen mode is this field, in the same update).
+  if (changed && out.at(-1)?.action === walk) changed.movementAction = walk;
+};
+const installSwimOut = () => {
+  const proto = globalThis.CONFIG?.Token?.documentClass?.prototype;
+  if (typeof proto?._preUpdate !== "function" || proto._preUpdate.animaterSwimOut) return;
+  // The method passed on to is looked up at each call (a system or module may wrap Foundry's after this is installed).
+  const own = Object.hasOwn(proto, "_preUpdate") ? proto._preUpdate : null;
+  const walkOut = function (changed, options, user) {
+    try { if (this.parent === canvas?.scene && hotSetting("swimOutOnLand") !== false) swimOutMove(this, options, changed); } catch { /* the move as asked */ }
+    return (own ?? Object.getPrototypeOf(proto)._preUpdate).call(this, changed, options, user);
+  };
+  walkOut.animaterSwimOut = true;
+  proto._preUpdate = walkOut;
+};
+Hooks.once("setup", installSwimOut);
+// The way a token moves right now (its marks, sounds and shadow go by it): the waypoint being animated, while a move
+// plays, else its chosen movement action. In Foundry the document's movementAction is the mode chosen for the token,
+// and each waypoint carries its own: a swimmer walked out of the water walks from the edge, its mode still Swim till it
+// stops. Each step of a move's animation that starts calls Token#_prepareAnimation with its waypoint's action.
+const movingAction = new WeakMap();
+const actionNow = (t) => (t.movementAnimationPromise && movingAction.get(t)) || t.document?.movementAction;
+const installMoveAction = () => {
+  const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
+  if (typeof proto?._prepareAnimation !== "function" || proto._prepareAnimation.animaterAction) return;
+  const own = Object.hasOwn(proto, "_prepareAnimation") ? proto._prepareAnimation : null;
+  const record = function (from, changes, context, options) {
+    try { if (context?.name === this.movementAnimationName && typeof options?.action === "string") movingAction.set(this, options.action); } catch { /* its chosen action, then */ }
+    return (own ?? Object.getPrototypeOf(proto)._prepareAnimation).call(this, from, changes, context, options);
+  };
+  record.animaterAction = true;
+  proto._prepareAnimation = record;
+};
+Hooks.once("setup", installMoveAction);
+// A move made some other way (a plain position update) that ends off the water: walked again, and up, once it stops.
+Hooks.on("updateToken", (doc, change, options, userId) => {
+  try {
+    if (userId !== game.user?.id || !("x" in change || "y" in change || "elevation" in change)) return;
+    if (doc.movementAction !== "swim" || hotSetting("swimOutOnLand") === false) return;
+    const point = doc.getCenterPoint?.() ?? doc.object?.center; if (!point) return;
+    const walk = CONFIG.Token?.movement?.actions?.walk ? "walk" : null;
+    const update = outOfWater({ action: doc.movementAction, floor: movementFeelFloor(point, doc), elevation: doc.elevation, base: canvas.level?.elevation?.base ?? 0, walk });
+    if (update) void doc.update(update).catch(() => {});
+  } catch { /* never break a move */ }
+});
 Hooks.on("refreshToken", (token, flags) => {
   try {
     if (!burrowSinkOn()&&!underwaterLooksOn()) return;
@@ -8243,6 +8303,7 @@ Hooks.once("init", () => {
     scope:'world',config:true,type:Number,default:-10,range:{min:-1000,max:0,step:1},
   });
   registerSetting('underwaterLooks',{name:'Submerged token appearance',hint:'Below the water surface, visible swimmers fade to a blue, translucent silhouette. Surfacing restores their original appearance. This changes artwork only, not Foundry visibility or detection.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>clearBurrowSink()});
+  registerSetting('swimOutOnLand',{name:'Swimmers walk out of the water',hint:'A creature set to swim that ends its move off the water (on land, a bridge or ice) walks again, and one still under the surface comes up first. Off: its movement action and elevation stay as you leave them.',scope:'world',config:true,type:Boolean,default:true});
   registerSetting('underwaterOpacity',{name:'Submerged token opacity',hint:'How clearly a submerged creature’s artwork is drawn (0.35 = 35%). Applies equally to GM and player artwork, while Foundry still decides who can see the creature.',scope:'world',config:true,type:Number,default:.35,range:{min:.1,max:1,step:.05}});
   for(const [key,name,natural] of [['swimWakeSeconds','Swimming wake lifetime',1.6],['underwaterBubbleSeconds','Underwater bubble lifetime',1.8],['burrowTrailSeconds','Burrow path lifetime',8]])registerSetting(key,{
     name:`${name} (seconds)`,hint:`Time until fully faded. 0 keeps natural fading (${natural} seconds). Applies to existing and new effects. Burrow holes keep their own lifetime.`,
@@ -8904,15 +8965,12 @@ Hooks.on("renderSceneConfig", (app, html) => {
   tracks.innerHTML = `<label>Old tracks</label><div class="form-fields"><select name="flags.${ID}.oldTracks">${[["off", "Off"], ["gm", "The GM sees them"], ["everyone", "Everyone sees them"]].map(([v, l]) => `<option value="${v}"${v === tracksNow ? " selected" : ""}>${l}</option>`).join("")}</select><input type="number" min="1" step="1" name="flags.${ID}.oldTrackHours" value="${hoursNow}" aria-label="Hours they last" style="max-width:5em"><span>game hours</span><button type="button" data-animater-clear-tracks${kept ? "" : " disabled"}>Clear ${kept}</button></div><p class="hint">Prints stay here and age by the game's clock ("Old tracks"), so someone can read who passed and how long ago. The GM sees them: for you to describe, or to switch on for everyone when a character finds the trail. Everyone sees them: except those of creatures that were hidden or sneaking, which only the GM sees. Off keeps none. Clear wipes this scene's tracks at once.</p>`;
   tracks.querySelector("[data-animater-clear-tracks]").addEventListener("click", async (event) => { event.preventDefault(); event.currentTarget.disabled = true; event.currentTarget.textContent = "Clear 0"; await app.document?.unsetFlag?.(ID, "tracks"); });
   life.append(tracks);
-  // How many creatures and how big, a row each.
-  const flag = (k) => String(app.document?.getFlag?.(ID, k) ?? "");
-  const pick = (k, options) => `<select name="flags.${ID}.${k}">${options.map(([v, l]) => `<option value="${v}"${v === flag(k) ? " selected" : ""}>${l}</option>`).join("")}</select>`;
-  const amounts = [["none", "None"], ["few", "Few"], ["", "Usual number"], ["more", "More"], ["many", "Many"]];
-  const sized = (k) => `<range-picker name="flags.${ID}.${k}" value="${sizePercent(app.document?.getFlag?.(ID, k))}" min="${SIZE_RANGE.min}" max="${SIZE_RANGE.max}" step="${SIZE_RANGE.step}"></range-picker>`;
-  const row = (k, label) => `<div class="form-group"><label>${label}</label><div class="form-fields">${pick(k, amounts)}${sized(`${k}Size`)}</div></div>`;
+  // How many of each animal and how big: the Animals panel's (exact counts, which a drop-down of amounts here could not
+  // show: it fell back to None, and saving this form wrote that over the count).
   const creatures = document.createElement("div");
-  creatures.innerHTML = `<div class="form-group"><label>All animals on this map</label><div class="form-fields">${sized("animalScale")}</div><p class="hint">For a map drawn at a different scale: a percent of the usual size, multiplying each size below.</p></div>${row("rats", "Rats")}${row("bats", "Bats")}${row("moths", "Moths")}${row("crawlers", "Crawlers")}${row("rabbits", "Rabbits")}${row("wildBirds", "Birds")}${row("fish", "Fish")}${row("waterBirds", "Water birds")}${row("frogs", "Frogs")}${row("deer", "Deer")}${row("foxes", "Foxes")}${row("insects", "Insects")}${row("owls", "Owls")}${row("squirrels", "Squirrels")}${row("snakes", "Snakes")}<div class="form-group"><label>Wolves</label><div class="form-fields">${pick("wolves", [["", "None"], ["few", "Few"], ["usual", "Usual number"], ["more", "More"], ["many", "Many"]])}${sized("wolvesSize")}</div></div><p class="hint">How many of each this map has and how big they are, as a percent of the usual size: few is half the usual number, more twice, many three times. Rats, bats, moths and crawlers are for underground scenes (moths counted round each fire); rabbits, birds, deer and foxes for open ground by day, fish, water birds and frogs for water; insects are butterflies and dragonflies by day and fireflies by night, owls come out at night, and bats round lamps out of doors go by Bats. To keep them out of one place, draw a region over it (the region's right-click panel → Animals → Keep out).</p>`;
-  life.prepend(...creatures.children);
+  creatures.className = "form-group";
+  creatures.innerHTML = `<label>Animals</label><p class="hint">How many of each animal this scene has, and how big, are set in the Animals panel (the paw button in the scene controls), kind by kind.</p>`;
+  life.prepend(creatures);
   life.prepend(life.querySelector("legend"));
   group.innerHTML = `<label>Acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);

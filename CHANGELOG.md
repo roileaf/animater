@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Animal counts left Scene configuration.** Its drop-downs (None, Few, Usual, More, Many) could not show an exact count set in the Animals panel: Frogs set to 1 showed None, and saving Scene configuration wrote None over it. How many of each animal and how big are now set only in the Animals panel.
+- **The fox stops to look round.** With no rabbit about, a fox now and then stops, ears up, and looks about for a few seconds before trotting on. Before, it never stood still unless it was hunting, so its look-about pose never showed. Every other animal's idles (pecking, grazing, washing, puffing, tipping up, sniffing and the rest) were checked and do play.
+- **Startled farm animals run a few seconds.** A cow, goat, sheep, pig or horse sent running kept the rest of its grazing time as its run, so it could gallop off for up to about 13 seconds; it now runs two to four.
+- **No shadow under the water or the earth.** A creature swimming below the surface, or burrowing, cast its ground shadow on the water above it as if it stood there.
+- **Diving and surfacing splash.** Going under the water and coming back up each play a splash, heard as the creature crosses the surface (the surfacing splash also shows, as before).
+- **Swimmers walk out of the water.** A creature set to Swim whose move leaves the water (onto land, a bridge or ice) swims to the edge and walks from there, as it crosses, and one under the surface comes up at the edge first. A move made by other means that ends off the water switches once it stops. Animater settings → Movement → Swimmers walk out of the water turns it off.
+- **Frogs leap in from further off.** A frog on a lily pad with no water within about a square of it (a pad by the bank, or where the map's water has drawn back) sat still as creatures walked right past. It now leaps for the nearest water up to two and a half squares away, away from whoever came close.
+
 ## 3.8.10
 
 - **Each fire sounds like itself.** The four fires nearest you now each play their own loop: each keeps its own recording of its kind and its own pitch, a few percent higher or lower, and starts its loop at a place of its own, so a hall of torches is several torches crackling out of step instead of one. Before, every fire of a kind in a scene shared one loop.

@@ -84,7 +84,14 @@ export function foxStep(fox, { dt = 1 / 60, grid = 100, near = [], ok = () => tr
   } else if (f.mode === 'trot') {
     f.want = (f.want ?? f.a) + Math.sin(time * 0.7 + (f.seed ?? 0)) * 0.6 * dt; f.a = turnToward(f.a, f.want, dt * 1.6); f.wait -= dt; f.v = (f.v ?? 0) + (grid * 0.95 - (f.v ?? 0)) * Math.min(1, dt * 2.5);
     if (!forward(f.v, 0.72)) { const w = clearWay(f.x, f.y, f.a - Math.PI / 2, grid, free); f.want = w === null ? f.a + between(random, 1.6, 2.8) : w + Math.PI / 2; f.a = turnToward(f.a, f.want, dt * 3); }
-    if (f.wait <= 0) { const sitting = prey.filter((r) => r.mode !== 'bolt' && Math.hypot(r.x - f.x, r.y - f.y) < grid * 5); f.wait = between(random, 2, 5); if (sitting.length) f.mode = 'stalk'; }
+    if (f.wait <= 0) {
+      const sitting = prey.filter((r) => r.mode !== 'bolt' && Math.hypot(r.x - f.x, r.y - f.y) < grid * 5); f.wait = between(random, 2, 5);
+      // No rabbit about: now and then it stops, ears up, and looks round before trotting on.
+      if (sitting.length) f.mode = 'stalk'; else if (random() < 0.35) { f.mode = 'look'; f.t = 0; f.lookFor = between(random, 2, 5); f.want = f.a + between(random, -1.2, 1.2); }
+    }
+  } else if (f.mode === 'look') {
+    f.t += dt; f.v = (f.v ?? 0) * Math.max(0, 1 - dt * 6); f.a = turnToward(f.a, f.want, dt * 0.9);
+    if (f.t > (f.lookFor ?? 3)) { f.mode = 'trot'; f.wait = between(random, 3, 7); f.want = f.a; }
   } else if (f.mode === 'stalk') {
     const target = prey.filter((r) => r.mode !== 'bolt').reduce((best, r) => (!best || Math.hypot(r.x - f.x, r.y - f.y) < Math.hypot(best.x - f.x, best.y - f.y) ? r : best), null);
     if (!target || Math.hypot(target.x - f.x, target.y - f.y) > grid * 6) { f.mode = 'trot'; f.wait = 4; f.want = f.a; return f; }

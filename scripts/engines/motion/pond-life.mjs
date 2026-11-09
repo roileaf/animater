@@ -198,8 +198,13 @@ export function frogStep(frog, { dt = 1 / 60, grid = 100, near = [], ok = () => 
     f.wait -= dt; f.puff = Math.max(0, f.puff - dt); if (f.wait <= 0) { f.wait = between(random, 3, 9); f.puff = 1.2; }
     const close = noise ?? closeTo(f.x, f.y, 2.4);
     if (close || scare) {
-      let way = close ? Math.atan2(f.y - close.y, f.x - close.x) : random() * TAU;
-      for (let i = 0; i < 8; i++) { const r = grid * between(random, 0.6, 0.9), tx = f.x + Math.cos(way) * r, ty = f.y + Math.sin(way) * r; if (ok(tx, ty)) { leap(tx, ty, false); break; } way += 0.8; }
+      // Away from them first, the nearest water it can reach: a short hop, else further, up to a long leap of 2.5 squares
+      // (a pad by the bank, or one the map's water has drawn back from, may have no water close round it).
+      const from = close ? Math.atan2(f.y - close.y, f.x - close.x) : random() * TAU;
+      search: for (const [least, most] of [[0.6, 0.9], [1.1, 1.5], [1.7, 2.1], [2.2, 2.5]]) {
+        let way = from;
+        for (let i = 0; i < 8; i++) { const r = grid * between(random, least, most), tx = f.x + Math.cos(way) * r, ty = f.y + Math.sin(way) * r; if (ok(tx, ty)) { leap(tx, ty, false); break search; } way += 0.8; }
+      }
     }
   } else if (f.mode === 'leap') {
     f.t += dt / 0.5; const u = Math.min(1, f.t); f.x = f.fx + (f.tx - f.fx) * u; f.y = f.fy + (f.ty - f.fy) * u; f.h = Math.sin(u * Math.PI);
