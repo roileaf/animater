@@ -59,6 +59,7 @@ Token Configuration → Appearance → **Animater creature voice** sets how that
 - **The sound of places.** The sea, waterfalls and flies at a body are heard as you come near. A region marked **This is a tavern** murmurs with voices: loud inside, faint through its walls, spilling out of an open door.
 - **Dawn and dusk.** Birds sing all around at first light and go quiet at sunset; after a hush the crickets take over. Flames, torches and smoke out of doors lean with the wind.
 - **Chosen scene by scene.** Scene configuration → Animater → **Outdoor life** (off or on) brings the animals, their calls, the crickets at night and the dawn chorus. **Town life** (off, quiet or busy) brings pigeons, chickens, a cat and a stray dog, and windows that go dark through the night. **Old tracks** (off, the GM sees them, or everyone) keeps prints that age by the game's clock for as many game hours as you set, with a button to clear them. Tracks of hidden or sneaking creatures show only to the GM. All three are off until you turn them on.
+- **Breakable props.** Prop tiles such as barrels, crates and pots break: from an area spell once its damage is rolled, when a creature is forced into them (finisher knockback, a push, a blast push), and when a melee strike misses next to the target (a critical failure always; a plain miss by the scene's chance, rolled by the GM). The prop's own picture breaks into pieces that stay as wreckage, with a scorch, frost, stain, burn or dust mark for the kind of damage, and what it held (water, wine, oil, grain, loose goods) spills. The tile is hidden from players (the GM sees it faded) and the walls drawn on it stop blocking. Unhide the tile, or press **Repair broken props**, to put the prop and its walls back. Off until you turn on **Breakable props** for the scene. Props painted into a map image, and FA Nexus flattened tiles, can't break.
 - **The world around the fight.** Big blasts ripple the map and shake the view, a killing blow can get a slow-motion kill-cam, creatures breathe and fliers hover, and wounded creatures look hurt and limp. Moving tokens kick up dust, leave footprints by floor, splash through water and puddles when it rains, and burrow in and out of the ground; footsteps carry as far as you choose and sound softer when sneaking.
 
 Every catalog entry can be previewed in the workspace, enabled or excluded individually, and customized into an editable recipe: stages, timing, assets, motion, sound and filters.
@@ -260,6 +261,14 @@ Open **Configure Settings → Animater → Animater settings**. The window has a
 ### Scene acoustics
 
 Each scene's configuration has an **Animater acoustics** choice: open air, hall or cave. A scene with a choice sounds that way everywhere. A scene left unset (**From the walls**) follows its walls: each sound gets reverb to fit the space where it happens, worked out from the walls around it (dry in the open, short and tight in a small room, fuller in a room, long and dark in a large hall), using Foundry's own reverb. Every player hears the same room for the same spot; a player viewing another scene hears it dry. The edge of the canvas counts as open, not as a wall. Each player's **Echo** slider (Hit sounds menu) scales this reverb. Turn this off with **Room acoustics from walls**.
+
+### Breakable props
+
+Scene configuration → Animater has **Breakable props** (off by default), **Chance a miss breaks a prop (%)** (25 by default) and a **Repair broken props** button. The switch only decides new breaks; wreckage already on the map stays until you repair it.
+
+Tile Configuration → Animater → **Breakable prop** sets what a tile is. **Material** is guessed from the picture's file name (it works best with FA Nexus props) and shows as *Automatic (wood)* and so on; pick Wood, Glass, Clay, Metal or Stone, or **Won't break**, to override it. Tiles larger than 3×3 squares, overhead tiles and roof tiles don't break unless you set a material by hand. **Contents** (Nothing, Water, Wine, Oil, Grain, Loose goods) is what spills when it breaks.
+
+What breaks what: glass and clay break from any bludgeoning, piercing, slashing, fire, cold, electricity, acid, sonic or force damage; wood from bludgeoning, slashing, fire, electricity or force; metal from bludgeoning, force or acid; stone from force. A creature forced into wood, glass or clay breaks it; into metal or stone, only a Large or bigger creature does. Poison, mental, spirit, vitality, void and bleed never break a prop. Deleting a broken tile puts its walls back as they were.
 
 ### Faster animations
 
