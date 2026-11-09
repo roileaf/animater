@@ -5,7 +5,7 @@ const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", none: "Won't break" };
 const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods"];
-const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods" };
 const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("");
 
 export function propTileFieldsHTML({ src, material = "", contents = "none" } = {}) {
@@ -13,7 +13,7 @@ export function propTileFieldsHTML({ src, material = "", contents = "none" } = {
   const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, LABELS[m]])];
   return `<fieldset data-animater-prop data-src="${esc(src)}"><legend>Breakable prop</legend>
     <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.prop.material">${options(mats, mat)}</select></div><p class="hint">What the prop is made of decides what can break it. Automatic goes by the file name.</p></div>
-    <div class="form-group"><label>Contents</label><div class="form-fields"><select name="flags.${ID}.prop.contents">${options(CONTENTS.map((c) => [c, cap(c)]), own)}</select></div><p class="hint">What spills when it breaks.</p></div>
+    <div class="form-group"><label>Contents</label><div class="form-fields"><select name="flags.${ID}.prop.contents">${options(CONTENTS.map((c) => [c, CONTENT_LABELS[c]]), own)}</select></div><p class="hint">What spills when it breaks.</p></div>
   </fieldset>`;
 }
 

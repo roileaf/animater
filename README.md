@@ -264,9 +264,9 @@ Each scene's configuration has an **Animater acoustics** choice: open air, hall 
 
 ### Breakable props
 
-Scene configuration → Animater has **Breakable props** (off by default), **Chance a miss breaks a prop (%)** (25 by default) and a **Repair broken props** button. The switch only decides new breaks; wreckage already on the map stays until you repair it.
+Scene configuration → Animater → **This place** has **Breakable props** (off by default), **Chance a miss breaks a prop (%)** (25 by default) and a **Repair broken props** button. The switch only decides new breaks; wreckage already on the map stays until you repair it.
 
-Tile Configuration → Animater → **Breakable prop** sets what a tile is. **Material** is guessed from the picture's file name (it works best with FA Nexus props) and shows as *Automatic (wood)* and so on; pick Wood, Glass, Clay, Metal or Stone, or **Won't break**, to override it. Tiles larger than 3×3 squares, overhead tiles and roof tiles don't break unless you set a material by hand. **Contents** (Nothing, Water, Wine, Oil, Grain, Loose goods) is what spills when it breaks.
+Tile Configuration → **Overhead** tab → **Breakable prop** (its own box, below the Animater one; ground props have it there too) sets what a tile is. **Material** is guessed from the picture's file name (it works best with FA Nexus props) and shows as *Automatic (wood)* and so on; pick Wood, Glass, Clay, Metal or Stone, or **Won't break**, to override it. Tiles larger than 3×3 squares, overhead tiles and roof tiles don't break unless you set a material by hand. **Contents** (Nothing, Water, Wine, Oil, Grain, Loose goods) is what spills when it breaks.
 
 What breaks what: glass and clay break from any bludgeoning, piercing, slashing, fire, cold, electricity, acid, sonic or force damage; wood from bludgeoning, slashing, fire, electricity or force; metal from bludgeoning, force or acid; stone from force. A creature forced into wood, glass or clay breaks it; into metal or stone, only a Large or bigger creature does. Poison, mental, spirit, vitality, void and bleed never break a prop. Deleting a broken tile puts its walls back as they were.
 

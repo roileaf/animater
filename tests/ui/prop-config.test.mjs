@@ -8,6 +8,11 @@ test("tile fields show the guess and keep the GM's choice", () => {
   assert.match(html, /name="flags\.animater\.prop\.material"/);
   assert.match(html, /<option value="wine" selected>/);
 });
+test("contents use the spec's words: Nothing ... Loose goods", () => {
+  const html = propTileFieldsHTML({ src: "x.webp" }).split("prop.contents")[1];
+  const labels = [...html.matchAll(/<option value="(none|water|wine|oil|grain|goods)"[^>]*>([^<]*)</g)].map((m) => m[2]);
+  assert.deepEqual(labels, ["Nothing", "Water", "Wine", "Oil", "Grain", "Loose goods"]);
+});
 test("tile fields keep a chosen material and escape the file name", () => {
   const html = propTileFieldsHTML({ src: 'a"<b>.webp', material: "glass" });
   assert.match(html, /<option value="glass" selected>/);
