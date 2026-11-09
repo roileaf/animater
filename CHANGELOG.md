@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Each fire sounds like itself.** The four fires nearest you now each play their own loop: each keeps its own recording of its kind and its own pitch, a few percent higher or lower, and starts its loop at a place of its own, so a hall of torches is several torches crackling out of step instead of one. Before, every fire of a kind in a scene shared one loop.
+
 ## 3.8.9
 
 - **Fires have sounds.** Fire lights crackle close by, each by its kind: Ambient Light configuration → Animater → Fire now offers Torch, Lantern (quieter), Brazier, Campfire and the new **Cooking pot**, which bubbles over a small fire. Torches and lanterns creatures hold crackle too. Each fades within a few squares and is quieter through a wall. The light's **Sound** button turns one off, or on for any light; the **Fire sounds** setting and its Fire volume are under the settings' sounds. Fourteen CC0 recordings, one per kind picked for each scene.

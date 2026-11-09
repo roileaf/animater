@@ -214,7 +214,7 @@ import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife, gullsOver } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
-import { FIRE_VOICES, FIRE_VOLUME, fireHeard, fireFile, soundsLight } from "./engines/sound/fire-sound.mjs";
+import { FIRE_VOLUME, firesHeard, fireStart, soundsLight } from "./engines/sound/fire-sound.mjs";
 import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, thunderReaches, thunderPan, weatherFile, weatherLoudness, louder, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
@@ -4428,10 +4428,11 @@ Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(rive
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
 Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
-// Fires heard (engines/sound/fire-sound.mjs): a loop for each kind of fire near a listener, the placed fire lights by
-// their Fire kind (Light configuration → Animater → Fire; Sound turns one off) and the torches and lanterns creatures
-// hold. Quieter through a wall; none till audio is unlocked. The fires are listed once a second, the voices set twice.
-const fireVoices = Object.fromEntries(FIRE_VOICES.map((k) => [k, { sound: null, starting: false }]));
+// Fires heard (engines/sound/fire-sound.mjs): the few fires nearest a listener, each its own loop, the placed fire lights
+// by their Fire kind (Light configuration → Animater → Fire; Sound turns one off) and the torches and lanterns creatures
+// hold. Each fire keeps its own recording and pitch, and starts its loop at a place of its own, so fires lit together
+// don't crackle in step. Quieter through a wall; none till audio is unlocked. Listed once a second, voices set twice.
+const fireVoices = new Map();
 let fireList = [], fireListAt = 0, fireLookAt = 0;
 const fireSoundsOn = () => bothSettingsOn("fireSounds");
 const readFires = () => {
@@ -4443,14 +4444,14 @@ const readFires = () => {
       const own = light.document.flags?.[ID] ?? {}, flag = own.flame;
       const burns = flag === true || flag === "true" ? true : flag === false || flag === "false" ? false : isFireLight(src.data);
       if (!soundsLight(own, burns)) continue;
-      out.push({ kind: fireKindOf(own.fireKind), x: light.center.x, y: light.center.y });
+      out.push({ key: `light:${light.id}`, kind: fireKindOf(own.fireKind), x: light.center.x, y: light.center.y });
     } catch { /* a light mid-change */ }
   }
   for (const source of canvas.effects?.lightSources ?? []) {
     try {
       const token = source?.active && source.object?.document?.documentName === "Token" ? source.object : null; if (!token) continue;
       const kind = lightKindOf(token, source.data); if (kind !== "torch" && kind !== "lantern") continue;
-      out.push({ kind, x: source.data.x, y: source.data.y });
+      out.push({ key: `token:${token.id}`, kind, x: source.data.x, y: source.data.y });
     } catch { /* a token mid-change */ }
   }
   return out;
@@ -4462,23 +4463,34 @@ const tickFireSounds = () => {
   if (on && now - fireListAt > 1000) { fireListAt = now; fireList = readFires(); } else if (!on) fireList = [];
   let ears = canvas.sounds?.getListenerPositions?.() ?? [];
   if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
-  const heard = fireHeard(fireList, ears, { grid: canvas.grid.size });
-  for (const [kind, voice] of Object.entries(fireVoices)) {
+  const heard = on && fireList.length ? firesHeard(fireList, ears, { grid: canvas.grid.size }) : [], wanted = new Set();
+  for (const h of heard) {
     let through = 1;
-    try { const h = heard[kind]; if (h.level > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
-    const volume = on ? FIRE_VOLUME[kind] * heard[kind].level * through * waterLoudness("fireVolume") : 0;
+    try { if (CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
+    const volume = soundsOn() ? FIRE_VOLUME[h.voice] * h.level * through * waterLoudness("fireVolume") : 0;
+    wanted.add(h.id);
+    let voice = fireVoices.get(h.id);
+    if (!voice) { voice = { sound: null, starting: false, volume }; fireVoices.set(h.id, voice); }
+    voice.volume = volume;
     if (voice.sound) { try { voiceAt(voice, volume); } catch { stopVoice(voice); } continue; }
     if (volume <= 0.004 || voice.starting) continue;
     voice.starting = true;
     (async () => {
-      const sound = new foundry.audio.Sound(fireFile(kind, canvas.scene?.id), { context: game.audio.environment });
-      await sound.load(); await sound.play({ loop: true, volume: 0 });
-      voiceStarted(voice, sound, volume, 1200);
+      const sound = new foundry.audio.Sound(h.file, { context: game.audio.environment });
+      await sound.load(); await sound.play({ loop: true, volume: 0, offset: fireStart(sound.duration) });
+      const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = h.rate;
+      voiceStarted(voice, sound, voice.volume, 1200);
     })().catch(() => {}).finally(() => { voice.starting = false; });
+  }
+  // A fire no longer among the nearest fades out and, once quiet a while, stops and is forgotten.
+  for (const [id, voice] of fireVoices) {
+    if (wanted.has(id)) continue;
+    if (voice.sound) { try { voiceAt(voice, 0); } catch { stopVoice(voice); } }
+    if (!voice.sound && !voice.starting) fireVoices.delete(id);
   }
 };
 for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
-Hooks.on("canvasTearDown", () => { for (const voice of Object.values(fireVoices)) stopVoice(voice); fireList = []; });
+Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stopVoice(voice); fireVoices.clear(); fireList = []; });
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 // Drawn clouds (the Weather panel): just above the rain and the birds, over the roofs; their shadows on the ground, under the creatures.
 let cloudRoot = null;

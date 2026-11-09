@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { FIRE_SOUNDS, FIRE_VOICES, FIRE_REACH, FIRE_VOLUME, POT_FIRE, fireHeard, fireFile, fireVoiceOf, soundsLight } from '../../../scripts/engines/sound/fire-sound.mjs';
+import { FIRE_SOUNDS, FIRE_VOICES, FIRE_REACH, FIRE_VOLUME, FIRE_PITCH, FIRES_HEARD, POT_FIRE, firesHeard, fireVoiceFor, fireStart, fireVoiceOf, soundsLight } from '../../../scripts/engines/sound/fire-sound.mjs';
 import { FIRE_KINDS, fireKindOf, fireTongues } from '../../../scripts/engines/motion/light-flames.mjs';
 
 // Roi: "lets add sfx to torches, lanterns, campfires and braziers and cooking pots too"; of the audition, "4 sounds bad the rest are great".
@@ -24,27 +24,42 @@ test('every kind of fire has its loops on disk, credited, and the bad lantern bu
 });
 
 test('a fire is heard close by and fades within its reach; a lantern quieter and shorter than a torch, a campfire furthest', () => {
-  const at = (kind, x) => fireHeard([{ kind, x: 0, y: 0 }], [{ x, y: 0 }], { grid: 100 })[fireVoiceOf(kind)].level;
+  const at = (kind, x) => firesHeard([{ key: 'a', kind, x: 0, y: 0 }], [{ x, y: 0 }], { grid: 100 })[0]?.level ?? 0;
   assert.equal(at('torch', 0), 1);
   assert.ok(at('torch', 200) > 0 && at('torch', 450) === 0);
   assert.ok(FIRE_REACH.lantern < FIRE_REACH.torch && FIRE_VOLUME.lantern < FIRE_VOLUME.torch);
   assert.ok(FIRE_REACH.bonfire > FIRE_REACH.brazier && at('bonfire', 800) > 0);
-  const heard = fireHeard([{ kind: 'torch', x: 0, y: 0 }, { kind: 'torch', x: 1000, y: 0 }], [{ x: 950, y: 0 }], { grid: 100 });
-  assert.deepEqual(heard.torch.at, { x: 1000, y: 0 }, 'the nearest fire of its kind');
+  assert.equal(firesHeard([{ key: 'a', kind: 'lantern', x: 0, y: 0 }], [{ x: 0, y: 0 }])[0].voice, 'lantern');
+});
+
+// Roi: "it randomizes the sounds a bit so they dont all sound the same right?" Now each fire is its own loop.
+test('each nearby fire is its own voice, the nearest few, with its own recording, pitch and start', () => {
+  const hall = Array.from({ length: 8 }, (_, i) => ({ key: `light:${i}`, kind: 'torch', x: i * 60, y: 0 }));
+  const heard = firesHeard(hall, [{ x: 0, y: 0 }], { grid: 100 });
+  assert.equal(heard.length, FIRES_HEARD, 'only the nearest few play');
+  assert.deepEqual(heard.map((h) => h.id), ['light:0', 'light:1', 'light:2', 'light:3'], 'the nearest, loudest first');
+  for (const h of heard) {
+    assert.ok(FIRE_SOUNDS.torch.includes(h.file));
+    assert.ok(Math.abs(h.rate - 1) <= FIRE_PITCH + 1e-9);
+  }
+  const many = Array.from({ length: 40 }, (_, i) => fireVoiceFor(`light:${i}`, 'torch'));
+  assert.ok(new Set(many.map((v) => v.file)).size > 1, 'fires spread over the recordings');
+  assert.ok(new Set(many.map((v) => v.rate.toFixed(3))).size > 20, 'and their pitches differ');
+  assert.deepEqual(fireVoiceFor('light:7', 'torch'), fireVoiceFor('light:7', 'torch'), 'a fire always sounds the same');
+  assert.equal(fireStart(30, () => 0.5), 15);
+  assert.equal(fireStart(undefined, () => 0.5), 0);
 });
 
 test('a cooking pot bubbles over a quiet brazier', () => {
-  const heard = fireHeard([{ kind: 'pot', x: 0, y: 0 }], [{ x: 0, y: 0 }], { grid: 100 });
-  assert.equal(heard.pot.level, 1);
-  assert.equal(heard.brazier.level, POT_FIRE);
+  const heard = firesHeard([{ key: 'p', kind: 'pot', x: 0, y: 0 }], [{ x: 0, y: 0 }], { grid: 100 });
+  assert.deepEqual(heard.map((h) => [h.voice, h.level]).sort(), [['brazier', POT_FIRE], ['pot', 1]]);
 });
 
-test('a light sounds by its own choice, else when it burns; one loop a scene', () => {
+test('a light sounds by its own choice, else when it burns', () => {
   assert.equal(soundsLight({}, true), true);
   assert.equal(soundsLight({}, false), false);
   assert.equal(soundsLight({ fireSound: 'false' }, true), false);
   assert.equal(soundsLight({ fireSound: true }, false), true);
-  assert.equal(fireFile('bonfire', 'scene-a'), fireFile('bonfire', 'scene-a'));
   assert.equal(fireVoiceOf('nonsense'), 'torch');
 });
 
