@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Rivers keep their fish.** Where a river runs off the edge of the map, fish wandering near it swim off, and each was made good only one every one to two minutes, so the river slowly emptied (five down to one in a few minutes). One that leaves is now replaced within seconds, and one a heron catches within half a minute.
+- **The Animals panel's numbers stay current.** While it is open, the rows left on Auto and the count at the top follow the animals as they come and go, every two seconds, instead of keeping the numbers from when it opened.
+
 ## 3.8.11
 
 - **Animal counts left Scene configuration.** Its drop-downs (None, Few, Usual, More, Many) could not show an exact count set in the Animals panel: Frogs set to 1 showed None, and saving Scene configuration wrote None over it. How many of each animal and how big are now set only in the Animals panel.

@@ -71,8 +71,18 @@ const animalRow = (kind, label, flags, live = {}) => {
   const most = kind === 'hawks' ? MOST_HAWKS : MOST_COUNT;
   const step = (to, icon, tip) => `<button type="button" class="animater-an-step" data-action="setAnimal" data-key="${kind}" data-value="${Math.max(0, Math.min(most, to))}" data-tooltip="${esc(tip)}"${to < 0 || to > most ? ' disabled' : ''} aria-label="${esc(`${label}: ${tip}`)}"><i class="fa-solid ${icon}" inert></i></button>`;
   const counter = `<div class="animater-an-count">${step(shown - 1, 'fa-minus', 'One fewer')}<output class="${auto ? 'is-auto' : ''}">${shown}</output>${step(shown + 1, 'fa-plus', 'One more')}${auto || ASKED_FOR.has(kind) ? '' : chip('setAnimal', `data-key="${kind}" data-value=""`, 'Auto', { tip: 'As many as the map suits, as before' })}</div>`;
-  return `<div class="animater-an-row"><span>${esc(label)}</span>${counter}${sizeSlider(`${kind}Size`, `${label}: size`, flags[`${kind}Size`])}</div>`;
+  return `<div class="animater-an-row" data-kind="${kind}"><span>${esc(label)}</span>${counter}${sizeSlider(`${kind}Size`, `${label}: size`, flags[`${kind}Size`])}</div>`;
 };
+// What the rows left on Auto show now (pure): { kind: how many }, from `live` as the panel's rows count them. A kind with
+// a number set, or one that starts at none, keeps what it shows.
+export function autoCounts(flags = {}, live = {}) {
+  const out = {};
+  for (const kind of Object.keys(live ?? {})) {
+    if (exactCountOf(flags[kind] ?? '') !== null || ASKED_FOR.has(kind)) continue;
+    out[kind] = Math.max(0, Math.round(Number(live[kind]) || 0));
+  }
+  return out;
+}
 
 // The panel's content (pure). `flags` the scene's Animater flags; `count` how many are about on this screen; `note` why none would show; `aiming` the kind being placed; `underground` whether the scene is one: only its dark places are offered there, nothing wild living underground, and they only there; `water` whether the map has any, for what lives on it.
 export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = '', underground = false, water = true, scope = null, live = {} } = {}) {
@@ -84,7 +94,7 @@ export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = ''
   return `<div class="animater-wx animater-animals">
     ${note ? `<p class="animater-wx-note"><i class="fa-solid fa-triangle-exclamation" inert></i> ${esc(note)}</p>` : ''}
     ${scopeBar(scope)}
-    ${underground ? '' : `<section class="animater-wx-section"><div class="animater-an-top"><span><strong>Outdoor life on this scene</strong><small>${on ? `${count} about on your screen` : 'Off: only placed by you once it is on'}</small></span><div class="animater-wx-chips">${chip('setLife', 'data-value=""', 'Off', { active: !on })}${chip('setLife', 'data-value="on"', 'On', { active: on })}</div></div>
+    ${underground ? '' : `<section class="animater-wx-section"><div class="animater-an-top"><span><strong>Outdoor life on this scene</strong><small${on ? ' data-animals-about' : ''}>${on ? `${count} about on your screen` : 'Off: only placed by you once it is on'}</small></span><div class="animater-wx-chips">${chip('setLife', 'data-value=""', 'Off', { active: !on })}${chip('setLife', 'data-value="on"', 'On', { active: on })}</div></div>
       <div class="animater-wx-chips animater-an-presets">${chip('presetAnimals', 'data-value="few"', 'Quiet', { tip: 'A few of everything outdoors.' })}${chip('presetAnimals', 'data-value=""', 'Usual', { tip: 'The usual number of everything outdoors.' })}${chip('presetAnimals', 'data-value="many"', 'Lively', { tip: 'Many of everything outdoors.' })}${chip('reshuffleAnimals', '', 'Reshuffle', { icon: 'fa-rotate', tip: 'Scatter them afresh, on your screen. Each screen scatters its own.' })}</div>
     </section>
     <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>`}
@@ -120,7 +130,25 @@ export function animalsPanel(ApplicationV2, { id, flags, save, count = () => 0, 
     async _renderHTML() { return animalsPanelHtml({ flags: flags(), count: count(), note: note(), aiming: this.aiming ?? '', underground: underground(), water: water(), scope: scope(), live: live() }); }
     _replaceHTML(html, content) { const top = content.scrollTop; content.innerHTML = html; content.scrollTop = top; }
     // A slider says its size as it moves, and saves when let go: saving scatters the animals afresh.
-    _onRender() { for (const input of this.element.querySelectorAll('input[data-size-key]')) { const shown = input.parentElement.querySelector('output'); input.addEventListener('input', () => { shown.textContent = `${input.value}%`; shown.classList.toggle('is-changed', input.value !== '100'); }); input.addEventListener('change', () => { void save({ [input.dataset.sizeKey]: Number(input.value) }).then(() => this.render()); }); } }
-    async close(options) { this.aiming = ''; stopAim(); return super.close(options); }
+    // While open, the Auto rows and the count above follow the animals as they come and go (fish swim off, a rabbit is
+    // taken), every two seconds; only those numbers change, so a slider being moved is left alone.
+    _refreshCounts() {
+      if (!this.rendered || !this.element) return;
+      try {
+        const counts = autoCounts(flags(), live());
+        for (const [kind, n] of Object.entries(counts)) {
+          const row = this.element.querySelector(`.animater-an-row[data-kind="${kind}"]`), shown = row?.querySelector('output.is-auto');
+          if (!shown || shown.textContent === String(n)) continue;
+          shown.textContent = String(n);
+          for (const button of row.querySelectorAll('button.animater-an-step')) {
+            const to = button.querySelector('.fa-minus') ? n - 1 : n + 1, most = kind === 'hawks' ? MOST_HAWKS : MOST_COUNT;
+            button.dataset.value = String(Math.max(0, Math.min(most, to))); button.disabled = to < 0 || to > most;
+          }
+        }
+        const about = this.element.querySelector('[data-animals-about]'); if (about) about.textContent = `${count()} about on your screen`;
+      } catch { /* next time */ }
+    }
+    _onRender() { clearInterval(this._countsTimer); this._countsTimer = setInterval(() => this._refreshCounts(), 2000); for (const input of this.element.querySelectorAll('input[data-size-key]')) { const shown = input.parentElement.querySelector('output'); input.addEventListener('input', () => { shown.textContent = `${input.value}%`; shown.classList.toggle('is-changed', input.value !== '100'); }); input.addEventListener('change', () => { void save({ [input.dataset.sizeKey]: Number(input.value) }).then(() => this.render()); }); } }
+    async close(options) { clearInterval(this._countsTimer); this._countsTimer = null; this.aiming = ''; stopAim(); return super.close(options); }
   };
 }

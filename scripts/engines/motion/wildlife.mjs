@@ -257,6 +257,9 @@ export function fishStep(fish, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   return f;
 }
 
+// How soon a lost fish is made good (seconds, least and most): the first after one leaves, each next while any are owed,
+// and after one is caught. Quick enough to keep up with fish wandering off a river that runs off the map.
+export const FISH_REFILL = Object.freeze({ first: [5, 15], next: [6, 20], caught: [20, 45] });
 // Whether a fish has swum clear off the map (pure): a body's length past its edge, so it is seen to go. `area` the scene.
 export const fishOffMap = (f, area, grid = 100) => f.x < area.x - grid * 0.5 || f.y < area.y - grid * 0.5 || f.x > area.x + area.width + grid * 0.5 || f.y > area.y + area.height + grid * 0.5;
 // Which rabbit a hawk stoops on (pure): one on the ground that this screen can see, the nearest. null: none.
@@ -499,7 +502,7 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
     get fishBeneath() { return fishBeneath; },
     // the fish's picture (straight, in the painted look where baked), for the water to draw those beneath its surface
     get fishLook() { return fish.length ? (textures?.fish?.[0]?.[0] ?? null) : null; },
-    takeFish(caught) { const f = fish.find((o) => o.view === caught.view); if (!f) return null; fish = fish.filter((o) => o !== f); dropPair(f); fishLost += 1; fishIn = between(Math.random, 45, 120); return { texture: textures?.fish[f.kind][0], size: f.size }; },
+    takeFish(caught) { const f = fish.find((o) => o.view === caught.view); if (!f) return null; fish = fish.filter((o) => o !== f); dropPair(f); fishLost += 1; fishIn = fishIn > 0 ? fishIn : between(Math.random, ...FISH_REFILL.caught); return { texture: textures?.fish[f.kind][0], size: f.size }; },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
     // Sends the hawk after a rabbit now, if there is one to see.
@@ -548,10 +551,11 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
           return f;
         });
         fishBeneath = { list: under, dim: fishAlpha / 0.68 };
-        // Gone off the map's edge: out of the scene, and another swims up in a while.
-        if (area) { const left = fish.filter((f) => fishOffMap(f, area, grid)); if (left.length) { for (const f of left) dropPair(f); fish = fish.filter((f) => !left.includes(f)); fishLost += left.length; fishIn = fishIn > 0 ? fishIn : between(Math.random, 20, 60); } }
+        // Gone off the map's edge: out of the scene, and another swims up soon (FISH_REFILL), so a river running off the map
+        // does not empty: fish near its edge often wander off.
+        if (area) { const left = fish.filter((f) => fishOffMap(f, area, grid)); if (left.length) { for (const f of left) dropPair(f); fish = fish.filter((f) => !left.includes(f)); fishLost += left.length; fishIn = fishIn > 0 ? fishIn : between(Math.random, ...FISH_REFILL.first); } }
       }
-      if (fishLost > 0 && fishWaters.length && (fishIn -= dt) <= 0) { fish.push(newFish(t, fish.length)); fishLost -= 1; fishIn = between(Math.random, 45, 120); }
+      if (fishLost > 0 && fishWaters.length && (fishIn -= dt) <= 0) { fish.push(newFish(t, fish.length)); fishLost -= 1; fishIn = between(Math.random, ...FISH_REFILL.next); }
       // A rabbit taken: another comes hopping in from the edge of the map in a while.
       if (spareIn > 0 && (spareIn -= dt) <= 0 && spare.length) {
         const way = edgeArrival(spare, area, { grid, blocked });
