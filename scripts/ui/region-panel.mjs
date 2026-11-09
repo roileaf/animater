@@ -2,7 +2,7 @@
 // is (its kind), then only the sections that kind uses, each folded to a one-line summary until opened. Every control
 // saves to the region's flags at once, which reach every screen. What each section holds: region-panel-sections.mjs.
 
-import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, shownFloorOf } from './region-panel-model.mjs';
+import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, shownFloorOf, hasRoof, setRoof } from './region-panel-model.mjs';
 import { stepTabs, titled } from './region-steps-ui.mjs';
 import { SECTIONS, element, button, icon } from './region-panel-sections.mjs';
 
@@ -18,7 +18,7 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * `shows(doc | null)` hears which region it shows now (null once closed), to outline it on the map.
  * Its heading drags it about the screen; it stays where it is put until it closes.
  */
-export function createRegionPanel({ flagsOf, save, edit, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {} }) {
+export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {} }) {
   let shown = null;
   const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
   let box = null, open_ = null, saving = 0, drag = null;
@@ -55,15 +55,19 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
     const { doc } = open_, own = flagsOf(doc) ?? {}, floor = shownFloorOf(own, open_.floor), kind = regionKindOf(own, floor);
     // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back, and says so).
     // `then` runs only once the save is taken, before that redraw.
-    const act = (flags, then) => {
+    const run = (work, then) => {
       saving++;
-      return Promise.resolve().then(() => save(doc, flags)).then(() => { saving--; then?.(); draw(); }, (error) => {
+      return Promise.resolve().then(work).then(() => { saving--; then?.(); draw(); }, (error) => {
         saving--;
         console.warn('Animater | region panel save', error);
         globalThis.ui?.notifications?.warn?.('Animater: the region could not be saved.');
         draw();
       });
     };
+    const act = (flags, then) => run(() => save(doc, flags), then);
+    // A roof is a behavior on the region, not a flag: `roof` noted in its flags too, so everything that redraws when a
+    // region changes hears of it.
+    const setRoofNow = (on) => run(async () => { await roof.set(doc, on); await save(doc, { roof: on }); });
     // A save that gives the region another floor: once it is taken, the panel follows it, as the region's floor is what it
     // was opened with. A floor saved empty (none of its own) shows as its kind's: a cave's, or the scene's under Ground.
     const toFloor = (flags) => {
@@ -75,7 +79,7 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0 };
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0 };
 
     const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
@@ -101,7 +105,7 @@ export function createRegionPanel({ flagsOf, save, edit, texture = () => false, 
     for (const [id, glyph, label] of REGION_KINDS) {
       // None takes every Animater setting off the region: asked first when it has any.
       const pick = async () => { if (id === 'none' && Object.keys(own).length && !(await confirm(`Take every Animater setting off ${doc.name || 'this region'}? Its floor, water, animals and every other setting go, and cannot be brought back.`))) return; forget(); toFloor(kindFlags(id, own)); };
-      const on = id === kind, b = button('', on ? 'an-rp-kind an-rp-on' : 'an-rp-kind', () => { if (!on) pick(); });
+      const on = id === kind || (id === 'ground' && kind === 'deck'), b = button('', on ? 'an-rp-kind an-rp-on' : 'an-rp-kind', () => { if (!on) pick(); });
       b.setAttribute('aria-label', label); b.setAttribute('aria-pressed', String(on));
       b.append(icon(glyph), element('span', '', label)); kinds.append(b);
     }

@@ -7,7 +7,8 @@ import { weatherLabel } from '../engines/motion/sky-weather.mjs';
 // The animals' size lives with the animals (it is read as they are placed); the panel's slider reads it from here.
 export { animalSizeOf, ANIMAL_SIZE } from '../engines/motion/region-animals.mjs';
 
-// What a region can be: [id, icon, label].
+// What a region can be: [id, icon, label]. (A dock is Ground with Over water on: the panel reads it as its own kind, 'deck',
+// for its settings, but it is picked and shown as Ground.)
 export const REGION_KINDS = Object.freeze([
   // (None: a region Animater has nothing to do with, a teleport or a trigger.)
   ['none', 'fa-ban', 'None'],
@@ -15,7 +16,6 @@ export const REGION_KINDS = Object.freeze([
   ['ground', 'fa-seedling', 'Ground'],
   ['indoors', 'fa-house', 'Indoors'],
   ['cave', 'fa-mountain', 'Cave'],
-  ['deck', 'fa-bridge', 'Dock'],
   ['lava', 'fa-fire', 'Lava'],
 ].map((k) => Object.freeze(k)));
 
@@ -73,7 +73,7 @@ export function kindFlags(kind, own = {}) {
 
 const TITLES = {
   water: ['fa-water', 'Water'], ground: ['fa-seedling', 'Ground'], cavern: ['fa-gem', 'Cavern'], drips: ['fa-droplet', 'Drips'],
-  deck: ['fa-bridge', 'Dock'], steps: ['fa-shoe-prints', 'Steps'], animals: ['fa-paw', 'Animals'], air: ['fa-cloud-sun', 'Air'], look: ['fa-palette', 'Look'],
+  deck: ['fa-seedling', 'Ground'], steps: ['fa-shoe-prints', 'Steps'], animals: ['fa-paw', 'Animals'], air: ['fa-cloud-sun', 'Air'], look: ['fa-palette', 'Look'],
 };
 const ORDER = {
   none: [],
@@ -114,6 +114,20 @@ export function moreSections(kind, own = {}, added = []) {
   return Object.keys(IN_USE).filter((id) => !shown.includes(id) && !HELD[kind]?.includes(id)).map((id) => ({ id, icon: TITLES[id][0], title: TITLES[id][1] }));
 }
 
+// A roof: Foundry's Suppress Weather behavior on the region, which is what keeps the weather, the sun and the sky's light
+// out for everything Animater draws. Whether the region has one switched on.
+export const ROOF_BEHAVIOR = 'suppressWeather';
+const roofsOf = (doc) => Array.from(doc?.behaviors ?? []).filter((b) => b?.type === ROOF_BEHAVIOR);
+export const hasRoof = (doc) => roofsOf(doc).some((b) => !b.disabled);
+// Put a roof on the region or take it off: switches its Suppress Weather behaviors on or off, and adds one when it has none.
+// (Taken off, they are only switched off, so one set up by hand keeps its name and settings.) A promise.
+export async function setRoof(doc, on) {
+  const roofs = roofsOf(doc);
+  if (on && !roofs.length) return doc.createEmbeddedDocuments('RegionBehavior', [{ name: 'Roof', type: ROOF_BEHAVIOR }]);
+  const change = roofs.filter((b) => !b.disabled === !on).map((b) => ({ _id: b.id, disabled: !on }));
+  return change.length ? doc.updateEmbeddedDocuments('RegionBehavior', change) : null;
+}
+
 const lower = (s) => String(s).toLowerCase();
 const capital = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 const labelIn = (list, key, fallback = '') => list.find(([k]) => k === key)?.[1] ?? fallback;
@@ -150,7 +164,7 @@ export function summaryOf(id, own = {}, floor) {
       return m.kind === 'lava' ? 'Lava' : `${m.name} · ${m.steps[m.step]}`;
     }
     case 'drips': return own?.drips ? 'Dripping' : 'Dry';
-    case 'deck': return `${labelIn(DOCK_STYLES, dockStyleOf(own), 'Plain')} · ${castsShadow(own) ? 'shadow' : 'no shadow'}`;
+    case 'deck': return `Over water · ${labelIn(DOCK_STYLES, dockStyleOf(own), 'Plain')} · ${castsShadow(own) ? 'shadow' : 'no shadow'}`;
     case 'ground': return `${own?.floor ? capital(floor ?? own.floor) : 'From the scene'} · ${own?.season === 'on' ? 'seasons' : own?.season === 'off' ? 'no seasons' : 'seasons as the scene'}`;
     case 'look': return own?.texture === 'on' ? 'Textured' : own?.texture === 'off' ? 'Plain' : 'As the scene';
     default: return '';

@@ -4,7 +4,7 @@
 // Both grow four-connected components, preserve contrasting enclosed objects, and simplify every loop.
 // These colour heuristics need GM review: similar roofs or vegetation can also match.
 
-import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags } from "../motion/region-steps.mjs";
+import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, caveKindFlags } from "../motion/region-steps.mjs";
 
 // Every threshold the detector uses. Tuned against map corpora that are no longer in this
 // repository, so the values cannot be re-measured here.
@@ -106,7 +106,7 @@ export function detectWater(rgba, width, height) {
   };
 }
 
-export function mergeWaterProposals(proposals, width, height, { claimed = [], preserveTarget = false, dropSmallComponents = false } = {}) {
+export function mergeAreaProposals(proposals, width, height, { claimed = [], preserveTarget = false, dropSmallComponents = false } = {}) {
   const mask = new Uint8Array(width * height);
   const blocked = new Uint8Array(mask.length);
   for (const proposal of proposals) for (const pixel of proposal.pixels) mask[pixel] = 1;
@@ -126,7 +126,7 @@ export function mergeWaterProposals(proposals, width, height, { claimed = [], pr
   return { ...proposals[0], clicked: proposals.some((proposal) => proposal.clicked === true), pixels, loops, vertices: vertexCount(loops), share: pixels.length / mask.length };
 }
 
-export function waterProposalFromLoops(loops, width, height) {
+export function areaProposalFromLoops(loops, width, height) {
   const pixels = [];
   for (let y = 0; y < height; y++) {
     const intersections = [];
@@ -152,9 +152,9 @@ function none(reason) {
 
 // The GM's click, for water the automatic pass will not call water. The click supplies what calibration cannot: which
 // colour on this map is water. `claimed` is the proposals already on the list. A new piece shares no pixel with them.
-export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], broad = false } = {}) {
+export function selectColourAt(rgba, width, height, { x, y }, { claimed = [], broad = false } = {}) {
   const count = width * height;
-  if (!rgba || rgba.length < count * 4) throw new Error("selectWaterAt: rgba is shorter than width * height * 4");
+  if (!rgba || rgba.length < count * 4) throw new Error("selectColourAt: rgba is shorter than width * height * 4");
   const cx = Math.min(width - 1, Math.max(0, Math.floor(x)));
   const cy = Math.min(height - 1, Math.max(0, Math.floor(y)));
   const clicked = cy * width + cx;
@@ -191,13 +191,13 @@ export function selectWaterAt(rgba, width, height, { x, y }, { claimed = [], bro
   if (!keepComponentAt(mask, start, width, height)) return none("too-small");
   const [traced] = traceProposals(mask, width, height);
   let next = 1;
-  for (const proposal of claimed) next = Math.max(next, Number(String(proposal.id).replace("water-", "")) + 1);
-  return { status: "found", proposal: { ...traced, id: `water-${next}`, preselected: true, clicked: true }, seed };
+  for (const proposal of claimed) next = Math.max(next, Number(String(proposal.id).replace("area-", "")) + 1);
+  return { status: "found", proposal: { ...traced, id: `area-${next}`, preselected: true, clicked: true }, seed };
 }
 
-export function waterSelectionPixels(loops, width, height) {
+export function areaPixels(loops, width, height) {
   const mask = new Uint8Array(width * height);
-  for (const pixel of waterProposalFromLoops(loops, width, height).pixels) mask[pixel] = 1;
+  for (const pixel of areaProposalFromLoops(loops, width, height).pixels) mask[pixel] = 1;
   for (const { points } of loops) for (let i = 0; i < points.length; i += 2) {
     const j = (i + 2) % points.length;
     const snap = v => Math.abs(v - Math.round(v)) < 1e-8 ? Math.round(v) : v;
@@ -680,7 +680,7 @@ function traceProposals(mask, width, height) {
   for (const proposal of made) byId[proposal.label] = proposal;
   for (let p = 0; p < count; p++) if (labels[p]) byId[labels[p]].pixels[filled[labels[p]]++] = p;
   made.sort((a, b) => b.share - a.share || a.label - b.label);
-  return made.map(({ label: _label, ...proposal }, index) => ({ id: `water-${index + 1}`, ...proposal }));
+  return made.map(({ label: _label, ...proposal }, index) => ({ id: `area-${index + 1}`, ...proposal }));
 }
 
 // Every loop that comes in goes out, outer shore first. One tolerance applies to a whole piece, so its shores
@@ -810,7 +810,34 @@ function foldsBack(points, n, first) {
   return ux * vy - uy * vx === 0 && ux * vx + uy * vy > 0;
 }
 
-export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = {}) {
+// Regions the generator made carry this marker; ones made before it worked for every floor carry the old one.
+export const GENERATED_MARK = "floor-detect";
+const GENERATED_MARKS = new Set([GENERATED_MARK, "water-detect"]);
+// The floors an area can be, and the outline colour and name a new region of each gets.
+export const AREA_FLOORS = Object.freeze(["water", "stone", "pebbles", "wood", "dirt", "grass", "sand", "snow", "ice", "mud", "glass", "metal", "lava"]);
+const FLOOR_LOOK = Object.freeze({
+  water: ["Water", WATER_COLOR], stone: ["Stone", "#8f979e"], pebbles: ["Pebbles", "#a89f8f"], wood: ["Wood", "#a8743f"],
+  dirt: ["Dirt", "#80613f"], grass: ["Grass", "#5f9f45"], sand: ["Sand", "#d9bd73"], snow: ["Snow", "#e6eef5"],
+  ice: ["Ice", "#8fd4e6"], mud: ["Mud", "#5f4a32"], glass: ["Glass", "#9fd0e0"], metal: ["Metal", "#76828e"], lava: ["Lava", "#e85a1f"],
+});
+export const floorName = (floor) => FLOOR_LOOK[floor]?.[0] ?? FLOOR_LOOK.water[0];
+export const floorColour = (floor) => FLOOR_LOOK[floor]?.[1] ?? FLOOR_LOOK.water[1];
+export const isAreaFloor = (floor) => AREA_FLOORS.includes(floor);
+// The flags a floor brings with it beyond `floor`: water its kind and flow, lava its own steps.
+export function floorFlags(floor, { waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = {}) {
+  if (floor === "lava") return caveKindFlags({}, "lava");
+  if (floor !== "water") return {};
+  const kind = WATER_KINDS.some(([value]) => value === waterKind) ? waterKind : "still";
+  const flags = waterKindFlags({ flowTo: FLOW.has(flowTo) ? flowTo : "", current }, kind);
+  if (kind === "sea") {
+    if (seaBeach === "off") flags.seaBeach = "off";
+    if (WAVES.has(waveTo)) flags.waveTo = waveTo;
+  }
+  if (waterFlows(kind) && current === "swift") flags.current = "swift";
+  return flags;
+}
+
+export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null } = {}) {
   if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) throw new Error("toRegionData: sceneRect needs a width and a height");
   if (!(imageWidth > 0) || !(imageHeight > 0)) throw new Error("toRegionData: image size is missing");
   const scaleX = sceneRect.width / imageWidth;
@@ -823,17 +850,19 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
     if (points.length < 6 || points.length % 2 !== 0) continue;
     shapes.push({ type: "polygon", points, hole: loop.hole === true });
   }
-  const kind = WATER_KINDS.some(([value]) => value === waterKind) ? waterKind : "still";
-  const kindFlags = waterKindFlags({ flowTo: FLOW.has(flowTo) ? flowTo : "", current }, kind);
-  const animater = { floor: "water", generated: "water-detect", ...kindFlags };
-  if (kind === "sea") {
-    if (seaBeach === "off") animater.seaBeach = "off";
-    if (WAVES.has(waveTo)) animater.waveTo = waveTo;
-  }
-  if (waterFlows(kind) && current === "swift") animater.current = "swift";
+  const area = isAreaFloor(floor) ? floor : "water";
+  const animater = { floor: area, generated: GENERATED_MARK, ...floorFlags(area, { waterKind, flowTo, current, waveTo, seaBeach }) };
+  if (texture === "on" || texture === "off") animater.texture = texture; // else the scene's floor texture setting decides
+  if (pattern) animater.textureStyles = { [area]: pattern };
+  // Built out over water (a deck, a jetty): what the region panel calls Dock. Never water or lava itself.
+  if (overWater === true && !["water", "lava", "cavern"].includes(area)) animater.overWater = true;
+  // A step picked in the generator: the flags the region's step menu saves (its list, the floor it is for, which one).
+  if (steps && typeof steps === "object") Object.assign(animater, steps);
+  const soft = edge === "" || edge === undefined || edge === null ? NaN : Number(edge);
+  if (Number.isFinite(soft)) { if (soft <= 0) animater.stepEdgeOff = true; else animater.stepEdge = Math.min(3, soft); }
   return {
-    name: name || "Water",
-    color: WATER_COLOR,
+    name: name || floorName(area),
+    color: FLOOR_LOOK[area][1],
     shapes,
     levels: levelId ? [levelId] : [],
     flags: { animater },
@@ -842,12 +871,12 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
 
 // Only single-level generator regions are editable here. Other regions remain outside the save plan.
 // A region drawn by hand has no generated flag. A region on several levels, on all levels, or on another level stays.
-export function editableWaterRegionIds(regions, levelId) {
+export function editableFloorRegionIds(regions, levelId) {
   const ids = [];
   const list = Array.isArray(regions) ? regions : regions?.contents;
   if (!list || !levelId) return ids;
   for (const region of list) {
-    if (region?.flags?.animater?.generated !== "water-detect" || region.id == null) continue;
+    if (!GENERATED_MARKS.has(region?.flags?.animater?.generated) || region.id == null) continue;
     const levels = Array.from(region.levels ?? []);
     if (levels.length === 1 && levels[0] === levelId) ids.push(region.id);
   }

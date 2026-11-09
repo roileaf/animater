@@ -1041,7 +1041,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
   };
   let scaleNow = 1;
   const drop = (mesh) => { if (!mesh) return; const mask = mesh.animaterMask; try { mesh.parent?.removeChild(mesh); mesh.destroy({ children: true }); mask?.destroy(true); } catch { /* gone */ } };
-  const paint = (areas, floor, edge, style, useBlades, shineOn) => {
+  const paint = (areas, floor, edge, style, useBlades, shineOn, parent = null) => {
     const size = grid() || 100, box = boxOf(areas, size * Math.max(1, edge));
     if (!box) return null;
     const mask = maskOf(PIXI, render, areas, box, size, edge);
@@ -1050,10 +1050,22 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     skyAt = 0;
     const mesh = quadOf(PIXI, box, SHOW_FRAG, { ...sunUniforms(PIXI), uTile: tileOf(floor, style), uTileSize: size * 4 * scaleNow, uGrid: size, uAlpha: 1, uShape: answers ? tileOf(floor, style, true) : PIXI.Texture.WHITE, uTwo: shine.still ? 0 : 1, uToSun: [1, 0], uSunColor: [1, 1, 1], uGlare: [0, 0], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uWet: 0, uRipple: shine.ripple, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uLift: shine.lift, uRelief: shine.relief, uSway: swaysInWind(floor) ? 1 : 0, uTime: 0, uWind: 0, uWindDir: [1, 0], uMask: mask, uPeak: peakOf(pixels, mask), uTight: edge === 0 ? 2 : floor === 'water' ? 1 : 0, uBox: [box.x, box.y, box.w, box.h] });
     mesh.animaterMask = mask; mesh.animaterWets = !!shine.wets;
-    root().addChild(mesh);
+    (parent ?? root()).addChild(mesh);
     // Grass stands up off its ground, blade by blade.
     if (useBlades && swaysInWind(floor)) { const made = bladesOf(PIXI, areas, box, style, size, mask, mesh.shader.uniforms.uPeak); if (made) { mesh.addChild(made.shadows, made.blades); mesh.animaterBlades = made.blades; mesh.animaterBladeShadows = made.shadows; skyAt = 0; } }
     return mesh;
+  };
+  // The sky, shade and lights the last frame used, so a snapshot is lit as the scene is now.
+  let lastLight = null, lastShade = null;
+  const lightNow = (mesh, roofed) => {
+    const w = mesh.shader.uniforms;
+    if (lastLight) { w.uSun = roofed ? 0 : lastLight.shine; w.uToSun = lastLight.toSun; w.uSunColor = lastLight.color; const [x, y, width, h] = w.uBox; w.uGlare = glareAt({ x, y, w: width, h }, lastLight); }
+    shadeWith(w, lastShade); w.uLights = lightsNow.lights; w.uLightColors = lightsNow.colors; w.uLightCount = lightsNow.count;
+    if (!mesh.animaterBlades) return;
+    const b = mesh.animaterBlades.shader.uniforms, s = mesh.animaterBladeShadows.shader.uniforms;
+    for (const u of [b, s]) { shadeWith(u, lastShade); u.uLights = lightsNow.lights; u.uLightColors = lightsNow.colors; u.uLightCount = lightsNow.count; }
+    if (lastLight) { b.uToSun = lastLight.toSun; b.uStrength = lastLight.strength; b.uRim = lastLight.rim; b.uSunColor = lastLight.color; s.uToSun = lastLight.toSun; s.uStrength = lastLight.strength; s.uReach = lastLight.reach; }
+    mesh.animaterBladeShadows.visible = s.uStrength > NO_LIGHT || lightsNow.count > 0;
   };
   return {
     sync(list = []) {
@@ -1082,6 +1094,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     },
     tick(seconds, { wind = 0, angle = 0.6, sky = () => null, tokens = () => [], view = () => null, lights = () => [], weather = () => null, flash = () => null, shade = () => null, mostLights = MOST_FLOOR_LIGHTS } = {}) {
       const shadeNow = shade();
+      lastShade = shadeNow;
       clock += seconds;
       if (waiting.length && makeWaiting()) { this.sync(lastList); tileReady(); }
       // Who is standing in the grass: looked at thirty times a second, and only with blades out.
@@ -1093,6 +1106,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
       if (lookUp) skyAt = clock + SKY_EVERY;
       const sky_ = lookUp ? (weather() ?? {}) : null;
       const light = lookUp ? (struck ? { ...skyForFloors(struck), color: [0.85, 0.9, 1] } : skyForFloors(sky(), sky_.clouds)) : null;
+      if (light) lastLight = light;
       if (clock >= lightsAt) { lightsAt = clock + LIGHTS_EVERY; lightsNow = floorLights(lights(), view(), mostLights); }
       for (const [id, entry] of known) {
         if (light) for (const mesh of [entry.mesh, entry.old]) { if (!mesh) continue; const w = mesh.shader.uniforms; w.uSun = roofed.has(id) ? 0 : light.shine; w.uToSun = light.toSun; w.uSunColor = light.color; const [x, y, width, h] = w.uBox; w.uGlare = glareAt({ x, y, w: width, h }, light); w.uWet = mesh.animaterWets && !roofed.has(id) ? Math.min(1, Math.max(0, Number(sky_.wet) || 0)) : 0; }
@@ -1121,6 +1135,42 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
       }
     },
     clear() { for (const entry of known.values()) { drop(entry.old); drop(entry.mesh); } known.clear(); },
+    // Regions that are not on the scene yet (the floor regions window's drafts), painted exactly as sync would paint them
+    // and lit as the scene is now, into a canvas of `width` x `height` showing `rect` of the scene. Nothing is added to
+    // the scene. Null while a tile they need is still being made: ask again a moment later.
+    snapshot(list, rect, width, height) {
+      const r = renderer();
+      if (!r || !list?.length || !(rect?.width > 0) || !(width > 0) || !(height > 0)) return null;
+      let missing = false;
+      for (const spec of list) {
+        const style = spec.style ?? '', wants = surfaceShine(spec.floor, style), shineOn = spec.shine !== false;
+        if (!tileOf(spec.floor, style)) missing = true;
+        if (shineOn && wants.gloss + wants.glitter + wants.lift + wants.relief > 0 && !tileOf(spec.floor, style, true)) missing = true;
+      }
+      if (missing) return null;
+      const holder = new PIXI.Container(), meshes = [], keep = scaleNow;
+      let target = null;
+      try {
+        for (const spec of list) {
+          scaleNow = spec.scale ?? 1;
+          const mesh = paint(spec.areas, spec.floor, spec.edge ?? 1, spec.style ?? '', spec.blades !== false, spec.shine !== false, holder);
+          if (!mesh) continue;
+          meshes.push(mesh); lightNow(mesh, !!spec.roofed);
+        }
+        target = PIXI.RenderTexture.create({ width: Math.round(width), height: Math.round(height) });
+        const k = width / rect.width;
+        render(holder, target, true, new PIXI.Matrix(k, 0, 0, k, -rect.x * k, -rect.y * k));
+        if (r.extract?.canvas) return r.extract.canvas(target);
+        const data = pixels(target), out = document.createElement('canvas');
+        out.width = target.width; out.height = target.height;
+        out.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(data), target.width, target.height), 0, 0);
+        return out;
+      } finally {
+        scaleNow = keep; skyAt = 0;
+        for (const mesh of meshes) drop(mesh);
+        try { holder.destroy({ children: true }); target?.destroy(true); } catch { /* gone */ }
+      }
+    },
     // A floor's tile for another layer to draw, null while it is being made.
     tile: (floor, style) => tileOf(floor, style),
     // A floor's tile as a canvas, to look at.

@@ -1,4 +1,4 @@
-import { isSimple } from "./water-detect.mjs";
+import { isSimple } from "./floor-detect.mjs";
 
 export function outlinePoint(event, rect, width, height) {
   return { x: Math.max(0, Math.min(width, (event.clientX - rect.left) * width / rect.width)),

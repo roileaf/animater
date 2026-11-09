@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, summaryOf, shownFloorOf, floorOfKind, animalSizeOf, ANIMAL_SIZE } from '../../scripts/ui/region-panel-model.mjs';
+import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, summaryOf, shownFloorOf, floorOfKind, animalSizeOf, ANIMAL_SIZE, hasRoof, setRoof } from '../../scripts/ui/region-panel-model.mjs';
 import { regionAnimalSize } from '../../scripts/engines/motion/region-animals.mjs';
 
 const ids = (kind, own = {}) => panelSections(kind, own).map((s) => s.id);
@@ -32,8 +32,7 @@ test('every kind switches to every other kind', () => {
 });
 
 test('the seven kinds, with their icons and labels', () => {
-  assert.deepEqual(REGION_KINDS.map(([id]) => id), ['none', 'water', 'ground', 'indoors', 'cave', 'deck', 'lava']);
-  assert.deepEqual(REGION_KINDS.find(([id]) => id === 'deck'), ['deck', 'fa-bridge', 'Dock']);
+  assert.deepEqual(REGION_KINDS.map(([id]) => id), ['none', 'water', 'ground', 'indoors', 'cave', 'lava'], 'a dock is Ground with Over water on');
   assert.deepEqual(REGION_KINDS.find(([id]) => id === 'cave'), ['cave', 'fa-mountain', 'Cave']);
 });
 
@@ -130,8 +129,8 @@ test('summaryOf: water, steps, air, cavern, deck, ground', () => {
   assert.equal(summaryOf('cavern', { cavern: 'fungus-green' }, 'cavern'), 'Glowing fungus · In bloom');
   assert.equal(summaryOf('cavern', { cavern: 'crystals-quartz', caveStep: 0 }, 'cavern'), 'Crystals · Dim');
   assert.equal(summaryOf('cavern', {}, 'cavern'), 'Bare');
-  assert.equal(summaryOf('deck', { overWater: true }, 'wood'), 'Plain · shadow');
-  assert.equal(summaryOf('deck', { overWater: true, dockStyle: 'railed', castShadow: false }, 'wood'), 'Railed pier · no shadow');
+  assert.equal(summaryOf('deck', { overWater: true }, 'wood'), 'Over water · Plain · shadow');
+  assert.equal(summaryOf('deck', { overWater: true, dockStyle: 'railed', castShadow: false }, 'wood'), 'Over water · Railed pier · no shadow');
   assert.equal(summaryOf('ground', { floor: 'grass' }, 'grass'), 'Grass · seasons as the scene');
   assert.equal(summaryOf('ground', { floor: 'sand', season: 'off' }, 'sand'), 'Sand · no seasons');
   assert.equal(summaryOf('ground', { floor: 'sand', season: 'on' }, 'sand'), 'Sand · seasons');
@@ -219,4 +218,18 @@ test('animalSizeOf: a number from 0.5 to 2, old words kept', () => {
   assert.equal(animalSizeOf({ regionAnimalSize: 'huge' }), 1);
   assert.equal(regionAnimalSize({ regionAnimalSize: 1.6 }), 1.6);
   assert.equal(regionAnimalSize({ regionAnimalSize: 'big' }), 1.3);
+});
+
+test('a roof is a Suppress Weather behavior: added when there is none, switched on and off when there is', async () => {
+  const made = [], changed = [];
+  const doc = (behaviors) => ({ behaviors, createEmbeddedDocuments: async (n, d) => made.push([n, d]), updateEmbeddedDocuments: async (n, d) => changed.push([n, d]) });
+  assert.equal(hasRoof(doc([])), false);
+  assert.equal(hasRoof(doc([{ id: 'b', type: 'suppressWeather', disabled: true }])), false, 'switched off: no roof');
+  assert.equal(hasRoof(doc([{ id: 'b', type: 'suppressWeather' }])), true);
+  await setRoof(doc([{ id: 't', type: 'teleportToken' }]), true);
+  assert.deepEqual(made, [['RegionBehavior', [{ name: 'Roof', type: 'suppressWeather' }]]]);
+  await setRoof(doc([{ id: 'b', type: 'suppressWeather', disabled: true }]), true);
+  await setRoof(doc([{ id: 'b', type: 'suppressWeather' }]), false);
+  assert.deepEqual(changed, [['RegionBehavior', [{ _id: 'b', disabled: false }]], ['RegionBehavior', [{ _id: 'b', disabled: true }]]], 'one set up by hand is only switched, never deleted');
+  assert.equal(await setRoof(doc([]), false), null, 'no roof to take off: nothing done');
 });
