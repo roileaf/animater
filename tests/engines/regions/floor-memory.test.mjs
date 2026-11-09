@@ -52,6 +52,12 @@ test("remembering replaces a region's old example and keeps the newest", () => {
   assert.deepEqual(memoryOf([null, { floor: "wood", sig: [1] }, ...capped]).length, 2);
 });
 
+test("a cave's empty floor is remembered as cavern", () => {
+  const mem = rememberAreas([], [{ key: "s:cave", sig: [4, 0, 0, 0, 0, 0, 0], floor: "" }]);
+  assert.equal(mem[0].floor, "cavern");
+  assert.equal(recallFloor(mem, [4, 0, 0, 0, 0, 0, 0]).floor, "cavern");
+});
+
 test("the look keeps only what carries to another map", () => {
   assert.deepEqual(lookOf({ floor: "water", waterKind: "river", flowTo: "e", current: "fast", texture: "off", pattern: "", edge: "0.5", overWater: false }), { waterKind: "river", texture: "off", edge: "0.5" });
   assert.deepEqual(lookOf({ floor: "wood", waterKind: "still", overWater: true, pattern: "planks" }), { overWater: true, pattern: "planks" });

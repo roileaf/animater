@@ -1,12 +1,13 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor } from "../engines/regions/floor-detect.mjs";
+import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, displayFloorOf, wireFloor } from "../engines/regions/floor-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
 import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours, colourCut } from "../engines/regions/smart-select.mjs";
 import { SMART_MODEL, loadSmartModel, isSmartModelCached } from "./smart-model.mjs";
 import { areaSignature, rememberAreas, recallFloor, memoryOf, markAreas, knowsFloors, NONE_FLOOR } from "../engines/regions/floor-memory.mjs";
+import { hasRoof } from "./region-panel-model.mjs";
 
 // Asked once per page, before the first smart mark downloads anything.
 export const SMART_CONSENT = `Experimental. Smart selection uses ${SMART_MODEL.name}, a segmentation model that runs in this browser. The first time, it downloads about ${SMART_MODEL.size} from huggingface.co (and its library from cdn.jsdelivr.net); after that it loads from this browser's cache. The map is read on this computer and is not sent anywhere. Download it now?`;
@@ -76,7 +77,7 @@ const STEP_TIP = "The state this floor starts in: fresh, bloodied, burnt and so 
 const patternOf = (floor, pattern) => { const styles = patternOptions(floor); return styles.some(([key]) => key === pattern) ? pattern : styles[0]?.[0] ?? ""; };
 const edgeOf = (edge) => { const n = edge === "" || edge === undefined || edge === null ? NaN : Number(edge); return Number.isFinite(n) ? Math.min(STEP_EDGE.max, Math.max(0, n)) : STEP_EDGE.usual; };
 // Whether an area will paint its floor's texture: its own choice, else the scene's. Lava never does.
-export const paintsTexture = (floor, texture, sceneTexture) => floor !== "lava" && (texture === "on" || (texture !== "off" && sceneTexture === "on"));
+export const paintsTexture = (floor, texture, sceneTexture) => floor !== "lava" && floor !== "cavern" && (texture === "on" || (texture !== "off" && sceneTexture === "on"));
 export const CURRENT_OPTIONS = Object.freeze([
   ["", "Gentle"],
   ["swift", "Swift"],
@@ -450,10 +451,10 @@ export function savedAreaProposals(regions, { levelId, sceneRect, width, height 
     }
     const own = region.flags?.animater ?? {};
     const kind = waterKindOf(own);
-    const floor = isAreaFloor(own.floor) ? own.floor : "water";
+    const floor = displayFloorOf(own);
     const savedChoices = { floor, generated: own.generated, waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "", texture: textureOf(own.texture), pattern: patternOf(floor, own.textureStyles?.[floor]), edge: String(own.stepEdgeOff === true ? 0 : stepEdge(own)), overWater: own.overWater === true, stepsOwn: own.steps ? { steps: own.steps, stepsFloor: own.stepsFloor, step: own.step, stepsEdited: own.stepsEdited } : null };
     savedChoices.step = stepStart(floor, savedChoices.stepsOwn);
-    return { ...areaProposalFromLoops(loops, width, height), id: `area-${index + 1}`, regionId: region.id, name: region.name ?? floorName(floor), floor, savedChoices, preselected: false };
+    return { ...areaProposalFromLoops(loops, width, height), id: `area-${index + 1}`, regionId: region.id, name: region.name ?? floorName(floor), floor, savedChoices, savedFlags: { ...own }, roofed: hasRoof(region), preselected: false };
   }).filter((proposal) => proposal.loops.length).map((proposal, i) => ({ ...proposal, id: `area-${i + 1}` }));
 }
 
@@ -475,7 +476,8 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
     if (proposal.geometryChanged) patch.shapes = data.shapes;
     const before = proposal.savedChoices;
     const own = data.flags.animater;
-    const wasFloor = before.floor ?? "water";
+    // Compare the wire floor. A cave's picker id is "cavern" and its saved floor is "".
+    const wasFloor = wireFloor(before.floor ?? "water");
     if (own.floor !== wasFloor) {
       patch["flags.animater.floor"] = own.floor;
       // Off water: its kind, flow, waves and beach no longer apply. To lava: lava's own steps come with it.
@@ -1458,8 +1460,10 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         return true;
       }
       this.remember();
-      const look = proposal.floor ? null : this.learnedLook(proposal, shared.addFloor);
-      if (!proposal.floor) proposal.floor = look?.floor ?? (isAreaFloor(shared.addFloor) ? shared.addFloor : "water"); // a new area takes the floor chosen to add
+      // Only a missing floor is filled in. "" is a cave, and a truthy check would overwrite it with water.
+      const look = proposal.floor == null ? this.learnedLook(proposal, shared.addFloor) : null;
+      if (proposal.floor == null) proposal.floor = look?.floor ?? (isAreaFloor(shared.addFloor) ? shared.addFloor : "water");
+      if (proposal.floor === "") proposal.floor = "cavern";
       if (look) proposal.learned = true;
       detect.proposals.push(proposal);
       this.element.querySelector(".an-floors-reason")?.remove();

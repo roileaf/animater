@@ -135,6 +135,7 @@ test("pattern and soft edge: shown while the area paints, saved on new regions, 
   assert.equal(paintsTexture("grass", "", "on"), true);
   assert.equal(paintsTexture("grass", "off", "on"), false);
   assert.equal(paintsTexture("lava", "on", "on"), false, "lava never paints");
+  assert.equal(paintsTexture("cavern", "on", "on"), false, "a cave is bare rock and paints no tile");
   const shown = areaRowHTML({ ...square, floor: "grass" }, { texture: "on", pattern: "clover", edge: "0" });
   assert.match(shown, /data-texture-fields>/);
   assert.match(shown, /<select data-pattern="area-1">[\s\S]*?<option value="clover" selected>Clover/);
@@ -1047,6 +1048,17 @@ function savedRegion(id, x = 100) {
   };
 }
 const editRect = { x: 100, y: 200, width: 200, height: 200 };
+
+test("a saved cave reopens as Cave, not water, and does not grow fungus it never had", () => {
+  const region = savedRegion("cave");
+  region.flags.animater = { generated: "floor-detect", floor: "" };
+  const [proposal] = savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  assert.equal(proposal.floor, "cavern");
+  assert.equal(proposal.savedChoices.floor, "cavern");
+  assert.equal(proposal.savedFlags.floor, "");
+  assert.equal(proposal.savedFlags.cavern, undefined);
+  assert.match(areaRowHTML(proposal), /<option value="cavern" selected>Cave<\/option>/);
+});
 
 test("saved water reloads its ID, settings, exact outlines and hole coverage", () => {
   const region = savedRegion("ocean");
