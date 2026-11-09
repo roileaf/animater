@@ -15,7 +15,13 @@ export const FLOOR_SELECT_TUNING = Object.freeze({
   labValueMin: WATER_TUNING.clickValueMin,
   // When almost every usable pixel matches the Lab seed, there is no distinct floor to follow.
   labCoverMax: 0.95,
+  // Painted stones carry a near-black outline and dark cracks that no Lab match to the stone accepts. Pixels this dark
+  // that touch the fill are taken in, a few steps deep, when the clicked floor is clearly brighter than they are.
+  labOutlineL: 20,
+  labOutlineReach: 4,
+  labOutlineSeedGap: 20,
 });
+const labOutlineRounds = 3;
 
 export function selectWaterAt(rgba, width, height, at, options = {}) {
   return selectFloorAt(rgba, width, height, at, options);
@@ -62,6 +68,7 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     grow(seeds, weak, flooded, width, height);
   } else {
     const lab = readLab(rgba, count);
+    const dark = darkPixels(lab, rgba, taken, count);
     blurLab(lab, rgba, width, height, FLOOR_SELECT_TUNING.labBlur);
     const labSeed = seedLab(lab, rgba, taken, cx, cy, width, height);
     if (!labSeed) return none("no-colour");
@@ -85,6 +92,8 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     seeds[start] = 1;
     flooded = new Uint8Array(count);
     grow(seeds, weak, flooded, width, height);
+    const { labOutlineL, labOutlineReach, labOutlineSeedGap } = FLOOR_SELECT_TUNING;
+    if (labSeed.L - labOutlineL >= labOutlineSeedGap) absorbOutline(flooded, dark, weak, width, height, labOutlineReach);
   }
 
   const mask = cleanMask(flooded, width, height, taken, useHue ? { hue, sat } : null);
@@ -143,6 +152,57 @@ function rgbToLab(r, g, b) {
   const f = (t) => (t > 0.008856 ? Math.cbrt(t) : (7.787037 * t + 16 / 116));
   const fx = f(x), fy = f(y), fz = f(z);
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+
+function darkPixels(lab, rgba, taken, count) {
+  const { labOutlineL } = FLOOR_SELECT_TUNING, { alphaMin } = WATER_TUNING;
+  const dark = new Uint8Array(count);
+  for (let p = 0; p < count; p++) if (!taken[p] && rgba[p * 4 + 3] >= alphaMin && lab[p * 3] <= labOutlineL) dark[p] = 1;
+  return dark;
+}
+
+// Grows the fill into dark pixels, up to `reach` steps from it, so an outline ring is part of the piece. A crack can cut
+// a stone in two, so the pixels taken in then seed a fresh fill through the matching pixels beyond them, and the two
+// repeat until nothing is added. Only matched pixels start a round, so a dark floor is never followed deeper than `reach`.
+function absorbOutline(flooded, dark, weak, width, height, reach) {
+  const count = width * height;
+  const absorbed = new Uint8Array(count);
+  for (let round = 0; round < labOutlineRounds; round++) {
+    const added = new Uint8Array(count);
+    let front = [];
+    for (let p = 0; p < count; p++) if (flooded[p] && !absorbed[p] && touchesDark(flooded, dark, p, width, height)) front.push(p);
+    let any = false;
+    for (let step = 0; step < reach && front.length; step++) {
+      const next = [];
+      for (const p of front) {
+        const x = p % width, y = (p - x) / width;
+        for (let dy = -1; dy <= 1; dy++) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= height) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= width) continue;
+            const q = yy * width + xx;
+            if (dark[q] && !flooded[q]) { flooded[q] = 1; added[q] = 1; absorbed[q] = 1; next.push(q); any = true; }
+          }
+        }
+      }
+      front = next;
+    }
+    if (!any) return;
+    grow(added, weak, flooded, width, height);
+  }
+}
+
+function touchesDark(flooded, dark, p, width, height) {
+  const x = p % width, y = (p - x) / width;
+  for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) {
+    for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) {
+      const q = yy * width + xx;
+      if (dark[q] && !flooded[q]) return true;
+    }
+  }
+  return false;
 }
 
 function blurLab(lab, rgba, width, height, radius) {
