@@ -23,6 +23,7 @@ import { readNote } from "./engines/props/prop-break.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
+import { propTileFieldsHTML, propSceneFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
@@ -9138,6 +9139,19 @@ Hooks.on("renderSceneConfig", (app, html) => {
     climate.innerHTML = `<label>Climate</label><div class="form-fields"><select name="flags.${ID}.cold">${[["", "From the weather and floor"], ["cold", "Cold: breath shows"], ["warm", "Warm: no breath"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">Whether creatures' breath shows as vapor here (Breath shows in the cold). From the weather and floor: cold in snow or a blizzard, or standing on snow or ice.</p>`;
     tab.append(climate);
   }
+  // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
+  if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
+    const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance });
+    const repair = props.querySelector('[data-action="animater-repair-props"]');
+    repair.disabled = !game.user?.isGM;
+    repair.addEventListener("click", async (event) => {
+      event.preventDefault();
+      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls back?</p>", rejectClose: false })) return;
+      await repairAllProps(app.document);
+    });
+    tab.append(...props.children);
+  }
   // The scene's own wind (sky-light.mjs weatherOf): how strong, and where it blows from.
   if (!root.querySelector(`[name="flags.${ID}.wind"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, select = (name, value, options) => `<select name="flags.${ID}.${name}">${options.map(([v, l]) => `<option value="${v}"${v === (value ?? "") ? " selected" : ""}>${l}</option>`).join("")}</select>`;
@@ -9306,6 +9320,15 @@ Hooks.on("renderTileConfig", (app, html) => {
   const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });
+// Tile configuration: a prop's material (guessed from its file name, or the GM's pick) and what it holds.
+Hooks.on("renderTileConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.prop.material"]`)) return;
+  const doc = app.document ?? app.object, own = doc?.flags?.[ID]?.prop ?? {};
+  const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
+  tab.insertAdjacentHTML("beforeend", propTileFieldsHTML({ src: doc?.texture?.src, material: own.material, contents: own.contents }));
+});
+
 // Token configuration fields go on both a placed token's sheet and its actor's prototype token.
 const onTokenConfig =(fn) => { Hooks.on("renderTokenConfig", fn); Hooks.on("renderPrototypeTokenConfig", fn); };
 // Token configuration: where breath vapor leaves this token's art (portrait art, top-down art turned to face, or an
