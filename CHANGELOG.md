@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.8.8
+
 - **Ponds lap quietly; only swamps play the swamp.** Since 3.8.7 every still water region played a swamp's insects and mud. Now a pond plays soft lapping water, like a quiet lake shore, and only still water whose Texture style is Swamp plays the swamp.
 
 ## 3.8.7
