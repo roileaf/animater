@@ -220,3 +220,55 @@ export function surfaceAt(point, { elevation = 0, regions = [], planes = [], con
     source: chosen?.source ?? null,
   };
 }
+
+function weatherSuppressed(region) {
+  for (const behavior of Array.from(region?.behaviors ?? [])) {
+    if (behavior?.type === "suppressWeather" && !behavior.disabled) return true;
+  }
+  return false;
+}
+
+// A non-swimmer below a legacy dock is on that dock (the same test as onWhatStandsOver). The polygon test stays
+// flat, so the dock's bottom opens. An image-bound region keeps its plane, so this does not lift anyone onto the hull.
+export function regionsForSurface(regions, { elevation = 0, action = "", present = false } = {}) {
+  const height = Number(elevation);
+  const at = Number.isFinite(height) ? height : 0;
+  const list = [];
+  for (const region of regions ?? []) {
+    const own = region?.flags?.animater;
+    const bottom = Number(region?.elevation?.bottom);
+    const legacyDock = present === true && !own?.imageRegion && own?.overWater === true && Number.isFinite(bottom);
+    if (legacyDock && at < bottom && action !== "swim") {
+      list.push({ ...region, elevation: { bottom: null, top: region.elevation?.top ?? null } });
+    } else {
+      list.push(region);
+    }
+  }
+  list.sort((a, b) => (a?.flags?.animater?.overWater === true ? 1 : 0) - (b?.flags?.animater?.overWater === true ? 1 : 0));
+  return list;
+}
+
+// An opening to the sky wins. A closed room keeps weather out, and so does an awning whose plane is above the query.
+export function weatherSheltered(point, { elevation = 0, regions = [], planes = [], contains, openToSky = false } = {}) {
+  if (openToSky) return false;
+  const height = elevation == null ? 0 : Number(elevation);
+  for (const region of regions ?? []) {
+    try {
+      if (!weatherSuppressed(region) || !hit(contains, region, point) || !legacyCovers(region, height)) continue;
+      return true;
+    } catch { /* a broken region never breaks the weather */ }
+  }
+  return surfaceAt(point, { elevation, regions, planes, contains }).blocksWeather === true;
+}
+
+// Closed rooms only. An overhead plane is not a room, so it never erases the sun from the ground.
+export function indoorPolygonsOf(regions, polygonsOf) {
+  const out = [];
+  for (const region of regions ?? []) {
+    try {
+      if (!weatherSuppressed(region)) continue;
+      for (const area of polygonsOf(region) ?? []) out.push(area);
+    } catch { /* a broken region never breaks the shadows */ }
+  }
+  return out;
+}

@@ -20,7 +20,8 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, onWhatStandsOver, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
+import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
+import { planesFrom, surfaceAt, regionsForSurface, weatherSheltered, indoorPolygonsOf } from "./engines/regions/image-plane.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
 import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
@@ -1155,13 +1156,63 @@ const sceneFloorNow = () => {
     background: canvas.level?.background?.src ?? "",
   });
 };
+// Foundry's testPoint rejects a missing elevation, and a token elevation would apply the height twice.
+// The polygon tree is the flat test. surfaceAt applies the height, from the plane or the legacy span.
+const containsPlane = (region, point) => {
+  const doc = region?.doc ?? region;
+  try {
+    const tree = doc?.polygonTree;
+    if (tree?.testPoint) return tree.testPoint({ x: point.x, y: point.y }) === true;
+    const bottom = Number(doc?.elevation?.bottom);
+    const elevation = Number.isFinite(bottom) ? bottom : 0;
+    return doc.testPoint({ x: point.x, y: point.y, elevation }) === true;
+  } catch { return false; }
+};
+const levelList = (levels) => {
+  if (Array.isArray(levels)) return [...levels];
+  if (levels && typeof levels.forEach === "function") return [...levels];
+  return [];
+};
+const planesHere = () => {
+  const sceneRect = canvas?.dimensions?.sceneRect;
+  if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) return [];
+  const tiles = [];
+  for (const placeable of canvas?.tiles?.placeables ?? []) {
+    const tile = placeable?.document ?? placeable;
+    if (!tile) continue;
+    tiles.push({
+      id: tile.id ?? tile._id,
+      hidden: tile.hidden === true,
+      levels: levelList(tile.levels),
+      x: tile.x, y: tile.y, width: tile.width, height: tile.height, elevation: tile.elevation,
+      texture: { src: tile.texture?.src ?? "" },
+      restrictions: { light: tile.restrictions?.light === true, weather: tile.restrictions?.weather === true },
+    });
+  }
+  try {
+    return planesFrom({ levelId: canvas.level?.id ?? "", sceneRect, backgroundSrc: canvas.level?.background?.src ?? "", tiles });
+  } catch { return []; }
+};
+const floorViews = () => regionsHere().map((doc) => {
+  const own = { ...(doc.flags?.[ID] ?? {}) };
+  const floor = regionFloor({ name: doc.name, flag: floorFlagOf(doc) });
+  if (floor) own.floor = floor;
+  else delete own.floor;
+  return {
+    id: doc.id, name: doc.name, levels: levelList(doc.levels),
+    elevation: doc.elevation == null ? null : { bottom: doc.elevation.bottom ?? null, top: doc.elevation.top ?? null },
+    flags: { [ID]: own }, doc,
+  };
+});
 const movementFeelFloor = (point, token) => {
-  const scene = canvas?.scene, base = sceneFloorNow();
-  // (What stands over the water is walked on, whichever region is listed first.)
-  const regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })).sort((a, b) => (a.doc.flags?.[ID]?.overWater === true ? 1 : 0) - (b.doc.flags?.[ID]?.overWater === true ? 1 : 0));
-  const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
-  // (Below what stands over the water and not swimming: on it, whatever the two heights say.)
-  const ground = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => { const bottom = Number(r.doc.elevation?.bottom); return r.doc.testPoint({ x: p.x, y: p.y, elevation: token && r.doc.flags?.[ID]?.overWater === true && onWhatStandsOver({ elevation, bottom, action: token.movementAction }) ? bottom : elevation }); } });
+  const base = sceneFloorNow();
+  const elevation = Math.max(Number(token?.elevation ?? 0), canvas.level?.elevation?.base ?? 0);
+  let regions = [];
+  let ground = base;
+  try {
+    regions = regionsForSurface(floorViews(), { elevation, action: token?.movementAction ?? "", present: !!token });
+    ground = surfaceAt(point, { elevation, regions, planes: planesHere(), contains: containsPlane }).floor ?? base;
+  } catch { /* a broken region never breaks the floor */ }
   // "Spells change the floor": frost, acid, fire and blasts left on the ground change what the creature walks on.
   let floor = ground;
   if (movementFeelSettingOn("marksChangeFloor")) {
@@ -1199,14 +1250,9 @@ const sceneWeatherNow = () => {
 let skyOpenRegions = [], skyOpenAreas = [];
 const openToSkyAt = (point, elevation = 0) => skyOpenRegions.some((region) => { try { return region.testPoint({ x: point.x, y: point.y, elevation }); } catch { return false; } });
 const shelteredAt = (point, elevation = 0) => {
-  if (openToSkyAt(point, elevation)) return false;
-  for (const region of regionsHere()) {
-    try {
-      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
-      if (region.testPoint({ x: point.x, y: point.y, elevation })) return true;
-    } catch { /* a broken region never breaks the weather */ }
-  }
-  return false;
+  try {
+    return weatherSheltered(point, { elevation, regions: regionsHere(), planes: planesHere(), contains: containsPlane, openToSky: openToSkyAt(point, elevation) });
+  } catch { return false; }
 };
 const weatherAt = (point, elevation) => { const sky = sceneWeatherNow(); return sky && !shelteredAt(point, elevation) ? sky : null; };
 // Ground trails (engines/motion/ground-trails.mjs): feet that walked through water, mud or snow print the next floor
@@ -1293,10 +1339,12 @@ const flierLight = (t) => {
     const reaching = lightsReaching(t, { own: true });
     const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
       .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
-    // Out of the sun: indoors (a region that keeps the weather out, as for snow and rain) wholly; else in a wall's
-    // shade (walls cast shadows in sunlight), standing or flying no higher than the wall.
+    // Out of the sun under a closed room or an overhead plane that blocks light. Else in a wall's shade, no higher than the wall.
     const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
-    const shade = shelteredAt(t.center, t.document?.elevation ?? 0) ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
+    const elev = t.document?.elevation ?? 0;
+    let blocked = false;
+    try { blocked = surfaceAt(t.center, { elevation: elev, regions: regionsHere(), planes: planesHere(), contains: containsPlane }).blocksLight === true; } catch { blocked = false; }
+    const shade = shelteredAt(t.center, elev) || blocked ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
     // In the pool of light under an opening to the sky, the sun or moon casts its shadow, even underground (where no
     // sun reaches anywhere else): as strong as the pool is there, and that light lifts the darkness.
     const opened = skyOpenings.length ? skylightNow(canvas.grid.size) : null, open = opened ? skylightShare(t.center, skyOpenings, opened.shift, { grid: canvas.grid.size, inside: pointInPolygon }) : 0;
@@ -1648,18 +1696,13 @@ const landedOpenings = () => {
     return Object.assign(p.map((v, i) => v + (i % 2 ? s[1] : s[0])), { soft: p.soft, window: p.window });
   });
 };
-const indoorPolygons = () => {
-  const out = [];
-  for (const region of regionsHere()) {
-    try {
-      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
-      // Each with how far the weather fades in at its edge.
-      const soft = indoorEdgeOf(region.flags?.[ID]);
-      for (const area of regionAreas(region)) { area.soft = soft; out.push(area); }
-    } catch { /* a broken region never breaks the shadows */ }
-  }
-  return out;
-};
+const indoorPolygons = () => indoorPolygonsOf(regionsHere(), (region) => {
+  // Each with how far the weather fades in at its edge.
+  const soft = indoorEdgeOf(region.flags?.[ID]);
+  const areas = [];
+  for (const area of regionAreas(region)) { area.soft = soft; areas.push(area); }
+  return areas;
+});
 const rebuildWallShadows = () => {
   wallShadowTimer = null;
   try {
