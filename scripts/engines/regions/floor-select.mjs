@@ -17,15 +17,22 @@ export const FLOOR_SELECT_TUNING = Object.freeze({
   labCoverMax: 0.95,
   // Painted stones carry a near-black outline and dark cracks that no Lab match to the stone accepts. Pixels this dark
   // that touch the fill are taken in, a few steps deep, when the clicked floor is clearly brighter than they are.
-  labOutlineL: 20,
-  labOutlineReach: 4,
-  labOutlineSeedGap: 20,
+  labOutlineL: 24,
+  labOutlineReach: 3,
+  labOutlineSeedGap: 8,
+  // A pixel beside the outline that is this much darker than the floor but not dark itself is the outline's soft edge.
+  labSoftGap: 15,
   // The fill only carries on across a dark band this thin (a crack, a shared outline). A wider one is another floor.
   labBridgeReach: 3,
+  labOutlineRounds: 8,
+  // Outline absorption also runs for a faintly tinted stone that reads by hue, up to this saturation.
+  hueOutlineSatMax: 0.3,
+  // The seed reads a patch this far round the click, small enough for a small stone, and a piece may be this small.
+  labSeedPatch: 2,
+  labComponentMinShare: 0.00015,
   // An enclosed gap this far from the floor, or transparent, is a different thing lying on it and stays a hole.
   labHoleKeep: 35,
 });
-const labOutlineRounds = 8;
 
 export function selectWaterAt(rgba, width, height, at, options = {}) {
   return selectFloorAt(rgba, width, height, at, options);
@@ -47,6 +54,7 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
   readColour(rgba, hue, sat, val, count);
   const hueSeed = seedColour(hue, sat, rgba, taken, cx, cy, width, height);
   const useHue = hueSeed && hueSeed.saturation >= FLOOR_SELECT_TUNING.hueSatMin && !clickedOnDull(hue, sat, rgba, taken, cx, cy, width, height);
+  const dullHue = useHue && hueSeed.saturation < FLOOR_SELECT_TUNING.hueOutlineSatMax;
 
   let flooded;
   let start;
@@ -71,9 +79,9 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     seeds[start] = 1;
     flooded = new Uint8Array(count);
     grow(seeds, weak, flooded, width, height);
+    if (dullHue) outlineAround(flooded, weak, rgba, taken, width, height, patchLightness(rgba, taken, cx, cy, width, height));
   } else {
     const lab = readLab(rgba, count);
-    const dark = darkPixels(lab, rgba, taken, count);
     blurLab(lab, rgba, width, height, FLOOR_SELECT_TUNING.labBlur);
     const labSeed = seedLab(lab, rgba, taken, cx, cy, width, height);
     if (!labSeed) return none("no-colour");
@@ -91,7 +99,7 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
       if (taken[p]) continue;
       const d = deltaE(lab, p, labSeed);
       if (d <= labStrong) { strong[p] = 1; strongCount++; }
-      if (d <= weakLimit) weak[p] = 1;
+      if (d <= weakLimit || (d <= weakLimit + 30 && sharpDeltaE(rgba, p, labSeed) <= weakLimit)) weak[p] = 1;
       else if (d > labHoleKeep && lab[p * 3] > labOutlineL) contrast[p] = 1;
     }
     if (!usable || strongCount / usable >= labCoverMax) return none("no-colour");
@@ -101,12 +109,12 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     seeds[start] = 1;
     flooded = new Uint8Array(count);
     grow(seeds, weak, flooded, width, height);
-    const { labOutlineReach, labBridgeReach, labOutlineSeedGap } = FLOOR_SELECT_TUNING;
-    if (labSeed.L - labOutlineL >= labOutlineSeedGap) absorbOutline(flooded, dark, weak, width, height, labOutlineReach, labBridgeReach);
+    outlineAround(flooded, weak, rgba, taken, width, height, labSeed.L);
   }
 
-  const mask = cleanMask(flooded, width, height, taken, useHue ? { hue, sat } : null, contrast);
-  if (!keepComponentAt(mask, start, width, height)) return none("too-small");
+  const minShare = useHue && !dullHue ? WATER_TUNING.componentMinShare : FLOOR_SELECT_TUNING.labComponentMinShare;
+  const mask = cleanMask(flooded, width, height, taken, useHue ? { hue, sat } : null, contrast, minShare);
+  if (!keepComponentAt(mask, start, width, height, minShare)) return none("too-small");
   const [traced] = traceProposals(mask, width, height);
   let next = 1;
   for (const proposal of claimed) next = Math.max(next, Number(String(proposal.id).replace("water-", "")) + 1);
@@ -126,7 +134,7 @@ function seedColour(hue, sat, rgba, taken, cx, cy, width, height) {
   for (let y = Math.max(0, cy - clickPatch); y <= Math.min(height - 1, cy + clickPatch); y++) {
     for (let x = Math.max(0, cx - clickPatch); x <= Math.min(width - 1, cx + clickPatch); x++) {
       const p = y * width + x;
-      if (hue[p] >= 0 && !taken[p] && rgba[p * 4 + 3] >= alphaMin) usable.push(p);
+      if (hue[p] >= 0 && !taken[p] && rgba[p * 4 + 3] >= alphaMin && !isInk(rgba, p)) usable.push(p);
     }
   }
   if (!usable.length) return null;
@@ -163,7 +171,7 @@ function clickedOnDull(hue, sat, rgba, taken, cx, cy, width, height) {
 function readLab(rgba, count) {
   const lab = new Float32Array(count * 3);
   for (let p = 0, i = 0; p < count; p++, i += 4) {
-    const [L, a, b] = rgbToLab(rgba[i] / 255, rgba[i + 1] / 255, rgba[i + 2] / 255);
+    const [L, a, b] = rgbToLab(rgba[i], rgba[i + 1], rgba[i + 2]);
     const o = p * 3;
     lab[o] = L; lab[o + 1] = a; lab[o + 2] = b;
   }
@@ -171,8 +179,7 @@ function readLab(rgba, count) {
 }
 
 function rgbToLab(r, g, b) {
-  const lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-  const R = lin(r), G = lin(g), B = lin(b);
+  const R = LINEAR[r], G = LINEAR[g], B = LINEAR[b];
   const x = (R * 0.4124564 + G * 0.3575761 + B * 0.1804375) / 0.95047;
   const y = (R * 0.2126729 + G * 0.7151522 + B * 0.072175);
   const z = (R * 0.0193339 + G * 0.119192 + B * 0.9503041) / 1.08883;
@@ -181,11 +188,66 @@ function rgbToLab(r, g, b) {
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
 }
 
-function darkPixels(lab, rgba, taken, count) {
-  const { labOutlineL } = FLOOR_SELECT_TUNING, { alphaMin } = WATER_TUNING;
+const LINEAR = Float32Array.from({ length: 256 }, (_, v) => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+
+// L of the Lab colour straight from the pixel, with no blur, so a dark outline is judged by its own colour.
+function lightnessAt(rgba, p) {
+  const i = p * 4;
+  if (rgba[i + 1] > 72) return 100;
+  const y = 0.2126729 * LINEAR[rgba[i]] + 0.7151522 * LINEAR[rgba[i + 1]] + 0.072175 * LINEAR[rgba[i + 2]];
+  return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y;
+}
+
+// Near-black and neutral: its hue is noise, so it must not vote for the colour of the click.
+function isInk(rgba, p) {
+  const i = p * 4, r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+  const max = Math.max(r, g, b);
+  return max < 60 && max - Math.min(r, g, b) < 14;
+}
+
+function sharpDeltaE(rgba, p, seed) {
+  const i = p * 4;
+  const [L, a, b] = rgbToLab(rgba[i], rgba[i + 1], rgba[i + 2]);
+  return Math.hypot(L - seed.L, a - seed.a, b - seed.b);
+}
+
+function patchLightness(rgba, taken, cx, cy, width, height) {
+  const { alphaMin } = WATER_TUNING, radius = FLOOR_SELECT_TUNING.labSeedPatch, values = [];
+  for (let y = Math.max(0, cy - radius); y <= Math.min(height - 1, cy + radius); y++) {
+    for (let x = Math.max(0, cx - radius); x <= Math.min(width - 1, cx + radius); x++) {
+      const p = y * width + x;
+      if (!taken[p] && rgba[p * 4 + 3] >= alphaMin && !isInk(rgba, p)) values.push(lightnessAt(rgba, p));
+    }
+  }
+  return values.length ? median(values) : 0;
+}
+
+// Takes a stone's outline into the fill. The outline is the pixels dark enough to be ink, plus their soft edge: a pixel
+// beside them that is clearly darker than the floor but matches neither the floor nor the ink, such as anti-aliasing.
+function outlineAround(flooded, weak, rgba, taken, width, height, floorL) {
+  const { labOutlineL, labOutlineSeedGap, labSoftGap, labOutlineReach, labBridgeReach } = FLOOR_SELECT_TUNING;
+  if (floorL - labOutlineL < labOutlineSeedGap) return;
+  const { alphaMin } = WATER_TUNING, count = width * height;
   const dark = new Uint8Array(count);
-  for (let p = 0; p < count; p++) if (!taken[p] && rgba[p * 4 + 3] >= alphaMin && lab[p * 3] <= labOutlineL) dark[p] = 1;
-  return dark;
+  const inks = [];
+  for (let p = 0; p < count; p++) {
+    if (taken[p] || rgba[p * 4 + 3] < alphaMin || lightnessAt(rgba, p) > labOutlineL) continue;
+    dark[p] = 1;
+    inks.push(p);
+  }
+  if (!inks.length) return;
+  const soft = [];
+  for (const p of inks) {
+    const x = p % width, y = (p - x) / width;
+    for (let yy = Math.max(0, y - 1); yy <= Math.min(height - 1, y + 1); yy++) {
+      for (let xx = Math.max(0, x - 1); xx <= Math.min(width - 1, x + 1); xx++) {
+        const q = yy * width + xx;
+        if (!dark[q] && !weak[q] && !taken[q] && rgba[q * 4 + 3] >= alphaMin && lightnessAt(rgba, q) <= floorL - labSoftGap) soft.push(q);
+      }
+    }
+  }
+  for (const q of soft) dark[q] = 1;
+  absorbOutline(flooded, dark, weak, width, height, labOutlineReach, labBridgeReach);
 }
 
 // Grows the fill into dark pixels, up to `reach` steps from it, so an outline ring is part of the piece. A crack can cut
@@ -194,7 +256,7 @@ function darkPixels(lab, rgba, taken, count) {
 function absorbOutline(flooded, dark, weak, width, height, reach, bridge) {
   const count = width * height;
   const absorbed = new Uint8Array(count);
-  for (let round = 0; round < labOutlineRounds; round++) {
+  for (let round = 0; round < FLOOR_SELECT_TUNING.labOutlineRounds; round++) {
     const added = new Uint8Array(count);
     let front = [];
     for (let p = 0; p < count; p++) if (flooded[p] && !absorbed[p] && touchesDark(flooded, dark, p, width, height)) front.push(p);
@@ -259,7 +321,7 @@ function blurLab(lab, rgba, width, height, radius) {
 }
 
 function seedLab(lab, rgba, taken, cx, cy, width, height) {
-  const { clickPatch, alphaMin } = WATER_TUNING;
+  const { alphaMin } = WATER_TUNING, clickPatch = FLOOR_SELECT_TUNING.labSeedPatch;
   const voters = [];
   for (let y = Math.max(0, cy - clickPatch); y <= Math.min(height - 1, cy + clickPatch); y++) {
     for (let x = Math.max(0, cx - clickPatch); x <= Math.min(width - 1, cx + clickPatch); x++) {
@@ -301,12 +363,12 @@ function nearestAccepted(accepted, cx, cy, width, height) {
 
 // Cleaning can thin the click away, so the piece is then its largest part. False when too little is left. Settling
 // corners runs after the cleaning's own size check and can split a piece, so the size is checked once more here.
-function keepComponentAt(mask, at, width, height) {
+function keepComponentAt(mask, at, width, height, minShare = WATER_TUNING.componentMinShare) {
   const labels = new Int32Array(width * height);
   const comps = label(mask, labels, width, height);
   let keep = labels[at];
   if (!keep) for (let i = 1; i < comps.length; i++) if (!keep || comps[i].size > comps[keep].size) keep = i;
-  if (!keep || comps[keep].size < mask.length * WATER_TUNING.componentMinShare) return false;
+  if (!keep || comps[keep].size < mask.length * minShare) return false;
   for (let p = 0; p < mask.length; p++) if (labels[p] !== keep) mask[p] = 0;
   return true;
 }

@@ -80,7 +80,7 @@ test("Lab matcher with blur fills textured planks as one area", () => {
   assert.equal(found.status, "found");
   assert.equal(found.seed.matcher, "lab");
   assert.ok(found.proposal.pixels.length > 48 * 32 * 0.7, `expected plank field fill, got ${found.proposal.pixels.length}`);
-  assert.equal(countIn(found.proposal.pixels, width, 0, 0, 8, 8), 0);
+  assert.equal(countIn(found.proposal.pixels, width, 0, 0, 5, 5), 0, "the dark border is taken in no further than the outline reach");
 });
 
 test("Lab matcher refuses a featureless grey field with nothing distinct to follow", () => {

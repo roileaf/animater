@@ -222,11 +222,11 @@ export function label(mask, labels, width, height) {
   return comps;
 }
 
-export function dropSmall(mask, width, height) {
+export function dropSmall(mask, width, height, minShare = WATER_TUNING.componentMinShare) {
   const count = width * height;
   const labels = new Int32Array(count);
   const comps = label(mask, labels, width, height);
-  const min = count * WATER_TUNING.componentMinShare;
+  const min = count * minShare;
   const keep = new Uint8Array(comps.length);
   for (let i = 1; i < comps.length; i++) if (comps[i].size >= min) keep[i] = 1;
   for (let p = 0; p < count; p++) if (mask[p] && !keep[labels[p]]) mask[p] = 0;
@@ -332,7 +332,7 @@ export function removeSaddles(mask, width, height, blocked) {
 
 // `blocked` pixels leave before the opening and the size check, so a speck cannot survive by leaning on them. Filling
 // can reach them again.
-export function cleanMask(raw, width, height, blocked, colour, contrast = null) {
+export function cleanMask(raw, width, height, blocked, colour, contrast = null, minShare = WATER_TUNING.componentMinShare) {
   const count = width * height;
   const spare = new Uint8Array(count);
   const closed = new Uint8Array(count);
@@ -341,7 +341,7 @@ export function cleanMask(raw, width, height, blocked, colour, contrast = null) 
   closeInto(raw, closed, spare, width, height);
   unblock(closed);
   openInto(closed, mask, spare, width, height);
-  dropSmall(mask, width, height);
+  dropSmall(mask, width, height, minShare);
   fillHoles(mask, spare, width, height, colour, contrast);
   unblock(mask);
   removeSaddles(mask, width, height, blocked);

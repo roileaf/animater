@@ -57,7 +57,7 @@ export function floorTint(floor, index = 0) {
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
 export function noneMessage(reason) {
-  return NONE[reason] ?? "Experimental. No water region was proposed.";
+  return NONE[reason] ?? "Experimental. No area was proposed.";
 }
 
 export function failureMessage(reason) {
@@ -188,7 +188,7 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
       <div class="an-water-add-status" data-add-status hidden><p data-add-message></p><div>
         <button type="button" data-undo-add disabled>Undo last change</button>
         <button type="button" data-add-done>Done</button>
-        <button type="button" data-smooth-outline title="Smooth outer shores within 2 read pixels per action. Holes stay unchanged." hidden>Smooth shore</button>
+        <button type="button" data-smooth-outline title="Smooth outer edges within 2 read pixels per action. Holes stay unchanged." hidden>Smooth outline</button>
         <button type="button" data-delete-vertex hidden>Delete vertex</button>
       </div></div>
       <div class="an-water-frame" tabindex="0" aria-label="Floor preview. Scroll to zoom. Drag to pan. Click to add an area."><div class="an-water-stage"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div></div>
@@ -349,9 +349,9 @@ export function paintWaterPreview(ctx, rgba, width, height, proposals, highlight
       ctx.closePath();
     }
     const hot = proposal.id === highlightId;
-    ctx.fillStyle = hot ? "rgba(255, 196, 64, 0.55)" : floorTint(floors.get(proposal.id) ?? proposal.floor, index);
+    ctx.fillStyle = floorTint(floors.get(proposal.id) ?? proposal.floor, index);
     ctx.fill("evenodd");
-    ctx.lineWidth = hot ? 2 : 1;
+    ctx.lineWidth = hot ? 3 : 1;
     ctx.strokeStyle = hot ? "rgba(255, 210, 80, 0.95)" : "rgba(220, 245, 255, 0.35)";
     ctx.stroke();
   });
@@ -424,7 +424,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
 
     _replaceHTML(html, content) {
       const before = choicesFromElement(content);
-      content.innerHTML = before.length ? waterWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, shared: sharedChoices(content) }) : html;
+      content.innerHTML = before.length || content.querySelector("[data-floor-to-add]") ? waterWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, shared: sharedChoices(content) }) : html;
       this.paint();
       this.updateSummary();
       this.zoomMap(this.zoom ?? 1);
