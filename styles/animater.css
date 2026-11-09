@@ -3263,6 +3263,11 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-settings .an-set-searching .an-set-panel { display: none; }
 .animater-settings .an-set-searching .an-set-panel.an-set-has-hits { display: block; }
 .animater-settings .an-set-panel h3 { margin: 12px 0 6px; padding: 0; border: none; color: var(--an-accent); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+/* Each tab's own reset sits beside its heading; the whole window's sits in the footer. */
+.animater-settings .an-set-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.animater-settings .an-set-reset-tab { flex: none; width: auto; min-height: 0; margin-top: 6px; padding: 2px 8px; font-size: 11px; }
+.animater-settings .an-set-foot { flex: none; display: flex; justify-content: flex-end; padding: 8px 14px; border-top: 1px solid var(--an-line); background: var(--an-panel); }
+.animater-settings .an-set-foot button { flex: none; width: auto; }
 /* The text keeps a readable width: controls that leave it less than 280px drop under it, at the right. */
 .animater-settings .an-set-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 16px; padding: 10px 0; border-bottom: 1px solid var(--an-line); }
 .animater-settings .an-set-text { flex: 1 1 280px; min-width: 0; }
