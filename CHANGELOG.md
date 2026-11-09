@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Fires have sounds.** Fire lights crackle close by, each by its kind: Ambient Light configuration → Animater → Fire now offers Torch, Lantern (quieter), Brazier, Campfire and the new **Cooking pot**, which bubbles over a small fire. Torches and lanterns creatures hold crackle too. Each fades within a few squares and is quieter through a wall. The light's **Sound** button turns one off, or on for any light; the **Fire sounds** setting and its Fire volume are under the settings' sounds. Fourteen CC0 recordings, one per kind picked for each scene.
+
 ## 3.8.8
 
 - **Ponds lap quietly; only swamps play the swamp.** Since 3.8.7 every still water region played a swamp's insects and mud. Now a pond plays soft lapping water, like a quiet lake shore, and only still water whose Texture style is Swamp plays the swamp.

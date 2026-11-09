@@ -214,6 +214,7 @@ import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife, gullsOver } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
+import { FIRE_VOICES, FIRE_VOLUME, fireHeard, fireFile, soundsLight } from "./engines/sound/fire-sound.mjs";
 import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, thunderReaches, thunderPan, weatherFile, weatherLoudness, louder, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
@@ -3055,14 +3056,14 @@ const setFlamesAsk = async () => {
   const keep = ["keep", "Leave as each light has it"];
   const content = `<p>${chosen.length ? `The ${lights.length} selected light(s)` : `All ${lights.length} light(s) in this scene (none selected)`}:</p>
     ${select("flame", "Flame", [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])}
-    ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]])}
+    ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["lantern", "Lantern: one flame, quieter"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"], ["pot", "Cooking pot: a bed of flames, bubbling"]])}
     ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}
     ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}
-    ${[["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
+    ${[["fireSound", "Sound"], ["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
   flamesAsking = true;
   try {
     const picked = await foundry.applications.api.DialogV2.prompt({ window: { title: "Flames (Animater)" }, content,
-      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "soot", "smoke", "heatHaze", "sparks", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
+      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "fireSound", "soot", "smoke", "heatHaze", "sparks", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
     const change = Object.fromEntries(Object.entries(picked ?? {}).filter(([, v]) => v !== "keep").map(([k, v]) => [`flags.${ID}.${k}`, v]));
     if (!Object.keys(change).length) return;
     await canvas.scene.updateEmbeddedDocuments("AmbientLight", lights.map((l) => ({ _id: l.id, ...change })));
@@ -4427,6 +4428,57 @@ Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(rive
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
 Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
+// Fires heard (engines/sound/fire-sound.mjs): a loop for each kind of fire near a listener, the placed fire lights by
+// their Fire kind (Light configuration → Animater → Fire; Sound turns one off) and the torches and lanterns creatures
+// hold. Quieter through a wall; none till audio is unlocked. The fires are listed once a second, the voices set twice.
+const fireVoices = Object.fromEntries(FIRE_VOICES.map((k) => [k, { sound: null, starting: false }]));
+let fireList = [], fireListAt = 0, fireLookAt = 0;
+const fireSoundsOn = () => bothSettingsOn("fireSounds");
+const readFires = () => {
+  const out = [];
+  for (const light of canvas.lighting?.placeables ?? []) {
+    try {
+      const src = light.lightSource; if (!src?.active || light.document.hidden) continue;
+      if (canvas.level && light.document.includedInLevel?.(canvas.level) === false) continue;
+      const own = light.document.flags?.[ID] ?? {}, flag = own.flame;
+      const burns = flag === true || flag === "true" ? true : flag === false || flag === "false" ? false : isFireLight(src.data);
+      if (!soundsLight(own, burns)) continue;
+      out.push({ kind: fireKindOf(own.fireKind), x: light.center.x, y: light.center.y });
+    } catch { /* a light mid-change */ }
+  }
+  for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      const token = source?.active && source.object?.document?.documentName === "Token" ? source.object : null; if (!token) continue;
+      const kind = lightKindOf(token, source.data); if (kind !== "torch" && kind !== "lantern") continue;
+      out.push({ kind, x: source.data.x, y: source.data.y });
+    } catch { /* a token mid-change */ }
+  }
+  return out;
+};
+const tickFireSounds = () => {
+  const now = performance.now(); if (now - fireLookAt < 500) return; fireLookAt = now;
+  if (game.audio?.locked) return;
+  const on = fireSoundsOn() && soundsOn();
+  if (on && now - fireListAt > 1000) { fireListAt = now; fireList = readFires(); } else if (!on) fireList = [];
+  let ears = canvas.sounds?.getListenerPositions?.() ?? [];
+  if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
+  const heard = fireHeard(fireList, ears, { grid: canvas.grid.size });
+  for (const [kind, voice] of Object.entries(fireVoices)) {
+    let through = 1;
+    try { const h = heard[kind]; if (h.level > 0 && CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
+    const volume = on ? FIRE_VOLUME[kind] * heard[kind].level * through * waterLoudness("fireVolume") : 0;
+    if (voice.sound) { try { voiceAt(voice, volume); } catch { stopVoice(voice); } continue; }
+    if (volume <= 0.004 || voice.starting) continue;
+    voice.starting = true;
+    (async () => {
+      const sound = new foundry.audio.Sound(fireFile(kind, canvas.scene?.id), { context: game.audio.environment });
+      await sound.load(); await sound.play({ loop: true, volume: 0 });
+      voiceStarted(voice, sound, volume, 1200);
+    })().catch(() => {}).finally(() => { voice.starting = false; });
+  }
+};
+for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
+Hooks.on("canvasTearDown", () => { for (const voice of Object.values(fireVoices)) stopVoice(voice); fireList = []; });
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 // Drawn clouds (the Weather panel): just above the rain and the birds, over the roofs; their shadows on the ground, under the creatures.
 let cloudRoot = null;
@@ -4958,6 +5010,7 @@ function skyTick() {
   if (wildOpen || nightVoice.sound) tickNight();
   if (wildOpen) tickChorus(seconds);
   tickAftermath(seconds);
+  tickFireSounds();
   if (townLife.busy) tickTown(seconds);
   tickSceneFarm(Math.min(seconds, 0.1));
   if (regionLife.size) regionTick(seconds);
@@ -8066,6 +8119,8 @@ Hooks.once("init", () => {
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
+  skyPair("fireSounds", "fireSoundsLocal", "Fire sounds", "Fire lights crackle close by, each by its Fire kind (Light configuration → Animater → Fire): a torch, a quieter lantern, a brazier, a campfire, a cooking pot bubbling over its fire. Torches and lanterns creatures hold crackle too. Loudest beside it, fading within a few squares, quieter through a wall. A light's Sound: Off quiets its own.", "");
+  registerSetting("fireVolume", { name: "Fire volume", hint: "How loud fires are for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light. On any other map, moths come to a light set to them (Light configuration → Animater → Moths: On).");
   skyPair("caveWet", "caveWetLocal", "Wet walls", "Where a region is marked as wet walls (the region's right-click panel → Cave, or Air → Room dressing), water seeps down the walls: a dark wet band at their foot, with runs out from it, glistening where the light catches it.");
   skyPair("caveSteam", "caveSteamLocal", "Steam vents", "Where a region is marked as steam vents (the region's right-click panel → Cave, or Air → Room dressing), steam breathes up from cracks in the floor, warm-lit, now and then puffing out in a burst, and drifts off on the draft.");
@@ -8996,18 +9051,19 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     return buttons(name, label, [["", "Auto", auto], ["true", "On", "This light, always"], ["false", "Off", "Never on this light"]], v, tip);
   };
   const set = document.createElement("fieldset");
-  const kinds = [["", "Auto", "One flame"], ["torch", "Torch", "Torch or candle: one flame"], ["brazier", "Brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire", "Campfire or bonfire: a big bed of flames"]];
+  const kinds = [["", "Auto", "One flame"], ["torch", "Torch", "Torch or candle: one flame"], ["lantern", "Lantern", "Lantern: one flame, and a quieter sound"], ["brazier", "Brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire", "Campfire or bonfire: a big bed of flames"], ["pot", "Cooking pot", "Cooking pot: a bed of flames under it, bubbling"]];
   const sizes = [["0.4", "40%", "Tiny: a candle"], ["0.6", "60%", "Small"], ["0.8", "80%", "A little smaller"], ["", "100%", "As its light"], ["1.25", "125%", "A little bigger"], ["1.5", "150%", "Big"], ["2", "200%", "Huge"]];
   const sizeNow = sizes.some(([o]) => o === String(flags.flameSize ?? "")) ? String(flags.flameSize ?? "") : "";
   set.innerHTML = `<legend>Animater</legend>
     ${autoOnOff("flame", "Flame", "A flame burning where this light stands (\"Flames on fire lights\"). Off where the map already draws its fire.")}
-    ${buttons("fireKind", "Fire", kinds, kinds.some(([o]) => o === flags.fireKind) ? flags.fireKind : "", "One tongue for a torch, a bed of them across a brazier's bowl or a campfire.")}
+    ${buttons("fireKind", "Fire", kinds, kinds.some(([o]) => o === flags.fireKind) ? flags.fireKind : "", "One tongue for a torch or lantern, a bed of them across a brazier's bowl, a campfire or under a cooking pot. Each kind has its own sound.")}
     ${buttons("flameSize", "Flame size", sizes, sizeNow, "Bigger or smaller than its light makes it, to fit the sconce or bowl the map draws.")}
     ${autoOnOff("moths", "Moths", "Moths loop round it (\"Moths and crawlers\"). Auto: every fire light in an underground scene; On: this light, on any map.", "Fire lights underground")}
     ${autoOnOff("soot", "Soot", "The wall behind it blackened (\"Soot over torches\"). Auto: a fire light against a wall in an underground scene; On: any light against a wall, anywhere.", "Fire lights underground, against a wall")}
     ${autoOnOff("smoke", "Smoke", "Smoke rising from this light.")}
     ${autoOnOff("heatHaze", "Heat haze", "The air shimmering over this light (\"Heat haze over fires\").")}
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
+    ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
