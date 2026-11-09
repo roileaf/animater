@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 3.8.6
+
+- **Outdoor life and Town life left Scene configuration.** The Animals panel now switches each scene's animals. **Outdoor life on this scene** is its On/Off, and the town's pigeons, hens, cats and dogs come when given a count under **Town**, without Outdoor life on. A scene that had Town life set turns it into those counts the first time the GM opens it, and any counts already set stay as they were.
+- **The Tokenshade preview no longer crashes on token art from another site.** On The Forge, or with a token picture given as an https:// link, the workspace's Tokenshade preview broke the canvas with a cross-origin WebGL error. The picture is now loaded with that site's leave, as Foundry's canvas does, and where a site will not share it the preview shows its stand-in figure. Effects on tokens on the map were never affected.
+
 ## 3.8.5
 
 - **Season colours can be turned off for a scene.** Scene configuration → Animater → Season colours on the ground: Off keeps a map as painted. With a scene's floor on Grass, the season's colour covered the whole map, its painted paths and trees too.
