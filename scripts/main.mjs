@@ -3256,7 +3256,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => openWeatherPanel() });
     add({ name: "animaterWeatherAll", title: "Weather for all scenes: a scene's own settings come first", icon: "fa-solid fa-earth-americas", order: order + 3.6, button: true, visible: toolShown("toolWeather"),
       onChange: () => openAllWeatherPanel() });
-    add({ name: "animaterDetectWater", title: "Detect water (Experimental): propose water regions from this level's map", icon: "fa-solid fa-water", order: order + 3.55, button: true,
+    add({ name: "animaterDetectWater", title: "Detect floors (Experimental): propose water regions from this level's map, or click any floor to add it", icon: "fa-solid fa-layer-group", order: order + 3.55, button: true,
       visible: toolShown("toolDetectWater") && game.settings.get(ID, "experimentalWaterRegions") === true,
       onChange: () => { void openDetectedWater(); } });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
@@ -7618,12 +7618,12 @@ Hooks.once("init", () => {
     ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, for the GM. Marks still fade by themselves.'],
     ['toolAnimals','Show the Animals button','In the Animater controls: choose how many of each animal a scene has, and put them down by hand.'],
     ['toolWeather','Show the Weather button','In the Animater controls: choose the scene\'s weather and tune its amount, size, speed, colour, fog, lightning, wind and clouds.'],
-    ['toolDetectWater','Show the Detect water button','In the Animater controls: propose water regions from this level\'s map (experimental).'],
+    ['toolDetectWater','Show the Detect floors button','In the Animater controls: build floor regions from this level\'s map. Water is proposed automatically; click any other floor to add it (experimental).'],
     ['toolClouds','Show the Clouds button','In the Animater controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   registerSetting("experimentalWaterRegions", {
-    name: "Experimental: detect water regions",
+    name: "Experimental: detect floor regions",
     hint: "Adds a button in the Animater controls that proposes floor regions from the level background (automatic water, click any floor). Off by default. It runs only when you click that button.",
     scope: "world",
     config: true,

@@ -21,13 +21,13 @@ export const WAVE_OPTIONS = Object.freeze([["", "With the wind"], ...WATER_TOWAR
 export const FLOOR_OPTIONS = Object.freeze(DETECT_FLOORS.map((floor) => [floor, FLOOR_META[floor].name]));
 
 const NONE = Object.freeze({
-  "no-candidates": "Experimental. No blue water was found on this map.",
+  "no-candidates": "Experimental. No blue water was found on this map. Pick a floor above and click it on the map to add it.",
   "no-saturated-colour": "Experimental. The blue on this map is too grey to be water. Roofs and stone look like that.",
   "nothing-left": "Experimental. Only a little strong blue was found, too little to tell water from anything else. A thin river can read this way, so click it if you see one.",
 });
 
 const CLICK_NONE = Object.freeze({
-  "no-colour": "Experimental. That spot has no clear colour to follow. Click on the water itself.",
+  "no-colour": "Experimental. That spot has no clear colour to follow. Click on the floor itself.",
   "too-small": "Experimental. That patch is too small to be a region. Click somewhere wider.",
   "already-water": "Experimental. That spot is already in the list.",
 });
@@ -44,6 +44,15 @@ const FAILURES = Object.freeze({
 });
 
 const TINTS = ["rgba(44, 160, 190, 0.45)", "rgba(40, 120, 210, 0.45)", "rgba(70, 170, 140, 0.45)", "rgba(90, 110, 200, 0.45)"];
+
+const addLabel = (floor) => (floor === "none" ? "an area with no floor" : floorMeta(floor).name.toLowerCase());
+
+export function floorTint(floor, index = 0) {
+  if (!isDetectFloor(floor) || floor === "water") return TINTS[index % TINTS.length];
+  const hex = FLOOR_META[floor].color.slice(1);
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, 0.6)`;
+}
 
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -168,10 +177,11 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
   const verb = proposals.some((proposal) => proposal.regionId) ? "Save" : "Create";
   const selected = rows.filter((proposal) => choices.get(proposal.id)?.checked ?? proposal.preselected).length;
   return `<div class="an-water">
-  <header class="an-water-heading"><h2>Review floor areas</h2><p>Experimental. Choose a floor, click matching colour on the map, then review before saving.</p></header>
+  <header class="an-water-heading"><h2>Review floor areas</h2><p>Experimental. Pick a floor, click it on the map, then review before saving. Water is also found automatically.</p></header>
   ${reason ? `<p class="an-water-reason">${esc(noneMessage(reason))}</p>` : ""}
   <div class="an-water-workspace">
     <section class="an-water-map" aria-label="Map preview">
+      <div class="an-water-pickfloor"><label>Click the map to add ${optionsHTML(FLOOR_OPTIONS, "data-floor-to-add", shared.floorToAdd ?? "water")}</label><span class="an-water-swatch" data-floor-swatch style="background:${floorMeta(isDetectFloor(shared.floorToAdd) ? shared.floorToAdd : "water").color}" aria-hidden="true"></span></div>
       <div class="an-water-toolbar"><h3>Map preview</h3><div class="an-water-zoom">
         <button type="button" data-zoom="out" aria-label="Zoom out">−</button><output data-zoom-label aria-live="polite">Fit</output><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="fit">Fit map</button>
       </div></div>
@@ -183,19 +193,19 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
       </div></div>
       <div class="an-water-frame" tabindex="0" aria-label="Floor preview. Scroll to zoom. Drag to pan. Click to add an area."><div class="an-water-stage"><canvas class="an-water-preview" width="${width}" height="${height}"></canvas></div></div>
       <p class="an-water-help">Scroll to zoom · Drag to pan · Click to add an area</p>
-      <div class="an-water-range"><label>Floor to add ${optionsHTML(FLOOR_OPTIONS, "data-floor-to-add", shared.floorToAdd ?? "water")}</label>
+      <div class="an-water-range">
       <label>Click colour range ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide"]], "data-click-range", shared.range ?? "narrow")}</label>
       <p class="an-water-range-note">Wide can join touching colours. Automatic detection still finds water only. Review the preview before creating regions.</p></div>
     </section>
     <section class="an-water-review" aria-label="Floor areas">
       <div class="an-water-toolbar"><h3>Floor areas</h3><span data-area-count>${rows.length} found · ${selected} selected</span></div>
-      <details class="an-water-all" open><summary>Settings for selected areas</summary><p>Changes below apply to every ticked area.</p><div class="an-water-shared-fields">
+      <details class="an-water-all" open><summary>Water settings for selected areas</summary><p>Changes below apply to every ticked water area.</p><div class="an-water-shared-fields">
         <label>Kind ${optionsHTML(WATER_KINDS, 'data-all-kind=""', shared.waterKind ?? "still")}</label>
         <label data-shared-flow>Flows toward ${optionsHTML(FLOW_OPTIONS, 'data-all-flow=""', shared.flowTo || "s")}</label>
         <label data-shared-current>Current ${optionsHTML(CURRENT_OPTIONS, 'data-all-current=""', shared.current ?? "")}</label>
       </div></details>
       <div class="an-water-list">${rows.map((proposal) => waterRowHTML(proposal, choices.get(proposal.id))).join("")}</div>
-      <p class="an-water-empty" data-area-empty${rows.length ? " hidden" : ""}>No areas yet. Click the map to add one.</p>
+      <p class="an-water-empty" data-area-empty${rows.length ? " hidden" : ""}>No areas yet. Pick a floor above, then click it on the map.</p>
     </section>
   </div>
   <footer class="an-water-foot"><span data-selection-count aria-live="polite">${selected} of ${rows.length} areas selected</span><button type="button" data-create${selected ? "" : " disabled"}>${verb} ${selected} region${selected === 1 ? "" : "s"}</button></footer>
@@ -324,7 +334,7 @@ export async function commitWaterPlan(plan, { scene, notify } = {}) {
   return { created: plan.creates.length, updated: plan.updates.length };
 }
 
-export function paintWaterPreview(ctx, rgba, width, height, proposals, highlightId = "") {
+export function paintWaterPreview(ctx, rgba, width, height, proposals, highlightId = "", floors = new Map()) {
   if (!ctx || !width || !height) return;
   if (rgba) ctx.putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0);
   else ctx.clearRect(0, 0, width, height);
@@ -338,7 +348,7 @@ export function paintWaterPreview(ctx, rgba, width, height, proposals, highlight
       ctx.closePath();
     }
     const hot = proposal.id === highlightId;
-    ctx.fillStyle = hot ? "rgba(255, 196, 64, 0.55)" : TINTS[index % TINTS.length];
+    ctx.fillStyle = hot ? "rgba(255, 196, 64, 0.55)" : floorTint(floors.get(proposal.id) ?? proposal.floor, index);
     ctx.fill("evenodd");
     ctx.lineWidth = hot ? 2 : 1;
     ctx.strokeStyle = hot ? "rgba(255, 210, 80, 0.95)" : "rgba(220, 245, 255, 0.35)";
@@ -423,7 +433,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       const canvas = this.element?.querySelector("canvas.an-water-preview");
       const { detect } = this;
       if (!canvas || !detect) return;
-      paintWaterPreview(canvas.getContext("2d", { willReadFrequently: true }), detect.rgba, detect.width, detect.height, detect.proposals, this.mode?.areaId || this.highlight || "");
+      paintWaterPreview(canvas.getContext("2d", { willReadFrequently: true }), detect.rgba, detect.width, detect.height, detect.proposals, this.mode?.areaId || this.highlight || "", new Map(choicesFromElement(this.element).map((row) => [row.id, row.floor])));
       if (this.mode?.kind !== "vertices") return;
       const proposal = detect.proposals.find((p) => p.id === this.mode.areaId);
       const loops = this.gesture?.kind === "vertex" ? this.gesture.loops : proposal?.loops;
@@ -463,9 +473,9 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (button) { button.textContent = this.saving ? "Creating regions…" : `${verb} ${selected} region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
       const empty = this.element.querySelector("[data-area-empty]");
       if (empty) empty.hidden = total > 0;
-      const help = this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : "Click to add water";
+      const help = this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : `Click to add ${addLabel(sharedChoices(this.element).floorToAdd)}`;
       setText(".an-water-help", `Scroll to zoom · Drag to pan · ${help}`);
-      this.element.querySelector(".an-water-frame")?.setAttribute("aria-label", `Water preview. Scroll to zoom. Drag to pan. ${help}.`);
+      this.element.querySelector(".an-water-frame")?.setAttribute("aria-label", `Floor preview. Scroll to zoom. Drag to pan. ${help}.`);
       const status = this.element.querySelector("[data-add-status]");
       if (status) {
         status.hidden = !this.mode?.areaId;
@@ -694,7 +704,12 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         if (event.target.closest?.("[data-all-flow]")) applyShared(this.element, "data-flow", event.target.value);
         if (event.target.closest?.("[data-all-current]")) applyShared(this.element, "data-current", event.target.value);
         if (event.target.closest?.("select[data-kind], select[data-floor]")) updateFloorFields(event.target.closest("[data-id]"));
+        if (event.target.closest?.("select[data-floor-to-add]")) {
+          const swatch = this.element.querySelector("[data-floor-swatch]");
+          if (swatch) swatch.style.background = floorMeta(sharedChoices(this.element).floorToAdd).color;
+        }
         this.updateSummary();
+        if (event.target.closest?.("select[data-floor]")) this.paint();
       });
       this.element.addEventListener("click", (event) => {
         const zoom = event.target.closest?.("[data-zoom]");

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, waterWindowHTML, waterRowHTML,
-  waterDetectWindow, savedWaterProposals, readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
+  paintWaterPreview, floorTint, waterDetectWindow, savedWaterProposals, readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
 } from "../../scripts/ui/water-detect-ui.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -68,7 +68,7 @@ test("rows follow share, large pieces start ticked, and one control sets every t
   assert.match(html, /North-east/);
   assert.match(html, /Swift/);
   assert.match(html, />Create 1 region</);
-  assert.match(html, /Floor to add/);
+  assert.match(html, /Click the map to add/);
   assert.match(html, /data-floor="water-1"/);
   assert.match(waterWindowHTML({ proposals: [{ ...square, regionId: "saved" }], width: 10, height: 5 }), />Save 1 region</);
 });
@@ -403,7 +403,7 @@ test("a map with no automatic water still opens, with the reason and a way to cl
   assert.deepEqual(notes, []);
   const html = await opened.app._renderHTML();
   assert.match(html, /too grey to be water/);
-  assert.match(html, /Click the map to add one/);
+  assert.match(html, /Pick a floor above, then click it on the map/);
   assert.deepEqual(opened.app.detect.proposals, []);
 });
 
@@ -589,9 +589,9 @@ test("a second click on the tool replaces the open window", async () => {
 
 test("the setting is registered off and Detect water is wired into the Animater controls", () => {
   const main = readFileSync(new URL("../../scripts/main.mjs", import.meta.url), "utf8");
-  assert.match(main, /registerSetting\("experimentalWaterRegions", \{[\s\S]*?name: "Experimental: detect water regions"[\s\S]*?default: false/);
+  assert.match(main, /registerSetting\("experimentalWaterRegions", \{[\s\S]*?name: "Experimental: detect floor regions"[\s\S]*?default: false/);
   assert.match(main, /hint: "Adds a button in the Animater controls/);
-  assert.match(main, /\['toolDetectWater','Show the Detect water button'/);
+  assert.match(main, /\['toolDetectWater','Show the Detect floors button'/);
   assert.match(main, /name: "animaterDetectWater"/);
   assert.match(main, /toolShown\("toolDetectWater"\) && game\.settings\.get\(ID, "experimentalWaterRegions"\) === true/);
   assert.doesNotMatch(main, /c\.name === "regions"/);
@@ -1265,6 +1265,34 @@ test("floor row hides water fields when set to stone", () => {
 
 test("Floor to add appears in the window and defaults to water", () => {
   const html = waterWindowHTML({ proposals: [], width: 10, height: 5, reason: "no-candidates" });
-  assert.match(html, /Floor to add/);
+  assert.match(html, /Click the map to add/);
   assert.match(html, /data-floor-to-add[^>]*>[\s\S]*value="water" selected/);
+});
+
+test("the window leads with a floor chooser above the map, with a swatch in the chosen floor's colour", () => {
+  const html = waterWindowHTML({ proposals: [], width: 10, height: 5, reason: "no-candidates", shared: { floorToAdd: "stone" } });
+  assert.ok(html.indexOf("data-floor-to-add") < html.indexOf("<h3>Map preview"), "chooser comes before the map");
+  assert.match(html, /data-floor-swatch style="background:#6b6e73"/);
+  assert.match(html, /Water is also found automatically/);
+  assert.match(noneMessage("no-candidates"), /Pick a floor above and click it on the map/);
+});
+
+test("the preview paints each area in its own floor's colour, and water keeps its blue tints", () => {
+  const fills = [];
+  const ctx = {
+    putImageData() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, stroke() {},
+    fill() { fills.push(this.fillStyle); },
+  };
+  const stone = { id: "water-1", loops: [{ points: [0, 0, 10, 0, 10, 5], hole: false }] };
+  const pond = { id: "water-2", loops: [{ points: [0, 0, 10, 0, 10, 5], hole: false }] };
+  paintWaterPreview(ctx, null, 10, 5, [stone, pond], "", new Map([["water-1", "stone"], ["water-2", "water"]]));
+  assert.equal(fills[0], "rgba(107, 110, 115, 0.6)");
+  assert.equal(fills[1], floorTint("water", 1));
+  assert.match(floorTint("water"), /^rgba\(44, 160, 190/);
+});
+
+test("the control and its switches say floors, not only water", () => {
+  const main = readFileSync(new URL("../../scripts/main.mjs", import.meta.url), "utf8");
+  assert.match(main, /title: "Detect floors \(Experimental\)[^"]*click any floor to add it"/);
+  assert.match(main, /Show the Detect floors button/);
 });
