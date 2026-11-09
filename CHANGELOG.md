@@ -3,7 +3,7 @@
 ## Unreleased
 
 - **The detect window says it builds every floor.** The control is now Detect floors, the setting is Experimental: detect floor regions, and the window opens with a Click the map to add chooser above the map with a swatch in the floor's colour. Each area is painted in its floor's colour (water stays blue), and the hints name the floor you are adding.
-- **Stones with a black outline click whole.** A near-black outline or crack around or through a stone is taken into the piece, up to four pixels deep, when the clicked floor is much brighter. Rocks on grass no longer come out as a ring-less shape with holes, and stones that share an outline join.
+- **Stones with a black outline click whole.** A near-black outline or crack around or through a stone is taken into the piece, up to four pixels deep, when the clicked floor is much brighter. The fill carries on across a crack or shared outline up to three pixels wide, so a stone cut by a crack comes out whole; a wider dark band is treated as another floor. Touching stones are selected one at a time.
 - **Detect every floor.** The review window can build stone, wood, dirt, grass, sand, snow, water, ice, mud, pebbles, glass, metal, lava, or none. Automatic detection stays water-only. Grey and pale clicks match by Lab colour with a small blur. New regions use `generated: floor-detect`; earlier water-detect regions still open and save. Tiles are not read yet.
 - **AI floor suggestions (spike).** An optional off-by-default setting can lazily fetch a SegFormer model for research. Lab/hue matching never depends on it. Findings are in the README.
 

@@ -37,7 +37,7 @@ const LOAD_TIMEOUT_MS = 60000;
 
 const FAILURES = Object.freeze({
   timeout: "Experimental. The map image took too long to load. Click the tool to try again.",
-  video: "Experimental. This background is a video, so its water cannot be read.",
+  video: "Experimental. This background is a video, so its floors cannot be read.",
   "unsupported-format": "Experimental. This background's image format cannot be read. Use a PNG, WebP or JPEG map.",
   tainted: "Experimental. The map image could not be read. It may come from another site.",
   fetch: "Experimental. The map image could not be loaded.",
@@ -474,13 +474,13 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (button) { button.textContent = this.saving ? "Creating regions…" : `${verb} ${selected} region${selected === 1 ? "" : "s"}`; button.disabled = !selected || this.saving === true; }
       const empty = this.element.querySelector("[data-area-empty]");
       if (empty) empty.hidden = total > 0;
-      const help = this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : `Click to add ${addLabel(sharedChoices(this.element).floorToAdd)}`;
+      const help = this.mode?.kind === "vertices" ? "Drag handles to edit the outline" : this.mode?.kind === "add" ? "Click the missed part to extend this area" : `Click to add ${addLabel(sharedChoices(this.element).floorToAdd)}`;
       setText(".an-water-help", `Scroll to zoom · Drag to pan · ${help}`);
       this.element.querySelector(".an-water-frame")?.setAttribute("aria-label", `Floor preview. Scroll to zoom. Drag to pan. ${help}.`);
       const status = this.element.querySelector("[data-add-status]");
       if (status) {
         status.hidden = !this.mode?.areaId;
-        this.element.querySelector("[data-add-message]").textContent = this.mode?.kind === "vertices" ? "Drag a handle. Double-click an edge to insert. Select a handle to delete. Escape cancels a drag, then exits. Checkboxes only choose what to save." : `Adding to Area ${this.mode?.areaId?.replace("water-", "")}. Click missed water or another area on the map to add it. Checkboxes only choose which areas to save.`;
+        this.element.querySelector("[data-add-message]").textContent = this.mode?.kind === "vertices" ? "Drag a handle. Double-click an edge to insert. Select a handle to delete. Escape cancels a drag, then exits. Checkboxes only choose what to save." : `Adding to Area ${this.mode?.areaId?.replace("water-", "")}. Click the missed part of this floor or another area on the map to add it. Checkboxes only choose which areas to save.`;
         this.element.querySelector("[data-undo-add]").disabled = !this.history?.length;
         for (const button of this.element.querySelectorAll("[data-add-to]")) {
           const active = this.mode?.kind === "add" && button.dataset.addTo === this.mode.areaId;
@@ -520,7 +520,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       if (error) { hooks.notify?.(error); this.paint(); return false; }
       if (JSON.stringify(target.loops) === JSON.stringify(loops)) return false;
       const geometry = waterProposalFromLoops(loops, detect.width, detect.height);
-      if (!geometry.pixels.length) { hooks.notify?.("Keep some water inside the outline."); this.paint(); return false; }
+      if (!geometry.pixels.length) { hooks.notify?.("Keep some of the floor inside the outline."); this.paint(); return false; }
       let exclusions;
       try {
         exclusions = (target.exclusions ?? []).map(cut => subtractOutlines(cut, loops)).filter(cut => cut.length);
@@ -559,13 +559,13 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       } else merged = { ...mergeWaterProposals([target, ...additions], detect.width, detect.height, { claimed, preserveTarget: !!target.regionId }), geometryChanged: true };
       const owned = new Set(target.pixels);
       if (!additions.some(p => detect.proposals.includes(p)) && merged.pixels.length === owned.size && merged.pixels.every(pixel => owned.has(pixel))) {
-        hooks.notify?.("That water is already part of this area."); return;
+        hooks.notify?.("That spot is already part of this area."); return;
       }
       this.remember();
       detect.proposals = detect.proposals.filter((proposal) => proposal.id === target.id || !mergedIds.has(proposal.id))
         .map((proposal) => proposal.id === target.id ? merged : proposal);
       this.drawRows(choices);
-      hooks.notify?.(`Added water to Area ${target.id.replace("water-", "")}. Its kind and settings are unchanged.`);
+      hooks.notify?.(`Added to Area ${target.id.replace("water-", "")}. Its floor and settings are unchanged.`);
     }
 
     drawRows(choices) {
@@ -758,7 +758,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         const pixel = Math.floor(at.y) * detect.width + Math.floor(at.x);
         const source = detect.proposals.find((proposal) => proposal !== target && proposal.pixels.includes(pixel));
         if (source?.regionId) {
-          hooks.notify?.("This area is already a saved region. Use its Add water button to edit it separately.");
+          hooks.notify?.("This area is already a saved region. Use its Add to area button to edit it separately.");
           return;
         }
         if (source) return this.combineAreas([source]);
@@ -774,7 +774,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         const owned = new Uint8Array(detect.width * detect.height);
         for (const pixel of target.pixels) owned[pixel] = 1;
         if (picked.proposal.pixels.every((pixel) => owned[pixel])) {
-          hooks.notify?.("That water is already part of this area.");
+          hooks.notify?.("That spot is already part of this area.");
           return;
         }
         return this.combineAreas([{ ...picked.proposal, id: "addition" }]);
@@ -834,7 +834,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
       } catch (error) {
         const detail = typeof error?.message === "string" && /Reopen the generator/.test(error.message)
           ? `Experimental. ${error.message}`
-          : "Experimental. The water regions could not be saved.";
+          : "Experimental. The floor regions could not be saved.";
         hooks.warn?.(detail);
         console.warn("Animater water regions:", error);
       } finally {
@@ -873,7 +873,7 @@ async function openOnce({
   notify = (message) => globalThis.ui?.notifications?.info?.(message),
   warn = (message) => globalThis.ui?.notifications?.warn?.(message),
   confirm = (content) => globalThis.foundry?.applications?.api?.DialogV2.confirm?.({
-    window: { title: "Experimental water regions" },
+    window: { title: "Experimental floor regions" },
     content: `<p>${content}</p>`,
   }),
   load = loadMapRgba,

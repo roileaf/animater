@@ -20,10 +20,12 @@ export const FLOOR_SELECT_TUNING = Object.freeze({
   labOutlineL: 20,
   labOutlineReach: 4,
   labOutlineSeedGap: 20,
+  // The fill only carries on across a dark band this thin (a crack, a shared outline). A wider one is another floor.
+  labBridgeReach: 3,
   // An enclosed gap this far from the floor, or transparent, is a different thing lying on it and stays a hole.
   labHoleKeep: 35,
 });
-const labOutlineRounds = 3;
+const labOutlineRounds = 8;
 
 export function selectWaterAt(rgba, width, height, at, options = {}) {
   return selectFloorAt(rgba, width, height, at, options);
@@ -99,8 +101,8 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     seeds[start] = 1;
     flooded = new Uint8Array(count);
     grow(seeds, weak, flooded, width, height);
-    const { labOutlineReach, labOutlineSeedGap } = FLOOR_SELECT_TUNING;
-    if (labSeed.L - labOutlineL >= labOutlineSeedGap) absorbOutline(flooded, dark, weak, width, height, labOutlineReach);
+    const { labOutlineReach, labBridgeReach, labOutlineSeedGap } = FLOOR_SELECT_TUNING;
+    if (labSeed.L - labOutlineL >= labOutlineSeedGap) absorbOutline(flooded, dark, weak, width, height, labOutlineReach, labBridgeReach);
   }
 
   const mask = cleanMask(flooded, width, height, taken, useHue ? { hue, sat } : null, contrast);
@@ -187,9 +189,9 @@ function darkPixels(lab, rgba, taken, count) {
 }
 
 // Grows the fill into dark pixels, up to `reach` steps from it, so an outline ring is part of the piece. A crack can cut
-// a stone in two, so the pixels taken in then seed a fresh fill through the matching pixels beyond them, and the two
-// repeat until nothing is added. Only matched pixels start a round, so a dark floor is never followed deeper than `reach`.
-function absorbOutline(flooded, dark, weak, width, height, reach) {
+// a stone in two, so the pixels taken in within `bridge` steps then seed a fresh fill through the matching pixels beyond
+// them, and the two repeat until nothing is added. Only matched pixels start a round, so a dark floor is never followed deeper than `reach`.
+function absorbOutline(flooded, dark, weak, width, height, reach, bridge) {
   const count = width * height;
   const absorbed = new Uint8Array(count);
   for (let round = 0; round < labOutlineRounds; round++) {
@@ -208,7 +210,7 @@ function absorbOutline(flooded, dark, weak, width, height, reach) {
             const xx = x + dx;
             if (xx < 0 || xx >= width) continue;
             const q = yy * width + xx;
-            if (dark[q] && !flooded[q]) { flooded[q] = 1; added[q] = 1; absorbed[q] = 1; next.push(q); any = true; }
+            if (dark[q] && !flooded[q]) { flooded[q] = 1; absorbed[q] = 1; if (step < bridge) added[q] = 1; next.push(q); any = true; }
           }
         }
       }

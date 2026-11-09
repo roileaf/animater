@@ -295,7 +295,7 @@ Animater reads that level's **background** map only (tiles are left out for now,
 
 Each area in the preview is painted in its floor's colour, so water stays blue and stone shows grey. Each row has a **Floor** select. Water kind, flow, waves, and beach appear only on water rows. Lava regions use Animater's lava cave flags. New regions are tagged `generated: floor-detect`; regions from the earlier water-only tool still open and save.
 
-**Stones with a dark outline.** A black outline or a dark crack around or through a stone is taken into the piece (up to four pixels deep) when you click the stone, so rocks on grass come out whole. A dark floor touching the stone is taken in only that far.
+**Stones with a dark outline.** A black outline or a dark crack around or through a stone is taken into the piece (up to four pixels deep) when you click the stone, so rocks on grass come out whole. The fill carries on across a crack or shared outline up to three pixels wide; a wider dark band is treated as another floor, and a dark floor touching the stone is taken in only that far. Touching stones are selected one at a time.
 
 **Limits.** Painted battlemaps often share colours across floors, so automatic guessing beyond water stays off. Similar roofs or vegetation can still match a click — review before saving. A video, SVG, or transformed level background cannot be read.
 

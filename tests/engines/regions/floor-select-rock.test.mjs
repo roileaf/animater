@@ -50,11 +50,14 @@ test("a stone with a black outline and a dark crack is selected whole, outline i
   assert.equal(found.proposal.loops.filter((loop) => loop.hole).length, 0, "the crack leaves no hole");
 });
 
-test("two stones touching through their outlines select as one piece", () => {
+test("two stones sharing an outline are each selected whole when clicked", () => {
   const rocks = [{ cx: 36, cy: 40, r: 12, ring: 3 }, { cx: 63, cy: 40, r: 12, ring: 3 }];
-  const found = selectFloorAt(stoneField(rocks), W, H, { x: 30, y: 36 });
-  assert.equal(found.status, "found");
-  assert.ok(inside(found.proposal.pixels, 63, 40, 15) >= discArea(15) * 0.9, "reaches the second stone across the shared outline");
+  const rgba = stoneField(rocks);
+  for (const [rock, click] of [[rocks[0], { x: 30, y: 36 }], [rocks[1], { x: 69, y: 36 }]]) {
+    const found = selectFloorAt(rgba, W, H, click);
+    assert.equal(found.status, "found");
+    assert.ok(inside(found.proposal.pixels, rock.cx, rock.cy, rock.r) >= discArea(rock.r) * 0.95, "covers its own stone");
+  }
 });
 
 test("a dark floor touching the stone is only taken in a few pixels deep", () => {
@@ -64,4 +67,35 @@ test("a dark floor touching the stone is only taken in a few pixels deep", () =>
   assert.equal(found.status, "found");
   const deepest = Math.max(...found.proposal.pixels.map((p) => p % W));
   assert.ok(deepest <= 54 + 4, `reached x=${deepest}`);
+});
+
+function panels(widths, gap, height = 100) {
+  const total = widths.reduce((a, b) => a + b, 0) + gap * (widths.length - 1);
+  const rgba = new Uint8ClampedArray(total * height * 4);
+  const edges = [];
+  let x0 = 0;
+  for (const w of widths) { edges.push([x0, x0 + w]); x0 += w + gap; }
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < total; x++) {
+      const i = (y * total + x) * 4, inPanel = edges.some(([a, b]) => x >= a && x < b), n = noise(x, y);
+      const c = y >= 60 ? [90, 55, 20] : inPanel ? ROCK : OUTLINE, jitter = y >= 60 || inPanel ? n : 0;
+      rgba[i] = c[0] + jitter; rgba[i + 1] = c[1] + jitter; rgba[i + 2] = c[2] + jitter; rgba[i + 3] = 255;
+    }
+  }
+  return { rgba, total, height, edges };
+}
+
+test("a four pixel black pit between two grey floors does not join them", () => {
+  const { rgba, total, height, edges } = panels([60, 70], 4);
+  const found = selectFloorAt(rgba, total, height, { x: 30, y: 30 });
+  assert.equal(found.status, "found");
+  assert.equal(found.proposal.pixels.filter((p) => p % total >= edges[1][0]).length, 0);
+});
+
+test("a chain of grey panels split by thin cracks selects as one piece", () => {
+  const { rgba, total, height, edges } = panels([24, 24, 24, 24, 24, 24], 2);
+  const found = selectFloorAt(rgba, total, height, { x: 12, y: 30 });
+  assert.equal(found.status, "found");
+  const [a, b] = edges[edges.length - 1];
+  assert.ok(found.proposal.pixels.filter((p) => { const x = p % total; return x >= a && x < b && p < total * 60; }).length > (b - a) * 60 * 0.9);
 });

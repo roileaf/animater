@@ -1196,7 +1196,7 @@ test("zero-pixel edit is refused and not written to the saved region", async (t)
   assert.equal(app.commitOutline([{points:[0.1,0.1,0.4,0.1,0.4,0.4,0.1,0.4],hole:false}]),false);
   assert.strictEqual(app.detect.proposals[0],before);
   assert.equal(app.history?.length??0,0);
-  assert.match(notes.at(-1),/some water/);
+  assert.match(notes.at(-1),/some of the floor/);
   ui.rows()[0].querySelector("[data-pick]").checked=true;
   await app.create();
   assert.deepEqual(scene.calls,[]);
