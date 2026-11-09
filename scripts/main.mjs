@@ -19,6 +19,7 @@ import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
+import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
@@ -6957,7 +6958,8 @@ const propTileView = (doc) => {
   const scene = doc.parent, elevation = Number(doc.elevation) || 0;
   let top;
   try { top = levelTopOf(doc.levels, scene?.levels?.contents ?? [], scene?.initialLevel?.id ?? null); } catch { top = undefined; }
-  return { id: doc.id, x: doc.x, y: doc.y, width: doc.width, height: doc.height, rotation: doc.rotation ?? 0, hidden: doc.hidden, elevation,
+  // v14 keeps x/y at the texture anchor: the rules read the top-left corner (tileRect).
+  return { id: doc.id, ...tileRect(doc), hidden: doc.hidden, elevation,
     texture: { src: doc.texture?.src }, flags: doc.flags ?? {}, overhead: top === undefined ? undefined : elevation >= top,
     // read only when the scene has no levels (v14 deprecates occlusion.mode)
     occlusion: { mode: [...(doc.occlusion?.modes ?? [])][0] ?? 0 } };
@@ -10168,7 +10170,8 @@ Hooks.once("ready", () => {
       breakProp: (tileId, cause = {}) => {
         const doc = canvas.tiles?.get(tileId)?.document;
         if (!game.user?.isGM || !doc) return false;
-        return requestPropBreak(doc, { kind: "area", damageType: "bludgeoning", at: { x: doc.x + doc.width / 2, y: doc.y + doc.height / 2 }, ...cause });
+        const r = tileRect(doc);
+        return requestPropBreak(doc, { kind: "area", damageType: "bludgeoning", at: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, ...cause });
       },
       repairProps: () => repairAllProps(canvas?.scene),
       // The Tokenshade looks on a token, by their key (region:, nature:, lit:, weather:, a lasting state's...).

@@ -4,6 +4,7 @@ import { bloodArt } from "../motion/blood-art.mjs";
 import { wreckLayout, wreckTargets, GRAIN_TONES } from "./prop-wreck-layout.mjs";
 import { propSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
+import { tileRect } from "./prop-geometry.mjs";
 
 const FALLBACK = { mid: 0x7a6a55, dark: 0x433a2f, light: 0x9a8a72 };
 const FLIGHT_MS = 1400;
@@ -126,7 +127,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
   async function draw(tile, note, contents, { animate = false }) {
     const d = tile.document ?? tile, id = d.id;
     hide(id);
-    const centre = { x: d.x + d.width / 2, y: d.y + d.height / 2 };
+    const rect = tileRect(d), centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
     const box = new PIXI.Container(), entry = { box, handle: null, stop: null };
     wrecks.set(id, entry);
     box.sortableChildren = true;
