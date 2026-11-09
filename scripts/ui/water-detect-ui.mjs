@@ -152,7 +152,7 @@ function currentDefault(kind, current) {
 function suggestionTag(proposal, floor) {
   const { suggestion } = proposal;
   if (!suggestion || suggestion.floor !== floor) return "";
-  return ` <small class="an-water-suggest" data-suggest>Suggested from colour${suggestion.confidence === "low" ? " (unsure)" : ""}</small>`;
+  return ` <small class="an-water-suggest" data-suggest="${suggestion.floor}">Suggested from colour${suggestion.confidence === "low" ? " (unsure)" : ""}</small>`;
 }
 
 export function waterRowHTML(proposal, options = {}) {
@@ -401,7 +401,7 @@ function updateFloorFields(row) {
   const floor = row.querySelector("select[data-floor]")?.value ?? "water";
   row.dataset.floor = floor;
   const tag = row.querySelector("[data-suggest]");
-  if (tag) tag.hidden = true;
+  if (tag) tag.hidden = tag.getAttribute?.("data-suggest") !== floor;
   const wet = floor === "water";
   for (const field of row.querySelectorAll("[data-water-fields]")) field.hidden = !wet;
   if (!wet) return;

@@ -25,19 +25,21 @@ export const SUGGEST_TUNING = Object.freeze({
   sample: 1500,
   // Confident only when the runner-up floor is clearly further away, as stone is from metal or dirt from wood is not.
   runnerUpRatio: 1.5,
-  runnerUpMargin: 8,
+  runnerUpMargin: 10,
 });
 
 export function suggestFloor(rgba, width, height, pixels) {
   const total = pixels?.length ?? 0;
   if (!total) return null;
   const { sample, runnerUpRatio, runnerUpMargin } = SUGGEST_TUNING;
-  const step = Math.max(1, Math.ceil(total / sample));
-  let L = 0, a = 0, b = 0, n = 0;
-  for (let k = 0; k < total; k += step) {
-    const i = pixels[k] * 4;
+  const n = Math.min(total, sample);
+  let L = 0, a = 0, b = 0;
+  for (let k = 0; k < n; k++) {
+    // One pixel from each equal slice of the list, at a fixed pseudo-random spot, so no regular stripe can line up with it.
+    const spot = Math.min(total - 1, Math.floor((k + ((Math.imul(k + 1, 2654435761) >>> 0) / 4294967296)) * total / n));
+    const i = pixels[spot] * 4;
     const lab = rgbToLab(rgba[i], rgba[i + 1], rgba[i + 2]);
-    L += lab[0]; a += lab[1]; b += lab[2]; n++;
+    L += lab[0]; a += lab[1]; b += lab[2];
   }
   const mean = [L / n, a / n, b / n];
   const nearest = new Map();

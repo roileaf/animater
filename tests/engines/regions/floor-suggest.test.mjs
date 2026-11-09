@@ -58,3 +58,19 @@ test("a large selection is sampled, so a big map click stays fast", () => {
   assert.equal(suggestFloor(rgba, width, height, pixels).floor, "grass");
   assert.ok(Date.now() - started < 200, "read a sample, not every pixel");
 });
+
+test("a thin border that lines up with the sampling stride does not decide the floor", () => {
+  const width = 800, height = 1500, rgba = new Uint8ClampedArray(width * height * 4), pixels = [];
+  for (let p = 0; p < width * height; p++) {
+    const border = p % width < 3, c = border ? [35, 50, 70] : [128, 128, 130];
+    rgba[p * 4] = c[0]; rgba[p * 4 + 1] = c[1]; rgba[p * 4 + 2] = c[2]; rgba[p * 4 + 3] = 255;
+    pixels.push(p);
+  }
+  assert.equal(suggestFloor(rgba, width, height, pixels).floor, "stone");
+});
+
+test("the same selection gives the same suggestion whatever order its pixels are listed in", () => {
+  const { rgba, width, height, pixels } = patch([70, 120, 50], { width: 300, height: 300, grain: 8 });
+  const rotated = [...pixels.slice(7), ...pixels.slice(0, 7)];
+  assert.equal(suggestFloor(rgba, width, height, rotated).floor, suggestFloor(rgba, width, height, pixels).floor);
+});

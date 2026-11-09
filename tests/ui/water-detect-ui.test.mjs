@@ -1355,7 +1355,7 @@ test("a floor the GM chose is never replaced by a suggestion", async () => {
 
 test("the row says its floor was suggested, and says when the guess is unsure", () => {
   const sure = waterRowHTML({ ...square, suggestion: { floor: "stone", runnerUp: "metal", confidence: "high" } }, { floor: "stone" });
-  assert.match(sure, /data-suggest[^>]*>Suggested from colour</);
+  assert.match(sure, /data-suggest="stone"[^>]*>Suggested from colour</);
   assert.doesNotMatch(sure, /unsure/);
   const unsure = waterRowHTML({ ...square, suggestion: { floor: "stone", runnerUp: "metal", confidence: "low" } }, { floor: "stone" });
   assert.match(unsure, /Suggested from colour \(unsure\)/);
