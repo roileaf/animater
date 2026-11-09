@@ -23,6 +23,36 @@ export function transitionCycle(preset) {
     .map((a) => (Number(a.loopDuration) || 0) + (Number(a.pauseBetweenDuration) || 0));
   return once.length ? Math.max(...once) + 1500 : 0;
 }
+// Whether a picture's address is another site's (pure): The Forge's assets, any https:// link. Pictures from this server,
+// data: and blob: are not.
+export function crossOrigin(src, here) {
+  if (!src || /^(data|blob):/i.test(src)) return false;
+  try { return new URL(src, here).origin !== new URL(here).origin; } catch { return false; }
+}
+// Whether WebGL may take a picture: one from another site, loaded without asking for it (crossOrigin), is "tainted",
+// and handing it to WebGL throws and leaves the renderer broken. Reading one pixel back tells, without WebGL.
+export function readable(image, document) {
+  try { const c = document.createElement('canvas'); c.width = c.height = 1; const g = c?.getContext?.('2d'); if (typeof g?.getImageData !== 'function') return true; g.drawImage(image, 0, 0, 1, 1); g.getImageData(0, 0, 1, 1); return true; } catch { return false; }
+}
+// The token's art as WebGL may take it. The workspace's <img> shows any picture, but one from another site (The Forge's
+// assets, an https:// link) comes again asking that site's leave, as Foundry's own canvas does; if the site does not give
+// it, null, and the preview draws its stand-in.
+export async function webglImage(image, {document, here, timeout = 5000, signal} = {}) {
+  if (!image?.naturalWidth) return null;
+  const src = image.currentSrc || image.src || '';
+  if (!crossOrigin(src, here) || image.crossOrigin === 'anonymous') return readable(image, document) ? image : null;
+  const copy = document.createElement('img');
+  copy.crossOrigin = 'anonymous';
+  const loaded = await new Promise((resolve) => {
+    const done = (ok) => { clearTimeout(timer); signal?.removeEventListener?.('abort', abort); resolve(ok); }, abort = () => done(false);
+    const timer = setTimeout(() => done(false), timeout);
+    copy.addEventListener('load', () => done(true), {once: true}); copy.addEventListener('error', () => done(false), {once: true});
+    signal?.addEventListener?.('abort', abort, {once: true});
+    copy.src = src;
+  });
+  return loaded && copy.naturalWidth > 0 && readable(copy, document) ? copy : null;
+}
+
 export class TokenFxPreview {
   // `drive`: test live values for effects that follow the game (the Tokenshade page's sliders).
   constructor({scene,recipe,PIXI,tokenFx,world=()=>Date.now(),drive=()=>null}) {
@@ -46,10 +76,12 @@ export class TokenFxPreview {
       const width=parseFloat(token.style.width)||token.clientWidth||55,height=parseFloat(token.style.height)||token.clientHeight||55;
       const container=new PIXI.Container();
       let art,texture;
-      if(image?.naturalWidth>0) {
+      const doc=scene.ownerDocument,picture=image?.naturalWidth>0?await webglImage(image,{document:doc,here:doc?.defaultView?.location?.href??globalThis.location?.href,signal:this.abort.signal}):null;
+      if(this.stopped)return;
+      if(picture) {
         // Own this texture, rather than leaving each rerendered HTML image in
         // PIXI's global Texture.from cache after the preview is closed.
-        texture=new PIXI.Texture(new PIXI.BaseTexture(image));
+        texture=new PIXI.Texture(new PIXI.BaseTexture(picture));
         art=new PIXI.Sprite(texture);art.anchor.set(.5);
         art.width=parseFloat(image.style.width)||width;art.height=parseFloat(image.style.height)||height;
         if(scene.dataset.fitTokenFx!==undefined&&image.naturalHeight>0) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {previewFilters,TokenFxPreview} from '../../../scripts/engines/preview/token-fx-preview.mjs';
+import {previewFilters,TokenFxPreview,crossOrigin,webglImage} from '../../../scripts/engines/preview/token-fx-preview.mjs';
 import {RecipePreview} from '../../../scripts/engines/preview/recipe-preview.mjs';
 import {recipeFrame} from '../../../scripts/engines/playback/choreography.mjs';
 import {validateRecipe} from '../../../scripts/core/model.mjs';
@@ -89,4 +89,26 @@ test('recipe preview buffers and drives shader lifecycle, including late prepara
   let complete;const pending=new RecipePreview(scene,f.recipe,()=>{}, {tokenFx:()=>new Promise(resolve=>{complete=resolve;})});
   const ready=pending.prepareTokenFx();await new Promise(resolve=>setImmediate(resolve));pending.stop();complete(native);await ready;
   assert.equal(calls.at(-1),'stop');assert.equal(calls.filter(c=>c==='ready').length,1);
+});
+
+// Jeremiah on The Forge: a token whose picture is on another site (Forge assets, any https:// link) crashed the workspace's
+// Tokenshade preview, as WebGL refuses a picture loaded without that site's leave. It now asks, as Foundry's canvas does,
+// and draws the stand-in when the site says no.
+test('a picture from another site is asked for again, with leave, before WebGL takes it',async()=>{
+  const here='https://forge.example/game';
+  assert.equal(crossOrigin('/assets/a.webp',here),false);
+  assert.equal(crossOrigin('data:image/png;base64,AA',here),false);
+  assert.equal(crossOrigin('https://assets.forge-vtt.com/u/a.webp',here),true);
+  const made=[],doc=(ok,tainted=false)=>({createElement:(tag)=>{
+    if(tag==='canvas')return {getContext:()=>({drawImage(){},getImageData(){if(tainted)throw Error('SecurityError');}})};
+    const img={listeners:{},naturalWidth:0,addEventListener(type,fn){this.listeners[type]=fn;},set src(v){this._src=v;made.push(this);queueMicrotask(()=>{if(ok){this.naturalWidth=64;this.listeners.load?.();}else this.listeners.error?.();});},get src(){return this._src;}};
+    return img;
+  }});
+  const shown={naturalWidth:64,src:'https://assets.forge-vtt.com/u/a.webp'};
+  const copy=await webglImage(shown,{document:doc(true),here});
+  assert.notEqual(copy,shown);assert.equal(copy.crossOrigin,'anonymous');assert.equal(copy.src,shown.src);
+  assert.equal(await webglImage(shown,{document:doc(false),here}),null,'the site said no: the stand-in');
+  assert.equal(await webglImage(shown,{document:doc(true,true),here}),null,'still tainted: the stand-in');
+  const local={naturalWidth:64,src:'https://forge.example/assets/a.webp'};
+  assert.equal(await webglImage(local,{document:doc(true),here}),local,'this server\'s picture as it is');
 });
