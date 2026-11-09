@@ -28,4 +28,6 @@ test("bundled sounds read as what they are", () => {
   assert.equal(describeBundledSound("surfaces/kenney", "footstep_concrete_000.ogg").label, "Footstep Concrete");
   assert.equal(describeBundledSound("creatures/completed", "flight-any-862337-0.ogg").label, "Flight");
   assert.equal(describeBundledSound("underground/cave-in", "cave-in-567249-0.ogg").label, "Cave In");
+  assert.equal(describeBundledSound("props/clay", "ceramic-break-623130-a.ogg").label, "Ceramic Break");
+  assert.equal(describeBundledSound("props/wood", "barrel-break-66772.ogg").label, "Barrel Break");
 });
