@@ -4,8 +4,9 @@
 import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor } from "../engines/regions/floor-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
-import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal } from "../engines/regions/smart-select.mjs";
+import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours } from "../engines/regions/smart-select.mjs";
 import { SMART_MODEL, loadSmartModel, isSmartModelCached } from "./smart-model.mjs";
+import { areaSignature, rememberAreas, recallFloor, memoryOf, markAreas, knowsFloors, NONE_FLOOR } from "../engines/regions/floor-memory.mjs";
 
 // Asked once per page, before the first smart mark downloads anything.
 export const SMART_CONSENT = `Experimental. Smart selection uses ${SMART_MODEL.name}, a segmentation model that runs in this browser. The first time, it downloads about ${SMART_MODEL.size} from huggingface.co (and its library from cdn.jsdelivr.net); after that it loads from this browser's cache. The map is read on this computer and is not sent anywhere. Download it now?`;
@@ -28,6 +29,15 @@ function writePrefs(change) { try { globalThis.localStorage?.setItem(PREFS_KEY, 
 
 export const FLOW_OPTIONS = Object.freeze(flowChoices());
 export const FLOOR_OPTIONS = Object.freeze(AREA_FLOORS.map((floor) => [floor, floorName(floor)]));
+// Auto: a new area takes the floor of the saved regions it looks like (floor-memory.mjs), else water.
+export const AUTO_FLOOR = "auto";
+const KEEP_COLOURS_TIP = "Smart selection keeps to the colours around your click: a chair, rug or bush of another colour standing on the floor is left out as a hole. Turn off for a floor of many colours.";
+const AUTO_TIP = "Auto: the floor of the regions you saved that look most like it, on any scene. Water when nothing looks alike yet. Gets better with every region you save.";
+const AUTO_SWATCH = "conic-gradient(#2c7da0 0 25%, #8a6a45 0 50%, #5f8f3e 0 75%, #8d8d8d 0)";
+const pickable = (floor) => floor === AUTO_FLOOR || isAreaFloor(floor);
+const pickName = (floor) => floor === AUTO_FLOOR ? "Auto" : floorName(floor);
+const pickColour = (floor) => floor === AUTO_FLOOR ? AUTO_SWATCH : floorColour(floor);
+const LEARNED_NOTE = "learned";
 const WATER_KEYS = ["waterKind", "flowTo", "current", "waveTo", "seaBeach"];
 // What can be built out over water (a deck, a jetty, a bridge): anything to stand on, never water or lava itself.
 export const canStandOverWater = (floor) => !!floor && !["water", "lava", "cavern"].includes(floor);
@@ -221,9 +231,9 @@ export function saveLabel(proposals, checkedIds, saving = false) {
 }
 
 // The status line under an area's name: saved or new, whether it will be written, and what it is.
-export function rowMeta({ saved, checked, floor, kind, overWater = false }) {
+export function rowMeta({ saved, checked, floor, kind, overWater = false, learned = false }) {
   const state = saved ? (checked ? "Saved · will update" : "Saved") : (checked ? "New" : "New · not saved");
-  return [state, floorName(floor), floor === "water" ? labelOf(WATER_KINDS, kind) : "", overWater && canStandOverWater(floor) ? "over water" : ""].filter(Boolean).join(" · ");
+  return [state, floorName(floor), floor === "water" ? labelOf(WATER_KINDS, kind) : "", overWater && canStandOverWater(floor) ? "over water" : "", learned && !saved ? LEARNED_NOTE : ""].filter(Boolean).join(" · ");
 }
 
 export function areaRowHTML(proposal, options = {}) {
@@ -245,10 +255,11 @@ export function areaRowHTML(proposal, options = {}) {
   const badge = `<b class="an-area-num an-floor-swatch" style="--swatch:${shade}">${num}</b>`;
   // The line: tick (save it or not), the number from the map, the name with its status, the size. Everything else is in
   // the inspector, which shows only for the selected area. The water fields show only on a water area.
-  return `<div class="an-floors-row" data-id="${id}" data-scene-texture="${esc(sceneTexture)}">
+  const learned = !saved && proposal.learned === true;
+  return `<div class="an-floors-row" data-id="${id}" data-scene-texture="${esc(sceneTexture)}"${learned ? ` data-learned title="Floor and look learned from the regions you saved that look like this one"` : ""}>
   <label class="an-floors-pick" title="${saved ? `Tick to save changes to ${name}` : `Tick to create ${name} as a region`}"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""} aria-label="Include ${name} in save"></label>
   ${badge}
-  <span class="an-row-name"><strong>${saved ? name : floorName(floor)}</strong><span data-row-meta><i class="an-dot${saved ? " is-saved" : ""}"></i>${esc(rowMeta({ saved, checked, floor, kind, overWater: over }))}</span></span>
+  <span class="an-row-name"><strong>${saved ? name : floorName(floor)}</strong><span data-row-meta><i class="an-dot${saved ? " is-saved" : ""}"></i>${esc(rowMeta({ saved, checked, floor, kind, overWater: over, learned }))}</span></span>
   <span class="an-floors-share" title="${proposal.vertices} vertices">${percent(proposal.share)}</span>
   <div class="an-inspector" data-inspector>
     <div class="an-insp-head">${badge}<div><strong>${saved ? name : `${floorName(floor)} · area ${num}`}</strong><span>${saved ? "Saved region" : "New area"} · ${percent(proposal.share)} of the map</span></div></div>
@@ -289,12 +300,16 @@ export function areaListHTML(proposals, optionsFor, floorOf) {
   return group("On this scene", proposals.filter((p) => p.regionId)) + group("New", proposals.filter((p) => !p.regionId));
 }
 
-export function floorWindowHTML({ proposals, width, height, reason = "", picked = [], shared = {}, sceneTexture = "" }) {
+// The Mark areas button's tip: what it does, or why there is nothing to mark from yet. `learned`: floor examples kept.
+export const markTip = (learned) => learned > 0
+  ? `Mark the areas on this map that look like the ${learned} region${learned === 1 ? "" : "s"} you saved, of any floor. Untick or remove a wrong one before saving and it won't be marked again.`
+  : "Nothing learned yet: save some floor regions (here or on another scene) and this marks the areas that look like them. It also runs by itself when the window opens.";
+export function floorWindowHTML({ proposals, width, height, reason = "", picked = [], shared = {}, sceneTexture = "", learned = 0 }) {
   const rows = [...proposals].sort((a, b) => b.share - a.share || String(a.id).localeCompare(String(b.id)));
   const choices = new Map(picked.map((choice) => [choice.id, choice]));
   const selected = rows.filter((proposal) => choices.get(proposal.id)?.checked ?? proposal.preselected).length;
   const prefs = readPrefs();
-  const addFloor = isAreaFloor(shared.addFloor) ? shared.addFloor : isAreaFloor(prefs.addFloor) ? prefs.addFloor : "water";
+  const addFloor = pickable(shared.addFloor) ? shared.addFloor : pickable(prefs.addFloor) ? prefs.addFloor : AUTO_FLOOR;
   const selection = shared.selection ?? (prefs.selection === "smart" ? "smart" : "colour");
   const floorOf = (p) => { const f = choices.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; return isAreaFloor(f) ? f : "water"; };
   const anyWater = rows.some((p) => floorOf(p) === "water" && (choices.get(p.id)?.checked ?? p.preselected));
@@ -312,11 +327,13 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
         <span class="an-tool-divider"></span>
         <div class="an-floor-picker" data-floor-picker>
           <span class="an-tool-label">Floor</span>
-          <button type="button" class="an-floor-current" data-floor-toggle aria-haspopup="true" aria-expanded="false" title="The floor your next click adds"><i class="an-floor-swatch" data-floor-current-swatch style="--swatch:${floorColour(addFloor)}"></i><span data-floor-current-name>${esc(floorName(addFloor))}</span><i class="fa-solid fa-chevron-down an-chev"></i></button>
-          <div class="an-floor-pop an-floor-bar" role="radiogroup" aria-label="Floor to add" data-floor-pop hidden>${FLOOR_OPTIONS.map(([floor, name]) => radio("an-add-floor", floor, "data-add-floor-option", floor === addFloor, `<i class="an-floor-swatch" style="--swatch:${floorColour(floor)}"></i><span>${name}</span>`, `Add ${name.toLowerCase()}`)).join("")}</div>
+          <button type="button" class="an-floor-current" data-floor-toggle aria-haspopup="true" aria-expanded="false" title="The floor your next click adds"><i class="an-floor-swatch" data-floor-current-swatch style="--swatch:${pickColour(addFloor)}"></i><span data-floor-current-name>${esc(pickName(addFloor))}</span><i class="fa-solid fa-chevron-down an-chev"></i></button>
+          <div class="an-floor-pop an-floor-bar" role="radiogroup" aria-label="Floor to add" data-floor-pop hidden>${radio("an-add-floor", AUTO_FLOOR, "data-add-floor-option", addFloor === AUTO_FLOOR, `<i class="an-floor-swatch" style="--swatch:${AUTO_SWATCH}"></i><span>Auto</span>`, AUTO_TIP)}${FLOOR_OPTIONS.map(([floor, name]) => radio("an-add-floor", floor, "data-add-floor-option", floor === addFloor, `<i class="an-floor-swatch" style="--swatch:${floorColour(floor)}"></i><span>${name}</span>`, `Add ${name.toLowerCase()}`)).join("")}</div>
         </div>
+        <label class="an-keep-colours" data-smart-only${selection === "smart" ? "" : " hidden"} title="${esc(KEEP_COLOURS_TIP)}"><input type="checkbox" data-keep-colours${prefs.keepColours === false ? "" : " checked"}> Same colours</label>
         <label class="an-colour-range" data-colour-only${selection === "smart" ? " hidden" : ""} title="Wide can join touching grass, banks or other similar colours"><span class="an-tool-label">Range</span> ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide"]], "data-click-range", shared.range ?? "narrow")}</label>
         <span class="an-tool-divider"></span>
+        <button type="button" class="an-mark-button" data-auto-mark title="${esc(markTip(learned))}" aria-disabled="${learned > 0 ? "false" : "true"}"><i class="fa-solid fa-layer-group" inert></i><span>Mark areas</span></button>
         <button type="button" class="an-icon-button" data-undo-toolbar title="Undo the last change (Ctrl+Z)" aria-label="Undo" disabled><i class="fa-solid fa-rotate-left" inert></i></button>
         <span class="an-tool-grow"></span>
         <div class="an-floors-zoom" title="Or scroll over the map to zoom. Drag or middle-drag to pan.">
@@ -432,7 +449,7 @@ export function savedAreaProposals(regions, { levelId, sceneRect, width, height 
 export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imageHeight, levelId, regions }) {
   const byId = new Map((proposals ?? []).map((proposal) => [proposal.id, proposal]));
   const editable = new Set(editableFloorRegionIds(regions, levelId));
-  const creates = [], updates = [];
+  const creates = [], updates = [], sources = []; // sources: the area each create comes from
   for (const pickedRow of [...(picked ?? [])].sort((a, b) => (byId.get(b.id)?.share ?? 0) - (byId.get(a.id)?.share ?? 0))) {
     const row = { ...pickedRow, flowTo: flowDefault(pickedRow.waterKind, pickedRow.flowTo), current: currentDefault(pickedRow.waterKind, pickedRow.current) };
     if (!row.checked) continue;
@@ -441,7 +458,7 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
     const data = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, floor: row.floor,
       waterKind: row.waterKind, flowTo: row.flowTo, current: row.current, waveTo: row.waveTo, seaBeach: row.seaBeach, texture: row.texture,
       pattern: row.pattern ? patternOf(row.floor, row.pattern) : "", edge: row.edge, overWater: row.overWater === true, steps: proposal.regionId ? null : stepPatch(row.floor, row.step) });
-    if (!proposal.regionId) { creates.push(data); continue; }
+    if (!proposal.regionId) { creates.push(data); sources.push(proposal.id); continue; }
     if (!editable.has(proposal.regionId)) throw new Error("The saved region is no longer editable on this level. Reopen the generator.");
     const patch = { _id: proposal.regionId };
     if (proposal.geometryChanged) patch.shapes = data.shapes;
@@ -490,16 +507,17 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
     seen.set(floor, n);
     data.name = perFloor.get(floor) === 1 && !taken.has(floor) ? floorName(floor) : `${floorName(floor)} ${n}`;
   }
-  return { creates, updates };
+  return { creates, updates, sources };
 }
 
-export async function commitFloorPlan(plan, { scene, notify } = {}) {
+// `created(docs)`: told the regions made, in the order of plan.creates.
+export async function commitFloorPlan(plan, { scene, notify, created } = {}) {
   if (!plan.creates.length && !plan.updates.length) {
     notify?.("No changes to save. Tick an edited or new area first.");
     return { created: 0, updated: 0 };
   }
   if (plan.updates.length) await scene.updateEmbeddedDocuments("Region", plan.updates);
-  if (plan.creates.length) await scene.createEmbeddedDocuments("Region", plan.creates);
+  if (plan.creates.length) { const docs = await scene.createEmbeddedDocuments("Region", plan.creates); created?.(docs ?? []); }
   return { created: plan.creates.length, updated: plan.updates.length };
 }
 
@@ -672,6 +690,7 @@ function sharedChoices(root) {
     selection: root.querySelector("[data-select-mode-option]:checked")?.value ?? root.querySelector("[data-select-mode]")?.value ?? "colour",
     addFloor: root.querySelector("[data-add-floor-option]:checked")?.value ?? root.querySelector("[data-add-floor]")?.value ?? "water",
     texture: root.querySelector("[data-all-texture]")?.value ?? "",
+    keepColours: root.querySelector("[data-keep-colours]")?.checked ?? readPrefs().keepColours !== false,
   };
 }
 
@@ -739,7 +758,7 @@ function updateRowMeta(row) {
   const meta = row?.querySelector?.("[data-row-meta]");
   if (!meta) return;
   const saved = !!meta.querySelector(".an-dot.is-saved"), floor = row.querySelector("[data-floor]")?.value ?? "water";
-  meta.lastChild.textContent = rowMeta({ saved, checked: row.querySelector("[data-pick]")?.checked === true, floor, kind: row.querySelector("[data-kind]")?.value, overWater: row.querySelector("[data-over-water]")?.checked === true });
+  meta.lastChild.textContent = rowMeta({ saved, checked: row.querySelector("[data-pick]")?.checked === true, floor, kind: row.querySelector("[data-kind]")?.value, overWater: row.querySelector("[data-over-water]")?.checked === true, learned: row.hasAttribute?.("data-learned") === true });
   for (const badge of row.querySelectorAll(".an-area-num")) badge.style.setProperty("--swatch", floorColour(floor));
   const name = row.querySelector(".an-row-name strong");
   if (name && !saved) name.textContent = floorName(floor);
@@ -759,14 +778,14 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     async _renderHTML() {
       const { proposals, width, height, reason } = this.detect;
-      return floorWindowHTML({ proposals, width, height, reason: proposals.length ? "" : reason, sceneTexture: this.sceneTexture() });
+      return floorWindowHTML({ proposals, width, height, reason: proposals.length ? "" : reason, sceneTexture: this.sceneTexture(), learned: this.learnedCount() });
     }
 
     sceneTexture() { return this.detect?.scene?.flags?.animater?.floorTextures ?? ""; }
 
     _replaceHTML(html, content) {
       const before = choicesFromElement(content);
-      content.innerHTML = before.length ? floorWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, shared: sharedChoices(content), sceneTexture: this.sceneTexture() }) : html;
+      content.innerHTML = before.length ? floorWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, learned: this.learnedCount(), shared: sharedChoices(content), sceneTexture: this.sceneTexture() }) : html;
       this.paint();
       this.updateSummary();
       this.zoomMap(this.zoom ?? 1);
@@ -1073,8 +1092,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     // The floor picker: the toolbar button shows the chosen floor; its list opens below it and closes on a choice.
     floorPicked(floor) {
       const swatch = this.element?.querySelector?.("[data-floor-current-swatch]"), name = this.element?.querySelector?.("[data-floor-current-name]");
-      swatch?.style?.setProperty("--swatch", floorColour(floor));
-      if (name) name.textContent = floorName(floor);
+      swatch?.style?.setProperty("--swatch", pickColour(floor));
+      if (name) name.textContent = pickName(floor);
       this.floorMenu(false);
     }
 
@@ -1251,12 +1270,14 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (event.target.closest?.("[data-all-flow]")) applyShared(this.element, "data-flow", event.target.value);
         if (event.target.closest?.("[data-all-current]")) applyShared(this.element, "data-current", event.target.value);
         if (event.target.closest?.("[data-all-texture]")) applyShared(this.element, "data-texture", event.target.value);
+        if (event.target.closest?.("select[data-floor]")) event.target.closest("[data-id]")?.removeAttribute?.("data-learned"); // the GM's own pick now
         if (event.target.closest?.("select[data-kind]") || event.target.closest?.("select[data-floor]")) updateKindFields(event.target.closest("[data-id]"));
         if (event.target.closest?.("select[data-floor]")) this.paint();
         if (event.target.closest?.("[data-pick]") || event.target.closest?.("[data-over-water]")) updateRowMeta(event.target.closest("[data-id]"));
         if (event.target.closest?.("[data-texture], [data-pattern], [data-edge]")) { updateTextureFields(event.target.closest("[data-id]")); this.paint(); this.fitInspector(); }
         if (event.target.closest?.("[data-all-texture]")) { for (const row of this.element.querySelectorAll("[data-id]")) updateTextureFields(row); this.paint(); }
         if (event.target.closest?.("[data-add-floor-option]")) this.floorPicked(event.target.value);
+        if (event.target.closest?.("[data-keep-colours]")) writePrefs({ keepColours: event.target.checked === true });
         if (event.target.closest?.("[data-select-mode]") || event.target.closest?.("[data-select-mode-option]")) void this.selectionChanged(event.target);
         if (event.target.closest?.("[data-add-floor-option]")) { writePrefs({ addFloor: event.target.value }); this.smartStatus(toolStatus(sharedChoices(this.element).selection, event.target.value)); }
         this.updateSummary();
@@ -1267,6 +1288,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (event.target.closest?.("[data-floor-toggle]")) return this.floorMenu(this.element.querySelector("[data-floor-pop]")?.hidden);
         if (!event.target.closest?.("[data-floor-picker]")) this.floorMenu(false);
         if (event.target.closest?.("[data-undo-toolbar]")) return this.undoAdd();
+        if (event.target.closest?.("[data-auto-mark]")) return void this.markClicked();
         const edit = event.target.closest?.("[data-edit-outline]");
         if (edit) return this.setMode({ kind: "vertices", areaId: edit.dataset.editOutline });
         if (event.target.closest?.("[data-delete-vertex]")) return this.deleteVertex();
@@ -1328,7 +1350,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       }
       const floor = target ? this.areaFloor(target) : shared.addFloor;
       const piece = this.excludedPieceAt(floor, at);
-      if (piece) return void this.putBack(floor, piece, target);
+      if (piece) return void this.putBack(floor === AUTO_FLOOR ? Object.keys(this.excluded).find((key) => this.excluded[key].includes(piece)) : floor, piece, target);
       if (shared.selection === "smart") return void this.smartMark({ at, target });
       const claimed = this.claimedFor(target);
       const picked = hooks.select(detect.rgba, detect.width, detect.height, at, { claimed, broad: shared.range === "wide" });
@@ -1345,8 +1367,13 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       const { detect } = this;
       const claimed = target ? detect.proposals.filter((proposal) => proposal !== target) : [...detect.proposals];
       for (const loops of target?.exclusions ?? []) claimed.push({ id: "area-0", pixels: areaPixels(loops, detect.width, detect.height) });
-      for (const piece of this.excluded?.[floor] ?? []) claimed.push({ id: "area-0", pixels: piece });
+      for (const piece of this.excludedOf(floor)) claimed.push({ id: "area-0", pixels: piece });
       return claimed;
+    }
+
+    // The parts taken out of areas of a floor; with Auto (the floor not known yet), of every floor.
+    excludedOf(floor) {
+      return floor === AUTO_FLOOR ? Object.values(this.excluded ?? {}).flat() : this.excluded?.[floor] ?? [];
     }
 
     // An area's floor as its row shows it.
@@ -1366,7 +1393,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     excludedPieceAt(floor, at) {
       const pixel = this.pixelOf(at);
-      for (const piece of this.excluded?.[floor] ?? []) {
+      for (const piece of this.excludedOf(floor)) {
         let lo = 0, hi = piece.length - 1;
         while (lo <= hi) { const mid = (lo + hi) >> 1; if (piece[mid] === pixel) return piece; if (piece[mid] < pixel) lo = mid + 1; else hi = mid - 1; }
       }
@@ -1417,17 +1444,119 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         return true;
       }
       this.remember();
-      if (!proposal.floor) proposal.floor = isAreaFloor(shared.addFloor) ? shared.addFloor : "water"; // a new area takes the floor chosen to add
+      const look = proposal.floor ? null : this.learnedLook(proposal, shared.addFloor);
+      if (!proposal.floor) proposal.floor = look?.floor ?? (isAreaFloor(shared.addFloor) ? shared.addFloor : "water"); // a new area takes the floor chosen to add
+      if (look) proposal.learned = true;
       detect.proposals.push(proposal);
       this.element.querySelector(".an-floors-reason")?.remove();
-      this.element.querySelector(".an-floors-list").insertAdjacentHTML("afterbegin", areaRowHTML(proposal, shared));
+      this.element.querySelector(".an-floors-list").insertAdjacentHTML("afterbegin", areaRowHTML(proposal, { ...shared, ...look?.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}) }));
       this.element.querySelector(".an-floors-list").scrollTop = 0;
       this.paint();
       this.updateSummary();
       return true;
     }
 
+    // What the saved regions say about a new area: { floor, look } from the most alike one, or null. With Auto the
+    // floor is learned too; with a floor picked, only that floor's look. The footer's floor texture, when set, wins.
+    learnedLook(proposal, addFloor) {
+      const memory = this.memory ?? [];
+      if (!memory.length) return null;
+      const { rgba, width, height } = this.detect;
+      const got = recallFloor(memory, areaSignature(rgba, width, height, proposal.pixels), { floor: addFloor === AUTO_FLOOR ? null : addFloor });
+      return got && isAreaFloor(got.floor) ? got : null;
+    }
+
+    // Every ticked area teaches the memory its floor and look, keyed by its region so a later save replaces it.
+    async learnFrom(picked, plan, createdDocs) {
+      if (!hooks.memory?.save) return;
+      const { detect } = this, sceneId = detect.scene?.id ?? "";
+      const byId = new Map(detect.proposals.map((p) => [p.id, p]));
+      const regionOf = new Map((plan.sources ?? []).map((id, i) => [id, createdDocs?.[i]?.id]));
+      const entries = [];
+      for (const row of picked) {
+        const proposal = byId.get(row.id), regionId = proposal?.regionId ?? regionOf.get(row.id);
+        if (!row.checked || !proposal || !regionId) continue;
+        entries.push({ key: `${sceneId}:${regionId}`, sig: areaSignature(detect.rgba, detect.width, detect.height, proposal.pixels), floor: row.floor, look: row });
+      }
+      // Areas marked by themselves that the GM removed or left unticked: what not to mark.
+      const ticked = new Set(picked.filter((row) => row.checked).map((row) => row.id));
+      const kept = new Set(detect.proposals.map((p) => p.id));
+      for (const area of [...(this.rejected ?? []).filter((p) => !kept.has(p.id)), ...detect.proposals.filter((p) => p.auto && !p.regionId && !ticked.has(p.id))]) {
+        const sig = area.sig ?? areaSignature(detect.rgba, detect.width, detect.height, area.pixels);
+        if (sig) entries.push({ key: `${sceneId}:${NONE_FLOOR}:${sig.join(",")}`, sig, floor: NONE_FLOOR, look: {} });
+      }
+      if (entries.length) await hooks.memory.save(rememberAreas(this.memory, entries));
+    }
+
+    // Marks areas by themselves when the window opens, from what the saved regions taught: the model cuts the map into
+    // pieces where it is already downloaded and agreed to (no asking here), colour selection elsewhere, and each piece
+    // the memory knows the floor of becomes a ticked row. One Ctrl+Z takes them all back.
+    learnedCount() { return memoryOf(this.memory).filter((e) => e.floor !== NONE_FLOOR).length; }
+
+    // The Mark areas button: marks now, or says why it can't. Busy while marking.
+    async markClicked() {
+      if (!knowsFloors(this.memory)) { this.smartStatus(markTip(0)); hooks.notify?.(markTip(0)); return; }
+      if (this.marking) return;
+      const button = this.element?.querySelector?.("[data-auto-mark]");
+      button?.setAttribute?.("aria-busy", "true");
+      this.marking = this.autoMark().catch((error) => { console.warn("Animater floor marking:", error); return 0; });
+      try { await this.marking; } finally { this.marking = null; button?.removeAttribute?.("aria-busy"); }
+    }
+
+    async autoMark() {
+      if (!knowsFloors(this.memory) || !this.detect?.rgba) return 0;
+      const { detect } = this, { width, height, rgba } = detect;
+      let segment = null;
+      const agreed = smartAgreed || readPrefs().smartAgreed === SMART_MODEL.repo || !!(await hooks.smartCached?.());
+      if (hooks.smart && agreed && !this.smartBusy) {
+        this.smartBusy = true;
+        try {
+          const ready = await this.smartReady();
+          if (ready) segment = async (at, claimed) => {
+            const r = await ready.model.masks(ready.view, [{ ...at, label: 1 }]);
+            const mask = r.masks[startSize(r.masks, r.scores)];
+            return mask ? smartProposal(this.keepColours(cleanSelection(mask, width, height, [{ ...at, label: 1 }]), [at]), width, height, { id: "auto", claimed }) : null;
+          };
+        } catch (error) { console.warn("Animater floor marking:", error); }
+        if (!segment) this.smartBusy = false;
+      }
+      const smart = !!segment;
+      segment ??= (at, claimed) => { const r = hooks.select?.(rgba, width, height, at, { claimed }); return r?.status === "found" ? r.proposal : null; };
+      try {
+        this.smartStatus("Marking areas like the regions you saved…");
+        const found = await markAreas({
+          width, height, segment, memory: this.memory, claimed: detect.proposals,
+          signatureOf: (pixels) => areaSignature(rgba, width, height, pixels),
+          progress: (done, total) => this.smartStatus(`Marking areas like the regions you saved… ${Math.round(done / total * 100)}%`),
+          stop: () => this.detect !== detect,
+        });
+        if (this.detect !== detect || !this.element) return 0;
+        const shared = sharedChoices(this.element);
+        if (found.length) this.remember();
+        for (const area of found) {
+          const proposal = { ...area, id: nextAreaId(detect.proposals), preselected: true };
+          delete proposal.look;
+          detect.proposals.push(proposal);
+          this.element.querySelector(".an-floors-reason")?.remove();
+          this.element.querySelector(".an-floors-list")?.insertAdjacentHTML("beforeend", areaRowHTML(proposal, { ...shared, ...area.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}) }));
+        }
+        if (found.length) { this.paint(); this.updateSummary(); }
+        const msg = found.length ? `Marked ${found.length} area${found.length === 1 ? "" : "s"} like the regions you saved. Untick or remove the wrong ones: they won't be marked next time.` : "Nothing here looks like the regions you saved yet.";
+        this.smartStatus(msg);
+        return found.length;
+      } finally {
+        if (smart) this.smartBusy = false;
+      }
+    }
+
     smartOn() { return sharedChoices(this.element).selection === "smart"; }
+
+    // A smart mask kept to the colours around `seeds`, when Same colours is on.
+    keepColours(mask, seeds = []) {
+      if (!seeds?.length || !sharedChoices(this.element).keepColours) return mask;
+      const { rgba, width, height } = this.detect;
+      return keepToColours(mask, rgba, width, height, seeds).mask;
+    }
 
     smartStatus(text) { const node = this.element?.querySelector("[data-smart-status]"); if (node) { node.textContent = text; node.title = helpTip(text); } }
 
@@ -1437,6 +1566,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (radio) radio.checked = true;
       const select = this.element.querySelector("[data-select-mode]");
       if (select) select.value = value;
+      const keep = this.element.querySelector("[data-smart-only]");
+      if (keep) keep.hidden = value !== "smart";
       const range = this.element.querySelector("[data-colour-only]");
       if (range) range.hidden = value === "smart";
       this.smartStatus(toolStatus(value, sharedChoices(this.element).addFloor));
@@ -1488,13 +1619,13 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         const ready = await this.smartReady();
         if (!ready) return;
         const { detect } = this, { width, height } = detect, { model, view } = ready;
-        let points, masks, mask;
+        let points, masks, mask, seeds = [];
         if (remove) {
           const base = this.areaAt(remove);
           if (!base) { hooks.notify?.("Right-click inside an area to take that part out of it."); return; }
           const areaMask = this.areaMask(base);
           masks = (await model.masks(view, [{ ...remove, label: 1 }])).masks.map((m) => solidCut(m, width, height, remove));
-          const which = cutStart(masks, areaMask, { pixel: this.pixelOf(remove) });
+          const which = cutStart(masks, areaMask, { pixel: this.pixelOf(remove), rgba: detect.rgba, width });
           if (which === null) { hooks.notify?.("Nothing there to take out: the model sees only the whole area at that spot. Zoom in and right-click right on the thing, or use Edit outline."); return; }
           return this.smartCut({ base, areaMask, masks }, masks[which]);
         }
@@ -1502,16 +1633,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           points = boxPoints(box);
           const r = await model.masks(view, points);
           masks = r.masks; mask = masks[startSize(masks, r.scores, { box: true })];
+          seeds = [{ x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 }];
         } else {
           const sets = [];
           for (const spot of nearbyClicks(at, width, height)) sets.push((await model.masks(view, [spot])).masks);
           points = [{ ...at, label: 1 }]; masks = sets[0]; mask = consensus(sets, width, height).mask;
+          seeds = [at];
         }
-        const area = smartProposal(cleanSelection(mask, width, height, points), width, height, { id: target ? "addition" : nextAreaId(detect.proposals), claimed: this.claimedFor(target) });
+        const area = smartProposal(this.keepColours(cleanSelection(mask, width, height, points), seeds), width, height, { id: target ? "addition" : nextAreaId(detect.proposals), claimed: this.claimedFor(target) });
         if (!area) { hooks.notify?.("Nothing new there: that part is already in an area, or too small to be a region. To grow an area, press its + button first."); return; }
         const placed = this.placePicked(area, target);
         // Only a new area can change size or lose a part afterwards; one added into another area is merged.
-        this.smartLast = placed && !target ? { area, points, masks } : null;
+        this.smartLast = placed && !target ? { area, points, masks, seeds } : null;
       } catch (error) {
         console.warn("Animater smart selection:", error);
         hooks.warn?.(`Experimental. Smart selection failed: ${error.message}`);
@@ -1658,7 +1791,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       const { detect } = this, { width, height } = detect;
       const index = detect.proposals.indexOf(last.area);
       if (index < 0) { this.smartLast = null; hooks.notify?.("That area has changed since. Click to mark a new one."); return; }
-      const area = smartProposal(cleanSelection(mask, width, height, last.points), width, height, { id: last.area.id, claimed: [...detect.proposals.filter((p) => p !== last.area), ...(this.excluded?.[this.areaFloor(last.area)] ?? []).map((pixels) => ({ id: "area-0", pixels }))] });
+      const area = smartProposal(this.keepColours(cleanSelection(mask, width, height, last.points), last.seeds), width, height, { id: last.area.id, claimed: [...detect.proposals.filter((p) => p !== last.area), ...(this.excluded?.[this.areaFloor(last.area)] ?? []).map((pixels) => ({ id: "area-0", pixels }))] });
       if (!area) { hooks.notify?.("That size leaves nothing new. Try another size (1–3)."); return; }
       area.floor = last.area.floor; // the row keeps its floor through a resize
       const choices = choicesFromElement(this.element);
@@ -1679,6 +1812,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         return;
       }
       this.remember();
+      if (proposal?.auto) (this.rejected ??= []).push(proposal); // marked by itself and removed: not a region, next time
       if (this.mode?.areaId === id) this.setMode({ kind: "inspect" });
       detect.proposals = detect.proposals.filter((proposal) => proposal.id !== id);
       for (const row of this.element.querySelectorAll(".an-floors-row")) if (row.dataset.id === id) row.remove();
@@ -1705,7 +1839,9 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           levelId: detect.levelId,
           regions: detect.scene.regions,
         });
-        const outcome = await commitFloorPlan(plan, { scene: detect.scene, notify: hooks.notify });
+        let createdDocs = [];
+        const outcome = await commitFloorPlan(plan, { scene: detect.scene, notify: hooks.notify, created: (docs) => { createdDocs = docs; } });
+        if (!outcome.cancelled && outcome.created + outcome.updated > 0) await this.learnFrom(picked, plan, createdDocs).catch((error) => console.warn("Animater floor memory:", error));
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
           hooks.notify?.(`${outcome.created ? `Created ${outcome.created} region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
           await this.close({ force: true });
@@ -1765,6 +1901,8 @@ async function openOnce({
   grid = 100,
   tile = null,
   snapshot = null,
+  memory = floorMemoryStore(),
+  autoMark = true,
   Application = globalThis.foundry?.applications?.api?.ApplicationV2,
 } = {}, signal) {
   if (!src) {
@@ -1791,8 +1929,9 @@ async function openOnce({
     .filter((proposal) => proposal.share >= WATER_TUNING.componentMinShare)
     .map((proposal, i) => ({ ...proposal, id: `area-${saved.length + i + 1}`, preselected: false })) : result.proposals ?? [];
   const proposals = [...saved, ...fresh];
-  const Window = floorRegionsWindow(Application, { notify, warn, select, confirm, smart, smartCached, tile, snapshot });
+  const Window = floorRegionsWindow(Application, { notify, warn, select, confirm, smart, smartCached, tile, snapshot, memory });
   const app = new Window();
+  app.memory = await learnSaved(memory, saved, { scene, rgba: loaded.rgba, width: loaded.width, height: loaded.height });
   app.detect = {
     proposals,
     reason: result.reason ?? "",
@@ -1808,10 +1947,41 @@ async function openOnce({
   if (signal?.aborted) return { opened: false, reason: "superseded" };
   openWindow = app;
   await app.render?.({ force: true });
+  if (autoMark) { const marking = Promise.resolve(app.autoMark?.()).catch((error) => { console.warn("Animater floor marking:", error); return 0; }); app.marking = app.firstMark = marking; void marking.then(() => { if (app.marking === marking) app.marking = null; }); }
   // The sharp map follows a moment later; until then the window shows the read.
   if (view) void Promise.resolve(view(src, { width: loaded.width, height: loaded.height })).then((image) => {
     if (!image) return;
     if (app.detect && !app.detect.image) { app.detect.image = image; app.zoomMap?.(app.zoom ?? 1); } else image.close?.();
   }, () => {});
   return { opened: true, app, reason: result.reason };
+}
+
+// The floor memory, kept in a world setting (registered here on first use, so it needs nothing at startup).
+// { load(): examples, save(examples): promise }, or null outside Foundry.
+export const FLOOR_MEMORY_SETTING = "floorMemory";
+export function floorMemoryStore(game = globalThis.game, id = "animater") {
+  const settings = game?.settings;
+  if (!settings?.register) return null;
+  const ready = () => {
+    if (!settings.settings?.has?.(`${id}.${FLOOR_MEMORY_SETTING}`)) settings.register(id, FLOOR_MEMORY_SETTING, { scope: "world", config: false, type: Array, default: [] });
+  };
+  return {
+    load() { try { ready(); return memoryOf(settings.get(id, FLOOR_MEMORY_SETTING)); } catch { return []; } },
+    async save(examples) { ready(); if (game.user?.isGM === false) return; await settings.set(id, FLOOR_MEMORY_SETTING, examples); },
+  };
+}
+
+// The regions already on the scene teach the memory too (one drawn by hand, or changed in its panel since). Saved only
+// when something is new or changed, so opening the window does not write every time. Returns the examples.
+export async function learnSaved(store, saved, { scene, rgba, width, height }) {
+  const before = store?.load?.() ?? [];
+  if (!saved?.length || !store?.save) return before;
+  const entries = saved.map((p) => ({ key: `${scene?.id ?? ""}:${p.regionId}`, sig: areaSignature(rgba, width, height, p.pixels), floor: p.savedChoices?.floor ?? p.floor, look: p.savedChoices ?? {} }));
+  const old = new Map(before.map((e) => [e.key, e]));
+  const same = (e) => { const o = old.get(e.key); return !!o && o.floor === e.floor && JSON.stringify(o.sig) === JSON.stringify(e.sig) && JSON.stringify(o.look) === JSON.stringify(rememberAreas([], [e])[0].look); };
+  const changed = entries.filter((e) => !same(e));
+  if (!changed.length) return before;
+  const after = rememberAreas(before, changed);
+  try { await store.save(after); } catch (error) { console.warn("Animater floor memory:", error); }
+  return after;
 }

@@ -19,6 +19,14 @@ export const SMART_TUNING = Object.freeze({
   holeShare: 0.05,       // enclosed holes below this share of the map are filled
 });
 
+// sRGB (0-255, may be fractional) to CIELAB, D65.
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const fLab = (t) => (t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116);
+function srgbLab(r, g, b) {
+  const R = lin(r), G = lin(g), B = lin(b);
+  const x = fLab((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047), y = fLab(0.2126 * R + 0.7152 * G + 0.0722 * B), z = fLab((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
 const count = (mask) => { let n = 0; for (let i = 0; i < mask.length; i++) n += mask[i] ? 1 : 0; return n; };
 
 // The three sizes, smallest first.
@@ -92,6 +100,65 @@ export function cleanSelection(mask, width, height, points = [], holeShare = SMA
   return out;
 }
 
+// Keeping to the clicked colours. The model traces by shape, so a chair, a rug or a bush standing on a floor often comes
+// in with it (and cleanSelection fills it in as a hole). This drops the parts of `mask` whose colour is unlike the
+// floor around the click(s), and keeps them out as holes; specks of the floor's own texture are filled back.
+// `seeds`: the click(s) ({x, y}). The floor's colours are sampled within `radius` (a share of the long side) of
+// them, smoothed over 3 × 3 pixels so a painted texture reads as its colour. Lightness may vary more than hue: stone
+// is light and dark, a green chair on it is another hue. When the cut would leave less than `minKeep` of the mask
+// (a floor of many colours), the mask is returned as it was. Returns { mask, dropped } (dropped: pixels taken out).
+export const PALETTE_TUNING = Object.freeze({ radius: 0.03, light: 24, hue: 9, minKeep: 0.4, speck: 0.0004, samples: 600 });
+export function keepToColours(mask, rgba, width, height, seeds = [], tuning = {}) {
+  const { radius, light, hue, minKeep, speck, samples } = { ...PALETTE_TUNING, ...tuning };
+  const n = width * height, total = count(mask);
+  const points = seeds.filter((p) => p && p.x >= 0 && p.y >= 0 && p.x < width && p.y < height);
+  if (!total || !points.length || !rgba) return { mask, dropped: 0 };
+  // Smoothed Lab of a pixel, from its 3 × 3 neighbours' average colour.
+  const labAt = (p) => {
+    const x = p % width, y = (p - x) / width; let r = 0, g = 0, b = 0, c = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+      const o = (yy * width + xx) * 4; r += rgba[o]; g += rgba[o + 1]; b += rgba[o + 2]; c++;
+    }
+    return srgbLab(r / c, g / c, b / c);
+  };
+  // Colour bins: lightness by 8, a and b by 3. A bin near a sampled one (within light / hue) counts as the floor's.
+  const LB = 8, AB = 3, NL = 14, NA = 86;
+  const bin = ([l, a, b]) => Math.min(NL - 1, Math.max(0, Math.floor(l / LB))) * NA * NA + Math.min(NA - 1, Math.max(0, Math.floor((a + 128) / AB))) * NA + Math.min(NA - 1, Math.max(0, Math.floor((b + 128) / AB)));
+  const near = new Uint8Array(NL * NA * NA), dl = Math.ceil(light / LB), dab = Math.ceil(hue / AB);
+  const r = Math.max(3, Math.round(radius * Math.max(width, height))), pool = [];
+  for (const { x, y } of points) {
+    for (let yy = Math.max(0, Math.round(y) - r); yy <= Math.min(height - 1, Math.round(y) + r); yy++) for (let xx = Math.max(0, Math.round(x) - r); xx <= Math.min(width - 1, Math.round(x) + r); xx++) {
+      const p = yy * width + xx; if (mask[p] && (xx - x) ** 2 + (yy - y) ** 2 <= r * r) pool.push(p);
+    }
+  }
+  if (!pool.length) return { mask, dropped: 0 };
+  const step = Math.max(1, Math.floor(pool.length / samples)), seen = new Set();
+  for (let i = 0; i < pool.length; i += step) {
+    const c = bin(labAt(pool[i])); if (seen.has(c)) continue; seen.add(c);
+    const l0 = Math.floor(c / (NA * NA)), a0 = Math.floor(c / NA) % NA, b0 = c % NA;
+    for (let l = Math.max(0, l0 - dl); l <= Math.min(NL - 1, l0 + dl); l++) for (let a = Math.max(0, a0 - dab); a <= Math.min(NA - 1, a0 + dab); a++) for (let b = Math.max(0, b0 - dab); b <= Math.min(NA - 1, b0 + dab); b++) near[l * NA * NA + a * NA + b] = 1;
+  }
+  const keep = new Uint8Array(n);
+  for (let p = 0; p < n; p++) if (mask[p] && near[bin(labAt(p))]) keep[p] = 1;
+  // The floor: the part joined to a click, and every other sizeable part (a rug across a corridor leaves the floor in
+  // two); loose crumbs go. The specks of texture its colours missed are filled back.
+  const parts = label(keep, width, height), joined = new Set(), crumbs = Math.max(24, total * 0.01);
+  for (const { x, y } of points) { const id = parts.lab[Math.round(y) * width + Math.round(x)]; if (id) joined.add(id); }
+  if (!joined.size) return { mask, dropped: 0 };
+  for (let id = 1; id < parts.sizes.length; id++) if (parts.sizes[id] >= crumbs) joined.add(id);
+  const out = new Uint8Array(n); for (let p = 0; p < n; p++) out[p] = joined.has(parts.lab[p]) ? 1 : 0;
+  const inv = new Uint8Array(n); for (let p = 0; p < n; p++) inv[p] = out[p] ? 0 : 1;
+  const holes = label(inv, width, height), edge = new Uint8Array(holes.sizes.length);
+  for (let x = 0; x < width; x++) { edge[holes.lab[x]] = 1; edge[holes.lab[(height - 1) * width + x]] = 1; }
+  for (let y = 0; y < height; y++) { edge[holes.lab[y * width]] = 1; edge[holes.lab[y * width + width - 1]] = 1; }
+  const small = Math.max(24, n * speck);
+  for (let p = 0; p < n; p++) { const id = holes.lab[p]; if (id && !edge[id] && holes.sizes[id] < small && mask[p]) out[p] = 1; }
+  const kept = count(out);
+  if (kept < total * minKeep) return { mask, dropped: 0 };
+  return { mask: out, dropped: total - kept };
+}
+
 // Taking a part out (right-click). The model is asked what the clicked thing is on its own (a bush, a rock, a
 // patch of mud), and that is cut out of the area under the click. Unlike an add, the hole stays: cleanSelection's
 // hole filling is exactly what must not run here.
@@ -101,7 +168,11 @@ export function cleanSelection(mask, width, height, points = [], holeShare = SMA
 // the area is cut, so a bush the area's edge runs into loses just its overlap. Null when every size is the area.
 // On the Hateful Hermit grass, a click on plain grass gave "parts" of 30-55% of the field; things a GM cuts out
 // (bushes, rocks, mud) stayed far below a quarter.
-export function cutStart(masks, areaMask, { cutMaxShare = 0.25, pixel = -1 } = {}) {
+// A thing that big can still be a part when it plainly looks different: a stone bridge over a small pool, a rug filling
+// most of a room. With the map's `rgba` (`width` wide), when no size is small enough, the smallest one up to
+// `bigShare` of the area whose colour is at least `contrast` (CIELAB, lightness counting half) from the rest of the
+// area is the cut. Plain grass under a click is the colour of the rest of the field, so it never passes.
+export function cutStart(masks, areaMask, { cutMaxShare = 0.25, pixel = -1, rgba = null, width = 0, bigShare = 0.7, contrast = 15 } = {}) {
   let areaSize = 0; for (let i = 0; i < areaMask.length; i++) areaSize += areaMask[i] ? 1 : 0;
   if (!areaSize) return null;
   let best = null;
@@ -111,7 +182,22 @@ export function cutStart(masks, areaMask, { cutMaxShare = 0.25, pixel = -1 } = {
     for (let i = 0; i < mask.length; i++) if (mask[i] && areaMask[i]) inside++;
     if (inside && inside <= areaSize * cutMaxShare) best = index;
   }
-  return best;
+  if (best !== null || !rgba || !width) return best;
+  for (const index of sizeOrder(masks)) {
+    const mask = masks[index];
+    if (pixel >= 0 && !mask[pixel]) continue;
+    const part = [0, 0, 0], rest = [0, 0, 0]; let inside = 0, outside = 0;
+    for (let i = 0; i < mask.length; i++) {
+      if (!areaMask[i] || (i & 1)) continue; // every other pixel is plenty for an average
+      const o = i * 4, lab = srgbLab(rgba[o], rgba[o + 1], rgba[o + 2]), into = mask[i] ? part : rest;
+      into[0] += lab[0]; into[1] += lab[1]; into[2] += lab[2];
+      if (mask[i]) inside++; else outside++;
+    }
+    if (!inside || !outside || inside * 2 > areaSize * bigShare) continue;
+    const d = Math.hypot((part[0] / inside - rest[0] / outside) / 2, part[1] / inside - rest[1] / outside, part[2] / inside - rest[2] / outside);
+    if (d >= contrast) return index;
+  }
+  return null;
 }
 
 // Square grow by r pixels (sideways, then up and down, per step). The map's border is not an edge.

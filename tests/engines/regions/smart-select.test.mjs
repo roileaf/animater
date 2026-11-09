@@ -76,6 +76,17 @@ test("a right-click cuts the largest size that is still a part of the area, not 
   assert.equal(cutStart([leaf], new Uint8Array(W * H)), null);
 });
 
+test("a big part that plainly looks different, like a stone bridge over a small pool, can still be cut", () => {
+  const pool = rect(0, 0, 40, 30), bridge = rect(0, 10, 40, 22), rgba = new Uint8ClampedArray(W * H * 4);
+  for (let p = 0; p < W * H; p++) rgba.set(bridge[p] ? [150, 150, 145, 255] : [40, 110, 170, 255], p * 4);
+  const pixel = 15 * W + 20;
+  assert.equal(cutStart([bridge, pool], pool, { pixel }), null, "40% of the pool: too big by size alone");
+  assert.equal(cutStart([bridge, pool], pool, { pixel, rgba, width: W }), 0, "but grey on blue: the bridge");
+  const plain = new Uint8ClampedArray(W * H * 4); for (let p = 0; p < W * H; p++) plain.set([40, 110, 170, 255], p * 4);
+  assert.equal(cutStart([bridge, pool], pool, { pixel, rgba: plain, width: W }), null, "the same colour as the rest: not a part");
+  assert.equal(cutStart([rect(0, 0, 40, 27), pool], pool, { pixel, rgba, width: W }), null, "most of the pool is never a part");
+});
+
 test("a cut leaves a hole the size of the part plus a one-pixel rim, and reports what it removed", () => {
   const field = rect(0, 0, 80, 60), bush = rect(30, 30, 40, 40);
   const { mask, removed } = cutFrom(field, bush, W, H);

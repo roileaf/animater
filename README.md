@@ -296,6 +296,9 @@ Open **Animater settings**, go to the **Floor & world** tab, and turn on **Exper
 
 **Any floor.** The automatic read finds water. Every other floor comes from your clicks: stone, pebbles, wood, dirt, grass, sand, snow, ice, mud, glass, metal and lava.
 - **Floor to add:** pick a floor from the **Floor** picker in the toolbar, and each area you mark takes that floor. Areas are painted in their floor's colour and numbered as in the list.
+- **Marked by itself, learned from your regions:** once you have saved some floor regions, opening the window (or **Mark areas** in the toolbar) marks the areas that look like them, of any floor, as ticked rows with their floor, texture, pattern, soft edge and Over water. Each says "learned". The map is cut with the Smart model when it is already downloaded (it never asks here), else by colour. Untick or remove a wrong one before you save, and it is remembered as not a region: it is not marked again. Ctrl+Z takes all the marked areas back at once.
+- **Auto:** on **Auto** (the picker's first choice), an area you click takes the floor of the saved regions it looks most like, else water. With a floor picked, that floor stays, and only its look is learned.
+- **What it remembers:** every region you save, and every floor region already on a scene you open, in the world (the last 400). Nothing leaves your world.
 - **Changing it later:** every row has its own **Floor** to change afterwards. The water settings (kind, flow, current, waves, beach) show only on water rows.
 - **Saved regions:** a region is saved with its floor. Switching a saved region away from water clears its water settings, and switching it to lava brings lava's own steps. Smart selection (below) is usually the better way to mark floors that are not water.
 
@@ -323,7 +326,8 @@ Animater reads that level's map and opens a window. It shows a preview of the ma
 - **Marking:**
   - Click an area to add it. The click is checked against a few nearby points, so a click on a rock or a bush still finds the floor around it.
   - **Shift+drag** a box around a room or a pond to add what is inside it.
-  - Right-click a bush, rock or patch inside any area to cut it out. The model finds that thing on its own and leaves a hole where it was. When the thing is only partly inside the area, just the part inside goes. Press **1**, **2** or **3** right after to cut a smaller or larger piece.
+  - Right-click a bush, rock or patch inside any area to cut it out. The model finds that thing on its own and leaves a hole where it was. When the thing is only partly inside the area, just the part inside goes. Press **1**, **2** or **3** right after to cut a smaller or larger piece. A big thing that plainly looks different (a stone bridge over a small pool) can be cut too, up to most of the area.
+  - **Same colours** (on by default, next to the Floor picker): a click keeps to the colours around it, so chairs, a rug or a bush of another colour standing on the floor are left out as holes. Turn it off for a floor of many colours.
   - What you take out stays out: a part cut, swept or right-clicked out of an area is left out of every later selection of that floor, so selecting the next grass area does not take the bush back. Another floor can still take it. To put one back, click right on it: just that part returns, into the area you are adding to or the area it touches. Undo also brings it back.
   - Floor texture: **Floor texture** at the bottom of the window chooses whether the ticked regions paint their floor's texture over the map (as the scene says, paint it, or don't), and what new areas start with. Each area can set its own when selected.
   - Texture preview: an area that will paint its floor shows on the map drawn by the scene's own floor renderer, so it looks as it will once saved. Select it to choose its **Pattern** and **Soft edge**.

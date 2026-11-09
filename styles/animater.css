@@ -3977,9 +3977,15 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-floors .an-floor-pop .an-chip:hover { background: var(--fl-hover); }
 .animater-floors .an-floor-pop .an-chip:has(input:checked) { background: color-mix(in srgb, var(--fl-accent) 18%, transparent); }
 .animater-floors .an-colour-range { display: inline-flex; align-items: center; gap: 8px; }
+.animater-floors .an-keep-colours:not([hidden]) { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.animater-floors .an-keep-colours input { margin: 0; }
 .animater-floors .an-colour-range select { width: auto; }
 .animater-floors .an-floors .an-icon-button { width: 32px; height: 32px; padding: 0; border-color: transparent; background: transparent; }
 .animater-floors .an-floors .an-icon-button i { font-size: 13px; }
+.animater-floors .an-floors .an-mark-button { display: inline-flex; align-items: center; gap: 6px; width: auto; height: 32px; padding: 0 10px; white-space: nowrap; }
+.animater-floors .an-floors .an-mark-button i { font-size: 12px; }
+.animater-floors .an-floors .an-mark-button[aria-disabled="true"] { opacity: .5; }
+.animater-floors .an-floors .an-mark-button[aria-busy="true"] { opacity: .7; cursor: progress; }
 .an-floors-zoom { display: inline-flex; align-items: center; border: 1px solid var(--fl-line); border-radius: 8px; background: var(--fl-bg); }
 .animater-floors .an-floors .an-floors-zoom button { width: 30px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--fl-muted); font-size: 14px; }
 .animater-floors .an-floors .an-floors-zoom button.an-zoom-fit { width: auto; padding: 0 10px; border-left: 1px solid var(--fl-line); border-radius: 0 8px 8px 0; font-size: 12px; }

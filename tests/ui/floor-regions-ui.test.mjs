@@ -1,11 +1,12 @@
 import { mergeAreaProposals } from "../../scripts/engines/regions/floor-detect.mjs";
+import { areaSignature } from "../../scripts/engines/regions/floor-memory.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, floorWindowHTML, areaRowHTML,
-  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas,
+  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, AUTO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
 } from "../../scripts/ui/floor-regions-ui.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -1108,7 +1109,7 @@ test("ticking unchanged saved water does not rewrite shapes or unrelated setting
   const proposals = savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
   const picked = [{ id: proposals[0].id, checked: true, waterKind: "still", flowTo: "s", current: "", waveTo: "ne", seaBeach: "off" }];
   const plan = planFloorCreate({ proposals, picked, regions: [region], levelId: "level-1", sceneRect: editRect, imageWidth: 20, imageHeight: 20 });
-  assert.deepEqual(plan, { creates: [], updates: [] });
+  assert.deepEqual(plan, { creates: [], updates: [], sources: [] });
 });
 
 
@@ -1703,6 +1704,154 @@ test("a clicked area takes the floor chosen in Floor to add", async () => {
   assert.equal(app.detect.proposals[0].floor, "wood");
   assert.equal(rows().length, 1);
   await app.close({ force: true });
+});
+
+// Floor memory: a black 10 × 1 map, so every area's signature is all zeros.
+const blackSig = [0, 0, 0, 0, 0, 0, 0];
+const memoryStore = (examples = []) => { const saved = []; return { saved, load: () => examples, save: async (list) => { saved.push(list); } }; };
+const learningApp = async (examples, scene = fakeScene(), over = {}) => {
+  const ui = waterApp(), store = memoryStore(examples);
+  const { app } = await openFloorRegions(opening({
+    scene, Application: ui.App, detect: () => ({ status: "none", reason: "no-candidates" }), memory: store, autoMark: false,
+    select: () => ({ status: "found", proposal: pieces({ id: "area-2", clicked: true, pixels: Int32Array.from([0, 1, 2]) }), seed: { hue: 0, saturation: 0 } }),
+    ...over,
+  }));
+  return { ...ui, app, store, scene };
+};
+
+test("on Auto, a new area takes the floor and look of the saved region it looks like", async () => {
+  const { app, fire, preview, shared } = await learningApp([{ key: "s:r1", sig: blackSig, floor: "wood", look: { overWater: true } }]);
+  shared.addFloor.value = AUTO_FLOOR;
+  fire("click", preview);
+  assert.equal(app.detect.proposals[0].floor, "wood");
+  assert.equal(app.detect.proposals[0].learned, true);
+  await app.close({ force: true });
+});
+
+test("on Auto with nothing alike, a new area is water and not marked learned", async () => {
+  const { app, fire, preview, shared } = await learningApp([{ key: "s:r1", sig: [90, 0, 0, 1, 0, 0, 1], floor: "snow" }]);
+  shared.addFloor.value = AUTO_FLOOR;
+  fire("click", preview);
+  assert.equal(app.detect.proposals[0].floor, "water");
+  assert.notEqual(app.detect.proposals[0].learned, true);
+  await app.close({ force: true });
+});
+
+test("with a floor picked, the floor stays; only that floor's look is learned", async () => {
+  const examples = [{ key: "s:r1", sig: blackSig, floor: "wood", look: { overWater: true } }];
+  const grass = await learningApp(examples);
+  grass.shared.addFloor.value = "grass";
+  grass.fire("click", grass.preview);
+  assert.equal(grass.app.detect.proposals[0].floor, "grass");
+  assert.notEqual(grass.app.detect.proposals[0].learned, true);
+  await grass.app.close({ force: true });
+  const wood = await learningApp(examples);
+  wood.shared.addFloor.value = "wood";
+  wood.fire("click", wood.preview);
+  assert.equal(wood.app.detect.proposals[0].learned, true);
+  await wood.app.close({ force: true });
+});
+
+test("saving teaches the memory each ticked area, keyed by the region it made", async () => {
+  const scene = fakeScene();
+  scene.id = "scene-1";
+  scene.createEmbeddedDocuments = async (type, data) => data.map((_, i) => ({ id: `new-${i}` }));
+  const { app, fire, preview, store, rows } = await learningApp([], scene);
+  fire("click", preview);
+  rows()[0].querySelector("[data-pick]").checked = true;
+  await app.create();
+  assert.equal(store.saved.length, 1);
+  assert.deepEqual(store.saved[0].map((e) => [e.key, e.floor, e.sig]), [["scene-1:new-0", "water", blackSig]]);
+});
+
+// A 10 × 1 map: pixels 0-4 black, 5-9 white. Colour selection returns the half under the click, minus what is claimed.
+const halfMap = () => { const rgba = new Uint8Array(40); for (let p = 5; p < 10; p++) rgba.set([255, 255, 255, 255], p * 4); return rgba; };
+const halfSelect = (rgba, width, height, at, { claimed = [] } = {}) => {
+  const taken = new Set(claimed.flatMap((c) => [...(c.pixels ?? [])]));
+  const pixels = (at.x < 5 ? [0, 1, 2, 3, 4] : [5, 6, 7, 8, 9]).filter((p) => !taken.has(p));
+  return pixels.length ? { status: "found", proposal: pieces({ id: "picked", clicked: true, pixels: Int32Array.from(pixels) }) } : { status: "none", reason: "claimed" };
+};
+
+test("on open, areas like the saved regions are marked by themselves, ticked, with their learned floor", async () => {
+  const { app, rows } = await learningApp([{ key: "s:r1", sig: areaSignature(halfMap(), 10, 1, [0, 1, 2, 3, 4]), floor: "wood", look: { overWater: true } }], fakeScene(), {
+    autoMark: true, load: async () => ({ ok: true, rgba: halfMap(), width: 10, height: 1 }), select: halfSelect,
+  });
+  assert.equal(await app.firstMark, 1);
+  assert.deepEqual(app.detect.proposals.map((p) => [p.floor, p.auto, p.preselected, [...p.pixels].join("")]), [["wood", true, true, "01234"]]);
+  assert.equal(rows().length, 1);
+  await app.close({ force: true });
+});
+
+test("with no floors learned yet, nothing is marked and nothing is cut", async () => {
+  let cuts = 0;
+  const { app } = await learningApp([{ key: "n", sig: blackSig, floor: "none" }], fakeScene(), { autoMark: true, select: () => { cuts++; return { status: "none" }; } });
+  assert.equal(await app.firstMark, 0);
+  assert.equal(cuts, 0);
+  await app.close({ force: true });
+});
+
+test("Mark areas marks on demand, and with nothing learned says how to teach it", async () => {
+  const notes = [];
+  const empty = await learningApp([], fakeScene(), { notify: (m) => notes.push(m), select: halfSelect, load: async () => ({ ok: true, rgba: halfMap(), width: 10, height: 1 }) });
+  assert.match(await empty.app._renderHTML(), /data-auto-mark[^>]*aria-disabled="true"/);
+  await empty.app.markClicked();
+  assert.match(notes.at(-1), /Nothing learned yet/);
+  assert.equal(empty.app.detect.proposals.length, 0);
+  await empty.app.close({ force: true });
+  const taught = await learningApp([{ key: "s:r1", sig: areaSignature(halfMap(), 10, 1, [0, 1, 2, 3, 4]), floor: "wood" }], fakeScene(), { select: halfSelect, load: async () => ({ ok: true, rgba: halfMap(), width: 10, height: 1 }) });
+  assert.match(await taught.app._renderHTML(), /data-auto-mark[^>]*aria-disabled="false"/);
+  await taught.app.markClicked();
+  assert.deepEqual(taught.app.detect.proposals.map((p) => p.floor), ["wood"]);
+  await taught.app.markClicked();
+  assert.equal(taught.app.detect.proposals.length, 1, "marking again finds nothing new");
+  await taught.app.close({ force: true });
+});
+
+test("a marked area removed is remembered as not a region; one saved, as its floor", async () => {
+  const scene = fakeScene();
+  scene.id = "scene-1";
+  scene.createEmbeddedDocuments = async (type, data) => data.map((_, i) => ({ id: `new-${i}` }));
+  const whiteSig = areaSignature(halfMap(), 10, 1, [5, 6, 7, 8, 9]);
+  const { app, store } = await learningApp([{ key: "s:r1", sig: areaSignature(halfMap(), 10, 1, [0, 1, 2, 3, 4]), floor: "wood" }, { key: "s:r2", sig: whiteSig, floor: "snow" }], scene, {
+    autoMark: true, load: async () => ({ ok: true, rgba: halfMap(), width: 10, height: 1 }), select: halfSelect,
+  });
+  assert.equal(await app.firstMark, 2);
+  app.removeRow(app.detect.proposals.find((p) => p.floor === "wood").id);
+  await app.create();
+  const learned = store.saved.at(-1).slice(-2).map((e) => [e.key.replace(/:none:.*/, ":none"), e.floor]);
+  assert.deepEqual(learned.sort(), [["scene-1:new-0", "water"], ["scene-1:none", "none"]].sort());
+});
+
+test("regions already on the scene teach the memory once, and again only when they change", async () => {
+  const store = memoryStore([]);
+  const saved = [{ regionId: "r1", pixels: [0, 1], floor: "stone", savedChoices: { floor: "stone", texture: "off" } }];
+  const map = { scene: { id: "s" }, rgba: new Uint8Array(40), width: 10, height: 1 };
+  const first = await learnSaved(store, saved, map);
+  assert.deepEqual(first.map((e) => [e.key, e.floor, e.look]), [["s:r1", "stone", { texture: "off" }]]);
+  const again = memoryStore(first);
+  await learnSaved(again, saved, map);
+  assert.equal(again.saved.length, 0, "nothing new: no write");
+  await learnSaved(again, [{ ...saved[0], savedChoices: { floor: "dirt" }, floor: "dirt" }], map);
+  assert.equal(again.saved.at(-1)[0].floor, "dirt");
+});
+
+test("the memory store registers its world setting on first use and saves only for a GM", async () => {
+  const values = new Map(), registered = new Map();
+  const game = { user: { isGM: true }, settings: {
+    settings: registered,
+    register: (id, key, config) => registered.set(`${id}.${key}`, config),
+    get: (id, key) => values.get(`${id}.${key}`) ?? registered.get(`${id}.${key}`).default,
+    set: async (id, key, value) => values.set(`${id}.${key}`, value),
+  } };
+  const store = floorMemoryStore(game);
+  assert.deepEqual(store.load(), []);
+  assert.equal(registered.get(`animater.${FLOOR_MEMORY_SETTING}`).scope, "world");
+  await store.save([{ key: "a", sig: blackSig, floor: "wood", look: {} }]);
+  assert.equal(store.load().length, 1);
+  game.user.isGM = false;
+  await store.save([]);
+  assert.equal(store.load().length, 1);
+  assert.equal(floorMemoryStore(undefined), null);
 });
 
 test("the window's map is a sharp copy: the art's own size up to VIEW_MAX, in the read's shape", async () => {
