@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Reset a catalog.** Each catalog page has a **Reset catalog…** button in its header (GM) that puts that catalog back to the stock catalog: picked, left-out and customised entries cleared, look and sound choices back to their defaults, and the recipes Customize made for its entries deleted. It asks first, naming those recipes and marking the ones you edited. A copy of what it deletes is kept in the world, and **Restore last reset…** beside it puts the catalog back as it was; the same backup downloads as a file that the Recipes page's Import takes back. The catalog stays on or paused as it was unless you also ask for its fresh-install state; your own recipes, the starters and other catalogs' are kept.
 - **Reset to defaults.** The Animater settings window has a **Reset to defaults…** button in its footer and a **Reset this tab** button on each tab. It asks first (a GM picks the world settings, this screen's or both), downloads a backup of the values it changes, and leaves menus, catalogs, recipes and the switch that plays them alone.
 
 ## 3.8.6
