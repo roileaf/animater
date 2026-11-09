@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.8.11
+
 - **Animal counts left Scene configuration.** Its drop-downs (None, Few, Usual, More, Many) could not show an exact count set in the Animals panel: Frogs set to 1 showed None, and saving Scene configuration wrote None over it. How many of each animal and how big are now set only in the Animals panel.
 - **The fox stops to look round.** With no rabbit about, a fox now and then stops, ears up, and looks about for a few seconds before trotting on. Before, it never stood still unless it was hunting, so its look-about pose never showed. Every other animal's idles (pecking, grazing, washing, puffing, tipping up, sniffing and the rest) were checked and do play.
 - **Startled farm animals run a few seconds.** A cow, goat, sheep, pig or horse sent running kept the rest of its grazing time as its run, so it could gallop off for up to about 13 seconds; it now runs two to four.
