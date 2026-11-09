@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
+import { regionKindOf } from "../../scripts/ui/region-panel-model.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, waterWindowHTML, waterRowHTML,
   paintWaterPreview, floorTint, waterDetectWindow, savedWaterProposals, readWaterChoices, planWaterCreate, commitWaterPlan, openWaterDetect, previewPixel, levelMapIsPlain,
@@ -1295,4 +1296,16 @@ test("the control and its switches say floors, not only water", () => {
   const main = readFileSync(new URL("../../scripts/main.mjs", import.meta.url), "utf8");
   assert.match(main, /title: "Detect floors \(Experimental\)[^"]*click any floor to add it"/);
   assert.match(main, /Show the Detect floors button/);
+});
+
+test("switching a saved dock to water leaves it a water region the panel opens with water controls", () => {
+  const dock = savedRegion("dock");
+  dock.flags.animater = { generated: "floor-detect", floor: "wood", overWater: true };
+  const regions = [dock];
+  const proposals = savedWaterProposals(regions, { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  const picked = proposals.map((p) => ({ id: p.id, checked: true, ...p.savedChoices, floor: "water" }));
+  const plan = planWaterCreate({ proposals, picked, regions, levelId: "level-1", sceneRect: editRect, imageWidth: 20, imageHeight: 20 });
+  const flags = { ...dock.flags.animater };
+  for (const [path, value] of Object.entries(plan.updates[0])) if (path.startsWith("flags.animater.")) flags[path.slice("flags.animater.".length)] = value;
+  assert.equal(regionKindOf(flags, flags.floor), "water");
 });

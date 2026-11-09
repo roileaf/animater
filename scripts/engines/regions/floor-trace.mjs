@@ -233,7 +233,7 @@ export function dropSmall(mask, width, height) {
 }
 
 // Background that touches the image border is the outside of the map, so it stays empty. A smaller enclosed blob is foam or a lamp.
-export function fillHoles(mask, inv, width, height, colour) {
+export function fillHoles(mask, inv, width, height, colour, contrast = null) {
   const count = width * height;
   for (let p = 0; p < count; p++) inv[p] = mask[p] ? 0 : 1;
   const labels = new Int32Array(count);
@@ -262,7 +262,10 @@ export function fillHoles(mask, inv, width, height, colour) {
       if (heads[id] >= 0 && holeMatchesWater(heads[id], next, mask, maskLabels, waterHue, colour.hue, colour.sat, width, height, comps[id].size, WATER_TUNING.holeFillHue, WATER_TUNING.holeFillSatMin)) fill[id] = 1;
     }
   } else {
-    for (let id = 1; id < comps.length; id++) if (!touch[id] && comps[id].size < max) fill[id] = 1;
+    // `contrast` marks pixels that are something else lying on the floor, or not there at all: a gap mostly made of them stays a hole.
+    const apart = contrast ? new Uint32Array(comps.length) : null;
+    if (apart) for (let p = 0; p < count; p++) if (inv[p] && contrast[p]) apart[labels[p]]++;
+    for (let id = 1; id < comps.length; id++) if (!touch[id] && comps[id].size < max && (!apart || apart[id] < comps[id].size * 0.5)) fill[id] = 1;
   }
   for (let p = 0; p < count; p++) {
     const id = labels[p];
@@ -329,7 +332,7 @@ export function removeSaddles(mask, width, height, blocked) {
 
 // `blocked` pixels leave before the opening and the size check, so a speck cannot survive by leaning on them. Filling
 // can reach them again.
-export function cleanMask(raw, width, height, blocked, colour) {
+export function cleanMask(raw, width, height, blocked, colour, contrast = null) {
   const count = width * height;
   const spare = new Uint8Array(count);
   const closed = new Uint8Array(count);
@@ -339,7 +342,7 @@ export function cleanMask(raw, width, height, blocked, colour) {
   unblock(closed);
   openInto(closed, mask, spare, width, height);
   dropSmall(mask, width, height);
-  fillHoles(mask, spare, width, height, colour);
+  fillHoles(mask, spare, width, height, colour, contrast);
   unblock(mask);
   removeSaddles(mask, width, height, blocked);
   return mask;

@@ -20,6 +20,8 @@ export const FLOOR_SELECT_TUNING = Object.freeze({
   labOutlineL: 20,
   labOutlineReach: 4,
   labOutlineSeedGap: 20,
+  // An enclosed gap this far from the floor, or transparent, is a different thing lying on it and stays a hole.
+  labHoleKeep: 35,
 });
 const labOutlineRounds = 3;
 
@@ -42,11 +44,12 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
   const val = new Uint8Array(count);
   readColour(rgba, hue, sat, val, count);
   const hueSeed = seedColour(hue, sat, rgba, taken, cx, cy, width, height);
-  const useHue = hueSeed && hueSeed.saturation >= FLOOR_SELECT_TUNING.hueSatMin;
+  const useHue = hueSeed && hueSeed.saturation >= FLOOR_SELECT_TUNING.hueSatMin && !clickedOnDull(hue, sat, rgba, taken, cx, cy, width, height);
 
   let flooded;
   let start;
   let seed;
+  let contrast = null;
   if (useHue) {
     seed = { ...hueSeed, matcher: "hue" };
     const { clickHue, clickWeakHue, clickSatFactor, clickValueMin, alphaMin } = WATER_TUNING;
@@ -73,17 +76,21 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     const labSeed = seedLab(lab, rgba, taken, cx, cy, width, height);
     if (!labSeed) return none("no-colour");
     seed = { ...labSeed, matcher: "lab" };
-    const { labStrong, labWeak, labBroadWeak, labValueMin, labCoverMax, alphaMin } = { ...FLOOR_SELECT_TUNING, alphaMin: WATER_TUNING.alphaMin };
+    const { labStrong, labWeak, labBroadWeak, labValueMin, labCoverMax, labHoleKeep, labOutlineL, alphaMin } = { ...FLOOR_SELECT_TUNING, alphaMin: WATER_TUNING.alphaMin };
     const weakLimit = broad ? labBroadWeak : labWeak;
     const strong = new Uint8Array(count);
     const weak = new Uint8Array(count);
+    contrast = new Uint8Array(count);
     let usable = 0, strongCount = 0;
     for (let p = 0, i = 3; p < count; p++, i += 4) {
-      if (taken[p] || rgba[i] < alphaMin || val[p] < labValueMin) continue;
+      if (rgba[i] < alphaMin) { contrast[p] = 1; continue; }
+      if (val[p] < labValueMin) continue;
       usable++;
+      if (taken[p]) continue;
       const d = deltaE(lab, p, labSeed);
       if (d <= labStrong) { strong[p] = 1; strongCount++; }
       if (d <= weakLimit) weak[p] = 1;
+      else if (d > labHoleKeep && lab[p * 3] > labOutlineL) contrast[p] = 1;
     }
     if (!usable || strongCount / usable >= labCoverMax) return none("no-colour");
     start = nearestAccepted(strong, cx, cy, width, height);
@@ -92,11 +99,11 @@ export function selectFloorAt(rgba, width, height, { x, y }, { claimed = [], bro
     seeds[start] = 1;
     flooded = new Uint8Array(count);
     grow(seeds, weak, flooded, width, height);
-    const { labOutlineL, labOutlineReach, labOutlineSeedGap } = FLOOR_SELECT_TUNING;
+    const { labOutlineReach, labOutlineSeedGap } = FLOOR_SELECT_TUNING;
     if (labSeed.L - labOutlineL >= labOutlineSeedGap) absorbOutline(flooded, dark, weak, width, height, labOutlineReach);
   }
 
-  const mask = cleanMask(flooded, width, height, taken, useHue ? { hue, sat } : null);
+  const mask = cleanMask(flooded, width, height, taken, useHue ? { hue, sat } : null, contrast);
   if (!keepComponentAt(mask, start, width, height)) return none("too-small");
   const [traced] = traceProposals(mask, width, height);
   let next = 1;
@@ -131,6 +138,24 @@ function seedColour(hue, sat, rgba, taken, cx, cy, width, height) {
   const centre = Math.atan2(sin, cos) * 180 / Math.PI;
   const offset = median(voters.map((p) => ((hue[p] - centre + 540) % 360) - 180));
   return { hue: (centre + offset + 360) % 360, saturation };
+}
+
+// Whether the clicked pixel and most of the patch round it have no real colour. A grey click beside a coloured floor
+// then reads as grey, though the colour next to it is the only hue in the patch.
+function clickedOnDull(hue, sat, rgba, taken, cx, cy, width, height) {
+  const { clickPatch, clickSatMin, alphaMin } = WATER_TUNING;
+  const dull = (p) => hue[p] < 0 || sat[p] < clickSatMin;
+  if (!dull(cy * width + cx)) return false;
+  let seen = 0, grey = 0;
+  for (let y = Math.max(0, cy - clickPatch); y <= Math.min(height - 1, cy + clickPatch); y++) {
+    for (let x = Math.max(0, cx - clickPatch); x <= Math.min(width - 1, cx + clickPatch); x++) {
+      const p = y * width + x;
+      if (taken[p] || rgba[p * 4 + 3] < alphaMin) continue;
+      seen++;
+      if (dull(p)) grey++;
+    }
+  }
+  return seen > 0 && grey >= seen * 0.5;
 }
 
 function readLab(rgba, count) {

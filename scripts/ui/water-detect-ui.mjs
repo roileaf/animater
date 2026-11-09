@@ -298,6 +298,7 @@ export function planWaterCreate({ proposals, picked, sceneRect, imageWidth, imag
     const beforeFloor = before.floor ?? "water";
     if (row.floor !== beforeFloor) {
       patch["flags.animater.floor"] = own.floor ?? "";
+      if (row.floor === "water") patch["flags.animater.overWater"] = false;
       patch.color = floorMeta(row.floor).color;
     }
     if (row.floor === "lava" && beforeFloor !== "lava") {
