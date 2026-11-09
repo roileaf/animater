@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wreckLayout, wreckTargets } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, SPILL_FAN } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 
 const note = { seed: 9, cutAngle: 0.4, pattern: "shards", pieces: 10, spread: 0.32, spin: 120, tint: "scorched", mark: "scorch", from: { x: 0, y: 0 }, walls: [] };
 const at = { centre: { x: 500, y: 300 }, width: 100, height: 100, grid: 100 };
@@ -16,6 +16,16 @@ test("contents: nothing has no spill; liquids are floor-blood marks; grain clump
   const grain = wreckLayout(note, { ...at, contents: "grain" }).spill;
   const meanAngle = Math.atan2(...grain.marks.reduce(([sy, sx], k) => [sy + k.y - 300, sx + k.x - 500], [0, 0]));
   assert.ok(Math.abs(meanAngle - 0.4) < 0.6);
+});
+test("a liquid runs out the way the hit pushed it: patches and drops lie in a fan about the cut, the far side of the mark stays bare", () => {
+  for (let seed = 1; seed <= 40; seed++) for (const cutAngle of [0, 0.4, 2.5, -2]) {
+    const n = { ...note, seed, cutAngle }, wine = wreckLayout(n, { ...at, contents: "wine" }).spill;
+    const from = { x: 500 + Math.cos(cutAngle) * 12.5, y: 300 + Math.sin(cutAngle) * 12.5 };
+    for (const m of wine.marks.filter((k) => k.art !== "pool")) {
+      const off = Math.atan2(m.y - from.y, m.x - from.x) - cutAngle, turn = Math.atan2(Math.sin(off), Math.cos(off));
+      assert.ok(Math.abs(turn) <= SPILL_FAN + 1e-9, `seed ${seed} cut ${cutAngle}: ${m.art} off the fan by ${turn}`);
+    }
+  }
 });
 test("liquid colours, goods bits and the ground mark kinds", () => {
   const w = (contents, n = note) => wreckLayout(n, { ...at, contents });

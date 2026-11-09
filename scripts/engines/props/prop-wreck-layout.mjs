@@ -41,11 +41,23 @@ function groundMark(kind, c, r, rand) {
   return one(1.15, [[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], 0x4a3f30); // dust
 }
 
+// How far either side of the hit a liquid runs (radians): the far side of the ground mark stays bare.
+export const SPILL_FAN = 0.9;
+// A mark's place around `at` folded into the fan about the cut, same distance, turned with it.
+function intoFan(m, at, cutAngle) {
+  if (m.art === "pool") return m;
+  const dx = m.x - at.x, dy = m.y - at.y, d = Math.hypot(dx, dy);
+  if (!d) return m;
+  const off = Math.atan2(dy, dx) - cutAngle, turn = Math.atan2(Math.sin(off), Math.cos(off)), a = cutAngle + (turn * SPILL_FAN) / Math.PI;
+  return { ...m, x: at.x + Math.cos(a) * d, y: at.y + Math.sin(a) * d, rot: (m.rot ?? 0) + a - (cutAngle + turn) };
+}
+
 // Liquids reuse the floor-blood marks, recoloured: a spill that matches the blood already on the table.
 function liquidSpill(kind, c, r, grid, cutAngle, seed, rand) {
   const at = { x: c.x + Math.cos(cutAngle) * r * 0.25, y: c.y + Math.sin(cutAngle) * r * 0.25 };
   const marks = splatMarks({ at, width: r * 3.2, grid, seed: `spill-${kind}-${seed}` })
     .map((m) => (m.art === "slash" || m.art === "blunt" ? { ...m, art: "patch" } : m)) // a spill, not a thrown spray
+    .map((m) => intoFan(m, at, cutAngle)) // it runs out the way the hit pushed it
     .filter((m) => m.art !== "drop" || rand() < 0.5)
     // Pools spread last and longest; patches and drops come with the burst.
     .map((m) => ({ ...m, delay: m.art === "pool" ? 0.15 : m.art === "drop" ? 0 : 0.05 }));
