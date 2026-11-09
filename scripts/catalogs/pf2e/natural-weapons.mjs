@@ -1,9 +1,7 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
 // Creature attacks (an NPC's Jaws, an ancestry Claw) the equipment catalog has no weapon for.
 // These names play as they are; an NPC Strike's longer name plays its last such word
 // ("Spiked Tail" a tail, "Storm-Beak Jab" a beak).
 import {normalize} from '../../core/model.mjs';
-const {PF2E_WEAPONS: EQUIPMENT} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-weapons.mjs') : {PF2E_WEAPONS: []};
 
 const FAMILIES={
  bite:{names:['Jaws','Bite','Fangs','Beak','Mandibles','Teeth','Maw','Peck','Proboscis'],damage:'piercing',sound:'naturalPierce',scale:.9,label:'Bite',
@@ -19,9 +17,12 @@ const FAMILIES={
 const PHYSICAL=new Set(['bludgeoning','piercing','slashing','precision','untyped']);
 // An energy's finish as the equipment catalog already picked it for each JB2A edition (a melee
 // weapon's when one has it). Energies no weapon carries (holy) keep the colour without a finish.
+// Read from the equipment once its data loads (weapon-catalog.mjs); the physical attacks need none.
 const FINISHES=new Map();
-for(const melee of [true,false])for(const w of EQUIPMENT)for(const m of w.modes)if((m.mode==='melee')===melee&&m.element!=='physical'&&!FINISHES.has(m.element)&&m.assets.accent?.length)
- FINISHES.set(m.element,{assets:m.assets.accent,selections:(m.selections??[]).filter(s=>s.slot==='accent')});
+export function naturalFinishes(equipment){
+ for(const melee of [true,false])for(const w of equipment)for(const m of w.modes)if((m.mode==='melee')===melee&&m.element!=='physical'&&!FINISHES.has(m.element)&&m.assets.accent?.length)
+  FINISHES.set(m.element,{assets:m.assets.accent,selections:(m.selections??[]).filter(s=>s.slot==='accent')});
+}
 const ALIASES={negative:'void',positive:'vitality',holy:'spirit'};
 const slugOf=name=>name.toLowerCase().replace(/[^a-z0-9]+/g,'-');
 

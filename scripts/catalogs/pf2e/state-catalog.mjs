@@ -1,19 +1,30 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
-const {PF2E_CONDITIONS, PF2E_EFFECTS: NATIVE_EFFECTS, PF2E_STATE_SOURCE} = catalogDataNeeded('pf2e') ? await import('../../../data/pf2e-state-catalog.mjs') : {PF2E_CONDITIONS: [], PF2E_EFFECTS: [], PF2E_STATE_SOURCE: {}};
+import {catalogData,fillList} from '../shared/catalog-data.mjs';
 import {moduleAuraEntries,moduleActive} from './module-auras.mjs';
-// PF2e's own effects, then the auras PF2e Workbench and patreon-v3 add (module-auras.mjs).
-const PF2E_EFFECTS=NATIVE_EFFECTS.length?[...NATIVE_EFFECTS,...moduleAuraEntries(NATIVE_EFFECTS)]:NATIVE_EFFECTS;
 import {normalize,validateRecipe,matchRecipe,resolveAsset} from '../../core/model.mjs';
 import {statePresentation} from '../shared/state-presentation.mjs';
 import {withCatalogFx} from '../shared/catalog-fx.mjs';
+// PF2e's conditions and own effects, then the auras PF2e Workbench and patreon-v3 add (module-auras.mjs). Filled
+// when the data loads (catalog-data.mjs).
+const PF2E_CONDITIONS=[],PF2E_EFFECTS=[],PF2E_STATE_SOURCE={};
 export {PF2E_CONDITIONS,PF2E_EFFECTS,PF2E_STATE_SOURCE};
-const entries=[...PF2E_CONDITIONS,...PF2E_EFFECTS],byId=new Map(entries.map(e=>[e.id,e])),byUuid=new Map(entries.flatMap(e=>[e.uuid,...(e.aliases??[])].map(uuid=>[uuid,e]))); // aliases: another module's copy (module-auras.mjs)
-const byCondition=new Map(PF2E_CONDITIONS.map(e=>[e.slug,e]));
+const byId=new Map(),byUuid=new Map(); // aliases: another module's copy (module-auras.mjs)
+const byCondition=new Map();
 const byName=new Map();
-for(const e of entries){const key=`${e.kind}:${normalize(e.name)}`;if(!byName.has(key))byName.set(key,[]);byName.get(key).push(e);}
+let loaded=false;
+await catalogData('pf2e','states',async()=>{
+ const data=await import('../../../data/pf2e-state-catalog.mjs');
+ fillList(PF2E_CONDITIONS,data.PF2E_CONDITIONS);
+ fillList(PF2E_EFFECTS,data.PF2E_EFFECTS.length?[...data.PF2E_EFFECTS,...moduleAuraEntries(data.PF2E_EFFECTS)]:[]);
+ Object.assign(PF2E_STATE_SOURCE,data.PF2E_STATE_SOURCE);
+ const entries=[...PF2E_CONDITIONS,...PF2E_EFFECTS];
+ for(const e of entries){byId.set(e.id,e);for(const uuid of [e.uuid,...(e.aliases??[])])byUuid.set(uuid,e);}
+ for(const e of PF2E_CONDITIONS)byCondition.set(e.slug,e);
+ for(const e of entries){const key=`${e.kind}:${normalize(e.name)}`;if(!byName.has(key))byName.set(key,[]);byName.get(key).push(e);}
+ loaded=true;
+});
 export const catalogStateEntry=id=>byId.get(String(id).replace(/^pf2e-state-/,''))??null;
 export function normalizeStateCatalogState(state={}){
- state??={};const ids=vs=>[...new Set((Array.isArray(vs)?vs:[]).filter(id=>byId.has(id)))];
+ state??={};const ids=vs=>[...new Set((Array.isArray(vs)?vs:[]).filter(id=>!loaded?typeof id==="string"&&id:byId.has(id)))];
  return {enabled:state.enabled===true,scope:state.scope==='selected'?'selected':'all',selected:ids(state.selected),excluded:ids(state.excluded),customized:ids(state.customized),motion:state.motion!==false,fade:state.fade===true,turn:state.turn===true,opacity:Number.isFinite(Number(state.opacity))?Math.min(1,Math.max(.1,Number(state.opacity))):1};
 }
 // Reuse timers (Treat Wounds, Battle Medicine, Shield Immunity...) are bookkeeping, not magic on the creature: they
