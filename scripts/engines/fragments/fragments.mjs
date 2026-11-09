@@ -18,7 +18,9 @@ export const FRAGMENT_BEHAVIORS = {
   burst: "Burst apart", implode: "Implode", absorb: "Drawn to the attacker", rise: "Rise away", bounce: "Fall and bounce", drip: "Melt down", crumble: "Crumble to a heap",
   flatten: "Crushed flat", shudder: "Shudder apart", glitch: "Glitch out", sink: "Sink and fade",
 };
-export const FRAGMENT_TINTS = { none: "None", frozen: "Frozen", charred: "Charred", stone: "Stone", ghost: "Ghostly", burning: "Burning", electric: "Electric", acid: "Acid", poison: "Poison" };
+export const FRAGMENT_TINTS = { none: "None", frozen: "Frozen", charred: "Charred", stone: "Stone", ghost: "Ghostly", burning: "Burning", electric: "Electric", acid: "Acid", poison: "Poison", scorched: "Scorched", frosted: "Frosted" };
+// The behaviours whose pieces end lying visible: the only ones a prop's wreckage may use.
+export const KEEP_BEHAVIORS = ["burst", "bounce", "crumble", "flatten", "shudder"];
 // How a tint draws: a PIXI tint on the table (stone adds one shared greyscale filter), a CSS filter
 // in the studio, and an alpha factor for both.
 export const FRAGMENT_TINT_LOOKS = {
@@ -32,6 +34,8 @@ export const FRAGMENT_TINT_LOOKS = {
   electric: { tint: 0xbfe6ff, alpha: 0.95, css: "saturate(.4) brightness(1.35) hue-rotate(180deg)" },
   acid: { tint: 0xa6e05a, alpha: 1, css: "sepia(.5) saturate(2) hue-rotate(40deg)" },
   poison: { tint: 0x9ac885, alpha: 0.9, css: "sepia(.4) saturate(1.6) hue-rotate(50deg) brightness(.9)" },
+  scorched: { tint: 0x8a6f60, alpha: 1, css: "sepia(.35) brightness(.7)" },
+  frosted: { tint: 0xcfe4f2, alpha: 1, css: "saturate(.6) brightness(1.1) hue-rotate(170deg)" },
 };
 const clamp = (v, min, max, fallback) => (v !== null && v !== "" && Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : fallback);
 const TOWARDS_LIMIT = 40;
@@ -51,6 +55,8 @@ export function normalizeFragments(s = {}) {
     // Burst and no tint stay unstored, so stages saved before them read back unchanged.
     ...(behavior !== "burst" ? { behavior } : {}),
     ...(tint !== "none" ? { tint } : {}),
+    // Keep: the pieces stay lying where they land (a broken prop's wreckage); only props set it.
+    ...(s.keep === true ? { keep: true } : {}),
     // A Tokenshade look on the pieces as they fly (a token preset by name: embers on charred dust, frost on shards).
     ...(typeof s.fragmentFx === "string" && s.fragmentFx.trim() ? { fragmentFx: s.fragmentFx.trim().slice(0, 100) } : {}),
     // The sender's attacker centre less the target's, in screen squares: where "absorb" flies.
@@ -466,7 +472,7 @@ export function fragmentPose(stage, p, flight, t) {
   if (flight.steps) {
     let step = null;
     for (const k of flight.steps) { if (q < k.at) break; step = k; }
-    return { x: step?.x ?? 0, y: step?.y ?? 0, rotation: 0, alpha: step?.alpha ?? 1, scale: 1, stretchX: 1, stretchY: 1 };
+    return { x: step?.x ?? 0, y: step?.y ?? 0, rotation: 0, alpha: s.keep ? 1 : step?.alpha ?? 1, scale: 1, stretchX: 1, stretchY: 1 };
   }
   const at = samplePath(flight.keyframes, q);
   // Pieces fade over the stage's last `fade` ms; a bursting dust speck fades over its own window,
@@ -474,7 +480,7 @@ export function fragmentPose(stage, p, flight, t) {
   const speck = s.pattern === "dust" && s.behavior === "burst";
   const fadeFrom = flight.fade ? flight.fade[0] : speck ? flight.start + (flight.end - flight.start) * 0.3 : Math.max(0, 1 - s.fade / Math.max(1, stage.duration ?? 1400));
   const fadeTo = flight.fade ? flight.fade[1] : speck ? flight.end : 1;
-  const alpha = q <= fadeFrom ? 1 : q >= fadeTo ? 0 : 1 - (q - fadeFrom) / (fadeTo - fadeFrom);
+  const alpha = s.keep || q <= fadeFrom ? 1 : q >= fadeTo ? 0 : 1 - (q - fadeFrom) / (fadeTo - fadeFrom);
   const grow = flight.stretchY ? Math.min(1, Math.max(0, (q - flight.start) / Math.max(1e-9, flight.end - flight.start))) : 0;
   // Flatten squashes over its first stretch of time, then holds.
   const squash = flight.squash ? Math.min(1, q / Math.max(1e-9, flight.squash.until)) : 0;
