@@ -199,7 +199,7 @@ function lightnessAt(rgba, p) {
 }
 
 // Near-black and neutral: its hue is noise, so it must not vote for the colour of the click.
-function isInk(rgba, p) {
+export function isInk(rgba, p) {
   const i = p * 4, r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
   const max = Math.max(r, g, b);
   return max < 60 && max - Math.min(r, g, b) < 14;

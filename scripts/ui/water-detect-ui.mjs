@@ -152,7 +152,7 @@ function currentDefault(kind, current) {
 function suggestionTag(proposal, floor) {
   const { suggestion } = proposal;
   if (!suggestion || suggestion.floor !== floor) return "";
-  return ` <small class="an-water-suggest" data-suggest="${suggestion.floor}">Suggested from colour${suggestion.confidence === "low" ? " (unsure)" : ""}</small>`;
+  return ` <small class="an-water-suggest" data-suggest="${suggestion.floor}">Suggested from colour${suggestion.confidence === "low" ? ` (unsure${suggestion.runnerUp ? `, could be ${floorMeta(suggestion.runnerUp).name}` : ""})` : ""}</small>`;
 }
 
 export function waterRowHTML(proposal, options = {}) {

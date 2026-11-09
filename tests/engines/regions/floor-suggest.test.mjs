@@ -74,3 +74,34 @@ test("the same selection gives the same suggestion whatever order its pixels are
   const rotated = [...pixels.slice(7), ...pixels.slice(0, 7)];
   assert.equal(suggestFloor(rgba, width, height, rotated).floor, suggestFloor(rgba, width, height, pixels).floor);
 });
+
+function mixed(width, height, pick) {
+  const rgba = new Uint8ClampedArray(width * height * 4), pixels = [];
+  for (let p = 0; p < width * height; p++) {
+    const c = pick(p % width, Math.floor(p / width));
+    rgba[p * 4] = c[0]; rgba[p * 4 + 1] = c[1]; rgba[p * 4 + 2] = c[2]; rgba[p * 4 + 3] = 255;
+    pixels.push(p);
+  }
+  return suggestFloor(rgba, width, height, pixels);
+}
+
+test("a black outline around a stone does not turn it into another floor", () => {
+  const stone = [128, 128, 130], ink = [10, 10, 12];
+  const result = mixed(120, 90, (x, y) => (x < 9 || x >= 111 || y < 9 || y >= 81 || (y === 45 && x > 20) ? ink : stone));
+  assert.equal(result.floor, "stone");
+});
+
+test("a minority of another colour inside the patch does not outvote the floor", () => {
+  assert.equal(mixed(120, 18, (x) => (x % 4 === 0 ? [70, 120, 50] : [132, 128, 124])).floor, "stone");
+  assert.equal(mixed(100, 100, (x) => (x < 20 ? [10, 10, 12] : [240, 242, 245])).floor, "snow");
+});
+
+test("a colour that is near no floor is an unsure guess", () => {
+  assert.equal(suggest([200, 30, 200]).confidence, "low");
+});
+
+test("a pixel index outside the image is skipped, not a crash", () => {
+  const { rgba, width, height } = patch([70, 120, 50], { width: 10, height: 10 });
+  assert.equal(suggestFloor(rgba, width, height, [0, 1, 2, 5000, 3, 4]).floor, "grass");
+  assert.equal(suggestFloor(rgba, width, height, [5000]), null);
+});

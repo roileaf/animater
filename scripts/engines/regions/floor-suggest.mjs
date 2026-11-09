@@ -1,6 +1,6 @@
 // Suggests which Animater floor a clicked patch is, from its average colour alone. It is a guess for the GM to confirm.
 
-import { rgbToLab } from "./floor-select.mjs";
+import { rgbToLab, isInk } from "./floor-select.mjs";
 
 const PROTOTYPE_COLOURS = Object.freeze({
   stone: [[128, 128, 130], [90, 90, 92], [165, 165, 165]],
@@ -26,22 +26,29 @@ export const SUGGEST_TUNING = Object.freeze({
   // Confident only when the runner-up floor is clearly further away, as stone is from metal or dirt from wood is not.
   runnerUpRatio: 1.5,
   runnerUpMargin: 10,
+  // A colour this far from every floor is a guess however the runner-up compares.
+  farFromAll: 28,
 });
 
 export function suggestFloor(rgba, width, height, pixels) {
   const total = pixels?.length ?? 0;
   if (!total) return null;
-  const { sample, runnerUpRatio, runnerUpMargin } = SUGGEST_TUNING;
+  const { sample, runnerUpRatio, runnerUpMargin, farFromAll } = SUGGEST_TUNING;
   const n = Math.min(total, sample);
-  let L = 0, a = 0, b = 0;
+  const colour = [], inked = [];
   for (let k = 0; k < n; k++) {
     // One pixel from each equal slice of the list, at a fixed pseudo-random spot, so no regular stripe can line up with it.
     const spot = Math.min(total - 1, Math.floor((k + ((Math.imul(k + 1, 2654435761) >>> 0) / 4294967296)) * total / n));
     const i = pixels[spot] * 4;
+    if (!(i >= 0 && i + 2 < rgba.length)) continue;
     const lab = rgbToLab(rgba[i], rgba[i + 1], rgba[i + 2]);
-    L += lab[0]; a += lab[1]; b += lab[2];
+    if (!lab.every(Number.isFinite)) continue;
+    (isInk(rgba, i / 4) ? inked : colour).push(lab);
   }
-  const mean = [L / n, a / n, b / n];
+  // Outline and cracks are ink, not floor: the middle of the rest speaks for the patch, so a minority of another colour cannot move it.
+  const labs = colour.length ? colour : inked;
+  if (!labs.length) return null;
+  const mean = [0, 1, 2].map((axis) => median(labs.map((lab) => lab[axis])));
   const nearest = new Map();
   for (const { floor, lab } of FLOOR_PROTOTYPES) {
     const d = Math.hypot(lab[0] - mean[0], lab[1] - mean[1], lab[2] - mean[2]);
@@ -49,6 +56,8 @@ export function suggestFloor(rgba, width, height, pixels) {
   }
   const ranked = [...nearest.entries()].sort((x, y) => x[1] - y[1]);
   const [[floor, best], [runnerUp, second]] = ranked;
-  const confident = second >= best * runnerUpRatio && second - best >= runnerUpMargin;
+  const confident = best <= farFromAll && second >= best * runnerUpRatio && second - best >= runnerUpMargin;
   return { floor, runnerUp, confidence: confident ? "high" : "low" };
 }
+
+const median = (values) => values.sort((x, y) => x - y)[values.length >> 1];
