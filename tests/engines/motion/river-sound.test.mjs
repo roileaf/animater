@@ -53,19 +53,28 @@ test('a scene can keep its nights quiet', () => {
   assert.equal(nightLevel({ night: 1, quiet: true }), 0);
 });
 
-// Roi: still water (Pond) had no sound. It plays a swamp now, from the two picked: insects with slow mud bubbles, or the mud alone.
+// Roi: still water had no sound. A swamp plays one, from the two picked: insects with slow mud bubbles, or the mud alone.
+// Then: "ponds should not play SWAMP!" and "plain ponds should play subtle water like a quiet lake sound": a plain pond laps quietly (#1 picked).
 import { RIVER_SOUNDS as WATER_SOUNDS, riverHeard as heardOf, riverFile as fileOf } from '../../../scripts/engines/motion/river-sound.mjs';
 import { existsSync, readFileSync as readText } from 'node:fs';
-test('still water is heard close by, and plays a swamp', () => {
-  const pond = { speed: 'still', areas: [[0, 0, 200, 0, 200, 200, 0, 200]] };
-  const near = heardOf([pond], [{ x: 300, y: 100 }], { grid: 100 }), far = heardOf([pond], [{ x: 900, y: 100 }], { grid: 100 });
-  assert.ok(near.still.level > 0.5 && far.still.level === 0, 'carries a few squares, not far');
-  assert.equal(near.gentle.level, 0);
-  assert.equal(WATER_SOUNDS.still.length, 2);
-  for (const file of WATER_SOUNDS.still) assert.ok(existsSync(new URL(`../../../${file.replace('modules/animater/', '')}`, import.meta.url)), file);
-  assert.ok(WATER_SOUNDS.still.includes(fileOf('still', 'scene')));
+const onDisk = (file) => existsSync(new URL(`../../../${file.replace('modules/animater/', '')}`, import.meta.url));
+test('still water is heard close by: a swamp or a quiet lake', () => {
+  for (const speed of ['swamp', 'lake']) {
+    const pond = { speed, areas: [[0, 0, 200, 0, 200, 200, 0, 200]] };
+    const near = heardOf([pond], [{ x: 300, y: 100 }], { grid: 100 }), far = heardOf([pond], [{ x: 900, y: 100 }], { grid: 100 });
+    assert.ok(near[speed].level > 0.5 && far[speed].level === 0, `${speed} carries a few squares, not far`);
+    assert.equal(near.gentle.level, 0);
+    for (const file of WATER_SOUNDS[speed]) assert.ok(onDisk(file), file);
+    assert.ok(WATER_SOUNDS[speed].includes(fileOf(speed, 'scene')));
+  }
+  assert.equal(WATER_SOUNDS.swamp.length, 2);
+  assert.deepEqual(WATER_SOUNDS.lake, ['modules/animater/assets/sounds/wildlife/pond/pond-lake-318064-0.ogg']);
   const credits = readText(new URL('../../../assets/sounds/wildlife/pond/License.txt', import.meta.url), 'utf8');
-  for (const id of ['547690', '415608']) assert.match(credits, new RegExp(`sounds/${id}/ \\(CC0 1\\.0\\)`));
+  for (const id of ['547690', '415608', '318064']) assert.match(credits, new RegExp(`sounds/${id}/ \\(CC0 1\\.0\\)`));
+});
+test('a pond styled as a Swamp plays the swamp, any other pond the lake', () => {
   const main = readText(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /speed: !own\.flowTo \? "still" :/, 'a pond region (no way to flow) is still water');
+  assert.match(main, /const swampWater = \(own\) => own\?\.textureStyles\?\.water === "swamp";/);
+  assert.match(main, /speed: !own\.flowTo \? \(swampWater\(region\.flags\?\.\[ID\]\) \? "swamp" : "lake"\) :/);
+  assert.match(main, /stopVoice\(riverVoices\.swamp\); stopVoice\(riverVoices\.lake\);/);
 });

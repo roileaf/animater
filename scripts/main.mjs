@@ -4287,14 +4287,16 @@ const tickPools = () => {
 // Rivers heard (engines/motion/river-sound.mjs): any water with a way to flow (the region's right-click panel → Water → Flows toward), a loop for each speed
 // of current, none till audio is unlocked (Foundry would hold it to the first click), none on water frozen over, quieter through a wall.
 let riverRegions = [], riverLookAt = 0;
-const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false }, still: { sound: null, starting: false } };
+const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false }, swamp: { sound: null, starting: false }, lake: { sound: null, starting: false } };
 const readRivers = () => {
   riverRegions = [];
   const water = [];
   for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") { const painted = waterPainted(region); for (const area of regionAreas(region)) { area.painted = painted; water.push(area); } } } catch { /* a broken region never breaks the rest */ } }
   wakeRipples.water(water);
+  // Still water styled as a Swamp (the region's Texture style) plays the swamp's insects and mud; a plain pond, quiet lapping.
+  const swampWater = (own) => own?.textureStyles?.water === "swamp";
   for (const region of regionsHere()) {
-    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; const kind = waterKindOf(own); if (!own.flowTo && (kind !== "still" || region.flags?.[ID]?.sea)) continue; riverRegions.push({ speed: !own.flowTo ? "still" : own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
+    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; const kind = waterKindOf(own); if (!own.flowTo && (kind !== "still" || region.flags?.[ID]?.sea)) continue; riverRegions.push({ speed: !own.flowTo ? (swampWater(region.flags?.[ID]) ? "swamp" : "lake") : own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
 };
 // The night out of doors, constant (river-sound.mjs nightLevel): on a map with open ground, with Wildlife sounds on. Heard from the listener.
@@ -4421,7 +4423,7 @@ const tickRivers = () => {
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
 };
-Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(riverVoices.swift); stopVoice(riverVoices.still); stopVoice(nightVoice); for (const voice of Object.values(weatherVoices)) stopVoice(voice); riverRegions = []; });
+Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(riverVoices.swift); stopVoice(riverVoices.swamp); stopVoice(riverVoices.lake); stopVoice(nightVoice); for (const voice of Object.values(weatherVoices)) stopVoice(voice); riverRegions = []; });
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
 Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
@@ -4952,7 +4954,7 @@ function skyTick() {
   if (blastReactions.busy) blastReactions.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
   else if (poolSound) tickPools();
-  if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound || riverVoices.still.sound) tickRivers();
+  if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound || riverVoices.swamp.sound || riverVoices.lake.sound) tickRivers();
   if (wildOpen || nightVoice.sound) tickNight();
   if (wildOpen) tickChorus(seconds);
   tickAftermath(seconds);
@@ -8060,7 +8062,7 @@ Hooks.once("init", () => {
   registerSetting("thunderPanning", { name: "Thunder from the side it struck", hint: "Thunder plays to the left or right of your selected token, or of the middle of your view with none selected, as it struck. Off: in both ears alike. Either way, how far off it struck says how loud it is.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
   registerSetting("weatherVolume", { name: "Weather volume", hint: "How loud rain, wind, hail and thunder are for you, in percent: 0 silent, 100 as recorded. Only on your screen; everyone sets their own.", scope: "client", config: true, type: Number, range: { min: 0, max: 100, step: 5 }, default: 100 });
-  skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward), and a swamp's insects and slow mud bubbles by still water (Pond): loudest at the bank, fading with distance, silent while frozen. A region's Sound: Off quiets its own.", "");
+  skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward), quiet lapping by still water (Pond), and insects and slow mud bubbles instead where its Texture style is Swamp: loudest at the bank, fading with distance, silent while frozen. A region's Sound: Off quiets its own.", "");
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
