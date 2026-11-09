@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, floorWindowHTML, areaRowHTML,
-  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, sizeOf, AUTO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
+  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, sizeOf, AUTO_FLOOR, NO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
 } from "../../scripts/ui/floor-regions-ui.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -1771,13 +1771,39 @@ test("on Auto, a new area takes the floor and look of the saved region it looks 
   await app.close({ force: true });
 });
 
-test("on Auto with nothing alike, a new area is water and not marked learned", async () => {
-  const { app, fire, preview, shared } = await learningApp([{ key: "s:r1", sig: [90, 0, 0, 1, 0, 0, 1], floor: "snow" }]);
+test("on Auto with nothing alike, a new area has no floor yet: unticked, asking for one, never water", async () => {
+  const notes = [];
+  const { app, fire, preview, shared, rows } = await learningApp([{ key: "s:r1", sig: [90, 0, 0, 1, 0, 0, 1], floor: "snow" }], fakeScene(), { notify: (m) => notes.push(m) });
   shared.addFloor.value = AUTO_FLOOR;
   fire("click", preview);
-  assert.equal(app.detect.proposals[0].floor, "water");
+  assert.equal(app.detect.proposals[0].floor, NO_FLOOR);
   assert.notEqual(app.detect.proposals[0].learned, true);
+  const row = rows()[0];
+  assert.equal(row.querySelector("[data-pick]").checked, false, "not ticked until it has a floor");
+  assert.match(shared.smartStatus.textContent, /doesn't know this floor/);
+  // Ticked anyway, the save asks for the floor instead of writing water.
+  row.dataset.floor = NO_FLOOR;
+  Object.assign(row, { hasAttribute: (name) => name === "data-needs-floor", removeAttribute() {} });
+  row.querySelector("[data-pick]").checked = true;
+  await app.create();
+  assert.match(notes.at(-1), /Pick a floor/);
+  // Picking a floor gives the area that floor and ticks it.
+  row.querySelector("[data-pick]").checked = false;
+  app.floorGiven(row, "dirt");
+  assert.equal(app.detect.proposals[0].floor, "dirt");
+  assert.equal(row.querySelector("[data-pick]").checked, true);
   await app.close({ force: true });
+});
+
+test("a row with no floor reads back as no floor, and a redraw keeps it asking", () => {
+  assert.equal(readAreaChoices([{ id: "a", floor: NO_FLOOR }])[0].floor, NO_FLOOR);
+  assert.equal(readAreaChoices([{ id: "a" }])[0].floor, "water");
+  const html = areaRowHTML({ id: "area-1", floor: NO_FLOOR, preselected: true, share: 0.1, vertices: 4 }, { floor: NO_FLOOR });
+  assert.match(html, /<option value="" selected>Pick a floor…<\/option>/);
+  assert.match(html, /data-needs-floor/);
+  assert.doesNotMatch(html, /data-pick="area-1" checked/);
+  assert.match(html, /data-water-fields hidden/);
+  assert.match(rowMeta({ saved: false, checked: false, floor: NO_FLOOR }), /pick one/);
 });
 
 test("with a floor picked, the floor stays; only that floor's look is learned", async () => {
