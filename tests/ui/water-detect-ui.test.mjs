@@ -377,7 +377,7 @@ function waterApp(map = null) {
     getBoundingClientRect: () => ({ left: 10, top: 10, width: 40, height: 20 }),
   };
   const setShared = (flow, current, kind = "river", range = "narrow") => { shared.kind.value = kind; shared.flow.value = flow; shared.current.value = current; shared.range.value = range; };
-  return { App, fire, button, preview, status, rows: () => rows, hasReason: () => hasReason, listeners, setShared };
+  return { App, fire, button, preview, status, rows: () => rows, hasReason: () => hasReason, listeners, setShared, floorToAdd: shared.floorToAdd };
 }
 
 const pieces = (over = {}) => ({ id: "water-1", share: 0.3, preselected: true, vertices: 3, loops: [{ points: [0, 0, 10, 0, 10, 5], hole: false }], pixels: new Int32Array(), ...over });
@@ -1266,10 +1266,11 @@ test("floor row hides water fields when set to stone", () => {
   assert.doesNotMatch(water, /data-water-fields hidden>Kind/);
 });
 
-test("Floor to add appears in the window and defaults to water", () => {
+test("Floor to add appears in the window and defaults to Auto", () => {
   const html = waterWindowHTML({ proposals: [], width: 10, height: 5, reason: "no-candidates" });
   assert.match(html, /Click the map to add/);
-  assert.match(html, /data-floor-to-add[^>]*>[\s\S]*value="water" selected/);
+  assert.match(html, /data-floor-to-add[^>]*>[\s\S]*value="auto" selected/);
+  assert.match(html, /<option value="auto" selected>Auto \(suggest from colour\)<\/option>/);
 });
 
 test("the window leads with a floor chooser above the map, with a swatch in the chosen floor's colour", () => {
@@ -1321,4 +1322,43 @@ test("the shared water settings leave a ticked non-water row alone", async () =>
   setShared("wind", "swift", "river");
   fire("change", { value: "river", closest: (selector) => selector === "[data-all-kind]" ? {} : null });
   assert.equal(stone.querySelector("[data-kind]").value, "sea", "a stone row keeps the water kind it hid");
+});
+
+const greyMap = () => { const rgba = new Uint8Array(40); for (let i = 0; i < 40; i += 4) { rgba[i] = 128; rgba[i + 1] = 128; rgba[i + 2] = 130; rgba[i + 3] = 255; } return rgba; };
+const clickedPiece = () => pieces({ id: "water-3", clicked: true, pixels: new Int32Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) });
+
+async function clickWith(floorToAdd, rgba = greyMap()) {
+  const ui = waterApp();
+  ui.floorToAdd.value = floorToAdd;
+  const { app } = await openWaterDetect(opening({ scene: fakeScene(), Application: ui.App,
+    load: async () => ({ ok: true, rgba, width: 10, height: 1 }),
+    detect: () => ({ status: "found", proposals: [], width: 10, height: 1 }),
+    select: () => ({ status: "found", proposal: clickedPiece() }),
+  }));
+  ui.fire("click", ui.preview);
+  return { ui, app, added: app.detect.proposals.at(-1) };
+}
+
+test("with Auto, a click suggests the floor from the colour and marks the row as a suggestion", async () => {
+  const { ui, added } = await clickWith("auto");
+  assert.equal(added.floor, "stone");
+  assert.equal(added.suggestion.floor, "stone");
+  assert.equal(ui.rows()[0].querySelector("[data-floor]").value, "stone");
+});
+
+test("a floor the GM chose is never replaced by a suggestion", async () => {
+  const { ui, added } = await clickWith("lava");
+  assert.equal(added.floor, "lava");
+  assert.equal(added.suggestion, undefined);
+  assert.equal(ui.rows()[0].querySelector("[data-floor]").value, "lava");
+});
+
+test("the row says its floor was suggested, and says when the guess is unsure", () => {
+  const sure = waterRowHTML({ ...square, suggestion: { floor: "stone", runnerUp: "metal", confidence: "high" } }, { floor: "stone" });
+  assert.match(sure, /data-suggest[^>]*>Suggested from colour</);
+  assert.doesNotMatch(sure, /unsure/);
+  const unsure = waterRowHTML({ ...square, suggestion: { floor: "stone", runnerUp: "metal", confidence: "low" } }, { floor: "stone" });
+  assert.match(unsure, /Suggested from colour \(unsure\)/);
+  assert.doesNotMatch(waterRowHTML({ ...square, suggestion: { floor: "stone", confidence: "high" } }, { floor: "wood" }), /data-suggest/, "a floor the GM changed is no longer a suggestion");
+  assert.doesNotMatch(waterRowHTML(square, { floor: "stone" }), /data-suggest/);
 });

@@ -178,7 +178,7 @@ function readLab(rgba, count) {
   return lab;
 }
 
-function rgbToLab(r, g, b) {
+export function rgbToLab(r, g, b) {
   const R = LINEAR[r], G = LINEAR[g], B = LINEAR[b];
   const x = (R * 0.4124564 + G * 0.3575761 + B * 0.1804375) / 0.95047;
   const y = (R * 0.2126729 + G * 0.7151522 + B * 0.072175);

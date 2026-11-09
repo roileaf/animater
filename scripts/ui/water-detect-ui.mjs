@@ -2,6 +2,7 @@
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
 import { detectWater } from "../engines/regions/water-detect.mjs";
+import { suggestFloor } from "../engines/regions/floor-suggest.mjs";
 import { selectWaterAt } from "../engines/regions/floor-select.mjs";
 import { waterSelectionPixels, mergeWaterProposals, fitSize, waterProposalFromLoops, WATER_TUNING } from "../engines/regions/floor-trace.mjs";
 import { toRegionData, editableWaterRegionIds, WATER_FLAG_KEYS, floorMeta, isDetectFloor, DETECT_FLOORS, FLOOR_META } from "../engines/regions/floor-region-data.mjs";
@@ -19,6 +20,9 @@ export const CURRENT_OPTIONS = Object.freeze([
 ]);
 export const WAVE_OPTIONS = Object.freeze([["", "With the wind"], ...WATER_TOWARD]);
 export const FLOOR_OPTIONS = Object.freeze(DETECT_FLOORS.map((floor) => [floor, FLOOR_META[floor].name]));
+const AUTO_FLOOR = "auto";
+const CHOOSER_OPTIONS = Object.freeze([[AUTO_FLOOR, "Auto (suggest from colour)"], ...FLOOR_OPTIONS]);
+const chooserColour = (value) => (value === AUTO_FLOOR ? "#9aa0a6" : floorMeta(value).color);
 
 const NONE = Object.freeze({
   "no-candidates": "Experimental. No blue water was found on this map. Pick a floor above and click it on the map to add it.",
@@ -45,7 +49,7 @@ const FAILURES = Object.freeze({
 
 const TINTS = ["rgba(44, 160, 190, 0.45)", "rgba(40, 120, 210, 0.45)", "rgba(70, 170, 140, 0.45)", "rgba(90, 110, 200, 0.45)"];
 
-const addLabel = (floor) => (floor === "none" ? "an area with no floor" : floorMeta(floor).name.toLowerCase());
+const addLabel = (floor) => (floor === AUTO_FLOOR ? "an area, its floor guessed from the colour" : floor === "none" ? "an area with no floor" : floorMeta(floor).name.toLowerCase());
 
 export function floorTint(floor, index = 0) {
   if (!isDetectFloor(floor) || floor === "water") return TINTS[index % TINTS.length];
@@ -145,6 +149,12 @@ function currentDefault(kind, current) {
   return current ?? "";
 }
 
+function suggestionTag(proposal, floor) {
+  const { suggestion } = proposal;
+  if (!suggestion || suggestion.floor !== floor) return "";
+  return ` <small class="an-water-suggest" data-suggest>Suggested from colour${suggestion.confidence === "low" ? " (unsure)" : ""}</small>`;
+}
+
 export function waterRowHTML(proposal, options = {}) {
   const merged = { ...proposal.savedChoices, ...options };
   const floor = isDetectFloor(merged.floor) ? merged.floor : (isDetectFloor(proposal.floor) ? proposal.floor : "water");
@@ -159,7 +169,7 @@ export function waterRowHTML(proposal, options = {}) {
     ? ` <span class="an-water-warn">${percent(proposal.share)} of the map. Check this area.</span>` : "";
   return `<div class="an-water-row" data-id="${id}">
   <label class="an-water-pick"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""}> <strong>${proposal.regionId ? `Saved: ${esc(proposal.name)}` : `Area ${esc(String(proposal.id).replace("water-", ""))}`}</strong> <span class="an-water-share">${percent(proposal.share)} of map</span> <span class="an-water-vertices">${proposal.vertices} vertices</span>${warning}</label>
-  <label>Floor ${optionsHTML(FLOOR_OPTIONS, `data-floor="${id}"`, floor)}</label>
+  <label>Floor ${optionsHTML(FLOOR_OPTIONS, `data-floor="${id}"`, floor)}${suggestionTag(proposal, floor)}</label>
   <label data-water-fields${wet ? "" : " hidden"}>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
   <label data-water-fields data-flow-field${wet && flows ? "" : " hidden"}>Flows toward ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
   <label data-water-fields data-current-field${wet && kind === "river" ? "" : " hidden"}>Current ${optionsHTML(CURRENT_OPTIONS, `data-current="${id}"`, cur)}</label>
@@ -181,7 +191,7 @@ export function waterWindowHTML({ proposals, width, height, reason = "", picked 
   ${reason ? `<p class="an-water-reason">${esc(noneMessage(reason))}</p>` : ""}
   <div class="an-water-workspace">
     <section class="an-water-map" aria-label="Map preview">
-      <div class="an-water-pickfloor"><label>Click the map to add ${optionsHTML(FLOOR_OPTIONS, "data-floor-to-add", shared.floorToAdd ?? "water")}</label><span class="an-water-swatch" data-floor-swatch style="background:${floorMeta(isDetectFloor(shared.floorToAdd) ? shared.floorToAdd : "water").color}" aria-hidden="true"></span></div>
+      <div class="an-water-pickfloor"><label>Click the map to add ${optionsHTML(CHOOSER_OPTIONS, "data-floor-to-add", shared.floorToAdd ?? AUTO_FLOOR)}</label><span class="an-water-swatch" data-floor-swatch style="background:${chooserColour(shared.floorToAdd ?? AUTO_FLOOR)}" aria-hidden="true"></span></div>
       <div class="an-water-toolbar"><h3>Map preview</h3><div class="an-water-zoom">
         <button type="button" data-zoom="out" aria-label="Zoom out">−</button><output data-zoom-label aria-live="polite">Fit</output><button type="button" data-zoom="in" aria-label="Zoom in">+</button><button type="button" data-zoom="fit">Fit map</button>
       </div></div>
@@ -390,6 +400,8 @@ function untickedGeometryMessage(count) {
 function updateFloorFields(row) {
   const floor = row.querySelector("select[data-floor]")?.value ?? "water";
   row.dataset.floor = floor;
+  const tag = row.querySelector("[data-suggest]");
+  if (tag) tag.hidden = true;
   const wet = floor === "water";
   for (const field of row.querySelectorAll("[data-water-fields]")) field.hidden = !wet;
   if (!wet) return;
@@ -710,7 +722,7 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         if (event.target.closest?.("select[data-kind], select[data-floor]")) updateFloorFields(event.target.closest("[data-id]"));
         if (event.target.closest?.("select[data-floor-to-add]")) {
           const swatch = this.element.querySelector("[data-floor-swatch]");
-          if (swatch) swatch.style.background = floorMeta(sharedChoices(this.element).floorToAdd).color;
+          if (swatch) swatch.style.background = chooserColour(sharedChoices(this.element).floorToAdd);
         }
         this.updateSummary();
         if (event.target.closest?.("select[data-floor]")) this.paint();
@@ -783,7 +795,11 @@ export function waterDetectWindow(ApplicationV2, hooks = {}) {
         return this.combineAreas([{ ...picked.proposal, id: "addition" }]);
       }
       this.history = [];
-      const floor = isDetectFloor(shared.floorToAdd) ? shared.floorToAdd : "water";
+      let floor = isDetectFloor(shared.floorToAdd) ? shared.floorToAdd : "water";
+      if (shared.floorToAdd === AUTO_FLOOR) {
+        const suggestion = suggestFloor(detect.rgba, detect.width, detect.height, picked.proposal.pixels);
+        if (suggestion) { floor = suggestion.floor; picked.proposal.suggestion = suggestion; }
+      }
       picked.proposal.floor = floor;
       detect.proposals.push(picked.proposal);
       this.element.querySelector(".an-water-reason")?.remove();
