@@ -43,10 +43,17 @@ function writePrefs(change) { try { globalThis.localStorage?.setItem(PREFS_KEY, 
 
 export const FLOW_OPTIONS = Object.freeze(flowChoices());
 export const FLOOR_OPTIONS = Object.freeze(AREA_FLOORS.map((floor) => [floor, floorName(floor)]));
-// Auto: a new area takes the floor of the saved regions it looks like (floor-memory.mjs), else water.
+// Auto: a new area takes the floor of the saved regions it looks like (floor-memory.mjs). When nothing looks alike
+// the area has no floor yet (NO_FLOOR): its row asks for one and stays unticked until the GM picks. Colour alone
+// can't tell (painted water is often murky green, stone and dirt the same brown), so Auto never guesses.
 export const AUTO_FLOOR = "auto";
+export const NO_FLOOR = "";
+const NO_FLOOR_COLOUR = "#7d7d86";
+const NO_FLOOR_NAME = "Pick a floor";
+const shadeOfFloor = (floor) => floor === NO_FLOOR ? NO_FLOOR_COLOUR : floorColour(floor);
+const nameOfFloor = (floor) => floor === NO_FLOOR ? NO_FLOOR_NAME : floorName(floor);
 const KEEP_COLOURS_TIP = "Smart selection keeps to the colours around your click: a chair, rug or bush of another colour standing on the floor is left out as a hole. Turn off for a floor of many colours.";
-const AUTO_TIP = "Auto: the floor of the regions you saved that look most like it, on any scene. Water when nothing looks alike yet. Gets better with every region you save.";
+const AUTO_TIP = "Auto: the floor of the regions you saved that look most like it, on any scene. When nothing looks alike yet, the area asks you to pick its floor. Gets better with every region you save.";
 const AUTO_SWATCH = "conic-gradient(#2c7da0 0 25%, #8a6a45 0 50%, #5f8f3e 0 75%, #8d8d8d 0)";
 const pickable = (floor) => floor === AUTO_FLOOR || isAreaFloor(floor);
 const pickName = (floor) => floor === AUTO_FLOOR ? "Auto" : floorName(floor);
@@ -247,13 +254,18 @@ export function saveLabel(proposals, checkedIds, saving = false) {
 // The status line under an area's name: saved or new, whether it will be written, and what it is.
 export function rowMeta({ saved, checked, floor, kind, overWater = false, learned = false }) {
   const state = saved ? (checked ? "Saved · will update" : "Saved") : (checked ? "New" : "New · not saved");
+  if (floor === NO_FLOOR && !saved) return `${state} · Auto doesn't know this floor yet: pick one`;
   return [state, floorName(floor), floor === "water" ? labelOf(WATER_KINDS, kind) : "", overWater && canStandOverWater(floor) ? "over water" : "", learned && !saved ? LEARNED_NOTE : ""].filter(Boolean).join(" · ");
 }
 
 export function areaRowHTML(proposal, options = {}) {
-  const { checked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", sceneTexture = "", pattern = "", edge = "", overWater = false, step = "", stepsOwn = null, floor: chosen } = { ...proposal.savedChoices, ...options };
-  const floor = isAreaFloor(chosen) ? chosen : isAreaFloor(proposal.floor) ? proposal.floor : "water", water = floor === "water";
-  const id = esc(proposal.id), saved = !!proposal.regionId;
+  const { checked: ticked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", sceneTexture = "", pattern = "", edge = "", overWater = false, step = "", stepsOwn = null, floor: chosen } = { ...proposal.savedChoices, ...options };
+  const saved = !!proposal.regionId;
+  // No floor yet (Auto didn't know it): the row asks for one, unticked; its fields are a water area's until then, hidden.
+  const unknown = !saved && !isAreaFloor(chosen) && (chosen === NO_FLOOR || (chosen === undefined && proposal.floor === NO_FLOOR));
+  const floor = isAreaFloor(chosen) ? chosen : isAreaFloor(proposal.floor) ? proposal.floor : "water", water = floor === "water" && !unknown;
+  const checked = ticked && !unknown;
+  const id = esc(proposal.id);
   const num = esc(String(proposal.id).replace("area-", ""));
   const soft = edgeOf(edge);
   const name = saved ? esc(proposal.name) : `Area ${num}`;
@@ -261,7 +273,8 @@ export function areaRowHTML(proposal, options = {}) {
   const flows = waterFlows(kind);
   const flow = flowDefault(kind, flowTo);
   const cur = currentDefault(kind, current);
-  const shade = options.shade ?? floorColour(floor);
+  const shade = unknown ? NO_FLOOR_COLOUR : options.shade ?? floorColour(floor);
+  const shown = unknown ? NO_FLOOR : floor;
   const warning = proposal.clicked && proposal.share > WATER_TUNING.clickWarnShare
     ? `<p class="an-floors-warn">${percent(proposal.share)} of the map. Is this all ${esc(floorName(floor).toLowerCase())}?</p>` : "";
   const over = overWater === true && canStandOverWater(floor);
@@ -270,17 +283,17 @@ export function areaRowHTML(proposal, options = {}) {
   // The line: tick (save it or not), the number from the map, the name with its status, the size. Everything else is in
   // the inspector, which shows only for the selected area. The water fields show only on a water area.
   const learned = !saved && proposal.learned === true;
-  return `<div class="an-floors-row" data-id="${id}" data-scene-texture="${esc(sceneTexture)}"${learned ? ` data-learned title="Floor and look learned from the regions you saved that look like this one"` : ""}>
+  return `<div class="an-floors-row" data-id="${id}" data-scene-texture="${esc(sceneTexture)}"${learned ? ` data-learned title="Floor and look learned from the regions you saved that look like this one"` : ""}${unknown ? " data-needs-floor" : ""}>
   <label class="an-floors-pick" title="${saved ? `Tick to save changes to ${name}` : `Tick to create ${name} as a region`}"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""} aria-label="Include ${name} in save"></label>
   ${badge}
-  <span class="an-row-name"><strong>${saved ? name : floorName(floor)}</strong><span data-row-meta><i class="an-dot${saved ? " is-saved" : ""}"></i>${esc(rowMeta({ saved, checked, floor, kind, overWater: over, learned }))}</span></span>
+  <span class="an-row-name"><strong>${saved ? name : nameOfFloor(shown)}</strong><span data-row-meta><i class="an-dot${saved ? " is-saved" : ""}"></i>${esc(rowMeta({ saved, checked, floor: shown, kind, overWater: over, learned }))}</span></span>
   <span class="an-floors-share" title="${proposal.vertices} vertices">${percent(proposal.share)}</span>
   <div class="an-inspector" data-inspector>
-    <div class="an-insp-head">${badge}<div><strong>${saved ? name : `${floorName(floor)} · area ${num}`}</strong><span>${saved ? "Saved region" : "New area"} · ${percent(proposal.share)} of the map</span></div></div>
+    <div class="an-insp-head">${badge}<div><strong>${saved ? name : `${nameOfFloor(shown)} · area ${num}`}</strong><span>${saved ? "Saved region" : "New area"} · ${percent(proposal.share)} of the map</span></div></div>
     ${warning}<div class="an-insp-fields">
-      <label>Floor ${optionsHTML(FLOOR_OPTIONS, `data-floor="${id}"`, floor)}</label>
-      <label data-step-field title="${STEP_TIP}"${steps.length ? "" : " hidden"}>Step <select data-step="${id}" data-floor-of="${esc(floor)}"${stepsOwn ? ` data-steps-own="${esc(JSON.stringify(stepsOwn))}"` : ""}>${steps.map(([key, label]) => `<option value="${key}"${key === stepNow ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-      <label class="an-insp-check" data-over-water-field title="${OVER_WATER_TIP}"${canStandOverWater(floor) ? "" : " hidden"}><input type="checkbox" data-over-water="${id}"${over ? " checked" : ""}> Over water</label>
+      <label>Floor ${optionsHTML(unknown ? [[NO_FLOOR, `${NO_FLOOR_NAME}…`], ...FLOOR_OPTIONS] : FLOOR_OPTIONS, `data-floor="${id}"`, shown)}</label>
+      <label data-step-field title="${STEP_TIP}"${steps.length && !unknown ? "" : " hidden"}>Step <select data-step="${id}" data-floor-of="${esc(floor)}"${stepsOwn ? ` data-steps-own="${esc(JSON.stringify(stepsOwn))}"` : ""}>${steps.map(([key, label]) => `<option value="${key}"${key === stepNow ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+      <label class="an-insp-check" data-over-water-field title="${OVER_WATER_TIP}"${canStandOverWater(shown) ? "" : " hidden"}><input type="checkbox" data-over-water="${id}"${over ? " checked" : ""}> Over water</label>
       <div class="an-water-fields" data-water-fields${water ? "" : " hidden"}>
         <label data-water-field>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
         <label data-flow-field${flows ? "" : " hidden"}>Flows ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
@@ -315,7 +328,7 @@ export function areaRowHTML(proposal, options = {}) {
 // Each row gets its own shade of its floor's colour, the same one the map paints it in.
 export function areaListHTML(proposals, optionsFor, floorOf) {
   const perFloor = new Map(), shades = new Map();
-  for (const p of proposals) { const f = floorOf(p), k = perFloor.get(f) ?? 0; perFloor.set(f, k + 1); shades.set(p.id, areaShade(floorColour(f), k)); }
+  for (const p of proposals) { const f = floorOf(p), k = perFloor.get(f) ?? 0; perFloor.set(f, k + 1); shades.set(p.id, f === NO_FLOOR ? NO_FLOOR_COLOUR : areaShade(floorColour(f), k)); }
   const group = (title, list) => list.length ? `<div class="an-list-group">${title}</div>${list.map((p) => areaRowHTML(p, { ...optionsFor(p), shade: shades.get(p.id) })).join("")}` : "";
   return group("On this scene", proposals.filter((p) => p.regionId)) + group("New", proposals.filter((p) => !p.regionId));
 }
@@ -403,7 +416,7 @@ export function readAreaChoices(rows) {
   return (rows ?? []).map((row) => ({
     id: row.id,
     checked: row.checked === true,
-    floor: isAreaFloor(row.floor) ? row.floor : "water",
+    floor: isAreaFloor(row.floor) ? row.floor : row.floor === NO_FLOOR ? NO_FLOOR : "water",
     waterKind: row.waterKind ?? "still",
     flowTo: row.flowTo ?? "",
     current: row.current ?? "",
@@ -420,10 +433,11 @@ export function readAreaChoices(rows) {
 export function choicesFromElement(root) {
   const rows = [];
   for (const row of root?.querySelectorAll?.("[data-id]") ?? []) {
+    const floor = row.querySelector("[data-floor]")?.value ?? row.dataset.floor ?? "water";
     rows.push({
       id: row.dataset.id,
       checked: row.querySelector("[data-pick]")?.checked === true,
-      floor: row.querySelector("[data-floor]")?.value ?? row.dataset.floor ?? "water",
+      floor: floor === NO_FLOOR && row.hasAttribute?.("data-needs-floor") !== true ? "water" : floor, // no floor only on a row asking for one
       waterKind: row.querySelector("[data-kind]")?.value ?? row.dataset.kind ?? "still",
       flowTo: row.querySelector("[data-flow]")?.value ?? "",
       current: row.querySelector("[data-current]")?.value ?? "",
@@ -654,9 +668,9 @@ export function paintAreaPreview(ctx, rgba, width, height, proposals, highlightI
       ctx.closePath();
     }
     const hot = proposal.id === highlightId;
-    const floor = floors?.get(proposal.id) ?? proposal.floor, kind = isAreaFloor(floor) ? floor : "water";
+    const floor = floors?.get(proposal.id) ?? proposal.floor, kind = isAreaFloor(floor) ? floor : floor === NO_FLOOR ? NO_FLOOR : "water";
     const k = perFloor.get(kind) ?? 0; perFloor.set(kind, k + 1);
-    const colour = areaShade(floorColour(kind), k);
+    const colour = kind === NO_FLOOR ? NO_FLOOR_COLOUR : areaShade(floorColour(kind), k);
     // Light fills so the painting shows through; the outline carries the shape. The highlighted area gets the accent.
     const look = view.looks?.get(proposal.id);
     shadeOf.set(proposal.id, colour);
@@ -790,7 +804,7 @@ function untickedGeometryMessage(count) {
 
 function updateKindFields(row) {
   const floor = row.querySelector("[data-floor]")?.value ?? "water", water = floor === "water";
-  row.querySelector(".an-floor-swatch")?.style?.setProperty("--swatch", floorColour(floor));
+  row.querySelector(".an-floor-swatch")?.style?.setProperty("--swatch", shadeOfFloor(floor));
   const fields = row.querySelector("[data-water-fields]");
   if (fields) fields.hidden = !water;
   const kind = row.querySelector("[data-kind]").value;
@@ -844,9 +858,9 @@ function updateRowMeta(row) {
   if (!meta) return;
   const saved = !!meta.querySelector(".an-dot.is-saved"), floor = row.querySelector("[data-floor]")?.value ?? "water";
   meta.lastChild.textContent = rowMeta({ saved, checked: row.querySelector("[data-pick]")?.checked === true, floor, kind: row.querySelector("[data-kind]")?.value, overWater: row.querySelector("[data-over-water]")?.checked === true, learned: row.hasAttribute?.("data-learned") === true });
-  for (const badge of row.querySelectorAll(".an-area-num")) badge.style.setProperty("--swatch", floorColour(floor));
+  for (const badge of row.querySelectorAll(".an-area-num")) badge.style.setProperty("--swatch", shadeOfFloor(floor));
   const name = row.querySelector(".an-row-name strong");
-  if (name && !saved) name.textContent = floorName(floor);
+  if (name && !saved) name.textContent = nameOfFloor(floor);
 }
 
 // `detect` is what the window works on: the pixels, the rows so far, and the scene and level as they were at open.
@@ -1469,6 +1483,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           const id = row?.dataset?.id;
           if (id) { this.seedDraft(id); this.drafts.chooseFloor(id, event.target.value); this.effectsFor = ""; }
           row?.removeAttribute?.("data-learned"); // the GM's own pick now
+          this.floorGiven(row, event.target.value);
         }
         if (event.target.closest?.("select[data-kind]") || event.target.closest?.("select[data-floor]")) updateKindFields(event.target.closest("[data-id]"));
         if (event.target.closest?.("select[data-floor]")) this.paint();
@@ -1648,11 +1663,12 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         return true;
       }
       this.remember();
-      // Only a missing floor is filled in. "" is a cave, and a truthy check would overwrite it with water.
+      // Only a missing floor is filled in. Creator caves use the picker id "cavern"; NO_FLOOR ("") means Auto doesn't know yet.
+      // A truthy check would treat both as missing and overwrite them.
       const look = proposal.floor == null ? this.learnedLook(proposal, shared.addFloor) : null;
-      if (proposal.floor == null) proposal.floor = look?.floor ?? (isAreaFloor(shared.addFloor) ? shared.addFloor : "water");
-      if (proposal.floor === "") proposal.floor = "cavern";
+      if (proposal.floor == null) proposal.floor = look?.floor ?? (isAreaFloor(shared.addFloor) ? shared.addFloor : NO_FLOOR); // a new area takes the floor chosen to add
       if (look) proposal.learned = true;
+      if (proposal.floor === NO_FLOOR) this.smartStatus("Auto doesn't know this floor yet: pick its floor in the list. Saving it teaches Auto for next time.");
       detect.proposals.push(proposal);
       this.element.querySelector(".an-floors-reason")?.remove();
       this.element.querySelector(".an-floors-list").insertAdjacentHTML("afterbegin", areaRowHTML(proposal, { ...shared, ...look?.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}) }));
@@ -1756,6 +1772,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     }
 
     smartOn() { return sharedChoices(this.element).selection === "smart"; }
+
+    // A floor picked for an area Auto didn't know: the area takes it and is ticked to save.
+    floorGiven(row, floor) {
+      if (!row?.hasAttribute?.("data-needs-floor") || !isAreaFloor(floor)) return;
+      row.removeAttribute("data-needs-floor");
+      row.querySelector(`[data-floor] option[value=""]`)?.remove?.();
+      const proposal = this.detect?.proposals?.find((p) => p.id === row.dataset.id);
+      if (proposal) proposal.floor = floor;
+      const pick = row.querySelector("[data-pick]");
+      if (pick) pick.checked = true;
+      this.updateSummary();
+    }
 
     // The last smart area or cut, which 1-3 resize. The Size control on the map shows while there is one.
     get smartLast() { return this._smartLast ?? null; }
@@ -2058,6 +2086,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       try {
         const { detect } = this;
         const picked = choicesFromElement(this.element);
+        const floorless = picked.filter((row) => row.checked && row.floor === NO_FLOOR);
+        if (floorless.length) { hooks.notify?.(`Pick a floor for ${floorless.length === 1 ? "the ticked area" : `the ${floorless.length} ticked areas`} that Auto didn't know.`); return; }
         const lost = untickedGeometryEdits(detect.proposals, picked);
         if (lost.length && !(await hooks.confirm?.(untickedGeometryMessage(lost.length)))) return;
         const dirty = this.drafts.unticked(detect.proposals, picked);

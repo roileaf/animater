@@ -1,12 +1,19 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
+import {catalogData,fillList} from '../shared/catalog-data.mjs';
 import {matchRecipe} from '../../core/model.mjs';
 import {buildNpcActionRecipe} from '../shared/npc-system-actions.mjs';
 import {sfEntry,sfRecipe,resolveSfAutomaticRecipe} from './sf2e-catalog.mjs';
-const {SF_NPC_ACTIONS,SF_NPC_ACTION_SOURCE}=catalogDataNeeded('sf2e')?await import('../../../data/sf2e-npc-actions.mjs'):{SF_NPC_ACTIONS:[],SF_NPC_ACTION_SOURCE:{}};
+// Filled when the data loads (catalog-data.mjs).
+const SF_NPC_ACTIONS=[],SF_NPC_ACTION_SOURCE={};
 export {SF_NPC_ACTIONS,SF_NPC_ACTION_SOURCE};
-const byId=new Map(SF_NPC_ACTIONS.map(a=>[a.id,a]));
-const bySource=new Map(SF_NPC_ACTIONS.flatMap(a=>a.sources.map(s=>[s,a])));
-const byName=new Map();for(const action of SF_NPC_ACTIONS){const key=action.name.toLowerCase();byName.set(key,[...(byName.get(key)??[]),action]);}
+const byId=new Map();
+const bySource=new Map();
+const byName=new Map();
+await catalogData('sf2e','npcActions',async()=>{
+ const data=await import('../../../data/sf2e-npc-actions.mjs');
+ fillList(SF_NPC_ACTIONS,data.SF_NPC_ACTIONS);Object.assign(SF_NPC_ACTION_SOURCE,data.SF_NPC_ACTION_SOURCE);
+ for(const a of SF_NPC_ACTIONS){byId.set(a.id,a);for(const s of a.sources)bySource.set(s,a);}
+ for(const action of SF_NPC_ACTIONS){const key=action.name.toLowerCase();byName.set(key,[...(byName.get(key)??[]),action]);}
+});
 
 // Shared NPC choreography includes Patreon colors. Measured Free equivalents
 // preserve the same footage family/shape and recolor it, rather than introducing

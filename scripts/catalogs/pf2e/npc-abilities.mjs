@@ -7,14 +7,20 @@ import { matchRecipe, validateRecipe } from "../../core/model.mjs";
 import { applyBespoke } from "../shared/bespoke.mjs";
 import { BREATH_ELEMENTS, ABILITY_ELEMENTS } from "../bespoke/pf2e-npc-abilities.mjs";
 import { npcActionSemantics } from './npc-action-semantics.mjs';
-import { catalogDataNeeded } from '../shared/catalog-data.mjs';
-const {PF2E_NPC_ACTIONS,PF2E_NPC_ACTION_SOURCE}=catalogDataNeeded('pf2e')?await import('../../../data/pf2e-npc-actions.mjs'):{PF2E_NPC_ACTIONS:[],PF2E_NPC_ACTION_SOURCE:{}};
+import { catalogData, fillList } from '../shared/catalog-data.mjs';
+// Filled when the data loads (catalog-data.mjs).
+const PF2E_NPC_ACTION_SOURCE={};
 export {PF2E_NPC_ACTION_SOURCE};
-export const NPC_ACTIONS=PF2E_NPC_ACTIONS;
-const actionsById=new Map(NPC_ACTIONS.map(a=>[a.id,a]));
-const actionsBySource=new Map(NPC_ACTIONS.flatMap(a=>a.sources.map(source=>[source,a])));
+export const NPC_ACTIONS=[];
+const actionsById=new Map();
+const actionsBySource=new Map();
 const actionsByName=new Map();
-for(const a of NPC_ACTIONS){const key=a.name.toLowerCase();if(!actionsByName.has(key))actionsByName.set(key,[]);actionsByName.get(key).push(a);}
+await catalogData('pf2e','npcActions',async()=>{
+  const data=await import('../../../data/pf2e-npc-actions.mjs');
+  fillList(NPC_ACTIONS,data.PF2E_NPC_ACTIONS);Object.assign(PF2E_NPC_ACTION_SOURCE,data.PF2E_NPC_ACTION_SOURCE);
+  for(const a of NPC_ACTIONS){actionsById.set(a.id,a);for(const source of a.sources)actionsBySource.set(source,a);}
+  for(const a of NPC_ACTIONS){const key=a.name.toLowerCase();if(!actionsByName.has(key))actionsByName.set(key,[]);actionsByName.get(key).push(a);}
+});
 export function findNpcCatalogAction(event){
   if(event?.item?.type!=='action'||(event.actor??event.item.actor)?.type!=='npc')return null;
   const item=event.item,actor=event.actor??item.actor;
