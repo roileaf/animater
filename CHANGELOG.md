@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 3.8.10
+
 - **Each fire sounds like itself.** The four fires nearest you now each play their own loop: each keeps its own recording of its kind and its own pitch, a few percent higher or lower, and starts its loop at a place of its own, so a hall of torches is several torches crackling out of step instead of one. Before, every fire of a kind in a scene shared one loop.
 
 ## 3.8.9
