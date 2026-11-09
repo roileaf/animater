@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validBreakRequest, undoUpdates, repairUpdates, breakNoteFor, withDeletes, levelTopOf, cleanCause } from "../../../scripts/engines/props/prop-requests.mjs";
+import { validBreakRequest, undoUpdates, repairUpdates, breakNoteFor, withDeletes, levelTopOf, cleanCause, wallsToRestore } from "../../../scripts/engines/props/prop-requests.mjs";
 import { ownWalls } from "../../../scripts/engines/props/prop-walls.mjs";
 
 const grid = 100;
-const scene = (flags = {}) => ({ flags: { animater: { breakableProps: true, ...flags } } });
+const scene = (flags = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...flags } } });
 const barrel = (extra = {}) => ({ id: "barrel", x: 200, y: 200, width: 100, height: 100, rotation: 0, hidden: false, texture: { src: "props/barrel.webp" }, flags: {}, ...extra });
 const wall = (id, c, extra = {}) => ({ id, c, door: 0, move: 20, sight: 20, light: 20, sound: 20, flags: {}, ...extra });
 const walls = [wall("in", [210, 220, 290, 220]), wall("in2", [220, 210, 220, 290]), wall("out", [500, 500, 600, 500])];
 const target = { x: 300, y: 200, w: 100, h: 100 }; // a token at (3,2)
-const sender = { id: "player" };
+const sender = { id: "player", viewedScene: "s" };
 const noteFor = (tile = barrel(), cause = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } }, extra = {}) =>
   breakNoteFor({ tile, walls, grid, cause, seed: 42, from: { x: 150, y: 250 }, ...extra });
 const areaReq = (note = noteFor()) => ({ cause: { kind: "area", damageType: "fire", at: { x: 250, y: 250 } }, note });
@@ -41,6 +41,7 @@ test("refused: feature off, already broken, hidden, wrong damage, foreign wall, 
   assert.deepEqual(validBreakRequest(areaReq({ ...note, pattern: "nonsense" }), ctx()), { ok: false, why: "note" });
   assert.deepEqual(validBreakRequest({ ...areaReq(note), cause: { kind: "wish" } }, ctx()), { ok: false, why: "cause" });
   assert.deepEqual(validBreakRequest(areaReq(note), ctx({ sender: null })), { ok: false, why: "sender" });
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ sender: { id: "player", viewedScene: "elsewhere" } })), { ok: false, why: "scene" });
 });
 
 test("a second request for the same tile is refused as already broken", () => {
@@ -134,4 +135,42 @@ test("a cause from the socket keeps only its known, well-formed fields", () => {
   assert.deepEqual(cleanCause({ kind: "path", slam: { size: 2 }, moverUuid: "Scene.s.Token.m", at: { x: NaN, y: 0 } }), { kind: "path", slam: { size: 2 }, moverUuid: "Scene.s.Token.m" });
   assert.deepEqual(cleanCause(null), { kind: "" });
   assert.equal(cleanCause({ kind: "miss", targetUuid: "u".repeat(500) }).targetUuid.length, 200);
+});
+
+test("the GM decides the walls: a note naming none still opens the tile's own and is rewritten to name them", () => {
+  const r = validBreakRequest(areaReq({ ...noteFor(), walls: [] }), ctx());
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.note.walls, ["in", "in2"]);
+  assert.deepEqual(r.wallUpdates.map((u) => u._id), ["in", "in2"]);
+});
+
+const restore = { move: 20, sight: 20, light: 20, sound: 20 };
+const opened = (id, c) => wall(id, c, { move: 0, sight: 0, light: 0, sound: 0, flags: { animater: { prop: { restore } } } });
+const brokenTile = (id, x, ids) => barrel({ id, x, hidden: true, flags: { animater: { prop: { broken: { ...noteFor(), walls: ids } } } } });
+
+test("a wall another broken tile still names stays open; only the tile's own named walls come back", () => {
+  const shared = opened("s", [290, 210, 310, 210]), a1 = opened("a1", [210, 210, 290, 210]), far = opened("far", [610, 210, 690, 210]);
+  const A = brokenTile("A", 200, ["s", "a1", "far"]), B = brokenTile("B", 300, ["s"]);
+  // far is named by A's note but is not A's own wall (a copied note): never restored through A
+  assert.deepEqual(wallsToRestore(A, [A, B], [shared, a1, far]).map((w) => w.id), ["a1"]);
+  assert.deepEqual(undoUpdates(A, [shared, a1, far], { tiles: [A, B] }).walls.map((w) => w._id), ["a1"]);
+  // B alone now: the shared wall comes back with it
+  assert.deepEqual(wallsToRestore(B, [B], [shared]).map((w) => w.id), ["s"]);
+  // a tile that is no longer broken does not hold a wall
+  assert.deepEqual(wallsToRestore(A, [A, barrel({ id: "B", x: 300 })], [shared, a1]).map((w) => w.id), ["s", "a1"]);
+});
+
+test("a deleted broken tile gives back its walls unless another broken tile names them", () => {
+  const shared = opened("s", [290, 210, 310, 210]), a1 = opened("a1", [210, 210, 290, 210]);
+  const A = brokenTile("A", 200, ["s", "a1"]), B = brokenTile("B", 300, ["s"]);
+  // after deletion A is gone from the scene's tiles
+  assert.deepEqual(undoUpdates(A, [shared, a1], { tiles: [B] }).walls.map((w) => w._id), ["a1"]);
+  assert.deepEqual(undoUpdates(A, [shared, a1], { tiles: [] }).walls.map((w) => w._id), ["s", "a1"]);
+});
+
+test("repair also restores any opened wall no broken tile names any more", () => {
+  const orphan = opened("orphan", [900, 900, 950, 900]), a1 = opened("a1", [210, 210, 290, 210]);
+  const r = repairUpdates([brokenTile("A", 200, ["a1"])], [orphan, a1, wall("plain", [0, 0, 10, 0])]);
+  assert.deepEqual(r.walls.map((w) => w._id).sort(), ["a1", "orphan"]);
+  assert.deepEqual(repairUpdates([], [orphan]).walls.map((w) => w._id), ["orphan"]);
 });

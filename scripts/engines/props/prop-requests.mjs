@@ -51,6 +51,7 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   const own = scene?.flags?.animater ?? {};
   if (own.breakableProps !== true) return no("off");
   if (!sender) return no("sender");
+  if (sender.viewedScene !== scene.id) return no("scene");
   if (!tile) return no("missing");
   if (propOf(tile).broken) return no("broken");
   if (tile.hidden) return no("hidden");
@@ -64,8 +65,8 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!plausible(cause, tile, grid, { target, mover })) return no("far");
   const chance = Number(own.propMissChance ?? MISS_CHANCE); // a form may save it as text
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
-  const named = new Set(note.walls);
-  return { ok: true, note, wallUpdates: openUpdates(mine.filter((w) => named.has(w.id))) };
+  // The GM decides the walls: all of the tile's own open, and the note names them.
+  return { ok: true, note: { ...note, walls: mine.map((w) => w.id) }, wallUpdates: openUpdates(mine) };
 }
 
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
@@ -76,21 +77,25 @@ export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, f
     walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid });
 }
 
-// Restores only the walls the tile's note names (never recomputed), and clears only its note.
-const namedWalls = (tile, walls) => {
-  const ids = new Set(readNote(propOf(tile).broken)?.walls ?? []);
-  return walls.filter((w) => ids.has(w.id));
-};
-export function undoUpdates(tile, walls) {
-  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(namedWalls(tile, walls)) };
+const namedIds = (tile) => new Set(readNote(propOf(tile).broken)?.walls ?? []);
+// The walls undoing (or deleting) a broken tile gives back: named in its note (never recomputed) and still its own
+// (a copied tile carries the original's note), less those another broken tile still names.
+export function wallsToRestore(tile, tiles, walls, grid = 100) {
+  const ids = namedIds(tile), held = new Set();
+  for (const t of tiles ?? []) if (t.id !== tile.id) for (const id of namedIds(t)) held.add(id);
+  const own = new Set(ownWalls(tile, walls, grid).map((w) => w.id));
+  return walls.filter((w) => ids.has(w.id) && own.has(w.id) && !held.has(w.id));
+}
+// tiles: the scene's tiles (with or without this one).
+export function undoUpdates(tile, walls, { tiles = [], grid = 100 } = {}) {
+  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)) };
 }
 
-// Every broken tile unhidden and cleared in one batch; each named wall restored once.
+// Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
+// including any a deleted or copied tile left open.
 export function repairUpdates(tiles, walls) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
-  const seen = new Set(), named = [];
-  for (const t of broken) for (const w of namedWalls(t, walls)) if (!seen.has(w.id)) { seen.add(w.id); named.push(w); }
-  return { tiles: broken.map((t) => ({ ...undoUpdates(t, []).tile, hidden: false })), walls: restoreUpdates(named) };
+  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []) };
 }
 
 // "a.-=b": null keys as the database's own deletion marker (v14 deprecates the key form); unchanged without one.

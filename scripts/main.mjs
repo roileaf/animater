@@ -6984,7 +6984,8 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
     const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, ...await propPlace(cause, scene, grid), roll: Math.random() });
     if (!check.ok) { runtime?.trace("props", `not broken: ${check.why}`); return false; }
     await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: check.note }, { animater: { propBreak: true } });
-    if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates);
+    // The tile is already written: a failed wall batch is only reported.
+    if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
     return true;
   } finally { propWriting.delete(doc.id); }
 }
@@ -6995,10 +6996,14 @@ async function receivePropBreak(data, senderId) {
   if (!user || !doc) return;
   await applyPropBreak(scene, doc, cleanCause(data.cause), data.note, user);
 }
-// Unhiding a broken tile undoes it: its note goes and the walls the note names are restored.
-async function undoPropBreak(doc) {
-  const scene = doc.parent, u = undoUpdates(propTileView(doc), scene?.walls?.contents ?? []), del = propDel();
-  await scene.updateEmbeddedDocuments("Tile", [withDeletes(u.tile, del)]);
+// Unhiding a broken tile undoes it: its note goes and the walls the note names are restored (wallsToRestore).
+// Deleting one gives its walls back too (deleted: no tile left to write).
+async function undoPropBreak(doc, { deleted = false } = {}) {
+  const scene = doc.parent, del = propDel();
+  if (!scene) return;
+  const tiles = scene.tiles.contents.filter((t) => t.id !== doc.id).map(propTileView);
+  const u = undoUpdates(propTileView(doc), scene.walls?.contents ?? [], { tiles, grid: propGrid(scene) });
+  if (!deleted) await scene.updateEmbeddedDocuments("Tile", [withDeletes(u.tile, del)]);
   if (u.walls.length) await scene.updateEmbeddedDocuments("Wall", u.walls.map((w) => withDeletes(w, del)));
 }
 // Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch, its walls in one wall batch.
@@ -7009,7 +7014,9 @@ async function repairAllProps(scene = canvas?.scene) {
   if (r.walls.length) await scene.updateEmbeddedDocuments("Wall", r.walls.map((w) => withDeletes(w, del)));
   return r.tiles.length;
 }
-const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort", "flags"];
+const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort"];
+// Its prop flags changed (set, or removed with a "-=" key); other modules' flags never redraw it.
+const propFlagsChanged = (changes) => Object.keys(changes.flags?.[ID] ?? {}).some((k) => k === "prop" || k === "-=prop");
 Hooks.on("updateTile", (doc, changes, options) => {
   if (changes.hidden === false && game.users.activeGM?.isSelf && doc.flags?.[ID]?.prop?.broken) void undoPropBreak(doc).catch((e) => console.warn("Animater props: undo", e));
   if (doc.parent !== canvas?.scene) return;
@@ -7021,10 +7028,13 @@ Hooks.on("updateTile", (doc, changes, options) => {
     return;
   }
   // A changed note, contents, place or visibility redraws it (the wreckage never redraws in place).
-  if (PROP_LOOK_KEYS.some((k) => k in changes)) drawPropWreck(doc, false);
+  if (PROP_LOOK_KEYS.some((k) => k in changes) || propFlagsChanged(changes)) drawPropWreck(doc, false);
 });
 Hooks.on("createTile", (doc) => { if (doc.parent === canvas?.scene) drawPropWreck(doc, false); });
-Hooks.on("deleteTile", (doc) => { settlePropHere(doc.id, false); propWreckage.hide(doc.id); });
+Hooks.on("deleteTile", (doc) => {
+  settlePropHere(doc.id, false); propWreckage.hide(doc.id);
+  if (game.users.activeGM?.isSelf && doc.flags?.[ID]?.prop?.broken) void undoPropBreak(doc, { deleted: true }).catch((e) => console.warn("Animater props: walls of a deleted prop", e));
+});
 Hooks.on("canvasReady", () => { propWreckage.sync(canvas.tiles?.placeables ?? []); });
 Hooks.on("canvasTearDown", () => { for (const w of propPending.values()) clearTimeout(w.timer); propPending.clear(); propWreckage.clear(); });
 // Every built-in catalog of this system: turn them all on at once (exclusions and your own
