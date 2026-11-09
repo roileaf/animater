@@ -71,3 +71,19 @@ export function propsOnPath(path, moverSize, tiles, grid) {
   }
   return hits.sort((p, q) => p.at - q.at).map(h => h.t);
 }
+
+// Props a mover's centre runs through along points [{x, y, p}] (p: share of its stage there), each with the share at
+// which it gets there and the point on the travel nearest the prop's centre, in travel order.
+export function propsUnderTravel(points, moverSize, tiles, grid) {
+  const hits = [];
+  for (const t of eligible(tiles, grid, { slam: { size: moverSize } })) {
+    for (let i = 0; i < points.length - 1; i++) {
+      const a = points[i], b = points[i + 1];
+      if (segRectDist(a, b, t) > 0) continue;
+      const { u } = ptSeg(centre(t), a, b);
+      hits.push({ t, p: a.p + u * (b.p - a.p), at: { x: a.x + u * (b.x - a.x), y: a.y + u * (b.y - a.y) } });
+      break;
+    }
+  }
+  return hits.sort((p, q) => p.p - q.p);
+}

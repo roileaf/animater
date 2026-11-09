@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan } from "../../../scripts/engines/props/prop-triggers.mjs";
+import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, groundTravel, groundSlams } from "../../../scripts/engines/props/prop-triggers.mjs";
+import { motionPhases } from "../../../scripts/engines/motion/motion-path.mjs";
+import { pathSpan } from "../../../scripts/engines/motion/motion.mjs";
+import { slamPlausible } from "../../../scripts/engines/props/prop-requests.mjs";
 
 test("an area breaks nothing until its spell's damage is rolled", () => {
   let t = 0; const w = createAreaWaits({ now: () => t });
@@ -104,4 +107,49 @@ test("each prop on a forced path is reached at its share of the travel", () => {
   // no travel (an instant move) asks at once; past the ends it clamps
   assert.deepEqual(slamTimes({ x: 0, y: 0 }, { x: 0, y: 0 }, [t("a", 0, 0)], { start: 0, end: 0 }).map((s) => s.ms), [0]);
   assert.deepEqual(slamTimes({ x: 50, y: 50 }, { x: 150, y: 50 }, [t("b", 300, 0)], { start: 0, end: 400 }).map((s) => s.ms), [400]);
+});
+const barrel = (id, gx, gy) => ({ id, x: gx * 100, y: gy * 100, width: 100, height: 100, rotation: 0, hidden: false, texture: { src: "Barrel_Wood.webp" }, flags: {} });
+const right = { x: 1, y: 0 }, rest = { x: 50, y: 150 };
+const slamsOf = (stage, tiles) => groundSlams(groundTravel(stage, rest, right, 100), 1, tiles, 100);
+test("a charge whose centre crosses a barrel breaks it as it gets there, along its whole run", () => {
+  const charge = { kind: "motion", motion: "rush", distance: 4, motionRange: "distance", duration: 1000 };
+  const travel = groundTravel(charge, rest, right, 100);
+  assert.deepEqual(travel.map(({ x, y }) => ({ x: Math.round(x), y: Math.round(y) })), [{ x: 50, y: 150 }, { x: 450, y: 150 }]);
+  assert.equal(travel[1].p, motionPhases(charge).arrival);
+  const [hit, ...more] = slamsOf(charge, [barrel("b", 2, 1), barrel("off", 2, 3)]);
+  assert.equal(more.length, 0);
+  assert.equal(hit.tile.id, "b");
+  assert.ok(Math.abs(hit.p - travel[1].p / 2) < 1e-9);
+  assert.deepEqual(hit.path.from, rest);
+  assert.equal(Math.round(hit.path.to.x), 450);
+  // rolls and dodges run along the ground too (a dodge sidesteps: +y here)
+  assert.equal(slamsOf({ ...charge, motion: "roll" }, [barrel("b", 2, 1)]).length, 1);
+  assert.deepEqual(slamsOf({ ...charge, motion: "dodge" }, [barrel("b", 0, 3)]).map((s) => s.tile.id), ["b"]);
+});
+test("a short lunge beside a barrel leaves it; a long one into it smashes it at its peak", () => {
+  const lunge = { kind: "motion", motion: "lunge", distance: 0.35, duration: 500 };
+  assert.deepEqual(slamsOf(lunge, [barrel("b", 1, 1), barrel("side", 0, 2)]), []);
+  const [hit] = slamsOf({ ...lunge, distance: 1 }, [barrel("b", 1, 1)]);
+  assert.equal(hit.tile.id, "b");
+  assert.ok(hit.p > 0 && hit.p <= 0.5);
+});
+test("a leap and in-place motions never break what they pass over", () => {
+  for (const motion of ["leap", "recoil", "shake", "slam", "collapse", "spin"])
+    assert.deepEqual(groundTravel({ kind: "motion", motion, distance: 4, motionRange: "distance", duration: 1000 }, rest, right, 100), [], motion);
+  assert.deepEqual(groundTravel({ kind: "motion", motion: "rush", distance: 4 }, null, right, 100), []);
+  // a finisher's travel moves the token for real: its forced path breaks what it crosses, not this
+  assert.deepEqual(groundTravel({ kind: "motion", motion: "rush", motionOffset: { x: 4, y: 0 }, duration: 1000 }, rest, right, 100), []);
+  assert.deepEqual(groundTravel({ kind: "motion", motion: "path", motionFrame: { cos: 1, sin: 0, k: 1 }, duration: 1000 }, rest, right, 100), []);
+});
+test("a keyframed path breaks a prop it crosses on its second leg, with a path the GM accepts", () => {
+  const bend = { kind: "motion", motion: "path", duration: 1000, keyframes: [
+    { at: 0, x: 0, y: 0, sharp: true }, { at: 0.5, x: 3, y: 0, sharp: true }, { at: 1, x: 3, y: 3, sharp: true }] };
+  const travel = groundTravel(bend, rest, right, 100), far = travel.at(-1);
+  assert.ok(travel.length > 2);
+  assert.equal(slamPlausible(barrel("leg2", 3, 2), { from: rest, to: far }, { ...rest, size: 1 }, 100), false);
+  const slams = slamsOf(bend, [barrel("leg2", 3, 2), barrel("corner", 4, 2)]);
+  assert.deepEqual(slams.map((s) => s.tile.id), ["leg2"]);
+  assert.ok(slams[0].p > 0.5 * pathSpan(bend) && slams[0].p < pathSpan(bend));
+  // the straight line from rest to the furthest point misses the leg: the request names where it crosses instead
+  assert.ok(slamPlausible(barrel("leg2", 3, 2), slams[0].path, { ...rest, size: 1 }, 100));
 });

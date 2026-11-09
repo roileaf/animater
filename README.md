@@ -270,6 +270,8 @@ Tile Configuration → **Overhead** tab → **Breakable prop** (its own box, bel
 
 What breaks what: glass and clay break from any bludgeoning, piercing, slashing, fire, cold, electricity, acid, sonic or force damage; wood from bludgeoning, slashing, fire, electricity or force; metal from bludgeoning, force or acid; stone from force. A creature forced into wood, glass or clay breaks it; into metal or stone, only a Large or bigger creature does. Poison, mental, spirit, vitality, void and bleed never break a prop. Deleting a broken tile puts its walls back as they were.
 
+A charge, roll, dodge or lunge (or a keyframed path) that carries a token's centre through a prop smashes it as the token gets there, by the same rule as being forced into it; a leap goes over it.
+
 ### Faster animations
 
 Animater patches Sequencer in memory (its files are untouched) so every Sequencer effect in the world costs less per frame:

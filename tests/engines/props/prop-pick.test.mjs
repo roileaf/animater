@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { propsInArea, propNextToMiss, propsOnPath } from "../../../scripts/engines/props/prop-pick.mjs";
+import { propsInArea, propNextToMiss, propsOnPath, propsUnderTravel } from "../../../scripts/engines/props/prop-pick.mjs";
 
 const tile = (id, gx, gy, src = "Barrel_Wood.webp", extra = {}) => ({ id, x: gx * 100, y: gy * 100, width: 100, height: 100, rotation: 0, hidden: false, texture: { src }, flags: {}, ...extra });
 test("area: centre inside, damage allowed, not already broken", () => {
@@ -40,4 +40,16 @@ test("path: results follow path order, off-path props are ignored", () => {
   const path = [{ x: 450, y: 150 }, { x: 50, y: 150 }];
   const a = tile("a", 1, 1), b = tile("b", 3, 1), off = tile("off", 2, 5);
   assert.deepEqual(propsOnPath(path, 1, [a, b, off], 100).map((t) => t.id), ["b", "a"]);
+});
+test("travel: a prop breaks only where the mover's centre runs through it, at its share of the stage", () => {
+  const points = [{ x: 50, y: 150, p: 0 }, { x: 450, y: 150, p: 0.4 }];
+  const crossed = tile("x", 2, 1), beside = tile("b", 2, 2), stone = tile("s", 3, 1, "Statue_Stone.webp");
+  const hits = propsUnderTravel(points, 1, [beside, stone, crossed], 100);
+  assert.deepEqual(hits.map((h) => h.t.id), ["x"]);
+  assert.equal(hits[0].p, 0.2);
+  assert.deepEqual(hits[0].at, { x: 250, y: 150 });
+  // a polyline: crossed on its second segment, reached later in the stage
+  const bend = [{ x: 50, y: 150, p: 0 }, { x: 250, y: 150, p: 0.5 }, { x: 250, y: 350, p: 1 }];
+  assert.deepEqual(propsUnderTravel(bend, 1, [tile("d", 2, 2)], 100).map((h) => [h.t.id, h.p]), [["d", 0.75]]);
+  assert.deepEqual(propsUnderTravel([{ x: 50, y: 150, p: 0 }], 1, [crossed], 100), []);
 });

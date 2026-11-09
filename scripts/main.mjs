@@ -26,7 +26,7 @@ import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cle
 import { propsInArea, propNextToMiss, propsOnPath } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML } from "./ui/prop-config.mjs";
-import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan } from "./engines/props/prop-triggers.mjs";
+import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, onWhatStandsOver, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
@@ -7158,6 +7158,16 @@ function slamAlong(doc, from, to, span) {
   for (const { tile, ms } of slamTimes(a, b, tiles, { start: span.start, end: Math.max(span.start, span.end - 50) }))
     setTimeout(() => void askProp(scene, tile.id, cause, a), ms);
 }
+// A cosmetic ground motion (charge, roll, dodge, lunge, path) this client starts: each prop its token's centre runs
+// through is asked for as the centre gets there, the mover still at rest. Cosmetic motions ignore walls.
+function slamUnder(stage, token, source, target) {
+  const doc = token?.document, scene = doc?.parent;
+  if (!GROUND_MOTIONS.has(stage?.motion) || !propsOn(scene) || !game.users.activeGM || doc.hidden || !token.center) return;
+  const grid = propGrid(scene), size = moverSize(doc), ms = Math.max(0, Number(stage.duration) || 0);
+  const travel = groundTravel(stage, { x: token.center.x, y: token.center.y }, motionDirection(token, source, target, stage.motion, grid), grid);
+  for (const { tile, p, path } of groundSlams(travel, size, scene.tiles.contents.map(propTileView), grid))
+    setTimeout(() => void askProp(scene, tile.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from), Math.round(p * ms));
+}
 const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort"];
 // Its prop flags changed (set, or removed with a "-=" key); other modules' flags never redraw it.
 const propFlagsChanged = (changes) => Object.keys(changes.flags?.[ID] ?? {}).some((k) => k === "prop" || k === "-=prop");
@@ -9987,6 +9997,8 @@ Hooks.once("ready", () => {
         // Absorbed pieces fly to the attacker as this client sees it; receivers reuse it too.
         stage = withFragmentTowards(stage, stage.destination, context.source, target, canvas.grid?.size ?? 100);
       }
+      // A charge or lunge through a prop smashes it: asked for by this client only, as the token gets there.
+      if (!preview) propSafe("ground motion", () => slamUnder(stage, stage.destination, context.source, stage.motionTarget ?? context.targets?.[0] ?? (stage.aimAt ? { center: stage.aimAt } : undefined)));
       const data = {
         type: "motion",
         sceneId: canvas.scene?.id,

@@ -1,6 +1,10 @@
 // What sets a prop breaking: an area's spell rolling its damage, a missed melee strike, a forced path. Pure.
 import { arrivalOf } from "../playback/flight-path.mjs";
 import { normalizeDamageType } from "../playback/damage-moments.mjs";
+import { motionPose, pathSpan } from "../motion/motion.mjs";
+import { motionPhases } from "../motion/motion-path.mjs";
+import { propsUnderTravel } from "./prop-pick.mjs";
+import { slamPlausible } from "./prop-requests.mjs";
 
 const FLIGHTS = new Set(["travel", "projectile"]);
 
@@ -99,4 +103,26 @@ export function slamTimes(from, to, tiles, { start = 0, end = 0 } = {}) {
     const u = l2 ? Math.max(0, Math.min(1, ((cx - from.x) * dx + (cy - from.y) * dy) / l2)) : 0;
     return { tile, ms: Math.round(t0 + u * ms) };
   }).sort((a, b) => a.ms - b.ms);
+}
+
+// Cosmetic motions that carry the token along the ground (a leap flies over; the rest play in place).
+export const GROUND_MOTIONS = new Set(["rush", "roll", "dodge", "lunge", "path"]);
+const PATH_STEPS = 24;
+// Where a ground motion carries its token's centre out from rest: [{x, y, p}] (p: share of the stage), [] for any other.
+// A finisher's travel (motionOffset / motionFrame) really moves the token: its forced path (slamAlong) asks for those.
+export function groundTravel(stage, centre, direction, grid = 100) {
+  if (!GROUND_MOTIONS.has(stage?.motion) || stage.motionOffset || stage.motionFrame || !Number.isFinite(centre?.x) || !Number.isFinite(centre?.y)) return [];
+  const at = (p) => { const o = motionPose(stage, p, direction, grid); return { x: centre.x + o.x, y: centre.y + o.y, p }; };
+  if (stage.motion === "path") { const end = pathSpan(stage); return Array.from({ length: PATH_STEPS + 1 }, (_, i) => at((end * i) / PATH_STEPS)); }
+  // a lunge peaks halfway; the others are out by their arrival
+  return [{ x: centre.x, y: centre.y, p: 0 }, at(stage.motion === "lunge" ? 0.5 : motionPhases(stage).arrival)];
+}
+// The props that travel smashes (mover of size squares, standing at its first point): each with its share of the stage
+// and the path the GM checks, rest to the furthest point, or to where it crosses the prop when that line misses it.
+export function groundSlams(points, size, tiles, grid = 100) {
+  if (points.length < 2) return [];
+  const from = { x: points[0].x, y: points[0].y }, mover = { ...from, size };
+  const far = points.reduce((f, q) => (Math.hypot(q.x - from.x, q.y - from.y) > Math.hypot(f.x - from.x, f.y - from.y) ? q : f), points[0]);
+  const to = { x: far.x, y: far.y };
+  return propsUnderTravel(points, size, tiles, grid).map(({ t, p, at }) => ({ tile: t, p, path: { from, to: slamPlausible(t, { from, to }, mover, grid) ? to : at } }));
 }
