@@ -361,7 +361,10 @@ function applyShared(root, attribute, value) {
   const checked = new Set([...root.querySelectorAll("[data-pick]:checked")].map((box) => box.dataset.pick));
   for (const select of root.querySelectorAll(`[${attribute}]`)) {
     const id = select.getAttribute(attribute);
-    if (id && checked.has(id)) select.value = value;
+    if (!id || !checked.has(id)) continue;
+    const floor = root.querySelector(`select[data-floor="${id}"]`)?.value;
+    if (floor && floor !== "water") continue;
+    select.value = value;
   }
 }
 

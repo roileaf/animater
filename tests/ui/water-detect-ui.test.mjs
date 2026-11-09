@@ -344,6 +344,8 @@ function waterApp(map = null) {
     if (selector === "[data-all-current]") return shared.current;
     if (selector === "[data-click-range]") return shared.range;
     if (selector === "[data-floor-to-add]") return shared.floorToAdd;
+    const rowFloor = selector.match(/^select\[data-floor="(.+)"\]$/);
+    if (rowFloor) return rows.find((row) => row.dataset.id === rowFloor[1])?.querySelector("[data-floor]") ?? null;
     return null;
   };
   const queryAll = (selector) => {
@@ -1308,4 +1310,15 @@ test("switching a saved dock to water leaves it a water region the panel opens w
   const flags = { ...dock.flags.animater };
   for (const [path, value] of Object.entries(plan.updates[0])) if (path.startsWith("flags.animater.")) flags[path.slice("flags.animater.".length)] = value;
   assert.equal(regionKindOf(flags, flags.floor), "water");
+});
+
+test("the shared water settings leave a ticked non-water row alone", async () => {
+  const { App, fire, rows, setShared } = waterApp();
+  await openWaterDetect(opening({ Application: App, detect: () => ({ status: "found", proposals: [square, speck] }) }));
+  const stone = rows()[0];
+  stone.querySelector("[data-floor]").value = "stone";
+  stone.querySelector("[data-kind]").value = "sea";
+  setShared("wind", "swift", "river");
+  fire("change", { value: "river", closest: (selector) => selector === "[data-all-kind]" ? {} : null });
+  assert.equal(stone.querySelector("[data-kind]").value, "sea", "a stone row keeps the water kind it hid");
 });
