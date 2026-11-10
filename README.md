@@ -308,12 +308,11 @@ What happens to each kind of prop:
 - **Bushes**, **Ferns**, **Spiky plants** and **Reeds** are plants: only fire burns them away. A creature shoved through a bush leaves it standing.
 - **Cobwebs** burn from fire, and a slashing hit cuts them apart.
 - **Stalagmites** and **Rock columns** are stone: force, or a Large or bigger creature slammed into one, topples it along the hit. With **Rubble is difficult terrain** on, the fallen strip is difficult terrain, and the GM gets a whisper naming any tokens under it.
-- **Coffins**, **Produce crates** and **Water troughs** are wood and break like boxes; **Washtubs** break round. Produce spills its goods, troughs and washtubs their water.
+- **Coffins**, **Produce crates**, **Water troughs**, **Cages** and **Planters** are wood and break like boxes; **Washtubs** break round. Produce spills its goods, troughs and washtubs their water.
 - **Fences** and **Benches** are wood and collapse into their boards.
 - **Gravestones** are stone and topple like a stalagmite (force, or a Large or bigger creature).
-- **Urns** and **Planters** break like clay, from almost any damage; urns spill their grain.
+- **Urns** break like clay, from almost any damage, and spill their grain.
 - **Sarcophagi** are stone too heavy to shove over: only force breaks one.
-- **Cages** are metal: bludgeoning, force or acid, or a Large or bigger creature shoved into one.
 - **Braziers** tip over from any shove, spilling their coals, and break like metal from damage. A broken or tipped brazier's light goes out until it is repaired.
 - **Hay bales**, **Tents** and **Bedrolls** burn away, from fire only.
 - **Sacks** tear open from a slashing or piercing hit and spill their grain; fire burns them. A club or a shove only thumps them.

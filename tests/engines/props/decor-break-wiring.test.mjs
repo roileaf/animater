@@ -116,7 +116,9 @@ test("every trigger asks for decorations too; decorations never free walls", () 
 // Task 8: the town and dungeon kinds, the lights, and the live check's fixes.
 test("only drawn decorations break (D1): the cavern records what it drew; the triggers, the requester and the GM all ask", () => {
   assert.match(main, /decorCaveDrawn = \{ sceneId: canvas\.scene\?\.id \?\? null, crystals: bothSettingsOn\("caveCrystals"\), webs: bothSettingsOn\("caveWebs"\) \? corners : \[\] \}/);
-  assert.match(main, /const corners = webAreas\.length \? webCorners\(\{ walls, areas: webAreas, grid, seed, floor \}\) : \[\];/);
+  assert.match(main, /laid = webAreas\.length \|\| gone\.length \? webCorners\(\{ walls, areas: \[\.\.\.webAreas, \.\.\.gone\], grid, seed, floor \}\) : \[\];/);
+  assert.match(main, /const corners = keptWebCorners\(laid, \{ keep: webAreas, gone, grid \}\);/);
+  assert.match(main, /const gone = bothSettingsOn\("caveWebs"\) \? decor\.websGone \?\? \[\] : \[\]/);
   assert.match(body("decorViews"), /decorTargets\([^\n]*decorDrawnOn\(scene\)\)/);
   assert.match(body("requestDecorBreak"), /drawn: decorDrawnOn\(scene\)/);
   assert.match(body("applyDecorBreak"), /drawn: decorDrawnOn\(scene\)/);

@@ -21,9 +21,9 @@ export const DECOR_BREAKS = Object.freeze({
   produce: ENTRY("wood", "shatter", { boxy: true, contents: "goods" }), trough: ENTRY("wood", "shatter", { boxy: true, contents: "water" }),
   washtub: ENTRY("wood", "shatter", { contents: "water" }), firewood: ENTRY("wood", "shatter"),
   fence: ENTRY("wood", "collapse"), bench: ENTRY("wood", "collapse"), signpost: ENTRY("wood", "topple"),
-  urns: ENTRY("clay", "shatter", { contents: "grain" }), planter: ENTRY("clay", "shatter", { boxy: true }),
+  urns: ENTRY("clay", "shatter", { contents: "grain" }), planter: ENTRY("wood", "shatter", { boxy: true }),
   tombstone: ENTRY("stone", "topple"), sarcophagus: ENTRY("stone", "shatter", { boxy: true, rule: "noSlam" }),
-  brazier: ENTRY("metal", "shatter", { tips: true }), cage: ENTRY("metal", "shatter", { boxy: true }),
+  brazier: ENTRY("metal", "shatter", { tips: true }), cage: ENTRY("wood", "shatter", { boxy: true }),
   haystack: ENTRY("plant", "burn"), tent: ENTRY("plant", "burn"), bedroll: ENTRY("plant", "burn"), beehive: ENTRY("plant", "burn"), nest: ENTRY("plant", "burn"),
   sacks: ENTRY("plant", "burn", { contents: "grain", rule: "torn" }), candles: ENTRY("wood", "shatter", { rule: "any" }),
 });
@@ -231,6 +231,22 @@ export function decorPrunedRubble(entries, keys, regions, regionId) {
   const out = new Set();
   for (const e of entries ?? []) { const id = e?.note?.region; if (!keys.has(e?.key) && own.has(id)) out.add(id); }
   return [...out];
+}
+
+// A flat polygon [x0, y0, x1, y1, ...] as points, for insideRing.
+const pairs = (flat) => { const out = []; for (let i = 0; i + 1 < flat.length; i += 2) out.push([flat[i], flat[i + 1]]); return out; };
+/**
+ * The webs to draw (pure): `corners` as webCorners laid them out over every web area, broken cobwebs' included, less those
+ * whose middle lies only in a broken cobweb's area (`gone`), not in any standing one's or a webs region's (`keep`). The
+ * others stay exactly as laid out, so breaking one web never moves, adds or lengthens another, on any screen.
+ */
+export function keptWebCorners(corners, { keep = [], gone = [], grid = 100 } = {}) {
+  if (!gone.length) return [...(corners ?? [])];
+  const goneRings = gone.map(pairs), keepRings = keep.map(pairs);
+  return (corners ?? []).filter((c) => {
+    const mid = { x: c.x + (c.u[0] + c.v[0]) * grid * 0.25, y: c.y + (c.u[1] + c.v[1]) * grid * 0.25 };
+    return !goneRings.some((r) => insideRing(mid, r)) || keepRings.some((r) => insideRing(mid, r));
+  });
 }
 
 /**

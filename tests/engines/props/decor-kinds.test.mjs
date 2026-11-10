@@ -21,9 +21,9 @@ test("the approved map: material, style, shape and contents of each new kind", (
     cart: ["wood", "shatter", "boxy", "none"], coffin: ["wood", "shatter", "boxy", "none"], kennel: ["wood", "shatter", "boxy", "none"], produce: ["wood", "shatter", "boxy", "goods"],
     washtub: ["wood", "shatter", "round", "water"], firewood: ["wood", "shatter", "round", "none"], trough: ["wood", "shatter", "boxy", "water"],
     fence: ["wood", "collapse", "round", "none"], bench: ["wood", "collapse", "round", "none"], signpost: ["wood", "topple", "round", "none"],
-    urns: ["clay", "shatter", "round", "grain"], planter: ["clay", "shatter", "boxy", "none"],
+    urns: ["clay", "shatter", "round", "grain"], planter: ["wood", "shatter", "boxy", "none"],
     tombstone: ["stone", "topple", "round", "none"], sarcophagus: ["stone", "shatter", "boxy", "none"],
-    brazier: ["metal", "shatter", "round", "none"], cage: ["metal", "shatter", "boxy", "none"],
+    brazier: ["metal", "shatter", "round", "none"], cage: ["wood", "shatter", "boxy", "none"],
     haystack: ["plant", "burn", "round", "none"], tent: ["plant", "burn", "round", "none"], bedroll: ["plant", "burn", "round", "none"], beehive: ["plant", "burn", "round", "none"], nest: ["plant", "burn", "round", "none"],
     sacks: ["plant", "burn", "round", "grain"], candles: ["wood", "shatter", "round", "none"],
   };
@@ -69,7 +69,8 @@ test("each style breaks the way the map says, through the prop rules", () => {
   assert.deepEqual(["slashing", "piercing", "fire"].map((d) => breakStyle(traits(sacks), hit(d))), ["split", "split", "burn"]);
   assert.equal(breaks(candles, hit("cold")) && breaks(candles, { slam: { size: 1 } }), true);
   assert.deepEqual([breaks(sarc, hit("force")), breaks(sarc, hit("bludgeoning")), breaks(sarc, { slam: { size: 3 } })], [true, false, false]);
-  assert.deepEqual([breaks(cage, hit("bludgeoning")), breaks(cage, hit("slashing")), breaks(cage, { slam: { size: 1 } }), breaks(cage, { slam: { size: 2 } })], [true, false, false, true]);
+  // Cages and planters are painted wood (ruling): wood's rules, and any shove breaks one.
+  assert.deepEqual([breaks(cage, hit("bludgeoning")), breaks(cage, hit("slashing")), breaks(cage, hit("cold")), breaks(cage, { slam: { size: 1 } })], [true, true, false, true]);
   assert.equal(tipsOver(brazier, grid, { slam: { size: 1 } }), true);
   assert.equal(breakStyle(traits(brazier), { slam: { size: 1 } }), "tip");
   assert.deepEqual([breaks(hay, hit("fire")), breaks(hay, hit("slashing")), breaks(hay, { slam: { size: 3 } })], [true, false, false]);
@@ -80,8 +81,8 @@ test("each style breaks the way the map says, through the prop rules", () => {
   assert.deepEqual(propsInArea([sacks], () => true, grid, "bludgeoning"), []);
   const path = [{ x: 200, y: 500 }, { x: 800, y: 500 }];
   for (const v of [candles, brazier]) assert.ok(propsOnPath(path, 1, [v], grid).includes(v), v.decor.kind);
-  assert.deepEqual(propsOnPath(path, 1, [sacks, sarc, cage], grid), []);
-  assert.deepEqual(propsOnPath(path, 2, [sacks, sarc, cage], grid).map((v) => v.decor.kind), ["cage"]);
+  assert.deepEqual(propsOnPath(path, 2, [sacks, sarc], grid), []);
+  assert.deepEqual(propsOnPath(path, 1, [sacks, sarc, cage], grid).map((v) => v.decor.kind), ["cage"]);
 });
 
 test("the GM agrees: a torn sack splits and spills grain; a club on sacks is refused; a requester's style is corrected", () => {
@@ -138,4 +139,45 @@ test("an edit that moves a toppled decoration takes its stale entry and its rubb
   assert.deepEqual(out.deleteRegions, ["rubB"]);
   assert.deepEqual(out.keep.map((e) => e.key), ["live", "oldCrate", "old2"]);
   assert.equal(decorToppledPrune([live, crate], new Set(["live"]), regions, "R1"), null, "nothing to take away: no write");
+});
+
+test("breaking one cave web never moves, adds or lengthens another: the corners are laid out with it, then its web left out", async () => {
+  const { keptWebCorners } = await import("../../../scripts/engines/props/decor-break.mjs");
+  const { webCorners } = await import("../../../scripts/engines/motion/webs.mjs");
+  // Eight wall corners in a row, a cobweb's ring at each (every corner's middle lies in its own ring only).
+  const walls = [], rings = [], ring = (x, y, r) => Array.from({ length: 12 }, (_, i) => [x + Math.cos(i / 12 * 6.283) * r, y + Math.sin(i / 12 * 6.283) * r]).flat();
+  for (let i = 0; i < 8; i++) { const x = 300 + i * 400; walls.push({ c: [x, 300, x, 600], move: 20, door: 0 }, { c: [x, 300, x + 300, 300], move: 20, door: 0 }); rings.push(ring(x + 40, 340, 120)); }
+  const lay = (areas) => webCorners({ walls, areas, grid: 100, seed: "scene" });
+  const whole = lay(rings), mid = (c) => [c.x + (c.u[0] + c.v[0]) * 25, c.y + (c.u[1] + c.v[1]) * 25];
+  assert.ok(whole.length >= 3, "enough webs drawn to tell");
+  const inRing = (c, i) => Math.hypot(mid(c)[0] - (300 + i * 400 + 40), mid(c)[1] - 340) < 120;
+  for (const [i] of whole.map((c) => [rings.findIndex((_, k) => inRing(c, k))])) {
+    const kept = keptWebCorners(lay(rings), { keep: rings.filter((_, k) => k !== i), gone: [rings[i]], grid: 100 });
+    assert.deepEqual(kept, whole.filter((c) => !inRing(c, i)), `breaking web ${i} leaves every other web as it was`);
+  }
+  // (Laying out without the broken one's area instead would shift the stream: the old way, shown here for contrast.)
+  const first = rings.findIndex((_, k) => whole.some((c) => inRing(c, k)));
+  const without = lay(rings.filter((_, k) => k !== first));
+  assert.notDeepEqual(without, whole.filter((c) => !inRing(c, first)));
+  // A web whose corner also lies in a standing cobweb's (or a webs region's) area stays.
+  assert.deepEqual(keptWebCorners(whole, { keep: rings, gone: rings, grid: 100 }), whole);
+  assert.deepEqual(keptWebCorners(whole, { keep: [], gone: [], grid: 100 }), whole);
+});
+
+test("the cavern feed hands a broken cave cobweb apart (websGone), and leaves a broken crystal out (each crystal is its own stream)", async () => {
+  const { createDecorations } = await import("../../../scripts/engines/motion/decorations.mjs");
+  const { decorKeyed } = await import("../../../scripts/engines/props/decor-break.mjs");
+  class Container { constructor() { this.children = []; } addChild(c) { this.children.push(c); return c; } removeChild() {} destroy() {} }
+  const layer = () => new Container(), deco = createDecorations({ PIXI: { Container }, shadows: layer, ground: layer, above: layer });
+  const brushed = [{ kind: "cobweb", x: 200, y: 200, size: 1, turn: 0, seed: 1 }, { kind: "cobweb", x: 600, y: 600, size: 1, turn: 0, seed: 2 }, { kind: "crystals", x: 400, y: 400, size: 0.6, turn: 0, seed: 3 }, { kind: "crystals", x: 800, y: 300, size: 0.6, turn: 0, seed: 4 }];
+  const region = { id: "R1", settings: decorSettings({ on: true, where: "cave", seed: 3, density: 0, kinds: {}, brushed }), areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], look: {} };
+  const keys = decorKeyed(region, 100), web = keys.find((k) => k.d.kind === "cobweb" && k.d.x === 200).key, gem = keys.find((k) => k.d.kind === "crystals" && k.d.x === 400).key;
+  deco.sync([region]);
+  const before = deco.cavern();
+  assert.deepEqual([before.webs.length, before.websGone.length, before.crystals.length], [2, 0, 2]);
+  deco.sync([{ ...region, broken: [web, gem] }]);
+  const after = deco.cavern();
+  assert.deepEqual([after.webs.length, after.websGone.length, after.crystals.length], [1, 1, 1]);
+  assert.deepEqual(after.websGone[0], before.webs[0], "the broken one's own ring, as it was laid out");
+  assert.deepEqual(after.crystals[0], before.crystals[1], "the other crystal unchanged (one cavern entry each)");
 });

@@ -323,18 +323,21 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
       for (const [id, r] of regions) { const standing = r.shown === r.placements ? null : new Set(r.shown); r.placements.forEach((d, i) => { const l = DECOR_KINDS[d.kind]?.light; if (!l || (standing && !standing.has(d))) return; const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size); out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null }); }); }
       return out;
     },
-    // What the cavern and the webs draw in place of their paintings, underground: a small round area each.
+    // What the cavern and the webs draw in place of their paintings, underground: a small round area each. A broken cobweb's
+    // area comes too, apart (websGone): the web engine lays out every corner with it, then leaves its web out, so taking one
+    // web away never moves, adds or lengthens another (its corners share one seeded stream).
     cavern() {
-      const out = { fungus: [], crystals: [], lava: [], webs: [] }, ring = (x, y, rad) => Array.from({ length: 12 }, (_, i) => [x + Math.cos(i / 12 * 6.283) * rad, y + Math.sin(i / 12 * 6.283) * rad]).flat();
+      const out = { fungus: [], crystals: [], lava: [], webs: [], websGone: [] }, ring = (x, y, rad) => Array.from({ length: 12 }, (_, i) => [x + Math.cos(i / 12 * 6.283) * rad, y + Math.sin(i / 12 * 6.283) * rad]).flat();
       const TONES = { fungus: ['green', 'blue', 'violet'], crystals: ['amethyst', 'quartz', 'rose'] };
-      for (const r of regions.values()) if (r.where === 'cave') for (const d of r.shown) {
+      for (const r of regions.values()) if (r.where === 'cave') { const standing = r.shown === r.placements ? null : new Set(r.shown); for (const d of r.placements) {
         const what = CAVERN_KINDS[d.kind]; if (!what) continue;
+        if (standing && !standing.has(d)) { if (what === 'webs') out.websGone.push(ring(d.x, d.y, d.size * grid() * 1.2)); continue; }
         const g = grid(), area = ring(d.x, d.y, d.size * g * (what === 'webs' ? 1.2 : 0.5)), scale = d.size / DECOR_KINDS[d.kind].size;
         if (what === 'fungus') out.fungus.push({ areas: [area], color: TONES.fungus[d.seed % 3], scale });
         else if (what === 'crystals') out.crystals.push({ areas: [area], stone: TONES.crystals[d.seed % 3], scale });
         else if (what === 'lava') out.lava.push({ areas: [area], heat: 0.7 });
         else out.webs.push(area);
-      }
+      } }
       return out;
     },
     get count() { let n = 0; for (const r of regions.values()) n += r.placements.length; return n; },

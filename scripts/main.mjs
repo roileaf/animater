@@ -35,7 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -4110,7 +4110,7 @@ const rebuildCavern = () => {
   const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
   skyOpenings = sky.flatMap((p) => p.areas ?? p);
   // The decorations' glowing kinds underground are the cavern's own: its fungus, crystals and lava, and the webs' cobwebs.
-  let decor = { fungus: [], crystals: [], lava: [], webs: [] };
+  let decor = { fungus: [], crystals: [], lava: [], webs: [], websGone: [] };
   try { syncDecorations(); decor = decorations.cavern(); } catch { /* none */ }
   if (bothSettingsOn("caveFungus")) fungus.push(...decor.fungus);
   if (bothSettingsOn("caveCrystals")) crystals.push(...decor.crystals);
@@ -4119,7 +4119,10 @@ const rebuildCavern = () => {
   fillMist();
   lavaPolygons = lava.flatMap((p) => p.areas);
   const webAreas = [...of("webs", "caveWebs").flatMap((p) => p.areas), ...(bothSettingsOn("caveWebs") ? decor.webs : [])];
-  const corners = webAreas.length ? webCorners({ walls, areas: webAreas, grid, seed, floor }) : [];
+  // Every corner laid out with the broken cobwebs' areas too (one seeded stream runs through them all), then their webs left
+  // out: breaking one web never moves, adds or lengthens another, and every screen draws the same ones.
+  const gone = bothSettingsOn("caveWebs") ? decor.websGone ?? [] : [], laid = webAreas.length || gone.length ? webCorners({ walls, areas: [...webAreas, ...gone], grid, seed, floor }) : [];
+  const corners = keptWebCorners(laid, { keep: webAreas, gone, grid });
   if (webAreas.length) webs.build({ corners, grid, seed });
   // What of the decorations underground is drawn, for which of them can break (decor-break.mjs decorDrawn).
   decorCaveDrawn = { sceneId: canvas.scene?.id ?? null, crystals: bothSettingsOn("caveCrystals"), webs: bothSettingsOn("caveWebs") ? corners : [] };
