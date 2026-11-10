@@ -92,3 +92,12 @@ test("Contents offers Lamp oil, and a lantern guesses it", () => {
   assert.match(html, /Automatic \(Lamp oil\)/);
   assert.match(propTileFieldsHTML({ src: "Barrel.webp", contents: "lampoil" }), /<option value="lampoil" selected>Lamp oil</);
 });
+test("Tips over select", () => {
+  assert.match(propTileFieldsHTML({ src: "Brazier.webp" }), /name="flags\.animater\.prop\.tips"[\s\S]*Automatic \(yes\)/);
+  assert.match(propTileFieldsHTML({ src: "Barrel.webp" }), /prop\.tips"[\s\S]*Automatic \(no\)/);
+  assert.match(propTileFieldsHTML({ src: "Barrel.webp" }), /<label>Tips over instead of breaking<\/label>/);
+  assert.match(propTileFieldsHTML({ src: "Brazier.webp", tips: "no" }), /prop\.tips">[\s\S]*?<option value="no" selected>No</);
+  const tipsSelect = (html) => html.match(/prop\.tips">([\s\S]*?)<\/select>/)[1];
+  assert.doesNotMatch(tipsSelect(propTileFieldsHTML({ src: "Brazier.webp", tips: "junk" })), /value="(yes|no)" selected/);
+  assert.match(tipsSelect(propTileFieldsHTML({ src: "Brazier.webp", tips: "yes" })), /<option value="yes" selected>Yes</);
+});

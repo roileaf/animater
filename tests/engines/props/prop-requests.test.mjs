@@ -298,3 +298,41 @@ test("undo deletes the tile's own fire lights, Repair every one", () => {
   assert.deepEqual(repairUpdates([broken], walls, { lights }).deleteLights, ["f1", "f2"]);
   assert.deepEqual(undoUpdates(broken, walls).deleteLights, []);
 });
+
+// Braziers tip over (Task 11): any slam tips one; fire and other damage still follow its metal.
+const brazier = (prop = {}, extra = {}) => barrel({ id: "brazier", texture: { src: "props/Brazier_Iron.webp" }, flags: { animater: { prop } }, ...extra });
+const shove = (size = 1) => ({ kind: "path", slam: { size }, moverUuid: "Scene.s.Token.m", path: { from: { x: -50, y: 250 }, to: { x: 550, y: 250 } } });
+const smallMover = { x: -50, y: 250, size: 1 };
+test("a Medium slam tips a brazier; its light goes out; area fire still can't touch it", () => {
+  const tile = brazier(), lights = [lamps({ id: "fire", x: 250, y: 250 })];
+  const r = validBreakRequest({ cause: shove(1), note: noteFor(tile, shove(1)) }, ctx({ tile, mover: smallMover, lights }));
+  assert.equal(r.ok, true);
+  assert.equal(r.note.style, "tip");
+  assert.deepEqual(r.note.lights, ["fire"]);
+  assert.deepEqual(r.lightUpdates, [{ _id: "fire", hidden: true }]);
+  assert.equal(r.fire, false, "a brazier holds no lamp oil");
+  const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } };
+  assert.deepEqual(validBreakRequest({ cause: fire, note: noteFor(tile, fire) }, ctx({ tile, lights })), { ok: false, why: "material" });
+  // the requester's note said shatter: the GM decides it tips
+  assert.equal(validBreakRequest({ cause: shove(1), note: { ...noteFor(tile, shove(1)), style: "shatter" } }, ctx({ tile, mover: smallMover })).note.style, "tip");
+});
+test("a brazier set not to tip needs a Large slam again, and shatters; a forged tip is refused the style", () => {
+  const stays = brazier({ tips: "no" });
+  assert.deepEqual(validBreakRequest({ cause: shove(1), note: noteFor(stays, shove(1)) }, ctx({ tile: stays, mover: smallMover })), { ok: false, why: "material" });
+  const big = validBreakRequest({ cause: shove(2), note: noteFor(stays, shove(2)) }, ctx({ tile: stays, mover: { ...smallMover, size: 2 } }));
+  assert.equal(big.ok, true);
+  assert.equal(big.note.style, "shatter");
+  // a barrel can't be claimed to tip
+  const r = validBreakRequest({ cause: shove(1), note: { ...noteFor(barrel(), shove(1)), style: "tip" } }, ctx({ mover: smallMover }));
+  assert.equal(r.ok, true);
+  assert.equal(r.note.style, "shatter");
+  // a tipping prop the GM set to Won't break still won't move
+  const fixed = brazier({ material: "none" });
+  assert.deepEqual(validBreakRequest({ cause: shove(1), note: noteFor(fixed, shove(1)) }, ctx({ tile: fixed, mover: smallMover })), { ok: false, why: "material" });
+  // a tipping slam still has to be plausible
+  assert.deepEqual(validBreakRequest({ cause: shove(1), note: noteFor(brazier(), shove(1)) }, ctx({ tile: brazier(), mover: { x: 2000, y: 2000, size: 1 } })), { ok: false, why: "far" });
+});
+test("the requester's note for a brazier slam says tip", () => {
+  assert.equal(noteFor(brazier(), shove(1)).style, "tip");
+  assert.equal(noteFor(brazier(), { kind: "area", damageType: "bludgeoning", at: { x: 250, y: 250 } }).style, "shatter");
+});

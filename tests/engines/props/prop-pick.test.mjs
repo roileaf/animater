@@ -102,3 +102,17 @@ test("tilesOnLevel keeps only the tiles a cause on that level reaches", () => {
   assert.deepEqual(tilesOnLevel([tile("a", 0, 0, "Barrel_Wood.webp", { levels: ["only"] }), every], "only").map((t) => t.id), ["a", "every"]);
   assert.deepEqual(tilesOnLevel([up, down], undefined).map((t) => t.id), ["up", "down"]);
 });
+
+test("a Medium mover's path reaches a brazier that tips, not one set not to (R3)", () => {
+  const path = [{ x: 50, y: 250 }, { x: 650, y: 250 }];
+  const tips = tile("br", 3, 2, "Brazier_Iron.webp"), stays = tile("st", 4, 2, "Brazier_Iron.webp", { flags: { animater: { prop: { tips: "no" } } } });
+  const cage = tile("cage", 5, 2, "Iron_Cage.webp");
+  assert.deepEqual(propsOnPath(path, 1, [tips, stays, cage], 100).map((t) => t.id), ["br"]);
+  assert.deepEqual(propsOnPath(path, 2, [tips, stays, cage], 100).map((t) => t.id), ["br", "st", "cage"]);
+  const fixed = tile("fx", 3, 2, "Brazier_Iron.webp", { flags: { animater: { prop: { material: "none" } } } });
+  assert.deepEqual(propsOnPath(path, 1, [fixed], 100), []);
+  const points = [{ x: 50, y: 250, p: 0 }, { x: 650, y: 250, p: 1 }];
+  assert.deepEqual(propsUnderTravel(points, 1, [tips, stays], 100).map((h) => h.t.id), ["br"]);
+  // damage still follows the metal
+  assert.deepEqual(propsInArea([tips], () => true, 100, "fire"), []);
+});

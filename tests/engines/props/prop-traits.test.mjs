@@ -61,3 +61,22 @@ test("lanterns and lamps hold lamp oil; the GM can choose it", () => {
   assert.equal(propTraits(t({ contents: "none" }), 100).contents, "none");
   assert.equal(propTraits({ texture: { src: "Barrel.webp" }, width: 100, height: 100, flags: { animater: { prop: { contents: "lampoil" } } } }, 100).contents, "lampoil");
 });
+
+test("braziers tip from any slam; damage still follows metal", () => {
+  assert.equal(propGuesses("Brazier_Iron.webp").tips, true);
+  assert.equal(propGuesses("Barrel.webp").tips, false);
+  assert.equal(propGuesses("Lantern.webp").tips, false);
+  assert.equal(breakStyle({ style: "shatter", tips: true }, { slam: { size: 1 } }), "tip");
+  assert.equal(breakStyle({ style: "collapse", tips: true }, { slam: { size: 3 } }), "tip", "tipping is checked first");
+  assert.equal(breakStyle({ style: "shatter", tips: true }, { damageType: "bludgeoning" }), "shatter");
+  assert.equal(breakStyle({ style: "shatter", tips: false }, { slam: { size: 1 } }), "shatter");
+});
+test("the GM's Tips over setting beats the guess", () => {
+  const t = (src, tips) => ({ texture: { src }, width: 100, height: 100, flags: { animater: { prop: tips === undefined ? {} : { tips } } } });
+  assert.equal(propTraits(t("Brazier.webp"), 100).tips, true);
+  assert.equal(propTraits(t("Brazier.webp", ""), 100).tips, true);
+  assert.equal(propTraits(t("Brazier.webp", "no"), 100).tips, false);
+  assert.equal(propTraits(t("Barrel.webp", "yes"), 100).tips, true);
+  assert.equal(propTraits(t("Barrel.webp", "maybe"), 100).tips, false);
+  assert.equal(propTraits({ texture: { src: "Brazier.webp" }, width: 100, height: 100 }, 100).tips, true);
+});

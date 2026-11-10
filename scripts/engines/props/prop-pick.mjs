@@ -1,10 +1,18 @@
 // Which prop tiles a cause hits: inside an area, beside a missed target, or along a forced path.
-import { propMaterial, canBreak } from "./prop-material.mjs";
+import { propMaterial, canBreak, MATERIALS } from "./prop-material.mjs";
+import { propTraits } from "./prop-traits.mjs";
 
 const live = t => !t.hidden && !t.flags?.animater?.prop?.broken;
 const centre = t => ({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
+// A prop that tips over (a brazier) is knocked down by a slam of any size, as long as it is a prop at all (not
+// "Won't break"); damage still follows its material. The GM's validBreakRequest agrees (tipsOver).
+export function tipsOver(tile, grid, cause) {
+  if (!cause?.slam) return false;
+  const m = propMaterial(tile, grid);
+  return MATERIALS.includes(m) && m !== "none" && propTraits(tile, grid).tips === true;
+}
 const eligible = (tiles, grid, cause) =>
-  tiles.filter(t => live(t) && canBreak(propMaterial(t, grid), cause));
+  tiles.filter(t => live(t) && (tipsOver(t, grid, cause) || canBreak(propMaterial(t, grid), cause)));
 
 export function propsInArea(tiles, testPoint, grid, damageType) {
   return eligible(tiles, grid, { damageType }).filter(t => testPoint(centre(t)));

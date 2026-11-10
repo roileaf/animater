@@ -4,7 +4,7 @@ import { propTraits, breakStyle } from "./prop-traits.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
 import { lightsOfProp, hideLights, unhideLights, oilCatches, firesOf, allFires } from "./prop-lights.mjs";
-import { segRectDist, headsInto, onLevel } from "./prop-pick.mjs";
+import { segRectDist, headsInto, onLevel, tipsOver } from "./prop-pick.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path"];
@@ -75,7 +75,9 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (tile.hidden) return no("hidden");
   const cause = req?.cause ?? {};
   if (!KINDS.includes(cause.kind)) return no("cause");
-  if (!canBreak(propMaterial(tile, grid), breakCause(cause, mover))) return no("material");
+  // A prop that tips over is knocked down by a slam of any size (any path slam); damage still follows its material.
+  const asked = breakCause(cause, mover), tips = cause.kind === "path" && tipsOver(tile, grid, asked);
+  if (!tips && !canBreak(propMaterial(tile, grid), asked)) return no("material");
   const note = readNote(req.note);
   if (!note) return no("note");
   const mine = ownWalls(tile, walls, grid), ids = new Set(mine.map((w) => w.id));
@@ -86,6 +88,8 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   // The GM decides the walls and the lights: all of the tile's own walls open, the lit lights on it go out, and the note names them.
   // Lamp oil catches when the break is fire or put a lit light out (the GM's own judgement; a requester's fire is dropped).
   const traits = propTraits(tile, grid, scene), out = traits.light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
+  // The GM decides a tip: a slam on a prop that tips over tips it, and no other prop may claim to.
+  if (tips) note.style = "tip"; else if (note.style === "tip") note.style = breakStyle(traits, asked);
   const { fire: _claimed, ...base } = note, outIds = out.map((l) => l.id); // eslint-disable-line no-unused-vars
   const fire = oilCatches({ contents: traits.contents, damageType: cause.damageType, lights: outIds });
   return { ok: true, fire, note: { ...base, walls: mine.map((w) => w.id), lights: outIds, ...(fire ? { fire: true } : {}) }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };

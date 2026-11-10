@@ -6,6 +6,7 @@ import { BURN_MS } from "./prop-lights.mjs";
 import { createPropFx } from "./prop-fx.mjs";
 import { propTraits, propGuesses } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
+import { tipLayout, COAL_MS } from "./prop-tip.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
 import { propSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
@@ -18,6 +19,7 @@ const INK = 0x1a1410;
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const lerp = (a, b, u) => a + (b - a) * u;
 const outCubic = (u) => 1 - (1 - u) ** 3, outQuart = (u) => 1 - (1 - u) ** 4;
+const span = (t, a, d) => clamp01((t - a) / d);
 const shade = (c, k) => (Math.min(255, ((c >> 16) & 255) * k) << 16) | (Math.min(255, ((c >> 8) & 255) * k) << 8) | Math.min(255, (c & 255) * k);
 const mix = (a, b, u) => (Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, u)) << 16) | (Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, u)) << 8) | Math.round(lerp(a & 255, b & 255, u));
 const ms = (v) => v / FLIGHT_MS; // a share of the wreck's timeline
@@ -275,6 +277,94 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     return g;
   };
 
+  // The prop's art stands in as an unseen sprite drawn the way Foundry draws the tile (fit, texture scale, anchor at
+  // the tile's x/y); its pieces fly from it.
+  const standFor = (tile, d, texture, centre, box, sortLayer) => {
+    const stand = new PIXI.Sprite(texture); stand.renderable = false;
+    const { sx, sy } = tileArtScale(d, texture.width, texture.height);
+    stand.anchor.set(fin(d.texture?.anchorX, 0.5), fin(d.texture?.anchorY, 0.5)); stand.scale.set(sx, sy);
+    stand.position.set(fin(Number(d.x), centre.x), fin(Number(d.y), centre.y)); stand.rotation = ((d.rotation ?? 0) * Math.PI) / 180;
+    stand.elevation = box.elevation; stand.sort = tile.mesh?.sort ?? d.sort ?? 0; stand.zIndex = 0;
+    if (sortLayer !== undefined) stand.sortLayer = sortLayer;
+    box.addChild(stand);
+    return stand;
+  };
+  // A container placed like the tile (children in tile-local px), for a tile with or without its art.
+  const frameOf = (d, centre, z) => {
+    const f = tileFrame(PIXI, { position: { x: fin(Number(d.x), centre.x), y: fin(Number(d.y), centre.y) }, rotation: ((d.rotation ?? 0) * Math.PI) / 180,
+      anchor: { x: fin(d.texture?.anchorX, 0.5), y: fin(d.texture?.anchorY, 0.5) } }, { width: d.width, height: d.height });
+    f.zIndex = z;
+    return f;
+  };
+
+  // A brazier tipped over (mock scene 4): the whole picture slides to where it lies, squashed narrower along the fall
+  // and cooled to a dull tint (its fire is out; its light went out with the break); hot coals scatter ahead of it,
+  // glowing and dimming over COAL_MS, with a puff of ash smoke and a few sparks. Drawn on load (animate: false) it is
+  // settled: lying, cooled, its coals dark. It sounds of metal whatever the GM set its material to.
+  const TIP_TINT = 0x7a6e66, TIP_MS = 520, COOL_START = 150, COOL_MS = 900, COAL_IN = 150, COAL_DARK = 0x2a211c, COAL_ASH = 0x6a5646; // cooled coals keep a pale ash fleck so they read on a dark floor
+  function tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }) {
+    const size = { width: d.width, height: d.height }, side = Math.max(d.width, d.height);
+    const L = tipLayout(note, { ...size, grid: grid() || 100, rotation: d.rotation ?? 0 });
+    const home = { x: d.width / 2, y: d.height / 2 }, rest = { x: home.x + L.lying.dx, y: home.y + L.lying.dy };
+    const restW = tileToWorld(d, centre, rest), ux = Math.cos(note.cutAngle), uy = Math.sin(note.cutAngle);
+    // Ash and soot where the bowl spilled, under everything.
+    const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
+    const ash = fx.glow(marks, { x: restW.x + ux * side * 0.3, y: restW.y + uy * side * 0.3 }, side * 0.4, 0x241c16, { alpha: 0.4, flicker: false, add: false, squash: 0.7, angle: note.cutAngle });
+    let piece = null;
+    if (texture) {
+      const stand = standFor(tile, d, texture, centre, box, sortLayer);
+      const whole = { poly: [0, 0, d.width, 0, d.width, d.height, 0, d.height], home, to: { ...rest, rot: L.lying.rot, sx: L.lying.sx, sy: L.lying.sy },
+        delay: 0, dur: TIP_MS / FLIGHT_MS, hop: 0.2, shadow: 0.45, ink: false };
+      try { piece = posed.cut(stand, [whole], size); entry.handle = piece; }
+      catch (error) { console.warn("Animater prop wreckage: no tipped prop", error); }
+    }
+    // The coals: dark chunks a few px across, with a hot heart and a soft glow while they are hot.
+    const coalFrame = frameOf(d, centre, 0.5); box.addChild(coalFrame);
+    const body = new PIXI.Graphics(), heart = new PIXI.Graphics(); heart.blendMode = PIXI.BLEND_MODES.ADD;
+    coalFrame.addChild(body);
+    const coals = L.coals.map((c, i) => {
+      const r = seededRandom(((note.seed >>> 0) + i * 977) * 13 + 5), turn = r() * Math.PI * 2;
+      const shape = Array.from({ length: 6 }, (_, k) => { const a = turn + (k / 6) * Math.PI * 2, m = c.r * (0.7 + r() * 0.35); return [Math.cos(a) * m, Math.sin(a) * m]; }).flat();
+      return { ...c, shape, ph: r() * 9, fly: 400 + r() * 300, glow: animate ? fx.glow(coalFrame, c, c.r * 3.4, 0xff6a24, { alpha: 0.95, flicker: false }) : null };
+    });
+    coalFrame.addChild(heart);
+    const heat = (c, ms) => (animate ? 1 - span(ms, COOL_START + COOL_MS, COAL_MS * c.hot - COOL_START - COOL_MS) : 0);
+    const drawCoals = (ms) => {
+      body.clear(); heart.clear();
+      for (const c of coals) {
+        const shown = !animate || ms >= COAL_IN, u = animate ? outQuart(span(ms, COAL_IN, c.fly)) : 1;
+        const x = lerp(rest.x, c.x, u), y = lerp(rest.y, c.y, u), h = shown ? heat(c, ms) * (0.75 + 0.25 * Math.sin(ms * 0.01 + c.ph)) : 0;
+        if (c.glow) { c.glow.sprite.position.set(x, y); c.glow.level(h); c.glow.update(ms); }
+        if (!shown) continue;
+        const pts = c.shape.map((v, k) => v + (k % 2 ? y : x));
+        body.lineStyle(0.8, INK, 0.8).beginFill(COAL_DARK, 1).drawPolygon(pts).endFill();
+        if (h > 0.02) heart.beginFill(0xffb050, Math.min(1, 1.1 * h)).drawCircle(x, y, c.r * 0.6).endFill();
+        else body.lineStyle(0).beginFill(COAL_ASH, 0.9).drawCircle(x - c.r * 0.2, y - c.r * 0.2, c.r * 0.38).endFill();
+      }
+    };
+    const cool = (ms) => { if (piece) piece.tint(mix(0xffffff, TIP_TINT, animate ? span(ms, COOL_START, COOL_MS) : 1)); ash.sprite.alpha = 0.4 * (animate ? span(ms, 200, 500) : 1); };
+    const settle = (ms) => { piece?.update(animate ? Math.min(1, ms / FLIGHT_MS) : 1); cool(ms); drawCoals(ms); };
+    if (!animate) { settle(COAL_MS); return; }
+    // Seen happening: a puff of ash smoke and a few sparks off the spilled bowl, and the clatter of metal.
+    const air = new PIXI.Container(); air.zIndex = 2; box.addChild(air);
+    const rand = seededRandom((note.seed >>> 0) * 7 + 3), at = { x: restW.x + ux * side * 0.15, y: restW.y + uy * side * 0.15 };
+    const sparks = fx.embers(air, Array.from({ length: 22 }, () => ({ x: at.x + (rand() - 0.5) * side * 0.47, y: at.y + (rand() - 0.5) * side * 0.47,
+      vx: ux * (30 + rand() * 40), vy: uy * (30 + rand() * 40) - 30 - rand() * 50, s: 1 + rand(), ph: rand() * 9, at: rand() * 400, life: 600 + rand() * 600 })));
+    const smoke = fx.puffs(air, [0, 1, 2].map((i) => ({ x: at.x + ux * i * side * 0.13, y: at.y + uy * i * side * 0.13, vx: ux * 20, vy: uy * 20 - 60,
+      r0: side * 0.11, r1: side * 0.3, a: 0.3, at: 100 + i * 120, life: 1500, seed: ((note.seed >>> 0) % 100000) + i })), [0x4a4440, 0x5e5853]);
+    try { playSound(propSound("metal", "none", seededRandom(note.seed)).file, centre); }
+    catch (error) { console.warn("Animater prop wreckage: no sound", error); }
+    const t0 = performance.now(); let raf = 0;
+    const done = () => { entry.stop = null; quiet(() => sparks.destroy()); quiet(() => smoke.destroy()); for (const c of coals) if (c.glow) { quiet(() => c.glow.destroy()); c.glow = null; } };
+    entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; };
+    const tick = () => {
+      const ms = performance.now() - t0;
+      settle(Math.min(ms, COAL_MS)); sparks.update(ms); smoke.update(ms);
+      if (ms < COAL_MS) raf = requestAnimationFrame(tick); else done();
+    };
+    settle(0); raf = requestAnimationFrame(tick);
+  }
+
   // The tile's art: its own mesh texture, or, where a hidden tile was never drawn (a player's client), loaded from its src.
   const textureOf = async (tile, src) => {
     const have = tile.mesh?.texture;
@@ -316,6 +406,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const src = d.texture?.src;
     const [texture, tones] = await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
+    if (note.style === "tip") { tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0 });
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
     const over = new PIXI.Container(); over.zIndex = 0.5; box.addChild(over); // spilled books, pages and shards land on top
@@ -334,16 +425,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     // A fire's scorch burns over the oil it fed on (mock scene 4: the stain goes dark), under the splinters.
     if (layout.fire) for (const top of [soot?.sprite, mark]) if (top) marks.addChildAt(top, marks.getChildIndex(speckG));
 
-    // The prop's art stands in as an unseen sprite drawn the way Foundry draws the tile (fit, texture scale, anchor at
-    // the tile's x/y); its pieces fly from it.
     if (texture) {
-      const stand = new PIXI.Sprite(texture); stand.renderable = false;
-      const { sx, sy } = tileArtScale(d, texture.width, texture.height);
-      stand.anchor.set(fin(d.texture?.anchorX, 0.5), fin(d.texture?.anchorY, 0.5)); stand.scale.set(sx, sy);
-      stand.position.set(fin(Number(d.x), centre.x), fin(Number(d.y), centre.y)); stand.rotation = ((d.rotation ?? 0) * Math.PI) / 180;
-      stand.elevation = box.elevation; stand.sort = tile.mesh?.sort ?? d.sort ?? 0; stand.zIndex = 0;
-      if (sortLayer !== undefined) stand.sortLayer = sortLayer;
-      box.addChild(stand);
+      const stand = standFor(tile, d, texture, centre, box, sortLayer);
       if (collapse) {
         const size = { width: d.width, height: d.height };
         if (collapse.legs.length) { const legs = tileFrame(PIXI, stand, size); legs.zIndex = -0.5; legs.addChild(legStubs(collapse.legs, tones, note.seed)); box.addChild(legs); }
