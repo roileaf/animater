@@ -1825,18 +1825,34 @@ const DRAFTS = {
     return out;
   } },
   rowboat: { label: 'Rowboats', size: 2.6, height: 0.5, paint(g, s, rng, o) {
-    // As the Moondock's: a pointed hull of warm planks with inked seams following its curve, a gunwale rim, thwarts across, an
-    // anchor or a coil of rope in the bow, fish in the bottom now and then, oars shipped or out.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.3;
-    const half = (t) => W * (t < 0.15 ? 0.62 + (t / 0.15) * 0.35 : t < 0.55 ? 0.97 + Math.sin(((t - 0.15) / 0.4) * Math.PI) * 0.03 : Math.cos(((t - 0.55) / 0.45) * Math.PI * 0.5) ** 0.9);
-    const ring = (k) => { const p = []; for (let i = 0; i <= 30; i++) { const t = i / 30; p.push(at(-L * k + t * L * 2 * k, -half(t) * k)); } for (let i = 30; i >= 0; i--) { const t = i / 30; p.push(at(-L * k + t * L * 2 * k, half(t) * k)); } return p; };
-    const hull = ring(1); softShadow(g, hull, o, 0.5); painted(g, rng, hull, '#7a5634', o, { band: 0.45, ink: 1.9 });
-    const inner = ring(0.84); painted(g, rng, inner, '#5a3c22', o, { band: 0.4, lit: 0.04, ink: 1.2 });
-    g.save(); trace(g, inner); g.clip(); for (let k = -3; k <= 3; k++) { const p = []; for (let i = 0; i <= 20; i++) { const t = i / 20; p.push(at(-L + t * L * 2, half(t) * k / 3.5 * 0.84)); } line(g, p, 'rgba(20,12,4,0.6)', o.ink * 0.8); } g.restore();
-    if (rng() < 0.6) { g.save(); trace(g, inner); g.clip(); for (let i = 0; i < 3; i++) { const [x, y] = at(-L * 0.25 + (rng() - 0.5) * L * 0.3, (rng() - 0.5) * W * 0.5), f = blob(rng, x, y, s * 0.08, s * 0.03, 10, 0.05, a + (rng() - 0.5)); painted(g, rng, f, pick(rng, ['#8a8a6a', '#7a7a5a', '#9a8a5a']), o, { band: 0.4, lit: 0.2, ink: 0.9 }); } g.restore(); }
-    { const [x, y] = at(L * 0.62, 0); g.beginPath(); g.arc(x, y, W * 0.32, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 2.6; g.stroke(); g.strokeStyle = '#a8905a'; g.lineWidth = o.ink * 1.4; g.stroke(); g.beginPath(); g.arc(x, y, W * 0.18, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 2.6; g.stroke(); g.strokeStyle = '#a8905a'; g.lineWidth = o.ink * 1.4; g.stroke(); }
-    for (const u of [-0.45, 0.05]) painted(g, rng, boxAt(...at(u * L, 0), L * 0.06, W * 0.82, a), '#9a7448', o, { sharp: true, grain: a + 1.57, lines: 3, hatch: 0.4, ink: 1.3 });
-    if (rng() < 0.6) for (const k of [-1, 1]) { const oar = [at(-L * 0.05, k * W * 0.6), at(L * 0.08, k * W * 1.7)]; line(g, oar, INKD, o.ink * 3); line(g, oar, '#9a7a4e', o.ink * 1.6); const bl = blob(rng, ...at(L * 0.09, k * W * 1.82), s * 0.04, s * 0.11, 8, 0.05, a + 1.57); painted(g, rng, bl, '#9a7a4e', o, { band: 0.3, ink: 1.1 }); }
+    // As the Moondock's: a hull of warm planks, pointed at the bow and square at the stern, a thick gunwale round it, inside the
+    // floor planks running along it; a small decked triangle in the bow, a stern seat across the transom, two broad thwarts, iron
+    // oarlocks on the gunwale; the oars laid across the boat from lock to lock, their blades out over the water; fish now and then.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.32;
+    // Half-width along the hull, t 0 (stern) to 1 (bow): square-ish stern, full midships, a long taper to the point.
+    const half = (t) => W * (t < 0.08 ? 0.78 + t * 2 : t < 0.5 ? 0.94 + 0.06 * Math.sin(((t - 0.08) / 0.42) * Math.PI * 0.5) : Math.pow(Math.cos(((t - 0.5) / 0.5) * Math.PI * 0.5), 0.75));
+    const ring = (k, shrink = 0) => { const p = []; for (let i = 0; i <= 32; i++) { const t = i / 32; p.push(at(-L * k + t * L * 2 * k, -Math.max(0, half(t) * k - shrink))); } for (let i = 32; i >= 0; i--) { const t = i / 32; p.push(at(-L * k + t * L * 2 * k, Math.max(0, half(t) * k - shrink))); } return p; };
+    const hull = ring(1); softShadow(g, hull, o, 0.5); painted(g, rng, hull, '#6e4a2a', o, { band: 0.45, ink: 2 });
+    const inside = ring(0.88, W * 0.04); painted(g, rng, inside, '#8a6038', o, { band: 0.5, lit: 0.05, ink: 1.3 });
+    g.save(); trace(g, inside); g.clip();
+    for (let k = -4; k <= 4; k++) { const p = []; for (let i = 0; i <= 24; i++) { const t = i / 24; p.push(at(-L + t * L * 2, half(t) * (k / 4.6) * 0.84)); } line(g, p, 'rgba(26,14,4,0.65)', o.ink * 0.8); line(g, p.map(([x, y]) => [x - 0.7, y - 0.7]), 'rgba(255,225,180,0.15)', o.ink * 0.6); }
+    if (rng() < 0.55) for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) { const [x, y] = at(-L * 0.12 + (rng() - 0.5) * L * 0.25, (rng() - 0.5) * W * 0.5), q = a + (rng() - 0.5) * 1.2, f = []; for (let k = 0; k < 14; k++) { const t = (k / 14) * 6.283, u = Math.cos(t) * s * 0.09, w = Math.sin(t) * s * 0.028 * (u < 0 ? 1 - (-u / (s * 0.09)) * 0.4 : 1); f.push([x + Math.cos(q) * u - Math.sin(q) * w, y + Math.sin(q) * u + Math.cos(q) * w]); } painted(g, rng, f, pick(rng, ['#8a8462', '#7a7a5a', '#9a8a5e']), o, { band: 0.4, lit: 0.2, ink: 0.9 }); const tail = [x - Math.cos(q) * s * 0.09, y - Math.sin(q) * s * 0.09]; poly(g, [tail, [tail[0] - Math.cos(q + 0.5) * s * 0.04, tail[1] - Math.sin(q + 0.5) * s * 0.04], [tail[0] - Math.cos(q - 0.5) * s * 0.04, tail[1] - Math.sin(q - 0.5) * s * 0.04]]); g.fillStyle = '#7a7458'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.5, o.ink * 0.6); g.stroke(); }
+    g.restore();
+    // The bow deck: a small plank triangle filling the point.
+    const deck = []; for (let i = 0; i <= 8; i++) { const t = 0.8 + (i / 8) * 0.2; deck.push(at(-L + t * L * 2, -half(t) * 0.86)); } for (let i = 8; i >= 0; i--) { const t = 0.8 + (i / 8) * 0.2; deck.push(at(-L + t * L * 2, half(t) * 0.86)); }
+    painted(g, rng, deck, '#9a7044', o, { grain: a, lines: 6, hatch: 0.45, band: 0.3, ink: 1.3 });
+    // The stern seat and two thwarts, broad planks across from side to side.
+    for (const [t, wide] of [[0.06, 0.07], [0.36, 0.06], [0.6, 0.055]]) { const u = -L + t * L * 2, w = half(t) * 0.86; painted(g, rng, [at(u - L * wide, -w), at(u + L * wide, -w), at(u + L * wide, w), at(u - L * wide, w)], '#a87c4a', o, { sharp: true, grain: a + 1.57, lines: 4, hatch: 0.4, band: 0.35, lit: 0.1, ink: 1.4 }); }
+    // Oarlocks, and the oars shipped along the boat, their blades out past the stern.
+    const lockT = 0.45, lockU = -L + lockT * L * 2, lockW = half(lockT);
+    for (const k of [-1, 1]) { g.beginPath(); g.arc(...at(lockU, k * lockW * 0.96), s * 0.022, 0, 6.283); g.fillStyle = '#4a4844'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); }
+    if (rng() < 0.7) for (const k of [-1, 1]) {
+      const grip = at(L * 0.55, k * W * 0.32), lock = at(-L * 0.2, k * W * 0.5), dx = lock[0] - grip[0], dy = lock[1] - grip[1], len = Math.hypot(dx, dy), ux = dx / len, uy = dy / len, tip = [lock[0] + ux * L * 0.75, lock[1] + uy * L * 0.75];
+      for (const [col, w] of [[INKD, o.unit * 0.04 + o.ink * 1.6], ['#a8885a', o.unit * 0.04]]) line(g, [grip, tip], col, w);
+      line(g, [grip, tip].map(([x, y]) => [x - 0.6, y - 0.6]), 'rgba(255,235,200,0.25)', o.unit * 0.012);
+      const bx = tip[0] + ux * L * 0.12, by = tip[1] + uy * L * 0.12, blade = []; for (let i = 0; i < 14; i++) { const q = (i / 14) * 6.283, bu = Math.cos(q) * L * 0.16, bw = Math.sin(q) * W * 0.22 * (bu < 0 ? 0.6 + 0.4 * (1 + bu / (L * 0.16)) : 1); blade.push([bx + ux * bu - uy * bw, by + uy * bu + ux * bw]); }
+      painted(g, rng, blade, '#9a7a4e', o, { grain: Math.atan2(uy, ux), lines: 4, hatch: 0.4, band: 0.35, ink: 1.3 });
+    }
     return [hull];
   } },
   dock: { label: 'Dock sections', size: 2.0, height: 0.3, paint(g, s, rng, o) {
