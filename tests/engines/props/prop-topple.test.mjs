@@ -238,8 +238,8 @@ test("a turned tile falls along the hit in its own frame; chunks stay on the rub
     }
   }
 });
-test("a topple sounds of stone, whatever the prop is made of", () => {
-  assert.deepEqual(TOPPLE_SOUNDS, BREAK_SOUNDS.stone);
+test("a topple sounds of the stone-topple family, whatever the prop is made of", () => {
+  assert.ok(TOPPLE_SOUNDS.every((f) => f.includes("/props/stone-topple/")));
   for (const r of [0, 0.5, 0.99]) {
     const s = propSound("wood", "none", () => r, { style: "topple" });
     assert.ok(TOPPLE_SOUNDS.includes(s.file)); assert.equal(s.splash, undefined);

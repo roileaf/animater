@@ -11,7 +11,7 @@ import { collapseLayout } from "./prop-collapse.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
 import { toppleLayout, TOPPLE_MS, CHUNK_MS } from "./prop-topple.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
-import { propSound } from "./prop-sounds.mjs";
+import { propSound, tipSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
 import { tileRect, tileArtScale } from "./prop-geometry.mjs";
 
@@ -358,7 +358,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
       vx: ux * (30 + rand() * 40), vy: uy * (30 + rand() * 40) - 30 - rand() * 50, s: 1 + rand(), ph: rand() * 9, at: rand() * 400, life: 600 + rand() * 600 })));
     const smoke = fx.puffs(air, [0, 1, 2].map((i) => ({ x: at.x + ux * i * side * 0.13, y: at.y + uy * i * side * 0.13, vx: ux * 20, vy: uy * 20 - 60,
       r0: side * 0.11, r1: side * 0.3, a: 0.3, at: 100 + i * 120, life: 1500, seed: ((note.seed >>> 0) % 100000) + i })), [0x4a4440, 0x5e5853]);
-    try { playSound(propSound("metal", "none", seededRandom(note.seed)).file, centre); }
+    try { playSound(tipSound(seededRandom(note.seed)).file, centre); }
     catch (error) { console.warn("Animater prop wreckage: no sound", error); }
     const t0 = performance.now(); let raf = 0;
     const done = () => { entry.stop = null; quiet(() => sparks.destroy()); quiet(() => smoke.destroy()); for (const c of coals) if (c.glow) { quiet(() => c.glow.destroy()); c.glow = null; } };
@@ -874,8 +874,8 @@ void main() {
     if (fire) entry.fire = fire;
     // Only a break seen happening is heard; a wreck redrawn on load stays silent. The note's seed gives every screen the same pick.
     try {
-      const { file, splash } = propSound(materialOf(d), contents, seededRandom(note.seed));
-      playSound(file, centre); if (splash) playSound(splash, centre);
+      const { file, splash, extra } = propSound(materialOf(d), contents, seededRandom(note.seed));
+      playSound(file, centre); if (splash) playSound(splash, centre); if (extra) playSound(extra, centre);
     } catch (error) { console.warn("Animater prop wreckage: no sound", error); }
     const t0 = performance.now(), end = fire ? BURN_MS : FLIGHT_MS; let raf = 0;
     const done = () => { entry.stop = null; if (entry.fire) { entry.fire.destroy(); entry.fire = null; } };

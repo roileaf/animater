@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { propSound, wallSound, BREAK_SOUNDS, SPLASH_SOUNDS, BLAST_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
+import { propSound, tipSound, wallSound, BREAK_SOUNDS, SPLASH_SOUNDS, BLAST_SOUNDS, DOOR_SOUNDS, TOPPLE_SOUNDS, PAGE_SOUNDS, TIP_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
 
+const base = (f) => f.split("/").pop();
 test("a material's break sound is one of its own family, chosen by rand", () => {
   for (const m of Object.keys(BREAK_SOUNDS)) {
     const seen = new Set();
@@ -28,31 +29,56 @@ test("an unknown material breaks like wood", () => {
   for (const m of ["none", "plastic", undefined, "toString"]) assert.ok(BREAK_SOUNDS.wood.includes(propSound(m, "none", () => 0.2).file));
 });
 test("every named recording is bundled", () => {
-  for (const f of [...Object.values(BREAK_SOUNDS).flat(), ...SPLASH_SOUNDS]) assert.ok(existsSync(f.replace("modules/animater/", "")), f);
+  for (const f of [...Object.values(BREAK_SOUNDS).flat(), ...SPLASH_SOUNDS, ...DOOR_SOUNDS, ...BLAST_SOUNDS, ...TOPPLE_SOUNDS, ...PAGE_SOUNDS, ...TIP_SOUNDS]) assert.ok(existsSync(f.replace("modules/animater/", "")), f);
 });
-test("a door sounds like wood until its own family ships", () => {
-  assert.ok(BREAK_SOUNDS.wood.includes(wallSound("door", () => 0.3).file));
-  assert.equal(wallSound("door", () => 0).file, BREAK_SOUNDS.wood[0]);
+test("a door bursts with its own family, and an unknown wall kind sounds like a door", () => {
+  assert.deepEqual(DOOR_SOUNDS.map(base), ["door-forced-160213.ogg", "wood-smash-536777.ogg", "door-kick-452609.ogg"]);
+  for (const f of DOOR_SOUNDS) assert.match(f, new RegExp("/props/door-burst/"));
+  assert.equal(wallSound("door", () => 0).file, DOOR_SOUNDS[0]);
+  assert.equal(wallSound("door", () => 0.999999).file, DOOR_SOUNDS.at(-1));
   assert.deepEqual(wallSound("door", () => 0.6), wallSound("door", () => 0.6));
-  assert.ok(BREAK_SOUNDS.wood.includes(wallSound("unknown", () => 0.9).file), "an unknown kind falls back to the door's sound");
+  assert.equal(new Set(Array.from({ length: 30 }, (_, i) => wallSound("door", () => i / 30).file)).size, 3);
+  assert.ok(DOOR_SOUNDS.includes(wallSound("unknown", () => 0.9).file), "an unknown kind falls back to the door's sound");
 });
 test("a window sounds like glass", () => {
   assert.ok(BREAK_SOUNDS.glass.includes(wallSound("window", () => 0.5).file));
   assert.equal(wallSound("window", () => 0).file, BREAK_SOUNDS.glass[0]);
   assert.equal(wallSound("window", () => 0.999999).file, BREAK_SOUNDS.glass.at(-1));
-  assert.ok(BREAK_SOUNDS.wood.includes(wallSound("door", () => 0.5).file), "a door still sounds like wood");
+  assert.ok(!BREAK_SOUNDS.wood.includes(wallSound("door", () => 0.5).file), "a door no longer sounds like plain wood");
 });
-test("an explosion sounds like a fire burst until its own family ships", () => {
-  assert.match(propSound("wood", "powder", () => 0, { powder: "exploded" }).file, /fire-burst-\d+-0\.ogg$/);
-});
-test("the explosion placeholders: the three bundled fire bursts, each reachable, all bundled; spilled powder breaks like its material", () => {
-  assert.deepEqual(BLAST_SOUNDS.map((f) => f.split("/").pop()), ["fire-burst-260554-0.ogg", "fire-burst-260555-0.ogg", "fire-burst-637533-0.ogg"]);
-  for (const f of BLAST_SOUNDS) assert.ok(existsSync(f.replace("modules/animater/", "")), f);
-  const seen = new Set(Array.from({ length: 30 }, (_, i) => propSound("metal", "powder", () => i / 30, { powder: "exploded" }).file));
-  assert.equal(seen.size, 3);
+test("an explosion has its own four recordings, each reachable; spilled powder breaks like its material", () => {
+  assert.deepEqual(BLAST_SOUNDS.map(base), ["tannerite-tree-530163.ogg", "tannerite-forest-530162.ogg", "fireball-251759.ogg", "cherry-bomb-870713.ogg"]);
+  for (const f of BLAST_SOUNDS) assert.match(f, new RegExp("/props/explosion/"));
+  assert.ok(BLAST_SOUNDS.includes(propSound("wood", "powder", () => 0, { powder: "exploded" }).file));
+  const seen = new Set(Array.from({ length: 40 }, (_, i) => propSound("metal", "powder", () => i / 40, { powder: "exploded" }).file));
+  assert.equal(seen.size, 4);
   assert.equal("splash" in propSound("wood", "powder", () => 0.5, { powder: "exploded" }), false);
+  assert.equal("extra" in propSound("wood", "powder", () => 0.5, { powder: "exploded" }), false);
   assert.ok(BREAK_SOUNDS.wood.includes(propSound("wood", "powder", () => 0.5, { powder: "spilled" }).file));
   assert.ok(BREAK_SOUNDS.wood.includes(propSound("wood", "powder", () => 0.5).file));
+});
+test("a topple has the stone-topple recordings, whatever the prop is made of", () => {
+  assert.deepEqual(TOPPLE_SOUNDS.map(base), ["statue-fall-363836.ogg", "cinder-block-452579.ogg"]);
+  for (const f of TOPPLE_SOUNDS) assert.match(f, new RegExp("/props/stone-topple/"));
+  assert.ok(TOPPLE_SOUNDS.includes(propSound("wood", "none", () => 0.2, { style: "topple" }).file));
+});
+test("books add a page flutter on top of the wood break; other contents add none", () => {
+  assert.deepEqual(PAGE_SOUNDS.map(base), ["heavy-book-648959.ogg", "book-fall-185041.ogg", "books-falling-394912.ogg", "books-falling-509531.ogg"]);
+  for (const f of PAGE_SOUNDS) assert.match(f, new RegExp("/props/pages/"));
+  const s = propSound("wood", "books", () => 0.1);
+  assert.ok(BREAK_SOUNDS.wood.includes(s.file)); assert.ok(PAGE_SOUNDS.includes(s.extra));
+  assert.equal(propSound("wood", "books", () => 0).extra, PAGE_SOUNDS[0]);
+  assert.equal(propSound("wood", "books", () => 0.999999).extra, PAGE_SOUNDS.at(-1));
+  assert.equal(new Set(Array.from({ length: 40 }, (_, i) => propSound("wood", "books", () => i / 40).extra)).size, 4);
+  for (const c of ["none", "water", "grain", undefined]) assert.equal("extra" in propSound("wood", c, () => 0.5), false);
+  assert.equal("extra" in propSound("wood", "books", () => 0.5, { style: "burn" }), false);
+});
+test("a tipped brazier clatters with the metal-clatter recordings", () => {
+  assert.deepEqual(TIP_SOUNDS.map(base), ["steel-cup-569286.ogg", "metal-bucket-870887.ogg", "pots-pans-209002.ogg"]);
+  for (const f of TIP_SOUNDS) assert.match(f, new RegExp("/props/metal-clatter/"));
+  assert.equal(tipSound(() => 0).file, TIP_SOUNDS[0]);
+  assert.equal(tipSound(() => 0.999999).file, TIP_SOUNDS.at(-1));
+  assert.equal(new Set(Array.from({ length: 30 }, (_, i) => tipSound(() => i / 30).file)).size, 3);
 });
 
 test("burning away sounds of fire (fire-sear placeholder); a cut web is silent", async () => {
