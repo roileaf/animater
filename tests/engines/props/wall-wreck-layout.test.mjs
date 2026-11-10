@@ -96,20 +96,25 @@ const windowNote = { seed: 3, cutAngle: Math.PI / 2, from: { x: 350, y: 120 }, k
 test("shards fan out away from the hit, a few near, glints, teeth in the frame", () => {
   const L = windowWreckLayout(windowNote, windowWall, 100);
   assert.ok(L.shards.far.every((s) => s.y > 200) && L.shards.near.every((s) => s.y < 200));
-  assert.ok(L.shards.near.length >= 2 && L.shards.near.length <= 6 && L.shards.far.length > L.shards.near.length);
-  assert.ok(L.glints.length >= 3);
+  assert.equal(L.shards.far.length, 60, "far count as the mock");
+  assert.equal(L.shards.near.length, 9, "near count as the mock");
+  assert.ok(L.shards.far.length > L.shards.near.length);
+  assert.equal(L.glints.length, 9, "7 far + 2 near glints, as the mock");
   assert.ok(L.teeth.length >= 3, `${L.teeth.length} teeth`);
   assert.ok(L.teeth.every((t) => t.pts.every((v, i) => i % 2 === 0 || Math.abs(v - 200) <= 25)));
 });
 
-test("across seeds: near 2-6 and fewer than far, far shards fan wide past the wall, teeth inside the segment", () => {
+test("across seeds: 60 far, 9 near, 9 glints, far shards fan wide past the wall, teeth inside the segment", () => {
   for (let seed = 0; seed < 40; seed++) {
     const L = windowWreckLayout({ ...windowNote, seed }, windowWall, 100);
-    assert.ok(L.shards.near.length >= 2 && L.shards.near.length <= 6, `seed ${seed}: ${L.shards.near.length} near`);
-    assert.ok(L.shards.far.length > 3 * L.shards.near.length, `seed ${seed}: far ${L.shards.far.length}`);
+    assert.equal(L.shards.near.length, 9, `seed ${seed}: near`);
+    assert.equal(L.shards.far.length, 60, `seed ${seed}: far`);
     assert.ok(L.shards.far.every((s) => s.y > 200), `seed ${seed}: far past the wall`);
     assert.ok(L.shards.near.every((s) => s.y < 200 && s.y > 150), `seed ${seed}: near close on the hitter's side`);
-    assert.ok(L.glints.length >= 3 && L.glints.length <= 6, `seed ${seed}: ${L.glints.length} glints (restrained)`);
+    assert.equal(L.glints.length, 9, `seed ${seed}: glints`);
+    const farPts = new Set(L.shards.far.map((s) => `${s.x},${s.y}`)), nearPts = new Set(L.shards.near.map((s) => `${s.x},${s.y}`));
+    assert.equal(L.glints.filter((g) => farPts.has(`${g.x},${g.y}`)).length, 7, `seed ${seed}: 7 far glints`);
+    assert.equal(L.glints.filter((g) => nearPts.has(`${g.x},${g.y}`)).length, 2, `seed ${seed}: 2 near glints`);
     for (const t of L.teeth) for (let i = 0; i < t.pts.length; i += 2) {
       assert.ok(t.pts[i] >= 300 && t.pts[i] <= 400, `seed ${seed}: tooth x ${t.pts[i]}`);
       assert.ok(Math.abs(t.pts[i + 1] - 200) <= 6, `seed ${seed}: tooth y ${t.pts[i + 1]}`);

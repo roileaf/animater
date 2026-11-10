@@ -18,6 +18,7 @@ export const SPLINTER_TONES = [shade(DOOR_COLOUR, 0.75), DOOR_COLOUR, 0xc9a571, 
 // Window glass: pale blue-greys; the frame's wood for the splinters it sheds.
 export const GLASS_TONES = [0xcfe3ea, 0xb8d6de, 0xe8f3f6];
 const FRAME_TONES = [0x5a3e26, 0x7a5a3a];
+const FAR_SHARDS = 60, NEAR_SHARDS = 9, FAR_GLINTS = 7, NEAR_GLINTS = 2; // mock scene 3
 
 // The planks a door breaks into, at grid 100: length, width, turn off the throw, distance (squares), spin as it lands.
 const PLANKS = [[86, 30, -0.35, 1.25, 0.6], [64, 28, 0.25, 1.65, -0.9], [50, 26, -0.05, 0.85, 1.4]];
@@ -104,8 +105,8 @@ function glassShard(rand, k, { origin, lateral, dir, dist, size, tones }) {
 }
 
 // A shattered window, at grid 100 scaled with it. The pane (the middle of the segment, 6 px across) is left empty but
-// for 3-5 glass teeth standing on its edges; most shards fan out past the wall, 2-6 fall back toward the hitter; a few
-// of them glint once as they land (`at`, ms).
+// for 3-5 glass teeth standing on its edges; 60 shards fan out past the wall, 9 fall back toward the hitter (mock scene
+// 3's counts); 7 far and 2 near glint once as they land (`at`, ms).
 export function windowWreckLayout(note, wall, grid = 100) {
   const rand = seededRandom((note.seed >>> 0) * 811 + 67), k = (grid || 100) / 100, F = wallFrame(note, wall), L = F.len;
   const u0 = Math.min(6 * k, L * 0.2), u1 = L - u0, half = 3 * k, flat = (...ps) => ps.flatMap((p) => [p.x, p.y]);
@@ -118,14 +119,14 @@ export function windowWreckLayout(note, wall, grid = 100) {
   });
 
   const origin = (v) => ({ ...F.at(L / 2, v), t: F.t, n: F.n });
-  const far = Array.from({ length: 52 + Math.floor(rand() * 12) }, () =>
+  const far = Array.from({ length: FAR_SHARDS }, () =>
     glassShard(rand, k, { origin: origin(3.5 * k), lateral: L * 0.8, dir: F.dir(F.lean + (rand() - 0.5) * 1.4), dist: [0.05, 1.8], size: [5, 15], tones: GLASS_TONES }));
-  const near = Array.from({ length: 2 + Math.floor(rand() * 5) }, () =>
+  const near = Array.from({ length: NEAR_SHARDS }, () =>
     glassShard(rand, k, { origin: origin(-3.5 * k), lateral: L * 0.7, dir: F.dir(Math.PI + (rand() - 0.5) * 1.8), dist: [0.03, 0.35], size: [3, 8], tones: GLASS_TONES.slice(0, 2) }));
 
-  // Restrained: 3-4 far shards and one near catch the light, each once, staggered after it lands.
+  // As the mock: 7 far shards and 2 near catch the light, each once, staggered after it lands.
   const glint = (s) => ({ x: s.x, y: s.y, size: (2 + rand() * 2) * k, at: Math.round(s.dur + 60 + rand() * 400) });
-  const glints = [...far.slice(0, 3 + Math.floor(rand() * 2)).map(glint), glint(near[0])];
+  const glints = [...far.slice(0, FAR_GLINTS).map(glint), ...near.slice(0, NEAR_GLINTS).map(glint)];
 
   const slivers = Array.from({ length: 4 + Math.floor(rand() * 3) }, () =>
     splinter(F.at(L / 2, 0), F.dir(F.lean + (rand() - 0.5) * 1.2), rand, k, { dist: [0.1, 0.6], len: [5, 10], tones: FRAME_TONES }));
