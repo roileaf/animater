@@ -9,6 +9,7 @@ export const LIQUIDS = { water: { color: 0x33505c, alpha: 0.7 }, wine: { color: 
 export const GRAIN_TONES = [0xc8a462, 0xb48f50, 0xd9bc7e, 0x9c7a40];
 export const PAGE_COLOURS = [0xeee3c8, 0xe2d4b0, 0xd8c69e];
 export const POTION_COLOURS = [0x3a8a3a, 0x9a1a1a, 0x2a4ab0, 0xb08a3a];
+export const SPINE_COLOURS = [0x2c4f7a, 0x7a2a2a, 0x2e5a3a, 0x6a4a8a, 0x8a6a2a, 0x3a3a4a]; // a shelf's books
 
 // A painted blotch: overlapping ragged lobes in stepped tones, darkest inward; only the outer step has the faint ink edge.
 // squash flattens it across, then it turns by angle (both about its centre).
@@ -106,41 +107,43 @@ function specks(c, r, rand) {
 
 // Where an item spilled off a prop starts: on the prop's line across the hit, through its centre, so books skid off a
 // shelf and shards fly from where the bottles stood. A point a share `spread` of the prop's extent along that line.
-const across = (c, cutAngle, width, height, spread) => {
-  const nx = -Math.sin(cutAngle), ny = Math.cos(cutAngle), extent = Math.abs(width * nx) + Math.abs(height * ny);
-  return { x: c.x + nx * extent * spread, y: c.y + ny * extent * spread, extent };
+// The extent is the turned tile's width across the hit (rotation in degrees).
+export const spillExtent = (width, height, cutAngle, rotation = 0) => {
+  const a = cutAngle - ((Number(rotation) || 0) * Math.PI) / 180;
+  return Math.abs(width * Math.sin(a)) + Math.abs(height * Math.cos(a));
 };
+const across = (c, cutAngle, extent, spread) => ({ x: c.x - Math.sin(cutAngle) * extent * spread, y: c.y + Math.cos(cutAngle) * extent * spread });
 
 // Books slide off along the hit: closed books skid furthest, small ones seen from the side scatter, loose pages
-// flutter over them. Tone 0/1/2 is the tile's dark, mid and light colour; pages take PAGE_COLOURS.
-function booksSpill(c, width, height, grid, cutAngle, rand) {
+// flutter over them. A book's tone indexes SPINE_COLOURS (the small ones run through it in turn); pages take PAGE_COLOURS.
+function booksSpill(c, width, height, extent, grid, cutAngle, rand) {
   const k = grid / 100, push = (p, a, d) => ({ x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d });
   const closed = [-0.3, 0.4, -0.05, 0.9].map((da, i) => {
-    const from = across(c, cutAngle, width, height, -0.35 + i * 0.225), a = cutAngle + da * 0.6, d = grid * (0.5 + rand() * 0.6);
+    const from = across(c, cutAngle, extent, -0.35 + i * 0.225), a = cutAngle + da * 0.6, d = grid * (0.5 + rand() * 0.6);
     const w = grid * (0.28 + rand() * 0.08), h = w * (1.2 + rand() * 0.15);
-    return { ...push(from, a, d), rot: (rand() - 0.5) * 3, w, h, tone: Math.floor(rand() * 3) };
+    return { ...push(from, a, d), rot: (rand() - 0.5) * 3, w, h, tone: Math.floor(rand() * SPINE_COLOURS.length) };
   });
-  const small = Array.from({ length: 9 }, () => {
-    const from = across(c, cutAngle, width, height, (rand() - 0.5) * 0.85), a = cutAngle + (rand() - 0.5) * 1.6, d = grid * (0.25 + rand() * 0.7);
-    return { ...push(from, a, d), rot: (rand() - 0.5) * 4, w: (18 + rand() * 8) * k, h: (13 + rand() * 5) * k, tone: Math.floor(rand() * 3) };
+  const small = Array.from({ length: 9 }, (_, i) => {
+    const from = across(c, cutAngle, extent, (rand() - 0.5) * 0.85), a = cutAngle + (rand() - 0.5) * 1.6, d = grid * (0.25 + rand() * 0.7);
+    return { ...push(from, a, d), rot: (rand() - 0.5) * 4, w: (18 + rand() * 8) * k, h: (13 + rand() * 5) * k, tone: i % SPINE_COLOURS.length };
   });
   const base = push(c, cutAngle, Math.max(width, height) * 0.15);
   const pages = Array.from({ length: 22 }, () => {
     const a = cutAngle + (rand() - 0.5) * 1.9, d = grid * lerp(0.2, 1.3, rand() ** 1.3), w = (9 + rand() * 7) * k, h = (11 + rand() * 6) * k;
     const rot = rand() * TAU, c2 = PAGE_COLOURS[Math.floor(rand() * 3)], curl = rand() < 0.5;
-    const from = across(base, cutAngle, width, height, (rand() - 0.5) * 0.25), o = (rand() - 0.5) * 30 * k;
+    const from = across(base, cutAngle, extent, (rand() - 0.5) * 0.25), o = (rand() - 0.5) * 30 * k;
     return { ...push(push(from, a, d), cutAngle, o), rot, w, h, curl, c: c2 };
   });
   return { kind: "books", closed, small, pages };
 }
 
 // Bottles smash where they stood: shards of coloured glass and a stain each, run out along the hit; 3-4 colours.
-function potionsSpill(c, width, height, grid, cutAngle, rand) {
+function potionsSpill(c, extent, grid, cutAngle, rand) {
   const k = grid / 100, pool = POTION_COLOURS.slice();
   for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
   const colours = pool.slice(0, rand() < 0.5 ? 3 : 4), shards = [], stains = [];
   for (let b = 0; b < 5; b++) {
-    const colour = colours[b % colours.length], at = across(c, cutAngle, width, height, -0.36 + b * 0.18 + (rand() - 0.5) * 0.06);
+    const colour = colours[b % colours.length], at = across(c, cutAngle, extent, -0.36 + b * 0.18 + (rand() - 0.5) * 0.06);
     const a = cutAngle + (rand() - 0.5) * 1.2, d = grid * (0.25 + rand() * 0.5), r = grid * (0.23 + rand() * 0.11);
     const lx = at.x + Math.cos(a) * d, ly = at.y + Math.sin(a) * d;
     stains.push({ x: lx, y: ly, r, colour });
@@ -153,13 +156,14 @@ function potionsSpill(c, width, height, grid, cutAngle, rand) {
   return { kind: "potions", shards, stains };
 }
 
-export function wreckLayout(note, { centre, width, height, grid = 100, contents = "none" }) {
-  const rand = seededRandom(note.seed * 977 + 13), r = Math.max(width, height) / 2;
+// rotation: the tile's turn in degrees (where spilled books and bottles start across the hit).
+export function wreckLayout(note, { centre, width, height, grid = 100, contents = "none", rotation = 0 }) {
+  const rand = seededRandom(note.seed * 977 + 13), r = Math.max(width, height) / 2, extent = spillExtent(width, height, note.cutAngle, rotation);
   const mark = groundMark(note.mark, centre, r, rand);
   const spill = Object.hasOwn(LIQUIDS, contents) ? liquidSpill(contents, centre, r, grid, note.cutAngle, note.seed, rand)
     : contents === "grain" || contents === "goods" ? pouredSpill(contents, centre, r, grid, note.cutAngle, rand)
-    : contents === "books" ? booksSpill(centre, width, height, grid, note.cutAngle, rand)
-    : contents === "potions" ? potionsSpill(centre, width, height, grid, note.cutAngle, rand) : null;
+    : contents === "books" ? booksSpill(centre, width, height, extent, grid, note.cutAngle, rand)
+    : contents === "potions" ? potionsSpill(centre, extent, grid, note.cutAngle, rand) : null;
   return { mark, specks: specks(centre, r, rand), spill };
 }
 

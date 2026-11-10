@@ -1,7 +1,7 @@
 // Draws a broken prop's wreckage: the ground mark, the spill and splinters (from prop-wreck-layout) and the prop's own
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
-import { wreckLayout, wreckTargets, collapseDust, GRAIN_TONES } from "./prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, collapseDust, spillExtent, GRAIN_TONES, SPINE_COLOURS } from "./prop-wreck-layout.mjs";
 import { propTraits, propGuesses } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
@@ -19,6 +19,14 @@ const outCubic = (u) => 1 - (1 - u) ** 3, outQuart = (u) => 1 - (1 - u) ** 4;
 const shade = (c, k) => (Math.min(255, ((c >> 16) & 255) * k) << 16) | (Math.min(255, ((c >> 8) & 255) * k) << 8) | Math.min(255, (c & 255) * k);
 const mix = (a, b, u) => (Math.round(lerp((a >> 16) & 255, (b >> 16) & 255, u)) << 16) | (Math.round(lerp((a >> 8) & 255, (b >> 8) & 255, u)) << 8) | Math.round(lerp(a & 255, b & 255, u));
 const ms = (v) => v / FLIGHT_MS; // a share of the wreck's timeline
+const fin = (v, or) => (Number.isFinite(v) ? v : or);
+// A tile-local point (origin at the tile's top-left, unturned) in world px: turned about the tile's anchor at its x/y,
+// as Foundry (and the wreck's stand sprite) draws the tile.
+export function tileToWorld(d, centre, { x, y }) {
+  const ax = fin(d.texture?.anchorX, 0.5), ay = fin(d.texture?.anchorY, 0.5), turn = ((Number(d.rotation) || 0) * Math.PI) / 180;
+  const px = fin(Number(d.x), centre.x), py = fin(Number(d.y), centre.y), dx = x - ax * d.width, dy = y - ay * d.height;
+  return { x: px + dx * Math.cos(turn) - dy * Math.sin(turn), y: py + dx * Math.sin(turn) + dy * Math.cos(turn) };
+}
 
 // materialOf(tile doc) names the prop's material; playSound(file, at) plays a recording at a point (main.mjs, with room acoustics).
 export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {} }) {
@@ -160,7 +168,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
   const drawSpill = (spill, box, tones, at) => {
     if (!spill) return () => {};
     if (spill.kind === "books") {
-      const tone = (b) => [tones.dark, tones.mid, tones.light][b.tone] ?? tones.mid;
+      const tone = (b) => SPINE_COLOURS[b.tone] ?? SPINE_COLOURS[0];
       const parts = [
         ...spill.closed.map((b, i) => flyer(at.over, b, at, { delay: ms(40 + i * 50), dur: ms(650), hop: 0.3, spin: (i % 2 ? 1 : -1) * 1.2 }, closedBook(b, tone(b)))),
         ...spill.small.map((b, i) => flyer(at.over, b, at, { delay: ms((i * 37) % 120), dur: ms(560), hop: 0.25, spin: (i % 2 ? 1 : -1) * 1.6 }, smallBook(b, tone(b)))),
@@ -283,7 +291,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const src = d.texture?.src;
     const [texture, tones] = await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
-    const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents });
+    const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0 });
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
     const over = new PIXI.Container(); over.zIndex = 0.5; box.addChild(over); // spilled books, pages and shards land on top
     // Furniture that collapses folds into its own boards, with leg stubs, over a dust mark (in place of the plain dust).
@@ -291,19 +299,18 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
       ? collapseLayout(note, { width: d.width, height: d.height, legs: propGuesses(src).legs, rotation: d.rotation ?? 0, box: paintedBox(d, tones) }) : null;
     if (!collapse || note.mark !== "dust") marks.addChild(groundMark(layout.mark, entry.textures));
     if (collapse) {
-      const turn = ((d.rotation ?? 0) * Math.PI) / 180, dx = collapse.dust.x - d.width / 2, dy = collapse.dust.y - d.height / 2;
-      const at = { x: centre.x + dx * Math.cos(turn) - dy * Math.sin(turn), y: centre.y + dx * Math.sin(turn) + dy * Math.cos(turn) };
-      const dust = groundMark(collapseDust({ ...collapse.dust, ...at, angle: collapse.dust.angle + turn }, note.seed), entry.textures);
+      const turn = ((d.rotation ?? 0) * Math.PI) / 180;
+      const dust = groundMark(collapseDust({ ...collapse.dust, ...tileToWorld(d, centre, collapse.dust), angle: collapse.dust.angle + turn }, note.seed), entry.textures);
       dust.alpha = 0.6; marks.addChild(dust);
     }
-    const extent = Math.abs(d.width * Math.sin(note.cutAngle)) + Math.abs(d.height * Math.cos(note.cutAngle));
+    const extent = spillExtent(d.width, d.height, note.cutAngle, d.rotation ?? 0);
     const grow = drawSpill(layout.spill, marks, tones, { over, centre, cutAngle: note.cutAngle, extent }), speckG = drawSpecks(layout.specks, marks, tones);
 
     // The prop's art stands in as an unseen sprite drawn the way Foundry draws the tile (fit, texture scale, anchor at
     // the tile's x/y); its pieces fly from it.
     if (texture) {
       const stand = new PIXI.Sprite(texture); stand.renderable = false;
-      const { sx, sy } = tileArtScale(d, texture.width, texture.height), fin = (v, or) => (Number.isFinite(v) ? v : or);
+      const { sx, sy } = tileArtScale(d, texture.width, texture.height);
       stand.anchor.set(fin(d.texture?.anchorX, 0.5), fin(d.texture?.anchorY, 0.5)); stand.scale.set(sx, sy);
       stand.position.set(fin(Number(d.x), centre.x), fin(Number(d.y), centre.y)); stand.rotation = ((d.rotation ?? 0) * Math.PI) / 180;
       stand.elevation = box.elevation; stand.sort = tile.mesh?.sort ?? d.sort ?? 0; stand.zIndex = 0;
