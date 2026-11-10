@@ -81,10 +81,11 @@ void main(){ vUv = aUvs; gl_Position = vec4((projectionMatrix * translationMatri
 const CLOTH_FRAG = `precision highp float;
 varying vec2 vUv;
 uniform sampler2D uArt, uCloth;
-uniform float uTime, uPush, uSeed, uAlpha, uRadial, uAmp, uShade, uSpeed;
+uniform float uTime, uPush, uSeed, uAlpha, uRadial, uAmp, uShade, uSpeed, uEdge;
 uniform vec2 uDir;
 void main(){
-  float m = mix(smoothstep(0.5, 1.0, texture2D(uCloth, vUv).a), smoothstep(0.06, 0.48, length(vUv - 0.5)), uRadial);
+  float mask = texture2D(uCloth, vUv).a;
+  float m = mix(mix(smoothstep(0.5, 1.0, mask), smoothstep(0.06, 0.48, length(vUv - 0.5)), uRadial), smoothstep(0.08, 0.4, mask) * (1.0 - smoothstep(0.55, 0.95, mask)), uEdge);
   vec2 n = vec2(-uDir.y, uDir.x);
   float along = dot(vUv, uDir) * 9.0, across = dot(vUv, n) * 4.0;
   // (A stronger wind moves it further, hardly faster: the ripples keep their pace, their reach grows.)
@@ -92,7 +93,9 @@ void main(){
   // (A plant or a crown leans with the wind as well as tossing: a steady push along it, the gusts on top.)
   vec2 lean = uDir * uPush * 0.004 * uRadial;
   vec4 c = texture2D(uArt, vUv - (lean + (uDir * 0.006 + n * 0.003) * wave * uPush) * m * uAmp);
-  gl_FragColor = vec4(c.rgb * (1.0 + wave * 0.12 * uShade * uPush * m), c.a) * uAlpha;
+  // (Cloth reads its wind mostly as billows of light and shade rolling over it: a broad swell along the wind, the ripple on it.)
+  float swell = sin(along * 0.9 - time * 0.9 + uSeed) * 0.6 + wave * 0.4;
+  gl_FragColor = vec4(c.rgb * (1.0 + mix(wave, swell, 1.0 - uRadial) * 0.12 * uShade * uPush * m), c.a) * uAlpha;
 }`;
 // The plants that sway in the wind (a tree's crown sways too, more slowly).
 export const PLANTS = new Set(['bush', 'fern', 'agave', 'grass', 'reeds', 'flowers']);
@@ -195,10 +198,10 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     if (r.snow) { try { r.snow.mesh.parent?.removeChild(r.snow.mesh); r.snow.mesh.destroy(); for (const t of r.snow.textures) t.destroy(true); } catch { /* gone */ } r.snow = null; }
   };
   // What moves in the wind and how: cloth by its mask; plants and tree crowns from their middle out.
-  const SWAY = { cloth: { radial: 0, amp: 1, shade: 1, speed: 1 }, plant: { radial: 1, amp: 1.5, shade: 0.35, speed: 0.7 }, crown: { radial: 1, amp: 0.6, shade: 0.25, speed: 0.45 } };
+  const SWAY = { paper: { radial: 0, amp: 0.8, shade: 2.2, speed: 1.3, edge: 1 }, cloth: { radial: 0, amp: 0.35, shade: 2.6, speed: 0.8 }, plant: { radial: 1, amp: 1.5, shade: 0.35, speed: 0.7 }, crown: { radial: 1, amp: 0.6, shade: 0.25, speed: 0.45 } };
   const clothMesh = (pic, d, scale, mode = 'cloth') => {
     const w = pic.art.width, h = pic.art.height, geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [-w / 2, -h / 2, w / 2, -h / 2, w / 2, h / 2, -w / 2, h / 2], 2).addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
-    const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(CLOTH_VERT, CLOTH_FRAG, { uArt: pic.art, uCloth: pic.cloth ?? PIXI.Texture.WHITE, uTime: 0, uPush: 0, uSeed: ((d.seed >>> 0) % 997) / 97, uDir: [1, 0], uAlpha: 1, uRadial: SWAY[mode].radial, uAmp: SWAY[mode].amp, uShade: SWAY[mode].shade, uSpeed: SWAY[mode].speed }));
+    const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(CLOTH_VERT, CLOTH_FRAG, { uArt: pic.art, uCloth: pic.cloth ?? PIXI.Texture.WHITE, uTime: 0, uPush: 0, uSeed: ((d.seed >>> 0) % 997) / 97, uDir: [1, 0], uAlpha: 1, uRadial: SWAY[mode].radial, uAmp: SWAY[mode].amp, uShade: SWAY[mode].shade, uSpeed: SWAY[mode].speed, uEdge: SWAY[mode].edge ?? 0 }));
     mesh.position.set(d.x, d.y); mesh.rotation = turnOf(d); mesh.scale.set(scale, scale); mesh.eventMode = 'none'; mesh.decor = d; mesh.texture = pic.art; return mesh;
   };
   const place = (sprite, d, pic, scale) => { sprite.anchor.set(0.5); sprite.position.set(d.x, d.y); sprite.rotation = turnOf(d); const k = scale; sprite.scale.set((d.flip && DECOR_KINDS[d.kind].flat ? -1 : 1) * k, k); sprite.eventMode = 'none'; return sprite; };
@@ -254,7 +257,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
             if (pic.trunk) r.sprites.push(ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)));
             const crown = above().addChild(where !== 'cave' && PIXI.Mesh ? clothMesh(pic, d, scale, 'crown') : place(new PIXI.Sprite(pic.art), d, pic, scale)); crown.decor = d; r.crowns.push(crown); r.sprites.push(crown); if (crown.shader) r.cloth.push(crown);
           // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
-          } else if (DECOR_KINDS[d.kind].cloth && pic.cloth && where !== 'cave' && PIXI.Mesh) { const mesh = ground().addChild(clothMesh(pic, d, scale)); r.sprites.push(mesh); r.cloth.push(mesh); }
+          } else if (DECOR_KINDS[d.kind].cloth && pic.cloth && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, DECOR_KINDS[d.kind].cloth === 'paper' ? 'paper' : 'cloth')); r.sprites.push(mesh); r.cloth.push(mesh); }
           else if (PLANTS.has(d.kind) && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, 'plant')); r.sprites.push(mesh); r.cloth.push(mesh); }
           else r.sprites.push((role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)));
         }
@@ -297,7 +300,8 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
       const rate = Math.min(1, seconds * 3);
       for (const r of regions.values()) for (const c of r.crowns) { const want = 1 - 0.75 * (open.get(c) ?? 0); c.alpha += (want - c.alpha) * rate; }
       // Cloth in the wind: its fabric rippling along it, in gusts, each piece out of step with the next; still in a calm.
-      clock += seconds;
+      // (A frame's worth at most: back from a hidden or minimised window the sway carries on where it was, never racing to catch up.)
+      clock += Math.min(0.1, Math.max(0, Number(seconds) || 0));
       for (const r of regions.values()) for (const s of r.cloth) { const m = clothMotion(s.decor, air, clock, s.rotation), u = s.shader.uniforms; u.uTime = clock; u.uPush = m.push; u.uDir = m.dir; u.uAlpha = s.alpha; }
     },
     // The trees for the canopy's shade: each crown's picture where it stands, its height, kind and leaves.

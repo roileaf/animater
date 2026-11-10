@@ -273,7 +273,7 @@ import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cav
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { createDecorLights } from "./engines/motion/decor-lights.mjs";
-import { decorSettings, strokeShapes, circleArea as decorCircle } from "./engines/motion/decor-regions.mjs";
+import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices } from "./ui/decor-brush-bar.mjs";
 import { DECOR_KINDS, stampDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
@@ -2475,9 +2475,10 @@ const startDecorBrush = (doc = null) => {
     else { const c = brushChoices(); Object.assign(state, { id: NEW_DECOR_REGION, doc: null, brushed: [], erased: [], circles: [], fresh: { where: c.where, kinds: Object.fromEntries(c.kinds.map((k) => [k, { size: 1, amount: 1 }])) } }); }
   };
   const paintWith = () => {
-    // The kind picked on the bar; into a region, at that kind's own size there and the region's size.
-    const c = brushChoices(), s = decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor);
-    return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: s?.kinds?.[id]?.size ?? 1, amount: 1 })), density: c.thick, scale: c.scale * (s?.scale ?? 1), turn: c.turn };
+    // The kind picked on the bar, at the bar's size. (Into a region, its own Size and the kind's size there apply as it is drawn, so
+    // turning them later scales what was painted too.)
+    const c = brushChoices();
+    return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale, turn: c.turn };
   };
   const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
   const dab = (p, erase, first = false) => {
@@ -2538,6 +2539,31 @@ const startDecorBrush = (doc = null) => {
   window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
   state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); ghost.destroy({ children: true }); } catch { /* gone */ } state.bar?.close(); };
 };
+// Trunks that block (a region's "Trunks block movement, sight and light"): a small ring of real walls round each tree's trunk and
+// each stump, made by the lead GM and kept in step with the trees as they are reshuffled, brushed, rubbed out or turned off, and
+// removed with their region. Each is marked as its region's (flags.animater.trunkOf), so no other wall is ever touched.
+let trunkWallsTimer = null;
+// (The GM who changed the region builds them; on a scene shown afresh, the lead GM checks them.)
+const trunkWallsSoon = (mine = false) => { clearTimeout(trunkWallsTimer); trunkWallsTimer = setTimeout(() => { trunkWallsTimer = null; void syncTrunkWalls(mine); }, 700); };
+const trunkKey = (list) => list.map((w) => w.c.join(",")).sort().join("|");
+const syncTrunkWalls = async (mine = false) => {
+  if (!canvas?.ready || !game.user?.isGM || !(mine || leadGM())) return;
+  const scene = canvas.scene, g = canvas.grid?.size ?? 100, want = new Map(), have = new Map();
+  for (const region of scene.regions ?? []) {
+    try { const s = decorSettings(region.flags?.[ID]?.decor); if (s?.blocks) want.set(region.id, { walls: trunkWalls(decorPlacements({ settings: s, areas: regionAreas(region), grid: g, id: region.id }), g), levels: [...(region.levels ?? [])] }); } catch { /* a broken region never breaks the rest */ }
+  }
+  for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.trunkOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
+  const gone = [], made = [];
+  for (const [id, walls] of have) { const w = want.get(id); if (!w || trunkKey(walls) !== trunkKey(w.walls)) gone.push(...walls.map((x) => x.id)); }
+  for (const [id, w] of want) { const had = have.get(id); if (had && trunkKey(had) === trunkKey(w.walls)) continue; for (const { c } of w.walls) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: 20, light: 20, sound: 0, levels: w.levels, flags: { [ID]: { trunkOf: id } } }); }
+  try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
+  catch (err) { console.warn("Animater | trunk walls", err); }
+};
+// Dragging a region carries what was painted into it by hand (and the spots rubbed out) along with it, in the same update.
+Hooks.on("preUpdateRegion", (doc, change) => { if (!change?.shapes) return; try { const moved = carryDecor(doc.flags?.[ID]?.decor, doc.toObject().shapes, change.shapes); if (moved) foundry.utils.setProperty(change, `flags.${ID}.decor.brushed`, moved.brushed), foundry.utils.setProperty(change, `flags.${ID}.decor.erased`, moved.erased); } catch (err) { console.warn("Animater | moving a region's decorations", err); } });
+// (A decoration break or repair write moves no trunk: trees never break.)
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options)) return; const userId = [changes, options, ...more].at(-1); if (first?.parent === canvas?.scene) trunkWallsSoon(userId === game.user?.id); });
+Hooks.on("canvasReady", () => { trunkWallsSoon(); });
 const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };
 // The brush's strokes, to take back and put back (this screen, this scene, the last 30): a stroke into a region (what it held
 // before and after) or one that made a new region (taken back, the region goes; put back, it is made again).

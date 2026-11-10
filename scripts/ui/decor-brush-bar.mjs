@@ -13,10 +13,13 @@ export const BRUSH_SCALE = Object.freeze({ min: 0.3, max: 3, usual: 1 });
 // little that grows or lies about in its streets; outdoors keeps to the wild, underground to caves and dungeons.
 const TOWN = ['lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'coffin', 'brazier', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'crate', 'barrel', 'campfire', 'pickaxe', 'papers', 'puddle', 'pebbles', 'rubble', 'grass', 'flowers', 'leaves', 'moss'];
 // Kept out of the wild: the town's built things, and a dungeon's (a tomb, a hoard, a cage).
-const BUILT = new Set(['marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'urns', 'lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'brazier', 'papers', 'sarcophagus', 'coffin', 'treasure', 'cage']);
-export const BRUSH_PLACES = Object.freeze([['surface', 'Outdoors'], ['town', 'Town'], ['cave', 'Underground']]);
+const BUILT = new Set(['bed', 'rug', 'bookshelf', 'strongbox', 'hearth', 'desk', 'throne', 'altar', 'statue', 'pottedPlant', 'bathtub', 'counter', 'brokenFurniture', 'lilyPads', 'cattails', 'streamRock', 'steppingStones', 'rowboat', 'dock', 'mooringPost', 'waterDebris', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'urns', 'lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'brazier', 'papers', 'sarcophagus', 'coffin', 'treasure', 'cage']);
+// Indoors: a room's furnishings and its clutter; Water: what floats, stands or is moored in a pond, a river or a harbour.
+const INDOOR = ["bed","rug","bookshelf","strongbox","hearth","desk","throne","altar","statue","pottedPlant","bathtub","counter","brokenFurniture","crate","barrel","sacks","papers","candles","chains","tableStools","bench","washtub","urns","anvil","cage"];
+const WATER = ["lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris","reeds","puddle","log","rock","boulder","pebbles","moss"];
+export const BRUSH_PLACES = Object.freeze([['surface', 'Outdoors'], ['town', 'Town'], ['indoor', 'Indoors'], ['water', 'Water'], ['cave', 'Underground']]);
 const placeWhere = (place) => (place === 'cave' ? 'cave' : 'surface');
-const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, turn: null, lock: null };
+const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, turn: null, lock: null };
 // How the decorations it lays are turned: null for every one its own way, else an angle in radians (Shift+wheel, 15° a step).
 export const BRUSH_TURN_STEP = Math.PI / 12;
 
@@ -25,7 +28,7 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 export const brushChoices = () => ({ where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds: remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]], size: remembered.size, thick: remembered.thick, scale: remembered.scale, turn: remembered.turn });
 /** The kinds a place offers in the bar (pure): 'town' its built things and street litter; 'surface' (outdoors) and 'cave' their
  *  own and those found in both, outdoors leaving built things to the town and the dungeon. */
-export const brushKindsFor = (where) => (where === 'town' ? TOWN.filter((id) => DECOR_KINDS[id]) : DECOR_IDS.filter((id) => (DECOR_KINDS[id].set === 'both' || DECOR_KINDS[id].set === where) && !(where === 'surface' && BUILT.has(id))));
+export const brushKindsFor = (where) => (where === 'town' ? TOWN.filter((id) => DECOR_KINDS[id]) : where === 'indoor' ? INDOOR.filter((id) => DECOR_KINDS[id]) : where === 'water' ? WATER.filter((id) => DECOR_KINDS[id]) : DECOR_IDS.filter((id) => (DECOR_KINDS[id].set === 'both' || DECOR_KINDS[id].set === where) && !(where === 'surface' && BUILT.has(id))));
 /** Whether a kind answers a search (pure): what was typed found in its name, its id, or what sort of thing it is, any case
  *  ("tree" finds Oaks and Pines as well as Fruit trees; "water", "glow" and "cave" their own). */
 export const kindMatches = (id, query) => {

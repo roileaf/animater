@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+const read = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DECOR_MOST, canopyKindOf, decorPlacements, decorRole, decorSettings, freshDecor, inAreas } from '../../../scripts/engines/motion/decor-regions.mjs';
@@ -99,4 +101,56 @@ test("Decorations can break is kept, off unless true", () => {
   assert.equal(decorSettings({ on: true, canBreak: true }).canBreak, true);
   assert.equal(decorSettings({ on: true, canBreak: "yes" }).canBreak, false);
   assert.equal(decorSettings({ on: true }).canBreak, false);
+});
+
+test('trunks that block: a small ring of walls round each tree trunk and stump, as wide as it is drawn; nothing else walled', async () => {
+  const { trunkWalls, decorSettings } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  const { trunkRadius } = await import('../../../scripts/engines/motion/decor-paint.mjs');
+  assert.equal(trunkRadius('rock', 1), null); assert.equal(trunkRadius('stump', 0.8), 0.2); assert.ok(trunkRadius('oak', 2.6) > 0.3);
+  const walls = trunkWalls([{ kind: 'oak', x: 500, y: 500, size: 2.6, seed: 3 }, { kind: 'crate', x: 0, y: 0, size: 1 }, { kind: 'stump', x: 900, y: 900, size: 0.9, seed: 1 }], 100);
+  assert.equal(walls.length, 16);
+  for (const { c } of walls.slice(0, 8)) for (const [x, y] of [[c[0], c[1]], [c[2], c[3]]]) assert.ok(Math.abs(Math.hypot(x - 500, y - 500) - 39) < 2);
+  // The ring closes on itself.
+  assert.deepEqual(walls[7].c.slice(2), walls[0].c.slice(0, 2));
+  assert.equal(decorSettings({ on: true, blocks: true }).blocks, true); assert.equal(decorSettings({ on: true }).blocks, false);
+});
+
+test('the lead GM keeps trunk walls in step, walls marked as the region\'s, blocking movement, sight and light (not sound)', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  // The GM who changed the region builds them; on a scene shown afresh, the lead GM checks them.
+  assert.match(main, /if \(!canvas\?\.ready \|\| !game\.user\?\.isGM \|\| !\(mine \|\| leadGM\(\)\)\) return;/);
+  assert.match(main, /trunkWallsSoon\(userId === game\.user\?\.id\)/);
+  assert.match(main, /move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: 20, light: 20, sound: 0, levels: w\.levels, flags: \{ \[ID\]: \{ trunkOf: id \} \}/);
+  assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.trunkOf; if \(!of\) continue;/);
+  assert.match(read('scripts/ui/region-panel-sections.mjs'), /toggle\('Trunks block movement, sight and light', decor\.blocks === true/);
+});
+
+test('dragging a region carries its hand-placed decorations and rubbed-out spots with it; reshaping it does not', async () => {
+  const { carryDecor, shapesBox } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  const decor = { brushed: [{ kind: 'oak', x: 4551, y: 2481, size: 3 }], erased: [[10, 20, 30]] };
+  const at = (x, y, r = 150) => [{ type: 'ellipse', x, y, radiusX: r, radiusY: r, hole: false }];
+  const moved = carryDecor(decor, at(4500, 2500), at(3900, 2800));
+  assert.deepEqual([moved.brushed[0].x, moved.brushed[0].y, moved.erased[0]], [3951, 2781, [-590, 320, 30]]);
+  assert.equal(carryDecor(decor, at(4500, 2500), at(4500, 2500, 200)), null);
+  assert.equal(carryDecor({ brushed: [] }, at(0, 0), at(5, 5)), null);
+  assert.deepEqual(shapesBox([{ type: 'polygon', points: [0, 0, 10, 0, 10, 20] }]), { x: 0, y: 0, w: 10, h: 20 });
+  assert.match(read('scripts/main.mjs'), /Hooks\.on\("preUpdateRegion", \(doc, change\) => \{ if \(!change\?\.shapes\) return;/);
+});
+
+test('what was painted by hand answers the panel: unticking its kind hides it, the region\'s Size and the kind\'s size scale it', async () => {
+  const { decorSettings, decorPlacements } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  const area = [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], oak = { kind: 'oak', x: 500, y: 500, size: 2, seed: 1 }, rock = { kind: 'rock', x: 100, y: 100, size: 0.4, seed: 2 };
+  const at = (raw) => decorPlacements({ settings: decorSettings({ on: true, density: 0, brushed: [oak, rock], ...raw }), areas: area, grid: 100, id: 'r' });
+  assert.deepEqual(at({ kinds: { oak: {}, rock: {} } }).map((d) => d.size).sort(), [0.4, 2]);
+  assert.deepEqual(at({ kinds: { oak: { off: true }, rock: {} } }).map((d) => d.kind), ['rock']);
+  assert.equal(at({ kinds: { oak: {} }, scale: 1.5 }).find((d) => d.kind === 'oak').size, 3);
+  assert.equal(at({ kinds: { oak: { size: 0.5 } } }).find((d) => d.kind === 'oak').size, 1);
+  // A kind painted that the region never listed still shows (the toolbar brush paints any kind into it).
+  assert.ok(at({ kinds: {} }).some((d) => d.kind === 'oak'));
+});
+
+test('a fruit or blossom tree drops petals only in spring; other seasons its shade is a broadleaf\'s', async () => {
+  const { canopyKindOf } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  assert.equal(canopyKindOf('blossom', 'spring').kind, 'blossom'); assert.equal(canopyKindOf('fruitTree', 'summer').kind, 'broadleaf');
+  assert.equal(canopyKindOf('blossom', 'autumn').kind, 'broadleaf'); assert.equal(canopyKindOf('blossom', 'winter').kind, 'bare');
 });

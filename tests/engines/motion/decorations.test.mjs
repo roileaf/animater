@@ -103,7 +103,7 @@ test('only the cloth stirs in the wind: a masked ripple over the fabric, the fra
   // In the picture's own frame: a stall turned with the wind feels it straight along.
   const m = clothMotion(d, { strength: 0.5, angle: 1 }, 1, 1); assert.ok(Math.abs(m.dir[0] - 1) < 1e-9 && Math.abs(m.dir[1]) < 1e-9);
   // The shader moves only what the mask calls cloth (smoothstep on the mask), never the whole picture.
-  assert.match(CLOTH_SHADER_SOURCES[0][1], /float m = mix\(smoothstep\(0\.5, 1\.0, texture2D\(uCloth, vUv\)\.a\),/);
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /float m = mix\(mix\(smoothstep\(0\.5, 1\.0, mask\),/);
   assert.match(CLOTH_SHADER_SOURCES[0][1], /\* wave \* uPush\) \* m \* uAmp\)/);
 });
 
@@ -151,4 +151,11 @@ test('a decoration turned with the brush (Shift+wheel) breaks where it is drawn:
   const src = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
   assert.match(src, /const place = \(sprite, d, pic, scale\) => \{ sprite\.anchor\.set\(0\.5\); sprite\.position\.set\(d\.x, d\.y\); sprite\.rotation = turnOf\(d\);/);
   assert.match(src, /rotation: \(turnOf\(d\) \* 180\) \/ Math\.PI/);
+});
+
+test('loose papers flutter in the wind: their edges lift, their middles stay down', async () => {
+  const { DECOR_KINDS } = await import('../../../scripts/engines/motion/decor-paint.mjs');
+  const { CLOTH_SHADER_SOURCES } = await import('../../../scripts/engines/motion/decorations.mjs');
+  assert.equal(DECOR_KINDS.papers.cloth, 'paper');
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /smoothstep\(0\.08, 0\.4, mask\) \* \(1\.0 - smoothstep\(0\.55, 0\.95, mask\)\), uEdge\)/);
 });
