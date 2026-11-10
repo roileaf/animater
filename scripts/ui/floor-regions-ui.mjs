@@ -491,9 +491,10 @@ export function floorPictures({ levelId, sceneRect, backgroundSrc, tiles = [], r
     const source = region?.flags?.animater?.imageRegion?.source;
     if (source?.kind !== "tile" || seen.has(source.tileId)) continue;
     seen.add(source.tileId);
+    const turned = docs.find((tile) => String(tile.id) === source.tileId);
     pictures.push({
       key: `tile:${source.tileId}`,
-      label: "Missing tile",
+      label: turned ? `${turned.name || "Tile"} (rotated or scaled)` : "Missing tile",
       plane: {
         id: { kind: "tile", tileId: source.tileId },
         src: "",
@@ -730,7 +731,8 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
     let used = 0;
     for (const region of regionList) {
       if (region?.flags?.animater?.floor || !region?.flags?.animater?.imageRegion) continue;
-      used += 1;
+      const m = String(region.name ?? "").match(/^Overhead ?(\d*)$/);
+      used = Math.max(used + 1, m ? Number(m[1]) || 1 : 0);
     }
     for (let i = 0; i < covers.length; i++) {
       const n = used + i + 1;
@@ -2359,8 +2361,10 @@ async function openOnce({
     warn("Experimental. This level's background is moved, scaled or rotated in its configuration, so shapes read from the image would land in the wrong place. Reset its position to use this tool.");
     return { opened: false, reason: "transformed" };
   }
-  const skewed = (Array.isArray(tiles) ? tiles : []).filter((tile) => tile && tile.hidden !== true && tile.texture?.src && !tileFrameIsPlain(tile)).length;
-  if (skewed) warn(`Experimental. ${skewed === 1 ? "One tile is" : `${skewed} tiles are`} rotated or scaled, so ${skewed === 1 ? "it is" : "they are"} left out of Floor regions. Reset ${skewed === 1 ? "it" : "them"} to trace ${skewed === 1 ? "it" : "them"}.`);
+  const regionList = Array.isArray(scene?.regions) ? scene.regions : scene?.regions?.contents ?? [];
+  const bound = new Set(regionList.map((region) => region?.flags?.animater?.imageRegion?.source?.tileId).filter(Boolean));
+  const skewed = (Array.isArray(tiles) ? tiles : []).filter((tile) => tile && tile.hidden !== true && tile.texture?.src && !tileFrameIsPlain(tile) && bound.has(String(tile.id ?? tile._id))).length;
+  if (skewed) warn(`Experimental. ${skewed === 1 ? "One tile with regions is" : `${skewed} tiles with regions are`} rotated or scaled, so ${skewed === 1 ? "it is" : "they are"} left out of Floor regions. Reset ${skewed === 1 ? "it" : "them"} to trace ${skewed === 1 ? "it" : "them"}.`);
   const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: src, tiles, regions: scene?.regions });
   const map = pictures[0].plane;
   const loaded = await load(src, fitSize(sceneRect.width, sceneRect.height), { signal });

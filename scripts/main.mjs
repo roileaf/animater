@@ -1170,14 +1170,21 @@ const containsPlane = (region, point) => {
     return doc.testPoint({ x: point.x, y: point.y, elevation }) === true;
   } catch { return false; }
 };
-let planeStamp = 0;
-let planeCache = null;
-let planeCacheStamp = -1;
-const forgetPlanes = () => { planeStamp += 1; planeCache = null; };
+// Footsteps ask once per grid cell, so planes and region views are kept until a tile, region, scene or viewed level changes.
+let floorCache = null;
+const forgetPlanes = () => { floorCache = null; };
+const floorCacheHere = () => {
+  const level = canvas?.level?.id ?? "";
+  if (floorCache?.level !== level) floorCache = { level, planes: null, views: null };
+  return floorCache;
+};
 const planesHere = () => {
-  if (planeCache && planeCacheStamp === planeStamp) return planeCache;
+  const cache = floorCacheHere();
+  return (cache.planes ??= buildPlanes());
+};
+const buildPlanes = () => {
   const sceneRect = canvas?.dimensions?.sceneRect;
-  if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) { planeCacheStamp = planeStamp; planeCache = []; return planeCache; }
+  if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) return [];
   const tiles = [];
   for (const placeable of canvas?.tiles?.placeables ?? []) {
     const tile = placeable?.document ?? placeable;
@@ -1191,13 +1198,15 @@ const planesHere = () => {
       restrictions: { light: tile.restrictions?.light === true, weather: tile.restrictions?.weather === true },
     });
   }
-  planeCacheStamp = planeStamp;
   try {
-    planeCache = planesFrom({ levelId: canvas.level?.id ?? "", sceneRect, backgroundSrc: canvas.level?.background?.src ?? "", tiles });
-  } catch { planeCache = []; }
-  return planeCache;
+    return planesFrom({ levelId: canvas.level?.id ?? "", sceneRect, backgroundSrc: canvas.level?.background?.src ?? "", tiles });
+  } catch { return []; }
 };
-const floorViews = () => regionsHere().map((doc) => {
+const floorViews = () => {
+  const cache = floorCacheHere();
+  return (cache.views ??= buildFloorViews());
+};
+const buildFloorViews = () => regionsHere().map((doc) => {
   const own = { ...(doc.flags?.[ID] ?? {}) };
   const floor = regionFloor({ name: doc.name, flag: floorFlagOf(doc) });
   if (floor) own.floor = floor;

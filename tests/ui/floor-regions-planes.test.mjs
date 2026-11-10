@@ -306,3 +306,38 @@ test("a tile that fails to load leaves the map draft in place", async () => {
   assert.equal(app.plane.id.kind, "map");
   assert.equal(app.detect.proposals[0].id, "draft-mark");
 });
+
+test("a new cover takes the number after the highest one left, not a number still in use", () => {
+  const { plane } = planeOf([awningDoc], "awning");
+  const image = rgba(6, 4, (set) => { for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) set(x, y, 255); });
+  const proposals = traceSolid(image, 6, 4);
+  const kept = { id: "c2", name: "Overhead 2", flags: { animater: { imageRegion: { source: { kind: "tile", tileId: "awning" }, loops: [] } } } };
+  const { creates } = planFloorCreate({ proposals, picked: [row(proposals[0].id, "")], sceneRect, imageWidth: 6, imageHeight: 4, levelId, regions: [kept], plane });
+  assert.deepEqual(creates.map((data) => data.name), ["Overhead 3"]);
+});
+
+test("a tile turned after its regions were saved is named as turned, not missing", () => {
+  const turned = { ...deckDoc, id: "turned", name: "Turned", rotation: 45 };
+  const bound = { id: "r", flags: { animater: { floor: "wood", imageRegion: { source: { kind: "tile", tileId: "turned" }, loops: [] } } } };
+  const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: "map.png", tiles: [turned], regions: [bound] });
+  assert.deepEqual(pictures.map((picture) => picture.label), ["Map", "Turned (rotated or scaled)"]);
+  assert.equal(pictures.at(-1).plane.missing, true);
+});
+
+test("opening warns about a turned tile only when it has regions", async () => {
+  const turned = { ...deckDoc, id: "turned", name: "Turned", rotation: 45 };
+  const bound = { id: "r", flags: { animater: { floor: "wood", imageRegion: { source: { kind: "tile", tileId: "turned" }, loops: [] } } } };
+  class Quiet { async render() {} async close() {} }
+  const warned = async (regions) => {
+    const warnings = [];
+    await openFloorRegions({
+      src: "map.png", scene: { id: "scene", regions }, sceneRect, levelId, tiles: [turned], memory: null, autoMark: false, view: null,
+      Application: Quiet, notify() {}, warn: (message) => warnings.push(message),
+      detect: () => ({ proposals: [], reason: "" }),
+      load: async () => ({ ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 }),
+    });
+    return warnings.filter((message) => /rotated or scaled/.test(message));
+  };
+  assert.equal((await warned([])).length, 0);
+  assert.equal((await warned([bound])).length, 1);
+});
