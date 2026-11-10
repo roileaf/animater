@@ -18,7 +18,7 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * `shows(doc | null)` hears which region it shows now (null once closed), to outline it on the map.
  * Its heading drags it about the screen; it stays where it is put until it closes.
  */
-export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {}, brush = null }) {
+export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {}, brush = null, repairDecor = null }) {
   let shown = null;
   const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
   let box = null, open_ = null, saving = 0, drag = null;
@@ -79,7 +79,7 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0, brush };
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0, brush, repairDecor };
 
     const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));

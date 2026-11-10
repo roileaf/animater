@@ -4114,6 +4114,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-seg button:focus-visible { outline: 1px solid var(--color-warm-2, #d08a3e); outline-offset: 1px; }
 
 /* Decorations (region panel): the switch, the buttons and one row a kind: ticked, its size, how many. */
+.an-region-panel .an-rp-note { margin: 4px 0; font-size: 11px; font-style: italic; opacity: 0.7; }
 .an-region-panel .an-rp-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .an-region-panel .an-rp-buttons button { flex: 1 1 auto; padding: 3px 8px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(255, 255, 255, 0.07); color: inherit; cursor: pointer; }
 .an-region-panel .an-rp-buttons button:hover { border-color: var(--rp-gold); }

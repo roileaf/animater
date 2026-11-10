@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { moreSections, panelSections, summaryOf } from '../../scripts/ui/region-panel-model.mjs';
+import { SECTIONS } from '../../scripts/ui/region-panel-sections.mjs';
 import { decorSettings } from '../../scripts/engines/motion/decor-regions.mjs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
@@ -127,4 +128,39 @@ test('a region\'s own brush shows the bar with only its place and its ticked kin
   assert.match(bar, /if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\];/);
   assert.match(bar, /if \(!lock\) row\.append\(where\);/);
   assert.equal(brushChoices().kinds.length, 1);
+});
+
+const fakeDom = () => {
+  const make = (tag) => ({ tagName: tag.toUpperCase(), className: '', textContent: '', children: [], attrs: {}, listeners: {}, style: {}, value: '', type: '',
+    append(...k) { for (const c of k) if (typeof c === 'object') this.children.push(c); }, setAttribute(k, v) { this.attrs[k] = String(v); },
+    addEventListener(t, fn) { (this.listeners[t] ??= []).push(fn); } });
+  globalThis.document = { createElement: make };
+};
+const walk = function* (n) { yield n; for (const c of n.children ?? []) yield* walk(c); };
+const findIn = (parts, pred) => parts.flatMap((p) => [...walk(p)]).find(pred);
+test('Decorations can break: a switch saved in the decor flags, the scene warning, and Repair decorations', () => {
+  fakeDom();
+  const acts = [], repairs = [], doc = { parent: { flags: { animater: { breakableProps: false } } } };
+  const c = (decor, extra = {}) => ({ own: { decor: { on: true, kinds: {}, ...decor } }, act: (f) => acts.push(f), doc, repairDecor: (d) => repairs.push(d), ...extra });
+  let parts = SECTIONS.decor(c({}));
+  const sw = findIn(parts, (n) => n.attrs?.['aria-label'] === 'Decorations can break');
+  assert.equal(sw.attrs['aria-checked'], 'false');
+  sw.listeners.click[0]({}); assert.deepEqual(acts.pop(), { decor: { canBreak: true } });
+  assert.equal(findIn(parts, (n) => n.textContent === 'Repair decorations'), undefined);
+  parts = SECTIONS.decor(c({ canBreak: true }));
+  assert.ok(findIn(parts, (n) => /Breakable props is off for this scene/.test(n.textContent)));
+  findIn(parts, (n) => n.textContent === 'Repair decorations').listeners.click[0]({}); assert.equal(repairs[0], doc);
+  doc.parent.flags.animater.breakableProps = true;
+  assert.equal(findIn(SECTIONS.decor(c({ canBreak: true })), (n) => /Breakable props is off/.test(n.textContent)), undefined);
+  assert.ok(findIn(SECTIONS.decor({ ...c({}), own: { decor: { on: true, kinds: {} }, decorBroken: [{}] } }), (n) => n.textContent === 'Repair decorations'));
+  assert.equal(findIn(SECTIONS.decor(c({ canBreak: true }, { repairDecor: null })), (n) => n.textContent === 'Repair decorations'), undefined);
+  assert.match(read('scripts/main.mjs'), /repairDecor: \(doc\) => repairDecorRegionAsk\(doc\)/);
+  assert.match(read('scripts/ui/region-panel.mjs'), /repairDecor = null/);
+  assert.match(read('scripts/ui/region-panel.mjs'), /const c = \{[^\n]*\brepairDecor\b/);
+});
+test('both Repair broken props questions name decorations', () => {
+  const main = read('scripts/main.mjs');
+  assert.equal((main.match(/put its walls, doors, windows and decorations back/g) ?? []).length, 2);
+  assert.doesNotMatch(main, /put its walls, doors and windows back\?/);
+  assert.match(main, /put every broken prop, decoration, door and window in this scene back/);
 });

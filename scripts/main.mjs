@@ -2771,7 +2771,7 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
@@ -3769,7 +3769,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => askBlast() });
     add({ name: "animaterClearRubble", title: "Clear rubble: take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
       onChange: () => clearRubbleAsk() });
-    add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, door and window in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
+    add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, decoration, door and window in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
       onChange: () => repairPropsAsk() });
     add({ name: "animaterClearBlood", title: "Clear blood: wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
@@ -3833,7 +3833,7 @@ const repairPropsAsk = async () => {
   repairAsking = true;
   try {
     const scene = canvas.scene;
-    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors and windows back?</p>", rejectClose: false })) return;
+    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
     await repairAllProps(scene);
   } catch (e) { runtime?.trace("props", `repair: ${e?.message ?? e}`); } finally { repairAsking = false; }
 };
@@ -8088,6 +8088,16 @@ async function repairDecorRegion(regionDoc) {
   if (deleteRegions.length) await deletePropRegions(scene, deleteRegions);
   return cleared;
 }
+// The region panel's Repair decorations: the GM confirms, then the region's decorations are whole again.
+let decorRepairAsking = false;
+const repairDecorRegionAsk = async (doc) => {
+  if (decorRepairAsking || !game.user?.isGM || !doc) return;
+  decorRepairAsking = true;
+  try {
+    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair decorations" }, content: "<p>Put back every broken decoration in this region?</p>", rejectClose: false })) return;
+    await repairDecorRegion(doc);
+  } catch (e) { runtime?.trace("props", `repair decorations: ${e?.message ?? e}`); } finally { decorRepairAsking = false; }
+};
 // A region gone: its wrecks go on every screen, and the active GM takes its rubble away.
 function decorRegionGone(doc) {
   const prefix = decorIdPrefix(doc.id);
@@ -9437,7 +9447,7 @@ Hooks.once("init", () => {
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
     ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. Hidden, a region\'s Decorations section still has its own Brush.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
-    ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors and windows back, as the scene configuration\'s Repair button does.'],
+    ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
     ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
@@ -10691,7 +10701,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
       event.preventDefault();
-      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors and windows back?</p>", rejectClose: false })) return;
+      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
       await repairAllProps(app.document);
     });
     tab.append(...props.children);

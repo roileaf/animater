@@ -123,11 +123,14 @@ const decorSection = (c) => {
   parts.push(row('Where', seg([['surface', 'Outdoors'], ['cave', 'Underground']], where, (w) => act({ decor: { where: w, kinds: Object.fromEntries(DECOR_DEFAULT_KINDS[w].filter((id) => !decor.kinds?.[id]).map((id) => [id, { size: 1, amount: 1 }])) } }), 'Where'), 'Which kinds fit: trees and flowers outdoors; stalagmites, glowing mushrooms and cave pools underground.'));
   parts.push(range('How dense', DECOR_RANGE.density, Number(decor.density ?? 0.6), times, (v) => act({ decor: { density: v } }), 0.05, 'How many decorations the region holds, all kinds together.'));
   parts.push(range('Size', DECOR_RANGE.scale, Number(decor.scale ?? 1), times, (v) => act({ decor: { scale: v } }), 0.05, 'Every decoration bigger or smaller.'));
+  parts.push(toggle('Decorations can break', decor.canBreak === true, (now) => act({ decor: { canBreak: now } }), 'Crates, barrels, crystals, bushes, ferns, spiky plants, reeds, cobwebs, stalagmites and rock columns here break like breakable props: from area damage, missed swings beside the target, shoves and blasts. Needs the scene\'s Breakable props on.'));
+  if (decor.canBreak === true && doc?.parent?.flags?.animater?.breakableProps !== true) parts.push(element('div', 'an-rp-note', 'Breakable props is off for this scene: nothing breaks until it is on.'));
   const buttons = element('div', 'an-rp-buttons');
   buttons.append(
     tip(button('Reshuffle', '', () => act({ decor: { seed: (Number(decor.seed) || 0) + 1 } })), 'Scatter them again another way.'),
     ...(c.brush ? [tip(button('Brush', '', () => c.brush(doc)), 'Paint decorations onto this region by hand with the ticked kinds: drag on the map. Shift-drag rubs out. Right-click or Esc to stop.')] : []),
     tip(button('Clear by hand', '', () => act({ decor: { brushed: [], erased: [] } })), 'Take away the decorations painted by hand and let the scatter fill the rubbed-out places again.'),
+    ...(c.repairDecor && (decor.canBreak === true || own.decorBroken?.length > 0) ? [tip(button('Repair decorations', '', () => c.repairDecor(doc)), 'Put back every broken decoration in this region.')] : []),
   );
   parts.push(buttons);
   const list = element('div', 'an-rp-decor-kinds');
