@@ -60,6 +60,21 @@ const FREE_TURN = new Set(['bush', 'agave', 'fern', 'mushrooms', 'pebbles', 'gra
 export const turnOf = (d) => (DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
 /** How far a decoration's shadow reaches from it (pure): `height` in squares, `length` the sun's shadow length per unit of height. */
 export const shadowReach = (height, length, grid) => Math.max(0, height * length * grid * 0.5);
+// How high a light stands, in squares (a torch in a hand, a lantern on a post), for how long the shadows it throws are.
+export const LAMP_HEIGHT = 1.6;
+/**
+ * The shadow a light throws of a decoration (pure), or null: `d` it ({ x, y }), `height` its height in squares, `light`
+ * { x, y, radius, strength (against the sky, 0-1) }. Away from the light, as long as the thing is tall against the light's own
+ * height and as far as it stands from it (never past the light's reach), as dark as the light is strong and near.
+ */
+export function lampShadow(d, height, light, grid = 100) {
+  const dx = d.x - light.x, dy = d.y - light.y, dist = Math.hypot(dx, dy), radius = Number(light.radius) || 0, strength = Number(light.strength ?? 1) || 0;
+  if (!(radius > 0) || strength < 0.03 || dist >= radius || dist < grid * 0.15 || !(height > 0.04)) return null;
+  // (Close by, a light beside a big rock still throws a long shadow off it: never shorter than the thing is tall.)
+  const room = radius - dist, reach = Math.min(room, Math.max(height * grid * 0.9, (dist * height) / Math.max(0.25, LAMP_HEIGHT - Math.min(height, LAMP_HEIGHT - 0.25))));
+  const alpha = Math.min(1, strength) * (1 - dist / radius) ** 0.7;
+  return alpha < 0.03 ? null : { angle: Math.atan2(dy, dx), reach, alpha };
+}
 /** How much a crown over a creature opens (pure, 0 not at all - 1 fully): any creature within its reach. */
 export function crownOpen(d, creatures = [], grid = 100) {
   const reach = (d.size * 0.46 + 0.45) * grid;
@@ -111,7 +126,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     return { pic: pictures.get(p.key), scale: d.size / p.size };
   };
   const dropRegion = (r) => {
-    for (const s of r.sprites) { try { s.parent?.removeChild(s); s.destroy(); } catch { /* gone with the canvas */ } }
+    for (const s of r.sprites) { try { s.parent?.removeChild(s); s.destroy({ children: true }); } catch { /* gone with the canvas */ } }
     r.sprites = [];
     if (r.snow) { try { r.snow.mesh.parent?.removeChild(r.snow.mesh); r.snow.mesh.destroy(); for (const t of r.snow.textures) t.destroy(true); } catch { /* gone */ } r.snow = null; }
   };
@@ -142,6 +157,9 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
         contact.alpha = 0.5; r.castLayer = cast;
+        // The lights' shadows: a layer of their own, filled as the lights near them are told (lamps()).
+        const lampLayer = new PIXI.Container(); if (PIXI.BlurFilter) lampLayer.filters = [new PIXI.BlurFilter(g * 0.02), ...(Alpha ? [new Alpha(1)] : [])]; lampLayer.alpha = 0.6;
+        r.lampLayer = lampLayer; r.casters = [];
         for (const d of placements) {
           const role = decorRole(d, where); if (!role || role === 'cavern') continue;
           // (Standing ones take their snow from the snow layer over them, flat ones the ground's lying over them; a tree's crown has its own painted.)
@@ -151,6 +169,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
             // The cast one: an outer holder turned to the sun (to stretch), the silhouette inside turned to the decoration's own way.
             const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
             inner.addChild(sil); holder.addChild(inner); holder.decor = d; holder.inner = inner; holder.baseScale = sil.scale.x; holder.texture = pic.shadow; cast.addChild(holder); r.shadowSprites.push(holder);
+            r.casters.push({ d, pic, scale, height: DECOR_KINDS[d.kind].height, shadows: [] });
           }
           if (role === 'tree') {
             if (pic.trunk) r.sprites.push(ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)));
@@ -158,7 +177,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
           // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
           } else r.sprites.push((role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)));
         }
-        shadows().addChild(contact); shadows().addChild(cast); r.sprites.push(contact, cast);
+        shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
         if (where !== 'cave') { const standing = placements.filter((d) => decorRole(d, where) === 'standing').map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
         regions.set(spec.id, r); aim(r);
@@ -170,6 +189,24 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
       sun = now; canopyTrees = treesByCanopy;
       snow = { amount: Math.max(0, Math.min(1, Number(snowAmount) || 0)), toSun: now ? [Math.cos(now.angle + Math.PI), Math.sin(now.angle + Math.PI)] : [0, 0], z: now ? Math.max(0, Math.min(1, now.strength)) : 0, low: now ? Math.min(2.25, Math.max(0.35, now.length)) : 1, color: moon ? [0.72, 0.8, 1] : [1, 0.97, 0.9] };
       for (const r of regions.values()) { aim(r); if (r.snow) { snowUniforms(r.snow.uniforms); r.snow.mesh.visible = snow.amount > 0.01; } }
+    },
+    // The lights now ([{ x, y, radius, strength (against the sky) }]): each standing decoration near one throws a shadow away
+    // from it, the two nearest lights each. A few times a second, as lights move with the creatures carrying them.
+    lamps(list = []) {
+      const g = grid(), lights = list.filter((l) => l && l.radius > 0 && (l.strength ?? 1) > 0.03);
+      for (const r of regions.values()) {
+        if (!r.lampLayer) continue;
+        for (const c of r.casters) {
+          const near = lights.map((l) => lampShadow(c.d, c.height, l, g)).filter(Boolean).sort((a, b) => b.alpha - a.alpha).slice(0, 2);
+          // A holder each shadow, made when first wanted: an outer turned to the light (to stretch), the silhouette inside turned back.
+          while (c.shadows.length < near.length) { const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(c.pic.shadow), c.d, c.pic, c.scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c; inner.addChild(sil); holder.addChild(inner); holder.inner = inner; holder.width0 = c.pic.shadow.width * c.scale; r.lampLayer.addChild(holder); c.shadows.push(holder); }
+          c.shadows.forEach((h, i) => {
+            const s = near[i]; h.visible = !!s; if (!s) return;
+            h.position.set(c.d.x + Math.cos(s.angle) * s.reach * 0.5, c.d.y + Math.sin(s.angle) * s.reach * 0.5);
+            h.rotation = s.angle; h.scale.set(1 + (s.reach / Math.max(h.width0, 1)) * 0.9, 1); h.inner.rotation = turnOf(c.d) - s.angle; h.alpha = s.alpha;
+          });
+        }
+      }
     },
     creatures(list = []) { const g = grid(); for (const r of regions.values()) for (const c of r.crowns) open.set(c, crownOpen(c.decor, list, g)); },
     tick(seconds) {

@@ -2363,7 +2363,7 @@ let pondBedTexture = null;
 const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.destroyed) pondBedTexture = PIXI.Texture.fromBuffer(new Uint8Array([24, 58, 56, 255]), 1, 1); return pondBedTexture; };
 // What a region's decorations look like now: the season, rain and lying snow, night (what glows), underground.
 const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > 0.4 ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > 0.6 || settings.where === "cave", cave: settings.where === "cave" }; };
-let decorTreesKey = "";
+let decorTreesKey = "", decorLampsAt = 0;
 const syncDecorations = () => {
   if (!canvas?.ready) return;
   const list = [];
@@ -2444,9 +2444,11 @@ const startDecorBrush = (doc = null) => {
     if (decorBrushing === state) Object.assign(state, { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null });
   };
   // (A right-drag pans the map as ever; only a right-click that stays put stops the brush.)
-  const down = (e) => { if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; dab(p, e.shiftKey); };
-  const move = (e) => { const p = at(e); state.at = p; state.erasing = e.shiftKey; draw(); if (!state.down) return; e.stopPropagation(); if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); } };
-  const up = (e) => { if (!state.down) return; e.stopPropagation(); state.down = false; void finish(); };
+  // (Heard on the window before Foundry's canvas hears them, and kept from it while painting, so a stroke never draws
+  // Foundry's drag-select box or selects what it passes over.)
+  const down = (e) => { if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; dab(p, e.shiftKey); };
+  const move = (e) => { if (!state.down && e.target !== view) return; const p = at(e); state.at = p; state.erasing = e.shiftKey; draw(); if (!state.down) return; e.stopImmediatePropagation(); if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); } };
+  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; void finish(); };
   const key = (e) => {
     if (e.target?.closest?.("input, textarea")) return;
     // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
@@ -2466,8 +2468,8 @@ const startDecorBrush = (doc = null) => {
     draw();
   };
   const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
-  view.addEventListener("pointerdown", down, true); view.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
-  state.stop = () => { view.removeEventListener("pointerdown", down, true); view.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); } catch { /* gone */ } state.bar?.close(); };
+  window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
+  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); } catch { /* gone */ } state.bar?.close(); };
   if (!free) ui.notifications?.info?.("Decorations brush: drag to paint, Shift-drag to rub out, [ and ] to resize, right-click or Esc to stop.");
 };
 const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };
@@ -5525,7 +5527,11 @@ function skyTick() {
   if (cavern.busy) tickCavern(seconds, performance.now());
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
   // The decorations' crowns open over the creatures beneath them.
-  if (decorations.busy) { decorations.creatures(tokensOnFloor()); decorations.tick(seconds); }
+  if (decorations.busy) {
+    decorations.creatures(tokensOnFloor()); decorations.tick(seconds);
+    // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
+    decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
+  }
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.

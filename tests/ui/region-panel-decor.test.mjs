@@ -56,6 +56,9 @@ test('the Decorations tool sits in Animater\'s controls and can be hidden', () =
   assert.match(main, /const data = \{ name: "Decorations", color: "#7a9a4a", shapes: strokeShapes\(circles\)/);
   assert.match(main, /await canvas\.scene\.createEmbeddedDocuments\("Region", \[data\]\)/);
   assert.match(read('scripts/ui/settings-window.mjs'), /\{ local: "toolDecorate" \}/);
+  // A stroke is heard on the window first and kept from Foundry's canvas, so its drag-select box never shows.
+  assert.match(main, /window\.addEventListener\("pointerdown", down, true\); window\.addEventListener\("pointermove", move, true\)/);
+  assert.match(main, /if \(e\.button !== 0\) return; e\.stopImmediatePropagation\(\); e\.preventDefault\(\);/);
   // Panning (a right-drag) keeps the brush; a right-click that stays put stops it.
   assert.match(main, /if \(e\.button === 2\) \{ state\.rightAt = \{ x: e\.clientX, y: e\.clientY \}; return; \}/);
   assert.match(main, /Math\.hypot\(e\.clientX - from\.x, e\.clientY - from\.y\) > 6\) return;/);
