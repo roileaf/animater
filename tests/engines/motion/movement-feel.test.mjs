@@ -1036,14 +1036,33 @@ test('a flier’s shadow falls away from the light that outshines the day; none 
   const around = shadowFall({ width: 100, lift: 4, darkness: 1, lightHeight: 10, light: { strength: 0.8, angle: null } });
   assert.ok(around.dx === 0 && around.dy > 0 && around.alpha > 0, 'lit all round: straight under');
 });
-test('a Light orb in daylight casts its own shadow beside the sun’s, however faint its colour',async()=>{
+// Roi chose real light ratios ("Yes, use real ratios"): next to daylight a Light orb is nothing (some 20 lux against tens of
+// thousands); as the sky darkens it casts its own shadow, however faint its colour.
+test('a Light orb casts no shadow beside the day\'s sun, and its own as the sky darkens, however faint its colour',async()=>{
   const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
   // PF2e's Light spell: colour intensity 0.05, at the creature's shoulder (up and to the right).
   const light = lightAround({ x: 0, y: 0 }, [{ x: 30, y: -30, radius: 850, bright: 450, color: 0xe7f3f1, alpha: 0.05, elevation: 2.5 }], 1);
-  const { sun, lamp } = shadowFalls({ width: 100, body: 0.8, light, darkness: 0, lightHeight: 0.5, grounded: true });
-  assert.ok(sun.alpha > 0 && lamp?.alpha > 0.1, 'both shadows');
-  assert.ok(lamp.dx < 0 && lamp.dy > 0, 'away from the orb: down and to the left');
+  const day = shadowFalls({ width: 100, body: 0.8, light, darkness: 0, lightHeight: 0.5, grounded: true });
+  assert.ok(day.sun.alpha > 0 && day.lamp === null, 'by day: the sun\'s only');
+  const dusk = shadowFalls({ width: 100, body: 0.8, light, darkness: 0.7, lightHeight: 0.5, grounded: true, sun: { angle: -135, height: 8, strength: 0.6 } });
+  assert.ok(dusk.lamp?.alpha > 0.1, 'late dusk: the orb\'s own');
+  assert.ok(dusk.lamp.dx < 0 && dusk.lamp.dy > 0, 'away from the orb: down and to the left');
+});
+test('the floors, water and snow answer a light by its real share against the sky, wholly under a roof',async()=>{
+  const { readFileSync } = await import('node:fs');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const lampAgainstSky = \(x, y\) => \{[^\n]*return LIGHT_LUX\.lamp \/ \(LIGHT_LUX\.lamp \+ skyLux\(dark\)\); \};/);
+  assert.match(main, /strength = underCeiling\(\{ x: s\.x, y: s\.y \}\) \? 1 : lampAgainstSky\(s\.x, s\.y\);/);
+});
+test('real light: the sky by the darkness against a lamp\'s twenty lux',async()=>{
+  const { skyLux, LIGHT_LUX } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.ok(Math.abs(skyLux(0) - 100000) < 1, 'noon');
+  assert.ok(Math.abs(skyLux(0.4) - 398) < 2, 'a clear sunset, some 400 lux');
+  assert.ok(Math.abs(skyLux(1) - 0.1) < 1e-9, 'by night');
+  assert.ok(LIGHT_LUX.lamp / (LIGHT_LUX.lamp + skyLux(0)) < 0.001, 'a torch at noon: next to nothing');
+  assert.ok(Math.abs(skyLux(0.75) - 3.2) < 0.2, 'the end of civil twilight, some 3.4 lux');
+  assert.ok(LIGHT_LUX.lamp / (LIGHT_LUX.lamp + skyLux(0.75)) > 0.8, 'by then the torch is most of the light');
 });
 test('a big creature’s shadow is as dark as a small one’s, only bigger',async()=>{
   const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
@@ -1306,18 +1325,19 @@ test('in a light’s bright radius the shadow is dark and crisp; out in its dim 
   assert.ok(bright.soft <= 0.3, 'a close light: a little soft even when bright');
   assert.ok(shadowFall({ width: 100, lift: 4, darkness: 0 }).soft < bright.soft, 'full sun: crisper than any lamp');
 });
-test('every light casts its own shadow by its share: a torch barely shows by day, both at dusk, only the torch at night',async()=>{
+test('every light casts its own shadow by its share, as real light goes: none from a torch by day, both at dusk, only the torch at night',async()=>{
   const { shadowFalls } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const torch = { strength: 0.6, angle: 0, distance: 100, brightness: 1 }, sun = { angle: -135, height: 55, strength: 1 };
-  const at = (darkness) => shadowFalls({ width: 100, lift: 0.5, grounded: true, darkness, lightHeight: 1, light: torch, sun, grid: 100 });
-  const day = at(0), dusk = at(0.5), night = at(1);
-  assert.ok(day.sun.alpha > 0.5 && day.lamp && day.lamp.alpha < day.sun.alpha / 2, 'day: the sun’s dark, the torch’s clearly fainter');
-  assert.ok(dusk.sun && dusk.lamp && dusk.lamp.alpha > day.lamp.alpha, 'dusk: both, the torch’s stronger');
+  const at = (darkness) => shadowFalls({ width: 100, lift: 0.5, grounded: true, darkness, lightHeight: 1, light: { ...torch, strength: darkness > 0.45 ? 1 : torch.strength }, sun, grid: 100 });
+  const day = at(0), sunset = at(0.4), dusk = at(0.5), night = at(1);
+  assert.ok(day.sun.alpha > 0.5 && day.lamp === null, 'day: the sun’s only');
+  assert.equal(sunset.lamp, null, 'a clear sunset: a torch still only glows');
+  assert.ok(dusk.sun && dusk.lamp, 'dusk: both');
   assert.equal(night.sun, null, 'night: no sun');
   assert.ok(night.lamp.alpha > dusk.lamp.alpha);
-  assert.ok(day.lamp.dx < 0 && day.sun.dx > 0, 'each away from its own light');
+  assert.ok(dusk.lamp.dx < 0 && dusk.sun.dx > 0, 'each away from its own light');
   // A light giving under a tenth of the light casts none.
-  assert.equal(shadowFalls({ width: 100, lift: 0.5, grounded: true, darkness: 0, lightHeight: 1, light: { ...torch, strength: 0.1 }, sun, grid: 100 }).lamp, null);
+  assert.equal(shadowFalls({ width: 100, lift: 0.5, grounded: true, darkness: 0.6, lightHeight: 1, light: { ...torch, strength: 0.1 }, sun, grid: 100 }).lamp, null);
 });
 test('a creature lit by the sun and a torch gets a second shadow, gone again when the torch is',async()=>{
   const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');

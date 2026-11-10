@@ -222,6 +222,11 @@ export function downdraft(floor, at, { seed = '', grid = 100, width = grid, land
 // The shadow a flier casts on the creatures below it: as wide as the flier, cast down and to the right (light from the
 // top left) further the higher it flies, and fainter. Drawn only on creatures; the floor keeps the small shadow at its
 // feet (shadowGeometry), which stays readable under any art.
+// Real light, in lux, for weighing the sun against a light source: open sky by the scene's darkness, about 100,000 at noon
+// (0), 400 at a clear sunset (0.4), 0.1 by night (1); the moon a few tenths; a torch, lantern or light spell about 20 at its
+// bright edge (a 300-lumen lantern a square off gives some 10). From published daylight and lamp figures (lux tables).
+export const LIGHT_LUX = Object.freeze({ noon: 100000, lamp: 20, moon: 0.25 });
+export const skyLux = (darkness) => Math.pow(10, 5 - 6 * Math.min(1, Math.max(0, Number(darkness) || 0)));
 export function castShadowGeometry({ x, y, width, lift = 0, distance = 5, grid = 100 }) {
   const h = Math.min(12, Math.max(0, Number(lift) || 0) / (distance || 5)), w = Number(width) || grid;
   return { x: x + w * 0.1 * h, y: y + w * (0.3 + 0.1 * h), rx: w * 0.65, ry: w * 0.55, alpha: Math.max(0.3, 0.65 - 0.025 * h), width: w, lift: h };
@@ -244,6 +249,9 @@ export function shadowFalls({ width, lift = 0, body, light = null, lights = null
   const w = Number(width) || 100, g = Number(grid) || 100, dark = Math.min(1, Math.max(0, Number(darkness) || 0));
   // The moon (sky.moon) shines by night: darkness is its time, not a reason to fade.
   const sun = sky ? (sky.moon ? 1 : Math.max(0, 1 - dark * 1.2)) * Math.min(1, Math.max(0, Number(sky.strength) || 0)) : 0;
+  // How much of the light there each gives, as real light goes (lux): the sky by the darkness, the moon faint, a lamp by
+  // its strength there (LIGHT_LUX). A torch beside the noon sun is nothing; by dusk it shows; by night it is all there is.
+  const skyShare = sun > 0 ? (sky.moon ? LIGHT_LUX.moon : skyLux(dark)) * Math.min(1, Math.max(0, Number(sky.strength) || 0)) : 0;
   // How tall the creature stands (`body`, squares; a standing creature's is its `lift` when not given), the top of it,
   // and the height its shadow is thrown from: a standing creature's whole height from its feet, a flier's middle.
   const tall = Math.max(0, Number.isFinite(body) ? body : grounded ? Number(lift) || 0 : 0), up = grounded ? 0 : Math.max(0, Number(lift) || 0);
@@ -255,9 +263,9 @@ export function shadowFalls({ width, lift = 0, body, light = null, lights = null
   const lamps = (Array.isArray(lights) ? lights : light ? [{ ...light, height: lightHeight }] : []).map((l) => {
     const lh = Math.max(1.5, Number(l?.height) || 0), shines = Number(l?.shine ?? l?.strength) || 0;
     // A creature standing taller than the light (a dragon by a torch) still throws one, from its body below the light.
-    return l && shines >= 0.08 && (grounded || lh > top) ? { l, lh, cast: grounded ? Math.min(h, 0.75 * lh) : h, shines, share: Math.min(1, shines) * (0.45 + 0.55 * dark) } : null;
+    return l && shines >= 0.08 && (grounded || lh > top) ? { l, lh, cast: grounded ? Math.min(h, 0.75 * lh) : h, shines, share: Math.min(1, shines) * LIGHT_LUX.lamp } : null;
   }).filter(Boolean);
-  const total = sun + lamps.reduce((sum, lamp) => sum + lamp.share, 0);
+  const total = skyShare + lamps.reduce((sum, lamp) => sum + lamp.share, 0);
   // Each shadow's strength by its light's share: the main one whole, a light giving under a tenth casts none.
   const weight = (part) => (total > 0 && part / total >= 0.1 ? Math.min(1, part / total / 0.6) : 0);
   // One rule for every shadow: `length` is how far the light really throws it (from a standing creature's feet, or
@@ -290,7 +298,7 @@ export function shadowFalls({ width, lift = 0, body, light = null, lights = null
     return { key, ...fall(l.angle, (Number(l.distance) || w) * (cast / (lh - cast)), vis, soft) };
   });
   // The sun: as far as its height throws the creature's.
-  if (sun > 0 && weight(sun) > 0) sunFall = fall(sky.angle, sunReach(h * g, sky.height), sun * weight(sun), 0.1 + 0.5 * (1 - sun));
+  if (sun > 0 && weight(skyShare) > 0) sunFall = fall(sky.angle, sunReach(h * g, sky.height), sun * weight(skyShare), 0.1 + 0.5 * (1 - sun));
   const strongest = lampFalls.reduce((best, f) => (!best || f.alpha > best.alpha ? f : best), null);
   const { key: _key, ...lampFall } = strongest ?? {};
   return { sun: sunFall, lamp: strongest ? lampFall : null, lamps: lampFalls };

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Light sources against the sun, as real light goes.** A torch, lantern or Light spell is tiny beside daylight, so it no longer throws a second shadow at noon or lights up the floor, water and snow around it. From dusk it begins to show, and by night it is all the light there is. Under a roof, where daylight doesn't reach, a light keeps its full strength at any hour.
 - **A deleted tile leaves nothing behind.** Deleting or hiding a ship tile left its deck's painted floor, its shadow and its cut in the sea behind on the water. A floor region traced on a tile now draws nothing while that tile is gone or hidden, and the water reflects and creatures wade there again. The region itself is kept, so showing a hidden tile again brings the deck back.
 - **Floor regions on a ship tile.** Floor regions can trace a tile as well as the map. A deck is the floor underfoot. An awning keeps the rain and the sun off whatever is below it, and the deck's drawing sits on the tile. A tile that is rotated or scaled is left out, because its outline would land in the wrong place. A token a fraction off the deck's height, such as 10.5 on a deck at 10, still walks the deck.
 - **Waves break on a ship.** Tick **Animater: waves break on it** in a tile's configuration (Appearance), and the sea's waves crash white along that tile's picture on the side they come from, a stretch at a time with each wave, while its far side lies calm. For a ship or a rock tile standing in moving sea. It follows the tile when it is moved or turned. Off unless ticked.

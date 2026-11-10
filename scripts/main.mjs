@@ -29,7 +29,7 @@ import {underwaterPose,underwaterTint} from './engines/motion/underwater-appeara
 import { creatureGait, creatureBulk, creatureBody, creatureFlight, printShape } from "./engines/motion/creature-gait.mjs";
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
-import { movementSound, movementEnvironment, outOfWater, swimOutWaypoints, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
+import { movementSound, movementEnvironment, outOfWater, swimOutWaypoints, shadowFall, standingCopyFall, LIGHT_LUX, skyLux } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
@@ -2352,7 +2352,11 @@ const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer(
 const sunReachNow = () => { const r = canvas.dimensions?.sceneRect; return r ? { sunlit: wallShadows.sunlit?.texture ?? globalThis.PIXI.Texture.WHITE, trees: canopyLight.treeShade ?? globalThis.PIXI.Texture.EMPTY, rect: [r.x, r.y, r.width, r.height] } : null; };
 const plainFloorOf = (region) => regionFloor({ name: region.name, flag: plainFloorFlag(region.flags?.[ID] ?? {}) });
 // The lit lights the floors answer: what is out by day is not active, and the scene's overall light is no flame.
-const floorLightSources = () => { const out = []; for (const s of canvas.effects?.lightSources ?? []) { if (!s.active || s.sourceId === "globalLight" || s.isDarkness) continue; out.push({ x: s.x, y: s.y, radius: s.radius || s.data?.dim || 0, color: s.colorRGB ?? null, strength: 1 }); } return out; };
+// The lights the floors, water and snow answer. Each as strong as it really is against the sky there (movement-feel.mjs
+// LIGHT_LUX): a torch is nothing beside the noon sun, shows from dusk and is all the light by night; under a roof, where
+// daylight does not reach, always its whole.
+const lampAgainstSky = (x, y) => { let dark = Number(canvas.environment?.darknessLevel) || 0; try { dark = canvas.effects?.getDarknessLevel?.({ x, y }, canvas.level?.elevation?.base ?? 0) ?? dark; } catch { /* the scene's */ } return LIGHT_LUX.lamp / (LIGHT_LUX.lamp + skyLux(dark)); };
+const floorLightSources = () => { const out = []; for (const s of canvas.effects?.lightSources ?? []) { if (!s.active || s.sourceId === "globalLight" || s.isDarkness) continue; let strength = 1; try { strength = underCeiling({ x: s.x, y: s.y }) ? 1 : lampAgainstSky(s.x, s.y); } catch { /* whole */ } out.push({ x: s.x, y: s.y, radius: s.radius || s.data?.dim || 0, color: s.colorRGB ?? null, strength }); } return out; };
 // Whether a region's middle is under a roof, where the sun and moon don't reach.
 const roofedRegion = (areas) => { let x = 0, y = 0, n = 0; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x += area[i]; y += area[i + 1]; n++; } return n > 0 && underCeiling({ x: x / n, y: y / n }); };
 // What this screen's quality level (core/quality.mjs) leaves of the floors, kept for the frame's tick.
