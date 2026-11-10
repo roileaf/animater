@@ -3399,6 +3399,37 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-dmg-linger{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
 .animater .an-dmg-linger-buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .animater .an-dmg-linger-buttons button{margin:0;height:30px;font-size:12px}
+#animater-animal-hud{position:fixed;left:0;top:0;width:0;height:0;z-index:40;pointer-events:none;color:#e9e4d8;font-size:13px}
+#animater-animal-hud::before{content:"";position:absolute;left:-30px;top:-30px;width:60px;height:60px;border:1.5px dashed #e9c46a;border-radius:50%;box-sizing:border-box}
+#animater-animal-hud .an-ahud-name{position:absolute;left:0;top:-58px;transform:translate(-50%,-100%);white-space:nowrap;text-align:center;background:rgba(20,19,17,.9);border:1px solid #4a473f;border-radius:6px;padding:3px 9px;display:flex;flex-direction:column;line-height:1.25}
+#animater-animal-hud .an-ahud-name small{font-size:11px;color:#cfc6b2}
+#animater-animal-hud .an-ahud-col{position:absolute;top:-58px;display:flex;flex-direction:column;gap:6px;pointer-events:auto}
+#animater-animal-hud .an-ahud-left{right:40px}
+#animater-animal-hud .an-ahud-right{left:40px}
+#animater-animal-hud .an-ahud-btn{width:36px;height:36px;margin:0;padding:0;display:grid;place-items:center;font-size:15px;color:#e9e4d8;background:rgba(43,42,39,.92);border:1px solid #4a473f;border-radius:6px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+#animater-animal-hud .an-ahud-btn:hover{border-color:#e9c46a;color:#fff}
+#animater-animal-hud .an-ahud-btn.active{background:#3a2f22;border-color:#e9c46a;color:#f3d9ad}
+#animater-animal-hud .an-ahud-pick{position:absolute;left:0;top:46px;transform:translateX(-50%);white-space:nowrap;background:rgba(20,19,17,.92);border:1px solid #e9c46a;border-radius:6px;padding:3px 9px;font-size:11px;color:#f3d9ad}
+#token-hud .an-tshud-button.active{color:#d8c4ff;border-color:#b18cff;box-shadow:0 0 6px rgba(177,140,255,.6)}
+#token-hud .col.left{position:relative}
+#token-hud .an-tshud-palette{position:absolute;right:calc(100% + 10px);top:0;width:290px;max-height:460px;display:flex;flex-direction:column;gap:7px;padding:10px;background:rgba(20,19,17,.94);border:1px solid #4a473f;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.55);color:#e9e4d8;font-size:13px;pointer-events:all;z-index:5;text-align:left}
+#token-hud .an-tshud-head{display:flex;justify-content:space-between;align-items:baseline}
+#token-hud .an-tshud-head small,#token-hud .an-tshud-label,#token-hud .an-tshud-hint{font-size:11px;color:#a9a294}
+#token-hud .an-tshud-on{display:flex;flex-wrap:wrap;gap:5px}
+#token-hud .an-tshud-palette button{width:auto;height:auto;margin:0;line-height:1.3;font-size:12px;color:inherit;background:#2b2a27;border:1px solid #4a473f;border-radius:6px;padding:4px 8px;cursor:pointer;text-align:left;box-shadow:none}
+#token-hud .an-tshud-palette button:hover{border-color:#b18cff;background:#33302b}
+#token-hud .an-tshud-palette .an-tshud-chip{background:#3a2f4f;border-color:#b18cff;color:#e4d7ff}
+#token-hud .an-tshud-search{width:100%;height:28px;font-size:12px;background:#1b1a17;color:#e9e4d8;border:1px solid #4a473f;border-radius:6px;padding:0 8px}
+#token-hud .an-tshud-tabs{display:flex;flex-wrap:wrap;gap:4px}
+#token-hud .an-tshud-palette .an-tshud-tab{padding:2px 7px;font-size:11px;background:transparent;border-color:transparent;color:#a9a294}
+#token-hud .an-tshud-palette .an-tshud-tab.is-active{background:#3a3730;color:#e9e4d8}
+#token-hud .an-tshud-list{display:grid;grid-template-columns:1fr 1fr;gap:5px;overflow-y:auto;min-height:0}
+#token-hud .an-tshud-empty{grid-column:1/-1;margin:4px 0;color:#a9a294;font-size:12px}
+.animater .an-dmg-friend{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
+.animater .an-dmg-friend>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--an-muted,#8f8c99)}
+.animater .an-dmg-friend .an-hint{margin:0;font-size:11px}
+.animater .an-dmg-friend label{display:flex;flex-direction:column;gap:4px;font-size:12px}
+.animater .an-dmg-friend>button{margin:0;height:30px;font-size:12px}
 .animater .an-dmg-wound{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
 .animater .an-dmg-wound>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--an-muted,#8f8c99)}
 .animater .an-dmg-wound .an-hint{margin:0;font-size:11px}
@@ -3995,10 +4026,18 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-floors-zoom output { min-width: 46px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
 .an-floors-canvas { position: relative; flex: 1; min-height: 0; display: flex; background: radial-gradient(circle at 50% 40%, #151925 0, #0b0d12 70%); }
 .an-floors-frame { flex: 1; min-height: 200px; min-width: 0; overflow: auto; overscroll-behavior: contain; touch-action: none; }
-.an-floors-stage { display: flex; width: max-content; min-width: 100%; min-height: 100%; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+.an-floors-stage { position: relative; display: flex; width: max-content; min-width: 100%; min-height: 100%; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
 .an-floors-preview { display: block; flex: none; max-width: none; max-height: none; cursor: crosshair; border-radius: 4px; box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 10px 40px rgba(0,0,0,.6); }
 .an-floors-status { position: absolute; left: 14px; bottom: 14px; z-index: 3; max-width: calc(100% - 28px); margin: 0; padding: 7px 12px; border: 1px solid var(--fl-line); border-radius: 8px; background: rgba(13,15,21,.86); backdrop-filter: blur(6px); font-size: 12px; line-height: 1.4; color: var(--fl-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }
 .an-floors-add-status { position: absolute; top: 12px; left: 50%; z-index: 4; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 28px); padding: 8px 8px 8px 14px; border: 1px solid color-mix(in srgb, var(--fl-accent) 45%, var(--fl-line)); border-radius: 10px; background: rgba(20,23,32,.94); backdrop-filter: blur(6px); box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.an-floors-frame.is-working, .an-floors-frame.is-working .an-floors-preview { cursor: progress; }
+.an-smart-working { position: absolute; z-index: 2; width: 0; height: 0; pointer-events: none; }
+.an-smart-working[hidden] { display: none; }
+.an-smart-working i { position: absolute; left: -21px; top: -21px; width: 42px; height: 42px; box-sizing: border-box; border: 4px solid rgba(255,255,255,.18); border-top-color: var(--fl-accent, #b29aff); border-right-color: var(--fl-accent, #b29aff); border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 0 14px rgba(178,154,255,.55); animation: an-smart-spin .7s linear infinite; }
+.an-smart-working i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px rgba(0,0,0,.5); }
+.an-smart-working span { position: absolute; left: 28px; top: -12px; padding: 3px 9px; white-space: nowrap; border-radius: 6px; background: rgba(13,15,21,.9); border: 1px solid var(--fl-line, rgba(255,255,255,.15)); color: var(--fl-text, #e9ebf2); font-size: 12px; line-height: 18px; }
+@keyframes an-smart-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .an-smart-working i { animation-duration: 2.4s; } }
 .animater-floors .an-floors-row[data-needs-floor] .an-row-name strong { color: #e8b75a; font-style: italic; }
 .an-size-pick:not([hidden]) { position: absolute; right: 14px; bottom: 14px; z-index: 3; display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border: 1px solid var(--fl-line); border-radius: 8px; background: rgba(13,15,21,.86); backdrop-filter: blur(6px); }
 .animater-floors .an-floors .an-size-pick button { height: 26px; padding: 0 8px; font-size: 12px; white-space: nowrap; border-color: transparent; background: transparent; color: var(--fl-muted); }

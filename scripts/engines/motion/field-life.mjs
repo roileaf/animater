@@ -5,6 +5,7 @@
 
 import { noiseReaching, shadowKeeper, overOpen, NOISE_SPEED, resettled, nearestSpot, edgeArrival, edgeExit, crossesKept } from './wildlife.mjs';
 import { batWingbeat } from './vermin.mjs';
+import { orderAim, orderPrep } from './animal-orders.mjs';
 
 const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
@@ -485,7 +486,7 @@ export const batLamps = (lights = [], open = () => true) => lights.filter((l) =>
  * noise({ x, y, radius }); scare(); clear(). `prey`: the rabbits, { list, spook(rabbit, from), take(rabbit) } (wildlife.mjs).
  */
 export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, highShadow = floor, restyle = null }) {
-  let trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], homes = {}, area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, batSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
+  let heldBody = null, trees = [], squirrels = [], snakes = [], squirrelSize = 1, snakeSize = 1, packFeeds = 0, fetchIn = 0, deerIn = 0, wolves = [], wolfSize = 1, deer = [], foxes = [], flies = [], drags = [], lights = [], bats = [], owl = null, noises = [], spots = [], homes = {}, area = null, grid = 100, deerSize = 1, foxSize = 1, insectSize = 1, birdSize = 1, batSize = 1, time = 0, scared = 0, shownDay = 0, look = 0, art = {};
   const texOf = (c) => PIXI.Texture.from(c), group = (o, f) => (Array.isArray(o) ? o.map(f) : Object.fromEntries(Object.entries(o).map(([k, v]) => [k, group2(v, f)]))), group2 = (v, f) => (Array.isArray(v) ? v.map(f) : f(v));
   const lazily = (key, make) => { const had = art[key]; const sample = had && (had.doe?.look?.[0] ?? had.trot?.[0] ?? had[0]?.[0] ?? had[0]); if (!had || sample?.baseTexture?.destroyed) art[key] = make(); return art[key]; };
   // Each set in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here.
@@ -548,6 +549,35 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       const leave = (o) => { if (o.placed !== id) return true; gone(o.body, o.shadow, o.carry); return false; };
       deer = deer.filter(leave); foxes = foxes.filter(leave); wolves = wolves.filter(leave); squirrels = squirrels.filter(leave); snakes = snakes.filter(leave);
     },
+    // The orders on the animals put down by hand (animal-orders.mjs): `orders` placed id → order or null.
+    orders(orders = new Map()) {
+      for (const o of [...deer, ...foxes, ...wolves, ...squirrels, ...snakes]) {
+        if (o.placed === undefined) continue;
+        const order = orders.get(o.placed) ?? null;
+        if (JSON.stringify(order) !== JSON.stringify(o.order ?? null)) { o.order = order; o.chasing = false; o.orderPhase ??= Math.random() * TAU; }
+      }
+    },
+    // The animal drawn nearest a point within `reach` px (the GM's HUD): { kind, id (placed) or null, x, y, ref }. Not a
+    // deer brought down.
+    pick(x, y, reach = grid * 0.5) {
+      let best = null, far = reach;
+      for (const [kind, list] of [['deer', deer], ['fox', foxes], ['wolf', wolves], ['squirrel', squirrels], ['snake', snakes]]) for (const o of list) {
+        if (!o.body?.visible || o.mode === 'dead') continue;
+        const d = Math.hypot(o.body.position.x - x, o.body.position.y - y);
+        if (d < far) { far = d; best = { kind, id: o.placed ?? null, x: o.body.position.x, y: o.body.position.y, ref: o, order: o.order ?? null }; }
+      }
+      return best;
+    },
+    // A wild one taken off this screen (it is put down again by hand, ordered, in its place). Known by its picture: each
+    // step makes a new object for it.
+    takeAway(ref) {
+      const lists = { deer, foxes, wolves, squirrels, snakes };
+      for (const [name, list] of Object.entries(lists)) { const o = list.find((q) => q.body === ref?.body); if (!o) continue; gone(o.body, o.shadow, o.carry); const left = list.filter((q) => q !== o); if (name === 'deer') deer = left; else if (name === 'foxes') foxes = left; else if (name === 'wolves') wolves = left; else if (name === 'squirrels') squirrels = left; else snakes = left; return true; }
+      return false;
+    },
+    // Held still while the GM has its HUD open (null lets it go on): by its picture.
+    hold(ref) { heldBody = ref?.body ?? null; },
+    where(ref) { for (const list of [deer, foxes, wolves, squirrels, snakes]) { const o = list.find((q) => q.body === ref?.body); if (o) return { x: o.body.position.x, y: o.body.position.y, order: o.order ?? null, id: o.placed ?? null }; } return null; },
     resettle({ spots: land = [], homes: own = {}, closed = () => false, random = Math.random } = {}) {
       spots = land; homes = own; if (!land.length) return;
       const home = land[Math.floor(random() * land.length)], near = land.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < grid * 5);
@@ -571,9 +601,14 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { near = [], ok = () => true, blocked = () => false, kept = () => false, seen = () => true, day = 1, night = 0, warm = true, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, indoors = () => false, canopy = () => false, cast = null, prey = null, lamps = () => [], birdBody = 1, liftShadow = () => {} } = {}) {
+    tick(seconds, { near = [], ok = () => true, blocked = () => false, kept = () => false, seen = () => true, day = 1, night = 0, warm = true, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, indoors = () => false, canopy = () => false, cast = null, prey = null, lamps = () => [], birdBody = 1, liftShadow = () => {}, tokenAt = () => null } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
+      // An ordered one (animal-orders.mjs) set on its way first; it is not put off by people, nor off hunting.
+      const steered = (kind, o) => (o.order ? orderPrep(kind, o, orderAim(o.order, { tokenAt, grid, time, phase: o.orderPhase ?? 0, from: o }), { grid }) : o);
+      const calmOr = (o, v, quiet = null) => (o.order ? quiet : v);
+      // Its HUD open: it stays just as it is (drawn where it was).
+      const held = (o) => heldBody !== null && o.body === heldBody;
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
       const heard = (o) => (noises.length ? noiseReaching(noises, o.x, o.y, { grid }) : null), scare = scared > 0;
       shownDay += Math.max(-dt, Math.min(dt, (day - shownDay) * 2)); const alpha = Math.max(0, Math.min(1, shownDay));
@@ -586,10 +621,13 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
       // Wolves keep every hour, by night as by day.
       if (wolves.length) {
         const sets = wolfTex(), fires = lamps(), leaderBefore = wolves[0], prey2 = alpha > 0.01 && deer.filter((d) => d.mode === 'dead').length < 3 ? deer.filter((d) => d.mode !== 'dead') : []; let killed = null, killer = 0;
-        wolves = wolves.map((w0, i) => {
+        wolves = wolves.map((q0, i) => {
+          if (held(q0)) return { ...q0 };
+          let w0 = steered('wolf', q0);
           const off = area && (w0.x < area.x || w0.y < area.y || w0.x > area.x + area.width || w0.y > area.y + area.height);
-          if (off && ['trot', 'rest', 'flee'].includes(w0.mode)) { const to = nearestSpot(w0.x, w0.y, homeOf('wolves')); if (to) { w0 = { ...w0, mode: 'arrive', t: 0, tx: to.x, ty: to.y }; } }
-          const w = wolfStep(w0, { dt, grid, near, blocked: off ? () => false : blocked, kept: (x, y) => kept('wolves', x, y), scare, noise: heard(w0), fires, prey: prey2, leader: i ? leaderBefore : null, time, ok: (x, y) => ok('wolves', x, y) });
+          if (off && !w0.order && ['trot', 'rest', 'flee'].includes(w0.mode)) { const to = nearestSpot(w0.x, w0.y, homeOf('wolves')); if (to) { w0 = { ...w0, mode: 'arrive', t: 0, tx: to.x, ty: to.y }; } }
+          // (A pack goes along with its first, ordered or not; an ordered one follows nobody but its order.)
+          const w = wolfStep(w0, { dt, grid, near: calmOr(w0, near, []), blocked: off ? () => false : blocked, kept: (x, y) => kept('wolves', x, y), scare: calmOr(w0, scare, false), noise: calmOr(w0, heard(w0)), fires: calmOr(w0, fires, []), prey: calmOr(w0, prey2, []), leader: i && !w0.order ? leaderBefore : null, time, ok: (x, y) => ok('wolves', x, y) });
           if (!i) { const call = wolfCallNow({ was: w0.mode, mode: w.mode, night, pack: wolves.length, dt }); if (call) sound(call, w, false); }
           { const g = wolfGrowlNow(w, near, grid); w.warned = g.warned; if (g.growl) sound('wolfGrowl', w, true); }
           // Each wolf gets one try in a hunt, when it comes up with one.
@@ -626,8 +664,10 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
         }
       }
       if (alpha > 0.01) {
-        if (squirrels.length) { const sets = squirrelTex(); squirrels = squirrels.map((s0) => {
-          const s = squirrelStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), trees, ok: (x, y) => ok('squirrels', x, y), within: onMap });
+        if (squirrels.length) { const sets = squirrelTex(); squirrels = squirrels.map((q0) => {
+          if (held(q0)) return { ...q0 };
+          const s0 = steered('squirrel', q0);
+          const s = squirrelStep(s0, { dt, grid, near: calmOr(s0, near, []), blocked, scare: calmOr(s0, scare, false), noise: calmOr(s0, heard(s0)), trees, ok: (x, y) => ok('squirrels', x, y), within: onMap });
           // A chatter as it races for cover, and now and then a scolding from up in its tree.
           if (s.mode === 'race' && s0.mode !== 'race') sound('squirrelChatter', s, true);
           else if (s.mode === 'hide' && Math.random() < dt * 0.04) sound('squirrelChatter', s, false);
@@ -636,8 +676,10 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           put(s.shadow, tex, s.x + c.dx, s.y + c.dy, s.a, size, Math.min(0.5, c.alpha * 0.55) * alpha); put(s.body, tex, s.x, s.y, s.a, size, alpha);
           return s;
         }); }
-        if (snakes.length) { const sets = snakeTex(); snakes = snakes.map((s0) => {
-          const s = snakeStep(s0, { dt, grid, near, blocked, scare, noise: heard(s0), time, ok: (x, y) => ok('snakes', x, y), within: onMap });
+        if (snakes.length) { const sets = snakeTex(); snakes = snakes.map((q0) => {
+          if (held(q0)) return { ...q0 };
+          const s0 = steered('snake', q0);
+          const s = snakeStep(s0, { dt, grid, near: calmOr(s0, near, []), blocked, scare: calmOr(s0, scare, false), noise: calmOr(s0, heard(s0)), time, ok: (x, y) => ok('snakes', x, y), within: onMap });
           // A hiss as it is disturbed; none from a snake gone in out of the cold.
           if (warm && s.mode === 'flee' && s0.mode !== 'flee') sound('snakeHiss', s, true);
           if (!warm || !can(s, s.x, s.y)) { hide(s); return s; }
@@ -646,7 +688,9 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           return s;
         }); }
         const t = deer.length ? herd() : null;
-        deer = deer.map((o0) => {
+        deer = deer.map((d0) => {
+          if (held(d0)) return { ...d0 };
+          const o0 =d0.mode === 'dead' ? d0 : steered('deer', d0);
           // Brought down: it lies there, or goes along in the jaws of the wolf hauling it, and off the map with it. Dropped when that wolf is driven off, it stays where it fell.
           if (o0.mode === 'dead') {
             const o = { ...o0, t: o0.t + dt }, puller = o.kill ? wolves[0] : null;
@@ -658,7 +702,7 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
             put(o.shadow, tex, o.x + sun.x * grid * 0.03, o.y + sun.y * grid * 0.03, o.a, size, 0.25 * alpha); put(o.body, tex, o.x, o.y, o.a, size, alpha);
             return o;
           }
-          const o = deerStep(o0, { dt, grid, near: alarmed(o0), blocked: area && (o0.x < area.x || o0.y < area.y || o0.x > area.x + area.width || o0.y > area.y + area.height) ? () => false : blocked, scare, noise: heard(o0), ok: (x, y) => ok('deer', x, y) });
+          const o = deerStep(o0, { dt, grid, near: calmOr(o0, alarmed(o0), []), blocked: area && (o0.x < area.x || o0.y < area.y || o0.x > area.x + area.width || o0.y > area.y + area.height) ? () => false : blocked, scare: calmOr(o0, scare, false), noise: calmOr(o0, heard(o0)), ok: (x, y) => ok('deer', x, y) });
           // A call as it starts away, and now and then one to the herd as it grazes.
           if (o.mode === 'flee' && o0.mode !== 'flee') sound('deerCall', o, true);
           else if (o.mode !== 'flee' && Math.random() < dt * 0.006) sound('deerCall', o, false);
@@ -675,9 +719,11 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           else deer.push({ ...way.from, clear: way.clear, tx: way.to.x, ty: way.to.y, a: Math.atan2(way.to.y - way.from.y, way.to.x - way.from.x) + Math.PI / 2, mode: 'arrive', t: 0, wait: 0, buck: false, way: 0, want: 0, v: 0, gait: 0, lift: 1, h: 0, step: Math.random() * 6, ...pair(floor(), herd().doe.look[0]) });
         }
         const f0s = foxes;
-        foxes = f0s.map((f0) => {
-          if (f0.mode === 'away' && f0.t > (f0.back ?? 60) && spots.length) { const p = spots[Math.floor(Math.random() * spots.length)]; return { ...f0, ...p, mode: 'trot', t: 0, wait: 5, v: 0, carrying: false }; }
-          const f = foxStep(f0, { dt, grid, near, blocked, scare, noise: heard(f0), prey: prey?.list ?? [], time, ok: (x, y) => ok('foxes', x, y) });
+        foxes = f0s.map((g0) => {
+          if (g0.mode === 'away' && g0.t > (g0.back ?? 60) && spots.length) { const p = spots[Math.floor(Math.random() * spots.length)]; return { ...g0, ...p, mode: 'trot', t: 0, wait: 5, v: 0, carrying: false }; }
+          if (held(g0)) return { ...g0 };
+          const f0 = steered('fox', g0);
+          const f = foxStep(f0, { dt, grid, near: calmOr(f0, near, []), blocked, scare: calmOr(f0, scare, false), noise: calmOr(f0, heard(f0)), prey: calmOr(f0, prey?.list ?? [], []), time, ok: (x, y) => ok('foxes', x, y) });
           if (f.mode === 'flee' && f0.mode !== 'flee') sound('foxBark', f, false);
           else if (f.mode === 'trot' && Math.random() < dt * 0.01) sound('foxBark', f, false);
           // The rabbit bolts as it springs; it is taken if it is still under the paws as the fox comes down.

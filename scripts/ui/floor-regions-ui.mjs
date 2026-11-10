@@ -1855,9 +1855,12 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     async smartMark({ at, box, remove, target = null }) {
       if (this.smartBusy) return;
       this.smartBusy = true;
+      const spot = remove ?? at ?? (box ? { x: (box[0] + box[2]) / 2, y: (box[1] + box[3]) / 2 } : null);
+      this.showWorking(spot, remove ? "Finding the part to take out…" : "Finding the area…");
       try {
         const ready = await this.smartReady();
         if (!ready) return;
+        if (this.workingText) this.smartStatus(this.workingText); // loading the model said other things meanwhile
         const { detect } = this, { width, height } = detect, { model, view } = ready;
         let points, masks, mask, seeds = [];
         if (remove) {
@@ -1899,7 +1902,37 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         hooks.warn?.(`Experimental. Smart selection failed: ${error.message}`);
       } finally {
         this.smartBusy = false;
+        this.hideWorking();
       }
+    }
+
+    // While the model works on a click: a spinning ring on the map where it was clicked, a busy cursor, and the status
+    // line saying what it is doing, so the second it takes doesn't look like nothing happened.
+    showWorking(at, text) {
+      const frame = this.element?.querySelector?.(".an-floors-frame"), stage = this.element?.querySelector?.(".an-floors-stage");
+      const canvas = this.element?.querySelector?.("canvas.an-floors-preview");
+      this.workingText = text;
+      this.smartStatus(text);
+      frame?.classList?.add?.("is-working");
+      if (!stage?.insertAdjacentHTML || !canvas || !at || !this.detect?.width) return;
+      let ring = stage.querySelector?.(".an-smart-working");
+      if (!ring) { stage.insertAdjacentHTML("beforeend", `<div class="an-smart-working" aria-hidden="true"><i></i><span></span></div>`); ring = stage.querySelector?.(".an-smart-working"); }
+      if (!ring) return;
+      ring.style.left = `${canvas.offsetLeft + (at.x + 0.5) / this.detect.width * canvas.offsetWidth}px`;
+      ring.style.top = `${canvas.offsetTop + (at.y + 0.5) / this.detect.height * canvas.offsetHeight}px`;
+      const label = ring.querySelector?.("span");
+      if (label) label.textContent = text;
+      ring.hidden = false;
+    }
+
+    hideWorking() {
+      this.element?.querySelector?.(".an-floors-frame")?.classList?.remove?.("is-working");
+      const ring = this.element?.querySelector?.(".an-smart-working");
+      if (ring) ring.hidden = true;
+      // Back to the help, unless something since said more (a learned floor, a floor to pick).
+      const status = this.element?.querySelector?.("[data-smart-status]");
+      if (status && status.textContent === this.workingText) this.smartStatus(SMART_HELP);
+      this.workingText = null;
     }
 
     // Switch the last smart area to the model's small (0), middle (1) or large (2) size.

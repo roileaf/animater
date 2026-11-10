@@ -56,6 +56,7 @@ import { createScreenTint, canTint } from "./engines/camera/screen-tint.mjs";
 import { createKillCam, canKillCam, killCamLength, killCamMs, KILL_CAM_LENGTH } from "./engines/camera/kill-cam.mjs";
 import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
+import { createFriendHitPlayer, friendHitClip, isFriendlyHit, FRIEND_HIT_CLIPS, JB2A_MODULES } from "./engines/camera/lens-friend-hit.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
 import { lifeOf, isDown, woundedView, woundedWanted, muffleFor, heartbeatDown, nextBeatMs, heartbeatDeath, transitionSteps, stainsAfterHit, settleStains, stainCap, downLook, downPreviews, WAKE } from "./engines/camera/lens-wounds.mjs";
 import { createWorldMuffle } from "./engines/sound/world-muffle.mjs";
@@ -148,6 +149,7 @@ import {
 } from "./engines/preview/canvas-preview-area.mjs";
 import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./engines/motion/motion.mjs";
 import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions, tintedPreset } from './engines/playback/optional-fx.mjs';
+import { AppliedLooks, APPLIED_FLAG, withApplied, normalizeApplied } from './engines/playback/applied-looks.mjs';
 import {catalogFxSettings} from './catalogs/shared/catalog-fx.mjs';
 import {conditionLookMode} from './catalogs/shared/condition-look-choice.mjs';
 import {RUNE_SETTING} from './catalogs/pf2e/weapons/weapon-runes.mjs';
@@ -196,7 +198,8 @@ import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PRE
 import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
 import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
 import { createSoftShadows, highShadowLook } from "./engines/motion/soft-shadow.mjs";
-import { ANIMAL_KEYS, animalsPanel, birdBodyOf, birdHeightOf, placedChanges, withPlaced } from "./ui/animals-panel.mjs";
+import { ANIMAL_KEYS, animalsPanel, birdBodyOf, birdHeightOf, placedChanges, withPlaced, placedList, withOrder, withoutId } from "./ui/animals-panel.mjs";
+import { openAnimalHud } from "./ui/animal-hud.mjs";
 import { CLOSING_WINDOWS, WINDOW_ICON_NEAR, applyWindowEdge, closesWindow, drawWindowIcon, mayUseWindow, nextWindowState, windowClick, windowIconAlpha, windowInReach, windowLockState } from "./engines/motion/window-state.mjs";
 import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
 import { createDrawnClouds } from "./engines/motion/drawn-clouds.mjs";
@@ -211,7 +214,7 @@ import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/m
 import { perchesFrom } from "./engines/motion/perch-hops.mjs";
 import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround, balancedLife, keepsOut } from "./engines/motion/wildlife.mjs";
 import { appendWallSection } from "./ui/wall-config-sections.mjs";
-import { createPondLife, gullsOver } from "./engines/motion/pond-life.mjs";
+import { createPondLife, gullsOver, freshWaterFor } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
 import { FIRE_VOLUME, firesHeard, fireStart, soundsLight } from "./engines/sound/fire-sound.mjs";
@@ -3151,9 +3154,13 @@ Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.curren
 const placedShown = new Set();
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
-  const { add, remove } = placedChanges(placedShown, wildHere() ? animalFlagsNow().placedAnimals : []);
+  const raw = wildHere() ? animalFlagsNow().placedAnimals : [];
+  const { add, remove } = placedChanges(placedShown, raw);
   for (const id of remove) { wildlife.removeAdded(id); fieldLife.removeAdded(id); placedShown.delete(id); }
   for (const p of add) if (wildlife.add(p.kind, p) || fieldLife.add(p.kind, p)) placedShown.add(p.id);
+  // Their orders from the animal HUD (animal-orders.mjs), the same on every screen.
+  const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
+  wildlife.orders(orders); fieldLife.orders(orders);
 };
 Hooks.on("canvasTearDown", () => { placedShown.clear(); });
 let animalsPanelApp = null, animalAim = null, animalScope = "level";
@@ -3183,6 +3190,80 @@ const startAnimalAim = (kind, done) => {
   window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("contextmenu", menu, true);
 };
 Hooks.on("canvasTearDown", () => { stopAnimalAim(); });
+// The animal HUD (ui/animal-hud.mjs, GM only): right-click an animal for Go here, Follow token, Circle token, Let it go
+// and Remove. An order is kept on the placed animal (animal-orders.mjs); a wild one given an order is put down by hand
+// where it stands, with it, so every screen has it and moves it the same way.
+const placedHome = () => (canvas?.level?.flags?.[ID]?.placedAnimals !== undefined ? canvas.level : canvas?.scene);
+const savePlaced = async (list) => { const home = placedHome(); if (home) await home.update({ [`flags.${ID}.placedAnimals`]: list }); };
+// Where a token an animal goes by is now, as it moves; a hidden one only on the GM's screen.
+const animalTokenAt = (id) => { const t = canvas?.tokens?.get(id); if (!t || (t.document.hidden && !game.user.isGM)) return null; const c = t.center; return { x: c.x, y: c.y }; };
+const tokenUnder = (p) => (canvas?.tokens?.placeables ?? []).filter((t) => t.visible && p.x >= t.x && p.y >= t.y && p.x <= t.x + t.w && p.y <= t.y + t.h).sort((a, b) => (b.document.sort ?? 0) - (a.document.sort ?? 0))[0] ?? null;
+let animalHud = null, animalPick = null;
+const endAnimalPick = () => {
+  if (!animalPick) return;
+  window.removeEventListener("pointerdown", animalPick.down, true); window.removeEventListener("keydown", animalPick.key, true);
+  animalPick = null; if (!animalHud?.closed) animalHud?.picking(null);
+};
+const closeAnimalHud = () => { endAnimalPick(); animalHud?.close(); animalHud = null; };
+const animalAt = (p) => {
+  const reach = (canvas.grid?.size || 100) * 0.45;
+  const hits = [[wildlife, wildlife.pick(p.x, p.y, reach)], [fieldLife, fieldLife.pick(p.x, p.y, reach)]].filter(([, h]) => h).map(([engine, h]) => ({ ...h, engine }));
+  return hits.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0] ?? null;
+};
+const orderAnimal = async (hit, order) => {
+  const list = animalFlagsNow().placedAnimals;
+  if (hit.id) return savePlaced(order === undefined ? withoutId(list, hit.id) : withOrder(list, hit.id, order));
+  if (!order) return;
+  const at = hit.engine.where(hit.ref) ?? hit;
+  hit.engine.takeAway(hit.ref);
+  await savePlaced(withPlaced(list, { id: foundry.utils.randomID(), kind: hit.kind, x: Math.round(at.x), y: Math.round(at.y), order }));
+};
+const openAnimalHudFor = (hit) => {
+  closeAnimalHud();
+  let current = hit;
+  const done = (promise) => { closeAnimalHud(); void Promise.resolve(promise).catch((error) => ui.notifications?.warn(`Animater | ${error.message}`)); };
+  animalHud = openAnimalHud({
+    kind: hit.kind, placed: Boolean(hit.id), order: hit.order,
+    tokenName: (order) => (order?.token ? canvas.tokens?.get(order.token)?.name ?? "" : ""),
+    at: () => { if (!canvas?.ready) return null; const w = current.engine.where(current.ref); if (!w) return null; current = { ...current, ...w }; const s = canvas.clientCoordinatesFromCanvas({ x: w.x, y: w.y }); return { x: s.x, y: s.y }; },
+    onOrder: (type) => {
+      endAnimalPick(); animalHud.picking(type);
+      const down = (e) => {
+        if (e.target !== canvas.app?.view) return;
+        e.stopImmediatePropagation(); e.preventDefault();
+        if (e.button !== 0) { endAnimalPick(); return; }
+        const p = canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
+        if (type === "go") { done(orderAnimal(current, { type, x: p.x, y: p.y })); return; }
+        const token = tokenUnder(p);
+        if (!token) { ui.notifications?.info("Animater | Click a token."); return; }
+        done(orderAnimal(current, { type, token: token.id }));
+      };
+      const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); endAnimalPick(); } };
+      animalPick = { down, key };
+      window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
+    },
+    onRelease: () => done(orderAnimal(current, null)),
+    onRemove: () => done(orderAnimal(current, undefined)),
+    onClose: () => { endAnimalPick(); animalHud = null; hit.engine.hold(null); },
+  });
+  // It stands still while its HUD is open.
+  hit.engine.hold(hit.ref);
+};
+// A GM's right-click on an animal (not on a token): its HUD, taken before Foundry sees it. A left click elsewhere closes it.
+let swallowMenu = false;
+globalThis.window?.addEventListener?.("pointerdown", (e) => {
+  if (!game.user?.isGM || !canvas?.ready || e.target !== canvas.app?.view || animalAim || animalPick) return;
+  if (e.button === 0 && animalHud) { closeAnimalHud(); return; }
+  if (e.button !== 2) return;
+  const p = canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
+  if (tokenUnder(p)) return;
+  const hit = animalAt(p);
+  if (!hit) { if (animalHud) closeAnimalHud(); return; }
+  e.stopImmediatePropagation(); e.preventDefault(); swallowMenu = true;
+  openAnimalHudFor(hit);
+}, true);
+globalThis.window?.addEventListener?.("contextmenu", (e) => { if (swallowMenu) { swallowMenu = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+Hooks.on("canvasTearDown", () => { closeAnimalHud(); });
 // Why no animal shows, when that is not plain from the panel: the settings, this screen's quality, or a map with no ground
 // they live on (its floor, or all of it roofed or walled in).
 const wildNote = () => {
@@ -3863,12 +3944,24 @@ const rebuildWildlife = () => {
 const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
 const wildSeen = (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false;
 // Where an animal may be on some ground (wildGround's): the scene's, or a region's own.
+const seaHere = (ground, x, y) => { try { return !!ground?.seaAt?.(x, y); } catch { return false; } };
+// Whether the ground has fresh water a kind may be on, worked out once per ground and kind.
+const freshKnown = new WeakMap();
+const freshFor = (ground, kind) => {
+  if (!ground?.waters) return false;
+  let known = freshKnown.get(ground);
+  if (!known) { known = {}; freshKnown.set(ground, known); }
+  return (known[kind] ??= freshWaterFor(ground.waters, { sea: (p) => seaHere(ground, p.x, p.y), kept: (p) => keptOut(kind, p) }));
+};
 const okOn = (ground, kind, x, y) => {
   // Insects go over ground and water alike; dragonflies keep to the water.
   if (kind === "butterflies") return !!ground && !ground.closed(x, y) && !keptOut("butterflies", { x, y });
   if (kind === "dragonflies") return !!ground?.inWater(x, y) && !keptOut("dragonflies", { x, y });
   // Fish may go on past the map's edge where the water reaches it (wildlife.mjs: another comes back in a while).
   if (kind === "fish") { const r = canvas.dimensions?.sceneRect; if (r && (x < r.x || y < r.y || x >= r.x + r.width || y >= r.y + r.height)) return true; }
+  // Ducks and frogs keep to fresh water: the sea is not theirs while the map has any of it for them (found live: a duck
+  // put up from the river came down on the sea, and one paddled out of the river mouth). With none, ducks wait on the sea.
+  if ((kind === "ducks" || kind === "frogs") && ground?.inWater(x, y) && freshFor(ground, kind) && seaHere(ground, x, y)) return false;
   return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
 const wildOk = (kind, x, y) => okOn(wildOpen, kind, x, y);
@@ -3978,9 +4071,9 @@ const wildTick = (seconds) => {
     const step = Math.min(left, 0.05);
     const birdBody = birdBodyOf(animalFlagsNow().birdHeight), liftShadow = highBirdShadow;
     wildlife.setPerches(birdPerches());
-    wildlife.tick(step, { birdBody, liftShadow, near, ok: wildOk, kept: wildKept, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y) });
+    wildlife.tick(step, { birdBody, liftShadow, near, ok: wildOk, kept: wildKept, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y), tokenAt: animalTokenAt });
     if (pondLife.busy) pondLife.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: wildlife, ripple: pondRipple, near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
-    if (fieldLife.busy) fieldLife.tick(step, { birdBody, liftShadow, near, ok: wildOk, blocked: wallBlocks, kept: wildKept, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps });
+    if (fieldLife.busy) fieldLife.tick(step, { birdBody, liftShadow, near, ok: wildOk, blocked: wallBlocks, kept: wildKept, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps, tokenAt: animalTokenAt });
   }
 };
 // The water's bigger shapes: the sea's shore (engines/motion/coast.mjs), waterfalls (waterfall.mjs), and what still water mirrors (water-mirror.mjs). Which is which is the region's
@@ -7461,6 +7554,7 @@ function workspaceHost() {
       previewLensDeal: (o) => lensPreview?.deal(o),
       previewLensLinger: (o) => lensPreview?.linger(o),
       previewLensDuel: (o) => lensPreview?.duel(o),
+      previewLensFriend: (o) => lensPreview?.friend(o),
       previewLensWounded: (o) => lensPreview?.wounded(o),
       previewLensDown: (o) => lensPreview?.down(o),
       previewLensWake: (o) => lensPreview?.wake(o),
@@ -7554,6 +7648,22 @@ function workspaceHost() {
       if(!context.source)throw Error('Select your token first.');
       if(!context.targets?.length)throw Error('Target a creature first: the travel look reaches from your token to it.');
       return game.modules.get(ID)?.api?.play({id:'tokenshade-travel',name:'Travel look',trigger:'use',stages:[{kind:'travel',stageId:'travel',assets:['jb2a.energy_strands.range.standard.dark_green.01'],travelLook:'tokenshade',tetherStyle:style,duration:2600}]});
+    },
+    // Tokenshade studio → Apply to selected tokens: the look goes in each selected token's flags (one you own), so
+    // every screen draws it until Remove takes it off (applied-looks.mjs).
+    applyTokenFx:async(stage,name)=>{
+      if(!canvas.ready)throw Error('Open a scene first.');
+      const unavailable=fxAvailability({...stage,kind:'tokenfx'},fxCatalog());
+      if(unavailable)throw Error(unavailable);
+      const docs=(canvas.tokens?.controlled??[]).map(t=>t.document).filter(d=>d?.isOwner);
+      if(!docs.length)throw Error('Select a token of yours first.');
+      for(const doc of docs)await doc.setFlag(ID,APPLIED_FLAG,withApplied(doc.flags?.[ID]?.[APPLIED_FLAG],{name,stage}));
+      return docs.length;
+    },
+    removeTokenFx:async()=>{
+      const docs=(canvas.tokens?.controlled??[]).map(t=>t.document).filter(d=>d?.isOwner&&normalizeApplied(d.flags?.[ID]?.[APPLIED_FLAG]).length);
+      for(const doc of docs)await doc.unsetFlag(ID,APPLIED_FLAG);
+      return docs.length;
     },
     previewTokenFx:stage=>{
       if(!canvas.ready)throw Error('Open a scene first.');
@@ -8687,6 +8797,11 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) { woundReset?.(); worldMuffle.restore(); lensBlood.clearWounds(); } else woundRefresh?.(); },
   });
+  registerSetting("lensFriendHit", {
+    name: "Show a friend's blow",
+    hint: "With the damage lens on, when a friend hits the enemy next to your creature, their blow crosses your screen first, big and from their side: the weapon's swing or shot, or the spell's bolt, then a flinch and a hit flash before the enemy's blood lands. Needs JB2A.",
+    scope: "client", config: true, type: Boolean, default: true,
+  });
   registerSetting("roomAcoustics", {
     name: "Room acoustics from walls",
     hint: "In scenes without an Acoustics choice, Animater's sounds echo to fit the space around them, worked out from the walls: dry outdoors, tight in small rooms, ringing in halls.",
@@ -9644,6 +9759,43 @@ Hooks.once("ready", () => {
     localParticles,
     regionFx,
     trace:(status,detail)=>runtime?.trace(status,detail)});
+  // Looks applied from the Tokenshade studio (applied-looks.mjs): drawn on every screen from the token's flags.
+  const appliedLooks = new AppliedLooks({
+    retain: (stage) => allowsTokenFx(localQuality()) && tokenFx?.ready?.() !== false ? optionalFx.retain(stage, { session: `applied:${stage.destination?.id}:${uuid()}`, userId: `applied:${clientId}` }) : undefined,
+    trace: (detail) => runtime?.trace("Skipped", detail) });
+  const syncApplied = () => { for (const doc of canvas?.scene?.tokens ?? []) void appliedLooks.sync(doc); };
+  Hooks.on("canvasReady", () => { setTimeout(syncApplied, 1500); });
+  if (canvas?.ready) setTimeout(syncApplied, 1500);
+  Hooks.on("canvasTearDown", () => { void appliedLooks.clear(); });
+  Hooks.on("createToken", (doc) => { void appliedLooks.sync(doc); });
+  Hooks.on("deleteToken", (doc) => { void appliedLooks.drop(doc.id); });
+  Hooks.on("updateToken", (doc, change) => { const f = change?.flags?.[ID]; if (f && (APPLIED_FLAG in f || `-=${APPLIED_FLAG}` in f)) void appliedLooks.sync(doc); });
+  // Tokenshade on the Token HUD (ui/tokenshade-hud.mjs): a quick picker that applies a look to this token for everyone,
+  // takes one off, and tries one on (this screen only) while hovered. The GM on any token, a player on their own.
+  let tokenshadeHud = null;
+  Hooks.on("renderTokenHUD", (hud, html) => {
+    const token = hud?.object, doc = token?.document, root = html instanceof HTMLElement ? html : html?.[0];
+    if (!doc || !root || !(game.user.isGM || doc.isOwner)) return;
+    const catalog = fxCatalog();
+    if (!catalog.tokenReady) return;
+    void (tokenshadeHud ??= import("./ui/tokenshade-hud.mjs")).then((m) => {
+      if (hud.object !== token || !root.isConnected) return;
+      const paramsOf = (library, name) => tokenFx.getPresets(library).find((p) => p.name === name)?.params ?? [];
+      const applied = normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]);
+      const stageOf = (look) => ({ kind: "tokenfx", assets: [], fxLibrary: look.library, fxPreset: look.name, subject: "source", duration: 3000 });
+      m.mountTokenshadeHud(root, {
+        tokenId: doc.id, looks: m.hudLooks(catalog.presets, paramsOf), applied,
+        apply: async (look) => { try { await doc.setFlag(ID, APPLIED_FLAG, withApplied(doc.flags?.[ID]?.[APPLIED_FLAG], { name: look.name, stage: stageOf(look) })); } catch (error) { ui.notifications?.warn(`Animater | ${error.message}`); } },
+        remove: async (id) => {
+          const left = normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]).filter((l) => l.id !== id);
+          try { await (left.length ? doc.setFlag(ID, APPLIED_FLAG, left) : doc.unsetFlag(ID, APPLIED_FLAG)); } catch (error) { ui.notifications?.warn(`Animater | ${error.message}`); }
+        },
+        // Tried on while hovered: this screen only, until the pointer leaves it.
+        preview: (look) => { const run = startTokenFxPreview(optionalFx, { ...stageOf(look), duration: 30000 }, { tokens: [token], userId: game.user.id }); run.done.catch(() => {}); return run.stop; },
+        recent: () => m.readRecent(), remember: (key) => m.writeRecent(m.pushRecent(m.readRecent(), key)),
+      });
+    }).catch((error) => runtime?.trace("Blocked", `Tokenshade HUD: ${error.message}`));
+  });
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
@@ -10419,6 +10571,11 @@ Hooks.once("ready", () => {
   const effectsLocalOn = () => shakeSetting("lensEffectsLocal", true) !== false;
   const tunnelOn = () => shakeSetting("lensTunnel", true) !== false;
   const heartbeatOn = () => shakeSetting("lensHeartbeat", true) !== false;
+  // "Show a friend's blow": the swing or shot of a friend's hit crosses the lens before the enemy's blood.
+  const friendHitOn = () => shakeSetting("lensFriendHit", true) !== false;
+  const friendHit = createFriendHitPlayer({ reducedMotion: () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true });
+  // The clip from the JB2A module installed (Patreon first, else the free one).
+  const friendHitUrl = (clip) => { const id = JB2A_MODULES.find((m) => game.modules.get(m)?.active); return id ? `modules/${id}/${clip.file}` : null; };
   const beat = (plan) => {
     const ctx = game.audio?.interface;
     if (!ctx || !plan?.length) return;
@@ -10630,7 +10787,13 @@ Hooks.once("ready", () => {
         attackerScreen: role === "attacker" ? lensScreen(near.token.center) : attacker ? lensScreen(attacker.center) : null };
       const splash = lensSplashFor(args);
       // Its own cooldown: every creature hurt at once splashes.
-      lensShow(splash, { args, color: blood.color, seed: `${token.id}:${Date.now()}`, heart: hasHeart(token), source: token.id });
+      const show = () => lensShow(splash, { args, color: blood.color, seed: `${token.id}:${Date.now()}`, heart: hasHeart(token), source: token.id });
+      // A friend's blow on the enemy next to the player's creature crosses the lens first (lens-friend-hit.mjs); the
+      // blood lands as it connects.
+      const cue = splash && role === "attacker" && friendHitOn() && isFriendlyHit({ attacker, near }) ? FRIEND_HIT_CLIPS[friendHitClip(by ?? {})] : null;
+      const url = cue ? friendHitUrl(cue) : null;
+      if (url && args.attackerScreen && args.screen) void friendHit.play({ clip: cue, url, from: lensScreen(attacker.center) ?? args.attackerScreen, to: args.screen, view: args.view, type: (damage ?? by)?.type ?? null, onHit: show });
+      else show();
       // The player's own creature hurt: a stain or two that stay (the wounded view).
       if (role === "victim" && splash && lensMine()?.actor === actor) woundHit(splash);
       return;
@@ -10765,7 +10928,7 @@ Hooks.once("ready", () => {
       return { scene: canvas?.scene?.name ?? "", tokens, presets, systemId: game.system.id,
         // The down states this system has, by its own names (PF2e Dying N, D&D 5e death saves, Daggerheart's death move).
         downStates: downPreviews(game.system.id).map(({ id, label }) => ({ id, label })),
-        settings: { amount: shakeSetting("lensBloodAmount", "heavy"), gore: shakeSetting("surfaceGore", "full"), heartbeat: heartbeatOn(), tunnel: tunnelOn(), local: lensLocalOn(), effects: effectsLocalOn(), effectsWorld: effectsWorldOn(), wounded: woundOn() } };
+        settings: { amount: shakeSetting("lensBloodAmount", "heavy"), gore: shakeSetting("surfaceGore", "full"), heartbeat: heartbeatOn(), friendHit: friendHitOn(), jb2a: JB2A_MODULES.some((m) => game.modules.get(m)?.active), tunnel: tunnelOn(), local: lensLocalOn(), effects: effectsLocalOn(), effectsWorld: effectsWorldOn(), wounded: woundOn() } };
     },
     hit: ({ share = 0.15, crit = false, color, bleeds = true, amount = null, gore = null, damageType = null } = {}) => {
       const variant = { amount, gore }, view = lensView();
@@ -10795,6 +10958,29 @@ Hooks.once("ready", () => {
         { screen: lensScreen(victim.center), attackerScreen: lensScreen(attacker.center), damageType });
       lensBlood.clear();
       lensShow(lensSplashFor(args), { args, color: colorNumber(blood.color), seed: `preview:${Date.now()}`, variant, heart: hasHeart(mine) });
+      return true;
+    },
+    // A friend's blow (lens-friend-hit.mjs): another PC on the scene (else from the far side of the screen) strikes
+    // "other" next to "mine", with the picked weapon or spell ('' picks it from the damage type, as a hit would).
+    friend: async ({ mineId, otherId, weapon = "", share = 0.15, crit = false, amount = null, gore = null, damageType = null } = {}) => {
+      const mine = canvas.tokens?.get(mineId), other = canvas.tokens?.get(otherId);
+      if (!mine || !other || mine === other) return false;
+      mine.control({ releaseOthers: true });
+      try { other.setTarget(true, { releaseOthers: true }); } catch { /* targeting is only a cue */ }
+      try { await canvas.animatePan({ x: mine.center.x, y: mine.center.y, duration: 350 }); } catch { /* stays put */ }
+      const ally = (canvas.tokens?.placeables ?? []).filter((t) => t !== mine && t !== other && t.actor && !t.document.hidden && (t.actor.hasPlayerOwner || t.document.disposition === mine.document.disposition))
+        .sort((a, b) => Math.hypot(a.center.x - other.center.x, a.center.y - other.center.y) - Math.hypot(b.center.x - other.center.x, b.center.y - other.center.y))[0] ?? null;
+      const view = lensView(), to = lensScreen(other.center), at = lensScreen(mine.center);
+      // No friend on the scene: from the side away from the player's creature.
+      const from = (ally && lensScreen(ally.center)) ?? (to && at ? { x: to.x + (to.x - at.x) * 6, y: to.y + (to.y - at.y) * 6 } : edgePoint("left", view));
+      const blood = lensBloodOf(other), hp = hpOf(other.actor), max = Math.max(1, Number(hp?.max) || 100), variant = { amount, gore };
+      const args = previewArgs("attacker", { lost: Math.max(1, Math.round(share * max)), max, crit, bleeds: blood.bleeds }, variant, { screen: to, attackerScreen: at, damageType });
+      const type = damageType || "slashing", key = FRIEND_HIT_CLIPS[weapon] ? weapon : friendHitClip({ attackKind: ["slashing", "piercing", "bludgeoning", "bleed"].includes(type) ? "melee" : "spell", type });
+      lensBlood.clear();
+      const show = () => lensShow(lensSplashFor(args), { args, color: colorNumber(blood.color), seed: `preview:${Date.now()}`, variant });
+      const url = friendHitUrl(FRIEND_HIT_CLIPS[key]);
+      if (!url || !to) { show(); return true; }
+      void friendHit.play({ clip: FRIEND_HIT_CLIPS[key], url, from, to, view, type, onHit: show });
       return true;
     },
     linger: ({ hp = 0.15, amount = null, gore = null, heart = true } = {}) => {
@@ -10857,8 +11043,9 @@ Hooks.once("ready", () => {
       return true;
     },
     // Still on screen or in the ears: a splash, a tunnel pulse, a heartbeat, the low-HP loop or a wounded state.
-    busy: () => Boolean(lingerPreview) || Boolean(woundPreview) || Date.now() < woundUntil || lensBlood.alive > 0 || Date.now() < heartbeatUntil,
+    busy: () => Boolean(lingerPreview) || Boolean(woundPreview) || Date.now() < woundUntil || lensBlood.alive > 0 || Date.now() < heartbeatUntil || friendHit.playing,
     stop: () => {
+      friendHit.stop();
       if (!lingerPreview && !woundPreview && !lensBlood.alive && !worldMuffle.wired) return;
       lingerPreview = null;
       woundPreview = null;
