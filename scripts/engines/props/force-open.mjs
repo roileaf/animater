@@ -45,10 +45,26 @@ export function forceOpenWording(system) {
   return w ? { ...w } : null;
 }
 
-export function forceOpenPrompt(system, material, dc) {
+// Whether the prompt shows the DC. The GM always sees it; a player sees it as the system's own setting allows.
+// settings = { pf2eShowDC, dnd5eChallengeVisibility } as read from game.settings (undefined when unreadable).
+// PF2e and SF2e: metagame_showDC. D&D 5e: challengeVisibility "all" or "player" shows it (the roll is the player's own).
+// Daggerheart has no such setting, and an unknown or missing one shows it (this only affects the words, never the check).
+export function showForceDC({ system, isGM, settings } = {}) {
+  if (isGM) return true;
+  const s = settings ?? {};
+  if (system === "pf2e" || system === "sf2e") return s.pf2eShowDC === false ? false : true;
+  if (system === "dnd5e") {
+    const v = s.dnd5eChallengeVisibility;
+    return v === undefined || v === null || v === "all" || v === "player" ? true : false;
+  }
+  return true;
+}
+
+export function forceOpenPrompt(system, material, dc, showDC = true) {
   const w = WORDING[system];
   if (!w) return null;
   if (!w.dc) return `Force it open? ${w.skill} test: ${matOf(material) === "wood" ? "tier 2 or 3 breaks it" : "only tier 3 breaks it"}`;
+  if (!showDC) return `Force it open? ${w.skill}`;
   return `Force it open? ${w.skill} vs ${w.dc} ${dc}`;
 }
 

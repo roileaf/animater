@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultForceDC, forceDCOf, forceOpenWording, forceOpenPrompt, forceOpenResult, closestForcedDoor, forceOpenRoller, FORCE_OPEN_SYSTEMS } from "../../../scripts/engines/props/force-open.mjs";
+import { defaultForceDC, forceDCOf, forceOpenWording, forceOpenPrompt, showForceDC, forceOpenResult, closestForcedDoor, forceOpenRoller, FORCE_OPEN_SYSTEMS } from "../../../scripts/engines/props/force-open.mjs";
 
 const scene = (f = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...f } } });
 const door = (extra = {}) => ({ id: "d1", c: [300, 200, 400, 200], door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20, levels: [], flags: {}, ...extra });
@@ -146,4 +146,29 @@ test("who rolls from the door: the selected token beside it, else the only owned
   // the token has to be on the door's level
   const up = door({ levels: ["upstairs"] });
   assert.deepEqual(forceOpenRoller(up, { controlled: [{ ...beside, level: "ground" }], owned: [] }, 100), { why: "far" });
+});
+
+test("the prompt's DC follows each system's own visibility setting; the GM always sees it", () => {
+  const show = (system, isGM, settings) => showForceDC({ system, isGM, settings });
+  for (const sys of ["pf2e", "sf2e"]) {
+    assert.equal(show(sys, false, { pf2eShowDC: false }), false);
+    assert.equal(show(sys, false, { pf2eShowDC: true }), true);
+    assert.equal(show(sys, true, { pf2eShowDC: false }), true);
+    assert.equal(show(sys, false, {}), true);
+    assert.equal(show(sys, false, undefined), true);
+  }
+  assert.equal(show("dnd5e", false, { dnd5eChallengeVisibility: "all" }), true);
+  assert.equal(show("dnd5e", false, { dnd5eChallengeVisibility: "player" }), true);
+  assert.equal(show("dnd5e", false, { dnd5eChallengeVisibility: "none" }), false);
+  assert.equal(show("dnd5e", false, { dnd5eChallengeVisibility: "gm" }), false);
+  assert.equal(show("dnd5e", true, { dnd5eChallengeVisibility: "none" }), true);
+  assert.equal(show("dnd5e", false, {}), true);
+  assert.equal(show("daggerheart", false, { pf2eShowDC: false, dnd5eChallengeVisibility: "none" }), true);
+  assert.equal(show("draw-steel", false, {}), true);
+  assert.equal(show(undefined, false, undefined), true);
+  assert.equal(showForceDC(), true);
+  assert.equal(forceOpenPrompt("pf2e", "wood", 15, false), "Force it open? Athletics");
+  assert.equal(forceOpenPrompt("dnd5e", "metal", 20, false), "Force it open? Strength (Athletics)");
+  assert.equal(forceOpenPrompt("pf2e", "wood", 15, true), "Force it open? Athletics vs DC 15");
+  assert.equal(forceOpenPrompt("draw-steel", "wood", null, false), "Force it open? Might test: tier 2 or 3 breaks it");
 });

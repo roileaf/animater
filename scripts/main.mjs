@@ -31,7 +31,7 @@ import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
 import { windowOnFlight, createMissFlights } from "./engines/props/window-miss.mjs";
-import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording } from "./engines/props/force-open.mjs";
+import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -7666,6 +7666,11 @@ const ROLLER_WHY = {
 // A right-click on a door control: a player's on a closed or locked breakable door that can be forced open, or the
 // GM's with Alt held, prompts "Force it open?" and rolls the system's check for the token beside it (forceOpenRoller).
 // False when it is not this module's (another system, the wrong door, the GM without Alt), so Foundry's own goes ahead.
+// The system's own DC-visibility settings, read for showForceDC (undefined when the setting is not there).
+function forceDCSettings(sys) {
+  const read = (key) => { try { return game.settings.get(sys, key); } catch { return undefined; } };
+  return sys === "pf2e" || sys === "sf2e" ? { pf2eShowDC: read("metagame_showDC") } : sys === "dnd5e" ? { dnd5eChallengeVisibility: read("challengeVisibility") } : {};
+}
 function forceOpenFromDoor(wall, event) {
   const doc = wall?.document ?? wall, scene = doc?.parent, sys = game.system.id, w = forceOpenWording(sys);
   if (doc?.documentName !== "Wall" || !scene || !propsOn(scene) || !w) return false;
@@ -7680,7 +7685,7 @@ function forceOpenFromDoor(wall, event) {
   const tokenDoc = pick.token ? scene.tokens.get(pick.token.id) : null;
   if (!tokenDoc?.actor) { ui.notifications?.info(ROLLER_WHY[pick.why] ?? ROLLER_WHY.none); return true; }
   void (async () => {
-    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: `${w.label}: ${tokenDoc.name}` }, content: `<p>${forceOpenPrompt(sys, traits.material, traits.forceDC)}</p>`, rejectClose: false });
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: `${w.label}: ${tokenDoc.name}` }, content: `<p>${forceOpenPrompt(sys, traits.material, traits.forceDC, showForceDC({ system: sys, isGM: !!game.user.isGM, settings: forceDCSettings(sys) }))}</p>`, rejectClose: false });
     if (ok && !(await rollForceOpen(tokenDoc.actor, tokenDoc, doc, traits))) ui.notifications?.warn("This game system's roll for forcing a door is not available.");
   })().catch((e) => runtime?.trace("props", `force open from door: ${e?.message ?? e}`));
   return true;
