@@ -996,6 +996,20 @@ function inked(g, rng, pts, base, o, { sharp = false, grain = null, lines = 0, h
   g.filter = 'none'; g.restore();
   pathOf(g, pts, sharp); g.strokeStyle = INKD; g.lineWidth = o.ink * ink; g.lineJoin = 'round'; g.stroke();
 }
+// The maps' painted finish: inked as above, then the fill mottled (soft darker and lighter patches, never flat), a fine grain over
+// it, and a thin darker line just inside its edge where the paint pools.
+function painted(g, rng, pts, base, o, opts = {}) {
+  inked(g, rng, pts, base, o, opts);
+  const sharp = !!opts.sharp, c = centre(pts), r = reach(pts, c);
+  g.save(); pathOf(g, pts, sharp); g.clip();
+  g.filter = `blur(${Math.max(1, r * 0.12)}px)`;
+  for (let i = 0; i < 9; i++) { const x = c[0] + (rng() - 0.5) * r * 1.8, y = c[1] + (rng() - 0.5) * r * 1.8, rr = r * (0.2 + rng() * 0.35); g.fillStyle = rng() < 0.55 ? `rgba(10,6,2,${0.08 + rng() * 0.1})` : `rgba(255,240,215,${0.05 + rng() * 0.07})`; g.beginPath(); g.ellipse(x, y, rr, rr * (0.5 + rng() * 0.5), rng() * 3, 0, 6.283); g.fill(); }
+  g.filter = 'none';
+  const n = Math.min(400, Math.round(r * r * 0.05)); for (let i = 0; i < n; i++) { g.fillStyle = rng() < 0.6 ? 'rgba(10,6,2,0.12)' : 'rgba(255,245,225,0.08)'; g.fillRect(c[0] + (rng() - 0.5) * r * 2, c[1] + (rng() - 0.5) * r * 2, 1 + rng(), 1 + rng()); }
+  g.restore();
+  g.save(); pathOf(g, pts, sharp); g.clip(); pathOf(g, pts, sharp); g.strokeStyle = 'rgba(14,8,2,0.35)'; g.lineWidth = o.ink * 2.6; g.stroke(); g.restore();
+  pathOf(g, pts, sharp); g.strokeStyle = INKD; g.lineWidth = o.ink * (opts.ink ?? 1.5); g.stroke();
+}
 // A box (half sizes w by h about cx, cy, turned) as corner points.
 const boxAt = (cx, cy, w, h, turn) => { const c = Math.cos(turn), s = Math.sin(turn); return [[-w, -h], [w, -h], [w, h], [-w, h]].map(([u, v]) => [cx + c * u - s * v, cy + s * u + c * v]); };
 const softShadow = (g, pts, o, a = 0.4) => { const c = centre(pts), r = reach(pts, c); g.save(); g.filter = `blur(${Math.max(1, r * 0.12)}px)`; g.translate(r * 0.06, r * 0.08); trace(g, pts); g.fillStyle = `rgba(10,6,2,${a})`; g.fill(); g.restore(); };
@@ -1603,105 +1617,133 @@ const DRAFTS = {
   } },
   // --- Indoors ------------------------------------------------------------------------------------------------------------------------
   bed: { label: 'Beds', size: 2.0, height: 0.6, paint(g, s, rng, o) {
-    // As the Kingdom Hall's and the hunting lodge's: a wooden frame with corner posts, a blanket (green, blue or red) over a white
-    // sheet folded back, pillows at the head, the cloth hatched with crumpled folds.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.5, out = [];
-    const frame = boxAt(0, 0, L, W, a); softShadow(g, frame, o, 0.55); inked(g, rng, frame, '#5a4028', o, { sharp: true, grain: a, lines: 10, hatch: 0.45, ink: 1.8 }); out.push(frame);
-    const sheet = boxAt(...at(-L * 0.02, 0), L * 0.9, W * 0.86, a); inked(g, rng, sheet, '#d8d4c8', o, { sharp: true, grain: a + 1.57, lines: 8, hatch: 0.12, band: 0.35, ink: 1.2 });
-    const col = pick(rng, ['#4a6e2a', '#2e5a8a', '#8a2a24', '#6a5a3a']), blanket = [at(-L * 0.9, -W * 0.86), at(L * 0.42, -W * 0.86), at(L * 0.38, -W * 0.3), at(L * 0.46, 0), at(L * 0.4, W * 0.4), at(L * 0.45, W * 0.86), at(-L * 0.9, W * 0.86)];
-    inked(g, rng, blanket, col, o, { sharp: true, grain: a + 1.57, lines: 30, hatch: 0.2, cross: true, band: 0.45, ink: 1.4 });
-    for (let k = 0; k < 6; k++) { const u = -L * 0.8 + rng() * L * 0.9; line(g, [at(u, -W * 0.8), at(u + (rng() - 0.5) * L * 0.2, W * 0.8)], shade(col, 0.25), Math.max(0.6, o.ink * 0.7)); }
-    for (const v of [-0.44, 0.44]) { const pillow = boxAt(...at(L * 0.68, v * W), L * 0.13, W * 0.36, a); inked(g, rng, trace ? pillow : pillow, shade(col, 0.1), o, { sharp: true, grain: a, lines: 6, hatch: 0.18, band: 0.4, ink: 1.2 }); line(g, [at(L * 0.6, v * W - W * 0.2), at(L * 0.74, v * W + W * 0.15)], 'rgba(20,20,10,0.35)', Math.max(0.6, o.ink * 0.6)); }
-    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) inked(g, rng, boxAt(...at(u * L * 0.96, v * W * 0.94), s * 0.06, s * 0.06, a), '#3e2c1a', o, { sharp: true, ink: 1.4 });
+    // As the Kingdom Hall's bed: a plank frame with turned corner posts, a quilt of deep cloth with painted fold highlights and
+    // crumpled creases, the white sheet turned back over it at the head, two pillows of the quilt's colour, dented.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.52, out = [];
+    const frame = boxAt(0, 0, L, W, a); softShadow(g, frame, o, 0.55); painted(g, rng, frame, '#5a3e24', o, { sharp: true, grain: a, lines: 14, hatch: 0.5, ink: 1.9 }); out.push(frame);
+    const col = pick(rng, ['#3e5a1e', '#2a4a72', '#6e2420', '#5a4a2e']), hi = shade(col, 0.35), lo = shade(col, -0.4);
+    const quilt = boxAt(...at(-L * 0.08, 0), L * 0.82, W * 0.88, a); painted(g, rng, quilt, col, o, { sharp: true, grain: a + 1.57, lines: 50, hatch: 0.12, cross: true, band: 0.5, ink: 1.4 });
+    g.save(); poly(g, quilt); g.clip();
+    for (let k = 0; k < 9; k++) { const u0 = -L * 0.85 + rng() * L * 1.5, v0 = -W * 0.9, p = [at(u0, v0), at(u0 + (rng() - 0.5) * L * 0.25, 0), at(u0 + (rng() - 0.5) * L * 0.3, W * 0.9)]; g.beginPath(); g.moveTo(...p[0]); g.quadraticCurveTo(...p[1], ...p[2]); g.strokeStyle = rng() < 0.5 ? hi : lo; g.globalAlpha = 0.55; g.lineWidth = o.ink * (1 + rng() * 2); g.stroke(); g.globalAlpha = 1; }
+    g.restore();
+    const turn = boxAt(...at(L * 0.6, 0), L * 0.12, W * 0.88, a); painted(g, rng, turn, '#dcd6c8', o, { sharp: true, grain: a + 1.57, lines: 6, hatch: 0.18, band: 0.3, ink: 1.2 });
+    for (const v of [-0.46, 0.46]) { const pl = []; for (let k = 0; k < 16; k++) { const q = (k / 16) * 6.283, x = Math.cos(q), y = Math.sin(q); pl.push(at(L * 0.8 + Math.sign(x) * Math.pow(Math.abs(x), 0.55) * L * 0.1, v * W + Math.sign(y) * Math.pow(Math.abs(y), 0.55) * W * 0.36)); } painted(g, rng, pl, shade(col, 0.12), o, { band: 0.45, lit: 0.12, ink: 1.2 }); line(g, [at(L * 0.75, v * W - W * 0.18), at(L * 0.84, v * W + W * 0.12)], lo, Math.max(0.6, o.ink * 0.8)); }
+    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const post = blob(rng, ...at(u * L * 0.97, v * W * 0.96), s * 0.055, s * 0.055, 10, 0.02); painted(g, rng, post, '#3e2a16', o, { band: 0.35, lit: 0.15, ink: 1.4 }); }
     return out;
   } },
   rug: { label: 'Rugs', size: 2.4, height: 0, flat: true, paint(g, s, rng, o) {
-    // Round or long, as the halls lay them: a woven field in one deep colour, a border and a pattern in a paler one (rings, a lattice
-    // or scrolls), the weave hatched faint, lying flat with no shadow.
-    const round = rng() < 0.5, [ground, trim] = pick(rng, [['#7a2a24', '#d8b45a'], ['#2e4a7a', '#d8c890'], ['#5a3a2a', '#c8a870'], ['#d8ccb0', '#7a2a2a'], ['#4a2a5a', '#c8a858']]);
-    const a = rng() * 6.28, L = s * 0.92, W = round ? L : s * 0.6, shape = round ? blob(rng, 0, 0, L, L, 40, 0.005) : boxAt(0, 0, L, W, a);
-    inked(g, rng, shape, ground, o, { sharp: !round, grain: a, lines: 60, hatch: 0.12, cross: true, band: 0.12, lit: 0.02, ink: 1.1 });
-    g.save(); pathOf(g, shape, !round); g.clip();
-    if (round) { for (const k of [0.88, 0.8, 0.4]) { g.beginPath(); g.arc(0, 0, L * k, 0, 6.283); g.strokeStyle = trim; g.lineWidth = o.ink * (k > 0.5 ? 2 : 1.4); g.stroke(); } for (let i = 0; i < 8; i++) { const q = (i / 8) * 6.283; g.beginPath(); g.ellipse(Math.cos(q) * L * 0.6, Math.sin(q) * L * 0.6, L * 0.14, L * 0.06, q, 0, 6.283); g.strokeStyle = trim; g.lineWidth = o.ink * 1.1; g.stroke(); } }
-    else { for (const k of [0.9, 0.78]) { poly(g, boxAt(0, 0, L * k, W * (k - 0.1), a)); g.strokeStyle = trim; g.lineWidth = o.ink * (k > 0.85 ? 2 : 1.2); g.stroke(); } const c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], step = W * 0.42; for (let u = -L * 0.6; u <= L * 0.61; u += step) { const d = [at(u, -W * 0.36), at(u + step * 0.5, 0), at(u, W * 0.36), at(u - step * 0.5, 0)]; poly(g, d); g.strokeStyle = trim; g.lineWidth = o.ink * 1.1; g.stroke(); g.beginPath(); g.arc(...at(u, 0), W * 0.06, 0, 6.283); g.fillStyle = trim; g.fill(); } }
+    // As the halls' rugs: a woven field (deep red, blue, brown or cream) with a broad border, and over it a pattern drawn in fine
+    // paler linework: a ring of petals and scrolls round a rosette, or a scrolled medallion on a long rug. Flat, softly worn.
+    const round = rng() < 0.5, [ground, trim] = pick(rng, [['#6e2420', '#d0aa5a'], ['#2a4472', '#d8c890'], ['#5a3a26', '#c8a26a'], ['#d4c8aa', '#7a2a24'], ['#3e2a4e', '#c8a858']]);
+    const a = rng() * 6.28, L = s * 0.92, W = round ? L : s * 0.62, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], shape = round ? blob(rng, 0, 0, L, L, 48, 0.004) : boxAt(0, 0, L, W, a);
+    painted(g, rng, shape, ground, o, { sharp: !round, grain: a, lines: 90, hatch: 0.1, cross: true, band: 0.1, lit: 0.02, ink: 1.1 });
+    g.save(); pathOf(g, shape, !round); g.clip(); g.strokeStyle = trim; g.lineCap = 'round'; g.globalAlpha = 0.7;
+    const curl = (x, y, r, q, dir = 1) => { g.beginPath(); for (let k = 0; k <= 18; k++) { const t2 = k / 18, rr = r * (1 - t2 * 0.8), ang = q + dir * t2 * 4.2; const px = x + Math.cos(ang) * rr, py = y + Math.sin(ang) * rr; k ? g.lineTo(px, py) : g.moveTo(px, py); } g.lineWidth = o.ink * 0.9; g.stroke(); };
+    if (round) {
+      for (const k of [0.9, 0.82]) { g.beginPath(); g.arc(0, 0, L * k, 0, 6.283); g.lineWidth = o.ink * (k > 0.85 ? 2.2 : 1.2); g.stroke(); }
+      const n = 8; for (let i = 0; i < n; i++) { const q = a + (i / n) * 6.283; g.beginPath(); g.moveTo(Math.cos(q) * L * 0.12, Math.sin(q) * L * 0.12); g.quadraticCurveTo(Math.cos(q - 0.35) * L * 0.5, Math.sin(q - 0.35) * L * 0.5, Math.cos(q) * L * 0.72, Math.sin(q) * L * 0.72); g.quadraticCurveTo(Math.cos(q + 0.35) * L * 0.5, Math.sin(q + 0.35) * L * 0.5, Math.cos(q) * L * 0.12, Math.sin(q) * L * 0.12); g.lineWidth = o.ink * 1.2; g.stroke(); curl(Math.cos(q + 0.39) * L * 0.6, Math.sin(q + 0.39) * L * 0.6, L * 0.08, q, 1); }
+      g.beginPath(); g.arc(0, 0, L * 0.12, 0, 6.283); g.lineWidth = o.ink * 1.4; g.stroke();
+    } else {
+      for (const k of [0.92, 0.8]) { poly(g, boxAt(0, 0, L * k, W * (k - 0.06), a)); g.lineWidth = o.ink * (k > 0.85 ? 2.2 : 1.2); g.stroke(); }
+      for (let i = 0; i < 4; i++) { const sx = i < 2 ? -1 : 1, sy = i % 2 ? -1 : 1; g.beginPath(); g.moveTo(...at(0, 0)); g.bezierCurveTo(...at(sx * L * 0.25, sy * W * 0.05), ...at(sx * L * 0.35, sy * W * 0.55), ...at(sx * L * 0.62, sy * W * 0.3)); g.lineWidth = o.ink * 1.2; g.stroke(); const [x, y] = at(sx * L * 0.62, sy * W * 0.3); curl(x, y, W * 0.12, a + (sx > 0 ? 0 : Math.PI), sx * sy); }
+      const med = []; for (let k = 0; k < 4; k++) { const q = (k / 4) * 6.283; med.push(at(Math.cos(q) * L * 0.2, Math.sin(q) * W * 0.32)); } poly(g, med); g.lineWidth = o.ink * 1.4; g.stroke(); g.beginPath(); g.arc(0, 0, W * 0.08, 0, 6.283); g.stroke();
+    }
+    g.globalAlpha = 1; g.globalCompositeOperation = 'multiply'; g.filter = `blur(${Math.max(1, s * 0.06)}px)`; for (let i = 0; i < 6; i++) { g.fillStyle = 'rgba(120,110,100,0.25)'; g.beginPath(); g.ellipse((rng() - 0.5) * L * 1.4, (rng() - 0.5) * W * 1.4, L * 0.3, W * 0.2, rng() * 3, 0, 6.283); g.fill(); } g.filter = 'none'; g.globalCompositeOperation = 'source-over';
     g.restore(); return null;
   } },
   bookshelf: { label: 'Bookshelves', size: 1.8, height: 1.8, paint(g, s, rng, o) {
     // From above: a dark wooden case, and in it rows of book spines, each a coloured block with an ink line between, some leaning.
     const a = rng() * 6.28, L = s * 0.88, W = s * 0.24, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], box = boxAt(0, 0, L, W, a);
-    softShadow(g, box, o, 0.6); inked(g, rng, box, '#3e2a18', o, { sharp: true, grain: a, lines: 6, hatch: 0.4, ink: 1.8 });
-    let u = -L * 0.92; while (u < L * 0.9) { const w = L * (0.035 + rng() * 0.05), book = boxAt(...at(u + w / 2, W * 0.08), w / 2, W * (0.62 + rng() * 0.2), a + (rng() < 0.12 ? 0.25 : 0)); inked(g, rng, book, pick(rng, ['#d8ccaa', '#2e4a7a', '#a8783a', '#6a3a22', '#4a5a2a', '#8a2a24']), o, { sharp: true, band: 0.3, lit: 0.08, ink: 0.9 }); u += w * (1 + rng() * 0.1); }
+    softShadow(g, box, o, 0.6); painted(g, rng, box, '#3e2a18', o, { sharp: true, grain: a, lines: 6, hatch: 0.4, ink: 1.8 });
+    let u = -L * 0.92; while (u < L * 0.9) { const w = L * (0.035 + rng() * 0.05), book = boxAt(...at(u + w / 2, W * 0.08), w / 2, W * (0.62 + rng() * 0.2), a + (rng() < 0.12 ? 0.25 : 0)); painted(g, rng, book, pick(rng, ['#d8ccaa', '#2e4a7a', '#a8783a', '#6a3a22', '#4a5a2a', '#8a2a24']), o, { sharp: true, band: 0.3, lit: 0.08, ink: 0.9 }); u += w * (1 + rng() * 0.1); }
     return [box];
   } },
   strongbox: { label: 'Chests', size: 1.4, height: 0.6, paint(g, s, rng, o) {
-    // As Drelev Keep's strongbox: a chest of brown planks bound with grey iron straps, a round lock plate, rivets; sometimes left open
-    // on its coins.
-    const a = (rng() - 0.5) * 0.8, L = s * 0.72, W = s * 0.45, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], box = boxAt(0, 0, L, W, a), open = rng() < 0.3;
-    softShadow(g, box, o, 0.55); inked(g, rng, box, '#6a4a2a', o, { sharp: true, grain: a, lines: 14, hatch: 0.45, ink: 1.8 });
-    if (open) { const inner = boxAt(0, 0, L * 0.84, W * 0.74, a); poly(g, inner); g.fillStyle = '#2a1a0c'; g.fill(); g.save(); poly(g, inner); g.clip(); for (let i = 0; i < 60; i++) { const [x, y] = at((rng() - 0.5) * L * 1.6, (rng() - 0.5) * W * 1.4); g.beginPath(); g.ellipse(x, y, o.unit * 0.022, o.unit * 0.018, 0, 0, 6.283); g.fillStyle = rng() < 0.25 ? '#b8b8b0' : pick(rng, ['#d8862a', '#e8a038']); g.fill(); g.strokeStyle = 'rgba(40,20,4,0.8)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); } g.restore(); }
-    else for (let k = 1; k < 4; k++) line(g, [at(-L, -W + k * W / 2), at(L, -W + k * W / 2)], 'rgba(20,12,4,0.6)', o.ink * 0.8);
-    for (const k of [-0.62, 0.62]) { const strap = boxAt(...at(L * k, 0), L * 0.07, W * 1.02, a); inked(g, rng, strap, '#5a5854', o, { sharp: true, band: 0.25, lit: 0.12, ink: 1.2 }); for (const v of [-0.7, 0, 0.7]) { g.beginPath(); g.arc(...at(L * k, W * v), Math.max(1, s * 0.02), 0, 6.283); g.fillStyle = '#9a948a'; g.fill(); } }
-    if (!open) { const lock = blob(rng, ...at(0, W * 0.96), s * 0.07, s * 0.06, 10, 0.02); inked(g, rng, lock, '#7a766c', o, { band: 0.3, lit: 0.15, ink: 1.2 }); g.beginPath(); g.arc(...at(0, W * 0.96), s * 0.02, 0, 6.283); g.fillStyle = '#1a1814'; g.fill(); }
+    // As Drelev Keep's strongbox: a lid of warm brown planks with dark seams and grain, a rim of darker wood round it, two grey iron
+    // straps bolted across, a ring-handled lock plate; now and then left open on its coins.
+    const a = (rng() - 0.5) * 0.8, L = s * 0.66, W = s * 0.44, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], box = boxAt(0, 0, L, W, a), open = rng() < 0.3;
+    softShadow(g, box, o, 0.6); painted(g, rng, box, '#4a301a', o, { sharp: true, band: 0.4, ink: 1.9 });
+    const lid = boxAt(0, 0, L * 0.86, W * 0.8, a);
+    if (open) { poly(g, lid); g.fillStyle = '#2a1a0c'; g.fill(); g.save(); poly(g, lid); g.clip(); for (let i = 0; i < 70; i++) { const [x, y] = at((rng() - 0.5) * L * 1.6, (rng() - 0.5) * W * 1.4); g.beginPath(); g.ellipse(x, y, o.unit * 0.022, o.unit * 0.018, 0, 0, 6.283); g.fillStyle = rng() < 0.25 ? '#b8b8b0' : pick(rng, ['#d8862a', '#e8a038']); g.fill(); g.strokeStyle = 'rgba(40,20,4,0.8)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); } g.restore(); }
+    else { painted(g, rng, lid, '#9a6a36', o, { sharp: true, grain: a, lines: 22, hatch: 0.5, band: 0.35, lit: 0.08, ink: 1.3 }); for (let k = 1; k < 4; k++) line(g, [at(-L * 0.86, -W * 0.8 + k * W * 0.4), at(L * 0.86, -W * 0.8 + k * W * 0.4)], 'rgba(30,16,6,0.75)', o.ink * 0.9); }
+    for (const k of [-0.5, 0.5]) { const strap = boxAt(...at(L * k, 0), L * 0.075, W * 1.02, a); painted(g, rng, strap, '#5e5c58', o, { sharp: true, band: 0.3, lit: 0.15, ink: 1.3 }); for (const v of [-0.8, -0.3, 0.3, 0.8]) { g.beginPath(); g.arc(...at(L * k, W * v), Math.max(1, s * 0.018), 0, 6.283); g.fillStyle = '#a8a298'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); } }
+    if (!open) { const plate = boxAt(...at(0, W * 0.92), s * 0.07, s * 0.06, a); painted(g, rng, plate, '#6e6a62', o, { sharp: true, band: 0.3, lit: 0.15, ink: 1.2 }); g.beginPath(); g.arc(...at(0, W * 0.96), s * 0.032, 0, 6.283); g.strokeStyle = '#2a2622'; g.lineWidth = o.ink * 1.4; g.stroke(); }
     return [box];
   } },
   hearth: { label: 'Hearths', size: 1.8, height: 0.5, light: { dim: 4, bright: 1.5, color: '#ff9a48', animation: { type: 'torch', speed: 3, intensity: 3 } }, paint(g, s, rng, o) {
     // A stone hearth slab, black iron andirons on it with logs burning, embers and ash, soot darkening the stone round the fire.
     const a = rng() * 6.28, L = s * 0.82, W = s * 0.5, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], slab = boxAt(0, 0, L, W, a);
-    softShadow(g, slab, o, 0.5); inked(g, rng, slab, '#6e6a62', o, { sharp: true, grain: a, lines: 6, hatch: 0.2, ink: 1.7 });
+    softShadow(g, slab, o, 0.5); painted(g, rng, slab, '#6e6a62', o, { sharp: true, grain: a, lines: 6, hatch: 0.2, ink: 1.7 });
     for (let k = -2; k <= 2; k++) line(g, [at(k * L * 0.36, -W), at(k * L * 0.36, W)], 'rgba(20,16,10,0.6)', o.ink * 0.9);
     g.save(); g.filter = `blur(${Math.max(1, s * 0.08)}px)`; g.beginPath(); g.ellipse(0, 0, L * 0.6, W * 0.65, a, 0, 6.283); g.fillStyle = 'rgba(10,6,4,0.75)'; g.fill(); g.restore();
     ember(g, rng, 0, 0, W * 0.5, 260, o);
-    for (let i = 0; i < 4; i++) { const log = boxAt(...at((i - 1.5) * L * 0.14, (rng() - 0.5) * W * 0.2), W * 0.42, W * 0.08, a + 1.57 + (rng() - 0.5) * 0.5); inked(g, rng, log, '#2a1a10', o, { sharp: true, grain: a + 1.57, lines: 3, hatch: 0.5, band: 0.3, ink: 1.3 }); line(g, [log[1], log[2]], '#ff8a2a', Math.max(0.8, o.ink * 1.1)); }
-    for (const v of [-0.5, 0.5]) line(g, [at(-L * 0.45, v * W), at(L * 0.45, v * W)], INKD, o.ink * 2.6);
+    for (let i = 0; i < 4; i++) { const log = boxAt(...at((i - 1.5) * L * 0.14, (rng() - 0.5) * W * 0.2), W * 0.42, W * 0.08, a + 1.57 + (rng() - 0.5) * 0.5); painted(g, rng, log, '#2a1a10', o, { sharp: true, grain: a + 1.57, lines: 3, hatch: 0.5, band: 0.3, ink: 1.3 }); line(g, [log[1], log[2]], '#ff8a2a', Math.max(0.8, o.ink * 1.1)); }
+    for (let k = -3; k <= 3; k++) { const p = [at(k * L * 0.09, -W * 0.55), at(k * L * 0.09, W * 0.55)]; line(g, p, INKD, o.ink * 3.4); line(g, p, '#3a3632', o.ink * 1.8); line(g, p.map(([x, y]) => [x - 0.6, y - 0.6]), 'rgba(170,165,150,0.45)', o.ink * 0.5); }
+    for (const v of [-0.55, 0.55]) { const p = [at(-L * 0.32, v * W), at(L * 0.32, v * W)]; line(g, p, INKD, o.ink * 3); line(g, p, '#4a4640', o.ink * 1.6); }
+    for (const k of [-1, 1]) { g.beginPath(); g.arc(...at(k * L * 0.36, W * 0.62), s * 0.035, 0, 6.283); g.fillStyle = '#b8943e'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); }
     if (o.night || o.cave) glowAt(g, 0, 0, s * 0.9, '255,150,60', 0.4);
     flame(g, ...at(-L * 0.05, 0), W * 0.14); flame(g, ...at(L * 0.12, W * 0.08), W * 0.1);
     return [slab];
   } },
   desk: { label: 'Desks', size: 1.6, height: 0.8, paint(g, s, rng, o) {
-    // As the Kingdom Hall's: a carved desk of grained wood, letters and papers on it, an inkwell and quill, a book open, a chair drawn up.
-    const a = rng() * 6.28, L = s * 0.75, W = s * 0.4, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v];
-    const chair = boxAt(...at(0, W * 1.25), s * 0.18, s * 0.16, a); softShadow(g, chair, o, 0.4); inked(g, rng, chair, '#5a3e24', o, { sharp: true, grain: a, lines: 4, hatch: 0.4, ink: 1.4 });
-    const top = boxAt(0, 0, L, W, a); softShadow(g, top, o, 0.55); inked(g, rng, top, '#6e4e2e', o, { sharp: true, grain: a, lines: 18, hatch: 0.45, ink: 1.8 });
-    poly(g, boxAt(0, 0, L * 0.92, W * 0.84, a)); g.strokeStyle = 'rgba(20,12,4,0.55)'; g.lineWidth = o.ink; g.stroke();
-    for (let i = 0; i < 4 + Math.floor(rng() * 3); i++) { const [x, y] = at((rng() - 0.5) * L * 1.2, (rng() - 0.5) * W * 0.9), page = boxAt(x, y, s * 0.09, s * 0.12, a + (rng() - 0.5) * 0.8); inked(g, rng, page, pick(rng, ['#ece6d6', '#e0d8c2']), o, { sharp: true, band: 0.15, ink: 0.9 }); line(g, [page[0], centre(page), page[1]], 'rgba(60,50,30,0.5)', Math.max(0.5, o.ink * 0.5)); }
-    const [ix, iy] = at(L * 0.6, -W * 0.5); g.beginPath(); g.arc(ix, iy, s * 0.05, 0, 6.283); g.fillStyle = '#1a1a22'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); line(g, [[ix, iy], [ix + s * 0.18, iy - s * 0.14]], '#e8e4da', o.ink * 1.4);
+    // As the Kingdom Hall's carved desk: dark polished wood with a carved border, a tray heaped with letters and envelopes, loose
+    // sheets spread over it, a sealed scroll, an inkwell with its quill, a candle stub; a carved chair drawn up.
+    const a = rng() * 6.28, L = s * 0.72, W = s * 0.42, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    const chair = boxAt(...at(0, W * 1.3), s * 0.17, s * 0.15, a); softShadow(g, chair, o, 0.4); painted(g, rng, chair, '#4a3020', o, { sharp: true, grain: a, lines: 4, hatch: 0.4, ink: 1.4 }); painted(g, rng, boxAt(...at(0, W * 1.5), s * 0.19, s * 0.035, a), '#3a2414', o, { sharp: true, ink: 1.3 });
+    const top = boxAt(0, 0, L, W, a); softShadow(g, top, o, 0.6); painted(g, rng, top, '#5a3a22', o, { sharp: true, grain: a, lines: 20, hatch: 0.5, ink: 1.9 });
+    for (const k of [0.93, 0.86]) { poly(g, boxAt(0, 0, L * k, W * (k - 0.04), a)); g.strokeStyle = 'rgba(20,10,2,0.6)'; g.lineWidth = o.ink * 0.9; g.stroke(); }
+    const tray = boxAt(...at(-L * 0.2, W * 0.15), L * 0.32, W * 0.42, a); painted(g, rng, tray, '#3e2814', o, { sharp: true, band: 0.3, ink: 1.4 });
+    g.save(); poly(g, tray); g.clip(); for (let i = 0; i < 9; i++) { const [x, y] = at(-L * 0.2 + (rng() - 0.5) * L * 0.5, W * 0.15 + (rng() - 0.5) * W * 0.65), env = boxAt(x, y, s * 0.075, s * 0.05, a + (rng() - 0.5) * 0.9); painted(g, rng, env, pick(rng, ['#ece6d6', '#e0d8c2', '#f2ece0']), o, { sharp: true, band: 0.2, ink: 0.9 }); line(g, [env[0], centre(env), env[1]], 'rgba(70,60,40,0.55)', Math.max(0.5, o.ink * 0.5)); } g.restore();
+    for (let i = 0; i < 4; i++) { const [x, y] = at(L * (0.05 + rng() * 0.45), (rng() - 0.6) * W * 0.9), page = boxAt(x, y, s * 0.085, s * 0.11, a + (rng() - 0.5) * 1.2); painted(g, rng, page, '#ece6d6', o, { sharp: true, band: 0.15, ink: 0.9 }); for (let k = 0; k < 4; k++) { const v = -0.6 + k * 0.4; line(g, [page[0], page[1]].map(([px, py], j) => [px + (page[3][0] - page[0][0]) * (0.2 + k * 0.2), py + (page[3][1] - page[0][1]) * (0.2 + k * 0.2)]), 'rgba(60,56,50,0.5)', Math.max(0.5, o.ink * 0.4)); void v; } }
+    const scroll = boxAt(...at(L * 0.55, W * 0.55), s * 0.12, s * 0.03, a + 0.3); painted(g, rng, scroll, '#d8ccaa', o, { sharp: true, band: 0.3, ink: 1 }); g.beginPath(); g.arc(...centre(scroll), s * 0.018, 0, 6.283); g.fillStyle = '#8a1e1e'; g.fill();
+    const [ix, iy] = at(L * 0.62, -W * 0.55); g.beginPath(); g.arc(ix, iy, s * 0.045, 0, 6.283); g.fillStyle = '#1a1a22'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); const qd = a - 0.9; for (const [col, w] of [[INKD, o.ink * 2.4], ['#e8e4da', o.ink * 1.2]]) line(g, [[ix, iy], [ix + Math.cos(qd) * s * 0.22, iy + Math.sin(qd) * s * 0.22]], col, w);
+    const [cx2, cy2] = at(-L * 0.75, -W * 0.6); g.beginPath(); g.arc(cx2, cy2, s * 0.04, 0, 6.283); g.fillStyle = '#ece6d4'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 0.8; g.stroke();
     return [top, chair];
   } },
   throne: { label: 'Thrones', size: 1.4, height: 1.2, paint(g, s, rng, o) {
-    // A high-backed seat on a stepped dais: carved frame (dark wood or grey stone), a red buttoned cushion, armrests either side.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], stone = rng() < 0.4, frameCol = stone ? '#7a766e' : '#4a3020';
-    if (stone) { const dais = boxAt(0, s * 0.1, s * 0.75, s * 0.6, a); softShadow(g, dais, o, 0.5); inked(g, rng, dais, '#8a867e', o, { sharp: true, band: 0.35, ink: 1.5 }); }
-    const seat = boxAt(...at(0, s * 0.05), s * 0.42, s * 0.4, a); softShadow(g, seat, o, 0.55); inked(g, rng, seat, frameCol, o, { sharp: true, grain: a, lines: stone ? 2 : 8, hatch: 0.35, ink: 1.8 });
-    const back = boxAt(...at(0, -s * 0.4), s * 0.46, s * 0.1, a); inked(g, rng, back, shade(frameCol, 0.1), o, { sharp: true, band: 0.3, ink: 1.6 });
-    for (const k of [-1, 1]) inked(g, rng, boxAt(...at(k * s * 0.42, s * 0.05), s * 0.07, s * 0.38, a), shade(frameCol, -0.05), o, { sharp: true, band: 0.3, ink: 1.4 });
-    const cushion = boxAt(...at(0, s * 0.07), s * 0.32, s * 0.3, a); inked(g, rng, cushion, '#8a2224', o, { sharp: true, band: 0.4, lit: 0.12, ink: 1.2 });
-    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) { const [x, y] = at((i - 1) * s * 0.18, s * 0.07 + (j - 1) * s * 0.17); g.beginPath(); g.arc(x, y, s * 0.06, 0, 6.283); g.fillStyle = 'rgba(255,200,190,0.12)'; g.fill(); g.beginPath(); g.arc(x, y, Math.max(1, s * 0.022), 0, 6.283); g.fillStyle = '#3a0c0c'; g.fill(); }
-    for (const k of [-1, 1]) { const fin = blob(rng, ...at(k * s * 0.44, -s * 0.42), s * 0.06, s * 0.06, 8, 0.05); inked(g, rng, fin, shade(frameCol, 0.2), o, { band: 0.3, lit: 0.15, ink: 1.2 }); }
-    return [seat];
+    // As the Kingdom Hall's grand chair: a carved dark frame with scrolled arms and a rolled top rail, a deep red seat buttoned in a
+    // grid, each button dimpling the cloth, its folds lit; stone instead of wood for a hall's throne.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], stone = rng() < 0.35, frameCol = stone ? '#7e7a72' : '#4a2e1a', cloth = pick(rng, ['#8a2224', '#7a1e30', '#2a3e6e']);
+    const frame = boxAt(0, 0, s * 0.62, s * 0.58, a); softShadow(g, frame, o, 0.6); painted(g, rng, frame, frameCol, o, { sharp: true, grain: a, lines: stone ? 3 : 12, hatch: 0.4, ink: 1.9 });
+    const rail = boxAt(...at(0, -s * 0.6), s * 0.66, s * 0.09, a); painted(g, rng, rail, shade(frameCol, 0.1), o, { sharp: true, grain: a, lines: 4, hatch: 0.4, band: 0.35, ink: 1.6 });
+    for (const k of [-1, 1]) { const end = blob(rng, ...at(k * s * 0.66, -s * 0.6), s * 0.08, s * 0.08, 10, 0.02); painted(g, rng, end, shade(frameCol, 0.15), o, { band: 0.3, lit: 0.12, ink: 1.4 }); g.beginPath(); g.arc(...at(k * s * 0.66, -s * 0.6), s * 0.04, 0, 6.283); g.strokeStyle = 'rgba(20,12,4,0.6)'; g.lineWidth = o.ink * 0.8; g.stroke(); }
+    for (const k of [-1, 1]) { const arm = boxAt(...at(k * s * 0.54, s * 0.02), s * 0.09, s * 0.5, a); painted(g, rng, arm, shade(frameCol, 0.05), o, { sharp: true, grain: a + 1.57, lines: 5, hatch: 0.4, band: 0.35, ink: 1.5 }); const scroll = blob(rng, ...at(k * s * 0.54, s * 0.52), s * 0.09, s * 0.07, 10, 0.03); painted(g, rng, scroll, shade(frameCol, 0.15), o, { band: 0.3, ink: 1.3 }); }
+    const seat = boxAt(...at(0, 0), s * 0.42, s * 0.48, a); painted(g, rng, seat, cloth, o, { sharp: true, band: 0.5, lit: 0.08, ink: 1.4 });
+    g.save(); poly(g, seat); g.clip();
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) { const [x, y] = at((i - 1) * s * 0.26, (j - 1.5) * s * 0.24); g.filter = `blur(${Math.max(1, s * 0.03)}px)`; g.beginPath(); g.arc(x - s * 0.03, y - s * 0.03, s * 0.09, 0, 6.283); g.fillStyle = 'rgba(255,190,180,0.07)'; g.fill(); g.beginPath(); g.arc(x + s * 0.03, y + s * 0.03, s * 0.07, 0, 6.283); g.fillStyle = 'rgba(20,0,0,0.3)'; g.fill(); g.filter = 'none'; g.beginPath(); g.arc(x, y, Math.max(1, s * 0.022), 0, 6.283); g.fillStyle = '#2a0808'; g.fill(); }
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) { if (i < 2) line(g, [at((i - 1) * s * 0.26, (j - 1.5) * s * 0.24), at(i * s * 0.26, (j - 1.5) * s * 0.24)], 'rgba(30,4,4,0.35)', Math.max(0.5, o.ink * 0.5)); if (j < 3) line(g, [at((i - 1) * s * 0.26, (j - 1.5) * s * 0.24), at((i - 1) * s * 0.26, (j - 0.5) * s * 0.24)], 'rgba(30,4,4,0.35)', Math.max(0.5, o.ink * 0.5)); }
+    g.restore();
+    return [frame];
   } },
   altar: { label: 'Altars', size: 1.6, height: 0.9, paint(g, s, rng, o) {
     // As the Kingdom Hall's: a stone block under a cloth with a knotwork border, candles at its corners, an offering bowl.
     const a = rng() * 6.28, L = s * 0.82, W = s * 0.38, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], block = boxAt(0, 0, L, W, a), cloth = pick(rng, ['#3e6a2a', '#7a2224', '#2a3e6a', '#e0d8c2']);
-    softShadow(g, block, o, 0.6); inked(g, rng, block, '#8a867c', o, { sharp: true, band: 0.4, ink: 1.8 });
-    const drape = boxAt(0, 0, L * 0.86, W * 1.06, a); inked(g, rng, drape, cloth, o, { sharp: true, grain: a + 1.57, lines: 20, hatch: 0.15, band: 0.4, ink: 1.4 });
+    softShadow(g, block, o, 0.6); painted(g, rng, block, '#8a867c', o, { sharp: true, band: 0.4, ink: 1.8 });
+    const drape = boxAt(0, 0, L * 0.86, W * 1.06, a); painted(g, rng, drape, cloth, o, { sharp: true, grain: a + 1.57, lines: 20, hatch: 0.15, band: 0.4, ink: 1.4 });
     const trim = cloth === '#e0d8c2' ? '#8a6a2a' : '#d8c890'; for (const v of [-0.62, 0.62]) { const p = []; for (let k = 0; k <= 24; k++) { const u = -L * 0.8 + (k / 24) * L * 1.6; p.push(at(u, v * W + Math.sin(k * 1.6) * W * 0.12)); } line(g, p, trim, o.ink * 1.1); const p2 = []; for (let k = 0; k <= 24; k++) { const u = -L * 0.8 + (k / 24) * L * 1.6; p2.push(at(u, v * W - Math.sin(k * 1.6) * W * 0.12)); } line(g, p2, trim, o.ink * 1.1); }
     for (const [u, v] of [[-0.85, -0.8], [0.85, -0.8], [-0.85, 0.8], [0.85, 0.8]]) { const [x, y] = at(u * L, v * W); g.beginPath(); g.arc(x, y, s * 0.04, 0, 6.283); g.fillStyle = '#ece6d4'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 0.8; g.stroke(); g.beginPath(); g.arc(x, y, s * 0.018, 0, 6.283); g.fillStyle = '#ffd890'; g.fill(); }
-    const bowl = blob(rng, 0, 0, s * 0.1, s * 0.1, 12, 0.01); inked(g, rng, bowl, '#b8943e', o, { band: 0.35, lit: 0.2, ink: 1.2 });
+    const bowl = blob(rng, 0, 0, s * 0.1, s * 0.1, 12, 0.01); painted(g, rng, bowl, '#b8943e', o, { band: 0.35, lit: 0.2, ink: 1.2 });
     return [block];
   } },
   statue: { label: 'Statues', size: 1.4, height: 2.0, paint(g, s, rng, o) {
-    // A figure on a square plinth, seen from above: a hooded head and shoulders, robe folds falling out round it in grey stone.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], base = pick(rng, ['#c8c4b8', '#9a968c', '#b8b4a8']);
-    const plinth = boxAt(0, 0, s * 0.62, s * 0.62, a); softShadow(g, plinth, o, 0.55); inked(g, rng, plinth, shade(base, -0.3), o, { sharp: true, band: 0.4, ink: 1.6 });
-    const robe = blob(rng, ...at(0, s * 0.04), s * 0.56, s * 0.5, 22, 0.14, a); softShadow(g, robe, o, 0.5); inked(g, rng, robe, base, o, { band: 0.5, lit: 0.12, ink: 1.5 });
-    for (let k = 0; k < 14; k++) { const q = a + (k / 14) * 6.283 + rng() * 0.2; g.beginPath(); g.moveTo(...at(Math.cos(q) * s * 0.14, Math.sin(q) * s * 0.14)); g.quadraticCurveTo(...at(Math.cos(q + 0.2) * s * 0.32, Math.sin(q + 0.2) * s * 0.3), ...at(Math.cos(q) * s * 0.52, Math.sin(q) * s * 0.46)); g.strokeStyle = 'rgba(40,36,30,0.5)'; g.lineWidth = Math.max(0.6, o.ink * 0.8); g.stroke(); }
-    for (const k of [-1, 1]) { const sh = blob(rng, ...at(k * s * 0.2, -s * 0.02), s * 0.12, s * 0.09, 10, 0.05, a); inked(g, rng, sh, shade(base, 0.08), o, { band: 0.4, ink: 1.2 }); }
-    const head = blob(rng, 0, 0, s * 0.13, s * 0.14, 12, 0.03, a); inked(g, rng, head, shade(base, 0.15), o, { band: 0.45, lit: 0.15, ink: 1.4 });
-    return [plinth, robe];
+    // As the house's veiled figure: white stone seen from above, a hooded head bowed forward, the veil falling over the shoulders
+    // in long folds that spread out to a hem on the floor round it, each fold lit on one side and shadowed on the other.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], base = pick(rng, ['#d4d0c6', '#c4c0b6', '#b8b4aa']);
+    const hem = []; for (let k = 0; k < 28; k++) { const q = (k / 28) * 6.283, r = s * (0.52 + 0.06 * Math.sin(q * 7 + rng()) + (Math.sin(q) > 0 ? 0.08 : 0)); hem.push(at(Math.cos(q) * r, Math.sin(q) * r * 0.86)); }
+    softShadow(g, hem, o, 0.55); painted(g, rng, hem, base, o, { band: 0.55, lit: 0.1, ink: 1.6 });
+    g.save(); trace(g, hem); g.clip();
+    for (let k = 0; k < 16; k++) { const q = (k / 16) * 6.283 + rng() * 0.15, p0 = at(Math.cos(q) * s * 0.16, Math.sin(q) * s * 0.14 - s * 0.05), p1 = at(Math.cos(q + 0.15) * s * 0.34, Math.sin(q + 0.15) * s * 0.3), p2 = at(Math.cos(q) * s * 0.6, Math.sin(q) * s * 0.52);
+      const lit = towardLight(Math.cos(q + a), Math.sin(q + a), 1); g.beginPath(); g.moveTo(...p0); g.quadraticCurveTo(...p1, ...p2); g.strokeStyle = 'rgba(30,26,22,0.55)'; g.lineWidth = o.ink * 1.1; g.stroke();
+      g.beginPath(); g.moveTo(p0[0] - 1.5, p0[1] - 1.5); g.quadraticCurveTo(p1[0] - 2, p1[1] - 2, p2[0] - 2, p2[1] - 2); g.strokeStyle = lit > 0 ? 'rgba(255,252,245,0.5)' : 'rgba(255,252,245,0.15)'; g.lineWidth = o.ink * 1.6; g.stroke(); }
+    g.restore();
+    for (const k of [-1, 1]) { const sh = blob(rng, ...at(k * s * 0.22, s * 0.04), s * 0.16, s * 0.12, 12, 0.06, a); painted(g, rng, sh, shade(base, 0.08), o, { band: 0.45, lit: 0.18, ink: 1.3 }); }
+    const hood = blob(rng, ...at(0, -s * 0.06), s * 0.17, s * 0.19, 14, 0.04, a); painted(g, rng, hood, shade(base, 0.12), o, { band: 0.5, lit: 0.2, ink: 1.5 });
+    trace(g, moved(hood, ...at(0, -s * 0.06), 0.55, ...at(0, s * 0.03).map((v) => v * 0))); g.fillStyle = 'rgba(30,26,22,0.35)'; g.fill();
+    return [hem];
   } },
   pottedPlant: { label: 'Potted plants', size: 0.8, height: 0.7, paint(g, s, rng, o) {
     // A clay pot with a spiky or leafy plant spilling out of it, the leaves inked with dark veins (as the hall's plants are).
-    const R = s * 0.32, pot = blob(rng, 0, 0, R, R, 18, 0.01); softShadow(g, pot, o, 0.5); inked(g, rng, pot, pick(rng, ['#9a5a34', '#7a6a5a', '#5a6a6e']), o, { band: 0.45, lit: 0.12, ink: 1.5 });
+    const R = s * 0.32, pot = blob(rng, 0, 0, R, R, 18, 0.01); softShadow(g, pot, o, 0.5); painted(g, rng, pot, pick(rng, ['#9a5a34', '#7a6a5a', '#5a6a6e']), o, { band: 0.45, lit: 0.12, ink: 1.5 });
     g.beginPath(); g.arc(0, 0, R * 0.8, 0, 6.283); g.fillStyle = '#2e2010'; g.fill();
     const spiky = rng() < 0.5, green = o.season === 'winter' ? ['#3a4426', '#525a34'] : ['#2e4a16', '#46661e', '#62802a'];
     if (spiky) for (let k = 0; k < 16; k++) { const q = (k / 16) * 6.283 + rng() * 0.3; blade(g, 0, 0, q, s * (0.5 + rng() * 0.35), s * 0.06, (rng() - 0.5) * 0.3, green[0], pick(rng, green.slice(1)), o.ink * 0.6); }
@@ -1712,28 +1754,33 @@ const DRAFTS = {
     // A round-ended tub (stone, copper or staves) with a thick rim, still grey-blue water in it, a cloth over its edge.
     const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.78, W = s * 0.44, rimCol = pick(rng, ['#8a867e', '#a8643a', '#6a5032']);
     const tub = []; for (let k = 0; k < 32; k++) { const q = (k / 32) * 6.283, x = Math.cos(q), y = Math.sin(q); tub.push(at(Math.sign(x) * Math.pow(Math.abs(x), 0.6) * L, Math.sign(y) * Math.pow(Math.abs(y), 0.6) * W)); }
-    softShadow(g, tub, o, 0.55); inked(g, rng, tub, rimCol, o, { band: 0.45, lit: 0.15, ink: 1.8 });
+    softShadow(g, tub, o, 0.55); painted(g, rng, tub, rimCol, o, { band: 0.45, lit: 0.15, ink: 1.8 });
     const water = tub.map(([x, y]) => [x * 0.8, y * 0.76]); trace(g, water); const wg = g.createLinearGradient(...at(-L, -W), ...at(L, W)); wg.addColorStop(0, '#7a8e96'); wg.addColorStop(1, '#3e4e56'); g.fillStyle = wg; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke();
     for (let k = 0; k < 4; k++) line(g, [at(-L * 0.5 + k * L * 0.25, -W * 0.3), at(-L * 0.4 + k * L * 0.25, -W * 0.25)], 'rgba(220,235,240,0.45)', Math.max(0.6, o.ink * 0.6));
-    if (rng() < 0.7) { const cloth = [at(L * 0.4, -W * 1.05), at(L * 0.7, -W * 1.05), at(L * 0.75, -W * 0.55), at(L * 0.42, -W * 0.6)]; inked(g, rng, cloth, '#e4e0d4', o, { sharp: true, band: 0.35, ink: 1.1 }); }
+    if (rng() < 0.7) { const cloth = [at(L * 0.4, -W * 1.05), at(L * 0.7, -W * 1.05), at(L * 0.75, -W * 0.55), at(L * 0.42, -W * 0.6)]; painted(g, rng, cloth, '#e4e0d4', o, { sharp: true, band: 0.35, ink: 1.1 }); }
     return [tub];
   } },
   counter: { label: 'Kitchen counters', size: 2.0, height: 0.9, paint(g, s, rng, o) {
-    // As the residence's kitchen: a long plank table crowded with grey pots and pans, a cutting board with vegetables, a knife, a cloth.
-    const a = rng() * 6.28, L = s * 0.88, W = s * 0.3, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], top = boxAt(0, 0, L, W, a);
-    softShadow(g, top, o, 0.55); inked(g, rng, top, '#6e5234', o, { sharp: true, grain: a, lines: 18, hatch: 0.45, ink: 1.8 });
-    for (let k = 1; k < 3; k++) line(g, [at(-L, -W + k * W * 0.66), at(L, -W + k * W * 0.66)], 'rgba(20,12,4,0.6)', o.ink * 0.8);
-    let u = -L * 0.8; while (u < L * 0.8) { const what = rng(), [x, y] = at(u, (rng() - 0.5) * W * 0.6);
-      if (what < 0.45) { const r = s * (0.07 + rng() * 0.05), pot = blob(rng, x, y, r, r, 14, 0.01); inked(g, rng, pot, '#5a5854', o, { band: 0.4, lit: 0.15, ink: 1.3 }); g.beginPath(); g.arc(x, y, r * 0.7, 0, 6.283); g.fillStyle = pick(rng, ['#2a2622', '#7a3a1a', '#4a5a2a']); g.fill(); line(g, [[x + r, y], [x + r * 1.8, y + r * 0.2]], INKD, o.ink * 1.6); u += r * 2.6; }
-      else if (what < 0.75) { const board = boxAt(x, y, s * 0.1, s * 0.07, a + 0.2); inked(g, rng, board, '#a88858', o, { sharp: true, band: 0.3, ink: 1.1 }); for (let k = 0; k < 4; k++) { const v = blob(rng, x + (rng() - 0.5) * s * 0.12, y + (rng() - 0.5) * s * 0.08, s * 0.025, s * 0.025, 8, 0.1); inked(g, rng, v, pick(rng, ['#c8402a', '#d8862a', '#6a8a3a']), o, { band: 0.3, ink: 0.8 }); } u += s * 0.24; }
-      else { const cl = boxAt(x, y, s * 0.07, s * 0.05, a + rng()); inked(g, rng, cl, '#a83a2a', o, { sharp: true, band: 0.35, ink: 1 }); u += s * 0.16; } }
+    // As the Kingdom Hall's kitchen: a long plank counter crowded with a copper pot, wooden bowls of tomatoes and carrots, cabbages,
+    // a basket heaped with vegetables, a cutting board with a knife, a cloth, all inked and painted rich.
+    const a = rng() * 6.28, L = s * 0.9, W = s * 0.34, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], top = boxAt(0, 0, L, W, a);
+    softShadow(g, top, o, 0.55); painted(g, rng, top, '#6a4e30', o, { sharp: true, grain: a, lines: 20, hatch: 0.5, ink: 1.9 });
+    for (let k = 1; k < 3; k++) line(g, [at(-L, -W + k * W * 0.66), at(L, -W + k * W * 0.66)], 'rgba(20,12,4,0.65)', o.ink * 0.9);
+    const veg = (x, y, r, col, leafy = false) => { const v = blob(rng, x, y, r, r * (0.85 + rng() * 0.15), 10, 0.08); painted(g, rng, v, col, o, { band: 0.5, lit: 0.2, ink: 1, grain: rng() * 3, lines: leafy ? 8 : 0, hatch: 0.35 }); if (!leafy) { g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.25, 0, 6.283); g.fillStyle = 'rgba(255,240,220,0.35)'; g.fill(); } };
+    const bowl = (x, y, r, fill) => { const b = blob(rng, x, y, r, r, 16, 0.01); painted(g, rng, b, '#7a5430', o, { band: 0.45, lit: 0.15, ink: 1.3 }); g.beginPath(); g.arc(x, y, r * 0.78, 0, 6.283); g.fillStyle = '#3a2614'; g.fill(); for (let i = 0; i < 6; i++) { const q = rng() * 6.28, d = rng() * r * 0.45; veg(x + Math.cos(q) * d, y + Math.sin(q) * d, r * 0.26, fill()); } };
+    const slots = [-0.72, -0.36, 0, 0.36, 0.72].map((k) => k + (rng() - 0.5) * 0.06).sort(() => rng() - 0.5);
+    { const [x, y] = at(slots[0] * L, 0), r = W * 0.6, pot = blob(rng, x, y, r, r, 18, 0.01); painted(g, rng, pot, '#b8683a', o, { band: 0.5, lit: 0.25, ink: 1.5 }); g.beginPath(); g.arc(x, y, r * 0.76, 0, 6.283); g.fillStyle = '#7a3a1a'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); const lid = blob(rng, x, y, r * 0.2, r * 0.2, 8, 0.02); painted(g, rng, lid, '#d8885a', o, { band: 0.3, ink: 1 }); for (const k of [-1, 1]) line(g, [at(slots[0] * L + k * r * 1.05, 0), at(slots[0] * L + k * r * 1.3, 0)], INKD, o.ink * 2.6); }
+    bowl(...at(slots[1] * L, 0), W * 0.55, () => pick(rng, ['#c8402a', '#b8301e', '#d86a2a']));
+    { const [x, y] = at(slots[2] * L, 0); for (let i = 0; i < 3; i++) veg(x + (rng() - 0.5) * W * 0.8, y + (rng() - 0.5) * W * 0.8, W * 0.3, pick(rng, ['#6a8a3a', '#7a9a44']), true); }
+    { const [x, y] = at(slots[3] * L, 0), r = W * 0.62, bk = blob(rng, x, y, r, r * 0.85, 16, 0.04, a); painted(g, rng, bk, '#8a6a3a', o, { grain: a + 0.8, lines: 16, hatch: 0.45, cross: true, band: 0.4, ink: 1.4 }); g.save(); trace(g, moved(bk, x, y, 0.8)); g.clip(); for (let i = 0; i < 9; i++) veg(x + (rng() - 0.5) * r * 1.4, y + (rng() - 0.5) * r * 1.2, r * 0.24, pick(rng, ['#c88a2a', '#a85a2a', '#6a8a3a', '#d8b860', '#8a3a5a'])); g.restore(); }
+    { const [x, y] = at(slots[4] * L, 0), board = boxAt(x, y, W * 0.55, W * 0.4, a + 0.15); painted(g, rng, board, '#a8885a', o, { sharp: true, grain: a, lines: 6, hatch: 0.3, band: 0.35, ink: 1.2 }); for (let i = 0; i < 5; i++) veg(x + (rng() - 0.5) * W * 0.6, y + (rng() - 0.5) * W * 0.4, W * 0.08, '#d86a2a'); const kn = [[x - W * 0.4, y + W * 0.3], [x + W * 0.1, y + W * 0.42]]; for (const [col, w] of [[INKD, o.ink * 3], ['#c8c4b8', o.ink * 1.6]]) line(g, kn, col, w); }
     return [top];
   } },
   brokenFurniture: { label: 'Broken furniture', size: 1.6, height: 0.4, paint(g, s, rng, o) {
     // As the abbey's wrecked pews: planks splintered and heaped every way, their broken ends pale, a chair leg or two, splinters round.
     g.save(); g.filter = `blur(${Math.max(1, s * 0.05)}px)`; trace(g, blob(rng, 0, 0, s * 0.8, s * 0.6, 12, 0.3)); g.fillStyle = 'rgba(14,8,4,0.45)'; g.fill(); g.restore();
     const out = [];
-    for (let i = 0; i < 9; i++) { const a = rng() * 6.28, len = s * (0.25 + rng() * 0.35), wid = s * (0.05 + rng() * 0.04), cx = (rng() - 0.5) * s * 0.7, cy = (rng() - 0.5) * s * 0.5, plank = boxAt(cx, cy, len, wid, a); softShadow(g, plank, o, 0.4); inked(g, rng, plank, pick(rng, ['#7a5a36', '#6a4a2c', '#8a6a40']), o, { sharp: true, grain: a, lines: 5, hatch: 0.5, ink: 1.4 });
+    for (let i = 0; i < 9; i++) { const a = rng() * 6.28, len = s * (0.25 + rng() * 0.35), wid = s * (0.05 + rng() * 0.04), cx = (rng() - 0.5) * s * 0.7, cy = (rng() - 0.5) * s * 0.5, plank = boxAt(cx, cy, len, wid, a); softShadow(g, plank, o, 0.4); painted(g, rng, plank, pick(rng, ['#7a5a36', '#6a4a2c', '#8a6a40']), o, { sharp: true, grain: a, lines: 5, hatch: 0.5, ink: 1.4 });
       const c = Math.cos(a), sn = Math.sin(a), end = [cx + c * len, cy + sn * len]; for (let k = 0; k < 4; k++) { const v = (k / 3 - 0.5) * wid * 1.8, l = s * (0.03 + rng() * 0.07); poly(g, [[end[0] - sn * (v - wid * 0.25), end[1] + c * (v - wid * 0.25)], [end[0] + c * l - sn * v, end[1] + sn * l + c * v], [end[0] - sn * (v + wid * 0.25), end[1] + c * (v + wid * 0.25)]]); g.fillStyle = '#c8a878'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.6, o.ink * 0.6); g.stroke(); } out.push(plank); }
     for (let i = 0; i < 12; i++) { const a = rng() * 6.28, d = s * (0.6 + rng() * 0.35), b = rng() * 6.28, l = s * 0.07; line(g, [[Math.cos(a) * d, Math.sin(a) * d], [Math.cos(a) * d + Math.cos(b) * l, Math.sin(a) * d + Math.sin(b) * l]], '#8a6a40', Math.max(0.8, o.ink)); }
     return out;
@@ -1744,8 +1791,8 @@ const DRAFTS = {
     // on the water round it; now and then a white flower.
     const pads = []; for (let i = 0; i < 6 + Math.floor(rng() * 5); i++) { let x = 0, y = 0, r = o.unit * (0.06 + rng() * 0.09); for (let k = 0; k < 10; k++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.8; x = Math.cos(a) * d; y = Math.sin(a) * d; if (pads.every(([px, py, pr]) => Math.hypot(px - x, py - y) > (pr + r) * 1.15)) break; } pads.push([x, y, r]); const notch = rng() * 6.28;
       g.beginPath(); g.arc(x, y, r * 1.3, 0, 6.283); g.strokeStyle = 'rgba(200,220,200,0.1)'; g.lineWidth = Math.max(0.6, o.ink * 0.7); g.stroke();
-      const pad = []; for (let k = 0; k <= 20; k++) { const q = notch + 0.35 + (k / 20) * (6.283 - 0.7); pad.push([x + Math.cos(q) * r, y + Math.sin(q) * r]); } pad.push([x, y]);
-      const col = o.season === 'autumn' ? pick(rng, ['#8a7a2a', '#9a6a2a']) : pick(rng, ['#5e5a1a', '#6a6420', '#545418']); inked(g, rng, pad, col, o, { sharp: true, band: 0.3, lit: 0.08, ink: 1.2 });
+      const pad = []; for (let k = 0; k <= 20; k++) { const q = notch + 0.18 + (k / 20) * (6.283 - 0.36); pad.push([x + Math.cos(q) * r, y + Math.sin(q) * r]); } pad.push([x, y]);
+      const col = o.season === 'autumn' ? pick(rng, ['#8a7a2a', '#9a6a2a']) : pick(rng, ['#5e5a1a', '#6a6420', '#545418']); painted(g, rng, pad, col, o, { sharp: true, band: 0.3, lit: 0.08, ink: 1.2 });
       for (let k = 0; k < 7; k++) { const q = notch + 0.6 + (k / 7) * (6.283 - 1.2); line(g, [[x, y], [x + Math.cos(q) * r * 0.85, y + Math.sin(q) * r * 0.85]], 'rgba(30,36,8,0.55)', Math.max(0.5, o.ink * 0.5)); }
       if (o.season !== 'winter' && rng() < 0.15) leaf(g, x + r * 0.2, y - r * 0.2, r * 0.7, rng() * 6.28, '#f4eee2', o.ink * 0.6, 0.6, 'flower'); }
     return null;
@@ -1755,7 +1802,7 @@ const DRAFTS = {
     g.beginPath(); g.ellipse(0, 0, s * 0.55, s * 0.45, 0, 0, 6.283); g.strokeStyle = 'rgba(200,220,210,0.18)'; g.lineWidth = Math.max(0.8, o.ink); g.stroke();
     const [base, tip] = o.season === 'autumn' ? ['#4a3a14', '#a88a3a'] : o.season === 'winter' ? ['#3a3a24', '#8a8456'] : ['#24360e', '#8aa83a'], out = [];
     for (let i = 0; i < 26; i++) { const a = rng() * 6.28, len = s * (0.5 + rng() * 0.45); blade(g, (rng() - 0.5) * s * 0.15, (rng() - 0.5) * s * 0.15, a, len, o.unit * 0.02, (rng() - 0.5) * 0.3, base, tip, o.ink * 0.5); out.push([[0, 0], [Math.cos(a) * len, Math.sin(a) * len], [1, 1]]); }
-    for (let i = 0; i < 6; i++) { const a = rng() * 6.28, d = s * (0.25 + rng() * 0.4), x = Math.cos(a) * d, y = Math.sin(a) * d; line(g, [[0, 0], [x, y]], '#5a6a2a', Math.max(0.6, o.ink * 0.7)); const head = blob(rng, x, y, o.unit * 0.03, o.unit * 0.075, 8, 0.05, a + 1.57); inked(g, rng, head, '#5a3a1e', o, { band: 0.4, ink: 1 }); }
+    for (let i = 0; i < 6; i++) { const a = rng() * 6.28, d = s * (0.25 + rng() * 0.4), x = Math.cos(a) * d, y = Math.sin(a) * d; line(g, [[0, 0], [x, y]], '#5a6a2a', Math.max(0.6, o.ink * 0.7)); const head = blob(rng, x, y, o.unit * 0.03, o.unit * 0.075, 8, 0.05, a + 1.57); painted(g, rng, head, '#5a3a1e', o, { band: 0.4, ink: 1 }); }
     return out;
   } },
   streamRock: { label: 'Stream rocks', size: 1.8, height: 0.4, paint(g, s, rng, o) {
@@ -1763,7 +1810,7 @@ const DRAFTS = {
     const R = s * 0.55, rock = blob(rng, 0, 0, R, R * 0.7, 12, 0.12, rng() * 6.28);
     for (let k = 0; k < 3; k++) { trace(g, moved(rock, 0, 0, 1.18 + k * 0.16, k * s * 0.05, k * s * 0.02)); g.strokeStyle = `rgba(220,235,235,${0.35 - k * 0.1})`; g.lineWidth = Math.max(0.8, o.ink * (1.4 - k * 0.3)); g.stroke(); }
     for (let i = 0; i < 6; i++) { const y = (rng() - 0.5) * R * 1.2; g.beginPath(); g.moveTo(R * 0.8, y); g.quadraticCurveTo(R * 1.4, y + (rng() - 0.5) * R * 0.3, R * (1.6 + rng() * 0.5), y + (rng() - 0.5) * R * 0.5); g.strokeStyle = 'rgba(230,240,240,0.4)'; g.lineWidth = Math.max(0.6, o.ink * 0.8); g.stroke(); }
-    inked(g, rng, rock, pick(rng, ['#5e5638', '#56503a', '#665e40']), o, { band: 0.5, lit: 0.1, ink: 1.6, grain: rng() * 3, lines: 6, hatch: 0.2 });
+    painted(g, rng, rock, pick(rng, ['#5e5638', '#56503a', '#665e40']), o, { band: 0.5, lit: 0.1, ink: 1.6, grain: rng() * 3, lines: 6, hatch: 0.2 });
     if (o.season !== 'winter') speckle(g, rng, -R * 0.2, -R * 0.2, R * 0.4, R * 0.3, 16, MOSS[o.season] ?? MOSS.summer, o.unit * 0.008);
     return [rock];
   } },
@@ -1772,35 +1819,38 @@ const DRAFTS = {
     const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), out = [], n = 4 + Math.floor(rng() * 2);
     for (let i = 0; i < n; i++) { const u = (i / (n - 1) - 0.5) * s * 1.6, v = (rng() - 0.5) * s * 0.25, x = c * u - sn * v, y = sn * u + c * v, r = s * (0.14 + rng() * 0.05), st = blob(rng, x, y, r, r * 0.75, 10, 0.12);
       trace(g, moved(st, x, y, 1.25)); g.strokeStyle = 'rgba(210,230,220,0.2)'; g.lineWidth = Math.max(0.8, o.ink); g.stroke();
-      inked(g, rng, st, pick(rng, ['#5e5a4c', '#565246']), o, { band: 0.5, lit: 0.08, ink: 1.5, grain: rng() * 3, lines: 4, hatch: 0.25 });
+      painted(g, rng, st, pick(rng, ['#5e5a4c', '#565246']), o, { band: 0.5, lit: 0.08, ink: 1.5, grain: rng() * 3, lines: 4, hatch: 0.25 });
       if (o.season !== 'winter') { g.save(); trace(g, st); g.clip(); speckle(g, rng, x, y, r * 0.7, r * 0.5, 30, ['#8aa83a', '#6a8a2a', '#a8c04a'], o.unit * 0.01); g.restore(); }
       out.push(st); }
     return out;
   } },
   rowboat: { label: 'Rowboats', size: 2.6, height: 0.5, paint(g, s, rng, o) {
-    // As the Moondock's: a pointed wooden hull of planks with inked seams, thwarts across it, oars shipped or out, a coil of rope.
+    // As the Moondock's: a pointed hull of warm planks with inked seams following its curve, a gunwale rim, thwarts across, an
+    // anchor or a coil of rope in the bow, fish in the bottom now and then, oars shipped or out.
     const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.3;
     const half = (t) => W * (t < 0.15 ? 0.62 + (t / 0.15) * 0.35 : t < 0.55 ? 0.97 + Math.sin(((t - 0.15) / 0.4) * Math.PI) * 0.03 : Math.cos(((t - 0.55) / 0.45) * Math.PI * 0.5) ** 0.9);
-    const hull = []; for (let k = 0; k <= 30; k++) { const t = k / 30; hull.push(at(-L + t * L * 2, -half(t))); } for (let k = 30; k >= 0; k--) { const t = k / 30; hull.push(at(-L + t * L * 2, half(t))); }
-    softShadow(g, hull, o, 0.5); inked(g, rng, hull, '#6e5032', o, { grain: a, lines: 10, hatch: 0.45, band: 0.4, ink: 1.8 });
-    trace(g, hull.map(([x, y]) => [x * 0.86, y * 0.8])); g.fillStyle = '#4a3420'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
-    for (let k = -2; k <= 2; k++) { g.save(); trace(g, hull.map(([x, y]) => [x * 0.86, y * 0.8])); g.clip(); line(g, [at(-L, k * W * 0.3), at(L, k * W * 0.3)], 'rgba(20,12,4,0.6)', o.ink * 0.7); g.restore(); }
-    for (const u of [-0.45, 0.05, 0.45]) inked(g, rng, boxAt(...at(u * L, 0), L * 0.06, W * 0.78 * (u > 0.4 ? 0.7 : 1), a), '#8a6a42', o, { sharp: true, grain: a + 1.57, lines: 3, hatch: 0.4, ink: 1.2 });
-    if (rng() < 0.6) for (const k of [-1, 1]) { const oar = [at(-L * 0.05, k * W * 0.6), at(L * 0.08, k * W * 1.7)]; line(g, oar, INKD, o.ink * 3); line(g, oar, '#9a7a4e', o.ink * 1.6); const bl = blob(rng, ...at(L * 0.09, k * W * 1.82), s * 0.04, s * 0.11, 8, 0.05, a + 1.57); inked(g, rng, bl, '#9a7a4e', o, { band: 0.3, ink: 1.1 }); }
+    const ring = (k) => { const p = []; for (let i = 0; i <= 30; i++) { const t = i / 30; p.push(at(-L * k + t * L * 2 * k, -half(t) * k)); } for (let i = 30; i >= 0; i--) { const t = i / 30; p.push(at(-L * k + t * L * 2 * k, half(t) * k)); } return p; };
+    const hull = ring(1); softShadow(g, hull, o, 0.5); painted(g, rng, hull, '#7a5634', o, { band: 0.45, ink: 1.9 });
+    const inner = ring(0.84); painted(g, rng, inner, '#5a3c22', o, { band: 0.4, lit: 0.04, ink: 1.2 });
+    g.save(); trace(g, inner); g.clip(); for (let k = -3; k <= 3; k++) { const p = []; for (let i = 0; i <= 20; i++) { const t = i / 20; p.push(at(-L + t * L * 2, half(t) * k / 3.5 * 0.84)); } line(g, p, 'rgba(20,12,4,0.6)', o.ink * 0.8); } g.restore();
+    if (rng() < 0.6) { g.save(); trace(g, inner); g.clip(); for (let i = 0; i < 3; i++) { const [x, y] = at(-L * 0.25 + (rng() - 0.5) * L * 0.3, (rng() - 0.5) * W * 0.5), f = blob(rng, x, y, s * 0.08, s * 0.03, 10, 0.05, a + (rng() - 0.5)); painted(g, rng, f, pick(rng, ['#8a8a6a', '#7a7a5a', '#9a8a5a']), o, { band: 0.4, lit: 0.2, ink: 0.9 }); } g.restore(); }
+    { const [x, y] = at(L * 0.62, 0); g.beginPath(); g.arc(x, y, W * 0.32, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 2.6; g.stroke(); g.strokeStyle = '#a8905a'; g.lineWidth = o.ink * 1.4; g.stroke(); g.beginPath(); g.arc(x, y, W * 0.18, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 2.6; g.stroke(); g.strokeStyle = '#a8905a'; g.lineWidth = o.ink * 1.4; g.stroke(); }
+    for (const u of [-0.45, 0.05]) painted(g, rng, boxAt(...at(u * L, 0), L * 0.06, W * 0.82, a), '#9a7448', o, { sharp: true, grain: a + 1.57, lines: 3, hatch: 0.4, ink: 1.3 });
+    if (rng() < 0.6) for (const k of [-1, 1]) { const oar = [at(-L * 0.05, k * W * 0.6), at(L * 0.08, k * W * 1.7)]; line(g, oar, INKD, o.ink * 3); line(g, oar, '#9a7a4e', o.ink * 1.6); const bl = blob(rng, ...at(L * 0.09, k * W * 1.82), s * 0.04, s * 0.11, 8, 0.05, a + 1.57); painted(g, rng, bl, '#9a7a4e', o, { band: 0.3, ink: 1.1 }); }
     return [hull];
   } },
   dock: { label: 'Dock sections', size: 2.0, height: 0.3, paint(g, s, rng, o) {
     // As the Nettles' crossing pier: weathered grey-brown planks across two beams, round log posts at the corners, a plank or two loose.
     const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.9, W = s * 0.42, out = [];
     softShadow(g, boxAt(0, 0, L, W, a), o, 0.55);
-    for (let u = -L; u < L - L * 0.1; u += L * 0.14) { if (rng() < 0.06) continue; const plank = boxAt(...at(u + L * 0.065, (rng() - 0.5) * W * 0.05), L * 0.062, W * (0.96 + rng() * 0.08), a + (rng() - 0.5) * 0.04); inked(g, rng, plank, shade(pick(rng, ['#7a6e5a', '#6e6250', '#86786a']), (rng() - 0.5) * 0.15), o, { sharp: true, grain: a + 1.57, lines: 4, hatch: 0.45, band: 0.3, ink: 1.3 }); for (const v of [-0.7, 0.7]) { g.beginPath(); g.arc(...at(u + L * 0.065, v * W), Math.max(1, s * 0.012), 0, 6.283); g.fillStyle = '#2a2622'; g.fill(); } out.push(plank); }
-    for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const post = blob(rng, ...at(u * L * 1.02, v * W * 1.05), s * 0.07, s * 0.07, 12, 0.05); inked(g, rng, post, '#5a4632', o, { band: 0.4, ink: 1.5 }); woodEnd(g, rng, ...at(u * L * 1.02, v * W * 1.05), s * 0.05, s * 0.05, o); out.push(post); }
+    for (let u = -L; u < L - L * 0.1; u += L * 0.14) { if (rng() < 0.06) continue; const plank = boxAt(...at(u + L * 0.065, (rng() - 0.5) * W * 0.05), L * 0.062, W * (0.96 + rng() * 0.08), a + (rng() - 0.5) * 0.04); painted(g, rng, plank, shade(pick(rng, ['#7a6e5a', '#6e6250', '#86786a']), (rng() - 0.5) * 0.15), o, { sharp: true, grain: a + 1.57, lines: 4, hatch: 0.45, band: 0.3, ink: 1.3 }); for (const v of [-0.7, 0.7]) { g.beginPath(); g.arc(...at(u + L * 0.065, v * W), Math.max(1, s * 0.012), 0, 6.283); g.fillStyle = '#2a2622'; g.fill(); } out.push(plank); }
+    for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const post = blob(rng, ...at(u * L * 1.02, v * W * 1.05), s * 0.07, s * 0.07, 12, 0.05); painted(g, rng, post, '#5a4632', o, { band: 0.4, ink: 1.5 }); woodEnd(g, rng, ...at(u * L * 1.02, v * W * 1.05), s * 0.05, s * 0.05, o); out.push(post); }
     return out;
   } },
   mooringPost: { label: 'Mooring posts', size: 0.9, height: 0.6, paint(g, s, rng, o) {
     // An iron bollard or a stout log post at the water's edge, a mooring rope looped round it and trailing off.
     const iron = rng() < 0.5, R = s * 0.35, post = blob(rng, 0, 0, R, R, 16, 0.02); softShadow(g, post, o, 0.55);
-    inked(g, rng, post, iron ? '#4a4844' : '#5a4632', o, { band: 0.45, lit: 0.15, ink: 1.6 });
+    painted(g, rng, post, iron ? '#4a4844' : '#5a4632', o, { band: 0.45, lit: 0.15, ink: 1.6 });
     if (iron) { g.beginPath(); g.arc(0, 0, R * 0.7, 0, 6.283); g.fillStyle = '#5e5a54'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); } else woodEnd(g, rng, 0, 0, R * 0.78, R * 0.78, o);
     g.beginPath(); g.arc(0, 0, R * 1.05, 0.3, 5.9); g.strokeStyle = INKD; g.lineWidth = o.ink * 3; g.stroke(); g.strokeStyle = '#b8a070'; g.lineWidth = o.ink * 1.6; g.stroke();
     const rope = wander(rng, R * 1.05, 0, rng() * 6.28, 6, s * 0.15, 0.6); line(g, rope, INKD, o.ink * 3); line(g, rope, '#b8a070', o.ink * 1.6);
@@ -1808,7 +1858,7 @@ const DRAFTS = {
   } },
   waterDebris: { label: 'Floating debris', size: 1.2, height: 0, flat: true, paint(g, s, rng, o) {
     // Wreckage drifting on the water: splintered planks, a length of rope, leaves and twigs, each with a faint ripple at its edge.
-    for (let i = 0; i < 5; i++) { const a = rng() * 6.28, cx = (rng() - 0.5) * s * 1.2, cy = (rng() - 0.5) * s * 1.0, len = s * (0.18 + rng() * 0.22), plank = boxAt(cx, cy, len, s * 0.05, a); poly(g, boxAt(cx, cy, len * 1.1, s * 0.09, a)); g.strokeStyle = 'rgba(210,230,220,0.2)'; g.lineWidth = Math.max(0.8, o.ink); g.stroke(); inked(g, rng, plank, pick(rng, ['#6a5a42', '#5a4a36', '#7a6a4e']), o, { sharp: true, grain: a, lines: 4, hatch: 0.5, ink: 1.3 }); }
+    for (let i = 0; i < 5; i++) { const a = rng() * 6.28, cx = (rng() - 0.5) * s * 1.2, cy = (rng() - 0.5) * s * 1.0, len = s * (0.18 + rng() * 0.22), plank = boxAt(cx, cy, len, s * 0.05, a); poly(g, boxAt(cx, cy, len * 1.1, s * 0.09, a)); g.strokeStyle = 'rgba(210,230,220,0.2)'; g.lineWidth = Math.max(0.8, o.ink); g.stroke(); painted(g, rng, plank, pick(rng, ['#6a5a42', '#5a4a36', '#7a6a4e']), o, { sharp: true, grain: a, lines: 4, hatch: 0.5, ink: 1.3 }); }
     const rope = wander(rng, (rng() - 0.5) * s, (rng() - 0.5) * s * 0.6, rng() * 6.28, 8, s * 0.1, 0.9); line(g, rope, INKD, o.ink * 2.4); line(g, rope, '#a8905a', o.ink * 1.2);
     for (let i = 0; i < 12; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.8; leaf(g, Math.cos(a) * d, Math.sin(a) * d, o.unit * (0.04 + rng() * 0.03), rng() * 6.28, pick(rng, ['#6a5a2a', '#8a6a2a', '#4a5a22']), o.ink * 0.5, 0.45); }
     return null;
