@@ -4144,7 +4144,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 /* How the kind picked breaks: compact drop-downs under the chips. */
 .an-decor-brush .an-db-props { margin: 8px 0 0; padding-top: 6px; border-top: 1px solid #4a3e30; gap: 8px 12px; }
 .an-decor-brush .an-db-prop { display: flex; align-items: center; gap: 5px; }
-.an-decor-brush .an-db-prop span { opacity: 0.8; }
+.an-decor-brush .an-db-prop span { opacity: 0.8; white-space: nowrap; }
 .an-decor-brush .an-db-prop select, .an-decor-brush .an-db-prop input { height: 22px; padding: 0 4px; background: #2a241d; color: #e8dfcc; border: 1px solid #5a4b3a; border-radius: 4px; font-size: 12px; }
 .an-decor-brush .an-db-prop input { width: 44px; }
 .an-region-panel .an-rp-num { width: 56px; }
