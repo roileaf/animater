@@ -2,7 +2,7 @@
 export const MATERIALS = ["wood", "glass", "clay", "metal", "stone", "none"];
 
 const TOKENS = {
-  wood: ["barrel", "crate", "box", "cart", "table", "chair", "bench", "stool", "shelf", "wood", "wooden", "plank", "keg"],
+  wood: ["barrel", "crate", "box", "chest","cart", "table", "chair", "bench", "stool", "shelf", "wood", "wooden", "plank", "keg"],
   glass: ["bottle", "glass", "jar", "vial", "potion", "flask", "window"],
   clay: ["pot", "vase", "urn", "amphora", "ceramic", "clay", "jug"],
   metal: ["metal", "iron", "steel", "cage", "brazier"],

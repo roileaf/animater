@@ -47,6 +47,10 @@ test("crates break boxy, barrels round", () => {
   assert.equal(propShape("bw_crate_wood_rectangle_002.webp"), "boxy");
   assert.equal(propShape("Barrel_Wood_A.webp"), "round");
 });
+test("a chest is a boxy wooden prop", () => {
+  assert.equal(guessMaterial("Treasure_Chest_02.webp"), "wood");
+  assert.equal(propShape("Treasure_Chest_02.webp"), "boxy");
+});
 
 test("percent-encoded file names are read decoded; a broken encoding is read as it stands", () => {
   assert.equal(guessMaterial("props/Old%20Barrel.webp"), "wood");
