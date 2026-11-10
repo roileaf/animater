@@ -123,6 +123,7 @@ const decorSection = (c) => {
   parts.push(row('Where', seg([['surface', 'Outdoors'], ['cave', 'Underground']], where, (w) => act({ decor: { where: w, kinds: Object.fromEntries(DECOR_DEFAULT_KINDS[w].filter((id) => !decor.kinds?.[id]).map((id) => [id, { size: 1, amount: 1 }])) } }), 'Where'), 'Which kinds fit: trees and flowers outdoors; stalagmites, glowing mushrooms and cave pools underground.'));
   parts.push(range('How dense', DECOR_RANGE.density, Number(decor.density ?? 0.6), times, (v) => act({ decor: { density: v } }), 0.05, 'How many decorations the region holds, all kinds together.'));
   parts.push(range('Size', DECOR_RANGE.scale, Number(decor.scale ?? 1), times, (v) => act({ decor: { scale: v } }), 0.05, 'Every decoration bigger or smaller.'));
+  parts.push(toggle('Trunks block movement, sight and light', decor.blocks === true, (now) => act({ decor: { blocks: now } }), 'Each tree trunk and stump gets a small ring of walls on the map: creatures can\'t walk through it, can\'t see through it, and it throws a shadow from lights. Only the trunk, never the crown. Kept in step as the trees change; real walls in the scene, so a dense forest adds a good many.'));
   const buttons = element('div', 'an-rp-buttons');
   buttons.append(
     tip(button('Reshuffle', '', () => act({ decor: { seed: (Number(decor.seed) || 0) + 1 } })), 'Scatter them again another way.'),

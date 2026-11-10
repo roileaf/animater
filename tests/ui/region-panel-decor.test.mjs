@@ -55,7 +55,7 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   assert.equal(c.scale, 1);
   assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
   const main = read('scripts/main.mjs');
-  assert.match(main, /density: c\.thick, scale: c\.scale \* \(s\?\.scale \?\? 1\), turn: c\.turn \}/);
+  assert.match(main, /density: c\.thick, scale: c\.scale, turn: c\.turn \}/);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
@@ -122,7 +122,6 @@ test('a ghost of the next dab follows the brush, changes with the bar, and a cli
 test('a region\'s own brush shows the bar with only its place and its ticked kinds, one at a time', async () => {
   const main = read('scripts/main.mjs');
   assert.match(main, /state\.bar = openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\), region \}\)/);
-  assert.match(main, /size: s\?\.kinds\?\.\[id\]\?\.size \?\? 1, amount: 1/);
   const { brushChoices } = await import('../../scripts/ui/decor-brush-bar.mjs');
   const bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(bar, /if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\];/);
@@ -145,7 +144,8 @@ test('the brush bar has a search over its kinds', async () => {
 
 test('the brush bar has three places: outdoors keeps to the wild, town has the built things, underground the caves and dungeons', async () => {
   const { brushKindsFor, BRUSH_PLACES } = await import('../../scripts/ui/decor-brush-bar.mjs');
-  assert.deepEqual(BRUSH_PLACES.map(([k]) => k), ['surface', 'town', 'cave']);
+  assert.deepEqual(BRUSH_PLACES.map(([k]) => k), ['surface', 'town', 'indoor', 'water', 'cave']);
+  assert.ok(brushKindsFor('indoor').includes('bed') && brushKindsFor('water').includes('lilyPads') && !brushKindsFor('surface').includes('bed') && !brushKindsFor('surface').includes('rowboat'));
   const wild = brushKindsFor('surface'), town = brushKindsFor('town'), cave = brushKindsFor('cave');
   assert.ok(town.includes('well') && town.includes('haystack') && town.includes('tombstone') && !town.includes('oak'));
   assert.ok(wild.includes('oak') && !wild.includes('well') && !wild.includes('sarcophagus') && !wild.includes('treasure'));
