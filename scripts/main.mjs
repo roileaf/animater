@@ -7936,6 +7936,8 @@ function decorViews(scene, levels) {
 }
 // The look the painter painted a decoration with (snow is baked on separately), so a wreck is cut from that very picture.
 const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
+// What a decoration held, to spill from its wreck (grain from torn sacks and urns, water from a trough).
+const decorContents = (view) => view?.flags?.animater?.prop?.contents ?? "none";
 // A decoration's wreck as a tile, cut from that picture; null while it has none (art() gives null, decorWreckTile throws).
 const decorWreckOf = (view, settings) => { try { return decorWreckTile(view, decorations.art(view.decor.d, decorArtLook(settings))); } catch { return null; } };
 // The walls a decoration's wreckage stops at: those on its level that stop movement or sight, less open doors. A
@@ -7993,7 +7995,7 @@ function syncDecorWrecks(animate = false) {
     const tile = decorWreckOf(view, regionOfWreck.get(id).settings);
     if (!tile) { decorWrecksShown.delete(id); decorWreckage.hide(id); continue; }
     decorWrecksShown.set(id, note.seed);
-    void decorWreckage.show(tile, note, "none", { animate: playing });
+    void decorWreckage.show(tile, note, decorContents(view), { animate: playing });
   }
 }
 // Broken on this screen the moment it is asked: the decoration goes and its wreck plays. It comes back if the GM never writes it.
@@ -8009,7 +8011,7 @@ function breakDecorHere(regionDoc, view, note) {
   // Not drawn yet as stored: the stored write settles it (decorWreckChanges).
   decorWrecksShown.delete(id);
   const tile = decorWreckOf(view, region.settings);
-  if (tile) void decorWreckage.show(tile, note, "none", { animate: true });
+  if (tile) void decorWreckage.show(tile, note, decorContents(view), { animate: true });
 }
 // The GM never wrote it: the decoration stands again, and a late write of the same note is drawn at rest.
 function refuseDecorHere(id) {

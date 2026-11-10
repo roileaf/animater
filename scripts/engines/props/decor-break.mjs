@@ -2,19 +2,33 @@
 // A decoration is no document, so each breakable one is dressed as a tile-shaped "decoration view" that propsInArea, nextToMiss,
 // groundSlams and the rest read unchanged. A break is stored on its region by the decoration's key.
 
-import { decorPlacements, DECOR_MOST } from "../motion/decor-regions.mjs";
+import { CAVERN_KINDS, decorPlacements, DECOR_MOST } from "../motion/decor-regions.mjs";
 import { DECOR_KINDS, hashText } from "../motion/decor-paint.mjs";
 import { readNote } from "./prop-break.mjs";
 import { validBreakRequest } from "./prop-requests.mjs";
 
-const ENTRY = (material, style) => Object.freeze({ material, style });
+// Each kind that breaks: its material and style as the prop rules read them, and where the rules need more than the kind's
+// name: `boxy` (breaks as a box, not round), `contents` (what spills), `tips` (knocked over whole, as a brazier) and
+// `rule` (decor-rules.mjs: what breaks it where its material's rules say otherwise). Some (cart, kennel, firewood,
+// signpost, candles, beehive, nest) are still drafts the painter does not offer yet; they break as listed once taken in.
+const ENTRY = (material, style, extra = {}) => Object.freeze({ material, style, ...extra });
 export const DECOR_BREAKS = Object.freeze({
   crate: ENTRY("wood", "shatter"), barrel: ENTRY("wood", "shatter"), crystals: ENTRY("glass", "shatter"),
   bush: ENTRY("plant", "burn"), fern: ENTRY("plant", "burn"), agave: ENTRY("plant", "burn"), reeds: ENTRY("plant", "burn"), cobweb: ENTRY("plant", "burn"),
   stalagmite: ENTRY("stone", "topple"), column: ENTRY("stone", "topple"),
+  // The town and dungeon kinds (spec amendment).
+  cart: ENTRY("wood", "shatter", { boxy: true }), coffin: ENTRY("wood", "shatter", { boxy: true }), kennel: ENTRY("wood", "shatter", { boxy: true }),
+  produce: ENTRY("wood", "shatter", { boxy: true, contents: "goods" }), trough: ENTRY("wood", "shatter", { boxy: true, contents: "water" }),
+  washtub: ENTRY("wood", "shatter", { contents: "water" }), firewood: ENTRY("wood", "shatter"),
+  fence: ENTRY("wood", "collapse"), bench: ENTRY("wood", "collapse"), signpost: ENTRY("wood", "topple"),
+  urns: ENTRY("clay", "shatter", { contents: "grain" }), planter: ENTRY("clay", "shatter", { boxy: true }),
+  tombstone: ENTRY("stone", "topple"), sarcophagus: ENTRY("stone", "shatter", { boxy: true, rule: "noSlam" }),
+  brazier: ENTRY("metal", "shatter", { tips: true }), cage: ENTRY("metal", "shatter", { boxy: true }),
+  haystack: ENTRY("plant", "burn"), tent: ENTRY("plant", "burn"), bedroll: ENTRY("plant", "burn"), beehive: ENTRY("plant", "burn"), nest: ENTRY("plant", "burn"),
+  sacks: ENTRY("plant", "burn", { contents: "grain", rule: "torn" }), candles: ENTRY("wood", "shatter", { rule: "any" }),
 });
 /** What the topple whisper calls a toppled decoration. */
-export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column" });
+export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone" });
 
 const px = (n) => Math.round(n);
 // An area's holes are an array property, which JSON.stringify of the areas array drops: write them out.
@@ -36,16 +50,39 @@ export function decorKeyed(region, grid) {
   return placed.map((d) => { const hand = byHand.has(d); return { d, hand, key: `${d.kind}:${px(d.x)}:${px(d.y)}:${hand ? "h" : fp}` }; });
 }
 
-/** A decoration dressed as a prop tile (pure); null when its kind does not break. `region` is { id, levels }. */
+/**
+ * A decoration dressed as a prop tile (pure); null when its kind does not break. `region` is { id, levels, where }.
+ * Its picture's name says what the name rules read (a boxy one is named a box); its flags the material, style, contents
+ * and tipping; `decor.rule` what breaks it where its material's rules say otherwise.
+ */
 export function decorView({ d, key }, region, grid) {
   const b = DECOR_BREAKS[d.kind]; if (!b) return null;
-  const s = d.size * grid;
+  const s = d.size * grid, prop = { material: b.material, style: b.style };
+  if (b.contents) prop.contents = b.contents;
+  if (b.tips) prop.tips = "yes";
   return {
     id: `decor:${region.id}:${key}`, x: d.x - s / 2, y: d.y - s / 2, width: s, height: s, rotation: 0, hidden: false,
-    levels: [...(region.levels ?? [])], texture: { src: `decor/${d.kind}.webp` },
-    flags: { animater: { prop: { material: b.material, style: b.style } } },
-    decor: { regionId: region.id, key, kind: d.kind, d },
+    levels: [...(region.levels ?? [])], texture: { src: `decor/${d.kind}${b.boxy ? "-box" : ""}.webp` },
+    flags: { animater: { prop } },
+    decor: { regionId: region.id, key, kind: d.kind, d, where: region.where ?? "surface", ...(b.rule ? { rule: b.rule } : {}) },
   };
+}
+
+// The round area a decoration underground hands the cavern or the webs (as decorations.cavern() draws it), as a polygon.
+const ringOf = (d, grid, what) => { const r = d.size * grid * (what === "webs" ? 1.2 : 0.5); return Array.from({ length: 12 }, (_, i) => [d.x + Math.cos((i / 12) * 6.283) * r, d.y + Math.sin((i / 12) * 6.283) * r]); };
+const insideRing = (p, ring) => { let on = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) on = !on; } return on; };
+/**
+ * Whether a decoration is drawn on the map (pure). Above ground everything is painted. Underground, crystals and cobwebs
+ * go to the cavern and the webs: crystals show only while the cavern draws crystals (`crystals`), and a cobweb only where
+ * the web engine drew a web inside its ring (`webs`: the corners it built, webs.mjs webCorners). Unknown (undefined) is left
+ * to the rules: a GM checking a scene it is not viewing has no corners.
+ */
+export function decorDrawn(view, { crystals, webs, grid = 100 } = {}) {
+  const what = view?.decor?.where === "cave" ? CAVERN_KINDS[view.decor.kind] : null;
+  if (what === "crystals") return crystals !== false;
+  if (what !== "webs" || !Array.isArray(webs)) return true;
+  const ring = ringOf(view.decor.d, grid, "webs");
+  return webs.some((c) => insideRing({ x: c.x + (c.u[0] + c.v[0]) * grid * 0.25, y: c.y + (c.u[1] + c.v[1]) * grid * 0.25 }, ring));
 }
 
 /** The stored breaks that are well formed (pure): a key, a breakable kind, a place and a note the rules accept. */
@@ -71,20 +108,23 @@ export function createDecorIndex() {
     const { canBreak: _off, ...moves } = region.settings ?? {};
     const sig = JSON.stringify([moves, areasOf(region.areas), grid, region.levels]);
     const hit = memo.get(region.id); if (hit?.sig === sig) return hit.value;
-    const keyed = decorKeyed(region, grid), at = { id: region.id, levels: region.levels };
+    const keyed = decorKeyed(region, grid), at = { id: region.id, levels: region.levels, where: region.settings?.where ?? "surface" };
     const value = { keyed, keys: new Set(keyed.map((k) => k.key)), views: keyed.map((k) => decorView(k, at, grid)).filter(Boolean) };
     memo.set(region.id, { sig, value });
     return value;
   };
 }
 
-/** The decoration views a cause can reach (pure): switched-on regions' breakable decorations, less the ones already broken. */
-export function decorTargets(regions, grid, index) {
+/**
+ * The decoration views a cause can reach (pure): switched-on regions' breakable decorations, less the ones already broken
+ * and, given `drawn` (decorDrawn), those not drawn on the map.
+ */
+export function decorTargets(regions, grid, index, drawn = null) {
   const out = [];
   for (const r of regions) {
     if (r.settings?.canBreak !== true) continue;
     const { keys, views } = index(r, grid), gone = new Set(liveBroken(readDecorBroken(r.broken), keys).map((e) => e.key));
-    for (const v of views) if (!gone.has(v.decor.key)) out.push(v);
+    for (const v of views) if (!gone.has(v.decor.key) && (!drawn || drawn(v))) out.push(v);
   }
   return out;
 }
@@ -97,14 +137,16 @@ const decorIndex = createDecorIndex();
 /**
  * The GM's check of a decoration break (pure). The GM recomputes the region's placements itself, then the prop rules
  * judge the decoration view with no walls and no lights. `region` is { id, levels, settings, areas, broken }; `queued` holds keys
- * broken but not yet stored. Refusals: off, missing, broken, then validBreakRequest's own.
+ * broken but not yet stored; `drawn` (decorDrawn) refuses one not drawn on the map. Refusals: off, missing, undrawn,
+ * broken, then validBreakRequest's own.
  */
-export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, queued = [], index = decorIndex } = {}) {
+export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, queued = [], index = decorIndex, drawn = null } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
   const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
   if (!view) return no("missing");
+  if (drawn && !drawn(view)) return no("undrawn");
   if (liveBroken(readDecorBroken(region.broken), keys).some((e) => e.key === key) || (queued ?? []).includes(key)) return no("broken");
   const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, target, mover, roll, lights: [], source, levels, area, now });
   if (!out.ok) return out;
@@ -189,6 +231,18 @@ export function decorPrunedRubble(entries, keys, regions, regionId) {
   const out = new Set();
   for (const e of entries ?? []) { const id = e?.note?.region; if (!keys.has(e?.key) && own.has(id)) out.add(id); }
   return [...out];
+}
+
+/**
+ * After an edit (GM): a region's stale toppled entries and their rubble (pure). An edit that moved a toppled decoration
+ * stands it up whole again, so the rubble it left goes with its entry; other stale breaks stay, so undoing the edit
+ * brings them back (ruling D8). { keep (the entries to store), deleteRegions } or null when nothing is to go.
+ */
+export function decorToppledPrune(entries, keys, regions, regionId) {
+  const deleteRegions = decorPrunedRubble(entries, keys, regions, regionId);
+  if (!deleteRegions.length) return null;
+  const gone = new Set(deleteRegions);
+  return { keep: (entries ?? []).filter((e) => keys.has(e?.key) || !gone.has(e?.note?.region)), deleteRegions };
 }
 
 const QUIET_FLAGS = new Set(["decorBroken", "-=decorBroken"]);

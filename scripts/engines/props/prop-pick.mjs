@@ -12,7 +12,7 @@ export function tipsOver(tile, grid, cause) {
   return MATERIALS.includes(m) && m !== "none" && propTraits(tile, grid).tips === true;
 }
 const eligible = (tiles, grid, cause) =>
-  tiles.filter(t => live(t) && (tipsOver(t, grid, cause) || canBreak(propMaterial(t, grid), cause, { cuttable: propTraits(t, grid).cuttable })));
+  tiles.filter(t => { if (!live(t)) return false; if (tipsOver(t, grid, cause)) return true; const { cuttable, rule } = propTraits(t, grid); return canBreak(propMaterial(t, grid), cause, { cuttable, rule }); });
 
 export function propsInArea(tiles, testPoint, grid, damageType) {
   return eligible(tiles, grid, { damageType }).filter(t => testPoint(centre(t)));

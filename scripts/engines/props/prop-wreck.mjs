@@ -834,8 +834,16 @@ void main() {
   // hang from both cut edges into the gap. Silent: no honest recording of a web tearing was found. No ground mark.
   // Drawn on load it is settled: the sagged halves and their strands.
   const SAG_MS = 900, WEB_THREAD = 0xe8ecef, WEB_ALPHA_CUT = 10; // a web keeps its faint threads (the mock's cut)
-  function cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }) {
+  function cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents = "none" }) {
     const w = d.width, h = d.height, gk = (grid() || 100) / 100, S = splitLayout(note, { width: w, height: h, rotation: d.rotation ?? 0 });
+    // What it held pours out of the cut (a torn sack's grain), laid out as a shattered prop's spill is, under the halves.
+    let grow = () => {};
+    if (contents && contents !== "none") {
+      const L = wreckLayout(note, { centre, width: w, height: h, grid: grid() || 100, contents, rotation: d.rotation ?? 0, stop: stopFor(d, centre) });
+      const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
+      const over = new PIXI.Container(); over.zIndex = 0.5; box.addChild(over);
+      grow = drawSpill(L.spill, marks, tones, { over, centre, cutAngle: note.cutAngle, extent: spillExtent(w, h, note.cutAngle, d.rotation ?? 0) });
+    }
     const strands = nameTokens(d.texture?.src).some((t) => t.includes("web")) ? { colour: WEB_THREAD, alpha: 0.7, width: 0.9 } : { colour: tones.dark, alpha: 0.9, width: 1.6 };
     let halves = null;
     if (texture) {
@@ -847,7 +855,7 @@ void main() {
     }
     const threadFrame = frameOf(d, centre, 0.5), g = new PIXI.Graphics(); threadFrame.addChild(g); box.addChild(threadFrame);
     const settle = (u) => {
-      halves?.update(u);
+      halves?.update(u); grow(u);
       const e = outCubic(u); g.clear();
       for (const t of S.threads) {
         const m = S.halves[t.half].to, x = t.x0 - m.x * (1 - e), y = t.y0 - m.y * (1 - e), dx = (t.x1 - t.x0) * e, dy = (t.y1 - t.y0) * e;
@@ -915,7 +923,7 @@ void main() {
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
-    if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
+    if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents }); return; }
     const stop = stopFor(d, centre);
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0, stop });
     if (layout.blast) { exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior: entry.prior }); return; }

@@ -12,7 +12,8 @@ const hand = { kind: "crate", x: 300, y: 300, size: 0.8, turn: 0, seed: 5, flip:
 const note = { seed: 1, cutAngle: 0, pattern: "diced", pieces: 3, spread: 0.4, spin: 70, tint: "none", mark: "dust", from: { x: 0, y: 0 }, walls: [], style: "shatter", lights: [] };
 
 test("which kinds break, and as what", () => {
-  assert.deepEqual(Object.keys(DECOR_BREAKS).sort(), ["agave", "barrel", "bush", "cobweb", "column", "crate", "crystals", "fern", "reeds", "stalagmite"]);
+  assert.deepEqual(Object.keys(DECOR_BREAKS).sort(), ["agave", "barrel", "bedroll", "beehive", "bench", "brazier", "bush", "cage", "candles", "cart", "cobweb", "coffin", "column", "crate", "crystals", "fence", "fern",
+    "firewood", "haystack", "kennel", "nest", "planter", "produce", "reeds", "sacks", "sarcophagus", "signpost", "stalagmite", "tent", "tombstone", "trough", "urns", "washtub"]);
   assert.deepEqual(DECOR_BREAKS.crate, { material: "wood", style: "shatter" });
   assert.deepEqual(DECOR_BREAKS.crystals, { material: "glass", style: "shatter" });
   assert.deepEqual(DECOR_BREAKS.cobweb, { material: "plant", style: "burn" });

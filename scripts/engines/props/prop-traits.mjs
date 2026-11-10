@@ -1,6 +1,7 @@
 // What a prop is, read from the tile: the GM's flags win, anything else falls back to a guess from the file name. Pure.
 import { guessLight } from "./prop-lights.mjs";
 import { MATERIALS, FURNITURE, CUTTABLE, nameTokens, guessMaterial, propMaterial } from "./prop-material.mjs";
+import { DECOR_RULES, decorRuleStyle } from "./decor-rules.mjs";
 
 export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
 export const STYLE_CHOICES = ["shatter", "collapse", "topple", "burn"]; // what the "Breaks as" setting offers
@@ -49,6 +50,8 @@ export function propTraits(tile, grid, scene = {}) {
     burst: burstOf(own.burst),
     // a toppled statue leaves difficult rubble: the tile's choice, else the scene's
     rubble: own.rubble === "yes" || (own.rubble !== "no" && scene?.flags?.animater?.rubbleDifficult === true),
+    // a decoration view's own rule (decor-rules.mjs); never a tile's (it lives on the view, not in its flags)
+    rule: DECOR_RULES.includes(tile?.decor?.rule) ? tile.decor.rule : null,
   };
 }
 
@@ -58,6 +61,8 @@ export function propTraits(tile, grid, scene = {}) {
 // set (or guessed) to it; otherwise it shatters.
 export function breakStyle(traits, cause) {
   if (traits?.tips && cause?.slam) return "tip";
+  const ruled = traits?.rule ? decorRuleStyle(traits.rule, cause) : null; // a decoration's own (a torn sack splits)
+  if (ruled) return ruled;
   const fire = cause?.damageType === "fire" || cause?.blast === true;
   if (traits?.material === "plant") return fire ? "burn" : cause?.damageType === "slashing" ? "split" : "shatter";
   if (traits?.style === "burn") return fire ? "burn" : "shatter";

@@ -1,4 +1,6 @@
 // Prop material: guessed from the tile's file name, overridable per tile; decides what can break it.
+import { decorRuleBreaks } from "./decor-rules.mjs";
+
 export const MATERIALS = ["wood", "glass", "clay", "metal", "stone", "plant", "none"];
 
 const TOKENS = {
@@ -58,8 +60,11 @@ export function propMaterial(tile, grid) {
 }
 
 // cuttable: a plant a slashing blade cuts (propTraits().cuttable); plants otherwise only burn, and no slam breaks them.
-export function canBreak(material, cause = {}, { cuttable = false } = {}) {
+// rule: a decoration's own (propTraits().rule, decor-rules.mjs), deciding in place of its material's; a tile has none.
+export function canBreak(material, cause = {}, { cuttable = false, rule = null } = {}) {
   if (!MATERIALS.includes(material) || material === "none") return false;
+  const ruled = rule ? decorRuleBreaks(rule, cause) : null;
+  if (ruled !== null) return ruled;
   const { damageType, slam, blast } = cause;
   if (blast === true) return true; // a powder keg's blast breaks anything that is a prop at all
   if (material === "plant") return !slam && (damageType === "fire" || (damageType === "slashing" && cuttable === true));

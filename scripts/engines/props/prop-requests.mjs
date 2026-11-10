@@ -96,7 +96,7 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   // A prop that tips over is knocked down by a slam of any size (any path slam); damage still follows its material.
   const asked = breakCause(cause, mover), tips = cause.kind === "path" && tipsOver(tile, grid, asked);
   const traits = propTraits(tile, grid, scene);
-  if (!tips && !canBreak(propMaterial(tile, grid), asked, { cuttable: traits.cuttable })) return no("material");
+  if (!tips && !canBreak(propMaterial(tile, grid), asked, { cuttable: traits.cuttable, rule: traits.rule })) return no("material");
   const note = readNote(req.note);
   if (!note) return no("note");
   const mine = ownWalls(tile, walls, grid), ids = new Set(mine.map((w) => w.id));

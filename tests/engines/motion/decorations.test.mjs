@@ -135,3 +135,20 @@ test('a stronger wind sways things further, hardly faster', async () => {
   assert.match(CLOTH_SHADER_SOURCES[0][1], /time \* \(1\.4 \+ 0\.5 \* uPush\)/);
   assert.match(CLOTH_SHADER_SOURCES[0][1], /\* wave \* uPush\) \* m \* uAmp\)/);
 });
+
+test('a decoration turned with the brush (Shift+wheel) breaks where it is drawn: its wreck takes the painter\'s own turn', async () => {
+  const { stampDecor } = await import('../../../scripts/engines/motion/decor-paint.mjs');
+  const { decorView } = await import('../../../scripts/engines/props/decor-break.mjs');
+  const turned = stampDecor({ x: 400, y: 400, radius: 10, grid: 100, kinds: ['crate'], seed: 3, turn: 1.2 }), free = { ...turned, turn: 1.2, fixed: undefined };
+  const settings = decorSettings({ on: true, seed: 1, density: 0, kinds: {}, brushed: [turned, { ...free, x: 700 }] });
+  const keyed = decorKeyed({ id: 'R1', settings, areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]] }, 100);
+  const tile = (k) => decorWreckTile(decorView(k, { id: 'R1', levels: [] }, 100), { texture: {}, canvas: {}, width: 80, key: 'p' });
+  const a = keyed.find((k) => k.d.x === turned.x), b = keyed.find((k) => k.d.x === 700);
+  assert.equal(a.d.fixed, true, 'the stored stamp keeps its whole turn');
+  assert.ok(Math.abs(tile(a).rotation - (1.2 * 180) / Math.PI) < 1e-9);
+  assert.ok(Math.abs(tile(b).rotation - (1.2 * 0.4 * 180) / Math.PI) < 1e-9, 'a crate laid without a turn stays near square, wreck and all');
+  // The painter turns each sprite, mesh and shadow by the same turnOf.
+  const src = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
+  assert.match(src, /const place = \(sprite, d, pic, scale\) => \{ sprite\.anchor\.set\(0\.5\); sprite\.position\.set\(d\.x, d\.y\); sprite\.rotation = turnOf\(d\);/);
+  assert.match(src, /rotation: \(turnOf\(d\) \* 180\) \/ Math\.PI/);
+});

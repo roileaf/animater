@@ -41,3 +41,29 @@ test('main.mjs builds them as local light sources from the decorations, and clea
   assert.match(main, /decorLights\.sync\(decorations\.lights\(\)\)/);
   assert.match(main, /decorations\.clear\(\); decorLights\.clear\(\);/);
 });
+
+test('a broken brazier or street lamp has no light while broken; repaired, it is lit again (from the stored keys, no documents)', async () => {
+  const { createDecorations } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const { decorKeyed } = await import('../../../scripts/engines/props/decor-break.mjs');
+  const { decorSettings } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  // A stand-in for PIXI and a 2D canvas: enough to paint and place the braziers without a browser.
+  const pt = () => ({ x: 0, y: 0, set(x, y = x) { this.x = x; this.y = y; } });
+  class Container { constructor() { this.children = []; this.position = pt(); this.scale = pt(); } addChild(c) { this.children.push(c); return c; } removeChild() {} destroy() {} }
+  class Sprite extends Container { constructor(texture) { super(); this.texture = texture; this.anchor = pt(); } }
+  const PIXI = { Container, Sprite, Texture: { from: () => ({ width: 80, height: 80 }) } };
+  const ctx = () => { const p = new Proxy(function () {}, { get: (t, k) => (k === 'data' ? new Uint8ClampedArray(64) : p), set: () => true, apply: () => p }); return p; };
+  const make = (w, h) => ({ width: w, height: h, getContext: () => ctx() });
+  const layer = () => new Container(), deco = createDecorations({ PIXI, shadows: layer, ground: layer, above: layer, make });
+  const brushed = [{ kind: 'brazier', x: 200, y: 200, size: 0.8, turn: 0, seed: 1 }, { kind: 'brazier', x: 600, y: 600, size: 0.8, turn: 0, seed: 2 }];
+  const region = { id: 'R1', settings: decorSettings({ on: true, where: 'town', seed: 3, density: 0, kinds: {}, brushed }), areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], look: {} };
+  const keys = decorKeyed(region, 100).map((k) => k.key);
+  deco.sync([region]);
+  const lit = () => deco.lights().map((l) => [Math.round(l.x), Math.round(l.y)]);
+  assert.deepEqual(lit(), [[200, 200], [600, 600]]);
+  const ids = deco.lights().map((l) => l.id);
+  deco.sync([{ ...region, broken: [keys[0]] }]);
+  assert.deepEqual(lit(), [[600, 600]]);
+  assert.deepEqual(deco.lights().map((l) => l.id), [ids[1]], 'the others keep their ids');
+  deco.sync([region]);
+  assert.deepEqual(lit(), [[200, 200], [600, 600]]);
+});

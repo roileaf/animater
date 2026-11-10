@@ -316,10 +316,11 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
       return out;
     },
     // The lights the decorations carry (a lamp post's lantern, a brazier's fire, candles): where each stands and its light, scaled
-    // with the decoration's size, for real light sources on the map.
+    // with the decoration's size, for real light sources on the map. A broken one (not shown) is out until it is repaired;
+    // the ids still count through every placement, so the others keep theirs.
     lights() {
       const out = [];
-      for (const [id, r] of regions) r.placements.forEach((d, i) => { const l = DECOR_KINDS[d.kind]?.light; if (!l) return; const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size); out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null }); });
+      for (const [id, r] of regions) { const standing = r.shown === r.placements ? null : new Set(r.shown); r.placements.forEach((d, i) => { const l = DECOR_KINDS[d.kind]?.light; if (!l || (standing && !standing.has(d))) return; const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size); out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null }); }); }
       return out;
     },
     // What the cavern and the webs draw in place of their paintings, underground: a small round area each.
