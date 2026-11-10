@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wreckLayout, wreckTargets, SPILL_FAN } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, collapseDust } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 
 const note = { seed: 9, cutAngle: 0.4, pattern: "shards", pieces: 10, spread: 0.32, spin: 120, tint: "scorched", mark: "scorch", from: { x: 0, y: 0 }, walls: [] };
 const at = { centre: { x: 500, y: 300 }, width: 100, height: 100, grid: 100 };
@@ -47,4 +47,47 @@ test("18 specks, within about 1.3 radii of the centre", () => {
   const { specks } = wreckLayout(note, at);
   assert.equal(specks.length, 18);
   assert.ok(specks.every((s) => Math.hypot(s.x - 500, s.y - 300) <= 1.31 * 50));
+});
+test("books slide off along the hit; potions smash into 3-4 colours with stains", () => {
+  const books = wreckLayout(note, { ...at, contents: "books" }).spill;
+  assert.equal(books.kind, "books");
+  assert.deepEqual([books.closed.length, books.small.length, books.pages.length], [4, 9, 22]);
+  const mean = Math.atan2(...books.pages.reduce(([sy, sx], p) => [sy + p.y - 300, sx + p.x - 500], [0, 0]));
+  assert.ok(Math.abs(mean - note.cutAngle) < 0.7);
+  const potions = wreckLayout(note, { ...at, contents: "potions" }).spill;
+  const colours = new Set(potions.shards.map((s) => s.colour));
+  assert.ok(colours.size >= 3 && colours.size <= 4 && potions.stains.length >= 3);
+});
+test("books and pages: tile tones, page colours, sizes; every seed and hit sends them the hit's way", () => {
+  for (let seed = 1; seed <= 25; seed++) for (const cutAngle of [0.4, 2.5, -2]) {
+    const n = { ...note, seed, cutAngle }, { closed, small, pages } = wreckLayout(n, { ...at, contents: "books" }).spill;
+    for (const b of [...closed, ...small]) { assert.ok([0, 1, 2].includes(b.tone)); assert.ok(b.w > 0 && b.h > 0 && Number.isFinite(b.rot)); }
+    for (const b of closed) assert.ok(b.w >= 25 && b.h <= 50, "closed books are a third to half a square");
+    for (const b of small) assert.ok(b.w >= 18 && b.w <= 26 && b.h >= 13 && b.h <= 18);
+    for (const p of pages) { assert.ok(PAGE_COLOURS.includes(p.c)); assert.equal(typeof p.curl, "boolean"); assert.ok(p.w >= 9 && p.w <= 16 && p.h >= 11 && p.h <= 17); }
+    const ahead = [...closed, ...small, ...pages].filter((b) => (b.x - 500) * Math.cos(cutAngle) + (b.y - 300) * Math.sin(cutAngle) > 0).length;
+    assert.ok(ahead >= 0.8 * 35, `seed ${seed} cut ${cutAngle}: only ${ahead} of 35 ahead of the hit`);
+  }
+  assert.deepEqual(PAGE_COLOURS, [0xeee3c8, 0xe2d4b0, 0xd8c69e]);
+});
+test("potions: colours from the potion list, shards and stains on the hit's side, sizes scale with the grid", () => {
+  assert.deepEqual(POTION_COLOURS, [0x3a8a3a, 0x9a1a1a, 0x2a4ab0, 0xb08a3a]);
+  for (let seed = 1; seed <= 25; seed++) {
+    const { kind, shards, stains } = wreckLayout({ ...note, seed }, { ...at, contents: "potions" }).spill;
+    assert.equal(kind, "potions");
+    const cols = new Set([...shards, ...stains].map((s) => s.colour));
+    assert.ok(cols.size >= 3 && cols.size <= 4 && [...cols].every((c) => POTION_COLOURS.includes(c)), `seed ${seed}`);
+    assert.ok(shards.every((s) => s.size >= 3 && s.size <= 7 && Number.isFinite(s.rot)));
+    assert.ok(stains.every((s) => s.r > 0 && s.r <= 34));
+    assert.ok(stains.filter((s, i) => i % 2 === 0).every((s) => s.r >= 23), "each bottle leaves a pool as big as the mock's");
+  }
+  const big = wreckLayout(note, { ...at, grid: 200, width: 200, height: 200, contents: "potions" }).spill;
+  assert.ok(big.shards.every((s) => s.size >= 6 && s.size <= 14));
+});
+test("the collapse dust: a dust mark squashed and turned to the prop", () => {
+  const m = collapseDust({ x: 100, y: 50, r: 40, squash: 0.5, angle: Math.PI / 2 }, 7);
+  assert.equal(m.kind, "dust");
+  assert.deepEqual(m, collapseDust({ x: 100, y: 50, r: 40, squash: 0.5, angle: Math.PI / 2 }, 7));
+  const pts = m.blobs[0].steps[0].polys.flat(), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
+  assert.ok(Math.max(...ys) - Math.min(...ys) > 1.4 * (Math.max(...xs) - Math.min(...xs)), "turned a quarter: taller than wide");
 });
