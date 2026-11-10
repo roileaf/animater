@@ -35,7 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -141,6 +141,9 @@ const hotSetting = key => hotSettings.get(key);
 for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged"]) Hooks.on(hook, () => hotSettings.invalidate());
 // Foundry keeps the game's clock in a setting, so every tick of it arrives as a setting saved: nothing to build again for that.
 const isClockSave = (first) => first?.key === "core.time";
+// A region write that only stores or clears decoration breaks (decor-break.mjs decorOnlySave): the decoration painter and
+// wrecks follow it (their own updateRegion hook); the region rebuilds skip it, as they skip a clock save.
+const quietSave = (first, changes, options) => isClockSave(first) || (first?.documentName === "Region" && decorOnlySave(changes, options));
 // Invalidate before our own onChange callbacks (not only after Foundry's
 // update hook): quality routing and other synchronous readers need the new value.
 const registerSetting = (key, config) => game.settings.register(ID, key, {
@@ -724,7 +727,7 @@ const syncRegionLooksNow = () => {
   });
 };
 const syncRegionLooksSoon = () => { if (regionLookTimer) return; regionLookTimer = setTimeout(() => { regionLookTimer = null; syncRegionLooksNow(); }, 100); };
-for (const hook of ["canvasReady", "createToken", "deleteToken", "drawToken", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { syncRegionLooksSoon(); });
+for (const hook of ["canvasReady", "createToken", "deleteToken", "drawToken", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) syncRegionLooksSoon(); });
 Hooks.on("updateToken", (doc, change) => { if ("x" in change || "y" in change || "elevation" in change) syncRegionLooksSoon(); });
 // A moving token: tested a few times a second while it walks (the document jumps ahead of the animation).
 const anyRegionLook = () => regionLooks.size > 0 || (canvas.scene?.regions?.some?.((r) => r.flags?.[ID]?.[REGION_LOOK_FLAG]) ?? false);
@@ -1991,7 +1994,7 @@ const rebuildDraft = () => {
     doorWindNow();
   } catch { airField = null; lampAir.draft(null); }
 };
-for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) draftSoon(); });
+for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) draftSoon(); });
 // A door opening: the air rushes for the way out.
 // The wind sighs through a door as it swells and dies away, only where this door opens onto the air's way out: a door to
 // another closed room stirs nothing to hear.
@@ -2741,7 +2744,7 @@ const syncMovingWater = (list) => {
 };
 let floorLooksTimer = null;
 const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) { forgetPlanes(); floorLooksSoon(); } });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) { forgetPlanes(); floorLooksSoon(); } });
 for (const hook of ["createTile", "updateTile"]) Hooks.on(hook, () => { forgetPlanes(); floorLooksSoon(); });
 Hooks.on("deleteTile", (doc) => {
   forgetPlanes();
@@ -3485,7 +3488,7 @@ const weatherStateNow = () => { const scene = canvas?.scene, flags = weatherOnLe
 let weatherPanelApp = null;
 // The Animals panel keeps up with a scene turned underground, water coming or going, or another scene.
 Hooks.on("updateScene", (scene, change) => { const own = change?.flags?.[ID]; if (scene?.id === canvas?.scene?.id && own && ("underground" in own || "acoustics" in own || "floor" in own) && animalsPanelApp?.rendered) void animalsPanelApp.render(); });
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { if (animalsPanelApp?.rendered) void animalsPanelApp.render(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options) && animalsPanelApp?.rendered) void animalsPanelApp.render(); });
 const openWeatherPanel = () => {
   weatherPanelApp ??= new (weatherPanel(ApplicationV2, {
     id: ID,
@@ -3925,7 +3928,7 @@ const dressBlood = () => { try { floorBlood.dress(floorBloodOn() ? [...bloodFlag
 Hooks.on("canvasReady", () => { bloodLoaded = bloodKeptForever() && floorBloodOn() ? bloodFlag(BLOOD_KEPT) : []; dressBlood(); });
 Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && change?.flags?.[ID] && BLOOD_DRESSED in change.flags[ID]) dressBlood(); });
 // (A water region drawn, moved or changed: what is saved may now lie on it, or no longer.)
-for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { dressBlood(); });
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) dressBlood(); });
 const saveKeptBlood = () => {
   const scene = canvas?.scene;
   if (!scene || !bloodKeptForever() || !floorBloodOn() || game.users?.activeGM?.id !== game.user?.id) return;
@@ -4816,7 +4819,7 @@ const rebuildLife = () => {
   try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) lifeSoon(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lifeSoon(); });
 Hooks.on("updateWall", (wall, change) => { if (change && ("c" in change || "move" in change || "door" in change)) lifeSoon(); });
 // A drop landing in a pool near the view plips (a few a second at most, however many fall).
 let dripHeardAt = 0;
@@ -5458,8 +5461,8 @@ const lookCloudAreas = () => {
   drawnClouds.look({ areas: { body: unroofed, bodySoft, rooms, roomSoft, open: (skyOpenAreas ?? []).map((p) => Array.from(p)), openSoft: (skyOpenAreas ?? []).map((p) => p.soft ?? 0), below: undergroundScene() } });
 };
 const skySoon = () => { if (!skyTimer) skyTimer = setTimeout(() => { skyTimer = null; rebuildSky(); }, 250); };
-for (const hook of ["canvasReady", "drawTile", "createTile", "updateTile", "deleteTile", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (isClockSave(first)) return; canopySoon(); glowsSoon(); });
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged", "updateWorldTime", "calendaria.weatherChange", "calendaria.ready", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { skySoon(); });
+for (const hook of ["canvasReady", "drawTile", "createTile", "updateTile", "deleteTile", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options)) return; canopySoon(); glowsSoon(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateSetting", "clientSettingChanged", "updateWorldTime", "calendaria.weatherChange", "calendaria.ready", "calendaria.dateTimeChange", "simple-calendar-date-time-change"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) skySoon(); });
 // (The sun's handler has already looked at the new weather by now: it shows at once, with nothing built again.)
 Hooks.on("updateScene", (scene, change) => {
   if (scene?.id !== canvas?.scene?.id) return;
@@ -5517,7 +5520,7 @@ let snowLightsAt = 0;
 // Fog and mist come indoors through what stands open (engines/motion/air-seep.mjs). Nothing is looked at unless the weather has some, or some is still inside.
 let airOpen = null, airKnown = new Map(), airAmounts = new Map(), airShapes = new Map(), seepAt = 0, airWanted = false;
 const airSoon = () => { airOpen = null; airShapes.clear(); airWanted = true; surfaceLight.lampsMoved(); };
-for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, () => { airSoon(); });
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) airSoon(); });
 Hooks.on("canvasReady", () => { airKnown.clear(); airAmounts = new Map(); });
 const tickAir = (now) => {
   const seconds = (now - seepAt) / 1000; if (seconds < 0.25) return; seepAt = now;
@@ -5628,7 +5631,7 @@ function skyTick() {
   else flashSun = null;
 }
 const wallShadowsSoon = () => { if (!wallShadowTimer) wallShadowTimer = setTimeout(rebuildWallShadows, 150); };
-for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, () => { wallShadowsSoon(); });
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) wallShadowsSoon(); });
 Hooks.on("updateScene", (scene) => { if (scene?.id === canvas?.scene?.id) wallShadowsSoon(); });
 Hooks.on("canvasTearDown", () => {
   clearTimeout(wallShadowTimer); wallShadowTimer = null; wallQuads = []; wallShadows.clear(); windowShaftLayer.clear();
@@ -5679,7 +5682,7 @@ const tokenArt = (t) => {
   return { texture, width: Math.abs(mesh.width), height: Math.abs(mesh.height), flipX: mesh.scale.x < 0, flipY: mesh.scale.y < 0, rotation: mesh.rotation ?? 0 };
 };
 for (const hook of ['canvasReady', 'canvasTearDown', 'updateActor', 'createItem', 'updateItem', 'deleteItem', 'sightRefresh', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel'])
-  Hooks.on(hook, () => { movementViews.clear(); });
+  Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) movementViews.clear(); });
 for (const hook of ['updateToken', 'deleteToken']) Hooks.on(hook, doc => movementViews.delete(doc.id));
 const FOOTPRINT_LIFETIME_KEYS = {
   sand:'movementFootprintSandSeconds',mud:'movementFootprintMudSeconds',snow:'movementFootprintSnowSeconds',
@@ -5972,7 +5975,7 @@ let sinkDirty = true, sinkLevel;
 const sinkPending = new Set();
 const dirtySink = token => { if (token?.id) sinkPending.add(token.id); else sinkDirty = true; };
 for (const hook of ['createToken', 'updateToken']) Hooks.on(hook, dirtySink);
-for (const hook of ['canvasReady', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel']) Hooks.on(hook, () => { sinkDirty = true; });
+for (const hook of ['canvasReady', 'controlToken', 'clientSettingChanged', 'updateSetting','updateScene','createRegion','updateRegion','deleteRegion','updateSceneLevel']) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) sinkDirty = true; });
 let sinkTicker = null;
 const burrowSinkOn = () => movementFeelSettingOn("burrowSink");
 const underwaterLooksOn=()=>movementFeelSettingOn('underwaterLooks')&&movementFeelSettingOn('movementFeel')&&movementFeelSettingOn('movementFeelLocal');
@@ -7900,13 +7903,13 @@ const decorRegionOf = (doc) => {
   const settings = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
   return settings ? { id: doc.id, levels: [...(doc.levels ?? [])], settings, areas: regionAreas(doc), broken: doc.flags?.[ID]?.decorBroken, doc } : null;
 };
-const decorRegionsOf = (scene) => (scene?.regions?.contents ?? []).map((doc) => { try { return decorRegionOf(doc); } catch { return null; } }).filter(Boolean);
+const decorRegionsOf = (scene, { breaking = false } = {}) => (scene?.regions?.contents ?? []).filter((doc) => !breaking || doc.flags?.[ID]?.decor?.canBreak === true).map((doc) => { try { return decorRegionOf(doc); } catch { return null; } }).filter(Boolean);
 // One memo of each region's placements and views, shared by the triggers, the GM and the wrecks.
 const decorIndex = createDecorIndex();
 // The decorations a cause on these levels can reach (none while decorations are not drawn at all).
 function decorViews(scene, levels) {
   if (!propsOn(scene) || !regionStepsOn()) return [];
-  return tilesOnLevel(decorTargets(decorRegionsOf(scene), propGrid(scene), decorIndex), levels);
+  return tilesOnLevel(decorTargets(decorRegionsOf(scene, { breaking: true }), propGrid(scene), decorIndex), levels);
 }
 // The look the painter painted a decoration with (snow is baked on separately), so a wreck is cut from that very picture.
 const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
@@ -7947,6 +7950,8 @@ function syncDecorWrecks(animate = false) {
   const wanted = [], regionOfWreck = new Map(), grid = propGrid(canvas.scene);
   if (regionStepsOn()) for (const doc of regionsHere()) {
     try {
+      // Nothing stored, nothing to draw: no placements computed (the painter has its own).
+      if (!readDecorBroken(doc.flags?.[ID]?.decorBroken).length) continue;
       const region = decorRegionOf(doc);
       if (!region) continue;
       const { keys, views } = decorIndex(region, grid), byKey = new Map(views.map((v) => [v.decor.key, v]));
@@ -7999,8 +8004,11 @@ function refuseDecorHere(id) {
 const decorQueue = createDecorQueue({ trace: (m) => runtime?.trace("props", m), write: async (regionDoc, adds) => {
   const scene = regionDoc?.parent, region = scene?.regions?.get(regionDoc.id) ? decorRegionOf(regionDoc) : null;
   if (!region) return false;
-  const { keys } = decorIndex(region, propGrid(scene));
-  await regionDoc.update({ [`flags.${ID}.decorBroken`]: decorBrokenAfter(readDecorBroken(region.broken), adds, keys) }, { animater: { decorBreak: true } });
+  const { keys } = decorIndex(region, propGrid(scene)), stored = readDecorBroken(region.broken);
+  // Entries dropped as stale (an edit moved their decoration) take their own rubble with them once the write lands.
+  const orphans = decorPrunedRubble([...stored, ...adds], keys, sceneRegions(scene), region.id);
+  await regionDoc.update({ [`flags.${ID}.decorBroken`]: decorBrokenAfter(stored, adds.filter((a) => keys.has(a.key)), keys) }, { animater: { decorBreak: true } });
+  if (orphans.length) await deletePropRegions(scene, orphans);
   return true;
 } });
 const queueDecorWrite = (regionDoc, entry) => decorQueue.add(regionDoc.id, entry, regionDoc);
@@ -8068,7 +8076,7 @@ async function repairDecorRegion(regionDoc) {
   if (!game.user?.isGM || !scene) return 0;
   const stored = regionDoc.flags?.[ID]?.decorBroken, cleared = Array.isArray(stored) ? stored.length : 0;
   const { update, deleteRegions } = decorRegionRepair({ id: regionDoc.id, flags: regionDoc.flags ?? {} }, sceneRegions(scene));
-  if (update) { const { _id, ...change } = withDeletes(update, propDel()); await regionDoc.update(change); }
+  if (update) { const { _id, ...change } = withDeletes(update, propDel()); await regionDoc.update(change, { animater: { decorRepair: true } }); }
   if (deleteRegions.length) await deletePropRegions(scene, deleteRegions);
   return cleared;
 }
@@ -8212,7 +8220,7 @@ async function repairAllProps(scene = canvas?.scene) {
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
   const decorFixes = decorRepairUpdates(sceneRegions(scene));
-  if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)));
+  if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   for (const t of r.tiles) forgetPropFire(t._id);
@@ -8604,6 +8612,8 @@ Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region", (
   syncDecorations(); syncDecorWrecks(options?.animater?.decorBreak === true);
 }); });
 Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone", () => decorRegionGone(doc)); });
+// A decoration region brought back (an undone delete) with its breaks: their wrecks too.
+Hooks.on("createRegion", (doc) => { if (doc.parent === canvas?.scene && doc.flags?.[ID]?.decorBroken) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
 Hooks.on("canvasReady", () => { propSafe("decor wrecks", () => syncDecorWrecks(false)); });
 // Decorations turned off or on (Region steps, here or for the world): their wrecks follow.
 Hooks.on("updateSetting", (setting) => { if (/\.regionSteps(Local)?$/.test(setting?.key ?? "")) propSafe("decor wrecks", () => syncDecorWrecks(false)); });

@@ -48,7 +48,8 @@ test("a key is held from the GM's check until its region write lands (D5)", () =
   assert.match(main, /const queuedDecorKeys = \(regionId\) => decorQueue\.keys\(regionId\)/);
 });
 test("the GM's write is fed validated adds over the parsed stored breaks (Task 2 note)", () => {
-  assert.match(main, /decorBrokenAfter\(readDecorBroken\(region\.broken\), adds, keys\)/);
+  assert.match(main, /stored = readDecorBroken\(region\.broken\)/);
+  assert.match(main, /decorBrokenAfter\(stored, adds\.filter\(\(a\) => keys\.has\(a\.key\)\), keys\)/);
 });
 test("invisible decorations neither break nor draw wrecks (D7)", () => {
   assert.match(body("decorViews"), /!propsOn\(scene\) \|\| !regionStepsOn\(\)/);
@@ -69,4 +70,30 @@ test("Repair decorations deletes the region's own rubble; the toolbar Repair kee
 });
 test("a torn-down canvas forgets every decoration wreck and timer", () => {
   assert.match(main, /decorWrecksShown\.clear\(\); decorPending\.clear\(\); decorLate\.clear\(\); decorWreckage\.clear\(\)/);
+});
+
+// Fix round 1 (task-4-review.md).
+test("a pruned stale entry's rubble goes once the region write lands", () => {
+  const q = main.slice(main.indexOf("const decorQueue = createDecorQueue("), main.indexOf("const queueDecorWrite"));
+  assert.match(q, /decorPrunedRubble\(\[\.\.\.stored, \.\.\.adds\], keys, sceneRegions\(scene\), region\.id\)/);
+  assert.ok(q.indexOf("await regionDoc.update(") < q.indexOf("deletePropRegions(scene, orphans)"), "deleted after the write");
+  assert.match(q, /adds\.filter\(\(a\) => keys\.has\(a\.key\)\)/, "an add checked before an edit is not stored");
+});
+test("the wreck sync computes no placements for a region with nothing stored", () => {
+  const sync = body("syncDecorWrecks"), guard = sync.indexOf("if (!readDecorBroken(doc.flags?.[ID]?.decorBroken).length) continue;");
+  assert.ok(guard > 0, "guard present");
+  assert.ok(guard < sync.indexOf("decorRegionOf(doc)") && guard < sync.indexOf("decorIndex(region, grid)"), "before regionAreas and the scatter");
+});
+test("break and decoration repair writes skip the generic region rebuilds", () => {
+  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\) \|\| \(first\?\.documentName === "Region" && decorOnlySave\(changes, options\)\)/);
+  const lines = main.split(/\r?\n/).filter((l) => /for \(const hook of \[[^\]]*"updateRegion"/i.test(l) || /'updateRegion'/.test(l));
+  assert.ok(lines.length >= 11, `the rebuild listeners (${lines.length})`);
+  const next = (l) => main.split(/\r?\n/)[main.split(/\r?\n/).indexOf(l) + 1];
+  for (const l of lines) assert.match(l.includes("Hooks.on") ? l : next(l), /quietSave\(first, changes, options\)/, l.slice(0, 120));
+  for (const name of ["forgetPlanes(); floorLooksSoon()", "canopySoon(); glowsSoon()", "skySoon()", "airSoon()", "lifeSoon()", "draftSoon()", "syncRegionLooksSoon()", "dressBlood()"])
+    assert.ok(lines.some((l) => l.includes(name)) || main.includes(`quietSave(first, changes, options)) ${name}`), name);
+  assert.match(body("repairDecorRegion"), /\{ animater: \{ decorRepair: true \} \}/);
+  assert.match(body("repairAllProps"), /decorFixes\.map\(\(u\) => withDeletes\(u, del\)\), \{ animater: \{ decorRepair: true \} \}/);
+  // the decoration painter's own hook is not filtered
+  assert.doesNotMatch(main.slice(main.indexOf('Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region"'), main.indexOf('Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone"')), /quietSave/);
 });

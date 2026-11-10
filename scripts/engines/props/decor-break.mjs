@@ -178,3 +178,36 @@ export function createDecorQueue({ write, later = (fn) => setTimeout(fn, 0), tra
     keys(id) { const r = regions.get(id); return r ? [...r.flying, ...r.queued].map((q) => q.entry.key) : []; },
   };
 }
+
+/**
+ * The rubble a region write leaves behind (pure): the rubble regions named by the entries it drops as stale (stored ones
+ * whose decoration an edit moved, and adds checked before such an edit), when they are this region's own decoration
+ * rubble. `regions` is [{ id, flags }].
+ */
+export function decorPrunedRubble(entries, keys, regions, regionId) {
+  const own = new Set((regions ?? []).filter((r) => r?.flags?.animater?.propRubble === decorRubbleId(regionId)).map((r) => r.id));
+  const out = new Set();
+  for (const e of entries ?? []) { const id = e?.note?.region; if (!keys.has(e?.key) && own.has(id)) out.add(id); }
+  return [...out];
+}
+
+const QUIET_FLAGS = new Set(["decorBroken", "-=decorBroken"]);
+/**
+ * A region update that only stores or clears decoration breaks (pure): written with options.animater.decorBreak or
+ * decorRepair, changing nothing but flags.animater.decorBroken. Only the decoration painter and wrecks need it; the
+ * region rebuilds (floors, canopy, sky, air, life...) skip it. Any other change in the same update is a real edit.
+ */
+export function decorOnlySave(changes, options) {
+  const a = options?.animater;
+  if (a?.decorBreak !== true && a?.decorRepair !== true) return false;
+  const keys = Object.keys(changes ?? {}).filter((k) => k !== "_id" && k !== "_stats");
+  if (!keys.length) return false;
+  const nested = keys.length === 1 && keys[0] === "flags" ? changes.flags : null;
+  if (nested) {
+    const scopes = Object.keys(nested ?? {});
+    if (scopes.length !== 1 || scopes[0] !== "animater") return false;
+    const own = Object.keys(nested.animater ?? {});
+    return own.length > 0 && own.every((k) => QUIET_FLAGS.has(k));
+  }
+  return keys.every((k) => k.startsWith("flags.animater.") && QUIET_FLAGS.has(k.slice("flags.animater.".length)));
+}
