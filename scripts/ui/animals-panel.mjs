@@ -1,6 +1,7 @@
 import { SIZE_RANGE, sizePercent } from '../engines/motion/vermin.mjs';
 import { scopeBar } from './level-scope.mjs';
 import { exactCountOf, MOST_COUNT, MOST_HAWKS } from '../engines/motion/region-animals.mjs';
+import { normalizeOrder } from '../engines/motion/animal-orders.mjs';
 
 // The Animals panel (Animater controls): how much life a scene has, quickly. Amounts and sizes are the same scene flags as
 // Scene configuration > Animater > Creatures, not a copy; the same with Outdoor life. Animals placed by hand are kept on the
@@ -25,7 +26,7 @@ const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more',
 // Hawks are counted, not given an amount: one unless set (unset reads as 1), up to four.
 const HAWK_COUNTS = [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']];
 // What can be placed by hand, and how it is kept.
-export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake']]);
+export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake'], ['hawk', 'Hawk', 'fa-feather']]);
 export const MOST_PLACED = 40;
 const PLACEABLE_IDS = new Set(PLACEABLE.map(([id]) => id));
 
@@ -43,8 +44,13 @@ export const birdBodyOf = (percent) => 1 + 0.15 * (birdHeightOf(percent) - 1);
 // The list as saved, tidied (pure): only what can be placed, with numbers for where it stands.
 export function placedList(raw) {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((p) => PLACEABLE_IDS.has(p?.kind) && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)) && p.id).map((p) => ({ id: String(p.id), kind: p.kind, x: Number(p.x), y: Number(p.y) })).slice(-MOST_PLACED);
+  // (An order given from the animal's HUD stays with it: animal-orders.mjs.)
+  return raw.filter((p) => PLACEABLE_IDS.has(p?.kind) && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)) && p.id).map((p) => { const order = normalizeOrder(p.order); return { id: String(p.id), kind: p.kind, x: Number(p.x), y: Number(p.y), ...(order ? { order } : {}) }; }).slice(-MOST_PLACED);
 }
+// The list with one animal's order set, or cleared with null (pure).
+export const withOrder = (raw, id, order) => placedList(raw).map((p) => { if (p.id !== id) return p; const { order: _old, ...rest } = p; const o = normalizeOrder(order); return o ? { ...rest, order: o } : rest; });
+// The list without one animal (pure).
+export const withoutId = (raw, id) => placedList(raw).filter((p) => p.id !== id);
 // One more on the list (pure). The oldest goes past the most a scene keeps.
 export const withPlaced = (raw, animal) => placedList([...placedList(raw), animal]);
 // The list without its latest of a kind, or without that kind altogether (pure).

@@ -200,7 +200,8 @@ import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PRE
 import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
 import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
 import { createSoftShadows, highShadowLook } from "./engines/motion/soft-shadow.mjs";
-import { ANIMAL_KEYS, animalsPanel, birdBodyOf, birdHeightOf, placedChanges, withPlaced } from "./ui/animals-panel.mjs";
+import { ANIMAL_KEYS, animalsPanel, birdBodyOf, birdHeightOf, placedChanges, withPlaced, placedList, withOrder, withoutId } from "./ui/animals-panel.mjs";
+import { openAnimalHud } from "./ui/animal-hud.mjs";
 import { CLOSING_WINDOWS, WINDOW_ICON_NEAR, applyWindowEdge, closesWindow, drawWindowIcon, mayUseWindow, nextWindowState, windowClick, windowIconAlpha, windowInReach, windowLockState } from "./engines/motion/window-state.mjs";
 import { SEEP_RINGS, airOpenings, seepReach, seepStep } from "./engines/motion/air-seep.mjs";
 import { createDrawnClouds } from "./engines/motion/drawn-clouds.mjs";
@@ -3312,9 +3313,13 @@ Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.curren
 const placedShown = new Set();
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
-  const { add, remove } = placedChanges(placedShown, wildHere() ? animalFlagsNow().placedAnimals : []);
+  const raw = wildHere() ? animalFlagsNow().placedAnimals : [];
+  const { add, remove } = placedChanges(placedShown, raw);
   for (const id of remove) { wildlife.removeAdded(id); fieldLife.removeAdded(id); placedShown.delete(id); }
   for (const p of add) if (wildlife.add(p.kind, p) || fieldLife.add(p.kind, p)) placedShown.add(p.id);
+  // Their orders from the animal HUD (animal-orders.mjs), the same on every screen.
+  const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
+  wildlife.orders(orders); fieldLife.orders(orders);
 };
 Hooks.on("canvasTearDown", () => { placedShown.clear(); });
 let animalsPanelApp = null, animalAim = null, animalScope = "level";
@@ -3344,6 +3349,80 @@ const startAnimalAim = (kind, done) => {
   window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("contextmenu", menu, true);
 };
 Hooks.on("canvasTearDown", () => { stopAnimalAim(); });
+// The animal HUD (ui/animal-hud.mjs, GM only): right-click an animal for Go here, Follow token, Circle token, Let it go
+// and Remove. An order is kept on the placed animal (animal-orders.mjs); a wild one given an order is put down by hand
+// where it stands, with it, so every screen has it and moves it the same way.
+const placedHome = () => (canvas?.level?.flags?.[ID]?.placedAnimals !== undefined ? canvas.level : canvas?.scene);
+const savePlaced = async (list) => { const home = placedHome(); if (home) await home.update({ [`flags.${ID}.placedAnimals`]: list }); };
+// Where a token an animal goes by is now, as it moves; a hidden one only on the GM's screen.
+const animalTokenAt = (id) => { const t = canvas?.tokens?.get(id); if (!t || (t.document.hidden && !game.user.isGM)) return null; const c = t.center; return { x: c.x, y: c.y }; };
+const tokenUnder = (p) => (canvas?.tokens?.placeables ?? []).filter((t) => t.visible && p.x >= t.x && p.y >= t.y && p.x <= t.x + t.w && p.y <= t.y + t.h).sort((a, b) => (b.document.sort ?? 0) - (a.document.sort ?? 0))[0] ?? null;
+let animalHud = null, animalPick = null;
+const endAnimalPick = () => {
+  if (!animalPick) return;
+  window.removeEventListener("pointerdown", animalPick.down, true); window.removeEventListener("keydown", animalPick.key, true);
+  animalPick = null; if (!animalHud?.closed) animalHud?.picking(null);
+};
+const closeAnimalHud = () => { endAnimalPick(); animalHud?.close(); animalHud = null; };
+const animalAt = (p) => {
+  const reach = (canvas.grid?.size || 100) * 0.45;
+  const hits = [[wildlife, wildlife.pick(p.x, p.y, reach)], [fieldLife, fieldLife.pick(p.x, p.y, reach)]].filter(([, h]) => h).map(([engine, h]) => ({ ...h, engine }));
+  return hits.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0] ?? null;
+};
+const orderAnimal = async (hit, order) => {
+  const list = animalFlagsNow().placedAnimals;
+  if (hit.id) return savePlaced(order === undefined ? withoutId(list, hit.id) : withOrder(list, hit.id, order));
+  if (!order) return;
+  const at = hit.engine.where(hit.ref) ?? hit;
+  hit.engine.takeAway(hit.ref);
+  await savePlaced(withPlaced(list, { id: foundry.utils.randomID(), kind: hit.kind, x: Math.round(at.x), y: Math.round(at.y), order }));
+};
+const openAnimalHudFor = (hit) => {
+  closeAnimalHud();
+  let current = hit;
+  const done = (promise) => { closeAnimalHud(); void Promise.resolve(promise).catch((error) => ui.notifications?.warn(`Animater | ${error.message}`)); };
+  animalHud = openAnimalHud({
+    kind: hit.kind, placed: Boolean(hit.id), order: hit.order,
+    tokenName: (order) => (order?.token ? canvas.tokens?.get(order.token)?.name ?? "" : ""),
+    at: () => { if (!canvas?.ready) return null; const w = current.engine.where(current.ref); if (!w) return null; current = { ...current, ...w }; const s = canvas.clientCoordinatesFromCanvas({ x: w.x, y: w.y }); return { x: s.x, y: s.y }; },
+    onOrder: (type) => {
+      endAnimalPick(); animalHud.picking(type);
+      const down = (e) => {
+        if (e.target !== canvas.app?.view) return;
+        e.stopImmediatePropagation(); e.preventDefault();
+        if (e.button !== 0) { endAnimalPick(); return; }
+        const p = canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
+        if (type === "go") { done(orderAnimal(current, { type, x: p.x, y: p.y })); return; }
+        const token = tokenUnder(p);
+        if (!token) { ui.notifications?.info("Animater | Click a token."); return; }
+        done(orderAnimal(current, { type, token: token.id }));
+      };
+      const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); endAnimalPick(); } };
+      animalPick = { down, key };
+      window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
+    },
+    onRelease: () => done(orderAnimal(current, null)),
+    onRemove: () => done(orderAnimal(current, undefined)),
+    onClose: () => { endAnimalPick(); animalHud = null; hit.engine.hold(null); },
+  });
+  // It stands still while its HUD is open.
+  hit.engine.hold(hit.ref);
+};
+// A GM's right-click on an animal (not on a token): its HUD, taken before Foundry sees it. A left click elsewhere closes it.
+let swallowMenu = false;
+globalThis.window?.addEventListener?.("pointerdown", (e) => {
+  if (!game.user?.isGM || !canvas?.ready || e.target !== canvas.app?.view || animalAim || animalPick) return;
+  if (e.button === 0 && animalHud) { closeAnimalHud(); return; }
+  if (e.button !== 2) return;
+  const p = canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY });
+  if (tokenUnder(p)) return;
+  const hit = animalAt(p);
+  if (!hit) { if (animalHud) closeAnimalHud(); return; }
+  e.stopImmediatePropagation(); e.preventDefault(); swallowMenu = true;
+  openAnimalHudFor(hit);
+}, true);
+globalThis.window?.addEventListener?.("contextmenu", (e) => { if (swallowMenu) { swallowMenu = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+Hooks.on("canvasTearDown", () => { closeAnimalHud(); });
 // Why no animal shows, when that is not plain from the panel: the settings, this screen's quality, or a map with no ground
 // they live on (its floor, or all of it roofed or walled in).
 const wildNote = () => {
@@ -4149,9 +4228,9 @@ const wildTick = (seconds) => {
     const step = Math.min(left, 0.05);
     const birdBody = birdBodyOf(animalFlagsNow().birdHeight), liftShadow = highBirdShadow;
     wildlife.setPerches(birdPerches());
-    wildlife.tick(step, { birdBody, liftShadow, near, ok: wildOk, kept: wildKept, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y) });
+    wildlife.tick(step, { birdBody, liftShadow, near, ok: wildOk, kept: wildKept, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y), tokenAt: animalTokenAt });
     if (pondLife.busy) pondLife.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: wildlife, ripple: pondRipple, near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
-    if (fieldLife.busy) fieldLife.tick(step, { birdBody, liftShadow, near, ok: wildOk, blocked: wallBlocks, kept: wildKept, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps });
+    if (fieldLife.busy) fieldLife.tick(step, { birdBody, liftShadow, near, ok: wildOk, blocked: wallBlocks, kept: wildKept, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps, tokenAt: animalTokenAt });
   }
 };
 // The water's bigger shapes: the sea's shore (engines/motion/coast.mjs), waterfalls (waterfall.mjs), and what still water mirrors (water-mirror.mjs). Which is which is the region's

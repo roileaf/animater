@@ -3399,6 +3399,17 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-dmg-linger{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
 .animater .an-dmg-linger-buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .animater .an-dmg-linger-buttons button{margin:0;height:30px;font-size:12px}
+#animater-animal-hud{position:fixed;left:0;top:0;width:0;height:0;z-index:40;pointer-events:none;color:#e9e4d8;font-size:13px}
+#animater-animal-hud::before{content:"";position:absolute;left:-30px;top:-30px;width:60px;height:60px;border:1.5px dashed #e9c46a;border-radius:50%;box-sizing:border-box}
+#animater-animal-hud .an-ahud-name{position:absolute;left:0;top:-58px;transform:translate(-50%,-100%);white-space:nowrap;text-align:center;background:rgba(20,19,17,.9);border:1px solid #4a473f;border-radius:6px;padding:3px 9px;display:flex;flex-direction:column;line-height:1.25}
+#animater-animal-hud .an-ahud-name small{font-size:11px;color:#cfc6b2}
+#animater-animal-hud .an-ahud-col{position:absolute;top:-58px;display:flex;flex-direction:column;gap:6px;pointer-events:auto}
+#animater-animal-hud .an-ahud-left{right:40px}
+#animater-animal-hud .an-ahud-right{left:40px}
+#animater-animal-hud .an-ahud-btn{width:36px;height:36px;margin:0;padding:0;display:grid;place-items:center;font-size:15px;color:#e9e4d8;background:rgba(43,42,39,.92);border:1px solid #4a473f;border-radius:6px;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+#animater-animal-hud .an-ahud-btn:hover{border-color:#e9c46a;color:#fff}
+#animater-animal-hud .an-ahud-btn.active{background:#3a2f22;border-color:#e9c46a;color:#f3d9ad}
+#animater-animal-hud .an-ahud-pick{position:absolute;left:0;top:46px;transform:translateX(-50%);white-space:nowrap;background:rgba(20,19,17,.92);border:1px solid #e9c46a;border-radius:6px;padding:3px 9px;font-size:11px;color:#f3d9ad}
 #token-hud .an-tshud-button.active{color:#d8c4ff;border-color:#b18cff;box-shadow:0 0 6px rgba(177,140,255,.6)}
 #token-hud .col.left{position:relative}
 #token-hud .an-tshud-palette{position:absolute;right:calc(100% + 10px);top:0;width:290px;max-height:460px;display:flex;flex-direction:column;gap:7px;padding:10px;background:rgba(20,19,17,.94);border:1px solid #4a473f;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.55);color:#e9e4d8;font-size:13px;pointer-events:all;z-index:5;text-align:left}
