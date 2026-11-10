@@ -94,3 +94,9 @@ test('scatter and brush: deterministic, and a brush dab keeps off what stands th
   for (let s = 1; s < 30; s++) { const d = stampDecor({ x: 100, y: 100, radius: 60, grid: 100, kinds: ['rock'], seed: s, existing }); if (d) assert.fail('no room under a boulder'); }
   assert.ok(stampDecor({ x: 100, y: 100, radius: 60, grid: 100, kinds: ['moss'], seed: 2, existing }), 'a flat kind lies under it');
 });
+
+test("Decorations can break is kept, off unless true", () => {
+  assert.equal(decorSettings({ on: true, canBreak: true }).canBreak, true);
+  assert.equal(decorSettings({ on: true, canBreak: "yes" }).canBreak, false);
+  assert.equal(decorSettings({ on: true }).canBreak, false);
+});

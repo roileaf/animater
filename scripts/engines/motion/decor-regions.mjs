@@ -25,7 +25,7 @@ export function decorSettings(raw) {
   }
   const placed = (p) => p && DECOR_KINDS[p.kind] && Number.isFinite(p.x) && Number.isFinite(p.y) && p.size > 0;
   return {
-    where, kinds,
+    where, kinds, canBreak: raw.canBreak === true,
     density: clamp(raw.density, 0, 2, 0.6), scale: clamp(raw.scale, 0.3, 3, 1), seed: Math.floor(clamp(raw.seed, 0, 2 ** 31, 1)),
     brushed: (Array.isArray(raw.brushed) ? raw.brushed : []).filter(placed).slice(0, DECOR_MOST),
     erased: (Array.isArray(raw.erased) ? raw.erased : []).filter((e) => Array.isArray(e) && e.length === 3 && e.every(Number.isFinite)).slice(0, 400),
