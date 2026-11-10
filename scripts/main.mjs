@@ -2413,9 +2413,9 @@ const startDecorBrush = (doc = null) => {
     else { const c = brushChoices(); Object.assign(state, { id: NEW_DECOR_REGION, doc: null, brushed: [], erased: [], circles: [], fresh: { where: c.where, kinds: Object.fromEntries(c.kinds.map((k) => [k, { size: 1, amount: 1 }])) } }); }
   };
   const paintWith = () => {
-    if (free) { const c = brushChoices(); return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: 1 }; }
+    if (free) { const c = brushChoices(); return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale }; }
     const s = decorSettings(state.doc?.flags?.[ID]?.decor);
-    return s ? { kinds: Object.entries(s.kinds).filter(([id]) => DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === s.where).map(([id, k]) => ({ id, size: k.size, amount: k.amount })), density: s.density, scale: s.scale } : { kinds: [], density: 0, scale: 1 };
+    return s ? { kinds: Object.entries(s.kinds).filter(([id]) => DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === s.where).map(([id, k]) => ({ id, size: k.size, amount: k.amount })), density: s.density, scale: s.scale * brushChoices().scale } : { kinds: [], density: 0, scale: 1 };
   };
   const dab = (p, erase) => {
     const radius = (sizeNow() * grid()) / 2;
@@ -2460,10 +2460,11 @@ const startDecorBrush = (doc = null) => {
   // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
   // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
   const wheel = (e) => {
-    if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+    if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     const up = (e.deltaY || e.deltaX) < 0;
-    if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { if (free) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
+    if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
+    else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { if (free) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
     else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); if (free) state.bar?.setSize(next); else state.size = next; }
     draw();
   };

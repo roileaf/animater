@@ -49,6 +49,12 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   // Select all ticks every kind the place offers; Deselect all none.
   const bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(bar, /\['Select all', \(\) => brushKindsFor\(remembered\.where\)\], \['Deselect all', \(\) => \[\]\]/);
+  // Its Decoration size scales what it lays, on open ground and on top of a region's own scale.
+  assert.equal(c.scale, 1);
+  assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
+  const main = read('scripts/main.mjs');
+  assert.match(main, /density: c\.thick, scale: c\.scale \}/);
+  assert.match(main, /scale: s\.scale \* brushChoices\(\)\.scale \}/);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
@@ -81,12 +87,16 @@ test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, 
 
 test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its thickness', () => {
   const main = read('scripts/main.mjs'), bar = read('scripts/ui/decor-brush-bar.mjs');
-  assert.match(main, /if \(e\.target !== view \|\| !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey\)\) return;/);
+  assert.match(main, /if \(e\.target !== view \|\| !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey \|\| e\.altKey\)\) return;/);
   assert.match(main, /if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) \{ if \(free\) state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\); \}/);
   assert.match(main, /window\.addEventListener\("wheel", wheel, \{ capture: true, passive: false \}\)/);
   assert.match(main, /window\.removeEventListener\("wheel", wheel, \{ capture: true \}\)/);
   assert.match(bar, /setThick: \(v\) =>/);
   assert.match(bar, /Ctrl\+wheel: size · Shift\+wheel: thickness/);
+  // Alt+wheel: the decorations' own size.
+  assert.match(main, /if \(e\.altKey && !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey\)\) state\.bar\?\.setScale\(brushChoices\(\)\.scale \+ \(up \? 0\.1 : -0\.1\)\);/);
+  assert.match(bar, /setScale: \(v\) =>/);
+  assert.match(bar, /Alt\+wheel: decoration size/);
 });
 
 test('decorations feed the other engines: canopy trees, moving water, the cavern', () => {
