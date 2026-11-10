@@ -2310,6 +2310,20 @@ const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = I
 // Whether moving water is drawn on this screen: its quality level allows it and the Moving water setting (world and player) is on.
 // What lives on its shore (the cut-out shore, the beach animals keep off, the crabs) asks this too, so none of it acts on a sea not drawn.
 const movingWaterOn = () => { try { return !!floorLevel.water && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { return false; } };
+// Tiles the sea's waves break on (a ship): ticked "Waves break on it" in their configuration, shown, and lying over this water. Each as the water engine draws it, from its own picture.
+const hullsOver = (areas) => {
+  const out = [];
+  for (const tile of canvas?.tiles?.placeables ?? []) {
+    const doc = tile.document;
+    if (doc?.flags?.[ID]?.wavesBreak !== true || doc.hidden) continue;
+    const source = (tile.mesh?.texture ?? tile.texture)?.baseTexture?.resource?.source;
+    if (!source) continue;
+    const reach = Math.hypot(doc.width, doc.height) / 2, cx = doc.x + doc.width / 2, cy = doc.y + doc.height / 2;
+    if (!boxesMeet([[cx - reach, cy - reach, cx + reach, cy - reach, cx + reach, cy + reach, cx - reach, cy + reach]], areas)) continue;
+    out.push({ id: doc.id, src: doc.texture?.src ?? "", source, x: doc.x, y: doc.y, width: doc.width, height: doc.height, rotation: doc.rotation, scaleX: doc.texture?.scaleX, scaleY: doc.texture?.scaleY });
+  }
+  return out;
+};
 const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   const on = movingWaterOn();
@@ -2327,7 +2341,7 @@ const movingWaterList = () => {
       const bed = under ? { texture: floorTextures.tile(under.floor, textureStyleOf(own, under.floor)), key: `${under.floor}/${textureStyleOf(own, under.floor)}`, edge: under.edge, colourOnly: under.floor === "water" } : null;
       // (Its shadow by how far above this water it stands; with several, the highest that reaches it.)
       const above = over.filter((r) => r.id !== region.id && boxesMeet(regionAreas(r), areas));
-      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreas(r), xs = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1)); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas) });
+      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreas(r), xs = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1)); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
     } catch { /* a broken region never breaks the rest */ }
   }
   return list;
@@ -2363,6 +2377,8 @@ const syncMovingWater = (list) => {
 let floorLooksTimer = null;
 const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) floorLooksSoon(); });
+// A tile the waves break on, placed, moved, turned, hidden or gone: the sea round it again.
+for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, (doc, change) => { if (doc?.flags?.[ID]?.wavesBreak === true || change?.flags?.[ID]?.wavesBreak !== undefined) floorLooksSoon(); });
 const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
 const regionTakesSeason = (own) => takesSeason(own, canvas.scene?.flags?.[ID]?.floorTextures);
 const openSteps = (doc) => openStepsWindow(foundry.applications.api.ApplicationV2, { id: ID, doc, floor: plainFloorOf(doc), flagsOf: stepFlagsOf, save: saveStepFlags, season: regionTakesSeason });
@@ -9334,6 +9350,17 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
 // Tile configuration: what this tile does with the sun ("Light through trees", "Roof shadows"): a tree's leaves let it
 // through in flecks, a roof casts a building's shadow and lets it in only through its holes. Auto goes by the tile's
 // file name and picture; Tree, Roof and None choose for this tile alone.
+// Tile configuration: the sea's waves break on this tile (flags.animater.wavesBreak), for a ship or a rock standing in it. Off unless ticked.
+Hooks.on("renderTileConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.wavesBreak"]`)) return;
+  const doc = app.document ?? app.object, on = doc?.flags?.[ID]?.wavesBreak === true;
+  const group = document.createElement("div");
+  group.className = "form-group";
+  group.innerHTML = `<label>Animater: waves break on it</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.wavesBreak"${on ? " checked" : ""}></div><p class="hint">The sea's waves crash against this tile on the side they come from, along the edge of its picture, and its far side lies calm. For a ship or a rock standing in moving sea.</p>`;
+  const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
+  tab.append(group);
+});
 Hooks.on("renderTileConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.sunlight"]`)) return;
