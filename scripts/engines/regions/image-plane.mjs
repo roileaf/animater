@@ -34,9 +34,25 @@ function pixelCount(rgba, width, height) {
   return n;
 }
 
-function sameSource(a, b) {
+export function sameSource(a, b) {
   if (!a || !b || a.kind !== b.kind) return false;
   return a.kind === "map" ? a.levelId === b.levelId : a.tileId === b.tileId;
+}
+
+export function levelList(levels) {
+  if (Array.isArray(levels)) return [...levels];
+  if (levels && typeof levels.forEach === "function") return [...levels];
+  return [];
+}
+
+// A rotated or scaled tile's picture does not fill its rectangle, so an outline traced on it would land in the wrong place.
+export function tileFrameIsPlain(tile) {
+  const rotation = Number(tile?.rotation);
+  const tex = tile?.texture ?? {};
+  const scaleX = tex.scaleX == null || tex.scaleX === "" ? 1 : Number(tex.scaleX);
+  const scaleY = tex.scaleY == null || tex.scaleY === "" ? 1 : Number(tex.scaleY);
+  const fit = tex.fit ?? "fill";
+  return (!Number.isFinite(rotation) || rotation === 0) && scaleX === 1 && scaleY === 1 && fit === "fill";
 }
 
 function planeFor(planes, source) {
@@ -66,8 +82,9 @@ function floorName(region) {
   return typeof floor === "string" && floor !== "" ? floor : null;
 }
 
-function planeFromTile(tile, levelId) {
-  if (!tile || tile.hidden === true) return null;
+function planeFromTile(tile, levelId, { allowHidden = false } = {}) {
+  if (!tile || (tile.hidden === true && !allowHidden)) return null;
+  if (!tileFrameIsPlain(tile)) return null;
   const levels = tile.levels;
   if (Array.isArray(levels) && levels.length > 0 && !levels.includes(levelId)) return null;
   const tileId = tile.id ?? tile._id;
@@ -92,7 +109,7 @@ function planeFromTile(tile, levelId) {
   };
 }
 
-export function planesFrom({ levelId, sceneRect, backgroundSrc, tiles = [] } = {}) {
+export function planesFrom({ levelId, sceneRect, backgroundSrc, tiles = [], allowHidden = false } = {}) {
   const width = finite(sceneRect?.width);
   const height = finite(sceneRect?.height);
   if (width == null || height == null || width <= 0 || height <= 0) throw new Error("planesFrom: sceneRect needs a width and a height");
@@ -106,7 +123,7 @@ export function planesFrom({ levelId, sceneRect, backgroundSrc, tiles = [] } = {
     blocksWeather: false,
   }];
   for (const tile of tiles) {
-    const plane = planeFromTile(tile, levelId);
+    const plane = planeFromTile(tile, levelId, { allowHidden });
     if (plane) planes.push(plane);
   }
   return planes;
@@ -190,7 +207,8 @@ export function surfaceAt(point, { elevation = 0, regions = [], planes = [], con
       }
       const name = floorName(region);
       if (!name) continue;
-      const covers = plane.elevation == null || height === plane.elevation;
+      // A token nudged a fraction off the deck, such as 10.5 on a deck at 10, is still on it. A full step away is not.
+      const covers = plane.elevation == null || (plane.id.kind === "tile" ? Math.abs(height - plane.elevation) <= 1 : height === plane.elevation);
       if (!covers) continue;
       const chosen = { floor: name, source: plane };
       if (plane.id.kind === "tile") tileFloor = chosen;

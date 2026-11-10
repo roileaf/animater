@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Floor regions on a ship tile.** Floor regions can trace a tile as well as the map. A deck is the floor underfoot. An awning keeps the rain and the sun off whatever is below it, and the deck's drawing sits on the tile. A tile that is rotated or scaled is left out, because its outline would land in the wrong place. A token a fraction off the deck's height, such as 10.5 on a deck at 10, still walks the deck.
+
 - **Size buttons for smart areas.** After a smart click, box or cut, **Size: 1 Small · 2 Middle · 3 Large** shows at the bottom right of the map with the size in use highlighted. Click one, or press 1, 2 or 3 as before. It hides when there is nothing to resize.
 - **Smart selection keeps to the clicked colours.** With **Same colours** on (the default, next to the Floor picker), a smart click leaves out what stands on the floor in another colour, such as green chairs on grey stone or a red rug, as holes in the area. The floor's own light and dark patches stay. Turn it off for a floor of many colours.
 - **Right-click cuts out a bridge.** A right-click could only take out a part under a quarter of the area, so a stone bridge across a small pool answered "Nothing there to take out". A bigger part that plainly differs in colour from the rest of the area can now be cut, up to nine tenths of it. Where the model sees the bridge and the pool as one thing, the right-click cuts the part of the area in the clicked colours instead.

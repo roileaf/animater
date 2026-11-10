@@ -2,7 +2,7 @@
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
 import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, traceProposals, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, GENERATED_MARK } from "../engines/regions/floor-detect.mjs";
-import { planesFrom, solidMask, project, bindingFromProposal } from "../engines/regions/image-plane.mjs";
+import { planesFrom, solidMask, project, bindingFromProposal, levelList, tileFrameIsPlain } from "../engines/regions/image-plane.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
 import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours, colourCut } from "../engines/regions/smart-select.mjs";
@@ -336,7 +336,7 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
   const prefs = readPrefs();
   const addFloor = pickable(shared.addFloor) ? shared.addFloor : pickable(prefs.addFloor) ? prefs.addFloor : AUTO_FLOOR;
   const selection = shared.selection ?? (prefs.selection === "smart" ? "smart" : "colour");
-  const floorOf = (p) => { if (overhead) return NO_FLOOR; const f = choices.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; return isAreaFloor(f) ? f : "water"; };
+  const floorOf = (p) => { if (overhead) return NO_FLOOR; const f = choices.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; if (f === NO_FLOOR) return NO_FLOOR; return isAreaFloor(f) ? f : "water"; };
   const anyWater = rows.some((p) => floorOf(p) === "water" && (choices.get(p.id)?.checked ?? p.preselected));
   const radio = (name, value, attr, on, body, title = "") => `<label class="an-chip"${title ? ` title="${esc(title)}"` : ""}><input type="radio" name="${name}" value="${value}" ${attr}${on ? " checked" : ""}>${body}</label>`;
   const optionsFor = (proposal) => ({ sceneTexture, overhead, ...(proposal.regionId ? {} : { texture: textureOf(shared.texture) }), ...choices.get(proposal.id) });
@@ -446,13 +446,6 @@ export function choicesFromElement(root) {
   return readAreaChoices(rows);
 }
 
-// Foundry keeps a tile's levels in a set. planesFrom only filters an array.
-function levelList(levels) {
-  if (Array.isArray(levels)) return [...levels];
-  if (levels && typeof levels.forEach === "function") return [...levels];
-  return [];
-}
-
 function tileDocument(tile) {
   if (!tile || typeof tile !== "object") return null;
   return {
@@ -464,20 +457,26 @@ function tileDocument(tile) {
     y: tile.y,
     width: tile.width,
     height: tile.height,
+    rotation: tile.rotation,
     elevation: tile.elevation,
-    texture: { src: tile.texture?.src ?? "" },
+    texture: { src: tile.texture?.src ?? "", scaleX: tile.texture?.scaleX, scaleY: tile.texture?.scaleY, fit: tile.texture?.fit },
     restrictions: { light: tile.restrictions?.light === true, weather: tile.restrictions?.weather === true },
   };
 }
 
-export function floorPictures({ levelId, sceneRect, backgroundSrc, tiles = [] } = {}) {
+export function floorPictures({ levelId, sceneRect, backgroundSrc, tiles = [], regions = [] } = {}) {
   const docs = [];
   for (const tile of tiles) {
     const doc = tileDocument(tile);
     if (doc) docs.push(doc);
   }
-  const planes = planesFrom({ levelId, sceneRect, backgroundSrc, tiles: docs });
-  return planes.map((plane) => {
+  const shown = docs.filter((tile) => tile.hidden !== true);
+  const hidden = docs.filter((tile) => tile.hidden === true);
+  const planes = planesFrom({ levelId, sceneRect, backgroundSrc, tiles: shown });
+  for (const plane of planesFrom({ levelId, sceneRect, backgroundSrc: "", tiles: hidden, allowHidden: true })) {
+    if (plane.id.kind === "tile") planes.push(plane);
+  }
+  const pictures = planes.map((plane) => {
     const doc = plane.id.kind === "tile" ? docs.find((tile) => String(tile.id) === plane.id.tileId) : null;
     const file = String(plane.src).split("/").pop();
     return {
@@ -486,6 +485,28 @@ export function floorPictures({ levelId, sceneRect, backgroundSrc, tiles = [] } 
       plane,
     };
   });
+  const seen = new Set(pictures.filter((picture) => picture.plane.id.kind === "tile").map((picture) => picture.plane.id.tileId));
+  const list = Array.isArray(regions) ? regions : regions?.contents ?? [];
+  for (const region of list) {
+    const source = region?.flags?.animater?.imageRegion?.source;
+    if (source?.kind !== "tile" || seen.has(source.tileId)) continue;
+    seen.add(source.tileId);
+    pictures.push({
+      key: `tile:${source.tileId}`,
+      label: "Missing tile",
+      plane: {
+        id: { kind: "tile", tileId: source.tileId },
+        src: "",
+        frame: { x: 0, y: 0, width: 1, height: 1 },
+        role: region?.flags?.animater?.floor ? "floor" : "overhead",
+        elevation: null,
+        blocksLight: false,
+        blocksWeather: false,
+        missing: true,
+      },
+    });
+  }
+  return pictures;
 }
 
 export function traceSolid(rgba, width, height) {
@@ -498,7 +519,12 @@ export function traceSolid(rgba, width, height) {
 }
 
 function tracedOn(plane, loaded, detect) {
-  if (plane.id.kind === "tile") return { proposals: traceSolid(loaded.rgba, loaded.width, loaded.height), reason: "" };
+  if (plane.id.kind === "tile") {
+    const traced = traceSolid(loaded.rgba, loaded.width, loaded.height);
+    // A hull is not water. The GM picks the floor; an unticked row cannot be saved as Water.
+    const proposals = plane.role === "overhead" ? traced : traced.map((proposal) => ({ ...proposal, floor: NO_FLOOR, preselected: false }));
+    return { proposals, reason: "" };
+  }
   const result = detect(loaded.rgba, loaded.width, loaded.height) ?? {};
   return { proposals: result.proposals ?? [], reason: result.reason ?? "" };
 }
@@ -535,7 +561,8 @@ function onLevel(region, levelId) {
 
 function onPicture(region, plane, levelId, editable) {
   const source = region?.flags?.animater?.imageRegion?.source;
-  if (source?.kind === "tile") return plane?.id?.kind === "tile" && source.tileId === plane.id.tileId && onLevel(region, levelId);
+  const levels = Array.from(region?.levels ?? []);
+  if (source?.kind === "tile") return plane?.id?.kind === "tile" && source.tileId === plane.id.tileId && (onLevel(region, levelId) || !levels.length);
   if (plane?.id?.kind === "tile") return false;
   if (source?.kind === "map") return source.levelId === (plane?.id?.levelId ?? levelId) && onLevel(region, levelId);
   return editable.has(region.id);
@@ -702,8 +729,8 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
   if (covers.length) {
     let used = 0;
     for (const region of regionList) {
-      const match = String(region.name ?? "").match(/^Overhead ?(\d*)$/);
-      if (match) used = Math.max(used, Number(match[1]) || 1);
+      if (region?.flags?.animater?.floor || !region?.flags?.animater?.imageRegion) continue;
+      used += 1;
     }
     for (let i = 0; i < covers.length; i++) {
       const n = used + i + 1;
@@ -1469,7 +1496,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       this.element.addEventListener("mouseleave", () => this.setHighlight(""));
       this.element.addEventListener("change", (event) => {
         if (event.target.closest?.("[data-plane]")) {
-          if (this.pictureBusy) {
+          if (this.pictureBusy || this.smartBusy) {
             const select = this.element.querySelector("[data-plane]");
             if (select) select.value = this.planeKey;
             return;
@@ -2183,7 +2210,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     }
 
     async showPicture(key) {
-      if (!key || key === this.planeKey || this.pictureBusy || !this.detect) return;
+      if (!key || key === this.planeKey || this.pictureBusy || this.smartBusy || !this.detect) return;
       const picture = (this.pictures ?? []).find((item) => item.key === key);
       if (!picture) return;
       const previousKey = this.planeKey;
@@ -2201,6 +2228,11 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (!base) {
         this.planeKey = previousKey;
         this.plane = previousPlane;
+        return;
+      }
+      if (picture.plane.missing || !picture.plane.src) {
+        const saved = savedAreaProposals(base.scene?.regions, { levelId: base.levelId, sceneRect: base.sceneRect, width: 1, height: 1, plane: picture.plane });
+        this.adopt({ detect: { ...base, proposals: saved, reason: "That tile is no longer on the scene. These regions stay so you can remove them.", rgba: new Uint8ClampedArray(4), width: 1, height: 1 }, history: [], choices: [], shared: null, mode: { kind: "inspect" }, excluded: {}, smartLast: null, rejected: [], highlight: "", selectedId: "" });
         return;
       }
       this.pictureBusy = true;
@@ -2327,7 +2359,9 @@ async function openOnce({
     warn("Experimental. This level's background is moved, scaled or rotated in its configuration, so shapes read from the image would land in the wrong place. Reset its position to use this tool.");
     return { opened: false, reason: "transformed" };
   }
-  const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: src, tiles });
+  const skewed = (Array.isArray(tiles) ? tiles : []).filter((tile) => tile && tile.hidden !== true && tile.texture?.src && !tileFrameIsPlain(tile)).length;
+  if (skewed) warn(`Experimental. ${skewed === 1 ? "One tile is" : `${skewed} tiles are`} rotated or scaled, so ${skewed === 1 ? "it is" : "they are"} left out of Floor regions. Reset ${skewed === 1 ? "it" : "them"} to trace ${skewed === 1 ? "it" : "them"}.`);
+  const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: src, tiles, regions: scene?.regions });
   const map = pictures[0].plane;
   const loaded = await load(src, fitSize(sceneRect.width, sceneRect.height), { signal });
   if (signal?.aborted) return { opened: false, reason: "superseded" };

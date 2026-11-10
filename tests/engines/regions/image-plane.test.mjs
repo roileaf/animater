@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { planesFrom, solidMask, rgbForModel, project, bindingFromProposal, surfaceAt } from "../../../scripts/engines/regions/image-plane.mjs";
+import { planesFrom, solidMask, rgbForModel, project, bindingFromProposal, surfaceAt, tileFrameIsPlain } from "../../../scripts/engines/regions/image-plane.mjs";
 
 const sceneRect = { x: 1000, y: 1200, width: 3600, height: 4800 };
 const deckDoc = {
@@ -62,6 +62,9 @@ test("the riverboat answers come from the live plane", () => {
   assert.deepEqual(ask(grass, 40, built), { floor: "grass", blocksWeather: false, blocksLight: false, source: built.map });
   assert.deepEqual(ask(above, 25, built), { floor: "water", blocksWeather: false, blocksLight: false, source: built.map });
   assert.deepEqual(ask(hull, 99, built), { floor: "water", blocksWeather: false, blocksLight: false, source: built.map });
+  assert.equal(ask(hull, 0.5, built).floor, "wood");
+  assert.equal(ask(hull, 1, built).floor, "wood");
+  assert.equal(ask(hull, 2, built).floor, "water");
 });
 
 test("alpha 199 is outside and alpha 200 is inside", () => {
@@ -125,6 +128,8 @@ test("a tile with either restriction is overhead, and a hidden tile is absent", 
       { id: "shade", x: 1, y: 2, width: 3, height: 4, elevation: 15, texture: { src: "shade.png" }, restrictions: { light: true, weather: false } },
       { id: "gone", hidden: true, x: 0, y: 0, width: 2, height: 2, elevation: 0, texture: { src: "gone.png" } },
       { id: "elsewhere", levels: ["other"], x: 0, y: 0, width: 2, height: 2, elevation: 0, texture: { src: "other.png" } },
+      { id: "turned", rotation: 45, x: 0, y: 0, width: 2, height: 2, elevation: 0, texture: { src: "turned.png" } },
+      { id: "scaled", x: 0, y: 0, width: 2, height: 2, elevation: 0, texture: { src: "scaled.png", scaleX: 2, scaleY: 1 } },
     ],
   });
   assert.deepEqual(planes.map((plane) => plane.id), [
@@ -135,4 +140,8 @@ test("a tile with either restriction is overhead, and a hidden tile is absent", 
   assert.equal(planes[1].blocksLight, true);
   assert.equal(planes[1].blocksWeather, false);
   assert.equal(planes[1].elevation, 15);
+  assert.equal(tileFrameIsPlain({ rotation: 0, texture: { scaleX: 1, scaleY: 1 } }), true);
+  assert.equal(tileFrameIsPlain({ rotation: 45, texture: {} }), false);
+  const kept = planesFrom({ levelId: "L", sceneRect: { x: 0, y: 0, width: 10, height: 10 }, backgroundSrc: "map.png", tiles: [{ id: "gone", hidden: true, x: 0, y: 0, width: 2, height: 2, texture: { src: "gone.png" } }], allowHidden: true });
+  assert.deepEqual(kept.map((plane) => plane.id.tileId).filter(Boolean), ["gone"]);
 });

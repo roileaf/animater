@@ -54,15 +54,16 @@ test("the picture list is the map, then each visible tile on this level", () => 
   const elsewhere = { id: "else", name: "Else", levels: new Set(["other"]), x: 10, y: 10, width: 20, height: 20, texture: { src: "else.png" }, restrictions: { light: false, weather: false } };
   const cloth = { id: "cloth", name: "Cloth", levels: new Set([levelId]), x: 12, y: 12, width: 20, height: 20, texture: { src: "cloth.png" }, restrictions: { light: true, weather: false } };
   const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: "map.png", tiles: [hidden, elsewhere, cloth, deckDoc] });
-  assert.deepEqual(pictures.map((picture) => picture.label), ["Map", "Cloth", "Deck"]);
-  assert.deepEqual(pictures.map((picture) => picture.key), [`map:${levelId}`, "tile:cloth", "tile:deck"]);
+  assert.deepEqual(pictures.map((picture) => picture.label), ["Map", "Cloth", "Deck", "Hidden"]);
+  assert.deepEqual(pictures.map((picture) => picture.key), [`map:${levelId}`, "tile:cloth", "tile:deck", "tile:hidden"]);
   assert.equal(pictures[0].plane.role, "floor");
   assert.equal(pictures[0].plane.elevation, null);
   assert.equal(pictures[1].plane.role, "overhead");
   assert.equal(pictures[2].plane.role, "floor");
   const html = floorWindowHTML({ proposals: [], width: 4, height: 4, pictures, pictureKey: pictures[0].key });
   assert.ok(html.indexOf(">Map</option>") < html.indexOf(">Cloth</option>"));
-  assert.doesNotMatch(html, /Hidden|Else|else\.png/);
+  assert.match(html, />Hidden</);
+  assert.doesNotMatch(html, /Else|else\.png/);
   assert.doesNotMatch(floorWindowHTML({ proposals: [], width: 4, height: 4 }), /data-plane/);
   const cover = areaRowHTML({ id: "area-1", share: 0.5, preselected: true, vertices: 4, loops: [{ points: [0, 0, 2, 0, 2, 2], hole: false }] }, { overhead: true });
   assert.match(cover, /data-overhead/);
@@ -191,6 +192,34 @@ test("a tile region reloads on its tile, and a map region reloads on the map", (
   const onCloth = savedAreaProposals(regions, { levelId, sceneRect, width: 6, height: 4, plane: awning })[0];
   assert.equal(onCloth.floor, "");
   assert.deepEqual(onCloth.loops[0].points, [0, 0, 2, 0, 2, 2, 0, 2]);
+  const unleveled = savedAreaProposals([{ ...cover, levels: [] }], { levelId, sceneRect, width: 6, height: 4, plane: awning });
+  assert.deepEqual(unleveled.map((proposal) => proposal.regionId), ["cover"]);
+});
+
+test("a deck trace asks for a floor and is not ticked as water", async () => {
+  const hull = rgba(4, 4, (set) => { for (const [x, y] of [[1, 1], [2, 1], [1, 2], [2, 2]]) set(x, y, 255); });
+  class Quiet { async render() {} async close() {} }
+  const { app } = await openFloorRegions({
+    src: "map.png", scene: { id: "scene", regions: [] }, sceneRect, levelId, tiles: [deckDoc], memory: null, autoMark: false, view: null,
+    Application: Quiet, notify() {}, warn() {},
+    detect: () => ({ proposals: [], reason: "" }),
+    load: async (src) => src === "map.png" ? { ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 } : { ok: true, rgba: hull, width: 4, height: 4 },
+  });
+  await app.showPicture("tile:deck");
+  const fresh = app.detect.proposals.find((proposal) => !proposal.regionId);
+  assert.equal(fresh.floor, "");
+  assert.equal(fresh.preselected, false);
+  const html = areaRowHTML(fresh);
+  assert.match(html, /data-needs-floor/);
+  assert.doesNotMatch(html, /data-pick="area-1" checked/);
+});
+
+test("a rotated tile is left out, and a region whose tile is gone stays listed", () => {
+  const turned = { ...deckDoc, id: "turned", name: "Turned", rotation: 45 };
+  const gone = { id: "gone-region", flags: { animater: { floor: "wood", imageRegion: { source: { kind: "tile", tileId: "gone" }, loops: [] } } } };
+  const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: "map.png", tiles: [turned, deckDoc], regions: [gone] });
+  assert.deepEqual(pictures.map((picture) => picture.label), ["Map", "Deck", "Missing tile"]);
+  assert.equal(pictures.at(-1).plane.missing, true);
 });
 
 test("switching pictures keeps the other picture's unsaved draft", async () => {
