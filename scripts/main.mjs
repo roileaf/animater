@@ -3326,6 +3326,13 @@ const weatherPanelKeepUp = () => { if (!weatherPanelApp?.rendered || tuneDragged
 Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && ("weather" in (change ?? {}) || change?.flags?.fxmaster || change?.flags?.[ID])) weatherPanelKeepUp(); });
 Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.currentWeather") weatherPanelKeepUp(); });
 // The Animals panel: the scene's own creature settings, and animals put down by hand, kept with the scene so every screen adds them.
+// How many of each kind a set of layers has now, by the Animals panel's names: the scene's own, or one region's.
+const animalTally = ({ wild, pond, field, town, farm, rats }) => {
+  const w = wild?.counts ?? {}, p = pond?.counts ?? {}, f = field?.counts ?? {}, t = (town?.busy ? town.counts : null) ?? {}, fm = farm?.counts ?? {};
+  const out = { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: w.hawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: rats?.count ?? 0 };
+  for (const [kind, n] of Object.entries(out)) out[kind] = Math.max(0, Math.round(Number(n) || 0));
+  return out;
+};
 const placedShown = new Set();
 // The scene's layers that take animals put down by hand (each takes its own kinds), and give the animal HUD its animals.
 const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm];
@@ -3494,10 +3501,9 @@ const openAnimalsPanel = () => {
     stopAim: stopAnimalAim,
     reshuffle: () => { wildKey = null; lifeSoon(); },
     // How many of each kind the scene has now, for the rows left on Auto.
-    live: () => { try { const w = wildlife.counts, p = pondLife.counts, f = fieldLife.counts ?? {}, t = townLife.counts ?? {}, fm = sceneFarm.counts ?? {};
-      // (the hawks flying over the scene, a region's own among them)
-      let regionHawks = 0; for (const life of regionLife.values()) regionHawks += life?.wild?.counts?.hawks ?? 0;
-      return { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: (w.hawks ?? 0) + regionHawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: vermin.count }; } catch { return {}; } },
+    live: () => { try { return animalTally({ wild: wildlife, pond: pondLife, field: fieldLife, town: townLife, farm: sceneFarm, rats: { count: vermin.count } }); } catch { return {}; } },
+    // How many of each kind the regions' own animals have now (each region asking for some has layers of its own).
+    regionLive: () => { try { const out = {}; for (const life of regionLife.values()) for (const [kind, n] of Object.entries(animalTally(life))) out[kind] = (out[kind] ?? 0) + n; return out; } catch { return {}; } },
     underground: () => undergroundScene(),
     // Any water on the map: its own floor, or a region's (named or set).
     water: () => { try { return sceneFloorNow() === "water" || regionsHere().some((doc) => regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water"); } catch { return true; } },

@@ -3754,6 +3754,8 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-an-amounts button:hover { color: inherit; }
 .animater-an-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) 150px; gap: 8px; align-items: center; margin-block: 3px; font-size: 12px; }
 .animater-an-amounts { display: flex; gap: 2px; }
+.animater-an-row > span .animater-an-regions { display: block; font-size: 10px; line-height: 1.15; color: var(--wx-soft); white-space: nowrap; }
+.animater-an-total { display: flex; gap: 8px; align-items: baseline; margin: 0; padding: 7px 14px; font-size: 12px; color: var(--wx-soft); }
 .animater-an-size { display: grid; grid-template-columns: minmax(0, 1fr) 38px; gap: 6px; align-items: center; margin: 0; }
 .animater-an-size input[type="range"] { width: 100%; min-width: 0; height: 18px; margin: 0; accent-color: var(--wx-accent); }
 .animater-an-size output { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; color: var(--wx-soft); }
