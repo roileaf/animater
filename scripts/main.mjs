@@ -3331,7 +3331,8 @@ const placedShown = new Set();
 const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm];
 // A layer started over (its own animals placed afresh) drops the ones put down by hand in it too: they are put back.
 const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"] };
-const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) placedShown.delete(p.id); syncPlacedAnimals(); };
+// (Any copy still there is taken away first: put back on top of one, it was there twice.)
+const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) { for (const l of placedLayers()) l.removeAdded(p.id); placedShown.delete(p.id); } syncPlacedAnimals(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
   const raw = wildHere() ? animalFlagsNow().placedAnimals : [];

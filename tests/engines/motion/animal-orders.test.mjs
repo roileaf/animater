@@ -132,6 +132,8 @@ test('main: GM-only right-click on an animal opens its HUD; orders saved on the 
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /globalThis\.window\?\.addEventListener\?\.\("pointerdown", \(e\) => \{\s*if \(!game\.user\?\.isGM \|\| !canvas\?\.ready \|\| e\.target !== canvas\.app\?\.view \|\| animalAim \|\| animalPick\) return;/);
   assert.match(main, /const placedLayers = \(\) => \[wildlife, fieldLife, pondLife, townLife, sceneFarm\];/);
+  // Found on a player's screen: the placed gull twice, one on top of the other, after the pond was put back.
+  assert.match(main, /for \(const l of placedLayers\(\)\) l\.removeAdded\(p\.id\); placedShown\.delete\(p\.id\);/);
   assert.match(main, /for \(const layer of layers\) layer\.orders\(orders\);/);
   assert.match(main, /for \(const life of regionLife\.values\(\)\) engines\.push\(life\.wild, life\.field, life\.pond, life\.town, life\.farm\);/);
   // Roi: "STOP the animal movement when right clicking it!"
