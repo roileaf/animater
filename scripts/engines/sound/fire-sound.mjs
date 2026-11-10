@@ -5,7 +5,8 @@
 
 const DIR = 'modules/animater/assets/sounds/places/fire';
 const files = (kind, ids) => ids.map((id) => `${DIR}/fire-${kind}-${id}-0.ogg`);
-const TORCH = files('torch', [483692, 497195, 813328]);
+// Two long torch loops: a third, nine seconds long, was heard over and over when a torch was held a while.
+const TORCH = files('torch', [483692, 813328]);
 export const FIRE_SOUNDS = Object.freeze({
   torch: TORCH,
   lantern: TORCH,
@@ -37,10 +38,23 @@ const shareOf = (text, salt = '') => {
 };
 
 // What a fire sounds like (pure), always the same for the same fire (`key`, its light or token): which of its kind's
-// recordings it plays and at what pitch and pace (1 as recorded).
-export const fireVoiceFor = (key, voice) => {
+// recordings it plays and at what pitch and pace (1 as recorded). Each `turn` it moves on to the next of its kind's
+// recordings, so a fire burning a long while goes from one to another instead of one loop over and over.
+export const fireVoiceFor = (key, voice, turn = 0) => {
   const list = FIRE_SOUNDS[voice] ?? FIRE_SOUNDS.torch;
-  return { file: list[Math.floor(shareOf(key, voice) * list.length) % list.length], rate: 1 + (shareOf(key, 'pitch') * 2 - 1) * FIRE_PITCH };
+  const first = Math.floor(shareOf(key, voice) * list.length) % list.length;
+  return { file: list[(first + Math.max(0, Math.floor(Number(turn) || 0))) % list.length], rate: 1 + (shareOf(key, 'pitch') * 2 - 1) * FIRE_PITCH };
+};
+
+// How long (seconds) the crossfade from one recording into the next takes.
+export const FIRE_CROSSFADE = 3;
+// When to begin crossfading into the next recording (pure): seconds after a recording `length` s long starts playing at
+// `offset` s, at `rate`, so the next has faded in as it reaches its end. Null when its length is not known (it just loops).
+export const fireNextIn = (length, offset = 0, rate = 1, fade = FIRE_CROSSFADE) => {
+  const len = Number(length);
+  if (!(len > 0)) return null;
+  const left = Math.max(0, len - Math.max(0, Number(offset) || 0)) / (Number(rate) > 0 ? Number(rate) : 1);
+  return Math.max(fade, left - fade);
 };
 
 // The fires heard now (pure): `fires` [{ key, kind, x, y }], `ears` the listening points, `grid` px a square. The

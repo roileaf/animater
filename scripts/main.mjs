@@ -40,6 +40,7 @@ import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/pro
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
+import { bulkBreakableUpdates } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
 import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -247,7 +248,7 @@ import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife, gullsOver, freshWaterFor } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
-import { FIRE_VOLUME, firesHeard, fireStart, soundsLight } from "./engines/sound/fire-sound.mjs";
+import { FIRE_VOLUME, FIRE_CROSSFADE, firesHeard, fireStart, fireNextIn, fireVoiceFor, soundsLight } from "./engines/sound/fire-sound.mjs";
 import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, thunderReaches, thunderPan, weatherFile, weatherLoudness, louder, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
@@ -5105,10 +5106,31 @@ const readFires = () => {
     try {
       const token = source?.active && source.object?.document?.documentName === "Token" ? source.object : null; if (!token) continue;
       const kind = lightKindOf(token, source.data); if (kind !== "torch" && kind !== "lantern") continue;
+      if (hotSetting("heldFireSounds") === false) continue;
       out.push({ key: `token:${token.id}`, kind, x: source.data.x, y: source.data.y });
     } catch { /* a token mid-change */ }
   }
   return out;
+};
+// Starts a fire's recording for its `turn`: the first at a place of its own; a later one from its start, fading in as
+// the one before fades out.
+const startFireVoice = (voice, h, turn) => {
+  if (!soundsOn()) return;
+  voice.starting = true;
+  const { file, rate } = fireVoiceFor(h.id, h.voice, turn);
+  (async () => {
+    const sound = new foundry.audio.Sound(file, { context: game.audio.environment });
+    await sound.load();
+    const offset = turn ? 0 : fireStart(sound.duration);
+    await sound.play({ loop: true, volume: 0, offset });
+    const pace = sound.sourceNode?.playbackRate; if (pace) pace.value = rate;
+    const fade = FIRE_CROSSFADE * 1000;
+    if (voice.sound) stopVoice(voice, fade);
+    voiceStarted(voice, sound, voice.volume, turn ? fade : 1200);
+    voice.turn = turn;
+    const next = fireNextIn(sound.duration, offset, rate);
+    voice.nextAt = next === null ? 0 : performance.now() + next * 1000;
+  })().catch(() => {}).finally(() => { voice.starting = false; });
 };
 const tickFireSounds = () => {
   const now = performance.now(); if (now - fireLookAt < 500) return; fireLookAt = now;
@@ -5126,15 +5148,15 @@ const tickFireSounds = () => {
     let voice = fireVoices.get(h.id);
     if (!voice) { voice = { sound: null, starting: false, volume }; fireVoices.set(h.id, voice); }
     voice.volume = volume;
-    if (voice.sound) { try { voiceAt(voice, volume); } catch { stopVoice(voice); } continue; }
+    if (voice.sound) {
+      try { voiceAt(voice, volume); } catch { stopVoice(voice); }
+      // Near the end of its recording, it crossfades into the next of its kind (fireNextIn), so a torch held all
+      // evening goes from one recording to another instead of one loop over and over.
+      if (voice.sound && voice.nextAt && now >= voice.nextAt && !voice.starting && volume > 0.004) startFireVoice(voice, h, (voice.turn ?? 0) + 1);
+      continue;
+    }
     if (volume <= 0.004 || voice.starting) continue;
-    voice.starting = true;
-    (async () => {
-      const sound = new foundry.audio.Sound(h.file, { context: game.audio.environment });
-      await sound.load(); await sound.play({ loop: true, volume: 0, offset: fireStart(sound.duration) });
-      const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = h.rate;
-      voiceStarted(voice, sound, voice.volume, 1200);
-    })().catch(() => {}).finally(() => { voice.starting = false; });
+    startFireVoice(voice, h, 0);
   }
   // A fire no longer among the nearest fades out and, once quiet a while, stops and is forgotten.
   for (const [id, voice] of fireVoices) {
@@ -10378,6 +10400,7 @@ Hooks.once("init", () => {
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
   skyPair("fireSounds", "fireSoundsLocal", "Fire sounds", "Fire lights crackle close by, each by its Fire kind (Light configuration → Animater → Fire): a torch, a quieter lantern, a brazier, a campfire, a cooking pot bubbling over its fire. Torches and lanterns creatures hold crackle too. Loudest beside it, fading within a few squares, quieter through a wall. A light's Sound: Off quiets its own.", "");
   registerSetting("fireVolume", { name: "Fire volume", hint: "How loud fires are for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
+  registerSetting("heldFireSounds", { name: "Held torches crackle", hint: "Torches and lanterns creatures hold crackle for you. Off keeps them quiet while fires on the map still crackle.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light. On any other map, moths come to a light set to them (Light configuration → Animater → Moths: On).");
   skyPair("caveWet", "caveWetLocal", "Wet walls", "Where a region is marked as wet walls (the region's right-click panel → Cave, or Air → Room dressing), water seeps down the walls: a dark wet band at their foot, with runs out from it, glistening where the light catches it.");
   skyPair("caveSteam", "caveSteamLocal", "Steam vents", "Where a region is marked as steam vents (the region's right-click panel → Cave, or Air → Room dressing), steam breathes up from cracks in the floor, warm-lit, now and then puffing out in a burst, and drifts off on the draft.");
@@ -11200,6 +11223,19 @@ Hooks.on("renderSceneConfig", (app, html) => {
       if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
       await repairAllProps(app.document);
     });
+    // Make every door and window on the scene breakable, or none (wall-break-bulk.mjs): asks with the counts first, one batched write.
+    for (const [action, on] of [["animater-breakable-all", true], ["animater-breakable-none", false]]) {
+      const button = props.querySelector(`[data-action="${action}"]`);
+      button.disabled = !game.user?.isGM;
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const { updates, doors, windows } = bulkBreakableUpdates(app.document?.walls?.contents ?? [], on);
+        if (!updates.length) return void ui.notifications?.info(on ? "Every door and window here is already breakable." : "No door or window here is breakable.");
+        const count = [doors && `${doors} door${doors === 1 ? "" : "s"}`, windows && `${windows} window${windows === 1 ? "" : "s"}`].filter(Boolean).join(" and ");
+        if (!await foundry.applications.api.DialogV2.confirm({ window: { title: on ? "Make doors and windows breakable" : "Make none breakable" }, content: `<p>${on ? `Make ${count} on this scene breakable?` : `Make ${count} on this scene unbreakable?`}</p>`, rejectClose: false })) return;
+        await app.document.updateEmbeddedDocuments("Wall", updates);
+      });
+    }
     tab.append(...props.children);
   }
   // The scene's own wind (sky-light.mjs weatherOf): how strong, and where it blows from.
