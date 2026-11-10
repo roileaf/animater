@@ -2400,7 +2400,7 @@ const decorWeatherNow = () => { try { const g = groundOf().now; return `${snowCo
 const syncDecorations = () => {
   if (!canvas?.ready) return;
   const list = [];
-  if (regionStepsOn()) for (const region of regionsHere()) {
+  for (const region of regionsHere()) {
     try {
       let settings = decorSettings(region.flags?.[ID]?.decor);
       // While the brush paints this region, what it has painted shows at once, before it is saved.
