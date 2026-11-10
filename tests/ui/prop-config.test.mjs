@@ -43,3 +43,21 @@ test("Breaks as keeps the GM's pick and offers Shatter and Collapse", () => {
   assert.match(html, /<option value="collapse">Collapse</);
   assert.match(html, /<label>Breaks as</);
 });
+
+import { wallBreakFieldsHTML } from "../../scripts/ui/prop-config.mjs";
+test("door fieldset defaults: automatic, wood, Force Open on", () => {
+  const html = wallBreakFieldsHTML({ door: 1 });
+  assert.match(html, /<legend>Breakable<\/legend>/);
+  assert.match(html, /data-animater-break-wall/);
+  assert.match(html, /data-group="door"/);
+  assert.match(html, /name="flags\.animater\.breakWall\.door"[\s\S]*<option value="" selected>Automatic/);
+  assert.match(html, /<option value="wood" selected>Wood</);
+  assert.match(html, /name="flags\.animater\.breakWall\.forceOpen"[^>]*checked/);
+  assert.doesNotMatch(wallBreakFieldsHTML({ door: 1, own: { forceOpen: false } }), /forceOpen"[^>]*checked/);
+  assert.match(wallBreakFieldsHTML({ door: 1, own: { door: "never", material: "stone" } }), /<option value="never" selected>Never[\s\S]*<option value="stone" selected>Stone/);
+});
+test("scene: Doors and windows break is on unless turned off", () => {
+  assert.match(propSceneFieldsHTML({}), /name="flags\.animater\.breakWalls"[^>]*checked/);
+  assert.match(propSceneFieldsHTML({}), /Doors and windows break/);
+  assert.doesNotMatch(propSceneFieldsHTML({ breakWalls: false }), /breakWalls"[^>]*checked/);
+});

@@ -26,7 +26,7 @@ import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cle
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
-import { propTileFieldsHTML, propSceneFieldsHTML } from "./ui/prop-config.mjs";
+import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
@@ -9340,7 +9340,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -9444,6 +9444,22 @@ Hooks.on("renderWallConfig", (app, html) => {
     <p class="hint">When this door opens, they burst through from the far side, over whoever is nearest on the side it was opened from, then scatter.${own.burstFired && own.doorBurstWhen !== "always" ? " This door's have already gone: set it to Nothing and back, or to Every time, to send them again." : ""}</p>`;
   appendWallSection(root, set);
 });
+// Wall configuration: whether and how this door breaks (engines/props/wall-break.mjs). The door group shows only while the
+// form's Door Type is Door or Secret, and follows that select as it changes.
+Hooks.on("renderWallConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector("[data-animater-break-wall]")) return;
+  const doc = app.document ?? app.object, sceneOn = doc?.parent?.flags?.[ID]?.breakableProps === true;
+  const set = document.createElement("fieldset");
+  set.innerHTML = wallBreakFieldsHTML({ door: doc?.door, own: doc?.flags?.[ID]?.breakWall, sceneOn });
+  const fieldset = set.firstElementChild;
+  appendWallSection(root, fieldset);
+  const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');
+  const sync = () => { group.hidden = !["1", "2"].includes(String(select?.value ?? doc?.door)); };
+  select?.addEventListener("change", sync);
+  sync();
+});
+
 // Wall configuration: what fills this wall's window (wall-shadows.mjs windowOpening), for the light through it by day and
 // the room's glow out of it by night. Auto: Foundry's window is glass.
 Hooks.on("renderWallConfig", (app, html) => {

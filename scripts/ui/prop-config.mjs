@@ -21,9 +21,24 @@ export function propTileFieldsHTML({ src, material = "", contents = "", style = 
   </fieldset>`;
 }
 
-export function propSceneFieldsHTML({ on = false, chance = 25 } = {}) {
+export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls } = {}) {
   const n = Number(chance), pct = Number.isFinite(n) && n >= 0 && n <= 100 ? n : 25;
   return `<div class="form-group"><label>Breakable props</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakableProps"${on === true ? " checked" : ""}></div><p class="hint">Prop tiles (barrels, crates, pots) break from spells, shoves and missed swings and leave wreckage.</p></div>
     <div class="form-group"><label>Chance a miss breaks a prop (%)</label><div class="form-fields"><input type="number" min="0" max="100" step="1" name="flags.${ID}.propMissChance" value="${pct}"></div></div>
+    <div class="form-group"><label>Doors and windows break</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWalls"${breakWalls === false ? "" : " checked"}></div><p class="hint">With Breakable props on, doors (and windows the GM marks breakable) can be smashed open by hits, Force Open and heavy shoves.</p></div>
     <div class="form-group"><label>Repair</label><div class="form-fields"><button type="button" data-action="animater-repair-props"><i class="fa-solid fa-hammer"></i> Repair broken props</button></div></div>`;
+}
+
+// The Breakable fieldset in a wall's configuration: the door group (the window group comes with windows).
+export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false } = {}) {
+  const mat = ["wood", "metal", "stone"].includes(own.material) ? own.material : "wood";
+  const doors = [["", "Automatic (on when the scene has Breakable props)"], ["never", "Never"]];
+  const mats = [["wood", "Wood"], ["metal", "Metal"], ["stone", "Stone"]];
+  return `<fieldset data-animater-break-wall><legend>Breakable</legend>
+    <div data-group="door"${door === 1 || door === 2 ? "" : " hidden"}>
+      <div class="form-group"><label>Breakable door</label><div class="form-fields"><select name="flags.${ID}.breakWall.door">${options(doors, own.door === "never" ? "never" : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Never keeps this door whole.</p></div>
+      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.material">${options(mats, mat)}</select></div><p class="hint">Wood gives way to blows, fire and hard shoves; metal and stone only to force or a heavy slam.</p></div>
+      <div class="form-group"><label>Force Open breaks it</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.forceOpen"${own.forceOpen === false ? "" : " checked"}></div><p class="hint">A successful Force Open on this door breaks it open.</p></div>
+    </div>
+  </fieldset>`;
 }

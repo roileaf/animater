@@ -1,0 +1,79 @@
+// Breakable doors: what a wall is, what can break it, and the note a broken one carries. Pure: no Foundry globals.
+// Foundry v14 numbers, hard-coded to keep this module pure: door type NONE 0 / DOOR 1 / SECRET 2; the sense and movement
+// types are NONE 0 when the passage is open.
+const KINDS = ["door"];
+const MATERIALS = ["wood", "metal", "stone"];
+const MARKS = ["dust", "scorch"];
+const RESTORE_KEYS = ["door", "ds", "move", "sight", "light", "sound"];
+const WOOD_DAMAGE = new Set(["bludgeoning", "slashing", "force", "fire"]);
+const isNum = (n) => typeof n === "number" && Number.isFinite(n);
+
+// What this wall is for breaking: kind null when it cannot break (not a door, the scene's switches off, or the GM said never).
+export function wallTraits(wall, scene) {
+  const sf = scene?.flags?.animater ?? {}, own = wall?.flags?.animater?.breakWall ?? {};
+  const on = sf.breakableProps === true && sf.breakWalls !== false;
+  const door = on && (wall?.door === 1 || wall?.door === 2) && own.door !== "never";
+  return { kind: door ? "door" : null, material: MATERIALS.includes(own.material) ? own.material : "wood", forceOpen: own.forceOpen !== false };
+}
+
+// Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.
+export function canBreakWall(traits, cause = {}) {
+  if (traits?.kind !== "door") return false;
+  const size = Number(cause.slam?.size), slam = Number.isFinite(size) ? size : 0;
+  if (traits.material === "wood") return WOOD_DAMAGE.has(cause.damageType) || slam >= 2;
+  return cause.damageType === "force" || slam >= 3;
+}
+
+export function wallMid(wall) {
+  const [x1, y1, x2, y2] = wall.c;
+  return { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
+}
+
+// Whether the segment a-b crosses the wall's segment (a proper crossing; touching an end does not count).
+export function crossesWall(a, b, wall) {
+  const [x1, y1, x2, y2] = wall.c;
+  const side = (px, py, qx, qy, rx, ry) => Math.sign((qx - px) * (ry - py) - (qy - py) * (rx - px));
+  const d1 = side(a.x, a.y, b.x, b.y, x1, y1), d2 = side(a.x, a.y, b.x, b.y, x2, y2);
+  const d3 = side(x1, y1, x2, y2, a.x, a.y), d4 = side(x1, y1, x2, y2, b.x, b.y);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+export function wallNote({ seed, cutAngle, from, kind, material, damageType }) {
+  return { seed, cutAngle, from: { x: from.x, y: from.y }, kind, material, mark: damageType === "fire" ? "scorch" : "dust" };
+}
+
+// A stored note back, or null when any part is not what this module wrote.
+export function readWallNote(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const { seed, cutAngle, from, kind, material, mark, restore } = raw;
+  if (!isNum(seed) || !isNum(cutAngle) || !from || !isNum(from.x) || !isNum(from.y)) return null;
+  if (!KINDS.includes(kind) || !MATERIALS.includes(material) || !MARKS.includes(mark)) return null;
+  const note = { seed, cutAngle, from: { x: from.x, y: from.y }, kind, material, mark };
+  if (restore !== undefined) {
+    if (!restore || typeof restore !== "object") return null;
+    const kept = {};
+    for (const k of RESTORE_KEYS) if (restore[k] !== undefined) {
+      if (!Number.isInteger(restore[k])) return null;
+      kept[k] = restore[k];
+    }
+    note.restore = kept;
+  }
+  return note;
+}
+
+// Open the passage, keeping what the wall was so Repair can put it back.
+export function wallBreakUpdate(wall, note) {
+  const restore = {};
+  for (const k of RESTORE_KEYS) restore[k] = wall[k];
+  return { _id: wall.id, door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
+}
+
+export function wallRestoreUpdate(wall) {
+  const note = readWallNote(wall?.flags?.animater?.breakWall?.broken);
+  if (!note?.restore) return null;
+  return { _id: wall.id, ...note.restore, "flags.animater.breakWall.-=broken": null };
+}
+
+export function wallRepairUpdates(walls) {
+  return walls.map(wallRestoreUpdate).filter(Boolean);
+}
