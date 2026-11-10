@@ -3152,15 +3152,21 @@ Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id
 Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.currentWeather") weatherPanelKeepUp(); });
 // The Animals panel: the scene's own creature settings, and animals put down by hand, kept with the scene so every screen adds them.
 const placedShown = new Set();
+// The scene's layers that take animals put down by hand (each takes its own kinds), and give the animal HUD its animals.
+const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm];
+// A layer started over (its own animals placed afresh) drops the ones put down by hand in it too: they are put back.
+const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"] };
+const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) placedShown.delete(p.id); syncPlacedAnimals(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
   const raw = wildHere() ? animalFlagsNow().placedAnimals : [];
   const { add, remove } = placedChanges(placedShown, raw);
-  for (const id of remove) { wildlife.removeAdded(id); fieldLife.removeAdded(id); placedShown.delete(id); }
-  for (const p of add) if (wildlife.add(p.kind, p) || fieldLife.add(p.kind, p)) placedShown.add(p.id);
+  const layers = placedLayers();
+  for (const id of remove) { for (const layer of layers) layer.removeAdded(id); placedShown.delete(id); }
+  for (const p of add) if (layers.some((layer) => layer.add(p.kind, p))) placedShown.add(p.id);
   // Their orders from the animal HUD (animal-orders.mjs), the same on every screen.
   const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
-  wildlife.orders(orders); fieldLife.orders(orders);
+  for (const layer of layers) layer.orders(orders);
 };
 Hooks.on("canvasTearDown", () => { placedShown.clear(); });
 let animalsPanelApp = null, animalAim = null, animalScope = "level";
@@ -3205,9 +3211,11 @@ const endAnimalPick = () => {
   animalPick = null; if (!animalHud?.closed) animalHud?.picking(null);
 };
 const closeAnimalHud = () => { endAnimalPick(); animalHud?.close(); animalHud = null; };
+// The scene's own layers and every region's (animals a region asks for live in layers of its own).
 const animalAt = (p) => {
-  const reach = (canvas.grid?.size || 100) * 0.45;
-  const hits = [[wildlife, wildlife.pick(p.x, p.y, reach)], [fieldLife, fieldLife.pick(p.x, p.y, reach)]].filter(([, h]) => h).map(([engine, h]) => ({ ...h, engine }));
+  const reach = (canvas.grid?.size || 100) * 0.45, engines = [...placedLayers()];
+  for (const life of regionLife.values()) engines.push(life.wild, life.field, life.pond, life.town, life.farm);
+  const hits = engines.map((engine) => [engine, engine.pick?.(p.x, p.y, reach)]).filter(([, h]) => h).map(([engine, h]) => ({ ...h, engine }));
   return hits.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0] ?? null;
 };
 const orderAnimal = async (hit, order) => {
@@ -3259,8 +3267,24 @@ globalThis.window?.addEventListener?.("pointerdown", (e) => {
   if (tokenUnder(p)) return;
   const hit = animalAt(p);
   if (!hit) { if (animalHud) closeAnimalHud(); return; }
+  // Taken from Foundry (or a region under it shows its own popup). A click opens the HUD as the button comes up; a drag
+  // pans the view, as a right-drag anywhere does.
   e.stopImmediatePropagation(); e.preventDefault(); swallowMenu = true;
-  openAnimalHudFor(hit);
+  const from = { x: e.clientX, y: e.clientY }, pivot = { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, scale = canvas.stage.scale.x || 1;
+  let dragging = false;
+  const move = (m) => {
+    const dx = m.clientX - from.x, dy = m.clientY - from.y;
+    if (!dragging && Math.hypot(dx, dy) < 5) return;
+    dragging = true; m.stopImmediatePropagation();
+    canvas.pan({ x: pivot.x - dx / scale, y: pivot.y - dy / scale });
+  };
+  const up = (u) => {
+    if (u.button !== 2) return;
+    window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true);
+    u.stopImmediatePropagation();
+    if (!dragging) openAnimalHudFor(hit);
+  };
+  window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true);
 }, true);
 globalThis.window?.addEventListener?.("contextmenu", (e) => { if (swallowMenu) { swallowMenu = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 Hooks.on("canvasTearDown", () => { closeAnimalHud(); });
@@ -3850,6 +3874,7 @@ const populatePond = (ground, grid, many) => {
     if (ground.inWater(x, y) && pads.every((q) => Math.hypot(q.x - x, q.y - y) > grid * 0.8)) pads.push({ x, y });
   }
   const flocks = many.waterBirds > 0 ? birds.length : 0;
+  queueMicrotask(() => replacePlaced("pond"));
   pondLife.populate({ kept: wildKept, waters: birds.length ? birds : seaSpots.filter((p) => !noBirds(p)), shore, pads, ducks: exactOr(many, "waterBirds", flocks >= 6 ? Math.round(Math.min(10, Math.max(3, flocks / 10)) * many.waterBirds) : 0), herons: exactOr(many, "herons", many.chosen?.herons ? (birds.length && many.herons > 0 ? Math.max(1, Math.round(many.herons)) : 0) : flocks >= 40 ? 2 : flocks >= 6 ? 1 : 0), gulls: gullWaters.length ? exactOr(many, "gulls", many.chosen?.gulls ? Math.round(3 * many.gulls) : gullsOver(gullWaters, many.waterBirds)) : 0, gullWaters, grid, birdSize: many.waterBirdsSize, frogSize: many.frogsSize });
 };
 // What they were placed from. Life is looked over on any scene, setting or light change, most of them nothing to do with it
@@ -4069,7 +4094,7 @@ const wildTick = (seconds) => {
     const birdBody = birdBodyOf(animalFlagsNow().birdHeight), liftShadow = highBirdShadow;
     wildlife.setPerches(birdPerches());
     wildlife.tick(step, { birdBody, liftShadow, near, ok: wildOk, kept: wildKept, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y), tokenAt: animalTokenAt });
-    if (pondLife.busy) pondLife.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: wildlife, ripple: pondRipple, near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
+    if (pondLife.busy) pondLife.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: wildlife, ripple: pondRipple, near, ok: wildOk, blocked: wallBlocks, barred: wildBarred, indoors: wildIndoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice, tokenAt: animalTokenAt });
     if (fieldLife.busy) fieldLife.tick(step, { birdBody, liftShadow, near, ok: wildOk, blocked: wallBlocks, kept: wildKept, indoors: wildIndoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: wildlife, lamps: wildLamps, tokenAt: animalTokenAt });
   }
 };
@@ -4212,7 +4237,7 @@ const rebuildTown = () => {
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, level, want, keepOut.pigeons ?? [], keepOut.hens ?? [], keepOut.cats ?? [], keepOut.dogs ?? []]);
   if (key === townKey) return; townKey = key;
   townLife.clear(); townOpen = null;
-  if (!level) return;
+  if (!level) { replacePlaced("town"); return; }
   const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, ground = wildGround(grid, area), spots = [], cell = ground.cell;
   for (let y = area.y + cell / 2; y < area.y + area.height; y += cell) for (let x = area.x + cell / 2; x < area.x + area.width; x += cell) if (!ground.closed(x, y) && !ground.inWater(x, y) && !TOWN_KEPT.every((kind) => wildKept(kind, x, y))) spots.push({ x, y });
   const wallTops = wallsHere().filter((w) => !Number(w.door) && Math.hypot(w.c[2] - w.c[0], w.c[3] - w.c[1]) >= grid).slice(0, 200).map((w) => ({ ax: w.c[0], ay: w.c[1], bx: w.c[2], by: w.c[3] }));
@@ -4220,6 +4245,7 @@ const rebuildTown = () => {
   const v = viewNow();
   const kept = want ? (kind, x, y) => !(want[kind] > 0) || wildKept(kind, x, y) : wildKept;
   townLife.populate({ kept, spots, wallTops, perches: birdPerches(true), grid, size: 1, busy: level, ...(want ? { want } : {}), blocked: wallBlocks, focus: { x: v.x + v.w / 2, y: v.y + v.h / 2 } });
+  replacePlaced("town");
 };
 // Farm animals asked for in the Animals panel (Farm): a herd of each on the scene's open dry ground, kept to it.
 const sceneFarm = createFarmLife({ PIXI: animalPIXI, restyle: animalLook, floor: floorLayer("farmLife", 661) });
@@ -4230,17 +4256,20 @@ const rebuildSceneFarm = () => {
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, on ? n : null, creatureSize(f.cowsSize, f.animalScale), groundWalls().length]);
   if (key === sceneFarmKey) return; sceneFarmKey = key;
   sceneFarm.clear(); sceneFarmGround = null;
-  if (!on) return;
+  if (!on) { replacePlaced("farm"); return; }
   const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, ground = wildGround(grid, area);
   sceneFarmGround = ground;
   sceneFarm.populate({ spots: ground.spots.filter((p) => !ground.inWater(p.x, p.y)), cows: n.cows, goats: n.goats, sheep: n.sheep, pigs: n.pigs, horses: n.horses, grid, size: sizePercent(f.animalScale) / 100 });
+  replacePlaced("farm");
 };
-const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!sceneFarmGround?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice }); };
+// (Ground for one put down by hand when the scene asks for no herd: the open ground as the wild animals have it.)
+const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
 Hooks.on("canvasTearDown", () => { sceneFarm.clear(); sceneFarmKey = null; sceneFarmGround = null; });
 const tickTown = (seconds) => {
   const near = creaturesNow(), view = viewNow();
   townLife.setPerches(birdPerches());
-  townLife.tick(Math.min(seconds, 0.1), { near, view, ok: (kind, x, y) => !!townOpen?.ok(x, y) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+  // (One put down by hand on a scene with no town asked for goes on the open ground as the wild animals have it.)
+  townLife.tick(Math.min(seconds, 0.1), { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!wildOpen?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
 };
 Hooks.on("canvasTearDown", () => { townLife.clear(); townKey = null; townOpen = null; });
 // Animals of a region's own (engines/motion/region-animals.mjs): each region asking for some has its own layers of them,
