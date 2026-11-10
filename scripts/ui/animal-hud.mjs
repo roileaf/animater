@@ -3,7 +3,8 @@
 // The orders themselves: engines/motion/animal-orders.mjs. This file only draws the HUD and asks for the click.
 
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-export const ANIMAL_NAMES = Object.freeze({ rabbit: 'Rabbit', songbird: 'Bird', hawk: 'Hawk', deer: 'Deer', fox: 'Fox', wolf: 'Wolf', squirrel: 'Squirrel', snake: 'Snake' });
+export const ANIMAL_NAMES = Object.freeze({ rabbit: 'Rabbit', songbird: 'Bird', hawk: 'Hawk', deer: 'Deer', fox: 'Fox', wolf: 'Wolf', squirrel: 'Squirrel', snake: 'Snake',
+  crow: 'Crow', duck: 'Duck', heron: 'Heron', gull: 'Gull', frog: 'Frog', pigeon: 'Pigeon', hen: 'Hen', dog: 'Dog', cow: 'Cow', goat: 'Goat', sheep: 'Sheep', pig: 'Pig', horse: 'Horse' });
 const ORDER_WORDS = { go: 'Going to a spot', follow: 'Following', circle: 'Circling' };
 // What the pick asks for, by order.
 export const PICK_HINT = Object.freeze({ go: 'Click where it should go · Esc cancels', follow: 'Click a token to follow · Esc cancels', circle: 'Click a token to circle · Esc cancels' });
