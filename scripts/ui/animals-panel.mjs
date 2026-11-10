@@ -26,7 +26,10 @@ const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more',
 // Hawks are counted, not given an amount: one unless set (unset reads as 1), up to four.
 const HAWK_COUNTS = [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4']];
 // What can be placed by hand, and how it is kept.
-export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake'], ['hawk', 'Hawk', 'fa-feather']]);
+export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake'], ['hawk', 'Hawk', 'fa-feather'],
+  ['crow', 'Crow', 'fa-crow'], ['duck', 'Duck', 'fa-water'], ['heron', 'Heron', 'fa-feather-pointed'], ['gull', 'Gull', 'fa-kiwi-bird'], ['frog', 'Frog', 'fa-frog'],
+  ['pigeon', 'Pigeon', 'fa-dove'], ['hen', 'Hen', 'fa-egg'], ['dog', 'Dog', 'fa-bone'],
+  ['cow', 'Cow', 'fa-cow'], ['goat', 'Goat', 'fa-mountain'], ['sheep', 'Sheep', 'fa-cloud'], ['pig', 'Pig', 'fa-piggy-bank'], ['horse', 'Horse', 'fa-horse']]);
 export const MOST_PLACED = 40;
 const PLACEABLE_IDS = new Set(PLACEABLE.map(([id]) => id));
 

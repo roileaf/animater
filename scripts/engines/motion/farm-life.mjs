@@ -3,6 +3,8 @@
 // noise sends them off at a run, away from it, and they settle again after. Where they may be (`ok`) and what stops them
 // (`blocked`) are the caller's: for a region's animals, its own ground and its edge.
 
+import { orderAim, orderPrep, orderHandles, FARM_ORDER_KINDS } from './animal-orders.mjs';
+
 const TAU = Math.PI * 2;
 // Each kind: its length in squares, its picture's size, how far it keeps from a creature (squares), its walking and
 // running pace (squares a second), how long it grazes and walks (seconds), how far it strays from the herd (squares).
@@ -130,9 +132,27 @@ export function createFarmLife({ PIXI, floor, picture = null, restyle = null }) 
       art.set(key, restyle ? restyle('farm', drawn, `${kind}/${coat}`) : drawn); }
     return art.get(key);
   };
-  let animals = [], grid = 100, size = 1, noises = [], calls = {};
+  let animals = [], grid = 100, size = 1, noises = [], calls = {}, time = 0;
   const drop = () => { for (const o of animals) { try { o.body.destroy(); o.shadow.destroy(); } catch { /* gone */ } } animals = []; };
+  // One animal of a kind, its own size and shade, at a place.
+  const newAnimal = (kind, at, random) => {
+    const coat = Math.floor(random() * FARM_COATS[kind].length), seed = 3 + Math.floor(random() * 50), look = artOf(kind, coat, seed);
+    const shadow = new PIXI.Sprite(look.graze), body = new PIXI.Sprite(look.graze);
+    for (const sp of [shadow, body]) { sp.anchor.set(0.5); sp.eventMode = 'none'; }
+    shadow.tint = 0x000000; shadow.alpha = 0.28;
+    floor().addChild(shadow); floor().addChild(body);
+    // (Each its own: a little bigger or smaller, a little lighter or darker than its coat.)
+    const big = 0.9 + random() * 0.2, shade = Math.round(232 + random() * 23); body.tint = (shade << 16) | (shade << 8) | shade;
+    return { kind, x: at.x, y: at.y, a: random() * TAU, mode: 'graze', wait: random() * FARM_KINDS[kind].graze, v: 0, gait: random(), big, look, body, shadow };
+  };
+  // The animal HUD's handles (animal-orders.mjs): each by its order kind ('cow' for the engine's 'cows').
+  const orderKind = Object.fromEntries(Object.entries(FARM_ORDER_KINDS).map(([k, v]) => [v, k]));
+  const handles = orderHandles(() => [['farm', animals]], { kindOf: (o) => orderKind[o.kind], remove: (o) => { try { o.body.destroy(); o.shadow.destroy(); } catch { /* gone */ } } });
   return {
+    ...handles.api,
+    // One put down by hand: `kind` 'cow', 'goat', 'sheep', 'pig' or 'horse', `id` to take it away by. False for any other kind.
+    add(kind, { x, y, id }, random = Math.random) { const k = FARM_ORDER_KINDS[kind]; if (!k) return false; animals.push({ ...newAnimal(k, { x, y }, random), placed: id }); return true; },
+    removeAdded(id) { animals = animals.filter((o) => { if (o.placed !== id) return true; try { o.body.destroy(); o.shadow.destroy(); } catch { /* gone */ } return false; }); },
     populate({ spots = [], grid: g = 100, size: s = 1, random = Math.random, ...wanted } = {}) {
       drop(); grid = g; size = Number(s) > 0 ? Number(s) : 1;
       if (!spots.length) return;
@@ -141,25 +161,21 @@ export function createFarmLife({ PIXI, floor, picture = null, restyle = null }) 
         // One herd round one place.
         const home = spots[Math.floor(random() * spots.length)];
         for (let i = 0; i < n; i++) {
-          const coat = Math.floor(random() * FARM_COATS[kind].length), seed = 3 + Math.floor(random() * 50), look = artOf(kind, coat, seed);
           const near = spots.filter((p) => Math.hypot(p.x - home.x, p.y - home.y) < grid * 3), at = near.length ? near[Math.floor(random() * near.length)] : home;
-          const shadow = new PIXI.Sprite(look.graze), body = new PIXI.Sprite(look.graze);
-          for (const sp of [shadow, body]) { sp.anchor.set(0.5); sp.eventMode = 'none'; }
-          shadow.tint = 0x000000; shadow.alpha = 0.28;
-          floor().addChild(shadow); floor().addChild(body);
-          // (Each its own: a little bigger or smaller, a little lighter or darker than its coat.)
-          const big = 0.9 + random() * 0.2, shade = Math.round(232 + random() * 23); body.tint = (shade << 16) | (shade << 8) | shade;
-          animals.push({ kind, x: at.x + (random() - 0.5) * grid * 0.6, y: at.y + (random() - 0.5) * grid * 0.6, a: random() * TAU, mode: 'graze', wait: random() * FARM_KINDS[kind].graze, v: 0, gait: random(), big, look, body, shadow });
+          animals.push(newAnimal(kind, { x: at.x + (random() - 0.5) * grid * 0.6, y: at.y + (random() - 0.5) * grid * 0.6 }, random));
         }
       }
     },
     // `sound(kind, at, urgent)`: a herd's call now and then (kind 'cowCall', 'goatCall', 'sheepCall', 'pigCall', 'horseCall'), and one when startled.
-    tick(seconds, { near = [], ok = () => true, blocked = () => false, seen = () => true, sound = null, random = Math.random } = {}) {
+    tick(seconds, { near = [], ok = () => true, blocked = () => false, seen = () => true, sound = null, random = Math.random, tokenAt = () => null } = {}) {
       if (!animals.length) return;
-      const dt = Math.min(0.1, seconds), noise = noises.shift() ?? null, herds = {};
-      for (const kind of Object.keys(FARM_KINDS)) herds[kind] = farmHerd(animals.filter((o) => o.kind === kind));
-      animals = animals.map((o) => {
-        const next = farmStep(o, { dt, grid, near, ok: (x, y) => ok(o.kind, x, y), blocked, herd: herds[o.kind], noise });
+      const dt = Math.min(0.1, seconds), noise = noises.shift() ?? null, herds = {}; time += dt;
+      for (const kind of Object.keys(FARM_KINDS)) herds[kind] = farmHerd(animals.filter((o) => o.kind === kind && !o.order));
+      animals = animals.map((q) => {
+        // Its HUD open: it stays put. Ordered (animal-orders.mjs): set on its way, away from its herd, not put off by people.
+        if (handles.held(q)) return { ...q };
+        const o = q.order ? orderPrep(orderKind[q.kind], q, orderAim(q.order, { tokenAt, grid, time, phase: q.orderPhase ?? 0, from: q }), { grid }) : q;
+        const next = farmStep(o, { dt, grid, near: o.order ? [] : near, ok: (x, y) => ok(o.kind, x, y), blocked, herd: o.order ? null : herds[o.kind], noise: o.order ? null : noise });
         const k = FARM_KINDS[o.kind], scale = (k.squares * grid * 1.25 * size * (o.big ?? 1)) / k.h, moving = next.v > 2;
         const tex = moving ? next.look.walk[Math.floor(next.gait * 4) % 4] : next.look.graze;
         next.body.texture = tex; next.shadow.texture = tex;

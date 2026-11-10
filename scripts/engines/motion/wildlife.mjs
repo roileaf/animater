@@ -6,7 +6,7 @@ const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
 import { perchHopStep, nextPerch, perchBirdCount, perchedBird } from './perch-hops.mjs';
 import { crowStanding } from './aftermath.mjs';
-import { orderAim, orderPrep } from './animal-orders.mjs';
+import { orderAim, orderPrep, perchOrderPrep, orderPerch, ORDER_PERCH_KEY } from './animal-orders.mjs';
 
 // ---- What they sound like (assets/sounds/wildlife, each folder's License.txt) ---------------------------------------------
 const SOUND_DIR = 'modules/animater/assets/sounds/wildlife';
@@ -467,15 +467,17 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
       if (kind === 'songbird') { songs.push({ x, y, a: random() * TAU, wait: random() * 2, peck: 0, mode: 'ground', vx: 0, vy: 0, h: 0, phase: random() * 6, placed: id, view: pair(floor(), t.song[0]) }); return true; }
       // A hawk circling over where it was put, never off hunting while it is held there.
       if (kind === 'hawk') { hawks.push({ cx: x, cy: y, r: grid * 1.8, a: random() * TAU, mode: 'soar', huntIn: between(random, 40, 110), placed: id, view: high(t.hawk[0]) }); return true; }
+      // A crow on the ground where it was put; from there it goes roof to tree as the others do, unless held by an order.
+      if (kind === 'crow') { perchers.push({ ...perchedBird(orderPerch({ x, y }, random() * TAU), { random, first: [3, 12] }), kind: 'crows', placed: id, view: perchPair(t.crow[0]) }); return true; }
       return false;
     },
     removeAdded(id) {
       const leave = (o) => { if (o.placed !== id) return true; dropPair(o); try { o.carry?.destroy(); } catch { /* gone */ } return false; };
-      rabbits = rabbits.filter(leave); songs = songs.filter(leave); hawks = hawks.filter(leave);
+      rabbits = rabbits.filter(leave); songs = songs.filter(leave); hawks = hawks.filter(leave); perchers = perchers.filter(leave);
     },
     // The orders on the animals put down by hand (animal-orders.mjs): `orders` placed id → order or null.
     orders(orders = new Map()) {
-      for (const o of [...rabbits, ...songs, ...hawks]) {
+      for (const o of [...rabbits, ...songs, ...hawks, ...perchers]) {
         if (o.placed === undefined) continue;
         const order = orders.get(o.placed) ?? null;
         if (JSON.stringify(order) !== JSON.stringify(o.order ?? null)) { o.order = order; o.chasing = false; o.orderPhase ??= Math.random() * TAU; }
@@ -484,20 +486,21 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
     // The animal drawn nearest a point within `reach` px (the GM's HUD): { kind, id (placed) or null, x, y, ref }.
     pick(x, y, reach = grid * 0.5) {
       let best = null, far = reach;
-      for (const [kind, list] of [['rabbit', rabbits], ['songbird', songs], ['hawk', hawks]]) for (const o of list) {
-        const b = o.view?.body; if (!b?.visible) continue;
+      // (The single birds on the roofs and in the trees, and a flock of crows going over, as well.)
+      for (const [kind, list] of [['rabbit', rabbits], ['songbird', songs], ['hawk', hawks], ['perched', perchers], ['crow', crows]]) for (const o of list) {
+        const b = o.view?.body; if (!b?.visible || !(b.alpha > 0.05)) continue;
         const d = Math.hypot(b.position.x - x, b.position.y - y);
-        if (d < far) { far = d; best = { kind, id: o.placed ?? null, x: b.position.x, y: b.position.y, ref: o, order: o.order ?? null }; }
+        if (d < far) { far = d; best = { kind: kind === 'perched' ? (o.kind === 'crows' ? 'crow' : 'songbird') : kind, id: o.placed ?? null, x: b.position.x, y: b.position.y, ref: o, order: o.order ?? null }; }
       }
       return best;
     },
     // A wild one taken off this screen (it is put down again by hand, ordered, in its place).
     // (Each step makes a new object for an animal: it is known by its picture.)
-    takeAway(ref) { for (const list of [rabbits, songs, hawks]) { const i = list.findIndex((o) => o.view === ref?.view); if (i < 0) continue; dropPair(list[i]); list.splice(i, 1); return true; } return false; },
+    takeAway(ref) { for (const list of [rabbits, songs, hawks, perchers, crows]) { const i = list.findIndex((o) => o.view === ref?.view); if (i < 0) continue; dropPair(list[i]); list.splice(i, 1); return true; } return false; },
     // Held still while the GM has its HUD open (null lets it go on): by its picture.
     hold(ref) { heldView = ref?.view ?? null; },
     // Where one is now, by its picture (the HUD follows it).
-    where(ref) { for (const list of [rabbits, songs, hawks]) { const o = list.find((q) => q.view === ref?.view); if (o) { const b = o.view.body; return { x: b.position.x, y: b.position.y, order: o.order ?? null, id: o.placed ?? null }; } } return null; },
+    where(ref) { for (const list of [rabbits, songs, hawks, perchers, crows]) { const o = list.find((q) => q.view === ref?.view); if (o) { const b = o.view.body; return { x: b.position.x, y: b.position.y, order: o.order ?? null, id: o.placed ?? null }; } } return null; },
     // The walls changed: new places to come back to, and any shut in go there, the flock together.
     // Where single birds can sit (perch-hops.mjs perchesFrom) has changed: one on a perch that has gone goes elsewhere next step.
     setPerches(list = []) { if (list === perches) return; perches = list; perchKeys = new Set(list.map((p) => p.key)); fillPerchers(); },
@@ -647,12 +650,15 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
         // Single birds going between the trees and the roofs (perch-hops.mjs): seen on a roof and in the air, hidden in the leaves.
         const still = day < 0.3 || alpha <= 0.01;
         const after = [];
-        for (const b0 of perchers) {
-          const kind = b0.kind, keptHere = (x, y) => kept(kind, x, y);
-          const b = perchHopStep(b0, { dt, grid, kind, near, noise: heard(b0), still, here: (p) => perchKeys.has(p.key) && !keptHere(p.x, p.y), choose: (o) => nextPerch(o.at ?? o, perches, { kind, grid, taken: perchers.filter((q) => q !== b0).map((q) => (q.mode === 'fly' ? q.to?.key : q.at?.key)), kept: keptHere }) });
-          if (b.mode === 'gone') { dropPair(b0); continue; }
+        for (const q0 of perchers) {
+          // Its HUD open: it stays just as it is.
+          if (q0.view === heldView) { after.push({ ...q0 }); continue; }
+          // Ordered (animal-orders.mjs): down to the mark and sitting there, hopping after it as it moves; not put off by people.
+          const kind = q0.kind, keptHere = (x, y) => kept(kind, x, y), aim = q0.order ? aimOf(q0) : null, b0 = aim ? perchOrderPrep(q0, aim, { grid }) : q0, calm = Boolean(q0.order);
+          const b = perchHopStep(b0, { dt, grid, kind, near: calm ? [] : near, noise: calm ? null : heard(b0), still: calm ? !b0.chasing : still, here: (p) => p.key === ORDER_PERCH_KEY || (perchKeys.has(p.key) && !keptHere(p.x, p.y)), choose: (o) => (aim && o.chasing ? orderPerch(aim, o.a) : nextPerch(o.at ?? o, perches, { kind, grid, taken: perchers.filter((q) => q !== q0).map((q) => (q.mode === 'fly' ? q.to?.key : q.at?.key)), kept: keptHere })) });
+          if (b.mode === 'gone') { dropPair(q0); continue; }
           after.push(b);
-          if (b.mode === 'fly' && b0.mode === 'sit') sound('wingsUp', b, false);
+          if (b.mode === 'fly' && q0.mode === 'sit') sound('wingsUp', b, false);
           if (b.mode === 'sit' && b.at.kind === 'roof' && day > 0.3 && Math.random() < dt * (kind === 'crows' ? 0.03 : 0.05)) sound(kind === 'crows' ? 'crowCaw' : 'songChirp', b, false);
           const v = b.view, crow = kind === 'crows';
           if (!(b.shown > 0.01) || !can(b, b.x, b.y)) { hide(v); v.contact.visible = false; continue; }
