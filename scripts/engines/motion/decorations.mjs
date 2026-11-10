@@ -6,6 +6,7 @@
 // A picture is painted once a kind, look and variant and shared by every decoration of it: the same rock turned and flipped
 // reads as another, so a region of hundreds costs a few dozen small pictures.
 
+import { gustAt } from './flame-wind.mjs';
 import { DECOR_KINDS, paintDecor, waterOutline } from './decor-paint.mjs';
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
@@ -39,9 +40,11 @@ void main(){
   float speck = 0.5 * noise(skew / (uGrid * 0.2)) + 0.3 * noise(px / (uGrid * 0.085) + 7.3) + 0.2 * noise(vec2(skew.y, -skew.x) / (uGrid * 0.033) + 3.9);
   float line = 1.0 - uAmount * 1.15, edgeAt = snowFieldAt(px, uGrid) + (h - 0.5) * 0.14 + (speck - 0.5) * 0.008;
   float lie = smoothstep(line, line + 0.03, edgeAt), thick = smoothstep(0.2, 0.4, h + (speck - 0.5) * 0.03) * smoothstep(line, line + 0.1, edgeAt);
-  // Only toward its top, and where its picture is light (the lit tops of leaves and stone), not over all of it.
-  float lum = dot(art.rgb / max(art.a, 0.001), vec3(0.3, 0.59, 0.11));
-  float a = lie * (0.44 + 0.1 * speck + (0.49 - 0.1 * speck) * thick) * smoothstep(0.6, 0.95, h) * smoothstep(0.15, 0.45, lum) * 0.82 * art.a;
+  // A light snow catches only toward its top, where its picture is light (the lit tops of leaves and stone); as it deepens it
+  // spreads down its sides and over its darker parts too, until a barrel or a bale is capped white like the ground round it.
+  float lum = dot(art.rgb / max(art.a, 0.001), vec3(0.3, 0.59, 0.11)), depth = smoothstep(0.3, 0.9, uAmount);
+  float top = smoothstep(0.6 - 0.32 * depth, 0.95 - 0.3 * depth, h), catches = mix(smoothstep(0.15, 0.45, lum), 1.0, 0.8 * depth);
+  float a = lie * (0.44 + 0.1 * speck + (0.49 - 0.1 * speck) * thick) * top * catches * (0.82 + 0.12 * depth) * art.a;
   vec3 tone = snowTone(snowLit(slope, uToSun, uZ, uLow), speck, uSunColor, uZ);
   gl_FragColor = vec4(tone * a, a);
 }`;
@@ -57,6 +60,16 @@ export function pictureOf(d, look = {}) {
 }
 // How a decoration turns: crowns, plants and round things any way; solid things only a little, so a crate stays near square to the map.
 const FREE_TURN = new Set(['bush', 'agave', 'fern', 'mushrooms', 'pebbles', 'grass', 'reeds', 'flowers', 'moss', 'leaves', 'lichen', 'rubble', 'glowShrooms', 'stalagmite']);
+/**
+ * How a piece of cloth moves in the wind now (pure): { skewX, skewY, stretch } for its sprite, turned `rotation`. Below a breath of
+ * wind it hangs still; in a wind it ripples toward where the wind blows, harder in its gusts.
+ */
+export function clothMotion(d, air = {}, t = 0, rotation = 0) {
+  const felt = Math.max(0, Math.min(1, Number(air.strength) || 0)); if (felt < 0.04) return { skewX: 0, skewY: 0, stretch: 1 };
+  const seed = ((d?.seed ?? 0) % 997) / 997, push = felt * (0.55 + 0.45 * gustAt(t, seed)), local = (Number(air.angle) || 0) - rotation;
+  const flap = Math.sin(t * (2.2 + 4.5 * felt) + seed * 40) * 0.7 + Math.sin(t * (5.1 + 6 * felt) + seed * 17) * 0.3;
+  return { skewX: Math.sin(local) * flap * push * 0.07, skewY: Math.cos(local) * flap * push * 0.07, stretch: 1 + push * 0.025 * (0.5 + 0.5 * flap) };
+}
 export const turnOf = (d) => (d.fixed || DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
 /** How far a decoration's shadow reaches from it (pure): `height` in squares, `length` the sun's shadow length per unit of height. */
 export const shadowReach = (height, length, grid) => Math.max(0, height * length * grid * 0.5);
@@ -91,6 +104,8 @@ export function crownOpen(d, creatures = [], grid = 100) {
  */
 export function createDecorations({ PIXI, shadows, ground, above, flat = ground, grid = () => 100, make = null, render = null }) {
   const pictures = new Map(), regions = new Map();
+  // The wind now (0-1, blowing toward angle in radians) and a clock for the cloth it stirs.
+  let air = { strength: 0, angle: 0 }, clock = 0;
   let sun = null, canopyTrees = false, open = new Map(), snow = { amount: 0, toSun: [0, 0], z: 0, low: 1, color: [1, 0.97, 0.9] };
   const snowUniforms = (u) => Object.assign(u, { uAmount: snow.amount, uToSun: snow.toSun, uZ: snow.z, uLow: snow.low, uSunColor: snow.color });
   // A region's snow: its standing decorations' pictures and domes baked small, one quad over them on the ground layer.
@@ -154,7 +169,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         if (had?.key === key) continue;
         if (had) dropRegion(had);
         const placements = decorPlacements({ settings: spec.settings, areas: spec.areas, grid: g, id: spec.id }), where = spec.settings?.where ?? 'surface';
-        const r = { key, placements, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], castLayer: null };
+        const r = { key, placements, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
@@ -177,11 +192,11 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
             if (pic.trunk) r.sprites.push(ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)));
             const crown = above().addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)); crown.decor = d; r.crowns.push(crown); r.sprites.push(crown);
           // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
-          } else r.sprites.push((role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)));
+          } else { const art = (role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)); r.sprites.push(art); if (DECOR_KINDS[d.kind].cloth && where !== 'cave') { art.decor = d; art.base = { x: art.scale.x, y: art.scale.y }; r.cloth.push(art); } }
         }
         shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
-        if (where !== 'cave') { const standing = placements.filter((d) => decorRole(d, where) === 'standing').map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
+        if (where !== 'cave') { const standing = placements.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
         regions.set(spec.id, r); aim(r);
       }
       for (const [id, r] of regions) if (!seen.has(id)) { dropRegion(r); regions.delete(id); }
@@ -210,11 +225,16 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         }
       }
     },
+    /** The wind now: strength 0-1, blowing toward angle (radians). Awnings, tents and washing stir in it (not underground). */
+    wind({ strength = 0, angle = 0 } = {}) { air = { strength: Math.max(0, Math.min(1, Number(strength) || 0)), angle: Number(angle) || 0 }; },
     creatures(list = []) { const g = grid(); for (const r of regions.values()) for (const c of r.crowns) open.set(c, crownOpen(c.decor, list, g)); },
     tick(seconds) {
       // A crown eases open over a creature and closes again after it has gone (a third of a second either way).
       const rate = Math.min(1, seconds * 3);
       for (const r of regions.values()) for (const c of r.crowns) { const want = 1 - 0.75 * (open.get(c) ?? 0); c.alpha += (want - c.alpha) * rate; }
+      // Cloth in the wind: billowing and flapping along it, in gusts, each piece out of step with the next; still in a calm.
+      clock += seconds;
+      for (const r of regions.values()) for (const s of r.cloth) { const m = clothMotion(s.decor, air, clock, s.rotation); s.skew.set(m.skewX, m.skewY); s.scale.set(s.base.x * m.stretch, s.base.y * m.stretch); }
     },
     // The trees for the canopy's shade: each crown's picture where it stands, its height, kind and leaves.
     trees() {

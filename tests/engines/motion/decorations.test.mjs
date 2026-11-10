@@ -49,3 +49,27 @@ test('solid things only turn a little; crowns and plants any way', () => {
   assert.equal(turnOf({ kind: 'oak', turn: 2 }), 2);
   assert.ok(Math.abs(turnOf({ kind: 'crate', turn: 2 })) < 1);
 });
+
+test('cloth stirs in the wind: still in a calm, rippling along the wind in a breeze, harder in a gale', async () => {
+  const { clothMotion } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const { DECOR_KINDS } = await import('../../../scripts/engines/motion/decor-paint.mjs');
+  assert.ok(DECOR_KINDS.marketStall.cloth && DECOR_KINDS.tent.cloth && !DECOR_KINDS.crate.cloth);
+  const d = { seed: 42 };
+  assert.deepEqual(clothMotion(d, { strength: 0 }, 3), { skewX: 0, skewY: 0, stretch: 1 });
+  const most = (strength) => Math.max(...Array.from({ length: 200 }, (_, i) => { const m = clothMotion(d, { strength, angle: 0.5 }, i * 0.05); return Math.hypot(m.skewX, m.skewY); }));
+  assert.ok(most(0.3) > 0 && most(0.3) < most(1));
+  assert.ok(most(1) <= 0.071);
+});
+
+test('wet decorations go darker while the ground is soaked, leafy crowns and water seeing to their own', () => {
+  const src = readFileSync(new URL('../../../scripts/engines/motion/decor-paint.mjs', import.meta.url), 'utf8');
+  assert.match(src, /if \(o\.wet > 0 && !k\.water && !k\.tree && kind !== 'bush'\)/);
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /decorations\.wind\(\{ strength: undergroundScene\(\) \? 0 : skyWindNow, angle: skyWindAngle \}\)/);
+});
+
+test('decorations follow the ground as snow builds or melts, rain soaks in or dries, or the season turns, not only when the clock jumps', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const decorWeatherNow = \(\) => \{ try \{ const g = groundOf\(\)\.now; return `\$\{snowCoverOn\(\) \? Math\.round\(\(g\.snow \?\? 0\) \* 20\) : 0\}/);
+  assert.match(main, /decorWeatherAt \+= seconds; if \(decorWeatherAt >= 1\) \{ decorWeatherAt = 0; const key = decorWeatherNow\(\); if \(key !== decorWeatherKey\) \{ decorWeatherKey = key; try \{ syncDecorations\(\);/);
+});

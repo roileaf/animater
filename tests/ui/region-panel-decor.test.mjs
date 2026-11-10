@@ -106,7 +106,7 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
   assert.match(main, /\[\.\.\.tree, \.\.\.decorations\.trees\(\)\]/);
   assert.match(main, /for \(const pool of decorations\.water\(\)\)/);
   assert.match(main, /decor = decorations\.cavern\(\)/);
-  assert.match(main, /decorations\.creatures\(tokensOnFloor\(\)\); decorations\.tick\(seconds\)/);
+  assert.match(main, /decorations\.creatures\(tokensOnFloor\(\)\); decorations\.wind\(.*?\}\); decorations\.tick\(seconds\)/);
 });
 
 test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {

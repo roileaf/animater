@@ -1501,7 +1501,7 @@ const DRAFTS = {
     if (bloom) for (let i = 0; i < 5; i++) { const u = (rng() - 0.5) * L * 1.4, v = (rng() - 0.5) * W, x = c * u - sn * v, y = sn * u + c * v; leaf(g, x, y, o.unit * 0.07, rng() * 6.28, bloom, o.ink * 0.5, 0.6, 'flower'); }
     g.restore(); return [box];
   } },
-  washingLine: { label: 'Washing lines', size: 2.2, height: 1.4, paint(g, s, rng, o) {
+  washingLine: { label: 'Washing lines', size: 2.2, height: 1.4, cloth: true, paint(g, s, rng, o) {
     // A line strung between two poles with washing pegged along it, shirts and sheets in faded colours, sagging a little.
     const a = (rng() - 0.5) * 0.6, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], p0 = at(-s * 0.88, 0), p1 = at(s * 0.88, 0), mid = at(0, s * 0.06), out = [];
     for (let i = 0; i < 4 + Math.floor(rng() * 3); i++) { const t = 0.12 + (i / 6) * 0.78 + (rng() - 0.5) * 0.05, x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * mid[0] + t * t * p1[0], y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * mid[1] + t * t * p1[1], w = s * (0.08 + rng() * 0.07), h = s * (0.14 + rng() * 0.1), cloth = [[x - c * w, y - sn * w], [x + c * w, y + sn * w], [x + c * w * 0.9 - sn * h, y + sn * w * 0.9 + c * h], [x - c * w * 0.9 - sn * h, y - sn * w * 0.9 + c * h]];
@@ -1564,7 +1564,7 @@ const DRAFTS = {
     for (const k of [-0.5, 0.5]) line(g, [at(L * 0.8, k * W * 0.9), at(L * 0.96, k * W * 0.9)], '#3a2a14', o.ink * 1.4);
     return [blanket, pack];
   } },
-  tent: { label: 'Tents', size: 2.4, height: 1.6, paint(g, s, rng, o) {
+  tent: { label: 'Tents', size: 2.4, height: 1.6, cloth: true, paint(g, s, rng, o) {
     // As the Tiger Lord camp's: a round hide tent of eight panels sewn to a knot at its peak, each panel bellying out between the
     // seams to a scalloped hem, ochre or pale canvas, the side away from the light in shade, pegs at its points.
     const R = s * 0.82, n = 8, turn = rng() * 6.28, col = pick(rng, ['#b8783a', '#c8a870', '#a8986e', '#8a6a44']), pts = [];
@@ -1577,7 +1577,7 @@ const DRAFTS = {
     if (o.snow > 0) { g.save(); trace(g, pts); g.clip(); snowPatch(g, rng, 0, 0, R * 0.8, R * 0.8, o); g.restore(); }
     return [pts];
   } },
-  marketStall: { label: 'Market stalls', size: 2.8, height: 1.4, paint(g, s, rng, o) {
+  marketStall: { label: 'Market stalls', size: 2.8, height: 1.4, cloth: true, paint(g, s, rng, o) {
     // As the Pitaxian avenue's stalls: a plank counter of goods under a cream cloth awning stretched on a frame, the cloth creased and
     // sagging between its poles, a fold standing up along its ridge, crates of wares at its side.
     const a = (rng() - 0.5) * 0.5, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.7, W = s * 0.48, out = [];
@@ -1600,7 +1600,7 @@ export const DECOR_DRAFTS = Object.freeze(Object.fromEntries(Object.entries(DRAF
 // Where each kind belongs: above ground, below it, or both (stone, bones, crates and the like). Unlisted: above ground.
 const SETS = { rock: 'both', boulder: 'both', pebbles: 'both', mushrooms: 'both', bones: 'both', crate: 'both', barrel: 'both', campfire: 'both', roots: 'both', crystals: 'both', brazier: 'both', sacks: 'both', sarcophagus: 'both', coffin: 'both', rails: 'both', pickaxe: 'both', treasure: 'both', papers: 'both', cage: 'both', brokenPillar: 'both', anvil: 'both', urns: 'both', timbers: 'both', stakeFence: 'both', strawBed: 'both', boneRubble: 'both', produce: 'both', bedroll: 'both' };
 const setOf = (id) => KINDS[id].set ?? SETS[id] ?? 'surface';
-export const DECOR_KINDS = Object.freeze(Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, light: k.light ?? null, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])));
+export const DECOR_KINDS = Object.freeze(Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, light: k.light ?? null, cloth: !!k.cloth, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])));
 export const DECOR_IDS = Object.freeze(Object.keys(KINDS));
 
 
@@ -1615,6 +1615,8 @@ export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
   const o = { season: 'summer', snow: 0, wet: 0, frozen: false, night: false, ...look, unit, ink: Math.max(1, unit / 60) };
   g.translate(w / 2, w / 2);
   const outlines = k.paint(g, size / 2, rng, o);
+  // Rain: wood, cloth, stone and the rest go darker while wet (a tree's leaves and a puddle see to their own), and dry back after.
+  if (o.wet > 0 && !k.water && !k.tree && kind !== 'bush') { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(10,14,18,${0.3 * Math.min(1, o.wet)})`; g.fillRect(0, 0, w, w); g.restore(); }
   let shadow = null;
   if (outlines && !k.flat) {
     shadow = make(w, w); const s = shadow.getContext('2d'); s.translate(w / 2, w / 2); s.fillStyle = '#fff'; s.strokeStyle = '#fff'; s.lineJoin = 'round'; s.lineCap = 'round';

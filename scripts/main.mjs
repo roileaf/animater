@@ -2393,7 +2393,10 @@ let pondBedTexture = null;
 const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.destroyed) pondBedTexture = PIXI.Texture.fromBuffer(new Uint8Array([24, 58, 56, 255]), 1, 1); return pondBedTexture; };
 // What a region's decorations look like now: the season, rain and lying snow, night (what glows), underground.
 const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > 0.4 ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > 0.6 || settings.where === "cave", cave: settings.where === "cave" }; };
-let decorTreesKey = "", decorLampsAt = 0;
+let decorTreesKey = "", decorLampsAt = 0, decorWeatherAt = 0, decorWeatherKey = "";
+// What the decorations show of the ground's weather and the season, coarse enough that it changes only when it shows: as snow
+// builds up or melts, rain soaks in or dries, or the season turns, they are drawn again (not only when the clock jumps).
+const decorWeatherNow = () => { try { const g = groundOf().now; return `${snowCoverOn() ? Math.round((g.snow ?? 0) * 20) : 0}|${wetOn() && g.wet > 0.4 ? 1 : 0}|${seasonNow() ?? ""}`; } catch { return ""; } };
 const syncDecorations = () => {
   if (!canvas?.ready) return;
   const list = [];
@@ -5611,8 +5614,9 @@ function skyTick() {
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
   // The decorations' crowns open over the creatures beneath them.
   if (decorations.busy) {
-    decorations.creatures(tokensOnFloor()); decorations.tick(seconds);
+    decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds);
     // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
+    decorWeatherAt += seconds; if (decorWeatherAt >= 1) { decorWeatherAt = 0; const key = decorWeatherNow(); if (key !== decorWeatherKey) { decorWeatherKey = key; try { syncDecorations(); } catch { /* not built yet */ } } }
     decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
   }
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
