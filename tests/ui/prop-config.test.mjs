@@ -25,6 +25,9 @@ test("scene fields default to off and 25%", () => {
   assert.match(html, /name="flags\.animater\.propMissChance"[^>]*value="25"/);
   assert.match(html, /data-action="animater-repair-props"/);
   assert.match(html, /type="button"/);
+  assert.match(html, /data-action="animater-breakable-all"[^>]*>[^<]*<i[^>]*><\/i> Make all doors and windows breakable/);
+  assert.match(html, /data-action="animater-breakable-none"[^>]*>[^<]*<i[^>]*><\/i> Make none breakable/);
+  assert.equal((html.match(/type="button"/g) ?? []).length, 3);
 });
 test("scene fields keep on and a chosen chance, including 0", () => {
   assert.match(propSceneFieldsHTML({ on: true, chance: 10 }), /breakableProps"[^>]*checked[\s\S]*value="10"/);

@@ -40,6 +40,7 @@ import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/pro
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
+import { bulkBreakableUpdates } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
 import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -11159,6 +11160,19 @@ Hooks.on("renderSceneConfig", (app, html) => {
       if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
       await repairAllProps(app.document);
     });
+    // Make every door and window on the scene breakable, or none (wall-break-bulk.mjs): asks with the counts first, one batched write.
+    for (const [action, on] of [["animater-breakable-all", true], ["animater-breakable-none", false]]) {
+      const button = props.querySelector(`[data-action="${action}"]`);
+      button.disabled = !game.user?.isGM;
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        const { updates, doors, windows } = bulkBreakableUpdates(app.document?.walls?.contents ?? [], on);
+        if (!updates.length) return void ui.notifications?.info(on ? "Every door and window here is already breakable." : "No door or window here is breakable.");
+        const count = [doors && `${doors} door${doors === 1 ? "" : "s"}`, windows && `${windows} window${windows === 1 ? "" : "s"}`].filter(Boolean).join(" and ");
+        if (!await foundry.applications.api.DialogV2.confirm({ window: { title: on ? "Make doors and windows breakable" : "Make none breakable" }, content: `<p>${on ? `Make ${count} on this scene breakable?` : `Make ${count} on this scene unbreakable?`}</p>`, rejectClose: false })) return;
+        await app.document.updateEmbeddedDocuments("Wall", updates);
+      });
+    }
     tab.append(...props.children);
   }
   // The scene's own wind (sky-light.mjs weatherOf): how strong, and where it blows from.

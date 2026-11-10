@@ -264,7 +264,7 @@ Each scene's configuration has an **Animater acoustics** choice: open air, hall 
 
 ### Breakable props
 
-Scene configuration → Animater → **This place** has **Breakable props** (off by default), **Chance a miss breaks a prop (%)** (25 by default), **Doors and windows break** (on; it only matters while Breakable props is on), **Rubble is difficult terrain** (off by default) and a **Repair broken props** button. The switches only decide new breaks; wreckage already on the map stays until you repair it.
+Scene configuration → Animater → **This place** has **Breakable props** (off by default), **Chance a miss breaks a prop (%)** (25 by default), **Doors and windows break** (on; it only matters while Breakable props is on), **Rubble is difficult terrain** (off by default) a **Repair broken props** button, and two GM buttons, **Make all doors and windows breakable** and **Make none breakable**, that set every door and every window on the scene at once after asking you with the counts (doors go back to Automatic or to Never; windows, including Foundry's own windows and Animater windows, to Yes or No; plain walls and doors or windows already broken are left alone). The switches only decide new breaks; wreckage already on the map stays until you repair it.
 
 Tile Configuration → **Overhead** tab → **Breakable prop** (its own box, below the Animater one; ground props have it there too) sets what a tile is. Every field starts on **Automatic**, which shows what was guessed from the picture's file name (it works best with FA Nexus props), such as *Automatic (wood)*; pick a value to override it.
 
