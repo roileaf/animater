@@ -63,3 +63,23 @@ test("the light floor: no lights is floor everywhere; otherwise inside a light's
   assert.equal(f({ x: 100, y: 100 }), true);
   assert.equal(f({ x: 2500, y: 100 }), false);
 });
+
+test("a scene lit only by a carried torch: each screen draws main's webs; the breakable set is shared; a wreck shows only where its web is drawn", async () => {
+  const { decorWreckChanges } = await import("../../../scripts/engines/props/decor-break.mjs");
+  const ring = (x, y, r) => Array.from({ length: 12 }, (_, i) => [x + Math.cos(i / 12 * 6.283) * r, y + Math.sin(i / 12 * 6.283) * r]).flat();
+  const areas = brushed.filter((d) => d.kind === "cobweb").map((d) => ring(d.x, d.y, d.size * grid * 1.2));
+  // The screen's own floor, as main has it: wherever any light it sees reaches, a creature's torch included (here only
+  // the first two corners). No AmbientLight at all: the shared floor is everywhere.
+  const torch = [[200, 200, 1100, 200, 1100, 800, 200, 800]];
+  const screenWebs = webCorners({ walls, areas, grid, seed: "scene", floor: (pt) => torch.some((s) => lightFloor([s])(pt)) });
+  const shared = decorCaveBreakable({ setting: read(gmScreen), decorRegions: [region], walls, lights: [], grid, seed: "scene", index: createDecorIndex() });
+  assert.deepEqual(shared, decorCaveBreakable({ setting: read(lowPlayer), decorRegions: [region], walls, lights: [], grid, seed: "scene", index: createDecorIndex() }), "GM and low-quality player agree");
+  assert.ok(shared.webs.length > screenWebs.length, "the shared layout reaches past the torch");
+  const views = createDecorIndex()(region, grid).views.filter((v) => v.decor.kind === "cobweb");
+  const far = views.find((v) => decorDrawn(v, { webs: shared.webs, grid }) && !decorDrawn(v, { webs: screenWebs, grid }));
+  assert.ok(far, "a cobweb that can break but this screen draws no web for");
+  // Its stored break: this screen does not want its wreck (nothing was drawn there), and one already drawn goes.
+  const wantedHere = [far].filter((v) => decorDrawn(v, { webs: screenWebs, grid })).map((v) => ({ id: v.id, note: { seed: 1 }, view: v }));
+  const out = decorWreckChanges({ shown: new Map([[far.id, 1]]), wanted: wantedHere, pending: new Map(), late: new Map() });
+  assert.deepEqual([out.show, out.hide], [[], [far.id]]);
+});

@@ -35,7 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, lightFloor, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -4098,6 +4098,9 @@ const fillMist = () => {
 // What of the viewed scene's decorations underground can break: { sceneId, crystals, webs (the corners laid out) }, worked
 // out when first asked (decorCaveNow) and again after the cavern is rebuilt, a lamp changes or the scene is edited.
 let decorCaveDrawn = null;
+// What this screen itself draws underground, as the cavern last built it: { sceneId, crystals (drawn at all), webs (every
+// corner it laid out, broken cobwebs' included) }. A decoration's wreck is drawn only where its decoration was drawn here.
+let decorDrawnHere = null;
 // The scene's own lamps' shapes (flat polygons; null for one with none): AmbientLights only, not a creature's torch nor a
 // decoration's lamp, whatever this screen's sparks and dust. The underground floor the webs hang over (decor-break.mjs lightFloor).
 function caveLightShapes() {
@@ -4122,8 +4125,8 @@ function decorCaveNow() {
   decorCaveDrawn = { sceneId, ...decorCaveBreakable({ setting: (key) => hotSetting(key), webAreas, decorRegions, walls: wallsHere(), lights: caveLightShapes(), grid: canvas.grid.size, seed: sceneId ?? "cave", index: decorIndex }) };
   return decorCaveDrawn;
 }
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "createWall", "updateWall", "deleteWall", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "updateScene", "updateSetting"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) decorCaveDrawn = null; });
-Hooks.on("canvasTearDown", () => { decorCaveDrawn = null; });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "createWall", "updateWall", "deleteWall", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "updateScene", "updateSetting", "lightingRefresh"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) decorCaveDrawn = null; });
+Hooks.on("canvasTearDown", () => { decorCaveDrawn = null; decorDrawnHere = null; });
 const rebuildCavern = () => {
   cavern.clear(); webs.clear();
   decorCaveDrawn = null;
@@ -4148,11 +4151,14 @@ const rebuildCavern = () => {
   lavaPolygons = lava.flatMap((p) => p.areas);
   const webAreas = [...of("webs", "caveWebs").flatMap((p) => p.areas), ...(bothSettingsOn("caveWebs") ? decor.webs : [])];
   // Every corner laid out with the broken cobwebs' areas too (one seeded stream runs through them all), then their webs left
-  // out: breaking one web never moves, adds or lengthens another. On the floor the scene's own lamps reach (not this
-  // screen's sparks and dust), so every screen that draws webs lays out the same corners, those decorCaveNow breaks.
-  const gone = bothSettingsOn("caveWebs") ? decor.websGone ?? [] : [], laid = webAreas.length || gone.length ? webCorners({ walls, areas: [...webAreas, ...gone], grid, seed, floor: lightFloor(caveLightShapes()) }) : [];
+  // out: breaking one web never moves, adds or lengthens another. Drawn on this screen's own floor, as main draws them
+  // (wherever the lights it sees reach, a creature's torch included); which can break is decided apart (decorCaveNow).
+  const gone = bothSettingsOn("caveWebs") ? decor.websGone ?? [] : [], laid = webAreas.length || gone.length ? webCorners({ walls, areas: [...webAreas, ...gone], grid, seed, floor }) : [];
   const corners = keptWebCorners(laid, { keep: webAreas, gone, grid });
   if (webAreas.length) webs.build({ corners, grid, seed });
+  // What this screen draws, for its wrecks: a broken cobweb or crystal it never drew leaves no wreck here.
+  decorDrawnHere = { sceneId: canvas.scene?.id ?? null, crystals: bothSettingsOn("caveCrystals"), webs: laid };
+  propSafe("decor wrecks", () => syncDecorWrecks(false));
   // The underground's wear: wet walls, steam, bad air, soot over the wall torches, the rubble of cave-ins.
   try {
     const deep = undergroundScene(), flat = (kind, setting) => of(kind, setting).flatMap((p) => p.areas);
@@ -7976,6 +7982,12 @@ const decorDrawnOn = (scene) => {
   const cave = (scene?.id && scene.id === canvas?.scene?.id ? decorCaveNow() : null) ?? {}, grid = propGrid(scene);
   return (view) => decorDrawn(view, { crystals: cave.crystals, webs: cave.webs, grid });
 };
+// Whether this screen drew a decoration (so draws its wreck): underground, a crystal while it draws cave crystals, a
+// cobweb where it laid out a web. Not yet known (the cavern not built yet): drawn.
+const decorShownHere = (view) => {
+  const here = decorDrawnHere && decorDrawnHere.sceneId === canvas?.scene?.id ? decorDrawnHere : {};
+  return decorDrawn(view, { crystals: here.crystals, webs: here.webs, grid: propGrid(canvas?.scene) });
+};
 // The look the painter painted a decoration with (snow is baked on separately), so a wreck is cut from that very picture.
 const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
 // What a decoration held, to spill from its wreck (grain from torn sacks and urns, water from a trough).
@@ -8024,7 +8036,7 @@ function syncDecorWrecks(animate = false) {
       const { keys, views } = decorIndex(region, grid), byKey = new Map(views.map((v) => [v.decor.key, v]));
       for (const e of liveBroken(readDecorBroken(region.broken), keys)) {
         const view = byKey.get(e.key);
-        if (view) { wanted.push({ id: view.id, note: e.note, view }); regionOfWreck.set(view.id, region); }
+        if (view && decorShownHere(view)) { wanted.push({ id: view.id, note: e.note, view }); regionOfWreck.set(view.id, region); }
       }
     } catch (e) { runtime?.trace("props", `decor wrecks: ${e?.message ?? e}`); }
   }
@@ -8057,7 +8069,7 @@ function breakDecorHere(regionDoc, view, note) {
   decorRedrawSoon(regionDoc.id, regionDoc);
   // Not drawn yet as stored: the stored write settles it (decorWreckChanges).
   decorWrecksShown.delete(id);
-  const tile = decorWreckOf(view, region.settings);
+  const tile = decorShownHere(view) ? decorWreckOf(view, region.settings) : null;
   if (tile) void decorWreckage.show(tile, note, decorContents(view), { animate: true });
 }
 // The GM never wrote it: the decoration stands again, and a late write of the same note is drawn at rest.
@@ -8075,15 +8087,15 @@ function refuseDecorHere(id) {
 // gone, or no longer holding decorations, writes nothing.
 // Repair holds the writes (final review M1): it waits for those in flight (so it sees and clears them), and a write that
 // comes while it runs waits for it (so it never writes back what Repair cleared).
-let decorRepairHold = Promise.resolve();
+// Holds are counted, so overlapping repairs (one region's and Repair all) keep the writes waiting until the last lands.
+let decorRepairHolds = 0, decorRepairFree = Promise.resolve(), releaseDecorRepairs = () => {};
 const holdDecorWrites = async (fn) => {
   await decorQueue.idle();
-  let release = () => {};
-  decorRepairHold = new Promise((done) => { release = done; });
-  try { return await fn(); } finally { release(); }
+  if (decorRepairHolds++ === 0) decorRepairFree = new Promise((done) => { releaseDecorRepairs = done; });
+  try { return await fn(); } finally { if (--decorRepairHolds === 0) releaseDecorRepairs(); }
 };
 const decorQueue = createDecorQueue({ trace: (m) => runtime?.trace("props", m), write: async (regionDoc, adds) => {
-  await decorRepairHold;
+  await decorRepairFree;
   const scene = regionDoc?.parent, region = scene?.regions?.get(regionDoc.id) ? decorRegionOf(regionDoc) : null;
   if (!region) return false;
   const { keys } = decorIndex(region, propGrid(scene)), stored = readDecorBroken(region.broken);

@@ -121,13 +121,24 @@ test("only drawn decorations break (D1): the cavern records what it drew; the tr
   assert.match(now, /decorCaveBreakable\(\{ setting: \(key\) => hotSetting\(key\), webAreas, decorRegions, walls: wallsHere\(\), lights: caveLightShapes\(\), grid: canvas\.grid\.size, seed: sceneId \?\? "cave", index: decorIndex \}\)/);
   assert.match(now, /cavernRegions\(\{ preview: false \}\)/);
   assert.doesNotMatch(now, /bothSettingsOn|localQuality|lampLights|regionStepsOn/);
-  assert.doesNotMatch(main, /crystals: bothSettingsOn\("caveCrystals"\), webs:/);
+  assert.doesNotMatch(main, /decorCaveDrawn = \{ sceneId: canvas\.scene\?\.id \?\? null, crystals: bothSettingsOn/);
   assert.doesNotMatch(body("caveLightShapes"), /embersOn|motesOn|bothSettingsOn/);
   assert.match(body("caveLightShapes"), /documentName !== "AmbientLight"/);
-  // The webs are drawn on that same floor, so every screen that draws them lays out the same corners.
-  assert.match(main, /laid = webAreas\.length \|\| gone\.length \? webCorners\(\{ walls, areas: \[\.\.\.webAreas, \.\.\.gone\], grid, seed, floor: lightFloor\(caveLightShapes\(\)\) \}\) : \[\];/);
+  // Each screen draws its webs as main does: on its own floor, wherever the lights it sees reach (a creature's torch
+  // included), so no map's webs look different from main's. The shared floor decides only what can break.
+  assert.match(main, /const floor = \(pt\) => !lampLights\.length \|\| lampLights\.some\(\(l\) => Array\.isArray\(l\.shape\) && l\.shape\.length >= 6 && pointInPolygon\(pt, l\.shape\)\);/);
+  assert.match(main, /laid = webAreas\.length \|\| gone\.length \? webCorners\(\{ walls, areas: \[\.\.\.webAreas, \.\.\.gone\], grid, seed, floor \}\) : \[\];/);
+  assert.doesNotMatch(body("rebuildCavern"), /lightFloor\(/);
   assert.match(body("rebuildCavern"), /decorCaveDrawn = null;/);
-  assert.match(main, /for \(const hook of \[[^\]]*"updateAmbientLight"[^\]]*\]\) Hooks\.on\(hook, \(first, changes, options\) => \{ if \(!quietSave\(first, changes, options\)\) decorCaveDrawn = null; \}\);/);
+  assert.match(main, /for \(const hook of \[[^\]]*"updateAmbientLight"[^\]]*"lightingRefresh"[^\]]*\]\) Hooks\.on\(hook, \(first, changes, options\) => \{ if \(!quietSave\(first, changes, options\)\) decorCaveDrawn = null; \}\);/);
+  // What this screen draws underground (its own laid-out webs, broken ones' included, and whether it draws crystals):
+  // a wreck is drawn only where its decoration was drawn here.
+  assert.match(body("rebuildCavern"), /decorDrawnHere = \{ sceneId: canvas\.scene\?\.id \?\? null, crystals: bothSettingsOn\("caveCrystals"\), webs: laid \};/);
+  assert.match(body("rebuildCavern"), /propSafe\("decor wrecks", \(\) => syncDecorWrecks\(false\)\)/);
+  assert.match(main, /const decorShownHere = \(view\) => \{/);
+  assert.match(body("decorShownHere"), /decorDrawn\(view, \{ crystals: here\.crystals, webs: here\.webs, grid: propGrid\(canvas\?\.scene\) \}\)/);
+  assert.match(body("syncDecorWrecks"), /if \(view && decorShownHere\(view\)\) \{ wanted\.push/);
+  assert.match(body("breakDecorHere"), /const tile = decorShownHere\(view\) \? decorWreckOf\(view, region\.settings\) : null;/);
   assert.match(main, /const corners = keptWebCorners\(laid, \{ keep: webAreas, gone, grid \}\);/);
   assert.match(main, /const gone = bothSettingsOn\("caveWebs"\) \? decor\.websGone \?\? \[\] : \[\]/);
   assert.match(body("decorViews"), /decorTargets\([^\n]*decorDrawnOn\(scene\)\)/);
@@ -163,7 +174,10 @@ test("a broken underground crystal or cobweb leaves the cavern and the webs; man
 });
 test("final review minors: Repair waits for the writes and holds them (M1), walls skip decorations (M2), the memo forgets (M6), a write prunes (M7)", () => {
   assert.match(body("holdDecorWrites"), /await decorQueue\.idle\(\)/);
-  assert.match(main, /const decorQueue = createDecorQueue\(\{[^]*?write: async \(regionDoc, adds\) => \{\r?\n  await decorRepairHold;/);
+  assert.match(main, /const decorQueue = createDecorQueue\(\{[^]*?write: async \(regionDoc, adds\) => \{\r?\n  await decorRepairFree;/);
+  // Holds are counted: a write waits until the last of overlapping repairs has landed.
+  assert.match(body("holdDecorWrites"), /if \(decorRepairHolds\+\+ === 0\) decorRepairFree = new Promise/);
+  assert.match(body("holdDecorWrites"), /finally \{ if \(--decorRepairHolds === 0\) releaseDecorRepairs\(\); \}/);
   assert.match(body("repairDecorRegion"), /holdDecorWrites\(/);
   assert.match(body("repairAllProps"), /await holdDecorWrites\(async \(\) => \{\r?\n    const decorFixes = decorRepairUpdates\(sceneRegions\(scene\)\);/);
   assert.match(main, /function slamProps\(doc, a, b, \{ decor = true \} = \{\}\)/);
