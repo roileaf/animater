@@ -49,7 +49,7 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   // It paints one kind at a time: picking a chip puts out the one lit before.
   assert.equal(c.kinds.length, 1);
   const bar = read('scripts/ui/decor-brush-bar.mjs');
-  assert.match(bar, /c\.addEventListener\('click', \(\) => \{ if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\]; draw\(\); onChange\(\); \}\);/);
+  assert.match(bar, /const pick = \(id\) => \{ if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\]; draw\(\); onChange\(\); \};/);
   assert.doesNotMatch(bar, /Select all/);
   // Its Decoration size scales what it lays, on open ground and on top of a region's own scale.
   assert.equal(c.scale, 1);
@@ -127,4 +127,17 @@ test('a region\'s own brush shows the bar with only its place and its ticked kin
   assert.match(bar, /if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\];/);
   assert.match(bar, /if \(!lock\) row\.append\(where\);/);
   assert.equal(brushChoices().kinds.length, 1);
+});
+
+test('the brush bar has a search over its kinds', async () => {
+  const { kindMatches } = await import('../../scripts/ui/decor-brush-bar.mjs');
+  assert.ok(kindMatches('fruitTree', 'tree') && kindMatches('deadTree', 'TREE') && kindMatches('oak', ''));
+  assert.ok(!kindMatches('rock', 'tree'));
+  assert.ok(kindMatches('oak', 'tree') && kindMatches('pine', 'Tree') && kindMatches('puddle', 'water') && kindMatches('stalagmite', 'cave'));
+  assert.ok(kindMatches('glowShrooms', 'glow') && kindMatches('mushrooms', 'mush'));
+  const bar = read('scripts/ui/decor-brush-bar.mjs');
+  assert.match(bar, /search\.placeholder = 'Search kinds…'/);
+  assert.match(bar, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); const first = \[\.\.\.chips\.children\]\.find\(\(c\) => !c\.hidden\); if \(first\) pick\(first\.dataset\.kind\); \}/);
+  // While typing in it the brush's own keys ([, ], Esc, Ctrl+Z) stay out of the way.
+  assert.match(read('scripts/main.mjs'), /if \(e\.target\?\.closest\?\.\("input, textarea"\)\) return;/);
 });

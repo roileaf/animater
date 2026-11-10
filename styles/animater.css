@@ -4135,5 +4135,8 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-decor-brush button.an-db-on { background: #7a6230; border-color: #c8a24a; color: #fff6e0; }
 .an-decor-brush .an-db-range { display: flex; align-items: center; gap: 6px; }
 .an-decor-brush .an-db-range input { width: 110px; accent-color: #c8a24a; }
+.an-decor-brush .an-db-search { width: 100%; box-sizing: border-box; margin-bottom: 6px; height: 24px; padding: 2px 8px; background: #2a241d; color: #e8dfcc; border: 1px solid #5a4b3a; border-radius: 4px; font-size: 12px; }
+.an-decor-brush .an-db-search:focus { outline: none; border-color: #c8a24a; }
 .an-decor-brush .an-db-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.an-decor-brush .an-db-chip[hidden] { display: none; }
 .an-decor-brush .an-db-chip { padding: 2px 7px; }
