@@ -29,16 +29,24 @@ export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls } = {}
     <div class="form-group"><label>Repair</label><div class="form-fields"><button type="button" data-action="animater-repair-props"><i class="fa-solid fa-hammer"></i> Repair broken props</button></div></div>`;
 }
 
-// The Breakable fieldset in a wall's configuration: the door group (the window group comes with windows).
+// The Breakable fieldset in a wall's configuration: the door group for doors, the window group (Window box and Material)
+// for a wall with no door. Only the group matching Door Type shows; the hidden group's inputs are disabled, so the one
+// Material name submits once.
 export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false } = {}) {
+  const isDoor = door === 1 || door === 2, off = (hidden) => (hidden ? " disabled" : "");
   const mat = ["wood", "metal", "stone"].includes(own.material) ? own.material : "wood";
   const doors = [["", "Automatic (on when the scene has Breakable props)"], ["never", "Never"]];
   const mats = [["wood", "Wood"], ["metal", "Metal"], ["stone", "Stone"]];
+  const panes = [["glass", "Glass"], ["none", "Won't break"]];
   return `<fieldset data-animater-break-wall><legend>Breakable</legend>
-    <div data-group="door"${door === 1 || door === 2 ? "" : " hidden"}>
-      <div class="form-group"><label>Breakable door</label><div class="form-fields"><select name="flags.${ID}.breakWall.door">${options(doors, own.door === "never" ? "never" : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Never keeps this door whole.</p></div>
-      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.material">${options(mats, mat)}</select></div><p class="hint">Wood gives way to blows, fire and hard shoves; metal and stone only to force or a heavy slam.</p></div>
-      <div class="form-group"><label>Force Open breaks it</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.forceOpen"${own.forceOpen === false ? "" : " checked"}></div><p class="hint">A successful Force Open on this door breaks it open.</p></div>
+    <div data-group="door"${isDoor ? "" : " hidden"}>
+      <div class="form-group"><label>Breakable door</label><div class="form-fields"><select name="flags.${ID}.breakWall.door"${off(!isDoor)}>${options(doors, own.door === "never" ? "never" : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Never keeps this door whole.</p></div>
+      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.material"${off(!isDoor)}>${options(mats, mat)}</select></div><p class="hint">Wood gives way to blows, fire and hard shoves; metal and stone only to force or a heavy slam.</p></div>
+      <div class="form-group"><label>Force Open breaks it</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.forceOpen"${own.forceOpen === false ? "" : " checked"}${off(!isDoor)}></div><p class="hint">A successful Force Open on this door breaks it open.</p></div>
+    </div>
+    <div data-group="window"${isDoor ? " hidden" : ""}>
+      <div class="form-group"><label>Window</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.window"${own.window === true ? " checked" : ""}${off(isDoor)}></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Tick it to make this wall a window that can break. It is separate from the light a window lets through.</p></div>
+      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.material"${off(isDoor)}>${options(panes, own.material === "none" ? "none" : "glass")}</select></div><p class="hint">Glass breaks to most blows, cold, fire and any shove, and a shot that misses can shatter it. Won't break keeps it whole. A broken window lets sight, light and sound through but still blocks movement.</p></div>
     </div>
   </fieldset>`;
 }

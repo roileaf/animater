@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom } from "../../../scripts/engines/props/wall-triggers.mjs";
+import { doorsInArea, windowOnLine, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom } from "../../../scripts/engines/props/wall-triggers.mjs";
 
 const scene = (f = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...f } } });
 const wall = (extra = {}) => ({ id: "d1", c: [300, 200, 400, 200], door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20, levels: [], flags: {}, ...extra });
@@ -116,4 +116,34 @@ test("a smash comes from the GM's one token, else half a square off the door's l
   assert.ok(near(smashFrom(wall(), null, 100), { x: 350, y: 150 }));
   assert.ok(near(smashFrom(wall({ c: [400, 200, 300, 200] }), null, 100), { x: 350, y: 250 }));
   assert.ok(near(smashFrom(wall({ c: [300, 200, 300, 400] }), null, 200), { x: 400, y: 300 }));
+});
+
+const win = (extra = {}) => wall({ id: "w1", door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });
+test("the first window on a shot's line", () => {
+  const a = win({ id: "a", c: [300, 200, 400, 200] }), b = win({ id: "b", c: [300, 300, 400, 300] });
+  assert.equal(windowOnLine({ x: 350, y: 100 }, { x: 350, y: 400 }, [b, a], scene())?.id, "a");
+  assert.equal(windowOnLine({ x: 350, y: 400 }, { x: 350, y: 100 }, [a, b], scene())?.id, "b");
+  assert.equal(windowOnLine({ x: 50, y: 100 }, { x: 50, y: 400 }, [a, b], scene()), null);
+});
+test("a window on the line skips broken, other-level, plain and switched-off walls", () => {
+  const from = { x: 350, y: 100 }, to = { x: 350, y: 400 };
+  assert.equal(windowOnLine(from, to, [win({ flags: { animater: { breakWall: { window: true, broken: { seed: 1 } } } } })], scene()), null);
+  assert.equal(windowOnLine(from, to, [win({ levels: ["ground"] })], scene(), ["upstairs"]), null);
+  assert.equal(windowOnLine(from, to, [win({ levels: ["ground"] })], scene(), ["ground"])?.id, "w1");
+  assert.equal(windowOnLine(from, to, [wall({ door: 0 })], scene()), null); // a plain wall
+  assert.equal(windowOnLine(from, to, [wall()], scene()), null); // a door is not a window
+  assert.equal(windowOnLine(from, to, [win()], scene({ breakWalls: false })), null);
+});
+test("areas and forced paths pick up windows, glass by damage and any slam", () => {
+  const all = () => true;
+  assert.deepEqual(doorsInArea([win()], all, scene(), "cold").map((w) => w.id), ["w1"]);
+  assert.deepEqual(doorsInArea([win()], all, scene(), "poison"), []);
+  assert.deepEqual(wallsCrossed({ from: { x: 350, y: 100 }, to: { x: 350, y: 300 } }, 1, [win()], scene()).map((w) => w.id), ["w1"]);
+  const none = win({ flags: { animater: { breakWall: { window: true, material: "none" } } } });
+  assert.deepEqual(wallsCrossed({ from: { x: 350, y: 100 }, to: { x: 350, y: 300 } }, 3, [none], scene()), []);
+  const pts = [{ x: 350, y: 100, p: 0 }, { x: 350, y: 300, p: 1 }];
+  assert.deepEqual(wallsUnderTravel(pts, 1, [win()], scene()).map((h) => h.wall.id), ["w1"]);
+});
+test("Force Open never picks a window", () => {
+  assert.equal(forceOpenDoor({ x: 300, y: 210, w: 100, h: 100 }, [win()], scene(), 100, "criticalSuccess"), null);
 });

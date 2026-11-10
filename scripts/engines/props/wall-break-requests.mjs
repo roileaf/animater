@@ -3,10 +3,12 @@
 import { wallTraits, canBreakWall, wallMid, crossesWall, wallNote, wallBreakUpdate } from "./wall-break.mjs";
 import { cleanCause, sizeOf, PATH_SQUARES } from "./prop-requests.mjs";
 import { onLevel } from "./prop-pick.mjs";
-import { forceOpenOf, forceOpenDoor } from "./wall-triggers.mjs";
+import { forceOpenOf, forceOpenDoor, windowOnLine } from "./wall-triggers.mjs";
+import { missBreaks } from "./prop-break.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
-const KINDS = ["area", "path", "smash", "force-open"];
+const KINDS = ["area", "path", "smash", "force-open", "miss"];
+const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the scene's propMissChance overrides)
 const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own material rule
 const AREA_REACH = 30; // squares from the area's centre to the wall's middle
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
@@ -18,7 +20,7 @@ const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 export function cleanWallCause(c) {
   const out = cleanCause(c);
   if (!c || typeof c !== "object") return out;
-  for (const k of ["messageId", "sourceId"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
+  for (const k of ["messageId", "sourceId", "attackerUuid"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
   return out;
 }
 
@@ -48,9 +50,15 @@ export function slamSenderOk({ sender, mover, from, senderTokens = [], grid = 10
 const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : { damageType: cause.damageType });
 
 // The cause has to fit where things stand on the GM's screen. A smash is the GM's own and fits anywhere.
-function plausible(cause, wall, grid, mover) {
+function plausible(cause, wall, grid, mover, { scene, walls, attacker, target } = {}) {
   if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open was placed by forceOpenDoor
   const mid = wallMid(wall);
+  if (cause.kind === "miss") {
+    // the shot's line, attacker to the target's centre, meets this window first (windowOnLine), on the target's level
+    if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite)) return false;
+    const centre = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
+    return windowOnLine(attacker, centre, (walls ?? []).some((w) => w?.id === wall.id) ? walls : [...(walls ?? []), wall], scene, target.level)?.id === wall.id;
+  }
   if (cause.kind === "area") return finite(cause.at) && Math.hypot(mid.x - cause.at.x, mid.y - cause.at.y) <= AREA_REACH * grid;
   // path: the mover stands within its size of either end, the path is not too long, it goes through the door, and the
   // door is on the mover's level
@@ -64,9 +72,11 @@ function plausible(cause, wall, grid, mover) {
 
 // wall: the GM's wall {id, c, door, ds, move, sight, light, sound, levels, flags}; mover: {x, y} centre, size in squares,
 // level and isOwner (the sender owns it); senderTokens: footprints of the sender's own tokens on the scene; levels: the cause's own levels when the GM knows them (a wall on none of them is too far).
+// A ranged miss: attacker {x, y} (the shooter's centre), target {x, y, w, h, level?} (the missed token's footprint), roll in
+// [0, 1) for a plain miss's chance, and walls (the scene's). The window must be the first one on the line (else "far").
 // Force Open: message, the GM's own copy of the chat message the cause names; token, its speaker's footprint
 // {x, y, w, h, level} on this scene; walls, the scene's walls (the door it opens is the one forceOpenDoor picks).
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls } = {}) {
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1 } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (!sender) return no("sender");
@@ -75,6 +85,8 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   if (wall.flags?.animater?.breakWall?.broken) return no("broken");
   const traits = wallTraits(wall, scene), cause = req?.cause ?? {};
   if (!traits.kind || !KINDS.includes(cause.kind)) return no("kind");
+  if (cause.kind === "miss" && traits.kind !== "window") return no("kind");
+  if (traits.kind === "window" && OWN_RULE.has(cause.kind)) return no("kind"); // smash and Force Open are for doors
   if (cause.kind === "smash" && sender.isGM !== true) return no("sender");
   if (cause.kind === "path" && !slamSenderOk({ sender, mover, from: cause.path?.from, senderTokens, grid })) return no("sender");
   // R1: a smash has no damage type or slam; its material rule is the GM's own (forceOpenDoor's, for Force Open)
@@ -88,7 +100,11 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   const raw = req?.note;
   if (!raw || !Number.isFinite(raw.seed) || !Number.isFinite(raw.cutAngle) || !finite(raw.from)) return no("note");
   if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
-  if (!plausible(cause, wall, grid, mover)) return no("far");
+  if (!plausible(cause, wall, grid, mover, { scene, walls, attacker, target })) return no("far");
+  if (cause.kind === "miss") {
+    const chance = Number(scene.flags.animater.propMissChance ?? MISS_CHANCE); // a form may save it as text
+    if (!missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
+  }
   // Only the seed, the cut and where the blow came from are the requester's; the rest is read here.
   const note = wallNote({ seed: raw.seed, cutAngle: raw.cutAngle, from: raw.from, kind: traits.kind, material: traits.material, damageType: cause.damageType });
   return { ok: true, note, update: wallBreakUpdate(wall, note) };

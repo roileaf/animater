@@ -1,25 +1,33 @@
 // Breakable doors: what a wall is, what can break it, and the note a broken one carries. Pure: no Foundry globals.
 // Foundry v14 numbers, hard-coded to keep this module pure: door type NONE 0 / DOOR 1 / SECRET 2; the sense and movement
 // types are NONE 0 when the passage is open.
-const KINDS = ["door"];
+import { canBreak } from "./prop-material.mjs";
+
+const KINDS = ["door", "window"];
 const MATERIALS = ["wood", "metal", "stone"];
+const NOTE_MATERIALS = [...MATERIALS, "glass", "none"]; // a window's note carries glass (or none)
 const MARKS = ["dust", "scorch"];
 const RESTORE_KEYS = ["door", "ds", "move", "sight", "light", "sound"];
+const WINDOW_RESTORE_KEYS = ["sight", "light", "sound"]; // a broken window still blocks movement
 const WOOD_DAMAGE = new Set(["bludgeoning", "slashing", "force", "fire"]);
 const isNum = (n) => typeof n === "number" && Number.isFinite(n);
 
-// What this wall is for breaking: kind null when it cannot break (not a door, the scene's switches off, or the GM said never).
+// What this wall is for breaking: kind null when it cannot break (not a door and not a wall the GM marked Window, the
+// scene's switches off, or the GM said never). A window is opt-in (breakWall.window, never the light kind), glass unless
+// the GM chose Won't break ("none"), and Force Open never reaches it.
 export function wallTraits(wall, scene) {
   const sf = scene?.flags?.animater ?? {}, own = wall?.flags?.animater?.breakWall ?? {};
   const on = sf.breakableProps === true && sf.breakWalls !== false;
   const door = on && (wall?.door === 1 || wall?.door === 2) && own.door !== "never";
+  if (!door && on && wall?.door === 0 && own.window === true) return { kind: "window", material: own.material === "none" ? "none" : "glass", forceOpen: false };
   return { kind: door ? "door" : null, material: MATERIALS.includes(own.material) ? own.material : "wood", forceOpen: own.forceOpen !== false };
 }
 
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.
 export function canBreakWall(traits, cause = {}) {
-  if (traits?.kind !== "door") return false;
   const size = Number(cause.slam?.size), slam = Number.isFinite(size) ? size : 0;
+  if (traits?.kind === "window") return traits.material === "glass" && (canBreak("glass", { damageType: cause.damageType }) || slam > 0);
+  if (traits?.kind !== "door") return false;
   if (traits.material === "wood") return WOOD_DAMAGE.has(cause.damageType) || slam >= 2;
   return cause.damageType === "force" || slam >= 3;
 }
@@ -47,7 +55,7 @@ export function readWallNote(raw) {
   if (!raw || typeof raw !== "object") return null;
   const { seed, cutAngle, from, kind, material, mark, restore } = raw;
   if (!isNum(seed) || !isNum(cutAngle) || !from || !isNum(from.x) || !isNum(from.y)) return null;
-  if (!KINDS.includes(kind) || !MATERIALS.includes(material) || !MARKS.includes(mark)) return null;
+  if (!KINDS.includes(kind) || !NOTE_MATERIALS.includes(material) || !MARKS.includes(mark)) return null;
   const note = { seed, cutAngle, from: { x: from.x, y: from.y }, kind, material, mark };
   if (restore !== undefined) {
     if (!restore || typeof restore !== "object") return null;
@@ -63,6 +71,11 @@ export function readWallNote(raw) {
 
 // Open the passage, keeping what the wall was so Repair can put it back.
 export function wallBreakUpdate(wall, note) {
+  if (note?.kind === "window") {
+    const restore = {};
+    for (const k of WINDOW_RESTORE_KEYS) restore[k] = wall[k];
+    return { _id: wall.id, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
+  }
   const restore = {};
   for (const k of RESTORE_KEYS) restore[k] = wall[k];
   return { _id: wall.id, door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };

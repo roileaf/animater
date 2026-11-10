@@ -66,3 +66,38 @@ test("wallMid and crossesWall", () => {
   assert.equal(crossesWall({ x: 450, y: 100 }, { x: 450, y: 300 }, wall()), false);
   assert.equal(crossesWall({ x: 350, y: 100 }, { x: 350, y: 150 }, wall()), false);
 });
+
+const win = (extra = {}) => wall({ id: "w1", door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });
+const noneWin = () => win({ flags: { animater: { breakWall: { window: true, material: "none" } } } });
+test("only a wall marked Window is a window; glass unless Won't break", () => {
+  assert.deepEqual(wallTraits(win(), scene()), { kind: "window", material: "glass", forceOpen: false });
+  assert.equal(wallTraits(wall({ door: 0 }), scene()).kind, null);
+  assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "glass" } } }), scene()).kind, null); // the light kind alone is not breakable
+  assert.equal(wallTraits(win(), scene({ breakWalls: false })).kind, null);
+  assert.equal(wallTraits(win(), { id: "s", flags: {} }).kind, null);
+  assert.equal(wallTraits(noneWin(), scene()).material, "none");
+  assert.equal(canBreakWall(wallTraits(noneWin(), scene()), { damageType: "force" }), false);
+  assert.equal(canBreakWall(wallTraits(noneWin(), scene()), { slam: { size: 4 } }), false);
+  // a door stays a door even when the window box was ticked
+  assert.equal(wallTraits(wall({ flags: { animater: { breakWall: { window: true } } } }), scene()).kind, "door");
+});
+test("glass rules plus any slam", () => {
+  const t = { kind: "window", material: "glass" };
+  assert.equal(canBreakWall(t, { damageType: "cold" }), true);
+  assert.equal(canBreakWall(t, { damageType: "poison" }), false);
+  assert.equal(canBreakWall(t, { slam: { size: 1 } }), true);
+});
+test("a broken window lets sight, light and sound through but still blocks movement", () => {
+  const n = wallNote({ seed: 1, cutAngle: 0, from: { x: 350, y: 100 }, kind: "window", material: "glass" });
+  const u = wallBreakUpdate(win(), n);
+  assert.deepEqual([u.sight, u.light, u.sound, "move" in u, "door" in u], [0, 0, 0, false, false]);
+  assert.deepEqual(u["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20 });
+});
+test("a window's note reads back (glass, none), and Repair restores only its senses", () => {
+  const n = wallNote({ seed: 1, cutAngle: 0, from: { x: 350, y: 100 }, kind: "window", material: "glass" });
+  assert.deepEqual(readWallNote(n), n);
+  assert.equal(readWallNote({ ...n, material: "none" }).material, "none");
+  assert.equal(readWallNote({ ...n, kind: "gate" }), null);
+  const broken = win({ sight: 0, light: 0, sound: 0, flags: { animater: { breakWall: { window: true, broken: { ...n, restore: { sight: 20, light: 20, sound: 20 } } } } } });
+  assert.deepEqual(wallRestoreUpdate(broken), { _id: "w1", sight: 20, light: 20, sound: 20, "flags.animater.breakWall.-=broken": null });
+});

@@ -230,3 +230,52 @@ test("Review Focus 5: a forged Force Open is refused", () => {
   assert.equal(r.note.material, "wood");
   assert.equal(r.note.mark, "dust");
 });
+
+const win = (extra = {}) => wall({ id: "w1", c: [300, 200, 400, 200], door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });
+const ATT = { x: 350, y: 100 }, TGT = { x: 325, y: 300, w: 50, h: 50 }; // the line from ATT to the target's centre (350, 325) crosses y = 200
+const miss = (outcome = "criticalFailure", damageType = "slashing") => ({ kind: "miss", damageType, outcome, targetUuid: "t" });
+const missReq = (w, cause) => ({ cause, note: wallNoteFor({ wall: w, scene: scene(), cause, seed: 3, from: ATT }) });
+const missCtx = (w, x = {}) => ({ wall: w, walls: [w], scene: scene(), grid: 100, sender, attacker: ATT, target: TGT, roll: 1, ...x });
+
+test("a ranged miss through a window: crit always, plain miss by the GM's roll, line must cross it", () => {
+  const w = win();
+  const crit = validWallBreakRequest(missReq(w, miss()), missCtx(w));
+  assert.equal(crit.ok, true);
+  assert.equal(crit.note.kind, "window"); assert.equal(crit.note.material, "glass");
+  assert.deepEqual([crit.update.sight, crit.update.light, crit.update.sound, "move" in crit.update, "door" in crit.update], [0, 0, 0, false, false]);
+  assert.deepEqual(crit.update["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20 });
+  // a plain miss: the default chance is 25 (roll 0.1 breaks, 0.9 does not)
+  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.1 })).ok, true);
+  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.9 })).why, "lucky");
+  // the scene's chance is the GM's own
+  const never = scene({ propMissChance: 0 }), always = scene({ propMissChance: 100 });
+  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { scene: never, roll: 0 })).why, "lucky");
+  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { scene: always, roll: 0.99 })).ok, true);
+  // a crit failure ignores the chance; a hit or success is no miss
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { scene: never, roll: 0.99 })).ok, true);
+  assert.equal(validWallBreakRequest(missReq(w, miss("success")), missCtx(w, { roll: 0 })).why, "lucky");
+  // the line must cross this window
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { attacker: { x: 50, y: 100 } })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { attacker: undefined })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { target: undefined })).why, "far");
+  // only the first window on the line: a nearer one shields it
+  const near = win({ id: "n", c: [300, 150, 400, 150] });
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { walls: [w, near] })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(near, miss()), missCtx(near, { walls: [w, near] })).ok, true);
+  // glass rules and Won't break
+  assert.equal(validWallBreakRequest(missReq(w, miss("criticalFailure", "poison")), missCtx(w)).why, "material");
+  const none = win({ flags: { animater: { breakWall: { window: true, material: "none" } } } });
+  assert.equal(validWallBreakRequest(missReq(none, miss()), missCtx(none)).why, "material");
+});
+test("a miss only breaks a window, and not twice or off the target's level", () => {
+  const door = wall({ c: [300, 200, 400, 200] });
+  assert.equal(validWallBreakRequest(missReq(door, miss()), missCtx(door)).why, "kind");
+  const w = win();
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(win({ flags: { animater: { breakWall: { window: true, broken: { seed: 1 } } } } }))).why, "broken");
+  const up = win({ levels: ["ground"] });
+  assert.equal(validWallBreakRequest(missReq(up, miss()), missCtx(up, { target: { ...TGT, level: "upstairs" } })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(up, miss()), missCtx(up, { target: { ...TGT, level: "ground" } })).ok, true);
+});
+test("cleanWallCause keeps the attacker a miss names", () => {
+  assert.equal(cleanWallCause({ kind: "miss", attackerUuid: "Scene.s.Token.a", outcome: "miss" }).attackerUuid, "Scene.s.Token.a");
+});

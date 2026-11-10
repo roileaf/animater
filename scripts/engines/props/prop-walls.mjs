@@ -1,4 +1,4 @@
-// Walls a prop tile owns (non-door, both ends inside its rotated bounds) and the updates that open and restore them.
+// Walls a prop tile owns (non-door, not a breakable window, both ends inside its rotated bounds) and the updates that open and restore them.
 const KEYS = ["move", "sight", "light", "sound"];
 const saved = w => w.flags?.animater?.prop?.restore;
 
@@ -11,7 +11,7 @@ export function ownWalls(tile, walls, grid) {
     const dx = x - cx, dy = y - cy;
     return Math.abs(dx * cos - dy * sin) <= hw && Math.abs(dx * sin + dy * cos) <= hh;
   };
-  return walls.filter(w => !w.door && inside(w.c[0], w.c[1]) && inside(w.c[2], w.c[3]));
+  return walls.filter(w => !w.door && w.flags?.animater?.breakWall?.window !== true && inside(w.c[0], w.c[1]) && inside(w.c[2], w.c[3]));
 }
 
 export function openUpdates(walls) {

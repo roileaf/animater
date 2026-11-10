@@ -27,7 +27,7 @@ import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from 
 import { ownWalls } from "./engines/props/prop-walls.mjs";
 import { wallMid, readWallNote, wallRepairUpdates, wallTraits } from "./engines/props/wall-break.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
-import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom } from "./engines/props/wall-triggers.mjs";
+import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
@@ -7212,6 +7212,13 @@ function settleWallHere(id, refused) {
 // a player may claim a slam of a creature they shove from beside it).
 async function wallPlace(cause, scene, grid, user) {
   const place = await propPlace(cause, scene, grid);
+  if (cause.kind === "miss") {
+    // a ranged miss: the shooter's centre (a token the sender owns, or any for the GM) and the scene's walls, for windowOnLine
+    const a = cause.attackerUuid ? await fromUuid(cause.attackerUuid).catch(() => null) : null;
+    const owns = (d) => { try { return user?.isGM || d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
+    const attacker = a?.documentName === "Token" && a.parent === scene && owns(a) ? { x: a.x + (a.width * grid) / 2, y: a.y + (a.height * grid) / 2 } : undefined;
+    return { ...place, attacker, walls: (scene.walls?.contents ?? []).map(wallView) };
+  }
   if (cause.kind === "force-open") return { ...place, ...forceOpenPlace(cause, scene, grid) };
   if (cause.kind !== "path" || user?.isGM) return place;
   const owns = (d) => { try { return d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
@@ -7239,7 +7246,8 @@ async function requestWallBreak(wall, cause, { from } = {}) {
   const clean = cleanWallCause(cause), grid = propGrid(scene), view = wallView(doc);
   const note = wallNoteFor({ wall: view, scene, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at ?? clean.path?.from });
   if (gm.isSelf) return applyWallBreak(scene, doc, clean, note, game.user);
-  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, ...await wallPlace(clean, scene, grid, game.user) });
+  // Checked here first, then again by the GM. A plain miss waits for the GM's roll (roll: 0 here); anything else shows at once.
+  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, roll: 0, ...await wallPlace(clean, scene, grid, game.user) });
   if (!here.ok) return false;
   if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakWallHere(doc, here.note);
   game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
@@ -7251,7 +7259,7 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   try {
     const grid = propGrid(scene);
     if (cause.kind === "force-open" && forceOpenUsed.has(cause.messageId)) { runtime?.trace("props", "door not broken: used"); return false; }
-    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, ...await wallPlace(cause, scene, grid, user) });
+    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
@@ -7389,8 +7397,8 @@ Hooks.once("setup", () => {
 // A melee strike of this client's that missed (or critically failed) its one target: the prop beside the target
 // nearest the line of the swing, if the weapon's own damage type can break it. The GM rolls a plain miss's chance.
 async function breakPropOnMiss(event) {
-  const outcome = missOutcome(event?.outcome);
-  if (!outcome || event.type !== "attack" || event.weaponMode !== "melee") return;
+  const outcome = missOutcome(event?.outcome), ranged = event?.weaponMode === "ranged";
+  if (!outcome || event.type !== "attack" || (event.weaponMode !== "melee" && !ranged)) return;
   const scene = (event.sceneId ? game.scenes.get(event.sceneId) : null) ?? canvas?.scene;
   if (!propsOn(scene)) return;
   const targetUuid = event.targetUuid ?? (event.targetUuids?.length === 1 ? event.targetUuids[0] : null);
@@ -7399,6 +7407,15 @@ async function breakPropOnMiss(event) {
   const damageType = weaponDamageType(event.item);
   if (target?.documentName !== "Token" || target.parent !== scene || attacker?.parent !== scene || !damageType) return;
   const grid = propGrid(scene), from = { x: attacker.x + (attacker.width * grid) / 2, y: attacker.y + (attacker.height * grid) / 2 };
+  if (ranged) {
+    // A shot that missed flies on past its target: the first window on the line from the shooter to the target's centre.
+    const centre = { x: target.x + (target.width * grid) / 2, y: target.y + (target.height * grid) / 2 };
+    const glass = windowOnLine(from, centre, (scene.walls?.contents ?? []).map(wallView), scene, target.level);
+    if (!glass) return;
+    await afterDice(event);
+    await askWall(scene, glass.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid, attackerUuid: attacker.uuid }, from);
+    return;
+  }
   const tile = propNextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } }, tilesOnLevel(scene.tiles.contents.map(propTileView), target.level), grid, damageType);
   if (!tile) return;
   await afterDice(event);
@@ -9637,8 +9654,8 @@ Hooks.on("renderWallConfig", (app, html) => {
     <p class="hint">When this door opens, they burst through from the far side, over whoever is nearest on the side it was opened from, then scatter.${own.burstFired && own.doorBurstWhen !== "always" ? " This door's have already gone: set it to Nothing and back, or to Every time, to send them again." : ""}</p>`;
   appendWallSection(root, set);
 });
-// Wall configuration: whether and how this door breaks (engines/props/wall-break.mjs). The door group shows only while the
-// form's Door Type is Door or Secret, and follows that select as it changes.
+// Wall configuration: whether and how this door or window breaks (engines/props/wall-break.mjs). The door group shows only
+// while the form's Door Type is Door or Secret, the window group otherwise, and they follow that select as it changes.
 Hooks.on("renderWallConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector("[data-animater-break-wall]")) return;
@@ -9648,7 +9665,15 @@ Hooks.on("renderWallConfig", (app, html) => {
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);
   const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');
-  const sync = () => { group.hidden = !["1", "2"].includes(String(select?.value ?? doc?.door)); };
+  const windowGroup = fieldset.querySelector('[data-group="window"]');
+  // The group matching Door Type shows; the other's inputs are disabled, so Material submits from one select only.
+  const sync = () => {
+    const isDoor = ["1", "2"].includes(String(select?.value ?? doc?.door));
+    for (const [g, hide] of [[group, !isDoor], [windowGroup, isDoor]]) {
+      g.hidden = hide;
+      for (const el of g.querySelectorAll("input, select")) el.disabled = hide;
+    }
+  };
   select?.addEventListener("change", sync);
   sync();
 });

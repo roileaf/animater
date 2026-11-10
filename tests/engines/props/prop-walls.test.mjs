@@ -29,3 +29,9 @@ test("a wall that is already open produces no update, so its saved originals sur
   assert.deepEqual(openUpdates([opened]), []);
   assert.equal(openUpdates([opened, wall("b", [0, 0, 1, 1])]).length, 1);
 });
+
+test("a tile's own walls never include a window", () => {
+  const w = { id: "w", c: [110, 110, 190, 110], door: 0, move: 20, sight: 20, light: 20, sound: 20, flags: { animater: { breakWall: { window: true } } } };
+  assert.deepEqual(ownWalls(tile, [w], 100), []);
+  assert.deepEqual(ownWalls(tile, [w, wall("plain", [110, 150, 190, 150])], 100).map((x) => x.id), ["plain"]);
+});

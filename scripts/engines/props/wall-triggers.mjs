@@ -54,6 +54,19 @@ export function wallsUnderTravel(points, size, walls, scene, levels) {
   return hits.sort((p, q) => p.p - q.p);
 }
 
+// The first intact window the line a-b crosses, nearest a, on the given levels; null when none. A ranged miss that flies
+// through glass breaks only that one. Any window counts here, whatever its material (the GM's glass rule is applied after).
+export function windowOnLine(a, b, walls, scene, levels) {
+  if (!finite(a) || !finite(b) || (a.x === b.x && a.y === b.y)) return null;
+  let best = null, bestU = Infinity;
+  for (const w of walls ?? []) {
+    if (!reachable(w, scene, levels) || wallTraits(w, scene).kind !== "window" || !crossesWall(a, b, w)) continue;
+    const u = shareAlong(a, b, w);
+    if (u < bestU) { best = w; bestU = u; }
+  }
+  return best;
+}
+
 const FORCE_OPEN_OUTCOMES = ["success", "criticalSuccess"];
 // A PF2e Force Open check that succeeded: PF2e's macro and its force-open action both add the roll option. Null otherwise.
 export function forceOpenOf(message) {
