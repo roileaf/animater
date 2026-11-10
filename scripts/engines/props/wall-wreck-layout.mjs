@@ -74,7 +74,7 @@ export function doorWreckLayout(note, wall, grid = 100) {
     const home = F.at(L * (0.18 + i * 0.29), 0), dir = F.dir(da + F.lean);
     // Lying turned by `turn` from across the doorway, in the wall's frame (so a hit from either side mirrors the throw).
     const axis = { x: -F.t.x * Math.sin(turn) - F.n.x * Math.cos(turn), y: -F.t.y * Math.sin(turn) - F.n.y * Math.cos(turn) };
-    planks.push({ x: home.x + dir.x * d * 100 * k, y: home.y + dir.y * d * 100 * k, rot: angle(axis), len: len * k * reach, wid: wid * k, tone, band: i === 0,
+    planks.push({ x: home.x + dir.x * d * 100 * k, y: home.y + dir.y * d * 100 * k, rot: angle(axis), len: len * k * reach, wid: wid * k, tone, band: i !== 2,
       home: { x: home.x, y: home.y, rot: across }, spin: turn });
   });
 

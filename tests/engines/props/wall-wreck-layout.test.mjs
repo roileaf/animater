@@ -56,13 +56,13 @@ test("far splinters lie past the wall, near ones on the hitter's side, all in th
   }
 });
 
-test("a stub on the hinge and latch ends; one banded plank in the door's wood; the mark on the far side", () => {
+test("a stub on the hinge and latch ends; the two longest planks banded (as the mock), in the door's wood; the mark on the far side", () => {
   const L = doorWreckLayout(doorNote, doorWall, 100);
   assert.equal(L.stubs.length, 2);
   const [a, b] = L.stubs.map((s) => s.x).sort((p, q) => p - q);
   assert.ok(a < 310 && b > 390, `stubs at ${a} and ${b}`);
   for (const s of L.stubs) { assert.ok(Math.abs(s.y - 200) < 1e-9); assert.ok(s.len > 5 && s.len < 25); }
-  assert.equal(L.planks.filter((p) => p.band).length, 1);
+  assert.deepEqual(L.planks.map((p) => p.band), L.planks.map((_, i) => i !== 2));
   for (const p of L.planks) {
     assert.ok(p.len > p.wid && p.wid > 10, `plank ${p.len}x${p.wid}`);
     const dr = ((p.tone >> 16) & 255) - ((DOOR_COLOUR >> 16) & 255);
