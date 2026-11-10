@@ -1,5 +1,5 @@
 // The decorations brush's bar (the Decorations tool in Animater's controls): along the bottom of the map while the brush is
-// out. Outdoors or underground, which kinds it paints (each a chip, on or off), how big the brush and how densely it lays them.
+// out. Outdoors or underground, the one kind it paints (a row of chips, one lit), how big the brush and how densely it lays them.
 // It only holds the choices; main.mjs paints with them. Kept between uses on this screen.
 
 import { DECOR_IDS, DECOR_KINDS } from '../engines/motion/decor-paint.mjs';
@@ -9,9 +9,9 @@ export const BRUSH_SIZE = Object.freeze({ min: 0.5, max: 6, usual: 1.5 });
 export const BRUSH_THICK = Object.freeze({ min: 0.2, max: 2, usual: 0.8 });
 // How big the decorations it lays are, against each kind's usual size.
 export const BRUSH_SCALE = Object.freeze({ min: 0.3, max: 3, usual: 1 });
-const remembered = { where: 'surface', kinds: { surface: [...DECOR_DEFAULT_KINDS.surface], cave: [...DECOR_DEFAULT_KINDS.cave] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual };
+const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual };
 
-/** The brush's choices now (pure copy): where, the kinds ticked there, size in squares, thickness, decoration scale. */
+/** The brush's choices now (pure copy): where, the one kind picked there (as a list of one), size in squares, thickness, decoration scale. */
 export const brushChoices = () => ({ where: remembered.where, kinds: [...remembered.kinds[remembered.where]], size: remembered.size, thick: remembered.thick, scale: remembered.scale });
 /** The kinds a place offers in the bar (pure): its own and those found in both. */
 export const brushKindsFor = (where) => DECOR_IDS.filter((id) => DECOR_KINDS[id].set === 'both' || DECOR_KINDS[id].set === where);
@@ -23,7 +23,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {} } = {}) {
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   const draw = () => {
     bar.replaceChildren();
-    const head = el('div', 'an-db-head'); head.append(el('strong', '', 'Decorations brush'), el('span', 'an-db-hint', 'Drag to paint · Shift-drag rubs out · Ctrl+wheel: size · Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops'));
+    const head = el('div', 'an-db-head'); head.append(el('strong', '', 'Decorations brush'), el('span', 'an-db-hint', 'Pick a kind, drag to paint · Shift-drag rubs out · Ctrl+wheel: size · Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops'));
     const close = el('button', 'an-db-close'); close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.innerHTML = '<i class="fa-solid fa-xmark"></i>'; close.addEventListener('click', () => { api.close(); onClose(); }); head.append(close);
     const where = el('div', 'an-db-seg');
     for (const [key, label] of [['surface', 'Outdoors'], ['cave', 'Underground']]) { const b = el('button', remembered.where === key ? 'an-db-on' : '', label); b.type = 'button'; b.addEventListener('click', () => { remembered.where = key; draw(); onChange(); }); where.append(b); }
@@ -31,14 +31,12 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {} } = {}) {
       // The wheel over a slider moves it a step.
       s.addEventListener('wheel', (e) => { e.preventDefault(); const v = Math.min(bounds.max, Math.max(bounds.min, Number(s.value) + (e.deltaY < 0 ? step : -step))); s.value = String(Math.round(v * 100) / 100); s.dispatchEvent(new Event('input')); }, { passive: false });
       box.append(el('span', '', label), s, shown); return box; };
-    // All of this place's kinds at once, or none (then tick the few wanted).
-    const all = el('div', 'an-db-seg');
-    for (const [label, pick] of [['Select all', () => brushKindsFor(remembered.where)], ['Deselect all', () => []]]) { const b = el('button', '', label); b.type = 'button'; b.addEventListener('click', () => { remembered.kinds[remembered.where] = pick(); draw(); onChange(); }); all.append(b); }
-    const row = el('div', 'an-db-row'); row.append(where, slider('Brush', BRUSH_SIZE, 'size', 0.5), slider('Density', BRUSH_THICK, 'thick', 0.1), slider('Decoration size', BRUSH_SCALE, 'scale', 0.1), all);
+    const row = el('div', 'an-db-row'); row.append(where, slider('Brush', BRUSH_SIZE, 'size', 0.5), slider('Density', BRUSH_THICK, 'thick', 0.1), slider('Decoration size', BRUSH_SCALE, 'scale', 0.1));
     const chips = el('div', 'an-db-chips'), ticked = remembered.kinds[remembered.where];
     for (const id of brushKindsFor(remembered.where)) {
       const on = ticked.includes(id), c = el('button', on ? 'an-db-chip an-db-on' : 'an-db-chip', DECOR_KINDS[id].label); c.type = 'button'; c.setAttribute('aria-pressed', String(on));
-      c.addEventListener('click', () => { const list = remembered.kinds[remembered.where], i = list.indexOf(id); if (i >= 0) list.splice(i, 1); else list.push(id); draw(); onChange(); });
+      // One kind at a time: picking one puts out the other.
+      c.addEventListener('click', () => { remembered.kinds[remembered.where] = [id]; draw(); onChange(); });
       chips.append(c);
     }
     bar.append(head, row, chips);

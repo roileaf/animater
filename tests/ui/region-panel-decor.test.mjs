@@ -45,10 +45,12 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   const { brushKindsFor, brushChoices } = await import('../../scripts/ui/decor-brush-bar.mjs');
   assert.ok(brushKindsFor('surface').includes('oak') && !brushKindsFor('surface').includes('stalagmite'));
   assert.ok(brushKindsFor('cave').includes('stalagmite') && brushKindsFor('cave').includes('rock'));
-  const c = brushChoices(); assert.equal(c.where, 'surface'); assert.ok(c.kinds.length > 0 && c.size > 0 && c.thick > 0);
-  // Select all ticks every kind the place offers; Deselect all none.
+  const c = brushChoices(); assert.equal(c.where, 'surface'); assert.ok(c.size > 0 && c.thick > 0);
+  // It paints one kind at a time: picking a chip puts out the one lit before.
+  assert.equal(c.kinds.length, 1);
   const bar = read('scripts/ui/decor-brush-bar.mjs');
-  assert.match(bar, /\['Select all', \(\) => brushKindsFor\(remembered\.where\)\], \['Deselect all', \(\) => \[\]\]/);
+  assert.match(bar, /c\.addEventListener\('click', \(\) => \{ remembered\.kinds\[remembered\.where\] = \[id\]; draw\(\); onChange\(\); \}\);/);
+  assert.doesNotMatch(bar, /Select all/);
   // Its Decoration size scales what it lays, on open ground and on top of a region's own scale.
   assert.equal(c.scale, 1);
   assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
