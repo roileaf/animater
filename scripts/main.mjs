@@ -272,6 +272,7 @@ import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, crea
 import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
+import { createDecorLights } from "./engines/motion/decor-lights.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices } from "./ui/decor-brush-bar.mjs";
 import { DECOR_KINDS, stampDecor } from "./engines/motion/decor-paint.mjs";
@@ -2383,13 +2384,23 @@ const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer(
 // panel → Decorations). Their shadows and they themselves on the ground, over the tiles (a rock on a painted rug) and under the
 // creatures; the trees' crowns over the creatures, opening round one beneath.
 // (Flat ones, moss and a puddle's mud, lie under the sky's lying snow, at 641; the rest stand over it, with their own snow.)
+// The decorations' lights (engines/motion/decor-lights.mjs): local Foundry light sources, never documents.
+const decorLights = createDecorLights({
+  makeSource: (id) => new CONFIG.Canvas.lightSourceClass({ sourceId: `${ID}.decor.${id}`, object: null }),
+  refresh: () => canvas?.perception?.update({ refreshLighting: true, refreshVision: true }),
+  grid: () => canvas?.grid?.size ?? 100,
+  centre: () => (canvas?.stage ? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y } : null),
+});
 const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: floorLayer("decorFlat", 641), shadows: floorLayer("decorShadows", 651), ground: floorLayer("decorations", 655), above: floorLayer("decorCrowns", 740), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture) => canvas.app.renderer.render(object, { renderTexture, clear: true }) });
 // A puddle's water colour: dark, peaty teal (a painted water floor's is a lake's, too pale and clear for a puddle on grass).
 let pondBedTexture = null;
 const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.destroyed) pondBedTexture = PIXI.Texture.fromBuffer(new Uint8Array([24, 58, 56, 255]), 1, 1); return pondBedTexture; };
 // What a region's decorations look like now: the season, rain and lying snow, night (what glows), underground.
 const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > 0.4 ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > 0.6 || settings.where === "cave", cave: settings.where === "cave" }; };
-let decorTreesKey = "", decorLampsAt = 0;
+let decorTreesKey = "", decorLampsAt = 0, decorWeatherAt = 0, decorWeatherKey = "";
+// What the decorations show of the ground's weather and the season, coarse enough that it changes only when it shows: as snow
+// builds up or melts, rain soaks in or dries, or the season turns, they are drawn again (not only when the clock jumps).
+const decorWeatherNow = () => { try { const g = groundOf().now; return `${snowCoverOn() ? Math.round((g.snow ?? 0) * 20) : 0}|${wetOn() && g.wet > 0.4 ? 1 : 0}|${seasonNow() ?? ""}`; } catch { return ""; } };
 const syncDecorations = () => {
   if (!canvas?.ready) return;
   const list = [];
@@ -2407,6 +2418,8 @@ const syncDecorations = () => {
     list.push({ id: NEW_DECOR_REGION, settings, areas: decorBrushing.circles.map(([x, y, r]) => decorCircle(x, y, r)), look: decorLook(settings) });
   }
   decorations.sync(list);
+  // The lamps, braziers and candles among them light the map: real light sources, the same on every screen.
+  try { decorLights.sync(decorations.lights()); } catch (err) { console.warn("Animater | decoration lights", err); }
   lightDecorations();
   // Their trees join the canopy's shade: built again when they change.
   const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));
@@ -2443,7 +2456,7 @@ const startDecorBrush = (doc = null) => {
     state.ghostKey = key;
     for (const c of ghost.removeChildren()) { try { c.destroy(); } catch { /* gone */ } }
     const placed = [];
-    for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampDecor({ x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale }); if (d) placed.push(d); }
+    for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampDecor({ x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale, turn: using.turn }); if (d) placed.push(d); }
     state.ghostItems = placed;
     const look = decorLook({ where: brushChoices().where });
     for (const d of [...placed].sort((a, b) => (DECOR_KINDS[a.kind].flat ? 0 : 1) - (DECOR_KINDS[b.kind].flat ? 0 : 1) || a.size - b.size)) { const s = decorations.sprite(d, look); if (s) ghost.addChild(s); }
@@ -2464,7 +2477,7 @@ const startDecorBrush = (doc = null) => {
   const paintWith = () => {
     // The kind picked on the bar; into a region, at that kind's own size there and the region's size.
     const c = brushChoices(), s = decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor);
-    return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: s?.kinds?.[id]?.size ?? 1, amount: 1 })), density: c.thick, scale: c.scale * (s?.scale ?? 1) };
+    return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: s?.kinds?.[id]?.size ?? 1, amount: 1 })), density: c.thick, scale: c.scale * (s?.scale ?? 1), turn: c.turn };
   };
   const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
   const dab = (p, erase, first = false) => {
@@ -2472,10 +2485,10 @@ const startDecorBrush = (doc = null) => {
     if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
     else {
       if (!state.doc) state.circles.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]);
-      const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale } = paintWith();
+      const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale, turn } = paintWith();
       // A click lays exactly what its ghost showed; then a new ghost is dealt for the next.
       if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = { ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }; if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
-      else for (let i = 0, n = dabCount(density); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
+      else for (let i = 0, n = dabCount(density); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale, turn }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
     }
     syncDecorations();
   };
@@ -2516,7 +2529,8 @@ const startDecorBrush = (doc = null) => {
     e.preventDefault(); e.stopImmediatePropagation();
     const up = (e.deltaY || e.deltaX) < 0;
     if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
-    else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
+    else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) state.bar?.turnBy(up ? -1 : 1);
+    else if (e.shiftKey) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1));
     else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); state.bar?.setSize(next); }
     draw();
   };
@@ -3759,7 +3773,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     // Animater's own group, on the token layer: what it does works on tokens, so they stay selectable with it open. Foundry only moves a layer when a group's onChange asks, and sends a layer that activates back to its own group, so coming from another layer it asks and then returns here.
     const tools = { select: { name: "select", title: "Select Tokens", icon: "fa-solid fa-expand", order: 1, control: true, interaction: true } }, order = 10;
     const add = (tool) => { tools[tool.name] = tool; };
-    controls.animater = { name: "animater", title: "Animater", icon: "fa-solid fa-wand-magic-sparkles", layer: "tokens", order: 50, activeTool: "select", tools,
+    controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
     add({ name: "animaterDecorate", title: "Decorations: paint rocks, trees, bushes and more onto the map (into the region you start in, or a new one)", icon: "fa-solid fa-tree", order: order - 1, button: true, visible: toolShown("toolDecorate"),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
@@ -5057,7 +5071,7 @@ const tickFireSounds = () => {
 };
 for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
 Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stopVoice(voice); fireVoices.clear(); fireList = []; });
-Hooks.on("canvasTearDown", () => { try { decorations.clear(); } catch { /* gone */ } decorTreesKey = ""; });
+Hooks.on("canvasTearDown", () => { try { decorations.clear(); decorLights.clear(); } catch { /* gone */ } decorTreesKey = ""; });
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 // Drawn clouds (the Weather panel): just above the rain and the birds, over the roofs; their shadows on the ground, under the creatures.
 let cloudRoot = null;
@@ -5604,8 +5618,9 @@ function skyTick() {
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
   // The decorations' crowns open over the creatures beneath them.
   if (decorations.busy) {
-    decorations.creatures(tokensOnFloor()); decorations.tick(seconds);
+    decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds);
     // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
+    decorWeatherAt += seconds; if (decorWeatherAt >= 1) { decorWeatherAt = 0; const key = decorWeatherNow(); if (key !== decorWeatherKey) { decorWeatherKey = key; try { syncDecorations(); } catch { /* not built yet */ } } }
     decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
   }
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
@@ -10474,7 +10489,7 @@ Hooks.once("init", () => {
     name: "Animater workspace",
     label: "Open Animater",
     hint: "Browse assets, build recipes, preview, and configure automatic triggers.",
-    icon: "fas fa-wand-magic-sparkles",
+    icon: "animater-a-icon",
     type: AnimaterApp,
     restricted: true,
   });
@@ -13067,7 +13082,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     home.tools.animater = {
       name: "animater",
       title: game.user?.isGM ? "Open Animater" : "Animater",
-      icon: "fas fa-wand-magic-sparkles",
+      icon: "animater-a-icon",
       order: 2,
       button: true,
       visible: hotSetting("showControlButton") !== false,

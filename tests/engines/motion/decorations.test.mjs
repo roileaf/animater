@@ -91,3 +91,47 @@ test("flipping Decorations can break never rebuilds a region; a break or a new h
   deco.sync([{ ...region, areas: [Object.assign([...areas[0]], { holes: [[20, 20, 80, 20, 80, 80, 20, 80]] })] }]);
   assert.equal(builds(), three + once);
 });
+
+test('only the cloth stirs in the wind: a masked ripple over the fabric, the frame and wares left still; none in a calm', async () => {
+  const { clothMotion, CLOTH_SHADER_SOURCES } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const { DECOR_KINDS } = await import('../../../scripts/engines/motion/decor-paint.mjs');
+  assert.ok(DECOR_KINDS.marketStall.cloth && DECOR_KINDS.tent.cloth && !DECOR_KINDS.crate.cloth);
+  const d = { seed: 42 };
+  assert.equal(clothMotion(d, { strength: 0 }, 3).push, 0);
+  const most = (strength) => Math.max(...Array.from({ length: 200 }, (_, i) => clothMotion(d, { strength, angle: 0.5 }, i * 0.05).push));
+  assert.ok(most(0.3) > 0 && most(0.3) < most(1) && most(1) <= 1);
+  // In the picture's own frame: a stall turned with the wind feels it straight along.
+  const m = clothMotion(d, { strength: 0.5, angle: 1 }, 1, 1); assert.ok(Math.abs(m.dir[0] - 1) < 1e-9 && Math.abs(m.dir[1]) < 1e-9);
+  // The shader moves only what the mask calls cloth (smoothstep on the mask), never the whole picture.
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /float m = mix\(smoothstep\(0\.5, 1\.0, texture2D\(uCloth, vUv\)\.a\),/);
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /\* wave \* uPush\) \* m \* uAmp\)/);
+});
+
+test('wet decorations go darker while the ground is soaked, leafy crowns and water seeing to their own', () => {
+  const src = readFileSync(new URL('../../../scripts/engines/motion/decor-paint.mjs', import.meta.url), 'utf8');
+  assert.match(src, /if \(o\.wet > 0 && !k\.water && !k\.tree && kind !== 'bush'\)/);
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /decorations\.wind\(\{ strength: undergroundScene\(\) \? 0 : skyWindNow, angle: skyWindAngle \}\)/);
+});
+
+test('decorations follow the ground as snow builds or melts, rain soaks in or dries, or the season turns, not only when the clock jumps', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const decorWeatherNow = \(\) => \{ try \{ const g = groundOf\(\)\.now; return `\$\{snowCoverOn\(\) \? Math\.round\(\(g\.snow \?\? 0\) \* 20\) : 0\}/);
+  assert.match(main, /decorWeatherAt \+= seconds; if \(decorWeatherAt >= 1\) \{ decorWeatherAt = 0; const key = decorWeatherNow\(\); if \(key !== decorWeatherKey\) \{ decorWeatherKey = key; try \{ syncDecorations\(\);/);
+});
+
+test('plants and tree crowns sway in the wind from their middle out (the trunk and root stay put); nothing sways underground', async () => {
+  const { PLANTS, CLOTH_SHADER_SOURCES } = await import('../../../scripts/engines/motion/decorations.mjs');
+  for (const id of ['bush', 'fern', 'grass', 'reeds', 'flowers', 'agave']) assert.ok(PLANTS.has(id));
+  assert.ok(!PLANTS.has('crate') && !PLANTS.has('rock'));
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /smoothstep\(0\.06, 0\.48, length\(vUv - 0\.5\)\), uRadial\)/);
+  const src = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
+  assert.match(src, /where !== 'cave' && PIXI\.Mesh \? clothMesh\(pic, d, scale, 'crown'\)/);
+  assert.match(src, /PLANTS\.has\(d\.kind\) && where !== 'cave' && PIXI\.Mesh/);
+});
+
+test('a stronger wind sways things further, hardly faster', async () => {
+  const { CLOTH_SHADER_SOURCES } = await import('../../../scripts/engines/motion/decorations.mjs');
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /time \* \(1\.4 \+ 0\.5 \* uPush\)/);
+  assert.match(CLOTH_SHADER_SOURCES[0][1], /\* wave \* uPush\) \* m \* uAmp\)/);
+});

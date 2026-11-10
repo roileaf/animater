@@ -6,6 +6,7 @@
 // A picture is painted once a kind, look and variant and shared by every decoration of it: the same rock turned and flipped
 // reads as another, so a region of hundreds costs a few dozen small pictures.
 
+import { gustAt } from './flame-wind.mjs';
 import { DECOR_KINDS, paintDecor, waterOutline } from './decor-paint.mjs';
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
@@ -40,9 +41,11 @@ void main(){
   float speck = 0.5 * noise(skew / (uGrid * 0.2)) + 0.3 * noise(px / (uGrid * 0.085) + 7.3) + 0.2 * noise(vec2(skew.y, -skew.x) / (uGrid * 0.033) + 3.9);
   float line = 1.0 - uAmount * 1.15, edgeAt = snowFieldAt(px, uGrid) + (h - 0.5) * 0.14 + (speck - 0.5) * 0.008;
   float lie = smoothstep(line, line + 0.03, edgeAt), thick = smoothstep(0.2, 0.4, h + (speck - 0.5) * 0.03) * smoothstep(line, line + 0.1, edgeAt);
-  // Only toward its top, and where its picture is light (the lit tops of leaves and stone), not over all of it.
-  float lum = dot(art.rgb / max(art.a, 0.001), vec3(0.3, 0.59, 0.11));
-  float a = lie * (0.44 + 0.1 * speck + (0.49 - 0.1 * speck) * thick) * smoothstep(0.6, 0.95, h) * smoothstep(0.15, 0.45, lum) * 0.82 * art.a;
+  // A light snow catches only toward its top, where its picture is light (the lit tops of leaves and stone); as it deepens it
+  // spreads down its sides and over its darker parts too, until a barrel or a bale is capped white like the ground round it.
+  float lum = dot(art.rgb / max(art.a, 0.001), vec3(0.3, 0.59, 0.11)), depth = smoothstep(0.3, 0.9, uAmount);
+  float top = smoothstep(0.6 - 0.32 * depth, 0.95 - 0.3 * depth, h), catches = mix(smoothstep(0.15, 0.45, lum), 1.0, 0.8 * depth);
+  float a = lie * (0.44 + 0.1 * speck + (0.49 - 0.1 * speck) * thick) * top * catches * (0.82 + 0.12 * depth) * art.a;
   vec3 tone = snowTone(snowLit(slope, uToSun, uZ, uLow), speck, uSunColor, uZ);
   gl_FragColor = vec4(tone * a, a);
 }`;
@@ -58,7 +61,43 @@ export function pictureOf(d, look = {}) {
 }
 // How a decoration turns: crowns, plants and round things any way; solid things only a little, so a crate stays near square to the map.
 const FREE_TURN = new Set(['bush', 'agave', 'fern', 'mushrooms', 'pebbles', 'grass', 'reeds', 'flowers', 'moss', 'leaves', 'lichen', 'rubble', 'glowShrooms', 'stalagmite']);
-export const turnOf = (d) => (DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
+/**
+ * The wind on a piece of cloth now (pure): { push 0-1, dir [x, y] } in its picture's own frame (turned `rotation`). Below a breath
+ * of wind none; in a wind as strong as it is, more in its gusts, each piece out of step with the next.
+ */
+export function clothMotion(d, air = {}, t = 0, rotation = 0) {
+  const felt = Math.max(0, Math.min(1, Number(air.strength) || 0)), local = (Number(air.angle) || 0) - rotation, dir = [Math.cos(local), Math.sin(local)];
+  if (felt < 0.04) return { push: 0, dir };
+  const seed = ((d?.seed ?? 0) % 997) / 997;
+  return { push: felt * (0.55 + 0.45 * gustAt(t, seed)), dir };
+}
+// The cloth itself rippling: its picture drawn through a wave along the wind, only where its mask says cloth (full in the middle,
+// nothing where it is tied to its frame), the folds catching the light as they lift; poles, frame and wares stay where they are.
+const CLOTH_VERT = `precision highp float;
+attribute vec2 aVertexPosition, aUvs;
+uniform mat3 projectionMatrix, translationMatrix;
+varying vec2 vUv;
+void main(){ vUv = aUvs; gl_Position = vec4((projectionMatrix * translationMatrix * vec3(aVertexPosition, 1.0)).xy, 0.0, 1.0); }`;
+const CLOTH_FRAG = `precision highp float;
+varying vec2 vUv;
+uniform sampler2D uArt, uCloth;
+uniform float uTime, uPush, uSeed, uAlpha, uRadial, uAmp, uShade, uSpeed;
+uniform vec2 uDir;
+void main(){
+  float m = mix(smoothstep(0.5, 1.0, texture2D(uCloth, vUv).a), smoothstep(0.06, 0.48, length(vUv - 0.5)), uRadial);
+  vec2 n = vec2(-uDir.y, uDir.x);
+  float along = dot(vUv, uDir) * 9.0, across = dot(vUv, n) * 4.0;
+  // (A stronger wind moves it further, hardly faster: the ripples keep their pace, their reach grows.)
+  float time = uTime * uSpeed, wave = sin(along * 2.6 - time * (1.4 + 0.5 * uPush) + uSeed + sin(across * 1.7 + time * 0.5) * 0.8) * 0.65 + sin(along * 5.3 - time * (2.3 + 0.7 * uPush) + uSeed * 2.1) * 0.35;
+  // (A plant or a crown leans with the wind as well as tossing: a steady push along it, the gusts on top.)
+  vec2 lean = uDir * uPush * 0.004 * uRadial;
+  vec4 c = texture2D(uArt, vUv - (lean + (uDir * 0.006 + n * 0.003) * wave * uPush) * m * uAmp);
+  gl_FragColor = vec4(c.rgb * (1.0 + wave * 0.12 * uShade * uPush * m), c.a) * uAlpha;
+}`;
+// The plants that sway in the wind (a tree's crown sways too, more slowly).
+export const PLANTS = new Set(['bush', 'fern', 'agave', 'grass', 'reeds', 'flowers']);
+export const CLOTH_SHADER_SOURCES = Object.freeze([[CLOTH_VERT, CLOTH_FRAG]]);
+export const turnOf = (d) => (d.fixed || DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
 /** How far a decoration's shadow reaches from it (pure): `height` in squares, `length` the sun's shadow length per unit of height. */
 export const shadowReach = (height, length, grid) => Math.max(0, height * length * grid * 0.5);
 // How high a light stands, in squares (a torch in a hand, a lantern on a post), for how long the shadows it throws are.
@@ -114,6 +153,8 @@ export function crownOpen(d, creatures = [], grid = 100) {
  */
 export function createDecorations({ PIXI, shadows, ground, above, flat = ground, grid = () => 100, make = null, render = null }) {
   const pictures = new Map(), regions = new Map();
+  // The wind now (0-1, blowing toward angle in radians) and a clock for the cloth it stirs.
+  let air = { strength: 0, angle: 0 }, clock = 0;
   let sun = null, canopyTrees = false, open = new Map(), snow = { amount: 0, toSun: [0, 0], z: 0, low: 1, color: [1, 0.97, 0.9] };
   const snowUniforms = (u) => Object.assign(u, { uAmount: snow.amount, uToSun: snow.toSun, uZ: snow.z, uLow: snow.low, uSunColor: snow.color });
   // A region's snow: its standing decorations' pictures and domes baked small, one quad over them on the ground layer.
@@ -144,7 +185,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     if (!pictures.has(p.key)) {
       const art = paintDecor(d.kind, 7919 * (p.variant + 1) + d.kind.length, p.size * grid(), { ...look, unit: grid(), liveWater: true }, canvasOf);
       const tex = (c) => (c ? PIXI.Texture.from(c) : null);
-      pictures.set(p.key, art ? { art: tex(art.canvas), shadow: tex(art.shadow), trunk: tex(art.trunk), width: art.width, painted: p.size, canvas: art.canvas } : null);
+      pictures.set(p.key, art ? { art: tex(art.canvas), shadow: tex(art.shadow), trunk: tex(art.trunk), cloth: tex(art.cloth), width: art.width, painted: p.size, canvas: art.canvas } : null);
     }
     return { pic: pictures.get(p.key), scale: d.size / p.size };
   };
@@ -152,6 +193,13 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     for (const s of r.sprites) { try { s.parent?.removeChild(s); s.destroy({ children: true }); } catch { /* gone with the canvas */ } }
     r.sprites = [];
     if (r.snow) { try { r.snow.mesh.parent?.removeChild(r.snow.mesh); r.snow.mesh.destroy(); for (const t of r.snow.textures) t.destroy(true); } catch { /* gone */ } r.snow = null; }
+  };
+  // What moves in the wind and how: cloth by its mask; plants and tree crowns from their middle out.
+  const SWAY = { cloth: { radial: 0, amp: 1, shade: 1, speed: 1 }, plant: { radial: 1, amp: 1.5, shade: 0.35, speed: 0.7 }, crown: { radial: 1, amp: 0.6, shade: 0.25, speed: 0.45 } };
+  const clothMesh = (pic, d, scale, mode = 'cloth') => {
+    const w = pic.art.width, h = pic.art.height, geometry = new PIXI.Geometry().addAttribute('aVertexPosition', [-w / 2, -h / 2, w / 2, -h / 2, w / 2, h / 2, -w / 2, h / 2], 2).addAttribute('aUvs', [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
+    const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(CLOTH_VERT, CLOTH_FRAG, { uArt: pic.art, uCloth: pic.cloth ?? PIXI.Texture.WHITE, uTime: 0, uPush: 0, uSeed: ((d.seed >>> 0) % 997) / 97, uDir: [1, 0], uAlpha: 1, uRadial: SWAY[mode].radial, uAmp: SWAY[mode].amp, uShade: SWAY[mode].shade, uSpeed: SWAY[mode].speed }));
+    mesh.position.set(d.x, d.y); mesh.rotation = turnOf(d); mesh.scale.set(scale, scale); mesh.eventMode = 'none'; mesh.decor = d; mesh.texture = pic.art; return mesh;
   };
   const place = (sprite, d, pic, scale) => { sprite.anchor.set(0.5); sprite.position.set(d.x, d.y); sprite.rotation = turnOf(d); const k = scale; sprite.scale.set((d.flip && DECOR_KINDS[d.kind].flat ? -1 : 1) * k, k); sprite.eventMode = 'none'; return sprite; };
   const aim = (r) => {
@@ -183,7 +231,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         if (had?.key === key) continue;
         if (had) dropRegion(had);
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, placements, shown, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], castLayer: null };
+        const r = { key, placements, shown, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
@@ -204,13 +252,15 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
           }
           if (role === 'tree') {
             if (pic.trunk) r.sprites.push(ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)));
-            const crown = above().addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)); crown.decor = d; r.crowns.push(crown); r.sprites.push(crown);
+            const crown = above().addChild(where !== 'cave' && PIXI.Mesh ? clothMesh(pic, d, scale, 'crown') : place(new PIXI.Sprite(pic.art), d, pic, scale)); crown.decor = d; r.crowns.push(crown); r.sprites.push(crown); if (crown.shader) r.cloth.push(crown);
           // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
-          } else r.sprites.push((role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)));
+          } else if (DECOR_KINDS[d.kind].cloth && pic.cloth && where !== 'cave' && PIXI.Mesh) { const mesh = ground().addChild(clothMesh(pic, d, scale)); r.sprites.push(mesh); r.cloth.push(mesh); }
+          else if (PLANTS.has(d.kind) && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, 'plant')); r.sprites.push(mesh); r.cloth.push(mesh); }
+          else r.sprites.push((role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)));
         }
         shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
-        if (where !== 'cave') { const standing = shown.filter((d) => decorRole(d, where) === 'standing').map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
+        if (where !== 'cave') { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
         regions.set(spec.id, r); aim(r);
       }
       for (const [id, r] of regions) if (!seen.has(id)) { dropRegion(r); regions.delete(id); }
@@ -239,11 +289,16 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         }
       }
     },
+    /** The wind now: strength 0-1, blowing toward angle (radians). Awnings, tents and washing stir in it (not underground). */
+    wind({ strength = 0, angle = 0 } = {}) { air = { strength: Math.max(0, Math.min(1, Number(strength) || 0)), angle: Number(angle) || 0 }; },
     creatures(list = []) { const g = grid(); for (const r of regions.values()) for (const c of r.crowns) open.set(c, crownOpen(c.decor, list, g)); },
     tick(seconds) {
       // A crown eases open over a creature and closes again after it has gone (a third of a second either way).
       const rate = Math.min(1, seconds * 3);
       for (const r of regions.values()) for (const c of r.crowns) { const want = 1 - 0.75 * (open.get(c) ?? 0); c.alpha += (want - c.alpha) * rate; }
+      // Cloth in the wind: its fabric rippling along it, in gusts, each piece out of step with the next; still in a calm.
+      clock += seconds;
+      for (const r of regions.values()) for (const s of r.cloth) { const m = clothMotion(s.decor, air, clock, s.rotation), u = s.shader.uniforms; u.uTime = clock; u.uPush = m.push; u.uDir = m.dir; u.uAlpha = s.alpha; }
     },
     // The trees for the canopy's shade: each crown's picture where it stands, its height, kind and leaves.
     trees() {
@@ -258,6 +313,13 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     water() {
       const out = [];
       for (const [id, r] of regions) r.placements.forEach((d, i) => { if (!DECOR_KINDS[d.kind].water) return; const o = waterOutline(d, grid(), r.look ?? {}); if (o) out.push({ id: `decor:${id}:${i}`, areas: [o], deep: r.where === 'cave' }); });
+      return out;
+    },
+    // The lights the decorations carry (a lamp post's lantern, a brazier's fire, candles): where each stands and its light, scaled
+    // with the decoration's size, for real light sources on the map.
+    lights() {
+      const out = [];
+      for (const [id, r] of regions) r.placements.forEach((d, i) => { const l = DECOR_KINDS[d.kind]?.light; if (!l) return; const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size); out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null }); });
       return out;
     },
     // What the cavern and the webs draw in place of their paintings, underground: a small round area each.
@@ -276,6 +338,6 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     },
     get count() { let n = 0; for (const r of regions.values()) n += r.placements.length; return n; },
     get busy() { return regions.size > 0; },
-    clear() { for (const r of regions.values()) dropRegion(r); regions.clear(); open = new Map(); for (const p of pictures.values()) for (const t of [p?.art, p?.shadow, p?.trunk]) { try { t?.destroy(true); } catch { /* gone */ } } pictures.clear(); },
+    clear() { for (const r of regions.values()) dropRegion(r); regions.clear(); open = new Map(); for (const p of pictures.values()) for (const t of [p?.art, p?.shadow, p?.trunk, p?.cloth]) { try { t?.destroy(true); } catch { /* gone */ } } pictures.clear(); },
   };
 }
