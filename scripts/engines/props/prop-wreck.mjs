@@ -39,6 +39,13 @@ const lobePath = (ctx, pts, ox, oy, k) => {
   for (let i = 0; i < n; i++) ctx.quadraticCurveTo(...p(i), ...mid(i));
   ctx.closePath();
 };
+// A glass shard into Graphics g: the triangle pts (about the shard's own centre) filled pale with a faint ink edge and
+// one bright edge, or, for its shadow (dark), plain black. Shared with the window wreck (wall-wreck.mjs).
+export function paintShard(g, pts, colour, alpha, dark = false) {
+  if (dark) { g.beginFill(0x000000, 1).drawPolygon(pts).endFill(); return; }
+  g.lineStyle(0.7, INK, 0.35).beginFill(colour, alpha).drawPolygon(pts).endFill();
+  g.lineStyle(0.9, 0xffffff, 0.75).moveTo(pts[0], pts[1]).lineTo(pts[2], pts[3]);
+}
 export function paintMark(PIXI, mark, held) {
   const xs = [], ys = [];
   for (const b of mark.blobs) for (const s of b.steps) for (const pts of s.polys) for (let i = 0; i < pts.length; i += 2) { xs.push(pts[i]); ys.push(pts[i + 1]); }
@@ -160,10 +167,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
   // A shard of coloured glass: a thin triangle, a faint ink edge and one bright edge; pale, mid or clear-ish by turn.
   const shard = (s, i) => (g, dark) => {
     const z = s.size, pts = [0, -z * 0.9, z * (0.3 + (i % 3) * 0.08), z * (0.35 + (i % 4) * 0.06), -z * (0.25 + (i % 5) * 0.04), z * 0.3];
-    if (dark) { g.beginFill(0x000000, 1).drawPolygon(pts).endFill(); return; }
-    const col = [shade(s.colour, 1.5), mix(s.colour, 0xdfeef2, 0.55), shade(s.colour, 1.2)][i % 3];
-    g.lineStyle(0.7, INK, 0.35).beginFill(col, 0.75).drawPolygon(pts).endFill();
-    g.lineStyle(0.9, 0xffffff, 0.75).moveTo(pts[0], pts[1]).lineTo(pts[2], pts[3]);
+    paintShard(g, pts, [shade(s.colour, 1.5), mix(s.colour, 0xdfeef2, 0.55), shade(s.colour, 1.2)][i % 3], 0.75, dark);
   };
 
   // Draws the spill: marks into `box`, flying books, pages and shards into `at.over`; returns grow(t), t 0-1.

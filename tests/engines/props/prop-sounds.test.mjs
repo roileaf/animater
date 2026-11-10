@@ -36,3 +36,9 @@ test("a door sounds like wood until its own family ships", () => {
   assert.deepEqual(wallSound("door", () => 0.6), wallSound("door", () => 0.6));
   assert.ok(BREAK_SOUNDS.wood.includes(wallSound("unknown", () => 0.9).file), "an unknown kind falls back to the door's sound");
 });
+test("a window sounds like glass", () => {
+  assert.ok(BREAK_SOUNDS.glass.includes(wallSound("window", () => 0.5).file));
+  assert.equal(wallSound("window", () => 0).file, BREAK_SOUNDS.glass[0]);
+  assert.equal(wallSound("window", () => 0.999999).file, BREAK_SOUNDS.glass.at(-1));
+  assert.ok(BREAK_SOUNDS.wood.includes(wallSound("door", () => 0.5).file), "a door still sounds like wood");
+});

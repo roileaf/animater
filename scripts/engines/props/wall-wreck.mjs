@@ -1,15 +1,19 @@
 // Draws a smashed door (from wall-wreck-layout): a ragged dark gap with an ink edge over the painted door, splintered
-// stubs on the hinge and latch ends, planks thrown flat through to the far side, splinters, and the dust it raised.
-// One Container per wreck on the primary canvas, on the wall's level's floor, sorted above the tiles.
-import { doorWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR } from "./wall-wreck-layout.mjs";
+// stubs on the hinge and latch ends, planks thrown flat through to the far side, splinters, and the dust it raised. A
+// shattered window: the pane gone dark with glass teeth in the frame, pale shards fanned out past the wall (a few on the
+// near side), a handful of glints that twinkle once. One Container per wreck on the primary canvas, on the wall's
+// level's floor, sorted above the tiles.
+import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR } from "./wall-wreck-layout.mjs";
 import { flatMark } from "./prop-wreck-layout.mjs";
-import { paintMark } from "./prop-wreck.mjs";
+import { paintMark, paintShard } from "./prop-wreck.mjs";
 import { wallSound } from "./prop-sounds.mjs";
 import { wallMid } from "./wall-break.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
 
 const INK = 0x1a1410, FRESH = 0xd6b47c, K = 2; // planks are painted at twice their size, sharp when zoomed in
 const THROW_MS = 600, END_MS = 1000; // planks fly over the throw; dust settles by the end
+const GLASS_END_MS = 1500, GLINT_MS = 350, GLINT_REST = 0.4; // shards land by ~650 ms; the last glint is done by the end
+const PANE = 0x1c1814, TOOTH = 0xb8d6de, TOOTH_EDGE = 0x2a3a40, FRAME = 0x5a3e26;
 const ABOVE_TILES = 1e7; // a sort above any tile on the same floor (tokens draw in a later sort layer)
 const quiet = (fn) => { try { fn(); } catch { /* keep cleaning */ } };
 const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -143,7 +147,7 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
   }
 
   function draw(d, note, entry, animate) {
-    const grid = gridOf(), k = grid / 100, L = doorWreckLayout(note, d, grid), [x1, y1, x2, y2] = d.c, mid = wallMid(d);
+    const grid = gridOf(), k = grid / 100, mid = wallMid(d);
     const box = new PIXI.Container(); entry.box = box;
     const scene = d.parent;
     box.elevation = wallLevelBase(d.levels, scene?.levels?.contents ?? scene?.levels ?? [], scene?.initialLevel?.id ?? null);
@@ -151,6 +155,33 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     const sl = sortLayer();
     if (sl !== undefined) box.sortLayer = sl;
 
+    const look = (note.kind === "window" ? windowLook : doorLook)(d, note, entry, box, { grid, k, mid, animate });
+    layerOf().addChild(box);
+    if (!animate) { look.frame(look.end); return; }
+
+    // Only a break seen happening is heard (a door mid-throw, a window at the hit); the note's seed gives every screen
+    // the same recording.
+    let heard = false;
+    const hear = () => {
+      heard = true;
+      try { playSound(wallSound(note.kind, seededRandom(note.seed)).file, mid); }
+      catch (error) { console.warn("Animater wall wreckage: no sound", error); }
+    };
+    const t0 = performance.now(); let raf = 0;
+    entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; };
+    const tick = () => {
+      const ms = Math.min(look.end, performance.now() - t0);
+      look.frame(ms);
+      if (!heard && ms >= look.soundAt) hear();
+      if (ms < look.end) raf = requestAnimationFrame(tick);
+      else { entry.stop = null; look.done?.(); }
+    };
+    look.frame(0); raf = requestAnimationFrame(tick);
+  }
+
+  // A door: the gap and stubs, the mark, planks thrown through, splinters and (seen happening) dust.
+  function doorLook(d, note, entry, box, { grid, k, mid, animate }) {
+    const L = doorWreckLayout(note, d, grid), [x1, y1, x2, y2] = d.c;
     box.addChild(drawGap(L, k));
     const mark = paintMark(PIXI, flatMark(L.mark.kind, { ...L.mark, squash: 0.6, angle: Math.atan2(y2 - y1, x2 - x1) }, seededRandom((note.seed >>> 0) * 31 + 9)), entry.textures);
     box.addChild(mark);
@@ -177,31 +208,54 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     const chips = new PIXI.Graphics(); box.addChild(chips);
     const far = splinterDrawer(chips, L.splinters.far, mid), nearG = new PIXI.Graphics(); box.addChild(nearG);
     const near = splinterDrawer(nearG, L.splinters.near, mid);
-    const frame = (ms) => { throwAt(ms); far(ms); near(ms); mark.alpha = span(ms, 0, 500); };
-
-    layerOf().addChild(box);
-    if (!animate) { frame(END_MS); return; }
-
-    const n = { x: (L.mark.x - mid.x) / (40 * k), y: (L.mark.y - mid.y) / (40 * k) }; // toward the far side
-    const dust = new PIXI.Graphics(); box.addChild(dust);
-    const puffs = puffDrawer(dust, mid, n, k, L.mark.kind, note.seed);
-    // Only a break seen happening is heard, mid-throw; the note's seed gives every screen the same recording.
-    let heard = false;
-    const hear = () => {
-      heard = true;
-      try { playSound(wallSound(note.kind, seededRandom(note.seed)).file, mid); }
-      catch (error) { console.warn("Animater wall wreckage: no sound", error); }
+    let dust = null, puffs = null;
+    if (animate) {
+      const n = { x: (L.mark.x - mid.x) / (40 * k), y: (L.mark.y - mid.y) / (40 * k) }; // toward the far side
+      dust = new PIXI.Graphics(); box.addChild(dust);
+      puffs = puffDrawer(dust, mid, n, k, L.mark.kind, note.seed);
+    }
+    return {
+      end: END_MS, soundAt: THROW_MS / 2,
+      frame: (ms) => { throwAt(ms); far(ms); near(ms); mark.alpha = span(ms, 0, 500); puffs?.(ms); },
+      done: () => { if (dust) quiet(() => dust.destroy()); },
     };
-    const t0 = performance.now(); let raf = 0;
-    entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; };
-    const tick = () => {
-      const ms = Math.min(END_MS, performance.now() - t0);
-      frame(ms); puffs(ms);
-      if (!heard && ms >= THROW_MS / 2) hear();
-      if (ms < END_MS) raf = requestAnimationFrame(tick);
-      else { entry.stop = null; quiet(() => dust.destroy()); }
+  }
+
+  // A window: the empty pane, its teeth and the mullion at once; frame splinters; pale shards flying out to rest; glints
+  // that flash once as their shard settles, then stay faint (a reload shows them faint).
+  function windowLook(d, note, entry, box, { grid, mid }) {
+    const L = windowWreckLayout(note, d, grid), [x1, y1, x2, y2] = d.c;
+    if (L.mark) box.addChild(paintMark(PIXI, flatMark(L.mark.kind, { ...L.mark, squash: 0.6, angle: Math.atan2(y2 - y1, x2 - x1) }, seededRandom((note.seed >>> 0) * 31 + 9)), entry.textures));
+
+    const pane = new PIXI.Graphics(); box.addChild(pane);
+    pane.lineStyle(1, 0x15110e, 0.95).beginFill(PANE, 0.92).drawPolygon(L.gap.poly).endFill();
+    for (const t of L.teeth) pane.lineStyle(0.8, TOOTH_EDGE, 0.8).beginFill(TOOTH, 0.9).drawPolygon(t.pts).endFill();
+    const { x, y, rot, along, across } = L.mullion, c = Math.cos(rot), sn = Math.sin(rot);
+    const bar = [[-1, -1], [1, -1], [1, 1], [-1, 1]].flatMap(([a, b]) => { const u = (a * along) / 2, v = (b * across) / 2; return [x + u * c - v * sn, y + u * sn + v * c]; });
+    pane.lineStyle(1, INK, 1).beginFill(FRAME).drawPolygon(bar).endFill();
+
+    const chips = new PIXI.Graphics(); box.addChild(chips);
+    const slivers = splinterDrawer(chips, L.slivers, mid);
+    const glass = new PIXI.Graphics(), sparks = new PIXI.Graphics(); box.addChild(glass, sparks);
+    const flights = [...L.shards.far.map((s) => [s, 0.72]), ...L.shards.near.map((s) => [s, 0.7])];
+    const shardsAt = (ms) => {
+      glass.clear();
+      for (const [s, alpha] of flights) {
+        const u = outQuart(span(ms, 0, s.dur)), px = lerp(s.from.x, s.x, u), py = lerp(s.from.y, s.y, u), ro = s.rot - s.spin * (1 - u);
+        const rc = Math.cos(ro), rs = Math.sin(ro), pts = [];
+        for (let i = 0; i < 6; i += 2) pts.push(px + s.pts[i] * rc - s.pts[i + 1] * rs, py + s.pts[i] * rs + s.pts[i + 1] * rc);
+        paintShard(glass, pts, s.tone, alpha);
+      }
     };
-    frame(0); puffs(0); raf = requestAnimationFrame(tick);
+    const glintsAt = (ms) => {
+      sparks.clear();
+      for (const q of L.glints) {
+        if (ms < q.at) continue;
+        const flare = Math.sin(Math.PI * span(ms, q.at, GLINT_MS)), a = GLINT_REST + (1 - GLINT_REST) * flare, z = q.size * (1 + 0.5 * flare);
+        sparks.lineStyle(1.1, 0xffffff, 0.8 * a).moveTo(q.x - z, q.y).lineTo(q.x + z, q.y).moveTo(q.x, q.y - z).lineTo(q.x, q.y + z);
+      }
+    };
+    return { end: GLASS_END_MS, soundAt: 0, frame: (ms) => { slivers(ms); shardsAt(ms); glintsAt(ms); } };
   }
 
   // Draws every wall with a broken note and removes the rest; a wreck already drawn for the same note is left alone.

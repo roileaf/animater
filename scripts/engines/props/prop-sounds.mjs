@@ -23,8 +23,9 @@ export function propSound(material, contents, rand) {
 }
 
 // The sound of a door or window breaking, by the wall note's kind. Until a door's own family ships (Task 17), a door
-// breaks with the wood family; an unknown kind sounds like a door. Played by wall-wreck.mjs.
-const WALL_SOUNDS = { door: BREAK_SOUNDS.wood };
+// breaks with the wood family; a window shatters with the glass family; an unknown kind sounds like a door. Played by
+// wall-wreck.mjs.
+const WALL_SOUNDS = { door: BREAK_SOUNDS.wood, window: BREAK_SOUNDS.glass };
 export function wallSound(kind, rand) {
   return { file: pick(Object.hasOwn(WALL_SOUNDS, kind) ? WALL_SOUNDS[kind] : WALL_SOUNDS.door, rand) };
 }

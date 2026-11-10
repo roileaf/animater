@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { doorWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR, SPLINTER_TONES } from "../../../scripts/engines/props/wall-wreck-layout.mjs";
+import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR, SPLINTER_TONES, GLASS_TONES } from "../../../scripts/engines/props/wall-wreck-layout.mjs";
 
 // Door fixtures (R8: a later window test uses its own names).
 const doorWall = { id: "d1", c: [300, 200, 400, 200] };
@@ -87,4 +87,78 @@ test("a door's wreck lies on its own level's floor", () => {
   assert.equal(wallLevelBase(undefined, levels, null), 0, "else the first level");
   assert.equal(wallLevelBase(["u"], [], null), 0, "a scene without levels");
   assert.equal(wallLevelBase(["x"], [{ id: "x", elevation: {} }], null), 0);
+});
+
+// Window fixtures (R8: their own names, not the door's).
+const windowWall = { id: "w", c: [300, 200, 400, 200] };
+const windowNote = { seed: 3, cutAngle: Math.PI / 2, from: { x: 350, y: 120 }, kind: "window", material: "glass", mark: "dust" }; // hit from above: far side is y > 200
+
+test("shards fan out away from the hit, a few near, glints, teeth in the frame", () => {
+  const L = windowWreckLayout(windowNote, windowWall, 100);
+  assert.ok(L.shards.far.every((s) => s.y > 200) && L.shards.near.every((s) => s.y < 200));
+  assert.ok(L.shards.near.length >= 2 && L.shards.near.length <= 6 && L.shards.far.length > L.shards.near.length);
+  assert.ok(L.glints.length >= 3);
+  assert.ok(L.teeth.length >= 3, `${L.teeth.length} teeth`);
+  assert.ok(L.teeth.every((t) => t.pts.every((v, i) => i % 2 === 0 || Math.abs(v - 200) <= 25)));
+});
+
+test("across seeds: near 2-6 and fewer than far, far shards fan wide past the wall, teeth inside the segment", () => {
+  for (let seed = 0; seed < 40; seed++) {
+    const L = windowWreckLayout({ ...windowNote, seed }, windowWall, 100);
+    assert.ok(L.shards.near.length >= 2 && L.shards.near.length <= 6, `seed ${seed}: ${L.shards.near.length} near`);
+    assert.ok(L.shards.far.length > 3 * L.shards.near.length, `seed ${seed}: far ${L.shards.far.length}`);
+    assert.ok(L.shards.far.every((s) => s.y > 200), `seed ${seed}: far past the wall`);
+    assert.ok(L.shards.near.every((s) => s.y < 200 && s.y > 150), `seed ${seed}: near close on the hitter's side`);
+    assert.ok(L.glints.length >= 3 && L.glints.length <= 6, `seed ${seed}: ${L.glints.length} glints (restrained)`);
+    for (const t of L.teeth) for (let i = 0; i < t.pts.length; i += 2) {
+      assert.ok(t.pts[i] >= 300 && t.pts[i] <= 400, `seed ${seed}: tooth x ${t.pts[i]}`);
+      assert.ok(Math.abs(t.pts[i + 1] - 200) <= 6, `seed ${seed}: tooth y ${t.pts[i + 1]}`);
+    }
+  }
+  // The fan: far shards reach well past the wall and spread along it.
+  const far = windowWreckLayout(windowNote, windowWall, 100).shards.far, ys = far.map((s) => s.y), xs = far.map((s) => s.x);
+  assert.ok(Math.max(...ys) > 300, `reach ${Math.max(...ys)}`);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 100, `spread ${Math.min(...xs)}..${Math.max(...xs)}`);
+});
+
+test("each shard is a pale glass triangle with a size, a turn and where it flew from; glints sit on shards", () => {
+  const L = windowWreckLayout(windowNote, windowWall, 100), all = [...L.shards.far, ...L.shards.near];
+  for (const s of all) {
+    assert.ok(Number.isFinite(s.x) && Number.isFinite(s.y) && Number.isFinite(s.rot));
+    assert.ok(s.size >= 3 && s.size <= 15, `size ${s.size}`);
+    assert.equal(s.pts.length, 6);
+    assert.ok(GLASS_TONES.includes(s.tone), `tone ${s.tone}`);
+    assert.ok(Math.abs(s.from.y - 200) <= 6 && s.from.x >= 300 && s.from.x <= 400, `from ${s.from.x},${s.from.y}`);
+  }
+  for (const g of L.glints) {
+    assert.ok(all.some((s) => s.x === g.x && s.y === g.y), `glint at ${g.x},${g.y} is on a shard`);
+    assert.ok(g.size > 0 && Number.isFinite(g.at), "a size and a twinkle time");
+  }
+  assert.ok(L.gap.poly.length >= 8 && L.gap.poly.every((v, i) => (i % 2 ? Math.abs(v - 200) <= 6 : v >= 300 && v <= 400)), "the empty pane lies along the frame");
+  assert.ok(Math.abs(L.mullion.x - 350) < 1e-9 && Math.abs(L.mullion.y - 200) < 1e-9);
+  assert.ok(L.slivers.length >= 3 && L.slivers.every((s) => s.pts.length === 8), "a few frame splinters");
+});
+
+test("same note, same window wreck; hit from the other side or on an upright wall, the fan still goes away from the hitter", () => {
+  assert.deepEqual(windowWreckLayout(windowNote, windowWall, 100), windowWreckLayout(windowNote, windowWall, 100));
+  assert.notDeepEqual(windowWreckLayout({ ...windowNote, seed: 4 }, windowWall, 100), windowWreckLayout(windowNote, windowWall, 100));
+  const below = windowWreckLayout({ ...windowNote, cutAngle: -Math.PI / 2, from: { x: 350, y: 300 } }, windowWall, 100);
+  assert.ok(below.shards.far.every((s) => s.y < 200) && below.shards.near.every((s) => s.y > 200));
+  const upright = { id: "w2", c: [500, 100, 500, 200] };
+  for (const [from, cutAngle] of [[{ x: 420, y: 150 }, 0], [{ x: 580, y: 150 }, Math.PI]]) {
+    const L = windowWreckLayout({ ...windowNote, from, cutAngle }, upright, 100), hitter = sideOf(upright, from);
+    for (const s of L.shards.far) assert.equal(sideOf(upright, s), -hitter, `far shard at ${s.x},${s.y}`);
+    for (const s of L.shards.near) assert.equal(sideOf(upright, s), hitter, `near shard at ${s.x},${s.y}`);
+  }
+});
+
+test("the window wreck scales with the grid; a fire leaves a scorch, else no mark", () => {
+  const big = windowWreckLayout(windowNote, { id: "w", c: [600, 400, 800, 400] }, 200), small = windowWreckLayout(windowNote, windowWall, 100);
+  const reach = (L, y) => Math.max(...L.shards.far.map((s) => s.y - y));
+  assert.ok(reach(big, 400) > reach(small, 200) * 1.6);
+  assert.ok(big.shards.far[0].size > small.shards.far[0].size * 1.6);
+  assert.equal(small.mark, null);
+  const scorch = windowWreckLayout({ ...windowNote, mark: "scorch" }, windowWall, 100).mark;
+  assert.equal(scorch.kind, "scorch");
+  assert.ok(scorch.y > 200 && scorch.r > 10);
 });
