@@ -122,7 +122,9 @@ test('the lead GM keeps trunk walls in step, walls marked as the region\'s, bloc
   assert.match(main, /trunkWallsSoon\(userId === game\.user\?\.id\)/);
   assert.match(main, /move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: 20, light: 20, sound: 0, levels: w\.levels, flags: \{ \[ID\]: \{ trunkOf: id \} \}/);
   assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.trunkOf; if \(!of\) continue;/);
-  assert.match(read('scripts/ui/region-panel-sections.mjs'), /toggle\('Trunks block movement, sight and light', decor\.blocks === true/);
+  // The region panel no longer offers the switch (Roi, 2026-11-10: its Decorations section keeps only breaking and Repair);
+  // a region already set to block keeps its trunk walls.
+  assert.doesNotMatch(read('scripts/ui/region-panel-sections.mjs'), /Trunks block movement/);
 });
 
 test('dragging a region carries its hand-placed decorations and rubbed-out spots with it; reshaping it does not', async () => {
