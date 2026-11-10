@@ -85,14 +85,14 @@ test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, 
   assert.match(read('scripts/ui/decor-brush-bar.mjs'), /Ctrl\+Z undo/);
 });
 
-test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its thickness', () => {
+test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its density', () => {
   const main = read('scripts/main.mjs'), bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(main, /if \(e\.target !== view \|\| !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey \|\| e\.altKey\)\) return;/);
   assert.match(main, /if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) \{ if \(free\) state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\); \}/);
   assert.match(main, /window\.addEventListener\("wheel", wheel, \{ capture: true, passive: false \}\)/);
   assert.match(main, /window\.removeEventListener\("wheel", wheel, \{ capture: true \}\)/);
   assert.match(bar, /setThick: \(v\) =>/);
-  assert.match(bar, /Ctrl\+wheel: size · Shift\+wheel: thickness/);
+  assert.match(bar, /Ctrl\+wheel: size · Shift\+wheel: density/);
   // Alt+wheel: the decorations' own size.
   assert.match(main, /if \(e\.altKey && !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey\)\) state\.bar\?\.setScale\(brushChoices\(\)\.scale \+ \(up \? 0\.1 : -0\.1\)\);/);
   assert.match(bar, /setScale: \(v\) =>/);
